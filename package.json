@@ -1,0 +1,58 @@
+{
+    "name": "ink-react",
+    "version": "1.0.0",
+    "type": "module",
+    "description": "An Ink CLI application",
+    "main": "dist/cli.js",
+    "bin": {
+        "ink-react": "dist/cli.js"
+    },
+    "scripts": {
+        "build": "tsc",
+        "dev": "tsc --watch",
+        "start": "node dist/cli.js",
+        "test": "vitest run",
+        "test:watch": "vitest",
+        "test:coverage": "vitest run --coverage",
+        "lint": "eslint src tests",
+        "lint:fix": "eslint src tests --fix",
+        "format": "prettier --write \"src/**/*.{ts,tsx}\" \"tests/**/*.{ts,tsx}\"",
+        "format:check": "prettier --check \"src/**/*.{ts,tsx}\" \"tests/**/*.{ts,tsx}\"",
+        "typecheck": "tsc --noEmit",
+        "clean": "rm -rf dist coverage",
+        "prepublishOnly": "npm run build"
+    },
+    "keywords": [
+        "cli",
+        "ink",
+        "react",
+        "terminal"
+    ],
+    "author": "",
+    "license": "ISC",
+    "engines": {
+        "node": ">=18"
+    },
+    "files": [
+        "dist"
+    ],
+    "dependencies": {
+        "@inkjs/ui": "^2.0.0",
+        "ink": "^6.5.1",
+        "meow": "^14.0.0",
+        "react": "^19.2.0"
+    },
+    "devDependencies": {
+        "@eslint/js": "^9.39.1",
+        "@types/node": "^24.10.1",
+        "@types/react": "^19.2.7",
+        "@vitest/coverage-v8": "^4.0.14",
+        "eslint": "^9.39.1",
+        "eslint-config-prettier": "^10.1.8",
+        "ink-testing-library": "^4.0.0",
+        "prettier": "^3.7.3",
+        "typescript": "^5.9.3",
+        "typescript-eslint": "^8.48.0",
+        "vitest": "^4.0.14"
+    }
+}
