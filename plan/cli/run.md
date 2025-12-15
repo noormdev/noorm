@@ -3,1153 +3,313 @@
 
 ## Overview
 
-Run screens execute SQL files against the database:
-
-- **List** - Overview of run options
-- **Build** - Execute all files in schema directory
-- **File** - Execute a single SQL file
-- **Dir** - Execute all SQL files in a directory
+Run screens execute SQL files against the database. They provide the user interface layer for the core Runner module, handling user input, confirmation flows, and progress display.
 
 
-## File Structure
+## Screen Hierarchy
 
 ```
-src/cli/screens/run/
-├── index.tsx              # Re-exports
-├── list.tsx               # Run options overview
-├── build.tsx              # Build schema screen
-├── file.tsx               # Run single file screen
-└── dir.tsx                # Run directory screen
+run/
+├── list      # Menu of run options
+├── build     # Execute entire schema directory
+├── exec      # Interactive multi-file selector
+├── file      # Execute a single SQL file (headless/direct)
+└── dir       # Execute all files in a directory
 ```
 
 
-## Run List Screen
+## Architecture
 
-```typescript
-// src/cli/screens/run/list.tsx
 
-import React, { useEffect, useState } from 'react';
-import { Box, Text } from 'ink';
-import { useRouter } from '../../router';
-import { useScreenInput } from '../../keyboard';
-import {
-    Footer,
-    SelectList,
-    SelectListItem,
-    Alert,
-    Spinner
-} from '../../components';
-import { getStateManager } from '../../../core/state';
-import { attempt } from '@logosdx/utils';
+### Component Relationships
 
-interface RunOption {
-    key: string;
-    label: string;
-    description: string;
-    route: string;
-}
+```mermaid
+graph TD
+    subgraph CLI Layer
+        List[Run List Screen]
+        Build[Build Screen]
+        Exec[Exec Screen]
+        File[File Screen]
+        Dir[Dir Screen]
+    end
 
-const RUN_OPTIONS: RunOption[] = [
-    {
-        key: 'build',
-        label: 'Build Schema',
-        description: 'Execute all files in schema directory',
-        route: 'run/build',
-    },
-    {
-        key: 'file',
-        label: 'Run File',
-        description: 'Execute a single SQL file',
-        route: 'run/file',
-    },
-    {
-        key: 'dir',
-        label: 'Run Directory',
-        description: 'Execute all SQL files in a directory',
-        route: 'run/dir',
-    },
-];
+    subgraph Core Layer
+        SM[StateManager]
+        Conn[Connection Factory]
+        Runner[Runner]
+        Obs[Observer]
+    end
 
-export function RunListScreen() {
+    List --> Build
+    List --> Exec
+    List --> File
+    List --> Dir
 
-    const { navigate } = useRouter();
-    const [loading, setLoading] = useState(true);
-    const [hasConfig, setHasConfig] = useState(false);
-    const [configName, setConfigName] = useState<string | null>(null);
+    Build --> SM
+    Build --> Conn
+    Build --> Runner
 
-    useEffect(() => {
+    Exec --> SM
+    Exec --> Conn
+    Exec --> Runner
 
-        checkConfig();
-    }, []);
+    File --> SM
+    File --> Conn
+    File --> Runner
 
-    async function checkConfig() {
+    Dir --> SM
+    Dir --> Conn
+    Dir --> Runner
 
-        const [stateManager] = await attempt(async () => {
-
-            const mgr = await getStateManager();
-            await mgr.load();
-            return mgr;
-        });
-
-        if (stateManager) {
-
-            const config = stateManager.getActiveConfig();
-            setHasConfig(!!config);
-            setConfigName(config?.name ?? null);
-        }
-
-        setLoading(false);
-    }
-
-    useScreenInput({
-        'b': () => navigate('run/build'),
-        'f': () => navigate('run/file'),
-        'd': () => navigate('run/dir'),
-        '1': () => navigate('run/build'),
-        '2': () => navigate('run/file'),
-        '3': () => navigate('run/dir'),
-    }, [navigate]);
-
-    if (loading) {
-
-        return <Spinner label="Loading..." />;
-    }
-
-    if (!hasConfig) {
-
-        return (
-            <Box flexDirection="column">
-                <Text bold>Run SQL</Text>
-                <Box marginTop={1}>
-                    <Alert
-                        type="warning"
-                        message="No active configuration. Please select a config first."
-                    />
-                </Box>
-            </Box>
-        );
-    }
-
-    const items: SelectListItem<RunOption>[] = RUN_OPTIONS.map(opt => ({
-        key: opt.key,
-        label: opt.label,
-        value: opt,
-        description: opt.description,
-    }));
-
-    return (
-        <Box flexDirection="column">
-
-            <Text bold>Run SQL</Text>
-            <Text color="gray">Config: {configName}</Text>
-
-            <Box marginTop={1}>
-                <SelectList
-                    items={items}
-                    onSelect={(item) => navigate(item.value.route as any)}
-                />
-            </Box>
-
-            <Footer
-                actions={[
-                    { key: 'b', label: 'build' },
-                    { key: 'f', label: 'file' },
-                    { key: 'd', label: 'dir' },
-                ]}
-            />
-
-        </Box>
-    );
-}
-
-export default RunListScreen;
+    Runner --> Obs
+    Build -.->|subscribes| Obs
+    Exec -.->|subscribes| Obs
+    Dir -.->|subscribes| Obs
 ```
 
 
-## Build Schema Screen
+### Screen State Machine
 
-```typescript
-// src/cli/screens/run/build.tsx
+All run screens follow a common state machine pattern:
 
-import React, { useEffect, useState } from 'react';
-import { Box, Text } from 'ink';
-import { useRouter } from '../../router';
-import { useScreenInput } from '../../keyboard';
-import {
-    Footer,
-    Alert,
-    Spinner,
-    ProgressBar,
-    StatusList,
-    ProtectedConfirm,
-    Confirm,
-    Checkbox
-} from '../../components';
-import { useProgress } from '../../hooks/useProgress';
-import { getStateManager } from '../../../core/state';
-import { createConnection } from '../../../core/connection';
-import { Runner, BuildResult, FileResult } from '../../../core/runner';
-import { Config } from '../../../core/config/types';
-import { attempt } from '@logosdx/utils';
+```mermaid
+stateDiagram-v2
+    [*] --> Loading: mount
+    Loading --> Options: config loaded
+    Loading --> Error: no config
 
-type Phase = 'options' | 'confirm' | 'running' | 'done' | 'error';
+    Options --> Confirm: protected config
+    Options --> Running: unprotected config
 
-interface BuildOptions {
-    force: boolean;
-    dryRun: boolean;
-}
+    Confirm --> Running: user confirms
+    Confirm --> [*]: user cancels
 
-export function RunBuildScreen() {
+    Running --> Done: success
+    Running --> Error: failure
 
-    const { navigate, back } = useRouter();
-
-    const [phase, setPhase] = useState<Phase>('options');
-    const [config, setConfig] = useState<Config | null>(null);
-    const [options, setOptions] = useState<BuildOptions>({
-        force: process.env.NOORM_FORCE === '1',
-        dryRun: process.env.NOORM_DRY_RUN === '1',
-    });
-    const [error, setError] = useState<string | null>(null);
-    const [result, setResult] = useState<BuildResult | null>(null);
-
-    const progress = useProgress();
-
-    useEffect(() => {
-
-        loadConfig();
-    }, []);
-
-    async function loadConfig() {
-
-        const [stateManager] = await attempt(async () => {
-
-            const mgr = await getStateManager();
-            await mgr.load();
-            return mgr;
-        });
-
-        if (!stateManager) {
-
-            setPhase('error');
-            setError('Failed to load state');
-            return;
-        }
-
-        const cfg = stateManager.getActiveConfig();
-
-        if (!cfg) {
-
-            setPhase('error');
-            setError('No active configuration');
-            return;
-        }
-
-        setConfig(cfg);
-    }
-
-    function handleContinue() {
-
-        if (config?.protected && !options.dryRun) {
-
-            setPhase('confirm');
-        }
-        else {
-
-            runBuild();
-        }
-    }
-
-    async function runBuild() {
-
-        setPhase('running');
-
-        const [conn, connErr] = await attempt(() =>
-            createConnection(config!.connection, config!.name)
-        );
-
-        if (connErr) {
-
-            setPhase('error');
-            setError(`Connection failed: ${connErr.message}`);
-            return;
-        }
-
-        const runner = new Runner(conn!.db, config!);
-
-        // Ensure tracking table exists
-        await runner.getTracker().ensureTable();
-
-        const [buildResult, buildErr] = await attempt(() =>
-            runner.build({
-                force: options.force,
-                dryRun: options.dryRun,
-            })
-        );
-
-        await conn!.destroy();
-
-        if (buildErr) {
-
-            setPhase('error');
-            setError(buildErr.message);
-            return;
-        }
-
-        setResult(buildResult!);
-        setPhase('done');
-    }
-
-    useScreenInput({
-        'f': () => setOptions(prev => ({ ...prev, force: !prev.force })),
-        'd': () => setOptions(prev => ({ ...prev, dryRun: !prev.dryRun })),
-        'enter': () => {
-
-            if (phase === 'options') handleContinue();
-            if (phase === 'done') navigate('run');
-        },
-    }, [phase, options, config]);
-
-    // Error state
-    if (phase === 'error') {
-
-        return (
-            <Box flexDirection="column">
-                <Text bold>Build Schema</Text>
-                <Box marginTop={1}>
-                    <Alert type="error" message={error!} />
-                </Box>
-                <Text color="gray" marginTop={1}>Press Esc to go back</Text>
-            </Box>
-        );
-    }
-
-    // Options selection
-    if (phase === 'options') {
-
-        if (!config) {
-
-            return <Spinner label="Loading configuration..." />;
-        }
-
-        return (
-            <Box flexDirection="column">
-
-                <Text bold>Build Schema</Text>
-                <Text color="gray">Path: {config.paths.schema}</Text>
-
-                <Box marginTop={1} flexDirection="column">
-                    <Text>Options:</Text>
-
-                    <Box marginTop={1} flexDirection="column">
-                        <Box>
-                            <Text color={options.force ? 'cyan' : 'gray'}>
-                                [{options.force ? 'x' : ' '}] Force re-run all files
-                            </Text>
-                            <Text color="gray"> (f)</Text>
-                        </Box>
-
-                        <Box>
-                            <Text color={options.dryRun ? 'cyan' : 'gray'}>
-                                [{options.dryRun ? 'x' : ' '}] Dry run (no execution)
-                            </Text>
-                            <Text color="gray"> (d)</Text>
-                        </Box>
-                    </Box>
-                </Box>
-
-                {config.protected && !options.dryRun && (
-                    <Box marginTop={1}>
-                        <Text color="yellow">
-                            {'\u26a0'} Protected config - will require confirmation
-                        </Text>
-                    </Box>
-                )}
-
-                <Footer
-                    actions={[
-                        { key: 'f', label: 'toggle force' },
-                        { key: 'd', label: 'toggle dry-run' },
-                        { key: 'enter', label: 'start' },
-                    ]}
-                />
-
-            </Box>
-        );
-    }
-
-    // Protected confirmation
-    if (phase === 'confirm' && config?.protected) {
-
-        return (
-            <Box flexDirection="column">
-                <Text bold>Build Schema</Text>
-                <Box marginTop={1}>
-                    <ProtectedConfirm
-                        configName={config.name}
-                        action="build schema"
-                        onConfirm={runBuild}
-                        onCancel={back}
-                    />
-                </Box>
-            </Box>
-        );
-    }
-
-    // Running
-    if (phase === 'running') {
-
-        return (
-            <Box flexDirection="column">
-                <Text bold>Building Schema{options.dryRun ? ' (Dry Run)' : ''}...</Text>
-
-                <Box marginTop={1}>
-                    {progress ? (
-                        <ProgressBar
-                            current={progress.current}
-                            total={progress.total}
-                            label={progress.message}
-                        />
-                    ) : (
-                        <Spinner label="Starting build..." />
-                    )}
-                </Box>
-            </Box>
-        );
-    }
-
-    // Done
-    if (phase === 'done' && result) {
-
-        const isSuccess = result.status === 'success';
-
-        // Prepare status items for display
-        const displayItems = result.results.slice(0, 10).map(r => ({
-            key: r.filepath,
-            label: r.filepath.split('/').pop() ?? r.filepath,
-            status: r.status === 'skipped' ? 'skipped' as const : r.status,
-            detail: r.skipped
-                ? r.skipReason
-                : r.error ?? `${Math.round(r.durationMs ?? 0)}ms`,
-        }));
-
-        return (
-            <Box flexDirection="column">
-
-                <Text bold>Build Schema - {options.dryRun ? 'Dry Run ' : ''}Complete</Text>
-
-                <Box marginTop={1}>
-                    <Alert
-                        type={isSuccess ? 'success' : 'error'}
-                        title={isSuccess ? 'Success' : 'Failed'}
-                        message={`${result.filesRun} run, ${result.filesSkipped} skipped, ${result.filesFailed} failed (${Math.round(result.durationMs)}ms)`}
-                    />
-                </Box>
-
-                {displayItems.length > 0 && (
-                    <Box marginTop={1} flexDirection="column">
-                        <Text bold>Files:</Text>
-                        <StatusList items={displayItems} />
-
-                        {result.results.length > 10 && (
-                            <Text color="gray">
-                                ... and {result.results.length - 10} more files
-                            </Text>
-                        )}
-                    </Box>
-                )}
-
-                <Footer
-                    actions={[
-                        { key: 'enter', label: 'done' },
-                    ]}
-                />
-
-            </Box>
-        );
-    }
-
-    return <Spinner label="Loading..." />;
-}
-
-export default RunBuildScreen;
+    Done --> [*]: user dismisses
+    Error --> [*]: user dismisses
 ```
 
 
-## Run File Screen
+## Data Flow
 
-```typescript
-// src/cli/screens/run/file.tsx
 
-import React, { useEffect, useState } from 'react';
-import { Box, Text } from 'ink';
-import { useRouter, useRoute } from '../../router';
-import { useScreenInput } from '../../keyboard';
-import {
-    Footer,
-    Alert,
-    Spinner,
-    TextInput,
-    ProtectedConfirm
-} from '../../components';
-import { getStateManager } from '../../../core/state';
-import { createConnection } from '../../../core/connection';
-import { Runner, FileResult } from '../../../core/runner';
-import { Config } from '../../../core/config/types';
-import { attempt } from '@logosdx/utils';
-import { existsSync } from 'fs';
-import { resolve } from 'path';
+### Execution Flow
 
-type Phase = 'input' | 'confirm' | 'running' | 'done' | 'error';
+```
+1. Load State
+   └── StateManager.getActiveConfig()
+        └── Returns Config or null
 
-export function RunFileScreen() {
+2. Validate Input
+   └── Check file/directory exists
+   └── Check file extension (.sql, .sql.eta)
 
-    const { navigate, back } = useRouter();
-    const { params } = useRoute();
+3. Protection Check
+   └── If config.protected && !dryRun
+        └── Require ProtectedConfirm
 
-    const [phase, setPhase] = useState<Phase>('input');
-    const [config, setConfig] = useState<Config | null>(null);
-    const [filePath, setFilePath] = useState(params.path ?? '');
-    const [force, setForce] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-    const [result, setResult] = useState<FileResult | null>(null);
+4. Create Connection
+   └── createConnection(config.connection)
+        └── Returns Kysely instance
 
-    useEffect(() => {
+5. Execute
+   └── Runner.build() | Runner.runFile() | Runner.runDir()
+        └── Emits progress events
+        └── Returns result
 
-        loadConfig();
-    }, []);
-
-    useEffect(() => {
-
-        // If path provided via params, start immediately
-        if (params.path && config && !config.protected) {
-
-            runFile();
-        }
-    }, [params.path, config]);
-
-    async function loadConfig() {
-
-        const [stateManager] = await attempt(async () => {
-
-            const mgr = await getStateManager();
-            await mgr.load();
-            return mgr;
-        });
-
-        if (!stateManager) {
-
-            setPhase('error');
-            setError('Failed to load state');
-            return;
-        }
-
-        const cfg = stateManager.getActiveConfig();
-
-        if (!cfg) {
-
-            setPhase('error');
-            setError('No active configuration');
-            return;
-        }
-
-        setConfig(cfg);
-    }
-
-    function validateAndContinue() {
-
-        if (!filePath.trim()) {
-
-            setError('File path is required');
-            return;
-        }
-
-        const absolutePath = resolve(filePath);
-
-        if (!existsSync(absolutePath)) {
-
-            setError(`File not found: ${absolutePath}`);
-            return;
-        }
-
-        if (!filePath.endsWith('.sql') && !filePath.endsWith('.sql.eta')) {
-
-            setError('File must be a .sql or .sql.eta file');
-            return;
-        }
-
-        setError(null);
-
-        if (config?.protected) {
-
-            setPhase('confirm');
-        }
-        else {
-
-            runFile();
-        }
-    }
-
-    async function runFile() {
-
-        setPhase('running');
-
-        const [conn, connErr] = await attempt(() =>
-            createConnection(config!.connection, config!.name)
-        );
-
-        if (connErr) {
-
-            setPhase('error');
-            setError(`Connection failed: ${connErr.message}`);
-            return;
-        }
-
-        const runner = new Runner(conn!.db, config!);
-        await runner.getTracker().ensureTable();
-
-        const [fileResult, runErr] = await attempt(() =>
-            runner.runFile(filePath, { force })
-        );
-
-        await conn!.destroy();
-
-        if (runErr) {
-
-            setPhase('error');
-            setError(runErr.message);
-            return;
-        }
-
-        setResult(fileResult!);
-        setPhase('done');
-    }
-
-    useScreenInput({
-        'f': () => setForce(prev => !prev),
-        'enter': () => {
-
-            if (phase === 'input') validateAndContinue();
-            if (phase === 'done') navigate('run');
-        },
-    }, [phase, filePath, force]);
-
-    if (phase === 'error') {
-
-        return (
-            <Box flexDirection="column">
-                <Text bold>Run File</Text>
-                <Box marginTop={1}>
-                    <Alert type="error" message={error!} />
-                </Box>
-                <Text color="gray" marginTop={1}>Press Esc to go back</Text>
-            </Box>
-        );
-    }
-
-    if (phase === 'input') {
-
-        if (!config) {
-
-            return <Spinner label="Loading..." />;
-        }
-
-        return (
-            <Box flexDirection="column">
-
-                <Text bold>Run File</Text>
-
-                <Box marginTop={1}>
-                    <TextInput
-                        label="File path"
-                        value={filePath}
-                        onChange={(v) => {
-
-                            setFilePath(v);
-                            setError(null);
-                        }}
-                        onSubmit={validateAndContinue}
-                        placeholder="./schema/001_create_users.sql"
-                        error={error ?? undefined}
-                    />
-                </Box>
-
-                <Box marginTop={1}>
-                    <Text color={force ? 'cyan' : 'gray'}>
-                        [{force ? 'x' : ' '}] Force re-run (ignore checksum)
-                    </Text>
-                    <Text color="gray"> (f)</Text>
-                </Box>
-
-                <Footer
-                    actions={[
-                        { key: 'f', label: 'toggle force' },
-                        { key: 'enter', label: 'run' },
-                    ]}
-                />
-
-            </Box>
-        );
-    }
-
-    if (phase === 'confirm' && config?.protected) {
-
-        return (
-            <Box flexDirection="column">
-                <Text bold>Run File: {filePath}</Text>
-                <Box marginTop={1}>
-                    <ProtectedConfirm
-                        configName={config.name}
-                        action={`run file "${filePath}"`}
-                        onConfirm={runFile}
-                        onCancel={back}
-                    />
-                </Box>
-            </Box>
-        );
-    }
-
-    if (phase === 'running') {
-
-        return (
-            <Box flexDirection="column">
-                <Text bold>Running File...</Text>
-                <Text color="gray">{filePath}</Text>
-                <Box marginTop={1}>
-                    <Spinner label="Executing SQL..." />
-                </Box>
-            </Box>
-        );
-    }
-
-    if (phase === 'done' && result) {
-
-        const isSuccess = result.status === 'success';
-        const wasSkipped = result.skipped;
-
-        return (
-            <Box flexDirection="column">
-
-                <Text bold>Run File - Complete</Text>
-
-                <Box marginTop={1}>
-                    {wasSkipped ? (
-                        <Alert
-                            type="info"
-                            title="Skipped"
-                            message={`File unchanged (${result.skipReason})`}
-                        />
-                    ) : (
-                        <Alert
-                            type={isSuccess ? 'success' : 'error'}
-                            title={isSuccess ? 'Success' : 'Failed'}
-                            message={
-                                isSuccess
-                                    ? `Executed in ${Math.round(result.durationMs ?? 0)}ms`
-                                    : result.error ?? 'Unknown error'
-                            }
-                        />
-                    )}
-                </Box>
-
-                <Footer
-                    actions={[
-                        { key: 'enter', label: 'done' },
-                    ]}
-                />
-
-            </Box>
-        );
-    }
-
-    return <Spinner label="Loading..." />;
-}
-
-export default RunFileScreen;
+6. Cleanup
+   └── connection.destroy()
 ```
 
 
-## Run Directory Screen
+### Observer Events
 
-```typescript
-// src/cli/screens/run/dir.tsx
+Run screens subscribe to observer events for real-time progress:
 
-import React, { useEffect, useState } from 'react';
-import { Box, Text } from 'ink';
-import { useRouter, useRoute } from '../../router';
-import { useScreenInput } from '../../keyboard';
-import {
-    Footer,
-    Alert,
-    Spinner,
-    ProgressBar,
-    StatusList,
-    TextInput,
-    ProtectedConfirm
-} from '../../components';
-import { useProgress } from '../../hooks/useProgress';
-import { getStateManager } from '../../../core/state';
-import { createConnection } from '../../../core/connection';
-import { Runner, DirResult } from '../../../core/runner';
-import { Config } from '../../../core/config/types';
-import { attempt } from '@logosdx/utils';
-import { existsSync, statSync } from 'fs';
-import { resolve } from 'path';
+| Event | Data | Purpose |
+|-------|------|---------|
+| `build:start` | `{ total: number }` | Initialize progress bar |
+| `file:before` | `{ filepath, checksum }` | Show current file |
+| `file:after` | `{ filepath, status, durationMs }` | Update progress |
+| `file:skip` | `{ filepath, reason }` | Track skipped files |
+| `build:complete` | `{ results }` | Clear progress |
 
-type Phase = 'input' | 'confirm' | 'running' | 'done' | 'error';
 
-export function RunDirScreen() {
+## Screen Specifications
 
-    const { navigate, back } = useRouter();
-    const { params } = useRoute();
 
-    const [phase, setPhase] = useState<Phase>('input');
-    const [config, setConfig] = useState<Config | null>(null);
-    const [dirPath, setDirPath] = useState(params.path ?? '');
-    const [force, setForce] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-    const [result, setResult] = useState<DirResult | null>(null);
+### Run List
 
-    const progress = useProgress();
+**Purpose**: Menu screen showing available run operations.
 
-    useEffect(() => {
+**Behavior**:
+- Checks for active config on mount
+- If no config: shows warning, blocks navigation
+- If config exists: shows menu with keyboard shortcuts
 
-        loadConfig();
-    }, []);
+**Navigation**:
+| Key | Route |
+|-----|-------|
+| `b` | run/build |
+| `e` | run/exec |
+| `f` | run/file |
+| `d` | run/dir |
 
-    async function loadConfig() {
 
-        const [stateManager] = await attempt(async () => {
+### Build Schema
 
-            const mgr = await getStateManager();
-            await mgr.load();
-            return mgr;
-        });
+**Purpose**: Execute all SQL files in the schema directory.
 
-        if (!stateManager) {
+**Options**:
+- `force`: Re-run all files regardless of checksum
+- `dryRun`: Validate without executing
 
-            setPhase('error');
-            setError('Failed to load state');
-            return;
-        }
+**Result Display**:
+- Summary: files run, skipped, failed, total duration
+- File list with status indicators (first 10, with "and N more" truncation)
 
-        const cfg = stateManager.getActiveConfig();
 
-        if (!cfg) {
+### Exec (Interactive File Selector)
 
-            setPhase('error');
-            setError('No active configuration');
-            return;
-        }
+**Purpose**: Select and execute multiple SQL files interactively.
 
-        setConfig(cfg);
-    }
+**Flow**:
 
-    function validateAndContinue() {
-
-        if (!dirPath.trim()) {
-
-            setError('Directory path is required');
-            return;
-        }
-
-        const absolutePath = resolve(dirPath);
-
-        if (!existsSync(absolutePath)) {
-
-            setError(`Directory not found: ${absolutePath}`);
-            return;
-        }
-
-        const stats = statSync(absolutePath);
-
-        if (!stats.isDirectory()) {
-
-            setError('Path is not a directory');
-            return;
-        }
-
-        setError(null);
-
-        if (config?.protected) {
-
-            setPhase('confirm');
-        }
-        else {
-
-            runDir();
-        }
-    }
-
-    async function runDir() {
-
-        setPhase('running');
-
-        const [conn, connErr] = await attempt(() =>
-            createConnection(config!.connection, config!.name)
-        );
-
-        if (connErr) {
-
-            setPhase('error');
-            setError(`Connection failed: ${connErr.message}`);
-            return;
-        }
-
-        const runner = new Runner(conn!.db, config!);
-        await runner.getTracker().ensureTable();
-
-        const [dirResult, runErr] = await attempt(() =>
-            runner.runDir(dirPath, { force })
-        );
-
-        await conn!.destroy();
-
-        if (runErr) {
-
-            setPhase('error');
-            setError(runErr.message);
-            return;
-        }
-
-        setResult(dirResult!);
-        setPhase('done');
-    }
-
-    useScreenInput({
-        'f': () => setForce(prev => !prev),
-        'enter': () => {
-
-            if (phase === 'input') validateAndContinue();
-            if (phase === 'done') navigate('run');
-        },
-    }, [phase, dirPath, force]);
-
-    if (phase === 'error') {
-
-        return (
-            <Box flexDirection="column">
-                <Text bold>Run Directory</Text>
-                <Box marginTop={1}>
-                    <Alert type="error" message={error!} />
-                </Box>
-                <Text color="gray" marginTop={1}>Press Esc to go back</Text>
-            </Box>
-        );
-    }
-
-    if (phase === 'input') {
-
-        if (!config) {
-
-            return <Spinner label="Loading..." />;
-        }
-
-        return (
-            <Box flexDirection="column">
-
-                <Text bold>Run Directory</Text>
-
-                <Box marginTop={1}>
-                    <TextInput
-                        label="Directory path"
-                        value={dirPath}
-                        onChange={(v) => {
-
-                            setDirPath(v);
-                            setError(null);
-                        }}
-                        onSubmit={validateAndContinue}
-                        placeholder="./migrations"
-                        error={error ?? undefined}
-                    />
-                </Box>
-
-                <Box marginTop={1}>
-                    <Text color={force ? 'cyan' : 'gray'}>
-                        [{force ? 'x' : ' '}] Force re-run all files
-                    </Text>
-                    <Text color="gray"> (f)</Text>
-                </Box>
-
-                <Footer
-                    actions={[
-                        { key: 'f', label: 'toggle force' },
-                        { key: 'enter', label: 'run' },
-                    ]}
-                />
-
-            </Box>
-        );
-    }
-
-    if (phase === 'confirm' && config?.protected) {
-
-        return (
-            <Box flexDirection="column">
-                <Text bold>Run Directory: {dirPath}</Text>
-                <Box marginTop={1}>
-                    <ProtectedConfirm
-                        configName={config.name}
-                        action={`run all files in "${dirPath}"`}
-                        onConfirm={runDir}
-                        onCancel={back}
-                    />
-                </Box>
-            </Box>
-        );
-    }
-
-    if (phase === 'running') {
-
-        return (
-            <Box flexDirection="column">
-                <Text bold>Running Directory...</Text>
-                <Text color="gray">{dirPath}</Text>
-
-                <Box marginTop={1}>
-                    {progress ? (
-                        <ProgressBar
-                            current={progress.current}
-                            total={progress.total}
-                            label={progress.message}
-                        />
-                    ) : (
-                        <Spinner label="Scanning files..." />
-                    )}
-                </Box>
-            </Box>
-        );
-    }
-
-    if (phase === 'done' && result) {
-
-        const isSuccess = result.status === 'success';
-
-        const displayItems = result.results.slice(0, 10).map(r => ({
-            key: r.filepath,
-            label: r.filepath.split('/').pop() ?? r.filepath,
-            status: r.status === 'skipped' ? 'skipped' as const : r.status,
-            detail: r.skipped
-                ? r.skipReason
-                : r.error ?? `${Math.round(r.durationMs ?? 0)}ms`,
-        }));
-
-        return (
-            <Box flexDirection="column">
-
-                <Text bold>Run Directory - Complete</Text>
-
-                <Box marginTop={1}>
-                    <Alert
-                        type={isSuccess ? 'success' : 'error'}
-                        title={isSuccess ? 'Success' : 'Failed'}
-                        message={`${result.filesRun} run, ${result.filesSkipped} skipped, ${result.filesFailed} failed (${Math.round(result.durationMs)}ms)`}
-                    />
-                </Box>
-
-                {displayItems.length > 0 && (
-                    <Box marginTop={1} flexDirection="column">
-                        <Text bold>Files:</Text>
-                        <StatusList items={displayItems} />
-
-                        {result.results.length > 10 && (
-                            <Text color="gray">
-                                ... and {result.results.length - 10} more files
-                            </Text>
-                        )}
-                    </Box>
-                )}
-
-                <Footer
-                    actions={[
-                        { key: 'enter', label: 'done' },
-                    ]}
-                />
-
-            </Box>
-        );
-    }
-
-    return <Spinner label="Loading..." />;
-}
-
-export default RunDirScreen;
+```mermaid
+stateDiagram-v2
+    [*] --> FilePicker: mount
+    FilePicker --> Confirm: files selected
+    Confirm --> Running: confirmed
+    Confirm --> FilePicker: back
+    Running --> Done: complete
+    Running --> Error: failed
+    Done --> [*]
+    Error --> [*]
 ```
 
+**FilePicker integration:**
 
-## Index Exports
+Uses the FilePicker component (see [components.md](./components.md)) with:
+- `basePath`: Schema directory from active config
+- `filter`: Files ending in `.sql` or `.sql.eta`
+- Multi-select enabled
 
-```typescript
-// src/cli/screens/run/index.tsx
+**Layout:**
 
-export { default as list } from './list';
-export { default as build } from './build';
-export { default as file } from './file';
-export { default as dir } from './dir';
+```
++----------------------------------------------------------+
+| Run Files                                                 |
+|                                                          |
+| Search: views auth█                                       |
+|                                                          |
+| ☑ schema/views/auth/users.sql                            |
+| ☐ schema/views/auth/roles.sql                            |
+| ☑ schema/views/auth/permissions.sql                      |
+|                                                          |
+| 3 files shown (2 selected)                               |
+|                                                          |
+| [Tab]switch mode  [Space]toggle  [Enter]run  [Esc]cancel |
++----------------------------------------------------------+
 ```
 
+**Options:**
+- `force`: Re-run selected files regardless of checksum
+- `dryRun`: Preview without executing
 
-## Screen Summary
-
-| Screen | Route | Purpose |
-|--------|-------|---------|
-| List | `run` | Overview of run options |
-| Build | `run/build` | Execute schema directory |
-| File | `run/file` | Execute single SQL file |
-| Dir | `run/dir` | Execute directory of SQL files |
+**Result Display**: Same as Build Schema
 
 
-## Keyboard Reference
+### Run File
 
-### List Screen
+**Purpose**: Execute a single SQL file.
 
-| Key | Action |
-|-----|--------|
-| `b` | Go to Build screen |
-| `f` | Go to File screen |
-| `d` | Go to Dir screen |
-| `1-3` | Quick navigate |
+**Input**: File path (text input or route param)
 
-### Build/Dir Screens
+**Validation**:
+- Path must be non-empty
+- File must exist
+- Extension must be `.sql` or `.sql.eta`
 
-| Key | Action |
-|-----|--------|
-| `f` | Toggle force option |
-| `d` | Toggle dry-run option |
-| `Enter` | Start execution / Continue |
+**Options**:
+- `force`: Ignore checksum, re-run even if unchanged
 
-### File Screen
 
-| Key | Action |
-|-----|--------|
-| `f` | Toggle force option |
-| `Enter` | Run file / Continue |
+### Run Directory
+
+**Purpose**: Execute all SQL files in a directory.
+
+**Input**: Directory path (text input or route param)
+
+**Validation**:
+- Path must be non-empty
+- Path must exist
+- Path must be a directory
+
+**Options**:
+- `force`: Re-run all files regardless of checksum
+
+**Result Display**: Same as Build Schema
 
 
 ## Progress Integration
 
-The run screens use the `useProgress` hook to display real-time progress:
+Run screens use a `useProgress` hook to display real-time execution progress:
 
-```typescript
-import { useProgress } from '../../hooks/useProgress';
-
-function BuildScreen() {
-
-    const progress = useProgress();
-
-    // progress = { current: 5, total: 20, message: "Building schema..." }
-
-    return (
-        <ProgressBar
-            current={progress?.current ?? 0}
-            total={progress?.total ?? 0}
-            label={progress?.message}
-        />
-    );
-}
+```
+┌─────────────────────────────────────────┐
+│ Building Schema...                      │
+│                                         │
+│ ████████████░░░░░░░░░░░░░░░░  12/25    │
+│ Running: 012_create_orders.sql          │
+└─────────────────────────────────────────┘
 ```
 
-The hook subscribes to observer events:
-- `build:start` - Sets total files
-- `file:after` / `file:skip` - Increments current
-- `build:complete` - Clears progress
+The hook subscribes to observer events and provides:
+- `current`: Number of files processed
+- `total`: Total files to process
+- `message`: Current file being processed
+
+
+## Protection Flow
+
+When a config is marked as protected and not doing a dry run:
+
+```
+┌─────────────────────────────────────────┐
+│ ⚠ Protected Configuration               │
+│                                         │
+│ Config "production" is protected.       │
+│                                         │
+│ Type "production" to confirm:           │
+│ > produ█                                │
+│                                         │
+│ [Esc] Cancel                            │
+└─────────────────────────────────────────┘
+```
+
+The user must type the config name exactly to proceed.
+
+
+## Environment Variables
+
+Run screens respect environment variables for default options:
+
+| Variable | Effect |
+|----------|--------|
+| `NOORM_FORCE=1` | Default force option to true |
+| `NOORM_DRY_RUN=1` | Default dry-run option to true |
+
+
+## Error Handling
+
+All screens handle errors consistently:
+
+1. **Connection errors**: Display with "Connection failed:" prefix
+2. **Execution errors**: Display error message from Runner
+3. **State errors**: "Failed to load state" or "No active configuration"
+
+Error state shows:
+- Error message in Alert component
+- "Press Esc to go back" hint

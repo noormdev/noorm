@@ -1,414 +1,474 @@
-# Identity Resolution
+# Identity
 
 
 ## Overview
 
-Identity determines "who" executed a changeset or SQL file. Used for audit trails in tracking tables. Resolution priority:
+Identity in noorm serves two purposes:
 
-1. Config override (explicit identity in config)
-2. Environment variable (`NOORM_IDENTITY`)
-3. Git user (`git config user.name` + `user.email`)
-4. System user (`os.userInfo().username`)
+1. **Audit Identity** - Who executed a changeset (for tracking tables)
+2. **Cryptographic Identity** - Keypair for encrypted config sharing
+
+The cryptographic identity is established on first run and persists across sessions. It enables secure config sharing between team members via asymmetric encryption.
 
 
-## Dependencies
+## Architecture
 
-```json
-{
-    "@logosdx/observer": "^x.x.x",
-    "@logosdx/utils": "^x.x.x"
-}
+
+### Component Relationships
+
+```mermaid
+flowchart TB
+    subgraph Local["Local Machine"]
+        KeyFile["~/.noorm/identity.key"]
+        State["State (encrypted)"]
+        Identity["identity"]
+        KnownUsers["knownUsers"]
+    end
+
+    subgraph DB["Database"]
+        Table["noorm_identities"]
+    end
+
+    State --> Identity
+    State --> KnownUsers
+    KeyFile -.->|"private key"| Identity
+    Identity -->|"sync on connect"| Table
+    Table -->|"pull on connect"| KnownUsers
 ```
 
 
-## File Structure
+### Data Flow: First Run
 
-```
-src/core/
-├── identity/
-│   ├── index.ts           # Public exports
-│   ├── resolver.ts        # Identity resolution logic
-│   └── types.ts           # Identity interfaces
-```
+```mermaid
+sequenceDiagram
+    participant User
+    participant CLI
+    participant Crypto
+    participant State
 
-
-## Types
-
-```typescript
-// src/core/identity/types.ts
-
-export type IdentitySource = 'config' | 'env' | 'git' | 'system';
-
-export interface Identity {
-    name: string;
-    email?: string;
-    source: IdentitySource;
-}
-
-export interface IdentityOptions {
-    /** Override from config */
-    configIdentity?: string;
-
-    /** Skip git lookup (faster, for CI) */
-    skipGit?: boolean;
-}
+    CLI->>User: Prompt name, email
+    User-->>CLI: "Alice Smith", "alice@gmail.com"
+    CLI->>Crypto: generateKeyPair()
+    Crypto-->>CLI: { publicKey, privateKey }
+    CLI->>State: Write private key to ~/.noorm/identity.key
+    CLI->>State: Store identity in state
+    Note over State: { name, email, publicKey, machine, os }
 ```
 
 
-## Resolver
+### Data Flow: Database Sync
 
-```typescript
-// src/core/identity/resolver.ts
+```mermaid
+sequenceDiagram
+    participant CLI
+    participant DB
+    participant State
 
-import { execSync } from 'child_process';
-import { userInfo } from 'os';
-import { attempt } from '@logosdx/utils';
-import { Identity, IdentityOptions, IdentitySource } from './types';
-import { observer } from '../observer';
+    CLI->>DB: Connect
+    CLI->>DB: Check __noorm_identities__ exists
+    alt Table exists
+        CLI->>DB: SELECT * FROM __noorm_identities__
+        DB-->>CLI: All identities
+        CLI->>State: Merge into knownUsers
+        CLI->>DB: UPSERT own identity
+    else Table doesn't exist
+        Note over CLI: Skip sync (user hasn't opted in)
+    end
+```
 
-/**
- * Resolve the current user's identity.
- *
- * Priority:
- * 1. Config override
- * 2. NOORM_IDENTITY env var
- * 3. Git user
- * 4. System user
- */
-export function resolveIdentity(options: IdentityOptions = {}): Identity {
-    let identity: Identity;
 
-    // 1. Config override
-    if (options.configIdentity) {
-        identity = parseIdentityString(options.configIdentity, 'config');
-    }
-    // 2. Environment variable
-    else if (process.env.NOORM_IDENTITY) {
-        identity = parseIdentityString(process.env.NOORM_IDENTITY, 'env');
-    }
-    // 3. Git user
-    else if (!options.skipGit) {
-        const gitIdentity = getGitIdentity();
-        identity = gitIdentity ?? getSystemIdentity();
-    }
-    // 4. System user
-    else {
-        identity = getSystemIdentity();
-    }
+## Data Model
 
-    observer.emit('identity:resolved', {
-        name: identity.name,
-        email: identity.email,
-        source: identity.source
-    });
 
-    return identity;
-}
+### Local Identity
 
-/**
- * Parse an identity string like "Name <email>" or just "Name".
- */
-function parseIdentityString(input: string, source: IdentitySource): Identity {
-    // Match "Name <email>" format
-    const match = input.match(/^(.+?)\s*<([^>]+)>$/);
+Stored in encrypted state:
 
-    if (match) {
-        return {
-            name: match[1].trim(),
-            email: match[2].trim(),
-            source,
-        };
-    }
+```
+Identity
+├── identityHash            # SHA-256(email + name + machine + os)
+├── name                    # "Alice Smith"
+├── email                   # "alice@gmail.com"
+├── publicKey               # X25519 public key (hex)
+├── machine                 # "alice-macbook-pro"
+├── os                      # "darwin 24.5.0"
+└── createdAt               # ISO timestamp
+```
 
-    // Just a name
+**Identity hash calculation:**
+
+```
+identityHash = SHA256(email + '\0' + name + '\0' + machine + '\0' + os)
+```
+
+Same user on different machines = different identities with different keypairs.
+
+
+### Known Users
+
+Cached in state from database syncs:
+
+```
+KnownUsers: Map<identityHash, KnownUser>
+
+KnownUser
+├── identityHash            # SHA-256(email + name + machine + os)
+├── email                   # "bob@company.com"
+├── name                    # "Bob Jones"
+├── publicKey               # X25519 public key (hex)
+├── machine                 # "bob-workstation"
+├── os                      # "linux 5.15.0"
+├── lastSeen                # ISO timestamp
+└── source                  # Which DB we discovered them from
+```
+
+
+### Private Key Storage
+
+The private key lives outside encrypted state for bootstrapping:
+
+```
+~/.noorm/
+├── identity.key            # X25519 private key (hex, chmod 600)
+└── identity.pub            # Public key for easy sharing
+```
+
+Why separate? The state file is encrypted. We need the private key to decrypt it. Chicken-and-egg.
+
+
+### Database Table
+
+```sql
+CREATE TABLE __noorm_identities__ (
+    id              SERIAL PRIMARY KEY,
+    identity_hash   VARCHAR(64) UNIQUE NOT NULL,
+    email           VARCHAR(255) NOT NULL,
+    name            VARCHAR(255) NOT NULL,
+    machine         VARCHAR(255) NOT NULL,
+    os              VARCHAR(255) NOT NULL,
+    public_key      TEXT NOT NULL,
+    registered_at   TIMESTAMP NOT NULL DEFAULT NOW(),
+    last_seen_at    TIMESTAMP NOT NULL DEFAULT NOW()
+);
+```
+
+**Identity hash:** `SHA256(email + '\0' + name + '\0' + machine + '\0' + os)`
+
+
+## Operations
+
+
+### First Run Setup
+
+Triggered when no identity exists in state.
+
+**Pre-population sources:**
+
+| Field | Primary Source | Fallback | Editable |
+|-------|----------------|----------|----------|
+| Name | `git config user.name` | OS username | Yes |
+| Email | `git config user.email` | (empty) | Yes |
+| Machine | `os.hostname()` | - | Yes |
+| OS | `os.platform()` + `os.release()` | - | No |
+
+```
+setupIdentity():
+    # Detect defaults from system
+    defaults = detectIdentityDefaults()
+
+    # Present form with pre-filled values (user can edit name, email, machine)
+    name = prompt("Name:", default: defaults.name)
+    email = prompt("Email:", default: defaults.email)
+    machine = prompt("Machine:", default: defaults.machine)
+    osInfo = defaults.os  # Not editable
+
+    # Compute identity hash
+    identityHash = SHA256(email + '\0' + name + '\0' + machine + '\0' + osInfo)
+
+    # Generate keypair (automatic, no user input)
+    { publicKey, privateKey } = generateX25519KeyPair()
+
+    # Store private key (outside state)
+    writeFile(~/.noorm/identity.key, privateKey, mode: 0o600)
+    writeFile(~/.noorm/identity.pub, publicKey, mode: 0o644)
+
+    # Store identity in state
+    state.identity = { identityHash, name, email, publicKey, machine, os: osInfo, createdAt: now() }
+
+    emit('identity:created', { identityHash, name, email, machine })
+
+
+detectIdentityDefaults():
+    # Try git config first (most reliable for name/email)
+    [gitName, _] = await attempt(() => exec('git config user.name'))
+    [gitEmail, _] = await attempt(() => exec('git config user.email'))
+
     return {
-        name: input.trim(),
-        source,
-    };
-}
+        name: gitName?.trim() || os.userInfo().username,
+        email: gitEmail?.trim() || '',
+        machine: os.hostname(),
+        os: `${os.platform()} ${os.release()}`
+    }
+```
 
-/**
- * Get identity from git config.
- */
-function getGitIdentity(): Identity | null {
-    try {
-        const name = execSync('git config user.name', {
-            encoding: 'utf8',
-            timeout: 5000,
-            stdio: ['pipe', 'pipe', 'pipe'],
-        }).trim();
 
-        if (!name) return null;
+### Sync on Connect
 
-        let email: string | undefined;
-        try {
-            email = execSync('git config user.email', {
-                encoding: 'utf8',
-                timeout: 5000,
-                stdio: ['pipe', 'pipe', 'pipe'],
-            }).trim();
-        } catch {
-            // Email is optional
+Called after successful database connection:
+
+```
+syncIdentities(db):
+    # Check if table exists
+    if not tableExists(db, '__noorm_identities__'):
+        return  # User hasn't opted into identity sharing
+
+    # Pull all identities
+    rows = db.select('__noorm_identities__')
+
+    for row in rows:
+        if row.identity_hash == state.identity.identityHash:
+            continue  # Skip self
+
+        state.knownUsers[row.identity_hash] = {
+            name: row.name,
+            publicKey: row.public_key,
+            machine: row.machine,
+            os: row.os,
+            lastSeen: row.last_seen_at,
+            source: currentConfigName
         }
 
-        return {
-            name,
-            email: email || undefined,
-            source: 'git',
-        };
-    } catch {
-        // Git not available or not in a repo
-        return null;
-    }
-}
+    # Upsert own identity (by identity_hash)
+    db.upsert('__noorm_identities__', {
+        identity_hash: state.identity.identityHash,
+        email: state.identity.email,
+        name: state.identity.name,
+        machine: state.identity.machine,
+        os: state.identity.os,
+        public_key: state.identity.publicKey,
+        last_seen_at: now()
+    })
 
-/**
- * Get identity from system user.
- */
-function getSystemIdentity(): Identity {
-    const info = userInfo();
+    emit('identity:synced', {
+        discovered: rows.length - 1,
+        configName: currentConfigName
+    })
+```
+
+
+### Resolve Recipient
+
+For config export. Since one email can have multiple machines, we need to handle disambiguation:
+
+```
+resolveRecipient(emailOrHash):
+    # Direct hash lookup (exact match)
+    if state.knownUsers[emailOrHash]:
+        return state.knownUsers[emailOrHash]
+
+    # Search by email (may return multiple)
+    matches = Object.values(state.knownUsers)
+        .filter(u => u.email == emailOrHash)
+
+    if matches.length == 0:
+        throw new UnknownRecipientError(
+            `Unknown recipient: ${emailOrHash}. ` +
+            `Connect to a shared database to discover team members, ` +
+            `or use --pubkey to specify manually.`
+        )
+
+    if matches.length == 1:
+        return matches[0]
+
+    # Multiple machines for same email - prompt user to pick
+    # In headless mode, error with list of options
+    throw new AmbiguousRecipientError(
+        `Multiple identities found for ${emailOrHash}:`,
+        matches.map(m => `  ${m.identityHash.slice(0,8)} - ${m.machine} (${m.os})`)
+    )
+```
+
+**CLI behavior:**
+
+| Mode | Multiple matches |
+|------|------------------|
+| Interactive | Show picker: "Alice has 2 machines. Which one?" |
+| Headless | Error with identity hashes to use with `--identity-hash` |
+
+**Export flags:**
+
+```
+noorm config export prod --for alice@gmail.com          # Works if 1 match
+noorm config export prod --for alice@gmail.com --machine alice-macbook  # Filter by machine
+noorm config export prod --identity-hash abc123...      # Direct hash
+noorm config export prod --pubkey <key>                 # Manual override
+```
+
+
+## Encryption Module
+
+
+### Key Generation (X25519)
+
+```ts
+import { generateKeyPairSync } from 'crypto'
+
+function generateKeyPair(): { publicKey: string, privateKey: string } {
+
+    const { publicKey, privateKey } = generateKeyPairSync('x25519', {
+        publicKeyEncoding: { type: 'spki', format: 'der' },
+        privateKeyEncoding: { type: 'pkcs8', format: 'der' }
+    })
 
     return {
-        name: info.username,
-        source: 'system',
-    };
-}
-
-/**
- * Format identity for display.
- */
-export function formatIdentity(identity: Identity): string {
-    if (identity.email) {
-        return `${identity.name} <${identity.email}>`;
+        publicKey: publicKey.toString('hex'),
+        privateKey: privateKey.toString('hex')
     }
-    return identity.name;
-}
-
-/**
- * Format identity for database storage.
- */
-export function identityToString(identity: Identity): string {
-    return formatIdentity(identity);
 }
 ```
 
 
-## Caching
+### Encrypt for Recipient (X25519 + AES-256-GCM)
 
-Identity resolution can be cached for the duration of a command since it won't change mid-execution.
+```ts
+function encryptForRecipient(
+    plaintext: string,
+    recipientPubKey: string
+): EncryptedPayload {
 
-```typescript
-// src/core/identity/index.ts
+    // Generate ephemeral keypair
+    const ephemeral = generateKeyPair()
 
-import { Identity, IdentityOptions } from './types';
-import { resolveIdentity as resolve, formatIdentity, identityToString } from './resolver';
+    // Derive shared secret via ECDH
+    const sharedSecret = deriveSharedSecret(
+        ephemeral.privateKey,
+        recipientPubKey
+    )
 
-export * from './types';
-export { formatIdentity, identityToString } from './resolver';
+    // Derive encryption key from shared secret
+    const key = hkdf(sharedSecret, 32, 'noorm-config-share')
 
-let cachedIdentity: Identity | null = null;
+    // Encrypt with AES-256-GCM
+    const iv = randomBytes(16)
+    const cipher = createCipheriv('aes-256-gcm', key, iv)
+    const ciphertext = Buffer.concat([
+        cipher.update(plaintext, 'utf8'),
+        cipher.final()
+    ])
+    const authTag = cipher.getAuthTag()
 
-/**
- * Get the current identity (cached).
- */
-export function resolveIdentity(options: IdentityOptions = {}): Identity {
-    // Don't cache if using config override (might change between calls)
-    if (options.configIdentity) {
-        return resolve(options);
+    return {
+        version: 1,
+        ephemeralPubKey: ephemeral.publicKey,
+        iv: iv.toString('hex'),
+        authTag: authTag.toString('hex'),
+        ciphertext: ciphertext.toString('hex')
     }
-
-    if (!cachedIdentity) {
-        cachedIdentity = resolve(options);
-    }
-
-    return cachedIdentity;
-}
-
-/**
- * Clear the identity cache (for testing).
- */
-export function clearIdentityCache(): void {
-    cachedIdentity = null;
-}
-
-/**
- * Get identity with config awareness.
- */
-export function getIdentityForConfig(config: { identity?: string }): Identity {
-    return resolveIdentity({ configIdentity: config.identity });
 }
 ```
 
 
-## Usage Examples
+### Decrypt with Private Key
 
-### Basic Resolution
+```ts
+function decryptWithPrivateKey(
+    payload: EncryptedPayload,
+    privateKey: string
+): string {
 
-```typescript
-import { resolveIdentity, formatIdentity } from './core/identity';
+    // Derive shared secret from ephemeral pub + our private
+    const sharedSecret = deriveSharedSecret(
+        privateKey,
+        payload.ephemeralPubKey
+    )
 
-const identity = resolveIdentity();
+    // Derive decryption key
+    const key = hkdf(sharedSecret, 32, 'noorm-config-share')
 
-console.log(`Executed by: ${formatIdentity(identity)}`);
-// "Executed by: John Doe <john@example.com>"
+    // Decrypt
+    const decipher = createDecipheriv(
+        'aes-256-gcm',
+        key,
+        Buffer.from(payload.iv, 'hex')
+    )
+    decipher.setAuthTag(Buffer.from(payload.authTag, 'hex'))
 
-console.log(`Source: ${identity.source}`);
-// "Source: git"
-```
+    const plaintext = Buffer.concat([
+        decipher.update(Buffer.from(payload.ciphertext, 'hex')),
+        decipher.final()
+    ])
 
-### With Config Override
-
-```typescript
-import { getIdentityForConfig } from './core/identity';
-
-const config = {
-    name: 'prod',
-    identity: 'Deploy Bot <deploy@example.com>',
-    // ...
-};
-
-const identity = getIdentityForConfig(config);
-// { name: 'Deploy Bot', email: 'deploy@example.com', source: 'config' }
-```
-
-### In CI Environment
-
-```bash
-# Set identity via env var
-NOORM_IDENTITY="GitHub Actions" noorm run build
-```
-
-```typescript
-// Identity will resolve to:
-// { name: 'GitHub Actions', source: 'env' }
-```
-
-### Skip Git Lookup
-
-```typescript
-// For faster resolution in CI where git user isn't configured
-const identity = resolveIdentity({ skipGit: true });
-// Falls through to system user immediately
-```
-
-
-## Integration with Tracking
-
-```typescript
-import { resolveIdentity, identityToString } from './core/identity';
-
-async function trackFileExecution(
-    db: Kysely<any>,
-    filepath: string,
-    config: Config,
-    status: 'success' | 'failed'
-) {
-    const identity = resolveIdentity({ configIdentity: config.identity });
-
-    await db.insertInto('__change_files__').values({
-        filepath,
-        checksum: await hashFile(filepath),
-        executed_by: identityToString(identity),
-        identity_source: identity.source,
-        config_name: config.name,
-        status,
-        executed_at: new Date(),
-    }).execute();
+    return plaintext.toString('utf8')
 }
 ```
 
 
-## Testing
+## CLI Commands
 
-```typescript
-import {
-    resolveIdentity,
-    clearIdentityCache,
-    formatIdentity,
-} from './core/identity';
 
-describe('Identity', () => {
-    beforeEach(() => {
-        clearIdentityCache();
-        delete process.env.NOORM_IDENTITY;
-    });
+### Identity Management
 
-    it('should resolve from config override', () => {
-        const identity = resolveIdentity({
-            configIdentity: 'Test User <test@example.com>',
-        });
+| Command | Description |
+|---------|-------------|
+| `noorm identity` | Show current identity |
+| `noorm identity init` | Re-run first-time setup |
+| `noorm identity export` | Output public key for manual sharing |
+| `noorm identity list` | List all known users |
 
-        expect(identity.name).toBe('Test User');
-        expect(identity.email).toBe('test@example.com');
-        expect(identity.source).toBe('config');
-    });
 
-    it('should resolve from env var', () => {
-        process.env.NOORM_IDENTITY = 'CI Bot';
+### Config Sharing
 
-        const identity = resolveIdentity();
+| Command | Description |
+|---------|-------------|
+| `noorm config export <name> --for <email>` | Export encrypted config (prompts if multiple machines) |
+| `noorm config export <name> --for <email> --machine <name>` | Export to specific machine |
+| `noorm config export <name> --identity-hash <hash>` | Export to exact identity |
+| `noorm config export <name> --pubkey <key>` | Export with manual pubkey |
+| `noorm config import <file>` | Import encrypted config |
 
-        expect(identity.name).toBe('CI Bot');
-        expect(identity.source).toBe('env');
-    });
 
-    it('should parse identity with email', () => {
-        const identity = resolveIdentity({
-            configIdentity: 'John Doe <john@example.com>',
-        });
+## Observer Events
 
-        expect(identity.name).toBe('John Doe');
-        expect(identity.email).toBe('john@example.com');
-    });
+| Event | Payload | When |
+|-------|---------|------|
+| `identity:created` | `{ name, email, machine }` | First-time setup complete |
+| `identity:synced` | `{ discovered, configName }` | Identities pulled from DB |
+| `identity:registered` | `{ configName }` | Own identity pushed to DB |
+| `config:exported` | `{ configName, recipient }` | Config exported for sharing |
+| `config:imported` | `{ configName, from }` | Config imported from share |
 
-    it('should parse identity without email', () => {
-        const identity = resolveIdentity({
-            configIdentity: 'John Doe',
-        });
 
-        expect(identity.name).toBe('John Doe');
-        expect(identity.email).toBeUndefined();
-    });
+## Audit Identity (Legacy)
 
-    it('should format identity correctly', () => {
-        expect(formatIdentity({ name: 'John', email: 'john@example.com', source: 'git' }))
-            .toBe('John <john@example.com>');
+For tracking tables, identity resolution still follows the priority chain:
 
-        expect(formatIdentity({ name: 'John', source: 'system' }))
-            .toBe('John');
-    });
+| Priority | Source | Description |
+|----------|--------|-------------|
+| 1 | State | Use `state.identity.name` + `state.identity.email` |
+| 2 | Config | Explicit override in config (for bots) |
+| 3 | Environment | `NOORM_IDENTITY` variable |
+| 4 | Git | `git config user.name` + `user.email` |
+| 5 | System | OS username via `os.userInfo()` |
 
-    it('should cache identity', () => {
-        const first = resolveIdentity();
-        const second = resolveIdentity();
+The cryptographic identity (priority 1) is preferred when available.
 
-        expect(first).toBe(second); // Same reference
-    });
 
-    it('should not cache config overrides', () => {
-        const first = resolveIdentity({ configIdentity: 'User A' });
-        const second = resolveIdentity({ configIdentity: 'User B' });
+## Security Considerations
 
-        expect(first.name).toBe('User A');
-        expect(second.name).toBe('User B');
-    });
-
-    it('should fall back to system user', () => {
-        const identity = resolveIdentity({ skipGit: true });
-
-        expect(identity.source).toBe('system');
-        expect(identity.name).toBeTruthy();
-    });
-});
-```
+| Concern | Mitigation |
+|---------|------------|
+| Private key theft | File permissions (600), never transmitted |
+| Key compromise | Generate new keypair, old shares unaffected |
+| Impersonation | Public keys verified via shared DB |
+| Man-in-the-middle | Direct DB sync, no external key servers |
 
 
 ## Edge Cases
 
 | Scenario | Behavior |
 |----------|----------|
-| No git installed | Falls back to system user |
-| Git installed but no user.name | Falls back to system user |
-| Empty NOORM_IDENTITY | Treated as not set, continues to git |
-| Malformed email in identity string | Parsed as name only |
-| Non-ASCII characters | Supported in name and email |
+| No identity on export | Error: "Run `noorm identity init` first" |
+| Recipient not found | Error with instructions to connect or use --pubkey |
+| Corrupted private key | Error: "Identity corrupted. Run `noorm identity init`" |
+| Machine change | Identity persists (tied to ~/.noorm/, not machine ID) |
+| Multiple machines | Same user can have different keypairs per machine |
