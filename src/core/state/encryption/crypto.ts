@@ -3,10 +3,12 @@
  *
  * Provides authenticated encryption - both confidentiality and integrity.
  * Any tampering with the ciphertext will be detected.
+ *
+ * Encryption key is derived from the user's private key using HKDF.
  */
 import { createCipheriv, createDecipheriv, randomBytes } from 'crypto'
 import type { EncryptedPayload } from '../types.js'
-import { deriveKey, generateSalt } from './machine-id.js'
+import { deriveStateKey } from '../../identity/crypto.js'
 
 
 const ALGORITHM = 'aes-256-gcm'
@@ -15,25 +17,25 @@ const AUTH_TAG_LENGTH = 16
 
 
 /**
- * Encrypt a string and return the encrypted payload.
+ * Encrypt a string using the private key.
+ *
+ * Uses HKDF to derive an encryption key from the private key,
+ * then encrypts with AES-256-GCM.
  *
  * @example
  * ```typescript
- * const payload = encrypt('{"configs": {}}')
+ * const payload = encrypt('{"configs": {}}', privateKey)
  * // {
- * //   version: 1,
  * //   algorithm: 'aes-256-gcm',
  * //   iv: 'base64...',
  * //   authTag: 'base64...',
- * //   ciphertext: 'base64...',
- * //   salt: 'base64...'
+ * //   ciphertext: 'base64...'
  * // }
  * ```
  */
-export function encrypt(plaintext: string, passphrase?: string): EncryptedPayload {
+export function encrypt(plaintext: string, privateKey: string): EncryptedPayload {
 
-    const salt = generateSalt()
-    const key = deriveKey(salt, passphrase)
+    const key = deriveStateKey(privateKey)
     const iv = randomBytes(IV_LENGTH)
 
     const cipher = createCipheriv(ALGORITHM, key, iv, {
@@ -48,12 +50,10 @@ export function encrypt(plaintext: string, passphrase?: string): EncryptedPayloa
     const authTag = cipher.getAuthTag()
 
     return {
-        version: 1,
         algorithm: ALGORITHM,
         iv: iv.toString('base64'),
         authTag: authTag.toString('base64'),
         ciphertext: ciphertext.toString('base64'),
-        salt: salt.toString('base64'),
     }
 }
 
@@ -65,27 +65,17 @@ export function encrypt(plaintext: string, passphrase?: string): EncryptedPayloa
  *
  * @example
  * ```typescript
- * const plaintext = decrypt(payload)
- * // '{"configs": {}}'
- *
- * // With passphrase
- * const plaintext = decrypt(payload, 'team-secret')
+ * const plaintext = decrypt(payload, privateKey)
  * ```
  */
-export function decrypt(payload: EncryptedPayload, passphrase?: string): string {
-
-    if (payload.version !== 1) {
-
-        throw new Error(`Unsupported encryption version: ${payload.version}`)
-    }
+export function decrypt(payload: EncryptedPayload, privateKey: string): string {
 
     if (payload.algorithm !== ALGORITHM) {
 
         throw new Error(`Unsupported algorithm: ${payload.algorithm}`)
     }
 
-    const salt = Buffer.from(payload.salt, 'base64')
-    const key = deriveKey(salt, passphrase)
+    const key = deriveStateKey(privateKey)
     const iv = Buffer.from(payload.iv, 'base64')
     const authTag = Buffer.from(payload.authTag, 'base64')
     const ciphertext = Buffer.from(payload.ciphertext, 'base64')

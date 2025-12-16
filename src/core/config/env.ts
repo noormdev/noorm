@@ -36,7 +36,6 @@ const ENV_MAP = {
     // Not mapped to config (handled separately):
     // NOORM_YES: skip confirmations
     // NOORM_JSON: json output
-    // NOORM_PASSPHRASE: encryption passphrase
 } as const
 
 
@@ -116,17 +115,6 @@ export function shouldOutputJson(): boolean {
 
     const json = process.env['NOORM_JSON']
     return json === '1' || json === 'true'
-}
-
-
-/**
- * Get the encryption passphrase from environment.
- *
- * Returns NOORM_PASSPHRASE if set.
- */
-export function getEnvPassphrase(): string | undefined {
-
-    return process.env['NOORM_PASSPHRASE']
 }
 
 

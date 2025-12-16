@@ -8,6 +8,7 @@
  * when upgrading noorm, and we can add new fields without breaking existing state.
  */
 import type { State } from './types.js'
+import type { CryptoIdentity, KnownUser } from '../identity/types.js'
 import { observer } from '../observer.js'
 
 
@@ -37,6 +38,8 @@ export function migrateState(state: unknown, currentVersion: string): State {
     // Build migrated state with defaults for missing fields
     const migrated: State = {
         version: currentVersion,
+        identity: (obj['identity'] as CryptoIdentity | null) ?? null,
+        knownUsers: (obj['knownUsers'] as Record<string, KnownUser>) ?? {},
         activeConfig: (obj['activeConfig'] as string | null) ?? null,
         configs: (obj['configs'] as Record<string, unknown>) as State['configs'] ?? {},
         secrets: (obj['secrets'] as Record<string, Record<string, string>>) ?? {},
@@ -67,8 +70,10 @@ export function needsMigration(state: unknown, currentVersion: string): boolean 
     // Version mismatch
     if (obj['version'] !== currentVersion) return true
 
-    // Missing required fields
+    // Missing required fields (add new fields here as they're added)
     if (!('globalSecrets' in obj)) return true
+    if (!('identity' in obj)) return true
+    if (!('knownUsers' in obj)) return true
 
     return false
 }

@@ -80,3 +80,69 @@ export interface ConfigSummary {
     dialect: Dialect
     database: string
 }
+
+
+// ─────────────────────────────────────────────────────────────
+// Stage Types (for settings.yml integration)
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Secret type hints for UI display.
+ */
+export type SecretType = 'string' | 'password' | 'api_key' | 'connection_string'
+
+
+/**
+ * Required secret definition from a stage.
+ */
+export interface StageSecret {
+
+    key: string
+    type: SecretType
+    description?: string
+    required?: boolean  // Default: true
+}
+
+
+/**
+ * Stage definition from settings.yml.
+ *
+ * Stages define preconfigured configs with defaults and constraints.
+ *
+ * @example
+ * ```yaml
+ * stages:
+ *   prod:
+ *     description: Production database
+ *     locked: true
+ *     defaults:
+ *       dialect: postgres
+ *       protected: true
+ *     secrets:
+ *       - key: DB_PASSWORD
+ *         type: password
+ * ```
+ */
+export interface Stage {
+
+    description?: string
+    locked?: boolean  // Cannot delete config if true
+    defaults?: ConfigInput
+    secrets?: StageSecret[]
+}
+
+
+/**
+ * Result of checking config completeness.
+ */
+export interface CompletenessCheck {
+
+    /** Whether the config is complete and usable */
+    complete: boolean
+
+    /** Missing required secrets */
+    missingSecrets: string[]
+
+    /** Stage constraint violations */
+    violations: string[]
+}

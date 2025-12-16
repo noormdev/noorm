@@ -438,7 +438,7 @@ function decryptWithPrivateKey(
 | `config:imported` | `{ configName, from }` | Config imported from share |
 
 
-## Audit Identity (Legacy)
+## Audit Identity Resolution
 
 For tracking tables, identity resolution still follows the priority chain:
 

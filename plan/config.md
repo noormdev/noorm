@@ -154,7 +154,6 @@ All config properties can be overridden via environment variables:
 | `NOORM_CONFIG` | Which config to use |
 | `NOORM_YES` | Skip confirmations |
 | `NOORM_JSON` | JSON output mode |
-| `NOORM_PASSPHRASE` | Encryption passphrase |
 
 
 ## Validation

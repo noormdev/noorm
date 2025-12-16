@@ -1,22 +1,30 @@
 /**
  * Identity resolution logic.
  *
- * Resolves the current user's identity from multiple sources
+ * Resolves the current user's audit identity from multiple sources
  * with the following priority:
- * 1. Config override
- * 2. NOORM_IDENTITY env var
- * 3. Git user
- * 4. System user
+ * 1. Config override (for bots)
+ * 2. Cryptographic identity from state
+ * 3. NOORM_IDENTITY env var (for CI)
+ * 4. Git user
+ * 5. System user
  */
 import { execSync } from 'child_process'
 import { userInfo } from 'os'
 import { attemptSync } from '@logosdx/utils'
-import type { Identity, IdentityOptions, IdentitySource } from './types.js'
+import type { CryptoIdentity, Identity, IdentityOptions, IdentitySource } from './types.js'
 import { observer } from '../observer.js'
 
 
 /**
- * Resolve the current user's identity.
+ * Resolve the current user's audit identity.
+ *
+ * Priority chain:
+ * 1. Config override (explicit bot/service identity)
+ * 2. Cryptographic identity from state (normal user)
+ * 3. NOORM_IDENTITY env var (CI pipelines)
+ * 4. Git user (developer workstation)
+ * 5. System user (fallback)
  *
  * @example
  * ```typescript
@@ -26,7 +34,15 @@ import { observer } from '../observer.js'
  *
  * @example
  * ```typescript
- * // With config override
+ * // With crypto identity from state
+ * const identity = resolveIdentity({
+ *     cryptoIdentity: state.identity,
+ * })
+ * ```
+ *
+ * @example
+ * ```typescript
+ * // With config override (for bots)
  * const identity = resolveIdentity({
  *     configIdentity: 'Deploy Bot <deploy@example.com>',
  * })
@@ -36,23 +52,28 @@ export function resolveIdentity(options: IdentityOptions = {}): Identity {
 
     let identity: Identity
 
-    // 1. Config override
+    // 1. Config override (explicit bot/service identity)
     if (options.configIdentity) {
 
         identity = parseIdentityString(options.configIdentity, 'config')
     }
-    // 2. Environment variable
+    // 2. Cryptographic identity from state
+    else if (options.cryptoIdentity) {
+
+        identity = cryptoIdentityToAuditIdentity(options.cryptoIdentity)
+    }
+    // 3. Environment variable (CI)
     else if (process.env['NOORM_IDENTITY']) {
 
         identity = parseIdentityString(process.env['NOORM_IDENTITY'], 'env')
     }
-    // 3. Git user
+    // 4. Git user
     else if (!options.skipGit) {
 
         const gitIdentity = getGitIdentity()
         identity = gitIdentity ?? getSystemIdentity()
     }
-    // 4. System user
+    // 5. System user
     else {
 
         identity = getSystemIdentity()
@@ -65,6 +86,21 @@ export function resolveIdentity(options: IdentityOptions = {}): Identity {
     })
 
     return identity
+}
+
+
+/**
+ * Convert cryptographic identity to audit identity.
+ *
+ * Extracts the name/email for tracking purposes.
+ */
+function cryptoIdentityToAuditIdentity(crypto: CryptoIdentity): Identity {
+
+    return {
+        name: crypto.name,
+        email: crypto.email,
+        source: 'state',
+    }
 }
 
 

@@ -1,116 +1,237 @@
-# Version Tracking
+# Version & Migrations
 
 
 ## Overview
 
-noorm tracks CLI versions in the database to ensure compatibility between the tool and the schema it manages. This enables:
+noorm tracks three independent version numbers for its persistence layers:
 
-- Detection of version mismatches between CLI and tracking tables
-- Safe migrations of tracking table schema when CLI is upgraded
-- Audit trail of which CLI version applied each change
+| Layer | Storage | Version Tracked In |
+|-------|---------|-------------------|
+| Schema | Database tracking tables | `__noorm_version__` table |
+| State | `.noorm/state.enc` | Inside encrypted JSON |
+| Settings | `.noorm/settings.yml` | Inside YAML file |
+
+Each layer has its own version number, independent of the CLI package version. This allows:
+
+- Stable state/settings while CLI evolves
+- Targeted migrations (only upgrade what changed)
+- Gradual rollout of changes across layers
+
+For table schemas and data structures, see [Data Model Reference](./datamodel.md).
 
 
 ## Architecture
 
-```mermaid
-flowchart TB
-    subgraph CLI
-        Ver[Version Module]
-        Runner
-        Changeset
-        Lock
-    end
-
-    subgraph Database
-        VT[__noorm_version__]
-        CT[__noorm_changeset__]
-        ET[__noorm_executions__]
-        LT[__noorm_lock__]
-    end
-
-    Ver -->|check compatibility| VT
-    Ver -->|migrate if needed| VT
-    Runner -->|creates operation| CT
-    Runner -->|records files| ET
-    Changeset -->|creates operation| CT
-    Changeset -->|records files| ET
-    Lock -->|table-based locking| LT
+```
+version/
+├── index.ts                    # Unified version manager
+├── types.ts                    # Shared types
+│
+├── schema/                     # Database tracking tables
+│   ├── index.ts                # Schema version manager
+│   ├── migrations/
+│   │   ├── v1.ts               # Initial tables
+│   │   ├── v2.ts               # Add column X
+│   │   └── v3.ts               # Add table Y
+│   └── tables.ts               # Table definitions (Kysely types)
+│
+├── state/                      # Encrypted state file
+│   ├── index.ts                # State version manager
+│   └── migrations/
+│       ├── v1.ts               # Initial state shape
+│       ├── v2.ts               # Add secrets field
+│       └── v3.ts               # Add knownUsers field
+│
+└── settings/                   # Settings YAML file
+    ├── index.ts                # Settings version manager
+    └── migrations/
+        ├── v1.ts               # Initial settings shape
+        ├── v2.ts               # Add strict mode
+        └── v3.ts               # Add logging config
 ```
 
 
-## Version Table
+## Version Numbers
 
-The `__noorm_version__` table stores CLI version information:
+Each layer maintains its own version, starting at 1:
 
 ```
-__noorm_version__
-├── id: serial
-├── cli_version: string        # semver (e.g., "1.2.3")
-├── schema_version: integer    # Tracking table schema version
-├── installed_at: timestamp
-└── upgraded_at: timestamp     # Last upgrade time
+Schema Version:   1 → 2 → 3  (database changes)
+State Version:    1 → 2      (state.enc changes)
+Settings Version: 1 → 2 → 3  (settings.yml changes)
+```
+
+These are **independent** of the package version. A CLI upgrade from 1.0.0 to 2.0.0 might:
+- Keep schema at version 3
+- Upgrade state from 1 to 2
+- Keep settings at version 2
+
+This decoupling means we only run migrations for what actually changed.
+
+
+## Schema Migrations (Kysely)
+
+Database migrations use Kysely's migration system. No raw SQL per dialect.
+
+```typescript
+// version/schema/migrations/v1.ts
+import { Kysely, sql } from 'kysely'
+
+export async function up(db: Kysely<unknown>): Promise<void> {
+
+    await db.schema
+        .createTable('__noorm_version__')
+        .addColumn('id', 'serial', col => col.primaryKey())
+        .addColumn('schema_version', 'integer', col => col.notNull())
+        .addColumn('installed_at', 'timestamp', col => col.defaultTo(sql`now()`))
+        .addColumn('upgraded_at', 'timestamp', col => col.defaultTo(sql`now()`))
+        .execute()
+
+    await db.schema
+        .createTable('__noorm_changeset__')
+        .addColumn('id', 'serial', col => col.primaryKey())
+        .addColumn('name', 'varchar(255)', col => col.notNull())
+        .addColumn('change_type', 'varchar(50)', col => col.notNull())
+        // ... see datamodel.md for full schema
+        .execute()
+
+    // ... more tables per datamodel.md
+}
+
+export async function down(db: Kysely<unknown>): Promise<void> {
+
+    await db.schema.dropTable('__noorm_executions__').execute()
+    await db.schema.dropTable('__noorm_changeset__').execute()
+    await db.schema.dropTable('__noorm_lock__').execute()
+    await db.schema.dropTable('__noorm_identities__').execute()
+    await db.schema.dropTable('__noorm_version__').execute()
+}
 ```
 
 
-## Compatibility Check Flow
+## State Migrations
+
+State migrations transform the decrypted JSON object:
+
+```typescript
+// version/state/migrations/v2.ts
+import type { StateMigration } from '../types'
+
+export const migration: StateMigration = {
+    version: 2,
+    description: 'Add globalSecrets field',
+
+    up(state: Record<string, unknown>): Record<string, unknown> {
+
+        return {
+            ...state,
+            globalSecrets: state['globalSecrets'] ?? {},
+        }
+    },
+
+    down(state: Record<string, unknown>): Record<string, unknown> {
+
+        const { globalSecrets, ...rest } = state
+        return rest
+    },
+}
+```
+
+
+## Settings Migrations
+
+Settings migrations transform the parsed YAML object:
+
+```typescript
+// version/settings/migrations/v2.ts
+import type { SettingsMigration } from '../types'
+
+export const migration: SettingsMigration = {
+    version: 2,
+    description: 'Add strict mode defaults',
+
+    up(settings: Record<string, unknown>): Record<string, unknown> {
+
+        return {
+            ...settings,
+            strict: settings['strict'] ?? {
+                requireConfig: false,
+                requireStage: false,
+                requireIdentity: false,
+            },
+        }
+    },
+
+    down(settings: Record<string, unknown>): Record<string, unknown> {
+
+        const { strict, ...rest } = settings
+        return rest
+    },
+}
+```
+
+
+## Version Tracking
+
+### Schema Version
+
+Stored in the database itself (see `__noorm_version__` in [datamodel.md](./datamodel.md#__noorm_version__)):
+
+```sql
+SELECT schema_version FROM __noorm_version__ ORDER BY id DESC LIMIT 1
+```
+
+### State Version
+
+Stored inside `state.enc` (after decryption):
+
+```json
+{
+    "schemaVersion": 2,
+    "configs": { ... },
+    "secrets": { ... }
+}
+```
+
+### Settings Version
+
+Stored inside `settings.yml`:
+
+```yaml
+schemaVersion: 3
+
+build:
+    paths:
+        - schema/**/*.sql
+```
+
+
+## Migration Flow
 
 ```mermaid
 flowchart TD
-    Start([CLI Connects]) --> Check{Version table exists?}
-    Check -->|No| Bootstrap[Create tracking tables]
-    Check -->|Yes| Compare{Schema version compatible?}
+    Start([CLI Starts]) --> LoadSettings[Load settings.yml]
+    LoadSettings --> CheckSettingsVer{Settings version?}
 
-    Compare -->|Current| Proceed[Continue operation]
-    Compare -->|Older| Migrate[Run migrations]
-    Compare -->|Newer| Error[Error: CLI too old]
+    CheckSettingsVer -->|Current| LoadState[Load state.enc]
+    CheckSettingsVer -->|Older| MigrateSettings[Run settings migrations]
+    MigrateSettings --> SaveSettings[Save settings.yml]
+    SaveSettings --> LoadState
 
-    Bootstrap --> RecordVersion[Record CLI version]
-    Migrate --> RecordVersion
-    RecordVersion --> Proceed
+    LoadState --> CheckStateVer{State version?}
+    CheckStateVer -->|Current| Connect[Connect to DB]
+    CheckStateVer -->|Older| MigrateState[Run state migrations]
+    MigrateState --> SaveState[Save state.enc]
+    SaveState --> Connect
 
-    Error --> Exit([Abort with message])
-```
+    Connect --> CheckSchemaVer{Schema version?}
+    CheckSchemaVer -->|Current| Ready([Ready])
+    CheckSchemaVer -->|Older| MigrateSchema[Run Kysely migrations]
+    CheckSchemaVer -->|None| Bootstrap[Bootstrap tables]
+    MigrateSchema --> Ready
+    Bootstrap --> Ready
 
-
-## Version Recording
-
-Each operation records the CLI version that performed it:
-
-| Table | Field | Purpose |
-|-------|-------|---------|
-| `__noorm_changeset__` | `cli_version` | Version that created the operation |
-| `__noorm_executions__` | `cli_version` | Version that executed the file |
-
-This creates an audit trail showing exactly which CLI version performed each operation.
-
-
-## Schema Migrations
-
-When the CLI's tracking table schema evolves:
-
-```
-CLI Version → Schema Version
-─────────────────────────────
-1.0.0       → 1
-1.2.0       → 2 (added cli_version columns)
-2.0.0       → 3 (added new tracking fields)
-```
-
-**Migration flow:**
-
-```
-on connect:
-    current_schema = get schema_version from __noorm_version__
-    expected_schema = CLI's expected schema version
-
-    if current_schema < expected_schema:
-        for each migration from current_schema to expected_schema:
-            apply migration
-        update schema_version
-        update upgraded_at
-
-    if current_schema > expected_schema:
-        error "CLI version too old for this database"
+    CheckSchemaVer -->|Newer| Error([CLI too old])
 ```
 
 
@@ -118,26 +239,58 @@ on connect:
 
 | Event | Payload | When |
 |-------|---------|------|
-| `version:checked` | `{ cliVersion, schemaVersion }` | Version check completed |
-| `version:migrating` | `{ from, to }` | Schema migration starting |
-| `version:migrated` | `{ from, to, durationMs }` | Schema migration completed |
-| `version:mismatch` | `{ cliVersion, dbVersion, required }` | Incompatible versions |
+| `version:schema:checking` | `{ current }` | Checking schema version |
+| `version:schema:migrating` | `{ from, to }` | Running schema migrations |
+| `version:schema:migrated` | `{ from, to, durationMs }` | Schema migrations complete |
+| `version:state:migrating` | `{ from, to }` | Running state migrations |
+| `version:state:migrated` | `{ from, to }` | State migrations complete |
+| `version:settings:migrating` | `{ from, to }` | Running settings migrations |
+| `version:settings:migrated` | `{ from, to }` | Settings migrations complete |
+| `version:mismatch` | `{ layer, current, expected }` | Version incompatibility |
 
 
 ## Error Cases
 
 | Scenario | Behavior |
 |----------|----------|
-| CLI newer than DB schema | Run migrations automatically |
-| CLI older than DB schema | Error with upgrade instructions |
-| Corrupted version table | Offer repair or re-bootstrap |
+| Schema newer than CLI | Error: "Please upgrade noorm" |
+| State newer than CLI | Error: "State file is from newer version" |
+| Settings newer than CLI | Error: "Settings file is from newer version" |
+| Migration fails | Rollback, emit error event |
+| Corrupted version | Offer repair or re-initialize |
+
+
+## API
+
+```typescript
+// Unified version manager
+import { VersionManager } from './version'
+
+const version = new VersionManager({
+    projectRoot: process.cwd(),
+})
+
+// Check all versions (doesn't modify)
+const status = await version.check(db)
+// { schema: { current: 2, expected: 3, needsMigration: true }, ... }
+
+// Ensure all layers are current (migrates as needed)
+await version.ensureCompatible(db)
+
+// Individual layer access
+await version.schema.migrate(db)
+await version.state.migrate(stateData)
+await version.settings.migrate(settingsData)
+```
 
 
 ## Integration Points
 
 | Module | Interaction |
 |--------|-------------|
-| Connection | Version check on first connect |
-| Runner | Records CLI version on file execution |
-| Changeset | Records CLI version on changeset apply |
-| State | Stores expected schema version |
+| Lifecycle | Run version checks on startup |
+| State | State migrations before loading |
+| Settings | Settings migrations before loading |
+| Connection | Schema migrations on first connect |
+| Runner | Records operations in tracking tables |
+| Lock | Uses `__noorm_lock__` table |

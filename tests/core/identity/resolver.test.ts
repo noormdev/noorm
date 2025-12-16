@@ -8,7 +8,9 @@ import {
     formatIdentity,
     identityToString,
     getIdentityForConfig,
+    getIdentityWithCrypto,
 } from '../../../src/core/identity/index.js'
+import type { CryptoIdentity } from '../../../src/core/identity/types.js'
 
 
 describe('identity: resolver', () => {
@@ -276,6 +278,124 @@ describe('identity: resolver', () => {
 
             expect(identity.name).toBe('User')
             expect(identity.email).toBe('user+tag@example.com')
+        })
+    })
+
+    describe('crypto identity resolution', () => {
+
+        const mockCryptoIdentity: CryptoIdentity = {
+            identityHash: 'abc123def456'.padEnd(64, '0'),
+            name: 'Crypto User',
+            email: 'crypto@example.com',
+            publicKey: 'mock-public-key',
+            machine: 'test-machine',
+            os: 'darwin 24.5.0',
+            createdAt: '2024-01-15T10:30:00Z',
+        }
+
+        it('should resolve from crypto identity', () => {
+
+            const identity = resolveIdentity({
+                cryptoIdentity: mockCryptoIdentity,
+            })
+
+            expect(identity.name).toBe('Crypto User')
+            expect(identity.email).toBe('crypto@example.com')
+            expect(identity.source).toBe('state')
+        })
+
+        it('should prefer config override over crypto identity', () => {
+
+            const identity = resolveIdentity({
+                configIdentity: 'Config User',
+                cryptoIdentity: mockCryptoIdentity,
+            })
+
+            expect(identity.name).toBe('Config User')
+            expect(identity.source).toBe('config')
+        })
+
+        it('should prefer crypto identity over env var', () => {
+
+            process.env['NOORM_IDENTITY'] = 'Env User'
+
+            const identity = resolveIdentity({
+                cryptoIdentity: mockCryptoIdentity,
+            })
+
+            expect(identity.name).toBe('Crypto User')
+            expect(identity.source).toBe('state')
+        })
+
+        it('should not cache crypto identity overrides', () => {
+
+            const first = resolveIdentity({ cryptoIdentity: mockCryptoIdentity })
+            const second = resolveIdentity({
+                cryptoIdentity: {
+                    ...mockCryptoIdentity,
+                    name: 'Different User',
+                },
+            })
+
+            expect(first.name).toBe('Crypto User')
+            expect(second.name).toBe('Different User')
+            expect(first).not.toBe(second)
+        })
+
+        it('should handle null crypto identity', () => {
+
+            const identity = resolveIdentity({
+                cryptoIdentity: null,
+                skipGit: true,
+            })
+
+            // Falls through to system
+            expect(identity.source).toBe('system')
+        })
+    })
+
+    describe('getIdentityWithCrypto', () => {
+
+        const mockCryptoIdentity: CryptoIdentity = {
+            identityHash: 'abc123def456'.padEnd(64, '0'),
+            name: 'Crypto User',
+            email: 'crypto@example.com',
+            publicKey: 'mock-public-key',
+            machine: 'test-machine',
+            os: 'darwin 24.5.0',
+            createdAt: '2024-01-15T10:30:00Z',
+        }
+
+        it('should use crypto identity when available', () => {
+
+            const identity = getIdentityWithCrypto(mockCryptoIdentity)
+
+            expect(identity.name).toBe('Crypto User')
+            expect(identity.source).toBe('state')
+        })
+
+        it('should fall back when crypto identity is null', () => {
+
+            const identity = getIdentityWithCrypto(null)
+
+            expect(['git', 'system']).toContain(identity.source)
+        })
+
+        it('should prefer config over crypto', () => {
+
+            const identity = getIdentityWithCrypto(mockCryptoIdentity, {
+                identity: 'Config Override',
+            })
+
+            expect(identity.name).toBe('Config Override')
+            expect(identity.source).toBe('config')
+        })
+
+        it('should work with undefined config', () => {
+
+            const identity = getIdentityWithCrypto(mockCryptoIdentity, undefined)
+
+            expect(identity.name).toBe('Crypto User')
         })
     })
 })

@@ -27,15 +27,17 @@ export {
 // Resolver
 export {
     resolveConfig,
+    checkConfigCompleteness,
+    canDeleteConfig,
     type ResolveOptions,
     type StateProvider,
+    type SettingsProvider,
 } from './resolver.js'
 
 // Environment variables
 export {
     getEnvConfig,
     getEnvConfigName,
-    getEnvPassphrase,
     isCI,
     shouldSkipConfirmations,
     shouldOutputJson,

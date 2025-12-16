@@ -2,9 +2,10 @@
  * State types.
  *
  * The State object is the in-memory representation of noorm's persistent data.
- * It holds all configs, secrets, and the active config reference.
+ * It holds identity, configs, secrets, and known users.
  */
 import type { Config } from '../config/types.js'
+import type { CryptoIdentity, KnownUser } from '../identity/types.js'
 
 
 /**
@@ -17,10 +18,24 @@ export interface State {
 
     /** Package version that last saved this state */
     version: string
+
+    /** User's cryptographic identity (null if not set up yet) */
+    identity: CryptoIdentity | null
+
+    /** Known users discovered from database syncs (identityHash -> KnownUser) */
+    knownUsers: Record<string, KnownUser>
+
+    /** Currently selected config name */
     activeConfig: string | null
+
+    /** All database configs (name -> Config) */
     configs: Record<string, Config>
-    secrets: Record<string, Record<string, string>>  // configName -> key -> value
-    globalSecrets: Record<string, string>            // key -> value (app-level secrets like API keys)
+
+    /** Config-scoped secrets (configName -> key -> value) */
+    secrets: Record<string, Record<string, string>>
+
+    /** App-level secrets (key -> value) */
+    globalSecrets: Record<string, string>
 }
 
 
@@ -39,15 +54,22 @@ export interface ConfigSummary {
 
 /**
  * Encrypted payload structure stored on disk.
+ *
+ * Uses AES-256-GCM with key derived from the user's private key via HKDF.
  */
 export interface EncryptedPayload {
 
-    version: 1
+    /** Encryption algorithm (always AES-256-GCM) */
     algorithm: 'aes-256-gcm'
-    iv: string          // Base64
-    authTag: string     // Base64
-    ciphertext: string  // Base64
-    salt: string        // Base64
+
+    /** Initialization vector (base64) */
+    iv: string
+
+    /** Authentication tag (base64) */
+    authTag: string
+
+    /** Encrypted state (base64) */
+    ciphertext: string
 }
 
 
@@ -66,6 +88,8 @@ export function createEmptyState(version: string): State {
 
     return {
         version,
+        identity: null,
+        knownUsers: {},
         activeConfig: null,
         configs: {},
         secrets: {},

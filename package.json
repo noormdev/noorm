@@ -1,11 +1,11 @@
 {
-    "name": "ink-react",
+    "name": "noorm",
     "version": "1.0.0",
     "type": "module",
     "description": "An Ink CLI application",
     "main": "dist/cli.js",
     "bin": {
-        "ink-react": "dist/cli.js"
+        "noorm": "dist/cli.js"
     },
     "scripts": {
         "build": "tsc",

@@ -2,12 +2,16 @@
  * StateManager - Core state persistence with encryption.
  *
  * Handles loading, saving, and managing encrypted state.
- * All config and secret operations go through this class.
+ * All config, secret, and identity operations go through this class.
+ *
+ * Encryption uses the user's private key from ~/.noorm/identity.key
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { dirname, join } from 'path'
-import { attemptSync } from '@logosdx/utils'
+import { attemptSync, attempt } from '@logosdx/utils'
 import type { Config } from '../config/types.js'
+import type { CryptoIdentity, KnownUser } from '../identity/types.js'
+import { loadPrivateKey } from '../identity/storage.js'
 import { encrypt, decrypt } from './encryption/index.js'
 import type { State, ConfigSummary, EncryptedPayload } from './types.js'
 import { createEmptyState } from './types.js'
@@ -25,8 +29,8 @@ const DEFAULT_STATE_FILE = 'state.enc'
  */
 export interface StateManagerOptions {
 
-    /** Encryption passphrase (defaults to NOORM_PASSPHRASE env var) */
-    passphrase?: string
+    /** Private key for encryption (loaded from ~/.noorm/identity.key if not provided) */
+    privateKey?: string
 
     /** State directory name (defaults to '.noorm') */
     stateDir?: string
@@ -55,14 +59,15 @@ export interface StateManagerOptions {
  * // For testing with custom paths
  * const state = new StateManager('/tmp/test', {
  *     stateDir: '.test-noorm',
- *     stateFile: 'test-state.enc'
+ *     stateFile: 'test-state.enc',
+ *     privateKey: testPrivateKey,
  * })
  * ```
  */
 export class StateManager {
 
     private state: State | null = null
-    private passphrase: string | undefined
+    private privateKey: string | undefined
     private statePath: string
     private loaded = false
 
@@ -71,7 +76,7 @@ export class StateManager {
         options: StateManagerOptions = {},
     ) {
 
-        this.passphrase = options.passphrase ?? process.env['NOORM_PASSPHRASE']
+        this.privateKey = options.privateKey
         const stateDir = options.stateDir ?? DEFAULT_STATE_DIR
         const stateFile = options.stateFile ?? DEFAULT_STATE_FILE
         this.statePath = join(projectRoot, stateDir, stateFile)
@@ -85,13 +90,26 @@ export class StateManager {
      * Load state from disk. Creates empty state if file doesn't exist.
      * Applies migrations if state version differs from current package version.
      * Must be called before any other operations.
+     *
+     * Tries to load private key from ~/.noorm/identity.key if not provided.
      */
     async load(): Promise<void> {
 
         if (this.loaded) return
 
+        // Try to load private key if not provided
+        if (!this.privateKey) {
+
+            const [key] = await attempt(() => loadPrivateKey())
+            if (key) {
+
+                this.privateKey = key
+            }
+        }
+
         const currentVersion = getPackageVersion()
 
+        // New project - no state file yet
         if (!existsSync(this.statePath)) {
 
             this.state = createEmptyState(currentVersion)
@@ -102,6 +120,15 @@ export class StateManager {
                 version: currentVersion,
             })
             return
+        }
+
+        // Existing state file - require private key
+        if (!this.privateKey) {
+
+            throw new Error(
+                'Private key required to decrypt state. ' +
+                'Set up identity with: noorm init'
+            )
         }
 
         const [raw, readErr] = attemptSync(() => readFileSync(this.statePath, 'utf8'))
@@ -118,11 +145,11 @@ export class StateManager {
             throw new Error('Failed to parse state file. File may be corrupted.')
         }
 
-        const [decrypted, decryptErr] = attemptSync(() => decrypt(payload!, this.passphrase))
+        const [decrypted, decryptErr] = attemptSync(() => decrypt(payload!, this.privateKey!))
         if (decryptErr) {
 
             observer.emit('error', { source: 'state', error: decryptErr })
-            throw new Error('Failed to decrypt state. Wrong passphrase or corrupted file.')
+            throw new Error('Failed to decrypt state. Wrong key or corrupted file.')
         }
 
         const [parsedState, stateParseErr] = attemptSync(() => JSON.parse(decrypted!) as unknown)
@@ -152,8 +179,18 @@ export class StateManager {
 
     /**
      * Persist current state to disk (encrypted).
+     *
+     * Requires private key to be set.
      */
     private persist(): void {
+
+        if (!this.privateKey) {
+
+            throw new Error(
+                'Private key required to save state. ' +
+                'Set up identity with: noorm init'
+            )
+        }
 
         const state = this.getState()
 
@@ -164,7 +201,7 @@ export class StateManager {
         }
 
         const json = JSON.stringify(state)
-        const payload = encrypt(json, this.passphrase)
+        const payload = encrypt(json, this.privateKey)
 
         const [, writeErr] = attemptSync(() =>
             writeFileSync(this.statePath, JSON.stringify(payload, null, 2))
@@ -432,6 +469,117 @@ export class StateManager {
     }
 
     // ─────────────────────────────────────────────────────────────
+    // Identity Operations
+    // ─────────────────────────────────────────────────────────────
+
+    /**
+     * Get the current user's cryptographic identity.
+     */
+    getIdentity(): CryptoIdentity | null {
+
+        const state = this.getState()
+        return state.identity
+    }
+
+    /**
+     * Check if identity is set up.
+     */
+    hasIdentity(): boolean {
+
+        const state = this.getState()
+        return state.identity !== null
+    }
+
+    /**
+     * Set the user's cryptographic identity.
+     *
+     * Called during first-time setup after keypair generation.
+     *
+     * @example
+     * ```typescript
+     * await state.setIdentity(cryptoIdentity)
+     * ```
+     */
+    async setIdentity(identity: CryptoIdentity): Promise<void> {
+
+        const state = this.getState()
+        state.identity = identity
+        this.persist()
+
+        observer.emit('identity:created', {
+            identityHash: identity.identityHash,
+            name: identity.name,
+            email: identity.email,
+            machine: identity.machine,
+        })
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Known Users Operations
+    // ─────────────────────────────────────────────────────────────
+
+    /**
+     * Get all known users (discovered from database syncs).
+     */
+    getKnownUsers(): Record<string, KnownUser> {
+
+        const state = this.getState()
+        return { ...state.knownUsers }
+    }
+
+    /**
+     * Get a known user by identity hash.
+     */
+    getKnownUser(identityHash: string): KnownUser | null {
+
+        const state = this.getState()
+        return state.knownUsers[identityHash] ?? null
+    }
+
+    /**
+     * Find known users by email.
+     *
+     * Returns all users with the given email (may be multiple machines).
+     */
+    findKnownUsersByEmail(email: string): KnownUser[] {
+
+        const state = this.getState()
+        return Object.values(state.knownUsers).filter(u => u.email === email)
+    }
+
+    /**
+     * Add or update a known user.
+     *
+     * Called during database sync to cache discovered identities.
+     */
+    async addKnownUser(user: KnownUser): Promise<void> {
+
+        const state = this.getState()
+        state.knownUsers[user.identityHash] = user
+        this.persist()
+
+        observer.emit('known-user:added', {
+            email: user.email,
+            source: user.source,
+        })
+    }
+
+    /**
+     * Add multiple known users (batch operation).
+     */
+    async addKnownUsers(users: KnownUser[]): Promise<void> {
+
+        const state = this.getState()
+
+        for (const user of users) {
+
+            state.knownUsers[user.identityHash] = user
+        }
+
+        this.persist()
+    }
+
+    // ─────────────────────────────────────────────────────────────
     // Utilities
     // ─────────────────────────────────────────────────────────────
 
@@ -474,11 +622,16 @@ export class StateManager {
      */
     async importEncrypted(encrypted: string): Promise<void> {
 
+        if (!this.privateKey) {
+
+            throw new Error('Private key required to import state.')
+        }
+
         // Validate it can be decrypted first
         const [payload, parseErr] = attemptSync(() => JSON.parse(encrypted) as EncryptedPayload)
         if (parseErr) throw parseErr
 
-        const [, decryptErr] = attemptSync(() => decrypt(payload!, this.passphrase))
+        const [, decryptErr] = attemptSync(() => decrypt(payload!, this.privateKey!))
         if (decryptErr) throw decryptErr
 
         const dir = dirname(this.statePath)
@@ -490,5 +643,23 @@ export class StateManager {
         writeFileSync(this.statePath, encrypted)
         this.loaded = false
         await this.load()
+    }
+
+    /**
+     * Set the private key for encryption.
+     *
+     * Used after first-time identity setup.
+     */
+    setPrivateKey(privateKey: string): void {
+
+        this.privateKey = privateKey
+    }
+
+    /**
+     * Check if private key is available.
+     */
+    hasPrivateKey(): boolean {
+
+        return !!this.privateKey
     }
 }

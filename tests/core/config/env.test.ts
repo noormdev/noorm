@@ -5,7 +5,6 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import {
     getEnvConfig,
     getEnvConfigName,
-    getEnvPassphrase,
     isCI,
     shouldSkipConfirmations,
     shouldOutputJson,
@@ -24,7 +23,7 @@ describe('config: env', () => {
             'NOORM_USER', 'NOORM_PASSWORD', 'NOORM_SSL',
             'NOORM_SCHEMA_PATH', 'NOORM_CHANGESET_PATH',
             'NOORM_CONFIG', 'NOORM_PROTECTED', 'NOORM_IDENTITY',
-            'NOORM_YES', 'NOORM_JSON', 'NOORM_PASSPHRASE', 'CI',
+            'NOORM_YES', 'NOORM_JSON', 'CI',
         ]
 
         for (const key of envVars) {
@@ -184,21 +183,6 @@ describe('config: env', () => {
             process.env['NOORM_CONFIG'] = 'staging'
 
             expect(getEnvConfigName()).toBe('staging')
-        })
-    })
-
-    describe('getEnvPassphrase', () => {
-
-        it('should return undefined when not set', () => {
-
-            expect(getEnvPassphrase()).toBeUndefined()
-        })
-
-        it('should return passphrase when set', () => {
-
-            process.env['NOORM_PASSPHRASE'] = 'my-secret-phrase'
-
-            expect(getEnvPassphrase()).toBe('my-secret-phrase')
         })
     })
 

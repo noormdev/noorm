@@ -6,14 +6,14 @@ import { App } from './App.js';
 const cli = meow(
     `
     Usage
-      $ ink-react
+      $ noorm
 
     Options
       --version, -v  Show version
       --help, -h     Show help
 
     Examples
-      $ ink-react
+      $ noorm
 `,
     {
         importMeta: import.meta,

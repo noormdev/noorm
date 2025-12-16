@@ -84,6 +84,9 @@ export interface NoormEvents {
     'global-secret:set': { key: string }
     'global-secret:deleted': { key: string }
 
+    // Known users
+    'known-user:added': { email: string; source: string }
+
     // DB lifecycle
     'db:creating': { configName: string; database: string }
     'db:created': { configName: string; database: string; durationMs: number }
@@ -95,8 +98,17 @@ export interface NoormEvents {
     'template:render': { filepath: string; durationMs: number }
     'template:load': { filepath: string; format: 'json' | 'yaml' | 'csv' | 'js' | 'sql' }
 
-    // Identity
-    'identity:resolved': { name: string; email?: string; source: 'git' | 'system' | 'config' | 'env' }
+    // Identity (audit)
+    'identity:resolved': { name: string; email?: string; source: 'state' | 'git' | 'system' | 'config' | 'env' }
+
+    // Identity (cryptographic)
+    'identity:created': { identityHash: string; name: string; email: string; machine: string }
+    'identity:synced': { discovered: number; configName: string }
+    'identity:registered': { configName: string }
+
+    // Config sharing
+    'config:exported': { configName: string; recipient: string }
+    'config:imported': { configName: string; from: string }
 
     // Connection
     'connection:open': { configName: string; dialect: string }

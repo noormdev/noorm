@@ -3,8 +3,14 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 
-import { resolveConfig, type StateProvider } from '../../../src/core/config/index.js'
-import type { Config } from '../../../src/core/config/index.js'
+import {
+    resolveConfig,
+    checkConfigCompleteness,
+    canDeleteConfig,
+    type StateProvider,
+    type SettingsProvider,
+} from '../../../src/core/config/index.js'
+import type { Config, Stage } from '../../../src/core/config/index.js'
 
 
 /**
@@ -13,10 +19,12 @@ import type { Config } from '../../../src/core/config/index.js'
 function createMockState(options: {
     configs?: Record<string, Config>
     activeConfig?: string | null
+    secrets?: Record<string, string[]>
 } = {}): StateProvider {
 
     const configs = options.configs ?? {}
     const activeConfig = options.activeConfig ?? null
+    const secrets = options.secrets ?? {}
 
     return {
         getConfig(name: string): Config | null {
@@ -26,6 +34,28 @@ function createMockState(options: {
         getActiveConfigName(): string | null {
 
             return activeConfig
+        },
+        listSecrets(configName: string): string[] {
+
+            return secrets[configName] ?? []
+        },
+    }
+}
+
+
+/**
+ * Create a mock settings provider for testing.
+ */
+function createMockSettings(stages: Record<string, Stage> = {}): SettingsProvider {
+
+    return {
+        getStage(name: string): Stage | null {
+
+            return stages[name] ?? null
+        },
+        findStageForConfig(configName: string): Stage | null {
+
+            return stages[configName] ?? null
         },
     }
 }
@@ -330,6 +360,320 @@ describe('config: resolver', () => {
             expect(() => resolveConfig(state, {
                 flags: { connection: { host: '' } }
             })).toThrow('Host is required for non-SQLite')
+        })
+    })
+
+    describe('stage defaults', () => {
+
+        it('should apply stage defaults when settings provided', () => {
+
+            const stored = createConfig({
+                name: 'prod',
+                connection: {
+                    dialect: 'postgres',
+                    database: 'myapp',
+                    host: 'localhost',
+                },
+            })
+
+            const state = createMockState({
+                configs: { prod: stored },
+                activeConfig: 'prod',
+            })
+
+            const settings = createMockSettings({
+                prod: {
+                    defaults: {
+                        protected: true,
+                        connection: { host: 'stage-default.local' },
+                    },
+                },
+            })
+
+            // Stored config has host=localhost, stage has host=stage-default.local
+            // Stored should override stage defaults
+            const config = resolveConfig(state, { settings })
+
+            expect(config!.protected).toBe(false)  // stored has protected=false
+            expect(config!.connection.host).toBe('localhost')  // stored overrides stage
+        })
+
+        it('should use stage defaults for missing values', () => {
+
+            const stored = createConfig({
+                name: 'prod',
+                type: 'local',
+                isTest: false,
+                protected: false,
+                connection: {
+                    dialect: 'postgres',
+                    database: 'myapp',
+                    host: 'localhost',
+                },
+                paths: {
+                    schema: './schema',
+                    changesets: './changesets',
+                },
+            })
+
+            const state = createMockState({
+                configs: { prod: stored },
+                activeConfig: 'prod',
+            })
+
+            const settings = createMockSettings({
+                prod: {
+                    defaults: {
+                        identity: 'stage-identity',
+                    },
+                },
+            })
+
+            const config = resolveConfig(state, { settings })
+
+            // identity wasn't in stored, so stage default applies
+            expect(config!.identity).toBe('stage-identity')
+        })
+
+        it('should find stage by config name automatically', () => {
+
+            const stored = createConfig({ name: 'staging' })
+
+            const state = createMockState({
+                configs: { staging: stored },
+                activeConfig: 'staging',
+            })
+
+            const settings = createMockSettings({
+                staging: {
+                    defaults: {
+                        protected: true,
+                    },
+                },
+            })
+
+            const config = resolveConfig(state, { settings })
+
+            // Since stored has protected=false, it overrides stage default
+            expect(config!.protected).toBe(false)
+        })
+
+        it('should use explicit stage over config name match', () => {
+
+            const stored = createConfig({ name: 'myconfig' })
+
+            const state = createMockState({
+                configs: { myconfig: stored },
+                activeConfig: 'myconfig',
+            })
+
+            const settings = createMockSettings({
+                myconfig: {
+                    defaults: {
+                        identity: 'from-myconfig-stage',
+                    },
+                },
+                production: {
+                    defaults: {
+                        identity: 'from-production-stage',
+                    },
+                },
+            })
+
+            // Explicit stage=production should be used
+            const config = resolveConfig(state, { settings, stage: 'production' })
+
+            expect(config!.identity).toBe('from-production-stage')
+        })
+    })
+
+    describe('checkConfigCompleteness', () => {
+
+        it('should return complete when no stage', () => {
+
+            const config = createConfig({ name: 'dev' })
+            const state = createMockState()
+
+            const result = checkConfigCompleteness(config, state)
+
+            expect(result.complete).toBe(true)
+            expect(result.missingSecrets).toEqual([])
+            expect(result.violations).toEqual([])
+        })
+
+        it('should detect missing required secrets', () => {
+
+            const config = createConfig({ name: 'prod' })
+            const state = createMockState({
+                secrets: { prod: ['EXISTING_KEY'] },
+            })
+
+            const settings = createMockSettings({
+                prod: {
+                    secrets: [
+                        { key: 'DB_PASSWORD', type: 'password' },
+                        { key: 'EXISTING_KEY', type: 'string' },
+                        { key: 'API_KEY', type: 'api_key' },
+                    ],
+                },
+            })
+
+            const result = checkConfigCompleteness(config, state, settings)
+
+            expect(result.complete).toBe(false)
+            expect(result.missingSecrets).toContain('DB_PASSWORD')
+            expect(result.missingSecrets).toContain('API_KEY')
+            expect(result.missingSecrets).not.toContain('EXISTING_KEY')
+        })
+
+        it('should ignore optional secrets', () => {
+
+            const config = createConfig({ name: 'prod' })
+            const state = createMockState({
+                secrets: { prod: [] },
+            })
+
+            const settings = createMockSettings({
+                prod: {
+                    secrets: [
+                        { key: 'OPTIONAL_KEY', type: 'string', required: false },
+                    ],
+                },
+            })
+
+            const result = checkConfigCompleteness(config, state, settings)
+
+            expect(result.complete).toBe(true)
+            expect(result.missingSecrets).toEqual([])
+        })
+
+        it('should detect protected constraint violation', () => {
+
+            const config = createConfig({
+                name: 'prod',
+                protected: false,
+            })
+            const state = createMockState()
+
+            const settings = createMockSettings({
+                prod: {
+                    defaults: {
+                        protected: true,
+                    },
+                },
+            })
+
+            const result = checkConfigCompleteness(config, state, settings)
+
+            expect(result.complete).toBe(false)
+            expect(result.violations).toHaveLength(1)
+            expect(result.violations[0]).toContain('protected=true')
+        })
+
+        it('should detect isTest constraint violation', () => {
+
+            const config = createConfig({
+                name: 'test',
+                isTest: false,
+            })
+            const state = createMockState()
+
+            const settings = createMockSettings({
+                test: {
+                    defaults: {
+                        isTest: true,
+                    },
+                },
+            })
+
+            const result = checkConfigCompleteness(config, state, settings)
+
+            expect(result.complete).toBe(false)
+            expect(result.violations).toHaveLength(1)
+            expect(result.violations[0]).toContain('isTest=true')
+        })
+
+        it('should be complete when all requirements met', () => {
+
+            const config = createConfig({
+                name: 'prod',
+                protected: true,
+            })
+            const state = createMockState({
+                secrets: { prod: ['DB_PASSWORD', 'API_KEY'] },
+            })
+
+            const settings = createMockSettings({
+                prod: {
+                    defaults: {
+                        protected: true,
+                    },
+                    secrets: [
+                        { key: 'DB_PASSWORD', type: 'password' },
+                        { key: 'API_KEY', type: 'api_key' },
+                    ],
+                },
+            })
+
+            const result = checkConfigCompleteness(config, state, settings)
+
+            expect(result.complete).toBe(true)
+            expect(result.missingSecrets).toEqual([])
+            expect(result.violations).toEqual([])
+        })
+    })
+
+    describe('canDeleteConfig', () => {
+
+        it('should allow deletion without settings', () => {
+
+            const result = canDeleteConfig('prod')
+
+            expect(result.allowed).toBe(true)
+            expect(result.reason).toBeUndefined()
+        })
+
+        it('should allow deletion when stage not locked', () => {
+
+            const settings = createMockSettings({
+                dev: {
+                    locked: false,
+                },
+            })
+
+            const result = canDeleteConfig('dev', settings)
+
+            expect(result.allowed).toBe(true)
+        })
+
+        it('should block deletion when stage is locked', () => {
+
+            const settings = createMockSettings({
+                prod: {
+                    locked: true,
+                },
+            })
+
+            const result = canDeleteConfig('prod', settings)
+
+            expect(result.allowed).toBe(false)
+            expect(result.reason).toContain('locked stage')
+            expect(result.reason).toContain('prod')
+        })
+
+        it('should use explicit stage name when provided', () => {
+
+            const settings = createMockSettings({
+                production: {
+                    locked: true,
+                },
+            })
+
+            // Config name doesn't match any stage, but explicit stage does
+            const result = canDeleteConfig('my-prod-db', settings, 'production')
+
+            expect(result.allowed).toBe(false)
+            expect(result.reason).toContain('locked')
         })
     })
 })

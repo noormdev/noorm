@@ -10,6 +10,8 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 import { StateManager, resetStateManager } from '../../../src/core/state/index.js'
 import type { Config } from '../../../src/core/config/types.js'
+import type { CryptoIdentity, KnownUser } from '../../../src/core/identity/types.js'
+import { generateKeyPair } from '../../../src/core/identity/crypto.js'
 
 
 /**
@@ -39,15 +41,22 @@ describe('StateManager', () => {
 
     let tempDir: string
     let state: StateManager
+    let testPrivateKey: string
 
-    beforeEach(() => {
+    beforeEach(async () => {
 
         resetStateManager()
         // Create temp directory in local tmp/ folder
         tempDir = mkdtempSync(join(process.cwd(), 'tmp', 'noorm-test-'))
+
+        // Generate a test private key for encryption
+        const keyPair = await generateKeyPair()
+        testPrivateKey = keyPair.privateKey
+
         state = new StateManager(tempDir, {
             stateDir: '.test-state',
             stateFile: 'state.enc',
+            privateKey: testPrivateKey,
         })
     })
 
@@ -270,10 +279,11 @@ describe('StateManager', () => {
             await state.setActiveConfig('dev')
             await state.setSecret('dev', 'API_KEY', 'test-secret')
 
-            // Create new instance pointing to same location
+            // Create new instance pointing to same location with same key
             const state2 = new StateManager(tempDir, {
                 stateDir: '.test-state',
                 stateFile: 'state.enc',
+                privateKey: testPrivateKey,
             })
             await state2.load()
 
@@ -282,43 +292,322 @@ describe('StateManager', () => {
             expect(state2.getSecret('dev', 'API_KEY')).toBe('test-secret')
         })
 
-        it('should work with passphrase', async () => {
+        it('should work with private key encryption', async () => {
 
-            const stateWithPass = new StateManager(tempDir, {
+            const keyPair = await generateKeyPair()
+
+            const stateWithKey = new StateManager(tempDir, {
                 stateDir: '.test-state',
-                stateFile: 'state-pass.enc',
-                passphrase: 'test-passphrase',
+                stateFile: 'state-identity.enc',
+                privateKey: keyPair.privateKey,
             })
-            await stateWithPass.load()
-            await stateWithPass.setConfig('dev', createTestConfig('dev'))
+            await stateWithKey.load()
+            await stateWithKey.setConfig('dev', createTestConfig('dev'))
+            await stateWithKey.setSecret('dev', 'API_KEY', 'secret-value')
 
-            // Same passphrase should work
+            // Same private key should work
             const state2 = new StateManager(tempDir, {
                 stateDir: '.test-state',
-                stateFile: 'state-pass.enc',
-                passphrase: 'test-passphrase',
+                stateFile: 'state-identity.enc',
+                privateKey: keyPair.privateKey,
+            })
+            await state2.load()
+
+            expect(state2.getConfig('dev')?.name).toBe('dev')
+            expect(state2.getSecret('dev', 'API_KEY')).toBe('secret-value')
+        })
+
+        it('should fail with wrong private key', async () => {
+
+            const keyPair1 = await generateKeyPair()
+            const keyPair2 = await generateKeyPair()
+
+            const stateWithKey = new StateManager(tempDir, {
+                stateDir: '.test-state',
+                stateFile: 'state-identity2.enc',
+                privateKey: keyPair1.privateKey,
+            })
+            await stateWithKey.load()
+            await stateWithKey.setConfig('dev', createTestConfig('dev'))
+
+            // Different private key should fail
+            const wrongState = new StateManager(tempDir, {
+                stateDir: '.test-state',
+                stateFile: 'state-identity2.enc',
+                privateKey: keyPair2.privateKey,
+            })
+            await expect(wrongState.load()).rejects.toThrow('Failed to decrypt')
+        })
+
+        it('should report hasPrivateKey correctly', async () => {
+
+            const keyPair = await generateKeyPair()
+
+            // State without private key
+            const stateNoKey = new StateManager(tempDir, {
+                stateDir: '.test-state',
+                stateFile: 'state-no-key.enc',
+            })
+            expect(stateNoKey.hasPrivateKey()).toBe(false)
+
+            // State with private key
+            const stateWithKey = new StateManager(tempDir, {
+                stateDir: '.test-state',
+                stateFile: 'state-key-check.enc',
+                privateKey: keyPair.privateKey,
+            })
+            expect(stateWithKey.hasPrivateKey()).toBe(true)
+        })
+
+        it('should allow setting private key after construction', async () => {
+
+            const keyPair = await generateKeyPair()
+
+            // Create state without private key (new empty state)
+            const initialState = new StateManager(tempDir, {
+                stateDir: '.test-state',
+                stateFile: 'state-upgrade.enc',
+            })
+            await initialState.load()
+
+            // Set private key after construction
+            initialState.setPrivateKey(keyPair.privateKey)
+            expect(initialState.hasPrivateKey()).toBe(true)
+
+            // Now we can persist
+            await initialState.setConfig('dev', createTestConfig('dev'))
+
+            // Reload with same key
+            const state2 = new StateManager(tempDir, {
+                stateDir: '.test-state',
+                stateFile: 'state-upgrade.enc',
+                privateKey: keyPair.privateKey,
             })
             await state2.load()
             expect(state2.getConfig('dev')?.name).toBe('dev')
         })
+    })
 
-        it('should fail with wrong passphrase', async () => {
+    // ─────────────────────────────────────────────────────────────
+    // Identity Operations
+    // ─────────────────────────────────────────────────────────────
 
-            const stateWithPass = new StateManager(tempDir, {
+    describe('identity operations', () => {
+
+        beforeEach(async () => {
+
+            await state.load()
+        })
+
+        it('should start with no identity', () => {
+
+            expect(state.hasIdentity()).toBe(false)
+            expect(state.getIdentity()).toBeNull()
+        })
+
+        it('should set and get identity', async () => {
+
+            const keyPair = await generateKeyPair()
+            const identity: CryptoIdentity = {
+                identityHash: 'hash123',
+                name: 'Test User',
+                email: 'test@example.com',
+                publicKey: keyPair.publicKey,
+                machine: 'test-machine',
+                os: 'darwin',
+                createdAt: new Date().toISOString(),
+            }
+
+            await state.setIdentity(identity)
+
+            expect(state.hasIdentity()).toBe(true)
+            expect(state.getIdentity()).toEqual(identity)
+        })
+
+        it('should persist identity across reloads', async () => {
+
+            const keyPair = await generateKeyPair()
+            const identity: CryptoIdentity = {
+                identityHash: 'hash456',
+                name: 'Persistent User',
+                email: 'persist@example.com',
+                publicKey: keyPair.publicKey,
+                machine: 'machine-1',
+                os: 'linux',
+                createdAt: new Date().toISOString(),
+            }
+
+            await state.setIdentity(identity)
+
+            // Create new instance and reload with same key
+            const state2 = new StateManager(tempDir, {
                 stateDir: '.test-state',
-                stateFile: 'state-pass2.enc',
-                passphrase: 'correct-passphrase',
+                stateFile: 'state.enc',
+                privateKey: testPrivateKey,
             })
-            await stateWithPass.load()
-            await stateWithPass.setConfig('dev', createTestConfig('dev'))
+            await state2.load()
 
-            // Wrong passphrase should fail
-            const wrongState = new StateManager(tempDir, {
+            expect(state2.hasIdentity()).toBe(true)
+            expect(state2.getIdentity()?.email).toBe('persist@example.com')
+        })
+    })
+
+    // ─────────────────────────────────────────────────────────────
+    // Known Users Operations
+    // ─────────────────────────────────────────────────────────────
+
+    describe('known users operations', () => {
+
+        beforeEach(async () => {
+
+            await state.load()
+        })
+
+        it('should start with no known users', () => {
+
+            const users = state.getKnownUsers()
+            expect(Object.keys(users)).toHaveLength(0)
+        })
+
+        it('should add and get a known user', async () => {
+
+            const user: KnownUser = {
+                identityHash: 'user-hash-1',
+                name: 'Alice',
+                email: 'alice@example.com',
+                publicKey: 'alice-public-key',
+                source: 'db-sync',
+                discoveredAt: new Date().toISOString(),
+            }
+
+            await state.addKnownUser(user)
+
+            const retrieved = state.getKnownUser('user-hash-1')
+            expect(retrieved).toEqual(user)
+        })
+
+        it('should return null for unknown user', () => {
+
+            const user = state.getKnownUser('nonexistent-hash')
+            expect(user).toBeNull()
+        })
+
+        it('should find users by email', async () => {
+
+            const user1: KnownUser = {
+                identityHash: 'user-hash-1',
+                name: 'Alice (Laptop)',
+                email: 'alice@example.com',
+                publicKey: 'alice-laptop-key',
+                source: 'db-sync',
+                discoveredAt: new Date().toISOString(),
+            }
+            const user2: KnownUser = {
+                identityHash: 'user-hash-2',
+                name: 'Alice (Desktop)',
+                email: 'alice@example.com',
+                publicKey: 'alice-desktop-key',
+                source: 'db-sync',
+                discoveredAt: new Date().toISOString(),
+            }
+            const user3: KnownUser = {
+                identityHash: 'user-hash-3',
+                name: 'Bob',
+                email: 'bob@example.com',
+                publicKey: 'bob-key',
+                source: 'db-sync',
+                discoveredAt: new Date().toISOString(),
+            }
+
+            await state.addKnownUser(user1)
+            await state.addKnownUser(user2)
+            await state.addKnownUser(user3)
+
+            const aliceUsers = state.findKnownUsersByEmail('alice@example.com')
+            expect(aliceUsers).toHaveLength(2)
+            expect(aliceUsers.map(u => u.identityHash).sort()).toEqual(['user-hash-1', 'user-hash-2'])
+        })
+
+        it('should add multiple users in batch', async () => {
+
+            const users: KnownUser[] = [
+                {
+                    identityHash: 'batch-1',
+                    name: 'User 1',
+                    email: 'user1@example.com',
+                    publicKey: 'key1',
+                    source: 'db-sync',
+                    discoveredAt: new Date().toISOString(),
+                },
+                {
+                    identityHash: 'batch-2',
+                    name: 'User 2',
+                    email: 'user2@example.com',
+                    publicKey: 'key2',
+                    source: 'db-sync',
+                    discoveredAt: new Date().toISOString(),
+                },
+            ]
+
+            await state.addKnownUsers(users)
+
+            const allUsers = state.getKnownUsers()
+            expect(Object.keys(allUsers)).toHaveLength(2)
+            expect(state.getKnownUser('batch-1')?.name).toBe('User 1')
+            expect(state.getKnownUser('batch-2')?.name).toBe('User 2')
+        })
+
+        it('should persist known users across reloads', async () => {
+
+            const user: KnownUser = {
+                identityHash: 'persist-user',
+                name: 'Persistent',
+                email: 'persist@example.com',
+                publicKey: 'persist-key',
+                source: 'manual',
+                discoveredAt: new Date().toISOString(),
+            }
+
+            await state.addKnownUser(user)
+
+            // Create new instance and reload with same key
+            const state2 = new StateManager(tempDir, {
                 stateDir: '.test-state',
-                stateFile: 'state-pass2.enc',
-                passphrase: 'wrong-passphrase',
+                stateFile: 'state.enc',
+                privateKey: testPrivateKey,
             })
-            await expect(wrongState.load()).rejects.toThrow('Failed to decrypt')
+            await state2.load()
+
+            const retrieved = state2.getKnownUser('persist-user')
+            expect(retrieved?.email).toBe('persist@example.com')
+        })
+
+        it('should update existing known user', async () => {
+
+            const user: KnownUser = {
+                identityHash: 'update-user',
+                name: 'Original Name',
+                email: 'update@example.com',
+                publicKey: 'key1',
+                source: 'db-sync',
+                discoveredAt: new Date().toISOString(),
+            }
+
+            await state.addKnownUser(user)
+
+            // Update with new name
+            const updatedUser: KnownUser = {
+                ...user,
+                name: 'Updated Name',
+            }
+            await state.addKnownUser(updatedUser)
+
+            const retrieved = state.getKnownUser('update-user')
+            expect(retrieved?.name).toBe('Updated Name')
+
+            // Should still be only one user with this hash
+            const allUsers = state.getKnownUsers()
+            expect(Object.keys(allUsers)).toHaveLength(1)
         })
     })
 
@@ -337,10 +626,12 @@ describe('StateManager', () => {
             expect(exported).not.toBeNull()
             expect(typeof exported).toBe('string')
 
-            // Should be valid JSON
+            // Should be valid JSON with encryption fields
             const parsed = JSON.parse(exported!)
-            expect(parsed.version).toBe(1)
             expect(parsed.algorithm).toBe('aes-256-gcm')
+            expect(parsed.iv).toBeDefined()
+            expect(parsed.authTag).toBeDefined()
+            expect(parsed.ciphertext).toBeDefined()
         })
 
         it('should return null when exporting non-existent state', async () => {
@@ -356,10 +647,11 @@ describe('StateManager', () => {
             await state.setConfig('dev', createTestConfig('dev'))
             const exported = state.exportEncrypted()!
 
-            // Create new state and import
+            // Create new state with same key and import
             const newState = new StateManager(tempDir, {
                 stateDir: '.test-state',
                 stateFile: 'imported.enc',
+                privateKey: testPrivateKey,
             })
             await newState.importEncrypted(exported)
 

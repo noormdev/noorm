@@ -347,6 +347,26 @@ describe('runner: executeFile', () => {
 ```
 
 
+## Documentation
+
+Documentation in `/docs` follows a three-pillar structure:
+
+| Pillar | Purpose | Expression |
+|--------|---------|------------|
+| Memory | The what - concepts, definitions, data structures | Clear explanations of what exists |
+| Reasoning | The why - motivation, trade-offs, design decisions | Context for why choices were made |
+| Example | The how - concrete usage, code samples, workflows | Practical demonstrations |
+
+These pillars are invisible scaffolding. Documentation reads naturally without explicitly naming them. Each section weaves all three together: introduce a concept (memory), explain its purpose (reasoning), show it in action (example).
+
+**Style:**
+- Conversational but precise - explain through analogy before technical detail
+- Problem-first framing - start with what the reader wants to solve
+- Code follows explanation - show "why" before "how"
+- Short sentences mixed with longer explanations
+- Visual hierarchy through headers, code blocks, tables
+
+
 ## Checklist
 
 **Required**:
