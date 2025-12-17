@@ -96,7 +96,8 @@ export interface NoormEvents {
 
     // Template
     'template:render': { filepath: string; durationMs: number }
-    'template:load': { filepath: string; format: 'json' | 'yaml' | 'csv' | 'js' | 'sql' }
+    'template:load': { filepath: string; format: string }
+    'template:helpers': { filepath: string; count: number }
 
     // Identity (audit)
     'identity:resolved': { name: string; email?: string; source: 'state' | 'git' | 'system' | 'config' | 'env' }

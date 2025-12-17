@@ -187,3 +187,59 @@ export type {
     SettingsMigration,
     VersionRecordOptions,
 } from './version/index.js'
+
+// Lock
+export {
+    LockManager,
+    getLockManager,
+    resetLockManager,
+    LockAcquireError,
+    LockExpiredError,
+    LockNotFoundError,
+    LockOwnershipError,
+    DEFAULT_LOCK_OPTIONS,
+} from './lock/index.js'
+export type {
+    Lock,
+    LockOptions,
+    LockStatus,
+} from './lock/index.js'
+
+// Template
+export {
+    processFile,
+    processFiles,
+    renderTemplate,
+    isTemplate,
+    buildContext,
+    loadHelpers,
+    findHelperFiles,
+    loadDataFile,
+    hasLoader,
+    getLoader,
+    getSupportedExtensions,
+    loadJson5,
+    loadYaml,
+    loadCsv,
+    loadJs,
+    loadSql,
+    toContextKey,
+    sqlEscape,
+    sqlQuote,
+    generateUuid,
+    isoNow,
+    eta,
+    DATA_EXTENSIONS,
+    TEMPLATE_EXTENSION,
+    HELPER_FILENAME,
+    HELPER_EXTENSIONS,
+} from './template/index.js'
+export type {
+    TemplateContext,
+    BuiltInHelpers,
+    RenderOptions,
+    ProcessResult,
+    LoaderResult,
+    Loader,
+    LoaderRegistry,
+} from './template/index.js'

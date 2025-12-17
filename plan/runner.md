@@ -152,7 +152,7 @@ flowchart TD
 | Preview single file | `noorm run file schema/001.sql --preview` |
 | Preview all SQL to stdout | `noorm run build --preview` |
 | Export rendered SQL to file | `noorm run build --preview --output build.sql` |
-| Debug template rendering | `noorm run file seed.sql.eta --preview` |
+| Debug template rendering | `noorm run file seed.sql.tmpl --preview` |
 
 **Output format:**
 
@@ -204,7 +204,7 @@ flowchart TD
     DryRun --> |Yes| ReturnSuccess[Return success]
     DryRun --> |No| LoadContent[Load file content]
 
-    LoadContent --> IsTemplate{Is .eta template?}
+    LoadContent --> IsTemplate{Is .tmpl template?}
     IsTemplate --> |Yes| Render[Render template]
     IsTemplate --> |No| RawSQL[Use raw content]
 
@@ -282,11 +282,11 @@ See [changeset.md](./changeset.md) for full table schemas.
 
 ## Template Processing
 
-Files ending in `.sql.eta` are processed through the template engine before execution:
+Files ending in `.sql.tmpl` are processed through the template engine before execution:
 
 ```mermaid
 flowchart LR
-    File[".sql.eta file"] --> Engine[Template Engine]
+    File[".sql.tmpl file"] --> Engine[Template Engine]
     Config[Config object] --> Engine
     Secrets[Secrets] --> Engine
     Engine --> SQL["Rendered SQL"]
@@ -314,16 +314,16 @@ Template context includes:
 
 ## SQL Execution
 
-SQL files may contain multiple statements separated by semicolons. Each statement is executed sequentially within a single file.
+SQL files are executed as a single unit—the entire file content is sent to the database in one call. This avoids the complexity of statement splitting (semicolons in strings, stored procedures, etc.) and lets the database driver handle multiple statements natively.
 
-For complex SQL with embedded semicolons (strings, procedures), use single-statement files.
+For SQL Server users needing batch separation, use separate files instead of `GO` statements.
 
 
 ## File Discovery
 
 When scanning directories:
 1. Recursively traverse subdirectories
-2. Include files ending in `.sql` or `.sql.eta`
+2. Include files ending in `.sql` or `.sql.tmpl`
 3. Sort alphabetically for deterministic order
 
 Use numeric prefixes (`001_`, `002_`) to control execution order.

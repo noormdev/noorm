@@ -82,18 +82,22 @@ console.log(`Using database: ${config.connection.database}`)
                              ▼
 ┌─────────────────────────────────────────────────────────┐
 │                     Observer (Events)                    │
-│  file:*, config:*, state:*, identity:*, error           │
+│  file:*, config:*, state:*, template:*, lock:*, error   │
 └────────────────────────────┬────────────────────────────┘
                              │ emits events
                              ▼
 ┌─────────────────────────────────────────────────────────┐
 │                      Core Modules                        │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐              │
-│  │ Identity │  │  State   │  │  Config  │              │
-│  │          │  │          │  │          │              │
-│  │ X25519   │  │ Encrypted│  │ Merge &  │              │
-│  │ Keypairs │  │ Storage  │  │ Validate │              │
-│  └──────────┘  └──────────┘  └──────────┘              │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌────────┐ │
+│  │ Identity │  │  State   │  │  Config  │  │  Lock  │ │
+│  │ X25519   │  │ Encrypted│  │ Merge &  │  │Concur- │ │
+│  │ Keypairs │  │ Storage  │  │ Validate │  │ rency  │ │
+│  └──────────┘  └──────────┘  └──────────┘  └────────┘ │
+│  ┌──────────┐                                          │
+│  │ Template │                                          │
+│  │ Eta, SQL │                                          │
+│  │ Helpers  │                                          │
+│  └──────────┘                                          │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -122,6 +126,8 @@ Core modules emit events. The CLI subscribes. This keeps business logic separate
 | [State](./state.md) | Encrypted storage, configs, secrets, persistence |
 | [Config](./config.md) | Resolution, validation, protection, stages |
 | [Settings](./settings.md) | Build rules, stages, project-wide behavior |
+| [Lock](./lock.md) | Concurrent operation protection, table-based locking |
+| [Template](./template.md) | Eta templating, data loading, helper inheritance |
 | [Logger](./logger.md) | File logging, event classification, rotation |
 
 
