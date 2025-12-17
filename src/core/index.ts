@@ -243,3 +243,28 @@ export type {
     Loader,
     LoaderRegistry,
 } from './template/index.js'
+
+// Runner
+export {
+    runBuild,
+    runFile,
+    runDir,
+    preview,
+    Tracker,
+    computeChecksum,
+    computeChecksumFromContent,
+    computeCombinedChecksum,
+    DEFAULT_RUN_OPTIONS,
+} from './runner/index.js'
+export type {
+    RunOptions,
+    RunContext,
+    FileResult,
+    BatchResult,
+    BatchStatus,
+    SkipReason,
+    RunReason,
+    NeedsRunResult,
+    CreateOperationData,
+    RecordExecutionData,
+} from './runner/index.js'

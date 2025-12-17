@@ -46,6 +46,7 @@ export interface NoormEvents {
     'file:before': { filepath: string; checksum: string; configName: string }
     'file:after': { filepath: string; status: 'success' | 'failed'; durationMs: number; error?: string }
     'file:skip': { filepath: string; reason: 'unchanged' | 'already-run' }
+    'file:dry-run': { filepath: string; outputPath: string }
 
     // Changeset lifecycle
     'changeset:start': { name: string; direction: 'change' | 'revert'; files: string[] }
@@ -54,7 +55,7 @@ export interface NoormEvents {
 
     // Build/Run
     'build:start': { schemaPath: string; fileCount: number }
-    'build:complete': { status: 'success' | 'failed'; filesRun: number; filesSkipped: number; durationMs: number }
+    'build:complete': { status: 'success' | 'failed' | 'partial'; filesRun: number; filesSkipped: number; filesFailed: number; durationMs: number }
     'run:file': { filepath: string; configName: string }
     'run:dir': { dirpath: string; fileCount: number; configName: string }
 

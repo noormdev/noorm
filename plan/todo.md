@@ -57,9 +57,9 @@
 
 ## Phase 3: Execution
 
-- [ ] **runner.md** - Build, file, dir execution, tracking, preview mode
-  - `src/core/runner/` - NOT IMPLEMENTED
-  - No files exist
+- [x] **runner.md** - Build, file, dir execution, tracking, preview mode
+  - `src/core/runner/` - types, checksum, tracker, runner
+  - Test coverage in `tests/core/runner/`
 
 - [ ] **changeset.md** - Changeset structure, parsing, execution, history
   - `src/core/changeset/` - NOT IMPLEMENTED
@@ -117,14 +117,13 @@
 | Phase 0: Utilities | 3 | 3 | ✅ Complete |
 | Phase 1: Foundation | 5 | 5 | ✅ Complete |
 | Phase 2: Core Features | 3 | 3 | ✅ Complete |
-| Phase 3: Execution | 0 | 2 | ❌ Not Started |
+| Phase 3: Execution | 1 | 2 | 🔄 In Progress |
 | Phase 4: CLI | 0 | 12 | ❌ Not Started |
 
-**Overall: 11/25 modules implemented (44%)**
+**Overall: 12/25 modules implemented (48%)**
 
 
 ## Next Steps
 
-1. **runner.md** - Implement SQL execution
-2. **changeset.md** - Implement changeset parsing/execution
-3. Then proceed to CLI features
+1. **changeset.md** - Implement changeset parsing/execution
+2. Then proceed to CLI features

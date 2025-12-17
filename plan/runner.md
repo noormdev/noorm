@@ -110,9 +110,65 @@ See [changeset.md](./changeset.md) for full schema.
 | `force` | `false` | Re-run even if unchanged |
 | `concurrency` | `1` | Parallel file execution (1 for DDL safety) |
 | `abortOnError` | `true` | Stop on first failure |
-| `dryRun` | `false` | Report what would run without executing |
-| `preview` | `false` | Output rendered SQL without executing |
-| `output` | `null` | Write rendered SQL to file path |
+| `dryRun` | `false` | Render templates and write to `tmp/` without executing |
+| `preview` | `false` | Output rendered SQL to stdout/file without executing |
+| `output` | `null` | Write preview output to file path |
+
+
+## Dry Run Mode
+
+The `--dry-run` flag renders all SQL files (including templates) and writes them to a local `tmp/` directory that mirrors the source structure. This lets users inspect the exact SQL that would be executed without actually running it.
+
+**Dry run flow:**
+
+```mermaid
+flowchart TD
+    Start([run --dry-run]) --> Discover[Discover files]
+    Discover --> Loop{For each file}
+
+    Loop --> Load[Load file content]
+    Load --> Template{Is template?}
+    Template -->|Yes| Render[Render with Eta]
+    Template -->|No| Raw[Use raw content]
+
+    Render --> Write[Write to tmp/]
+    Raw --> Write
+
+    Write --> Record[Record in tracker]
+    Record --> Next
+
+    Next --> Loop
+    Loop -->|Done| End([Complete])
+```
+
+**Output structure:**
+
+Files are written to `tmp/` mirroring their source path, with `.tmpl` extension stripped:
+
+```
+Source:                              Dry run output:
+sql/views/my_view.sql           →    tmp/sql/views/my_view.sql
+sql/seed/users.sql.tmpl         →    tmp/sql/seed/users.sql
+sql/Auth/02-Permissions.sql.tmpl →   tmp/sql/Auth/02-Permissions.sql
+```
+
+**Use cases:**
+
+| Scenario | Command |
+|----------|---------|
+| Inspect rendered templates | `noorm run build --dry-run` |
+| Review before production deploy | `noorm run build --dry-run -c production` |
+| Debug template variables | `noorm run file seed.sql.tmpl --dry-run` |
+| CI/CD validation step | `noorm run build --dry-run && git diff tmp/` |
+
+**Key differences from preview:**
+
+| Aspect | Dry Run | Preview |
+|--------|---------|---------|
+| Output location | `tmp/` directory (mirrored structure) | stdout or single file |
+| Records in tracker | No | No |
+| Change detection | No (processes all files) | No (processes all files) |
+| Use case | Pre-execution inspection | Quick SQL review |
 
 
 ## Preview Mode
@@ -200,19 +256,22 @@ flowchart TD
     Query --> |Force flag| Execute
     Query --> |Unchanged| Skip[Skip file]
 
-    Execute --> DryRun{Dry run?}
-    DryRun --> |Yes| ReturnSuccess[Return success]
-    DryRun --> |No| LoadContent[Load file content]
+    Execute --> LoadContent[Load file content]
 
     LoadContent --> IsTemplate{Is .tmpl template?}
     IsTemplate --> |Yes| Render[Render template]
     IsTemplate --> |No| RawSQL[Use raw content]
 
-    Render --> ExecSQL[Execute SQL statements]
-    RawSQL --> ExecSQL
+    Render --> DryRun{Dry run?}
+    RawSQL --> DryRun
+
+    DryRun --> |Yes| WriteTmp[Write to tmp/ directory]
+    DryRun --> |No| ExecSQL[Execute SQL]
+
+    WriteTmp --> RecordSuccess[Record success in tracker]
 
     ExecSQL --> Result{Success?}
-    Result --> |Yes| RecordSuccess[Record success in tracker]
+    Result --> |Yes| RecordSuccess
     Result --> |No| RecordFailure[Record failure in tracker]
 
     RecordSuccess --> EmitSuccess[Emit file:after success]
