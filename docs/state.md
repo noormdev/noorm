@@ -39,10 +39,20 @@ State must be loaded before use. This decrypts the file and applies any schema m
 import { StateManager } from './core/state'
 
 const state = new StateManager(process.cwd())
-await state.load()
+
+// Check if state file exists before loading
+if (state.exists()) {
+    await state.load()
+}
 
 // Now you can access configs, secrets, etc.
 const config = state.getActiveConfig()
+
+// Get state file path
+const statePath = state.getStatePath()
+
+// Get current schema version
+const version = state.getVersion()
 ```
 
 Calling methods before `load()` throws an error. This prevents accidentally working with uninitialized state.
@@ -171,6 +181,9 @@ const key = state.getGlobalSecret('ANTHROPIC_API_KEY')
 
 const allGlobal = state.getAllGlobalSecrets()
 
+// List all global secret keys (not values)
+const keys = state.listGlobalSecrets()  // ['ANTHROPIC_API_KEY']
+
 await state.deleteGlobalSecret('ANTHROPIC_API_KEY')
 ```
 
@@ -255,6 +268,14 @@ State is encrypted with AES-256-GCM. The encryption key derives from your privat
 const state = new StateManager(projectRoot, {
     privateKey: yourPrivateKey,
 })
+
+// Set private key after construction
+state.setPrivateKey(yourPrivateKey)
+
+// Check if private key is available
+if (state.hasPrivateKey()) {
+    await state.load()
+}
 ```
 
 The private key is stored separately in `~/.noorm/identity.key` to solve the bootstrap problem: you need the key to decrypt state, but you can't store the key inside encrypted state.
@@ -303,6 +324,7 @@ Import validates the file can be decrypted before overwriting. If decryption fai
 State operations emit events for CLI feedback and debugging:
 
 ```typescript
+// State lifecycle
 observer.on('state:loaded', ({ configCount, activeConfig, version }) => {
     console.log(`Loaded ${configCount} configs, active: ${activeConfig}`)
 })
@@ -315,10 +337,23 @@ observer.on('state:migrated', ({ from, to }) => {
     console.log(`Migrated state from ${from} to ${to}`)
 })
 
+// Config events
 observer.on('config:created', ({ name }) => { ... })
+observer.on('config:updated', ({ name, fields }) => { ... })
 observer.on('config:deleted', ({ name }) => { ... })
+observer.on('config:activated', ({ name, previous }) => { ... })
+
+// Secret events
 observer.on('secret:set', ({ configName, key }) => { ... })
+observer.on('secret:deleted', ({ configName, key }) => { ... })
 observer.on('global-secret:set', ({ key }) => { ... })
+observer.on('global-secret:deleted', ({ key }) => { ... })
+
+// Identity events
+observer.on('identity:created', ({ identityHash, name, email }) => { ... })
+
+// Known user events
+observer.on('known-user:added', ({ identityHash, name, email }) => { ... })
 ```
 
 

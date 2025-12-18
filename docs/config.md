@@ -46,13 +46,13 @@ interface Config {
 
     connection: {
         dialect: 'postgres' | 'mysql' | 'sqlite' | 'mssql'
-        host?: string         // Required for non-SQLite
+        host?: string         // Required for non-SQLite, defaults to 'localhost'
         port?: number         // Default by dialect
         database: string      // Database name or file path
         user?: string
         password?: string
         ssl?: boolean | SSLConfig
-        pool?: { min?: number, max?: number }
+        pool?: { min?: number, max?: number }  // Defaults to { min: 0, max: 10 }
     }
 
     paths: {
@@ -292,7 +292,11 @@ A config is "complete" when all required secrets (from its stage) are set. Incom
 ```typescript
 import { checkConfigCompleteness } from './core/config'
 
+// Basic usage
 const check = checkConfigCompleteness(config, state, settings)
+
+// With explicit stage name (optional 4th parameter)
+const check = checkConfigCompleteness(config, state, settings, 'prod')
 
 if (!check.complete) {
     console.log('Missing secrets:', check.missingSecrets)
@@ -311,7 +315,12 @@ Stage constraints that can't be violated:
 ```typescript
 import { canDeleteConfig } from './core/config'
 
+// Basic usage
 const { allowed, reason } = canDeleteConfig('prod', settings)
+
+// With explicit stage name (optional 3rd parameter)
+const { allowed, reason } = canDeleteConfig('prod', settings, 'production')
+
 if (!allowed) {
     console.error(reason)  // "Config 'prod' is linked to a locked stage..."
 }
@@ -384,7 +393,21 @@ For listings, use `ConfigSummary` which omits sensitive connection details:
 ```typescript
 const summaries = state.listConfigs()
 // [
-//     { name: 'dev', type: 'local', isTest: false, protected: false, isActive: true },
-//     { name: 'prod', type: 'remote', isTest: false, protected: true, isActive: false },
+//     { name: 'dev', type: 'local', isTest: false, protected: false, isActive: true, dialect: 'postgres', database: 'dev_db' },
+//     { name: 'prod', type: 'remote', isTest: false, protected: true, isActive: false, dialect: 'postgres', database: 'prod_db' },
 // ]
+```
+
+The `ConfigSummary` interface:
+
+```typescript
+interface ConfigSummary {
+    name: string
+    type: 'local' | 'remote'
+    isTest: boolean
+    protected: boolean
+    isActive: boolean
+    dialect: Dialect
+    database: string
+}
 ```

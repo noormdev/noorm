@@ -12,7 +12,7 @@ Static SQL files work for simple schemas. But real projects need dynamic SQL:
 
 You could write a custom Node.js script for each case. But then you're maintaining two systems - your SQL files and your generation scripts.
 
-noorm solves this with `.sql.tmpl` files. Templates look like SQL with embedded logic. They auto-load data files, inherit helpers, and have access to secrets and config.
+noorm solves this with `.tmpl` files. Any file ending in `.tmpl` is processed as a template before execution. Templates look like SQL with embedded logic. They auto-load data files, inherit helpers, and have access to secrets and config.
 
 
 ## How It Works
@@ -310,7 +310,7 @@ EXEC msdb.dbo.sp_attach_schedule
 INSERT INTO users (email, name, role) VALUES
 {% $.users.forEach((user, i) => { %}
     ({%~ $.quote(user.email) %}, {%~ $.quote(user.name) %}, {%~ $.quote(user.role) %}){% if (i < $.users.length - 1) { %},{% } %}
-{% }); %};
+{% }); %}
 ```
 
 With `users.csv`:
@@ -411,6 +411,41 @@ observer.on('template:load', ({ filepath, format }) => {
 
     console.log(`Loaded ${format} file: ${filepath}`)
 })
+```
+
+
+## Additional Utilities
+
+The template module exports several utility functions:
+
+```typescript
+import {
+    findHelperFiles,        // Locate helper files up the directory tree
+    toContextKey,           // Convert filenames to camelCase context keys
+    sqlEscape,              // SQL escape a string (doubles single quotes)
+    generateUuid,           // Generate UUID v4
+    isoNow,                 // Get current ISO timestamp
+    getSupportedExtensions, // Get all supported data file extensions
+    getLoader,              // Get loader for a specific extension
+    renderTemplate,         // Render a template directly
+} from './core/template'
+
+// Find helper files in directory tree
+const helpers = await findHelperFiles('/project/sql/users')
+// ['/project/sql/$helpers.ts', '/project/sql/users/$helpers.ts']
+
+// Convert filename to context key
+toContextKey('my-config.json5')  // 'myConfig'
+toContextKey('seed_data.yml')    // 'seedData'
+
+// SQL escape a value
+sqlEscape("O'Reilly")  // "O''Reilly"
+
+// Get supported extensions
+getSupportedExtensions()  // ['.json', '.json5', '.yaml', '.yml', '.csv', '.js', '.mjs', '.ts']
+
+// Get loader for extension
+const loader = getLoader('.json5')
 ```
 
 

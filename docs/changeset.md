@@ -79,7 +79,7 @@ import { createConnection } from './core/connection'
 import { resolveIdentity } from './core/identity'
 
 const { db } = await createConnection(config.connection, config.name)
-const identity = await resolveIdentity()
+const identity = resolveIdentity()
 
 const manager = new ChangesetManager({
     db,
@@ -195,8 +195,16 @@ interface ChangesetListItem {
     appliedAt: Date | null
     appliedBy: string | null
     revertedAt: Date | null
-    isNew: boolean      // Exists on disk but no DB record
-    orphaned: boolean   // In DB but folder deleted from disk
+    isNew: boolean         // Exists on disk but no DB record
+    orphaned: boolean      // In DB but folder deleted from disk
+    errorMessage?: string  // Error message if status is 'failed'
+    // Disk metadata (when changeset exists on disk)
+    path?: string
+    date?: Date
+    description?: string
+    changeFiles?: ChangesetFile[]
+    revertFiles?: ChangesetFile[]
+    hasChangelog?: boolean
 }
 ```
 
@@ -234,7 +242,8 @@ Changeset execution is recorded in the same tables as the runner:
 | `changeset:start` | `{ name, direction, files }` | Execution starting |
 | `changeset:file` | `{ changeset, filepath, index, total }` | File being executed |
 | `changeset:complete` | `{ name, direction, status, durationMs }` | Execution finished |
-| `changeset:skip` | `{ name, reason }` | Changeset skipped |
+| `changeset:skip` | `{ name, reason }` | Changeset skipped (already applied, unchanged) |
+| `file:dry-run` | `{ filepath, outputPath }` | File written during dry-run mode |
 
 ```typescript
 import { observer } from './core/observer'
@@ -265,7 +274,6 @@ Changeset operations throw specific errors:
 import { attempt } from '@logosdx/utils'
 import {
     ChangesetNotFoundError,
-    ChangesetAlreadyAppliedError,
     ChangesetNotAppliedError,
     ChangesetValidationError,
     ManifestReferenceError,
@@ -275,9 +283,6 @@ const [result, err] = await attempt(() => manager.run('my-changeset'))
 
 if (err instanceof ChangesetNotFoundError) {
     console.log(`Changeset folder not found: ${err.changesetName}`)
-}
-else if (err instanceof ChangesetAlreadyAppliedError) {
-    console.log(`Already applied at ${err.appliedAt}. Use --force to re-run.`)
 }
 else if (err instanceof ChangesetValidationError) {
     console.log(`Invalid structure: ${err.issue}`)
@@ -290,11 +295,12 @@ else if (err instanceof ManifestReferenceError) {
 | Error | When Thrown |
 |-------|-------------|
 | `ChangesetNotFoundError` | Folder doesn't exist |
-| `ChangesetAlreadyAppliedError` | Already applied (without `--force`) |
 | `ChangesetNotAppliedError` | Trying to revert unapplied changeset |
 | `ChangesetValidationError` | Invalid folder structure |
 | `ChangesetOrphanedError` | In DB but folder deleted |
 | `ManifestReferenceError` | `.txt` references missing file |
+
+**Note**: Already-applied changesets are not thrown as errors. Instead, they emit a `changeset:skip` event with `reason: 'already_applied'`. Use `--force` to re-run.
 
 
 ## Best Practices

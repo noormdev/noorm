@@ -6,11 +6,12 @@
  *
  * Provider hierarchy:
  * ```
- * FocusProvider
- *   └── RouterProvider
- *         └── GlobalKeyboard
- *               └── AppShell
- *                     └── ScreenRenderer
+ * AppContextProvider
+ *   └── FocusProvider
+ *         └── RouterProvider
+ *               └── GlobalKeyboard
+ *                     └── AppShell
+ *                           └── ScreenRenderer
  * ```
  */
 import { useState, useCallback } from 'react'
@@ -22,6 +23,13 @@ import { RouterProvider, useRouter } from './router.js'
 import { FocusProvider } from './focus.js'
 import { GlobalKeyboard } from './keyboard.js'
 import { ScreenRenderer, getRouteLabel } from './screens.js'
+import {
+    AppContextProvider,
+    useActiveConfig,
+    useConnectionStatus,
+    useLockStatus,
+    useLoadingStatus,
+} from './app-context.js'
 
 
 /**
@@ -97,13 +105,18 @@ function Breadcrumb(): ReactElement {
 
 /**
  * Status bar showing config, connection, and lock status.
+ *
+ * Reads state from AppContext and displays current status.
  */
 function StatusBar(): ReactElement {
 
-    // TODO: Pull from actual state when app-context is implemented
-    const configName = 'none'
-    const isConnected = false
-    const lockStatus = 'free'
+    const { activeConfigName } = useActiveConfig()
+    const { connectionStatus } = useConnectionStatus()
+    const { lockStatus } = useLockStatus()
+
+    const configName = activeConfigName ?? 'none'
+    const isConnected = connectionStatus === 'connected'
+    const isLockFree = lockStatus.status === 'free'
 
     return (
         <Box justifyContent="space-between" paddingX={1}>
@@ -115,8 +128,8 @@ function StatusBar(): ReactElement {
                     {isConnected ? '●' : '○'}
                 </Text>
                 <Text dimColor> │ </Text>
-                <Text color={lockStatus === 'free' ? 'green' : 'yellow'}>
-                    {lockStatus === 'free' ? '🔓' : '🔒'}
+                <Text color={isLockFree ? 'green' : 'yellow'}>
+                    {isLockFree ? '🔓' : '🔒'}
                 </Text>
             </Box>
         </Box>
@@ -198,6 +211,12 @@ export interface AppProps {
 
     /** Initial route parameters */
     initialParams?: RouteParams
+
+    /** Project root directory (defaults to process.cwd()) */
+    projectRoot?: string
+
+    /** Whether to auto-load state/settings on mount (defaults to true) */
+    autoLoad?: boolean
 }
 
 
@@ -213,17 +232,21 @@ export interface AppProps {
  */
 export function App({
     initialRoute = 'home',
-    initialParams = {}
+    initialParams = {},
+    projectRoot,
+    autoLoad = true,
 }: AppProps): ReactElement {
 
     return (
-        <FocusProvider>
-            <RouterProvider
-                initialRoute={initialRoute}
-                initialParams={initialParams}
-            >
-                <AppShell />
-            </RouterProvider>
-        </FocusProvider>
+        <AppContextProvider projectRoot={projectRoot} autoLoad={autoLoad}>
+            <FocusProvider>
+                <RouterProvider
+                    initialRoute={initialRoute}
+                    initialParams={initialParams}
+                >
+                    <AppShell />
+                </RouterProvider>
+            </FocusProvider>
+        </AppContextProvider>
     )
 }

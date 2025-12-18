@@ -1792,36 +1792,46 @@ getTerminalSize(): { columns: number, rows: number }
 
 ## Context Providers
 
-React contexts used to share state across the CLI.
+React contexts used to share state across the CLI. All application state is consolidated into `AppContext` for simplicity.
 
 | Context | Provides | Source |
 |---------|----------|--------|
-| `RouterContext` | navigate, back, route, params | Router provider |
-| `FocusContext` | push, pop, isActive, onKey | Focus stack |
-| `StateContext` | state, configs, activeConfig, secrets | StateManager events |
-| `ConnectionContext` | status, error, db instance | Connection events |
-| `LockContext` | status, holder, expiresAt | Lock events |
-| `SettingsContext` | settings, paths | SettingsManager |
-| `IdentityContext` | identity, knownUsers | Identity events |
+| `AppContext` | All state below via hooks | `app-context.tsx` |
+| `RouterContext` | navigate, back, route, params | `router.tsx` |
+| `FocusContext` | push, pop, isActive, onKey | `focus.tsx` |
+
+**AppContext hooks** (exported from `app-context.tsx`):
+
+| Hook | Returns |
+|------|---------|
+| `useAppContext()` | Full context value |
+| `useLoadingStatus()` | `{ loadingStatus, error }` |
+| `useActiveConfig()` | `{ activeConfig, activeConfigName, configs }` |
+| `useConnectionStatus()` | `{ connectionStatus, connectedConfig }` |
+| `useLockStatus()` | `{ lockStatus }` |
+| `useIdentity()` | `{ identity, hasIdentity }` |
+| `useSettings()` | `{ settings, settingsManager }` |
+
+**Guard components** (exported from `app-context.tsx`):
+
+| Guard | Purpose |
+|-------|---------|
+| `LoadingGuard` | Show loading content until ready |
+| `ConfigGuard` | Require active config selected |
+| `IdentityGuard` | Require identity setup |
 
 **Provider hierarchy:**
 
 ```
-<RouterProvider>
+<AppContextProvider>
   <FocusProvider>
-    <StateProvider>
-      <SettingsProvider>
-        <ConnectionProvider>
-          <LockProvider>
-            <IdentityProvider>
-              <App />
-            </IdentityProvider>
-          </LockProvider>
-        </ConnectionProvider>
-      </SettingsProvider>
-    </StateProvider>
+    <RouterProvider>
+      <GlobalKeyboard>
+        <AppShell />
+      </GlobalKeyboard>
+    </RouterProvider>
   </FocusProvider>
-</RouterProvider>
+</AppContextProvider>
 ```
 
 
@@ -1833,38 +1843,23 @@ React contexts used to share state across the CLI.
 ```
 src/cli/
 ├── index.tsx                   # Entry point, mode detection
-├── app.tsx                     # Root App component
+├── app.tsx                     # Root App component, provider hierarchy
+├── app-context.tsx             # AppContextProvider, hooks, guards
 ├── router.tsx                  # Router context + provider
 ├── focus.tsx                   # Focus stack context + provider
+├── keyboard.tsx                # Global keyboard handler
+├── screens.tsx                 # Screen registry
+├── headless.ts                 # Headless mode for CI/CD
+├── types.ts                    # Route, params, keyboard types
 │
-├── contexts/
-│   ├── index.ts
-│   ├── StateContext.tsx
-│   ├── ConnectionContext.tsx
-│   ├── LockContext.tsx
-│   ├── SettingsContext.tsx
-│   └── IdentityContext.tsx
-│
-├── hooks/
-│   ├── index.ts
-│   ├── useObserver.ts          # Subscribe to core events
-│   ├── useKeyboard.ts          # Keyboard handler registration
-│   ├── useFocus.ts             # Focus stack operations
-│   ├── useConfig.ts            # Active config access
-│   ├── useConnection.ts        # Connection state
-│   ├── useLock.ts              # Lock state
-│   ├── useLockGuard.ts         # Lock acquisition pattern
-│   ├── useListNavigation.ts    # Keyboard list navigation
-│   └── useForm.ts              # Form state management
-│
-├── utils/
+├── utils/                      # (created during components phase)
 │   ├── index.ts
 │   ├── format.ts               # formatRelativeTime, formatDuration, etc.
 │   ├── truncate.ts             # truncateHash, truncatePath, truncateText
 │   ├── clipboard.ts            # copyToClipboard
 │   └── terminal.ts             # Terminal size utilities
 │
-├── components/
+├── components/                 # (created during components phase)
 │   ├── index.ts                # Public exports
 │   ├── layout/                 # Header, Footer, Panel, Divider
 │   ├── lists/                  # SelectList, ActionList, StatusList
@@ -1874,30 +1869,23 @@ src/cli/
 │   ├── status/                 # Badge, LockStatus, ConnectionStatus
 │   └── shared/                 # ExecutionProgress, ExecutionSummary, ConnectionTest
 │
-├── screens/
-│   ├── index.ts                # Screen registry
-│   ├── home/                   # HomeScreen
-│   ├── config/                 # ConfigList, ConfigAdd, ConfigEdit, etc.
-│   ├── change/                 # ChangeList, ChangeRun, ChangeRevert, etc.
-│   ├── run/                    # RunMenu, BuildScreen, etc.
-│   ├── db/                     # DbMenu, DbCreate, DbDestroy
-│   ├── lock/                   # LockStatus, LockAcquire, etc.
-│   ├── settings/               # SettingsView, SettingsEdit
-│   ├── secret/                 # SecretList, SecretSet, etc.
-│   └── identity/               # IdentityShow, IdentityList, etc.
-│
-├── guards/
-│   ├── index.ts
-│   ├── RequireConfig.tsx
-│   ├── RequireConnection.tsx
-│   ├── RequireIdentity.tsx
-│   └── RequireSettings.tsx
-│
-└── headless/
-    ├── index.ts                # Headless entry point
-    ├── commands.ts             # Command registry
-    └── logger.ts               # Event-to-JSON/human logger
+└── screens/
+    ├── home.tsx                # HomeScreen
+    ├── not-found.tsx           # 404 screen
+    ├── config/                 # ConfigList, ConfigAdd, ConfigEdit, etc.
+    ├── change/                 # ChangeList, ChangeRun, ChangeRevert, etc.
+    ├── run/                    # RunMenu, BuildScreen, etc.
+    ├── db/                     # DbMenu, DbCreate, DbDestroy
+    ├── lock/                   # LockStatus, LockAcquire, etc.
+    ├── settings/               # SettingsView, SettingsEdit
+    ├── secret/                 # SecretList, SecretSet, etc.
+    └── identity/               # IdentityShow, IdentityList, etc.
 ```
+
+**Notes:**
+- Guards (LoadingGuard, ConfigGuard, IdentityGuard) are in `app-context.tsx`
+- Hooks (useActiveConfig, useLockStatus, etc.) are in `app-context.tsx`
+- Screen-specific hooks (useListNavigation, useForm) will be in `components/`
 
 
 ---

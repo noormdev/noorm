@@ -202,6 +202,8 @@ await logger.flush()
 await logger.stop()
 ```
 
+The `WriteQueue` class also exposes a `setFilepath()` method, used internally during log rotation to switch the queue to writing to a new file path.
+
 
 ## Log Rotation
 

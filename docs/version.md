@@ -497,16 +497,16 @@ observer.on('version:schema:checking', ({ current }) => {
     console.log(`Checking schema version: ${current}`)
 })
 
-// Schema migration
+// Schema migration (includes durationMs in migrated event)
 observer.on('version:schema:migrating', ({ from, to }) => {
     console.log(`Migrating schema from v${from} to v${to}`)
 })
 
-observer.on('version:schema:migrated', ({ from, to }) => {
-    console.log(`Schema migrated from v${from} to v${to}`)
+observer.on('version:schema:migrated', ({ from, to, durationMs }) => {
+    console.log(`Schema migrated from v${from} to v${to} (${durationMs}ms)`)
 })
 
-// State migration
+// State migration (no durationMs)
 observer.on('version:state:migrating', ({ from, to }) => {
     console.log(`Migrating state from v${from} to v${to}`)
 })
@@ -515,7 +515,7 @@ observer.on('version:state:migrated', ({ from, to }) => {
     console.log(`State migrated from v${from} to v${to}`)
 })
 
-// Settings migration
+// Settings migration (no durationMs)
 observer.on('version:settings:migrating', ({ from, to }) => {
     console.log(`Migrating settings from v${from} to v${to}`)
 })

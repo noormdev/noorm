@@ -81,6 +81,15 @@
   - `src/cli/index.tsx` - CLI entry point with meow argument parsing
   - `src/cli/screens/home.tsx` - Placeholder home screen
   - `src/cli/screens/not-found.tsx` - 404 screen for unregistered routes
+  - Tests: `tests/cli/*.test.tsx` (118 tests)
+
+- [x] **cli/app-context.md** - Centralized state/context provider
+  - `src/cli/app-context.tsx` - AppContextProvider with all state management
+    - Hooks: useAppContext, useLoadingStatus, useActiveConfig, useConnectionStatus, useLockStatus, useIdentity, useSettings
+    - Guards: LoadingGuard, ConfigGuard, IdentityGuard
+    - Observer subscriptions for connection, lock, config events
+  - Updated `src/cli/app.tsx` - Integrated AppContextProvider, StatusBar uses context hooks
+  - Tests: `tests/cli/app-context.test.tsx` (20 tests)
 
 All CLI plans include:
 - Dependencies tables linking to `src/core/` modules
@@ -111,7 +120,7 @@ All CLI plans include:
 | Plan | Implemented |
 |------|-------------|
 | `cli/core.md` | ✅ Complete |
-| `cli/app-context.md` | ❌ Not implemented |
+| `cli/app-context.md` | ✅ Complete |
 | `cli/components.md` | ❌ Not implemented |
 | `cli/init.md` | ❌ Not implemented |
 | `cli/home.md` | ❌ Basic screen only |
@@ -133,10 +142,10 @@ All CLI plans include:
 | Phase 1: Foundation | 5/5 | - | ✅ Complete |
 | Phase 2: Core Features | 3/3 | - | ✅ Complete |
 | Phase 3: Execution | 2/2 | - | ✅ Complete |
-| Phase 4: CLI | 1/13 | 13/13 | 🟡 In Progress |
+| Phase 4: CLI | 2/13 | 13/13 | 🟡 In Progress |
 
 **Core modules: 13/13 implemented (100%)**
-**CLI modules: 1/13 implemented**
+**CLI modules: 2/13 implemented**
 
 
 ## Next Steps
@@ -146,7 +155,7 @@ All CLI plans include:
 | # | Status | Module | Purpose | Dependencies |
 |---|--------|--------|---------|--------------|
 | 1 | ✅ | `cli/core.md` | Router, app shell, keyboard, focus stack | None |
-| 2 | ⬜ | `cli/app-context.md` | Centralized state/context provider | core |
+| 2 | ✅ | `cli/app-context.md` | Centralized state/context provider | core |
 | 3 | ⬜ | `cli/components.md` | Shared UI (SelectList, Form, FilePicker) | core, app-context |
 | 4 | ⬜ | `cli/init.md` | Project initialization | components |
 | 5 | ⬜ | `cli/config.md` | Config CRUD screens | components |

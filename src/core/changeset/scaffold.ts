@@ -9,7 +9,7 @@
  *
  * @example
  * ```typescript
- * import { createChangeset, addFile, renumberFiles } from './scaffold'
+ * import { createChangeset, addFile, reorderFiles } from './scaffold'
  *
  * // Create a new changeset
  * const changeset = await createChangeset('/project/changesets', {

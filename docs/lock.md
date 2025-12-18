@@ -33,10 +33,18 @@ Locks expire automatically. If a process crashes mid-operation, the next acquire
 The simplest approach is `withLock` - it acquires, runs your operation, and releases automatically:
 
 ```typescript
-import { getLockManager } from './core/lock'
+import { getLockManager, LockManager, resetLockManager } from './core/lock'
 import { createConnection } from './core/connection'
 
+// Get the singleton lock manager instance
 const lockManager = getLockManager()
+
+// Or create your own instance
+const customManager = new LockManager()
+
+// Reset the singleton (useful for testing)
+resetLockManager()
+
 const { db } = await createConnection(config.connection, config.name)
 
 await lockManager.withLock(db, 'production', 'alice@example.com', async () => {
@@ -106,7 +114,7 @@ await lockManager.acquire(db, configName, identity, {
 
 ## Checking Lock Status
 
-Before starting work, check if someone else has the lock:
+Before starting work, check if someone else has the lock. Note that `status()` automatically cleans up expired locks before checking:
 
 ```typescript
 const status = await lockManager.status(db, 'production')
@@ -131,7 +139,7 @@ else {
 
 ## Extending Locks
 
-Long operations might outlast the initial timeout. Extend before expiry:
+Long operations might outlast the initial timeout. Use the `extend()` method before expiry:
 
 ```typescript
 const lock = await lockManager.acquire(db, configName, identity, {
@@ -139,10 +147,13 @@ const lock = await lockManager.acquire(db, configName, identity, {
 })
 
 // After processing half the files...
+// extend() is a dedicated public API method (default timeout: 5 minutes)
 await lockManager.extend(db, configName, identity, {
     timeout: 10 * 60 * 1000,  // Another 10 minutes
 })
 ```
+
+Note: Re-acquiring a lock you already hold also extends it (see "Re-acquiring Your Lock" below).
 
 
 ## Validating Locks
@@ -191,6 +202,8 @@ if (released) {
 ```
 
 This is intended for CLI commands like `noorm lock force-release` when a crashed process left a lock behind.
+
+**Note**: `forceRelease` emits a `lock:released` event when successful.
 
 
 ## Error Handling

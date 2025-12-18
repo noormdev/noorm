@@ -25,7 +25,8 @@ The resolver tries each source until it finds a valid name. This means zero conf
 ```typescript
 import { resolveIdentity } from './core/identity'
 
-const identity = await resolveIdentity()
+// Note: resolveIdentity is synchronous
+const identity = resolveIdentity()
 // { name: 'Alice', email: 'alice@example.com', source: 'git' }
 ```
 
@@ -57,7 +58,8 @@ Your identity is uniquely identified by a hash combining your email, name, machi
 ```typescript
 import { createCryptoIdentity } from './core/identity'
 
-const identity = await createCryptoIdentity({
+// Returns { identity, keypair }
+const { identity, keypair } = await createCryptoIdentity({
     name: 'Alice',
     email: 'alice@example.com',
 })
@@ -65,6 +67,8 @@ const identity = await createCryptoIdentity({
 // identity.identityHash: "a3f2b1c9..."
 // identity.publicKey: "MCowBQYDK2..."
 // identity.machine: "alice-macbook"
+// keypair.privateKey: "..." (hex-encoded)
+// keypair.publicKey: "..." (hex-encoded)
 ```
 
 
@@ -77,14 +81,17 @@ Imagine Alice needs to give Bob access to the production database. She can't jus
 ```typescript
 import { encryptForRecipient, decryptWithPrivateKey } from './core/identity'
 
-// Alice encrypts for Bob
-const encrypted = await encryptForRecipient(
+// Alice encrypts for Bob (requires sender and recipient info for the payload)
+const payload = encryptForRecipient(
     JSON.stringify(config),
-    bobPublicKey
+    bobPublicKey,
+    aliceIdentityHash,  // sender identifier
+    bobIdentityHash,    // recipient identifier
 )
 
 // Bob decrypts with his private key
-const decrypted = await decryptWithPrivateKey(encrypted, bobPrivateKey)
+// Payload is a SharedConfigPayload with encrypted data and metadata
+const decrypted = decryptWithPrivateKey(payload, bobPrivateKey)
 const config = JSON.parse(decrypted)
 ```
 
@@ -167,10 +174,13 @@ On first run, noorm:
 import { createCryptoIdentity, saveKeyPair } from './core/identity'
 
 // Generate identity with auto-detected defaults
-const identity = await createCryptoIdentity()
+const { identity, keypair } = await createCryptoIdentity({
+    name: 'Alice',
+    email: 'alice@example.com',
+})
 
 // Save keypair to ~/.noorm/
-await saveKeyPair(identity.keyPair)
+await saveKeyPair(keypair)
 
 // Store in state
 await state.setIdentity(identity)
@@ -186,11 +196,35 @@ observer.on('identity:created', ({ identityHash, name, email, machine }) => {
     console.log(`Created identity for ${name} <${email}>`)
 })
 
-observer.on('identity:synced', ({ discovered, configName }) => {
-    console.log(`Discovered ${discovered} users from ${configName}`)
-})
-
 observer.on('identity:resolved', ({ name, source }) => {
     console.log(`Using identity "${name}" from ${source}`)
 })
+```
+
+
+## Additional Utilities
+
+The identity module exports several utility functions:
+
+```typescript
+import {
+    clearIdentityCache,      // Clear cached audit identity
+    getIdentityForConfig,    // Extract identity override from config
+    getIdentityWithCrypto,   // Resolve with crypto identity awareness
+    formatIdentity,          // Format identity for display: "Name <email>"
+    identityToString,        // Format for database storage
+    detectIdentityDefaults,  // Detect defaults from system/git
+    regenerateKeyPair,       // Regenerate when private key compromised
+    deriveStateKey,          // Derive encryption key from private key
+    encryptState,            // Encrypt state data
+    decryptState,            // Decrypt state data
+    loadKeyPair,             // Load keypair from disk
+    hasKeyFiles,             // Check if identity key files exist
+    validateKeyPermissions,  // Validate private key file permissions
+    isValidKeyHex,           // Validate hex-encoded key format
+    getPrivateKeyPath,       // Get path to private key file
+    getPublicKeyPath,        // Get path to public key file
+    getNoormHomePath,        // Get path to noorm home directory
+    truncateHash,            // Truncate identity hash for display
+} from './core/identity'
 ```

@@ -481,6 +481,34 @@ await settings.setBuild({
     include: ['schema/tables', 'schema/views'],
     exclude: ['schema/archive']
 })
+
+// Update paths config
+await settings.setPaths({
+    schema: './db/schema',
+    changesets: './db/changesets'
+})
+
+// Update strict mode config
+await settings.setStrict({
+    enabled: true,
+    stages: ['dev', 'staging', 'prod']
+})
+
+// Update logging config
+await settings.setLogging({
+    enabled: true,
+    level: 'verbose',
+    file: '.noorm/debug.log'
+})
+
+// Evaluate rules programmatically
+const result = settings.evaluateRules({
+    name: 'dev',
+    type: 'local',
+    isTest: true,
+    protected: false
+})
+// { matchedRules: [...], include: [...], exclude: [...] }
 ```
 
 
@@ -595,6 +623,18 @@ observer.on('settings:rule-removed', ({ index, rule }) => {
 
 observer.on('settings:build-updated', ({ build }) => {
     console.log('Updated build config')
+})
+
+observer.on('settings:paths-updated', ({ paths }) => {
+    console.log('Updated paths config')
+})
+
+observer.on('settings:strict-updated', ({ strict }) => {
+    console.log('Updated strict mode config')
+})
+
+observer.on('settings:logging-updated', ({ logging }) => {
+    console.log('Updated logging config')
 })
 ```
 

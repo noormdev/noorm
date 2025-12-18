@@ -171,6 +171,11 @@ const previews = await preview(context, [
     '/project/sql/seed.sql.tmpl',
 ])
 console.log(previews[0].renderedSql)
+
+// Preview to a file (optional 3rd parameter)
+const previewsToFile = await preview(context, [
+    '/project/sql/seed.sql.tmpl',
+], '/project/output.sql')
 ```
 
 
@@ -204,6 +209,79 @@ observer.on('build:complete', ({ filesRun, filesSkipped, durationMs }) => {
 
     console.log(`Build complete: ${filesRun} run, ${filesSkipped} skipped in ${durationMs}ms`)
 })
+```
+
+
+## Additional Utilities
+
+The runner module exports several utility functions:
+
+```typescript
+import {
+    computeChecksum,              // Compute SHA-256 checksum of a file
+    computeChecksumFromContent,   // Compute SHA-256 checksum from string content
+    computeCombinedChecksum,      // Combine multiple file checksums deterministically
+} from './core/runner'
+
+// Compute checksum from file
+const checksum = await computeChecksum('/path/to/file.sql')
+
+// Compute checksum from content string
+const contentChecksum = computeChecksumFromContent('SELECT * FROM users')
+
+// Combine multiple checksums (for changeset-level tracking)
+const combined = computeCombinedChecksum([checksum1, checksum2, checksum3])
+```
+
+
+## Tracker Class
+
+The `Tracker` class handles execution history and change detection:
+
+```typescript
+import { Tracker } from './core/runner'
+
+const tracker = new Tracker(db)
+
+// Check if file needs to run
+const { needsRun, reason, record } = await tracker.needsRun(filepath, checksum, force)
+
+// Create an operation record
+const operationId = await tracker.createOperation({
+    name: 'build:2024-01-15T10:30:00',
+    changeType: 'build',
+    configName: 'dev',
+    executedBy: 'alice@example.com',
+})
+
+// Record a file execution
+await tracker.recordExecution({
+    operationId,
+    filepath,
+    checksum,
+    status: 'success',
+    durationMs: 45,
+})
+
+// Finalize operation with optional checksum and error message
+await tracker.finalizeOperation(operationId, 'success', 1234, checksum, errorMessage)
+```
+
+
+## Run Context
+
+The `RunContext` interface includes all execution parameters:
+
+```typescript
+interface RunContext {
+    db: Kysely<NoormDatabase>
+    configName: string
+    identity: Identity
+    projectRoot: string
+    schemaDir: string
+    secrets?: Record<string, string>
+    globalSecrets?: Record<string, string>  // Global secrets from state
+}
 ```
 
 
