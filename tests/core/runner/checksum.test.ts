@@ -1,9 +1,10 @@
 /**
  * Checksum utility tests.
+ *
+ * Uses permanent fixture files in ./fixtures/ for testing.
  */
-import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import path from 'node:path'
-import { mkdir, writeFile, rm } from 'node:fs/promises'
 import {
     computeChecksum,
     computeChecksumFromContent,
@@ -11,27 +12,16 @@ import {
 } from '../../../src/core/runner/checksum.js'
 
 
-const TMP_DIR = path.join(process.cwd(), 'tmp/runner-checksum-test')
+const FIXTURES_DIR = path.join(import.meta.dirname, 'fixtures')
 
 
 describe('runner: checksum', () => {
-
-    beforeAll(async () => {
-
-        await mkdir(TMP_DIR, { recursive: true })
-    })
-
-    afterAll(async () => {
-
-        await rm(TMP_DIR, { recursive: true, force: true })
-    })
 
     describe('computeChecksum', () => {
 
         it('should compute SHA-256 hash of a file', async () => {
 
-            const filepath = path.join(TMP_DIR, 'test.sql')
-            await writeFile(filepath, 'SELECT 1;')
+            const filepath = path.join(FIXTURES_DIR, 'select-1.sql')
 
             const hash = await computeChecksum(filepath)
 
@@ -40,10 +30,9 @@ describe('runner: checksum', () => {
 
         it('should produce consistent hashes for same content', async () => {
 
-            const filepath1 = path.join(TMP_DIR, 'test1.sql')
-            const filepath2 = path.join(TMP_DIR, 'test2.sql')
-            await writeFile(filepath1, 'SELECT 1;')
-            await writeFile(filepath2, 'SELECT 1;')
+            // Both files contain the same content: SELECT 1;
+            const filepath1 = path.join(FIXTURES_DIR, 'select-1.sql')
+            const filepath2 = path.join(FIXTURES_DIR, 'select-1.sql')
 
             const hash1 = await computeChecksum(filepath1)
             const hash2 = await computeChecksum(filepath2)
@@ -53,10 +42,8 @@ describe('runner: checksum', () => {
 
         it('should produce different hashes for different content', async () => {
 
-            const filepath1 = path.join(TMP_DIR, 'diff1.sql')
-            const filepath2 = path.join(TMP_DIR, 'diff2.sql')
-            await writeFile(filepath1, 'SELECT 1;')
-            await writeFile(filepath2, 'SELECT 2;')
+            const filepath1 = path.join(FIXTURES_DIR, 'select-1.sql')
+            const filepath2 = path.join(FIXTURES_DIR, 'select-2.sql')
 
             const hash1 = await computeChecksum(filepath1)
             const hash2 = await computeChecksum(filepath2)
@@ -66,7 +53,7 @@ describe('runner: checksum', () => {
 
         it('should throw for non-existent file', async () => {
 
-            const filepath = path.join(TMP_DIR, 'nonexistent.sql')
+            const filepath = path.join(FIXTURES_DIR, 'nonexistent.sql')
 
             await expect(computeChecksum(filepath)).rejects.toThrow('Failed to read file')
         })
@@ -84,8 +71,7 @@ describe('runner: checksum', () => {
         it('should match file checksum for same content', async () => {
 
             const content = 'CREATE TABLE users (id INT);'
-            const filepath = path.join(TMP_DIR, 'match.sql')
-            await writeFile(filepath, content)
+            const filepath = path.join(FIXTURES_DIR, 'create-table.sql')
 
             const hashFromContent = computeChecksumFromContent(content)
             const hashFromFile = await computeChecksum(filepath)

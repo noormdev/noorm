@@ -1,0 +1,6 @@
+{
+    // Single line comment
+    name: 'test',
+    /* Block comment */
+    count: 42,
+}

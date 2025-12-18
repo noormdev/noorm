@@ -61,9 +61,9 @@
   - `src/core/runner/` - types, checksum, tracker, runner
   - Test coverage in `tests/core/runner/`
 
-- [ ] **changeset.md** - Changeset structure, parsing, execution, history
-  - `src/core/changeset/` - NOT IMPLEMENTED
-  - No files exist
+- [x] **changeset.md** - Changeset structure, parsing, execution, history
+  - `src/core/changeset/` - types, parser, scaffold, history, executor, manager
+  - Test coverage in `tests/core/changeset/` with permanent fixtures
 
 
 ## Phase 4: CLI
@@ -117,13 +117,14 @@
 | Phase 0: Utilities | 3 | 3 | ✅ Complete |
 | Phase 1: Foundation | 5 | 5 | ✅ Complete |
 | Phase 2: Core Features | 3 | 3 | ✅ Complete |
-| Phase 3: Execution | 1 | 2 | 🔄 In Progress |
+| Phase 3: Execution | 2 | 2 | ✅ Complete |
 | Phase 4: CLI | 0 | 12 | ❌ Not Started |
 
-**Overall: 12/25 modules implemented (48%)**
+**Overall: 13/25 modules implemented (52%)**
 
 
 ## Next Steps
 
-1. **changeset.md** - Implement changeset parsing/execution
-2. Then proceed to CLI features
+1. **cli/core.md** - Router, app shell, global keyboard, headless mode
+2. **cli/app-context.md** - Centralized state provider
+3. Then proceed to individual CLI screens

@@ -1,0 +1,5 @@
+# This is a comment
+
+tables/users.sql
+
+# Another comment

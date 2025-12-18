@@ -1,0 +1,4 @@
+name: test
+count: 42
+nested:
+  key: value

@@ -1,15 +1,16 @@
 /**
  * Template engine tests.
  *
+ * Uses permanent fixture files in ./fixtures/engine/ for testing.
+ *
  * Syntax (with custom tags):
  * - `{% code %}` for JavaScript code
  * - `{%= expr %}` for escaped output
  * - `{%~ expr %}` for raw output
  * - `$` as the context variable
  */
-import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import path from 'node:path'
-import { mkdir, writeFile, rm } from 'node:fs/promises'
 import {
     processFile,
     processFiles,
@@ -19,20 +20,10 @@ import {
 import type { TemplateContext } from '../../../src/core/template/types.js'
 
 
-const TMP_DIR = path.join(process.cwd(), 'tmp/template-engine-test')
+const FIXTURES_DIR = path.join(import.meta.dirname, 'fixtures/engine')
 
 
 describe('template: engine', () => {
-
-    beforeAll(async () => {
-
-        await mkdir(TMP_DIR, { recursive: true })
-    })
-
-    afterAll(async () => {
-
-        await rm(TMP_DIR, { recursive: true, force: true })
-    })
 
     describe('isTemplate', () => {
 
@@ -119,24 +110,21 @@ describe('template: engine', () => {
 
         it('should process raw SQL files without rendering', async () => {
 
-            const filepath = path.join(TMP_DIR, 'raw.sql')
-            const sql = 'SELECT * FROM users;'
-            await writeFile(filepath, sql)
+            const filepath = path.join(FIXTURES_DIR, 'raw.sql')
 
             const result = await processFile(filepath)
 
-            expect(result.sql).toBe(sql)
+            expect(result.sql).toBe('SELECT * FROM users;')
             expect(result.isTemplate).toBe(false)
             expect(result.durationMs).toBeUndefined()
         })
 
         it('should process template files', async () => {
 
-            const filepath = path.join(TMP_DIR, 'template.sql.tmpl')
-            await writeFile(filepath, 'SELECT * FROM {%~ $.config.table %};')
+            const filepath = path.join(FIXTURES_DIR, 'template.sql.tmpl')
 
             const result = await processFile(filepath, {
-                projectRoot: TMP_DIR,
+                projectRoot: FIXTURES_DIR,
                 config: { table: 'users' },
             })
 
@@ -147,24 +135,10 @@ describe('template: engine', () => {
 
         it('should auto-load data files', async () => {
 
-            const subDir = path.join(TMP_DIR, 'auto-load')
-            await mkdir(subDir, { recursive: true })
-
-            // Create data file
-            await writeFile(path.join(subDir, 'roles.json'), '["admin", "user"]')
-
-            // Create template
-            await writeFile(
-                path.join(subDir, 'insert.sql.tmpl'),
-                `
-                    {% for (const r of $.roles) { %}
-                    INSERT INTO roles (name) VALUES ('{%~ r %}');
-                    {% } %}
-                `
-            );
+            const subDir = path.join(FIXTURES_DIR, 'auto-load')
 
             const result = await processFile(path.join(subDir, 'insert.sql.tmpl'), {
-                projectRoot: TMP_DIR,
+                projectRoot: FIXTURES_DIR,
             })
 
             expect(result.sql).toContain("VALUES ('admin');")
@@ -173,20 +147,8 @@ describe('template: engine', () => {
 
         it('should inherit helpers from parent directories', async () => {
 
-            const rootDir = path.join(TMP_DIR, 'inherit-helpers')
+            const rootDir = path.join(FIXTURES_DIR, 'inherit-helpers')
             const childDir = path.join(rootDir, 'child')
-            await mkdir(childDir, { recursive: true })
-
-            // Create helper in root
-            await writeFile(path.join(rootDir, '$helpers.js'), `
-                export function upper(s) { return s.toUpperCase() }
-            `)
-
-            // Create template in child
-            await writeFile(
-                path.join(childDir, 'test.sql.tmpl'),
-                `SELECT '{%~ $.upper('hello') %}';`
-            )
 
             const result = await processFile(path.join(childDir, 'test.sql.tmpl'), {
                 projectRoot: rootDir,
@@ -197,14 +159,10 @@ describe('template: engine', () => {
 
         it('should provide secrets in context', async () => {
 
-            const filepath = path.join(TMP_DIR, 'secrets.sql.tmpl')
-            await writeFile(
-                filepath,
-                `INSERT INTO config (key) VALUES ('{%~ $.secrets.API_KEY %}');`
-            )
+            const filepath = path.join(FIXTURES_DIR, 'secrets.sql.tmpl')
 
             const result = await processFile(filepath, {
-                projectRoot: TMP_DIR,
+                projectRoot: FIXTURES_DIR,
                 secrets: { API_KEY: 'secret123' },
             })
 
@@ -213,11 +171,10 @@ describe('template: engine', () => {
 
         it('should provide built-in helpers', async () => {
 
-            const filepath = path.join(TMP_DIR, 'builtin.sql.tmpl')
-            await writeFile(filepath, `INSERT INTO t (v) VALUES ({%~ $.quote("O'Brien") %});`)
+            const filepath = path.join(FIXTURES_DIR, 'builtin.sql.tmpl')
 
             const result = await processFile(filepath, {
-                projectRoot: TMP_DIR,
+                projectRoot: FIXTURES_DIR,
             })
 
             expect(result.sql).toBe("INSERT INTO t (v) VALUES ('O''Brien');")
@@ -228,10 +185,8 @@ describe('template: engine', () => {
 
         it('should process multiple files', async () => {
 
-            const filepath1 = path.join(TMP_DIR, 'multi1.sql')
-            const filepath2 = path.join(TMP_DIR, 'multi2.sql')
-            await writeFile(filepath1, 'SELECT 1;')
-            await writeFile(filepath2, 'SELECT 2;')
+            const filepath1 = path.join(FIXTURES_DIR, 'multi1.sql')
+            const filepath2 = path.join(FIXTURES_DIR, 'multi2.sql')
 
             const results = await processFiles([filepath1, filepath2])
 
@@ -242,13 +197,11 @@ describe('template: engine', () => {
 
         it('should process mixed templates and raw files', async () => {
 
-            const rawPath = path.join(TMP_DIR, 'mixed-raw.sql')
-            const tmplPath = path.join(TMP_DIR, 'mixed-tmpl.sql.tmpl')
-            await writeFile(rawPath, 'SELECT 1;')
-            await writeFile(tmplPath, 'SELECT {%~ 1 + 1 %};')
+            const rawPath = path.join(FIXTURES_DIR, 'mixed-raw.sql')
+            const tmplPath = path.join(FIXTURES_DIR, 'mixed-tmpl.sql.tmpl')
 
             const results = await processFiles([rawPath, tmplPath], {
-                projectRoot: TMP_DIR,
+                projectRoot: FIXTURES_DIR,
             })
 
             expect(results[0].isTemplate).toBe(false)

@@ -1,0 +1,3 @@
+tables/b.sql
+tables/c.sql
+tables/a.sql

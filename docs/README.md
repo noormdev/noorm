@@ -93,11 +93,11 @@ console.log(`Using database: ${config.connection.database}`)
 │  │ X25519   │  │ Encrypted│  │ Merge &  │  │Concur- │ │
 │  │ Keypairs │  │ Storage  │  │ Validate │  │ rency  │ │
 │  └──────────┘  └──────────┘  └──────────┘  └────────┘ │
-│  ┌──────────┐  ┌──────────┐                            │
-│  │ Template │  │  Runner  │                            │
-│  │ Eta, SQL │  │ Execute, │                            │
-│  │ Helpers  │  │ Tracking │                            │
-│  └──────────┘  └──────────┘                            │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐             │
+│  │ Template │  │  Runner  │  │Changeset │             │
+│  │ Eta, SQL │  │ Execute, │  │ Versioned│             │
+│  │ Helpers  │  │ Tracking │  │ Migrations│             │
+│  └──────────┘  └──────────┘  └──────────┘             │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -129,6 +129,7 @@ Core modules emit events. The CLI subscribes. This keeps business logic separate
 | [Lock](./lock.md) | Concurrent operation protection, table-based locking |
 | [Template](./template.md) | Eta templating, data loading, helper inheritance |
 | [Runner](./runner.md) | SQL execution, change detection, dry run, preview |
+| [Changeset](./changeset.md) | Versioned migrations, forward/rollback, manifest files |
 | [Logger](./logger.md) | File logging, event classification, rotation |
 
 

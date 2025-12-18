@@ -1,16 +1,17 @@
 /**
  * Runner tests.
  *
- * Tests for file discovery, preview mode, and basic runner functionality.
+ * Uses permanent fixture files in ./fixtures/ for testing.
  * Note: Tests requiring database are integration tests.
  */
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
+import { describe, it, expect, afterAll } from 'vitest'
 import path from 'node:path'
-import { mkdir, writeFile, rm } from 'node:fs/promises'
+import { rm } from 'node:fs/promises'
 import { preview } from '../../../src/core/runner/runner.js'
 import type { RunContext } from '../../../src/core/runner/types.js'
 
 
+const FIXTURES_DIR = path.join(import.meta.dirname, 'fixtures')
 const TMP_DIR = path.join(process.cwd(), 'tmp/runner-test')
 
 
@@ -20,7 +21,7 @@ const mockContext: RunContext = {
     db: {} as RunContext['db'],
     configName: 'test',
     identity: { name: 'Test User', email: 'test@example.com', source: 'config' },
-    projectRoot: TMP_DIR,
+    projectRoot: FIXTURES_DIR,
     config: { table: 'users' },
     secrets: { API_KEY: 'secret123' },
 }
@@ -28,20 +29,15 @@ const mockContext: RunContext = {
 
 describe('runner: preview', () => {
 
-    beforeAll(async () => {
-
-        await mkdir(TMP_DIR, { recursive: true })
-    })
-
     afterAll(async () => {
 
+        // Clean up any output files created during tests
         await rm(TMP_DIR, { recursive: true, force: true })
     })
 
     it('should preview a raw SQL file', async () => {
 
-        const filepath = path.join(TMP_DIR, 'raw.sql')
-        await writeFile(filepath, 'SELECT * FROM users;')
+        const filepath = path.join(FIXTURES_DIR, 'raw.sql')
 
         const results = await preview(mockContext, [filepath])
 
@@ -53,8 +49,7 @@ describe('runner: preview', () => {
 
     it('should preview a template file', async () => {
 
-        const filepath = path.join(TMP_DIR, 'template.sql.tmpl')
-        await writeFile(filepath, 'SELECT * FROM {%~ $.config.table %};')
+        const filepath = path.join(FIXTURES_DIR, 'template.sql.tmpl')
 
         const results = await preview(mockContext, [filepath])
 
@@ -65,10 +60,8 @@ describe('runner: preview', () => {
 
     it('should preview multiple files', async () => {
 
-        const file1 = path.join(TMP_DIR, 'multi1.sql')
-        const file2 = path.join(TMP_DIR, 'multi2.sql')
-        await writeFile(file1, 'SELECT 1;')
-        await writeFile(file2, 'SELECT 2;')
+        const file1 = path.join(FIXTURES_DIR, 'select-1.sql')
+        const file2 = path.join(FIXTURES_DIR, 'select-2.sql')
 
         const results = await preview(mockContext, [file1, file2])
 
@@ -79,8 +72,7 @@ describe('runner: preview', () => {
 
     it('should handle template with secrets', async () => {
 
-        const filepath = path.join(TMP_DIR, 'secrets.sql.tmpl')
-        await writeFile(filepath, "INSERT INTO keys (val) VALUES ('{%~ $.secrets.API_KEY %}');")
+        const filepath = path.join(FIXTURES_DIR, 'secrets.sql.tmpl')
 
         const results = await preview(mockContext, [filepath])
 
@@ -90,7 +82,7 @@ describe('runner: preview', () => {
 
     it('should return error for non-existent file', async () => {
 
-        const filepath = path.join(TMP_DIR, 'nonexistent.sql')
+        const filepath = path.join(FIXTURES_DIR, 'nonexistent.sql')
 
         const results = await preview(mockContext, [filepath])
 
@@ -101,9 +93,8 @@ describe('runner: preview', () => {
 
     it('should continue on error and process remaining files', async () => {
 
-        const validFile = path.join(TMP_DIR, 'valid.sql')
-        const invalidFile = path.join(TMP_DIR, 'invalid-does-not-exist.sql')
-        await writeFile(validFile, 'SELECT 1;')
+        const validFile = path.join(FIXTURES_DIR, 'select-1.sql')
+        const invalidFile = path.join(FIXTURES_DIR, 'invalid-does-not-exist.sql')
 
         const results = await preview(mockContext, [invalidFile, validFile])
 
@@ -114,9 +105,10 @@ describe('runner: preview', () => {
 
     it('should write to output file when specified', async () => {
 
-        const inputFile = path.join(TMP_DIR, 'input.sql')
+        const inputFile = path.join(FIXTURES_DIR, 'select-1.sql')
+        const { mkdir } = await import('node:fs/promises')
+        await mkdir(TMP_DIR, { recursive: true })
         const outputFile = path.join(TMP_DIR, 'output.sql')
-        await writeFile(inputFile, 'SELECT 1;')
 
         await preview(mockContext, [inputFile], outputFile)
 
@@ -129,8 +121,7 @@ describe('runner: preview', () => {
 
     it('should compute checksums for previewed files', async () => {
 
-        const filepath = path.join(TMP_DIR, 'checksum.sql')
-        await writeFile(filepath, 'SELECT 1;')
+        const filepath = path.join(FIXTURES_DIR, 'select-1.sql')
 
         const results = await preview(mockContext, [filepath])
 
@@ -142,8 +133,6 @@ describe('runner: preview', () => {
 describe('runner: file detection', () => {
 
     it('should identify SQL files', async () => {
-
-        const { default: runnerModule } = await import('../../../src/core/runner/runner.js')
 
         // We can test file detection indirectly through the isTemplate function from template module
         const { isTemplate } = await import('../../../src/core/template/engine.js')

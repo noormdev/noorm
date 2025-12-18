@@ -42,7 +42,7 @@ interface ActiveHandlers {
 
 
 // Track active handlers for cleanup
-let activeHandlers: ActiveHandlers = {
+const activeHandlers: ActiveHandlers = {
     signals: new Map(),
     exception: null,
     rejection: null,

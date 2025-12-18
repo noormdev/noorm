@@ -49,9 +49,11 @@ export interface NoormEvents {
     'file:dry-run': { filepath: string; outputPath: string }
 
     // Changeset lifecycle
+    'changeset:created': { name: string; path: string }
     'changeset:start': { name: string; direction: 'change' | 'revert'; files: string[] }
     'changeset:file': { changeset: string; filepath: string; index: number; total: number }
     'changeset:complete': { name: string; direction: 'change' | 'revert'; status: 'success' | 'failed'; durationMs: number }
+    'changeset:skip': { name: string; reason: string }
 
     // Build/Run
     'build:start': { schemaPath: string; fileCount: number }

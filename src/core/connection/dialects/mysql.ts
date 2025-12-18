@@ -26,7 +26,7 @@ import type { ConnectionConfig, ConnectionResult } from '../types.js'
 export function createMysqlConnection(config: ConnectionConfig): ConnectionResult {
 
     // Dynamic require to avoid compile-time dependency
-    // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const mysql2 = require('mysql2')
     const { createPool } = mysql2
 

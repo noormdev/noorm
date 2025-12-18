@@ -268,3 +268,65 @@ export type {
     CreateOperationData,
     RecordExecutionData,
 } from './runner/index.js'
+
+// Changeset
+export {
+    // Manager
+    ChangesetManager,
+    // History
+    ChangesetHistory,
+    // Executor
+    executeChangeset,
+    revertChangeset,
+    // Parser
+    parseChangeset,
+    discoverChangesets,
+    resolveManifest,
+    validateChangeset,
+    hasRevertFiles,
+    parseSequence,
+    parseDescription,
+    // Scaffold
+    createChangeset,
+    addFile,
+    removeFile,
+    renameFile,
+    reorderFiles,
+    deleteChangeset,
+    // Defaults
+    DEFAULT_CHANGESET_OPTIONS,
+    DEFAULT_BATCH_OPTIONS,
+    // Errors
+    ChangesetValidationError,
+    ChangesetNotFoundError,
+    ChangesetAlreadyAppliedError,
+    ChangesetNotAppliedError,
+    ChangesetOrphanedError,
+    ManifestReferenceError,
+} from './changeset/index.js'
+export type {
+    // File types
+    ChangesetFileType,
+    ChangesetFile,
+    // Changeset types
+    Changeset,
+    ChangesetStatus,
+    ChangesetListItem,
+    // Options
+    ChangesetOptions,
+    BatchChangesetOptions,
+    ChangesetContext,
+    // Results
+    ChangesetResult,
+    ChangesetFileResult,
+    BatchChangesetResult,
+    // History
+    ChangesetHistoryRecord,
+    FileHistoryRecord,
+    // Change detection
+    ChangesetRunReason,
+    NeedsRunResult as ChangesetNeedsRunResult,
+    // Scaffold
+    CreateChangesetOptions,
+    AddFileOptions,
+} from './changeset/index.js'

@@ -56,7 +56,7 @@ const PUBLIC_KEY_MODE = 0o644
  */
 async function ensureNoormDir(): Promise<void> {
 
-    const [_, err] = await attempt(() => mkdir(NOORM_HOME, { recursive: true }))
+    const [, err] = await attempt(() => mkdir(NOORM_HOME, { recursive: true }))
 
     if (err) {
 
@@ -89,7 +89,7 @@ export async function saveKeyPair(keypair: KeyPair): Promise<void> {
     await ensureNoormDir()
 
     // Write private key
-    const [_, privateErr] = await attempt(() =>
+    const [, privateErr] = await attempt(() =>
         writeFile(PRIVATE_KEY_PATH, keypair.privateKey, { encoding: 'utf8', mode: PRIVATE_KEY_MODE })
     )
 
@@ -102,7 +102,7 @@ export async function saveKeyPair(keypair: KeyPair): Promise<void> {
     await attempt(() => chmod(PRIVATE_KEY_PATH, PRIVATE_KEY_MODE))
 
     // Write public key
-    const [__, publicErr] = await attempt(() =>
+    const [, publicErr] = await attempt(() =>
         writeFile(PUBLIC_KEY_PATH, keypair.publicKey, { encoding: 'utf8', mode: PUBLIC_KEY_MODE })
     )
 

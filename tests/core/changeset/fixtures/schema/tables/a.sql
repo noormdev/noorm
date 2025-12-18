@@ -1,0 +1,2 @@
+-- Table A
+SELECT 'A';

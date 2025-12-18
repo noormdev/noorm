@@ -1,9 +1,10 @@
 /**
  * Template loaders tests.
+ *
+ * Uses permanent fixture files in ./fixtures/loaders/ for testing.
  */
-import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import path from 'node:path'
-import { mkdir, writeFile, rm } from 'node:fs/promises'
 import {
     loadJson5,
     loadYaml,
@@ -16,27 +17,16 @@ import {
 } from '../../../src/core/template/loaders/index.js'
 
 
-const TMP_DIR = path.join(process.cwd(), 'tmp/template-loaders-test')
+const FIXTURES_DIR = path.join(import.meta.dirname, 'fixtures/loaders')
 
 
 describe('template: loaders', () => {
-
-    beforeAll(async () => {
-
-        await mkdir(TMP_DIR, { recursive: true })
-    })
-
-    afterAll(async () => {
-
-        await rm(TMP_DIR, { recursive: true, force: true })
-    })
 
     describe('loadJson5', () => {
 
         it('should load standard JSON', async () => {
 
-            const filepath = path.join(TMP_DIR, 'standard.json')
-            await writeFile(filepath, '{"name": "test", "count": 42}')
+            const filepath = path.join(FIXTURES_DIR, 'standard.json')
 
             const data = await loadJson5(filepath)
 
@@ -45,13 +35,7 @@ describe('template: loaders', () => {
 
         it('should load JSON5 with comments', async () => {
 
-            const filepath = path.join(TMP_DIR, 'with-comments.json5')
-            await writeFile(filepath, `{
-                // Single line comment
-                name: 'test',
-                /* Block comment */
-                count: 42,
-            }`)
+            const filepath = path.join(FIXTURES_DIR, 'with-comments.json5')
 
             const data = await loadJson5(filepath)
 
@@ -60,11 +44,7 @@ describe('template: loaders', () => {
 
         it('should load JSON5 with trailing commas', async () => {
 
-            const filepath = path.join(TMP_DIR, 'trailing-commas.json5')
-            await writeFile(filepath, `{
-                "items": [1, 2, 3,],
-                "name": "test",
-            }`)
+            const filepath = path.join(FIXTURES_DIR, 'trailing-commas.json5')
 
             const data = await loadJson5(filepath)
 
@@ -73,8 +53,7 @@ describe('template: loaders', () => {
 
         it('should load JSON5 with unquoted keys', async () => {
 
-            const filepath = path.join(TMP_DIR, 'unquoted-keys.json5')
-            await writeFile(filepath, `{ name: "test", count: 42 }`)
+            const filepath = path.join(FIXTURES_DIR, 'unquoted-keys.json5')
 
             const data = await loadJson5(filepath)
 
@@ -86,13 +65,7 @@ describe('template: loaders', () => {
 
         it('should load YAML objects', async () => {
 
-            const filepath = path.join(TMP_DIR, 'config.yml')
-            await writeFile(filepath, `
-name: test
-count: 42
-nested:
-  key: value
-`)
+            const filepath = path.join(FIXTURES_DIR, 'config.yml')
 
             const data = await loadYaml(filepath)
 
@@ -105,12 +78,7 @@ nested:
 
         it('should load YAML arrays', async () => {
 
-            const filepath = path.join(TMP_DIR, 'list.yml')
-            await writeFile(filepath, `
-- admin
-- user
-- guest
-`)
+            const filepath = path.join(FIXTURES_DIR, 'list.yml')
 
             const data = await loadYaml(filepath)
 
@@ -122,10 +90,7 @@ nested:
 
         it('should load CSV with headers', async () => {
 
-            const filepath = path.join(TMP_DIR, 'users.csv')
-            await writeFile(filepath, `name,email,age
-Alice,alice@example.com,30
-Bob,bob@example.com,25`)
+            const filepath = path.join(FIXTURES_DIR, 'users.csv')
 
             const data = await loadCsv(filepath)
 
@@ -137,13 +102,7 @@ Bob,bob@example.com,25`)
 
         it('should skip empty lines', async () => {
 
-            const filepath = path.join(TMP_DIR, 'with-empty.csv')
-            await writeFile(filepath, `name,email
-
-Alice,alice@example.com
-
-Bob,bob@example.com
-`)
+            const filepath = path.join(FIXTURES_DIR, 'with-empty.csv')
 
             const data = await loadCsv(filepath)
 
@@ -152,9 +111,7 @@ Bob,bob@example.com
 
         it('should trim whitespace', async () => {
 
-            const filepath = path.join(TMP_DIR, 'with-whitespace.csv')
-            await writeFile(filepath, `name,email
-  Alice  ,  alice@example.com  `)
+            const filepath = path.join(FIXTURES_DIR, 'with-whitespace.csv')
 
             const data = await loadCsv(filepath)
 
@@ -166,27 +123,23 @@ Bob,bob@example.com
 
         it('should load SQL as raw text', async () => {
 
-            const filepath = path.join(TMP_DIR, 'fragment.sql')
-            const sql = 'SELECT * FROM users WHERE id = 1;'
-            await writeFile(filepath, sql)
+            const filepath = path.join(FIXTURES_DIR, 'fragment.sql')
 
             const data = await loadSql(filepath)
 
-            expect(data).toBe(sql)
+            expect(data).toBe('SELECT * FROM users WHERE id = 1;')
         })
 
         it('should preserve whitespace', async () => {
 
-            const filepath = path.join(TMP_DIR, 'multiline.sql')
-            const sql = `SELECT
-    id,
-    name
-FROM users;`
-            await writeFile(filepath, sql)
+            const filepath = path.join(FIXTURES_DIR, 'multiline.sql')
 
             const data = await loadSql(filepath)
 
-            expect(data).toBe(sql)
+            expect(data).toBe(`SELECT
+    id,
+    name
+FROM users;`)
         })
     })
 
@@ -194,8 +147,7 @@ FROM users;`
 
         it('should auto-detect JSON extension', async () => {
 
-            const filepath = path.join(TMP_DIR, 'auto.json')
-            await writeFile(filepath, '{"test": true}')
+            const filepath = path.join(FIXTURES_DIR, 'auto.json')
 
             const data = await loadDataFile(filepath)
 
@@ -204,8 +156,7 @@ FROM users;`
 
         it('should auto-detect YAML extension', async () => {
 
-            const filepath = path.join(TMP_DIR, 'auto.yaml')
-            await writeFile(filepath, 'test: true')
+            const filepath = path.join(FIXTURES_DIR, 'auto.yaml')
 
             const data = await loadDataFile(filepath)
 
@@ -214,7 +165,7 @@ FROM users;`
 
         it('should throw for unsupported extension', async () => {
 
-            const filepath = path.join(TMP_DIR, 'unknown.xyz')
+            const filepath = path.join(FIXTURES_DIR, 'unknown.xyz')
 
             await expect(loadDataFile(filepath)).rejects.toThrow(
                 'No loader registered for extension: .xyz'

@@ -3,7 +3,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { join } from 'path'
-import { mkdtemp, rm, readFile, stat, chmod, mkdir, writeFile } from 'fs/promises'
+import { mkdtemp, rm, readFile, stat, chmod, writeFile } from 'fs/promises'
 import { tmpdir, homedir } from 'os'
 import {
     isValidKeyHex,
