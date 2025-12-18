@@ -158,12 +158,46 @@ In headless mode:
 4. **Encrypted storage** - All secrets stored in encrypted state file
 
 
-## Integration Points
+## Core Integration
 
-| Module | Relationship |
-|--------|--------------|
-| StateManager | Stores/retrieves secrets |
-| Settings | Defines required secrets per stage |
+### Dependencies
+
+| Module | Source | Purpose |
+|--------|--------|---------|
+| StateManager | `src/core/state/` | Secret storage/retrieval |
+| SettingsManager | `src/core/settings/` | Required secrets per stage |
+
+### StateManager Secret Operations
+
+| Operation | Purpose |
+|-----------|---------|
+| `getSecrets(configName)` | Get config-scoped secrets |
+| `setSecret(configName, key, value)` | Set config-scoped secret |
+| `deleteSecret(configName, key)` | Remove config-scoped secret |
+| `getGlobalSecrets()` | Get global secrets |
+| `setGlobalSecret(key, value)` | Set global secret |
+| `deleteGlobalSecret(key)` | Remove global secret |
+
+See: `src/core/state/manager.ts` for full API.
+
+### Integration Points
+
+| Consumer | Relationship |
+|----------|--------------|
 | Template Engine | Accesses secrets via `$.secrets` and `$.globalSecrets` |
-| Config | Secrets are scoped to configs, completeness affects usability |
 | Config Validate | Reports missing required secrets |
+| Config Export | Includes secrets in encrypted export |
+
+
+## References
+
+**Documentation:**
+- `docs/state.md` - StateManager secrets storage
+- `docs/settings.md` - Required secrets per stage
+
+**Core modules:**
+- `src/core/state/` - Secrets CRUD operations
+- `src/core/settings/` - Stage secrets definitions
+
+**CLI plans:**
+- `plan/cli/userflow.md` - User journeys, screen mockups, shared components

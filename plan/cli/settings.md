@@ -161,18 +161,55 @@ Settings are validated on save:
 
 ## Observer Events
 
+Settings-specific events are not currently emitted by the core module. The SettingsManager operates synchronously after initial load. If events are needed for CLI feedback, the following could be added:
+
 | Event | Payload | When |
 |-------|---------|------|
 | `settings:loaded` | `{ path }` | Settings read from disk |
 | `settings:saved` | `{ path }` | Settings written to disk |
-| `settings:validation-error` | `{ errors }` | Invalid settings detected |
+
+Note: Validation errors are thrown as `SettingsValidationError` rather than emitted as events.
 
 
-## Integration Points
+## Core Integration
 
-| Module | Relationship |
-|--------|--------------|
+### Dependencies
+
+| Module | Source | Purpose |
+|--------|--------|---------|
+| SettingsManager | `src/core/settings/` | Read/write settings.yml |
+
+### SettingsManager Operations
+
+| Operation | Purpose |
+|-----------|---------|
+| `load()` | Load settings from disk |
+| `save()` | Write settings to disk |
+| `get(key)` | Get value by dot notation path |
+| `set(key, value)` | Set value at path |
+| `getPaths()` | Get paths configuration |
+| `getBuildConfig()` | Get build include/exclude |
+| `getStages()` | Get stage definitions |
+
+See: `src/core/settings/manager.ts` for full API.
+
+### Integration Points
+
+| Consumer | Relationship |
+|----------|--------------|
 | Runner | Uses build.include/exclude for file discovery |
-| Config Resolver | Paths provide defaults for configs |
-| Logger | Reads logging configuration |
+| Config Screens | Paths provide defaults for new configs |
+| Template Engine | Stage secrets requirements |
 | Init Command | Creates initial settings file |
+
+
+## References
+
+**Documentation:**
+- `docs/settings.md` - Settings file structure and validation
+
+**Core modules:**
+- `src/core/settings/` - SettingsManager, schema, defaults
+
+**CLI plans:**
+- `plan/cli/userflow.md` - User journeys, screen mockups, shared components

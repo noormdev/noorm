@@ -89,7 +89,7 @@ sequenceDiagram
 
 ### Debug Mode
 
-When `NOORM_DEBUG=1` is set, the observer logs all events to stderr for debugging.
+When `NOORM_DEBUG=true` is set, the observer logs all events to stderr for debugging.
 
 
 ---

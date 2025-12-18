@@ -304,21 +304,54 @@ flowchart TD
 | `config:imported` | `{ name, from }` | Config imported |
 
 
-## State Integration
+## Core Integration
 
-All screens read/write through StateManager, with constraints from Settings:
+### Dependencies
+
+| Module | Source | Purpose |
+|--------|--------|---------|
+| StateManager | `src/core/state/` | CRUD ops, secrets, active config |
+| SettingsManager | `src/core/settings/` | Stage definitions, validation rules |
+| Connection | `src/core/connection/` | Test connection on add/edit |
+| Identity | `src/core/identity/` | Export/import encryption |
+
+### State Flow
 
 ```mermaid
 flowchart LR
     Screen --> StateManager
-    Screen --> Settings[settings.yml]
+    Screen --> Settings[SettingsManager]
     StateManager --> EncryptedState[.noorm/state.enc]
     Settings -->|stage constraints| Screen
 ```
 
-**Integration points:**
+### StateManager Operations
 
-| Source | Data |
-|--------|------|
-| StateManager | Config values, secrets, active config |
-| Settings | Stage definitions, defaults, required secrets, lock status |
+| Operation | Purpose |
+|-----------|---------|
+| `getConfigs()` | List all configs |
+| `getConfig(name)` | Get single config |
+| `addConfig(config)` | Create new config |
+| `updateConfig(name, updates)` | Modify existing config |
+| `deleteConfig(name)` | Remove config |
+| `setActiveConfig(name)` | Switch active config |
+| `getSecrets(configName)` | Get config-scoped secrets |
+
+See: `src/core/state/manager.ts` for full API.
+
+
+## References
+
+**Documentation:**
+- `docs/config.md` - Config structure and validation rules
+- `docs/state.md` - StateManager architecture
+- `docs/identity.md` - Identity for config export/import
+
+**Core modules:**
+- `src/core/config/` - Config schema, validation, protection
+- `src/core/state/` - StateManager CRUD operations
+- `src/core/connection/` - Connection testing
+- `src/core/identity/` - Export/import encryption
+
+**CLI plans:**
+- `plan/cli/userflow.md` - User journeys, screen mockups, shared components

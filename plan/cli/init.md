@@ -90,23 +90,16 @@ If no identity exists in `~/.noorm/`, prompt for user details.
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-**Detection flow:**
+**Detection sources (in priority order):**
 
-```
-detectIdentityDefaults():
-    # Try git config first
-    [gitName, err1] = await attempt(() => exec('git config user.name'))
-    [gitEmail, err2] = await attempt(() => exec('git config user.email'))
+| Field | Primary Source | Fallback |
+|-------|---------------|----------|
+| Name | `git config user.name` | OS username |
+| Email | `git config user.email` | Empty |
+| Machine | Hostname | - |
+| OS | Platform + version | - |
 
-    return {
-        name: gitName?.trim() || os.userInfo().username,
-        email: gitEmail?.trim() || '',
-        machine: os.hostname(),
-        os: `${os.platform()} ${os.release()}`
-    }
-```
-
-On continue:
+**On continue:**
 - Generate X25519 keypair (automatic, no user input)
 - Write private key to `~/.noorm/identity.key` (chmod 600)
 - Write public key to `~/.noorm/identity.pub`
@@ -236,12 +229,34 @@ Note: `~/.noorm/identity.key` is in the user's home directory, not the project, 
 
 | Event | Payload | When |
 |-------|---------|------|
-| `init:start` | `{ paths }` | Init beginning |
-| `identity:created` | `{ identityHash, name, email, machine }` | Identity generated |
-| `init:directory` | `{ path, created }` | Directory created/verified |
-| `init:settings` | `{ path }` | Settings file created |
-| `init:state` | `{ hasIdentity }` | State initialized |
-| `init:complete` | `{ paths }` | Init finished |
+| `identity:created` | `{ identityHash, name, email, machine }` | Cryptographic identity generated |
+| `state:loaded` | `{ configCount, activeConfig, version }` | State initialized/loaded |
+| `state:persisted` | `{ configCount }` | State saved to disk |
+
+Note: Init-specific events (`init:start`, `init:directory`, etc.) can be added to the observer if detailed progress tracking is needed during initialization.
+
+
+## Core Integration
+
+### Dependencies
+
+| Module | Source | Purpose |
+|--------|--------|---------|
+| StateManager | `src/core/state/` | Initialize encrypted state |
+| SettingsManager | `src/core/settings/` | Create settings.yml |
+| Identity | `src/core/identity/` | Keypair generation, identity creation |
+
+### Init Operations
+
+| Operation | Purpose |
+|-----------|---------|
+| Create directory structure | schema/, changesets/, .noorm/ |
+| Generate identity keypair | X25519 keys in ~/.noorm/ |
+| Initialize state | Empty encrypted state with identity |
+| Create settings.yml | Default project settings |
+| Update .gitignore | Add noorm exclusions |
+
+See: `src/core/state/manager.ts` and `src/core/identity/` for implementation.
 
 
 ## Integration with Config Add
@@ -266,3 +281,19 @@ sequenceDiagram
 
     Init->>Init: Show success
 ```
+
+
+## References
+
+**Documentation:**
+- `docs/identity.md` - Identity system architecture
+- `docs/state.md` - StateManager and encryption
+- `docs/settings.md` - Settings file structure
+
+**Core modules:**
+- `src/core/identity/` - Keypair generation, identity storage
+- `src/core/state/` - StateManager initialization
+- `src/core/settings/` - SettingsManager, defaults
+
+**CLI plans:**
+- `plan/cli/userflow.md` - User journeys, screen mockups, shared components

@@ -25,17 +25,27 @@ The Change module provides screens for managing database changesets - the core u
 
 ```
 Changeset
-├── name: string              # Folder name (e.g., "2024-01-15_add-users")
+├── name: string              # Folder name (e.g., "2025-01-15-add-users")
 ├── path: string              # Absolute path to changeset folder
-├── change/                   # SQL files to apply
-│   └── *.sql
-└── revert/                   # SQL files to rollback
-    └── *.sql
+├── date: Date | null         # Parsed from folder name prefix
+├── description: string       # Description portion of folder name
+├── changeFiles: ChangesetFile[]   # Files in change/ folder
+├── revertFiles: ChangesetFile[]   # Files in revert/ folder
+└── hasChangelog: boolean     # Whether changelog.md exists
 
-ChangesetStatus
-├── applied: boolean          # Whether changeset has been run
-├── appliedAt: Date | null    # When it was applied
-└── appliedBy: string | null  # Who applied it (identity)
+ChangesetFile
+├── filename: string          # e.g., "001_create-table.sql"
+├── path: string              # Absolute path to file
+└── type: 'sql' | 'txt'       # sql/sql.tmpl or txt manifest
+
+ChangesetListItem (from manager.list())
+├── name: string
+├── status: 'pending' | 'success' | 'failed' | 'reverted'
+├── appliedAt: Date | null
+├── appliedBy: string | null
+├── revertedAt: Date | null
+├── isNew: boolean            # Exists on disk but no DB record
+└── orphaned: boolean         # In DB but folder deleted
 ```
 
 
@@ -92,10 +102,10 @@ Shows all changesets with their status (applied/pending).
 │                                         │
 │ Total: 12  Applied: 8  Pending: 4       │
 │                                         │
-│ ✓ 2024-01-10_initial-schema    today    │
-│ ✓ 2024-01-12_add-users         2d ago   │
-│ ○ 2024-01-15_add-roles         pending  │
-│ ○ 2024-01-16_add-permissions   pending  │
+│ ✓ 2025-01-10-initial-schema    today    │
+│ ✓ 2025-01-12-add-users         2d ago   │
+│ ○ 2025-01-15-add-roles         pending  │
+│ ○ 2025-01-16-add-permissions   pending  │
 │                                         │
 │ [a]dd [r]un [v]ert [n]ext [f]f [w]ind   │
 └─────────────────────────────────────────┘
@@ -140,7 +150,7 @@ Creates a new changeset folder with template files.
 **Naming Convention:**
 - Date prefix: `YYYY-MM-DD`
 - Name: lowercase, hyphens, alphanumeric only
-- Example: `2024-01-15_add-user-roles`
+- Example: `2025-01-15-add-user-roles`
 
 
 ### Run Screen
@@ -214,7 +224,7 @@ Reverts multiple changesets in reverse chronological order.
 | Argument | Behavior |
 |----------|----------|
 | `rewind 3` | Revert last 3 applied changesets |
-| `rewind 2024-01-15-add-email` | Revert until (and including) this changeset |
+| `rewind 2025-01-15-add-email` | Revert until (and including) this changeset |
 
 **Flow:**
 1. Parse argument (count or changeset name)
@@ -257,32 +267,54 @@ Phase Flow:
 
 Screens subscribe to core events for progress updates:
 
-```
-changeset:before    { name, configName }
-changeset:after     { name, status, durationMs, filesExecuted, error? }
-changeset:progress  { name, current, total, message }
-```
+| Event | Payload | Description |
+|-------|---------|-------------|
+| `changeset:created` | `{ name, path }` | New changeset scaffolded |
+| `changeset:start` | `{ name, direction, files }` | Execution starting |
+| `changeset:file` | `{ changeset, filepath, index, total }` | File being executed |
+| `changeset:complete` | `{ name, direction, status, durationMs }` | Execution finished |
+| `changeset:skip` | `{ name, reason }` | Changeset skipped |
 
-Progress is displayed via ProgressBar component during execution.
+Progress is displayed via ProgressBar component during execution, subscribing to `changeset:file` events.
 
 
 ## Core Integration
 
-### StateManager
-- `getActiveConfig()` - Get current config for connection/paths
+### Dependencies
 
-### ChangesetManager
-- `list()` - Get all changesets with status
-- `getPending()` - Get unapplied changesets
-- `run(name)` - Apply single changeset
-- `revert(name)` - Rollback single changeset
-- `next(n)` - Apply next N changesets
-- `fastForward()` - Apply all pending
-- `rewind(target)` - Revert changesets (count or name)
+| Module | Source | Purpose |
+|--------|--------|---------|
+| StateManager | `src/core/state/` | Active config, secrets |
+| SettingsManager | `src/core/settings/` | Paths configuration |
+| ChangesetManager | `src/core/changeset/manager.ts` | All changeset operations |
+| Connection | `src/core/connection/` | Database connections |
+| Identity | `src/core/identity/` | User identity resolution |
 
-### Connection
-- Created per-operation, destroyed after
-- Uses config's connection settings
+### ChangesetManager Operations
+
+| Method | Input | Output | Purpose |
+|--------|-------|--------|---------|
+| `list()` | - | `ChangesetListItem[]` | All changesets with merged disk/DB status |
+| `run(name, opts)` | changeset name | `ChangesetResult` | Apply single changeset |
+| `revert(name, opts)` | changeset name | `ChangesetResult` | Rollback single changeset |
+| `next(count, opts)` | number | `BatchChangesetResult` | Apply next N pending |
+| `ff(opts)` | - | `BatchChangesetResult` | Fast-forward all pending |
+| `rewind(target, opts)` | number or name | `BatchChangesetResult` | Revert N or to specific changeset |
+| `getHistory(name?, limit?)` | optional filters | `ChangesetHistoryRecord[]` | Execution history |
+| `remove(name, opts)` | name + `{disk, db}` | void | Delete from disk/database |
+
+### Context Requirements
+
+ChangesetManager requires a `ChangesetContext` containing:
+- Database connection (from Connection factory)
+- Config name (from StateManager)
+- Identity (from Identity resolver)
+- Project root path
+- Changesets directory path (from SettingsManager)
+- Schema directory path (from SettingsManager)
+- Secrets for template rendering (from StateManager)
+
+See: `src/core/changeset/types.ts` for full type definitions.
 
 
 ## Protected Config Handling
@@ -316,3 +348,18 @@ execute         -> error: "{error message from DB}"
 ```
 
 Errors transition screen to `error` phase with message display.
+
+
+## References
+
+**Documentation:**
+- `docs/changeset.md` - Changeset architecture and execution
+- `docs/template.md` - Eta templating for SQL files
+
+**Core modules:**
+- `src/core/changeset/` - ChangesetManager, parser, executor, history
+- `src/core/template/` - Template rendering for .sql.eta files
+- `src/core/runner/` - Shared execution patterns
+
+**CLI plans:**
+- `plan/cli/userflow.md` - User journeys, screen mockups, shared components

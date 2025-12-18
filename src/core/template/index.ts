@@ -4,7 +4,7 @@
  * Provides Eta-based SQL templating with:
  * - Auto-loading data files (JSON5, YAML, CSV, JS/TS)
  * - Inherited helpers via $helpers.ts files
- * - Custom syntax (`{% %}` for code, `<%~ %>` for output)
+ * - Custom syntax (`{% %}` for code, `{%~ %}` for output)
  * - Built-in SQL helpers (quote, escape, include, etc.)
  *
  * @example

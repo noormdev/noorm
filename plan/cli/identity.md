@@ -53,7 +53,7 @@ Displays the current user's identity.
 │                                                                 │
 │  Identity Hash: a1b2c3d4...                                     │
 │  Public Key:    3f8a9b2c...                                     │
-│  Created:       2024-01-15T10:30:00Z                            │
+│  Created:       2025-01-15T10:30:00Z                            │
 │                                                                 │
 │  Known Users: 5                                                 │
 │                                                                 │
@@ -217,10 +217,10 @@ KnownUser (from DB sync)
 
 | Event | Payload | When |
 |-------|---------|------|
-| `identity:viewed` | `{ identityHash }` | Identity screen opened |
-| `identity:created` | `{ identityHash, name, email, machine }` | New identity generated |
-| `identity:exported` | `{ format }` | Public key exported |
-| `identity:list` | `{ count }` | Known users listed |
+| `identity:resolved` | `{ name, email?, source }` | Identity resolved (audit) |
+| `identity:created` | `{ identityHash, name, email, machine }` | New cryptographic identity generated |
+| `identity:synced` | `{ discovered, configName }` | Known users synced from database |
+| `identity:registered` | `{ configName }` | Identity registered in database |
 
 
 ## Key File Locations
@@ -243,11 +243,46 @@ These are in the user's home directory, not the project directory.
 | Private key permission wrong | Warning with fix instructions |
 
 
-## Integration Points
+## Core Integration
+
+### Dependencies
+
+| Module | Source | Purpose |
+|--------|--------|---------|
+| Identity Resolver | `src/core/identity/resolver.ts` | Resolve audit identity |
+| Identity Crypto | `src/core/identity/crypto.ts` | Key generation, encryption |
+| Identity Storage | `src/core/identity/storage.ts` | File-based key storage |
+| StateManager | `src/core/state/` | Store crypto identity, known users |
+
+### Identity Module Operations
+
+| Operation | Source | Purpose |
+|-----------|--------|---------|
+| `resolveIdentity` | resolver.ts | Get audit identity (name/email) |
+| `formatIdentity` | resolver.ts | Format identity as string |
+| `generateKeypair` | crypto.ts | Create X25519 keypair |
+| `encrypt` / `decrypt` | crypto.ts | Config sharing encryption |
+| `loadPrivateKey` / `savePrivateKey` | storage.ts | Key persistence |
+
+See: `src/core/identity/types.ts` for type definitions.
+
+### Integration Points
 
 | Module | Relationship |
 |--------|--------------|
-| StateManager | Stores identity and knownUsers |
-| Config Export | Uses identity for encryption |
-| Connection | Syncs identities on connect |
+| StateManager | Stores crypto identity and knownUsers |
+| Config Export | Uses identity for asymmetric encryption |
+| Connection | Syncs identities on database connect |
 | Init | Creates identity on first run |
+
+
+## References
+
+**Documentation:**
+- `docs/identity.md` - Identity system architecture
+
+**Core modules:**
+- `src/core/identity/` - Resolver, crypto, storage, hash
+
+**CLI plans:**
+- `plan/cli/userflow.md` - User journeys, screen mockups, shared components

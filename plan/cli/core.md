@@ -328,8 +328,8 @@ The CLI operates in two modes:
 
 Activated when:
 - `--headless` or `-H` flag is passed
-- `NOORM_HEADLESS=1` environment variable
-- `CI=1` or common CI environment variables detected
+- `NOORM_HEADLESS=true` environment variable
+- `CI=true` or common CI environment variables detected
 - No TTY available (`!process.stdout.isTTY`)
 
 In headless mode:
@@ -402,9 +402,9 @@ sequenceDiagram
 
 | Variable | Description |
 |----------|-------------|
-| `NOORM_HEADLESS=1` | Force headless mode |
-| `NOORM_JSON=1` | Force JSON output |
-| `NOORM_YES=1` | Skip confirmations |
+| `NOORM_HEADLESS=true` | Force headless mode |
+| `NOORM_JSON=true` | Force JSON output |
+| `NOORM_YES=true` | Skip confirmations |
 | `NOORM_CONFIG=<name>` | Override active config |
 
 
@@ -435,7 +435,7 @@ noorm run:build
 
 # With parameters
 noorm config:edit production
-noorm change:run 2024-01-15_add-users
+noorm change:run 2025-01-15-add-users
 ```
 
 ### Headless Mode
@@ -451,8 +451,23 @@ CI=1 noorm change:ff
 noorm -H --json run:build | jq '.event'
 
 # Skip confirmations on protected config
-noorm -H -y change:run 2024-01-15_migration
+noorm -H -y change:run 2025-01-15-migration
 
 # Dry run preview
 noorm -H --dry-run change:ff
 ```
+
+
+## References
+
+**Documentation:**
+- `docs/cli-router-implementation.md` - Router implementation guide
+- `docs/ink-cheatsheet.md` - Ink/React patterns and components
+- `docs/ink-testing-library-cheatsheet.md` - Testing CLI components
+
+**Core modules:**
+- `src/core/observer.ts` - Central event system for CLI subscriptions
+- `src/core/lifecycle/` - Startup/shutdown, graceful exit handlers
+
+**CLI plans:**
+- `plan/cli/userflow.md` - User journeys, screen mockups, shared components

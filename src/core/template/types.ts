@@ -17,7 +17,7 @@ export interface BuiltInHelpers {
      *
      * @example
      * ```sql
-     * <%~ await $.include('lib/uuid_function.sql') %>
+     * {%~ await $.include('lib/uuid_function.sql') %}
      * ```
      */
     include: (path: string) => Promise<string>
@@ -28,7 +28,7 @@ export interface BuiltInHelpers {
      *
      * @example
      * ```sql
-     * WHERE name = '<%~ $.escape(userName) %>'
+     * WHERE name = '{%~ $.escape(userName) %}'
      * ```
      */
     escape: (value: string) => string
@@ -38,7 +38,7 @@ export interface BuiltInHelpers {
      *
      * @example
      * ```sql
-     * INSERT INTO users (name) VALUES (<%~ $.quote(userName) %>);
+     * INSERT INTO users (name) VALUES ({%~ $.quote(userName) %});
      * ```
      */
     quote: (value: string | number | boolean | null) => string
@@ -48,7 +48,7 @@ export interface BuiltInHelpers {
      *
      * @example
      * ```sql
-     * INSERT INTO config (data) VALUES ('<%~ $.json(configObject) %>');
+     * INSERT INTO config (data) VALUES ('{%~ $.json(configObject) %}');
      * ```
      */
     json: (value: unknown) => string
@@ -58,7 +58,7 @@ export interface BuiltInHelpers {
      *
      * @example
      * ```sql
-     * INSERT INTO logs (created_at) VALUES ('<%~ $.now() %>');
+     * INSERT INTO logs (created_at) VALUES ('{%~ $.now() %}');
      * ```
      */
     now: () => string
@@ -68,7 +68,7 @@ export interface BuiltInHelpers {
      *
      * @example
      * ```sql
-     * INSERT INTO users (id) VALUES ('<%~ $.uuid() %>');
+     * INSERT INTO users (id) VALUES ('{%~ $.uuid() %}');
      * ```
      */
     uuid: () => string

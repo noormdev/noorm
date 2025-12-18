@@ -211,14 +211,15 @@ Objects are dropped in reverse creation order to handle dependencies correctly.
 
 ## Observer Events
 
-```typescript
-// Create events
-'db:create:complete' -> { config, success, filesExecuted, duration }
-
-// Destroy events
-'db:destroy:object'   -> { config, path, success, error? }
-'db:destroy:complete' -> { config, success, objectsDropped, trackingReset, duration }
-```
+| Event | Payload | Description |
+|-------|---------|-------------|
+| `db:creating` | `{ configName, database }` | Database creation starting |
+| `db:created` | `{ configName, database, durationMs }` | Database created |
+| `db:destroying` | `{ configName, database }` | Database destruction starting |
+| `db:destroyed` | `{ configName, database }` | Database destroyed |
+| `db:bootstrap` | `{ configName, tables }` | noorm tracking tables created |
+| `build:start` | `{ schemaPath, fileCount }` | Schema build starting |
+| `build:complete` | `{ status, filesRun, filesSkipped, filesFailed, durationMs }` | Schema build complete |
 
 
 ## Headless Mode
@@ -233,10 +234,38 @@ noorm db:destroy [config] [--drop-tables] [--reset-tracking] [--yes]
 The `--yes` flag bypasses protected confirmation (use with caution).
 
 
-## Dependencies
+## Core Integration
 
-- **StateManager** - Get active configuration
-- **ConnectionFactory** - Create database connections
-- **Runner** - Execute build operations (create only)
-- **Observer** - Emit lifecycle events
-- **ProtectedConfirm** - Confirmation for dangerous operations
+### Dependencies
+
+| Module | Source | Purpose |
+|--------|--------|---------|
+| StateManager | `src/core/state/` | Active config retrieval |
+| Connection | `src/core/connection/` | Database connections |
+| Runner | `src/core/runner/` | Schema build on create |
+| DB | `src/core/db/` | Create/destroy operations |
+| Observer | `src/core/observer.ts` | Lifecycle events |
+
+### DB Module Operations
+
+| Operation | Purpose |
+|-----------|---------|
+| `createDatabase` | Create database + bootstrap tracking tables |
+| `destroyDatabase` | Drop objects + optionally reset tracking |
+| `bootstrapTables` | Create __noorm_* tracking tables |
+
+See: `src/core/db/` for implementation details.
+
+
+## References
+
+**Documentation:**
+- `docs/runner.md` - Runner for schema build on create
+
+**Core modules:**
+- `src/core/connection/` - Connection factory
+- `src/core/runner/` - Schema build execution
+- `src/core/shared/` - Tracking table definitions
+
+**CLI plans:**
+- `plan/cli/userflow.md` - User journeys, screen mockups, shared components

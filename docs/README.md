@@ -122,6 +122,7 @@ Core modules emit events. The CLI subscribes. This keeps business logic separate
 
 | Document | Description |
 |----------|-------------|
+| [Data Model](./datamodel.md) | Complete type reference, database schemas, file formats |
 | [Identity](./identity.md) | Audit tracking, cryptographic identity, secure sharing |
 | [State](./state.md) | Encrypted storage, configs, secrets, persistence |
 | [Config](./config.md) | Resolution, validation, protection, stages |

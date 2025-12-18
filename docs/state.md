@@ -180,7 +180,7 @@ await state.deleteGlobalSecret('ANTHROPIC_API_KEY')
 Secrets are available in Eta templates via the `$` context:
 
 ```sql
--- schema/users/create-readonly.sql.eta
+-- schema/users/create-readonly.sql.tmpl
 CREATE USER <%~ $.secrets.READONLY_USER %>
 WITH PASSWORD '<%~ $.secrets.READONLY_PASSWORD %>';
 
@@ -231,9 +231,11 @@ await state.addKnownUser({
     identityHash: 'b4e3c2d8...',
     name: 'Bob',
     email: 'bob@example.com',
-    publicKey: 'MCowBQYDK2...',
-    source: 'db-sync',
-    discoveredAt: new Date().toISOString(),
+    publicKey: 'x25519-hex...',
+    machine: 'bob-workstation',
+    os: 'linux 5.15.0',
+    lastSeen: new Date().toISOString(),
+    source: 'prod-db',  // Config name where discovered
 })
 
 // Batch add (more efficient for sync operations)

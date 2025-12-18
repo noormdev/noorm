@@ -36,7 +36,7 @@ import { buildContext } from './context.js'
  *
  * Custom delimiters:
  * - `{% %}` for JavaScript code (instead of `<% %>`)
- * - `<%~ %>` for raw output (same as Eta default)
+ * - `{%~ %}` for raw output (instead of `<%~ %>`)
  * - `$` as the context variable (instead of `it`)
  */
 const eta = new Eta({
@@ -79,7 +79,7 @@ export function isTemplate(filepath: string): boolean {
  * @example
  * ```typescript
  * const sql = await renderTemplate(
- *     '{% for (const role of $.roles) { %}INSERT INTO roles (name) VALUES (<%~ $.quote(role) %>);\n{% } %}',
+ *     '{% for (const role of $.roles) { %}INSERT INTO roles (name) VALUES ({%~ $.quote(role) %});\n{% } %}',
  *     { roles: ['admin', 'user'], quote: sqlQuote }
  * )
  * ```

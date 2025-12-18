@@ -68,63 +68,102 @@
 
 ## Phase 4: CLI
 
-- [ ] **cli/core.md** - Router, app shell, global keyboard, headless mode
-  - Basic `src/App.tsx` exists with simple screen switching
-  - Missing: proper router, shell, global keyboard shortcuts, headless mode
+**Status:** CLI core implemented. Plans updated with Core Integration sections.
 
-- [ ] **cli/app-context.md** - Centralized state provider
-  - NOT IMPLEMENTED
-  - No AppContext, no connection lifecycle management, no status bar
+- [x] **cli/core.md** - Router, app shell, keyboard, focus stack, headless mode
+  - `src/cli/types.ts` - Route types, params, focus stack, keyboard types
+  - `src/cli/router.tsx` - Router context with history-based navigation
+  - `src/cli/focus.tsx` - Focus stack for keyboard input management
+  - `src/cli/keyboard.tsx` - Global keyboard handler, list navigation hooks
+  - `src/cli/screens.tsx` - Screen registry mapping routes to components
+  - `src/cli/app.tsx` - App shell with header, content area, status bar
+  - `src/cli/headless.ts` - Headless mode for CI/CD with JSON/human output
+  - `src/cli/index.tsx` - CLI entry point with meow argument parsing
+  - `src/cli/screens/home.tsx` - Placeholder home screen
+  - `src/cli/screens/not-found.tsx` - 404 screen for unregistered routes
 
-- [ ] **cli/components.md** - Shared UI components (FilePicker, etc.)
-  - NOT IMPLEMENTED
-  - No shared components exist
+All CLI plans include:
+- Dependencies tables linking to `src/core/` modules
+- High-level operation tables (not implementation code)
+- Context requirements referencing actual type definitions
+- File references for implementation details
 
-- [ ] **cli/init.md** - Project initialization command
-  - NOT IMPLEMENTED
+### Plan Status
 
-- [ ] **cli/home.md** - Home screen, tab navigation
-  - Basic `src/screens/HomeScreen.tsx` exists
-  - Missing: tab navigation, proper home screen features
+| Plan | Status | Core Integration |
+|------|--------|------------------|
+| `cli/core.md` | ✅ Ready | Router, keyboard, focus stack |
+| `cli/app-context.md` | ✅ Ready | Module integration tables |
+| `cli/components.md` | ✅ Ready | Component hierarchy, patterns |
+| `cli/init.md` | ✅ Ready | Identity, StateManager, SettingsManager |
+| `cli/home.md` | ✅ Ready | Status widgets, data sources |
+| `cli/config.md` | ✅ Ready | StateManager CRUD, export/import |
+| `cli/secret.md` | ✅ Ready | StateManager secrets API |
+| `cli/settings.md` | ✅ Ready | SettingsManager operations |
+| `cli/identity.md` | ✅ Ready | Identity resolver, crypto, storage |
+| `cli/change.md` | ✅ Ready | ChangesetManager operations |
+| `cli/run.md` | ✅ Ready | Runner functions, contexts |
+| `cli/db.md` | ✅ Ready | DB module operations |
+| `cli/lock.md` | ✅ Ready | LockManager operations |
 
-- [ ] **cli/config.md** - Config screens (add, edit, rm, list, cp, use, validate)
-  - NOT IMPLEMENTED
+### Implementation Status
 
-- [ ] **cli/secret.md** - Secret screens (list, set, rm)
-  - NOT IMPLEMENTED
-
-- [ ] **cli/settings.md** - Settings screens (view, edit, init)
-  - Basic `src/screens/SettingsScreen.tsx` exists
-  - Missing: proper view, edit, init functionality per spec
-
-- [ ] **cli/change.md** - Changeset screens (add, edit, rm, list, run, revert, rewind, next, ff)
-  - NOT IMPLEMENTED
-
-- [ ] **cli/run.md** - Run screens (list, build, exec, file, dir)
-  - NOT IMPLEMENTED
-
-- [ ] **cli/db.md** - DB screens (create, destroy)
-  - NOT IMPLEMENTED
-
-- [ ] **cli/lock.md** - Lock screens (status, acquire, release, force-release)
-  - NOT IMPLEMENTED
+| Plan | Implemented |
+|------|-------------|
+| `cli/core.md` | ✅ Complete |
+| `cli/app-context.md` | ❌ Not implemented |
+| `cli/components.md` | ❌ Not implemented |
+| `cli/init.md` | ❌ Not implemented |
+| `cli/home.md` | ❌ Basic screen only |
+| `cli/config.md` | ❌ Not implemented |
+| `cli/secret.md` | ❌ Not implemented |
+| `cli/settings.md` | ❌ Basic screen only |
+| `cli/identity.md` | ❌ Not implemented |
+| `cli/change.md` | ❌ Not implemented |
+| `cli/run.md` | ❌ Not implemented |
+| `cli/db.md` | ❌ Not implemented |
+| `cli/lock.md` | ❌ Not implemented |
 
 
 ## Summary
 
-| Phase | Complete | Total | Status |
-|-------|----------|-------|--------|
-| Phase 0: Utilities | 3 | 3 | ✅ Complete |
-| Phase 1: Foundation | 5 | 5 | ✅ Complete |
-| Phase 2: Core Features | 3 | 3 | ✅ Complete |
-| Phase 3: Execution | 2 | 2 | ✅ Complete |
-| Phase 4: CLI | 0 | 12 | ❌ Not Started |
+| Phase | Core Complete | Plans Ready | Status |
+|-------|---------------|-------------|--------|
+| Phase 0: Utilities | 3/3 | - | ✅ Complete |
+| Phase 1: Foundation | 5/5 | - | ✅ Complete |
+| Phase 2: Core Features | 3/3 | - | ✅ Complete |
+| Phase 3: Execution | 2/2 | - | ✅ Complete |
+| Phase 4: CLI | 1/13 | 13/13 | 🟡 In Progress |
 
-**Overall: 13/25 modules implemented (52%)**
+**Core modules: 13/13 implemented (100%)**
+**CLI modules: 1/13 implemented**
 
 
 ## Next Steps
 
-1. **cli/core.md** - Router, app shell, global keyboard, headless mode
-2. **cli/app-context.md** - Centralized state provider
-3. Then proceed to individual CLI screens
+### Implementation Order
+
+| # | Status | Module | Purpose | Dependencies |
+|---|--------|--------|---------|--------------|
+| 1 | ✅ | `cli/core.md` | Router, app shell, keyboard, focus stack | None |
+| 2 | ⬜ | `cli/app-context.md` | Centralized state/context provider | core |
+| 3 | ⬜ | `cli/components.md` | Shared UI (SelectList, Form, FilePicker) | core, app-context |
+| 4 | ⬜ | `cli/init.md` | Project initialization | components |
+| 5 | ⬜ | `cli/config.md` | Config CRUD screens | components |
+| 6 | ⬜ | `cli/home.md` | Dashboard with status widgets | components, config |
+| 7 | ⬜ | `cli/change.md` | Changeset management screens | components |
+| 8 | ⬜ | `cli/run.md` | Build/file/dir execution screens | components |
+| 9 | ⬜ | `cli/db.md` | Database create/destroy screens | components, run |
+| 10 | ⬜ | `cli/lock.md` | Lock status/acquire/release screens | components |
+| 11 | ⬜ | `cli/settings.md` | Settings view/edit screens | components |
+| 12 | ⬜ | `cli/secret.md` | Secret management screens | components, config |
+| 13 | ⬜ | `cli/identity.md` | Identity screens | components |
+
+**Legend:** ⬜ Not started · 🟡 In progress · ✅ Complete
+
+**Rationale:**
+- **core → app-context → components** - Foundation must come first
+- **init → config** - Need config before anything else works
+- **home** - Dashboard needs config to show status
+- **change → run → db** - Core operations in order of frequency
+- **lock → settings → secret → identity** - Supporting features last

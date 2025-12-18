@@ -14,13 +14,13 @@ Every database operation records who performed it. This identity comes from mult
 
 | Priority | Source | When Used |
 |----------|--------|-----------|
-| 1 | Config override | `identity` field in config |
-| 2 | Crypto identity | If set up in state |
-| 3 | Git config | `git config user.name` / `user.email` |
-| 4 | Environment | `NOORM_USER` / `NOORM_EMAIL` |
-| 5 | System | OS username + hostname |
+| 1 | Config override | `identity` field in config (for bots/services) |
+| 2 | Crypto identity | If set up in state (normal user) |
+| 3 | Environment | `NOORM_IDENTITY` env var (CI pipelines) |
+| 4 | Git config | `git config user.name` / `user.email` |
+| 5 | System | OS username |
 
-The resolver tries each source until it finds a valid name. This means zero configuration for most users - git config "just works."
+The resolver tries each source until it finds a valid name. This means zero configuration for most users—git config "just works."
 
 ```typescript
 import { resolveIdentity } from './core/identity'

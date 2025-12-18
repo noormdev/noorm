@@ -104,23 +104,23 @@ stateDiagram-v2
 
 2. Validate Input
    └── Check file/directory exists
-   └── Check file extension (.sql, .sql.eta)
+   └── Check file extension (.sql, .sql.tmpl)
 
 3. Protection Check
    └── If config.protected && !dryRun
         └── Require ProtectedConfirm
 
 4. Create Connection
-   └── createConnection(config.connection)
-        └── Returns Kysely instance
+   └── createConnection(config.connection, config.name)
+        └── Returns { db: Kysely, dialect: string }
 
 5. Execute
-   └── Runner.build() | Runner.runFile() | Runner.runDir()
+   └── runBuild(context, options) | runFile(context, filepath, options) | runDir(context, dirpath, options)
         └── Emits progress events
-        └── Returns result
+        └── Returns BatchResult or FileResult
 
 6. Cleanup
-   └── connection.destroy()
+   └── db.destroy()
 ```
 
 
@@ -130,11 +130,47 @@ Run screens subscribe to observer events for real-time progress:
 
 | Event | Data | Purpose |
 |-------|------|---------|
-| `build:start` | `{ total: number }` | Initialize progress bar |
-| `file:before` | `{ filepath, checksum }` | Show current file |
-| `file:after` | `{ filepath, status, durationMs }` | Update progress |
-| `file:skip` | `{ filepath, reason }` | Track skipped files |
-| `build:complete` | `{ results }` | Clear progress |
+| `build:start` | `{ schemaPath, fileCount }` | Initialize progress bar |
+| `file:before` | `{ filepath, checksum, configName }` | Show current file |
+| `file:after` | `{ filepath, status, durationMs, error? }` | Update progress |
+| `file:skip` | `{ filepath, reason }` | Track skipped files (`'unchanged'` or `'already-run'`) |
+| `file:dry-run` | `{ filepath, outputPath }` | File rendered to tmp/ |
+| `build:complete` | `{ status, filesRun, filesSkipped, filesFailed, durationMs }` | Show summary |
+| `run:file` | `{ filepath, configName }` | Single file execution started |
+| `run:dir` | `{ dirpath, fileCount, configName }` | Directory execution started |
+
+
+## Core Integration
+
+### Dependencies
+
+| Module | Source | Purpose |
+|--------|--------|---------|
+| StateManager | `src/core/state/` | Active config, secrets |
+| SettingsManager | `src/core/settings/` | Schema path configuration |
+| Runner | `src/core/runner/` | Build, file, dir execution |
+| Connection | `src/core/connection/` | Database connections |
+| Identity | `src/core/identity/` | User identity resolution |
+
+### Runner Operations
+
+| Function | Input | Output | Purpose |
+|----------|-------|--------|---------|
+| `runBuild` | context, schemaPath, opts | `BatchResult` | Execute all files in schema dir |
+| `runFile` | context, filepath, opts | `FileResult` | Execute single SQL file |
+| `runDir` | context, dirpath, opts | `BatchResult` | Execute all files in directory |
+| `preview` | context, filepaths, output? | `FileResult[]` | Render SQL without executing |
+
+### Context Requirements
+
+Runner functions require a `RunContext` containing:
+- Database connection (from Connection factory)
+- Config name (from StateManager)
+- Identity (from Identity resolver)
+- Project root path
+- Secrets for template rendering (from StateManager)
+
+See: `src/core/runner/types.ts` for full type definitions.
 
 
 ## Screen Specifications
@@ -193,7 +229,7 @@ stateDiagram-v2
 
 Uses the FilePicker component (see [components.md](./components.md)) with:
 - `basePath`: Schema directory from active config
-- `filter`: Files ending in `.sql` or `.sql.eta`
+- `filter`: Files ending in `.sql` or `.sql.tmpl`
 - Multi-select enabled
 
 **Layout:**
@@ -230,7 +266,7 @@ Uses the FilePicker component (see [components.md](./components.md)) with:
 **Validation**:
 - Path must be non-empty
 - File must exist
-- Extension must be `.sql` or `.sql.eta`
+- Extension must be `.sql` or `.sql.tmpl`
 
 **Options**:
 - `force`: Ignore checksum, re-run even if unchanged
@@ -298,8 +334,8 @@ Run screens respect environment variables for default options:
 
 | Variable | Effect |
 |----------|--------|
-| `NOORM_FORCE=1` | Default force option to true |
-| `NOORM_DRY_RUN=1` | Default dry-run option to true |
+| `NOORM_FORCE=true` | Default force option to true |
+| `NOORM_DRY_RUN=true` | Default dry-run option to true |
 
 
 ## Error Handling
@@ -313,3 +349,18 @@ All screens handle errors consistently:
 Error state shows:
 - Error message in Alert component
 - "Press Esc to go back" hint
+
+
+## References
+
+**Documentation:**
+- `docs/runner.md` - Runner architecture and execution
+- `docs/template.md` - Eta templating for SQL files
+
+**Core modules:**
+- `src/core/runner/` - runBuild, runFile, runDir functions
+- `src/core/template/` - Template rendering
+- `src/core/connection/` - Database connections
+
+**CLI plans:**
+- `plan/cli/userflow.md` - User journeys, screen mockups, shared components

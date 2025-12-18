@@ -131,21 +131,52 @@ resolveConfig(options):
 
 ## Environment Variables
 
-All config properties can be overridden via environment variables:
+All config properties can be overridden via `NOORM_*` environment variables. The variable name maps directly to the nested config structure using underscore (`_`) as the separator.
 
-| Variable | Maps To |
-|----------|---------|
-| `NOORM_DIALECT` | connection.dialect |
-| `NOORM_HOST` | connection.host |
-| `NOORM_PORT` | connection.port |
-| `NOORM_DATABASE` | connection.database |
-| `NOORM_USER` | connection.user |
-| `NOORM_PASSWORD` | connection.password |
-| `NOORM_SSL` | connection.ssl |
-| `NOORM_SCHEMA_PATH` | paths.schema |
-| `NOORM_CHANGESET_PATH` | paths.changesets |
-| `NOORM_PROTECTED` | protected |
-| `NOORM_IDENTITY` | identity |
+**Naming Convention:**
+
+```
+NOORM_{PATH}_{TO}_{VALUE}  ->  { path: { to: { value: '' } } }
+```
+
+**Connection variables:**
+
+| Variable | Maps To | Example |
+|----------|---------|---------|
+| `NOORM_CONNECTION_DIALECT` | connection.dialect | `postgres` |
+| `NOORM_CONNECTION_HOST` | connection.host | `localhost` |
+| `NOORM_CONNECTION_PORT` | connection.port | `5432` |
+| `NOORM_CONNECTION_DATABASE` | connection.database | `myapp` |
+| `NOORM_CONNECTION_USER` | connection.user | `admin` |
+| `NOORM_CONNECTION_PASSWORD` | connection.password | `secret` |
+| `NOORM_CONNECTION_SSL` | connection.ssl | `true` |
+| `NOORM_CONNECTION_POOL_MIN` | connection.pool.min | `2` |
+| `NOORM_CONNECTION_POOL_MAX` | connection.pool.max | `20` |
+
+**Path variables:**
+
+| Variable | Maps To | Example |
+|----------|---------|---------|
+| `NOORM_PATHS_SCHEMA` | paths.schema | `./db/schema` |
+| `NOORM_PATHS_CHANGESETS` | paths.changesets | `./db/changesets` |
+
+**Top-level variables:**
+
+| Variable | Maps To | Example |
+|----------|---------|---------|
+| `NOORM_NAME` | name | `production` |
+| `NOORM_TYPE` | type | `remote` |
+| `NOORM_PROTECTED` | protected | `true` |
+| `NOORM_IDENTITY` | identity | `deploy-bot` |
+| `NOORM_isTest` | isTest | `true` |
+
+**Note on camelCase properties:** For properties like `isTest`, preserve the camelCase in the env var name: `NOORM_isTest` (not `NOORM_IS_TEST`). The underscore separator splits words, so `IS_TEST` becomes `{ is: { test: '' } }`.
+
+**Type coercion:**
+
+- Numbers: `'5432'` → `5432`
+- Booleans: `'true'`/`'false'` → `true`/`false` (use strings, not `'1'`/`'0'`)
+- Passwords: Always kept as strings (never converted)
 
 **Behavior variables** (not mapped to config):
 
@@ -237,22 +268,41 @@ flowchart TD
 
 ## CI/CD Mode
 
-When running in CI (`CI=1` or `-H` flag), configs can be built entirely from environment variables:
+When running in CI (`CI=1` or `-H` flag), configs can be built entirely from environment variables. No stored config or settings.yml required.
 
-```
-CI Pipeline:
-    1. Set NOORM_* environment variables
-    2. Run: noorm config ci [name]
-       - Creates config from env vars
-       - Marks as test if CI=1
-       - Sets as active
-    3. Run: noorm run build
-       - Uses the CI config
+```bash
+# Example CI pipeline
+export NOORM_CONNECTION_DIALECT=postgres
+export NOORM_CONNECTION_HOST=db.ci.example.com
+export NOORM_CONNECTION_PORT=5432
+export NOORM_CONNECTION_DATABASE=myapp_test
+export NOORM_CONNECTION_USER=ci_user
+export NOORM_CONNECTION_PASSWORD=$DB_PASSWORD
+export NOORM_PATHS_SCHEMA=./db/schema
+export NOORM_isTest=true
+
+# Run directly - no config file needed
+noorm run build
 ```
 
-**Minimum required env vars for CI:**
-- `NOORM_DIALECT`
-- `NOORM_DATABASE`
+**How it works:**
+
+1. Set `NOORM_*` environment variables
+2. noorm detects env-only mode when no stored config exists
+3. Config is built from env vars + defaults
+4. Run any noorm command
+
+**Minimum required env vars:**
+
+- `NOORM_CONNECTION_DIALECT` (postgres, mysql, sqlite, mssql)
+- `NOORM_CONNECTION_DATABASE`
+
+**Optional: Create named config from env vars:**
+
+```bash
+noorm config ci [name]     # Creates stored config from env vars
+    --set-active           # Default: true
+```
 
 
 ## CLI Commands

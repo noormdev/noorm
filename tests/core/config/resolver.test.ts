@@ -90,12 +90,23 @@ describe('config: resolver', () => {
 
     beforeEach(() => {
 
-        // Backup and clear relevant env vars
+        // Backup and clear relevant env vars (using nested naming convention)
         const envVars = [
-            'NOORM_DIALECT', 'NOORM_HOST', 'NOORM_PORT', 'NOORM_DATABASE',
-            'NOORM_USER', 'NOORM_PASSWORD', 'NOORM_SSL',
-            'NOORM_SCHEMA_PATH', 'NOORM_CHANGESET_PATH',
-            'NOORM_CONFIG', 'NOORM_PROTECTED', 'NOORM_IDENTITY',
+            // Connection
+            'NOORM_CONNECTION_DIALECT',
+            'NOORM_CONNECTION_HOST',
+            'NOORM_CONNECTION_PORT',
+            'NOORM_CONNECTION_DATABASE',
+            'NOORM_CONNECTION_USER',
+            'NOORM_CONNECTION_PASSWORD',
+            'NOORM_CONNECTION_SSL',
+            // Paths
+            'NOORM_PATHS_SCHEMA',
+            'NOORM_PATHS_CHANGESETS',
+            // Top-level
+            'NOORM_CONFIG',
+            'NOORM_PROTECTED',
+            'NOORM_IDENTITY',
         ]
 
         for (const key of envVars) {
@@ -207,8 +218,8 @@ describe('config: resolver', () => {
 
         it('should merge env vars over stored config', () => {
 
-            process.env['NOORM_HOST'] = 'override.local'
-            process.env['NOORM_PORT'] = '9999'
+            process.env['NOORM_CONNECTION_HOST'] = 'override.local'
+            process.env['NOORM_CONNECTION_PORT'] = '9999'
 
             const stored = createConfig({
                 name: 'dev',
@@ -233,7 +244,7 @@ describe('config: resolver', () => {
 
         it('should merge flags over env vars', () => {
 
-            process.env['NOORM_HOST'] = 'from-env'
+            process.env['NOORM_CONNECTION_HOST'] = 'from-env'
 
             const stored = createConfig({ name: 'dev' })
             const state = createMockState({
@@ -266,7 +277,7 @@ describe('config: resolver', () => {
         it('should validate merged config', () => {
 
             // Config with invalid port from env var
-            process.env['NOORM_PORT'] = '99999'
+            process.env['NOORM_CONNECTION_PORT'] = '99999'
 
             const stored = createConfig({ name: 'dev' })
             const state = createMockState({
@@ -285,10 +296,18 @@ describe('config: resolver', () => {
 
             // Ensure all env vars are cleared before each env-only test
             const envVars = [
-                'NOORM_DIALECT', 'NOORM_HOST', 'NOORM_PORT', 'NOORM_DATABASE',
-                'NOORM_USER', 'NOORM_PASSWORD', 'NOORM_SSL',
-                'NOORM_SCHEMA_PATH', 'NOORM_CHANGESET_PATH',
-                'NOORM_CONFIG', 'NOORM_PROTECTED', 'NOORM_IDENTITY',
+                'NOORM_CONNECTION_DIALECT',
+                'NOORM_CONNECTION_HOST',
+                'NOORM_CONNECTION_PORT',
+                'NOORM_CONNECTION_DATABASE',
+                'NOORM_CONNECTION_USER',
+                'NOORM_CONNECTION_PASSWORD',
+                'NOORM_CONNECTION_SSL',
+                'NOORM_PATHS_SCHEMA',
+                'NOORM_PATHS_CHANGESETS',
+                'NOORM_CONFIG',
+                'NOORM_PROTECTED',
+                'NOORM_IDENTITY',
             ]
             for (const key of envVars) {
 
@@ -298,8 +317,8 @@ describe('config: resolver', () => {
 
         it('should create config from env vars only', () => {
 
-            process.env['NOORM_DIALECT'] = 'sqlite'
-            process.env['NOORM_DATABASE'] = ':memory:'
+            process.env['NOORM_CONNECTION_DIALECT'] = 'sqlite'
+            process.env['NOORM_CONNECTION_DATABASE'] = ':memory:'
 
             const state = createMockState()  // Empty state
 
@@ -313,7 +332,7 @@ describe('config: resolver', () => {
 
         it('should require dialect and database for env-only', () => {
 
-            process.env['NOORM_DIALECT'] = 'postgres'
+            process.env['NOORM_CONNECTION_DIALECT'] = 'postgres'
             // Missing database
 
             const state = createMockState()
@@ -325,8 +344,8 @@ describe('config: resolver', () => {
 
         it('should apply defaults in env-only mode', () => {
 
-            process.env['NOORM_DIALECT'] = 'sqlite'
-            process.env['NOORM_DATABASE'] = ':memory:'
+            process.env['NOORM_CONNECTION_DIALECT'] = 'sqlite'
+            process.env['NOORM_CONNECTION_DATABASE'] = ':memory:'
 
             const state = createMockState()
 
@@ -339,8 +358,8 @@ describe('config: resolver', () => {
 
         it('should validate env-only config', () => {
 
-            process.env['NOORM_DIALECT'] = 'postgres'
-            process.env['NOORM_DATABASE'] = 'test'
+            process.env['NOORM_CONNECTION_DIALECT'] = 'postgres'
+            process.env['NOORM_CONNECTION_DATABASE'] = 'test'
 
             const state = createMockState()
 
@@ -351,8 +370,8 @@ describe('config: resolver', () => {
 
         it('should fail validation when host explicitly cleared', () => {
 
-            process.env['NOORM_DIALECT'] = 'postgres'
-            process.env['NOORM_DATABASE'] = 'test'
+            process.env['NOORM_CONNECTION_DIALECT'] = 'postgres'
+            process.env['NOORM_CONNECTION_DATABASE'] = 'test'
 
             const state = createMockState()
 

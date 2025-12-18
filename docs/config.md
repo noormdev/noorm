@@ -67,23 +67,46 @@ interface Config {
 
 ## Environment Variables
 
-Every config property maps to an environment variable:
+Every config property maps to an environment variable using nested naming. Underscores separate nesting levels:
+
+```
+NOORM_{PATH}_{TO}_{VALUE}  →  { path: { to: { value: '' } } }
+```
+
+**Connection variables:**
 
 | Variable | Config Path | Notes |
 |----------|-------------|-------|
-| `NOORM_DIALECT` | `connection.dialect` | postgres, mysql, sqlite, mssql |
-| `NOORM_HOST` | `connection.host` | |
-| `NOORM_PORT` | `connection.port` | Parsed as integer |
-| `NOORM_DATABASE` | `connection.database` | |
-| `NOORM_USER` | `connection.user` | |
-| `NOORM_PASSWORD` | `connection.password` | |
-| `NOORM_SSL` | `connection.ssl` | '1' or 'true' for boolean |
-| `NOORM_SCHEMA_PATH` | `paths.schema` | |
-| `NOORM_CHANGESET_PATH` | `paths.changesets` | |
-| `NOORM_PROTECTED` | `protected` | '1' or 'true' |
-| `NOORM_IDENTITY` | `identity` | |
+| `NOORM_CONNECTION_DIALECT` | `connection.dialect` | postgres, mysql, sqlite, mssql |
+| `NOORM_CONNECTION_HOST` | `connection.host` | |
+| `NOORM_CONNECTION_PORT` | `connection.port` | Auto-parsed as integer |
+| `NOORM_CONNECTION_DATABASE` | `connection.database` | |
+| `NOORM_CONNECTION_USER` | `connection.user` | |
+| `NOORM_CONNECTION_PASSWORD` | `connection.password` | Kept as string |
+| `NOORM_CONNECTION_SSL` | `connection.ssl` | Use 'true'/'false' |
+| `NOORM_CONNECTION_POOL_MIN` | `connection.pool.min` | |
+| `NOORM_CONNECTION_POOL_MAX` | `connection.pool.max` | |
 
-Behavior variables (not merged into config):
+**Path variables:**
+
+| Variable | Config Path |
+|----------|-------------|
+| `NOORM_PATHS_SCHEMA` | `paths.schema` |
+| `NOORM_PATHS_CHANGESETS` | `paths.changesets` |
+
+**Top-level variables:**
+
+| Variable | Config Path | Notes |
+|----------|-------------|-------|
+| `NOORM_NAME` | `name` | |
+| `NOORM_TYPE` | `type` | 'local' or 'remote' |
+| `NOORM_PROTECTED` | `protected` | Use 'true'/'false' |
+| `NOORM_IDENTITY` | `identity` | |
+| `NOORM_isTest` | `isTest` | camelCase preserved |
+
+**Note:** For camelCase properties like `isTest`, preserve the case: `NOORM_isTest` (not `NOORM_IS_TEST`).
+
+**Behavior variables** (not merged into config):
 
 | Variable | Purpose |
 |----------|---------|
@@ -94,7 +117,7 @@ Behavior variables (not merged into config):
 ```bash
 # CI/CD example: use stored config with overridden host
 export NOORM_CONFIG=staging
-export NOORM_HOST=db.ci-runner.local
+export NOORM_CONNECTION_HOST=db.ci-runner.local
 noorm run build
 ```
 
@@ -115,7 +138,7 @@ Resolution follows this flow:
    - Active config in state
 
 2. **If no name found**, check if env vars provide enough to run:
-   - Need at least `NOORM_DIALECT` and `NOORM_DATABASE`
+   - Need at least `NOORM_CONNECTION_DIALECT` and `NOORM_CONNECTION_DATABASE`
    - If yes, build config from env only (named `__env__`)
    - If no, return `null`
 
@@ -138,8 +161,8 @@ state.setActiveConfig('dev')
 resolveConfig(state)  // uses 'dev'
 
 // Env-only (CI mode)
-process.env.NOORM_DIALECT = 'postgres'
-process.env.NOORM_DATABASE = 'ci_test'
+process.env.NOORM_CONNECTION_DIALECT = 'postgres'
+process.env.NOORM_CONNECTION_DATABASE = 'ci_test'
 resolveConfig(state)  // creates __env__ config
 ```
 
@@ -192,7 +215,11 @@ Action classification:
 |--------|-------------------|
 | `change:run` | Requires confirmation |
 | `change:revert` | Requires confirmation |
+| `change:ff` | Requires confirmation |
+| `change:next` | Requires confirmation |
 | `run:build` | Requires confirmation |
+| `run:file` | Requires confirmation |
+| `run:dir` | Requires confirmation |
 | `db:create` | Requires confirmation |
 | `db:destroy` | **Blocked entirely** |
 | `config:rm` | Requires confirmation |
@@ -298,11 +325,11 @@ In CI pipelines, configs can be built entirely from environment variables:
 ```bash
 # GitHub Actions example
 env:
-    NOORM_DIALECT: postgres
-    NOORM_HOST: ${{ secrets.DB_HOST }}
-    NOORM_DATABASE: ${{ secrets.DB_NAME }}
-    NOORM_USER: ${{ secrets.DB_USER }}
-    NOORM_PASSWORD: ${{ secrets.DB_PASSWORD }}
+    NOORM_CONNECTION_DIALECT: postgres
+    NOORM_CONNECTION_HOST: ${{ secrets.DB_HOST }}
+    NOORM_CONNECTION_DATABASE: ${{ secrets.DB_NAME }}
+    NOORM_CONNECTION_USER: ${{ secrets.DB_USER }}
+    NOORM_CONNECTION_PASSWORD: ${{ secrets.DB_PASSWORD }}
     NOORM_YES: 1
 
 steps:
@@ -310,8 +337,8 @@ steps:
 ```
 
 Minimum required env vars:
-- `NOORM_DIALECT`
-- `NOORM_DATABASE`
+- `NOORM_CONNECTION_DIALECT`
+- `NOORM_CONNECTION_DATABASE`
 
 ```typescript
 // Check if in CI mode
@@ -357,7 +384,7 @@ For listings, use `ConfigSummary` which omits sensitive connection details:
 ```typescript
 const summaries = state.listConfigs()
 // [
-//     { name: 'dev', type: 'local', isTest: false, protected: false, isActive: true, dialect: 'postgres', database: 'myapp_dev' },
-//     { name: 'prod', type: 'remote', isTest: false, protected: true, isActive: false, dialect: 'postgres', database: 'myapp' },
+//     { name: 'dev', type: 'local', isTest: false, protected: false, isActive: true },
+//     { name: 'prod', type: 'remote', isTest: false, protected: true, isActive: false },
 // ]
 ```

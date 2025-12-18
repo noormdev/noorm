@@ -140,18 +140,46 @@ stateDiagram-v2
 ```
 
 
+## Core Integration
+
+### Dependencies
+
+| Module | Source | Purpose |
+|--------|--------|---------|
+| StateManager | `src/core/state/` | Active config |
+| LockManager | `src/core/lock/` | Lock operations |
+| Connection | `src/core/connection/` | Database connections |
+| Identity | `src/core/identity/` | User identity resolution |
+
+### LockManager Operations
+
+| Method | Input | Output | Purpose |
+|--------|-------|--------|---------|
+| `acquire` | db, configName, identity, opts | `Lock` | Acquire lock (waits or throws) |
+| `release` | db, configName, identity | void | Release owned lock |
+| `forceRelease` | db, configName | boolean | Force release any lock |
+| `withLock` | db, configName, identity, fn, opts | `T` | Execute fn with auto-release |
+| `status` | db, configName | `LockStatus` | Get current lock status |
+| `validate` | db, configName, identity | void | Verify lock still held |
+| `extend` | db, configName, identity, opts | `Lock` | Extend lock expiration |
+
+See: `src/core/lock/manager.ts` for implementation.
+
+
 ## Identity Resolution
 
-Lock ownership is determined by comparing the current user's identity with the lock holder:
+Lock ownership is determined by comparing the current user's identity string with the lock holder.
 
-```
-identity = "${USER}@${hostname}"
+**Identity format:** `"Name <email>"` or just `"Name"` for users without email.
 
-Examples:
-- alice@dev-laptop
-- deploy@ci-server
-- root@prod-db-01
-```
+**Resolution priority:**
+1. Config override (for bots/services)
+2. Cryptographic identity from state (normal user)
+3. `NOORM_IDENTITY` env var (CI pipelines)
+4. Git user config (developer workstation)
+5. System username (fallback)
+
+See: `src/core/identity/resolver.ts` and `cli/identity.md`
 
 
 ## Stale Lock Detection
@@ -170,10 +198,11 @@ Display warning if stale to encourage cleanup.
 
 | Event | Payload | When |
 |-------|---------|------|
-| `lock:acquired` | `{ config, reason? }` | Lock successfully acquired |
-| `lock:released` | `{ config }` | Lock released by owner |
-| `lock:force-released` | `{ config, previousHolder }` | Lock forcibly released |
-| `lock:status` | `{ config, locked, holder? }` | Status check completed |
+| `lock:acquiring` | `{ configName, identity }` | Lock acquisition starting |
+| `lock:acquired` | `{ configName, identity, expiresAt }` | Lock successfully acquired |
+| `lock:released` | `{ configName, identity }` | Lock released (by owner or force) |
+| `lock:blocked` | `{ configName, holder, heldSince }` | Lock acquisition blocked by another holder |
+| `lock:expired` | `{ configName, previousHolder }` | Lock expired and was released |
 
 
 ## Keyboard Shortcuts
@@ -198,3 +227,17 @@ noorm lock:force [config] [--yes]
 ```
 
 All commands output JSON in headless mode for CI/CD integration.
+
+
+## References
+
+**Documentation:**
+- `docs/lock.md` - Lock management architecture
+- `docs/identity.md` - Identity for lock ownership
+
+**Core modules:**
+- `src/core/lock/` - LockManager operations
+- `src/core/identity/` - Identity resolution for ownership
+
+**CLI plans:**
+- `plan/cli/userflow.md` - User journeys, screen mockups, shared components

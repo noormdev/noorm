@@ -499,3 +499,16 @@ Only the topmost component on the stack receives input. Child components (like T
     "react": "^18.2.0"
 }
 ```
+
+
+## References
+
+**Documentation:**
+- `docs/ink-cheatsheet.md` - Ink/React patterns and components
+- `docs/ink-testing-library-cheatsheet.md` - Testing CLI components
+
+**Core modules:**
+- `src/core/observer.ts` - Event subscriptions for progress updates
+
+**CLI plans:**
+- `plan/cli/userflow.md` - User journeys, screen mockups, shared components

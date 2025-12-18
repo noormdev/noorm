@@ -20,9 +20,9 @@ The CLI is purely reactive: components subscribe to events and render accordingl
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │  Core Layer (business logic, emits events)                      │
-│  ├── StateManager     → state:loaded, state:error, state:changed│
-│  ├── ConnectionManager→ connection:*, lock:*                    │
-│  └── LockMonitor      → lock:status, lock:acquired, lock:released
+│  ├── StateManager     → state:loaded, state:persisted           │
+│  ├── createConnection → connection:open, connection:close       │
+│  └── LockManager      → lock:acquired, lock:released, lock:blocked
 └─────────────────────────────────────────────────────────────────┘
                               │
                               │ events
@@ -51,8 +51,8 @@ The CLI is purely reactive: components subscribe to events and render accordingl
 flowchart LR
     subgraph Core
         SM[StateManager]
-        CM[ConnectionManager]
-        LM[LockMonitor]
+        CF[Connection Factory]
+        LM[LockManager]
     end
 
     subgraph AppContext
@@ -65,7 +65,7 @@ flowchart LR
     end
 
     SM -->|state:*| Orchestrator
-    CM -->|connection:*| Orchestrator
+    CF -->|connection:*| Orchestrator
     LM -->|lock:*| Orchestrator
 
     Orchestrator -->|context state| StatusBar
@@ -79,9 +79,9 @@ Each core module is self-contained and emits events about its state changes:
 
 | Module | Responsibility | Key Events |
 |--------|----------------|------------|
-| StateManager | Load/save encrypted state, manage configs | `state:loaded`, `state:saved`, `state:error` |
-| ConnectionManager | Database connections, lifecycle | `connection:connecting`, `connection:connected`, `connection:error` |
-| LockMonitor | Poll lock status, acquire/release | `lock:status`, `lock:acquired`, `lock:released` |
+| StateManager | Load/save encrypted state, manage configs | `state:loaded`, `state:persisted`, `state:migrated` |
+| Connection (factory) | Database connections, lifecycle | `connection:open`, `connection:close`, `connection:error` |
+| LockManager | Acquire/release/check locks | `lock:acquiring`, `lock:acquired`, `lock:released`, `lock:blocked`, `lock:expired` |
 
 
 ## App Context Responsibilities
@@ -91,8 +91,10 @@ The context is a **pass-through layer** with minimal logic:
 ```
 AppContext
 ├── on(state:loaded)      → update context.state
-├── on(connection:*)      → update context.connection
-├── on(lock:*)            → update context.lock
+├── on(connection:open)   → update context.connection status
+├── on(connection:close)  → update context.connection status
+├── on(lock:acquired)     → update context.lock
+├── on(lock:released)     → update context.lock
 └── expose reactive state for view consumption
 ```
 
@@ -103,6 +105,41 @@ AppContext
 - Polling or timers
 
 All of that belongs in core modules.
+
+## Core Module Integration
+
+The App Context bridges CLI screens with these core modules (see `src/core/index.ts` for exports):
+
+| Module | Pattern | Purpose |
+|--------|---------|---------|
+| StateManager | Singleton | Encrypted state, configs, secrets |
+| SettingsManager | Singleton | Project settings from `settings.yml` |
+| Connection | Factory | Database connections per-operation |
+| LockManager | Singleton | Lock operations require db + identity |
+| Runner | Functions | Execute SQL with context object |
+| ChangesetManager | Instance | Changeset operations with context object |
+| Identity | Resolver | Resolve user identity from multiple sources |
+
+**Key Context Objects:**
+
+| Context | Used By | Contains |
+|---------|---------|----------|
+| `RunContext` | Runner functions | db, configName, identity, projectRoot, secrets |
+| `ChangesetContext` | ChangesetManager | RunContext fields + changesetsDir, schemaDir |
+
+**Instantiation Flow:**
+
+1. Load StateManager → get active config
+2. Load SettingsManager → get paths
+3. Resolve identity from state's crypto identity
+4. Create connection from config
+5. Build context objects for runner/changeset operations
+6. Cleanup: destroy connection when done
+
+See implementation references:
+- `src/core/runner/types.ts` - RunContext definition
+- `src/core/changeset/types.ts` - ChangesetContext definition
+- `src/core/identity/resolver.ts` - Identity resolution
 
 
 ## View Reactivity
@@ -115,10 +152,10 @@ flowchart TD
     Context --> Rerender[View Rerenders]
 
     subgraph Examples
-        E1[connection:connected] --> S1[status = 'connected']
+        E1[connection:open] --> S1[status = connected]
         S1 --> R1[StatusBar shows green dot]
 
-        E2[lock:status] --> S2[lock = { holder, lockedAt }]
+        E2[lock:acquired] --> S2[lock = held by user]
         S2 --> R2[StatusBar shows lock indicator]
     end
 ```
@@ -167,3 +204,21 @@ flowchart LR
 ```
 
 Both the CLI and headless mode are just different subscribers to the same event stream. The core doesn't know or care which is active.
+
+
+## References
+
+**Documentation:**
+- `docs/state.md` - StateManager architecture and API
+- `docs/config.md` - Config structure and validation
+- `docs/lock.md` - Lock management patterns
+
+**Core modules:**
+- `src/core/state/` - StateManager, encryption, persistence
+- `src/core/connection/` - Connection factory, dialects
+- `src/core/lock/` - LockManager operations
+- `src/core/identity/` - Identity resolution
+- `src/core/observer.ts` - Event system
+
+**CLI plans:**
+- `plan/cli/userflow.md` - User journeys, screen mockups, shared components

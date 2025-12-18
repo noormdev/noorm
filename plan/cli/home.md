@@ -33,9 +33,9 @@ The home screen is the default landing page when launching `noorm` without argum
 │  ┌──────────────────────────────────────────────────────────┐   │
 │  │ Recent Activity                                          │   │
 │  │                                                          │   │
-│  │ ✓ Applied 2024-01-20_add-roles         2h ago            │   │
-│  │ ✓ Applied 2024-01-15_add-email         1d ago            │   │
-│  │ ✗ Reverted 2024-01-10_test             3d ago            │   │
+│  │ ✓ Applied 2025-01-20-add-roles         2h ago            │   │
+│  │ ✓ Applied 2025-01-15-add-email         1d ago            │   │
+│  │ ✗ Reverted 2025-01-10-test             3d ago            │   │
 │  └──────────────────────────────────────────────────────────┘   │
 │                                                                 │
 ├─────────────────────────────────────────────────────────────────┤
@@ -50,26 +50,26 @@ The home screen is the default landing page when launching `noorm` without argum
 sequenceDiagram
     participant Home as HomeScreen
     participant State as StateManager
-    participant Conn as ConnectionFactory
+    participant Conn as createConnection
     participant Lock as LockManager
     participant Change as ChangesetManager
 
-    Home->>State: load()
+    Home->>State: getStateManager().load()
     State-->>Home: configs, activeConfig
 
     alt has active config
-        Home->>Conn: createConnection(config)
-        Conn-->>Home: connection
+        Home->>Conn: createConnection(config.connection, config.name)
+        Conn-->>Home: { db, dialect }
 
         par Status Checks
-            Home->>Lock: getStatus()
+            Home->>Lock: getLockManager(db, configName).getStatus()
             Lock-->>Home: lockStatus
         and
-            Home->>Change: getPending()
+            Home->>Change: manager.list() then filter pending
             Change-->>Home: pendingCount
         end
 
-        Home->>Conn: destroy()
+        Home->>Conn: db.destroy()
     end
 
     Home->>Home: render dashboard
@@ -163,3 +163,44 @@ Connections are short-lived to avoid holding database resources while idle on th
 | No configs | Welcome + prompt to add first config |
 | No active config | List exists + prompt to select one |
 | Connection fails | Status widget shows `Connection: ERROR` |
+
+
+## Core Integration
+
+### Dependencies
+
+| Module | Source | Purpose |
+|--------|--------|---------|
+| StateManager | `src/core/state/` | Active config, config list |
+| Connection | `src/core/connection/` | Temp connection for status checks |
+| LockManager | `src/core/lock/` | Lock status polling |
+| ChangesetManager | `src/core/changeset/` | Pending count, recent history |
+
+### Data Sources
+
+| Widget | Core Module | Method |
+|--------|-------------|--------|
+| Active Config | StateManager | `getActiveConfig()` |
+| Connection Status | Connection | `testConnection()` |
+| Pending Changes | ChangesetManager | `list()` → filter pending |
+| Lock Status | LockManager | `status()` |
+| Recent Activity | ChangesetManager | `getHistory(undefined, 5)` |
+
+See: `cli/app-context.md` for context building pattern.
+
+
+## References
+
+**Documentation:**
+- `docs/state.md` - StateManager for config data
+- `docs/lock.md` - Lock status patterns
+- `docs/changeset.md` - Changeset history queries
+
+**Core modules:**
+- `src/core/state/` - Active config, config list
+- `src/core/connection/` - Connection health checks
+- `src/core/lock/` - Lock status polling
+- `src/core/changeset/` - Pending count, history
+
+**CLI plans:**
+- `plan/cli/userflow.md` - User journeys, screen mockups, shared components
