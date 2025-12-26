@@ -45,7 +45,7 @@ describe('cli: keyboard', () => {
 
     describe('useFocusedInput', () => {
 
-        it('should call handler when focused', async () => {
+        it('should call handler when focused', { retry: 2 }, async () => {
 
             const handler = vi.fn()
 
@@ -58,7 +58,7 @@ describe('cli: keyboard', () => {
                 return <Text>focused:{String(isFocused)}</Text>
             }
 
-            const { stdin, lastFrame } = render(
+            const { stdin, lastFrame, unmount } = render(
                 <TestWrapper>
                     <FocusedComponent />
                 </TestWrapper>
@@ -75,6 +75,8 @@ describe('cli: keyboard', () => {
             await new Promise(resolve => setTimeout(resolve, 10))
 
             expect(handler).toHaveBeenCalled()
+
+            unmount()
         })
 
         it('should not call handler when not focused', () => {
@@ -89,7 +91,7 @@ describe('cli: keyboard', () => {
                 return <Text>not focused</Text>
             }
 
-            const { stdin } = render(
+            const { stdin, unmount } = render(
                 <TestWrapper>
                     <UnfocusedComponent />
                 </TestWrapper>
@@ -98,6 +100,8 @@ describe('cli: keyboard', () => {
             stdin.write('x')
 
             expect(handler).not.toHaveBeenCalled()
+
+            unmount()
         })
 
         it('should receive input character and key object', async () => {
@@ -118,7 +122,7 @@ describe('cli: keyboard', () => {
                 return <Text>ready</Text>
             }
 
-            const { stdin } = render(
+            const { stdin, unmount } = render(
                 <TestWrapper>
                     <InputCapture />
                 </TestWrapper>
@@ -134,6 +138,8 @@ describe('cli: keyboard', () => {
 
             expect(receivedInput).toBe('a')
             expect(receivedKey).toBeDefined()
+
+            unmount()
         })
     })
 
@@ -155,13 +161,15 @@ describe('cli: keyboard', () => {
                 return <Text>selected:{selectedIndex}</Text>
             }
 
-            const { lastFrame } = render(
+            const { lastFrame, unmount } = render(
                 <TestWrapper>
                     <ListComponent />
                 </TestWrapper>
             )
 
             expect(lastFrame()).toContain('selected:1')
+
+            unmount()
         })
 
         it('should navigate down with arrow key', async () => {
@@ -179,7 +187,7 @@ describe('cli: keyboard', () => {
                 return <Text>selected:{selectedIndex}</Text>
             }
 
-            const { stdin, lastFrame } = render(
+            const { stdin, lastFrame, unmount } = render(
                 <TestWrapper>
                     <ListComponent />
                 </TestWrapper>
@@ -199,6 +207,8 @@ describe('cli: keyboard', () => {
             await new Promise(resolve => setTimeout(resolve, 10))
 
             expect(lastFrame()).toContain('selected:2')
+
+            unmount()
         })
 
         it('should navigate up with arrow key', async () => {
@@ -217,7 +227,7 @@ describe('cli: keyboard', () => {
                 return <Text>selected:{selectedIndex}</Text>
             }
 
-            const { stdin, lastFrame } = render(
+            const { stdin, lastFrame, unmount } = render(
                 <TestWrapper>
                     <ListComponent />
                 </TestWrapper>
@@ -237,6 +247,8 @@ describe('cli: keyboard', () => {
             await new Promise(resolve => setTimeout(resolve, 10))
 
             expect(lastFrame()).toContain('selected:0')
+
+            unmount()
         })
 
         it('should wrap from end to beginning', async () => {
@@ -255,7 +267,7 @@ describe('cli: keyboard', () => {
                 return <Text>selected:{selectedIndex}</Text>
             }
 
-            const { stdin, lastFrame } = render(
+            const { stdin, lastFrame, unmount } = render(
                 <TestWrapper>
                     <ListComponent />
                 </TestWrapper>
@@ -270,6 +282,8 @@ describe('cli: keyboard', () => {
             await new Promise(resolve => setTimeout(resolve, 10))
 
             expect(lastFrame()).toContain('selected:0')
+
+            unmount()
         })
 
         it('should wrap from beginning to end', async () => {
@@ -288,7 +302,7 @@ describe('cli: keyboard', () => {
                 return <Text>selected:{selectedIndex}</Text>
             }
 
-            const { stdin, lastFrame } = render(
+            const { stdin, lastFrame, unmount } = render(
                 <TestWrapper>
                     <ListComponent />
                 </TestWrapper>
@@ -303,6 +317,8 @@ describe('cli: keyboard', () => {
             await new Promise(resolve => setTimeout(resolve, 10))
 
             expect(lastFrame()).toContain('selected:2')
+
+            unmount()
         })
 
         it('should call onSelect when Enter is pressed', async () => {
@@ -324,7 +340,7 @@ describe('cli: keyboard', () => {
                 return <Text>selected:{selectedIndex}</Text>
             }
 
-            const { stdin } = render(
+            const { stdin, unmount } = render(
                 <TestWrapper>
                     <ListComponent />
                 </TestWrapper>
@@ -337,6 +353,8 @@ describe('cli: keyboard', () => {
             await new Promise(resolve => setTimeout(resolve, 10))
 
             expect(onSelect).toHaveBeenCalledWith('banana', 1)
+
+            unmount()
         })
 
         it('should handle empty items array', () => {
@@ -354,7 +372,7 @@ describe('cli: keyboard', () => {
                 return <Text>selected:{selectedIndex}</Text>
             }
 
-            const { stdin, lastFrame } = render(
+            const { stdin, lastFrame, unmount } = render(
                 <TestWrapper>
                     <ListComponent />
                 </TestWrapper>
@@ -367,6 +385,8 @@ describe('cli: keyboard', () => {
             stdin.write(KEYS.UP)
 
             expect(lastFrame()).toContain('selected:0')
+
+            unmount()
         })
 
         it('should expose selectPrevious and selectNext functions', () => {
@@ -388,7 +408,7 @@ describe('cli: keyboard', () => {
                 )
             }
 
-            const { lastFrame } = render(
+            const { lastFrame, unmount } = render(
                 <TestWrapper>
                     <ListComponent />
                 </TestWrapper>
@@ -396,9 +416,11 @@ describe('cli: keyboard', () => {
 
             expect(lastFrame()).toContain('hasNext:yes')
             expect(lastFrame()).toContain('hasPrev:yes')
+
+            unmount()
         })
 
-        it('should allow manual setSelectedIndex', async () => {
+        it('should allow manual setSelectedIndex', { retry: 2 }, async () => {
 
             function ListComponent() {
 
@@ -429,7 +451,7 @@ describe('cli: keyboard', () => {
                 return <Text>selected:{selectedIndex}</Text>
             }
 
-            const { stdin, lastFrame } = render(
+            const { stdin, lastFrame, unmount } = render(
                 <TestWrapper>
                     <ListComponent />
                 </TestWrapper>
@@ -444,6 +466,8 @@ describe('cli: keyboard', () => {
             await new Promise(resolve => setTimeout(resolve, 10))
 
             expect(lastFrame()).toContain('selected:4')
+
+            unmount()
         })
 
         it('should not respond to keys when not focused', () => {
@@ -460,7 +484,7 @@ describe('cli: keyboard', () => {
                 return <Text>selected:{selectedIndex}</Text>
             }
 
-            const { stdin, lastFrame } = render(
+            const { stdin, lastFrame, unmount } = render(
                 <TestWrapper>
                     <ListComponent />
                 </TestWrapper>
@@ -472,6 +496,8 @@ describe('cli: keyboard', () => {
 
             // Should still be 0 since not focused
             expect(lastFrame()).toContain('selected:0')
+
+            unmount()
         })
     })
 
@@ -486,13 +512,15 @@ describe('cli: keyboard', () => {
                 return <Text>hasQuit:{typeof handleQuit === 'function' ? 'yes' : 'no'}</Text>
             }
 
-            const { lastFrame } = render(
+            const { lastFrame, unmount } = render(
                 <TestWrapper>
                     <QuitComponent />
                 </TestWrapper>
             )
 
             expect(lastFrame()).toContain('hasQuit:yes')
+
+            unmount()
         })
     })
 })

@@ -20,7 +20,6 @@ import { useCallback, useState } from 'react'
 
 import type { ReactNode, ReactElement } from 'react'
 
-import { useRouter } from './router.js'
 import { useFocusContext } from './focus.js'
 
 
@@ -64,7 +63,6 @@ export function GlobalKeyboard({
 }: GlobalKeyboardProps): ReactElement {
 
     const { exit } = useApp()
-    const { back, canGoBack } = useRouter()
     const { stack } = useFocusContext()
 
     useInput((input, key) => {
@@ -84,22 +82,15 @@ export function GlobalKeyboard({
             return
         }
 
-        // Escape cascade: try custom handler first, then back navigation
-        if (key.escape) {
+        // Note: ESC is NOT handled here globally.
+        // Individual screens handle ESC via their own useInput handlers.
+        // Having a global ESC handler causes double-back issues since
+        // both the screen handler and global handler would fire.
+        // The onEscape callback is kept for special cases where the
+        // parent needs to be notified.
+        if (key.escape && onEscape) {
 
-            // Let custom handler try first
-            const handled = onEscape?.()
-
-            if (handled) {
-
-                return
-            }
-
-            // Default: navigate back if possible
-            if (canGoBack) {
-
-                back()
-            }
+            onEscape()
         }
     })
 
@@ -136,8 +127,7 @@ export function useFocusedInput(
 
                 handler(input, key)
             }
-        }, [isFocused, handler]),
-        { isActive: isFocused }
+        }, [isFocused, handler])
     )
 }
 

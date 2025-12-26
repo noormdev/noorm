@@ -23,12 +23,11 @@ import type { ConnectionConfig, ConnectionResult } from '../types.js'
  * })
  * ```
  */
-export function createMysqlConnection(config: ConnectionConfig): ConnectionResult {
+export async function createMysqlConnection(config: ConnectionConfig): Promise<ConnectionResult> {
 
-    // Dynamic require to avoid compile-time dependency
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const mysql2 = require('mysql2')
-    const { createPool } = mysql2
+    // Dynamic import to avoid compile-time dependency
+    const mysql2 = await import('mysql2')
+    const createPool = mysql2.default?.createPool ?? mysql2.createPool
 
     const pool = createPool({
         host: config.host ?? 'localhost',

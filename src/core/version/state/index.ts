@@ -9,6 +9,8 @@
  * - Only migrate state when state schema actually changes
  * - Simpler version checking (compare numbers, not semver)
  */
+import { attemptSync } from '@logosdx/utils'
+
 import { observer } from '../../observer.js'
 import {
     CURRENT_VERSIONS,
@@ -140,14 +142,14 @@ export function migrateState(
 
     for (const migration of pendingMigrations) {
 
-        try {
+        const [result, err] = attemptSync(() => migration.up(migrated))
 
-            migrated = migration.up(migrated)
-        }
-        catch (err) {
+        if (err) {
 
-            throw new MigrationError('state', migration.version, err as Error)
+            throw new MigrationError('state', migration.version, err)
         }
+
+        migrated = result
     }
 
     // Ensure schemaVersion is set to current

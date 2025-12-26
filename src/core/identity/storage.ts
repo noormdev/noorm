@@ -20,9 +20,9 @@
 import { homedir } from 'os'
 import { join } from 'path'
 import { chmod, mkdir, readFile, stat, writeFile } from 'fs/promises'
-import { attempt } from '@logosdx/utils'
+import { attempt, attemptSync } from '@logosdx/utils'
 
-import type { KeyPair } from './types.js'
+import type { KeyPair, CryptoIdentity } from './types.js'
 
 
 // =============================================================================
@@ -44,6 +44,9 @@ const PRIVATE_KEY_MODE = 0o600
 
 /** File permissions: owner read/write, others read */
 const PUBLIC_KEY_MODE = 0o644
+
+/** Identity metadata file path */
+const IDENTITY_METADATA_PATH = join(NOORM_HOME, 'identity.json')
 
 
 // =============================================================================
@@ -112,6 +115,86 @@ export async function saveKeyPair(keypair: KeyPair): Promise<void> {
     }
 
     await attempt(() => chmod(PUBLIC_KEY_PATH, PUBLIC_KEY_MODE))
+}
+
+
+/**
+ * Save identity metadata to disk.
+ *
+ * Stores name, email, machine, OS alongside key files so that
+ * identity can be reconstructed for new projects.
+ *
+ * @param identity - The identity metadata to save
+ *
+ * @example
+ * ```typescript
+ * const { identity } = await createCryptoIdentity({ name, email })
+ * await saveIdentityMetadata(identity)
+ * ```
+ */
+export async function saveIdentityMetadata(identity: CryptoIdentity): Promise<void> {
+
+    await ensureNoormDir()
+
+    const metadata = {
+        identityHash: identity.identityHash,
+        name: identity.name,
+        email: identity.email,
+        publicKey: identity.publicKey,
+        machine: identity.machine,
+        os: identity.os,
+        createdAt: identity.createdAt,
+    }
+
+    const [, err] = await attempt(() =>
+        writeFile(IDENTITY_METADATA_PATH, JSON.stringify(metadata, null, 2), { encoding: 'utf8' })
+    )
+
+    if (err) {
+
+        throw new Error(`Failed to write identity metadata: ${err.message}`)
+    }
+}
+
+
+/**
+ * Load identity metadata from disk.
+ *
+ * @returns Identity metadata or null if not found
+ *
+ * @example
+ * ```typescript
+ * const identity = await loadIdentityMetadata()
+ * if (identity) {
+ *     await state.setIdentity(identity)
+ * }
+ * ```
+ */
+export async function loadIdentityMetadata(): Promise<CryptoIdentity | null> {
+
+    const [content, err] = await attempt(() =>
+        readFile(IDENTITY_METADATA_PATH, { encoding: 'utf8' })
+    )
+
+    if (err) {
+
+        // File doesn't exist = no metadata yet
+        if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+
+            return null
+        }
+
+        throw new Error(`Failed to read identity metadata: ${err.message}`)
+    }
+
+    const [parsed, parseErr] = attemptSync(() => JSON.parse(content!) as CryptoIdentity)
+
+    if (parseErr) {
+
+        return null
+    }
+
+    return parsed
 }
 
 

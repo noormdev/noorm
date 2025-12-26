@@ -29,3 +29,7 @@ npm-debug.log*
 # Temp
 tmp/
 .tmp/
+
+# noorm
+.noorm/state.enc
+.noorm/*.log

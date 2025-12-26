@@ -289,6 +289,8 @@ export class StateManager {
             isTest: config.isTest,
             protected: config.protected,
             isActive: state.activeConfig === name,
+            dialect: config.connection.dialect,
+            database: config.connection.database,
         }))
     }
 

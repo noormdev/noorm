@@ -3,14 +3,15 @@
     "version": "1.0.0",
     "type": "module",
     "description": "An Ink CLI application",
-    "main": "dist/cli.js",
+    "main": "dist/cli/index.js",
     "bin": {
-        "noorm": "dist/cli.js"
+        "noorm": "dist/cli/index.js"
     },
     "scripts": {
         "build": "tsc",
         "dev": "tsc --watch",
-        "start": "node dist/cli.js",
+        "start": "node dist/cli/index.js",
+        "start:init": "node dist/cli/index.js init",
         "test": "vitest run",
         "test:watch": "vitest",
         "test:coverage": "vitest run --coverage",

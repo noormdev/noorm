@@ -150,15 +150,11 @@ export class SettingsManager {
         }
 
         // Parse YAML
-        let parsed: unknown
+        const [parsed, yamlErr] = await attempt(() => parseYaml(content))
 
-        try {
+        if (yamlErr) {
 
-            parsed = parseYaml(content)
-        }
-        catch (yamlErr) {
-
-            throw new Error(`Invalid YAML in settings file: ${(yamlErr as Error).message}`)
+            throw new Error(`Invalid YAML in settings file: ${yamlErr.message}`)
         }
 
         // Handle empty file

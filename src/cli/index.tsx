@@ -66,6 +66,7 @@ const HELP_TEXT = `
 
   Options
     --headless, -H      Force headless mode (no TUI)
+    --tui, -T           Force TUI mode (ignore TTY detection)
     --json              Output JSON (headless mode only)
     --yes, -y           Skip confirmation prompts
     --config, -c <name> Use specific configuration
@@ -96,6 +97,11 @@ function parseCli(): ParsedCli {
                 shortFlag: 'H',
                 default: false
             },
+            tui: {
+                type: 'boolean',
+                shortFlag: 'T',
+                default: false
+            },
             json: {
                 type: 'boolean',
                 default: false
@@ -123,6 +129,7 @@ function parseCli(): ParsedCli {
 
     const flags: CliFlags = {
         headless: cli.flags.headless,
+        tui: cli.flags.tui,
         json: cli.flags.json,
         yes: cli.flags.yes,
         config: cli.flags.config,
@@ -262,9 +269,16 @@ async function main(): Promise<void> {
         process.exit(exitCode)
     }
 
+    // Merge relevant flags into params for TUI mode
+    const mergedParams = {
+        ...params,
+        // Pass force flag to init screen
+        ...(flags.force && { force: true }),
+    }
+
     // Start TUI mode
     const { waitUntilExit } = render(
-        <App initialRoute={route} initialParams={params} />,
+        <App initialRoute={route} initialParams={mergedParams} />,
         {
             exitOnCtrlC: true,
             patchConsole: true

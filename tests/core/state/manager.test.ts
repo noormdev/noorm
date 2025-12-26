@@ -37,7 +37,7 @@ function createTestConfig(name: string, overrides: Partial<Config> = {}): Config
 }
 
 
-describe('StateManager', () => {
+describe('state: manager', () => {
 
     let tempDir: string
     let state: StateManager

@@ -87,6 +87,9 @@ export interface RouteParams {
 
     /** File or directory path */
     path?: string
+
+    /** Force flag (from --force/-f CLI option) */
+    force?: boolean
 }
 
 
@@ -254,6 +257,9 @@ export interface CliFlags {
 
     /** Force headless mode */
     headless: boolean
+
+    /** Force TUI mode (overrides headless detection) */
+    tui: boolean
 
     /** Output JSON in headless mode */
     json: boolean

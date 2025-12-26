@@ -160,6 +160,19 @@ export function useFocusContext(): FocusContextValue {
 
 
 /**
+ * Options for useFocusScope.
+ */
+export interface UseFocusScopeOptions {
+
+    /** Label for debugging */
+    label?: string
+
+    /** Skip registering with focus stack (use when parent manages focus) */
+    skip?: boolean
+}
+
+
+/**
  * Hook to manage focus for a component with automatic cleanup.
  *
  * Automatically pushes focus on mount and pops on unmount.
@@ -179,12 +192,20 @@ export function useFocusContext(): FocusContextValue {
  * }
  * ```
  */
-export function useFocusScope(label?: string): { isFocused: boolean; focusId: string } {
+export function useFocusScope(labelOrOptions?: string | UseFocusScopeOptions): { isFocused: boolean; focusId: string } {
+
+    const options = typeof labelOrOptions === 'string'
+        ? { label: labelOrOptions }
+        : labelOrOptions ?? {}
+
+    const { label, skip = false } = options
 
     const { push, pop, isActive } = useFocusContext()
     const focusId = useId()
 
     useEffect(() => {
+
+        if (skip) return
 
         push(focusId, label)
 
@@ -192,10 +213,10 @@ export function useFocusScope(label?: string): { isFocused: boolean; focusId: st
 
             pop(focusId)
         }
-    }, [focusId, label, push, pop])
+    }, [focusId, label, push, pop, skip])
 
     return {
-        isFocused: isActive(focusId),
+        isFocused: skip ? false : isActive(focusId),
         focusId
     }
 }

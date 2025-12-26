@@ -91,6 +91,30 @@
   - Updated `src/cli/app.tsx` - Integrated AppContextProvider, StatusBar uses context hooks
   - Tests: `tests/cli/app-context.test.tsx` (20 tests)
 
+- [x] **cli/components.md** - Shared UI components
+  - `src/cli/components/` - Component library with focus stack integration
+    - Layout: Panel, Divider
+    - Lists: SelectList (wraps @inkjs/ui Select), ActionList, StatusList
+    - Forms: Form (multi-field orchestration with validation)
+    - Dialogs: Confirm, ProtectedConfirm (type-to-confirm), FilePicker (search/select/accept modes)
+    - Status: LockStatus, ConnectionStatus
+    - Feedback: Re-exports Spinner, ProgressBar, Alert, Badge from @inkjs/ui
+  - Tests: `tests/cli/components/*.test.tsx` (61 tests)
+
+- [x] **cli/init.md** - Project initialization
+  - `src/cli/screens/init/` - Init flow screens
+    - IdentitySetup.tsx - First-time identity setup with pre-populated fields
+    - ProjectSetup.tsx - Project structure setup with config option
+    - InitScreen.tsx - Main flow orchestrating identity → project → complete
+  - Features:
+    - Detects identity defaults from git config / OS
+    - Creates schema/, changesets/, .noorm/ directories
+    - Generates X25519 keypair for secure config sharing
+    - Creates settings.yml and encrypted state.enc
+    - Updates .gitignore with noorm exclusions
+    - Option to add first config after init
+  - Tests: `tests/cli/screens/init/*.test.tsx` (24 tests)
+
 All CLI plans include:
 - Dependencies tables linking to `src/core/` modules
 - High-level operation tables (not implementation code)
@@ -121,10 +145,10 @@ All CLI plans include:
 |------|-------------|
 | `cli/core.md` | ✅ Complete |
 | `cli/app-context.md` | ✅ Complete |
-| `cli/components.md` | ❌ Not implemented |
-| `cli/init.md` | ❌ Not implemented |
-| `cli/home.md` | ❌ Basic screen only |
-| `cli/config.md` | ❌ Not implemented |
+| `cli/components.md` | ✅ Complete |
+| `cli/init.md` | ✅ Complete |
+| `cli/config.md` | ✅ Complete |
+| `cli/home.md` | ✅ Complete |
 | `cli/secret.md` | ❌ Not implemented |
 | `cli/settings.md` | ❌ Basic screen only |
 | `cli/identity.md` | ❌ Not implemented |
@@ -142,10 +166,10 @@ All CLI plans include:
 | Phase 1: Foundation | 5/5 | - | ✅ Complete |
 | Phase 2: Core Features | 3/3 | - | ✅ Complete |
 | Phase 3: Execution | 2/2 | - | ✅ Complete |
-| Phase 4: CLI | 2/13 | 13/13 | 🟡 In Progress |
+| Phase 4: CLI | 6/13 | 13/13 | 🟡 In Progress |
 
 **Core modules: 13/13 implemented (100%)**
-**CLI modules: 2/13 implemented**
+**CLI modules: 6/13 implemented**
 
 
 ## Next Steps
@@ -156,10 +180,10 @@ All CLI plans include:
 |---|--------|--------|---------|--------------|
 | 1 | ✅ | `cli/core.md` | Router, app shell, keyboard, focus stack | None |
 | 2 | ✅ | `cli/app-context.md` | Centralized state/context provider | core |
-| 3 | ⬜ | `cli/components.md` | Shared UI (SelectList, Form, FilePicker) | core, app-context |
-| 4 | ⬜ | `cli/init.md` | Project initialization | components |
-| 5 | ⬜ | `cli/config.md` | Config CRUD screens | components |
-| 6 | ⬜ | `cli/home.md` | Dashboard with status widgets | components, config |
+| 3 | ✅ | `cli/components.md` | Shared UI (SelectList, Form, FilePicker) | core, app-context |
+| 4 | ✅ | `cli/init.md` | Project initialization | components |
+| 5 | ✅ | `cli/config.md` | Config CRUD screens | components |
+| 6 | ✅ | `cli/home.md` | Dashboard with status widgets | components, config |
 | 7 | ⬜ | `cli/change.md` | Changeset management screens | components |
 | 8 | ⬜ | `cli/run.md` | Build/file/dir execution screens | components |
 | 9 | ⬜ | `cli/db.md` | Database create/destroy screens | components, run |

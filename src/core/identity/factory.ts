@@ -25,7 +25,7 @@ import { attemptSync } from '@logosdx/utils'
 
 import type { CryptoIdentity, CryptoIdentityInput, KeyPair } from './types.js'
 import { generateKeyPair } from './crypto.js'
-import { saveKeyPair } from './storage.js'
+import { saveKeyPair, saveIdentityMetadata, loadIdentityMetadata, loadPublicKey } from './storage.js'
 import { computeIdentityHash } from './hash.js'
 import { observer } from '../observer.js'
 
@@ -167,11 +167,14 @@ export async function createCryptoIdentity(
         createdAt: new Date().toISOString(),
     }
 
-    // Save keys to disk
+    // Save keys to disk (only if requested)
     if (saveKeys) {
 
         await saveKeyPair(keypair)
     }
+
+    // Always save metadata (needed for multi-project identity sharing)
+    await saveIdentityMetadata(identity)
 
     // Emit event
     observer.emit('identity:created', {
@@ -221,4 +224,126 @@ export async function regenerateKeyPair(
     }
 
     return { identity, keypair }
+}
+
+
+/**
+ * Create identity metadata for existing keys.
+ *
+ * Use when key files exist but metadata is missing.
+ * Loads the existing public key and creates identity metadata.
+ *
+ * @param input - User-provided identity details
+ *
+ * @example
+ * ```typescript
+ * const identity = await createIdentityForExistingKeys({
+ *     name: 'Alice Smith',
+ *     email: 'alice@example.com',
+ * })
+ * if (identity) {
+ *     await state.setIdentity(identity)
+ * }
+ * ```
+ */
+export async function createIdentityForExistingKeys(
+    input: CryptoIdentityInput
+): Promise<CryptoIdentity | null> {
+
+    // Validate required fields
+    if (!input.name?.trim()) {
+
+        throw new Error('Name is required for identity')
+    }
+
+    if (!input.email?.trim()) {
+
+        throw new Error('Email is required for identity')
+    }
+
+    // Load existing public key
+    const publicKey = await loadPublicKey()
+
+    if (!publicKey) {
+
+        return null
+    }
+
+    // Get machine and OS info
+    const machine = input.machine?.trim() || hostname()
+    const osInfo = `${platform()} ${release()}`
+
+    // Compute identity hash
+    const identityHash = computeIdentityHash({
+        email: input.email.trim(),
+        name: input.name.trim(),
+        machine,
+        os: osInfo,
+    })
+
+    // Build identity object
+    const identity: CryptoIdentity = {
+        identityHash,
+        name: input.name.trim(),
+        email: input.email.trim(),
+        publicKey,
+        machine,
+        os: osInfo,
+        createdAt: new Date().toISOString(),
+    }
+
+    // Save metadata
+    await saveIdentityMetadata(identity)
+
+    // Emit event
+    observer.emit('identity:created', {
+        identityHash,
+        name: identity.name,
+        email: identity.email,
+        machine: identity.machine,
+    })
+
+    return identity
+}
+
+
+/**
+ * Load existing identity from disk.
+ *
+ * Loads both the identity metadata and public key from ~/.noorm/.
+ * Used when initializing a new project with existing key files.
+ *
+ * @returns Identity or null if not found/incomplete
+ *
+ * @example
+ * ```typescript
+ * const identity = await loadExistingIdentity()
+ * if (identity) {
+ *     await state.setIdentity(identity)
+ * }
+ * ```
+ */
+export async function loadExistingIdentity(): Promise<CryptoIdentity | null> {
+
+    // Load metadata
+    const metadata = await loadIdentityMetadata()
+
+    if (!metadata) {
+
+        return null
+    }
+
+    // Verify public key matches (in case files got out of sync)
+    const publicKey = await loadPublicKey()
+
+    if (!publicKey) {
+
+        return null
+    }
+
+    // Return identity with current public key
+    return {
+        ...metadata,
+        publicKey,
+    }
 }

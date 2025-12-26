@@ -4,6 +4,8 @@
  * Converts observer events into LogEntry objects and serializes them
  * for file output. Each entry is a single JSON line.
  */
+import { attemptSync } from '@logosdx/utils'
+
 import type { LogEntry } from './types.js'
 import { classifyEvent } from './classifier.js'
 
@@ -115,14 +117,13 @@ export function generateMessage(event: string, data: Record<string, unknown>): s
 
     if (template) {
 
-        try {
+        const [result, err] = attemptSync(() => template(data))
 
-            return template(data)
-        }
-        catch {
+        if (!err && result !== null) {
 
-            // Fall through to generic format
+            return result
         }
+        // Fall through to generic format on error
     }
 
     // Generic format: "Event occurred" or "Event: key=value, ..."
@@ -270,14 +271,15 @@ function sanitizeData(data: Record<string, unknown>): Record<string, unknown> {
         }
 
         // Handle circular references / non-serializable
-        try {
+        const [, err] = attemptSync(() => JSON.stringify(value))
 
-            JSON.stringify(value)
-            result[key] = value
-        }
-        catch {
+        if (err) {
 
             result[key] = String(value)
+        }
+        else {
+
+            result[key] = value
         }
     }
 

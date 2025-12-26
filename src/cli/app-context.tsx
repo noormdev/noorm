@@ -35,6 +35,10 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react'
 import type { ReactNode } from 'react'
 import { Text } from 'ink'
+import { attempt, attemptSync } from '@logosdx/utils'
+import { execSync } from 'child_process'
+import { readFileSync, existsSync } from 'fs'
+import { join, basename } from 'path'
 
 import {
     observer,
@@ -47,6 +51,68 @@ import {
 import type { StateManager } from '../core/state/manager.js'
 import type { SettingsManager } from '../core/settings/manager.js'
 import type { CryptoIdentity } from '../core/identity/types.js'
+
+
+// ─────────────────────────────────────────────────────────────
+// Project Name Detection
+// ─────────────────────────────────────────────────────────────
+
+
+/**
+ * Detect project name from package.json, git remote, or folder name.
+ *
+ * Hierarchy:
+ * 1. package.json "name" field
+ * 2. git remote origin (user/repo format)
+ * 3. folder name
+ */
+function detectProjectName(projectRoot: string): string {
+
+    // Try package.json first
+    const packageJsonPath = join(projectRoot, 'package.json')
+
+    if (existsSync(packageJsonPath)) {
+
+        const [content] = attemptSync(() => readFileSync(packageJsonPath, 'utf8'))
+
+        if (content) {
+
+            const [parsed] = attemptSync(() => JSON.parse(content) as { name?: string })
+
+            if (parsed?.name) {
+
+                return parsed.name
+            }
+        }
+    }
+
+    // Try git remote origin
+    const [gitRemote] = attemptSync(() =>
+        execSync('git remote get-url origin', {
+            cwd: projectRoot,
+            encoding: 'utf8',
+            timeout: 5000,
+            stdio: ['pipe', 'pipe', 'pipe'],
+        }).trim()
+    )
+
+    if (gitRemote) {
+
+        // Parse user/repo from various git URL formats:
+        // - https://github.com/user/repo.git
+        // - git@github.com:user/repo.git
+        // - ssh://git@github.com/user/repo.git
+        const match = gitRemote.match(/[/:]([\w.-]+)\/([\w.-]+?)(?:\.git)?$/)
+
+        if (match) {
+
+            return `${match[1]}/${match[2]}`
+        }
+    }
+
+    // Fallback to folder name
+    return basename(projectRoot)
+}
 
 
 // ─────────────────────────────────────────────────────────────
@@ -99,6 +165,9 @@ export interface AppContextValue {
     // Loading state
     loadingStatus: LoadingStatus
     error: Error | null
+
+    // Project info
+    projectName: string
 
     // Core managers (null until loaded)
     stateManager: StateManager | null
@@ -171,6 +240,9 @@ export function AppContextProvider({
     children,
 }: AppContextProviderProps) {
 
+    // Project name (detected once from package.json, git remote, or folder)
+    const projectName = useMemo(() => detectProjectName(projectRoot), [projectRoot])
+
     // Loading state
     const [loadingStatus, setLoadingStatus] = useState<LoadingStatus>('not-initialized')
     const [error, setError] = useState<Error | null>(null)
@@ -221,29 +293,31 @@ export function AppContextProvider({
         setLoadingStatus('loading')
         setError(null)
 
-        try {
+        // Get managers (may already exist as singletons)
+        const sm = getStateManager(projectRoot)
+        const settingsM = getSettingsManager(projectRoot)
 
-            // Get managers (may already exist as singletons)
-            const sm = getStateManager(projectRoot)
-            const settingsM = getSettingsManager(projectRoot)
+        // Load both
+        const [, loadErr] = await attempt(async () => {
 
-            // Load both
             await sm.load()
             await settingsM.load()
+        })
 
-            setStateManager(sm)
-            setSettingsManager(settingsM)
+        if (loadErr) {
 
-            // Sync initial state
-            syncStateFromManagers(sm, settingsM)
-
-            setLoadingStatus('ready')
-        }
-        catch (err) {
-
-            setError(err instanceof Error ? err : new Error(String(err)))
+            setError(loadErr instanceof Error ? loadErr : new Error(String(loadErr)))
             setLoadingStatus('error')
+            return
         }
+
+        setStateManager(sm)
+        setSettingsManager(settingsM)
+
+        // Sync initial state
+        syncStateFromManagers(sm, settingsM)
+
+        setLoadingStatus('ready')
     }, [projectRoot, syncStateFromManagers])
 
     /**
@@ -417,6 +491,7 @@ export function AppContextProvider({
     const value = useMemo<AppContextValue>(() => ({
         loadingStatus,
         error,
+        projectName,
         stateManager,
         settingsManager,
         activeConfig,
@@ -433,6 +508,7 @@ export function AppContextProvider({
     }), [
         loadingStatus,
         error,
+        projectName,
         stateManager,
         settingsManager,
         activeConfig,
@@ -582,6 +658,26 @@ export function useLockStatus(): Pick<AppContextValue, 'lockStatus'> {
 
     const { lockStatus } = useAppContext()
     return { lockStatus }
+}
+
+
+/**
+ * Get project name.
+ *
+ * Returns the detected project name (from package.json, git remote, or folder).
+ *
+ * @example
+ * ```tsx
+ * function Header() {
+ *     const { projectName } = useProjectName()
+ *     return <Text bold>{projectName}</Text>
+ * }
+ * ```
+ */
+export function useProjectName(): Pick<AppContextValue, 'projectName'> {
+
+    const { projectName } = useAppContext()
+    return { projectName }
 }
 
 

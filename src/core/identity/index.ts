@@ -45,6 +45,8 @@ export {
     getPrivateKeyPath,
     getPublicKeyPath,
     getNoormHomePath,
+    saveIdentityMetadata,
+    loadIdentityMetadata,
 } from './storage.js'
 
 // Hash utilities
@@ -58,7 +60,9 @@ export {
 export {
     detectIdentityDefaults,
     createCryptoIdentity,
+    createIdentityForExistingKeys,
     regenerateKeyPair,
+    loadExistingIdentity,
 } from './factory.js'
 
 export type { IdentityDefaults, CreateIdentityResult } from './factory.js'

@@ -23,13 +23,12 @@ import type { ConnectionConfig, ConnectionResult } from '../types.js'
  * })
  * ```
  */
-export function createMssqlConnection(config: ConnectionConfig): ConnectionResult {
+export async function createMssqlConnection(config: ConnectionConfig): Promise<ConnectionResult> {
 
-    // Dynamic require to avoid compile-time dependency
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const Tedious = require('tedious')
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const Tarn = require('tarn')
+    // Dynamic import to avoid compile-time dependency
+    const Tedious = await import('tedious')
+    // @ts-expect-error - tarn types not installed, loaded dynamically
+    const Tarn = await import('tarn')
 
     const db = new Kysely<unknown>({
         dialect: new MssqlDialect({

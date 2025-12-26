@@ -10,7 +10,7 @@ import type { ConnectionConfig, ConnectionResult, Dialect } from './types.js'
 import { observer } from '../observer.js'
 
 
-type DialectFactory = (config: ConnectionConfig) => ConnectionResult
+type DialectFactory = (config: ConnectionConfig) => ConnectionResult | Promise<ConnectionResult>
 
 
 /**
@@ -101,7 +101,7 @@ export async function createConnection(
                     throw importErr
                 }
 
-                const conn = createFn!(config)
+                const conn = await createFn!(config)
 
                 // Test connection with simple query
                 await sql`SELECT 1`.execute(conn.db)
@@ -144,19 +144,34 @@ export async function createConnection(
 
 
 /**
+ * Default system databases by dialect.
+ * Used for testing server connectivity without requiring the target database to exist.
+ */
+const SYSTEM_DATABASES: Record<Dialect, string | undefined> = {
+    postgres: 'postgres',
+    mysql: undefined,  // MySQL allows connecting without a database
+    sqlite: undefined, // SQLite creates the file on connect
+    mssql: 'master',
+}
+
+
+/**
  * Test a connection config without keeping the connection open.
  *
  * Useful for validating config before saving or for health checks.
  *
+ * @param config - Connection configuration to test
+ * @param options - Test options
+ * @param options.testServerOnly - If true, connects to system database instead of target.
+ *                                  Useful when the target database doesn't exist yet.
+ *
  * @example
  * ```typescript
- * const result = await testConnection({
- *     dialect: 'postgres',
- *     host: 'localhost',
- *     database: 'myapp',
- *     user: 'postgres',
- *     password: 'wrong-password',
- * })
+ * // Test full connection (database must exist)
+ * const result = await testConnection(config)
+ *
+ * // Test server only (database doesn't need to exist)
+ * const result = await testConnection(config, { testServerOnly: true })
  *
  * if (!result.ok) {
  *     console.error('Connection failed:', result.error)
@@ -164,10 +179,24 @@ export async function createConnection(
  * ```
  */
 export async function testConnection(
-    config: ConnectionConfig
+    config: ConnectionConfig,
+    options: { testServerOnly?: boolean } = {}
 ): Promise<{ ok: boolean; error?: string }> {
 
-    const [conn, err] = await attempt(() => createConnection(config, '__test__'))
+    let testConfig = config
+
+    // If testing server only, swap to system database
+    if (options.testServerOnly && config.dialect !== 'sqlite') {
+
+        const systemDb = SYSTEM_DATABASES[config.dialect]
+
+        testConfig = {
+            ...config,
+            database: systemDb ?? config.database,
+        }
+    }
+
+    const [conn, err] = await attempt(() => createConnection(testConfig, '__test__'))
 
     if (err) {
 

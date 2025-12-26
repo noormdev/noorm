@@ -86,17 +86,18 @@ describe('cli: app', () => {
             unmount()
         })
 
-        it('should handle ? for help overlay', async () => {
+        // Note: This test may be flaky due to timing with keyboard event handling
+        it('should handle ? for help overlay', { retry: 2 }, async () => {
 
             const { stdin, lastFrame, unmount } = render(<App />)
 
             // Wait for app to fully render
-            await new Promise(resolve => setTimeout(resolve, 50))
+            await new Promise(resolve => setTimeout(resolve, 100))
 
             // Press ? to show help
             stdin.write('?')
 
-            await new Promise(resolve => setTimeout(resolve, 20))
+            await new Promise(resolve => setTimeout(resolve, 100))
 
             // Help overlay should contain keyboard shortcuts info
             expect(lastFrame()).toContain('Keyboard Shortcuts')

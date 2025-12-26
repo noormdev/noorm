@@ -23,12 +23,11 @@ import type { ConnectionConfig, ConnectionResult } from '../types.js'
  * })
  * ```
  */
-export function createPostgresConnection(config: ConnectionConfig): ConnectionResult {
+export async function createPostgresConnection(config: ConnectionConfig): Promise<ConnectionResult> {
 
-    // Dynamic require to avoid compile-time dependency
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const pg = require('pg')
-    const { Pool } = pg
+    // Dynamic import to avoid compile-time dependency
+    const pg = await import('pg')
+    const Pool = pg.default?.Pool ?? pg.Pool
 
     const pool = new Pool({
         host: config.host ?? 'localhost',

@@ -1,0 +1,2 @@
+- we need a testing library that provides all of the mechanisms for using stages, loading and running SQL files, and using templates and seeding
+- we use this testing library in tests when either building the entire DB, or building an SDK for the DB.

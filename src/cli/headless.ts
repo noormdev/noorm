@@ -16,6 +16,8 @@
  * CI=1 noorm change:ff
  * ```
  */
+import { attempt } from '@logosdx/utils'
+
 import { observer, type NoormEvents, type NoormEventNames } from '../core/observer.js'
 
 import type { Route, RouteParams, CliFlags } from './types.js'
@@ -233,10 +235,18 @@ export class HeadlessLogger {
  * - `NOORM_HEADLESS=true` environment variable
  * - `CI=true` or common CI environment variables detected
  * - No TTY available (`!process.stdout.isTTY`)
+ *
+ * The `--tui` flag overrides all of the above and forces TUI mode.
  */
 export function shouldRunHeadless(flags: CliFlags): boolean {
 
-    // Explicit flag
+    // --tui flag overrides everything
+    if (flags.tui) {
+
+        return false
+    }
+
+    // Explicit headless flag
     if (flags.headless) {
 
         return true
@@ -306,12 +316,11 @@ export async function runHeadless(
 
     logger.start()
 
-    try {
+    const [exitCode, error] = await attempt(() => handler(params, flags))
 
-        const exitCode = await handler(params, flags)
-        return exitCode
-    }
-    catch (error) {
+    logger.stop()
+
+    if (error) {
 
         const err = error instanceof Error ? error : new Error(String(error))
 
@@ -329,10 +338,8 @@ export async function runHeadless(
 
         return 1
     }
-    finally {
 
-        logger.stop()
-    }
+    return exitCode
 }
 
 

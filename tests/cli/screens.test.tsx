@@ -51,7 +51,7 @@ describe('cli: screens', () => {
 
         it('should return undefined for unregistered route', () => {
 
-            const screen = getScreen('config/add')
+            const screen = getScreen('lock/acquire')
 
             expect(screen).toBeUndefined()
         })
@@ -66,16 +66,19 @@ describe('cli: screens', () => {
 
         it('should generate label from route for unregistered route', () => {
 
-            expect(getRouteLabel('config')).toBe('Config')
+            expect(getRouteLabel('db')).toBe('Db')
             expect(getRouteLabel('settings')).toBe('Settings')
         })
 
-        it('should use last part of nested route', () => {
+        it('should use label from registered route or last part of nested route', () => {
 
-            expect(getRouteLabel('config/add')).toBe('Add')
-            expect(getRouteLabel('config/edit')).toBe('Edit')
-            expect(getRouteLabel('change/revert')).toBe('Revert')
+            // Registered routes use their configured labels
+            expect(getRouteLabel('config/add')).toBe('Add Config')
+            expect(getRouteLabel('config/edit')).toBe('Edit Config')
+            expect(getRouteLabel('change/revert')).toBe('Revert Changeset')
+            // Unregistered routes generate labels from last path segment
             expect(getRouteLabel('run/build')).toBe('Build')
+            expect(getRouteLabel('secret/set')).toBe('Set')
         })
 
         it('should capitalize first letter', () => {
@@ -105,7 +108,7 @@ describe('cli: screens', () => {
 
         it('should return false for unregistered route', () => {
 
-            expect(isRouteRegistered('config/add')).toBe(false)
+            expect(isRouteRegistered('lock/acquire')).toBe(false)
         })
     })
 
@@ -118,14 +121,15 @@ describe('cli: screens', () => {
                 return <Text>Test Screen: {params.name ?? 'none'}</Text>
             }
 
-            registerScreen('config', {
+            // Use an unregistered route for testing
+            registerScreen('db/create', {
                 component: TestScreen,
-                label: 'Config List',
+                label: 'Create Database',
             })
 
-            expect(isRouteRegistered('config')).toBe(true)
-            expect(getRouteLabel('config')).toBe('Config List')
-            expect(getScreen('config')?.component).toBe(TestScreen)
+            expect(isRouteRegistered('db/create')).toBe(true)
+            expect(getRouteLabel('db/create')).toBe('Create Database')
+            expect(getScreen('db/create')?.component).toBe(TestScreen)
         })
     })
 

@@ -30,6 +30,29 @@ import { useRouter } from './router.js'
 // Placeholder screens until real implementations
 import { HomeScreen } from './screens/home.js'
 import { NotFoundScreen } from './screens/not-found.js'
+import { InitScreen } from './screens/init/index.js'
+import {
+    ConfigListScreen,
+    ConfigAddScreen,
+    ConfigEditScreen,
+    ConfigRemoveScreen,
+    ConfigCopyScreen,
+    ConfigUseScreen,
+    ConfigValidateScreen,
+    ConfigExportScreen,
+    ConfigImportScreen,
+} from './screens/config/index.js'
+import {
+    ChangeListScreen,
+    ChangeAddScreen,
+    ChangeEditScreen,
+    ChangeRemoveScreen,
+    ChangeRunScreen,
+    ChangeRevertScreen,
+    ChangeNextScreen,
+    ChangeFFScreen,
+    ChangeRewindScreen,
+} from './screens/change/index.js'
 
 
 /**
@@ -52,10 +75,87 @@ const SCREENS: ScreenRegistry = {
         label: 'Home'
     },
 
-    // TODO: Add screens as they are implemented
-    // 'config': { component: ConfigListScreen, label: 'Configurations' },
-    // 'config/add': { component: ConfigAddScreen, label: 'Add Config' },
-    // etc.
+    // Init
+    'init': {
+        component: InitScreen,
+        label: 'Initialize'
+    },
+
+    // Config
+    'config': {
+        component: ConfigListScreen,
+        label: 'Configurations'
+    },
+    'config/add': {
+        component: ConfigAddScreen,
+        label: 'Add Config'
+    },
+    'config/edit': {
+        component: ConfigEditScreen,
+        label: 'Edit Config'
+    },
+    'config/rm': {
+        component: ConfigRemoveScreen,
+        label: 'Delete Config'
+    },
+    'config/cp': {
+        component: ConfigCopyScreen,
+        label: 'Copy Config'
+    },
+    'config/use': {
+        component: ConfigUseScreen,
+        label: 'Use Config'
+    },
+    'config/validate': {
+        component: ConfigValidateScreen,
+        label: 'Validate Config'
+    },
+    'config/export': {
+        component: ConfigExportScreen,
+        label: 'Export Config'
+    },
+    'config/import': {
+        component: ConfigImportScreen,
+        label: 'Import Config'
+    },
+
+    // Change
+    'change': {
+        component: ChangeListScreen,
+        label: 'Changesets'
+    },
+    'change/add': {
+        component: ChangeAddScreen,
+        label: 'Add Changeset'
+    },
+    'change/edit': {
+        component: ChangeEditScreen,
+        label: 'Edit Changeset'
+    },
+    'change/rm': {
+        component: ChangeRemoveScreen,
+        label: 'Delete Changeset'
+    },
+    'change/run': {
+        component: ChangeRunScreen,
+        label: 'Run Changeset'
+    },
+    'change/revert': {
+        component: ChangeRevertScreen,
+        label: 'Revert Changeset'
+    },
+    'change/next': {
+        component: ChangeNextScreen,
+        label: 'Apply Next'
+    },
+    'change/ff': {
+        component: ChangeFFScreen,
+        label: 'Fast-Forward'
+    },
+    'change/rewind': {
+        component: ChangeRewindScreen,
+        label: 'Rewind'
+    },
 }
 
 

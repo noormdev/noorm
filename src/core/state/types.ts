@@ -49,6 +49,8 @@ export interface ConfigSummary {
     isTest: boolean
     protected: boolean
     isActive: boolean
+    dialect: string
+    database: string
 }
 
 

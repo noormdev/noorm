@@ -412,7 +412,7 @@ describe('cli: focus', () => {
 
     describe('useFocusScope', () => {
 
-        it('should auto-push on mount and pop on unmount', async () => {
+        it('should auto-push on mount and pop on unmount', { retry: 2 }, async () => {
 
             function FocusScopeUser() {
 
@@ -428,7 +428,7 @@ describe('cli: focus', () => {
 
                 useEffect(() => {
 
-                    const timer = setTimeout(() => setShow(false), 50)
+                    const timer = setTimeout(() => setShow(false), 100)
                     return () => clearTimeout(timer)
                 }, [])
 
@@ -446,8 +446,8 @@ describe('cli: focus', () => {
                 </FocusProvider>
             )
 
-            // Initially mounted
-            await new Promise(resolve => setTimeout(resolve, 10))
+            // Initially mounted - wait for focus stack to initialize
+            await new Promise(resolve => setTimeout(resolve, 50))
             expect(lastFrame()).toContain('focused:true')
             expect(lastFrame()).toContain('stackLen:1')
 

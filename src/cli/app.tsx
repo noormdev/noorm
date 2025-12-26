@@ -16,7 +16,7 @@
  */
 import { useState, useCallback } from 'react'
 import type { ReactElement } from 'react'
-import { Box, Text } from 'ink'
+import { Box, Text, Spacer } from 'ink'
 
 import type { Route, RouteParams } from './types.js'
 import { RouterProvider, useRouter } from './router.js'
@@ -29,7 +29,9 @@ import {
     useConnectionStatus,
     useLockStatus,
     useLoadingStatus,
+    useProjectName,
 } from './app-context.js'
+import { ToastProvider, ToastRenderer } from './components/index.js'
 
 
 /**
@@ -104,12 +106,13 @@ function Breadcrumb(): ReactElement {
 
 
 /**
- * Status bar showing config, connection, and lock status.
+ * Status bar showing project, config, connection, and lock status.
  *
  * Reads state from AppContext and displays current status.
  */
 function StatusBar(): ReactElement {
 
+    const { projectName } = useProjectName()
     const { activeConfigName } = useActiveConfig()
     const { connectionStatus } = useConnectionStatus()
     const { lockStatus } = useLockStatus()
@@ -119,9 +122,12 @@ function StatusBar(): ReactElement {
     const isLockFree = lockStatus.status === 'free'
 
     return (
-        <Box justifyContent="space-between" paddingX={1}>
-            <Text bold color="cyan">noorm</Text>
+        <Box paddingX={1} width="100%">
+            <Box marginRight={1}>
+                <Text bold color="cyan">{projectName}</Text>
+            </Box>
             <Box>
+                <Text dimColor> │ </Text>
                 <Text dimColor>{configName}</Text>
                 <Text dimColor> │ </Text>
                 <Text color={isConnected ? 'green' : 'gray'}>
@@ -131,6 +137,11 @@ function StatusBar(): ReactElement {
                 <Text color={isLockFree ? 'green' : 'yellow'}>
                     {isLockFree ? '🔓' : '🔒'}
                 </Text>
+            </Box>
+            <Spacer />
+
+            <Box justifyContent="flex-end">
+                <ToastRenderer />
             </Box>
         </Box>
     )
@@ -239,14 +250,16 @@ export function App({
 
     return (
         <AppContextProvider projectRoot={projectRoot} autoLoad={autoLoad}>
-            <FocusProvider>
-                <RouterProvider
-                    initialRoute={initialRoute}
-                    initialParams={initialParams}
-                >
-                    <AppShell />
-                </RouterProvider>
-            </FocusProvider>
+            <ToastProvider>
+                <FocusProvider>
+                    <RouterProvider
+                        initialRoute={initialRoute}
+                        initialParams={initialParams}
+                    >
+                        <AppShell />
+                    </RouterProvider>
+                </FocusProvider>
+            </ToastProvider>
         </AppContextProvider>
     )
 }
