@@ -128,7 +128,7 @@ export function SecretDefinitionList({
             icon: secret.required !== false ? '●' : '○',
         }));
 
-    }, [secrets]);
+    }, [visibleSecrets]);
 
     // Set/reset highlighted key when items change
     useEffect(() => {

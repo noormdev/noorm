@@ -29,8 +29,10 @@ import {
     Panel,
     SecretValueList,
     SecretValueListHelp,
+    useToast,
     type SecretValueItem,
 } from '../../components/index.js';
+import { maskValue } from '../../../core/logger/redact.js';
 
 /**
  * SecretListScreen component.
@@ -42,6 +44,7 @@ export function SecretListScreen({ params: _params }: ScreenProps): ReactElement
     const { navigate, back } = useRouter();
     const { isFocused } = useFocusScope('SecretList');
     const { activeConfig, activeConfigName, stateManager, settingsManager } = useAppContext();
+    const { showToast } = useToast();
 
     // Try to match config name to a stage (common pattern: config "prod" -> stage "prod")
     const stageName = activeConfigName;
@@ -70,15 +73,29 @@ export function SecretListScreen({ params: _params }: ScreenProps): ReactElement
         const result: SecretValueItem[] = [];
         const requiredKeys = new Set(requiredSecrets.map((s) => s.key));
 
+        // Helper to get masked value for a key
+        const getMasked = (key: string): string | undefined => {
+
+            if (!stateManager || !activeConfigName) return undefined;
+
+            const value = stateManager.getSecret(activeConfigName, key);
+
+            return value ? maskValue(value, key, 'verbose') : undefined;
+
+        };
+
         // Add required secrets first
         for (const required of requiredSecrets) {
+
+            const isSet = storedSecretKeys.includes(required.key);
 
             result.push({
                 key: required.key,
                 isRequired: true,
-                isSet: storedSecretKeys.includes(required.key),
+                isSet,
                 type: required.type,
                 description: required.description,
+                maskedValue: isSet ? getMasked(required.key) : undefined,
             });
 
         }
@@ -92,6 +109,7 @@ export function SecretListScreen({ params: _params }: ScreenProps): ReactElement
                     key,
                     isRequired: false,
                     isSet: true,
+                    maskedValue: getMasked(key),
                 });
 
             }
@@ -100,7 +118,7 @@ export function SecretListScreen({ params: _params }: ScreenProps): ReactElement
 
         return result;
 
-    }, [requiredSecrets, storedSecretKeys]);
+    }, [requiredSecrets, storedSecretKeys, stateManager, activeConfigName]);
 
     // Required keys set for delete check
     const requiredKeys = useMemo(() => {
@@ -108,6 +126,17 @@ export function SecretListScreen({ params: _params }: ScreenProps): ReactElement
         return new Set(requiredSecrets.map((s) => s.key));
 
     }, [requiredSecrets]);
+
+    // Universal secret keys (to distinguish from stage-specific in messages)
+    const universalKeys = useMemo(() => {
+
+        if (!settingsManager) return new Set<string>();
+
+        const universalSecrets = settingsManager.getUniversalSecrets();
+
+        return new Set(universalSecrets.map((s) => s.key));
+
+    }, [settingsManager]);
 
     // Handle add
     const handleAdd = useCallback(() => {
@@ -144,6 +173,22 @@ export function SecretListScreen({ params: _params }: ScreenProps): ReactElement
 
         },
         [requiredKeys],
+    );
+
+    // Handle blocked delete (show toast with reason)
+    const handleDeleteBlocked = useCallback(
+        (secretKey: string) => {
+
+            const isUniversal = universalKeys.has(secretKey);
+            const scope = isUniversal ? 'universal' : 'stage';
+
+            showToast({
+                message: `"${secretKey}" is a ${scope} secret and cannot be deleted`,
+                variant: 'warning',
+            });
+
+        },
+        [universalKeys, showToast],
     );
 
     // Handle back for error state
@@ -192,6 +237,7 @@ export function SecretListScreen({ params: _params }: ScreenProps): ReactElement
                         onEdit={handleEdit}
                         onDelete={handleDelete}
                         canDelete={canDelete}
+                        onDeleteBlocked={handleDeleteBlocked}
                         isFocused={isFocused}
                         onBack={back}
                     />

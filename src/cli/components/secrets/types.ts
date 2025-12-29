@@ -87,6 +87,9 @@ export interface SecretValueItem {
 
     /** Human-readable description */
     description?: string;
+
+    /** Obfuscated preview of the value (e.g., "********... (24)") */
+    maskedValue?: string;
 }
 
 /**

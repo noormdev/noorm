@@ -25,7 +25,7 @@ import type { ScreenProps } from '../../types.js';
 import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
-import { Panel, Spinner, ConnectionStatus } from '../../components/index.js';
+import { Panel, Spinner, ConnectionStatus, useToast } from '../../components/index.js';
 import { createConnection, testConnection } from '../../../core/connection/index.js';
 import { tablesExist } from '../../../core/version/index.js';
 import { attempt } from '@logosdx/utils';
@@ -60,6 +60,7 @@ export function DbListScreen({ params: _params }: ScreenProps): ReactElement {
     const { navigate, back } = useRouter();
     const { isFocused } = useFocusScope('DbList');
     const { activeConfig, activeConfigName } = useAppContext();
+    const { showToast } = useToast();
 
     const [status, setStatus] = useState<DbStatus | null>(null);
     const [isLoading, setIsLoading] = useState(true);
@@ -189,6 +190,18 @@ export function DbListScreen({ params: _params }: ScreenProps): ReactElement {
         if (!activeConfig) return;
 
         if (input === 'c') {
+
+            // Already initialized - show toast instead of navigating
+            if (status?.connected && status?.tablesExist) {
+
+                showToast({
+                    message: `Database "${activeConfig.connection.database}" already initialized`,
+                    variant: 'info',
+                });
+
+                return;
+
+            }
 
             navigate('db/create');
 

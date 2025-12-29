@@ -65,6 +65,8 @@ export class Logger {
 
     #projectRoot: string;
 
+    #settings: Settings;
+
     #config: LoggerConfig;
     #context: Record<string, unknown>;
     #file: Writable | null = null;

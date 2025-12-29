@@ -76,6 +76,19 @@ export function DbCreateScreen({ params: _params }: ScreenProps): ReactElement {
 
             }
 
+            // Already fully initialized - show toast and go back
+            if (result.exists && result.trackingInitialized) {
+
+                showToast({
+                    message: `Database "${activeConfig.connection.database}" already initialized`,
+                    variant: 'info',
+                });
+                back();
+
+                return;
+
+            }
+
             setStatus(result);
             setPhase('confirm');
 
@@ -89,7 +102,7 @@ export function DbCreateScreen({ params: _params }: ScreenProps): ReactElement {
 
         };
 
-    }, [activeConfig, activeConfigName]);
+    }, [activeConfig, activeConfigName, showToast, back]);
 
     // Execute the creation
     const executeCreate = useCallback(async () => {
@@ -194,31 +207,6 @@ export function DbCreateScreen({ params: _params }: ScreenProps): ReactElement {
     if (phase === 'confirm' && status) {
 
         const dbName = activeConfig.connection.database;
-
-        // Already fully initialized
-        if (status.exists && status.trackingInitialized) {
-
-            return (
-                <Box flexDirection="column" gap={1}>
-                    <Panel title="Create Database" borderColor="yellow" paddingX={1} paddingY={1}>
-                        <Box flexDirection="column" gap={1}>
-                            <Text color="yellow">
-                                Database <Text bold>{dbName}</Text> already exists and is
-                                initialized.
-                            </Text>
-                            <Text dimColor>No action needed.</Text>
-                        </Box>
-                    </Panel>
-
-                    <Box gap={2}>
-                        <Text dimColor>[Esc] Back</Text>
-                    </Box>
-                </Box>
-            );
-
-        }
-
-        // Determine what we're going to do
         const willCreateDb = !status.exists;
 
         const actionText = willCreateDb

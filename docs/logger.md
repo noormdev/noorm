@@ -162,24 +162,56 @@ generateMessage('config:activated', { name: 'prod', previous: 'dev' })
 
 ## Sensitive Data Redaction
 
-The logger automatically redacts sensitive fields:
+The logger automatically masks sensitive fields using smart redaction. Instead of replacing values with `[REDACTED]`, it shows a masked preview with length information:
 
 ```typescript
-// Fields containing these words are redacted:
-// password, secret, key, token, credential, auth
+import { maskValue } from './core/logger/redact'
 
-const entry = formatEntry('custom:event', {
-    username: 'alice',
-    password: 'secret123',
-    apiKey: 'sk-123',
-}, undefined, true)
+// Format: <FieldName mask (length) />
+maskValue('mysecretpassword', 'Password', 'info')
+// => '<Password ************... (16) />'
 
-// entry.data = {
-//     username: 'alice',
-//     password: '[REDACTED]',
-//     apiKey: '[REDACTED]'
-// }
+// In verbose mode, first few chars are visible for debugging
+maskValue('sk-1234567890abcd', 'ApiKey', 'verbose')
+// => '<ApiKey sk-1********... (18) />'
 ```
+
+The mask length is capped at 12 characters, with `...` indicating overflow. In verbose mode, up to 4 leading characters are revealed (proportional to value length) to help identify which secret is being referenced.
+
+
+### Built-in Masked Fields
+
+Common sensitive field names are automatically detected (case-insensitive):
+
+```
+password, pass, secret, token, key, credential, api_key, apikey,
+access_key, secret_key, db_pass, db_password, redis_pass,
+client_secret, private_key, encryption_key, auth_token,
+bearer_token, jwt_secret, session_secret
+```
+
+All case variations are checked: `password`, `PASSWORD`, `Password`, `db_password`, `DB_PASSWORD`, `dbPassword`, etc.
+
+
+### Dynamic Secret Registration
+
+Secrets from settings and user-defined secrets are automatically added to the redaction list:
+
+```typescript
+import { addMaskedFields, addSettingsSecrets, listenForSecrets } from './core/logger/redact'
+
+// Add custom field names
+addMaskedFields(['MY_CUSTOM_SECRET', 'vendor_api_token'])
+
+// Add all secrets defined in settings.yml stages
+addSettingsSecrets(settings)
+
+// Listen for runtime secret operations (call before logger starts)
+const cleanup = listenForSecrets()
+// Now any secret:set or global-secret:set events add keys to redaction
+```
+
+The logger calls `listenForSecrets()` at startup, so any secret you set during a session is immediately masked in logs.
 
 
 ## Write Queue

@@ -65,7 +65,7 @@ export function SecretRemoveScreen({ params }: ScreenProps): ReactElement {
     // Check if this is a required secret
     const isRequired = useMemo(() => {
 
-        return secretDefinition !== null;
+        return secretDefinition !== undefined;
 
     }, [secretDefinition]);
 

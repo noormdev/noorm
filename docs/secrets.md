@@ -22,7 +22,27 @@ Config-scoped secrets are deleted when their config is deleted. Global secrets p
 
 ## Required vs Optional
 
-Stages (defined in `settings.yml`) can declare required secrets:
+Secrets can be required in two ways: **universally** (for all configs) or **per-stage** (for configs matching that stage).
+
+
+### Universal Secrets
+
+Defined at the root level of `settings.yml`, these are required by every config regardless of stage:
+
+```yaml
+# .noorm/settings.yml
+secrets:
+    - key: ENCRYPTION_KEY
+      type: password
+      description: App-wide encryption key
+```
+
+Use universal secrets for credentials needed across all environments—shared API keys, license keys, or application-level secrets.
+
+
+### Stage Secrets
+
+Defined within a stage, these are only required for configs matching that stage:
 
 ```yaml
 # .noorm/settings.yml
@@ -39,9 +59,14 @@ stages:
               description: Read-only user password
 ```
 
-Required secrets must be set before a config is usable. The CLI highlights missing secrets and guides users to set them.
+A config named `prod` will require both universal secrets and prod-stage secrets. A config named `dev` requires only universal secrets (plus any dev-stage secrets).
 
-Optional secrets are user-defined. Add them freely for template interpolation without stage definitions.
+
+### Optional Secrets
+
+User-defined secrets not listed in settings. Add them freely for template interpolation—they're not validated or required, just stored and available.
+
+The CLI merges universal and stage-specific requirements when displaying missing secrets and blocking operations.
 
 
 ## Secret Types
@@ -70,8 +95,9 @@ The list screen shows:
 - Required secrets with status (✓ set / ✗ missing)
 - Optional secrets you've added
 - Type hints from stage definitions
+- Masked value previews for set secrets
 
-Values are never displayed. Only keys are shown.
+Masked previews show the secret length and first few characters (in verbose mode only), using the same format as log redaction. For example, `sk-1234567890` becomes `sk-1********... (12)`. This helps verify which value is stored without exposing it.
 
 
 ### Setting Secrets
@@ -95,7 +121,16 @@ The set screen:
 noorm secret:rm MY_API_KEY          # Delete specific secret
 ```
 
-Required secrets cannot be deleted—only updated. This ensures stage-defined secrets are always present. To remove a required secret definition, edit `settings.yml`.
+Required secrets cannot be deleted—only updated. When you try to delete a required secret, the CLI shows a warning toast indicating whether it's a **universal** or **stage-specific** secret:
+
+- `"DB_PASSWORD" is a universal secret and cannot be deleted`
+- `"API_KEY" is a stage secret and cannot be deleted`
+
+This distinction helps you understand where the secret is defined:
+- **Universal secrets** — Defined in the global `secrets` section of `settings.yml`, required by all stages
+- **Stage secrets** — Defined within a specific stage's `secrets` array
+
+To remove a required secret definition, edit `settings.yml`.
 
 
 ### Keyboard Shortcuts (TUI)

@@ -34,6 +34,9 @@ export interface SecretValueListProps {
     /** Check if a secret can be deleted (default: not required) */
     canDelete?: (secretKey: string) => boolean;
 
+    /** Called when delete is blocked (secret is required) */
+    onDeleteBlocked?: (secretKey: string) => void;
+
     /** Focus state from parent */
     isFocused: boolean;
 
@@ -67,6 +70,7 @@ export function SecretValueList({
     onEdit,
     onDelete,
     canDelete,
+    onDeleteBlocked,
     isFocused,
     onBack,
 }: SecretValueListProps): ReactElement {
@@ -103,6 +107,13 @@ export function SecretValueList({
                     statusText += ' [missing]';
 
                 }
+
+            }
+
+            // Add masked value preview if set
+            if (secret.maskedValue) {
+
+                statusText += ` ${secret.maskedValue}`;
 
             }
 
@@ -193,7 +204,9 @@ export function SecretValueList({
             // Check if deletable
             if (canDelete && !canDelete(highlightedKey)) {
 
-                // Required secrets can't be deleted, only cleared
+                // Notify parent that delete was blocked
+                onDeleteBlocked?.(highlightedKey);
+
                 return;
 
             }

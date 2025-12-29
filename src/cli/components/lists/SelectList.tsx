@@ -13,7 +13,7 @@
  * />
  * ```
  */
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Box, Text, useInput } from 'ink';
 
 import type { ReactElement } from 'react';
@@ -108,6 +108,12 @@ export function SelectList<T = unknown>({
     // Filter enabled items
     const enabledItems = useMemo(() => items.filter((item) => !item.disabled), [items]);
 
+    // Refs for latest values - useInput handler reads these to avoid stale closures
+    const enabledItemsRef = useRef(enabledItems);
+    const onSelectRef = useRef(onSelect);
+    enabledItemsRef.current = enabledItems;
+    onSelectRef.current = onSelect;
+
     // Find initial index from defaultValue
     const initialIndex = useMemo(() => {
 
@@ -188,32 +194,34 @@ export function SelectList<T = unknown>({
 
         if (!isFocused || isDisabled) return;
 
-        // Up arrow - move highlight up
+        // Up arrow - move highlight up (use ref for latest length)
         if (key.upArrow) {
 
-            setHighlightedIndex((i) => (i > 0 ? i - 1 : enabledItems.length - 1));
+            setHighlightedIndex((i) => (i > 0 ? i - 1 : enabledItemsRef.current.length - 1));
 
             return;
 
         }
 
-        // Down arrow - move highlight down
+        // Down arrow - move highlight down (use ref for latest length)
         if (key.downArrow) {
 
-            setHighlightedIndex((i) => (i < enabledItems.length - 1 ? i + 1 : 0));
+            setHighlightedIndex((i) => (i < enabledItemsRef.current.length - 1 ? i + 1 : 0));
 
             return;
 
         }
 
-        // Enter - select highlighted item
+        // Enter - select highlighted item (use refs for latest values)
         if (key.return) {
 
-            const item = enabledItems[highlightedIndex];
+            const currentItems = enabledItemsRef.current;
+            const currentOnSelect = onSelectRef.current;
+            const item = currentItems[highlightedIndex];
 
-            if (item && onSelect) {
+            if (item && currentOnSelect) {
 
-                onSelect(item);
+                currentOnSelect(item);
 
             }
 

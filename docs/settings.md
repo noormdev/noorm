@@ -316,20 +316,36 @@ const defaults = settings.getStageDefaults('prod')
 
 ### Required Secrets
 
-Stages can define secrets that must be set before a config is usable:
+Secrets can be required at two levels: **universal** (required by all configs) and **stage-specific** (required only by configs matching that stage).
+
+**Universal secrets** are defined at the root level of settings:
 
 ```yaml
+# Required by ALL configs
 secrets:
-    - key: DB_PASSWORD
+    - key: ENCRYPTION_KEY
       type: password
-      description: Database password
-      required: true
-
-    - key: API_KEY
-      type: api_key
-      description: Admin API key
-      required: false
+      description: App-wide encryption key
 ```
+
+**Stage secrets** are defined within each stage:
+
+```yaml
+stages:
+    prod:
+        secrets:
+            - key: DB_PASSWORD
+              type: password
+              description: Database password
+              required: true
+
+            - key: API_KEY
+              type: api_key
+              description: Admin API key
+              required: false
+```
+
+When you use `getRequiredSecrets(stageName)`, universal and stage secrets are merged. A config named `prod` will require both universal secrets and prod-stage secrets.
 
 Secret types control CLI input behavior:
 
@@ -341,9 +357,13 @@ Secret types control CLI input behavior:
 | `connection_string` | Validated as URI |
 
 ```typescript
-// Get required secrets for a stage
+// Get required secrets for a stage (includes universal + stage-specific)
 const secrets = settings.getRequiredSecrets('prod')
-// [{ key: 'DB_PASSWORD', type: 'password', description: '...' }]
+// [{ key: 'ENCRYPTION_KEY', ... }, { key: 'DB_PASSWORD', ... }]
+
+// Get only universal secrets
+const universal = settings.getUniversalSecrets()
+// [{ key: 'ENCRYPTION_KEY', type: 'password', description: '...' }]
 ```
 
 

@@ -194,14 +194,21 @@ export function maskValue(value: string, prefix: string, level: LogLevel): strin
 
     const valueLen = value.length;
     const maskLen = Math.min(valueLen, MASK_MAX_LENGTH);
+    const reveal = Math.min(Math.ceil(valueLen / 5), 4) || 1;
 
     let masked = '*'.repeat(maskLen);
 
     // In verbose/debug mode, show first 4 chars for debugging
     if (level === 'verbose' && valueLen >= 4) {
 
-        const first4 = value.slice(0, 4);
+        const first4 = value.slice(0, reveal);
         masked = first4 + '*'.repeat(Math.max(0, maskLen - 4));
+
+        if (masked.length < maskLen) {
+
+            masked += '*'.repeat(maskLen - masked.length);
+
+        }
 
     }
 
