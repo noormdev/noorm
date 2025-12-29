@@ -6,7 +6,7 @@
  */
 
 // Types
-export * from './types.js'
+export * from './types.js';
 
 // Schema & Validation
 export {
@@ -22,7 +22,7 @@ export {
     type ConfigSchemaType,
     type ConfigInputSchemaType,
     type ConnectionSchemaType,
-} from './schema.js'
+} from './schema.js';
 
 // Resolver
 export {
@@ -32,7 +32,7 @@ export {
     type ResolveOptions,
     type StateProvider,
     type SettingsProvider,
-} from './resolver.js'
+} from './resolver.js';
 
 // Environment variables
 export {
@@ -41,7 +41,7 @@ export {
     isCI,
     shouldSkipConfirmations,
     shouldOutputJson,
-} from './env.js'
+} from './env.js';
 
 // Protection
 export {
@@ -49,4 +49,4 @@ export {
     validateConfirmation,
     type ProtectedAction,
     type ProtectionCheck,
-} from './protection.js'
+} from './protection.js';

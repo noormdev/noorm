@@ -20,43 +20,37 @@
  * />
  * ```
  */
-import { useState, useCallback, useMemo, useId, useEffect, useRef } from 'react'
-import { Box, Text, useInput } from 'ink'
-import { TextInput } from '@inkjs/ui'
+import { useState, useCallback, useMemo, useId, useEffect, useRef } from 'react';
+import { Box, Text, useInput } from 'ink';
+import { TextInput } from '@inkjs/ui';
 
-import type { ReactElement } from 'react'
+import type { ReactElement } from 'react';
 
-import { useFocusScope } from '../../focus.js'
-
+import { useFocusScope } from '../../focus.js';
 
 /**
  * Form field types.
  */
-export type FormFieldType = 'text' | 'password' | 'select' | 'checkbox'
-
+export type FormFieldType = 'text' | 'password' | 'select' | 'checkbox';
 
 /**
  * Select option for select fields.
  */
 export interface SelectOption {
-
-    label: string
-    value: string
+    label: string;
+    value: string;
 }
-
 
 /**
  * Props for inline SelectField component.
  */
 interface SelectFieldProps {
-
-    options: SelectOption[]
-    value: string
-    onChange: (value: string) => void
-    isActive: boolean
-    onConfirm: () => void
+    options: SelectOption[];
+    value: string;
+    onChange: (value: string) => void;
+    isActive: boolean;
+    onConfirm: () => void;
 }
-
 
 /**
  * Inline SelectField component with proper keyboard handling.
@@ -75,85 +69,94 @@ function SelectField({
     // Find current index from value
     const currentIndex = useMemo(() => {
 
-        const idx = options.findIndex(opt => opt.value === value)
+        const idx = options.findIndex((opt) => opt.value === value);
 
-        return idx >= 0 ? idx : 0
-    }, [options, value])
+        return idx >= 0 ? idx : 0;
+
+    }, [options, value]);
 
     // Track highlighted index (what user is hovering over)
-    const [highlightedIndex, setHighlightedIndex] = useState(currentIndex)
+    const [highlightedIndex, setHighlightedIndex] = useState(currentIndex);
 
     // Sync highlighted index when value changes externally
     useEffect(() => {
 
-        setHighlightedIndex(currentIndex)
-    }, [currentIndex])
+        setHighlightedIndex(currentIndex);
+
+    }, [currentIndex]);
 
     // Handle keyboard navigation for select
     useInput((input, key) => {
 
-        if (!isActive) return
+        if (!isActive) return;
 
         // Up arrow - move highlight up
         if (key.upArrow) {
 
-            setHighlightedIndex(i => i > 0 ? i - 1 : options.length - 1)
-            return
+            setHighlightedIndex((i) => (i > 0 ? i - 1 : options.length - 1));
+
+            return;
+
         }
 
         // Down arrow - move highlight down
         if (key.downArrow) {
 
-            setHighlightedIndex(i => i < options.length - 1 ? i + 1 : 0)
-            return
+            setHighlightedIndex((i) => (i < options.length - 1 ? i + 1 : 0));
+
+            return;
+
         }
 
         // Enter - confirm selection
         if (key.return) {
 
-            const selected = options[highlightedIndex]
+            const selected = options[highlightedIndex];
 
             if (selected) {
 
-                onChange(selected.value)
-                onConfirm()
+                onChange(selected.value);
+                onConfirm();
+
             }
+
         }
-    })
+
+    });
 
     // Calculate visible window (show 4 options max)
-    const visibleCount = 4
+    const visibleCount = 4;
     const startIndex = useMemo(() => {
 
-        if (options.length <= visibleCount) return 0
+        if (options.length <= visibleCount) return 0;
 
-        const halfVisible = Math.floor(visibleCount / 2)
-        let start = highlightedIndex - halfVisible
+        const halfVisible = Math.floor(visibleCount / 2);
+        let start = highlightedIndex - halfVisible;
 
-        if (start < 0) start = 0
+        if (start < 0) start = 0;
         if (start > options.length - visibleCount) {
 
-            start = options.length - visibleCount
+            start = options.length - visibleCount;
+
         }
 
-        return start
-    }, [highlightedIndex, options.length])
+        return start;
 
-    const visibleOptions = options.slice(startIndex, startIndex + visibleCount)
-    const hasMoreAbove = startIndex > 0
-    const hasMoreBelow = startIndex + visibleCount < options.length
+    }, [highlightedIndex, options.length]);
+
+    const visibleOptions = options.slice(startIndex, startIndex + visibleCount);
+    const hasMoreAbove = startIndex > 0;
+    const hasMoreBelow = startIndex + visibleCount < options.length;
 
     return (
         <Box flexDirection="column">
-            {hasMoreAbove && (
-                <Text dimColor>  ↑ more</Text>
-            )}
+            {hasMoreAbove && <Text dimColor> ↑ more</Text>}
 
             {visibleOptions.map((option, visibleIdx) => {
 
-                const actualIndex = startIndex + visibleIdx
-                const isHighlighted = actualIndex === highlightedIndex
-                const isSelected = option.value === value
+                const actualIndex = startIndex + visibleIdx;
+                const isHighlighted = actualIndex === highlightedIndex;
+                const isSelected = option.value === value;
 
                 return (
                     <Box key={option.value}>
@@ -166,90 +169,83 @@ function SelectField({
                             {isSelected && !isHighlighted && ' ✓'}
                         </Text>
                     </Box>
-                )
+                );
+
             })}
 
-            {hasMoreBelow && (
-                <Text dimColor>  ↓ more</Text>
-            )}
+            {hasMoreBelow && <Text dimColor> ↓ more</Text>}
         </Box>
-    )
-}
+    );
 
+}
 
 /**
  * Form field definition.
  */
 export interface FormField {
-
     /** Unique field identifier */
-    key: string
+    key: string;
 
     /** Display label */
-    label: string
+    label: string;
 
     /** Field type */
-    type: FormFieldType
+    type: FormFieldType;
 
     /** Whether field is required */
-    required?: boolean
+    required?: boolean;
 
     /** Options for select type */
-    options?: SelectOption[]
+    options?: SelectOption[];
 
     /** Default value */
-    defaultValue?: string | boolean
+    defaultValue?: string | boolean;
 
     /** Placeholder text for text/password */
-    placeholder?: string
+    placeholder?: string;
 
     /** Custom validation function */
-    validate?: (value: string | boolean) => string | undefined
+    validate?: (value: string | boolean) => string | undefined;
 }
-
 
 /**
  * Form values as key-value pairs.
  */
-export type FormValues = Record<string, string | boolean>
-
+export type FormValues = Record<string, string | boolean>;
 
 /**
  * Form field errors.
  */
-export type FormErrors = Record<string, string>
-
+export type FormErrors = Record<string, string>;
 
 /**
  * Props for Form component.
  */
 export interface FormProps {
-
     /** Form field definitions */
-    fields: FormField[]
+    fields: FormField[];
 
     /** Callback when form is submitted with valid values */
-    onSubmit: (values: FormValues) => void
+    onSubmit: (values: FormValues) => void;
 
     /** Callback when form is cancelled */
-    onCancel?: () => void
+    onCancel?: () => void;
 
     /** Submit button label */
-    submitLabel?: string
+    submitLabel?: string;
 
     /** Focus scope label */
-    focusLabel?: string
+    focusLabel?: string;
 
     /** Whether form is busy (disables submission) */
-    busy?: boolean
+    busy?: boolean;
 
     /** Busy label to show while busy */
-    busyLabel?: string
+    busyLabel?: string;
 
     /** Error message to show in toolbar (right side) */
-    statusError?: string
+    statusError?: string;
 }
-
 
 /**
  * Form component.
@@ -268,165 +264,205 @@ export function Form({
     statusError,
 }: FormProps): ReactElement {
 
-    const { isFocused } = useFocusScope(focusLabel)
-    const formId = useId()
+    const { isFocused } = useFocusScope(focusLabel);
+    const _formId = useId();
 
     // Form state
-    const [activeIndex, setActiveIndex] = useState(0)
+    const [activeIndex, setActiveIndex] = useState(0);
     const [values, setValues] = useState<FormValues>(() => {
 
-        const initial: FormValues = {}
+        const initial: FormValues = {};
 
         for (const field of fields) {
 
             if (field.defaultValue !== undefined) {
 
-                initial[field.key] = field.defaultValue
+                initial[field.key] = field.defaultValue;
+
             }
             else if (field.type === 'checkbox') {
 
-                initial[field.key] = false
+                initial[field.key] = false;
+
             }
             else {
 
-                initial[field.key] = ''
+                initial[field.key] = '';
+
             }
+
         }
 
-        return initial
-    })
-    const [errors, setErrors] = useState<FormErrors>({})
-    const [submitted, setSubmitted] = useState(false)
+        return initial;
+
+    });
+    const [errors, setErrors] = useState<FormErrors>({});
+    const [submitted, setSubmitted] = useState(false);
+    const [submitting, setSubmitting] = useState(false);
 
     // Get current field
-    const currentField = fields[activeIndex]
+    const currentField = fields[activeIndex];
 
     // Navigate fields
     const nextField = useCallback(() => {
 
-        setActiveIndex(i => (i + 1) % fields.length)
-    }, [fields.length])
+        setActiveIndex((i) => (i + 1) % fields.length);
+
+    }, [fields.length]);
 
     const prevField = useCallback(() => {
 
-        setActiveIndex(i => (i - 1 + fields.length) % fields.length)
-    }, [fields.length])
+        setActiveIndex((i) => (i - 1 + fields.length) % fields.length);
+
+    }, [fields.length]);
 
     // Update field value - stable reference (no dependencies)
     const updateValue = useCallback((key: string, value: string | boolean) => {
 
-        setValues(prev => ({ ...prev, [key]: value }))
+        setValues((prev) => ({ ...prev, [key]: value }));
 
         // Clear error when value changes
-        setErrors(prev => {
+        setErrors((prev) => {
 
-            if (!prev[key]) return prev // No change needed
-            const next = { ...prev }
-            delete next[key]
-            return next
-        })
-    }, [])
+            if (!prev[key]) return prev; // No change needed
+            const next = { ...prev };
+            delete next[key];
+
+            return next;
+
+        });
+
+    }, []);
 
     // Create stable onChange handlers for each field (memoized by field key)
-    const onChangeHandlers = useRef<Record<string, (value: string) => void>>({})
+    const onChangeHandlers = useRef<Record<string, (value: string) => void>>({});
 
-    const getOnChangeHandler = useCallback((key: string) => {
+    const getOnChangeHandler = useCallback(
+        (key: string) => {
 
-        if (!onChangeHandlers.current[key]) {
+            if (!onChangeHandlers.current[key]) {
 
-            onChangeHandlers.current[key] = (value: string) => updateValue(key, value)
-        }
+                onChangeHandlers.current[key] = (value: string) => updateValue(key, value);
 
-        return onChangeHandlers.current[key]
-    }, [updateValue])
+            }
+
+            return onChangeHandlers.current[key];
+
+        },
+        [updateValue],
+    );
 
     // Validate all fields
     const validateAll = useCallback((): boolean => {
 
-        const newErrors: FormErrors = {}
+        const newErrors: FormErrors = {};
 
         for (const field of fields) {
 
-            const value = values[field.key]
+            const value = values[field.key];
 
             // Required check
             if (field.required) {
 
                 if (value === '' || value === undefined) {
 
-                    newErrors[field.key] = 'Required'
-                    continue
+                    newErrors[field.key] = 'Required';
+                    continue;
+
                 }
+
             }
 
             // Custom validation
             if (field.validate) {
 
-                const error = field.validate(value ?? '')
+                const error = field.validate(value ?? '');
 
                 if (error) {
 
-                    newErrors[field.key] = error
+                    newErrors[field.key] = error;
+
                 }
+
             }
+
         }
 
-        setErrors(newErrors)
-        return Object.keys(newErrors).length === 0
-    }, [fields, values])
+        setErrors(newErrors);
+
+        return Object.keys(newErrors).length === 0;
+
+    }, [fields, values]);
 
     // Handle submit
     const handleSubmit = useCallback(() => {
 
-        if (busy) return
+        // Prevent double-submit
+        if (busy || submitting) return;
 
-        setSubmitted(true)
+        setSubmitted(true);
+        setSubmitting(true);
 
         if (validateAll()) {
 
-            onSubmit(values)
+            onSubmit(values);
+
         }
-    }, [busy, validateAll, values, onSubmit])
+        else {
+
+            // Validation failed, allow retry
+            setSubmitting(false);
+
+        }
+
+    }, [busy, submitting, validateAll, values, onSubmit]);
 
     // Handle escape - clear field or cancel
     const handleEscape = useCallback(() => {
 
-        const field = fields[activeIndex]
+        const field = fields[activeIndex];
 
-        if (!field) return
+        if (!field) return;
 
-        const value = values[field.key]
+        const value = values[field.key];
 
         // Check if field has content to clear
-        const hasContent = field.type === 'checkbox'
-            ? value === true
-            : typeof value === 'string' && value !== ''
+        const hasContent =
+            field.type === 'checkbox' ? value === true : typeof value === 'string' && value !== '';
 
         if (hasContent) {
 
             // Clear the field
-            updateValue(field.key, field.type === 'checkbox' ? false : '')
+            updateValue(field.key, field.type === 'checkbox' ? false : '');
+
         }
         else {
 
             // Field is empty, cancel form
-            onCancel?.()
+            onCancel?.();
+
         }
-    }, [activeIndex, fields, values, updateValue, onCancel])
+
+    }, [activeIndex, fields, values, updateValue, onCancel]);
 
     // Keyboard handling for navigation
-    // Note: Select fields handle their own up/down/enter, so we skip those here
+    // Note: Select fields handle their own up/down/enter
+    // Note: Text/password fields handle Enter via TextInput's onSubmit
     useInput((input, key) => {
 
-        if (!isFocused) return
+        if (!isFocused) return;
 
-        const isSelectField = currentField?.type === 'select'
+        const fieldType = currentField?.type;
+        const isSelectField = fieldType === 'select';
+        const isTextInput = fieldType === 'text' || fieldType === 'password';
 
         // Tab - always moves to next field
         if (key.tab) {
 
-            nextField()
-            return
+            nextField();
+
+            return;
+
         }
 
         // Arrow keys - only handle if NOT on a select field
@@ -435,45 +471,58 @@ export function Form({
 
             if (key.downArrow) {
 
-                nextField()
-                return
+                nextField();
+
+                return;
+
             }
 
             if (key.upArrow) {
 
-                prevField()
-                return
+                prevField();
+
+                return;
+
             }
+
         }
 
-        // Enter - submit form (unless in select which needs Enter to select)
-        if (key.return && !isSelectField) {
+        // Enter - submit form
+        // Skip for select (uses Enter to select option)
+        // Skip for text/password (TextInput handles via onSubmit)
+        if (key.return && !isSelectField && !isTextInput) {
 
-            handleSubmit()
-            return
+            handleSubmit();
+
+            return;
+
         }
 
         // Escape
         if (key.escape) {
 
-            handleEscape()
-            return
+            handleEscape();
+
+            return;
+
         }
 
         // Space toggles checkbox
-        if (input === ' ' && currentField?.type === 'checkbox') {
+        if (fieldType === 'checkbox' && input === ' ' && currentField) {
 
-            updateValue(currentField.key, !values[currentField.key])
+            updateValue(currentField.key, !values[currentField.key]);
+
         }
-    })
+
+    });
 
     return (
         <Box flexDirection="column" gap={1}>
             {fields.map((field, index) => {
 
-                const isActive = index === activeIndex && isFocused
-                const error = errors[field.key]
-                const value = values[field.key]
+                const isActive = index === activeIndex && isFocused;
+                const error = errors[field.key];
+                const value = values[field.key];
 
                 return (
                     <Box key={field.key} flexDirection="column">
@@ -491,6 +540,7 @@ export function Form({
                                     placeholder={field.placeholder ?? ''}
                                     defaultValue={String(field.defaultValue ?? '')}
                                     onChange={getOnChangeHandler(field.key)}
+                                    onSubmit={handleSubmit}
                                     isDisabled={!isActive}
                                 />
                             )}
@@ -500,6 +550,7 @@ export function Form({
                                     placeholder={field.placeholder ?? ''}
                                     defaultValue={String(field.defaultValue ?? '')}
                                     onChange={getOnChangeHandler(field.key)}
+                                    onSubmit={handleSubmit}
                                     isDisabled={!isActive}
                                 />
                             )}
@@ -527,7 +578,8 @@ export function Form({
                             </Box>
                         )}
                     </Box>
-                )
+                );
+
             })}
 
             <Box marginTop={1} justifyContent="space-between">
@@ -543,10 +595,9 @@ export function Form({
                     )}
                 </Box>
 
-                {statusError && (
-                    <Text color="red">✘ {statusError}</Text>
-                )}
+                {statusError && <Text color="red">✘ {statusError}</Text>}
             </Box>
         </Box>
-    )
+    );
+
 }

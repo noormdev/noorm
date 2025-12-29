@@ -4,9 +4,8 @@
  * Uses 'tedious' and 'tarn' packages for MSSQL connections.
  * Install with: npm install tedious tarn
  */
-import { Kysely, MssqlDialect } from 'kysely'
-import type { ConnectionConfig, ConnectionResult } from '../types.js'
-
+import { Kysely, MssqlDialect } from 'kysely';
+import type { ConnectionConfig, ConnectionResult } from '../types.js';
 
 /**
  * Create a SQL Server connection.
@@ -26,9 +25,9 @@ import type { ConnectionConfig, ConnectionResult } from '../types.js'
 export async function createMssqlConnection(config: ConnectionConfig): Promise<ConnectionResult> {
 
     // Dynamic import to avoid compile-time dependency
-    const Tedious = await import('tedious')
+    const Tedious = await import('tedious');
     // @ts-expect-error - tarn types not installed, loaded dynamically
-    const Tarn = await import('tarn')
+    const Tarn = await import('tarn');
 
     const db = new Kysely<unknown>({
         dialect: new MssqlDialect({
@@ -60,11 +59,12 @@ export async function createMssqlConnection(config: ConnectionConfig): Promise<C
                     }),
             },
         }),
-    })
+    });
 
     return {
         db,
         dialect: 'mssql',
         destroy: () => db.destroy(),
-    }
+    };
+
 }

@@ -3,17 +3,15 @@
  *
  * Provides StateManager class and singleton helpers.
  */
-import { StateManager } from './manager.js'
+import { StateManager } from './manager.js';
 
-export { StateManager }
-export type { StateManagerOptions } from './manager.js'
-export * from './types.js'
-export { migrateState, needsMigration } from './migrations.js'
-export { getPackageVersion } from './version.js'
+export { StateManager };
+export type { StateManagerOptions } from './manager.js';
+export * from './types.js';
+export { migrateState, needsMigration } from './migrations.js';
+export { getPackageVersion } from './version.js';
 
-
-let instance: StateManager | null = null
-
+let instance: StateManager | null = null;
 
 /**
  * Get or create the StateManager singleton.
@@ -28,12 +26,14 @@ export function getStateManager(projectRoot?: string): StateManager {
 
     if (!instance) {
 
-        const root = projectRoot ?? process.cwd()
-        instance = new StateManager(root)
-    }
-    return instance
-}
+        const root = projectRoot ?? process.cwd();
+        instance = new StateManager(root);
 
+    }
+
+    return instance;
+
+}
 
 /**
  * Initialize the StateManager. Must be called at app startup.
@@ -46,11 +46,12 @@ export function getStateManager(projectRoot?: string): StateManager {
  */
 export async function initState(projectRoot?: string): Promise<StateManager> {
 
-    const manager = getStateManager(projectRoot)
-    await manager.load()
-    return manager
-}
+    const manager = getStateManager(projectRoot);
+    await manager.load();
 
+    return manager;
+
+}
 
 /**
  * Reset the singleton (for testing).
@@ -64,5 +65,6 @@ export async function initState(projectRoot?: string): Promise<StateManager> {
  */
 export function resetStateManager(): void {
 
-    instance = null
+    instance = null;
+
 }

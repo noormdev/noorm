@@ -4,14 +4,12 @@
  * Defines the shape of database connection configs that work with Kysely.
  * Each dialect has specific requirements.
  */
-import type { Kysely } from 'kysely'
-
+import type { Kysely } from 'kysely';
 
 /**
  * Supported database dialects.
  */
-export type Dialect = 'postgres' | 'mysql' | 'sqlite' | 'mssql'
-
+export type Dialect = 'postgres' | 'mysql' | 'sqlite' | 'mssql';
 
 /**
  * Database connection configuration.
@@ -34,45 +32,44 @@ export type Dialect = 'postgres' | 'mysql' | 'sqlite' | 'mssql'
  * ```
  */
 export interface ConnectionConfig {
-
-    dialect: Dialect
+    dialect: Dialect;
 
     // Network (postgres, mysql, mssql)
-    host?: string
-    port?: number
+    host?: string;
+    port?: number;
 
     // Auth
-    user?: string
-    password?: string
+    user?: string;
+    password?: string;
 
     // Database
-    database: string
+    database: string;
 
     // SQLite specific - can use instead of database
-    filename?: string
+    filename?: string;
 
     // Pool settings
     pool?: {
-        min?: number
-        max?: number
-    }
+        min?: number;
+        max?: number;
+    };
 
     // SSL
-    ssl?: boolean | {
-        rejectUnauthorized?: boolean
-        ca?: string
-        cert?: string
-        key?: string
-    }
+    ssl?:
+        | boolean
+        | {
+              rejectUnauthorized?: boolean;
+              ca?: string;
+              cert?: string;
+              key?: string;
+          };
 }
-
 
 /**
  * Result of creating a connection.
  */
 export interface ConnectionResult {
-
-    db: Kysely<unknown>
-    dialect: Dialect
-    destroy: () => Promise<void>
+    db: Kysely<unknown>;
+    dialect: Dialect;
+    destroy: () => Promise<void>;
 }

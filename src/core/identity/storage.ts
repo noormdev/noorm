@@ -17,61 +17,57 @@
  * const privateKey = await loadPrivateKey()
  * ```
  */
-import { homedir } from 'os'
-import { join } from 'path'
-import { chmod, mkdir, readFile, stat, writeFile } from 'fs/promises'
-import { attempt, attemptSync } from '@logosdx/utils'
+import { homedir } from 'os';
+import { join } from 'path';
+import { chmod, mkdir, readFile, stat, writeFile } from 'fs/promises';
+import { attempt, attemptSync } from '@logosdx/utils';
 
-import type { KeyPair, CryptoIdentity } from './types.js'
-
+import type { KeyPair, CryptoIdentity } from './types.js';
 
 // =============================================================================
 // Constants
 // =============================================================================
 
-
 /** Base directory for noorm global config */
-const NOORM_HOME = join(homedir(), '.noorm')
+const NOORM_HOME = join(homedir(), '.noorm');
 
 /** Private key file path */
-const PRIVATE_KEY_PATH = join(NOORM_HOME, 'identity.key')
+const PRIVATE_KEY_PATH = join(NOORM_HOME, 'identity.key');
 
 /** Public key file path */
-const PUBLIC_KEY_PATH = join(NOORM_HOME, 'identity.pub')
+const PUBLIC_KEY_PATH = join(NOORM_HOME, 'identity.pub');
 
 /** File permissions: owner read/write only */
-const PRIVATE_KEY_MODE = 0o600
+const PRIVATE_KEY_MODE = 0o600;
 
 /** File permissions: owner read/write, others read */
-const PUBLIC_KEY_MODE = 0o644
+const PUBLIC_KEY_MODE = 0o644;
 
 /** Identity metadata file path */
-const IDENTITY_METADATA_PATH = join(NOORM_HOME, 'identity.json')
-
+const IDENTITY_METADATA_PATH = join(NOORM_HOME, 'identity.json');
 
 // =============================================================================
 // Directory Setup
 // =============================================================================
-
 
 /**
  * Ensure ~/.noorm directory exists.
  */
 async function ensureNoormDir(): Promise<void> {
 
-    const [, err] = await attempt(() => mkdir(NOORM_HOME, { recursive: true }))
+    const [, err] = await attempt(() => mkdir(NOORM_HOME, { recursive: true }));
 
     if (err) {
 
-        throw new Error(`Failed to create ${NOORM_HOME}: ${err.message}`)
-    }
-}
+        throw new Error(`Failed to create ${NOORM_HOME}: ${err.message}`);
 
+    }
+
+}
 
 // =============================================================================
 // Key Storage
 // =============================================================================
-
 
 /**
  * Save keypair to disk.
@@ -89,34 +85,39 @@ async function ensureNoormDir(): Promise<void> {
  */
 export async function saveKeyPair(keypair: KeyPair): Promise<void> {
 
-    await ensureNoormDir()
+    await ensureNoormDir();
 
     // Write private key
     const [, privateErr] = await attempt(() =>
-        writeFile(PRIVATE_KEY_PATH, keypair.privateKey, { encoding: 'utf8', mode: PRIVATE_KEY_MODE })
-    )
+        writeFile(PRIVATE_KEY_PATH, keypair.privateKey, {
+            encoding: 'utf8',
+            mode: PRIVATE_KEY_MODE,
+        }),
+    );
 
     if (privateErr) {
 
-        throw new Error(`Failed to write private key: ${privateErr.message}`)
+        throw new Error(`Failed to write private key: ${privateErr.message}`);
+
     }
 
     // Ensure permissions are correct (writeFile mode may not work on all platforms)
-    await attempt(() => chmod(PRIVATE_KEY_PATH, PRIVATE_KEY_MODE))
+    await attempt(() => chmod(PRIVATE_KEY_PATH, PRIVATE_KEY_MODE));
 
     // Write public key
     const [, publicErr] = await attempt(() =>
-        writeFile(PUBLIC_KEY_PATH, keypair.publicKey, { encoding: 'utf8', mode: PUBLIC_KEY_MODE })
-    )
+        writeFile(PUBLIC_KEY_PATH, keypair.publicKey, { encoding: 'utf8', mode: PUBLIC_KEY_MODE }),
+    );
 
     if (publicErr) {
 
-        throw new Error(`Failed to write public key: ${publicErr.message}`)
+        throw new Error(`Failed to write public key: ${publicErr.message}`);
+
     }
 
-    await attempt(() => chmod(PUBLIC_KEY_PATH, PUBLIC_KEY_MODE))
-}
+    await attempt(() => chmod(PUBLIC_KEY_PATH, PUBLIC_KEY_MODE));
 
+}
 
 /**
  * Save identity metadata to disk.
@@ -134,7 +135,7 @@ export async function saveKeyPair(keypair: KeyPair): Promise<void> {
  */
 export async function saveIdentityMetadata(identity: CryptoIdentity): Promise<void> {
 
-    await ensureNoormDir()
+    await ensureNoormDir();
 
     const metadata = {
         identityHash: identity.identityHash,
@@ -144,18 +145,19 @@ export async function saveIdentityMetadata(identity: CryptoIdentity): Promise<vo
         machine: identity.machine,
         os: identity.os,
         createdAt: identity.createdAt,
-    }
+    };
 
     const [, err] = await attempt(() =>
-        writeFile(IDENTITY_METADATA_PATH, JSON.stringify(metadata, null, 2), { encoding: 'utf8' })
-    )
+        writeFile(IDENTITY_METADATA_PATH, JSON.stringify(metadata, null, 2), { encoding: 'utf8' }),
+    );
 
     if (err) {
 
-        throw new Error(`Failed to write identity metadata: ${err.message}`)
-    }
-}
+        throw new Error(`Failed to write identity metadata: ${err.message}`);
 
+    }
+
+}
 
 /**
  * Load identity metadata from disk.
@@ -173,30 +175,33 @@ export async function saveIdentityMetadata(identity: CryptoIdentity): Promise<vo
 export async function loadIdentityMetadata(): Promise<CryptoIdentity | null> {
 
     const [content, err] = await attempt(() =>
-        readFile(IDENTITY_METADATA_PATH, { encoding: 'utf8' })
-    )
+        readFile(IDENTITY_METADATA_PATH, { encoding: 'utf8' }),
+    );
 
     if (err) {
 
         // File doesn't exist = no metadata yet
         if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
 
-            return null
+            return null;
+
         }
 
-        throw new Error(`Failed to read identity metadata: ${err.message}`)
+        throw new Error(`Failed to read identity metadata: ${err.message}`);
+
     }
 
-    const [parsed, parseErr] = attemptSync(() => JSON.parse(content!) as CryptoIdentity)
+    const [parsed, parseErr] = attemptSync(() => JSON.parse(content!) as CryptoIdentity);
 
     if (parseErr) {
 
-        return null
+        return null;
+
     }
 
-    return parsed
-}
+    return parsed;
 
+}
 
 /**
  * Load private key from disk.
@@ -213,24 +218,24 @@ export async function loadIdentityMetadata(): Promise<CryptoIdentity | null> {
  */
 export async function loadPrivateKey(): Promise<string | null> {
 
-    const [content, err] = await attempt(() =>
-        readFile(PRIVATE_KEY_PATH, { encoding: 'utf8' })
-    )
+    const [content, err] = await attempt(() => readFile(PRIVATE_KEY_PATH, { encoding: 'utf8' }));
 
     if (err) {
 
         // File doesn't exist = no identity yet
         if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
 
-            return null
+            return null;
+
         }
 
-        throw new Error(`Failed to read private key: ${err.message}`)
+        throw new Error(`Failed to read private key: ${err.message}`);
+
     }
 
-    return content.trim()
-}
+    return content.trim();
 
+}
 
 /**
  * Load public key from disk.
@@ -245,23 +250,23 @@ export async function loadPrivateKey(): Promise<string | null> {
  */
 export async function loadPublicKey(): Promise<string | null> {
 
-    const [content, err] = await attempt(() =>
-        readFile(PUBLIC_KEY_PATH, { encoding: 'utf8' })
-    )
+    const [content, err] = await attempt(() => readFile(PUBLIC_KEY_PATH, { encoding: 'utf8' }));
 
     if (err) {
 
         if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
 
-            return null
+            return null;
+
         }
 
-        throw new Error(`Failed to read public key: ${err.message}`)
+        throw new Error(`Failed to read public key: ${err.message}`);
+
     }
 
-    return content.trim()
-}
+    return content.trim();
 
+}
 
 /**
  * Load full keypair from disk.
@@ -278,17 +283,18 @@ export async function loadPublicKey(): Promise<string | null> {
  */
 export async function loadKeyPair(): Promise<KeyPair | null> {
 
-    const privateKey = await loadPrivateKey()
-    const publicKey = await loadPublicKey()
+    const privateKey = await loadPrivateKey();
+    const publicKey = await loadPublicKey();
 
     if (!privateKey || !publicKey) {
 
-        return null
+        return null;
+
     }
 
-    return { privateKey, publicKey }
-}
+    return { privateKey, publicKey };
 
+}
 
 /**
  * Check if identity key files exist.
@@ -297,17 +303,16 @@ export async function loadKeyPair(): Promise<KeyPair | null> {
  */
 export async function hasKeyFiles(): Promise<boolean> {
 
-    const [privateStat] = await attempt(() => stat(PRIVATE_KEY_PATH))
-    const [publicStat] = await attempt(() => stat(PUBLIC_KEY_PATH))
+    const [privateStat] = await attempt(() => stat(PRIVATE_KEY_PATH));
+    const [publicStat] = await attempt(() => stat(PUBLIC_KEY_PATH));
 
-    return !!privateStat && !!publicStat
+    return !!privateStat && !!publicStat;
+
 }
-
 
 // =============================================================================
 // Validation
 // =============================================================================
-
 
 /**
  * Validate that private key file has correct permissions.
@@ -316,19 +321,20 @@ export async function hasKeyFiles(): Promise<boolean> {
  */
 export async function validateKeyPermissions(): Promise<boolean> {
 
-    const [stats, err] = await attempt(() => stat(PRIVATE_KEY_PATH))
+    const [stats, err] = await attempt(() => stat(PRIVATE_KEY_PATH));
 
     if (err) {
 
-        return false
+        return false;
+
     }
 
     // Check mode (mask off file type bits)
-    const mode = stats.mode & 0o777
+    const mode = stats.mode & 0o777;
 
-    return mode === PRIVATE_KEY_MODE
+    return mode === PRIVATE_KEY_MODE;
+
 }
-
 
 /**
  * Validate that a hex string is a valid X25519 key.
@@ -344,45 +350,46 @@ export function isValidKeyHex(hex: string): boolean {
     // Check hex format
     if (!/^[0-9a-f]+$/i.test(hex)) {
 
-        return false
+        return false;
+
     }
 
     // DER-encoded X25519 keys have specific lengths
     // PKCS8 private key: 48 bytes = 96 hex chars
     // SPKI public key: 44 bytes = 88 hex chars
-    const validLengths = [88, 96]
+    const validLengths = [88, 96];
 
-    return validLengths.includes(hex.length)
+    return validLengths.includes(hex.length);
+
 }
-
 
 // =============================================================================
 // Path Accessors
 // =============================================================================
-
 
 /**
  * Get the path to the private key file.
  */
 export function getPrivateKeyPath(): string {
 
-    return PRIVATE_KEY_PATH
-}
+    return PRIVATE_KEY_PATH;
 
+}
 
 /**
  * Get the path to the public key file.
  */
 export function getPublicKeyPath(): string {
 
-    return PUBLIC_KEY_PATH
-}
+    return PUBLIC_KEY_PATH;
 
+}
 
 /**
  * Get the path to the noorm home directory.
  */
 export function getNoormHomePath(): string {
 
-    return NOORM_HOME
+    return NOORM_HOME;
+
 }

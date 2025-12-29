@@ -9,8 +9,7 @@
  * const data = await loadJs('/path/to/helpers.ts')
  * ```
  */
-import { pathToFileURL } from 'node:url'
-
+import { pathToFileURL } from 'node:url';
 
 /**
  * Load a JavaScript or TypeScript module.
@@ -25,13 +24,14 @@ import { pathToFileURL } from 'node:url'
 export async function loadJs(filepath: string): Promise<unknown> {
 
     // Convert to file URL for cross-platform compatibility
-    const url = pathToFileURL(filepath).href
+    const url = pathToFileURL(filepath).href;
 
     // Add cache-busting query param to avoid stale imports
-    const urlWithCacheBust = `${url}?t=${Date.now()}`
+    const urlWithCacheBust = `${url}?t=${Date.now()}`;
 
-    const mod = await import(urlWithCacheBust)
+    const mod = await import(urlWithCacheBust);
 
     // Return default export if available, otherwise the whole module
-    return mod.default !== undefined ? mod.default : mod
+    return mod.default !== undefined ? mod.default : mod;
+
 }

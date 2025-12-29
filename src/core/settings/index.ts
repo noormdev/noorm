@@ -6,6 +6,9 @@
  * shared across the team.
  */
 
+// Events
+export type { SettingsEvents } from './events.js';
+
 // Types
 export type {
     SecretType,
@@ -22,7 +25,7 @@ export type {
     RuleEvaluationResult,
     RulesEvaluationResult,
     ConfigForRuleMatch,
-} from './types.js'
+} from './types.js';
 
 // Schemas and Validation
 export {
@@ -32,7 +35,7 @@ export {
     parseSettings,
     validateStage,
     validateRule,
-} from './schema.js'
+} from './schema.js';
 
 export type {
     SettingsSchemaType,
@@ -45,7 +48,7 @@ export type {
     PathConfigSchemaType,
     StrictConfigSchemaType,
     LoggingConfigSchemaType,
-} from './schema.js'
+} from './schema.js';
 
 // Defaults
 export {
@@ -57,7 +60,7 @@ export {
     SETTINGS_FILE_PATH,
     SETTINGS_DIR_PATH,
     createDefaultSettings,
-} from './defaults.js'
+} from './defaults.js';
 
 // Rule Evaluation
 export {
@@ -66,13 +69,9 @@ export {
     evaluateRules,
     mergeWithBuildConfig,
     getEffectiveBuildPaths,
-} from './rules.js'
+} from './rules.js';
 
 // Manager
-export {
-    SettingsManager,
-    getSettingsManager,
-    resetSettingsManager,
-} from './manager.js'
+export { SettingsManager, getSettingsManager, resetSettingsManager } from './manager.js';
 
-export type { SettingsManagerOptions } from './manager.js'
+export type { SettingsManagerOptions } from './manager.js';

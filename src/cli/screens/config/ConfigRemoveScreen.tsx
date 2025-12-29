@@ -11,123 +11,167 @@
  * noorm config rm dev      # Same thing
  * ```
  */
-import { useState, useCallback, useMemo } from 'react'
-import { Box, Text } from 'ink'
-import { attempt } from '@logosdx/utils'
+import { useState, useCallback, useMemo } from 'react';
+import { Box, Text, useInput } from 'ink';
+import { attempt } from '@logosdx/utils';
 
-import type { ReactElement } from 'react'
-import type { ScreenProps } from '../../types.js'
+import type { ReactElement } from 'react';
+import type { ScreenProps } from '../../types.js';
 
-import { useRouter } from '../../router.js'
-import { useFocusScope } from '../../focus.js'
-import { useAppContext } from '../../app-context.js'
-import { Panel, Confirm, ProtectedConfirm, Spinner, useToast } from '../../components/index.js'
-
+import { useRouter } from '../../router.js';
+import { useFocusScope } from '../../focus.js';
+import { useAppContext } from '../../app-context.js';
+import { Panel, Confirm, ProtectedConfirm, Spinner, useToast } from '../../components/index.js';
 
 /**
  * ConfigRemoveScreen component.
  */
 export function ConfigRemoveScreen({ params }: ScreenProps): ReactElement {
 
-    const { back } = useRouter()
-    const { isFocused } = useFocusScope('ConfigRemove')
-    const { stateManager, activeConfigName, refresh } = useAppContext()
-    const { showToast } = useToast()
+    const { back } = useRouter();
+    const { isFocused } = useFocusScope('ConfigRemove');
+    const { stateManager, activeConfigName, refresh } = useAppContext();
+    const { showToast } = useToast();
 
-    const configName = params.name
+    const configName = params.name;
 
-    const [deleting, setDeleting] = useState(false)
+    const [deleting, setDeleting] = useState(false);
 
     // Get the config
     const config = useMemo(() => {
 
-        if (!stateManager || !configName) return null
-        return stateManager.getConfig(configName)
-    }, [stateManager, configName])
+        if (!stateManager || !configName) return null;
+
+        return stateManager.getConfig(configName);
+
+    }, [stateManager, configName]);
 
     // Check if this is the active config
-    const isActive = configName === activeConfigName
+    const isActive = configName === activeConfigName;
 
     // Handle confirm
     const handleConfirm = useCallback(async () => {
 
         if (!stateManager || !configName) {
 
-            showToast({ message: 'Config not found', variant: 'error' })
-            back()
-            return
+            showToast({ message: 'Config not found', variant: 'error' });
+            back();
+
+            return;
+
         }
 
-        setDeleting(true)
+        setDeleting(true);
 
         const [_, err] = await attempt(async () => {
 
-            await stateManager.deleteConfig(configName)
-            await refresh()
-        })
+            await stateManager.deleteConfig(configName);
+            await refresh();
+
+        });
 
         if (err) {
 
             showToast({
                 message: err instanceof Error ? err.message : String(err),
                 variant: 'error',
-            })
-            setDeleting(false)
-            return
+            });
+            setDeleting(false);
+
+            return;
+
         }
 
         // Success - show toast and go back (pops history)
         showToast({
             message: `Configuration "${configName}" deleted`,
             variant: 'success',
-        })
-        back()
-    }, [stateManager, configName, refresh, showToast, back])
+        });
+        back();
+
+    }, [stateManager, configName, refresh, showToast, back]);
 
     // Handle cancel
     const handleCancel = useCallback(() => {
 
-        back()
-    }, [back])
+        back();
+
+    }, [back]);
+
+    // Keyboard handling for blocked/error states
+    useInput((input, key) => {
+
+        if (!isFocused) return;
+
+        // Handle escape for error states (no config, not found, active config)
+        if (!configName || !config || isActive) {
+
+            if (key.escape || key.return) {
+
+                back();
+
+            }
+
+        }
+
+    });
 
     // No config name provided
     if (!configName) {
 
         return (
-            <Panel title="Delete Configuration" paddingX={2} paddingY={1} borderColor="yellow">
-                <Text color="yellow">No config name provided. Use: noorm config:rm &lt;name&gt;</Text>
-            </Panel>
-        )
+            <Box flexDirection="column" gap={1}>
+                <Panel title="Delete Configuration" paddingX={2} paddingY={1} borderColor="yellow">
+                    <Text color="yellow">
+                        No config name provided. Use: noorm config:rm &lt;name&gt;
+                    </Text>
+                </Panel>
+
+                <Box gap={2}>
+                    <Text dimColor>[Enter/Esc] Back</Text>
+                </Box>
+            </Box>
+        );
+
     }
 
     // Config not found
     if (!config) {
 
         return (
-            <Panel title="Delete Configuration" paddingX={2} paddingY={1} borderColor="red">
-                <Text color="red">Config "{configName}" not found.</Text>
-            </Panel>
-        )
+            <Box flexDirection="column" gap={1}>
+                <Panel title="Delete Configuration" paddingX={2} paddingY={1} borderColor="red">
+                    <Text color="red">Config "{configName}" not found.</Text>
+                </Panel>
+
+                <Box gap={2}>
+                    <Text dimColor>[Enter/Esc] Back</Text>
+                </Box>
+            </Box>
+        );
+
     }
 
     // Cannot delete active config
     if (isActive) {
 
         return (
-            <Panel title="Delete Configuration" paddingX={2} paddingY={1} borderColor="yellow">
-                <Box flexDirection="column" gap={1}>
-                    <Text color="yellow">
-                        Cannot delete the active configuration.
-                    </Text>
-                    <Text>
-                        Switch to a different config first with: noorm config:use &lt;name&gt;
-                    </Text>
-                    <Box marginTop={1}>
-                        <Text dimColor>[Esc] Go back</Text>
+            <Box flexDirection="column" gap={1}>
+                <Panel title="Delete Configuration" paddingX={2} paddingY={1} borderColor="yellow">
+                    <Box flexDirection="column" gap={1}>
+                        <Text color="yellow">Cannot delete the active configuration.</Text>
+                        <Text>
+                            Switch to a different config first with: noorm config:use &lt;name&gt;
+                        </Text>
                     </Box>
+                </Panel>
+
+                <Box gap={2}>
+                    <Text dimColor>[Enter/Esc] Back</Text>
                 </Box>
-            </Panel>
-        )
+            </Box>
+        );
+
     }
 
     // Deleting
@@ -137,7 +181,8 @@ export function ConfigRemoveScreen({ params }: ScreenProps): ReactElement {
             <Panel title={`Delete: ${configName}`} paddingX={2} paddingY={1}>
                 <Spinner label="Deleting configuration..." />
             </Panel>
-        )
+        );
+
     }
 
     // Confirmation step - use ProtectedConfirm for protected configs
@@ -151,7 +196,8 @@ export function ConfigRemoveScreen({ params }: ScreenProps): ReactElement {
                 onCancel={handleCancel}
                 isFocused={isFocused}
             />
-        )
+        );
+
     }
 
     // Regular confirmation
@@ -165,5 +211,6 @@ export function ConfigRemoveScreen({ params }: ScreenProps): ReactElement {
                 isFocused={isFocused}
             />
         </Panel>
-    )
+    );
+
 }

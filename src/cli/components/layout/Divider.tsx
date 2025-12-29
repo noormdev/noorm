@@ -10,32 +10,29 @@
  * <Divider label="Options" color="cyan" />
  * ```
  */
-import { Box, Text } from 'ink'
+import { Box, Text } from 'ink';
 
-import type { ReactElement } from 'react'
-
+import type { ReactElement } from 'react';
 
 /**
  * Props for Divider component.
  */
 export interface DividerProps {
-
     /** Optional label centered in the divider */
-    label?: string
+    label?: string;
 
     /** Divider line color */
-    color?: string
+    color?: string;
 
     /** Label color (defaults to divider color) */
-    labelColor?: string
+    labelColor?: string;
 
     /** Character used for the divider line */
-    char?: string
+    char?: string;
 
     /** Width of the divider (defaults to fill available space) */
-    width?: number
+    width?: number;
 }
-
 
 /**
  * Divider component.
@@ -56,20 +53,24 @@ export function Divider({
             <Box>
                 <Text color={color}>{char.repeat(width)}</Text>
             </Box>
-        )
+        );
+
     }
 
     // Calculate line lengths for label centering
-    const labelWithPadding = ` ${label} `
-    const remainingWidth = Math.max(0, width - labelWithPadding.length)
-    const leftWidth = Math.floor(remainingWidth / 2)
-    const rightWidth = remainingWidth - leftWidth
+    const labelWithPadding = ` ${label} `;
+    const remainingWidth = Math.max(0, width - labelWithPadding.length);
+    const leftWidth = Math.floor(remainingWidth / 2);
+    const rightWidth = remainingWidth - leftWidth;
 
     return (
         <Box>
             <Text color={color}>{char.repeat(leftWidth)}</Text>
-            <Text color={labelColor ?? color} bold>{labelWithPadding}</Text>
+            <Text color={labelColor ?? color} bold>
+                {labelWithPadding}
+            </Text>
             <Text color={color}>{char.repeat(rightWidth)}</Text>
         </Box>
-    )
+    );
+
 }

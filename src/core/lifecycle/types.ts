@@ -4,7 +4,6 @@
  * Types for managing application startup, shutdown, and lifecycle events.
  */
 
-
 /**
  * Application lifecycle states.
  *
@@ -21,8 +20,7 @@ export type LifecycleState =
     | 'running'
     | 'shutting_down'
     | 'stopped'
-    | 'failed'
-
+    | 'failed';
 
 /**
  * Shutdown phases in order of execution.
@@ -30,34 +28,30 @@ export type LifecycleState =
  * Each phase has a specific purpose in the graceful shutdown sequence.
  */
 export type ShutdownPhase =
-    | 'stopping'       // Stop accepting new work
-    | 'completing'     // Wait for in-flight work
-    | 'releasing'      // Release locks, close connections
-    | 'flushing'       // Flush pending writes
-    | 'exiting'        // Exit the process
-
+    | 'stopping' // Stop accepting new work
+    | 'completing' // Wait for in-flight work
+    | 'releasing' // Release locks, close connections
+    | 'flushing' // Flush pending writes
+    | 'exiting'; // Exit the process
 
 /**
  * Shutdown phase status.
  */
-export type PhaseStatus = 'pending' | 'running' | 'completed' | 'timeout' | 'skipped'
-
+export type PhaseStatus = 'pending' | 'running' | 'completed' | 'timeout' | 'skipped';
 
 /**
  * Reasons for shutdown.
  */
 export type ShutdownReason =
-    | 'signal'         // SIGINT, SIGTERM, SIGHUP
-    | 'user'           // User requested quit
-    | 'error'          // Fatal error
-    | 'programmatic'   // Code called shutdown
-
+    | 'signal' // SIGINT, SIGTERM, SIGHUP
+    | 'user' // User requested quit
+    | 'error' // Fatal error
+    | 'programmatic'; // Code called shutdown
 
 /**
  * Application mode.
  */
-export type AppMode = 'tui' | 'headless'
-
+export type AppMode = 'tui' | 'headless';
 
 /**
  * Timeout configuration for shutdown phases.
@@ -66,41 +60,38 @@ export type AppMode = 'tui' | 'headless'
  */
 export interface ShutdownTimeouts {
     /** Time to wait for in-flight operations */
-    operations: number
+    operations: number;
     /** Time to wait for lock release */
-    locks: number
+    locks: number;
     /** Time to wait for connection close */
-    connections: number
+    connections: number;
     /** Time to wait for logger flush */
-    logger: number
+    logger: number;
 }
-
 
 /**
  * Lifecycle manager configuration.
  */
 export interface LifecycleConfig {
     /** Project root directory */
-    projectRoot: string
+    projectRoot: string;
     /** Application mode */
-    mode: AppMode
+    mode: AppMode;
     /** Shutdown phase timeouts */
-    timeouts: ShutdownTimeouts
+    timeouts: ShutdownTimeouts;
     /** Whether to register process signal handlers */
-    registerSignalHandlers: boolean
+    registerSignalHandlers: boolean;
 }
-
 
 /**
  * Default timeout configuration.
  */
 export const DEFAULT_TIMEOUTS: ShutdownTimeouts = {
-    operations: 30000,  // 30 seconds
-    locks: 5000,        // 5 seconds
+    operations: 30000, // 30 seconds
+    locks: 5000, // 5 seconds
     connections: 10000, // 10 seconds
-    logger: 10000,      // 10 seconds
-}
-
+    logger: 10000, // 10 seconds
+};
 
 /**
  * Default lifecycle configuration factory.
@@ -114,20 +105,19 @@ export function createDefaultConfig(projectRoot: string): LifecycleConfig {
         mode: 'tui',
         timeouts: { ...DEFAULT_TIMEOUTS },
         registerSignalHandlers: true,
-    }
-}
+    };
 
+}
 
 /**
  * Shutdown phase information.
  */
 export interface ShutdownPhaseInfo {
-    phase: ShutdownPhase
-    status: PhaseStatus
-    durationMs?: number
-    error?: Error
+    phase: ShutdownPhase;
+    status: PhaseStatus;
+    durationMs?: number;
+    error?: Error;
 }
-
 
 /**
  * Resource to be cleaned up during shutdown.
@@ -143,24 +133,23 @@ export interface ShutdownPhaseInfo {
  */
 export interface LifecycleResource {
     /** Unique resource name */
-    name: string
+    name: string;
     /** Shutdown phase when this resource should be cleaned up */
-    phase: ShutdownPhase
+    phase: ShutdownPhase;
     /** Cleanup function */
-    cleanup: () => Promise<void>
+    cleanup: () => Promise<void>;
     /** Priority within phase (lower = earlier, default 0) */
-    priority?: number
+    priority?: number;
 }
-
 
 /**
  * Lifecycle manager state.
  */
 export interface LifecycleManagerState {
-    state: LifecycleState
-    mode: AppMode
-    startedAt?: Date
-    shuttingDownAt?: Date
-    shutdownReason?: ShutdownReason
-    exitCode: number
+    state: LifecycleState;
+    mode: AppMode;
+    startedAt?: Date;
+    shuttingDownAt?: Date;
+    shutdownReason?: ShutdownReason;
+    exitCode: number;
 }

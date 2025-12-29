@@ -3,11 +3,10 @@
  *
  * Tests pure utility functions for route parsing.
  */
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect } from 'vitest';
 
-import { getSection, getParentRoute } from '../../src/cli/types.js'
-import type { Route, Section } from '../../src/cli/types.js'
-
+import { getSection, getParentRoute } from '../../src/cli/types.js';
+import type { Route, Section } from '../../src/cli/types.js';
 
 describe('cli: types', () => {
 
@@ -15,31 +14,33 @@ describe('cli: types', () => {
 
         it('should return section for single-part routes', () => {
 
-            expect(getSection('home')).toBe('home')
-            expect(getSection('config')).toBe('config')
-            expect(getSection('settings')).toBe('settings')
-            expect(getSection('change')).toBe('change')
-            expect(getSection('run')).toBe('run')
-            expect(getSection('db')).toBe('db')
-            expect(getSection('lock')).toBe('lock')
-            expect(getSection('identity')).toBe('identity')
-            expect(getSection('init')).toBe('init')
-        })
+            expect(getSection('home')).toBe('home');
+            expect(getSection('config')).toBe('config');
+            expect(getSection('settings')).toBe('settings');
+            expect(getSection('change')).toBe('change');
+            expect(getSection('run')).toBe('run');
+            expect(getSection('db')).toBe('db');
+            expect(getSection('lock')).toBe('lock');
+            expect(getSection('identity')).toBe('identity');
+            expect(getSection('init')).toBe('init');
+
+        });
 
         it('should return section for multi-part routes', () => {
 
-            expect(getSection('config/add')).toBe('config')
-            expect(getSection('config/edit')).toBe('config')
-            expect(getSection('config/rm')).toBe('config')
-            expect(getSection('change/run')).toBe('change')
-            expect(getSection('change/revert')).toBe('change')
-            expect(getSection('run/build')).toBe('run')
-            expect(getSection('run/file')).toBe('run')
-            expect(getSection('db/create')).toBe('db')
-            expect(getSection('db/destroy')).toBe('db')
-            expect(getSection('lock/status')).toBe('lock')
-            expect(getSection('identity/init')).toBe('identity')
-        })
+            expect(getSection('config/add')).toBe('config');
+            expect(getSection('config/edit')).toBe('config');
+            expect(getSection('config/rm')).toBe('config');
+            expect(getSection('change/run')).toBe('change');
+            expect(getSection('change/revert')).toBe('change');
+            expect(getSection('run/build')).toBe('run');
+            expect(getSection('run/file')).toBe('run');
+            expect(getSection('db/create')).toBe('db');
+            expect(getSection('db/destroy')).toBe('db');
+            expect(getSection('lock/status')).toBe('lock');
+            expect(getSection('identity/init')).toBe('identity');
+
+        });
 
         it('should handle all defined sections', () => {
 
@@ -54,42 +55,48 @@ describe('cli: types', () => {
                 'lock',
                 'identity',
                 'init',
-            ]
+            ];
 
             for (const section of sections) {
 
-                expect(getSection(section as Route)).toBe(section)
+                expect(getSection(section as Route)).toBe(section);
+
             }
-        })
-    })
+
+        });
+
+    });
 
     describe('getParentRoute', () => {
 
         it('should return null for home', () => {
 
-            expect(getParentRoute('home')).toBeNull()
-        })
+            expect(getParentRoute('home')).toBeNull();
+
+        });
 
         it('should return home for top-level routes', () => {
 
-            expect(getParentRoute('config')).toBe('home')
-            expect(getParentRoute('settings')).toBe('home')
-            expect(getParentRoute('change')).toBe('home')
-            expect(getParentRoute('run')).toBe('home')
-            expect(getParentRoute('db')).toBe('home')
-            expect(getParentRoute('lock')).toBe('home')
-            expect(getParentRoute('identity')).toBe('home')
-            expect(getParentRoute('init')).toBe('home')
-        })
+            expect(getParentRoute('config')).toBe('home');
+            expect(getParentRoute('settings')).toBe('home');
+            expect(getParentRoute('change')).toBe('home');
+            expect(getParentRoute('run')).toBe('home');
+            expect(getParentRoute('db')).toBe('home');
+            expect(getParentRoute('lock')).toBe('home');
+            expect(getParentRoute('identity')).toBe('home');
+            expect(getParentRoute('init')).toBe('home');
+
+        });
 
         it('should return parent section for nested routes', () => {
 
-            expect(getParentRoute('config/add')).toBe('config')
-            expect(getParentRoute('config/edit')).toBe('config')
-            expect(getParentRoute('config/rm')).toBe('config')
-            expect(getParentRoute('config/cp')).toBe('config')
-            expect(getParentRoute('config/use')).toBe('config')
-        })
+            expect(getParentRoute('config/add')).toBe('config');
+            expect(getParentRoute('config/edit')).toBe('config');
+            expect(getParentRoute('config/rm')).toBe('config');
+            expect(getParentRoute('config/cp')).toBe('config');
+            expect(getParentRoute('config/use')).toBe('config');
+
+        });
 
         it('should return parent for all action routes', () => {
 
@@ -114,12 +121,16 @@ describe('cli: types', () => {
                 { route: 'lock/release', parent: 'lock' },
                 { route: 'identity/init', parent: 'identity' },
                 { route: 'identity/export', parent: 'identity' },
-            ]
+            ];
 
             for (const { route, parent } of actionRoutes) {
 
-                expect(getParentRoute(route)).toBe(parent)
+                expect(getParentRoute(route)).toBe(parent);
+
             }
-        })
-    })
-})
+
+        });
+
+    });
+
+});

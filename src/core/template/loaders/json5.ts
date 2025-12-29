@@ -13,10 +13,9 @@
  * const data = await loadJson5('/path/to/config.json5')
  * ```
  */
-import { readFile } from 'node:fs/promises'
+import { readFile } from 'node:fs/promises';
 
-import JSON5 from 'json5'
-
+import JSON5 from 'json5';
 
 /**
  * Load and parse a JSON5 file.
@@ -27,6 +26,8 @@ import JSON5 from 'json5'
  */
 export async function loadJson5(filepath: string): Promise<unknown> {
 
-    const content = await readFile(filepath, 'utf-8')
-    return JSON5.parse(content)
+    const content = await readFile(filepath, 'utf-8');
+
+    return JSON5.parse(content);
+
 }

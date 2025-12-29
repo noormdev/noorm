@@ -10,63 +10,62 @@
  * noorm change rm add-user-roles    # Same thing
  * ```
  */
-import { useState, useEffect, useCallback } from 'react'
-import { Box, Text, useInput } from 'ink'
+import { useState, useEffect, useCallback } from 'react';
+import { Box, Text, useInput } from 'ink';
 
-import type { ReactElement } from 'react'
-import type { ScreenProps } from '../../types.js'
-import type { Changeset, ChangesetStatus } from '../../../core/changeset/types.js'
-import type { NoormDatabase } from '../../../core/shared/index.js'
-import type { Kysely } from 'kysely'
+import type { ReactElement } from 'react';
+import type { ScreenProps } from '../../types.js';
+import type { Changeset, ChangesetStatus } from '../../../core/changeset/types.js';
+import type { NoormDatabase } from '../../../core/shared/index.js';
+import type { Kysely } from 'kysely';
 
-import { attempt } from '@logosdx/utils'
-import { useRouter } from '../../router.js'
-import { useFocusScope } from '../../focus.js'
-import { useAppContext } from '../../app-context.js'
-import { Panel, Spinner, StatusMessage, Confirm } from '../../components/index.js'
-import { discoverChangesets } from '../../../core/changeset/parser.js'
-import { deleteChangeset } from '../../../core/changeset/scaffold.js'
-import { ChangesetHistory } from '../../../core/changeset/history.js'
-import { createConnection } from '../../../core/connection/factory.js'
-
+import { attempt } from '@logosdx/utils';
+import { useRouter } from '../../router.js';
+import { useFocusScope } from '../../focus.js';
+import { useAppContext } from '../../app-context.js';
+import { Panel, Spinner, StatusMessage, Confirm } from '../../components/index.js';
+import { discoverChangesets } from '../../../core/changeset/parser.js';
+import { deleteChangeset } from '../../../core/changeset/scaffold.js';
+import { ChangesetHistory } from '../../../core/changeset/history.js';
+import { createConnection } from '../../../core/connection/factory.js';
 
 /**
  * Remove steps.
  */
 type RemoveStep =
-    | 'loading'        // Finding changeset
-    | 'confirm'        // Awaiting confirmation
-    | 'deleting'       // Deleting
-    | 'complete'       // Success
-    | 'error'          // Error occurred
-
+    | 'loading' // Finding changeset
+    | 'confirm' // Awaiting confirmation
+    | 'deleting' // Deleting
+    | 'complete' // Success
+    | 'error'; // Error occurred
 
 /**
  * ChangeRemoveScreen component.
  */
 export function ChangeRemoveScreen({ params }: ScreenProps): ReactElement {
 
-    const { navigate, back } = useRouter()
-    const { isFocused } = useFocusScope('ChangeRemove')
-    const { activeConfig, activeConfigName } = useAppContext()
+    const { navigate: _navigate, back } = useRouter();
+    const { isFocused } = useFocusScope('ChangeRemove');
+    const { activeConfig, activeConfigName } = useAppContext();
 
-    const changesetName = params.name
+    const changesetName = params.name;
 
-    const [step, setStep] = useState<RemoveStep>('loading')
-    const [changeset, setChangeset] = useState<Changeset | null>(null)
-    const [status, setStatus] = useState<ChangesetStatus | null>(null)
-    const [isOrphaned, setIsOrphaned] = useState(false)
-    const [error, setError] = useState<string | null>(null)
+    const [step, setStep] = useState<RemoveStep>('loading');
+    const [changeset, setChangeset] = useState<Changeset | null>(null);
+    const [status, setStatus] = useState<ChangesetStatus | null>(null);
+    const [isOrphaned, setIsOrphaned] = useState(false);
+    const [error, setError] = useState<string | null>(null);
 
     // Load changeset info
     useEffect(() => {
 
         if (!activeConfig || !changesetName) {
 
-            return
+            return;
+
         }
 
-        let cancelled = false
+        let cancelled = false;
 
         const loadChangeset = async () => {
 
@@ -76,111 +75,134 @@ export function ChangeRemoveScreen({ params }: ScreenProps): ReactElement {
                 const changesets = await discoverChangesets(
                     activeConfig.paths.changesets,
                     activeConfig.paths.schema,
-                )
+                );
 
-                const found = changesets.find(cs => cs.name === changesetName)
+                const found = changesets.find((cs) => cs.name === changesetName);
 
                 // Get status from database
-                const conn = await createConnection(activeConfig.connection, activeConfigName ?? '__rm__')
-                const db = conn.db as Kysely<NoormDatabase>
+                const conn = await createConnection(
+                    activeConfig.connection,
+                    activeConfigName ?? '__rm__',
+                );
+                const db = conn.db as Kysely<NoormDatabase>;
 
-                const history = new ChangesetHistory(db, activeConfigName ?? '')
-                const statuses = await history.getAllStatuses()
-                const dbStatus = statuses.get(changesetName)
+                const history = new ChangesetHistory(db, activeConfigName ?? '');
+                const statuses = await history.getAllStatuses();
+                const dbStatus = statuses.get(changesetName);
 
-                await conn.destroy()
+                await conn.destroy();
 
-                if (cancelled) return
+                if (cancelled) return;
 
                 if (found) {
 
-                    setChangeset(found)
-                    setIsOrphaned(false)
+                    setChangeset(found);
+                    setIsOrphaned(false);
+
                 }
                 else if (dbStatus) {
 
-                    setIsOrphaned(true)
+                    setIsOrphaned(true);
+
                 }
                 else {
 
-                    throw new Error(`Changeset not found: ${changesetName}`)
+                    throw new Error(`Changeset not found: ${changesetName}`);
+
                 }
 
-                setStatus(dbStatus ?? null)
-                setStep('confirm')
-            })
+                setStatus(dbStatus ?? null);
+                setStep('confirm');
+
+            });
 
             if (err) {
 
                 if (!cancelled) {
 
-                    setError(err instanceof Error ? err.message : String(err))
-                    setStep('error')
-                }
-            }
-        }
+                    setError(err instanceof Error ? err.message : String(err));
+                    setStep('error');
 
-        loadChangeset()
+                }
+
+            }
+
+        };
+
+        loadChangeset();
 
         return () => {
 
-            cancelled = true
-        }
-    }, [activeConfig, activeConfigName, changesetName])
+            cancelled = true;
+
+        };
+
+    }, [activeConfig, activeConfigName, changesetName]);
 
     // Handle delete
     const handleDelete = useCallback(async () => {
 
-        if (!activeConfig) return
+        if (!activeConfig) return;
 
-        setStep('deleting')
+        setStep('deleting');
 
         const [_, err] = await attempt(async () => {
 
             // Delete from disk if not orphaned
             if (changeset) {
 
-                await deleteChangeset(changeset)
+                await deleteChangeset(changeset);
+
             }
 
             // If it was applied, also remove from database
             if (status) {
 
-                const conn = await createConnection(activeConfig.connection, activeConfigName ?? '__rm__')
-                const db = conn.db as Kysely<NoormDatabase>
+                const conn = await createConnection(
+                    activeConfig.connection,
+                    activeConfigName ?? '__rm__',
+                );
+                const db = conn.db as Kysely<NoormDatabase>;
 
-                const history = new ChangesetHistory(db, activeConfigName ?? '')
-                await history.deleteRecords(changesetName!)
+                const history = new ChangesetHistory(db, activeConfigName ?? '');
+                await history.deleteRecords(changesetName!);
 
-                await conn.destroy()
+                await conn.destroy();
+
             }
 
-            setStep('complete')
-        })
+            setStep('complete');
+
+        });
 
         if (err) {
 
-            setError(err instanceof Error ? err.message : String(err))
-            setStep('error')
+            setError(err instanceof Error ? err.message : String(err));
+            setStep('error');
+
         }
-    }, [activeConfig, activeConfigName, changeset, status, changesetName])
+
+    }, [activeConfig, activeConfigName, changeset, status, changesetName]);
 
     // Handle cancel
     const handleCancel = useCallback(() => {
 
-        back()
-    }, [back])
+        back();
+
+    }, [back]);
 
     // Keyboard handling
-    useInput((input, key) => {
+    useInput((_input, _key) => {
 
-        if (!isFocused) return
+        if (!isFocused) return;
 
         if (step === 'complete' || step === 'error') {
 
-            back()
+            back();
+
         }
-    })
+
+    });
 
     // No changeset name provided
     if (!changesetName) {
@@ -189,7 +211,8 @@ export function ChangeRemoveScreen({ params }: ScreenProps): ReactElement {
             <Panel title="Delete Changeset" paddingX={2} paddingY={1} borderColor="yellow">
                 <Text color="yellow">No changeset name provided.</Text>
             </Panel>
-        )
+        );
+
     }
 
     // No active config
@@ -199,7 +222,8 @@ export function ChangeRemoveScreen({ params }: ScreenProps): ReactElement {
             <Panel title="Delete Changeset" paddingX={2} paddingY={1} borderColor="yellow">
                 <Text color="yellow">No active configuration.</Text>
             </Panel>
-        )
+        );
+
     }
 
     // Loading
@@ -209,26 +233,36 @@ export function ChangeRemoveScreen({ params }: ScreenProps): ReactElement {
             <Panel title="Delete Changeset" paddingX={2} paddingY={1}>
                 <Spinner label="Loading changeset..." />
             </Panel>
-        )
+        );
+
     }
 
     // Confirm
     if (step === 'confirm') {
 
-        const warningMessage = status?.status === 'success'
-            ? 'This changeset has been applied to the database.'
-            : isOrphaned
-            ? 'This is an orphaned changeset (exists in DB but not on disk).'
-            : 'This changeset has not been applied.'
+        const warningMessage =
+            status?.status === 'success'
+                ? 'This changeset has been applied to the database.'
+                : isOrphaned
+                    ? 'This is an orphaned changeset (exists in DB but not on disk).'
+                    : 'This changeset has not been applied.';
 
         return (
             <Panel title="Delete Changeset" paddingX={2} paddingY={1} borderColor="yellow">
                 <Box flexDirection="column" gap={1}>
-                    <Text>Delete changeset: <Text bold color="cyan">{changesetName}</Text></Text>
+                    <Text>
+                        Delete changeset:{' '}
+                        <Text bold color="cyan">
+                            {changesetName}
+                        </Text>
+                    </Text>
 
                     {changeset && (
                         <Box flexDirection="column">
-                            <Text dimColor>Files: {changeset.changeFiles.length} change, {changeset.revertFiles.length} revert</Text>
+                            <Text dimColor>
+                                Files: {changeset.changeFiles.length} change,{' '}
+                                {changeset.revertFiles.length} revert
+                            </Text>
                         </Box>
                     )}
 
@@ -242,7 +276,8 @@ export function ChangeRemoveScreen({ params }: ScreenProps): ReactElement {
                     />
                 </Box>
             </Panel>
-        )
+        );
+
     }
 
     // Deleting
@@ -252,7 +287,8 @@ export function ChangeRemoveScreen({ params }: ScreenProps): ReactElement {
             <Panel title="Delete Changeset" paddingX={2} paddingY={1}>
                 <Spinner label="Deleting changeset..." />
             </Panel>
-        )
+        );
+
     }
 
     // Complete
@@ -269,20 +305,20 @@ export function ChangeRemoveScreen({ params }: ScreenProps): ReactElement {
                     </Box>
                 </Box>
             </Panel>
-        )
+        );
+
     }
 
     // Error
     return (
         <Panel title="Delete Changeset" paddingX={2} paddingY={1} borderColor="red">
             <Box flexDirection="column" gap={1}>
-                <StatusMessage variant="error">
-                    {error}
-                </StatusMessage>
+                <StatusMessage variant="error">{error}</StatusMessage>
                 <Box marginTop={1}>
                     <Text dimColor>Press any key to continue...</Text>
                 </Box>
             </Box>
         </Panel>
-    )
+    );
+
 }

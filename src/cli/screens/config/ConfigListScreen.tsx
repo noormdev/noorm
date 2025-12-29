@@ -16,49 +16,46 @@
  * noorm config           # Opens this screen
  * ```
  */
-import { useState, useCallback } from 'react'
-import { Box, Text, useInput } from 'ink'
+import { useState, useCallback } from 'react';
+import { Box, Text, useInput } from 'ink';
 
-import type { ReactElement } from 'react'
-import type { ScreenProps } from '../../types.js'
+import type { ReactElement } from 'react';
+import type { ScreenProps } from '../../types.js';
 
-import { useRouter } from '../../router.js'
-import { useFocusScope } from '../../focus.js'
-import { useAppContext } from '../../app-context.js'
-import { Panel, SelectList, type SelectListItem } from '../../components/index.js'
-
+import { useRouter } from '../../router.js';
+import { useFocusScope } from '../../focus.js';
+import { useAppContext } from '../../app-context.js';
+import { Panel, SelectList, type SelectListItem } from '../../components/index.js';
 
 /**
  * Config list item value.
  */
 interface ConfigListValue {
-
-    name: string
-    dialect: string
-    isActive: boolean
-    protected: boolean
-    isTest: boolean
+    name: string;
+    dialect: string;
+    isActive: boolean;
+    protected: boolean;
+    isTest: boolean;
 }
-
 
 /**
  * ConfigListScreen component.
  *
  * Displays all configurations with quick actions.
  */
-export function ConfigListScreen({ params }: ScreenProps): ReactElement {
+export function ConfigListScreen({ params: _params }: ScreenProps): ReactElement {
 
-    const { navigate, back } = useRouter()
-    const { isFocused } = useFocusScope('ConfigList')
-    const { configs, stateManager, refresh } = useAppContext()
+    const { navigate, back } = useRouter();
+    const { isFocused } = useFocusScope('ConfigList');
+    const { configs, stateManager, refresh } = useAppContext();
 
     // Track highlighted config for keyboard actions
     const [highlightedConfig, setHighlightedConfig] = useState<string | null>(
-        configs.length > 0 ? configs[0]?.name ?? null : null
-    )
+        configs.length > 0 ? (configs[0]?.name ?? null) : null,
+    );
 
     // Convert configs to list items
-    const items: SelectListItem<ConfigListValue>[] = configs.map(config => ({
+    const items: SelectListItem<ConfigListValue>[] = configs.map((config) => ({
         key: config.name,
         label: config.name,
         value: {
@@ -70,96 +67,120 @@ export function ConfigListScreen({ params }: ScreenProps): ReactElement {
         },
         description: `${config.dialect}${config.isActive ? ' (active)' : ''}${config.protected ? ' [protected]' : ''}${config.isTest ? ' [test]' : ''}`,
         icon: config.isActive ? '●' : '○',
-    }))
+    }));
 
     // Handle config selection (Enter) - set as active
-    const handleSelect = useCallback(async (item: SelectListItem<ConfigListValue>) => {
+    const handleSelect = useCallback(
+        async (item: SelectListItem<ConfigListValue>) => {
 
-        if (!stateManager) return
+            if (!stateManager) return;
 
-        // If already active, go to edit
-        if (item.value.isActive) {
+            // If already active, go to edit
+            if (item.value.isActive) {
 
-            navigate('config/edit', { name: item.value.name })
-        }
-        else {
+                navigate('config/edit', { name: item.value.name });
 
-            // Set as active
-            await stateManager.setActiveConfig(item.value.name)
-            await refresh()
-        }
-    }, [stateManager, navigate, refresh])
+            }
+            else {
+
+                // Set as active
+                await stateManager.setActiveConfig(item.value.name);
+                await refresh();
+
+            }
+
+        },
+        [stateManager, navigate, refresh],
+    );
 
     // Handle highlight change
     const handleHighlight = useCallback((item: SelectListItem<ConfigListValue>) => {
 
-        setHighlightedConfig(item.value.name)
-    }, [])
+        setHighlightedConfig(item.value.name);
+
+    }, []);
 
     // Keyboard shortcuts for actions
     useInput((input, key) => {
 
-        if (!isFocused) return
+        if (!isFocused) return;
 
         // ESC to go back
         if (key.escape) {
 
-            back()
-            return
+            back();
+
+            return;
+
         }
 
         // Add new config
         if (input === 'a') {
 
-            navigate('config/add')
-            return
+            navigate('config/add');
+
+            return;
+
         }
 
         // Import config
         if (input === 'i') {
 
-            navigate('config/import')
-            return
+            navigate('config/import');
+
+            return;
+
         }
 
         // Actions that require a highlighted config
-        if (!highlightedConfig) return
+        if (!highlightedConfig) return;
 
         // Edit config
         if (input === 'e') {
 
-            navigate('config/edit', { name: highlightedConfig })
-            return
+            navigate('config/edit', { name: highlightedConfig });
+
+            return;
+
         }
 
         // Delete config
         if (input === 'd') {
 
-            navigate('config/rm', { name: highlightedConfig })
-            return
+            navigate('config/rm', { name: highlightedConfig });
+
+            return;
+
         }
 
         // Copy config
         if (input === 'c') {
 
-            navigate('config/cp', { name: highlightedConfig })
-            return
+            navigate('config/cp', { name: highlightedConfig });
+
+            return;
+
         }
 
         // Export config
         if (input === 'x') {
 
-            navigate('config/export', { name: highlightedConfig })
-            return
+            navigate('config/export', { name: highlightedConfig });
+
+            return;
+
         }
 
         // Validate config
         if (input === 'v') {
 
-            navigate('config/validate', { name: highlightedConfig })
-            return
+            navigate('config/validate', { name: highlightedConfig });
+
+            return;
+
         }
-    })
+
+    });
 
     return (
         <Box flexDirection="column" gap={1}>
@@ -167,7 +188,9 @@ export function ConfigListScreen({ params }: ScreenProps): ReactElement {
                 {configs.length === 0 ? (
                     <Box flexDirection="column" gap={1}>
                         <Text dimColor>No configurations found.</Text>
-                        <Text>Press <Text color="cyan">a</Text> to add your first config.</Text>
+                        <Text>
+                            Press <Text color="cyan">a</Text> to add your first config.
+                        </Text>
                     </Box>
                 ) : (
                     <SelectList
@@ -192,5 +215,6 @@ export function ConfigListScreen({ params }: ScreenProps): ReactElement {
                 <Text dimColor>[Esc] Back</Text>
             </Box>
         </Box>
-    )
+    );
+
 }

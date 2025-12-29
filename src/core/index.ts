@@ -6,8 +6,8 @@
  */
 
 // Observer
-export { observer } from './observer.js'
-export type { NoormEvents, ObserverEngine } from './observer.js'
+export { observer } from './observer.js';
+export type { NoormEvents, ObserverEngine } from './observer.js';
 
 // State
 export {
@@ -19,19 +19,11 @@ export {
     migrateState,
     needsMigration,
     getPackageVersion,
-} from './state/index.js'
-export type {
-    State,
-    ConfigSummary,
-    EncryptedPayload,
-} from './state/index.js'
+} from './state/index.js';
+export type { State, ConfigSummary, EncryptedPayload } from './state/index.js';
 
 // Config types
-export type {
-    Config,
-    ConfigInput,
-    ConfigSummary as ConfigListSummary,
-} from './config/types.js'
+export type { Config, ConfigInput, ConfigSummary as ConfigListSummary } from './config/types.js';
 
 // Connection
 export {
@@ -39,12 +31,8 @@ export {
     testConnection,
     getConnectionManager,
     resetConnectionManager,
-} from './connection/index.js'
-export type {
-    Dialect,
-    ConnectionConfig,
-    ConnectionResult,
-} from './connection/index.js'
+} from './connection/index.js';
+export type { Dialect, ConnectionConfig, ConnectionResult } from './connection/index.js';
 
 // Settings
 export {
@@ -60,7 +48,7 @@ export {
     getEffectiveBuildPaths,
     DEFAULT_SETTINGS,
     SETTINGS_FILE_PATH,
-} from './settings/index.js'
+} from './settings/index.js';
 export type {
     Settings,
     Stage,
@@ -75,7 +63,7 @@ export type {
     RulesEvaluationResult,
     ConfigForRuleMatch,
     SettingsManagerOptions,
-} from './settings/index.js'
+} from './settings/index.js';
 
 // Lifecycle
 export {
@@ -89,7 +77,7 @@ export {
     hasExceptionHandlers,
     DEFAULT_TIMEOUTS,
     createDefaultConfig,
-} from './lifecycle/index.js'
+} from './lifecycle/index.js';
 export type {
     LifecycleState,
     ShutdownPhase,
@@ -105,12 +93,10 @@ export type {
     SignalCallback,
     ErrorCallback,
     CleanupFn,
-} from './lifecycle/index.js'
+} from './lifecycle/index.js';
 
 // Shared (table types and constants)
-export {
-    NOORM_TABLES,
-} from './shared/index.js'
+export { NOORM_TABLES } from './shared/index.js';
 export type {
     NoormTableName,
     NoormDatabase,
@@ -144,7 +130,7 @@ export type {
     NoormIdentity,
     NewNoormIdentity,
     NoormIdentityUpdate,
-} from './shared/index.js'
+} from './shared/index.js';
 
 // Version
 export {
@@ -177,7 +163,7 @@ export {
     needsSettingsMigration,
     createEmptyVersionedSettings,
     getSettingsVersion,
-} from './version/index.js'
+} from './version/index.js';
 export type {
     VersionLayer,
     VersionStatus,
@@ -186,7 +172,7 @@ export type {
     StateMigration,
     SettingsMigration,
     VersionRecordOptions,
-} from './version/index.js'
+} from './version/index.js';
 
 // Lock
 export {
@@ -198,12 +184,8 @@ export {
     LockNotFoundError,
     LockOwnershipError,
     DEFAULT_LOCK_OPTIONS,
-} from './lock/index.js'
-export type {
-    Lock,
-    LockOptions,
-    LockStatus,
-} from './lock/index.js'
+} from './lock/index.js';
+export type { Lock, LockOptions, LockStatus } from './lock/index.js';
 
 // Template
 export {
@@ -233,7 +215,7 @@ export {
     TEMPLATE_EXTENSION,
     HELPER_FILENAME,
     HELPER_EXTENSIONS,
-} from './template/index.js'
+} from './template/index.js';
 export type {
     TemplateContext,
     BuiltInHelpers,
@@ -242,7 +224,7 @@ export type {
     LoaderResult,
     Loader,
     LoaderRegistry,
-} from './template/index.js'
+} from './template/index.js';
 
 // Runner
 export {
@@ -255,7 +237,7 @@ export {
     computeChecksumFromContent,
     computeCombinedChecksum,
     DEFAULT_RUN_OPTIONS,
-} from './runner/index.js'
+} from './runner/index.js';
 export type {
     RunOptions,
     RunContext,
@@ -267,7 +249,11 @@ export type {
     NeedsRunResult,
     CreateOperationData,
     RecordExecutionData,
-} from './runner/index.js'
+} from './runner/index.js';
+
+// Database lifecycle
+export { checkDbStatus, createDb, destroyDb, getDialectOperations } from './db/index.js';
+export type { DbStatus, DbOperationResult, CreateDbOptions, DestroyDbOptions } from './db/index.js';
 
 // Changeset
 export {
@@ -303,7 +289,7 @@ export {
     ChangesetNotAppliedError,
     ChangesetOrphanedError,
     ManifestReferenceError,
-} from './changeset/index.js'
+} from './changeset/index.js';
 export type {
     // File types
     ChangesetFileType,
@@ -329,4 +315,4 @@ export type {
     // Scaffold
     CreateChangesetOptions,
     AddFileOptions,
-} from './changeset/index.js'
+} from './changeset/index.js';

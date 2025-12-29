@@ -1,2 +1,6 @@
-export function rootHelper() { return 'root' }
-export const shared = 'from-root'
+export function rootHelper() {
+
+    return 'root';
+
+}
+export const shared = 'from-root';

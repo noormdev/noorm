@@ -3,10 +3,10 @@
  *
  * Tests the AppContextProvider, hooks, and guard components.
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render } from 'ink-testing-library'
-import React from 'react'
-import { Text } from 'ink'
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render } from 'ink-testing-library';
+import React from 'react';
+import { Text } from 'ink';
 
 import {
     AppContextProvider,
@@ -20,13 +20,11 @@ import {
     LoadingGuard,
     ConfigGuard,
     IdentityGuard,
-} from '../../src/cli/app-context.js'
-import { observer } from '../../src/core/index.js'
-
+} from '../../src/cli/app-context.js';
+import { observer } from '../../src/core/index.js';
 
 // Create mock managers for testing
 const createMockStateManager = () => ({
-
     load: vi.fn().mockResolvedValue(undefined),
     getActiveConfig: vi.fn().mockReturnValue(null),
     getActiveConfigName: vi.fn().mockReturnValue(null),
@@ -34,20 +32,18 @@ const createMockStateManager = () => ({
     getIdentity: vi.fn().mockReturnValue(null),
     getConfig: vi.fn().mockReturnValue(null),
     setActiveConfig: vi.fn().mockResolvedValue(undefined),
-})
+});
 
 const createMockSettingsManager = () => ({
-
     load: vi.fn().mockResolvedValue({ version: '0.1.0' }),
     isLoaded: true,
     settings: { version: '0.1.0' },
-})
-
+});
 
 // Mock the state and settings managers
 vi.mock('../../src/core/index.js', async () => {
 
-    const actual = await vi.importActual('../../src/core/index.js')
+    const actual = await vi.importActual('../../src/core/index.js');
 
     return {
         ...actual,
@@ -55,127 +51,125 @@ vi.mock('../../src/core/index.js', async () => {
         getSettingsManager: vi.fn(() => createMockSettingsManager()),
         resetStateManager: vi.fn(),
         resetSettingsManager: vi.fn(),
-    }
-})
+    };
 
+});
 
 /**
  * Test component that displays context state.
  */
 function ContextDisplay() {
 
-    const ctx = useAppContext()
+    const ctx = useAppContext();
 
     return (
         <Text>
-            status:{ctx.loadingStatus}|
-            configName:{ctx.activeConfigName ?? 'null'}|
-            hasIdentity:{String(ctx.hasIdentity)}|
-            connection:{ctx.connectionStatus}|
-            lock:{ctx.lockStatus.status}
+            status:{ctx.loadingStatus}| configName:{ctx.activeConfigName ?? 'null'}| hasIdentity:
+            {String(ctx.hasIdentity)}| connection:{ctx.connectionStatus}| lock:
+            {ctx.lockStatus.status}
         </Text>
-    )
-}
+    );
 
+}
 
 /**
  * Test component for loading status hook.
  */
 function LoadingStatusDisplay() {
 
-    const { loadingStatus, error } = useLoadingStatus()
+    const { loadingStatus, error } = useLoadingStatus();
 
-    return <Text>loading:{loadingStatus}|error:{error?.message ?? 'null'}</Text>
+    return (
+        <Text>
+            loading:{loadingStatus}|error:{error?.message ?? 'null'}
+        </Text>
+    );
+
 }
-
 
 /**
  * Test component for active config hook.
  */
 function ActiveConfigDisplay() {
 
-    const { activeConfig, activeConfigName, configs } = useActiveConfig()
+    const { activeConfig, activeConfigName, configs } = useActiveConfig();
 
     return (
         <Text>
-            name:{activeConfigName ?? 'null'}|
-            hasConfig:{String(!!activeConfig)}|
-            count:{configs.length}
+            name:{activeConfigName ?? 'null'}| hasConfig:{String(!!activeConfig)}| count:
+            {configs.length}
         </Text>
-    )
-}
+    );
 
+}
 
 /**
  * Test component for connection status hook.
  */
 function ConnectionStatusDisplay() {
 
-    const { connectionStatus, connectedConfig } = useConnectionStatus()
+    const { connectionStatus, connectedConfig } = useConnectionStatus();
 
     return (
         <Text>
-            status:{connectionStatus}|
-            config:{connectedConfig ?? 'null'}
+            status:{connectionStatus}| config:{connectedConfig ?? 'null'}
         </Text>
-    )
-}
+    );
 
+}
 
 /**
  * Test component for lock status hook.
  */
 function LockStatusDisplay() {
 
-    const { lockStatus } = useLockStatus()
+    const { lockStatus } = useLockStatus();
 
     return (
         <Text>
-            status:{lockStatus.status}|
-            holder:{lockStatus.holder ?? 'null'}
+            status:{lockStatus.status}| holder:{lockStatus.holder ?? 'null'}
         </Text>
-    )
-}
+    );
 
+}
 
 /**
  * Test component for identity hook.
  */
 function IdentityDisplay() {
 
-    const { identity, hasIdentity } = useIdentity()
+    const { identity, hasIdentity } = useIdentity();
 
     return (
         <Text>
-            hasIdentity:{String(hasIdentity)}|
-            name:{identity?.name ?? 'null'}
+            hasIdentity:{String(hasIdentity)}| name:{identity?.name ?? 'null'}
         </Text>
-    )
-}
+    );
 
+}
 
 /**
  * Test component for settings hook.
  */
 function SettingsDisplay() {
 
-    const { settings, settingsManager } = useSettings()
+    const { settings, settingsManager } = useSettings();
 
     return (
         <Text>
-            hasSettings:{String(!!settings)}|
-            hasManager:{String(!!settingsManager)}
+            hasSettings:{String(!!settings)}| hasManager:{String(!!settingsManager)}
         </Text>
-    )
-}
+    );
 
+}
 
 describe('cli: app-context', () => {
 
     beforeEach(() => {
 
-        vi.clearAllMocks()
-    })
+        vi.clearAllMocks();
+
+    });
 
     describe('AppContextProvider', () => {
 
@@ -184,69 +178,76 @@ describe('cli: app-context', () => {
             const { lastFrame } = render(
                 <AppContextProvider autoLoad={false}>
                     <Text>Hello World</Text>
-                </AppContextProvider>
-            )
+                </AppContextProvider>,
+            );
 
-            expect(lastFrame()).toContain('Hello World')
-        })
+            expect(lastFrame()).toContain('Hello World');
+
+        });
 
         it('should start with not-initialized status when autoLoad is false', () => {
 
             const { lastFrame } = render(
                 <AppContextProvider autoLoad={false}>
                     <LoadingStatusDisplay />
-                </AppContextProvider>
-            )
+                </AppContextProvider>,
+            );
 
-            expect(lastFrame()).toContain('loading:not-initialized')
-        })
+            expect(lastFrame()).toContain('loading:not-initialized');
+
+        });
 
         it('should auto-load on mount by default', async () => {
 
             const { lastFrame } = render(
                 <AppContextProvider>
                     <LoadingStatusDisplay />
-                </AppContextProvider>
-            )
+                </AppContextProvider>,
+            );
 
             // Wait for load to complete
-            await new Promise(resolve => setTimeout(resolve, 50))
+            await new Promise((resolve) => setTimeout(resolve, 50));
 
-            expect(lastFrame()).toContain('loading:ready')
-        })
-    })
+            expect(lastFrame()).toContain('loading:ready');
+
+        });
+
+    });
 
     describe('useAppContext', () => {
 
         it('should throw when used outside AppContextProvider', () => {
 
-            const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+            const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-            const { lastFrame } = render(<ContextDisplay />)
-            const output = lastFrame() ?? ''
+            const { lastFrame } = render(<ContextDisplay />);
+            const output = lastFrame() ?? '';
 
-            expect(output).toContain('useAppContext must be used within an AppContextProvider')
+            expect(output).toContain('useAppContext must be used within an AppContextProvider');
 
-            errorSpy.mockRestore()
-        })
+            errorSpy.mockRestore();
+
+        });
 
         it('should provide context value inside provider', async () => {
 
             const { lastFrame } = render(
                 <AppContextProvider>
                     <ContextDisplay />
-                </AppContextProvider>
-            )
+                </AppContextProvider>,
+            );
 
-            await new Promise(resolve => setTimeout(resolve, 50))
+            await new Promise((resolve) => setTimeout(resolve, 50));
 
-            expect(lastFrame()).toContain('status:ready')
-            expect(lastFrame()).toContain('configName:null')
-            expect(lastFrame()).toContain('hasIdentity:false')
-            expect(lastFrame()).toContain('connection:disconnected')
-            expect(lastFrame()).toContain('lock:free')
-        })
-    })
+            expect(lastFrame()).toContain('status:ready');
+            expect(lastFrame()).toContain('configName:null');
+            expect(lastFrame()).toContain('hasIdentity:false');
+            expect(lastFrame()).toContain('connection:disconnected');
+            expect(lastFrame()).toContain('lock:free');
+
+        });
+
+    });
 
     describe('useLoadingStatus', () => {
 
@@ -255,15 +256,17 @@ describe('cli: app-context', () => {
             const { lastFrame } = render(
                 <AppContextProvider>
                     <LoadingStatusDisplay />
-                </AppContextProvider>
-            )
+                </AppContextProvider>,
+            );
 
-            await new Promise(resolve => setTimeout(resolve, 50))
+            await new Promise((resolve) => setTimeout(resolve, 50));
 
-            expect(lastFrame()).toContain('loading:ready')
-            expect(lastFrame()).toContain('error:null')
-        })
-    })
+            expect(lastFrame()).toContain('loading:ready');
+            expect(lastFrame()).toContain('error:null');
+
+        });
+
+    });
 
     describe('useActiveConfig', () => {
 
@@ -272,16 +275,18 @@ describe('cli: app-context', () => {
             const { lastFrame } = render(
                 <AppContextProvider>
                     <ActiveConfigDisplay />
-                </AppContextProvider>
-            )
+                </AppContextProvider>,
+            );
 
-            await new Promise(resolve => setTimeout(resolve, 50))
+            await new Promise((resolve) => setTimeout(resolve, 50));
 
-            expect(lastFrame()).toContain('name:null')
-            expect(lastFrame()).toContain('hasConfig:false')
-            expect(lastFrame()).toContain('count:0')
-        })
-    })
+            expect(lastFrame()).toContain('name:null');
+            expect(lastFrame()).toContain('hasConfig:false');
+            expect(lastFrame()).toContain('count:0');
+
+        });
+
+    });
 
     describe('useConnectionStatus', () => {
 
@@ -290,62 +295,66 @@ describe('cli: app-context', () => {
             const { lastFrame } = render(
                 <AppContextProvider>
                     <ConnectionStatusDisplay />
-                </AppContextProvider>
-            )
+                </AppContextProvider>,
+            );
 
-            await new Promise(resolve => setTimeout(resolve, 50))
+            await new Promise((resolve) => setTimeout(resolve, 50));
 
-            expect(lastFrame()).toContain('status:disconnected')
-            expect(lastFrame()).toContain('config:null')
-        })
+            expect(lastFrame()).toContain('status:disconnected');
+            expect(lastFrame()).toContain('config:null');
+
+        });
 
         it('should update on connection:open event', async () => {
 
             const { lastFrame, unmount } = render(
                 <AppContextProvider>
                     <ConnectionStatusDisplay />
-                </AppContextProvider>
-            )
+                </AppContextProvider>,
+            );
 
-            await new Promise(resolve => setTimeout(resolve, 50))
+            await new Promise((resolve) => setTimeout(resolve, 50));
 
             // Emit connection open event
             observer.emit('connection:open', {
                 configName: 'dev',
                 dialect: 'postgres',
-            })
+            });
 
-            await new Promise(resolve => setTimeout(resolve, 50))
+            await new Promise((resolve) => setTimeout(resolve, 50));
 
-            expect(lastFrame()).toContain('status:connected')
-            expect(lastFrame()).toContain('config:dev')
+            expect(lastFrame()).toContain('status:connected');
+            expect(lastFrame()).toContain('config:dev');
 
-            unmount()
-        })
+            unmount();
+
+        });
 
         it('should update on connection:close event', async () => {
 
             const { lastFrame, unmount } = render(
                 <AppContextProvider>
                     <ConnectionStatusDisplay />
-                </AppContextProvider>
-            )
+                </AppContextProvider>,
+            );
 
-            await new Promise(resolve => setTimeout(resolve, 50))
+            await new Promise((resolve) => setTimeout(resolve, 50));
 
             // Open then close
-            observer.emit('connection:open', { configName: 'dev', dialect: 'postgres' })
-            await new Promise(resolve => setTimeout(resolve, 50))
+            observer.emit('connection:open', { configName: 'dev', dialect: 'postgres' });
+            await new Promise((resolve) => setTimeout(resolve, 50));
 
-            observer.emit('connection:close', { configName: 'dev' })
-            await new Promise(resolve => setTimeout(resolve, 50))
+            observer.emit('connection:close', { configName: 'dev' });
+            await new Promise((resolve) => setTimeout(resolve, 50));
 
-            expect(lastFrame()).toContain('status:disconnected')
-            expect(lastFrame()).toContain('config:null')
+            expect(lastFrame()).toContain('status:disconnected');
+            expect(lastFrame()).toContain('config:null');
 
-            unmount()
-        })
-    })
+            unmount();
+
+        });
+
+    });
 
     describe('useLockStatus', () => {
 
@@ -354,92 +363,97 @@ describe('cli: app-context', () => {
             const { lastFrame } = render(
                 <AppContextProvider>
                     <LockStatusDisplay />
-                </AppContextProvider>
-            )
+                </AppContextProvider>,
+            );
 
-            await new Promise(resolve => setTimeout(resolve, 50))
+            await new Promise((resolve) => setTimeout(resolve, 50));
 
-            expect(lastFrame()).toContain('status:free')
-            expect(lastFrame()).toContain('holder:null')
-        })
+            expect(lastFrame()).toContain('status:free');
+            expect(lastFrame()).toContain('holder:null');
+
+        });
 
         it('should update on lock:acquired event', async () => {
 
             const { lastFrame, unmount } = render(
                 <AppContextProvider>
                     <LockStatusDisplay />
-                </AppContextProvider>
-            )
+                </AppContextProvider>,
+            );
 
-            await new Promise(resolve => setTimeout(resolve, 50))
+            await new Promise((resolve) => setTimeout(resolve, 50));
 
             observer.emit('lock:acquired', {
                 configName: 'dev',
                 identity: 'alice@example.com',
                 expiresAt: new Date(Date.now() + 60000),
-            })
+            });
 
-            await new Promise(resolve => setTimeout(resolve, 50))
+            await new Promise((resolve) => setTimeout(resolve, 50));
 
-            expect(lastFrame()).toContain('status:locked')
-            expect(lastFrame()).toContain('holder:alice@example.com')
+            expect(lastFrame()).toContain('status:locked');
+            expect(lastFrame()).toContain('holder:alice@example.com');
 
-            unmount()
-        })
+            unmount();
+
+        });
 
         it('should update on lock:released event', async () => {
 
             const { lastFrame, unmount } = render(
                 <AppContextProvider>
                     <LockStatusDisplay />
-                </AppContextProvider>
-            )
+                </AppContextProvider>,
+            );
 
-            await new Promise(resolve => setTimeout(resolve, 50))
+            await new Promise((resolve) => setTimeout(resolve, 50));
 
             // Acquire then release
             observer.emit('lock:acquired', {
                 configName: 'dev',
                 identity: 'alice@example.com',
                 expiresAt: new Date(Date.now() + 60000),
-            })
-            await new Promise(resolve => setTimeout(resolve, 50))
+            });
+            await new Promise((resolve) => setTimeout(resolve, 50));
 
             observer.emit('lock:released', {
                 configName: 'dev',
                 identity: 'alice@example.com',
-            })
-            await new Promise(resolve => setTimeout(resolve, 50))
+            });
+            await new Promise((resolve) => setTimeout(resolve, 50));
 
-            expect(lastFrame()).toContain('status:free')
+            expect(lastFrame()).toContain('status:free');
 
-            unmount()
-        })
+            unmount();
+
+        });
 
         it('should update on lock:blocked event', async () => {
 
             const { lastFrame, unmount } = render(
                 <AppContextProvider>
                     <LockStatusDisplay />
-                </AppContextProvider>
-            )
+                </AppContextProvider>,
+            );
 
-            await new Promise(resolve => setTimeout(resolve, 50))
+            await new Promise((resolve) => setTimeout(resolve, 50));
 
             observer.emit('lock:blocked', {
                 configName: 'dev',
                 holder: 'bob@example.com',
                 heldSince: new Date(),
-            })
+            });
 
-            await new Promise(resolve => setTimeout(resolve, 50))
+            await new Promise((resolve) => setTimeout(resolve, 50));
 
-            expect(lastFrame()).toContain('status:blocked')
-            expect(lastFrame()).toContain('holder:bob@example.com')
+            expect(lastFrame()).toContain('status:blocked');
+            expect(lastFrame()).toContain('holder:bob@example.com');
 
-            unmount()
-        })
-    })
+            unmount();
+
+        });
+
+    });
 
     describe('useIdentity', () => {
 
@@ -448,15 +462,17 @@ describe('cli: app-context', () => {
             const { lastFrame } = render(
                 <AppContextProvider>
                     <IdentityDisplay />
-                </AppContextProvider>
-            )
+                </AppContextProvider>,
+            );
 
-            await new Promise(resolve => setTimeout(resolve, 50))
+            await new Promise((resolve) => setTimeout(resolve, 50));
 
-            expect(lastFrame()).toContain('hasIdentity:false')
-            expect(lastFrame()).toContain('name:null')
-        })
-    })
+            expect(lastFrame()).toContain('hasIdentity:false');
+            expect(lastFrame()).toContain('name:null');
+
+        });
+
+    });
 
     describe('useSettings', () => {
 
@@ -465,15 +481,17 @@ describe('cli: app-context', () => {
             const { lastFrame } = render(
                 <AppContextProvider>
                     <SettingsDisplay />
-                </AppContextProvider>
-            )
+                </AppContextProvider>,
+            );
 
-            await new Promise(resolve => setTimeout(resolve, 50))
+            await new Promise((resolve) => setTimeout(resolve, 50));
 
-            expect(lastFrame()).toContain('hasSettings:true')
-            expect(lastFrame()).toContain('hasManager:true')
-        })
-    })
+            expect(lastFrame()).toContain('hasSettings:true');
+            expect(lastFrame()).toContain('hasManager:true');
+
+        });
+
+    });
 
     describe('LoadingGuard', () => {
 
@@ -484,11 +502,12 @@ describe('cli: app-context', () => {
                     <LoadingGuard loading={<Text>Loading...</Text>}>
                         <Text>Content</Text>
                     </LoadingGuard>
-                </AppContextProvider>
-            )
+                </AppContextProvider>,
+            );
 
-            expect(lastFrame()).toContain('Loading...')
-        })
+            expect(lastFrame()).toContain('Loading...');
+
+        });
 
         it('should show children when ready', async () => {
 
@@ -497,14 +516,16 @@ describe('cli: app-context', () => {
                     <LoadingGuard loading={<Text>Loading...</Text>}>
                         <Text>Content</Text>
                     </LoadingGuard>
-                </AppContextProvider>
-            )
+                </AppContextProvider>,
+            );
 
-            await new Promise(resolve => setTimeout(resolve, 50))
+            await new Promise((resolve) => setTimeout(resolve, 50));
 
-            expect(lastFrame()).toContain('Content')
-        })
-    })
+            expect(lastFrame()).toContain('Content');
+
+        });
+
+    });
 
     describe('ConfigGuard', () => {
 
@@ -515,14 +536,16 @@ describe('cli: app-context', () => {
                     <ConfigGuard fallback={<Text>No config</Text>}>
                         <Text>Has config</Text>
                     </ConfigGuard>
-                </AppContextProvider>
-            )
+                </AppContextProvider>,
+            );
 
-            await new Promise(resolve => setTimeout(resolve, 50))
+            await new Promise((resolve) => setTimeout(resolve, 50));
 
-            expect(lastFrame()).toContain('No config')
-        })
-    })
+            expect(lastFrame()).toContain('No config');
+
+        });
+
+    });
 
     describe('IdentityGuard', () => {
 
@@ -533,12 +556,15 @@ describe('cli: app-context', () => {
                     <IdentityGuard fallback={<Text>No identity</Text>}>
                         <Text>Has identity</Text>
                     </IdentityGuard>
-                </AppContextProvider>
-            )
+                </AppContextProvider>,
+            );
 
-            await new Promise(resolve => setTimeout(resolve, 50))
+            await new Promise((resolve) => setTimeout(resolve, 50));
 
-            expect(lastFrame()).toContain('No identity')
-        })
-    })
-})
+            expect(lastFrame()).toContain('No identity');
+
+        });
+
+    });
+
+});

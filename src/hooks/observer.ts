@@ -20,11 +20,12 @@ export const observer = obsrv;
 export const useOnNoormEvent = <E extends NoormEventNames>(
     event: E,
     cb: NoormEventCallback<E>,
-    deps: React.DependencyList = []
+    deps: React.DependencyList = [],
 ) => {
 
     useEffect(() => obsrv.on(event, cb), [event, cb, ...deps]);
-}
+
+};
 
 /**
  * Creates an event generator for an event
@@ -35,11 +36,12 @@ export const useOnNoormEvent = <E extends NoormEventNames>(
  */
 export const useNoormEventGenerator = <E extends NoormEventNames>(
     event: E,
-    deps: React.DependencyList = []
+    deps: React.DependencyList = [],
 ) => {
 
     return useMemo(() => obsrv.on(event), [event, ...deps]);
-}
+
+};
 
 /**
  * Attaches a listener to the observer once with an automatic cleanup function
@@ -51,12 +53,12 @@ export const useNoormEventGenerator = <E extends NoormEventNames>(
 export const useOnceNoormEvent = <E extends NoormEventNames>(
     event: E,
     cb: NoormEventCallback<E>,
-    deps: React.DependencyList = []
+    deps: React.DependencyList = [],
 ) => {
 
     useEffect(() => obsrv.once(event, cb), [event, cb, ...deps]);
-}
 
+};
 
 /**
  * Creates a function that emits events, scoped to a single function
@@ -66,11 +68,9 @@ export const useOnceNoormEvent = <E extends NoormEventNames>(
  */
 export const useEmitNoormEvent = <E extends NoormEventNames, D extends NoormEvents[E]>(
     event: E,
-    deps: React.DependencyList = []
+    deps: React.DependencyList = [],
 ) => {
 
-    return useCallback(
-        (data: D) => obsrv.emit(event, data as never),
-        [event, ...deps]
-    )
-}
+    return useCallback((data: D) => obsrv.emit(event, data as never), [event, ...deps]);
+
+};

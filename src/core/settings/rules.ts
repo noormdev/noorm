@@ -13,8 +13,7 @@ import type {
     RuleEvaluationResult,
     RulesEvaluationResult,
     ConfigForRuleMatch,
-} from './types.js'
-
+} from './types.js';
 
 /**
  * Check if a single condition matches.
@@ -25,20 +24,21 @@ import type {
  * matchesCondition({ isTest: false }, 'isTest', true) // false
  * ```
  */
-function matchesCondition<K extends keyof RuleMatch>(
+function _matchesCondition<K extends keyof RuleMatch>(
     config: ConfigForRuleMatch,
     key: K,
-    expected: RuleMatch[K]
+    expected: RuleMatch[K],
 ): boolean {
 
     if (expected === undefined) {
 
-        return true
+        return true;
+
     }
 
-    return config[key as keyof ConfigForRuleMatch] === expected
-}
+    return config[key as keyof ConfigForRuleMatch] === expected;
 
+}
 
 /**
  * Check if all conditions in a rule match the config.
@@ -58,27 +58,31 @@ export function ruleMatches(match: RuleMatch, config: ConfigForRuleMatch): boole
     // Check each condition - all must match (AND logic)
     if (match.name !== undefined && config.name !== match.name) {
 
-        return false
+        return false;
+
     }
 
     if (match.protected !== undefined && config.protected !== match.protected) {
 
-        return false
+        return false;
+
     }
 
     if (match.isTest !== undefined && config.isTest !== match.isTest) {
 
-        return false
+        return false;
+
     }
 
     if (match.type !== undefined && config.type !== match.type) {
 
-        return false
+        return false;
+
     }
 
-    return true
-}
+    return true;
 
+}
 
 /**
  * Evaluate a single rule against a config.
@@ -98,7 +102,7 @@ export function ruleMatches(match: RuleMatch, config: ConfigForRuleMatch): boole
  */
 export function evaluateRule(rule: Rule, config: ConfigForRuleMatch): RuleEvaluationResult {
 
-    const matched = ruleMatches(rule.match, config)
+    const matched = ruleMatches(rule.match, config);
 
     if (!matched) {
 
@@ -106,16 +110,17 @@ export function evaluateRule(rule: Rule, config: ConfigForRuleMatch): RuleEvalua
             matched: false,
             include: [],
             exclude: [],
-        }
+        };
+
     }
 
     return {
         matched: true,
         include: rule.include ?? [],
         exclude: rule.exclude ?? [],
-    }
-}
+    };
 
+}
 
 /**
  * Evaluate all rules against a config.
@@ -136,41 +141,45 @@ export function evaluateRule(rule: Rule, config: ConfigForRuleMatch): RuleEvalua
  */
 export function evaluateRules(rules: Rule[], config: ConfigForRuleMatch): RulesEvaluationResult {
 
-    const matchedRules: Rule[] = []
-    const includeSet = new Set<string>()
-    const excludeSet = new Set<string>()
+    const matchedRules: Rule[] = [];
+    const includeSet = new Set<string>();
+    const excludeSet = new Set<string>();
 
     for (const rule of rules) {
 
-        const result = evaluateRule(rule, config)
+        const result = evaluateRule(rule, config);
 
         if (result.matched) {
 
-            matchedRules.push(rule)
+            matchedRules.push(rule);
 
             // Add includes (remove from exclude if present)
             for (const path of result.include) {
 
-                includeSet.add(path)
-                excludeSet.delete(path)
+                includeSet.add(path);
+                excludeSet.delete(path);
+
             }
 
             // Add excludes (remove from include if present)
             for (const path of result.exclude) {
 
-                excludeSet.add(path)
-                includeSet.delete(path)
+                excludeSet.add(path);
+                includeSet.delete(path);
+
             }
+
         }
+
     }
 
     return {
         matchedRules,
         include: Array.from(includeSet),
         exclude: Array.from(excludeSet),
-    }
-}
+    };
 
+}
 
 /**
  * Merge build config includes/excludes with rule evaluation results.
@@ -198,33 +207,35 @@ export function evaluateRules(rules: Rule[], config: ConfigForRuleMatch): RulesE
 export function mergeWithBuildConfig(
     buildInclude: string[],
     buildExclude: string[],
-    ruleResult: RulesEvaluationResult
+    ruleResult: RulesEvaluationResult,
 ): { include: string[]; exclude: string[] } {
 
     // Start with build config
-    const includeSet = new Set(buildInclude)
-    const excludeSet = new Set(buildExclude)
+    const includeSet = new Set(buildInclude);
+    const excludeSet = new Set(buildExclude);
 
     // Apply rule includes (add to include, remove from exclude)
     for (const path of ruleResult.include) {
 
-        includeSet.add(path)
-        excludeSet.delete(path)
+        includeSet.add(path);
+        excludeSet.delete(path);
+
     }
 
     // Apply rule excludes (add to exclude, remove from include)
     for (const path of ruleResult.exclude) {
 
-        excludeSet.add(path)
-        includeSet.delete(path)
+        excludeSet.add(path);
+        includeSet.delete(path);
+
     }
 
     return {
         include: Array.from(includeSet),
         exclude: Array.from(excludeSet),
-    }
-}
+    };
 
+}
 
 /**
  * Get effective build paths for a config.
@@ -256,10 +267,11 @@ export function getEffectiveBuildPaths(
     buildInclude: string[],
     buildExclude: string[],
     rules: Rule[],
-    config: ConfigForRuleMatch
+    config: ConfigForRuleMatch,
 ): { include: string[]; exclude: string[] } {
 
-    const ruleResult = evaluateRules(rules, config)
+    const ruleResult = evaluateRules(rules, config);
 
-    return mergeWithBuildConfig(buildInclude, buildExclude, ruleResult)
+    return mergeWithBuildConfig(buildInclude, buildExclude, ruleResult);
+
 }

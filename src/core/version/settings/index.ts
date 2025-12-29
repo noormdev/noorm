@@ -9,27 +9,25 @@
  * - Only migrate settings when settings schema actually changes
  * - Simpler version checking (compare numbers, not semver)
  */
-import { attemptSync } from '@logosdx/utils'
+import { attemptSync } from '@logosdx/utils';
 
-import { observer } from '../../observer.js'
+import { observer } from '../../observer.js';
 import {
     CURRENT_VERSIONS,
     MigrationError,
     VersionMismatchError,
     type LayerVersionStatus,
     type SettingsMigration,
-} from '../types.js'
+} from '../types.js';
 
 // Import migrations
-import { v1 } from './migrations/v1.js'
-
+import { v1 } from './migrations/v1.js';
 
 /**
  * All settings migrations in order.
  * Add new migrations here as they're created.
  */
-const MIGRATIONS: SettingsMigration[] = [v1]
-
+const MIGRATIONS: SettingsMigration[] = [v1];
 
 /**
  * Get settings version from settings object.
@@ -43,12 +41,13 @@ const MIGRATIONS: SettingsMigration[] = [v1]
  */
 export function getSettingsVersion(settings: Record<string, unknown>): number {
 
-    const version = settings['schemaVersion']
+    const version = settings['schemaVersion'];
 
-    if (typeof version === 'number') return version
-    return 0
+    if (typeof version === 'number') return version;
+
+    return 0;
+
 }
-
 
 /**
  * Check settings version status.
@@ -61,21 +60,19 @@ export function getSettingsVersion(settings: Record<string, unknown>): number {
  * }
  * ```
  */
-export function checkSettingsVersion(
-    settings: Record<string, unknown>
-): LayerVersionStatus {
+export function checkSettingsVersion(settings: Record<string, unknown>): LayerVersionStatus {
 
-    const current = getSettingsVersion(settings)
-    const expected = CURRENT_VERSIONS.settings
+    const current = getSettingsVersion(settings);
+    const expected = CURRENT_VERSIONS.settings;
 
     return {
         current,
         expected,
         needsMigration: current < expected,
         isNewer: current > expected,
-    }
-}
+    };
 
+}
 
 /**
  * Check if settings needs migration.
@@ -90,10 +87,11 @@ export function checkSettingsVersion(
  */
 export function needsSettingsMigration(settings: Record<string, unknown>): boolean {
 
-    const status = checkSettingsVersion(settings)
-    return status.needsMigration
-}
+    const status = checkSettingsVersion(settings);
 
+    return status.needsMigration;
+
+}
 
 /**
  * Migrate settings from current version to latest.
@@ -110,11 +108,9 @@ export function needsSettingsMigration(settings: Record<string, unknown>): boole
  * await persistSettings(migrated)
  * ```
  */
-export function migrateSettings(
-    settings: Record<string, unknown>
-): Record<string, unknown> {
+export function migrateSettings(settings: Record<string, unknown>): Record<string, unknown> {
 
-    const status = checkSettingsVersion(settings)
+    const status = checkSettingsVersion(settings);
 
     // Settings is newer than CLI supports
     if (status.isNewer) {
@@ -123,46 +119,49 @@ export function migrateSettings(
             layer: 'settings',
             current: status.current,
             expected: status.expected,
-        })
+        });
 
-        throw new VersionMismatchError('settings', status.current, status.expected)
+        throw new VersionMismatchError('settings', status.current, status.expected);
+
     }
 
     // No migration needed
-    if (!status.needsMigration) return settings
+    if (!status.needsMigration) return settings;
 
     observer.emit('version:settings:migrating', {
         from: status.current,
         to: CURRENT_VERSIONS.settings,
-    })
+    });
 
     // Run pending migrations
-    const pendingMigrations = MIGRATIONS.filter(m => m.version > status.current)
-    let migrated = { ...settings }
+    const pendingMigrations = MIGRATIONS.filter((m) => m.version > status.current);
+    let migrated = { ...settings };
 
     for (const migration of pendingMigrations) {
 
-        const [result, err] = attemptSync(() => migration.up(migrated))
+        const [result, err] = attemptSync(() => migration.up(migrated));
 
         if (err) {
 
-            throw new MigrationError('settings', migration.version, err)
+            throw new MigrationError('settings', migration.version, err);
+
         }
 
-        migrated = result
+        migrated = result;
+
     }
 
     // Ensure schemaVersion is set to current
-    migrated['schemaVersion'] = CURRENT_VERSIONS.settings
+    migrated['schemaVersion'] = CURRENT_VERSIONS.settings;
 
     observer.emit('version:settings:migrated', {
         from: status.current,
         to: CURRENT_VERSIONS.settings,
-    })
+    });
 
-    return migrated
+    return migrated;
+
 }
-
 
 /**
  * Create empty settings with current version.
@@ -175,9 +174,9 @@ export function migrateSettings(
  */
 export function createEmptyVersionedSettings(): Record<string, unknown> {
 
-    return migrateSettings({})
-}
+    return migrateSettings({});
 
+}
 
 /**
  * Ensure settings is at current version.
@@ -187,9 +186,8 @@ export function createEmptyVersionedSettings(): Record<string, unknown> {
  * @throws VersionMismatchError if settings is newer than CLI supports
  * @throws MigrationError if a migration fails
  */
-export function ensureSettingsVersion(
-    settings: Record<string, unknown>
-): Record<string, unknown> {
+export function ensureSettingsVersion(settings: Record<string, unknown>): Record<string, unknown> {
 
-    return migrateSettings(settings)
+    return migrateSettings(settings);
+
 }

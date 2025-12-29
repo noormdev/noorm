@@ -3,14 +3,13 @@
  *
  * Provides a friendly error message and navigation back to home.
  */
-import type { ReactElement } from 'react'
-import { Box, Text } from 'ink'
+import type { ReactElement } from 'react';
+import { Box, Text } from 'ink';
 
-import type { ScreenProps } from '../types.js'
-import { useRouter } from '../router.js'
-import { useFocusScope } from '../focus.js'
-import { useFocusedInput } from '../keyboard.js'
-
+import type { ScreenProps } from '../types.js';
+import { useRouter } from '../router.js';
+import { useFocusScope } from '../focus.js';
+import { useFocusedInput } from '../keyboard.js';
 
 /**
  * Not Found screen component.
@@ -19,24 +18,26 @@ import { useFocusedInput } from '../keyboard.js'
  */
 export function NotFoundScreen({ params: _params }: ScreenProps): ReactElement {
 
-    const { route, navigate, back, canGoBack } = useRouter()
-    const { isFocused } = useFocusScope('not-found-screen')
+    const { route, navigate, back, canGoBack } = useRouter();
+    const { isFocused } = useFocusScope('not-found-screen');
 
     useFocusedInput(isFocused, (input, key) => {
 
         if (key.return || input === 'h') {
 
-            navigate('home')
+            navigate('home');
+
         }
         else if (key.escape && canGoBack) {
 
-            back()
+            back();
+
         }
-    })
+
+    });
 
     return (
         <Box flexDirection="column" padding={1}>
-
             {/* Error Message */}
             <Box
                 flexDirection="column"
@@ -45,7 +46,9 @@ export function NotFoundScreen({ params: _params }: ScreenProps): ReactElement {
                 paddingX={2}
                 paddingY={1}
             >
-                <Text bold color="red">Screen Not Found</Text>
+                <Text bold color="red">
+                    Screen Not Found
+                </Text>
 
                 <Box marginTop={1} flexDirection="column">
                     <Text>
@@ -54,20 +57,16 @@ export function NotFoundScreen({ params: _params }: ScreenProps): ReactElement {
                     </Text>
 
                     <Box marginTop={1}>
-                        <Text dimColor>
-                            This screen has not been implemented yet.
-                        </Text>
+                        <Text dimColor>This screen has not been implemented yet.</Text>
                     </Box>
                 </Box>
             </Box>
 
             {/* Navigation Hints */}
             <Box marginTop={1}>
-                <Text dimColor>
-                    [Enter] go home  {canGoBack ? '[Esc] go back' : ''}
-                </Text>
+                <Text dimColor>[Enter] go home {canGoBack ? '[Esc] go back' : ''}</Text>
             </Box>
-
         </Box>
-    )
+    );
+
 }

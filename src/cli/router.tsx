@@ -16,43 +16,33 @@
  * if (canGoBack) back()
  * ```
  */
-import {
-    createContext,
-    useContext,
-    useState,
-    useCallback,
-    useMemo
-} from 'react'
+import { createContext, useContext, useState, useCallback, useMemo } from 'react';
 
-import type { ReactNode, ReactElement } from 'react'
+import type { ReactNode, ReactElement } from 'react';
 
 import {
     type Route,
     type RouteParams,
     type HistoryEntry,
     type RouterContextValue,
-    getSection
-} from './types.js'
+    getSection,
+} from './types.js';
 
-
-const RouterContext = createContext<RouterContextValue | null>(null)
-
+const RouterContext = createContext<RouterContextValue | null>(null);
 
 /**
  * Props for RouterProvider.
  */
 export interface RouterProviderProps {
-
     /** Initial route to display */
-    initialRoute?: Route
+    initialRoute?: Route;
 
     /** Initial route parameters */
-    initialParams?: RouteParams
+    initialParams?: RouteParams;
 
     /** Child components */
-    children: ReactNode
+    children: ReactNode;
 }
-
 
 /**
  * Router provider component.
@@ -69,71 +59,78 @@ export interface RouterProviderProps {
 export function RouterProvider({
     initialRoute = 'home',
     initialParams = {},
-    children
+    children,
 }: RouterProviderProps): ReactElement {
 
-    const [route, setRoute] = useState<Route>(initialRoute)
-    const [params, setParams] = useState<RouteParams>(initialParams)
-    const [history, setHistory] = useState<HistoryEntry[]>([])
+    const [route, setRoute] = useState<Route>(initialRoute);
+    const [params, setParams] = useState<RouteParams>(initialParams);
+    const [history, setHistory] = useState<HistoryEntry[]>([]);
 
-    const navigate = useCallback((newRoute: Route, newParams: RouteParams = {}) => {
+    const navigate = useCallback(
+        (newRoute: Route, newParams: RouteParams = {}) => {
 
-        // Push current state to history
-        setHistory(prev => [...prev, { route, params }])
+            // Push current state to history
+            setHistory((prev) => [...prev, { route, params }]);
 
-        // Navigate to new route
-        setRoute(newRoute)
-        setParams(newParams)
-    }, [route, params])
+            // Navigate to new route
+            setRoute(newRoute);
+            setParams(newParams);
+
+        },
+        [route, params],
+    );
 
     const back = useCallback(() => {
 
         if (history.length === 0) {
 
-            return
+            return;
+
         }
 
         // Pop the last entry from history
-        const previous = history[history.length - 1]!
+        const previous = history[history.length - 1]!;
 
-        setHistory(prev => prev.slice(0, -1))
-        setRoute(previous.route)
-        setParams(previous.params)
-    }, [history])
+        setHistory((prev) => prev.slice(0, -1));
+        setRoute(previous.route);
+        setParams(previous.params);
+
+    }, [history]);
 
     const replace = useCallback((newRoute: Route, newParams: RouteParams = {}) => {
 
         // Replace without modifying history
-        setRoute(newRoute)
-        setParams(newParams)
-    }, [])
+        setRoute(newRoute);
+        setParams(newParams);
+
+    }, []);
 
     const reset = useCallback(() => {
 
-        setHistory([])
-        setRoute('home')
-        setParams({})
-    }, [])
+        setHistory([]);
+        setRoute('home');
+        setParams({});
 
-    const value = useMemo<RouterContextValue>(() => ({
-        route,
-        params,
-        history,
-        navigate,
-        back,
-        replace,
-        reset,
-        canGoBack: history.length > 0,
-        section: getSection(route)
-    }), [route, params, history, navigate, back, replace, reset])
+    }, []);
 
-    return (
-        <RouterContext.Provider value={value}>
-            {children}
-        </RouterContext.Provider>
-    )
+    const value = useMemo<RouterContextValue>(
+        () => ({
+            route,
+            params,
+            history,
+            navigate,
+            back,
+            replace,
+            reset,
+            canGoBack: history.length > 0,
+            section: getSection(route),
+        }),
+        [route, params, history, navigate, back, replace, reset],
+    );
+
+    return <RouterContext.Provider value={value}>{children}</RouterContext.Provider>;
+
 }
-
 
 /**
  * Hook to access router functionality.
@@ -153,16 +150,17 @@ export function RouterProvider({
  */
 export function useRouter(): RouterContextValue {
 
-    const context = useContext(RouterContext)
+    const context = useContext(RouterContext);
 
     if (!context) {
 
-        throw new Error('useRouter must be used within a RouterProvider')
+        throw new Error('useRouter must be used within a RouterProvider');
+
     }
 
-    return context
-}
+    return context;
 
+}
 
 /**
  * Hook to get just the current route and params.
@@ -171,20 +169,24 @@ export function useRouter(): RouterContextValue {
  */
 export function useRoute(): { route: Route; params: RouteParams; section: string } {
 
-    const { route, params, section } = useRouter()
+    const { route, params, section } = useRouter();
 
-    return { route, params, section }
+    return { route, params, section };
+
 }
-
 
 /**
  * Hook to get navigation functions only.
  *
  * Useful when you only need to navigate without reading state.
  */
-export function useNavigation(): Pick<RouterContextValue, 'navigate' | 'back' | 'replace' | 'reset' | 'canGoBack'> {
+export function useNavigation(): Pick<
+    RouterContextValue,
+    'navigate' | 'back' | 'replace' | 'reset' | 'canGoBack'
+    > {
 
-    const { navigate, back, replace, reset, canGoBack } = useRouter()
+    const { navigate, back, replace, reset, canGoBack } = useRouter();
 
-    return { navigate, back, replace, reset, canGoBack }
+    return { navigate, back, replace, reset, canGoBack };
+
 }

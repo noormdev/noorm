@@ -4,9 +4,8 @@
  * Protected configs require confirmation for destructive operations.
  * Some operations (like db:destroy) are completely blocked.
  */
-import type { Config } from './types.js'
-import { shouldSkipConfirmations } from './env.js'
-
+import type { Config } from './types.js';
+import { shouldSkipConfirmations } from './env.js';
 
 /**
  * Actions that can be performed on configs.
@@ -21,14 +20,12 @@ export type ProtectedAction =
     | 'run:dir'
     | 'db:create'
     | 'db:destroy'
-    | 'config:rm'
-
+    | 'config:rm';
 
 /**
  * Actions that are completely blocked on protected configs.
  */
-const BLOCKED_ACTIONS: ProtectedAction[] = ['db:destroy']
-
+const BLOCKED_ACTIONS: ProtectedAction[] = ['db:destroy'];
 
 /**
  * Actions that require confirmation on protected configs.
@@ -43,27 +40,24 @@ const CONFIRM_ACTIONS: ProtectedAction[] = [
     'run:dir',
     'db:create',
     'config:rm',
-]
-
+];
 
 /**
  * Result of checking protection for an action.
  */
 export interface ProtectionCheck {
-
     /** Whether the action is allowed to proceed */
-    allowed: boolean
+    allowed: boolean;
 
     /** Whether user confirmation is needed before proceeding */
-    requiresConfirmation: boolean
+    requiresConfirmation: boolean;
 
     /** The phrase user must type to confirm (e.g., "yes-production") */
-    confirmationPhrase?: string
+    confirmationPhrase?: string;
 
     /** Reason the action is blocked (if not allowed) */
-    blockedReason?: string
+    blockedReason?: string;
 }
-
 
 /**
  * Check if an action is allowed on a config.
@@ -98,7 +92,8 @@ export function checkProtection(config: Config, action: ProtectedAction): Protec
     // Non-protected configs allow everything
     if (!config.protected) {
 
-        return { allowed: true, requiresConfirmation: false }
+        return { allowed: true, requiresConfirmation: false };
+
     }
 
     // Blocked actions
@@ -110,7 +105,8 @@ export function checkProtection(config: Config, action: ProtectedAction): Protec
             blockedReason:
                 `"${action}" is not allowed on protected config "${config.name}". ` +
                 'Connect to the database directly to perform this action.',
-        }
+        };
+
     }
 
     // Actions requiring confirmation
@@ -119,20 +115,22 @@ export function checkProtection(config: Config, action: ProtectedAction): Protec
         // Skip confirmation if NOORM_YES is set (for scripted CI)
         if (shouldSkipConfirmations()) {
 
-            return { allowed: true, requiresConfirmation: false }
+            return { allowed: true, requiresConfirmation: false };
+
         }
 
         return {
             allowed: true,
             requiresConfirmation: true,
             confirmationPhrase: `yes-${config.name}`,
-        }
+        };
+
     }
 
     // Unknown action - allow by default
-    return { allowed: true, requiresConfirmation: false }
-}
+    return { allowed: true, requiresConfirmation: false };
 
+}
 
 /**
  * Validate a confirmation phrase.
@@ -149,5 +147,6 @@ export function checkProtection(config: Config, action: ProtectedAction): Protec
  */
 export function validateConfirmation(config: Config, input: string): boolean {
 
-    return input === `yes-${config.name}`
+    return input === `yes-${config.name}`;
+
 }

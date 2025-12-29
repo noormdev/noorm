@@ -6,7 +6,6 @@
  * to a log file with configurable verbosity.
  */
 
-
 /**
  * Log verbosity levels.
  *
@@ -16,29 +15,25 @@
  * - info: Errors + warnings + info (default)
  * - verbose: All events including debug
  */
-export type LogLevel = 'silent' | 'error' | 'warn' | 'info' | 'verbose'
-
+export type LogLevel = 'silent' | 'error' | 'warn' | 'info' | 'verbose';
 
 /**
  * Numeric priority for log levels.
  * Higher numbers = more verbose.
  */
 export const LOG_LEVEL_PRIORITY: Record<LogLevel, number> = {
-
     silent: 0,
     error: 1,
     warn: 2,
     info: 3,
     verbose: 4,
-}
-
+};
 
 /**
  * Entry level in the log file.
  * Maps to standard logging conventions.
  */
-export type EntryLevel = 'error' | 'warn' | 'info' | 'debug'
-
+export type EntryLevel = 'error' | 'warn' | 'info' | 'debug';
 
 /**
  * A single log entry.
@@ -57,26 +52,24 @@ export type EntryLevel = 'error' | 'warn' | 'info' | 'debug'
  * ```
  */
 export interface LogEntry {
-
     /** ISO 8601 timestamp */
-    timestamp: string
+    timestamp: string;
 
     /** Entry severity level */
-    level: EntryLevel
+    level: EntryLevel;
 
     /** Observer event name */
-    event: string
+    event: string;
 
     /** Human-readable summary */
-    message: string
+    message: string;
 
     /** Event payload (included at verbose level) */
-    data?: Record<string, unknown>
+    data?: Record<string, unknown>;
 
     /** Additional context (config name, identity, etc.) */
-    context?: Record<string, unknown>
+    context?: Record<string, unknown>;
 }
-
 
 /**
  * Logger configuration from settings.
@@ -84,105 +77,51 @@ export interface LogEntry {
  * These values come from .noorm/settings.yml logging section.
  */
 export interface LoggerConfig {
-
     /** Enable file logging */
-    enabled: boolean
+    enabled: boolean;
 
     /** Minimum level to capture */
-    level: LogLevel
+    level: LogLevel;
 
     /** Log file path (relative to project root) */
-    file: string
+    file: string;
 
     /** Rotate log when size exceeded (e.g., '10mb') */
-    maxSize: string
+    maxSize: string;
 
     /** Number of rotated files to keep */
-    maxFiles: number
+    maxFiles: number;
 }
-
 
 /**
  * Default logger configuration.
  */
 export const DEFAULT_LOGGER_CONFIG: LoggerConfig = {
-
     enabled: true,
     level: 'info',
     file: '.noorm/noorm.log',
     maxSize: '10mb',
     maxFiles: 5,
-}
-
-
-/**
- * Write queue entry waiting to be written.
- */
-export interface QueueEntry {
-
-    /** Serialized log line (JSON + newline) */
-    line: string
-
-    /** Timestamp when enqueued (for metrics) */
-    enqueuedAt: number
-}
-
-
-/**
- * Write queue statistics.
- */
-export interface QueueStats {
-
-    /** Entries waiting to be written */
-    pending: number
-
-    /** Total entries written since start */
-    totalWritten: number
-
-    /** Total bytes written since start */
-    totalBytes: number
-
-    /** Whether the queue is currently writing */
-    isWriting: boolean
-}
-
+};
 
 /**
  * Log rotation result.
  */
 export interface RotationResult {
-
     /** Whether rotation occurred */
-    rotated: boolean
+    rotated: boolean;
 
     /** Old file path (if rotated) */
-    oldFile?: string
+    oldFile?: string;
 
     /** New rotated file path (if rotated) */
-    newFile?: string
+    newFile?: string;
 
     /** Files deleted during cleanup (if maxFiles exceeded) */
-    deletedFiles?: string[]
+    deletedFiles?: string[];
 }
-
 
 /**
  * Logger state for lifecycle management.
  */
-export type LoggerState = 'idle' | 'running' | 'flushing' | 'stopped'
-
-
-/**
- * Options for Logger construction.
- */
-export interface LoggerOptions {
-
-    /** Project root directory */
-    projectRoot: string
-
-    /** Logger configuration (from settings) */
-    config: LoggerConfig
-
-    /** Context to include with every entry */
-    context?: Record<string, unknown>
-}
+export type LoggerState = 'idle' | 'running' | 'flushing' | 'stopped';

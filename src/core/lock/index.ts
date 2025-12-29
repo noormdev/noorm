@@ -30,13 +30,9 @@
  */
 
 // Types
-export type {
-    Lock,
-    LockOptions,
-    LockStatus,
-} from './types.js'
+export type { Lock, LockOptions, LockStatus } from './types.js';
 
-export { DEFAULT_LOCK_OPTIONS } from './types.js'
+export { DEFAULT_LOCK_OPTIONS } from './types.js';
 
 // Errors
 export {
@@ -44,11 +40,7 @@ export {
     LockExpiredError,
     LockNotFoundError,
     LockOwnershipError,
-} from './errors.js'
+} from './errors.js';
 
 // Manager
-export {
-    LockManager,
-    getLockManager,
-    resetLockManager,
-} from './manager.js'
+export { LockManager, getLockManager, resetLockManager } from './manager.js';

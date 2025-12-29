@@ -20,17 +20,17 @@
  * }
  * ```
  */
-import { Suspense } from 'react'
-import type { ReactElement } from 'react'
-import { Box, Text } from 'ink'
+import { Suspense } from 'react';
+import type { ReactElement } from 'react';
+import { Box, Text } from 'ink';
 
-import type { Route, ScreenProps, ScreenEntry } from './types.js'
-import { useRouter } from './router.js'
+import type { Route, ScreenEntry } from './types.js';
+import { useRouter } from './router.js';
 
 // Placeholder screens until real implementations
-import { HomeScreen } from './screens/home.js'
-import { NotFoundScreen } from './screens/not-found.js'
-import { InitScreen } from './screens/init/index.js'
+import { HomeScreen } from './screens/home.js';
+import { NotFoundScreen } from './screens/not-found.js';
+import { InitScreen } from './screens/init/index.js';
 import {
     ConfigListScreen,
     ConfigAddScreen,
@@ -41,7 +41,7 @@ import {
     ConfigValidateScreen,
     ConfigExportScreen,
     ConfigImportScreen,
-} from './screens/config/index.js'
+} from './screens/config/index.js';
 import {
     ChangeListScreen,
     ChangeAddScreen,
@@ -52,14 +52,34 @@ import {
     ChangeNextScreen,
     ChangeFFScreen,
     ChangeRewindScreen,
-} from './screens/change/index.js'
-
+} from './screens/change/index.js';
+import { DbListScreen, DbCreateScreen, DbDestroyScreen } from './screens/db/index.js';
+import {
+    SettingsListScreen,
+    SettingsInitScreen,
+    SettingsBuildScreen,
+    SettingsPathsScreen,
+    SettingsStrictScreen,
+    SettingsLoggingScreen,
+    SettingsStagesListScreen,
+    SettingsStageEditScreen,
+    SettingsRulesListScreen,
+    SettingsRuleEditScreen,
+    // Universal secrets
+    SettingsSecretsListScreen,
+    SettingsSecretEditScreen,
+    SettingsSecretRemoveScreen,
+    // Stage-specific secrets
+    SettingsStageSecretsListScreen,
+    SettingsStageSecretEditScreen,
+    SettingsStageSecretRemoveScreen,
+} from './screens/settings/index.js';
+import { SecretListScreen, SecretSetScreen, SecretRemoveScreen } from './screens/secret/index.js';
 
 /**
  * Screen registry type.
  */
-export type ScreenRegistry = Partial<Record<Route, ScreenEntry>>
-
+export type ScreenRegistry = Partial<Record<Route, ScreenEntry>>;
 
 /**
  * Registry of all available screens.
@@ -68,96 +88,208 @@ export type ScreenRegistry = Partial<Record<Route, ScreenEntry>>
  * Add new screens here as they are implemented.
  */
 const SCREENS: ScreenRegistry = {
-
     // Home
-    'home': {
+    home: {
         component: HomeScreen,
-        label: 'Home'
+        label: 'Home',
     },
 
     // Init
-    'init': {
+    init: {
         component: InitScreen,
-        label: 'Initialize'
+        label: 'Initialize',
     },
 
     // Config
-    'config': {
+    config: {
         component: ConfigListScreen,
-        label: 'Configurations'
+        label: 'Configurations',
     },
     'config/add': {
         component: ConfigAddScreen,
-        label: 'Add Config'
+        label: 'Add Config',
     },
     'config/edit': {
         component: ConfigEditScreen,
-        label: 'Edit Config'
+        label: 'Edit Config',
     },
     'config/rm': {
         component: ConfigRemoveScreen,
-        label: 'Delete Config'
+        label: 'Delete Config',
     },
     'config/cp': {
         component: ConfigCopyScreen,
-        label: 'Copy Config'
+        label: 'Copy Config',
     },
     'config/use': {
         component: ConfigUseScreen,
-        label: 'Use Config'
+        label: 'Use Config',
     },
     'config/validate': {
         component: ConfigValidateScreen,
-        label: 'Validate Config'
+        label: 'Validate Config',
     },
     'config/export': {
         component: ConfigExportScreen,
-        label: 'Export Config'
+        label: 'Export Config',
     },
     'config/import': {
         component: ConfigImportScreen,
-        label: 'Import Config'
+        label: 'Import Config',
     },
 
     // Change
-    'change': {
+    change: {
         component: ChangeListScreen,
-        label: 'Changesets'
+        label: 'Changesets',
     },
     'change/add': {
         component: ChangeAddScreen,
-        label: 'Add Changeset'
+        label: 'Add Changeset',
     },
     'change/edit': {
         component: ChangeEditScreen,
-        label: 'Edit Changeset'
+        label: 'Edit Changeset',
     },
     'change/rm': {
         component: ChangeRemoveScreen,
-        label: 'Delete Changeset'
+        label: 'Delete Changeset',
     },
     'change/run': {
         component: ChangeRunScreen,
-        label: 'Run Changeset'
+        label: 'Run Changeset',
     },
     'change/revert': {
         component: ChangeRevertScreen,
-        label: 'Revert Changeset'
+        label: 'Revert Changeset',
     },
     'change/next': {
         component: ChangeNextScreen,
-        label: 'Apply Next'
+        label: 'Apply Next',
     },
     'change/ff': {
         component: ChangeFFScreen,
-        label: 'Fast-Forward'
+        label: 'Fast-Forward',
     },
     'change/rewind': {
         component: ChangeRewindScreen,
-        label: 'Rewind'
+        label: 'Rewind',
     },
-}
 
+    // Database
+    db: {
+        component: DbListScreen,
+        label: 'Databases',
+    },
+    'db/create': {
+        component: DbCreateScreen,
+        label: 'Create Database',
+    },
+    'db/destroy': {
+        component: DbDestroyScreen,
+        label: 'Destroy Database',
+    },
+
+    // Settings
+    settings: {
+        component: SettingsListScreen,
+        label: 'Settings',
+    },
+    'settings/init': {
+        component: SettingsInitScreen,
+        label: 'Initialize Settings',
+    },
+    'settings/build': {
+        component: SettingsBuildScreen,
+        label: 'Build Settings',
+    },
+    'settings/paths': {
+        component: SettingsPathsScreen,
+        label: 'Path Settings',
+    },
+    'settings/strict': {
+        component: SettingsStrictScreen,
+        label: 'Strict Mode',
+    },
+    'settings/logging': {
+        component: SettingsLoggingScreen,
+        label: 'Logging Settings',
+    },
+    'settings/stages': {
+        component: SettingsStagesListScreen,
+        label: 'Stages',
+    },
+    'settings/stages/add': {
+        component: SettingsStageEditScreen,
+        label: 'Add Stage',
+    },
+    'settings/stages/edit': {
+        component: SettingsStageEditScreen,
+        label: 'Edit Stage',
+    },
+    'settings/rules': {
+        component: SettingsRulesListScreen,
+        label: 'Rules',
+    },
+    'settings/rules/add': {
+        component: SettingsRuleEditScreen,
+        label: 'Add Rule',
+    },
+    'settings/rules/edit': {
+        component: SettingsRuleEditScreen,
+        label: 'Edit Rule',
+    },
+
+    // Settings - Universal secrets
+    'settings/secrets': {
+        component: SettingsSecretsListScreen,
+        label: 'Universal Secrets',
+    },
+    'settings/secrets/add': {
+        component: SettingsSecretEditScreen,
+        label: 'Add Universal Secret',
+    },
+    'settings/secrets/edit': {
+        component: SettingsSecretEditScreen,
+        label: 'Edit Universal Secret',
+    },
+    'settings/secrets/rm': {
+        component: SettingsSecretRemoveScreen,
+        label: 'Remove Universal Secret',
+    },
+
+    // Settings - Stage-specific secrets
+    'settings/stages/secrets': {
+        component: SettingsStageSecretsListScreen,
+        label: 'Stage Secrets',
+    },
+    'settings/stages/secrets/add': {
+        component: SettingsStageSecretEditScreen,
+        label: 'Add Stage Secret',
+    },
+    'settings/stages/secrets/edit': {
+        component: SettingsStageSecretEditScreen,
+        label: 'Edit Stage Secret',
+    },
+    'settings/stages/secrets/rm': {
+        component: SettingsStageSecretRemoveScreen,
+        label: 'Remove Stage Secret',
+    },
+
+    // Secret
+    secret: {
+        component: SecretListScreen,
+        label: 'Secrets',
+    },
+    'secret/set': {
+        component: SecretSetScreen,
+        label: 'Set Secret',
+    },
+    'secret/rm': {
+        component: SecretRemoveScreen,
+        label: 'Delete Secret',
+    },
+};
 
 /**
  * Loading fallback for lazy-loaded screens.
@@ -168,9 +300,9 @@ function ScreenLoading(): ReactElement {
         <Box>
             <Text dimColor>Loading...</Text>
         </Box>
-    )
-}
+    );
 
+}
 
 /**
  * Get a screen entry for a route.
@@ -179,30 +311,31 @@ function ScreenLoading(): ReactElement {
  */
 export function getScreen(route: Route): ScreenEntry | undefined {
 
-    return SCREENS[route]
-}
+    return SCREENS[route];
 
+}
 
 /**
  * Get the label for a route (for breadcrumbs, titles).
  */
 export function getRouteLabel(route: Route): string {
 
-    const screen = SCREENS[route]
+    const screen = SCREENS[route];
 
     if (screen?.label) {
 
-        return screen.label
+        return screen.label;
+
     }
 
     // Generate label from route
-    const parts = route.split('/')
-    const lastPart = parts[parts.length - 1] ?? route
+    const parts = route.split('/');
+    const lastPart = parts[parts.length - 1] ?? route;
 
     // Capitalize first letter
-    return lastPart.charAt(0).toUpperCase() + lastPart.slice(1)
-}
+    return lastPart.charAt(0).toUpperCase() + lastPart.slice(1);
 
+}
 
 /**
  * Screen renderer component.
@@ -219,24 +352,25 @@ export function getRouteLabel(route: Route): string {
  */
 export function ScreenRenderer(): ReactElement {
 
-    const { route, params } = useRouter()
+    const { route, params } = useRouter();
 
-    const entry = SCREENS[route]
+    const entry = SCREENS[route];
 
     if (!entry) {
 
-        return <NotFoundScreen params={params} />
+        return <NotFoundScreen params={params} />;
+
     }
 
-    const Screen = entry.component
+    const Screen = entry.component;
 
     return (
         <Suspense fallback={<ScreenLoading />}>
             <Screen params={params} />
         </Suspense>
-    )
-}
+    );
 
+}
 
 /**
  * Get all registered routes.
@@ -245,18 +379,18 @@ export function ScreenRenderer(): ReactElement {
  */
 export function getRegisteredRoutes(): Route[] {
 
-    return Object.keys(SCREENS) as Route[]
-}
+    return Object.keys(SCREENS) as Route[];
 
+}
 
 /**
  * Check if a route is registered.
  */
 export function isRouteRegistered(route: Route): boolean {
 
-    return route in SCREENS
-}
+    return route in SCREENS;
 
+}
 
 /**
  * Register a screen at runtime.
@@ -265,5 +399,6 @@ export function isRouteRegistered(route: Route): boolean {
  */
 export function registerScreen(route: Route, entry: ScreenEntry): void {
 
-    SCREENS[route] = entry
+    SCREENS[route] = entry;
+
 }

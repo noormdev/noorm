@@ -5,12 +5,10 @@
  * and configuration options for the template engine.
  */
 
-
 /**
  * Built-in helper functions available on the template context.
  */
 export interface BuiltInHelpers {
-
     /**
      * Include another SQL file.
      * Path is resolved relative to the template's directory.
@@ -20,7 +18,7 @@ export interface BuiltInHelpers {
      * {%~ await $.include('lib/uuid_function.sql') %}
      * ```
      */
-    include: (path: string) => Promise<string>
+    include: (path: string) => Promise<string>;
 
     /**
      * SQL-escape a string value.
@@ -31,7 +29,7 @@ export interface BuiltInHelpers {
      * WHERE name = '{%~ $.escape(userName) %}'
      * ```
      */
-    escape: (value: string) => string
+    escape: (value: string) => string;
 
     /**
      * SQL-escape and wrap in single quotes.
@@ -41,7 +39,7 @@ export interface BuiltInHelpers {
      * INSERT INTO users (name) VALUES ({%~ $.quote(userName) %});
      * ```
      */
-    quote: (value: string | number | boolean | null) => string
+    quote: (value: string | number | boolean | null) => string;
 
     /**
      * JSON stringify a value.
@@ -51,7 +49,7 @@ export interface BuiltInHelpers {
      * INSERT INTO config (data) VALUES ('{%~ $.json(configObject) %}');
      * ```
      */
-    json: (value: unknown) => string
+    json: (value: unknown) => string;
 
     /**
      * Current ISO timestamp.
@@ -61,7 +59,7 @@ export interface BuiltInHelpers {
      * INSERT INTO logs (created_at) VALUES ('{%~ $.now() %}');
      * ```
      */
-    now: () => string
+    now: () => string;
 
     /**
      * Generate a UUID v4.
@@ -71,9 +69,8 @@ export interface BuiltInHelpers {
      * INSERT INTO users (id) VALUES ('{%~ $.uuid() %}');
      * ```
      */
-    uuid: () => string
+    uuid: () => string;
 }
-
 
 /**
  * Template context object ($) available in templates.
@@ -81,120 +78,110 @@ export interface BuiltInHelpers {
  * Contains auto-loaded data, inherited helpers, secrets, and built-in functions.
  */
 export interface TemplateContext extends BuiltInHelpers {
-
     /**
      * Active configuration object.
      * Only available if no `config.*` file exists in the template directory.
      */
-    config?: Record<string, unknown>
+    config?: Record<string, unknown>;
 
     /**
      * Decrypted secrets for the active config.
      */
-    secrets: Record<string, string>
+    secrets: Record<string, string>;
 
     /**
      * Decrypted global secrets (shared across configs).
      */
-    globalSecrets: Record<string, string>
+    globalSecrets: Record<string, string>;
 
     /**
      * Environment variables.
      */
-    env: Record<string, string | undefined>
+    env: Record<string, string | undefined>;
 
     /**
      * Auto-loaded data files and inherited helpers.
      * Keys are camelCased filenames (e.g., `$.users`, `$.seedData`).
      */
-    [key: string]: unknown
+    [key: string]: unknown;
 }
-
 
 /**
  * Result from a data loader.
  */
 export interface LoaderResult {
-
     /**
      * The parsed data.
      */
-    data: unknown
+    data: unknown;
 
     /**
      * Original file path.
      */
-    filepath: string
+    filepath: string;
 
     /**
      * File extension (e.g., '.json5', '.yml').
      */
-    format: string
+    format: string;
 }
-
 
 /**
  * A data file loader function.
  */
-export type Loader = (filepath: string) => Promise<unknown>
-
+export type Loader = (filepath: string) => Promise<unknown>;
 
 /**
  * Registry of loaders by file extension.
  */
-export type LoaderRegistry = Record<string, Loader>
-
+export type LoaderRegistry = Record<string, Loader>;
 
 /**
  * Options for rendering a template.
  */
 export interface RenderOptions {
-
     /**
      * Active configuration to include in context.
      */
-    config?: Record<string, unknown>
+    config?: Record<string, unknown>;
 
     /**
      * Secrets for the active config.
      */
-    secrets?: Record<string, string>
+    secrets?: Record<string, string>;
 
     /**
      * Global secrets shared across configs.
      */
-    globalSecrets?: Record<string, string>
+    globalSecrets?: Record<string, string>;
 
     /**
      * Project root directory.
      * Used to determine where to stop walking up for helpers.
      * Defaults to process.cwd().
      */
-    projectRoot?: string
+    projectRoot?: string;
 }
-
 
 /**
  * Result of processing a SQL file.
  */
 export interface ProcessResult {
-
     /**
      * The SQL content (rendered if template, raw if .sql).
      */
-    sql: string
+    sql: string;
 
     /**
      * Whether the file was a template.
      */
-    isTemplate: boolean
+    isTemplate: boolean;
 
     /**
      * Render duration in milliseconds (only for templates).
      */
-    durationMs?: number
+    durationMs?: number;
 }
-
 
 /**
  * Supported data file extensions.
@@ -209,22 +196,19 @@ export const DATA_EXTENSIONS = [
     '.mjs',
     '.ts',
     '.sql',
-] as const
-
+] as const;
 
 /**
  * Template file extension.
  */
-export const TEMPLATE_EXTENSION = '.tmpl'
-
+export const TEMPLATE_EXTENSION = '.tmpl';
 
 /**
  * Helper file name pattern.
  */
-export const HELPER_FILENAME = '$helpers'
-
+export const HELPER_FILENAME = '$helpers';
 
 /**
  * Supported helper file extensions.
  */
-export const HELPER_EXTENSIONS = ['.ts', '.js', '.mjs'] as const
+export const HELPER_EXTENSIONS = ['.ts', '.js', '.mjs'] as const;

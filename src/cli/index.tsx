@@ -17,13 +17,13 @@
  * noorm --json change:ff    # JSON output for scripting
  * ```
  */
-import meow from 'meow'
-import { render } from 'ink'
+import meow from 'meow';
+import { render } from 'ink';
 
-import type { Route, RouteParams, CliFlags, ParsedCli } from './types.js'
-import { App } from './app.js'
-import { shouldRunHeadless, runHeadless } from './headless.js'
-
+import type { Route, RouteParams, CliFlags, ParsedCli } from './types.js';
+import { App } from './app.js';
+import { shouldRunHeadless, runHeadless } from './headless.js';
+import { enableAutoLoggerInit } from '../core/logger/init.js';
 
 /**
  * Help text for the CLI.
@@ -81,8 +81,7 @@ const HELP_TEXT = `
     $ noorm -H run:build              # Build in CI
     $ noorm --json change:ff          # Fast-forward with JSON output
     $ noorm -c prod change:run users  # Run changeset on prod config
-`
-
+`;
 
 /**
  * Parse CLI arguments with meow.
@@ -95,37 +94,37 @@ function parseCli(): ParsedCli {
             headless: {
                 type: 'boolean',
                 shortFlag: 'H',
-                default: false
+                default: false,
             },
             tui: {
                 type: 'boolean',
                 shortFlag: 'T',
-                default: false
+                default: false,
             },
             json: {
                 type: 'boolean',
-                default: false
+                default: false,
             },
             yes: {
                 type: 'boolean',
                 shortFlag: 'y',
-                default: false
+                default: false,
             },
             config: {
                 type: 'string',
-                shortFlag: 'c'
+                shortFlag: 'c',
             },
             force: {
                 type: 'boolean',
                 shortFlag: 'f',
-                default: false
+                default: false,
             },
             dryRun: {
                 type: 'boolean',
-                default: false
-            }
-        }
-    })
+                default: false,
+            },
+        },
+    });
 
     const flags: CliFlags = {
         headless: cli.flags.headless,
@@ -134,18 +133,18 @@ function parseCli(): ParsedCli {
         yes: cli.flags.yes,
         config: cli.flags.config,
         force: cli.flags.force,
-        dryRun: cli.flags.dryRun
-    }
+        dryRun: cli.flags.dryRun,
+    };
 
     // Parse route from input
-    const { route, params } = parseRouteFromInput(cli.input)
+    const { route, params } = parseRouteFromInput(cli.input);
 
     // Determine execution mode
-    const mode = shouldRunHeadless(flags) ? 'headless' : 'tui'
+    const mode = shouldRunHeadless(flags) ? 'headless' : 'tui';
 
-    return { mode, route, params, flags }
+    return { mode, route, params, flags };
+
 }
-
 
 /**
  * Parse route and params from CLI input array.
@@ -165,49 +164,72 @@ function parseRouteFromInput(input: string[]): { route: Route; params: RoutePara
 
     if (input.length === 0) {
 
-        return { route: 'home', params: {} }
+        return { route: 'home', params: {} };
+
     }
 
     // Handle colon notation (config:edit)
-    const firstArg = input[0]!
+    const firstArg = input[0]!;
 
     if (firstArg.includes(':')) {
 
-        const [section, action] = firstArg.split(':')
-        const route = action ? `${section}/${action}` : section
-        const params = extractParams(input.slice(1))
+        const [section, action] = firstArg.split(':');
+        const route = action ? `${section}/${action}` : section;
+        const params = extractParams(input.slice(1));
 
-        return { route: route as Route, params }
+        return { route: route as Route, params };
+
     }
 
     // Handle space notation (config edit)
-    const [section, ...rest] = input
+    const [section, ...rest] = input;
 
     // Check if second arg is an action or a param
     const actions = new Set([
-        'add', 'edit', 'rm', 'cp', 'use', 'validate', 'export', 'import',
-        'set', 'run', 'revert', 'rewind', 'next', 'ff',
-        'list', 'build', 'exec', 'file', 'dir',
-        'create', 'destroy',
-        'status', 'acquire', 'release', 'force',
-        'init'
-    ])
+        'add',
+        'edit',
+        'rm',
+        'cp',
+        'use',
+        'validate',
+        'export',
+        'import',
+        'set',
+        'run',
+        'revert',
+        'rewind',
+        'next',
+        'ff',
+        'list',
+        'build',
+        'exec',
+        'file',
+        'dir',
+        'create',
+        'destroy',
+        'status',
+        'acquire',
+        'release',
+        'force',
+        'init',
+    ]);
 
     if (rest.length > 0 && actions.has(rest[0]!)) {
 
-        const action = rest[0]!
-        const route = `${section}/${action}` as Route
-        const params = extractParams(rest.slice(1))
+        const action = rest[0]!;
+        const route = `${section}/${action}` as Route;
+        const params = extractParams(rest.slice(1));
 
-        return { route, params }
+        return { route, params };
+
     }
 
     // Just a section route with params
-    const params = extractParams(rest)
+    const params = extractParams(rest);
 
-    return { route: section as Route, params }
+    return { route: section as Route, params };
+
 }
-
 
 /**
  * Extract params from remaining CLI arguments.
@@ -221,52 +243,63 @@ function extractParams(args: string[]): RouteParams {
 
     if (args.length === 0) {
 
-        return {}
+        return {};
+
     }
 
-    const params: RouteParams = {}
+    const params: RouteParams = {};
 
     for (const arg of args) {
 
         // Check if it's a number (for count parameter)
-        const num = parseInt(arg, 10)
+        const num = parseInt(arg, 10);
 
         if (!isNaN(num)) {
 
-            params.count = num
-            continue
+            params.count = num;
+            continue;
+
         }
 
         // Check if it's a path (contains / or ends with .sql)
         if (arg.includes('/') || arg.endsWith('.sql') || arg.endsWith('.sql.eta')) {
 
-            params.path = arg
-            continue
+            params.path = arg;
+            continue;
+
         }
 
         // Default to name parameter
         if (!params.name) {
 
-            params.name = arg
+            params.name = arg;
+
         }
+
     }
 
-    return params
-}
+    return params;
 
+}
 
 /**
  * Main entry point.
  */
 async function main(): Promise<void> {
 
-    const { mode, route, params, flags } = parseCli()
+    // Enable event-driven logger initialization
+    // This sets up listeners for settings:loaded and secret events
+    // so the logger can start capturing events as soon as settings are loaded
+    enableAutoLoggerInit(process.cwd());
+
+    const { mode, route, params, flags } = parseCli();
 
     if (mode === 'headless') {
 
         // Run in headless mode
-        const exitCode = await runHeadless(route, params, flags)
-        process.exit(exitCode)
+        const exitCode = await runHeadless(route, params, flags);
+        process.exit(exitCode);
+
     }
 
     // Merge relevant flags into params for TUI mode
@@ -274,24 +307,22 @@ async function main(): Promise<void> {
         ...params,
         // Pass force flag to init screen
         ...(flags.force && { force: true }),
-    }
+    };
 
     // Start TUI mode
-    const { waitUntilExit } = render(
-        <App initialRoute={route} initialParams={mergedParams} />,
-        {
-            exitOnCtrlC: true,
-            patchConsole: true
-        }
-    )
+    const { waitUntilExit } = render(<App initialRoute={route} initialParams={mergedParams} />, {
+        exitOnCtrlC: true,
+        patchConsole: true,
+    });
 
-    await waitUntilExit()
+    await waitUntilExit();
+
 }
-
 
 // Run main
 main().catch((error) => {
 
-    console.error('Fatal error:', error)
-    process.exit(1)
-})
+    console.error('Fatal error:', error);
+    process.exit(1);
+
+});

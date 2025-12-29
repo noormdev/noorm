@@ -15,48 +15,43 @@
  * />
  * ```
  */
-import { Box, Text } from 'ink'
+import { Box, Text } from 'ink';
 
-import type { ReactElement } from 'react'
-
+import type { ReactElement } from 'react';
 
 /**
  * Action item.
  */
 export interface ActionItem {
-
     /** Keyboard key (e.g., 'a', 'Enter', 'Esc') */
-    key: string
+    key: string;
 
     /** Action description */
-    label: string
+    label: string;
 
     /** Visual variant */
-    variant?: 'default' | 'primary' | 'danger' | 'muted'
+    variant?: 'default' | 'primary' | 'danger' | 'muted';
 
     /** Whether action is currently disabled */
-    disabled?: boolean
+    disabled?: boolean;
 }
-
 
 /**
  * Props for ActionList component.
  */
 export interface ActionListProps {
-
     /** Actions to display */
-    actions: ActionItem[]
+    actions: ActionItem[];
 
     /** Layout direction */
-    direction?: 'row' | 'column'
+    direction?: 'row' | 'column';
 
     /** Gap between items */
-    gap?: number
+    gap?: number;
 
     /** Key label color */
-    keyColor?: string
+    keyColor?: string;
 }
-
 
 // Color mapping for variants
 const variantColors: Record<string, string> = {
@@ -64,8 +59,7 @@ const variantColors: Record<string, string> = {
     primary: 'cyan',
     danger: 'red',
     muted: 'gray',
-}
-
+};
 
 /**
  * ActionList component.
@@ -79,21 +73,23 @@ export function ActionList({
     keyColor = 'cyan',
 }: ActionListProps): ReactElement {
 
-    const visibleActions = actions.filter(a => !a.disabled)
+    const visibleActions = actions.filter((a) => !a.disabled);
 
     return (
         <Box flexDirection={direction} gap={gap}>
             {visibleActions.map((action, index) => {
 
-                const labelColor = variantColors[action.variant ?? 'default'] ?? 'white'
+                const labelColor = variantColors[action.variant ?? 'default'] ?? 'white';
 
                 return (
                     <Box key={index} gap={1}>
                         <Text color={keyColor}>[{action.key}]</Text>
                         <Text color={labelColor}>{action.label}</Text>
                     </Box>
-                )
+                );
+
             })}
         </Box>
-    )
+    );
+
 }

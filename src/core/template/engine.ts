@@ -21,15 +21,14 @@
  * )
  * ```
  */
-import { readFile } from 'node:fs/promises'
+import { readFile } from 'node:fs/promises';
 
-import { Eta } from 'eta'
+import { Eta } from 'eta';
 
-import { observer } from '../observer.js'
-import type { TemplateContext, RenderOptions, ProcessResult } from './types.js'
-import { TEMPLATE_EXTENSION } from './types.js'
-import { buildContext } from './context.js'
-
+import { observer } from '../observer.js';
+import type { TemplateContext, RenderOptions, ProcessResult } from './types.js';
+import { TEMPLATE_EXTENSION } from './types.js';
+import { buildContext } from './context.js';
 
 /**
  * Eta instance configured with noorm's custom syntax.
@@ -54,8 +53,7 @@ const eta = new Eta({
 
     // Don't cache templates (we handle caching at a higher level)
     cache: false,
-})
-
+});
 
 /**
  * Check if a file path is a template.
@@ -65,9 +63,9 @@ const eta = new Eta({
  */
 export function isTemplate(filepath: string): boolean {
 
-    return filepath.endsWith(TEMPLATE_EXTENSION)
-}
+    return filepath.endsWith(TEMPLATE_EXTENSION);
 
+}
 
 /**
  * Render a template string with the given context.
@@ -84,14 +82,11 @@ export function isTemplate(filepath: string): boolean {
  * )
  * ```
  */
-export async function renderTemplate(
-    template: string,
-    context: TemplateContext,
-): Promise<string> {
+export async function renderTemplate(template: string, context: TemplateContext): Promise<string> {
 
-    return eta.renderStringAsync(template, context)
+    return eta.renderStringAsync(template, context);
+
 }
-
 
 /**
  * Process a SQL file.
@@ -122,7 +117,7 @@ export async function processFile(
 ): Promise<ProcessResult> {
 
     // Read file content
-    const content = await readFile(filepath, 'utf-8')
+    const content = await readFile(filepath, 'utf-8');
 
     // If not a template, return raw content
     if (!isTemplate(filepath)) {
@@ -130,29 +125,30 @@ export async function processFile(
         return {
             sql: content,
             isTemplate: false,
-        }
+        };
+
     }
 
     // It's a template - build context and render
-    const start = performance.now()
+    const start = performance.now();
 
-    const context = await buildContext(filepath, options)
-    const sql = await renderTemplate(content, context)
+    const context = await buildContext(filepath, options);
+    const sql = await renderTemplate(content, context);
 
-    const durationMs = performance.now() - start
+    const durationMs = performance.now() - start;
 
     observer.emit('template:render', {
         filepath,
         durationMs,
-    })
+    });
 
     return {
         sql,
         isTemplate: true,
         durationMs,
-    }
-}
+    };
 
+}
 
 /**
  * Process multiple SQL files.
@@ -166,17 +162,18 @@ export async function processFiles(
     options: RenderOptions = {},
 ): Promise<ProcessResult[]> {
 
-    const results: ProcessResult[] = []
+    const results: ProcessResult[] = [];
 
     for (const filepath of filepaths) {
 
-        const result = await processFile(filepath, options)
-        results.push(result)
+        const result = await processFile(filepath, options);
+        results.push(result);
+
     }
 
-    return results
+    return results;
+
 }
 
-
 // Export the Eta instance for advanced usage
-export { eta }
+export { eta };

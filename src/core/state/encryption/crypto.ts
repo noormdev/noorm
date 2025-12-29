@@ -6,15 +6,13 @@
  *
  * Encryption key is derived from the user's private key using HKDF.
  */
-import { createCipheriv, createDecipheriv, randomBytes } from 'crypto'
-import type { EncryptedPayload } from '../types.js'
-import { deriveStateKey } from '../../identity/crypto.js'
+import { createCipheriv, createDecipheriv, randomBytes } from 'crypto';
+import type { EncryptedPayload } from '../types.js';
+import { deriveStateKey } from '../../identity/crypto.js';
 
-
-const ALGORITHM = 'aes-256-gcm'
-const IV_LENGTH = 16
-const AUTH_TAG_LENGTH = 16
-
+const ALGORITHM = 'aes-256-gcm';
+const IV_LENGTH = 16;
+const AUTH_TAG_LENGTH = 16;
 
 /**
  * Encrypt a string using the private key.
@@ -35,28 +33,25 @@ const AUTH_TAG_LENGTH = 16
  */
 export function encrypt(plaintext: string, privateKey: string): EncryptedPayload {
 
-    const key = deriveStateKey(privateKey)
-    const iv = randomBytes(IV_LENGTH)
+    const key = deriveStateKey(privateKey);
+    const iv = randomBytes(IV_LENGTH);
 
     const cipher = createCipheriv(ALGORITHM, key, iv, {
         authTagLength: AUTH_TAG_LENGTH,
-    })
+    });
 
-    const ciphertext = Buffer.concat([
-        cipher.update(plaintext, 'utf8'),
-        cipher.final(),
-    ])
+    const ciphertext = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
 
-    const authTag = cipher.getAuthTag()
+    const authTag = cipher.getAuthTag();
 
     return {
         algorithm: ALGORITHM,
         iv: iv.toString('base64'),
         authTag: authTag.toString('base64'),
         ciphertext: ciphertext.toString('base64'),
-    }
-}
+    };
 
+}
 
 /**
  * Decrypt an encrypted payload and return the plaintext.
@@ -72,24 +67,23 @@ export function decrypt(payload: EncryptedPayload, privateKey: string): string {
 
     if (payload.algorithm !== ALGORITHM) {
 
-        throw new Error(`Unsupported algorithm: ${payload.algorithm}`)
+        throw new Error(`Unsupported algorithm: ${payload.algorithm}`);
+
     }
 
-    const key = deriveStateKey(privateKey)
-    const iv = Buffer.from(payload.iv, 'base64')
-    const authTag = Buffer.from(payload.authTag, 'base64')
-    const ciphertext = Buffer.from(payload.ciphertext, 'base64')
+    const key = deriveStateKey(privateKey);
+    const iv = Buffer.from(payload.iv, 'base64');
+    const authTag = Buffer.from(payload.authTag, 'base64');
+    const ciphertext = Buffer.from(payload.ciphertext, 'base64');
 
     const decipher = createDecipheriv(ALGORITHM, key, iv, {
         authTagLength: AUTH_TAG_LENGTH,
-    })
+    });
 
-    decipher.setAuthTag(authTag)
+    decipher.setAuthTag(authTag);
 
-    const plaintext = Buffer.concat([
-        decipher.update(ciphertext),
-        decipher.final(),
-    ])
+    const plaintext = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
 
-    return plaintext.toString('utf8')
+    return plaintext.toString('utf8');
+
 }

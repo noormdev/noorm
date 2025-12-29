@@ -16,11 +16,10 @@
  * observer.on(/^file:/, ({ event, data }) => logFileEvent(event, data))
  * ```
  */
-import {
-    ObserverEngine,
-    type Events
-} from '@logosdx/observer'
+import { ObserverEngine, type Events } from '@logosdx/observer';
 
+import type { SettingsEvents } from './settings/index.js';
+import type { AppMode, ShutdownReason, ShutdownPhase, PhaseStatus } from './lifecycle/types.js';
 
 /**
  * All events emitted by noorm core modules.
@@ -38,93 +37,128 @@ import {
  * - `template:*` - Template rendering
  * - `identity:*` - Identity resolution
  * - `connection:*` - Database connections
+ * - `settings:*` - Settings lifecycle and mutations
  * - `error` - Catch-all errors
  */
-export interface NoormEvents {
-
+export interface NoormEvents extends SettingsEvents {
     // File execution
-    'file:before': { filepath: string; checksum: string; configName: string }
-    'file:after': { filepath: string; status: 'success' | 'failed'; durationMs: number; error?: string }
-    'file:skip': { filepath: string; reason: 'unchanged' | 'already-run' }
-    'file:dry-run': { filepath: string; outputPath: string }
+    'file:before': { filepath: string; checksum: string; configName: string };
+    'file:after': {
+        filepath: string;
+        status: 'success' | 'failed';
+        durationMs: number;
+        error?: string;
+    };
+    'file:skip': { filepath: string; reason: 'unchanged' | 'already-run' };
+    'file:dry-run': { filepath: string; outputPath: string };
 
     // Changeset lifecycle
-    'changeset:created': { name: string; path: string }
-    'changeset:start': { name: string; direction: 'change' | 'revert'; files: string[] }
-    'changeset:file': { changeset: string; filepath: string; index: number; total: number }
-    'changeset:complete': { name: string; direction: 'change' | 'revert'; status: 'success' | 'failed'; durationMs: number }
-    'changeset:skip': { name: string; reason: string }
+    'changeset:created': { name: string; path: string };
+    'changeset:start': { name: string; direction: 'change' | 'revert'; files: string[] };
+    'changeset:file': { changeset: string; filepath: string; index: number; total: number };
+    'changeset:complete': {
+        name: string;
+        direction: 'change' | 'revert';
+        status: 'success' | 'failed';
+        durationMs: number;
+    };
+    'changeset:skip': { name: string; reason: string };
 
     // Build/Run
-    'build:start': { schemaPath: string; fileCount: number }
-    'build:complete': { status: 'success' | 'failed' | 'partial'; filesRun: number; filesSkipped: number; filesFailed: number; durationMs: number }
-    'run:file': { filepath: string; configName: string }
-    'run:dir': { dirpath: string; fileCount: number; configName: string }
+    'build:start': { schemaPath: string; fileCount: number };
+    'build:complete': {
+        status: 'success' | 'failed' | 'partial';
+        filesRun: number;
+        filesSkipped: number;
+        filesFailed: number;
+        durationMs: number;
+    };
+    'run:file': { filepath: string; configName: string };
+    'run:dir': { dirpath: string; fileCount: number; configName: string };
 
     // Lock
-    'lock:acquiring': { configName: string; identity: string }
-    'lock:acquired': { configName: string; identity: string; expiresAt: Date }
-    'lock:released': { configName: string; identity: string }
-    'lock:blocked': { configName: string; holder: string; heldSince: Date }
-    'lock:expired': { configName: string; previousHolder: string }
+    'lock:acquiring': { configName: string; identity: string };
+    'lock:acquired': { configName: string; identity: string; expiresAt: Date };
+    'lock:released': { configName: string; identity: string };
+    'lock:blocked': { configName: string; holder: string; heldSince: Date };
+    'lock:expired': { configName: string; previousHolder: string };
 
     // State
-    'state:loaded': { configCount: number; activeConfig: string | null; version: string }
-    'state:persisted': { configCount: number }
-    'state:migrated': { from: string; to: string }
+    'state:loaded': { configCount: number; activeConfig: string | null; version: string };
+    'state:persisted': { configCount: number };
+    'state:migrated': { from: string; to: string };
 
     // Config
-    'config:created': { name: string }
-    'config:updated': { name: string; fields: string[] }
-    'config:deleted': { name: string }
-    'config:activated': { name: string; previous: string | null }
+    'config:created': { name: string };
+    'config:updated': { name: string; fields: string[] };
+    'config:deleted': { name: string };
+    'config:activated': { name: string; previous: string | null };
 
     // Secrets (config-scoped)
-    'secret:set': { configName: string; key: string }
-    'secret:deleted': { configName: string; key: string }
+    'secret:set': { configName: string; key: string };
+    'secret:deleted': { configName: string; key: string };
 
     // Global secrets (app-level)
-    'global-secret:set': { key: string }
-    'global-secret:deleted': { key: string }
+    'global-secret:set': { key: string };
+    'global-secret:deleted': { key: string };
 
     // Known users
-    'known-user:added': { email: string; source: string }
+    'known-user:added': { email: string; source: string };
 
     // DB lifecycle
-    'db:creating': { configName: string; database: string }
-    'db:created': { configName: string; database: string; durationMs: number }
-    'db:destroying': { configName: string; database: string }
-    'db:destroyed': { configName: string; database: string }
-    'db:bootstrap': { configName: string; tables: string[] }
+    'db:creating': { configName: string; database: string };
+    'db:created': { configName: string; database: string; durationMs: number };
+    'db:destroying': { configName: string; database: string };
+    'db:destroyed': { configName: string; database: string };
+    'db:bootstrap': { configName: string; tables: string[] };
 
     // Template
-    'template:render': { filepath: string; durationMs: number }
-    'template:load': { filepath: string; format: string }
-    'template:helpers': { filepath: string; count: number }
+    'template:render': { filepath: string; durationMs: number };
+    'template:load': { filepath: string; format: string };
+    'template:helpers': { filepath: string; count: number };
 
     // Identity (audit)
-    'identity:resolved': { name: string; email?: string; source: 'state' | 'git' | 'system' | 'config' | 'env' }
+    'identity:resolved': {
+        name: string;
+        email?: string;
+        source: 'state' | 'git' | 'system' | 'config' | 'env';
+    };
 
     // Identity (cryptographic)
-    'identity:created': { identityHash: string; name: string; email: string; machine: string }
-    'identity:synced': { discovered: number; configName: string }
-    'identity:registered': { configName: string }
+    'identity:created': { identityHash: string; name: string; email: string; machine: string };
+    'identity:synced': { discovered: number; configName: string };
+    'identity:registered': { configName: string };
 
     // Config sharing
-    'config:exported': { configName: string; recipient: string }
-    'config:imported': { configName: string; from: string }
+    'config:exported': { configName: string; recipient: string };
+    'config:imported': { configName: string; from: string };
 
     // Connection
-    'connection:open': { configName: string; dialect: string }
-    'connection:close': { configName: string }
-    'connection:error': { configName: string; error: string }
+    'connection:open': { configName: string; dialect: string };
+    'connection:close': { configName: string };
+    'connection:error': { configName: string; error: string };
+
+    // App lifecycle
+    'app:starting': { mode: AppMode };
+    'app:ready': { mode: AppMode; startedAt: Date };
+    'app:shutdown': { reason: ShutdownReason; exitCode: number };
+    'app:shutdown:phase': {
+        phase: ShutdownPhase;
+        status: PhaseStatus;
+        durationMs?: number;
+        error?: Error;
+    };
+    'app:exit': { code: number };
+    'app:fatal': { error: Error; type?: 'exception' | 'rejection' };
 
     // Errors
-    'error': { source: string; error: Error; context?: Record<string, unknown> }
+    error: { source: string; error: Error; context?: Record<string, unknown> };
 }
 
 export type NoormEventNames = Events<NoormEvents>;
-export type NoormEventCallback<E extends NoormEventNames> = ObserverEngine.EventCallback<NoormEvents[E]>
+export type NoormEventCallback<E extends NoormEventNames> = ObserverEngine.EventCallback<
+    NoormEvents[E]
+>;
 
 /**
  * Global observer instance for noorm.
@@ -151,8 +185,8 @@ export const observer = new ObserverEngine<NoormEvents>({
     name: 'noorm',
     spy: process.env['NOORM_DEBUG']
         ? (action) => console.error(`[noorm:${action.fn}] ${String(action.event)}`)
-        : undefined
+        : undefined,
 });
 
 // ? Not against this, but why are we re-exporting? convenience
-export type { ObserverEngine }
+export type { ObserverEngine };

@@ -13,24 +13,24 @@
  * - .noorm/state.enc
  * - Keypair in ~/.noorm/
  */
-import { useState, useEffect, useCallback } from 'react'
-import type { ReactElement } from 'react'
-import { Box, Text } from 'ink'
-import { existsSync, mkdirSync, writeFileSync, readFileSync, appendFileSync } from 'fs'
-import { useInput } from 'ink'
-import { join } from 'path'
-import { attempt } from '@logosdx/utils'
+import { useState, useEffect, useCallback } from 'react';
+import type { ReactElement } from 'react';
+import { Box, Text } from 'ink';
+import { existsSync, mkdirSync, writeFileSync, readFileSync, appendFileSync } from 'fs';
+import { useInput } from 'ink';
+import { join } from 'path';
+import { attempt } from '@logosdx/utils';
 
-import type { ScreenProps } from '../../types.js'
-import { useRouter } from '../../router.js'
-import { useAppContext } from '../../app-context.js'
-import { Panel } from '../../components/layout/index.js'
-import { Spinner, Alert } from '../../components/feedback/index.js'
-import { Confirm } from '../../components/dialogs/index.js'
-import { StatusList } from '../../components/lists/index.js'
+import type { ScreenProps } from '../../types.js';
+import { useRouter } from '../../router.js';
+import { useAppContext } from '../../app-context.js';
+import { Panel } from '../../components/layout/index.js';
+import { Spinner, Alert } from '../../components/feedback/index.js';
+import { Confirm } from '../../components/dialogs/index.js';
+import { StatusList } from '../../components/lists/index.js';
 
-import { IdentitySetup, type IdentitySetupValues } from './IdentitySetup.js'
-import { ProjectSetup } from './ProjectSetup.js'
+import { IdentitySetup, type IdentitySetupValues } from './IdentitySetup.js';
+import { ProjectSetup } from './ProjectSetup.js';
 
 import {
     createCryptoIdentity,
@@ -38,35 +38,31 @@ import {
     hasKeyFiles,
     loadExistingIdentity,
     loadIdentityMetadata,
-} from '../../../core/identity/index.js'
-import { SettingsManager } from '../../../core/settings/manager.js'
-import { StateManager } from '../../../core/state/manager.js'
-import { observer } from '../../../core/observer.js'
-
+} from '../../../core/identity/index.js';
+import { SettingsManager } from '../../../core/settings/manager.js';
+import { StateManager } from '../../../core/state/manager.js';
+import { observer } from '../../../core/observer.js';
 
 /**
  * Init step in the flow.
  */
 type InitStep =
-    | 'check'           // Checking existing state
-    | 'already-init'    // Already initialized, show error/confirm
-    | 'identity'        // Identity setup step
-    | 'project'         // Project setup step
-    | 'creating'        // Creating files
-    | 'complete'        // All done
-    | 'error'           // Error occurred
-
+    | 'check' // Checking existing state
+    | 'already-init' // Already initialized, show error/confirm
+    | 'identity' // Identity setup step
+    | 'project' // Project setup step
+    | 'creating' // Creating files
+    | 'complete' // All done
+    | 'error'; // Error occurred
 
 /**
  * Status item for progress display.
  */
 interface StatusItem {
-
-    label: string
-    status: 'pending' | 'running' | 'success' | 'error'
-    detail?: string
+    label: string;
+    status: 'pending' | 'running' | 'success' | 'error';
+    detail?: string;
 }
-
 
 /**
  * Init screen component.
@@ -75,37 +71,37 @@ interface StatusItem {
  */
 export function InitScreen({ params }: ScreenProps): ReactElement {
 
-    const { navigate, back } = useRouter()
+    const { navigate, back } = useRouter();
     // Note: No useFocusScope here - let child components manage their own focus.
     // We use useInput directly for the complete/error steps.
-    const { refresh, stateManager: existingStateManager } = useAppContext()
+    const { refresh, stateManager: _existingStateManager } = useAppContext();
 
     // Get force flag from params (--force/-f flag) OR from user confirmation
-    const forceFromParams = Boolean(params.force)
-    const [forceConfirmed, setForceConfirmed] = useState(false)
-    const force = forceFromParams || forceConfirmed
+    const forceFromParams = Boolean(params.force);
+    const [forceConfirmed, setForceConfirmed] = useState(false);
+    const force = forceFromParams || forceConfirmed;
 
     // Current step
-    const [step, setStep] = useState<InitStep>('check')
-    const [error, setError] = useState<Error | null>(null)
+    const [step, setStep] = useState<InitStep>('check');
+    const [error, setError] = useState<Error | null>(null);
 
     // Identity values (from identity setup step)
-    const [identityValues, setIdentityValues] = useState<IdentitySetupValues | null>(null)
+    const [identityValues, setIdentityValues] = useState<IdentitySetupValues | null>(null);
 
     // Whether identity key files already exist
-    const [hasExistingKeys, setHasExistingKeys] = useState(false)
+    const [hasExistingKeys, setHasExistingKeys] = useState(false);
 
     // Whether identity metadata already exists (for reusing identity across projects)
-    const [hasExistingMetadata, setHasExistingMetadata] = useState(false)
+    const [hasExistingMetadata, setHasExistingMetadata] = useState(false);
 
     // Progress items for creation step
-    const [progressItems, setProgressItems] = useState<StatusItem[]>([])
+    const [progressItems, setProgressItems] = useState<StatusItem[]>([]);
 
     // Whether to add config after init
-    const [shouldAddConfig, setShouldAddConfig] = useState(false)
+    const [shouldAddConfig, setShouldAddConfig] = useState(false);
 
     // Project root
-    const projectRoot = process.cwd()
+    const projectRoot = process.cwd();
 
     // Check existing state on mount
     useEffect(() => {
@@ -113,73 +109,83 @@ export function InitScreen({ params }: ScreenProps): ReactElement {
         const checkExisting = async () => {
 
             // Check if .noorm directory exists
-            const noormDir = join(projectRoot, '.noorm')
-            const alreadyInitialized = existsSync(noormDir)
+            const noormDir = join(projectRoot, '.noorm');
+            const alreadyInitialized = existsSync(noormDir);
 
             // Check if identity key files exist
-            const keysExist = await hasKeyFiles()
-            setHasExistingKeys(keysExist)
+            const keysExist = await hasKeyFiles();
+            setHasExistingKeys(keysExist);
 
             // Check if identity metadata exists (allows reusing identity across projects)
-            const metadata = await loadIdentityMetadata()
-            const metadataExists = metadata !== null
-            setHasExistingMetadata(metadataExists)
+            const metadata = await loadIdentityMetadata();
+            const metadataExists = metadata !== null;
+            setHasExistingMetadata(metadataExists);
 
             if (alreadyInitialized && !force) {
 
-                setStep('already-init')
+                setStep('already-init');
+
             }
             else if (keysExist && metadataExists) {
 
                 // Full identity exists - skip identity setup, go directly to project
-                setStep('project')
+                setStep('project');
+
             }
             else {
 
                 // Need identity setup
                 // (either no keys at all, or keys exist but missing metadata)
-                setStep('identity')
-            }
-        }
+                setStep('identity');
 
-        checkExisting()
-    }, [projectRoot, force])
+            }
+
+        };
+
+        checkExisting();
+
+    }, [projectRoot, force]);
 
     // Handle identity setup complete
     const handleIdentityComplete = useCallback((values: IdentitySetupValues) => {
 
-        setIdentityValues(values)
-        setStep('project')
-    }, [])
+        setIdentityValues(values);
+        setStep('project');
+
+    }, []);
 
     // Handle cancel
     const handleCancel = useCallback(() => {
 
-        back()
-    }, [back])
+        back();
+
+    }, [back]);
 
     // Handle already init confirmation
     const handleForceInit = useCallback(() => {
 
         // User confirmed reinitialize - set force flag
-        setForceConfirmed(true)
+        setForceConfirmed(true);
 
         if (hasExistingKeys && hasExistingMetadata) {
 
             // Full identity exists - can skip identity setup
-            setStep('project')
+            setStep('project');
+
         }
         else {
 
             // Need to collect identity info
-            setStep('identity')
+            setStep('identity');
+
         }
-    }, [hasExistingKeys, hasExistingMetadata])
+
+    }, [hasExistingKeys, hasExistingMetadata]);
 
     // Perform the actual initialization (defined before handlers that use it)
     const performInit = useCallback(async () => {
 
-        setStep('creating')
+        setStep('creating');
 
         const items: StatusItem[] = [
             { label: 'Creating directories', status: 'pending' },
@@ -187,95 +193,103 @@ export function InitScreen({ params }: ScreenProps): ReactElement {
             { label: 'Creating settings.yml', status: 'pending' },
             { label: 'Initializing state', status: 'pending' },
             { label: 'Updating .gitignore', status: 'pending' },
-        ]
+        ];
 
         // Skip keypair generation if keys already exist
         if (hasExistingKeys) {
 
-            items.splice(1, 1)
+            items.splice(1, 1);
+
         }
 
-        setProgressItems([...items])
+        setProgressItems([...items]);
 
         // Helper to update progress items
         const updateItem = (index: number, update: Partial<StatusItem>) => {
 
-            const existing = items[index]
+            const existing = items[index];
 
             if (existing) {
 
-                items[index] = { ...existing, ...update }
-                setProgressItems([...items])
+                items[index] = { ...existing, ...update };
+                setProgressItems([...items]);
+
             }
-        }
+
+        };
 
         const [, initErr] = await attempt(async () => {
 
             // Step 1: Create directories
-            updateItem(0, { status: 'running' })
+            updateItem(0, { status: 'running' });
 
-            const schemaPath = join(projectRoot, 'schema')
-            const changesetsPath = join(projectRoot, 'changesets')
-            const noormPath = join(projectRoot, '.noorm')
+            const schemaPath = join(projectRoot, 'schema');
+            const changesetsPath = join(projectRoot, 'changesets');
+            const noormPath = join(projectRoot, '.noorm');
 
-            mkdirSync(schemaPath, { recursive: true })
-            writeFileSync(join(schemaPath, '.gitkeep'), '', { flag: 'a' })
+            mkdirSync(schemaPath, { recursive: true });
+            writeFileSync(join(schemaPath, '.gitkeep'), '', { flag: 'a' });
 
-            mkdirSync(changesetsPath, { recursive: true })
-            writeFileSync(join(changesetsPath, '.gitkeep'), '', { flag: 'a' })
+            mkdirSync(changesetsPath, { recursive: true });
+            writeFileSync(join(changesetsPath, '.gitkeep'), '', { flag: 'a' });
 
-            mkdirSync(noormPath, { recursive: true })
+            mkdirSync(noormPath, { recursive: true });
 
-            updateItem(0, { status: 'success' })
+            updateItem(0, { status: 'success' });
 
             // Step 2: Generate keypair (if needed)
-            let keypairIndex = 1
-            let privateKey: string | undefined
+            let keypairIndex = 1;
+            let privateKey: string | undefined;
 
             if (!hasExistingKeys && identityValues) {
 
                 // No keys exist - generate new keypair
-                updateItem(keypairIndex, { status: 'running' })
+                updateItem(keypairIndex, { status: 'running' });
 
-                const [result, err] = await attempt(() => createCryptoIdentity({
-                    name: identityValues.name,
-                    email: identityValues.email,
-                    machine: identityValues.machine,
-                }))
+                const [result, err] = await attempt(() =>
+                    createCryptoIdentity({
+                        name: identityValues.name,
+                        email: identityValues.email,
+                        machine: identityValues.machine,
+                    }),
+                );
 
                 if (err) {
 
-                    updateItem(keypairIndex, { status: 'error', detail: err.message })
-                    throw err
+                    updateItem(keypairIndex, { status: 'error', detail: err.message });
+                    throw err;
+
                 }
 
-                privateKey = result!.keypair.privateKey
+                privateKey = result!.keypair.privateKey;
 
-                updateItem(keypairIndex, { status: 'success' })
-                keypairIndex++
+                updateItem(keypairIndex, { status: 'success' });
+                keypairIndex++;
+
             }
             else {
 
-                keypairIndex = 1
+                keypairIndex = 1;
+
             }
 
             // Step 3: Create settings.yml
-            const settingsIndex = hasExistingKeys ? 1 : 2
-            updateItem(settingsIndex, { status: 'running' })
+            const settingsIndex = hasExistingKeys ? 1 : 2;
+            updateItem(settingsIndex, { status: 'running' });
 
-            const settingsManager = new SettingsManager(projectRoot)
-            await settingsManager.init(force)
+            const settingsManager = new SettingsManager(projectRoot);
+            await settingsManager.init(force);
 
-            updateItem(settingsIndex, { status: 'success' })
+            updateItem(settingsIndex, { status: 'success' });
 
             // Step 4: Initialize state
-            const stateIndex = hasExistingKeys ? 2 : 3
-            updateItem(stateIndex, { status: 'running' })
+            const stateIndex = hasExistingKeys ? 2 : 3;
+            updateItem(stateIndex, { status: 'running' });
 
             const stateManager = new StateManager(projectRoot, {
                 privateKey,
-            })
-            await stateManager.load()
+            });
+            await stateManager.load();
 
             // Set identity in state based on scenario:
             // 1. No keys existed, user filled form: Use freshly created identity
@@ -284,16 +298,23 @@ export function InitScreen({ params }: ScreenProps): ReactElement {
             if (!hasExistingKeys && identityValues) {
 
                 // Case 1: Keys were just created - use identity from that creation
-                const [idResult] = await attempt(() => createCryptoIdentity({
-                    name: identityValues.name,
-                    email: identityValues.email,
-                    machine: identityValues.machine,
-                }, false))  // Don't save keys again (already saved above)
+                const [idResult] = await attempt(() =>
+                    createCryptoIdentity(
+                        {
+                            name: identityValues.name,
+                            email: identityValues.email,
+                            machine: identityValues.machine,
+                        },
+                        false,
+                    ),
+                ); // Don't save keys again (already saved above)
 
                 if (idResult) {
 
-                    await stateManager.setIdentity(idResult.identity)
+                    await stateManager.setIdentity(idResult.identity);
+
                 }
+
             }
             else if (hasExistingKeys && identityValues) {
 
@@ -303,227 +324,246 @@ export function InitScreen({ params }: ScreenProps): ReactElement {
                     name: identityValues.name,
                     email: identityValues.email,
                     machine: identityValues.machine,
-                })
+                });
 
                 if (identity) {
 
-                    await stateManager.setIdentity(identity)
+                    await stateManager.setIdentity(identity);
+
                 }
+
             }
             else if (hasExistingKeys && hasExistingMetadata) {
 
                 // Case 3: Full identity exists - load and set in project state
-                const existingIdentity = await loadExistingIdentity()
+                const existingIdentity = await loadExistingIdentity();
 
                 if (existingIdentity) {
 
-                    await stateManager.setIdentity(existingIdentity)
+                    await stateManager.setIdentity(existingIdentity);
+
                 }
+
             }
 
-            updateItem(stateIndex, { status: 'success' })
+            updateItem(stateIndex, { status: 'success' });
 
             // Step 5: Update .gitignore
-            const gitignoreIndex = hasExistingKeys ? 3 : 4
-            updateItem(gitignoreIndex, { status: 'running' })
+            const gitignoreIndex = hasExistingKeys ? 3 : 4;
+            updateItem(gitignoreIndex, { status: 'running' });
 
-            const gitignorePath = join(projectRoot, '.gitignore')
-            const gitignoreEntries = '\n# noorm\n.noorm/state.enc\n.noorm/*.log\n'
+            const gitignorePath = join(projectRoot, '.gitignore');
+            const gitignoreEntries = '\n# noorm\n.noorm/state.enc\n.noorm/*.log\n';
 
             if (existsSync(gitignorePath)) {
 
-                const existing = readFileSync(gitignorePath, 'utf-8')
+                const existing = readFileSync(gitignorePath, 'utf-8');
 
                 if (!existing.includes('.noorm/state.enc')) {
 
-                    appendFileSync(gitignorePath, gitignoreEntries)
+                    appendFileSync(gitignorePath, gitignoreEntries);
+
                 }
+
             }
             else {
 
-                writeFileSync(gitignorePath, gitignoreEntries.trimStart())
+                writeFileSync(gitignorePath, gitignoreEntries.trimStart());
+
             }
 
-            updateItem(gitignoreIndex, { status: 'success' })
+            updateItem(gitignoreIndex, { status: 'success' });
 
             // Emit init complete event
             observer.emit('init:complete', {
                 projectRoot,
                 hasIdentity: !hasExistingKeys,
-            })
+            });
 
             // Refresh app context
-            await refresh()
-        })
+            await refresh();
+
+        });
 
         if (initErr) {
 
-            setError(initErr instanceof Error ? initErr : new Error(String(initErr)))
-            setStep('error')
-            return
+            setError(initErr instanceof Error ? initErr : new Error(String(initErr)));
+            setStep('error');
+
+            return;
+
         }
 
-        setStep('complete')
-    }, [projectRoot, identityValues, hasExistingKeys, hasExistingMetadata, force, refresh])
+        setStep('complete');
+
+    }, [projectRoot, identityValues, hasExistingKeys, hasExistingMetadata, force, refresh]);
 
     // Handle project setup - add config
     const handleAddConfig = useCallback(async () => {
 
-        setShouldAddConfig(true)
-        await performInit()
-    }, [performInit])
+        setShouldAddConfig(true);
+        await performInit();
+
+    }, [performInit]);
 
     // Handle project setup - skip config
     const handleSkipConfig = useCallback(async () => {
 
-        setShouldAddConfig(false)
-        await performInit()
-    }, [performInit])
+        setShouldAddConfig(false);
+        await performInit();
+
+    }, [performInit]);
 
     // Handle complete - navigate to config add or home
     const handleComplete = useCallback(() => {
 
         if (shouldAddConfig) {
 
-            navigate('config/add')
+            navigate('config/add');
+
         }
         else {
 
-            navigate('home')
+            navigate('home');
+
         }
-    }, [navigate, shouldAddConfig])
+
+    }, [navigate, shouldAddConfig]);
 
     // Keyboard handling for complete and error steps
     // Using useInput directly since we don't need focus stack for these terminal states
     useInput((input, key) => {
 
         // Only handle input in terminal states
-        if (step !== 'complete' && step !== 'error') return
+        if (step !== 'complete' && step !== 'error') return;
 
         if (step === 'complete') {
 
             if (key.return || input === ' ') {
 
-                handleComplete()
+                handleComplete();
+
             }
+
         }
         else if (step === 'error') {
 
             if (key.return || key.escape) {
 
-                back()
+                back();
+
             }
+
         }
-    })
+
+    });
 
     // Render based on step
     switch (step) {
 
-        case 'check':
-            return (
-                <Box flexDirection="column" padding={1}>
-                    <Spinner label="Checking existing state..." />
-                </Box>
-            )
+    case 'check':
+        return (
+            <Box flexDirection="column" padding={1}>
+                <Spinner label="Checking existing state..." />
+            </Box>
+        );
 
-        case 'already-init':
-            return (
-                <Box flexDirection="column" padding={1}>
-                    <Confirm
-                        title="Already Initialized"
-                        message="This project has already been initialized. Do you want to reinitialize? This will overwrite existing settings."
-                        onConfirm={handleForceInit}
-                        onCancel={handleCancel}
-                        variant="warning"
-                    />
-                </Box>
-            )
+    case 'already-init':
+        return (
+            <Box flexDirection="column" padding={1}>
+                <Confirm
+                    title="Already Initialized"
+                    message="This project has already been initialized. Do you want to reinitialize? This will overwrite existing settings."
+                    onConfirm={handleForceInit}
+                    onCancel={handleCancel}
+                    variant="warning"
+                />
+            </Box>
+        );
 
-        case 'identity':
-            return (
-                <Box flexDirection="column" padding={1}>
-                    <IdentitySetup
-                        onComplete={handleIdentityComplete}
-                        onCancel={handleCancel}
-                    />
-                </Box>
-            )
+    case 'identity':
+        return (
+            <Box flexDirection="column" padding={1}>
+                <IdentitySetup onComplete={handleIdentityComplete} onCancel={handleCancel} />
+            </Box>
+        );
 
-        case 'project':
-            return (
-                <Box flexDirection="column" padding={1}>
-                    <ProjectSetup
-                        onAddConfig={handleAddConfig}
-                        onSkipConfig={handleSkipConfig}
-                        onCancel={handleCancel}
-                    />
-                </Box>
-            )
+    case 'project':
+        return (
+            <Box flexDirection="column" padding={1}>
+                <ProjectSetup
+                    onAddConfig={handleAddConfig}
+                    onSkipConfig={handleSkipConfig}
+                    onCancel={handleCancel}
+                />
+            </Box>
+        );
 
-        case 'creating':
-            return (
-                <Box flexDirection="column" padding={1}>
-                    <Panel title="Initializing..." titleColor="cyan">
-                        <StatusList items={progressItems} />
-                    </Panel>
-                </Box>
-            )
+    case 'creating':
+        return (
+            <Box flexDirection="column" padding={1}>
+                <Panel title="Initializing..." titleColor="cyan">
+                    <StatusList items={progressItems} />
+                </Panel>
+            </Box>
+        );
 
-        case 'complete':
-            return (
-                <Box flexDirection="column" padding={1}>
-                    <Panel title="Initialization Complete" titleColor="green">
-                        <Box flexDirection="column">
-                            <Text color="green">
-                                noorm has been initialized successfully.
-                            </Text>
-                            <Box marginTop={1} flexDirection="column">
-                                <Text dimColor>Created:</Text>
-                                <Box flexDirection="column" marginLeft={2}>
-                                    <Text>• schema/.gitkeep</Text>
-                                    <Text>• changesets/.gitkeep</Text>
-                                    <Text>• .noorm/settings.yml</Text>
-                                    <Text>• .noorm/state.enc</Text>
-                                    {!hasExistingKeys && (
-                                        <>
-                                            <Text>• ~/.noorm/identity.key</Text>
-                                            <Text>• ~/.noorm/identity.pub</Text>
-                                        </>
-                                    )}
-                                </Box>
+    case 'complete':
+        return (
+            <Box flexDirection="column" padding={1}>
+                <Panel title="Initialization Complete" titleColor="green">
+                    <Box flexDirection="column">
+                        <Text color="green">noorm has been initialized successfully.</Text>
+                        <Box marginTop={1} flexDirection="column">
+                            <Text dimColor>Created:</Text>
+                            <Box flexDirection="column" marginLeft={2}>
+                                <Text>• schema/.gitkeep</Text>
+                                <Text>• changesets/.gitkeep</Text>
+                                <Text>• .noorm/settings.yml</Text>
+                                <Text>• .noorm/state.enc</Text>
+                                {!hasExistingKeys && (
+                                    <>
+                                        <Text>• ~/.noorm/identity.key</Text>
+                                        <Text>• ~/.noorm/identity.pub</Text>
+                                    </>
+                                )}
                             </Box>
-                            {shouldAddConfig && (
-                                <Box marginTop={1}>
-                                    <Text>
-                                        Press <Text color="cyan">Enter</Text> to add your first database config.
-                                    </Text>
-                                </Box>
-                            )}
-                            {!shouldAddConfig && (
-                                <Box marginTop={1}>
-                                    <Text>
-                                        Press <Text color="cyan">Enter</Text> to go to home screen.
-                                    </Text>
-                                </Box>
-                            )}
                         </Box>
-                    </Panel>
-                </Box>
-            )
-
-        case 'error':
-            return (
-                <Box flexDirection="column" padding={1}>
-                    <Alert variant="error">
-                        <Text>Initialization failed: {error?.message}</Text>
-                    </Alert>
-                    <Box marginTop={1}>
-                        <Text dimColor>Press Enter or Esc to go back.</Text>
+                        {shouldAddConfig && (
+                            <Box marginTop={1}>
+                                <Text>
+                                        Press <Text color="cyan">Enter</Text> to add your first
+                                        database config.
+                                </Text>
+                            </Box>
+                        )}
+                        {!shouldAddConfig && (
+                            <Box marginTop={1}>
+                                <Text>
+                                        Press <Text color="cyan">Enter</Text> to go to home screen.
+                                </Text>
+                            </Box>
+                        )}
                     </Box>
-                </Box>
-            )
+                </Panel>
+            </Box>
+        );
 
-        default:
-            return <Box />
+    case 'error':
+        return (
+            <Box flexDirection="column" padding={1}>
+                <Alert variant="error">
+                    <Text>Initialization failed: {error?.message}</Text>
+                </Alert>
+                <Box marginTop={1}>
+                    <Text dimColor>Press Enter or Esc to go back.</Text>
+                </Box>
+            </Box>
+        );
+
+    default:
+        return <Box />;
+
     }
+
 }

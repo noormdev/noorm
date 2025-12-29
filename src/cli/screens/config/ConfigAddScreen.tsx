@@ -15,20 +15,19 @@
  * noorm config add       # Same thing
  * ```
  */
-import { useState, useCallback } from 'react'
-import { attempt } from '@logosdx/utils'
+import { useState, useCallback } from 'react';
+import { attempt } from '@logosdx/utils';
 
-import type { ReactElement } from 'react'
-import type { ScreenProps } from '../../types.js'
-import type { FormValues, FormField } from '../../components/index.js'
-import type { Config } from '../../../core/config/types.js'
-import type { Dialect } from '../../../core/connection/types.js'
+import type { ReactElement } from 'react';
+import type { ScreenProps } from '../../types.js';
+import type { FormValues, FormField } from '../../components/index.js';
+import type { Config } from '../../../core/config/types.js';
+import type { Dialect } from '../../../core/connection/types.js';
 
-import { useRouter } from '../../router.js'
-import { useAppContext } from '../../app-context.js'
-import { Panel, Form, useToast } from '../../components/index.js'
-import { testConnection } from '../../../core/connection/factory.js'
-
+import { useRouter } from '../../router.js';
+import { useAppContext } from '../../app-context.js';
+import { Panel, Form, useToast } from '../../components/index.js';
+import { testConnection } from '../../../core/connection/factory.js';
 
 /**
  * Default ports by dialect.
@@ -38,23 +37,22 @@ const DEFAULT_PORTS: Record<Dialect, number> = {
     mysql: 3306,
     sqlite: 0,
     mssql: 1433,
-}
-
+};
 
 /**
  * ConfigAddScreen component.
  *
  * A multi-field form wizard for creating database configurations.
  */
-export function ConfigAddScreen({ params }: ScreenProps): ReactElement {
+export function ConfigAddScreen({ params: _params }: ScreenProps): ReactElement {
 
-    const { back } = useRouter()
-    const { stateManager, configs, refresh } = useAppContext()
-    const { showToast } = useToast()
+    const { back } = useRouter();
+    const { stateManager, configs, refresh } = useAppContext();
+    const { showToast } = useToast();
 
-    const [busy, setBusy] = useState(false)
-    const [busyLabel, setBusyLabel] = useState('Testing connection...')
-    const [connectionError, setConnectionError] = useState<string | null>(null)
+    const [busy, setBusy] = useState(false);
+    const [busyLabel, setBusyLabel] = useState('Testing connection...');
+    const [connectionError, setConnectionError] = useState<string | null>(null);
 
     // Form fields for config creation
     const fields: FormField[] = [
@@ -66,19 +64,22 @@ export function ConfigAddScreen({ params }: ScreenProps): ReactElement {
             placeholder: 'e.g., dev, staging, prod',
             validate: (value) => {
 
-                if (typeof value !== 'string') return 'Name is required'
+                if (typeof value !== 'string') return 'Name is required';
 
                 if (!/^[a-z0-9_-]+$/i.test(value)) {
 
-                    return 'Only letters, numbers, hyphens, underscores'
+                    return 'Only letters, numbers, hyphens, underscores';
+
                 }
 
-                if (configs.some(c => c.name === value)) {
+                if (configs.some((c) => c.name === value)) {
 
-                    return 'Config name already exists'
+                    return 'Config name already exists';
+
                 }
 
-                return undefined
+                return undefined;
+
             },
         },
         {
@@ -108,16 +109,18 @@ export function ConfigAddScreen({ params }: ScreenProps): ReactElement {
             placeholder: '5432',
             validate: (value) => {
 
-                if (typeof value !== 'string' || !value) return undefined
+                if (typeof value !== 'string' || !value) return undefined;
 
-                const port = parseInt(value, 10)
+                const port = parseInt(value, 10);
 
                 if (isNaN(port) || port < 1 || port > 65535) {
 
-                    return 'Port must be 1-65535'
+                    return 'Port must be 1-65535';
+
                 }
 
-                return undefined
+                return undefined;
+
             },
         },
         {
@@ -165,94 +168,115 @@ export function ConfigAddScreen({ params }: ScreenProps): ReactElement {
             type: 'checkbox',
             defaultValue: false,
         },
-    ]
+    ];
 
     // Handle form submission
-    const handleSubmit = useCallback(async (values: FormValues) => {
+    const handleSubmit = useCallback(
+        async (values: FormValues) => {
 
-        if (!stateManager) {
+            if (!stateManager) {
 
-            setConnectionError('State manager not available')
-            return
-        }
+                setConnectionError('State manager not available');
 
-        const dialect = values['dialect'] as Dialect
-        const isSqlite = dialect === 'sqlite'
+                return;
 
-        // Build connection config
-        const connectionConfig = {
-            dialect,
-            host: isSqlite ? undefined : String(values['host'] || 'localhost'),
-            port: isSqlite ? undefined : (values['port'] ? parseInt(String(values['port']), 10) : DEFAULT_PORTS[dialect]),
-            database: String(values['database']),
-            user: isSqlite ? undefined : (values['user'] ? String(values['user']) : undefined),
-            password: isSqlite ? undefined : (values['password'] ? String(values['password']) : undefined),
-        }
-
-        // Test connection first (server only - database may not exist yet)
-        setBusy(true)
-        setBusyLabel('Testing connection...')
-        setConnectionError(null)
-
-        const result = await testConnection(connectionConfig, { testServerOnly: true })
-
-        if (!result.ok) {
-
-            setConnectionError(result.error ?? 'Connection failed')
-            setBusy(false)
-            return
-        }
-
-        // Build full config
-        const configName = String(values['name'])
-        const config: Config = {
-            name: configName,
-            type: 'local',
-            isTest: Boolean(values['isTest']),
-            protected: Boolean(values['protected']),
-            connection: connectionConfig,
-            paths: {
-                schema: String(values['schemaPath'] || './schema'),
-                changesets: String(values['changesetsPath'] || './changesets'),
-            },
-        }
-
-        // Save config
-        setBusyLabel('Saving configuration...')
-
-        const [_, err] = await attempt(async () => {
-
-            await stateManager.setConfig(config.name, config)
-
-            // If this is the first config, set it as active
-            if (configs.length === 0) {
-
-                await stateManager.setActiveConfig(config.name)
             }
 
-            await refresh()
-        })
+            const dialect = values['dialect'] as Dialect;
+            const isSqlite = dialect === 'sqlite';
 
-        if (err) {
+            // Build connection config
+            const connectionConfig = {
+                dialect,
+                host: isSqlite ? undefined : String(values['host'] || 'localhost'),
+                port: isSqlite
+                    ? undefined
+                    : values['port']
+                        ? parseInt(String(values['port']), 10)
+                        : DEFAULT_PORTS[dialect],
+                database: String(values['database']),
+                user: isSqlite ? undefined : values['user'] ? String(values['user']) : undefined,
+                password: isSqlite
+                    ? undefined
+                    : values['password']
+                        ? String(values['password'])
+                        : undefined,
+            };
 
-            setConnectionError(err instanceof Error ? err.message : String(err))
-            setBusy(false)
-            return
-        }
+            // Test connection first (server only - database may not exist yet)
+            setBusy(true);
+            setBusyLabel('Testing connection...');
+            setConnectionError(null);
 
-        // Success - show toast and go back (pops history)
-        showToast({
-            message: `Configuration "${configName}" created`,
-            variant: 'success',
-        })
-        back()
-    }, [stateManager, configs, refresh, showToast, back])
+            const result = await testConnection(connectionConfig, { testServerOnly: true });
+
+            if (!result.ok) {
+
+                setConnectionError(result.error ?? 'Connection failed');
+                setBusy(false);
+
+                return;
+
+            }
+
+            // Build full config
+            const configName = String(values['name']);
+            const config: Config = {
+                name: configName,
+                type: 'local',
+                isTest: Boolean(values['isTest']),
+                protected: Boolean(values['protected']),
+                connection: connectionConfig,
+                paths: {
+                    schema: String(values['schemaPath'] || './schema'),
+                    changesets: String(values['changesetsPath'] || './changesets'),
+                },
+            };
+
+            // Save config
+            setBusyLabel('Saving configuration...');
+
+            const [_, err] = await attempt(async () => {
+
+                await stateManager.setConfig(config.name, config);
+
+                // If this is the first config, set it as active
+                if (configs.length === 0) {
+
+                    await stateManager.setActiveConfig(config.name);
+
+                }
+
+                await refresh();
+
+            });
+
+            if (err) {
+
+                setConnectionError(err instanceof Error ? err.message : String(err));
+                setBusy(false);
+
+                return;
+
+            }
+
+            // Success - show toast and go back (pops history)
+            showToast({
+                message: `Configuration "${configName}" created`,
+                variant: 'success',
+            });
+            back();
+
+        },
+        [stateManager, configs, refresh, showToast, back],
+    );
 
     // Handle cancel
     const handleCancel = useCallback(() => {
 
-        back()
-    }, [back])
+        back();
+
+    }, [back]);
 
     return (
         <Panel title="Add Configuration" paddingX={2} paddingY={1}>
@@ -267,5 +291,6 @@ export function ConfigAddScreen({ params }: ScreenProps): ReactElement {
                 statusError={connectionError ?? undefined}
             />
         </Panel>
-    )
+    );
+
 }

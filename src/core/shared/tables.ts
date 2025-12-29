@@ -9,8 +9,7 @@
  * WHY: Kysely uses these types to provide type-safe queries.
  * They match the database schema created by migrations.
  */
-import type { Generated, Insertable, Selectable, Updateable } from 'kysely'
-
+import type { Generated, Insertable, Selectable, Updateable } from 'kysely';
 
 // ─────────────────────────────────────────────────────────────
 // Table Names
@@ -29,7 +28,6 @@ import type { Generated, Insertable, Selectable, Updateable } from 'kysely'
  * ```
  */
 export const NOORM_TABLES = Object.freeze({
-
     /** Version tracking table */
     version: '__noorm_version__' as const,
 
@@ -44,13 +42,12 @@ export const NOORM_TABLES = Object.freeze({
 
     /** Team member identity table */
     identities: '__noorm_identities__' as const,
-})
+});
 
 /**
  * Type for table names.
  */
-export type NoormTableName = typeof NOORM_TABLES[keyof typeof NOORM_TABLES]
-
+export type NoormTableName = (typeof NOORM_TABLES)[keyof typeof NOORM_TABLES];
 
 // ─────────────────────────────────────────────────────────────
 // __noorm_version__
@@ -63,33 +60,31 @@ export type NoormTableName = typeof NOORM_TABLES[keyof typeof NOORM_TABLES]
  * See: plan/datamodel.md#__noorm_version__
  */
 export interface NoormVersionTable {
-
     /** Primary key */
-    id: Generated<number>
+    id: Generated<number>;
 
     /** CLI semver (e.g., "1.2.3") */
-    cli_version: string
+    cli_version: string;
 
     /** Database tracking tables schema version */
-    schema_version: number
+    schema_version: number;
 
     /** State file (state.enc) schema version */
-    state_version: number
+    state_version: number;
 
     /** Settings file (settings.yml) schema version */
-    settings_version: number
+    settings_version: number;
 
     /** First installation timestamp */
-    installed_at: Generated<Date>
+    installed_at: Generated<Date>;
 
     /** Last upgrade timestamp */
-    upgraded_at: Generated<Date>
+    upgraded_at: Generated<Date>;
 }
 
-export type NoormVersion = Selectable<NoormVersionTable>
-export type NewNoormVersion = Insertable<NoormVersionTable>
-export type NoormVersionUpdate = Updateable<NoormVersionTable>
-
+export type NoormVersion = Selectable<NoormVersionTable>;
+export type NewNoormVersion = Insertable<NoormVersionTable>;
+export type NoormVersionUpdate = Updateable<NoormVersionTable>;
 
 // ─────────────────────────────────────────────────────────────
 // __noorm_changeset__
@@ -98,20 +93,17 @@ export type NoormVersionUpdate = Updateable<NoormVersionTable>
 /**
  * Operation status values.
  */
-export type OperationStatus = 'pending' | 'success' | 'failed' | 'reverted'
-
+export type OperationStatus = 'pending' | 'success' | 'failed' | 'reverted';
 
 /**
  * Change type values.
  */
-export type ChangeType = 'build' | 'run' | 'changeset'
-
+export type ChangeType = 'build' | 'run' | 'changeset';
 
 /**
  * Direction values.
  */
-export type Direction = 'change' | 'revert'
-
+export type Direction = 'change' | 'revert';
 
 /**
  * Changeset tracking table.
@@ -120,48 +112,46 @@ export type Direction = 'change' | 'revert'
  * See: plan/datamodel.md#__noorm_changeset__
  */
 export interface NoormChangesetTable {
-
     /** Primary key */
-    id: Generated<number>
+    id: Generated<number>;
 
     /** Operation identifier */
-    name: string
+    name: string;
 
     /** 'build', 'run', or 'changeset' */
-    change_type: ChangeType
+    change_type: ChangeType;
 
     /** 'change' or 'revert' */
-    direction: Direction
+    direction: Direction;
 
     /** SHA-256 of sorted file checksums */
-    checksum: Generated<string>
+    checksum: Generated<string>;
 
     /** When executed */
-    executed_at: Generated<Date>
+    executed_at: Generated<Date>;
 
     /** Identity string */
-    executed_by: Generated<string>
+    executed_by: Generated<string>;
 
     /** Which config was used */
-    config_name: Generated<string>
+    config_name: Generated<string>;
 
     /** noorm version */
-    cli_version: Generated<string>
+    cli_version: Generated<string>;
 
     /** 'pending', 'success', 'failed', 'reverted' */
-    status: OperationStatus
+    status: OperationStatus;
 
     /** Error details (empty = no error) */
-    error_message: Generated<string>
+    error_message: Generated<string>;
 
     /** Execution time (0 = never ran) */
-    duration_ms: Generated<number>
+    duration_ms: Generated<number>;
 }
 
-export type NoormChangeset = Selectable<NoormChangesetTable>
-export type NewNoormChangeset = Insertable<NoormChangesetTable>
-export type NoormChangesetUpdate = Updateable<NoormChangesetTable>
-
+export type NoormChangeset = Selectable<NoormChangesetTable>;
+export type NewNoormChangeset = Insertable<NoormChangesetTable>;
+export type NoormChangesetUpdate = Updateable<NoormChangesetTable>;
 
 // ─────────────────────────────────────────────────────────────
 // __noorm_executions__
@@ -170,14 +160,12 @@ export type NoormChangesetUpdate = Updateable<NoormChangesetTable>
 /**
  * File execution status values.
  */
-export type ExecutionStatus = 'pending' | 'success' | 'failed' | 'skipped'
-
+export type ExecutionStatus = 'pending' | 'success' | 'failed' | 'skipped';
 
 /**
  * File type values.
  */
-export type FileType = 'sql' | 'txt'
-
+export type FileType = 'sql' | 'txt';
 
 /**
  * Executions tracking table.
@@ -186,42 +174,40 @@ export type FileType = 'sql' | 'txt'
  * See: plan/datamodel.md#__noorm_executions__
  */
 export interface NoormExecutionsTable {
-
     /** Primary key */
-    id: Generated<number>
+    id: Generated<number>;
 
     /** Parent operation (FK to __noorm_changeset__) */
-    changeset_id: number
+    changeset_id: number;
 
     /** File that was executed */
-    filepath: string
+    filepath: string;
 
     /** 'sql' or 'txt' */
-    file_type: FileType
+    file_type: FileType;
 
     /** SHA-256 of file contents */
-    checksum: Generated<string>
+    checksum: Generated<string>;
 
     /** noorm version */
-    cli_version: Generated<string>
+    cli_version: Generated<string>;
 
     /** 'pending', 'success', 'failed', 'skipped' */
-    status: ExecutionStatus
+    status: ExecutionStatus;
 
     /** Error details (empty = no error) */
-    error_message: Generated<string>
+    error_message: Generated<string>;
 
     /** 'unchanged', 'already-run', 'changeset failed' */
-    skip_reason: Generated<string>
+    skip_reason: Generated<string>;
 
     /** Execution time (0 = never ran) */
-    duration_ms: Generated<number>
+    duration_ms: Generated<number>;
 }
 
-export type NoormExecution = Selectable<NoormExecutionsTable>
-export type NewNoormExecution = Insertable<NoormExecutionsTable>
-export type NoormExecutionUpdate = Updateable<NoormExecutionsTable>
-
+export type NoormExecution = Selectable<NoormExecutionsTable>;
+export type NewNoormExecution = Insertable<NoormExecutionsTable>;
+export type NoormExecutionUpdate = Updateable<NoormExecutionsTable>;
 
 // ─────────────────────────────────────────────────────────────
 // __noorm_lock__
@@ -234,30 +220,28 @@ export type NoormExecutionUpdate = Updateable<NoormExecutionsTable>
  * See: plan/datamodel.md#__noorm_lock__
  */
 export interface NoormLockTable {
-
     /** Primary key */
-    id: Generated<number>
+    id: Generated<number>;
 
     /** Lock scope (config name) */
-    config_name: string
+    config_name: string;
 
     /** Identity of holder */
-    locked_by: string
+    locked_by: string;
 
     /** When acquired */
-    locked_at: Generated<Date>
+    locked_at: Generated<Date>;
 
     /** Auto-expiry time */
-    expires_at: Date
+    expires_at: Date;
 
     /** Lock reason (empty = none) */
-    reason: Generated<string>
+    reason: Generated<string>;
 }
 
-export type NoormLock = Selectable<NoormLockTable>
-export type NewNoormLock = Insertable<NoormLockTable>
-export type NoormLockUpdate = Updateable<NoormLockTable>
-
+export type NoormLock = Selectable<NoormLockTable>;
+export type NewNoormLock = Insertable<NoormLockTable>;
+export type NoormLockUpdate = Updateable<NoormLockTable>;
 
 // ─────────────────────────────────────────────────────────────
 // __noorm_identities__
@@ -271,39 +255,37 @@ export type NoormLockUpdate = Updateable<NoormLockTable>
  * See: plan/datamodel.md#__noorm_identities__
  */
 export interface NoormIdentitiesTable {
-
     /** Primary key */
-    id: Generated<number>
+    id: Generated<number>;
 
     /** SHA-256(email + name + machine + os) */
-    identity_hash: string
+    identity_hash: string;
 
     /** User email */
-    email: string
+    email: string;
 
     /** Display name */
-    name: string
+    name: string;
 
     /** Machine hostname */
-    machine: string
+    machine: string;
 
     /** OS platform and version */
-    os: string
+    os: string;
 
     /** X25519 public key (hex) */
-    public_key: string
+    public_key: string;
 
     /** First registration */
-    registered_at: Generated<Date>
+    registered_at: Generated<Date>;
 
     /** Last activity */
-    last_seen_at: Generated<Date>
+    last_seen_at: Generated<Date>;
 }
 
-export type NoormIdentity = Selectable<NoormIdentitiesTable>
-export type NewNoormIdentity = Insertable<NoormIdentitiesTable>
-export type NoormIdentityUpdate = Updateable<NoormIdentitiesTable>
-
+export type NoormIdentity = Selectable<NoormIdentitiesTable>;
+export type NewNoormIdentity = Insertable<NoormIdentitiesTable>;
+export type NoormIdentityUpdate = Updateable<NoormIdentitiesTable>;
 
 // ─────────────────────────────────────────────────────────────
 // Combined Database Interface
@@ -329,10 +311,9 @@ export type NoormIdentityUpdate = Updateable<NoormIdentitiesTable>
  * ```
  */
 export interface NoormDatabase {
-
-    __noorm_version__: NoormVersionTable
-    __noorm_changeset__: NoormChangesetTable
-    __noorm_executions__: NoormExecutionsTable
-    __noorm_lock__: NoormLockTable
-    __noorm_identities__: NoormIdentitiesTable
+    __noorm_version__: NoormVersionTable;
+    __noorm_changeset__: NoormChangesetTable;
+    __noorm_executions__: NoormExecutionsTable;
+    __noorm_lock__: NoormLockTable;
+    __noorm_identities__: NoormIdentitiesTable;
 }

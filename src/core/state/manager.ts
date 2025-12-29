@@ -6,39 +6,35 @@
  *
  * Encryption uses the user's private key from ~/.noorm/identity.key
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
-import { dirname, join } from 'path'
-import { attemptSync, attempt } from '@logosdx/utils'
-import type { Config } from '../config/types.js'
-import type { CryptoIdentity, KnownUser } from '../identity/types.js'
-import { loadPrivateKey } from '../identity/storage.js'
-import { encrypt, decrypt } from './encryption/index.js'
-import type { State, ConfigSummary, EncryptedPayload } from './types.js'
-import { createEmptyState } from './types.js'
-import { migrateState, needsMigration } from './migrations.js'
-import { getPackageVersion } from './version.js'
-import { observer } from '../observer.js'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { dirname, join } from 'path';
+import { attemptSync, attempt } from '@logosdx/utils';
+import type { Config } from '../config/types.js';
+import type { CryptoIdentity, KnownUser } from '../identity/types.js';
+import { loadPrivateKey } from '../identity/storage.js';
+import { encrypt, decrypt } from './encryption/index.js';
+import type { State, ConfigSummary, EncryptedPayload } from './types.js';
+import { createEmptyState } from './types.js';
+import { migrateState, needsMigration } from './migrations.js';
+import { getPackageVersion } from './version.js';
+import { observer } from '../observer.js';
 
-
-const DEFAULT_STATE_DIR = '.noorm'
-const DEFAULT_STATE_FILE = 'state.enc'
-
+const DEFAULT_STATE_DIR = '.noorm';
+const DEFAULT_STATE_FILE = 'state.enc';
 
 /**
  * Options for StateManager constructor.
  */
 export interface StateManagerOptions {
-
     /** Private key for encryption (loaded from ~/.noorm/identity.key if not provided) */
-    privateKey?: string
+    privateKey?: string;
 
     /** State directory name (defaults to '.noorm') */
-    stateDir?: string
+    stateDir?: string;
 
     /** State filename (defaults to 'state.enc') */
-    stateFile?: string
+    stateFile?: string;
 }
-
 
 /**
  * Manages encrypted state persistence.
@@ -66,20 +62,21 @@ export interface StateManagerOptions {
  */
 export class StateManager {
 
-    private state: State | null = null
-    private privateKey: string | undefined
-    private statePath: string
-    private loaded = false
+    private state: State | null = null;
+    private privateKey: string | undefined;
+    private statePath: string;
+    private loaded = false;
 
     constructor(
         private readonly projectRoot: string,
         options: StateManagerOptions = {},
     ) {
 
-        this.privateKey = options.privateKey
-        const stateDir = options.stateDir ?? DEFAULT_STATE_DIR
-        const stateFile = options.stateFile ?? DEFAULT_STATE_FILE
-        this.statePath = join(projectRoot, stateDir, stateFile)
+        this.privateKey = options.privateKey;
+        const stateDir = options.stateDir ?? DEFAULT_STATE_DIR;
+        const stateFile = options.stateFile ?? DEFAULT_STATE_FILE;
+        this.statePath = join(projectRoot, stateDir, stateFile);
+
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -95,86 +92,96 @@ export class StateManager {
      */
     async load(): Promise<void> {
 
-        if (this.loaded) return
+        if (this.loaded) return;
 
         // Try to load private key if not provided
         if (!this.privateKey) {
 
-            const [key] = await attempt(() => loadPrivateKey())
+            const [key] = await attempt(() => loadPrivateKey());
             if (key) {
 
-                this.privateKey = key
+                this.privateKey = key;
+
             }
+
         }
 
-        const currentVersion = getPackageVersion()
+        const currentVersion = getPackageVersion();
 
         // New project - no state file yet
         if (!existsSync(this.statePath)) {
 
-            this.state = createEmptyState(currentVersion)
-            this.loaded = true
+            this.state = createEmptyState(currentVersion);
+            this.loaded = true;
             observer.emit('state:loaded', {
                 configCount: 0,
                 activeConfig: null,
                 version: currentVersion,
-            })
-            return
+            });
+
+            return;
+
         }
 
         // Existing state file - require private key
         if (!this.privateKey) {
 
             throw new Error(
-                'Private key required to decrypt state. ' +
-                'Set up identity with: noorm init'
-            )
+                'Private key required to decrypt state. ' + 'Set up identity with: noorm init',
+            );
+
         }
 
-        const [raw, readErr] = attemptSync(() => readFileSync(this.statePath, 'utf8'))
+        const [raw, readErr] = attemptSync(() => readFileSync(this.statePath, 'utf8'));
         if (readErr) {
 
-            observer.emit('error', { source: 'state', error: readErr })
-            throw readErr
+            observer.emit('error', { source: 'state', error: readErr });
+            throw readErr;
+
         }
 
-        const [payload, parseErr] = attemptSync(() => JSON.parse(raw!) as EncryptedPayload)
+        const [payload, parseErr] = attemptSync(() => JSON.parse(raw!) as EncryptedPayload);
         if (parseErr) {
 
-            observer.emit('error', { source: 'state', error: parseErr })
-            throw new Error('Failed to parse state file. File may be corrupted.')
+            observer.emit('error', { source: 'state', error: parseErr });
+            throw new Error('Failed to parse state file. File may be corrupted.');
+
         }
 
-        const [decrypted, decryptErr] = attemptSync(() => decrypt(payload!, this.privateKey!))
+        const [decrypted, decryptErr] = attemptSync(() => decrypt(payload!, this.privateKey!));
         if (decryptErr) {
 
-            observer.emit('error', { source: 'state', error: decryptErr })
-            throw new Error('Failed to decrypt state. Wrong key or corrupted file.')
+            observer.emit('error', { source: 'state', error: decryptErr });
+            throw new Error('Failed to decrypt state. Wrong key or corrupted file.');
+
         }
 
-        const [parsedState, stateParseErr] = attemptSync(() => JSON.parse(decrypted!) as unknown)
+        const [parsedState, stateParseErr] = attemptSync(() => JSON.parse(decrypted!) as unknown);
         if (stateParseErr) {
 
-            observer.emit('error', { source: 'state', error: stateParseErr })
-            throw new Error('Failed to parse decrypted state.')
+            observer.emit('error', { source: 'state', error: stateParseErr });
+            throw new Error('Failed to parse decrypted state.');
+
         }
 
         // Apply migrations if needed (migrateState emits state:migrated if version changed)
-        const wasMigrated = needsMigration(parsedState, currentVersion)
-        this.state = migrateState(parsedState, currentVersion)
-        this.loaded = true
+        const wasMigrated = needsMigration(parsedState, currentVersion);
+        this.state = migrateState(parsedState, currentVersion);
+        this.loaded = true;
 
         // Persist if migrations were applied
         if (wasMigrated) {
 
-            this.persist()
+            this.persist();
+
         }
 
         observer.emit('state:loaded', {
             configCount: Object.keys(this.state.configs).length,
             activeConfig: this.state.activeConfig,
             version: this.state.version,
-        })
+        });
+
     }
 
     /**
@@ -187,35 +194,38 @@ export class StateManager {
         if (!this.privateKey) {
 
             throw new Error(
-                'Private key required to save state. ' +
-                'Set up identity with: noorm init'
-            )
+                'Private key required to save state. ' + 'Set up identity with: noorm init',
+            );
+
         }
 
-        const state = this.getState()
+        const state = this.getState();
 
-        const dir = dirname(this.statePath)
+        const dir = dirname(this.statePath);
         if (!existsSync(dir)) {
 
-            mkdirSync(dir, { recursive: true })
+            mkdirSync(dir, { recursive: true });
+
         }
 
-        const json = JSON.stringify(state)
-        const payload = encrypt(json, this.privateKey)
+        const json = JSON.stringify(state);
+        const payload = encrypt(json, this.privateKey);
 
         const [, writeErr] = attemptSync(() =>
-            writeFileSync(this.statePath, JSON.stringify(payload, null, 2))
-        )
+            writeFileSync(this.statePath, JSON.stringify(payload, null, 2)),
+        );
 
         if (writeErr) {
 
-            observer.emit('error', { source: 'state', error: writeErr })
-            throw writeErr
+            observer.emit('error', { source: 'state', error: writeErr });
+            throw writeErr;
+
         }
 
         observer.emit('state:persisted', {
-            configCount: Object.keys(state.configs).length
-        })
+            configCount: Object.keys(state.configs).length,
+        });
+
     }
 
     /**
@@ -225,9 +235,12 @@ export class StateManager {
 
         if (!this.loaded || !this.state) {
 
-            throw new Error('StateManager not loaded. Call load() first.')
+            throw new Error('StateManager not loaded. Call load() first.');
+
         }
-        return this.state
+
+        return this.state;
+
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -239,8 +252,10 @@ export class StateManager {
      */
     getConfig(name: string): Config | null {
 
-        const state = this.getState()
-        return state.configs[name] ?? null
+        const state = this.getState();
+
+        return state.configs[name] ?? null;
+
     }
 
     /**
@@ -248,15 +263,16 @@ export class StateManager {
      */
     async setConfig(name: string, config: Config): Promise<void> {
 
-        const state = this.getState()
-        const isNew = !state.configs[name]
-        state.configs[name] = config
-        this.persist()
+        const state = this.getState();
+        const isNew = !state.configs[name];
+        state.configs[name] = config;
+        this.persist();
 
         observer.emit(isNew ? 'config:created' : 'config:updated', {
             name,
-            fields: Object.keys(config)
-        })
+            fields: Object.keys(config),
+        });
+
     }
 
     /**
@@ -264,17 +280,19 @@ export class StateManager {
      */
     async deleteConfig(name: string): Promise<void> {
 
-        const state = this.getState()
-        delete state.configs[name]
-        delete state.secrets[name]
+        const state = this.getState();
+        delete state.configs[name];
+        delete state.secrets[name];
 
         if (state.activeConfig === name) {
 
-            state.activeConfig = null
+            state.activeConfig = null;
+
         }
 
-        this.persist()
-        observer.emit('config:deleted', { name })
+        this.persist();
+        observer.emit('config:deleted', { name });
+
     }
 
     /**
@@ -282,7 +300,8 @@ export class StateManager {
      */
     listConfigs(): ConfigSummary[] {
 
-        const state = this.getState()
+        const state = this.getState();
+
         return Object.entries(state.configs).map(([name, config]) => ({
             name,
             type: config.type,
@@ -291,7 +310,8 @@ export class StateManager {
             isActive: state.activeConfig === name,
             dialect: config.connection.dialect,
             database: config.connection.database,
-        }))
+        }));
+
     }
 
     /**
@@ -299,9 +319,11 @@ export class StateManager {
      */
     getActiveConfig(): Config | null {
 
-        const state = this.getState()
-        if (!state.activeConfig) return null
-        return state.configs[state.activeConfig] ?? null
+        const state = this.getState();
+        if (!state.activeConfig) return null;
+
+        return state.configs[state.activeConfig] ?? null;
+
     }
 
     /**
@@ -309,8 +331,10 @@ export class StateManager {
      */
     getActiveConfigName(): string | null {
 
-        const state = this.getState()
-        return state.activeConfig
+        const state = this.getState();
+
+        return state.activeConfig;
+
     }
 
     /**
@@ -318,17 +342,19 @@ export class StateManager {
      */
     async setActiveConfig(name: string): Promise<void> {
 
-        const state = this.getState()
+        const state = this.getState();
         if (!state.configs[name]) {
 
-            throw new Error(`Config "${name}" does not exist.`)
+            throw new Error(`Config "${name}" does not exist.`);
+
         }
 
-        const previous = state.activeConfig
-        state.activeConfig = name
-        this.persist()
+        const previous = state.activeConfig;
+        state.activeConfig = name;
+        this.persist();
 
-        observer.emit('config:activated', { name, previous })
+        observer.emit('config:activated', { name, previous });
+
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -340,8 +366,10 @@ export class StateManager {
      */
     getSecret(configName: string, key: string): string | null {
 
-        const state = this.getState()
-        return state.secrets[configName]?.[key] ?? null
+        const state = this.getState();
+
+        return state.secrets[configName]?.[key] ?? null;
+
     }
 
     /**
@@ -349,8 +377,10 @@ export class StateManager {
      */
     getAllSecrets(configName: string): Record<string, string> {
 
-        const state = this.getState()
-        return state.secrets[configName] ? { ...state.secrets[configName] } : {}
+        const state = this.getState();
+
+        return state.secrets[configName] ? { ...state.secrets[configName] } : {};
+
     }
 
     /**
@@ -358,22 +388,25 @@ export class StateManager {
      */
     async setSecret(configName: string, key: string, value: string): Promise<void> {
 
-        const state = this.getState()
+        const state = this.getState();
 
         if (!state.configs[configName]) {
 
-            throw new Error(`Config "${configName}" does not exist.`)
+            throw new Error(`Config "${configName}" does not exist.`);
+
         }
 
         if (!state.secrets[configName]) {
 
-            state.secrets[configName] = {}
+            state.secrets[configName] = {};
+
         }
 
-        state.secrets[configName][key] = value
-        this.persist()
+        state.secrets[configName][key] = value;
+        this.persist();
 
-        observer.emit('secret:set', { configName, key })
+        observer.emit('secret:set', { configName, key });
+
     }
 
     /**
@@ -381,15 +414,17 @@ export class StateManager {
      */
     async deleteSecret(configName: string, key: string): Promise<void> {
 
-        const state = this.getState()
+        const state = this.getState();
 
         if (state.secrets[configName]) {
 
-            delete state.secrets[configName][key]
-            this.persist()
+            delete state.secrets[configName][key];
+            this.persist();
 
-            observer.emit('secret:deleted', { configName, key })
+            observer.emit('secret:deleted', { configName, key });
+
         }
+
     }
 
     /**
@@ -397,8 +432,10 @@ export class StateManager {
      */
     listSecrets(configName: string): string[] {
 
-        const state = this.getState()
-        return Object.keys(state.secrets[configName] ?? {})
+        const state = this.getState();
+
+        return Object.keys(state.secrets[configName] ?? {});
+
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -415,8 +452,10 @@ export class StateManager {
      */
     getGlobalSecret(key: string): string | null {
 
-        const state = this.getState()
-        return state.globalSecrets[key] ?? null
+        const state = this.getState();
+
+        return state.globalSecrets[key] ?? null;
+
     }
 
     /**
@@ -424,8 +463,10 @@ export class StateManager {
      */
     getAllGlobalSecrets(): Record<string, string> {
 
-        const state = this.getState()
-        return { ...state.globalSecrets }
+        const state = this.getState();
+
+        return { ...state.globalSecrets };
+
     }
 
     /**
@@ -438,11 +479,12 @@ export class StateManager {
      */
     async setGlobalSecret(key: string, value: string): Promise<void> {
 
-        const state = this.getState()
-        state.globalSecrets[key] = value
-        this.persist()
+        const state = this.getState();
+        state.globalSecrets[key] = value;
+        this.persist();
 
-        observer.emit('global-secret:set', { key })
+        observer.emit('global-secret:set', { key });
+
     }
 
     /**
@@ -450,15 +492,17 @@ export class StateManager {
      */
     async deleteGlobalSecret(key: string): Promise<void> {
 
-        const state = this.getState()
+        const state = this.getState();
 
         if (key in state.globalSecrets) {
 
-            delete state.globalSecrets[key]
-            this.persist()
+            delete state.globalSecrets[key];
+            this.persist();
 
-            observer.emit('global-secret:deleted', { key })
+            observer.emit('global-secret:deleted', { key });
+
         }
+
     }
 
     /**
@@ -466,8 +510,10 @@ export class StateManager {
      */
     listGlobalSecrets(): string[] {
 
-        const state = this.getState()
-        return Object.keys(state.globalSecrets)
+        const state = this.getState();
+
+        return Object.keys(state.globalSecrets);
+
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -479,8 +525,10 @@ export class StateManager {
      */
     getIdentity(): CryptoIdentity | null {
 
-        const state = this.getState()
-        return state.identity
+        const state = this.getState();
+
+        return state.identity;
+
     }
 
     /**
@@ -488,8 +536,10 @@ export class StateManager {
      */
     hasIdentity(): boolean {
 
-        const state = this.getState()
-        return state.identity !== null
+        const state = this.getState();
+
+        return state.identity !== null;
+
     }
 
     /**
@@ -504,16 +554,17 @@ export class StateManager {
      */
     async setIdentity(identity: CryptoIdentity): Promise<void> {
 
-        const state = this.getState()
-        state.identity = identity
-        this.persist()
+        const state = this.getState();
+        state.identity = identity;
+        this.persist();
 
         observer.emit('identity:created', {
             identityHash: identity.identityHash,
             name: identity.name,
             email: identity.email,
             machine: identity.machine,
-        })
+        });
+
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -525,8 +576,10 @@ export class StateManager {
      */
     getKnownUsers(): Record<string, KnownUser> {
 
-        const state = this.getState()
-        return { ...state.knownUsers }
+        const state = this.getState();
+
+        return { ...state.knownUsers };
+
     }
 
     /**
@@ -534,8 +587,10 @@ export class StateManager {
      */
     getKnownUser(identityHash: string): KnownUser | null {
 
-        const state = this.getState()
-        return state.knownUsers[identityHash] ?? null
+        const state = this.getState();
+
+        return state.knownUsers[identityHash] ?? null;
+
     }
 
     /**
@@ -545,8 +600,10 @@ export class StateManager {
      */
     findKnownUsersByEmail(email: string): KnownUser[] {
 
-        const state = this.getState()
-        return Object.values(state.knownUsers).filter(u => u.email === email)
+        const state = this.getState();
+
+        return Object.values(state.knownUsers).filter((u) => u.email === email);
+
     }
 
     /**
@@ -556,14 +613,15 @@ export class StateManager {
      */
     async addKnownUser(user: KnownUser): Promise<void> {
 
-        const state = this.getState()
-        state.knownUsers[user.identityHash] = user
-        this.persist()
+        const state = this.getState();
+        state.knownUsers[user.identityHash] = user;
+        this.persist();
 
         observer.emit('known-user:added', {
             email: user.email,
             source: user.source,
-        })
+        });
+
     }
 
     /**
@@ -571,14 +629,16 @@ export class StateManager {
      */
     async addKnownUsers(users: KnownUser[]): Promise<void> {
 
-        const state = this.getState()
+        const state = this.getState();
 
         for (const user of users) {
 
-            state.knownUsers[user.identityHash] = user
+            state.knownUsers[user.identityHash] = user;
+
         }
 
-        this.persist()
+        this.persist();
+
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -590,8 +650,10 @@ export class StateManager {
      */
     getVersion(): string {
 
-        const state = this.getState()
-        return state.version
+        const state = this.getState();
+
+        return state.version;
+
     }
 
     /**
@@ -599,7 +661,8 @@ export class StateManager {
      */
     exists(): boolean {
 
-        return existsSync(this.statePath)
+        return existsSync(this.statePath);
+
     }
 
     /**
@@ -607,7 +670,8 @@ export class StateManager {
      */
     getStatePath(): string {
 
-        return this.statePath
+        return this.statePath;
+
     }
 
     /**
@@ -615,8 +679,10 @@ export class StateManager {
      */
     exportEncrypted(): string | null {
 
-        if (!existsSync(this.statePath)) return null
-        return readFileSync(this.statePath, 'utf8')
+        if (!existsSync(this.statePath)) return null;
+
+        return readFileSync(this.statePath, 'utf8');
+
     }
 
     /**
@@ -626,25 +692,28 @@ export class StateManager {
 
         if (!this.privateKey) {
 
-            throw new Error('Private key required to import state.')
+            throw new Error('Private key required to import state.');
+
         }
 
         // Validate it can be decrypted first
-        const [payload, parseErr] = attemptSync(() => JSON.parse(encrypted) as EncryptedPayload)
-        if (parseErr) throw parseErr
+        const [payload, parseErr] = attemptSync(() => JSON.parse(encrypted) as EncryptedPayload);
+        if (parseErr) throw parseErr;
 
-        const [, decryptErr] = attemptSync(() => decrypt(payload!, this.privateKey!))
-        if (decryptErr) throw decryptErr
+        const [, decryptErr] = attemptSync(() => decrypt(payload!, this.privateKey!));
+        if (decryptErr) throw decryptErr;
 
-        const dir = dirname(this.statePath)
+        const dir = dirname(this.statePath);
         if (!existsSync(dir)) {
 
-            mkdirSync(dir, { recursive: true })
+            mkdirSync(dir, { recursive: true });
+
         }
 
-        writeFileSync(this.statePath, encrypted)
-        this.loaded = false
-        await this.load()
+        writeFileSync(this.statePath, encrypted);
+        this.loaded = false;
+        await this.load();
+
     }
 
     /**
@@ -654,7 +723,8 @@ export class StateManager {
      */
     setPrivateKey(privateKey: string): void {
 
-        this.privateKey = privateKey
+        this.privateKey = privateKey;
+
     }
 
     /**
@@ -662,6 +732,8 @@ export class StateManager {
      */
     hasPrivateKey(): boolean {
 
-        return !!this.privateKey
+        return !!this.privateKey;
+
     }
+
 }

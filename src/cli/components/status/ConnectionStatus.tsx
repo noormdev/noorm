@@ -13,48 +13,46 @@
  * />
  * ```
  */
-import { Box, Text } from 'ink'
-import { Badge } from '@inkjs/ui'
+import { Box, Text } from 'ink';
+import { Badge } from '@inkjs/ui';
 
-import type { ReactElement } from 'react'
-
+import type { ReactElement } from 'react';
 
 /**
  * Connection status types.
  */
-export type ConnectionStatusType = 'disconnected' | 'connecting' | 'connected' | 'error'
-
+export type ConnectionStatusType = 'disconnected' | 'connecting' | 'connected' | 'error';
 
 /**
  * Props for ConnectionStatus component.
  */
 export interface ConnectionStatusProps {
-
     /** Current connection status */
-    status: ConnectionStatusType
+    status: ConnectionStatusType;
 
     /** Name of the connected configuration */
-    configName?: string | null
+    configName?: string | null;
 
     /** Database dialect */
-    dialect?: string | null
+    dialect?: string | null;
 
     /** Error message if status is 'error' */
-    error?: string | null
+    error?: string | null;
 
     /** Show compact version (badge only) */
-    compact?: boolean
+    compact?: boolean;
 }
 
-
 // Status configuration
-const statusConfig: Record<ConnectionStatusType, { label: string; color: 'green' | 'red' | 'yellow' | 'blue' }> = {
+const statusConfig: Record<
+    ConnectionStatusType,
+    { label: string; color: 'green' | 'red' | 'yellow' | 'blue' }
+> = {
     disconnected: { label: 'DISCONNECTED', color: 'yellow' },
     connecting: { label: 'CONNECTING', color: 'blue' },
     connected: { label: 'CONNECTED', color: 'green' },
     error: { label: 'ERROR', color: 'red' },
-}
-
+};
 
 /**
  * ConnectionStatus component.
@@ -69,18 +67,17 @@ export function ConnectionStatus({
     compact = false,
 }: ConnectionStatusProps): ReactElement {
 
-    const config = statusConfig[status]
+    const config = statusConfig[status];
 
     if (compact) {
 
         return (
             <Box gap={1}>
                 <Badge color={config.color}>{config.label}</Badge>
-                {configName && status === 'connected' && (
-                    <Text dimColor>({configName})</Text>
-                )}
+                {configName && status === 'connected' && <Text dimColor>({configName})</Text>}
             </Box>
-        )
+        );
+
     }
 
     return (
@@ -110,5 +107,6 @@ export function ConnectionStatus({
                 </Box>
             )}
         </Box>
-    )
+    );
+
 }

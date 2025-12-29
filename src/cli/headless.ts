@@ -16,21 +16,16 @@
  * CI=1 noorm change:ff
  * ```
  */
-import { attempt } from '@logosdx/utils'
+import { attempt } from '@logosdx/utils';
 
-import { observer, type NoormEvents, type NoormEventNames } from '../core/observer.js'
+import { observer, type NoormEvents, type NoormEventNames } from '../core/observer.js';
 
-import type { Route, RouteParams, CliFlags } from './types.js'
-
+import type { Route, RouteParams, CliFlags } from './types.js';
 
 /**
  * Headless command handler function signature.
  */
-export type HeadlessHandler = (
-    params: RouteParams,
-    flags: CliFlags
-) => Promise<number>
-
+export type HeadlessHandler = (params: RouteParams, flags: CliFlags) => Promise<number>;
 
 /**
  * Registry of headless command handlers.
@@ -39,13 +34,11 @@ export type HeadlessHandler = (
  * Routes without handlers will print an error.
  */
 const HANDLERS: Partial<Record<Route, HeadlessHandler>> = {
-
     // TODO: Add handlers as core modules are integrated
     // 'run/build': handleRunBuild,
     // 'change/ff': handleChangeFf,
     // etc.
-}
-
+};
 
 /**
  * Event logger for headless mode.
@@ -54,12 +47,13 @@ const HANDLERS: Partial<Record<Route, HeadlessHandler>> = {
  */
 export class HeadlessLogger {
 
-    #json: boolean
-    #cleanup: Array<() => void> = []
+    #json: boolean;
+    #cleanup: Array<() => void> = [];
 
     constructor(json: boolean) {
 
-        this.#json = json
+        this.#json = json;
+
     }
 
     /**
@@ -70,10 +64,12 @@ export class HeadlessLogger {
         // Subscribe to all events using pattern matching
         const cleanup = observer.on(/.*/, ({ event, data }) => {
 
-            this.#logEvent(event as NoormEventNames, data)
-        })
+            this.#logEvent(event as NoormEventNames, data);
 
-        this.#cleanup.push(cleanup)
+        });
+
+        this.#cleanup.push(cleanup);
+
     }
 
     /**
@@ -83,10 +79,12 @@ export class HeadlessLogger {
 
         for (const cleanup of this.#cleanup) {
 
-            cleanup()
+            cleanup();
+
         }
 
-        this.#cleanup = []
+        this.#cleanup = [];
+
     }
 
     /**
@@ -96,12 +94,15 @@ export class HeadlessLogger {
 
         if (this.#json) {
 
-            this.#logJson(event, data)
+            this.#logJson(event, data);
+
         }
         else {
 
-            this.#logHuman(event, data)
+            this.#logHuman(event, data);
+
         }
+
     }
 
     /**
@@ -112,10 +113,11 @@ export class HeadlessLogger {
         const output = {
             event,
             timestamp: new Date().toISOString(),
-            ...data
-        }
+            ...data,
+        };
 
-        console.log(JSON.stringify(output))
+        console.log(JSON.stringify(output));
+
     }
 
     /**
@@ -123,12 +125,14 @@ export class HeadlessLogger {
      */
     #logHuman<E extends NoormEventNames>(event: E, data: NoormEvents[E]): void {
 
-        const formatted = this.#formatEvent(event, data)
+        const formatted = this.#formatEvent(event, data);
 
         if (formatted) {
 
-            console.log(formatted)
+            console.log(formatted);
+
         }
+
     }
 
     /**
@@ -139,93 +143,120 @@ export class HeadlessLogger {
         // Type-safe event formatting
         switch (event) {
 
-            case 'build:start': {
+        case 'build:start': {
 
-                const d = data as NoormEvents['build:start']
-                return `Building schema... (${d.fileCount} files)`
-            }
+            const d = data as NoormEvents['build:start'];
 
-            case 'build:complete': {
+            return `Building schema... (${d.fileCount} files)`;
 
-                const d = data as NoormEvents['build:complete']
-                const status = d.status === 'success' ? '✓' : d.status === 'partial' ? '⚠' : '✗'
-                return `${status} Build ${d.status}: ${d.filesRun} run, ${d.filesSkipped} skipped, ${d.filesFailed} failed (${d.durationMs}ms)`
-            }
-
-            case 'file:before': {
-
-                const d = data as NoormEvents['file:before']
-                return `  Running ${d.filepath}...`
-            }
-
-            case 'file:after': {
-
-                const d = data as NoormEvents['file:after']
-                const status = d.status === 'success' ? '✓' : '✗'
-                return `  ${status} ${d.filepath} (${d.durationMs}ms)`
-            }
-
-            case 'file:skip': {
-
-                const d = data as NoormEvents['file:skip']
-                return `  ○ ${d.filepath} (${d.reason})`
-            }
-
-            case 'changeset:start': {
-
-                const d = data as NoormEvents['changeset:start']
-                return `${d.direction === 'change' ? 'Applying' : 'Reverting'} ${d.name}...`
-            }
-
-            case 'changeset:complete': {
-
-                const d = data as NoormEvents['changeset:complete']
-                const status = d.status === 'success' ? '✓' : '✗'
-                return `${status} ${d.name} ${d.direction === 'change' ? 'applied' : 'reverted'} (${d.durationMs}ms)`
-            }
-
-            case 'lock:acquired': {
-
-                const d = data as NoormEvents['lock:acquired']
-                return `🔒 Lock acquired (expires ${d.expiresAt.toISOString()})`
-            }
-
-            case 'lock:released': {
-
-                return `🔓 Lock released`
-            }
-
-            case 'lock:blocked': {
-
-                const d = data as NoormEvents['lock:blocked']
-                return `⚠ Lock held by ${d.holder} since ${d.heldSince.toISOString()}`
-            }
-
-            case 'error': {
-
-                const d = data as NoormEvents['error']
-                return `Error [${d.source}]: ${d.error.message}`
-            }
-
-            case 'connection:open': {
-
-                const d = data as NoormEvents['connection:open']
-                return `Connected to ${d.configName} (${d.dialect})`
-            }
-
-            case 'connection:error': {
-
-                const d = data as NoormEvents['connection:error']
-                return `Connection error: ${d.error}`
-            }
-
-            default:
-                // Don't log events we don't have human formatting for
-                return null
         }
-    }
-}
 
+        case 'build:complete': {
+
+            const d = data as NoormEvents['build:complete'];
+            const status = d.status === 'success' ? '✓' : d.status === 'partial' ? '⚠' : '✗';
+
+            return `${status} Build ${d.status}: ${d.filesRun} run, ${d.filesSkipped} skipped, ${d.filesFailed} failed (${d.durationMs}ms)`;
+
+        }
+
+        case 'file:before': {
+
+            const d = data as NoormEvents['file:before'];
+
+            return `  Running ${d.filepath}...`;
+
+        }
+
+        case 'file:after': {
+
+            const d = data as NoormEvents['file:after'];
+            const status = d.status === 'success' ? '✓' : '✗';
+
+            return `  ${status} ${d.filepath} (${d.durationMs}ms)`;
+
+        }
+
+        case 'file:skip': {
+
+            const d = data as NoormEvents['file:skip'];
+
+            return `  ○ ${d.filepath} (${d.reason})`;
+
+        }
+
+        case 'changeset:start': {
+
+            const d = data as NoormEvents['changeset:start'];
+
+            return `${d.direction === 'change' ? 'Applying' : 'Reverting'} ${d.name}...`;
+
+        }
+
+        case 'changeset:complete': {
+
+            const d = data as NoormEvents['changeset:complete'];
+            const status = d.status === 'success' ? '✓' : '✗';
+
+            return `${status} ${d.name} ${d.direction === 'change' ? 'applied' : 'reverted'} (${d.durationMs}ms)`;
+
+        }
+
+        case 'lock:acquired': {
+
+            const d = data as NoormEvents['lock:acquired'];
+
+            return `🔒 Lock acquired (expires ${d.expiresAt.toISOString()})`;
+
+        }
+
+        case 'lock:released': {
+
+            return '🔓 Lock released';
+
+        }
+
+        case 'lock:blocked': {
+
+            const d = data as NoormEvents['lock:blocked'];
+
+            return `⚠ Lock held by ${d.holder} since ${d.heldSince.toISOString()}`;
+
+        }
+
+        case 'error': {
+
+            const d = data as NoormEvents['error'];
+
+            return `Error [${d.source}]: ${d.error.message}`;
+
+        }
+
+        case 'connection:open': {
+
+            const d = data as NoormEvents['connection:open'];
+
+            return `Connected to ${d.configName} (${d.dialect})`;
+
+        }
+
+        case 'connection:error': {
+
+            const d = data as NoormEvents['connection:error'];
+
+            return `Connection error: ${d.error}`;
+
+        }
+
+        default:
+            // Don't log events we don't have human formatting for
+            return null;
+
+        }
+
+    }
+
+}
 
 /**
  * Detect if we should run in headless mode.
@@ -243,19 +274,22 @@ export function shouldRunHeadless(flags: CliFlags): boolean {
     // --tui flag overrides everything
     if (flags.tui) {
 
-        return false
+        return false;
+
     }
 
     // Explicit headless flag
     if (flags.headless) {
 
-        return true
+        return true;
+
     }
 
     // Environment variables
     if (process.env['NOORM_HEADLESS'] === 'true') {
 
-        return true
+        return true;
+
     }
 
     // CI environment detection
@@ -267,26 +301,29 @@ export function shouldRunHeadless(flags: CliFlags): boolean {
         'CIRCLECI',
         'TRAVIS',
         'JENKINS_URL',
-        'BUILDKITE'
-    ]
+        'BUILDKITE',
+    ];
 
     for (const varName of ciVars) {
 
         if (process.env[varName]) {
 
-            return true
+            return true;
+
         }
+
     }
 
     // No TTY
     if (!process.stdout.isTTY) {
 
-        return true
+        return true;
+
     }
 
-    return false
-}
+    return false;
 
+}
 
 /**
  * Run a command in headless mode.
@@ -296,52 +333,59 @@ export function shouldRunHeadless(flags: CliFlags): boolean {
 export async function runHeadless(
     route: Route,
     params: RouteParams,
-    flags: CliFlags
+    flags: CliFlags,
 ): Promise<number> {
 
-    const handler = HANDLERS[route]
+    const handler = HANDLERS[route];
 
     if (!handler) {
 
         const message = flags.json
             ? JSON.stringify({ error: 'unknown_command', route })
-            : `Error: Unknown command '${route}'`
+            : `Error: Unknown command '${route}'`;
 
-        console.error(message)
-        return 1
+        console.error(message);
+
+        return 1;
+
     }
 
     // Set up event logging
-    const logger = new HeadlessLogger(flags.json)
+    const logger = new HeadlessLogger(flags.json);
 
-    logger.start()
+    logger.start();
 
-    const [exitCode, error] = await attempt(() => handler(params, flags))
+    const [exitCode, error] = await attempt(() => handler(params, flags));
 
-    logger.stop()
+    logger.stop();
 
     if (error) {
 
-        const err = error instanceof Error ? error : new Error(String(error))
+        const err = error instanceof Error ? error : new Error(String(error));
 
         if (flags.json) {
 
-            console.error(JSON.stringify({
-                error: 'execution_failed',
-                message: err.message
-            }))
+            console.error(
+                JSON.stringify({
+                    error: 'execution_failed',
+                    message: err.message,
+                }),
+            );
+
         }
         else {
 
-            console.error(`Error: ${err.message}`)
+            console.error(`Error: ${err.message}`);
+
         }
 
-        return 1
+        return 1;
+
     }
 
-    return exitCode
-}
+    return exitCode;
 
+}
 
 /**
  * Register a headless handler for a route.
@@ -350,5 +394,6 @@ export async function runHeadless(
  */
 export function registerHeadlessHandler(route: Route, handler: HeadlessHandler): void {
 
-    HANDLERS[route] = handler
+    HANDLERS[route] = handler;
+
 }

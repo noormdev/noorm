@@ -4,14 +4,13 @@
  * Creates database connections with automatic retry for transient failures.
  * Uses lazy imports to avoid requiring all database drivers.
  */
-import { sql } from 'kysely'
-import { retry, attempt } from '@logosdx/utils'
-import type { ConnectionConfig, ConnectionResult, Dialect } from './types.js'
-import { observer } from '../observer.js'
+import { sql } from 'kysely';
+import { retry, attempt } from '@logosdx/utils';
+import type { ConnectionConfig, ConnectionResult, Dialect } from './types.js';
+import { observer } from '../observer.js';
+import { getConnectionManager } from './manager.js';
 
-
-type DialectFactory = (config: ConnectionConfig) => ConnectionResult | Promise<ConnectionResult>
-
+type DialectFactory = (config: ConnectionConfig) => ConnectionResult | Promise<ConnectionResult>;
 
 /**
  * Get the dialect factory function.
@@ -24,23 +23,24 @@ async function getDialectFactory(dialect: Dialect): Promise<DialectFactory> {
 
     switch (dialect) {
 
-        case 'sqlite':
-            return (await import('./dialects/sqlite.js')).createSqliteConnection
+    case 'sqlite':
+        return (await import('./dialects/sqlite.js')).createSqliteConnection;
 
-        case 'postgres':
-            return (await import('./dialects/postgres.js')).createPostgresConnection
+    case 'postgres':
+        return (await import('./dialects/postgres.js')).createPostgresConnection;
 
-        case 'mysql':
-            return (await import('./dialects/mysql.js')).createMysqlConnection
+    case 'mysql':
+        return (await import('./dialects/mysql.js')).createMysqlConnection;
 
-        case 'mssql':
-            return (await import('./dialects/mssql.js')).createMssqlConnection
+    case 'mssql':
+        return (await import('./dialects/mssql.js')).createMssqlConnection;
 
-        default:
-            throw new Error(`Unsupported dialect: ${dialect}`)
+    default:
+        throw new Error(`Unsupported dialect: ${dialect}`);
+
     }
-}
 
+}
 
 /**
  * Get the install command for a dialect's driver.
@@ -52,10 +52,11 @@ function getInstallCommand(dialect: Dialect): string {
         mysql: 'npm install mysql2',
         sqlite: 'npm install better-sqlite3',
         mssql: 'npm install tedious tarn',
-    }
-    return commands[dialect]
-}
+    };
 
+    return commands[dialect];
+
+}
 
 /**
  * Create a database connection with retry logic.
@@ -79,69 +80,99 @@ function getInstallCommand(dialect: Dialect): string {
  */
 export async function createConnection(
     config: ConnectionConfig,
-    configName: string = '__default__'
+    configName: string = '__default__',
 ): Promise<ConnectionResult> {
 
     const [conn, err] = await attempt(() =>
         retry(
             async () => {
 
-                const [createFn, importErr] = await attempt(() => getDialectFactory(config.dialect))
+                const [createFn, importErr] = await attempt(() =>
+                    getDialectFactory(config.dialect),
+                );
 
                 if (importErr) {
 
-                    const message = importErr.message
+                    const message = importErr.message;
                     if (message.includes('Cannot find module')) {
 
                         throw new Error(
                             `Missing driver for ${config.dialect}. Install it with:\n` +
-                            getInstallCommand(config.dialect)
-                        )
+                                getInstallCommand(config.dialect),
+                        );
+
                     }
-                    throw importErr
+                    throw importErr;
+
                 }
 
-                const conn = await createFn!(config)
+                const conn = await createFn!(config);
 
                 // Test connection with simple query
-                await sql`SELECT 1`.execute(conn.db)
+                await sql`SELECT 1`.execute(conn.db);
 
-                return conn
+                return conn;
+
             },
             {
                 retries: 3,
                 delay: 1000,
-                backoff: 2,  // 1s, 2s, 4s
+                backoff: 2, // 1s, 2s, 4s
                 jitterFactor: 0.1,
                 shouldRetry: (err) => {
 
-                    const msg = err.message.toLowerCase()
+                    const msg = err.message.toLowerCase();
 
                     // Don't retry auth failures
-                    if (msg.includes('authentication')) return false
-                    if (msg.includes('password')) return false
-                    if (msg.includes('missing driver')) return false
+                    if (msg.includes('authentication')) return false;
+                    if (msg.includes('password')) return false;
+                    if (msg.includes('missing driver')) return false;
 
                     // Retry connection issues
-                    return msg.includes('econnrefused') ||
-                           msg.includes('etimedout') ||
-                           msg.includes('too many connections') ||
-                           msg.includes('connection reset')
-                }
-            }
-        )
-    )
+                    return (
+                        msg.includes('econnrefused') ||
+                        msg.includes('etimedout') ||
+                        msg.includes('too many connections') ||
+                        msg.includes('connection reset')
+                    );
+
+                },
+            },
+        ),
+    );
 
     if (err) {
 
-        observer.emit('connection:error', { configName, error: err.message })
-        throw err
+        observer.emit('connection:error', { configName, error: err.message });
+        throw err;
+
     }
 
-    observer.emit('connection:open', { configName, dialect: config.dialect })
-    return conn!
-}
+    // Track connection with manager for auto-cleanup on shutdown
+    const manager = getConnectionManager();
+    const trackId = manager.track(conn!, configName);
 
+    // Wrap destroy to also untrack from manager
+    const originalDestroy = conn!.destroy;
+    const wrappedDestroy = async (): Promise<void> => {
+
+        manager.untrack(trackId);
+        await originalDestroy();
+        observer.emit('connection:close', { configName });
+
+    };
+
+    const trackedConn: ConnectionResult = {
+        db: conn!.db,
+        dialect: conn!.dialect,
+        destroy: wrappedDestroy,
+    };
+
+    observer.emit('connection:open', { configName, dialect: config.dialect });
+
+    return trackedConn;
+
+}
 
 /**
  * Default system databases by dialect.
@@ -149,11 +180,10 @@ export async function createConnection(
  */
 const SYSTEM_DATABASES: Record<Dialect, string | undefined> = {
     postgres: 'postgres',
-    mysql: undefined,  // MySQL allows connecting without a database
+    mysql: undefined, // MySQL allows connecting without a database
     sqlite: undefined, // SQLite creates the file on connect
     mssql: 'master',
-}
-
+};
 
 /**
  * Test a connection config without keeping the connection open.
@@ -180,29 +210,33 @@ const SYSTEM_DATABASES: Record<Dialect, string | undefined> = {
  */
 export async function testConnection(
     config: ConnectionConfig,
-    options: { testServerOnly?: boolean } = {}
+    options: { testServerOnly?: boolean } = {},
 ): Promise<{ ok: boolean; error?: string }> {
 
-    let testConfig = config
+    let testConfig = config;
 
     // If testing server only, swap to system database
     if (options.testServerOnly && config.dialect !== 'sqlite') {
 
-        const systemDb = SYSTEM_DATABASES[config.dialect]
+        const systemDb = SYSTEM_DATABASES[config.dialect];
 
         testConfig = {
             ...config,
             database: systemDb ?? config.database,
-        }
+        };
+
     }
 
-    const [conn, err] = await attempt(() => createConnection(testConfig, '__test__'))
+    const [conn, err] = await attempt(() => createConnection(testConfig, '__test__'));
 
     if (err) {
 
-        return { ok: false, error: err.message }
+        return { ok: false, error: err.message };
+
     }
 
-    await conn!.destroy()
-    return { ok: true }
+    await conn!.destroy();
+
+    return { ok: true };
+
 }

@@ -6,5 +6,5 @@ export {
     useOnceEvent,
     useEmit,
     useEventPromise,
-    type EventPromiseState
-} from './useObserver.js'
+    type EventPromiseState,
+} from './useObserver.js';

@@ -6,11 +6,10 @@
  * WHY: Centralized type definitions ensure consistency across
  * runner, tracker, and consumer code.
  */
-import type { Kysely } from 'kysely'
+import type { Kysely } from 'kysely';
 
-import type { NoormDatabase, ExecutionStatus } from '../shared/index.js'
-import type { Identity } from '../identity/index.js'
-
+import type { NoormDatabase, ExecutionStatus } from '../shared/index.js';
+import type { Identity } from '../identity/index.js';
 
 // ─────────────────────────────────────────────────────────────
 // Run Options
@@ -28,40 +27,37 @@ import type { Identity } from '../identity/index.js'
  * ```
  */
 export interface RunOptions {
-
     /** Re-run files even if unchanged. Default: false */
-    force?: boolean
+    force?: boolean;
 
     /** Number of files to run in parallel. Default: 1 (sequential for DDL safety) */
-    concurrency?: number
+    concurrency?: number;
 
     /** Stop execution on first failure. Default: true */
-    abortOnError?: boolean
+    abortOnError?: boolean;
 
     /** Report what would run without executing. Default: false */
-    dryRun?: boolean
+    dryRun?: boolean;
 
     /** Output rendered SQL without executing. Default: false */
-    preview?: boolean
+    preview?: boolean;
 
     /** Write preview output to file instead of stdout. Default: null */
-    output?: string | null
+    output?: string | null;
 }
-
 
 /**
  * Default run options.
  */
-export const DEFAULT_RUN_OPTIONS: Required<Omit<RunOptions, 'output'>> & { output: string | null } = {
-
-    force: false,
-    concurrency: 1,
-    abortOnError: true,
-    dryRun: false,
-    preview: false,
-    output: null,
-}
-
+export const DEFAULT_RUN_OPTIONS: Required<Omit<RunOptions, 'output'>> & { output: string | null } =
+    {
+        force: false,
+        concurrency: 1,
+        abortOnError: true,
+        dryRun: false,
+        preview: false,
+        output: null,
+    };
 
 // ─────────────────────────────────────────────────────────────
 // Run Context
@@ -84,29 +80,27 @@ export const DEFAULT_RUN_OPTIONS: Required<Omit<RunOptions, 'output'>> & { outpu
  * ```
  */
 export interface RunContext {
-
     /** Kysely database connection */
-    db: Kysely<NoormDatabase>
+    db: Kysely<NoormDatabase>;
 
     /** Name of the active config */
-    configName: string
+    configName: string;
 
     /** User identity for tracking */
-    identity: Identity
+    identity: Identity;
 
     /** Project root for template resolution */
-    projectRoot: string
+    projectRoot: string;
 
     /** Config object for template context */
-    config?: Record<string, unknown>
+    config?: Record<string, unknown>;
 
     /** Secrets for template context */
-    secrets?: Record<string, string>
+    secrets?: Record<string, string>;
 
     /** Global secrets for template context */
-    globalSecrets?: Record<string, string>
+    globalSecrets?: Record<string, string>;
 }
-
 
 // ─────────────────────────────────────────────────────────────
 // File Result
@@ -115,8 +109,7 @@ export interface RunContext {
 /**
  * Why a file was skipped.
  */
-export type SkipReason = 'unchanged' | 'already-run'
-
+export type SkipReason = 'unchanged' | 'already-run';
 
 /**
  * Result of executing a single file.
@@ -132,29 +125,27 @@ export type SkipReason = 'unchanged' | 'already-run'
  * ```
  */
 export interface FileResult {
-
     /** Absolute path to the file */
-    filepath: string
+    filepath: string;
 
     /** SHA-256 hash of file contents */
-    checksum: string
+    checksum: string;
 
     /** Execution status */
-    status: ExecutionStatus
+    status: ExecutionStatus;
 
     /** Why the file was skipped (only when status is 'skipped') */
-    skipReason?: SkipReason
+    skipReason?: SkipReason;
 
     /** Execution time in milliseconds */
-    durationMs?: number
+    durationMs?: number;
 
     /** Error message if failed */
-    error?: string
+    error?: string;
 
     /** Rendered SQL (only in preview mode) */
-    renderedSql?: string
+    renderedSql?: string;
 }
-
 
 // ─────────────────────────────────────────────────────────────
 // Build/Run Results
@@ -163,8 +154,7 @@ export interface FileResult {
 /**
  * Overall status of a batch operation.
  */
-export type BatchStatus = 'success' | 'failed' | 'partial'
-
+export type BatchStatus = 'success' | 'failed' | 'partial';
 
 /**
  * Result of a batch operation (build, dir).
@@ -182,29 +172,27 @@ export type BatchStatus = 'success' | 'failed' | 'partial'
  * ```
  */
 export interface BatchResult {
-
     /** Overall status */
-    status: BatchStatus
+    status: BatchStatus;
 
     /** Results for each file */
-    files: FileResult[]
+    files: FileResult[];
 
     /** Number of files executed */
-    filesRun: number
+    filesRun: number;
 
     /** Number of files skipped */
-    filesSkipped: number
+    filesSkipped: number;
 
     /** Number of files that failed */
-    filesFailed: number
+    filesFailed: number;
 
     /** Total execution time in milliseconds */
-    durationMs: number
+    durationMs: number;
 
     /** Changeset ID in tracking table */
-    changesetId?: number
+    changesetId?: number;
 }
-
 
 // ─────────────────────────────────────────────────────────────
 // Change Detection
@@ -213,27 +201,24 @@ export interface BatchResult {
 /**
  * Why a file needs to run.
  */
-export type RunReason = 'new' | 'changed' | 'failed' | 'force'
-
+export type RunReason = 'new' | 'changed' | 'failed' | 'force';
 
 /**
  * Result of checking if a file needs to run.
  */
 export interface NeedsRunResult {
-
     /** Whether the file needs to run */
-    needsRun: boolean
+    needsRun: boolean;
 
     /** Why it needs to run (if needsRun is true) */
-    reason?: RunReason
+    reason?: RunReason;
 
     /** Why it was skipped (if needsRun is false) */
-    skipReason?: SkipReason
+    skipReason?: SkipReason;
 
     /** Previous checksum if exists */
-    previousChecksum?: string
+    previousChecksum?: string;
 }
-
 
 // ─────────────────────────────────────────────────────────────
 // Tracker Types
@@ -243,44 +228,41 @@ export interface NeedsRunResult {
  * Data for creating a new operation record.
  */
 export interface CreateOperationData {
-
     /** Operation name (e.g., 'build:2024-01-15T10:30:00') */
-    name: string
+    name: string;
 
     /** 'build' or 'run' */
-    changeType: 'build' | 'run'
+    changeType: 'build' | 'run';
 
     /** Config name */
-    configName: string
+    configName: string;
 
     /** Identity string */
-    executedBy: string
+    executedBy: string;
 }
-
 
 /**
  * Data for recording a file execution.
  */
 export interface RecordExecutionData {
-
     /** Parent operation ID */
-    changesetId: number
+    changesetId: number;
 
     /** File path */
-    filepath: string
+    filepath: string;
 
     /** File checksum */
-    checksum: string
+    checksum: string;
 
     /** Execution status */
-    status: ExecutionStatus
+    status: ExecutionStatus;
 
     /** Skip reason if skipped */
-    skipReason?: string
+    skipReason?: string;
 
     /** Error message if failed */
-    errorMessage?: string
+    errorMessage?: string;
 
     /** Duration in milliseconds */
-    durationMs?: number
+    durationMs?: number;
 }

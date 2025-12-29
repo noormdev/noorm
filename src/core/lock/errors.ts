@@ -5,7 +5,6 @@
  * differently from other errors (e.g., prompt user to wait vs retry).
  */
 
-
 /**
  * Error when lock cannot be acquired.
  *
@@ -22,7 +21,7 @@
  */
 export class LockAcquireError extends Error {
 
-    override readonly name = 'LockAcquireError' as const
+    override readonly name = 'LockAcquireError' as const;
 
     constructor(
         public readonly configName: string,
@@ -32,16 +31,17 @@ export class LockAcquireError extends Error {
         public readonly reason?: string,
     ) {
 
-        const since = heldSince.toISOString()
-        const expires = expiresAt.toISOString()
-        const reasonSuffix = reason ? ` (${reason})` : ''
+        const since = heldSince.toISOString();
+        const expires = expiresAt.toISOString();
+        const reasonSuffix = reason ? ` (${reason})` : '';
 
         super(
-            `Lock for '${configName}' held by ${holder} since ${since}, expires ${expires}${reasonSuffix}`
-        )
-    }
-}
+            `Lock for '${configName}' held by ${holder} since ${since}, expires ${expires}${reasonSuffix}`,
+        );
 
+    }
+
+}
 
 /**
  * Error when lock expires during operation.
@@ -61,7 +61,7 @@ export class LockAcquireError extends Error {
  */
 export class LockExpiredError extends Error {
 
-    override readonly name = 'LockExpiredError' as const
+    override readonly name = 'LockExpiredError' as const;
 
     constructor(
         public readonly configName: string,
@@ -69,12 +69,11 @@ export class LockExpiredError extends Error {
         public readonly expiredAt: Date,
     ) {
 
-        super(
-            `Lock for '${configName}' expired at ${expiredAt.toISOString()}`
-        )
-    }
-}
+        super(`Lock for '${configName}' expired at ${expiredAt.toISOString()}`);
 
+    }
+
+}
 
 /**
  * Error when trying to release a non-existent lock.
@@ -92,19 +91,18 @@ export class LockExpiredError extends Error {
  */
 export class LockNotFoundError extends Error {
 
-    override readonly name = 'LockNotFoundError' as const
+    override readonly name = 'LockNotFoundError' as const;
 
     constructor(
         public readonly configName: string,
         public readonly identity: string,
     ) {
 
-        super(
-            `No lock found for '${configName}' held by ${identity}`
-        )
-    }
-}
+        super(`No lock found for '${configName}' held by ${identity}`);
 
+    }
+
+}
 
 /**
  * Error when trying to release a lock held by someone else.
@@ -119,7 +117,7 @@ export class LockNotFoundError extends Error {
  */
 export class LockOwnershipError extends Error {
 
-    override readonly name = 'LockOwnershipError' as const
+    override readonly name = 'LockOwnershipError' as const;
 
     constructor(
         public readonly configName: string,
@@ -128,7 +126,9 @@ export class LockOwnershipError extends Error {
     ) {
 
         super(
-            `Cannot release lock for '${configName}': held by ${actualHolder}, not ${requestedBy}`
-        )
+            `Cannot release lock for '${configName}': held by ${actualHolder}, not ${requestedBy}`,
+        );
+
     }
+
 }

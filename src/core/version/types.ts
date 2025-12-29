@@ -9,8 +9,7 @@
  * - Only run migrations for what actually changed
  * - Gradually rollout changes across layers
  */
-import type { Kysely } from 'kysely'
-
+import type { Kysely } from 'kysely';
 
 // ─────────────────────────────────────────────────────────────
 // Version Numbers
@@ -23,7 +22,6 @@ import type { Kysely } from 'kysely'
  * These are independent of the package version.
  */
 export const CURRENT_VERSIONS = Object.freeze({
-
     /** Database tracking tables schema version */
     schema: 1,
 
@@ -32,14 +30,12 @@ export const CURRENT_VERSIONS = Object.freeze({
 
     /** Settings file (settings.yml) schema version */
     settings: 1,
-})
-
+});
 
 /**
  * Version layers tracked by the version module.
  */
-export type VersionLayer = 'schema' | 'state' | 'settings'
-
+export type VersionLayer = 'schema' | 'state' | 'settings';
 
 // ─────────────────────────────────────────────────────────────
 // Schema Migrations (Kysely)
@@ -69,20 +65,18 @@ export type VersionLayer = 'schema' | 'state' | 'settings'
  * ```
  */
 export interface SchemaMigration {
-
     /** Migration version number (1, 2, 3, ...) */
-    version: number
+    version: number;
 
     /** Human-readable description */
-    description: string
+    description: string;
 
     /** Apply the migration */
-    up(db: Kysely<unknown>): Promise<void>
+    up(db: Kysely<unknown>): Promise<void>;
 
     /** Rollback the migration */
-    down(db: Kysely<unknown>): Promise<void>
+    down(db: Kysely<unknown>): Promise<void>;
 }
-
 
 // ─────────────────────────────────────────────────────────────
 // State Migrations (JSON)
@@ -113,20 +107,18 @@ export interface SchemaMigration {
  * ```
  */
 export interface StateMigration {
-
     /** Migration version number (1, 2, 3, ...) */
-    version: number
+    version: number;
 
     /** Human-readable description */
-    description: string
+    description: string;
 
     /** Apply the migration (transform state forward) */
-    up(state: Record<string, unknown>): Record<string, unknown>
+    up(state: Record<string, unknown>): Record<string, unknown>;
 
     /** Rollback the migration (transform state backward) */
-    down(state: Record<string, unknown>): Record<string, unknown>
+    down(state: Record<string, unknown>): Record<string, unknown>;
 }
-
 
 // ─────────────────────────────────────────────────────────────
 // Settings Migrations (YAML)
@@ -160,20 +152,18 @@ export interface StateMigration {
  * ```
  */
 export interface SettingsMigration {
-
     /** Migration version number (1, 2, 3, ...) */
-    version: number
+    version: number;
 
     /** Human-readable description */
-    description: string
+    description: string;
 
     /** Apply the migration (transform settings forward) */
-    up(settings: Record<string, unknown>): Record<string, unknown>
+    up(settings: Record<string, unknown>): Record<string, unknown>;
 
     /** Rollback the migration (transform settings backward) */
-    down(settings: Record<string, unknown>): Record<string, unknown>
+    down(settings: Record<string, unknown>): Record<string, unknown>;
 }
-
 
 // ─────────────────────────────────────────────────────────────
 // Version Status
@@ -183,36 +173,32 @@ export interface SettingsMigration {
  * Version status for a single layer.
  */
 export interface LayerVersionStatus {
-
     /** Current version in storage */
-    current: number
+    current: number;
 
     /** Expected version (what CLI needs) */
-    expected: number
+    expected: number;
 
     /** Whether migration is needed */
-    needsMigration: boolean
+    needsMigration: boolean;
 
     /** Whether storage is newer than CLI (error case) */
-    isNewer: boolean
+    isNewer: boolean;
 }
-
 
 /**
  * Combined version status for all layers.
  */
 export interface VersionStatus {
-
     /** Database schema version status */
-    schema: LayerVersionStatus
+    schema: LayerVersionStatus;
 
     /** State file version status */
-    state: LayerVersionStatus
+    state: LayerVersionStatus;
 
     /** Settings file version status */
-    settings: LayerVersionStatus
+    settings: LayerVersionStatus;
 }
-
 
 // ─────────────────────────────────────────────────────────────
 // Errors
@@ -229,17 +215,18 @@ export class VersionMismatchError extends Error {
     constructor(
         public readonly layer: VersionLayer,
         public readonly current: number,
-        public readonly expected: number
+        public readonly expected: number,
     ) {
 
         super(
             `${layer} version ${current} is newer than CLI supports (${expected}). ` +
-            `Please upgrade noorm.`
-        )
-        this.name = 'VersionMismatchError'
-    }
-}
+                'Please upgrade noorm.',
+        );
+        this.name = 'VersionMismatchError';
 
+    }
+
+}
 
 /**
  * Error thrown when a migration fails.
@@ -249,10 +236,12 @@ export class MigrationError extends Error {
     constructor(
         public readonly layer: VersionLayer,
         public readonly version: number,
-        public override readonly cause: Error
+        public override readonly cause: Error,
     ) {
 
-        super(`${layer} migration v${version} failed: ${cause.message}`)
-        this.name = 'MigrationError'
+        super(`${layer} migration v${version} failed: ${cause.message}`);
+        this.name = 'MigrationError';
+
     }
+
 }

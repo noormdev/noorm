@@ -4,19 +4,24 @@
  * Loads, validates, and provides access to project settings from .noorm/settings.yml.
  * Settings are version controlled and shared across the team (unlike encrypted state).
  */
-import { readFile, writeFile, mkdir, access } from 'node:fs/promises'
-import { join, dirname } from 'node:path'
-import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
-import { attempt } from '@logosdx/utils'
+import { readFile, writeFile, mkdir, access } from 'node:fs/promises';
+import { join } from 'node:path';
+import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
+import { attempt } from '@logosdx/utils';
 
-import { observer } from '../observer.js'
-import { parseSettings, SettingsValidationError } from './schema.js'
-import { DEFAULT_SETTINGS, SETTINGS_FILE_PATH, SETTINGS_DIR_PATH, createDefaultSettings } from './defaults.js'
-import { evaluateRules, getEffectiveBuildPaths } from './rules.js'
+import { observer } from '../observer.js';
+import { parseSettings } from './schema.js';
+import {
+    DEFAULT_SETTINGS,
+    SETTINGS_DIR_PATH,
+    createDefaultSettings,
+} from './defaults.js';
+import { evaluateRules, getEffectiveBuildPaths } from './rules.js';
 
 import type {
     Settings,
     Stage,
+    StageSecret,
     Rule,
     BuildConfig,
     PathConfig,
@@ -24,21 +29,18 @@ import type {
     LoggingConfig,
     RulesEvaluationResult,
     ConfigForRuleMatch,
-} from './types.js'
-
+} from './types.js';
 
 /**
  * Options for SettingsManager construction.
  */
 export interface SettingsManagerOptions {
-
     /** Override settings directory (default: .noorm) */
-    settingsDir?: string
+    settingsDir?: string;
 
     /** Override settings file name (default: settings.yml) */
-    settingsFile?: string
+    settingsFile?: string;
 }
-
 
 /**
  * Manages project settings from .noorm/settings.yml.
@@ -56,17 +58,18 @@ export interface SettingsManagerOptions {
  */
 export class SettingsManager {
 
-    #projectRoot: string
-    #settingsDir: string
-    #settingsFile: string
-    #settings: Settings | null = null
-    #loaded = false
+    #projectRoot: string;
+    #settingsDir: string;
+    #settingsFile: string;
+    #settings: Settings | null = null;
+    #loaded = false;
 
     constructor(projectRoot: string, options: SettingsManagerOptions = {}) {
 
-        this.#projectRoot = projectRoot
-        this.#settingsDir = options.settingsDir ?? SETTINGS_DIR_PATH
-        this.#settingsFile = options.settingsFile ?? 'settings.yml'
+        this.#projectRoot = projectRoot;
+        this.#settingsDir = options.settingsDir ?? SETTINGS_DIR_PATH;
+        this.#settingsFile = options.settingsFile ?? 'settings.yml';
+
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -78,7 +81,8 @@ export class SettingsManager {
      */
     get settingsDirPath(): string {
 
-        return join(this.#projectRoot, this.#settingsDir)
+        return join(this.#projectRoot, this.#settingsDir);
+
     }
 
     /**
@@ -86,7 +90,8 @@ export class SettingsManager {
      */
     get settingsFilePath(): string {
 
-        return join(this.settingsDirPath, this.#settingsFile)
+        return join(this.settingsDirPath, this.#settingsFile);
+
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -98,9 +103,10 @@ export class SettingsManager {
      */
     async exists(): Promise<boolean> {
 
-        const [_, err] = await attempt(() => access(this.settingsFilePath))
+        const [_, err] = await attempt(() => access(this.settingsFilePath));
 
-        return !err
+        return !err;
+
     }
 
     /**
@@ -123,66 +129,69 @@ export class SettingsManager {
      */
     async load(): Promise<Settings> {
 
-        const fileExists = await this.exists()
+        const fileExists = await this.exists();
 
         if (!fileExists) {
 
-            this.#settings = createDefaultSettings()
-            this.#loaded = true
+            this.#settings = createDefaultSettings();
+            this.#loaded = true;
 
             observer.emit('settings:loaded', {
                 path: this.settingsFilePath,
                 settings: this.#settings,
                 fromFile: false,
-            })
+            });
 
-            return this.#settings
+            return this.#settings;
+
         }
 
         // Read file
-        const [content, readErr] = await attempt(() =>
-            readFile(this.settingsFilePath, 'utf-8')
-        )
+        const [content, readErr] = await attempt(() => readFile(this.settingsFilePath, 'utf-8'));
 
         if (readErr) {
 
-            throw new Error(`Failed to read settings file: ${readErr.message}`)
+            throw new Error(`Failed to read settings file: ${readErr.message}`);
+
         }
 
         // Parse YAML
-        const [parsed, yamlErr] = await attempt(() => parseYaml(content))
+        const [parsed, yamlErr] = await attempt(() => parseYaml(content));
 
         if (yamlErr) {
 
-            throw new Error(`Invalid YAML in settings file: ${yamlErr.message}`)
+            throw new Error(`Invalid YAML in settings file: ${yamlErr.message}`);
+
         }
 
         // Handle empty file
         if (parsed === null || parsed === undefined) {
 
-            this.#settings = createDefaultSettings()
-            this.#loaded = true
+            this.#settings = createDefaultSettings();
+            this.#loaded = true;
 
             observer.emit('settings:loaded', {
                 path: this.settingsFilePath,
                 settings: this.#settings,
                 fromFile: true,
-            })
+            });
 
-            return this.#settings
+            return this.#settings;
+
         }
 
         // Validate and parse with defaults
-        this.#settings = parseSettings(parsed)
-        this.#loaded = true
+        this.#settings = parseSettings(parsed);
+        this.#loaded = true;
 
         observer.emit('settings:loaded', {
             path: this.settingsFilePath,
             settings: this.#settings,
             fromFile: true,
-        })
+        });
 
-        return this.#settings
+        return this.#settings;
+
     }
 
     /**
@@ -199,35 +208,34 @@ export class SettingsManager {
      */
     async save(): Promise<void> {
 
-        this.#assertLoaded()
+        this.#assertLoaded();
 
         // Ensure directory exists
-        const [_, mkdirErr] = await attempt(() =>
-            mkdir(this.settingsDirPath, { recursive: true })
-        )
+        const [_, mkdirErr] = await attempt(() => mkdir(this.settingsDirPath, { recursive: true }));
 
         if (mkdirErr) {
 
-            throw new Error(`Failed to create settings directory: ${mkdirErr.message}`)
+            throw new Error(`Failed to create settings directory: ${mkdirErr.message}`);
+
         }
 
         // Stringify to YAML
         const yaml = stringifyYaml(this.#settings, {
             indent: 4,
             lineWidth: 120,
-        })
+        });
 
         // Write file
-        const [__, writeErr] = await attempt(() =>
-            writeFile(this.settingsFilePath, yaml, 'utf-8')
-        )
+        const [__, writeErr] = await attempt(() => writeFile(this.settingsFilePath, yaml, 'utf-8'));
 
         if (writeErr) {
 
-            throw new Error(`Failed to write settings file: ${writeErr.message}`)
+            throw new Error(`Failed to write settings file: ${writeErr.message}`);
+
         }
 
-        observer.emit('settings:saved', { path: this.settingsFilePath })
+        observer.emit('settings:saved', { path: this.settingsFilePath });
+
     }
 
     /**
@@ -238,22 +246,24 @@ export class SettingsManager {
      */
     async init(force = false): Promise<void> {
 
-        const fileExists = await this.exists()
+        const fileExists = await this.exists();
 
         if (fileExists && !force) {
 
-            throw new Error('Settings file already exists. Use force=true to overwrite.')
+            throw new Error('Settings file already exists. Use force=true to overwrite.');
+
         }
 
-        this.#settings = createDefaultSettings()
-        this.#loaded = true
+        this.#settings = createDefaultSettings();
+        this.#loaded = true;
 
-        await this.save()
+        await this.save();
 
         observer.emit('settings:initialized', {
             path: this.settingsFilePath,
             force,
-        })
+        });
+
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -265,7 +275,8 @@ export class SettingsManager {
      */
     get isLoaded(): boolean {
 
-        return this.#loaded
+        return this.#loaded;
+
     }
 
     /**
@@ -275,9 +286,10 @@ export class SettingsManager {
      */
     get settings(): Settings {
 
-        this.#assertLoaded()
+        this.#assertLoaded();
 
-        return this.#settings!
+        return this.#settings!;
+
     }
 
     /**
@@ -285,9 +297,10 @@ export class SettingsManager {
      */
     getBuild(): BuildConfig {
 
-        this.#assertLoaded()
+        this.#assertLoaded();
 
-        return this.#settings!.build ?? DEFAULT_SETTINGS.build!
+        return this.#settings!.build ?? DEFAULT_SETTINGS.build!;
+
     }
 
     /**
@@ -295,9 +308,10 @@ export class SettingsManager {
      */
     getPaths(): PathConfig {
 
-        this.#assertLoaded()
+        this.#assertLoaded();
 
-        return this.#settings!.paths ?? DEFAULT_SETTINGS.paths!
+        return this.#settings!.paths ?? DEFAULT_SETTINGS.paths!;
+
     }
 
     /**
@@ -305,9 +319,10 @@ export class SettingsManager {
      */
     getRules(): Rule[] {
 
-        this.#assertLoaded()
+        this.#assertLoaded();
 
-        return this.#settings!.rules ?? []
+        return this.#settings!.rules ?? [];
+
     }
 
     /**
@@ -315,9 +330,10 @@ export class SettingsManager {
      */
     getStages(): Record<string, Stage> {
 
-        this.#assertLoaded()
+        this.#assertLoaded();
 
-        return this.#settings!.stages ?? {}
+        return this.#settings!.stages ?? {};
+
     }
 
     /**
@@ -325,7 +341,8 @@ export class SettingsManager {
      */
     getStage(name: string): Stage | undefined {
 
-        return this.getStages()[name]
+        return this.getStages()[name];
+
     }
 
     /**
@@ -333,7 +350,8 @@ export class SettingsManager {
      */
     hasStage(name: string): boolean {
 
-        return name in this.getStages()
+        return name in this.getStages();
+
     }
 
     /**
@@ -341,9 +359,10 @@ export class SettingsManager {
      */
     getStrict(): StrictConfig {
 
-        this.#assertLoaded()
+        this.#assertLoaded();
 
-        return this.#settings!.strict ?? DEFAULT_SETTINGS.strict!
+        return this.#settings!.strict ?? DEFAULT_SETTINGS.strict!;
+
     }
 
     /**
@@ -351,9 +370,10 @@ export class SettingsManager {
      */
     getLogging(): LoggingConfig {
 
-        this.#assertLoaded()
+        this.#assertLoaded();
 
-        return this.#settings!.logging ?? DEFAULT_SETTINGS.logging!
+        return this.#settings!.logging ?? DEFAULT_SETTINGS.logging!;
+
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -371,11 +391,12 @@ export class SettingsManager {
      */
     evaluateRules(config: ConfigForRuleMatch): RulesEvaluationResult {
 
-        this.#assertLoaded()
+        this.#assertLoaded();
 
-        const rules = this.getRules()
+        const rules = this.getRules();
 
-        return evaluateRules(rules, config)
+        return evaluateRules(rules, config);
+
     }
 
     /**
@@ -397,17 +418,18 @@ export class SettingsManager {
      */
     getEffectiveBuildPaths(config: ConfigForRuleMatch): { include: string[]; exclude: string[] } {
 
-        this.#assertLoaded()
+        this.#assertLoaded();
 
-        const build = this.getBuild()
-        const rules = this.getRules()
+        const build = this.getBuild();
+        const rules = this.getRules();
 
         return getEffectiveBuildPaths(
             build.include ?? ['schema'],
             build.exclude ?? [],
             rules,
-            config
-        )
+            config,
+        );
+
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -419,32 +441,59 @@ export class SettingsManager {
      */
     isStageLockedByName(stageName: string): boolean {
 
-        const stage = this.getStage(stageName)
+        const stage = this.getStage(stageName);
 
-        return stage?.locked === true
+        return stage?.locked === true;
+
     }
 
     /**
      * Get required secrets for a stage.
      *
+     * Merges universal secrets (from settings.secrets) with stage-specific secrets.
+     * Stage-specific secrets override universal secrets with the same key.
      * Returns only secrets marked as required (default: true).
      */
     getRequiredSecrets(stageName: string): { key: string; type: string; description?: string }[] {
 
-        const stage = this.getStage(stageName)
+        this.#assertLoaded();
 
-        if (!stage?.secrets) {
+        // Get universal secrets
+        const universalSecrets = this.#settings!.secrets ?? [];
 
-            return []
+        // Get stage-specific secrets
+        const stage = this.getStage(stageName);
+        const stageSecrets = stage?.secrets ?? [];
+
+        // Merge with deduplication (stage-specific wins)
+        const secretMap = new Map<string, StageSecret>();
+
+        for (const secret of universalSecrets) {
+
+            if (secret.required !== false) {
+
+                secretMap.set(secret.key, secret);
+
+            }
+
         }
 
-        return stage.secrets
-            .filter((s) => s.required !== false)
-            .map((s) => ({
-                key: s.key,
-                type: s.type,
-                description: s.description,
-            }))
+        for (const secret of stageSecrets) {
+
+            if (secret.required !== false) {
+
+                secretMap.set(secret.key, secret);
+
+            }
+
+        }
+
+        return Array.from(secretMap.values()).map((s) => ({
+            key: s.key,
+            type: s.type,
+            description: s.description,
+        }));
+
     }
 
     /**
@@ -454,9 +503,10 @@ export class SettingsManager {
      */
     getStageDefaults(stageName: string): NonNullable<Stage['defaults']> {
 
-        const stage = this.getStage(stageName)
+        const stage = this.getStage(stageName);
 
-        return stage?.defaults ?? {}
+        return stage?.defaults ?? {};
+
     }
 
     /**
@@ -467,9 +517,10 @@ export class SettingsManager {
      */
     stageEnforcesProtected(stageName: string): boolean {
 
-        const defaults = this.getStageDefaults(stageName)
+        const defaults = this.getStageDefaults(stageName);
 
-        return defaults.protected === true
+        return defaults.protected === true;
+
     }
 
     /**
@@ -480,9 +531,10 @@ export class SettingsManager {
      */
     stageEnforcesIsTest(stageName: string): boolean {
 
-        const defaults = this.getStageDefaults(stageName)
+        const defaults = this.getStageDefaults(stageName);
 
-        return defaults.isTest === true
+        return defaults.isTest === true;
+
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -494,7 +546,8 @@ export class SettingsManager {
      */
     isStrictModeEnabled(): boolean {
 
-        return this.getStrict().enabled === true
+        return this.getStrict().enabled === true;
+
     }
 
     /**
@@ -502,14 +555,16 @@ export class SettingsManager {
      */
     getRequiredStages(): string[] {
 
-        const strict = this.getStrict()
+        const strict = this.getStrict();
 
         if (!strict.enabled) {
 
-            return []
+            return [];
+
         }
 
-        return strict.stages ?? []
+        return strict.stages ?? [];
+
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -530,18 +585,20 @@ export class SettingsManager {
      */
     async setStage(name: string, stage: Stage): Promise<void> {
 
-        this.#assertLoaded()
+        this.#assertLoaded();
 
         if (!this.#settings!.stages) {
 
-            this.#settings!.stages = {}
+            this.#settings!.stages = {};
+
         }
 
-        this.#settings!.stages[name] = stage
+        this.#settings!.stages[name] = stage;
 
-        await this.save()
+        await this.save();
 
-        observer.emit('settings:stage-set', { name, stage })
+        observer.emit('settings:stage-set', { name, stage });
+
     }
 
     /**
@@ -549,20 +606,22 @@ export class SettingsManager {
      */
     async removeStage(name: string): Promise<boolean> {
 
-        this.#assertLoaded()
+        this.#assertLoaded();
 
         if (!this.#settings!.stages || !(name in this.#settings!.stages)) {
 
-            return false
+            return false;
+
         }
 
-        delete this.#settings!.stages[name]
+        delete this.#settings!.stages[name];
 
-        await this.save()
+        await this.save();
 
-        observer.emit('settings:stage-removed', { name })
+        observer.emit('settings:stage-removed', { name });
 
-        return true
+        return true;
+
     }
 
     /**
@@ -570,18 +629,20 @@ export class SettingsManager {
      */
     async addRule(rule: Rule): Promise<void> {
 
-        this.#assertLoaded()
+        this.#assertLoaded();
 
         if (!this.#settings!.rules) {
 
-            this.#settings!.rules = []
+            this.#settings!.rules = [];
+
         }
 
-        this.#settings!.rules.push(rule)
+        this.#settings!.rules.push(rule);
 
-        await this.save()
+        await this.save();
 
-        observer.emit('settings:rule-added', { rule })
+        observer.emit('settings:rule-added', { rule });
+
     }
 
     /**
@@ -589,20 +650,22 @@ export class SettingsManager {
      */
     async removeRule(index: number): Promise<boolean> {
 
-        this.#assertLoaded()
+        this.#assertLoaded();
 
         if (!this.#settings!.rules || index < 0 || index >= this.#settings!.rules.length) {
 
-            return false
+            return false;
+
         }
 
-        const [removed] = this.#settings!.rules.splice(index, 1)
+        const [removed] = this.#settings!.rules.splice(index, 1);
 
-        await this.save()
+        await this.save();
 
-        observer.emit('settings:rule-removed', { index, rule: removed })
+        observer.emit('settings:rule-removed', { index, rule: removed! });
 
-        return true
+        return true;
+
     }
 
     /**
@@ -610,13 +673,14 @@ export class SettingsManager {
      */
     async setBuild(build: BuildConfig): Promise<void> {
 
-        this.#assertLoaded()
+        this.#assertLoaded();
 
-        this.#settings!.build = build
+        this.#settings!.build = build;
 
-        await this.save()
+        await this.save();
 
-        observer.emit('settings:build-updated', { build })
+        observer.emit('settings:build-updated', { build });
+
     }
 
     /**
@@ -624,13 +688,14 @@ export class SettingsManager {
      */
     async setPaths(paths: PathConfig): Promise<void> {
 
-        this.#assertLoaded()
+        this.#assertLoaded();
 
-        this.#settings!.paths = paths
+        this.#settings!.paths = paths;
 
-        await this.save()
+        await this.save();
 
-        observer.emit('settings:paths-updated', { paths })
+        observer.emit('settings:paths-updated', { paths });
+
     }
 
     /**
@@ -638,13 +703,14 @@ export class SettingsManager {
      */
     async setStrict(strict: StrictConfig): Promise<void> {
 
-        this.#assertLoaded()
+        this.#assertLoaded();
 
-        this.#settings!.strict = strict
+        this.#settings!.strict = strict;
 
-        await this.save()
+        await this.save();
 
-        observer.emit('settings:strict-updated', { strict })
+        observer.emit('settings:strict-updated', { strict });
+
     }
 
     /**
@@ -652,13 +718,231 @@ export class SettingsManager {
      */
     async setLogging(logging: LoggingConfig): Promise<void> {
 
-        this.#assertLoaded()
+        this.#assertLoaded();
 
-        this.#settings!.logging = logging
+        this.#settings!.logging = logging;
 
-        await this.save()
+        await this.save();
 
-        observer.emit('settings:logging-updated', { logging })
+        observer.emit('settings:logging-updated', { logging });
+
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Universal Secrets
+    // ─────────────────────────────────────────────────────────────
+
+    /**
+     * Get universal secrets (apply to all stages).
+     */
+    getUniversalSecrets(): StageSecret[] {
+
+        this.#assertLoaded();
+
+        return this.#settings!.secrets ?? [];
+
+    }
+
+    /**
+     * Add a universal secret definition.
+     */
+    async addUniversalSecret(secret: StageSecret): Promise<void> {
+
+        this.#assertLoaded();
+
+        if (!this.#settings!.secrets) {
+
+            this.#settings!.secrets = [];
+
+        }
+
+        // Check for duplicate key
+        const existing = this.#settings!.secrets.find((s) => s.key === secret.key);
+
+        if (existing) {
+
+            throw new Error(`Universal secret "${secret.key}" already exists`);
+
+        }
+
+        this.#settings!.secrets.push(secret);
+
+        await this.save();
+
+        observer.emit('settings:secret-added', { secret, scope: 'universal' });
+
+    }
+
+    /**
+     * Update a universal secret definition.
+     */
+    async updateUniversalSecret(key: string, secret: StageSecret): Promise<void> {
+
+        this.#assertLoaded();
+
+        if (!this.#settings!.secrets) {
+
+            throw new Error(`Universal secret "${key}" not found`);
+
+        }
+
+        const index = this.#settings!.secrets.findIndex((s) => s.key === key);
+
+        if (index === -1) {
+
+            throw new Error(`Universal secret "${key}" not found`);
+
+        }
+
+        this.#settings!.secrets[index] = secret;
+
+        await this.save();
+
+        observer.emit('settings:secret-updated', { key, secret, scope: 'universal' });
+
+    }
+
+    /**
+     * Remove a universal secret definition.
+     */
+    async removeUniversalSecret(key: string): Promise<boolean> {
+
+        this.#assertLoaded();
+
+        if (!this.#settings!.secrets) {
+
+            return false;
+
+        }
+
+        const index = this.#settings!.secrets.findIndex((s) => s.key === key);
+
+        if (index === -1) {
+
+            return false;
+
+        }
+
+        this.#settings!.secrets.splice(index, 1);
+
+        await this.save();
+
+        observer.emit('settings:secret-removed', { key, scope: 'universal' });
+
+        return true;
+
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Stage Secrets
+    // ─────────────────────────────────────────────────────────────
+
+    /**
+     * Add a secret definition to a stage.
+     */
+    async addStageSecret(stageName: string, secret: StageSecret): Promise<void> {
+
+        this.#assertLoaded();
+
+        const stage = this.getStage(stageName);
+
+        if (!stage) {
+
+            throw new Error(`Stage "${stageName}" not found`);
+
+        }
+
+        if (!stage.secrets) {
+
+            stage.secrets = [];
+
+        }
+
+        // Check for duplicate key
+        const existing = stage.secrets.find((s) => s.key === secret.key);
+
+        if (existing) {
+
+            throw new Error(`Secret "${secret.key}" already exists in stage "${stageName}"`);
+
+        }
+
+        stage.secrets.push(secret);
+
+        await this.setStage(stageName, stage);
+
+        observer.emit('settings:secret-added', { secret, scope: 'stage', stageName });
+
+    }
+
+    /**
+     * Update a secret definition in a stage.
+     */
+    async updateStageSecret(stageName: string, key: string, secret: StageSecret): Promise<void> {
+
+        this.#assertLoaded();
+
+        const stage = this.getStage(stageName);
+
+        if (!stage) {
+
+            throw new Error(`Stage "${stageName}" not found`);
+
+        }
+
+        if (!stage.secrets) {
+
+            throw new Error(`Secret "${key}" not found in stage "${stageName}"`);
+
+        }
+
+        const index = stage.secrets.findIndex((s) => s.key === key);
+
+        if (index === -1) {
+
+            throw new Error(`Secret "${key}" not found in stage "${stageName}"`);
+
+        }
+
+        stage.secrets[index] = secret;
+
+        await this.setStage(stageName, stage);
+
+        observer.emit('settings:secret-updated', { key, secret, scope: 'stage', stageName });
+
+    }
+
+    /**
+     * Remove a secret definition from a stage.
+     */
+    async removeStageSecret(stageName: string, key: string): Promise<boolean> {
+
+        this.#assertLoaded();
+
+        const stage = this.getStage(stageName);
+
+        if (!stage || !stage.secrets) {
+
+            return false;
+
+        }
+
+        const index = stage.secrets.findIndex((s) => s.key === key);
+
+        if (index === -1) {
+
+            return false;
+
+        }
+
+        stage.secrets.splice(index, 1);
+
+        await this.setStage(stageName, stage);
+
+        observer.emit('settings:secret-removed', { key, scope: 'stage', stageName });
+
+        return true;
+
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -672,18 +956,19 @@ export class SettingsManager {
 
         if (!this.#loaded || !this.#settings) {
 
-            throw new Error('SettingsManager not loaded. Call load() first.')
-        }
-    }
-}
+            throw new Error('SettingsManager not loaded. Call load() first.');
 
+        }
+
+    }
+
+}
 
 // ─────────────────────────────────────────────────────────────
 // Singleton / Reset Pattern
 // ─────────────────────────────────────────────────────────────
 
-let settingsManagerInstance: SettingsManager | null = null
-
+let settingsManagerInstance: SettingsManager | null = null;
 
 /**
  * Get or create a SettingsManager instance for a project.
@@ -696,17 +981,18 @@ let settingsManagerInstance: SettingsManager | null = null
  */
 export function getSettingsManager(
     projectRoot: string,
-    options?: SettingsManagerOptions
+    options?: SettingsManagerOptions,
 ): SettingsManager {
 
     if (!settingsManagerInstance) {
 
-        settingsManagerInstance = new SettingsManager(projectRoot, options)
+        settingsManagerInstance = new SettingsManager(projectRoot, options);
+
     }
 
-    return settingsManagerInstance
-}
+    return settingsManagerInstance;
 
+}
 
 /**
  * Reset the singleton instance.
@@ -715,5 +1001,6 @@ export function getSettingsManager(
  */
 export function resetSettingsManager(): void {
 
-    settingsManagerInstance = null
+    settingsManagerInstance = null;
+
 }

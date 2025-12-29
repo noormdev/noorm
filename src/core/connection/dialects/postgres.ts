@@ -4,9 +4,8 @@
  * Uses the 'pg' package for PostgreSQL connections.
  * Install with: npm install pg @types/pg
  */
-import { Kysely, PostgresDialect } from 'kysely'
-import type { ConnectionConfig, ConnectionResult } from '../types.js'
-
+import { Kysely, PostgresDialect } from 'kysely';
+import type { ConnectionConfig, ConnectionResult } from '../types.js';
 
 /**
  * Create a PostgreSQL connection.
@@ -23,11 +22,13 @@ import type { ConnectionConfig, ConnectionResult } from '../types.js'
  * })
  * ```
  */
-export async function createPostgresConnection(config: ConnectionConfig): Promise<ConnectionResult> {
+export async function createPostgresConnection(
+    config: ConnectionConfig,
+): Promise<ConnectionResult> {
 
     // Dynamic import to avoid compile-time dependency
-    const pg = await import('pg')
-    const Pool = pg.default?.Pool ?? pg.Pool
+    const pg = await import('pg');
+    const Pool = pg.default?.Pool ?? pg.Pool;
 
     const pool = new Pool({
         host: config.host ?? 'localhost',
@@ -38,15 +39,16 @@ export async function createPostgresConnection(config: ConnectionConfig): Promis
         min: config.pool?.min ?? 0,
         max: config.pool?.max ?? 10,
         ssl: config.ssl,
-    })
+    });
 
     const db = new Kysely<unknown>({
         dialect: new PostgresDialect({ pool }),
-    })
+    });
 
     return {
         db,
         dialect: 'postgres',
         destroy: () => db.destroy(),
-    }
+    };
+
 }

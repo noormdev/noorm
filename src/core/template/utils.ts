@@ -13,9 +13,8 @@
  * toContextKey('API_KEYS.json')     // → 'apiKeys'
  * ```
  */
-import v from 'voca'
-import path from 'node:path'
-
+import v from 'voca';
+import path from 'node:path';
 
 /**
  * Convert a filename to a camelCase context key.
@@ -37,13 +36,13 @@ import path from 'node:path'
 export function toContextKey(filename: string): string {
 
     // Get basename without extension
-    const ext = path.extname(filename)
-    const base = path.basename(filename, ext)
+    const ext = path.extname(filename);
+    const base = path.basename(filename, ext);
 
     // Convert to camelCase
-    return v.camelCase(base)
-}
+    return v.camelCase(base);
 
+}
 
 /**
  * SQL-escape a string value.
@@ -62,9 +61,9 @@ export function toContextKey(filename: string): string {
  */
 export function sqlEscape(value: string): string {
 
-    return value.replace(/'/g, "''")
-}
+    return value.replace(/'/g, "''");
 
+}
 
 /**
  * SQL-escape and wrap in single quotes.
@@ -86,12 +85,13 @@ export function sqlQuote(value: string | number | boolean | null): string {
 
     if (value === null) {
 
-        return 'NULL'
+        return 'NULL';
+
     }
 
-    return `'${sqlEscape(String(value))}'`
-}
+    return `'${sqlEscape(String(value))}'`;
 
+}
 
 /**
  * Generate a UUID v4.
@@ -107,9 +107,9 @@ export function sqlQuote(value: string | number | boolean | null): string {
  */
 export function generateUuid(): string {
 
-    return crypto.randomUUID()
-}
+    return crypto.randomUUID();
 
+}
 
 /**
  * Get current ISO timestamp.
@@ -123,5 +123,6 @@ export function generateUuid(): string {
  */
 export function isoNow(): string {
 
-    return new Date().toISOString()
+    return new Date().toISOString();
+
 }

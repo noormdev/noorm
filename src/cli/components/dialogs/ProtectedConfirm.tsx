@@ -14,40 +14,37 @@
  * />
  * ```
  */
-import { useState, useCallback, useRef } from 'react'
-import { Box, Text, useInput } from 'ink'
-import { TextInput } from '@inkjs/ui'
+import { useState, useCallback, useRef } from 'react';
+import { Box, Text, useInput } from 'ink';
+import { TextInput } from '@inkjs/ui';
 
-import type { ReactElement } from 'react'
+import type { ReactElement } from 'react';
 
-import { useFocusScope } from '../../focus.js'
-import { Panel } from '../layout/Panel.js'
-
+import { useFocusScope } from '../../focus.js';
+import { Panel } from '../layout/Panel.js';
 
 /**
  * Props for ProtectedConfirm component.
  */
 export interface ProtectedConfirmProps {
-
     /** Name of the protected configuration */
-    configName: string
+    configName: string;
 
     /** Action being performed (for display) */
-    action: string
+    action: string;
 
     /** Callback when user confirms with correct phrase */
-    onConfirm: () => void
+    onConfirm: () => void;
 
     /** Callback when user cancels */
-    onCancel: () => void
+    onCancel: () => void;
 
     /** Focus scope label */
-    focusLabel?: string
+    focusLabel?: string;
 
     /** External focus control - if provided, skips useFocusScope */
-    isFocused?: boolean
+    isFocused?: boolean;
 }
-
 
 /**
  * ProtectedConfirm component.
@@ -64,77 +61,92 @@ export function ProtectedConfirm({
     isFocused: externalFocused,
 }: ProtectedConfirmProps): ReactElement {
 
-    const hasExternalFocus = externalFocused !== undefined
+    const hasExternalFocus = externalFocused !== undefined;
     const internalFocus = useFocusScope({
         label: focusLabel,
         skip: hasExternalFocus,
-    })
-    const isFocused = hasExternalFocus ? externalFocused : internalFocus.isFocused
+    });
+    const isFocused = hasExternalFocus ? externalFocused : internalFocus.isFocused;
 
-    const confirmPhrase = `yes-${configName}`
-    const [input, setInput] = useState('')
-    const [error, setError] = useState<string | null>(null)
+    const confirmPhrase = `yes-${configName}`;
+    const [input, setInput] = useState('');
+    const [error, setError] = useState<string | null>(null);
 
     // Stable onChange handler for TextInput (prevents infinite loop)
     const handleChangeRef = useRef((value: string) => {
 
-        setInput(value)
-        setError(null)
-    })
-    const handleChange = handleChangeRef.current
+        setInput(value);
+        setError(null);
+
+    });
+    const handleChange = handleChangeRef.current;
 
     // Handle submit
     const handleSubmit = useCallback(() => {
 
         if (input === confirmPhrase) {
 
-            onConfirm()
+            onConfirm();
+
         }
         else {
 
-            setError(`Type "${confirmPhrase}" to confirm`)
+            setError(`Type "${confirmPhrase}" to confirm`);
+
         }
-    }, [input, confirmPhrase, onConfirm])
+
+    }, [input, confirmPhrase, onConfirm]);
 
     // Keyboard handling
     useInput((_, key) => {
 
-        if (!isFocused) return
+        if (!isFocused) return;
 
         if (key.escape) {
 
             if (input) {
 
-                setInput('')
-                setError(null)
+                setInput('');
+                setError(null);
+
             }
             else {
 
-                onCancel()
+                onCancel();
+
             }
+
         }
 
         if (key.return) {
 
-            handleSubmit()
+            handleSubmit();
+
         }
-    })
+
+    });
 
     return (
-        <Panel
-            title="Protected Configuration"
-            borderColor="red"
-            paddingX={2}
-            paddingY={1}
-        >
+        <Panel title="Protected Configuration" borderColor="red" paddingX={2} paddingY={1}>
             <Box flexDirection="column" gap={1}>
                 <Text>
-                    You are about to <Text color="red" bold>{action}</Text> the protected
-                    configuration <Text color="yellow" bold>{configName}</Text>.
+                    You are about to{' '}
+                    <Text color="red" bold>
+                        {action}
+                    </Text>{' '}
+                    the protected configuration{' '}
+                    <Text color="yellow" bold>
+                        {configName}
+                    </Text>
+                    .
                 </Text>
 
                 <Text>
-                    Type <Text color="cyan" bold>{confirmPhrase}</Text> to confirm:
+                    Type{' '}
+                    <Text color="cyan" bold>
+                        {confirmPhrase}
+                    </Text>{' '}
+                    to confirm:
                 </Text>
 
                 <Box marginTop={1}>
@@ -146,9 +158,7 @@ export function ProtectedConfirm({
                     />
                 </Box>
 
-                {error && (
-                    <Text color="red">{error}</Text>
-                )}
+                {error && <Text color="red">{error}</Text>}
 
                 <Box marginTop={1} gap={2}>
                     <Text dimColor>[Enter] Confirm</Text>
@@ -156,5 +166,6 @@ export function ProtectedConfirm({
                 </Box>
             </Box>
         </Panel>
-    )
+    );
+
 }

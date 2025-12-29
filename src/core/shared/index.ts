@@ -6,9 +6,7 @@
  */
 
 // Tables
-export {
-    NOORM_TABLES,
-} from './tables.js'
+export { NOORM_TABLES } from './tables.js';
 
 export type {
     NoormTableName,
@@ -43,4 +41,4 @@ export type {
     NoormIdentity,
     NewNoormIdentity,
     NoormIdentityUpdate,
-} from './tables.js'
+} from './tables.js';

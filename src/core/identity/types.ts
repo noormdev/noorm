@@ -6,17 +6,14 @@
  * 2. Cryptographic Identity - Full keypair system for config sharing and team discovery
  */
 
-
 // =============================================================================
 // Audit Identity (for tracking tables)
 // =============================================================================
 
-
 /**
  * Source of audit identity resolution.
  */
-export type IdentitySource = 'state' | 'config' | 'env' | 'git' | 'system'
-
+export type IdentitySource = 'state' | 'config' | 'env' | 'git' | 'system';
 
 /**
  * Resolved audit identity.
@@ -33,38 +30,33 @@ export type IdentitySource = 'state' | 'config' | 'env' | 'git' | 'system'
  * ```
  */
 export interface Identity {
-
     /** User's name */
-    name: string
+    name: string;
 
     /** User's email (optional) */
-    email?: string
+    email?: string;
 
     /** How the identity was resolved */
-    source: IdentitySource
+    source: IdentitySource;
 }
-
 
 /**
  * Options for audit identity resolution.
  */
 export interface IdentityOptions {
-
     /** Override from config */
-    configIdentity?: string
+    configIdentity?: string;
 
     /** Skip git lookup (faster, for CI) */
-    skipGit?: boolean
+    skipGit?: boolean;
 
     /** Cryptographic identity from state (highest priority) */
-    cryptoIdentity?: CryptoIdentity | null
+    cryptoIdentity?: CryptoIdentity | null;
 }
-
 
 // =============================================================================
 // Cryptographic Identity (for config sharing and team discovery)
 // =============================================================================
-
 
 /**
  * Cryptographic identity for secure config sharing.
@@ -86,63 +78,56 @@ export interface IdentityOptions {
  * ```
  */
 export interface CryptoIdentity {
-
     /** SHA-256(email + '\0' + name + '\0' + machine + '\0' + os) */
-    identityHash: string
+    identityHash: string;
 
     /** User's display name */
-    name: string
+    name: string;
 
     /** User's email address */
-    email: string
+    email: string;
 
     /** X25519 public key (hex encoded) */
-    publicKey: string
+    publicKey: string;
 
     /** Machine hostname */
-    machine: string
+    machine: string;
 
     /** OS platform and version (e.g., "darwin 24.5.0") */
-    os: string
+    os: string;
 
     /** ISO timestamp of when identity was created */
-    createdAt: string
+    createdAt: string;
 }
-
 
 /**
  * Input for creating a new cryptographic identity.
  */
 export interface CryptoIdentityInput {
-
     /** User's display name */
-    name: string
+    name: string;
 
     /** User's email address */
-    email: string
+    email: string;
 
     /** Machine hostname (defaults to os.hostname()) */
-    machine?: string
+    machine?: string;
 }
-
 
 /**
  * Generated keypair for cryptographic identity.
  */
 export interface KeyPair {
-
     /** X25519 public key (hex encoded) */
-    publicKey: string
+    publicKey: string;
 
     /** X25519 private key (hex encoded) */
-    privateKey: string
+    privateKey: string;
 }
-
 
 // =============================================================================
 // Known Users (discovered from database sync)
 // =============================================================================
-
 
 /**
  * Cached identity discovered from database sync.
@@ -164,37 +149,34 @@ export interface KeyPair {
  * ```
  */
 export interface KnownUser {
-
     /** SHA-256(email + '\0' + name + '\0' + machine + '\0' + os) */
-    identityHash: string
+    identityHash: string;
 
     /** User's email */
-    email: string
+    email: string;
 
     /** User's display name */
-    name: string
+    name: string;
 
     /** X25519 public key (hex encoded) */
-    publicKey: string
+    publicKey: string;
 
     /** Machine hostname */
-    machine: string
+    machine: string;
 
     /** OS platform and version */
-    os: string
+    os: string;
 
     /** ISO timestamp of last database activity */
-    lastSeen: string
+    lastSeen: string;
 
     /** Config name where this user was discovered */
-    source: string
+    source: string;
 }
-
 
 // =============================================================================
 // Encrypted Sharing (for config export/import)
 // =============================================================================
-
 
 /**
  * Encrypted payload for config sharing.
@@ -202,29 +184,27 @@ export interface KnownUser {
  * Uses X25519 + AES-256-GCM (ephemeral keypair pattern).
  */
 export interface SharedConfigPayload {
-
     /** Payload format version */
-    version: number
+    version: number;
 
     /** Sender's email */
-    sender: string
+    sender: string;
 
     /** Recipient's email */
-    recipient: string
+    recipient: string;
 
     /** Ephemeral X25519 public key (hex) */
-    ephemeralPubKey: string
+    ephemeralPubKey: string;
 
     /** Initialization vector (hex) */
-    iv: string
+    iv: string;
 
     /** Authentication tag (hex) */
-    authTag: string
+    authTag: string;
 
     /** Encrypted config data (hex) */
-    ciphertext: string
+    ciphertext: string;
 }
-
 
 /**
  * Decrypted config data from sharing.
@@ -232,34 +212,33 @@ export interface SharedConfigPayload {
  * NOTE: user/password are NOT included - recipient provides their own.
  */
 export interface ExportedConfig {
-
     /** Config name */
-    name: string
+    name: string;
 
     /** Database dialect */
-    dialect: string
+    dialect: string;
 
     /** Connection details (excluding user/password) */
     connection: {
-        host?: string
-        port?: number
-        database: string
-        ssl?: boolean
-        pool?: { min?: number; max?: number }
-    }
+        host?: string;
+        port?: number;
+        database: string;
+        ssl?: boolean;
+        pool?: { min?: number; max?: number };
+    };
 
     /** File paths */
     paths: {
-        schema: string
-        changesets: string
-    }
+        schema: string;
+        changesets: string;
+    };
 
     /** Test database flag */
-    isTest: boolean
+    isTest: boolean;
 
     /** Protection flag */
-    protected: boolean
+    protected: boolean;
 
     /** Config-scoped secrets */
-    secrets: Record<string, string>
+    secrets: Record<string, string>;
 }

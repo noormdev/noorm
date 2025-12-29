@@ -35,6 +35,38 @@ Guard all `useInput` handlers with `isFocused` check. Ink's useInput is subscrib
 Skip arrow keys in parent when child handles them (e.g., select fields). Otherwise parent intercepts before child can respond.
 
 
+## Screen Focus Ownership
+
+When a screen's primary content is a Form or other focusable component, do NOT create a competing focus scope at the screen level. Let the child component own focus.
+
+**Bad - competing scopes:**
+```tsx
+function MyScreen(): ReactElement {
+    const { isFocused } = useFocusScope('MyScreen')  // ❌ Competes with Form
+    return <Form focusLabel="MyForm" ... />
+}
+```
+
+**Good - Form owns focus:**
+```tsx
+function MyScreen(): ReactElement {
+    // No useFocusScope here - Form handles it
+    return <Form focusLabel="MyForm" ... />
+}
+```
+
+For screens with multiple states (error state vs form), use separate components with their own focus:
+
+```tsx
+function MyScreen(): ReactElement {
+    if (!activeConfig) {
+        return <ErrorState />  // Has its own useFocusScope
+    }
+    return <Form ... />  // Form has its own focusLabel
+}
+```
+
+
 ## Observer Hooks
 
 Use hooks from `src/cli/hooks/useObserver.ts` for event subscriptions. These handle cleanup automatically.

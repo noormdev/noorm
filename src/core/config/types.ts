@@ -5,8 +5,7 @@
  * schema/changeset files. They support multiple environments,
  * environment variable overrides, and protected configs for production safety.
  */
-import type { ConnectionConfig, Dialect } from '../connection/types.js'
-
+import type { ConnectionConfig, Dialect } from '../connection/types.js';
 
 /**
  * Full configuration object.
@@ -34,53 +33,47 @@ import type { ConnectionConfig, Dialect } from '../connection/types.js'
  * ```
  */
 export interface Config {
+    name: string;
+    type: 'local' | 'remote';
+    isTest: boolean;
+    protected: boolean;
 
-    name: string
-    type: 'local' | 'remote'
-    isTest: boolean
-    protected: boolean
-
-    connection: ConnectionConfig
+    connection: ConnectionConfig;
 
     paths: {
-        schema: string      // Relative to project root
-        changesets: string  // Relative to project root
-    }
+        schema: string; // Relative to project root
+        changesets: string; // Relative to project root
+    };
 
     // Optional identity override
-    identity?: string
+    identity?: string;
 }
-
 
 /**
  * Partial config for updates or environment overrides.
  */
 export interface ConfigInput {
-
-    name?: string
-    type?: 'local' | 'remote'
-    isTest?: boolean
-    protected?: boolean
-    connection?: Partial<ConnectionConfig>
-    paths?: Partial<Config['paths']>
-    identity?: string
+    name?: string;
+    type?: 'local' | 'remote';
+    isTest?: boolean;
+    protected?: boolean;
+    connection?: Partial<ConnectionConfig>;
+    paths?: Partial<Config['paths']>;
+    identity?: string;
 }
-
 
 /**
  * Summary for config listings.
  */
 export interface ConfigSummary {
-
-    name: string
-    type: 'local' | 'remote'
-    isTest: boolean
-    protected: boolean
-    isActive: boolean
-    dialect: Dialect
-    database: string
+    name: string;
+    type: 'local' | 'remote';
+    isTest: boolean;
+    protected: boolean;
+    isActive: boolean;
+    dialect: Dialect;
+    database: string;
 }
-
 
 // ─────────────────────────────────────────────────────────────
 // Stage Types (for settings.yml integration)
@@ -89,20 +82,17 @@ export interface ConfigSummary {
 /**
  * Secret type hints for UI display.
  */
-export type SecretType = 'string' | 'password' | 'api_key' | 'connection_string'
-
+export type SecretType = 'string' | 'password' | 'api_key' | 'connection_string';
 
 /**
  * Required secret definition from a stage.
  */
 export interface StageSecret {
-
-    key: string
-    type: SecretType
-    description?: string
-    required?: boolean  // Default: true
+    key: string;
+    type: SecretType;
+    description?: string;
+    required?: boolean; // Default: true
 }
-
 
 /**
  * Stage definition from settings.yml.
@@ -124,25 +114,22 @@ export interface StageSecret {
  * ```
  */
 export interface Stage {
-
-    description?: string
-    locked?: boolean  // Cannot delete config if true
-    defaults?: ConfigInput
-    secrets?: StageSecret[]
+    description?: string;
+    locked?: boolean; // Cannot delete config if true
+    defaults?: ConfigInput;
+    secrets?: StageSecret[];
 }
-
 
 /**
  * Result of checking config completeness.
  */
 export interface CompletenessCheck {
-
     /** Whether the config is complete and usable */
-    complete: boolean
+    complete: boolean;
 
     /** Missing required secrets */
-    missingSecrets: string[]
+    missingSecrets: string[];
 
     /** Stage constraint violations */
-    violations: string[]
+    violations: string[];
 }

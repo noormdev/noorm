@@ -4,9 +4,8 @@
  * The State object is the in-memory representation of noorm's persistent data.
  * It holds identity, configs, secrets, and known users.
  */
-import type { Config } from '../config/types.js'
-import type { CryptoIdentity, KnownUser } from '../identity/types.js'
-
+import type { Config } from '../config/types.js';
+import type { CryptoIdentity, KnownUser } from '../identity/types.js';
 
 /**
  * The root state object stored in .noorm/state.enc
@@ -15,44 +14,40 @@ import type { CryptoIdentity, KnownUser } from '../identity/types.js'
  * This enables migrations when the state schema changes between versions.
  */
 export interface State {
-
     /** Package version that last saved this state */
-    version: string
+    version: string;
 
     /** User's cryptographic identity (null if not set up yet) */
-    identity: CryptoIdentity | null
+    identity: CryptoIdentity | null;
 
     /** Known users discovered from database syncs (identityHash -> KnownUser) */
-    knownUsers: Record<string, KnownUser>
+    knownUsers: Record<string, KnownUser>;
 
     /** Currently selected config name */
-    activeConfig: string | null
+    activeConfig: string | null;
 
     /** All database configs (name -> Config) */
-    configs: Record<string, Config>
+    configs: Record<string, Config>;
 
     /** Config-scoped secrets (configName -> key -> value) */
-    secrets: Record<string, Record<string, string>>
+    secrets: Record<string, Record<string, string>>;
 
     /** App-level secrets (key -> value) */
-    globalSecrets: Record<string, string>
+    globalSecrets: Record<string, string>;
 }
-
 
 /**
  * Summary for config listings (used by StateManager).
  */
 export interface ConfigSummary {
-
-    name: string
-    type: 'local' | 'remote'
-    isTest: boolean
-    protected: boolean
-    isActive: boolean
-    dialect: string
-    database: string
+    name: string;
+    type: 'local' | 'remote';
+    isTest: boolean;
+    protected: boolean;
+    isActive: boolean;
+    dialect: string;
+    database: string;
 }
-
 
 /**
  * Encrypted payload structure stored on disk.
@@ -60,20 +55,18 @@ export interface ConfigSummary {
  * Uses AES-256-GCM with key derived from the user's private key via HKDF.
  */
 export interface EncryptedPayload {
-
     /** Encryption algorithm (always AES-256-GCM) */
-    algorithm: 'aes-256-gcm'
+    algorithm: 'aes-256-gcm';
 
     /** Initialization vector (base64) */
-    iv: string
+    iv: string;
 
     /** Authentication tag (base64) */
-    authTag: string
+    authTag: string;
 
     /** Encrypted state (base64) */
-    ciphertext: string
+    ciphertext: string;
 }
-
 
 /**
  * Create an empty state with the given version.
@@ -96,5 +89,6 @@ export function createEmptyState(version: string): State {
         configs: {},
         secrets: {},
         globalSecrets: {},
-    }
+    };
+
 }

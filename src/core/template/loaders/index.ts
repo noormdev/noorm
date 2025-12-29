@@ -13,15 +13,14 @@
  * }
  * ```
  */
-import path from 'node:path'
+import path from 'node:path';
 
-import type { Loader, LoaderRegistry } from '../types.js'
-import { loadJson5 } from './json5.js'
-import { loadYaml } from './yaml.js'
-import { loadCsv } from './csv.js'
-import { loadJs } from './js.js'
-import { loadSql } from './sql.js'
-
+import type { Loader, LoaderRegistry } from '../types.js';
+import { loadJson5 } from './json5.js';
+import { loadYaml } from './yaml.js';
+import { loadCsv } from './csv.js';
+import { loadJs } from './js.js';
+import { loadSql } from './sql.js';
 
 /**
  * Registry of loaders by file extension.
@@ -36,8 +35,7 @@ const loaders: LoaderRegistry = {
     '.mjs': loadJs,
     '.ts': loadJs,
     '.sql': loadSql,
-}
-
+};
 
 /**
  * Check if a loader exists for the given extension.
@@ -47,9 +45,9 @@ const loaders: LoaderRegistry = {
  */
 export function hasLoader(ext: string): boolean {
 
-    return ext in loaders
-}
+    return ext in loaders;
 
+}
 
 /**
  * Get the loader function for a file extension.
@@ -59,9 +57,9 @@ export function hasLoader(ext: string): boolean {
  */
 export function getLoader(ext: string): Loader | undefined {
 
-    return loaders[ext]
-}
+    return loaders[ext];
 
+}
 
 /**
  * Load a data file using the appropriate loader.
@@ -81,17 +79,18 @@ export function getLoader(ext: string): Loader | undefined {
  */
 export async function loadDataFile(filepath: string): Promise<unknown> {
 
-    const ext = path.extname(filepath).toLowerCase()
-    const loader = getLoader(ext)
+    const ext = path.extname(filepath).toLowerCase();
+    const loader = getLoader(ext);
 
     if (!loader) {
 
-        throw new Error(`No loader registered for extension: ${ext}`)
+        throw new Error(`No loader registered for extension: ${ext}`);
+
     }
 
-    return loader(filepath)
-}
+    return loader(filepath);
 
+}
 
 /**
  * Get all supported data file extensions.
@@ -100,13 +99,13 @@ export async function loadDataFile(filepath: string): Promise<unknown> {
  */
 export function getSupportedExtensions(): string[] {
 
-    return Object.keys(loaders)
+    return Object.keys(loaders);
+
 }
 
-
 // Re-export individual loaders for direct use
-export { loadJson5 } from './json5.js'
-export { loadYaml } from './yaml.js'
-export { loadCsv } from './csv.js'
-export { loadJs } from './js.js'
-export { loadSql } from './sql.js'
+export { loadJson5 } from './json5.js';
+export { loadYaml } from './yaml.js';
+export { loadCsv } from './csv.js';
+export { loadJs } from './js.js';
+export { loadSql } from './sql.js';

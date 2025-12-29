@@ -10,195 +10,228 @@
  * noorm config export dev     # Same thing
  * ```
  */
-import { useState, useCallback, useMemo } from 'react'
-import { Box, Text, useInput } from 'ink'
-import { TextInput } from '@inkjs/ui'
-import { writeFileSync } from 'fs'
-import { join } from 'path'
-import { attempt } from '@logosdx/utils'
+import { useState, useCallback, useMemo } from 'react';
+import { Box, Text, useInput } from 'ink';
+import { TextInput } from '@inkjs/ui';
+import { writeFileSync } from 'fs';
+import { join } from 'path';
+import { attempt } from '@logosdx/utils';
 
-import type { ReactElement } from 'react'
-import type { ScreenProps } from '../../types.js'
+import type { ReactElement } from 'react';
+import type { ScreenProps } from '../../types.js';
 
-import { useRouter } from '../../router.js'
-import { useFocusScope } from '../../focus.js'
-import { useAppContext } from '../../app-context.js'
-import { Panel, Spinner, StatusMessage, SelectList, type SelectListItem } from '../../components/index.js'
-import { encryptForRecipient } from '../../../core/identity/crypto.js'
-import type { KnownUser } from '../../../core/identity/types.js'
-
+import { useRouter } from '../../router.js';
+import { useFocusScope } from '../../focus.js';
+import { useAppContext } from '../../app-context.js';
+import {
+    Panel,
+    Spinner,
+    StatusMessage,
+    SelectList,
+    type SelectListItem,
+} from '../../components/index.js';
+import { encryptForRecipient } from '../../../core/identity/crypto.js';
+import type { KnownUser } from '../../../core/identity/types.js';
 
 /**
  * Export steps.
  */
 type ExportStep =
-    | 'recipient-email'    // Enter recipient email
-    | 'select-identity'    // Pick identity if multiple match
-    | 'exporting'          // Encrypting and writing file
-    | 'complete'           // Success
-    | 'error'              // Error occurred
-
+    | 'recipient-email' // Enter recipient email
+    | 'select-identity' // Pick identity if multiple match
+    | 'exporting' // Encrypting and writing file
+    | 'complete' // Success
+    | 'error'; // Error occurred
 
 /**
  * ConfigExportScreen component.
  */
 export function ConfigExportScreen({ params }: ScreenProps): ReactElement {
 
-    const { navigate, back } = useRouter()
-    const { isFocused } = useFocusScope('ConfigExport')
-    const { stateManager, identity } = useAppContext()
+    const { navigate: _navigate, back } = useRouter();
+    const { isFocused } = useFocusScope('ConfigExport');
+    const { stateManager, identity } = useAppContext();
 
-    const configName = params.name
+    const configName = params.name;
 
-    const [step, setStep] = useState<ExportStep>('recipient-email')
-    const [email, setEmail] = useState('')
-    const [matchingUsers, setMatchingUsers] = useState<KnownUser[]>([])
-    const [selectedUser, setSelectedUser] = useState<KnownUser | null>(null)
-    const [outputFile, setOutputFile] = useState('')
-    const [error, setError] = useState<string | null>(null)
+    const [step, setStep] = useState<ExportStep>('recipient-email');
+    const [email, setEmail] = useState('');
+    const [matchingUsers, setMatchingUsers] = useState<KnownUser[]>([]);
+    const [selectedUser, setSelectedUser] = useState<KnownUser | null>(null);
+    const [outputFile, setOutputFile] = useState('');
+    const [error, setError] = useState<string | null>(null);
 
     // Get the config
     const config = useMemo(() => {
 
-        if (!stateManager || !configName) return null
-        return stateManager.getConfig(configName)
-    }, [stateManager, configName])
+        if (!stateManager || !configName) return null;
+
+        return stateManager.getConfig(configName);
+
+    }, [stateManager, configName]);
 
     // Handle email submission
     const handleEmailSubmit = useCallback(() => {
 
-        if (!stateManager || !email) return
+        if (!stateManager || !email) return;
 
         // Find known users with this email
-        const users = stateManager.findKnownUsersByEmail(email)
+        const users = stateManager.findKnownUsersByEmail(email);
 
         if (users.length === 0) {
 
-            setError(`No known users with email "${email}". Import their identity first.`)
-            setStep('error')
-            return
+            setError(`No known users with email "${email}". Import their identity first.`);
+            setStep('error');
+
+            return;
+
         }
 
         if (users.length === 1) {
 
-            setSelectedUser(users[0]!)
-            handleExport(users[0]!)
+            setSelectedUser(users[0]!);
+            handleExport(users[0]!);
+
         }
         else {
 
-            setMatchingUsers(users)
-            setStep('select-identity')
+            setMatchingUsers(users);
+            setStep('select-identity');
+
         }
-    }, [stateManager, email])
+
+    }, [stateManager, email]);
 
     // Handle identity selection
     const handleSelectIdentity = useCallback((item: SelectListItem<KnownUser>) => {
 
-        setSelectedUser(item.value)
-        handleExport(item.value)
-    }, [])
+        setSelectedUser(item.value);
+        handleExport(item.value);
+
+    }, []);
 
     // Handle export
-    const handleExport = useCallback(async (recipient: KnownUser) => {
+    const handleExport = useCallback(
+        async (recipient: KnownUser) => {
 
-        if (!stateManager || !config || !identity || !configName) {
+            if (!stateManager || !config || !identity || !configName) {
 
-            setError('Missing required data')
-            setStep('error')
-            return
-        }
+                setError('Missing required data');
+                setStep('error');
 
-        setStep('exporting')
+                return;
 
-        const [_, err] = await attempt(async () => {
-
-            // Build export data (omit user/password)
-            const exportData = {
-                config: {
-                    name: config.name,
-                    type: config.type,
-                    isTest: config.isTest,
-                    protected: config.protected,
-                    connection: {
-                        dialect: config.connection.dialect,
-                        host: config.connection.host,
-                        port: config.connection.port,
-                        database: config.connection.database,
-                        ssl: config.connection.ssl,
-                        // NO user/password - recipient uses their own
-                    },
-                    paths: config.paths,
-                },
-                secrets: stateManager.getAllSecrets(configName),
             }
 
-            // Encrypt for recipient
-            const payload = encryptForRecipient(
-                JSON.stringify(exportData),
-                recipient.publicKey,
-                identity.email,
-                recipient.email
-            )
+            setStep('exporting');
 
-            // Write to file
-            const filename = `${configName}.noorm.enc`
-            const filepath = join(process.cwd(), filename)
-            writeFileSync(filepath, JSON.stringify(payload, null, 2))
+            const [_, err] = await attempt(async () => {
 
-            setOutputFile(filename)
-        })
+                // Build export data (omit user/password)
+                const exportData = {
+                    config: {
+                        name: config.name,
+                        type: config.type,
+                        isTest: config.isTest,
+                        protected: config.protected,
+                        connection: {
+                            dialect: config.connection.dialect,
+                            host: config.connection.host,
+                            port: config.connection.port,
+                            database: config.connection.database,
+                            ssl: config.connection.ssl,
+                            // NO user/password - recipient uses their own
+                        },
+                        paths: config.paths,
+                    },
+                    secrets: stateManager.getAllSecrets(configName),
+                };
 
-        if (err) {
+                // Encrypt for recipient
+                const payload = encryptForRecipient(
+                    JSON.stringify(exportData),
+                    recipient.publicKey,
+                    identity.email,
+                    recipient.email,
+                );
 
-            setError(err instanceof Error ? err.message : String(err))
-            setStep('error')
-            return
-        }
+                // Write to file
+                const filename = `${configName}.noorm.enc`;
+                const filepath = join(process.cwd(), filename);
+                writeFileSync(filepath, JSON.stringify(payload, null, 2));
 
-        setStep('complete')
-    }, [stateManager, config, identity, configName])
+                setOutputFile(filename);
+
+            });
+
+            if (err) {
+
+                setError(err instanceof Error ? err.message : String(err));
+                setStep('error');
+
+                return;
+
+            }
+
+            setStep('complete');
+
+        },
+        [stateManager, config, identity, configName],
+    );
 
     // Keyboard handling
     useInput((input, key) => {
 
-        if (!isFocused) return
+        if (!isFocused) return;
 
         if (step === 'recipient-email') {
 
             if (key.return) {
 
-                handleEmailSubmit()
-                return
+                handleEmailSubmit();
+
+                return;
+
             }
 
             if (key.escape) {
 
                 if (email) {
 
-                    setEmail('')
+                    setEmail('');
+
                 }
                 else {
 
-                    back()
+                    back();
+
                 }
-                return
+
+                return;
+
             }
+
         }
 
         if (step === 'complete' || step === 'error') {
 
-            back()
+            back();
+
         }
-    })
+
+    });
 
     // No config name provided
     if (!configName) {
 
         return (
             <Panel title="Export Configuration" paddingX={2} paddingY={1} borderColor="yellow">
-                <Text color="yellow">No config name provided. Use: noorm config:export &lt;name&gt;</Text>
+                <Text color="yellow">
+                    No config name provided. Use: noorm config:export &lt;name&gt;
+                </Text>
             </Panel>
-        )
+        );
+
     }
 
     // Config not found
@@ -208,7 +241,8 @@ export function ConfigExportScreen({ params }: ScreenProps): ReactElement {
             <Panel title="Export Configuration" paddingX={2} paddingY={1} borderColor="red">
                 <Text color="red">Config "{configName}" not found.</Text>
             </Panel>
-        )
+        );
+
     }
 
     // No identity set up
@@ -218,7 +252,8 @@ export function ConfigExportScreen({ params }: ScreenProps): ReactElement {
             <Panel title="Export Configuration" paddingX={2} paddingY={1} borderColor="yellow">
                 <Text color="yellow">No identity set up. Run 'noorm init' first.</Text>
             </Panel>
-        )
+        );
+
     }
 
     // Recipient email input
@@ -246,18 +281,19 @@ export function ConfigExportScreen({ params }: ScreenProps): ReactElement {
                     </Box>
                 </Box>
             </Panel>
-        )
+        );
+
     }
 
     // Select identity
     if (step === 'select-identity') {
 
-        const items: SelectListItem<KnownUser>[] = matchingUsers.map(user => ({
+        const items: SelectListItem<KnownUser>[] = matchingUsers.map((user) => ({
             key: user.identityHash,
             label: `${user.machine} (${user.os})`,
             value: user,
             description: `Last seen: ${user.lastSeen ?? 'unknown'}`,
-        }))
+        }));
 
         return (
             <Panel title={`Export: ${configName}`} paddingX={2} paddingY={1}>
@@ -273,7 +309,8 @@ export function ConfigExportScreen({ params }: ScreenProps): ReactElement {
                     </Box>
                 </Box>
             </Panel>
-        )
+        );
+
     }
 
     // Exporting
@@ -283,7 +320,8 @@ export function ConfigExportScreen({ params }: ScreenProps): ReactElement {
             <Panel title={`Export: ${configName}`} paddingX={2} paddingY={1}>
                 <Spinner label="Encrypting and exporting..." />
             </Panel>
-        )
+        );
+
     }
 
     // Complete
@@ -299,28 +337,28 @@ export function ConfigExportScreen({ params }: ScreenProps): ReactElement {
                         File: <Text color="cyan">{outputFile}</Text>
                     </Text>
                     <Text dimColor>
-                        Share this file with {selectedUser?.email ?? email}.
-                        They can import it with: noorm config:import {outputFile}
+                        Share this file with {selectedUser?.email ?? email}. They can import it
+                        with: noorm config:import {outputFile}
                     </Text>
                     <Box marginTop={1}>
                         <Text dimColor>Press any key to continue...</Text>
                     </Box>
                 </Box>
             </Panel>
-        )
+        );
+
     }
 
     // Error
     return (
         <Panel title={`Export: ${configName}`} paddingX={2} paddingY={1} borderColor="red">
             <Box flexDirection="column" gap={1}>
-                <StatusMessage variant="error">
-                    {error}
-                </StatusMessage>
+                <StatusMessage variant="error">{error}</StatusMessage>
                 <Box marginTop={1}>
                     <Text dimColor>Press any key to continue...</Text>
                 </Box>
             </Box>
         </Panel>
-    )
+    );
+
 }

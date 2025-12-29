@@ -10,41 +10,45 @@
  * </Panel>
  * ```
  */
-import { Box, Text } from 'ink'
+import { Box, Text } from 'ink';
 
-import type { ReactNode, ReactElement } from 'react'
-
+import type { ReactNode, ReactElement } from 'react';
 
 /**
  * Props for Panel component.
  */
 export interface PanelProps {
-
     /** Panel title displayed at top */
-    title?: string
+    title?: string;
 
     /** Title color */
-    titleColor?: string
+    titleColor?: string;
 
     /** Border style */
-    borderStyle?: 'single' | 'double' | 'round' | 'bold' | 'singleDouble' | 'doubleSingle' | 'classic'
+    borderStyle?:
+        | 'single'
+        | 'double'
+        | 'round'
+        | 'bold'
+        | 'singleDouble'
+        | 'doubleSingle'
+        | 'classic';
 
     /** Border color */
-    borderColor?: string
+    borderColor?: string;
 
     /** Horizontal padding inside panel */
-    paddingX?: number
+    paddingX?: number;
 
     /** Vertical padding inside panel */
-    paddingY?: number
+    paddingY?: number;
 
     /** Panel width */
-    width?: number | string
+    width?: number | string;
 
     /** Panel content */
-    children: ReactNode
+    children: ReactNode;
 }
-
 
 /**
  * Panel component.
@@ -73,10 +77,13 @@ export function Panel({
         >
             {title && (
                 <Box marginBottom={1}>
-                    <Text bold color={titleColor}>{title}</Text>
+                    <Text bold color={titleColor}>
+                        {title}
+                    </Text>
                 </Box>
             )}
             {children}
         </Box>
-    )
+    );
+
 }

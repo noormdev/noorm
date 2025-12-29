@@ -8,7 +8,6 @@
  * Locks ensure only one process modifies the schema at a time.
  */
 
-
 /**
  * Lock state returned after acquisition.
  *
@@ -20,20 +19,18 @@
  * ```
  */
 export interface Lock {
-
     /** Identity string of holder */
-    lockedBy: string
+    lockedBy: string;
 
     /** When acquired */
-    lockedAt: Date
+    lockedAt: Date;
 
     /** Auto-expiry time */
-    expiresAt: Date
+    expiresAt: Date;
 
     /** Optional reason for acquiring */
-    reason?: string
+    reason?: string;
 }
-
 
 /**
  * Options for acquiring a lock.
@@ -51,14 +48,13 @@ export interface Lock {
  * ```
  */
 export interface LockOptions {
-
     /**
      * Lock duration in milliseconds.
      *
      * After this time, the lock expires and can be claimed by others.
      * @default 300_000 (5 minutes)
      */
-    timeout?: number
+    timeout?: number;
 
     /**
      * Block until lock is available?
@@ -66,7 +62,7 @@ export interface LockOptions {
      * If true, will poll until the lock is acquired or waitTimeout is reached.
      * @default false
      */
-    wait?: boolean
+    wait?: boolean;
 
     /**
      * Max time to wait for lock in milliseconds.
@@ -74,7 +70,7 @@ export interface LockOptions {
      * Only used if wait is true.
      * @default 30_000 (30 seconds)
      */
-    waitTimeout?: number
+    waitTimeout?: number;
 
     /**
      * How often to poll when waiting, in milliseconds.
@@ -82,37 +78,33 @@ export interface LockOptions {
      * Only used if wait is true.
      * @default 1_000 (1 second)
      */
-    pollInterval?: number
+    pollInterval?: number;
 
     /**
      * Optional reason for acquiring the lock.
      *
      * Shown to users who are blocked by this lock.
      */
-    reason?: string
+    reason?: string;
 }
-
 
 /**
  * Result of a lock status check.
  */
 export interface LockStatus {
-
     /** Whether the lock is currently held */
-    isLocked: boolean
+    isLocked: boolean;
 
     /** Lock details if held, null if not */
-    lock: Lock | null
+    lock: Lock | null;
 }
-
 
 /**
  * Default lock options.
  */
 export const DEFAULT_LOCK_OPTIONS: Required<Omit<LockOptions, 'reason'>> = {
-
-    timeout: 5 * 60 * 1000,         // 5 minutes
+    timeout: 5 * 60 * 1000, // 5 minutes
     wait: false,
-    waitTimeout: 30 * 1000,         // 30 seconds
-    pollInterval: 1000,             // 1 second
-}
+    waitTimeout: 30 * 1000, // 30 seconds
+    pollInterval: 1000, // 1 second
+};

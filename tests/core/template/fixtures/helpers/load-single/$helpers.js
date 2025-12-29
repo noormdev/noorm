@@ -1,2 +1,6 @@
-export const NAME = 'test'
-export function greet() { return 'hello' }
+export const NAME = 'test';
+export function greet() {
+
+    return 'hello';
+
+}

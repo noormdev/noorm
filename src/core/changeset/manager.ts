@@ -23,14 +23,14 @@
  * const batchResult = await manager.next(2)
  * ```
  */
-import path from 'node:path'
+import path from 'node:path';
 
-import { attempt } from '@logosdx/utils'
+import { attempt } from '@logosdx/utils';
 
-import { parseChangeset, discoverChangesets } from './parser.js'
-import { deleteChangeset as deleteFromDisk } from './scaffold.js'
-import { ChangesetHistory } from './history.js'
-import { executeChangeset, revertChangeset } from './executor.js'
+import { parseChangeset, discoverChangesets } from './parser.js';
+import { deleteChangeset as deleteFromDisk } from './scaffold.js';
+import { ChangesetHistory } from './history.js';
+import { executeChangeset, revertChangeset } from './executor.js';
 import type {
     Changeset,
     ChangesetContext,
@@ -41,26 +41,20 @@ import type {
     ChangesetListItem,
     ChangesetHistoryRecord,
     FileHistoryRecord,
-} from './types.js'
-import {
-    ChangesetNotFoundError,
-    ChangesetOrphanedError,
-} from './types.js'
-
+} from './types.js';
+import { ChangesetNotFoundError, ChangesetOrphanedError } from './types.js';
 
 // ─────────────────────────────────────────────────────────────
 // Default Options
 // ─────────────────────────────────────────────────────────────
 
 const DEFAULT_BATCH: Required<Omit<BatchChangesetOptions, 'output'>> & { output: string | null } = {
-
     force: false,
     dryRun: false,
     preview: false,
     output: null,
     abortOnError: true,
-}
-
+};
 
 // ─────────────────────────────────────────────────────────────
 // Manager Class
@@ -86,15 +80,15 @@ const DEFAULT_BATCH: Required<Omit<BatchChangesetOptions, 'output'>> & { output:
  */
 export class ChangesetManager {
 
-    readonly #context: ChangesetContext
-    readonly #history: ChangesetHistory
+    readonly #context: ChangesetContext;
+    readonly #history: ChangesetHistory;
 
     constructor(context: ChangesetContext) {
 
-        this.#context = context
-        this.#history = new ChangesetHistory(context.db, context.configName)
-    }
+        this.#context = context;
+        this.#history = new ChangesetHistory(context.db, context.configName);
 
+    }
 
     // ─────────────────────────────────────────────────────────
     // List
@@ -114,24 +108,24 @@ export class ChangesetManager {
         const diskChangesets = await discoverChangesets(
             this.#context.changesetsDir,
             this.#context.schemaDir,
-        )
+        );
 
         // Get all statuses from DB
-        const statuses = await this.#history.getAllStatuses()
+        const statuses = await this.#history.getAllStatuses();
 
         // Create set of disk names for orphan detection
-        const diskNames = new Set(diskChangesets.map(cs => cs.name))
+        const diskNames = new Set(diskChangesets.map((cs) => cs.name));
 
         // Get orphaned changesets
-        const orphanedNames = await this.#history.getOrphaned(diskNames)
+        const orphanedNames = await this.#history.getOrphaned(diskNames);
 
         // Merge disk + DB
-        const result: ChangesetListItem[] = []
+        const result: ChangesetListItem[] = [];
 
         // Add disk changesets with their status
         for (const cs of diskChangesets) {
 
-            const status = statuses.get(cs.name)
+            const status = statuses.get(cs.name);
 
             result.push({
                 ...cs,
@@ -143,13 +137,14 @@ export class ChangesetManager {
                 errorMessage: status?.errorMessage ?? null,
                 isNew: !status,
                 orphaned: false,
-            })
+            });
+
         }
 
         // Add orphaned changesets
         for (const name of orphanedNames) {
 
-            const status = statuses.get(name)!
+            const status = statuses.get(name)!;
 
             result.push({
                 name,
@@ -167,13 +162,14 @@ export class ChangesetManager {
                 changeFiles: undefined,
                 revertFiles: undefined,
                 hasChangelog: undefined,
-            })
+            });
+
         }
 
         // Sort by name
-        return result.sort((a, b) => a.name.localeCompare(b.name))
-    }
+        return result.sort((a, b) => a.name.localeCompare(b.name));
 
+    }
 
     // ─────────────────────────────────────────────────────────
     // Run Single Changeset
@@ -186,16 +182,13 @@ export class ChangesetManager {
      * @param options - Execution options
      * @returns Execution result
      */
-    async run(
-        name: string,
-        options: ChangesetOptions = {},
-    ): Promise<ChangesetResult> {
+    async run(name: string, options: ChangesetOptions = {}): Promise<ChangesetResult> {
 
-        const changeset = await this.#loadChangeset(name)
+        const changeset = await this.#loadChangeset(name);
 
-        return executeChangeset(this.#context, changeset, options)
+        return executeChangeset(this.#context, changeset, options);
+
     }
-
 
     /**
      * Run a changeset object directly.
@@ -205,9 +198,9 @@ export class ChangesetManager {
         options: ChangesetOptions = {},
     ): Promise<ChangesetResult> {
 
-        return executeChangeset(this.#context, changeset, options)
-    }
+        return executeChangeset(this.#context, changeset, options);
 
+    }
 
     // ─────────────────────────────────────────────────────────
     // Revert Single Changeset
@@ -220,16 +213,13 @@ export class ChangesetManager {
      * @param options - Execution options
      * @returns Execution result
      */
-    async revert(
-        name: string,
-        options: ChangesetOptions = {},
-    ): Promise<ChangesetResult> {
+    async revert(name: string, options: ChangesetOptions = {}): Promise<ChangesetResult> {
 
-        const changeset = await this.#loadChangeset(name)
+        const changeset = await this.#loadChangeset(name);
 
-        return revertChangeset(this.#context, changeset, options)
+        return revertChangeset(this.#context, changeset, options);
+
     }
-
 
     /**
      * Revert a changeset object directly.
@@ -239,9 +229,9 @@ export class ChangesetManager {
         options: ChangesetOptions = {},
     ): Promise<ChangesetResult> {
 
-        return revertChangeset(this.#context, changeset, options)
-    }
+        return revertChangeset(this.#context, changeset, options);
 
+    }
 
     // ─────────────────────────────────────────────────────────
     // Batch Operations
@@ -259,14 +249,14 @@ export class ChangesetManager {
         options: BatchChangesetOptions = {},
     ): Promise<BatchChangesetResult> {
 
-        const opts = { ...DEFAULT_BATCH, ...options }
-        const start = performance.now()
+        const opts = { ...DEFAULT_BATCH, ...options };
+        const start = performance.now();
 
         // Get pending changesets
-        const list = await this.list()
+        const list = await this.list();
         const pending = list
-            .filter(cs => !cs.orphaned && (cs.status === 'pending' || cs.status === 'reverted'))
-            .slice(0, count)
+            .filter((cs) => !cs.orphaned && (cs.status === 'pending' || cs.status === 'reverted'))
+            .slice(0, count);
 
         if (pending.length === 0) {
 
@@ -277,20 +267,19 @@ export class ChangesetManager {
                 skipped: 0,
                 failed: 0,
                 durationMs: performance.now() - start,
-            }
+            };
+
         }
 
         // Execute each
-        const results: ChangesetResult[] = []
-        let failed = 0
-        let executed = 0
+        const results: ChangesetResult[] = [];
+        let failed = 0;
+        let executed = 0;
 
         for (const item of pending) {
 
             // Load full changeset from disk
-            const [changeset, loadErr] = await attempt(() =>
-                this.#loadChangeset(item.name)
-            )
+            const [changeset, loadErr] = await attempt(() => this.#loadChangeset(item.name));
 
             if (loadErr) {
 
@@ -301,28 +290,32 @@ export class ChangesetManager {
                     files: [],
                     durationMs: 0,
                     error: loadErr.message,
-                })
+                });
 
-                failed++
+                failed++;
 
-                if (opts.abortOnError) break
+                if (opts.abortOnError) break;
 
-                continue
+                continue;
+
             }
 
-            const result = await executeChangeset(this.#context, changeset, opts)
-            results.push(result)
+            const result = await executeChangeset(this.#context, changeset, opts);
+            results.push(result);
 
             if (result.status === 'success') {
 
-                executed++
+                executed++;
+
             }
             else {
 
-                failed++
+                failed++;
 
-                if (opts.abortOnError) break
+                if (opts.abortOnError) break;
+
             }
+
         }
 
         return {
@@ -332,9 +325,9 @@ export class ChangesetManager {
             skipped: pending.length - executed - failed,
             failed,
             durationMs: performance.now() - start,
-        }
-    }
+        };
 
+    }
 
     /**
      * Fast-forward: run all pending changesets.
@@ -345,14 +338,14 @@ export class ChangesetManager {
     async ff(options: BatchChangesetOptions = {}): Promise<BatchChangesetResult> {
 
         // Get count of pending
-        const list = await this.list()
-        const pendingCount = list.filter(cs =>
-            !cs.orphaned && (cs.status === 'pending' || cs.status === 'reverted')
-        ).length
+        const list = await this.list();
+        const pendingCount = list.filter(
+            (cs) => !cs.orphaned && (cs.status === 'pending' || cs.status === 'reverted'),
+        ).length;
 
-        return this.next(pendingCount, options)
+        return this.next(pendingCount, options);
+
     }
-
 
     /**
      * Rewind: revert changesets in reverse order.
@@ -366,32 +359,34 @@ export class ChangesetManager {
         options: BatchChangesetOptions = {},
     ): Promise<BatchChangesetResult> {
 
-        const opts = { ...DEFAULT_BATCH, ...options }
-        const start = performance.now()
+        const opts = { ...DEFAULT_BATCH, ...options };
+        const start = performance.now();
 
         // Get applied changesets sorted by appliedAt (most recent first)
-        const list = await this.list()
+        const list = await this.list();
         const applied = list
-            .filter(cs => !cs.orphaned && cs.status === 'success' && cs.appliedAt)
+            .filter((cs) => !cs.orphaned && cs.status === 'success' && cs.appliedAt)
             .sort((a, b) => {
 
-                const aTime = a.appliedAt?.getTime() ?? 0
-                const bTime = b.appliedAt?.getTime() ?? 0
+                const aTime = a.appliedAt?.getTime() ?? 0;
+                const bTime = b.appliedAt?.getTime() ?? 0;
 
-                return bTime - aTime // Most recent first
-            })
+                return bTime - aTime; // Most recent first
+
+            });
 
         // Determine which to revert
-        let toRevert: typeof applied
+        let toRevert: typeof applied;
 
         if (typeof target === 'number') {
 
-            toRevert = applied.slice(0, target)
+            toRevert = applied.slice(0, target);
+
         }
         else {
 
             // Revert until (and including) the named changeset
-            const targetIndex = applied.findIndex(cs => cs.name === target)
+            const targetIndex = applied.findIndex((cs) => cs.name === target);
 
             if (targetIndex === -1) {
 
@@ -402,10 +397,12 @@ export class ChangesetManager {
                     skipped: 0,
                     failed: 1,
                     durationMs: performance.now() - start,
-                }
+                };
+
             }
 
-            toRevert = applied.slice(0, targetIndex + 1)
+            toRevert = applied.slice(0, targetIndex + 1);
+
         }
 
         if (toRevert.length === 0) {
@@ -417,14 +414,15 @@ export class ChangesetManager {
                 skipped: 0,
                 failed: 0,
                 durationMs: performance.now() - start,
-            }
+            };
+
         }
 
         // Revert each
-        const results: ChangesetResult[] = []
-        let failed = 0
-        let executed = 0
-        let skipped = 0
+        const results: ChangesetResult[] = [];
+        let failed = 0;
+        let executed = 0;
+        let skipped = 0;
 
         for (const item of toRevert) {
 
@@ -437,16 +435,15 @@ export class ChangesetManager {
                     status: 'success',
                     files: [],
                     durationMs: 0,
-                })
+                });
 
-                skipped++
-                continue
+                skipped++;
+                continue;
+
             }
 
             // Load full changeset from disk
-            const [changeset, loadErr] = await attempt(() =>
-                this.#loadChangeset(item.name)
-            )
+            const [changeset, loadErr] = await attempt(() => this.#loadChangeset(item.name));
 
             if (loadErr) {
 
@@ -457,28 +454,32 @@ export class ChangesetManager {
                     files: [],
                     durationMs: 0,
                     error: loadErr.message,
-                })
+                });
 
-                failed++
+                failed++;
 
-                if (opts.abortOnError) break
+                if (opts.abortOnError) break;
 
-                continue
+                continue;
+
             }
 
-            const result = await revertChangeset(this.#context, changeset, opts)
-            results.push(result)
+            const result = await revertChangeset(this.#context, changeset, opts);
+            results.push(result);
 
             if (result.status === 'success') {
 
-                executed++
+                executed++;
+
             }
             else {
 
-                failed++
+                failed++;
 
-                if (opts.abortOnError) break
+                if (opts.abortOnError) break;
+
             }
+
         }
 
         return {
@@ -488,9 +489,9 @@ export class ChangesetManager {
             skipped,
             failed,
             durationMs: performance.now() - start,
-        }
-    }
+        };
 
+    }
 
     // ─────────────────────────────────────────────────────────
     // History
@@ -503,23 +504,20 @@ export class ChangesetManager {
      * @param limit - Max records to return
      * @returns Array of history records
      */
-    async getHistory(
-        name?: string,
-        limit?: number,
-    ): Promise<ChangesetHistoryRecord[]> {
+    async getHistory(name?: string, limit?: number): Promise<ChangesetHistoryRecord[]> {
 
-        return this.#history.getHistory(name, limit)
+        return this.#history.getHistory(name, limit);
+
     }
-
 
     /**
      * Get file execution history for an operation.
      */
     async getFileHistory(operationId: number): Promise<FileHistoryRecord[]> {
 
-        return this.#history.getFileHistory(operationId)
-    }
+        return this.#history.getFileHistory(operationId);
 
+    }
 
     // ─────────────────────────────────────────────────────────
     // Remove
@@ -531,31 +529,31 @@ export class ChangesetManager {
      * @param name - Changeset name
      * @param options - What to remove
      */
-    async remove(
-        name: string,
-        options: { disk?: boolean; db?: boolean },
-    ): Promise<void> {
+    async remove(name: string, options: { disk?: boolean; db?: boolean }): Promise<void> {
 
         if (options.disk) {
 
-            const changesetPath = path.join(this.#context.changesetsDir, name)
+            const changesetPath = path.join(this.#context.changesetsDir, name);
 
             const [changeset, loadErr] = await attempt(() =>
-                parseChangeset(changesetPath, this.#context.schemaDir)
-            )
+                parseChangeset(changesetPath, this.#context.schemaDir),
+            );
 
             if (!loadErr && changeset) {
 
-                await deleteFromDisk(changeset)
+                await deleteFromDisk(changeset);
+
             }
+
         }
 
         if (options.db) {
 
-            await this.#history.deleteRecords(name)
-        }
-    }
+            await this.#history.deleteRecords(name);
 
+        }
+
+    }
 
     // ─────────────────────────────────────────────────────────
     // Get Single Changeset
@@ -566,20 +564,20 @@ export class ChangesetManager {
      */
     async get(name: string): Promise<ChangesetListItem | null> {
 
-        const list = await this.list()
+        const list = await this.list();
 
-        return list.find(cs => cs.name === name) ?? null
+        return list.find((cs) => cs.name === name) ?? null;
+
     }
-
 
     /**
      * Load a changeset from disk.
      */
     async load(name: string): Promise<Changeset> {
 
-        return this.#loadChangeset(name)
-    }
+        return this.#loadChangeset(name);
 
+    }
 
     // ─────────────────────────────────────────────────────────
     // Internal
@@ -590,25 +588,29 @@ export class ChangesetManager {
      */
     async #loadChangeset(name: string): Promise<Changeset> {
 
-        const changesetPath = path.join(this.#context.changesetsDir, name)
+        const changesetPath = path.join(this.#context.changesetsDir, name);
 
         const [changeset, err] = await attempt(() =>
-            parseChangeset(changesetPath, this.#context.schemaDir)
-        )
+            parseChangeset(changesetPath, this.#context.schemaDir),
+        );
 
         if (err) {
 
             // Check if it exists in DB (orphaned)
-            const status = await this.#history.getStatus(name)
+            const status = await this.#history.getStatus(name);
 
             if (status) {
 
-                throw new ChangesetOrphanedError(name)
+                throw new ChangesetOrphanedError(name);
+
             }
 
-            throw new ChangesetNotFoundError(name)
+            throw new ChangesetNotFoundError(name);
+
         }
 
-        return changeset
+        return changeset;
+
     }
+
 }

@@ -4,44 +4,48 @@
  * Converts observer events into LogEntry objects and serializes them
  * for file output. Each entry is a single JSON line.
  */
-import { attemptSync } from '@logosdx/utils'
+import { attemptSync } from '@logosdx/utils';
 
-import type { LogEntry } from './types.js'
-import { classifyEvent } from './classifier.js'
-
+import type { LogEntry } from './types.js';
+import { classifyEvent } from './classifier.js';
 
 /**
  * Human-readable message templates for common events.
  * Keys are event names, values are functions that generate messages from event data.
  */
 const MESSAGE_TEMPLATES: Record<string, (data: Record<string, unknown>) => string> = {
-
     // File execution
     'file:before': (d) => `Executing ${d['filepath']}`,
-    'file:after': (d) => d['status'] === 'success'
-        ? `Executed ${d['filepath']} (${d['durationMs']}ms)`
-        : `Failed ${d['filepath']}: ${d['error']}`,
+    'file:after': (d) =>
+        d['status'] === 'success'
+            ? `Executed ${d['filepath']} (${d['durationMs']}ms)`
+            : `Failed ${d['filepath']}: ${d['error']}`,
     'file:skip': (d) => `Skipped ${d['filepath']} (${d['reason']})`,
 
     // Changeset
-    'changeset:start': (d) => `Starting ${d['direction']} for ${d['name']} (${(d['files'] as string[])?.length ?? 0} files)`,
+    'changeset:start': (d) =>
+        `Starting ${d['direction']} for ${d['name']} (${(d['files'] as string[])?.length ?? 0} files)`,
     'changeset:file': (d) => `${d['changeset']}: ${d['filepath']} (${d['index']}/${d['total']})`,
-    'changeset:complete': (d) => `${d['direction']} ${d['name']}: ${d['status']} (${d['durationMs']}ms)`,
+    'changeset:complete': (d) =>
+        `${d['direction']} ${d['name']}: ${d['status']} (${d['durationMs']}ms)`,
 
     // Build/Run
     'build:start': (d) => `Starting schema build (${d['fileCount']} files)`,
-    'build:complete': (d) => d['status'] === 'success'
-        ? `Build complete: ${d['filesRun']} run, ${d['filesSkipped']} skipped (${d['durationMs']}ms)`
-        : `Build failed after ${d['filesRun']} files (${d['durationMs']}ms)`,
+    'build:complete': (d) =>
+        d['status'] === 'success'
+            ? `Build complete: ${d['filesRun']} run, ${d['filesSkipped']} skipped (${d['durationMs']}ms)`
+            : `Build failed after ${d['filesRun']} files (${d['durationMs']}ms)`,
     'run:file': (d) => `Running ${d['filepath']} on ${d['configName']}`,
-    'run:dir': (d) => `Running directory ${d['dirpath']} (${d['fileCount']} files) on ${d['configName']}`,
+    'run:dir': (d) =>
+        `Running directory ${d['dirpath']} (${d['fileCount']} files) on ${d['configName']}`,
 
     // Lock
     'lock:acquiring': (d) => `Acquiring lock for ${d['configName']} as ${d['identity']}`,
     'lock:acquired': (d) => `Lock acquired for ${d['configName']}`,
     'lock:released': (d) => `Lock released for ${d['configName']}`,
     'lock:blocked': (d) => `Lock blocked: ${d['configName']} held by ${d['holder']}`,
-    'lock:expired': (d) => `Lock expired for ${d['configName']} (was held by ${d['previousHolder']})`,
+    'lock:expired': (d) =>
+        `Lock expired for ${d['configName']} (was held by ${d['previousHolder']})`,
 
     // State
     'state:loaded': (d) => `State loaded: ${d['configCount']} configs, version ${d['version']}`,
@@ -50,9 +54,11 @@ const MESSAGE_TEMPLATES: Record<string, (data: Record<string, unknown>) => strin
 
     // Config
     'config:created': (d) => `Created config: ${d['name']}`,
-    'config:updated': (d) => `Updated config ${d['name']}: ${(d['fields'] as string[])?.join(', ')}`,
+    'config:updated': (d) =>
+        `Updated config ${d['name']}: ${(d['fields'] as string[])?.join(', ')}`,
     'config:deleted': (d) => `Deleted config: ${d['name']}`,
-    'config:activated': (d) => `Activated config: ${d['name']}${d['previous'] ? ` (was ${d['previous']})` : ''}`,
+    'config:activated': (d) =>
+        `Activated config: ${d['name']}${d['previous'] ? ` (was ${d['previous']})` : ''}`,
 
     // Secrets
     'secret:set': (d) => `Set secret ${d['key']} for ${d['configName']}`,
@@ -65,7 +71,8 @@ const MESSAGE_TEMPLATES: Record<string, (data: Record<string, unknown>) => strin
     'db:created': (d) => `Created database ${d['database']} (${d['durationMs']}ms)`,
     'db:destroying': (d) => `Destroying database ${d['database']} for ${d['configName']}`,
     'db:destroyed': (d) => `Destroyed database ${d['database']}`,
-    'db:bootstrap': (d) => `Bootstrapped ${(d['tables'] as string[])?.length ?? 0} tables for ${d['configName']}`,
+    'db:bootstrap': (d) =>
+        `Bootstrapped ${(d['tables'] as string[])?.length ?? 0} tables for ${d['configName']}`,
 
     // Template
     'template:render': (d) => `Rendered template ${d['filepath']} (${d['durationMs']}ms)`,
@@ -95,12 +102,12 @@ const MESSAGE_TEMPLATES: Record<string, (data: Record<string, unknown>) => strin
     // Settings
     'settings:loaded': (d) => `Settings loaded from ${d['path']}`,
     'settings:saved': (d) => `Settings saved to ${d['path']}`,
-    'settings:initialized': (d) => `Settings initialized at ${d['path']}${d['force'] ? ' (forced)' : ''}`,
+    'settings:initialized': (d) =>
+        `Settings initialized at ${d['path']}${d['force'] ? ' (forced)' : ''}`,
 
     // Generic error
-    'error': (d) => `Error in ${d['source']}: ${(d['error'] as Error)?.message ?? d['error']}`,
-}
-
+    error: (d) => `Error in ${d['source']}: ${(d['error'] as Error)?.message ?? d['error']}`,
+};
 
 /**
  * Generate a human-readable message for an event.
@@ -113,32 +120,35 @@ const MESSAGE_TEMPLATES: Record<string, (data: Record<string, unknown>) => strin
  */
 export function generateMessage(event: string, data: Record<string, unknown>): string {
 
-    const template = MESSAGE_TEMPLATES[event]
+    const template = MESSAGE_TEMPLATES[event];
 
     if (template) {
 
-        const [result, err] = attemptSync(() => template(data))
+        const [result, err] = attemptSync(() => template(data));
 
         if (!err && result !== null) {
 
-            return result
+            return result;
+
         }
         // Fall through to generic format on error
+
     }
 
     // Generic format: "Event occurred" or "Event: key=value, ..."
     const parts = Object.entries(data)
         .slice(0, 3)
-        .map(([k, v]) => `${k}=${summarizeValue(v)}`)
+        .map(([k, v]) => `${k}=${summarizeValue(v)}`);
 
     if (parts.length === 0) {
 
-        return event.replace(/:/g, ' ')
+        return event.replace(/:/g, ' ');
+
     }
 
-    return `${event.replace(/:/g, ' ')}: ${parts.join(', ')}`
-}
+    return `${event.replace(/:/g, ' ')}: ${parts.join(', ')}`;
 
+}
 
 /**
  * Summarize a value for log message display.
@@ -148,37 +158,43 @@ function summarizeValue(value: unknown): string {
 
     if (value === null || value === undefined) {
 
-        return String(value)
+        return String(value);
+
     }
 
     if (typeof value === 'string') {
 
         if (value.length > 50) {
 
-            return `"${value.slice(0, 47)}..."`
+            return `"${value.slice(0, 47)}..."`;
+
         }
 
-        return `"${value}"`
+        return `"${value}"`;
+
     }
 
     if (typeof value === 'number' || typeof value === 'boolean') {
 
-        return String(value)
+        return String(value);
+
     }
 
     if (Array.isArray(value)) {
 
-        return `[${value.length} items]`
+        return `[${value.length} items]`;
+
     }
 
     if (typeof value === 'object') {
 
-        return `{${Object.keys(value).length} keys}`
+        return `{${Object.keys(value).length} keys}`;
+
     }
 
-    return String(value)
-}
+    return String(value);
 
+}
 
 /**
  * Format an event into a LogEntry.
@@ -206,7 +222,7 @@ export function formatEntry(
     event: string,
     data: Record<string, unknown>,
     context?: Record<string, unknown>,
-    includeData = false
+    includeData = false,
 ): LogEntry {
 
     const entry: LogEntry = {
@@ -214,23 +230,25 @@ export function formatEntry(
         level: classifyEvent(event),
         event,
         message: generateMessage(event, data),
-    }
+    };
 
     // Include full data at verbose level
     if (includeData && Object.keys(data).length > 0) {
 
-        entry.data = sanitizeData(data)
+        entry.data = sanitizeData(data);
+
     }
 
     // Include context if provided
     if (context && Object.keys(context).length > 0) {
 
-        entry.context = context
+        entry.context = context;
+
     }
 
-    return entry
-}
+    return entry;
 
+}
 
 /**
  * Sanitize data for logging.
@@ -238,18 +256,19 @@ export function formatEntry(
  */
 function sanitizeData(data: Record<string, unknown>): Record<string, unknown> {
 
-    const SENSITIVE_KEYS = ['password', 'secret', 'key', 'token', 'credential', 'auth']
-    const result: Record<string, unknown> = {}
+    const SENSITIVE_KEYS = ['password', 'secret', 'key', 'token', 'credential', 'auth'];
+    const result: Record<string, unknown> = {};
 
     for (const [key, value] of Object.entries(data)) {
 
         // Redact sensitive fields
-        const lowerKey = key.toLowerCase()
+        const lowerKey = key.toLowerCase();
 
         if (SENSITIVE_KEYS.some((s) => lowerKey.includes(s))) {
 
-            result[key] = '[REDACTED]'
-            continue
+            result[key] = '[REDACTED]';
+            continue;
+
         }
 
         // Handle Error objects
@@ -259,33 +278,38 @@ function sanitizeData(data: Record<string, unknown>): Record<string, unknown> {
                 name: value.name,
                 message: value.message,
                 stack: value.stack?.split('\n').slice(0, 3).join('\n'),
-            }
-            continue
+            };
+            continue;
+
         }
 
         // Handle Date objects
         if (value instanceof Date) {
 
-            result[key] = value.toISOString()
-            continue
+            result[key] = value.toISOString();
+            continue;
+
         }
 
         // Handle circular references / non-serializable
-        const [, err] = attemptSync(() => JSON.stringify(value))
+        const [, err] = attemptSync(() => JSON.stringify(value));
 
         if (err) {
 
-            result[key] = String(value)
+            result[key] = String(value);
+
         }
         else {
 
-            result[key] = value
+            result[key] = value;
+
         }
+
     }
 
-    return result
-}
+    return result;
 
+}
 
 /**
  * Serialize a LogEntry to a JSON line for file output.
@@ -295,5 +319,6 @@ function sanitizeData(data: Record<string, unknown>): Record<string, unknown> {
  */
 export function serializeEntry(entry: LogEntry): string {
 
-    return JSON.stringify(entry) + '\n'
+    return JSON.stringify(entry) + '\n';
+
 }

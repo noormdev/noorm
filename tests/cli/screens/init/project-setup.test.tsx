@@ -3,22 +3,21 @@
  *
  * Tests the project setup step during initialization.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render } from 'ink-testing-library'
-import React from 'react'
+import { describe, it, expect, vi } from 'vitest';
+import { render } from 'ink-testing-library';
+import React from 'react';
 
-import { FocusProvider } from '../../../../src/cli/focus.js'
-import { ProjectSetup } from '../../../../src/cli/screens/init/ProjectSetup.js'
-
+import { FocusProvider } from '../../../../src/cli/focus.js';
+import { ProjectSetup } from '../../../../src/cli/screens/init/ProjectSetup.js';
 
 /**
  * Wrapper with focus provider for components that need focus.
  */
 function TestWrapper({ children }: { children: React.ReactNode }) {
 
-    return <FocusProvider>{children}</FocusProvider>
-}
+    return <FocusProvider>{children}</FocusProvider>;
 
+}
 
 describe('cli: screens/init/ProjectSetup', () => {
 
@@ -26,61 +25,49 @@ describe('cli: screens/init/ProjectSetup', () => {
 
         const { lastFrame } = render(
             <TestWrapper>
-                <ProjectSetup
-                    onAddConfig={() => {}}
-                    onSkipConfig={() => {}}
-                    onCancel={() => {}}
-                />
-            </TestWrapper>
-        )
+                <ProjectSetup onAddConfig={() => {}} onSkipConfig={() => {}} onCancel={() => {}} />
+            </TestWrapper>,
+        );
 
-        expect(lastFrame()).toContain('Initialize noorm')
-    })
+        expect(lastFrame()).toContain('Initialize noorm');
+
+    });
 
     it('should show directory structure description', () => {
 
         const { lastFrame } = render(
             <TestWrapper>
-                <ProjectSetup
-                    onAddConfig={() => {}}
-                    onSkipConfig={() => {}}
-                    onCancel={() => {}}
-                />
-            </TestWrapper>
-        )
+                <ProjectSetup onAddConfig={() => {}} onSkipConfig={() => {}} onCancel={() => {}} />
+            </TestWrapper>,
+        );
 
-        expect(lastFrame()).toContain('directory structure')
-    })
+        expect(lastFrame()).toContain('directory structure');
+
+    });
 
     it('should show default schema path', () => {
 
         const { lastFrame } = render(
             <TestWrapper>
-                <ProjectSetup
-                    onAddConfig={() => {}}
-                    onSkipConfig={() => {}}
-                    onCancel={() => {}}
-                />
-            </TestWrapper>
-        )
+                <ProjectSetup onAddConfig={() => {}} onSkipConfig={() => {}} onCancel={() => {}} />
+            </TestWrapper>,
+        );
 
-        expect(lastFrame()).toContain('./schema')
-    })
+        expect(lastFrame()).toContain('./schema');
+
+    });
 
     it('should show default changesets path', () => {
 
         const { lastFrame } = render(
             <TestWrapper>
-                <ProjectSetup
-                    onAddConfig={() => {}}
-                    onSkipConfig={() => {}}
-                    onCancel={() => {}}
-                />
-            </TestWrapper>
-        )
+                <ProjectSetup onAddConfig={() => {}} onSkipConfig={() => {}} onCancel={() => {}} />
+            </TestWrapper>,
+        );
 
-        expect(lastFrame()).toContain('./changesets')
-    })
+        expect(lastFrame()).toContain('./changesets');
+
+    });
 
     it('should show custom schema path when provided', () => {
 
@@ -92,112 +79,95 @@ describe('cli: screens/init/ProjectSetup', () => {
                     onSkipConfig={() => {}}
                     onCancel={() => {}}
                 />
-            </TestWrapper>
-        )
+            </TestWrapper>,
+        );
 
-        expect(lastFrame()).toContain('./db/schema')
-    })
+        expect(lastFrame()).toContain('./db/schema');
+
+    });
 
     it('should show what will be created', () => {
 
         const { lastFrame } = render(
             <TestWrapper>
-                <ProjectSetup
-                    onAddConfig={() => {}}
-                    onSkipConfig={() => {}}
-                    onCancel={() => {}}
-                />
-            </TestWrapper>
-        )
+                <ProjectSetup onAddConfig={() => {}} onSkipConfig={() => {}} onCancel={() => {}} />
+            </TestWrapper>,
+        );
 
-        expect(lastFrame()).toContain('Will create')
-        expect(lastFrame()).toContain('.gitkeep')
-        expect(lastFrame()).toContain('settings.yml')
-        expect(lastFrame()).toContain('state.enc')
-    })
+        expect(lastFrame()).toContain('Will create');
+        expect(lastFrame()).toContain('.gitkeep');
+        expect(lastFrame()).toContain('settings.yml');
+        expect(lastFrame()).toContain('state.enc');
+
+    });
 
     it('should show config question', () => {
 
         const { lastFrame } = render(
             <TestWrapper>
-                <ProjectSetup
-                    onAddConfig={() => {}}
-                    onSkipConfig={() => {}}
-                    onCancel={() => {}}
-                />
-            </TestWrapper>
-        )
+                <ProjectSetup onAddConfig={() => {}} onSkipConfig={() => {}} onCancel={() => {}} />
+            </TestWrapper>,
+        );
 
-        expect(lastFrame()).toContain('database configuration')
-    })
+        expect(lastFrame()).toContain('database configuration');
+
+    });
 
     it('should show add config option', () => {
 
         const { lastFrame } = render(
             <TestWrapper>
-                <ProjectSetup
-                    onAddConfig={() => {}}
-                    onSkipConfig={() => {}}
-                    onCancel={() => {}}
-                />
-            </TestWrapper>
-        )
+                <ProjectSetup onAddConfig={() => {}} onSkipConfig={() => {}} onCancel={() => {}} />
+            </TestWrapper>,
+        );
 
-        expect(lastFrame()).toContain('set up my first config')
-    })
+        expect(lastFrame()).toContain('set up my first config');
+
+    });
 
     it('should show skip option', () => {
 
         const { lastFrame } = render(
             <TestWrapper>
-                <ProjectSetup
-                    onAddConfig={() => {}}
-                    onSkipConfig={() => {}}
-                    onCancel={() => {}}
-                />
-            </TestWrapper>
-        )
+                <ProjectSetup onAddConfig={() => {}} onSkipConfig={() => {}} onCancel={() => {}} />
+            </TestWrapper>,
+        );
 
-        expect(lastFrame()).toContain("I'll do it later")
-    })
+        expect(lastFrame()).toContain("I'll do it later");
+
+    });
 
     it('should show keyboard hints', () => {
 
         const { lastFrame } = render(
             <TestWrapper>
-                <ProjectSetup
-                    onAddConfig={() => {}}
-                    onSkipConfig={() => {}}
-                    onCancel={() => {}}
-                />
-            </TestWrapper>
-        )
+                <ProjectSetup onAddConfig={() => {}} onSkipConfig={() => {}} onCancel={() => {}} />
+            </TestWrapper>,
+        );
 
-        expect(lastFrame()).toContain('[Enter]')
-        expect(lastFrame()).toContain('[Esc]')
-    })
+        expect(lastFrame()).toContain('[Enter]');
+        expect(lastFrame()).toContain('[Esc]');
+
+    });
 
     it('should highlight first option by default', () => {
 
         const { lastFrame } = render(
             <TestWrapper>
-                <ProjectSetup
-                    onAddConfig={() => {}}
-                    onSkipConfig={() => {}}
-                    onCancel={() => {}}
-                />
-            </TestWrapper>
-        )
+                <ProjectSetup onAddConfig={() => {}} onSkipConfig={() => {}} onCancel={() => {}} />
+            </TestWrapper>,
+        );
 
         // First option should have the highlight indicator
-        expect(lastFrame()).toContain('❯')
-    })
+        expect(lastFrame()).toContain('❯');
+
+    });
 
     // Note: This test may be flaky when run with other tests due to ink's global stdin handling.
     // It passes consistently in isolation. Mark with retry for CI stability.
     it('should call onAddConfig when first option selected', { retry: 2 }, async () => {
 
-        const onAddConfig = vi.fn()
+        const onAddConfig = vi.fn();
         const { stdin, unmount } = render(
             <TestWrapper>
                 <ProjectSetup
@@ -205,26 +175,27 @@ describe('cli: screens/init/ProjectSetup', () => {
                     onSkipConfig={() => {}}
                     onCancel={() => {}}
                 />
-            </TestWrapper>
-        )
+            </TestWrapper>,
+        );
 
         // Wait for focus to be pushed and render to complete
-        await new Promise(resolve => setTimeout(resolve, 50))
+        await new Promise((resolve) => setTimeout(resolve, 50));
 
         // Press Enter to select first option (Add Config)
-        stdin.write('\r')
+        stdin.write('\r');
 
-        await new Promise(resolve => setTimeout(resolve, 50))
+        await new Promise((resolve) => setTimeout(resolve, 50));
 
-        expect(onAddConfig).toHaveBeenCalled()
+        expect(onAddConfig).toHaveBeenCalled();
 
         // Clean up
-        unmount()
-    })
+        unmount();
+
+    });
 
     it('should call onSkipConfig when second option selected', async () => {
 
-        const onSkipConfig = vi.fn()
+        const onSkipConfig = vi.fn();
         const { stdin, unmount } = render(
             <TestWrapper>
                 <ProjectSetup
@@ -232,59 +203,58 @@ describe('cli: screens/init/ProjectSetup', () => {
                     onSkipConfig={onSkipConfig}
                     onCancel={() => {}}
                 />
-            </TestWrapper>
-        )
+            </TestWrapper>,
+        );
 
         // Wait for focus to be pushed and render to complete
-        await new Promise(resolve => setTimeout(resolve, 50))
+        await new Promise((resolve) => setTimeout(resolve, 50));
 
         // Press down arrow to move to second option
-        stdin.write('\x1b[B')
+        stdin.write('\x1b[B');
 
-        await new Promise(resolve => setTimeout(resolve, 50))
+        await new Promise((resolve) => setTimeout(resolve, 50));
 
         // Press Enter to select
-        stdin.write('\r')
+        stdin.write('\r');
 
-        await new Promise(resolve => setTimeout(resolve, 50))
+        await new Promise((resolve) => setTimeout(resolve, 50));
 
-        expect(onSkipConfig).toHaveBeenCalled()
+        expect(onSkipConfig).toHaveBeenCalled();
 
         // Clean up
-        unmount()
-    })
+        unmount();
+
+    });
 
     it('should navigate options with arrow keys', async () => {
 
         const { stdin, lastFrame, unmount } = render(
             <TestWrapper>
-                <ProjectSetup
-                    onAddConfig={() => {}}
-                    onSkipConfig={() => {}}
-                    onCancel={() => {}}
-                />
-            </TestWrapper>
-        )
+                <ProjectSetup onAddConfig={() => {}} onSkipConfig={() => {}} onCancel={() => {}} />
+            </TestWrapper>,
+        );
 
         // Wait for render
-        await new Promise(resolve => setTimeout(resolve, 50))
+        await new Promise((resolve) => setTimeout(resolve, 50));
 
         // Initially first option is highlighted
-        let frame = lastFrame()
-        expect(frame).toContain('❯')
+        let frame = lastFrame();
+        expect(frame).toContain('❯');
 
         // Press down to move to second option
-        stdin.write('\x1b[B')
+        stdin.write('\x1b[B');
 
-        await new Promise(resolve => setTimeout(resolve, 50))
+        await new Promise((resolve) => setTimeout(resolve, 50));
 
-        frame = lastFrame()
+        frame = lastFrame();
 
         // The second option should now be highlighted (skip option)
         // Check that "I'll do it later" line has the highlight
-        expect(frame).toContain("I'll do it later")
+        expect(frame).toContain("I'll do it later");
 
         // Clean up
-        unmount()
-    })
-})
+        unmount();
+
+    });
+
+});

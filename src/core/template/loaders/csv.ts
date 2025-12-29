@@ -10,10 +10,9 @@
  * // → [{ name: 'Alice', email: 'alice@example.com' }, ...]
  * ```
  */
-import { readFile } from 'node:fs/promises'
+import { readFile } from 'node:fs/promises';
 
-import { parse } from 'csv-parse/sync'
-
+import { parse } from 'csv-parse/sync';
 
 /**
  * Load and parse a CSV file.
@@ -24,11 +23,12 @@ import { parse } from 'csv-parse/sync'
  */
 export async function loadCsv(filepath: string): Promise<Record<string, string>[]> {
 
-    const content = await readFile(filepath, 'utf-8')
+    const content = await readFile(filepath, 'utf-8');
 
     return parse(content, {
         columns: true,
         skip_empty_lines: true,
         trim: true,
-    })
+    });
+
 }

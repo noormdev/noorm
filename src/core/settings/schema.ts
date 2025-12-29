@@ -4,8 +4,7 @@
  * Settings define project-wide build behavior and stage configuration.
  * Validated on load to prevent invalid configurations from being used.
  */
-import { z } from 'zod'
-
+import { z } from 'zod';
 
 // ─────────────────────────────────────────────────────────────
 // Base Schemas
@@ -14,26 +13,22 @@ import { z } from 'zod'
 /**
  * Valid database dialects.
  */
-const DialectSchema = z.enum(['postgres', 'mysql', 'sqlite', 'mssql'])
-
+const DialectSchema = z.enum(['postgres', 'mysql', 'sqlite', 'mssql']);
 
 /**
  * Secret type for CLI input handling.
  */
-const SecretTypeSchema = z.enum(['string', 'password', 'api_key', 'connection_string'])
-
+const SecretTypeSchema = z.enum(['string', 'password', 'api_key', 'connection_string']);
 
 /**
  * Connection type.
  */
-const ConnectionTypeSchema = z.enum(['local', 'remote'])
-
+const ConnectionTypeSchema = z.enum(['local', 'remote']);
 
 /**
  * Log level.
  */
-const LogLevelSchema = z.enum(['silent', 'error', 'warn', 'info', 'verbose'])
-
+const LogLevelSchema = z.enum(['silent', 'error', 'warn', 'info', 'verbose']);
 
 /**
  * Port number validation.
@@ -42,16 +37,14 @@ const PortSchema = z
     .number()
     .int()
     .min(1, 'Port must be at least 1')
-    .max(65535, 'Port must be at most 65535')
-
+    .max(65535, 'Port must be at most 65535');
 
 /**
  * File size pattern (e.g., '10mb', '100kb').
  */
 const FileSizeSchema = z
     .string()
-    .regex(/^\d+\s*(b|kb|mb|gb)$/i, 'Invalid file size format (e.g., "10mb")')
-
+    .regex(/^\d+\s*(b|kb|mb|gb)$/i, 'Invalid file size format (e.g., "10mb")');
 
 // ─────────────────────────────────────────────────────────────
 // Stage Schemas
@@ -65,8 +58,7 @@ const StageSecretSchema = z.object({
     type: SecretTypeSchema,
     description: z.string().optional(),
     required: z.boolean().default(true),
-})
-
+});
 
 /**
  * Stage defaults - values applied when creating a config from this stage.
@@ -81,8 +73,7 @@ const StageDefaultsSchema = z.object({
     ssl: z.boolean().optional(),
     isTest: z.boolean().optional(),
     protected: z.boolean().optional(),
-})
-
+});
 
 /**
  * Stage definition - a preconfigured config template.
@@ -92,8 +83,7 @@ const StageSchema = z.object({
     locked: z.boolean().default(false),
     defaults: StageDefaultsSchema.optional(),
     secrets: z.array(StageSecretSchema).optional(),
-})
-
+});
 
 // ─────────────────────────────────────────────────────────────
 // Rule Schemas
@@ -103,29 +93,29 @@ const StageSchema = z.object({
  * Conditions for rule matching.
  * All conditions are AND'd together.
  */
-const RuleMatchSchema = z.object({
-    name: z.string().optional(),
-    protected: z.boolean().optional(),
-    isTest: z.boolean().optional(),
-    type: ConnectionTypeSchema.optional(),
-}).refine(
-    (match) => Object.keys(match).length > 0,
-    { message: 'Rule match must specify at least one condition' }
-)
-
+const RuleMatchSchema = z
+    .object({
+        name: z.string().optional(),
+        protected: z.boolean().optional(),
+        isTest: z.boolean().optional(),
+        type: ConnectionTypeSchema.optional(),
+    })
+    .refine((match) => Object.keys(match).length > 0, {
+        message: 'Rule match must specify at least one condition',
+    });
 
 /**
  * Stage-based rule for conditional include/exclude.
  */
-const RuleSchema = z.object({
-    match: RuleMatchSchema,
-    include: z.array(z.string()).optional(),
-    exclude: z.array(z.string()).optional(),
-}).refine(
-    (rule) => rule.include || rule.exclude,
-    { message: 'Rule must specify at least one of include or exclude' }
-)
-
+const RuleSchema = z
+    .object({
+        match: RuleMatchSchema,
+        include: z.array(z.string()).optional(),
+        exclude: z.array(z.string()).optional(),
+    })
+    .refine((rule) => rule.include || rule.exclude, {
+        message: 'Rule must specify at least one of include or exclude',
+    });
 
 // ─────────────────────────────────────────────────────────────
 // Config Section Schemas
@@ -137,8 +127,7 @@ const RuleSchema = z.object({
 const BuildConfigSchema = z.object({
     include: z.array(z.string()).optional(),
     exclude: z.array(z.string()).optional(),
-})
-
+});
 
 /**
  * Path configuration schema.
@@ -146,8 +135,7 @@ const BuildConfigSchema = z.object({
 const PathConfigSchema = z.object({
     schema: z.string().optional(),
     changesets: z.string().optional(),
-})
-
+});
 
 /**
  * Strict mode configuration schema.
@@ -155,8 +143,7 @@ const PathConfigSchema = z.object({
 const StrictConfigSchema = z.object({
     enabled: z.boolean().default(false),
     stages: z.array(z.string()).optional(),
-})
-
+});
 
 /**
  * Logging configuration schema.
@@ -167,8 +154,7 @@ const LoggingConfigSchema = z.object({
     file: z.string().default('.noorm/noorm.log'),
     maxSize: FileSizeSchema.default('10mb'),
     maxFiles: z.number().int().min(1).default(5),
-})
-
+});
 
 // ─────────────────────────────────────────────────────────────
 // Main Settings Schema
@@ -184,24 +170,23 @@ export const SettingsSchema = z.object({
     stages: z.record(z.string(), StageSchema).optional(),
     strict: StrictConfigSchema.optional(),
     logging: LoggingConfigSchema.optional(),
-})
-
+    secrets: z.array(StageSecretSchema).optional(),
+});
 
 // ─────────────────────────────────────────────────────────────
 // Type Exports
 // ─────────────────────────────────────────────────────────────
 
-export type SettingsSchemaType = z.infer<typeof SettingsSchema>
-export type StageSchemaType = z.infer<typeof StageSchema>
-export type StageDefaultsSchemaType = z.infer<typeof StageDefaultsSchema>
-export type StageSecretSchemaType = z.infer<typeof StageSecretSchema>
-export type RuleSchemaType = z.infer<typeof RuleSchema>
-export type RuleMatchSchemaType = z.infer<typeof RuleMatchSchema>
-export type BuildConfigSchemaType = z.infer<typeof BuildConfigSchema>
-export type PathConfigSchemaType = z.infer<typeof PathConfigSchema>
-export type StrictConfigSchemaType = z.infer<typeof StrictConfigSchema>
-export type LoggingConfigSchemaType = z.infer<typeof LoggingConfigSchema>
-
+export type SettingsSchemaType = z.infer<typeof SettingsSchema>;
+export type StageSchemaType = z.infer<typeof StageSchema>;
+export type StageDefaultsSchemaType = z.infer<typeof StageDefaultsSchema>;
+export type StageSecretSchemaType = z.infer<typeof StageSecretSchema>;
+export type RuleSchemaType = z.infer<typeof RuleSchema>;
+export type RuleMatchSchemaType = z.infer<typeof RuleMatchSchema>;
+export type BuildConfigSchemaType = z.infer<typeof BuildConfigSchema>;
+export type PathConfigSchemaType = z.infer<typeof PathConfigSchema>;
+export type StrictConfigSchemaType = z.infer<typeof StrictConfigSchema>;
+export type LoggingConfigSchemaType = z.infer<typeof LoggingConfigSchema>;
 
 // ─────────────────────────────────────────────────────────────
 // Validation Error
@@ -215,14 +200,15 @@ export class SettingsValidationError extends Error {
     constructor(
         message: string,
         public readonly field: string,
-        public readonly issues: z.ZodIssue[]
+        public readonly issues: z.ZodIssue[],
     ) {
 
-        super(message)
-        this.name = 'SettingsValidationError'
-    }
-}
+        super(message);
+        this.name = 'SettingsValidationError';
 
+    }
+
+}
 
 // ─────────────────────────────────────────────────────────────
 // Validation Functions
@@ -243,20 +229,21 @@ export class SettingsValidationError extends Error {
  */
 export function validateSettings(settings: unknown): asserts settings is SettingsSchemaType {
 
-    const result = SettingsSchema.safeParse(settings)
+    const result = SettingsSchema.safeParse(settings);
 
     if (!result.success) {
 
-        const firstIssue = result.error.issues[0]
+        const firstIssue = result.error.issues[0];
 
         throw new SettingsValidationError(
             firstIssue?.message ?? 'Settings validation failed',
             firstIssue?.path.join('.') || 'unknown',
-            result.error.issues
-        )
-    }
-}
+            result.error.issues,
+        );
 
+    }
+
+}
 
 /**
  * Parse and validate settings, returning defaults for missing fields.
@@ -271,22 +258,23 @@ export function validateSettings(settings: unknown): asserts settings is Setting
  */
 export function parseSettings(settings: unknown): SettingsSchemaType {
 
-    const result = SettingsSchema.safeParse(settings)
+    const result = SettingsSchema.safeParse(settings);
 
     if (!result.success) {
 
-        const firstIssue = result.error.issues[0]
+        const firstIssue = result.error.issues[0];
 
         throw new SettingsValidationError(
             firstIssue?.message ?? 'Settings validation failed',
             firstIssue?.path.join('.') || 'unknown',
-            result.error.issues
-        )
+            result.error.issues,
+        );
+
     }
 
-    return result.data
-}
+    return result.data;
 
+}
 
 /**
  * Validate a single stage definition.
@@ -295,20 +283,21 @@ export function parseSettings(settings: unknown): SettingsSchemaType {
  */
 export function validateStage(stage: unknown): asserts stage is StageSchemaType {
 
-    const result = StageSchema.safeParse(stage)
+    const result = StageSchema.safeParse(stage);
 
     if (!result.success) {
 
-        const firstIssue = result.error.issues[0]
+        const firstIssue = result.error.issues[0];
 
         throw new SettingsValidationError(
             firstIssue?.message ?? 'Stage validation failed',
             firstIssue?.path.join('.') || 'unknown',
-            result.error.issues
-        )
-    }
-}
+            result.error.issues,
+        );
 
+    }
+
+}
 
 /**
  * Validate a single rule definition.
@@ -317,16 +306,18 @@ export function validateStage(stage: unknown): asserts stage is StageSchemaType 
  */
 export function validateRule(rule: unknown): asserts rule is RuleSchemaType {
 
-    const result = RuleSchema.safeParse(rule)
+    const result = RuleSchema.safeParse(rule);
 
     if (!result.success) {
 
-        const firstIssue = result.error.issues[0]
+        const firstIssue = result.error.issues[0];
 
         throw new SettingsValidationError(
             firstIssue?.message ?? 'Rule validation failed',
             firstIssue?.path.join('.') || 'unknown',
-            result.error.issues
-        )
+            result.error.issues,
+        );
+
     }
+
 }

@@ -3,10 +3,10 @@
  *
  * Tests FocusProvider and focus management hooks.
  */
-import { describe, it, expect, vi } from 'vitest'
-import { render } from 'ink-testing-library'
-import React, { useEffect, useState } from 'react'
-import { Text } from 'ink'
+import { describe, it, expect, vi } from 'vitest';
+import { render } from 'ink-testing-library';
+import React, { useEffect, useState } from 'react';
+import { Text } from 'ink';
 
 import {
     FocusProvider,
@@ -14,65 +14,69 @@ import {
     useFocusScope,
     useIsFocused,
     useActiveFocus,
-} from '../../src/cli/focus.js'
-
+} from '../../src/cli/focus.js';
 
 /**
  * Test component that displays focus stack state.
  */
 function FocusDisplay() {
 
-    const { activeId, stack } = useFocusContext()
+    const { activeId, stack } = useFocusContext();
 
     return (
         <Text>
-            activeId:{activeId ?? 'null'}|stackLen:{stack.length}|stackIds:{stack.map(e => e.id).join(',')}
+            activeId:{activeId ?? 'null'}|stackLen:{stack.length}|stackIds:
+            {stack.map((e) => e.id).join(',')}
         </Text>
-    )
-}
+    );
 
+}
 
 /**
  * Test component that pushes focus on mount.
  */
 function PushOnMount({ id, label }: { id: string; label?: string }) {
 
-    const { push } = useFocusContext()
+    const { push } = useFocusContext();
 
     useEffect(() => {
 
-        push(id, label)
-    }, [push, id, label])
+        push(id, label);
 
-    return <FocusDisplay />
+    }, [push, id, label]);
+
+    return <FocusDisplay />;
+
 }
-
 
 /**
  * Test component that pushes then pops focus.
  */
 function PushThenPop({ id }: { id: string }) {
 
-    const { push, pop } = useFocusContext()
-    const [step, setStep] = useState(0)
+    const { push, pop } = useFocusContext();
+    const [step, setStep] = useState(0);
 
     useEffect(() => {
 
         if (step === 0) {
 
-            push(id)
-            setStep(1)
+            push(id);
+            setStep(1);
+
         }
         else if (step === 1) {
 
-            pop(id)
-            setStep(2)
+            pop(id);
+            setStep(2);
+
         }
-    }, [step, push, pop, id])
 
-    return <FocusDisplay />
+    }, [step, push, pop, id]);
+
+    return <FocusDisplay />;
+
 }
-
 
 describe('cli: focus', () => {
 
@@ -83,30 +87,34 @@ describe('cli: focus', () => {
             const { lastFrame } = render(
                 <FocusProvider>
                     <FocusDisplay />
-                </FocusProvider>
-            )
+                </FocusProvider>,
+            );
 
-            expect(lastFrame()).toContain('activeId:null')
-            expect(lastFrame()).toContain('stackLen:0')
-        })
-    })
+            expect(lastFrame()).toContain('activeId:null');
+            expect(lastFrame()).toContain('stackLen:0');
+
+        });
+
+    });
 
     describe('useFocusContext', () => {
 
         it('should throw when used outside FocusProvider', () => {
 
-            const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+            const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
             // In React 19, errors during render are caught and logged
             // Check that the render fails with an error frame
-            const { lastFrame } = render(<FocusDisplay />)
-            const output = lastFrame() ?? ''
+            const { lastFrame } = render(<FocusDisplay />);
+            const output = lastFrame() ?? '';
 
-            expect(output).toContain('useFocusContext must be used within a FocusProvider')
+            expect(output).toContain('useFocusContext must be used within a FocusProvider');
 
-            errorSpy.mockRestore()
-        })
-    })
+            errorSpy.mockRestore();
+
+        });
+
+    });
 
     describe('push', () => {
 
@@ -115,123 +123,135 @@ describe('cli: focus', () => {
             const { lastFrame } = render(
                 <FocusProvider>
                     <PushOnMount id="test-1" />
-                </FocusProvider>
-            )
+                </FocusProvider>,
+            );
 
-            await new Promise(resolve => setTimeout(resolve, 10))
+            await new Promise((resolve) => setTimeout(resolve, 10));
 
-            expect(lastFrame()).toContain('activeId:test-1')
-            expect(lastFrame()).toContain('stackLen:1')
-        })
+            expect(lastFrame()).toContain('activeId:test-1');
+            expect(lastFrame()).toContain('stackLen:1');
+
+        });
 
         it('should make pushed entry the active one', async () => {
 
             function PushTwo() {
 
-                const { push } = useFocusContext()
-                const [step, setStep] = useState(0)
+                const { push } = useFocusContext();
+                const [step, setStep] = useState(0);
 
                 useEffect(() => {
 
                     if (step === 0) {
 
-                        push('first')
-                        setStep(1)
+                        push('first');
+                        setStep(1);
+
                     }
                     else if (step === 1) {
 
-                        push('second')
-                        setStep(2)
-                    }
-                }, [step, push])
+                        push('second');
+                        setStep(2);
 
-                return <FocusDisplay />
+                    }
+
+                }, [step, push]);
+
+                return <FocusDisplay />;
+
             }
 
             const { lastFrame } = render(
                 <FocusProvider>
                     <PushTwo />
-                </FocusProvider>
-            )
+                </FocusProvider>,
+            );
 
-            await new Promise(resolve => setTimeout(resolve, 50))
+            await new Promise((resolve) => setTimeout(resolve, 50));
 
-            expect(lastFrame()).toContain('activeId:second')
-            expect(lastFrame()).toContain('stackLen:2')
-            expect(lastFrame()).toContain('stackIds:first,second')
-        })
+            expect(lastFrame()).toContain('activeId:second');
+            expect(lastFrame()).toContain('stackLen:2');
+            expect(lastFrame()).toContain('stackIds:first,second');
+
+        });
 
         it('should not add duplicate IDs', async () => {
 
             function PushDuplicate() {
 
-                const { push } = useFocusContext()
-                const [step, setStep] = useState(0)
+                const { push } = useFocusContext();
+                const [step, setStep] = useState(0);
 
                 useEffect(() => {
 
                     if (step === 0) {
 
-                        push('same-id')
-                        setStep(1)
+                        push('same-id');
+                        setStep(1);
+
                     }
                     else if (step === 1) {
 
-                        push('same-id')  // Duplicate
-                        setStep(2)
-                    }
-                }, [step, push])
+                        push('same-id'); // Duplicate
+                        setStep(2);
 
-                return <FocusDisplay />
+                    }
+
+                }, [step, push]);
+
+                return <FocusDisplay />;
+
             }
 
             const { lastFrame } = render(
                 <FocusProvider>
                     <PushDuplicate />
-                </FocusProvider>
-            )
+                </FocusProvider>,
+            );
 
-            await new Promise(resolve => setTimeout(resolve, 50))
+            await new Promise((resolve) => setTimeout(resolve, 50));
 
-            expect(lastFrame()).toContain('stackLen:1')
-        })
+            expect(lastFrame()).toContain('stackLen:1');
+
+        });
 
         it('should store label with entry', async () => {
 
             function DisplayLabel() {
 
-                const { stack } = useFocusContext()
+                const { stack } = useFocusContext();
 
-                return (
-                    <Text>
-                        labels:{stack.map(e => e.label ?? 'none').join(',')}
-                    </Text>
-                )
+                return <Text>labels:{stack.map((e) => e.label ?? 'none').join(',')}</Text>;
+
             }
 
             function PushWithLabel() {
 
-                const { push } = useFocusContext()
+                const { push } = useFocusContext();
 
                 useEffect(() => {
 
-                    push('my-id', 'My Label')
-                }, [push])
+                    push('my-id', 'My Label');
 
-                return <DisplayLabel />
+                }, [push]);
+
+                return <DisplayLabel />;
+
             }
 
             const { lastFrame } = render(
                 <FocusProvider>
                     <PushWithLabel />
-                </FocusProvider>
-            )
+                </FocusProvider>,
+            );
 
-            await new Promise(resolve => setTimeout(resolve, 10))
+            await new Promise((resolve) => setTimeout(resolve, 10));
 
-            expect(lastFrame()).toContain('labels:My Label')
-        })
-    })
+            expect(lastFrame()).toContain('labels:My Label');
+
+        });
+
+    });
 
     describe('pop', () => {
 
@@ -240,98 +260,112 @@ describe('cli: focus', () => {
             const { lastFrame } = render(
                 <FocusProvider>
                     <PushThenPop id="test-1" />
-                </FocusProvider>
-            )
+                </FocusProvider>,
+            );
 
-            await new Promise(resolve => setTimeout(resolve, 50))
+            await new Promise((resolve) => setTimeout(resolve, 50));
 
-            expect(lastFrame()).toContain('activeId:null')
-            expect(lastFrame()).toContain('stackLen:0')
-        })
+            expect(lastFrame()).toContain('activeId:null');
+            expect(lastFrame()).toContain('stackLen:0');
+
+        });
 
         it('should do nothing if ID not in stack', async () => {
 
             function PopNonExistent() {
 
-                const { push, pop } = useFocusContext()
-                const [step, setStep] = useState(0)
+                const { push, pop } = useFocusContext();
+                const [step, setStep] = useState(0);
 
                 useEffect(() => {
 
                     if (step === 0) {
 
-                        push('existing')
-                        setStep(1)
+                        push('existing');
+                        setStep(1);
+
                     }
                     else if (step === 1) {
 
-                        pop('non-existent')
-                        setStep(2)
-                    }
-                }, [step, push, pop])
+                        pop('non-existent');
+                        setStep(2);
 
-                return <FocusDisplay />
+                    }
+
+                }, [step, push, pop]);
+
+                return <FocusDisplay />;
+
             }
 
             const { lastFrame } = render(
                 <FocusProvider>
                     <PopNonExistent />
-                </FocusProvider>
-            )
+                </FocusProvider>,
+            );
 
-            await new Promise(resolve => setTimeout(resolve, 50))
+            await new Promise((resolve) => setTimeout(resolve, 50));
 
-            expect(lastFrame()).toContain('stackLen:1')
-            expect(lastFrame()).toContain('activeId:existing')
-        })
+            expect(lastFrame()).toContain('stackLen:1');
+            expect(lastFrame()).toContain('activeId:existing');
+
+        });
 
         it('should allow popping from middle of stack', async () => {
 
             function PopMiddle() {
 
-                const { push, pop } = useFocusContext()
-                const [step, setStep] = useState(0)
+                const { push, pop } = useFocusContext();
+                const [step, setStep] = useState(0);
 
                 useEffect(() => {
 
                     if (step === 0) {
 
-                        push('first')
-                        setStep(1)
+                        push('first');
+                        setStep(1);
+
                     }
                     else if (step === 1) {
 
-                        push('second')
-                        setStep(2)
+                        push('second');
+                        setStep(2);
+
                     }
                     else if (step === 2) {
 
-                        push('third')
-                        setStep(3)
+                        push('third');
+                        setStep(3);
+
                     }
                     else if (step === 3) {
 
-                        pop('second')  // Pop middle
-                        setStep(4)
-                    }
-                }, [step, push, pop])
+                        pop('second'); // Pop middle
+                        setStep(4);
 
-                return <FocusDisplay />
+                    }
+
+                }, [step, push, pop]);
+
+                return <FocusDisplay />;
+
             }
 
             const { lastFrame } = render(
                 <FocusProvider>
                     <PopMiddle />
-                </FocusProvider>
-            )
+                </FocusProvider>,
+            );
 
-            await new Promise(resolve => setTimeout(resolve, 100))
+            await new Promise((resolve) => setTimeout(resolve, 100));
 
-            expect(lastFrame()).toContain('stackLen:2')
-            expect(lastFrame()).toContain('stackIds:first,third')
-            expect(lastFrame()).toContain('activeId:third')
-        })
-    })
+            expect(lastFrame()).toContain('stackLen:2');
+            expect(lastFrame()).toContain('stackIds:first,third');
+            expect(lastFrame()).toContain('activeId:third');
+
+        });
+
+    });
 
     describe('isActive', () => {
 
@@ -339,76 +373,85 @@ describe('cli: focus', () => {
 
             function CheckActive() {
 
-                const { push, isActive } = useFocusContext()
-                const [active, setActive] = useState<boolean | null>(null)
+                const { push, isActive } = useFocusContext();
+                const [active, setActive] = useState<boolean | null>(null);
 
                 useEffect(() => {
 
-                    push('test-id')
-                    setActive(isActive('test-id'))
-                }, [push, isActive])
+                    push('test-id');
+                    setActive(isActive('test-id'));
 
-                return <Text>isActive:{String(active)}</Text>
+                }, [push, isActive]);
+
+                return <Text>isActive:{String(active)}</Text>;
+
             }
 
             const { lastFrame } = render(
                 <FocusProvider>
                     <CheckActive />
-                </FocusProvider>
-            )
+                </FocusProvider>,
+            );
 
-            await new Promise(resolve => setTimeout(resolve, 10))
+            await new Promise((resolve) => setTimeout(resolve, 10));
 
-            expect(lastFrame()).toContain('isActive:true')
-        })
+            expect(lastFrame()).toContain('isActive:true');
+
+        });
 
         it('should return false for non-top entries', async () => {
 
             function CheckNotActive() {
 
-                const { push, isActive } = useFocusContext()
-                const [active, setActive] = useState<boolean | null>(null)
+                const { push, isActive } = useFocusContext();
+                const [active, setActive] = useState<boolean | null>(null);
 
                 useEffect(() => {
 
-                    push('first')
-                    push('second')
-                    setActive(isActive('first'))
-                }, [push, isActive])
+                    push('first');
+                    push('second');
+                    setActive(isActive('first'));
 
-                return <Text>isActive:{String(active)}</Text>
+                }, [push, isActive]);
+
+                return <Text>isActive:{String(active)}</Text>;
+
             }
 
             const { lastFrame } = render(
                 <FocusProvider>
                     <CheckNotActive />
-                </FocusProvider>
-            )
+                </FocusProvider>,
+            );
 
-            await new Promise(resolve => setTimeout(resolve, 10))
+            await new Promise((resolve) => setTimeout(resolve, 10));
 
-            expect(lastFrame()).toContain('isActive:false')
-        })
+            expect(lastFrame()).toContain('isActive:false');
+
+        });
 
         it('should return false for empty stack', () => {
 
             function CheckEmpty() {
 
-                const { isActive } = useFocusContext()
-                const active = isActive('any-id')
+                const { isActive } = useFocusContext();
+                const active = isActive('any-id');
 
-                return <Text>isActive:{String(active)}</Text>
+                return <Text>isActive:{String(active)}</Text>;
+
             }
 
             const { lastFrame } = render(
                 <FocusProvider>
                     <CheckEmpty />
-                </FocusProvider>
-            )
+                </FocusProvider>,
+            );
 
-            expect(lastFrame()).toContain('isActive:false')
-        })
-    })
+            expect(lastFrame()).toContain('isActive:false');
+
+        });
+
+    });
 
     describe('useFocusScope', () => {
 
@@ -416,83 +459,96 @@ describe('cli: focus', () => {
 
             function FocusScopeUser() {
 
-                const { isFocused, focusId } = useFocusScope('test-scope')
+                const { isFocused, focusId } = useFocusScope('test-scope');
 
-                return <Text>focused:{String(isFocused)}|id:{focusId}</Text>
+                return (
+                    <Text>
+                        focused:{String(isFocused)}|id:{focusId}
+                    </Text>
+                );
+
             }
 
             function Wrapper() {
 
-                const [show, setShow] = useState(true)
-                const { stack } = useFocusContext()
+                const [show, setShow] = useState(true);
+                const { stack } = useFocusContext();
 
                 useEffect(() => {
 
-                    const timer = setTimeout(() => setShow(false), 100)
-                    return () => clearTimeout(timer)
-                }, [])
+                    const timer = setTimeout(() => setShow(false), 100);
+
+                    return () => clearTimeout(timer);
+
+                }, []);
 
                 return (
                     <>
                         {show && <FocusScopeUser />}
                         <Text>stackLen:{stack.length}</Text>
                     </>
-                )
+                );
+
             }
 
             const { lastFrame } = render(
                 <FocusProvider>
                     <Wrapper />
-                </FocusProvider>
-            )
+                </FocusProvider>,
+            );
 
             // Initially mounted - wait for focus stack to initialize
-            await new Promise(resolve => setTimeout(resolve, 50))
-            expect(lastFrame()).toContain('focused:true')
-            expect(lastFrame()).toContain('stackLen:1')
+            await new Promise((resolve) => setTimeout(resolve, 50));
+            expect(lastFrame()).toContain('focused:true');
+            expect(lastFrame()).toContain('stackLen:1');
 
             // After unmount
-            await new Promise(resolve => setTimeout(resolve, 100))
-            expect(lastFrame()).toContain('stackLen:0')
-        })
+            await new Promise((resolve) => setTimeout(resolve, 100));
+            expect(lastFrame()).toContain('stackLen:0');
+
+        });
 
         it('should return stable focusId', async () => {
 
             function IdCollector({ onId }: { onId: (id: string) => void }) {
 
-                const { focusId } = useFocusScope()
+                const { focusId } = useFocusScope();
 
                 useEffect(() => {
 
-                    onId(focusId)
-                }, [focusId, onId])
+                    onId(focusId);
 
-                return <Text>id:{focusId}</Text>
+                }, [focusId, onId]);
+
+                return <Text>id:{focusId}</Text>;
+
             }
 
-            const ids: string[] = []
+            const ids: string[] = [];
             const { rerender } = render(
                 <FocusProvider>
                     <IdCollector onId={(id) => ids.push(id)} />
-                </FocusProvider>
-            )
+                </FocusProvider>,
+            );
 
-            await new Promise(resolve => setTimeout(resolve, 10))
+            await new Promise((resolve) => setTimeout(resolve, 10));
 
             // Rerender should keep same ID
             rerender(
                 <FocusProvider>
                     <IdCollector onId={(id) => ids.push(id)} />
-                </FocusProvider>
-            )
+                </FocusProvider>,
+            );
 
-            await new Promise(resolve => setTimeout(resolve, 10))
+            await new Promise((resolve) => setTimeout(resolve, 10));
 
             // All collected IDs should be the same
-            expect(ids.length).toBeGreaterThan(0)
-            expect(new Set(ids).size).toBe(1)
-        })
-    })
+            expect(ids.length).toBeGreaterThan(0);
+            expect(new Set(ids).size).toBe(1);
+
+        });
+
+    });
 
     describe('useIsFocused', () => {
 
@@ -500,28 +556,32 @@ describe('cli: focus', () => {
 
             function CheckFocus() {
 
-                const { push } = useFocusContext()
-                const isFocused = useIsFocused('target')
+                const { push } = useFocusContext();
+                const isFocused = useIsFocused('target');
 
                 useEffect(() => {
 
-                    push('target')
-                }, [push])
+                    push('target');
 
-                return <Text>focused:{String(isFocused)}</Text>
+                }, [push]);
+
+                return <Text>focused:{String(isFocused)}</Text>;
+
             }
 
             const { lastFrame } = render(
                 <FocusProvider>
                     <CheckFocus />
-                </FocusProvider>
-            )
+                </FocusProvider>,
+            );
 
-            await new Promise(resolve => setTimeout(resolve, 10))
+            await new Promise((resolve) => setTimeout(resolve, 10));
 
-            expect(lastFrame()).toContain('focused:true')
-        })
-    })
+            expect(lastFrame()).toContain('focused:true');
+
+        });
+
+    });
 
     describe('useActiveFocus', () => {
 
@@ -529,44 +589,51 @@ describe('cli: focus', () => {
 
             function ActiveDisplay() {
 
-                const activeId = useActiveFocus()
+                const activeId = useActiveFocus();
 
-                return <Text>active:{activeId ?? 'null'}</Text>
+                return <Text>active:{activeId ?? 'null'}</Text>;
+
             }
 
             const { lastFrame } = render(
                 <FocusProvider>
                     <ActiveDisplay />
-                </FocusProvider>
-            )
+                </FocusProvider>,
+            );
 
-            expect(lastFrame()).toContain('active:null')
-        })
+            expect(lastFrame()).toContain('active:null');
+
+        });
 
         it('should return current active ID', async () => {
 
             function ActiveDisplay() {
 
-                const { push } = useFocusContext()
-                const activeId = useActiveFocus()
+                const { push } = useFocusContext();
+                const activeId = useActiveFocus();
 
                 useEffect(() => {
 
-                    push('my-active')
-                }, [push])
+                    push('my-active');
 
-                return <Text>active:{activeId ?? 'null'}</Text>
+                }, [push]);
+
+                return <Text>active:{activeId ?? 'null'}</Text>;
+
             }
 
             const { lastFrame } = render(
                 <FocusProvider>
                     <ActiveDisplay />
-                </FocusProvider>
-            )
+                </FocusProvider>,
+            );
 
-            await new Promise(resolve => setTimeout(resolve, 10))
+            await new Promise((resolve) => setTimeout(resolve, 10));
 
-            expect(lastFrame()).toContain('active:my-active')
-        })
-    })
-})
+            expect(lastFrame()).toContain('active:my-active');
+
+        });
+
+    });
+
+});

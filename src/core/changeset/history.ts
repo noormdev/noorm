@@ -23,26 +23,25 @@
  * const status = await history.getStatus('2024-01-15-add-users')
  * ```
  */
-import type { Kysely } from 'kysely'
+import type { Kysely } from 'kysely';
 
-import { attempt } from '@logosdx/utils'
+import { attempt } from '@logosdx/utils';
 
-import { observer } from '../observer.js'
-import { NOORM_TABLES } from '../shared/index.js'
+import { observer } from '../observer.js';
+import { NOORM_TABLES } from '../shared/index.js';
 import type {
     NoormDatabase,
     OperationStatus,
     Direction,
     ExecutionStatus,
     FileType,
-} from '../shared/index.js'
+} from '../shared/index.js';
 import type {
     ChangesetStatus,
     ChangesetHistoryRecord,
     FileHistoryRecord,
     NeedsRunResult,
-} from './types.js'
-
+} from './types.js';
 
 // ─────────────────────────────────────────────────────────────
 // History Class
@@ -78,15 +77,15 @@ import type {
  */
 export class ChangesetHistory {
 
-    readonly #db: Kysely<NoormDatabase>
-    readonly #configName: string
+    readonly #db: Kysely<NoormDatabase>;
+    readonly #configName: string;
 
     constructor(db: Kysely<NoormDatabase>, configName: string) {
 
-        this.#db = db
-        this.#configName = configName
-    }
+        this.#db = db;
+        this.#configName = configName;
 
+    }
 
     // ─────────────────────────────────────────────────────────
     // Status Queries
@@ -120,8 +119,8 @@ export class ChangesetHistory {
                 .where('config_name', '=', this.#configName)
                 .orderBy('id', 'desc')
                 .limit(1)
-                .executeTakeFirst()
-        )
+                .executeTakeFirst(),
+        );
 
         if (err) {
 
@@ -129,14 +128,16 @@ export class ChangesetHistory {
                 source: 'changeset',
                 error: err,
                 context: { name, operation: 'get-status' },
-            })
+            });
 
-            return null
+            return null;
+
         }
 
         if (!record) {
 
-            return null
+            return null;
+
         }
 
         // Check for revert (to get revertedAt)
@@ -151,8 +152,8 @@ export class ChangesetHistory {
                 .where('config_name', '=', this.#configName)
                 .orderBy('id', 'desc')
                 .limit(1)
-                .executeTakeFirst()
-        )
+                .executeTakeFirst(),
+        );
 
         return {
             name: record.name,
@@ -161,9 +162,9 @@ export class ChangesetHistory {
             appliedBy: record.executed_by,
             revertedAt: revertRecord?.executed_at ?? null,
             errorMessage: record.error_message || null,
-        }
-    }
+        };
 
+    }
 
     /**
      * Get status for all changesets.
@@ -174,26 +175,19 @@ export class ChangesetHistory {
      */
     async getAllStatuses(): Promise<Map<string, ChangesetStatus>> {
 
-        const statuses = new Map<string, ChangesetStatus>()
+        const statuses = new Map<string, ChangesetStatus>();
 
         // Get all unique changeset names
         const [records, err] = await attempt(() =>
             this.#db
                 .selectFrom(NOORM_TABLES.changeset)
-                .select([
-                    'id',
-                    'name',
-                    'status',
-                    'executed_at',
-                    'executed_by',
-                    'error_message',
-                ])
+                .select(['id', 'name', 'status', 'executed_at', 'executed_by', 'error_message'])
                 .where('change_type', '=', 'changeset')
                 .where('direction', '=', 'change')
                 .where('config_name', '=', this.#configName)
                 .orderBy('id', 'desc')
-                .execute()
-        )
+                .execute(),
+        );
 
         if (err) {
 
@@ -201,9 +195,10 @@ export class ChangesetHistory {
                 source: 'changeset',
                 error: err,
                 context: { operation: 'get-all-statuses' },
-            })
+            });
 
-            return statuses
+            return statuses;
+
         }
 
         // Group by name, keeping most recent
@@ -218,8 +213,10 @@ export class ChangesetHistory {
                     appliedBy: record.executed_by,
                     revertedAt: null, // Will be filled in below
                     errorMessage: record.error_message || null,
-                })
+                });
+
             }
+
         }
 
         // Get revert info for each
@@ -232,28 +229,31 @@ export class ChangesetHistory {
                 .where('status', '=', 'success')
                 .where('config_name', '=', this.#configName)
                 .orderBy('id', 'desc')
-                .execute()
-        )
+                .execute(),
+        );
 
         if (reverts) {
 
             // Track which ones we've seen
-            const seenReverts = new Set<string>()
+            const seenReverts = new Set<string>();
 
             for (const revert of reverts) {
 
                 if (!seenReverts.has(revert.name) && statuses.has(revert.name)) {
 
-                    const status = statuses.get(revert.name)!
-                    status.revertedAt = revert.executed_at
-                    seenReverts.add(revert.name)
+                    const status = statuses.get(revert.name)!;
+                    status.revertedAt = revert.executed_at;
+                    seenReverts.add(revert.name);
+
                 }
+
             }
+
         }
 
-        return statuses
-    }
+        return statuses;
 
+    }
 
     // ─────────────────────────────────────────────────────────
     // Change Detection
@@ -267,16 +267,13 @@ export class ChangesetHistory {
      * @param force - Force re-run regardless of status
      * @returns Whether the changeset needs to run and why
      */
-    async needsRun(
-        name: string,
-        checksum: string,
-        force: boolean,
-    ): Promise<NeedsRunResult> {
+    async needsRun(name: string, checksum: string, force: boolean): Promise<NeedsRunResult> {
 
         // Force always runs
         if (force) {
 
-            return { needsRun: true, reason: 'force' }
+            return { needsRun: true, reason: 'force' };
+
         }
 
         // Get most recent change record
@@ -290,8 +287,8 @@ export class ChangesetHistory {
                 .where('config_name', '=', this.#configName)
                 .orderBy('id', 'desc')
                 .limit(1)
-                .executeTakeFirst()
-        )
+                .executeTakeFirst(),
+        );
 
         if (err) {
 
@@ -299,16 +296,18 @@ export class ChangesetHistory {
                 source: 'changeset',
                 error: err,
                 context: { name, operation: 'needs-run-check' },
-            })
+            });
 
             // On error, assume needs to run
-            return { needsRun: true, reason: 'new' }
+            return { needsRun: true, reason: 'new' };
+
         }
 
         // No previous record - new changeset
         if (!record) {
 
-            return { needsRun: true, reason: 'new' }
+            return { needsRun: true, reason: 'new' };
+
         }
 
         // Previous execution failed - retry
@@ -319,7 +318,8 @@ export class ChangesetHistory {
                 reason: 'failed',
                 previousChecksum: record.checksum,
                 previousStatus: record.status,
-            }
+            };
+
         }
 
         // Previous execution was reverted - can re-apply
@@ -330,7 +330,8 @@ export class ChangesetHistory {
                 reason: 'reverted',
                 previousChecksum: record.checksum,
                 previousStatus: record.status,
-            }
+            };
+
         }
 
         // Checksum changed
@@ -341,7 +342,8 @@ export class ChangesetHistory {
                 reason: 'changed',
                 previousChecksum: record.checksum,
                 previousStatus: record.status,
-            }
+            };
+
         }
 
         // Success and unchanged - skip
@@ -350,9 +352,9 @@ export class ChangesetHistory {
             skipReason: 'already applied',
             previousChecksum: record.checksum,
             previousStatus: record.status,
-        }
-    }
+        };
 
+    }
 
     /**
      * Check if a changeset can be reverted.
@@ -366,42 +368,40 @@ export class ChangesetHistory {
         force: boolean,
     ): Promise<{ canRevert: boolean; reason?: string; status?: OperationStatus }> {
 
-        const status = await this.getStatus(name)
+        const status = await this.getStatus(name);
 
         if (!status) {
 
-            return { canRevert: false, reason: 'not applied' }
+            return { canRevert: false, reason: 'not applied' };
+
         }
 
         if (force) {
 
-            return { canRevert: true, status: status.status }
+            return { canRevert: true, status: status.status };
+
         }
 
         switch (status.status) {
 
-            case 'pending':
+        case 'pending':
+            return { canRevert: false, reason: 'not applied yet', status: status.status };
 
-                return { canRevert: false, reason: 'not applied yet', status: status.status }
+        case 'success':
+            return { canRevert: true, status: status.status };
 
-            case 'success':
+        case 'failed':
+            return { canRevert: true, status: status.status };
 
-                return { canRevert: true, status: status.status }
+        case 'reverted':
+            return { canRevert: false, reason: 'already reverted', status: status.status };
 
-            case 'failed':
+        default:
+            return { canRevert: false, reason: 'unknown status' };
 
-                return { canRevert: true, status: status.status }
-
-            case 'reverted':
-
-                return { canRevert: false, reason: 'already reverted', status: status.status }
-
-            default:
-
-                return { canRevert: false, reason: 'unknown status' }
         }
-    }
 
+    }
 
     // ─────────────────────────────────────────────────────────
     // Create Records
@@ -413,9 +413,9 @@ export class ChangesetHistory {
      * @returns The created operation's ID
      */
     async createOperation(data: {
-        name: string
-        direction: Direction
-        executedBy: string
+        name: string;
+        direction: Direction;
+        executedBy: string;
     }): Promise<number> {
 
         const [result, err] = await attempt(() =>
@@ -430,17 +430,18 @@ export class ChangesetHistory {
                     executed_by: data.executedBy,
                 })
                 .returning('id')
-                .executeTakeFirstOrThrow()
-        )
+                .executeTakeFirstOrThrow(),
+        );
 
         if (err) {
 
-            throw new Error('Failed to create changeset operation record', { cause: err })
+            throw new Error('Failed to create changeset operation record', { cause: err });
+
         }
 
-        return result.id
-    }
+        return result.id;
 
+    }
 
     /**
      * Create pending file records for all files.
@@ -450,29 +451,25 @@ export class ChangesetHistory {
     async createFileRecords(
         operationId: number,
         files: Array<{
-            filepath: string
-            fileType: FileType
-            checksum: string
+            filepath: string;
+            fileType: FileType;
+            checksum: string;
         }>,
     ): Promise<void> {
 
-        if (files.length === 0) return
+        if (files.length === 0) return;
 
-        const values = files.map(f => ({
-
+        const values = files.map((f) => ({
             changeset_id: operationId,
             filepath: f.filepath,
             file_type: f.fileType,
             checksum: f.checksum,
             status: 'pending' as ExecutionStatus,
-        }))
+        }));
 
         const [, err] = await attempt(() =>
-            this.#db
-                .insertInto(NOORM_TABLES.executions)
-                .values(values)
-                .execute()
-        )
+            this.#db.insertInto(NOORM_TABLES.executions).values(values).execute(),
+        );
 
         if (err) {
 
@@ -480,10 +477,11 @@ export class ChangesetHistory {
                 source: 'changeset',
                 error: err,
                 context: { operationId, operation: 'create-file-records' },
-            })
-        }
-    }
+            });
 
+        }
+
+    }
 
     // ─────────────────────────────────────────────────────────
     // Update Records
@@ -512,8 +510,8 @@ export class ChangesetHistory {
                 })
                 .where('changeset_id', '=', operationId)
                 .where('filepath', '=', filepath)
-                .execute()
-        )
+                .execute(),
+        );
 
         if (err) {
 
@@ -521,18 +519,16 @@ export class ChangesetHistory {
                 source: 'changeset',
                 error: err,
                 context: { filepath, operation: 'update-file-execution' },
-            })
-        }
-    }
+            });
 
+        }
+
+    }
 
     /**
      * Mark remaining files as skipped after failure.
      */
-    async skipRemainingFiles(
-        operationId: number,
-        reason: string,
-    ): Promise<void> {
+    async skipRemainingFiles(operationId: number, reason: string): Promise<void> {
 
         const [, err] = await attempt(() =>
             this.#db
@@ -543,8 +539,8 @@ export class ChangesetHistory {
                 })
                 .where('changeset_id', '=', operationId)
                 .where('status', '=', 'pending')
-                .execute()
-        )
+                .execute(),
+        );
 
         if (err) {
 
@@ -552,10 +548,11 @@ export class ChangesetHistory {
                 source: 'changeset',
                 error: err,
                 context: { operationId, operation: 'skip-remaining-files' },
-            })
-        }
-    }
+            });
 
+        }
+
+    }
 
     /**
      * Finalize an operation.
@@ -578,8 +575,8 @@ export class ChangesetHistory {
                     error_message: errorMessage ?? '',
                 })
                 .where('id', '=', operationId)
-                .execute()
-        )
+                .execute(),
+        );
 
         if (err) {
 
@@ -587,10 +584,11 @@ export class ChangesetHistory {
                 source: 'changeset',
                 error: err,
                 context: { operationId, operation: 'finalize-operation' },
-            })
-        }
-    }
+            });
 
+        }
+
+    }
 
     /**
      * Mark the original change record as reverted.
@@ -610,8 +608,8 @@ export class ChangesetHistory {
                 .where('config_name', '=', this.#configName)
                 .orderBy('id', 'desc')
                 .limit(1)
-                .executeTakeFirst()
-        )
+                .executeTakeFirst(),
+        );
 
         if (record) {
 
@@ -620,11 +618,12 @@ export class ChangesetHistory {
                     .updateTable(NOORM_TABLES.changeset)
                     .set({ status: 'reverted' })
                     .where('id', '=', record.id)
-                    .execute()
-            )
-        }
-    }
+                    .execute(),
+            );
 
+        }
+
+    }
 
     // ─────────────────────────────────────────────────────────
     // Delete Records
@@ -643,23 +642,24 @@ export class ChangesetHistory {
                 .where('name', '=', name)
                 .where('change_type', '=', 'changeset')
                 .where('config_name', '=', this.#configName)
-                .execute()
-        )
+                .execute(),
+        );
 
         if (queryErr || !operations || operations.length === 0) {
 
-            return
+            return;
+
         }
 
-        const operationIds = operations.map(o => o.id)
+        const operationIds = operations.map((o) => o.id);
 
         // Delete execution records
         const [, execErr] = await attempt(() =>
             this.#db
                 .deleteFrom(NOORM_TABLES.executions)
                 .where('changeset_id', 'in', operationIds)
-                .execute()
-        )
+                .execute(),
+        );
 
         if (execErr) {
 
@@ -667,16 +667,14 @@ export class ChangesetHistory {
                 source: 'changeset',
                 error: execErr,
                 context: { name, operation: 'delete-executions' },
-            })
+            });
+
         }
 
         // Delete changeset records
         const [, changesetErr] = await attempt(() =>
-            this.#db
-                .deleteFrom(NOORM_TABLES.changeset)
-                .where('id', 'in', operationIds)
-                .execute()
-        )
+            this.#db.deleteFrom(NOORM_TABLES.changeset).where('id', 'in', operationIds).execute(),
+        );
 
         if (changesetErr) {
 
@@ -684,10 +682,11 @@ export class ChangesetHistory {
                 source: 'changeset',
                 error: changesetErr,
                 context: { name, operation: 'delete-changeset' },
-            })
-        }
-    }
+            });
 
+        }
+
+    }
 
     // ─────────────────────────────────────────────────────────
     // History Queries
@@ -699,10 +698,7 @@ export class ChangesetHistory {
      * @param name - Changeset name (optional, all if not provided)
      * @param limit - Max records to return
      */
-    async getHistory(
-        name?: string,
-        limit?: number,
-    ): Promise<ChangesetHistoryRecord[]> {
+    async getHistory(name?: string, limit?: number): Promise<ChangesetHistoryRecord[]> {
 
         let query = this.#db
             .selectFrom(NOORM_TABLES.changeset)
@@ -719,19 +715,21 @@ export class ChangesetHistory {
             ])
             .where('change_type', '=', 'changeset')
             .where('config_name', '=', this.#configName)
-            .orderBy('id', 'desc')
+            .orderBy('id', 'desc');
 
         if (name) {
 
-            query = query.where('name', '=', name)
+            query = query.where('name', '=', name);
+
         }
 
         if (limit) {
 
-            query = query.limit(limit)
+            query = query.limit(limit);
+
         }
 
-        const [records, err] = await attempt(() => query.execute())
+        const [records, err] = await attempt(() => query.execute());
 
         if (err) {
 
@@ -739,13 +737,13 @@ export class ChangesetHistory {
                 source: 'changeset',
                 error: err,
                 context: { name, operation: 'get-history' },
-            })
+            });
 
-            return []
+            return [];
+
         }
 
-        return records.map(r => ({
-
+        return records.map((r) => ({
             id: r.id,
             name: r.name,
             direction: r.direction,
@@ -755,9 +753,9 @@ export class ChangesetHistory {
             durationMs: r.duration_ms,
             errorMessage: r.error_message || null,
             checksum: r.checksum,
-        }))
-    }
+        }));
 
+    }
 
     /**
      * Get file execution records for an operation.
@@ -780,8 +778,8 @@ export class ChangesetHistory {
                 ])
                 .where('changeset_id', '=', operationId)
                 .orderBy('id', 'asc')
-                .execute()
-        )
+                .execute(),
+        );
 
         if (err) {
 
@@ -789,13 +787,13 @@ export class ChangesetHistory {
                 source: 'changeset',
                 error: err,
                 context: { operationId, operation: 'get-file-history' },
-            })
+            });
 
-            return []
+            return [];
+
         }
 
-        return records.map(r => ({
-
+        return records.map((r) => ({
             id: r.id,
             changesetId: r.changeset_id,
             filepath: r.filepath,
@@ -805,9 +803,9 @@ export class ChangesetHistory {
             skipReason: r.skip_reason || null,
             errorMessage: r.error_message || null,
             durationMs: r.duration_ms,
-        }))
-    }
+        }));
 
+    }
 
     /**
      * Get all orphaned changesets (in DB but not on disk).
@@ -816,17 +814,21 @@ export class ChangesetHistory {
      */
     async getOrphaned(diskNames: Set<string>): Promise<string[]> {
 
-        const statuses = await this.getAllStatuses()
-        const orphaned: string[] = []
+        const statuses = await this.getAllStatuses();
+        const orphaned: string[] = [];
 
         for (const [name] of statuses) {
 
             if (!diskNames.has(name)) {
 
-                orphaned.push(name)
+                orphaned.push(name);
+
             }
+
         }
 
-        return orphaned
+        return orphaned;
+
     }
+
 }

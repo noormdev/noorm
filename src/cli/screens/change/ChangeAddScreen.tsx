@@ -13,180 +13,207 @@
  * noorm change add add-user-roles    # Same thing
  * ```
  */
-import { useState, useCallback } from 'react'
-import { Box, Text, useInput } from 'ink'
-import { TextInput } from '@inkjs/ui'
+import { useState, useCallback } from 'react';
+import { Box, Text, useInput } from 'ink';
+import { TextInput } from '@inkjs/ui';
 
-import type { ReactElement } from 'react'
-import type { ScreenProps } from '../../types.js'
+import type { ReactElement } from 'react';
+import type { ScreenProps } from '../../types.js';
 
-import { attempt } from '@logosdx/utils'
-import { useRouter } from '../../router.js'
-import { useFocusScope } from '../../focus.js'
-import { useAppContext } from '../../app-context.js'
-import { Panel, Spinner, StatusMessage } from '../../components/index.js'
-import { createChangeset, addFile } from '../../../core/changeset/scaffold.js'
-
+import { attempt } from '@logosdx/utils';
+import { useRouter } from '../../router.js';
+import { useFocusScope } from '../../focus.js';
+import { useAppContext } from '../../app-context.js';
+import { Panel, Spinner, StatusMessage } from '../../components/index.js';
+import { createChangeset, addFile } from '../../../core/changeset/scaffold.js';
 
 /**
  * Add steps.
  */
 type AddStep =
-    | 'input'          // Entering name
-    | 'creating'       // Creating folder structure
-    | 'complete'       // Success
-    | 'error'          // Error occurred
-
+    | 'input' // Entering name
+    | 'creating' // Creating folder structure
+    | 'complete' // Success
+    | 'error'; // Error occurred
 
 /**
  * ChangeAddScreen component.
  */
 export function ChangeAddScreen({ params }: ScreenProps): ReactElement {
 
-    const { navigate, back } = useRouter()
-    const { isFocused } = useFocusScope('ChangeAdd')
-    const { activeConfig, settings } = useAppContext()
+    const { navigate, back } = useRouter();
+    const { isFocused } = useFocusScope('ChangeAdd');
+    const { activeConfig, settings: _settings } = useAppContext();
 
     // Pre-fill from params if provided
-    const initialName = params.name ?? ''
+    const initialName = params.name ?? '';
 
-    const [step, setStep] = useState<AddStep>(initialName ? 'creating' : 'input')
-    const [name, setName] = useState(initialName)
-    const [createdName, setCreatedName] = useState('')
-    const [error, setError] = useState<string | null>(null)
+    const [step, setStep] = useState<AddStep>(initialName ? 'creating' : 'input');
+    const [name, setName] = useState(initialName);
+    const [createdName, setCreatedName] = useState('');
+    const [error, setError] = useState<string | null>(null);
 
     // Validate name
     const validateName = useCallback((value: string): string | null => {
 
         if (!value.trim()) {
 
-            return 'Name is required'
+            return 'Name is required';
+
         }
 
         if (!/^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$/i.test(value.trim())) {
 
-            return 'Use letters, numbers, and hyphens only'
+            return 'Use letters, numbers, and hyphens only';
+
         }
 
-        return null
-    }, [])
+        return null;
+
+    }, []);
 
     // Handle create
-    const handleCreate = useCallback(async (nameValue: string) => {
+    const handleCreate = useCallback(
+        async (nameValue: string) => {
 
-        if (!activeConfig) {
+            if (!activeConfig) {
 
-            setError('No active configuration')
-            setStep('error')
-            return
-        }
+                setError('No active configuration');
+                setStep('error');
 
-        const validationError = validateName(nameValue)
+                return;
 
-        if (validationError) {
+            }
 
-            setError(validationError)
-            setStep('error')
-            return
-        }
+            const validationError = validateName(nameValue);
 
-        setStep('creating')
+            if (validationError) {
 
-        const [_, err] = await attempt(async () => {
+                setError(validationError);
+                setStep('error');
 
-            // Create changeset folder
-            const changeset = await createChangeset(
-                activeConfig.paths.changesets,
-                { description: nameValue.trim() }
-            )
+                return;
 
-            // Add initial files
-            await addFile(changeset, 'change', {
-                name: 'change',
-                type: 'sql',
-            })
+            }
 
-            await addFile(changeset, 'revert', {
-                name: 'revert',
-                type: 'sql',
-            })
+            setStep('creating');
 
-            setCreatedName(changeset.name)
-            setStep('complete')
-        })
+            const [_, err] = await attempt(async () => {
 
-        if (err) {
+                // Create changeset folder
+                const changeset = await createChangeset(activeConfig.paths.changesets, {
+                    description: nameValue.trim(),
+                });
 
-            setError(err instanceof Error ? err.message : String(err))
-            setStep('error')
-        }
-    }, [activeConfig, validateName])
+                // Add initial files
+                await addFile(changeset, 'change', {
+                    name: 'change',
+                    type: 'sql',
+                });
+
+                await addFile(changeset, 'revert', {
+                    name: 'revert',
+                    type: 'sql',
+                });
+
+                setCreatedName(changeset.name);
+                setStep('complete');
+
+            });
+
+            if (err) {
+
+                setError(err instanceof Error ? err.message : String(err));
+                setStep('error');
+
+            }
+
+        },
+        [activeConfig, validateName],
+    );
 
     // Auto-create if name provided in params
     if (initialName && step === 'creating' && !createdName && !error) {
 
-        handleCreate(initialName)
+        handleCreate(initialName);
+
     }
 
     // Handle submit
     const handleSubmit = useCallback(() => {
 
-        handleCreate(name)
-    }, [name, handleCreate])
+        handleCreate(name);
+
+    }, [name, handleCreate]);
 
     // Keyboard handling
     useInput((input, key) => {
 
-        if (!isFocused) return
+        if (!isFocused) return;
 
         if (step === 'input') {
 
             if (key.return) {
 
-                handleSubmit()
-                return
+                handleSubmit();
+
+                return;
+
             }
 
             if (key.escape) {
 
                 if (name) {
 
-                    setName('')
+                    setName('');
+
                 }
                 else {
 
-                    back()
+                    back();
+
                 }
-                return
+
+                return;
+
             }
+
         }
 
         if (step === 'complete') {
 
             if (input === 'e') {
 
-                navigate('change/edit', { name: createdName })
+                navigate('change/edit', { name: createdName });
+
             }
             else {
 
-                back()
+                back();
+
             }
-            return
+
+            return;
+
         }
 
         if (step === 'error') {
 
             if (input === 'r') {
 
-                setError(null)
-                setStep('input')
+                setError(null);
+                setStep('input');
+
             }
             else {
 
-                back()
+                back();
+
             }
+
         }
-    })
+
+    });
 
     // No active config
     if (!activeConfig) {
@@ -195,7 +222,8 @@ export function ChangeAddScreen({ params }: ScreenProps): ReactElement {
             <Panel title="Add Changeset" paddingX={2} paddingY={1} borderColor="yellow">
                 <Text color="yellow">No active configuration. Press 'c' to manage configs.</Text>
             </Panel>
-        )
+        );
+
     }
 
     // Input step
@@ -206,7 +234,8 @@ export function ChangeAddScreen({ params }: ScreenProps): ReactElement {
                 <Box flexDirection="column" gap={1}>
                     <Text>Create a new changeset for database changes.</Text>
                     <Text dimColor>
-                        Folder will be created as: {new Date().toISOString().slice(0, 10)}-{name || '<name>'}
+                        Folder will be created as: {new Date().toISOString().slice(0, 10)}-
+                        {name || '<name>'}
                     </Text>
 
                     <Box marginTop={1}>
@@ -225,7 +254,8 @@ export function ChangeAddScreen({ params }: ScreenProps): ReactElement {
                     </Box>
                 </Box>
             </Panel>
-        )
+        );
+
     }
 
     // Creating step
@@ -235,7 +265,8 @@ export function ChangeAddScreen({ params }: ScreenProps): ReactElement {
             <Panel title="Add Changeset" paddingX={2} paddingY={1}>
                 <Spinner label="Creating changeset folder..." />
             </Panel>
-        )
+        );
+
     }
 
     // Complete step
@@ -256,16 +287,15 @@ export function ChangeAddScreen({ params }: ScreenProps): ReactElement {
                     </Box>
                 </Box>
             </Panel>
-        )
+        );
+
     }
 
     // Error step
     return (
         <Panel title="Add Changeset" paddingX={2} paddingY={1} borderColor="red">
             <Box flexDirection="column" gap={1}>
-                <StatusMessage variant="error">
-                    {error}
-                </StatusMessage>
+                <StatusMessage variant="error">{error}</StatusMessage>
 
                 <Box marginTop={1} gap={2}>
                     <Text dimColor>[r] Retry</Text>
@@ -273,5 +303,6 @@ export function ChangeAddScreen({ params }: ScreenProps): ReactElement {
                 </Box>
             </Box>
         </Panel>
-    )
+    );
+
 }

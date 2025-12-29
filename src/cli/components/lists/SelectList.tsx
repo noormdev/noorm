@@ -13,72 +13,70 @@
  * />
  * ```
  */
-import { useState, useEffect, useMemo, useCallback } from 'react'
-import { Box, Text, useInput } from 'ink'
+import { useState, useEffect, useMemo } from 'react';
+import { Box, Text, useInput } from 'ink';
 
-import type { ReactElement } from 'react'
+import type { ReactElement } from 'react';
 
-import { useFocusScope } from '../../focus.js'
-
+import { useFocusScope } from '../../focus.js';
 
 /**
  * Item in a SelectList.
  */
 export interface SelectListItem<T = unknown> {
-
     /** Unique identifier */
-    key: string
+    key: string;
 
     /** Display text */
-    label: string
+    label: string;
 
     /** Payload passed on select */
-    value: T
+    value: T;
 
     /** Secondary text shown below label */
-    description?: string
+    description?: string;
 
     /** Prevent selection of this item */
-    disabled?: boolean
+    disabled?: boolean;
 
     /** Prefix icon */
-    icon?: string
+    icon?: string;
 }
-
 
 /**
  * Props for SelectList component.
  */
 export interface SelectListProps<T = unknown> {
-
     /** Items to display */
-    items: SelectListItem<T>[]
+    items: SelectListItem<T>[];
 
     /** Callback when item is selected (Enter pressed) */
-    onSelect?: (item: SelectListItem<T>) => void
+    onSelect?: (item: SelectListItem<T>) => void;
 
     /** Callback when highlighted item changes */
-    onHighlight?: (item: SelectListItem<T>) => void
+    onHighlight?: (item: SelectListItem<T>) => void;
 
     /** Label shown when no items */
-    emptyLabel?: string
+    emptyLabel?: string;
 
     /** Number of visible items before scrolling */
-    visibleCount?: number
+    visibleCount?: number;
 
     /** Focus scope label for keyboard handling. If not provided, uses parent's focus. */
-    focusLabel?: string
+    focusLabel?: string;
 
     /** External focus control - if provided, skips useFocusScope */
-    isFocused?: boolean
+    isFocused?: boolean;
 
     /** Initial selected value */
-    defaultValue?: string
+    defaultValue?: string;
 
     /** Whether the select is disabled */
-    isDisabled?: boolean
-}
+    isDisabled?: boolean;
 
+    /** Show description on a separate line below label (dimmed, indented) */
+    showDescriptionBelow?: boolean;
+}
 
 /**
  * SelectList component.
@@ -96,106 +94,132 @@ export function SelectList<T = unknown>({
     isFocused: externalFocused,
     defaultValue,
     isDisabled = false,
+    showDescriptionBelow = false,
 }: SelectListProps<T>): ReactElement {
 
     // Use external focus if provided, otherwise manage own focus scope
-    const hasExternalFocus = externalFocused !== undefined
+    const hasExternalFocus = externalFocused !== undefined;
     const internalFocus = useFocusScope({
         label: focusLabel ?? 'SelectList',
         skip: hasExternalFocus,
-    })
-    const isFocused = hasExternalFocus ? externalFocused : internalFocus.isFocused
+    });
+    const isFocused = hasExternalFocus ? externalFocused : internalFocus.isFocused;
 
     // Filter enabled items
-    const enabledItems = useMemo(() =>
-        items.filter(item => !item.disabled),
-        [items]
-    )
+    const enabledItems = useMemo(() => items.filter((item) => !item.disabled), [items]);
 
     // Find initial index from defaultValue
     const initialIndex = useMemo(() => {
 
-        if (!defaultValue) return 0
+        if (!defaultValue) return 0;
 
-        const index = enabledItems.findIndex(item => item.key === defaultValue)
+        const index = enabledItems.findIndex((item) => item.key === defaultValue);
 
-        return index >= 0 ? index : 0
-    }, [defaultValue, enabledItems])
+        return index >= 0 ? index : 0;
+
+    }, [defaultValue, enabledItems]);
 
     // Current highlighted index
-    const [highlightedIndex, setHighlightedIndex] = useState(initialIndex)
+    const [highlightedIndex, setHighlightedIndex] = useState(initialIndex);
+
+    // Reset highlighted index when items change (e.g., after deletion)
+    useEffect(() => {
+
+        if (enabledItems.length === 0) {
+
+            setHighlightedIndex(0);
+
+            return;
+
+        }
+
+        // Clamp index to valid range
+        if (highlightedIndex >= enabledItems.length) {
+
+            setHighlightedIndex(enabledItems.length - 1);
+
+        }
+
+    }, [enabledItems.length, highlightedIndex]);
 
     // Calculate visible window for scrolling
     const startIndex = useMemo(() => {
 
-        if (enabledItems.length <= visibleCount) return 0
+        if (enabledItems.length <= visibleCount) return 0;
 
         // Center the highlighted item in the visible window
-        const halfVisible = Math.floor(visibleCount / 2)
-        let start = highlightedIndex - halfVisible
+        const halfVisible = Math.floor(visibleCount / 2);
+        let start = highlightedIndex - halfVisible;
 
         // Clamp to valid range
-        if (start < 0) start = 0
+        if (start < 0) start = 0;
         if (start > enabledItems.length - visibleCount) {
 
-            start = enabledItems.length - visibleCount
+            start = enabledItems.length - visibleCount;
+
         }
 
-        return start
-    }, [highlightedIndex, enabledItems.length, visibleCount])
+        return start;
 
-    const visibleItems = useMemo(() =>
-        enabledItems.slice(startIndex, startIndex + visibleCount),
-        [enabledItems, startIndex, visibleCount]
-    )
+    }, [highlightedIndex, enabledItems.length, visibleCount]);
+
+    const visibleItems = useMemo(
+        () => enabledItems.slice(startIndex, startIndex + visibleCount),
+        [enabledItems, startIndex, visibleCount],
+    );
 
     // Notify on highlight change
     useEffect(() => {
 
-        const item = enabledItems[highlightedIndex]
+        const item = enabledItems[highlightedIndex];
 
         if (item && onHighlight) {
 
-            onHighlight(item)
+            onHighlight(item);
+
         }
-    }, [highlightedIndex, enabledItems, onHighlight])
+
+    }, [highlightedIndex, enabledItems, onHighlight]);
 
     // Handle keyboard navigation
     // Note: We don't use isActive option because it prevents handler registration
     // before focus is established. Instead we check isFocused inside the handler.
     useInput((input, key) => {
 
-        if (!isFocused || isDisabled) return
+        if (!isFocused || isDisabled) return;
 
         // Up arrow - move highlight up
         if (key.upArrow) {
 
-            setHighlightedIndex(i =>
-                i > 0 ? i - 1 : enabledItems.length - 1
-            )
-            return
+            setHighlightedIndex((i) => (i > 0 ? i - 1 : enabledItems.length - 1));
+
+            return;
+
         }
 
         // Down arrow - move highlight down
         if (key.downArrow) {
 
-            setHighlightedIndex(i =>
-                i < enabledItems.length - 1 ? i + 1 : 0
-            )
-            return
+            setHighlightedIndex((i) => (i < enabledItems.length - 1 ? i + 1 : 0));
+
+            return;
+
         }
 
         // Enter - select highlighted item
         if (key.return) {
 
-            const item = enabledItems[highlightedIndex]
+            const item = enabledItems[highlightedIndex];
 
             if (item && onSelect) {
 
-                onSelect(item)
+                onSelect(item);
+
             }
+
         }
-    })
+
+    });
 
     // Empty state
     if (enabledItems.length === 0) {
@@ -204,44 +228,55 @@ export function SelectList<T = unknown>({
             <Box>
                 <Text dimColor>{emptyLabel}</Text>
             </Box>
-        )
+        );
+
     }
 
     // Calculate if we need scroll indicators
-    const hasMoreAbove = startIndex > 0
-    const hasMoreBelow = startIndex + visibleCount < enabledItems.length
+    const hasMoreAbove = startIndex > 0;
+    const hasMoreBelow = startIndex + visibleCount < enabledItems.length;
 
     return (
         <Box flexDirection="column">
             {/* Scroll indicator - above */}
-            {hasMoreAbove && (
-                <Text dimColor>  ↑ {startIndex} more</Text>
-            )}
+            {hasMoreAbove && <Text dimColor> ↑ {startIndex} more</Text>}
 
             {/* Visible items */}
             {visibleItems.map((item, visibleIndex) => {
 
-                const actualIndex = startIndex + visibleIndex
-                const isHighlighted = actualIndex === highlightedIndex
+                const actualIndex = startIndex + visibleIndex;
+                const isHighlighted = actualIndex === highlightedIndex;
 
                 return (
-                    <Box key={item.key}>
-                        <Text
-                            color={isHighlighted && isFocused ? 'cyan' : undefined}
-                            bold={isHighlighted && isFocused}
-                        >
-                            {isHighlighted ? '❯ ' : '  '}
-                            {item.icon ? `${item.icon} ` : ''}
-                            {item.label}
-                        </Text>
+                    <Box key={item.key} flexDirection="column">
+                        <Box>
+                            <Text
+                                color={isHighlighted && isFocused ? 'cyan' : undefined}
+                                bold={isHighlighted && isFocused}
+                            >
+                                {isHighlighted ? '❯ ' : '  '}
+                                {item.icon ? `${item.icon} ` : ''}
+                                {item.label}
+                                {/* Inline description (default behavior) */}
+                                {!showDescriptionBelow && item.description && (
+                                    <Text dimColor> {item.description}</Text>
+                                )}
+                            </Text>
+                        </Box>
+                        {/* Description below (when showDescriptionBelow is true) */}
+                        {showDescriptionBelow && item.description && (
+                            <Text dimColor> {item.description}</Text>
+                        )}
                     </Box>
-                )
+                );
+
             })}
 
             {/* Scroll indicator - below */}
             {hasMoreBelow && (
-                <Text dimColor>  ↓ {enabledItems.length - startIndex - visibleCount} more</Text>
+                <Text dimColor> ↓ {enabledItems.length - startIndex - visibleCount} more</Text>
             )}
         </Box>
-    )
+    );
+
 }

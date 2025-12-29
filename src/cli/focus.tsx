@@ -23,32 +23,20 @@
  * })
  * ```
  */
-import {
-    createContext,
-    useContext,
-    useState,
-    useCallback,
-    useMemo,
-    useId,
-    useEffect
-} from 'react'
+import { createContext, useContext, useState, useCallback, useMemo, useId, useEffect } from 'react';
 
-import type { ReactNode, ReactElement } from 'react'
+import type { ReactNode, ReactElement } from 'react';
 
-import type { FocusEntry, FocusContextValue } from './types.js'
+import type { FocusEntry, FocusContextValue } from './types.js';
 
-
-const FocusContext = createContext<FocusContextValue | null>(null)
-
+const FocusContext = createContext<FocusContextValue | null>(null);
 
 /**
  * Props for FocusProvider.
  */
 export interface FocusProviderProps {
-
-    children: ReactNode
+    children: ReactNode;
 }
-
 
 /**
  * Focus provider component.
@@ -67,74 +55,86 @@ export interface FocusProviderProps {
  */
 export function FocusProvider({ children }: FocusProviderProps): ReactElement {
 
-    const [stack, setStack] = useState<FocusEntry[]>([])
+    const [stack, setStack] = useState<FocusEntry[]>([]);
 
     const push = useCallback((id: string, label?: string) => {
 
-        setStack(prev => {
+        setStack((prev) => {
 
             // Don't add duplicates
-            if (prev.some(entry => entry.id === id)) {
+            if (prev.some((entry) => entry.id === id)) {
 
-                return prev
+                return prev;
+
             }
 
-            return [...prev, { id, label }]
-        })
-    }, [])
+            return [...prev, { id, label }];
+
+        });
+
+    }, []);
 
     const pop = useCallback((id: string) => {
 
-        setStack(prev => {
+        setStack((prev) => {
 
             // Only remove if this ID is in the stack
-            const index = prev.findIndex(entry => entry.id === id)
+            const index = prev.findIndex((entry) => entry.id === id);
 
             if (index === -1) {
 
-                return prev
+                return prev;
+
             }
 
             // Remove from wherever it is in the stack
-            return [...prev.slice(0, index), ...prev.slice(index + 1)]
-        })
-    }, [])
+            return [...prev.slice(0, index), ...prev.slice(index + 1)];
 
-    const isActive = useCallback((id: string): boolean => {
+        });
 
-        if (stack.length === 0) {
+    }, []);
 
-            return false
-        }
+    const isActive = useCallback(
+        (id: string): boolean => {
 
-        return stack[stack.length - 1]!.id === id
-    }, [stack])
+            if (stack.length === 0) {
+
+                return false;
+
+            }
+
+            return stack[stack.length - 1]!.id === id;
+
+        },
+        [stack],
+    );
 
     const activeId = useMemo(() => {
 
         if (stack.length === 0) {
 
-            return null
+            return null;
+
         }
 
-        return stack[stack.length - 1]!.id
-    }, [stack])
+        return stack[stack.length - 1]!.id;
 
-    const value = useMemo<FocusContextValue>(() => ({
-        push,
-        pop,
-        isActive,
-        activeId,
-        stack
-    }), [push, pop, isActive, activeId, stack])
+    }, [stack]);
 
-    return (
-        <FocusContext.Provider value={value}>
-            {children}
-        </FocusContext.Provider>
-    )
+    const value = useMemo<FocusContextValue>(
+        () => ({
+            push,
+            pop,
+            isActive,
+            activeId,
+            stack,
+        }),
+        [push, pop, isActive, activeId, stack],
+    );
+
+    return <FocusContext.Provider value={value}>{children}</FocusContext.Provider>;
+
 }
-
 
 /**
  * Hook to access focus stack functionality.
@@ -148,29 +148,28 @@ export function FocusProvider({ children }: FocusProviderProps): ReactElement {
  */
 export function useFocusContext(): FocusContextValue {
 
-    const context = useContext(FocusContext)
+    const context = useContext(FocusContext);
 
     if (!context) {
 
-        throw new Error('useFocusContext must be used within a FocusProvider')
+        throw new Error('useFocusContext must be used within a FocusProvider');
+
     }
 
-    return context
-}
+    return context;
 
+}
 
 /**
  * Options for useFocusScope.
  */
 export interface UseFocusScopeOptions {
-
     /** Label for debugging */
-    label?: string
+    label?: string;
 
     /** Skip registering with focus stack (use when parent manages focus) */
-    skip?: boolean
+    skip?: boolean;
 }
-
 
 /**
  * Hook to manage focus for a component with automatic cleanup.
@@ -192,35 +191,39 @@ export interface UseFocusScopeOptions {
  * }
  * ```
  */
-export function useFocusScope(labelOrOptions?: string | UseFocusScopeOptions): { isFocused: boolean; focusId: string } {
+export function useFocusScope(labelOrOptions?: string | UseFocusScopeOptions): {
+    isFocused: boolean;
+    focusId: string;
+} {
 
-    const options = typeof labelOrOptions === 'string'
-        ? { label: labelOrOptions }
-        : labelOrOptions ?? {}
+    const options =
+        typeof labelOrOptions === 'string' ? { label: labelOrOptions } : (labelOrOptions ?? {});
 
-    const { label, skip = false } = options
+    const { label, skip = false } = options;
 
-    const { push, pop, isActive } = useFocusContext()
-    const focusId = useId()
+    const { push, pop, isActive } = useFocusContext();
+    const focusId = useId();
 
     useEffect(() => {
 
-        if (skip) return
+        if (skip) return;
 
-        push(focusId, label)
+        push(focusId, label);
 
         return () => {
 
-            pop(focusId)
-        }
-    }, [focusId, label, push, pop, skip])
+            pop(focusId);
+
+        };
+
+    }, [focusId, label, push, pop, skip]);
 
     return {
         isFocused: skip ? false : isActive(focusId),
-        focusId
-    }
-}
+        focusId,
+    };
 
+}
 
 /**
  * Hook to check if a specific focus ID is active.
@@ -229,18 +232,19 @@ export function useFocusScope(labelOrOptions?: string | UseFocusScopeOptions): {
  */
 export function useIsFocused(id: string): boolean {
 
-    const { isActive } = useFocusContext()
+    const { isActive } = useFocusContext();
 
-    return isActive(id)
+    return isActive(id);
+
 }
-
 
 /**
  * Hook to get the currently focused component ID.
  */
 export function useActiveFocus(): string | null {
 
-    const { activeId } = useFocusContext()
+    const { activeId } = useFocusContext();
 
-    return activeId
+    return activeId;
+
 }

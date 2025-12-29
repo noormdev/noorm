@@ -20,18 +20,18 @@
  * const revertResult = await revertChangeset(context, changeset, options)
  * ```
  */
-import path from 'node:path'
-import { readFile } from 'node:fs/promises'
-import { sql } from 'kysely'
+import path from 'node:path';
+import { readFile } from 'node:fs/promises';
+import { sql } from 'kysely';
 
-import { attempt, attemptSync } from '@logosdx/utils'
+import { attempt, attemptSync } from '@logosdx/utils';
 
-import { observer } from '../observer.js'
-import { processFile, isTemplate } from '../template/index.js'
-import { computeChecksum, computeCombinedChecksum } from '../runner/checksum.js'
-import { getLockManager } from '../lock/index.js'
-import { ChangesetHistory } from './history.js'
-import { resolveManifest, validateChangeset, hasRevertFiles } from './parser.js'
+import { observer } from '../observer.js';
+import { processFile, isTemplate } from '../template/index.js';
+import { computeChecksum, computeCombinedChecksum } from '../runner/checksum.js';
+import { getLockManager } from '../lock/index.js';
+import { ChangesetHistory } from './history.js';
+import { resolveManifest, validateChangeset, hasRevertFiles } from './parser.js';
 import type {
     Changeset,
     ChangesetFile,
@@ -39,25 +39,19 @@ import type {
     ChangesetOptions,
     ChangesetResult,
     ChangesetFileResult,
-} from './types.js'
-import {
-    ChangesetNotAppliedError,
-    ChangesetValidationError,
-} from './types.js'
-
+} from './types.js';
+import { ChangesetNotAppliedError, ChangesetValidationError } from './types.js';
 
 // ─────────────────────────────────────────────────────────────
 // Constants
 // ─────────────────────────────────────────────────────────────
 
 const DEFAULT_OPTIONS: Required<Omit<ChangesetOptions, 'output'>> & { output: string | null } = {
-
     force: false,
     dryRun: false,
     preview: false,
     output: null,
-}
-
+};
 
 // ─────────────────────────────────────────────────────────────
 // Execute Changeset (Change Direction)
@@ -89,14 +83,15 @@ export async function executeChangeset(
     options: ChangesetOptions = {},
 ): Promise<ChangesetResult> {
 
-    const start = performance.now()
-    const opts = { ...DEFAULT_OPTIONS, ...options }
+    const start = performance.now();
+    const opts = { ...DEFAULT_OPTIONS, ...options };
 
     // Validate changeset structure
     const [, validateErr] = attemptSync(() => {
 
-        validateChangeset(changeset)
-    })
+        validateChangeset(changeset);
+
+    });
 
     if (validateErr) {
 
@@ -104,36 +99,36 @@ export async function executeChangeset(
             source: 'changeset',
             error: validateErr,
             context: { name: changeset.name, operation: 'validate' },
-        })
+        });
 
-        return createFailedResult(changeset.name, 'change', validateErr.message, start)
+        return createFailedResult(changeset.name, 'change', validateErr.message, start);
+
     }
 
     // Get files to execute
-    const files = changeset.changeFiles
+    const files = changeset.changeFiles;
 
     if (files.length === 0) {
 
-        throw new ChangesetValidationError(
-            changeset.name,
-            'No files in change/ folder'
-        )
+        throw new ChangesetValidationError(changeset.name, 'No files in change/ folder');
+
     }
 
     // Compute checksum
     const [checksums, checksumErr] = await attempt(() =>
-        computeFileChecksums(files, context.schemaDir)
-    )
+        computeFileChecksums(files, context.schemaDir),
+    );
 
     if (checksumErr) {
 
-        return createFailedResult(changeset.name, 'change', checksumErr.message, start)
+        return createFailedResult(changeset.name, 'change', checksumErr.message, start);
+
     }
 
-    const changesetChecksum = computeCombinedChecksum(checksums)
+    const changesetChecksum = computeCombinedChecksum(checksums);
 
     // Create history tracker
-    const history = new ChangesetHistory(context.db, context.configName)
+    const history = new ChangesetHistory(context.db, context.configName);
 
     // Check if needs to run (unless dry run or preview)
     if (!opts.dryRun && !opts.preview) {
@@ -142,14 +137,14 @@ export async function executeChangeset(
             changeset.name,
             changesetChecksum,
             opts.force,
-        )
+        );
 
         if (!needsRunResult.needsRun) {
 
             observer.emit('changeset:skip', {
                 name: changeset.name,
                 reason: needsRunResult.skipReason ?? 'already applied',
-            })
+            });
 
             return {
                 name: changeset.name,
@@ -157,36 +152,41 @@ export async function executeChangeset(
                 status: 'success',
                 files: [],
                 durationMs: performance.now() - start,
-            }
+            };
+
         }
+
     }
 
     // Handle dry run
     if (opts.dryRun) {
 
-        return executeDryRun(context, changeset, files, 'change', start)
+        return executeDryRun(context, changeset, files, 'change', start);
+
     }
 
     // Handle preview
     if (opts.preview) {
 
-        return executePreview(context, changeset, files, 'change', opts.output, start)
+        return executePreview(context, changeset, files, 'change', opts.output, start);
+
     }
 
     // Acquire lock
-    const lockManager = getLockManager()
-    const identity = formatIdentity(context.identity)
+    const lockManager = getLockManager();
+    const identity = formatIdentity(context.identity);
 
     const [, lockErr] = await attempt(() =>
         lockManager.acquire(context.db, context.configName, identity, {
             reason: `Changeset: ${changeset.name}`,
-        })
-    )
+        }),
+    );
 
     if (lockErr) {
 
         // Lock error is thrown, not returned
-        throw lockErr
+        throw lockErr;
+
     }
 
     try {
@@ -200,19 +200,19 @@ export async function executeChangeset(
             changesetChecksum,
             history,
             start,
-        )
+        );
 
-        return result
+        return result;
+
     }
     finally {
 
         // Always release lock
-        await attempt(() =>
-            lockManager.release(context.db, context.configName, identity)
-        )
-    }
-}
+        await attempt(() => lockManager.release(context.db, context.configName, identity));
 
+    }
+
+}
 
 // ─────────────────────────────────────────────────────────────
 // Revert Changeset
@@ -232,51 +232,54 @@ export async function revertChangeset(
     options: ChangesetOptions = {},
 ): Promise<ChangesetResult> {
 
-    const start = performance.now()
-    const opts = { ...DEFAULT_OPTIONS, ...options }
+    const start = performance.now();
+    const opts = { ...DEFAULT_OPTIONS, ...options };
 
     // Check for revert files
     if (!hasRevertFiles(changeset)) {
 
         throw new ChangesetValidationError(
             changeset.name,
-            'No revert files (revert/ folder is empty or missing)'
-        )
+            'No revert files (revert/ folder is empty or missing)',
+        );
+
     }
 
-    const files = changeset.revertFiles
+    const files = changeset.revertFiles;
 
     // Compute checksum
     const [checksums, checksumErr] = await attempt(() =>
-        computeFileChecksums(files, context.schemaDir)
-    )
+        computeFileChecksums(files, context.schemaDir),
+    );
 
     if (checksumErr) {
 
-        return createFailedResult(changeset.name, 'revert', checksumErr.message, start)
+        return createFailedResult(changeset.name, 'revert', checksumErr.message, start);
+
     }
 
-    const revertChecksum = computeCombinedChecksum(checksums)
+    const revertChecksum = computeCombinedChecksum(checksums);
 
     // Create history tracker
-    const history = new ChangesetHistory(context.db, context.configName)
+    const history = new ChangesetHistory(context.db, context.configName);
 
     // Check if can revert (unless dry run or preview)
     if (!opts.dryRun && !opts.preview) {
 
-        const canRevertResult = await history.canRevert(changeset.name, opts.force)
+        const canRevertResult = await history.canRevert(changeset.name, opts.force);
 
         if (!canRevertResult.canRevert) {
 
             if (canRevertResult.reason === 'not applied') {
 
-                throw new ChangesetNotAppliedError(changeset.name)
+                throw new ChangesetNotAppliedError(changeset.name);
+
             }
 
             observer.emit('changeset:skip', {
                 name: changeset.name,
                 reason: canRevertResult.reason ?? 'cannot revert',
-            })
+            });
 
             return {
                 name: changeset.name,
@@ -284,35 +287,40 @@ export async function revertChangeset(
                 status: 'success',
                 files: [],
                 durationMs: performance.now() - start,
-            }
+            };
+
         }
+
     }
 
     // Handle dry run
     if (opts.dryRun) {
 
-        return executeDryRun(context, changeset, files, 'revert', start)
+        return executeDryRun(context, changeset, files, 'revert', start);
+
     }
 
     // Handle preview
     if (opts.preview) {
 
-        return executePreview(context, changeset, files, 'revert', opts.output, start)
+        return executePreview(context, changeset, files, 'revert', opts.output, start);
+
     }
 
     // Acquire lock
-    const lockManager = getLockManager()
-    const identity = formatIdentity(context.identity)
+    const lockManager = getLockManager();
+    const identity = formatIdentity(context.identity);
 
     const [, lockErr] = await attempt(() =>
         lockManager.acquire(context.db, context.configName, identity, {
             reason: `Revert: ${changeset.name}`,
-        })
-    )
+        }),
+    );
 
     if (lockErr) {
 
-        throw lockErr
+        throw lockErr;
+
     }
 
     try {
@@ -326,25 +334,26 @@ export async function revertChangeset(
             revertChecksum,
             history,
             start,
-        )
+        );
 
         // If successful, mark original as reverted
         if (result.status === 'success') {
 
-            await history.markAsReverted(changeset.name)
+            await history.markAsReverted(changeset.name);
+
         }
 
-        return result
+        return result;
+
     }
     finally {
 
         // Always release lock
-        await attempt(() =>
-            lockManager.release(context.db, context.configName, identity)
-        )
-    }
-}
+        await attempt(() => lockManager.release(context.db, context.configName, identity));
 
+    }
+
+}
 
 // ─────────────────────────────────────────────────────────────
 // Internal: Execute Files
@@ -364,7 +373,7 @@ async function executeFiles(
 ): Promise<ChangesetResult> {
 
     // Expand .txt manifests to actual file list
-    const expandedFiles = await expandFiles(files, context.schemaDir)
+    const expandedFiles = await expandFiles(files, context.schemaDir);
 
     // Create operation record
     const [operationId, createErr] = await attempt(() =>
@@ -372,8 +381,8 @@ async function executeFiles(
             name: changeset.name,
             direction,
             executedBy: formatIdentity(context.identity),
-        })
-    )
+        }),
+    );
 
     if (createErr) {
 
@@ -381,64 +390,64 @@ async function executeFiles(
             source: 'changeset',
             error: createErr,
             context: { name: changeset.name, operation: 'create-operation' },
-        })
+        });
 
-        return createFailedResult(changeset.name, direction, createErr.message, startTime)
+        return createFailedResult(changeset.name, direction, createErr.message, startTime);
+
     }
 
     // Compute checksums for all files
-    const fileChecksums = new Map<string, string>()
+    const fileChecksums = new Map<string, string>();
 
     for (const file of expandedFiles) {
 
-        const [cs] = await attempt(() => computeChecksum(file.path))
-        fileChecksums.set(file.path, cs ?? '')
+        const [cs] = await attempt(() => computeChecksum(file.path));
+        fileChecksums.set(file.path, cs ?? '');
+
     }
 
     // Create pending file records
     await history.createFileRecords(
         operationId,
-        expandedFiles.map(f => ({
+        expandedFiles.map((f) => ({
             filepath: f.path,
             fileType: f.type,
             checksum: fileChecksums.get(f.path) ?? '',
-        }))
-    )
+        })),
+    );
 
     // Emit start event
     observer.emit('changeset:start', {
         name: changeset.name,
         direction,
-        files: expandedFiles.map(f => f.path),
-    })
+        files: expandedFiles.map((f) => f.path),
+    });
 
     // Execute each file
-    const results: ChangesetFileResult[] = []
-    let failed = false
+    const results: ChangesetFileResult[] = [];
+    let failed = false;
 
     for (let i = 0; i < expandedFiles.length; i++) {
 
-        const file = expandedFiles[i]
+        const file = expandedFiles[i];
 
-        if (!file) continue
+        if (!file) continue;
 
         observer.emit('changeset:file', {
             changeset: changeset.name,
             filepath: file.path,
             index: i,
             total: expandedFiles.length,
-        })
+        });
 
-        const fileStart = performance.now()
+        const fileStart = performance.now();
 
         // Load and render file
-        const [sqlContent, loadErr] = await attempt(() =>
-            loadAndRenderFile(context, file.path)
-        )
+        const [sqlContent, loadErr] = await attempt(() => loadAndRenderFile(context, file.path));
 
         if (loadErr) {
 
-            const durationMs = performance.now() - fileStart
+            const durationMs = performance.now() - fileStart;
 
             results.push({
                 filepath: file.path,
@@ -446,7 +455,7 @@ async function executeFiles(
                 status: 'failed',
                 error: loadErr.message,
                 durationMs,
-            })
+            });
 
             await history.updateFileExecution(
                 operationId,
@@ -454,18 +463,17 @@ async function executeFiles(
                 'failed',
                 durationMs,
                 loadErr.message,
-            )
+            );
 
-            failed = true
-            break
+            failed = true;
+            break;
+
         }
 
         // Execute SQL
-        const [, execErr] = await attempt(() =>
-            sql.raw(sqlContent).execute(context.db)
-        )
+        const [, execErr] = await attempt(() => sql.raw(sqlContent).execute(context.db));
 
-        const durationMs = performance.now() - fileStart
+        const durationMs = performance.now() - fileStart;
 
         if (execErr) {
 
@@ -475,7 +483,7 @@ async function executeFiles(
                 status: 'failed',
                 error: execErr.message,
                 durationMs,
-            })
+            });
 
             await history.updateFileExecution(
                 operationId,
@@ -483,10 +491,11 @@ async function executeFiles(
                 'failed',
                 durationMs,
                 execErr.message,
-            )
+            );
 
-            failed = true
-            break
+            failed = true;
+            break;
+
         }
 
         // Success
@@ -495,33 +504,30 @@ async function executeFiles(
             checksum: fileChecksums.get(file.path) ?? '',
             status: 'success',
             durationMs,
-        })
+        });
 
-        await history.updateFileExecution(
-            operationId,
-            file.path,
-            'success',
-            durationMs,
-        )
+        await history.updateFileExecution(operationId, file.path, 'success', durationMs);
+
     }
 
     // If failed, skip remaining files
     if (failed) {
 
-        await history.skipRemainingFiles(operationId, 'changeset failed')
+        await history.skipRemainingFiles(operationId, 'changeset failed');
+
     }
 
     // Finalize operation
-    const finalStatus = failed ? 'failed' : 'success'
-    const totalDurationMs = performance.now() - startTime
+    const finalStatus = failed ? 'failed' : 'success';
+    const totalDurationMs = performance.now() - startTime;
 
     await history.finalizeOperation(
         operationId,
         finalStatus,
         checksum,
         totalDurationMs,
-        failed ? results.find(r => r.error)?.error : undefined,
-    )
+        failed ? results.find((r) => r.error)?.error : undefined,
+    );
 
     // Emit complete event
     observer.emit('changeset:complete', {
@@ -529,7 +535,7 @@ async function executeFiles(
         direction,
         status: finalStatus,
         durationMs: totalDurationMs,
-    })
+    });
 
     return {
         name: changeset.name,
@@ -537,11 +543,11 @@ async function executeFiles(
         status: finalStatus,
         files: results,
         durationMs: totalDurationMs,
-        error: failed ? results.find(r => r.error)?.error : undefined,
+        error: failed ? results.find((r) => r.error)?.error : undefined,
         operationId,
-    }
-}
+    };
 
+}
 
 // ─────────────────────────────────────────────────────────────
 // Internal: Dry Run
@@ -558,22 +564,20 @@ async function executeDryRun(
     startTime: number,
 ): Promise<ChangesetResult> {
 
-    const { mkdir, writeFile } = await import('node:fs/promises')
+    const { mkdir, writeFile } = await import('node:fs/promises');
 
-    const expandedFiles = await expandFiles(files, context.schemaDir)
-    const results: ChangesetFileResult[] = []
+    const expandedFiles = await expandFiles(files, context.schemaDir);
+    const results: ChangesetFileResult[] = [];
 
     for (const file of expandedFiles) {
 
-        const fileStart = performance.now()
+        const fileStart = performance.now();
 
         // Compute checksum
-        const [checksum] = await attempt(() => computeChecksum(file.path))
+        const [checksum] = await attempt(() => computeChecksum(file.path));
 
         // Load and render file
-        const [sqlContent, loadErr] = await attempt(() =>
-            loadAndRenderFile(context, file.path)
-        )
+        const [sqlContent, loadErr] = await attempt(() => loadAndRenderFile(context, file.path));
 
         if (loadErr) {
 
@@ -583,22 +587,23 @@ async function executeDryRun(
                 status: 'failed',
                 error: loadErr.message,
                 durationMs: performance.now() - fileStart,
-            })
+            });
 
-            continue
+            continue;
+
         }
 
         // Write to tmp/
-        const outputPath = getDryRunOutputPath(context.projectRoot, file.path)
-        const outputDir = path.dirname(outputPath)
+        const outputPath = getDryRunOutputPath(context.projectRoot, file.path);
+        const outputDir = path.dirname(outputPath);
 
-        await mkdir(outputDir, { recursive: true })
-        await writeFile(outputPath, sqlContent, 'utf-8')
+        await mkdir(outputDir, { recursive: true });
+        await writeFile(outputPath, sqlContent, 'utf-8');
 
         observer.emit('file:dry-run', {
             filepath: file.path,
             outputPath,
-        })
+        });
 
         results.push({
             filepath: file.path,
@@ -606,18 +611,19 @@ async function executeDryRun(
             status: 'success',
             durationMs: performance.now() - fileStart,
             renderedSql: sqlContent,
-        })
+        });
+
     }
 
     return {
         name: changeset.name,
         direction,
-        status: results.every(r => r.status === 'success') ? 'success' : 'failed',
+        status: results.every((r) => r.status === 'success') ? 'success' : 'failed',
         files: results,
         durationMs: performance.now() - startTime,
-    }
-}
+    };
 
+}
 
 // ─────────────────────────────────────────────────────────────
 // Internal: Preview
@@ -635,21 +641,19 @@ async function executePreview(
     startTime: number,
 ): Promise<ChangesetResult> {
 
-    const expandedFiles = await expandFiles(files, context.schemaDir)
-    const results: ChangesetFileResult[] = []
-    const rendered: string[] = []
+    const expandedFiles = await expandFiles(files, context.schemaDir);
+    const results: ChangesetFileResult[] = [];
+    const rendered: string[] = [];
 
     for (const file of expandedFiles) {
 
-        const fileStart = performance.now()
+        const fileStart = performance.now();
 
         // Compute checksum
-        const [checksum] = await attempt(() => computeChecksum(file.path))
+        const [checksum] = await attempt(() => computeChecksum(file.path));
 
         // Load and render file
-        const [sqlContent, loadErr] = await attempt(() =>
-            loadAndRenderFile(context, file.path)
-        )
+        const [sqlContent, loadErr] = await attempt(() => loadAndRenderFile(context, file.path));
 
         if (loadErr) {
 
@@ -659,12 +663,13 @@ async function executePreview(
                 status: 'failed',
                 error: loadErr.message,
                 durationMs: performance.now() - fileStart,
-            })
+            });
 
-            continue
+            continue;
+
         }
 
-        rendered.push(formatPreviewHeader(file.path) + sqlContent)
+        rendered.push(formatPreviewHeader(file.path) + sqlContent);
 
         results.push({
             filepath: file.path,
@@ -672,27 +677,29 @@ async function executePreview(
             status: 'success',
             durationMs: performance.now() - fileStart,
             renderedSql: sqlContent,
-        })
+        });
+
     }
 
     // Write to output file if specified
     if (output) {
 
-        const { writeFile } = await import('node:fs/promises')
+        const { writeFile } = await import('node:fs/promises');
 
-        const combinedSql = rendered.join('\n\n')
-        await writeFile(output, combinedSql, 'utf-8')
+        const combinedSql = rendered.join('\n\n');
+        await writeFile(output, combinedSql, 'utf-8');
+
     }
 
     return {
         name: changeset.name,
         direction,
-        status: results.every(r => r.status === 'success') ? 'success' : 'failed',
+        status: results.every((r) => r.status === 'success') ? 'success' : 'failed',
         files: results,
         durationMs: performance.now() - startTime,
-    }
-}
+    };
 
+}
 
 // ─────────────────────────────────────────────────────────────
 // Internal Helpers
@@ -701,12 +708,9 @@ async function executePreview(
 /**
  * Expand .txt manifest files to actual SQL paths.
  */
-async function expandFiles(
-    files: ChangesetFile[],
-    schemaDir: string,
-): Promise<ChangesetFile[]> {
+async function expandFiles(files: ChangesetFile[], schemaDir: string): Promise<ChangesetFile[]> {
 
-    const expanded: ChangesetFile[] = []
+    const expanded: ChangesetFile[] = [];
 
     for (const file of files) {
 
@@ -721,13 +725,15 @@ async function expandFiles(
                         filename: path.basename(resolvedPath),
                         path: resolvedPath,
                         type: 'sql',
-                    })
+                    });
+
                 }
+
             }
             else {
 
                 // Resolve now if not already resolved
-                const resolved = await resolveManifest(file.path, schemaDir)
+                const resolved = await resolveManifest(file.path, schemaDir);
 
                 for (const resolvedPath of resolved) {
 
@@ -735,60 +741,62 @@ async function expandFiles(
                         filename: path.basename(resolvedPath),
                         path: resolvedPath,
                         type: 'sql',
-                    })
+                    });
+
                 }
+
             }
+
         }
         else {
 
-            expanded.push(file)
+            expanded.push(file);
+
         }
+
     }
 
-    return expanded
-}
+    return expanded;
 
+}
 
 /**
  * Compute checksums for all files, including expanded manifests.
  */
-async function computeFileChecksums(
-    files: ChangesetFile[],
-    schemaDir: string,
-): Promise<string[]> {
+async function computeFileChecksums(files: ChangesetFile[], schemaDir: string): Promise<string[]> {
 
-    const checksums: string[] = []
+    const checksums: string[] = [];
 
     for (const file of files) {
 
         // Compute checksum of the file itself
-        const fileChecksum = await computeChecksum(file.path)
-        checksums.push(fileChecksum)
+        const fileChecksum = await computeChecksum(file.path);
+        checksums.push(fileChecksum);
 
         // For .txt files, also include checksums of referenced files
         if (file.type === 'txt') {
 
-            const resolved = file.resolvedPaths ?? await resolveManifest(file.path, schemaDir)
+            const resolved = file.resolvedPaths ?? (await resolveManifest(file.path, schemaDir));
 
             for (const resolvedPath of resolved) {
 
-                const refChecksum = await computeChecksum(resolvedPath)
-                checksums.push(refChecksum)
+                const refChecksum = await computeChecksum(resolvedPath);
+                checksums.push(refChecksum);
+
             }
+
         }
+
     }
 
-    return checksums
-}
+    return checksums;
 
+}
 
 /**
  * Load and optionally render a SQL file.
  */
-async function loadAndRenderFile(
-    context: ChangesetContext,
-    filepath: string,
-): Promise<string> {
+async function loadAndRenderFile(context: ChangesetContext, filepath: string): Promise<string> {
 
     if (isTemplate(filepath)) {
 
@@ -797,36 +805,38 @@ async function loadAndRenderFile(
             config: context.config,
             secrets: context.secrets,
             globalSecrets: context.globalSecrets,
-        })
+        });
 
-        return result.sql
+        return result.sql;
+
     }
 
-    const [content, err] = await attempt(() => readFile(filepath, 'utf-8'))
+    const [content, err] = await attempt(() => readFile(filepath, 'utf-8'));
 
     if (err) {
 
-        throw new Error(`Failed to read file: ${filepath}`, { cause: err })
+        throw new Error(`Failed to read file: ${filepath}`, { cause: err });
+
     }
 
-    return content
-}
+    return content;
 
+}
 
 /**
  * Get the output path for a dry run file.
  */
 function getDryRunOutputPath(projectRoot: string, filepath: string): string {
 
-    const relativePath = path.relative(projectRoot, filepath)
+    const relativePath = path.relative(projectRoot, filepath);
 
     const outputRelativePath = relativePath.endsWith('.tmpl')
         ? relativePath.slice(0, -5)
-        : relativePath
+        : relativePath;
 
-    return path.join(projectRoot, 'tmp', outputRelativePath)
+    return path.join(projectRoot, 'tmp', outputRelativePath);
+
 }
-
 
 /**
  * Format preview header for a file.
@@ -837,9 +847,9 @@ function formatPreviewHeader(filepath: string): string {
 -- File: ${filepath}
 -- ============================================================
 
-`
-}
+`;
 
+}
 
 /**
  * Format identity for tracking.
@@ -848,12 +858,13 @@ function formatIdentity(identity: { name: string; email?: string }): string {
 
     if (identity.email) {
 
-        return `${identity.name} <${identity.email}>`
+        return `${identity.name} <${identity.email}>`;
+
     }
 
-    return identity.name
-}
+    return identity.name;
 
+}
 
 /**
  * Create a failed result.
@@ -872,5 +883,6 @@ function createFailedResult(
         files: [],
         durationMs: performance.now() - startTime,
         error,
-    }
+    };
+
 }

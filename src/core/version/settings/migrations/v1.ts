@@ -6,8 +6,7 @@
  *
  * For settings schema documentation, see src/core/settings/types.ts
  */
-import type { SettingsMigration } from '../../types.js'
-
+import type { SettingsMigration } from '../../types.js';
 
 /**
  * Migration v1: Initial settings shape.
@@ -25,7 +24,6 @@ import type { SettingsMigration } from '../../types.js'
  * - logging: LoggingConfig
  */
 export const v1: SettingsMigration = {
-
     version: 1,
     description: 'Initial settings shape',
 
@@ -34,14 +32,17 @@ export const v1: SettingsMigration = {
         return {
             schemaVersion: 1,
             ...settings,
-        }
+        };
+
     },
 
     down(settings: Record<string, unknown>): Record<string, unknown> {
 
         // v1 is the baseline - can't downgrade further
         // Remove schemaVersion and return raw settings
-        const { schemaVersion, ...rest } = settings
-        return rest
+        const { schemaVersion: _schemaVersion, ...rest } = settings;
+
+        return rest;
+
     },
-}
+};

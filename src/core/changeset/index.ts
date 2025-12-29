@@ -59,7 +59,7 @@ export type {
     // Scaffold
     CreateChangesetOptions,
     AddFileOptions,
-} from './types.js'
+} from './types.js';
 
 export {
     DEFAULT_CHANGESET_OPTIONS,
@@ -72,8 +72,7 @@ export {
     ChangesetNotAppliedError,
     ChangesetOrphanedError,
     ManifestReferenceError,
-} from './types.js'
-
+} from './types.js';
 
 // ─────────────────────────────────────────────────────────────
 // Parser
@@ -87,8 +86,7 @@ export {
     hasRevertFiles,
     parseSequence,
     parseDescription,
-} from './parser.js'
-
+} from './parser.js';
 
 // ─────────────────────────────────────────────────────────────
 // Scaffold
@@ -101,28 +99,22 @@ export {
     renameFile,
     reorderFiles,
     deleteChangeset,
-} from './scaffold.js'
-
+} from './scaffold.js';
 
 // ─────────────────────────────────────────────────────────────
 // History
 // ─────────────────────────────────────────────────────────────
 
-export { ChangesetHistory } from './history.js'
-
+export { ChangesetHistory } from './history.js';
 
 // ─────────────────────────────────────────────────────────────
 // Executor
 // ─────────────────────────────────────────────────────────────
 
-export {
-    executeChangeset,
-    revertChangeset,
-} from './executor.js'
-
+export { executeChangeset, revertChangeset } from './executor.js';
 
 // ─────────────────────────────────────────────────────────────
 // Manager
 // ─────────────────────────────────────────────────────────────
 
-export { ChangesetManager } from './manager.js'
+export { ChangesetManager } from './manager.js';

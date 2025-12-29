@@ -3,4 +3,4 @@
  *
  * @deprecated Import from '../../../shared' or '../../shared' instead.
  */
-export * from '../../shared/tables.js'
+export * from '../../shared/tables.js';

@@ -6,8 +6,7 @@
  *
  * For state schema documentation, see plan/datamodel.md#State
  */
-import type { StateMigration } from '../../types.js'
-
+import type { StateMigration } from '../../types.js';
 
 /**
  * Migration v1: Initial state shape.
@@ -22,7 +21,6 @@ import type { StateMigration } from '../../types.js'
  * - globalSecrets: Record<string, string>
  */
 export const v1: StateMigration = {
-
     version: 1,
     description: 'Initial state shape',
 
@@ -36,14 +34,17 @@ export const v1: StateMigration = {
             configs: state['configs'] ?? {},
             secrets: state['secrets'] ?? {},
             globalSecrets: state['globalSecrets'] ?? {},
-        }
+        };
+
     },
 
     down(state: Record<string, unknown>): Record<string, unknown> {
 
         // v1 is the baseline - can't downgrade further
         // Remove schemaVersion and return raw state
-        const { schemaVersion, ...rest } = state
-        return rest
+        const { schemaVersion: _schemaVersion, ...rest } = state;
+
+        return rest;
+
     },
-}
+};

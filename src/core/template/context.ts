@@ -19,18 +19,17 @@
  * // ctx now has: $.padId, $.users, $.config, $.secrets, $.quote, etc.
  * ```
  */
-import path from 'node:path'
-import { readdir } from 'node:fs/promises'
+import path from 'node:path';
+import { readdir } from 'node:fs/promises';
 
-import { attempt } from '@logosdx/utils'
+import { attempt } from '@logosdx/utils';
 
-import { observer } from '../observer.js'
-import type { TemplateContext, RenderOptions } from './types.js'
-import { HELPER_FILENAME } from './types.js'
-import { loadHelpers } from './helpers.js'
-import { loadDataFile, hasLoader } from './loaders/index.js'
-import { toContextKey, sqlEscape, sqlQuote, generateUuid, isoNow } from './utils.js'
-
+import { observer } from '../observer.js';
+import type { TemplateContext, RenderOptions } from './types.js';
+import { HELPER_FILENAME } from './types.js';
+import { loadHelpers } from './helpers.js';
+import { loadDataFile, hasLoader } from './loaders/index.js';
+import { toContextKey, sqlEscape, sqlQuote, generateUuid, isoNow } from './utils.js';
 
 /**
  * Build the template context ($) for a template file.
@@ -44,17 +43,17 @@ export async function buildContext(
     options: RenderOptions = {},
 ): Promise<TemplateContext> {
 
-    const templateDir = path.dirname(templatePath)
-    const projectRoot = options.projectRoot ?? process.cwd()
+    const templateDir = path.dirname(templatePath);
+    const projectRoot = options.projectRoot ?? process.cwd();
 
     // 1. Load inherited helpers
-    const helpers = await loadHelpers(templateDir, projectRoot)
+    const helpers = await loadHelpers(templateDir, projectRoot);
 
     // 2. Auto-load data files from template directory
-    const dataFiles = await loadDataFilesInDir(templateDir)
+    const dataFiles = await loadDataFilesInDir(templateDir);
 
     // 3. Check if data files include a config file
-    const hasLocalConfig = 'config' in dataFiles
+    const hasLocalConfig = 'config' in dataFiles;
 
     // 4. Build context with all components
     const ctx: TemplateContext = {
@@ -81,11 +80,11 @@ export async function buildContext(
         json: (value: unknown) => JSON.stringify(value),
         now: isoNow,
         uuid: generateUuid,
-    }
+    };
 
-    return ctx
+    return ctx;
+
 }
-
 
 /**
  * Load all data files in a directory.
@@ -98,9 +97,9 @@ export async function buildContext(
  */
 async function loadDataFilesInDir(dir: string): Promise<Record<string, unknown>> {
 
-    const data: Record<string, unknown> = {}
+    const data: Record<string, unknown> = {};
 
-    const [entries, readErr] = await attempt(() => readdir(dir, { withFileTypes: true }))
+    const [entries, readErr] = await attempt(() => readdir(dir, { withFileTypes: true }));
 
     if (readErr || !entries) {
 
@@ -108,8 +107,10 @@ async function loadDataFilesInDir(dir: string): Promise<Record<string, unknown>>
             source: 'template',
             error: readErr ?? new Error('Failed to read directory'),
             context: { dir, operation: 'scan-data-files' },
-        })
-        return data
+        });
+
+        return data;
+
     }
 
     for (const entry of entries) {
@@ -117,39 +118,44 @@ async function loadDataFilesInDir(dir: string): Promise<Record<string, unknown>>
         // Skip directories
         if (!entry.isFile()) {
 
-            continue
+            continue;
+
         }
 
         // Skip helper files
         if (entry.name.startsWith(HELPER_FILENAME)) {
 
-            continue
+            continue;
+
         }
 
         // Skip template files
         if (entry.name.endsWith('.tmpl')) {
 
-            continue
+            continue;
+
         }
 
-        const ext = path.extname(entry.name).toLowerCase()
+        const ext = path.extname(entry.name).toLowerCase();
 
         // Skip unsupported extensions
         if (!hasLoader(ext)) {
 
-            continue
+            continue;
+
         }
 
         // Skip .sql files in data loading (they're for include())
         if (ext === '.sql') {
 
-            continue
+            continue;
+
         }
 
-        const filepath = path.join(dir, entry.name)
-        const key = toContextKey(entry.name)
+        const filepath = path.join(dir, entry.name);
+        const key = toContextKey(entry.name);
 
-        const [loaded, loadErr] = await attempt(() => loadDataFile(filepath))
+        const [loaded, loadErr] = await attempt(() => loadDataFile(filepath));
 
         if (loadErr) {
 
@@ -157,21 +163,23 @@ async function loadDataFilesInDir(dir: string): Promise<Record<string, unknown>>
                 source: 'template',
                 error: loadErr,
                 context: { filepath, operation: 'load-data-file' },
-            })
-            continue
+            });
+            continue;
+
         }
 
-        data[key] = loaded
+        data[key] = loaded;
 
         observer.emit('template:load', {
             filepath,
             format: ext,
-        })
+        });
+
     }
 
-    return data
-}
+    return data;
 
+}
 
 /**
  * Create the include() helper function.
@@ -194,39 +202,44 @@ function createIncludeHelper(
     return async (includePath: string): Promise<string> => {
 
         // Resolve path relative to template directory
-        const resolved = path.resolve(templateDir, includePath)
+        const resolved = path.resolve(templateDir, includePath);
 
         // Security: ensure we don't escape project root
         if (!resolved.startsWith(projectRoot)) {
 
-            throw new Error(`Include path escapes project root: ${includePath}`)
+            throw new Error(`Include path escapes project root: ${includePath}`);
+
         }
 
         // If it's a template, render it recursively
         if (resolved.endsWith('.tmpl')) {
 
             // Dynamic import to avoid circular dependency
-            const { processFile } = await import('./engine.js')
-            const result = await processFile(resolved, options)
-            return result.sql
+            const { processFile } = await import('./engine.js');
+            const result = await processFile(resolved, options);
+
+            return result.sql;
+
         }
 
         // Load raw file
-        const [content, err] = await attempt(() =>
-            loadDataFile(resolved)
-        )
+        const [content, err] = await attempt(() => loadDataFile(resolved));
 
         if (err) {
 
-            throw new Error(`Failed to include '${includePath}': ${err.message}`)
+            throw new Error(`Failed to include '${includePath}': ${err.message}`);
+
         }
 
         if (typeof content === 'string') {
 
-            return content
+            return content;
+
         }
 
         // Non-string content (shouldn't happen for .sql files)
-        return JSON.stringify(content)
-    }
+        return JSON.stringify(content);
+
+    };
+
 }

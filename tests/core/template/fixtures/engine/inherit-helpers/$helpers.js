@@ -1,1 +1,5 @@
-export function upper(s) { return s.toUpperCase() }
+export function upper(s) {
+
+    return s.toUpperCase();
+
+}

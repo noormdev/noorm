@@ -17,20 +17,17 @@
  * // 'a1b2c3d4e5f6...' (64 hex chars)
  * ```
  */
-import { createHash } from 'crypto'
-
+import { createHash } from 'crypto';
 
 /**
  * Input for computing identity hash.
  */
 export interface IdentityHashInput {
-
-    email: string
-    name: string
-    machine: string
-    os: string
+    email: string;
+    name: string;
+    machine: string;
+    os: string;
 }
-
 
 /**
  * Compute identity hash from user details.
@@ -56,23 +53,17 @@ export function computeIdentityHash(input: IdentityHashInput): string {
     // Validate inputs
     if (!input.email || !input.name || !input.machine || !input.os) {
 
-        throw new Error('All fields required for identity hash: email, name, machine, os')
+        throw new Error('All fields required for identity hash: email, name, machine, os');
+
     }
 
     // Build hash input with null byte separators
-    const hashInput = [
-        input.email,
-        input.name,
-        input.machine,
-        input.os,
-    ].join('\0')
+    const hashInput = [input.email, input.name, input.machine, input.os].join('\0');
 
     // Compute SHA-256
-    return createHash('sha256')
-        .update(hashInput, 'utf8')
-        .digest('hex')
-}
+    return createHash('sha256').update(hashInput, 'utf8').digest('hex');
 
+}
 
 /**
  * Validate an identity hash format.
@@ -83,9 +74,9 @@ export function computeIdentityHash(input: IdentityHashInput): string {
 export function isValidIdentityHash(hash: string): boolean {
 
     // SHA-256 = 32 bytes = 64 hex characters
-    return /^[0-9a-f]{64}$/i.test(hash)
-}
+    return /^[0-9a-f]{64}$/i.test(hash);
 
+}
 
 /**
  * Truncate identity hash for display.
@@ -101,5 +92,6 @@ export function isValidIdentityHash(hash: string): boolean {
  */
 export function truncateHash(hash: string, length: number = 8): string {
 
-    return hash.slice(0, length)
+    return hash.slice(0, length);
+
 }

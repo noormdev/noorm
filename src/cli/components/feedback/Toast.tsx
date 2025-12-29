@@ -16,55 +16,48 @@
  * showToast({ message: 'Config saved!', variant: 'success' })
  * ```
  */
-import { createContext, useContext, useState, useCallback, useEffect } from 'react'
-import { Box, Text } from 'ink'
+import { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import { Box, Text } from 'ink';
 
-import type { ReactElement, ReactNode } from 'react'
-
+import type { ReactElement, ReactNode } from 'react';
 
 /**
  * Toast variant determines styling.
  */
-export type ToastVariant = 'success' | 'error' | 'info' | 'warning'
-
+export type ToastVariant = 'success' | 'error' | 'info' | 'warning';
 
 /**
  * Toast configuration.
  */
 export interface Toast {
-
     /** Unique identifier */
-    id: string
+    id: string;
 
     /** Message to display */
-    message: string
+    message: string;
 
     /** Visual variant */
-    variant: ToastVariant
+    variant: ToastVariant;
 
     /** Duration in ms before auto-dismiss (default: 3000) */
-    duration?: number
+    duration?: number;
 }
-
 
 /**
  * Toast context value.
  */
 interface ToastContextValue {
-
     /** Currently visible toast (only one at a time) */
-    toast: Toast | null
+    toast: Toast | null;
 
     /** Show a new toast */
-    showToast: (options: Omit<Toast, 'id'>) => void
+    showToast: (options: Omit<Toast, 'id'>) => void;
 
     /** Dismiss current toast */
-    dismissToast: () => void
+    dismissToast: () => void;
 }
 
-
-const ToastContext = createContext<ToastContextValue | null>(null)
-
+const ToastContext = createContext<ToastContextValue | null>(null);
 
 /**
  * Variant styling.
@@ -74,15 +67,14 @@ const VARIANT_STYLES: Record<ToastVariant, { icon: string; color: string }> = {
     error: { icon: '✘', color: 'red' },
     info: { icon: 'ℹ', color: 'blue' },
     warning: { icon: '⚠', color: 'yellow' },
-}
-
+};
 
 /**
  * Toast display component.
  */
 function ToastDisplay({ toast }: { toast: Toast }): ReactElement {
 
-    const style = VARIANT_STYLES[toast.variant]
+    const style = VARIANT_STYLES[toast.variant];
 
     return (
         <Box>
@@ -90,18 +82,16 @@ function ToastDisplay({ toast }: { toast: Toast }): ReactElement {
                 {style.icon} {toast.message}
             </Text>
         </Box>
-    )
-}
+    );
 
+}
 
 /**
  * Props for ToastProvider.
  */
 interface ToastProviderProps {
-
-    children: ReactNode
+    children: ReactNode;
 }
-
 
 /**
  * Toast provider component.
@@ -110,40 +100,44 @@ interface ToastProviderProps {
  */
 export function ToastProvider({ children }: ToastProviderProps): ReactElement {
 
-    const [toast, setToast] = useState<Toast | null>(null)
+    const [toast, setToast] = useState<Toast | null>(null);
 
     // Auto-dismiss timer
     useEffect(() => {
 
-        if (!toast) return
+        if (!toast) return;
 
-        const duration = toast.duration ?? 3000
+        const duration = toast.duration ?? 3000;
         const timer = setTimeout(() => {
 
-            setToast(null)
-        }, duration)
+            setToast(null);
 
-        return () => clearTimeout(timer)
-    }, [toast])
+        }, duration);
+
+        return () => clearTimeout(timer);
+
+    }, [toast]);
 
     const showToast = useCallback((options: Omit<Toast, 'id'>) => {
 
-        const id = `toast-${Date.now()}`
-        setToast({ id, ...options })
-    }, [])
+        const id = `toast-${Date.now()}`;
+        setToast({ id, ...options });
+
+    }, []);
 
     const dismissToast = useCallback(() => {
 
-        setToast(null)
-    }, [])
+        setToast(null);
+
+    }, []);
 
     return (
         <ToastContext.Provider value={{ toast, showToast, dismissToast }}>
             {children}
         </ToastContext.Provider>
-    )
-}
+    );
 
+}
 
 /**
  * Hook to access toast functionality.
@@ -160,16 +154,17 @@ export function ToastProvider({ children }: ToastProviderProps): ReactElement {
  */
 export function useToast(): ToastContextValue {
 
-    const context = useContext(ToastContext)
+    const context = useContext(ToastContext);
 
     if (!context) {
 
-        throw new Error('useToast must be used within a ToastProvider')
+        throw new Error('useToast must be used within a ToastProvider');
+
     }
 
-    return context
-}
+    return context;
 
+}
 
 /**
  * Toast renderer component.
@@ -178,9 +173,10 @@ export function useToast(): ToastContextValue {
  */
 export function ToastRenderer(): ReactElement | null {
 
-    const { toast } = useToast()
+    const { toast } = useToast();
 
-    if (!toast) return null
+    if (!toast) return null;
 
-    return <ToastDisplay toast={toast} />
+    return <ToastDisplay toast={toast} />;
+
 }

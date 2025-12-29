@@ -15,11 +15,10 @@
  * const hash2 = computeChecksumFromContent('SELECT 1;')
  * ```
  */
-import { createHash } from 'node:crypto'
-import { readFile } from 'node:fs/promises'
+import { createHash } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 
-import { attempt } from '@logosdx/utils'
-
+import { attempt } from '@logosdx/utils';
 
 /**
  * Compute SHA-256 checksum of a file.
@@ -36,16 +35,17 @@ import { attempt } from '@logosdx/utils'
  */
 export async function computeChecksum(filepath: string): Promise<string> {
 
-    const [content, err] = await attempt(() => readFile(filepath, 'utf-8'))
+    const [content, err] = await attempt(() => readFile(filepath, 'utf-8'));
 
     if (err) {
 
-        throw new Error(`Failed to read file for checksum: ${filepath}`, { cause: err })
+        throw new Error(`Failed to read file for checksum: ${filepath}`, { cause: err });
+
     }
 
-    return computeChecksumFromContent(content)
-}
+    return computeChecksumFromContent(content);
 
+}
 
 /**
  * Compute SHA-256 checksum from string content.
@@ -64,9 +64,9 @@ export async function computeChecksum(filepath: string): Promise<string> {
  */
 export function computeChecksumFromContent(content: string): string {
 
-    return createHash('sha256').update(content, 'utf-8').digest('hex')
-}
+    return createHash('sha256').update(content, 'utf-8').digest('hex');
 
+}
 
 /**
  * Compute combined checksum for multiple files.
@@ -91,8 +91,9 @@ export function computeChecksumFromContent(content: string): string {
  */
 export function computeCombinedChecksum(checksums: string[]): string {
 
-    const sorted = [...checksums].sort()
-    const combined = sorted.join('')
+    const sorted = [...checksums].sort();
+    const combined = sorted.join('');
 
-    return createHash('sha256').update(combined, 'utf-8').digest('hex')
+    return createHash('sha256').update(combined, 'utf-8').digest('hex');
+
 }

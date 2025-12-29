@@ -33,25 +33,22 @@
  * This enables CI/CD workflows to configure noorm without stored config files.
  * Just set the env vars and noorm works.
  */
-import { makeNestedConfig } from '@logosdx/utils'
+import { makeNestedConfig } from '@logosdx/utils';
 
-import type { ConfigInput } from './types.js'
-import { DialectSchema } from './schema.js'
-
+import type { ConfigInput } from './types.js';
+import { DialectSchema } from './schema.js';
 
 /**
  * Meta env vars that control CLI behavior, not config values.
  * These are excluded from makeNestedConfig processing.
  */
 const META_ENV_VARS = new Set([
-    'NOORM_CONFIG',  // Config selection
-    'NOORM_YES',     // Skip confirmations
-    'NOORM_JSON',    // JSON output mode
-])
+    'NOORM_CONFIG', // Config selection
+    'NOORM_YES', // Skip confirmations
+    'NOORM_JSON', // JSON output mode
+]);
 
-
-const VALID_DIALECTS = ['postgres', 'mysql', 'sqlite', 'mssql'] as const
-
+const VALID_DIALECTS = ['postgres', 'mysql', 'sqlite', 'mssql'] as const;
 
 /**
  * Read config values from environment variables.
@@ -77,33 +74,32 @@ const VALID_DIALECTS = ['postgres', 'mysql', 'sqlite', 'mssql'] as const
  */
 export function getEnvConfig(): ConfigInput {
 
-    const { allConfigs } = makeNestedConfig<ConfigInput>(
-        process.env as Record<string, string>,
-        {
-            filter: (key) => key.startsWith('NOORM_') && !META_ENV_VARS.has(key),
-            stripPrefix: 'NOORM_',
-            forceAllCapToLower: true,
-            skipConversion: (key) => key.toLowerCase().includes('password'),
-        }
-    )
+    const { allConfigs } = makeNestedConfig<ConfigInput>(process.env as Record<string, string>, {
+        filter: (key) => key.startsWith('NOORM_') && !META_ENV_VARS.has(key),
+        stripPrefix: 'NOORM_',
+        forceAllCapToLower: true,
+        skipConversion: (key) => key.toLowerCase().includes('password'),
+    });
 
-    const config = allConfigs()
+    const config = allConfigs();
 
     // Validate dialect if provided
     if (config.connection?.dialect) {
 
-        const result = DialectSchema.safeParse(config.connection.dialect)
+        const result = DialectSchema.safeParse(config.connection.dialect);
         if (!result.success) {
 
             throw new Error(
-                `Invalid NOORM_CONNECTION_DIALECT: must be one of ${VALID_DIALECTS.join(', ')}`
-            )
+                `Invalid NOORM_CONNECTION_DIALECT: must be one of ${VALID_DIALECTS.join(', ')}`,
+            );
+
         }
+
     }
 
-    return config
-}
+    return config;
 
+}
 
 /**
  * Get the active config name from environment.
@@ -112,9 +108,9 @@ export function getEnvConfig(): ConfigInput {
  */
 export function getEnvConfigName(): string | undefined {
 
-    return process.env['NOORM_CONFIG']
-}
+    return process.env['NOORM_CONFIG'];
 
+}
 
 /**
  * Check if running in CI mode.
@@ -123,10 +119,11 @@ export function getEnvConfigName(): string | undefined {
  */
 export function isCI(): boolean {
 
-    const ci = process.env['CI']
-    return ci === '1' || ci === 'true'
-}
+    const ci = process.env['CI'];
 
+    return ci === '1' || ci === 'true';
+
+}
 
 /**
  * Check if confirmations should be skipped.
@@ -135,10 +132,11 @@ export function isCI(): boolean {
  */
 export function shouldSkipConfirmations(): boolean {
 
-    const yes = process.env['NOORM_YES']
-    return yes === '1' || yes === 'true'
-}
+    const yes = process.env['NOORM_YES'];
 
+    return yes === '1' || yes === 'true';
+
+}
 
 /**
  * Check if output should be JSON.
@@ -147,6 +145,8 @@ export function shouldSkipConfirmations(): boolean {
  */
 export function shouldOutputJson(): boolean {
 
-    const json = process.env['NOORM_JSON']
-    return json === '1' || json === 'true'
+    const json = process.env['NOORM_JSON'];
+
+    return json === '1' || json === 'true';
+
 }

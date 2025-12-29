@@ -20,16 +20,9 @@
  * const [result, error, pending, cancel] = useEventPromise('build:complete')
  * ```
  */
-import {
-    useEffect,
-    useCallback,
-    useState,
-    useRef,
-    type DependencyList
-} from 'react'
+import { useEffect, useCallback, useState, useRef, type DependencyList } from 'react';
 
-import { observer, type NoormEvents, type NoormEventNames } from '../../core/observer.js'
-
+import { observer, type NoormEvents, type NoormEventNames } from '../../core/observer.js';
 
 /**
  * Subscribe to an observer event with automatic cleanup.
@@ -52,25 +45,26 @@ import { observer, type NoormEvents, type NoormEventNames } from '../../core/obs
 export function useOnEvent<E extends NoormEventNames>(
     event: E,
     callback: (data: NoormEvents[E]) => void,
-    deps: DependencyList
+    deps: DependencyList,
 ): void {
 
     // Store callback in ref to avoid re-subscribing on callback changes
-    const callbackRef = useRef(callback)
-    callbackRef.current = callback
+    const callbackRef = useRef(callback);
+    callbackRef.current = callback;
 
     useEffect(() => {
 
         const cleanup = observer.on(event, (data) => {
 
-            callbackRef.current(data)
-        })
+            callbackRef.current(data);
 
-        return cleanup
+        });
 
-    }, [event, ...deps])
+        return cleanup;
+
+    }, [event, ...deps]);
+
 }
-
 
 /**
  * Subscribe to an observer event once with automatic cleanup.
@@ -88,24 +82,25 @@ export function useOnEvent<E extends NoormEventNames>(
 export function useOnceEvent<E extends NoormEventNames>(
     event: E,
     callback: (data: NoormEvents[E]) => void,
-    deps: DependencyList
+    deps: DependencyList,
 ): void {
 
-    const callbackRef = useRef(callback)
-    callbackRef.current = callback
+    const callbackRef = useRef(callback);
+    callbackRef.current = callback;
 
     useEffect(() => {
 
         const cleanup = observer.once(event, (data) => {
 
-            callbackRef.current(data)
-        })
+            callbackRef.current(data);
 
-        return cleanup
+        });
 
-    }, [event, ...deps])
+        return cleanup;
+
+    }, [event, ...deps]);
+
 }
-
 
 /**
  * Get a memoized function to emit an observer event.
@@ -128,33 +123,34 @@ export function useOnceEvent<E extends NoormEventNames>(
  */
 export function useEmit<E extends NoormEventNames>(
     event: E,
-    deps: DependencyList = []
+    deps: DependencyList = [],
 ): (data: NoormEvents[E]) => void {
 
-    return useCallback((data: NoormEvents[E]) => {
+    return useCallback(
+        (data: NoormEvents[E]) => {
 
-        // Cast needed due to observer.emit's conditional type signature
-        (observer.emit as (e: E, d: NoormEvents[E]) => void)(event, data)
+            // Cast needed due to observer.emit's conditional type signature
+            (observer.emit as (e: E, d: NoormEvents[E]) => void)(event, data);
 
-    }, [event, ...deps])
+        },
+        [event, ...deps],
+    );
+
 }
-
 
 /**
  * State for useEventPromise hook.
  */
 export interface EventPromiseState<T> {
-
     /** The resolved value, or null if pending/error */
-    value: T | null
+    value: T | null;
 
     /** The error if rejected, or null if pending/success */
-    error: Error | null
+    error: Error | null;
 
     /** Whether the promise is still pending */
-    pending: boolean
+    pending: boolean;
 }
-
 
 /**
  * Subscribe to an event as a promise with state management.
@@ -177,55 +173,63 @@ export interface EventPromiseState<T> {
  * ```
  */
 export function useEventPromise<E extends NoormEventNames>(
-    event: E
+    event: E,
 ): [value: NoormEvents[E] | null, error: Error | null, pending: boolean, cancel: () => void] {
 
     const [state, setState] = useState<EventPromiseState<NoormEvents[E]>>({
         value: null,
         error: null,
-        pending: true
-    })
+        pending: true,
+    });
 
-    const cancelRef = useRef<(() => void) | null>(null)
+    const cancelRef = useRef<(() => void) | null>(null);
 
     useEffect(() => {
 
         // Reset state on new subscription
-        setState({ value: null, error: null, pending: true })
+        setState({ value: null, error: null, pending: true });
 
-        const promise = observer.once(event)
+        const promise = observer.once(event);
 
         // Store cancel function using cleanup from EventPromise
         cancelRef.current = () => {
 
-            promise.cleanup?.()
-            setState(prev => ({ ...prev, pending: false }))
-        }
+            promise.cleanup?.();
+            setState((prev) => ({ ...prev, pending: false }));
+
+        };
 
         promise
             .then((data) => {
 
-                setState({ value: data, error: null, pending: false })
+                setState({ value: data, error: null, pending: false });
+
             })
             .catch((err) => {
 
                 // Only set error if not cancelled
                 if (err?.message !== 'Cancelled') {
 
-                    setState({ value: null, error: err, pending: false })
+                    setState({ value: null, error: err, pending: false });
+
                 }
-            })
+
+            });
 
         return () => {
 
-            promise.cleanup?.()
-        }
-    }, [event])
+            promise.cleanup?.();
+
+        };
+
+    }, [event]);
 
     const cancel = useCallback(() => {
 
-        cancelRef.current?.()
-    }, [])
+        cancelRef.current?.();
 
-    return [state.value, state.error, state.pending, cancel]
+    }, []);
+
+    return [state.value, state.error, state.pending, cancel];
+
 }

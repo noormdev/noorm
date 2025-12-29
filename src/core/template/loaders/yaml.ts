@@ -8,10 +8,9 @@
  * const data = await loadYaml('/path/to/config.yml')
  * ```
  */
-import { readFile } from 'node:fs/promises'
+import { readFile } from 'node:fs/promises';
 
-import { parse } from 'yaml'
-
+import { parse } from 'yaml';
 
 /**
  * Load and parse a YAML file.
@@ -22,6 +21,8 @@ import { parse } from 'yaml'
  */
 export async function loadYaml(filepath: string): Promise<unknown> {
 
-    const content = await readFile(filepath, 'utf-8')
-    return parse(content)
+    const content = await readFile(filepath, 'utf-8');
+
+    return parse(content);
+
 }

@@ -9,8 +9,7 @@
  * const sql = await loadSql('/path/to/fragment.sql')
  * ```
  */
-import { readFile } from 'node:fs/promises'
-
+import { readFile } from 'node:fs/promises';
 
 /**
  * Load a SQL file as text.
@@ -21,5 +20,6 @@ import { readFile } from 'node:fs/promises'
  */
 export async function loadSql(filepath: string): Promise<string> {
 
-    return readFile(filepath, 'utf-8')
+    return readFile(filepath, 'utf-8');
+
 }

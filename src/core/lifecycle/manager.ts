@@ -21,10 +21,10 @@
  * await lifecycle.shutdown('user')
  * ```
  */
-import { attempt } from '@logosdx/utils'
+import { attempt } from '@logosdx/utils';
 
-import { observer } from '../observer.js'
-import { getConnectionManager } from '../connection/manager.js'
+import { observer } from '../observer.js';
+import { getConnectionManager } from '../connection/manager.js';
 import type {
     LifecycleConfig,
     LifecycleState,
@@ -34,15 +34,14 @@ import type {
     LifecycleManagerState,
     AppMode,
     PhaseStatus,
-} from './types.js'
-import { createDefaultConfig, DEFAULT_TIMEOUTS } from './types.js'
+} from './types.js';
+import { createDefaultConfig } from './types.js';
 import {
     registerSignalHandlers,
     registerExceptionHandlers,
     removeAllHandlers,
     type Signal,
-} from './handlers.js'
-
+} from './handlers.js';
 
 /**
  * Shutdown phase order.
@@ -53,24 +52,23 @@ const SHUTDOWN_PHASES: ShutdownPhase[] = [
     'releasing',
     'flushing',
     'exiting',
-]
-
+];
 
 /**
  * Manages application lifecycle including startup and shutdown.
  */
 export class LifecycleManager {
 
-    #config: LifecycleConfig
-    #state: LifecycleState = 'idle'
-    #startedAt: Date | null = null
-    #shuttingDownAt: Date | null = null
-    #shutdownReason: ShutdownReason | null = null
-    #exitCode = 0
-    #resources = new Map<string, LifecycleResource>()
-    #signalCleanup: (() => void) | null = null
-    #exceptionCleanup: (() => void) | null = null
-    #shutdownPromise: Promise<void> | null = null
+    #config: LifecycleConfig;
+    #state: LifecycleState = 'idle';
+    #startedAt: Date | null = null;
+    #shuttingDownAt: Date | null = null;
+    #shutdownReason: ShutdownReason | null = null;
+    #exitCode = 0;
+    #resources = new Map<string, LifecycleResource>();
+    #signalCleanup: (() => void) | null = null;
+    #exceptionCleanup: (() => void) | null = null;
+    #shutdownPromise: Promise<void> | null = null;
 
     /**
      * Create a new LifecycleManager.
@@ -79,12 +77,13 @@ export class LifecycleManager {
      */
     constructor(config: Partial<LifecycleConfig> & { projectRoot: string }) {
 
-        const defaults = createDefaultConfig(config.projectRoot)
+        const defaults = createDefaultConfig(config.projectRoot);
         this.#config = {
             ...defaults,
             ...config,
             timeouts: { ...defaults.timeouts, ...config.timeouts },
-        }
+        };
+
     }
 
     /**
@@ -92,7 +91,8 @@ export class LifecycleManager {
      */
     get state(): LifecycleState {
 
-        return this.#state
+        return this.#state;
+
     }
 
     /**
@@ -100,7 +100,8 @@ export class LifecycleManager {
      */
     get mode(): AppMode {
 
-        return this.#config.mode
+        return this.#config.mode;
+
     }
 
     /**
@@ -108,7 +109,8 @@ export class LifecycleManager {
      */
     get startedAt(): Date | null {
 
-        return this.#startedAt
+        return this.#startedAt;
+
     }
 
     /**
@@ -116,7 +118,8 @@ export class LifecycleManager {
      */
     get exitCode(): number {
 
-        return this.#exitCode
+        return this.#exitCode;
+
     }
 
     /**
@@ -124,7 +127,8 @@ export class LifecycleManager {
      */
     get isRunning(): boolean {
 
-        return this.#state === 'running'
+        return this.#state === 'running';
+
     }
 
     /**
@@ -132,7 +136,8 @@ export class LifecycleManager {
      */
     get isShuttingDown(): boolean {
 
-        return this.#state === 'shutting_down'
+        return this.#state === 'shutting_down';
+
     }
 
     /**
@@ -147,7 +152,8 @@ export class LifecycleManager {
             shuttingDownAt: this.#shuttingDownAt ?? undefined,
             shutdownReason: this.#shutdownReason ?? undefined,
             exitCode: this.#exitCode,
-        }
+        };
+
     }
 
     /**
@@ -169,7 +175,8 @@ export class LifecycleManager {
         this.#resources.set(resource.name, {
             ...resource,
             priority: resource.priority ?? 0,
-        })
+        });
+
     }
 
     /**
@@ -177,7 +184,8 @@ export class LifecycleManager {
      */
     unregisterResource(name: string): boolean {
 
-        return this.#resources.delete(name)
+        return this.#resources.delete(name);
+
     }
 
     /**
@@ -191,37 +199,41 @@ export class LifecycleManager {
 
         if (this.#state !== 'idle') {
 
-            throw new Error(`Cannot start from state: ${this.#state}`)
+            throw new Error(`Cannot start from state: ${this.#state}`);
+
         }
 
-        this.#state = 'starting'
-        observer.emit('app:starting', { mode: this.#config.mode })
+        this.#state = 'starting';
+        observer.emit('app:starting', { mode: this.#config.mode });
 
         // Register signal handlers
         if (this.#config.registerSignalHandlers) {
 
-            this.#signalCleanup = registerSignalHandlers(
-                async (signal: Signal) => this.#handleSignal(signal)
-            )
+            this.#signalCleanup = registerSignalHandlers(async (signal: Signal) =>
+                this.#handleSignal(signal),
+            );
 
             this.#exceptionCleanup = registerExceptionHandlers(
                 async (error: Error, type: 'exception' | 'rejection') => {
 
-                    await this.#handleFatalError(error, type)
-                }
-            )
+                    await this.#handleFatalError(error, type);
+
+                },
+            );
+
         }
 
         // Register default resources
-        this.#registerDefaultResources()
+        this.#registerDefaultResources();
 
-        this.#state = 'running'
-        this.#startedAt = new Date()
+        this.#state = 'running';
+        this.#startedAt = new Date();
 
         observer.emit('app:ready', {
             mode: this.#config.mode,
             startedAt: this.#startedAt,
-        })
+        });
+
     }
 
     /**
@@ -236,16 +248,23 @@ export class LifecycleManager {
         // Prevent multiple concurrent shutdowns
         if (this.#shutdownPromise) {
 
-            return this.#shutdownPromise
+            return this.#shutdownPromise;
+
         }
 
         if (this.#state !== 'running') {
 
-            return
+            return;
+
         }
 
-        this.#shutdownPromise = this.#performShutdown(reason, exitCode)
-        return this.#shutdownPromise
+        // Emit shutdown event early so connections can start closing
+        observer.emit('app:shutdown', { reason, exitCode });
+
+        this.#shutdownPromise = this.#performShutdown(reason, exitCode);
+
+        return this.#shutdownPromise;
+
     }
 
     /**
@@ -253,7 +272,8 @@ export class LifecycleManager {
      */
     setExitCode(code: number): void {
 
-        this.#exitCode = code
+        this.#exitCode = code;
+
     }
 
     /**
@@ -261,12 +281,12 @@ export class LifecycleManager {
      */
     async #performShutdown(reason: ShutdownReason, exitCode: number): Promise<void> {
 
-        this.#state = 'shutting_down'
-        this.#shuttingDownAt = new Date()
-        this.#shutdownReason = reason
-        this.#exitCode = exitCode
+        this.#state = 'shutting_down';
+        this.#shuttingDownAt = new Date();
+        this.#shutdownReason = reason;
+        this.#exitCode = exitCode;
 
-        observer.emit('app:shutdown', { reason, exitCode })
+        // Note: app:shutdown event already emitted in shutdown() before this runs
 
         // Execute each phase in order
         for (const phase of SHUTDOWN_PHASES) {
@@ -274,26 +294,30 @@ export class LifecycleManager {
             if (phase === 'exiting') {
 
                 // Skip exiting phase in shutdown - handled by caller
-                continue
+                continue;
+
             }
 
-            const [, err] = await attempt(() => this.#executePhase(phase))
+            const [, err] = await attempt(() => this.#executePhase(phase));
             if (err) {
 
                 observer.emit('app:shutdown:phase', {
                     phase,
                     status: 'timeout' as PhaseStatus,
                     error: err,
-                })
+                });
+
             }
+
         }
 
         // Remove signal handlers
-        this.#cleanup()
+        this.#cleanup();
 
-        this.#state = 'stopped'
+        this.#state = 'stopped';
 
-        observer.emit('app:exit', { code: this.#exitCode })
+        observer.emit('app:exit', { code: this.#exitCode });
+
     }
 
     /**
@@ -304,35 +328,33 @@ export class LifecycleManager {
         observer.emit('app:shutdown:phase', {
             phase,
             status: 'running' as PhaseStatus,
-        })
+        });
 
-        const start = Date.now()
+        const start = Date.now();
 
         // Get resources for this phase, sorted by priority
         const resources = Array.from(this.#resources.values())
-            .filter(r => r.phase === phase)
-            .sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0))
+            .filter((r) => r.phase === phase)
+            .sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0));
 
         // Get timeout for this phase
-        const timeout = this.#getPhaseTimeout(phase)
+        const timeout = this.#getPhaseTimeout(phase);
 
         // Execute all resources with timeout
         const [, err] = await attempt(() =>
-            this.#executeWithTimeout(
-                () => this.#executePhaseResources(resources),
-                timeout
-            )
-        )
+            this.#executeWithTimeout(() => this.#executePhaseResources(resources), timeout),
+        );
 
-        const durationMs = Date.now() - start
-        const status: PhaseStatus = err ? 'timeout' : 'completed'
+        const durationMs = Date.now() - start;
+        const status: PhaseStatus = err ? 'timeout' : 'completed';
 
         observer.emit('app:shutdown:phase', {
             phase,
             status,
             durationMs,
             error: err ?? undefined,
-        })
+        });
+
     }
 
     /**
@@ -342,16 +364,19 @@ export class LifecycleManager {
 
         for (const resource of resources) {
 
-            const [, err] = await attempt(() => resource.cleanup())
+            const [, err] = await attempt(() => resource.cleanup());
             if (err) {
 
                 observer.emit('error', {
                     source: 'lifecycle',
                     error: err,
                     context: { resource: resource.name },
-                })
+                });
+
             }
+
         }
+
     }
 
     /**
@@ -363,21 +388,26 @@ export class LifecycleManager {
 
             const timer = setTimeout(() => {
 
-                reject(new Error(`Timeout after ${timeoutMs}ms`))
-            }, timeoutMs)
+                reject(new Error(`Timeout after ${timeoutMs}ms`));
+
+            }, timeoutMs);
 
             fn()
-                .then(result => {
+                .then((result) => {
 
-                    clearTimeout(timer)
-                    resolve(result)
-                })
-                .catch(error => {
+                    clearTimeout(timer);
+                    resolve(result);
 
-                    clearTimeout(timer)
-                    reject(error)
                 })
-        })
+                .catch((error) => {
+
+                    clearTimeout(timer);
+                    reject(error);
+
+                });
+
+        });
+
     }
 
     /**
@@ -387,22 +417,21 @@ export class LifecycleManager {
 
         switch (phase) {
 
-            case 'stopping':
-                return 1000 // 1 second
-            case 'completing':
-                return this.#config.timeouts.operations
-            case 'releasing':
-                return Math.max(
-                    this.#config.timeouts.locks,
-                    this.#config.timeouts.connections
-                )
-            case 'flushing':
-                return this.#config.timeouts.logger
-            case 'exiting':
-                return 1000 // 1 second
-            default:
-                return 5000
+        case 'stopping':
+            return 1000; // 1 second
+        case 'completing':
+            return this.#config.timeouts.operations;
+        case 'releasing':
+            return Math.max(this.#config.timeouts.locks, this.#config.timeouts.connections);
+        case 'flushing':
+            return this.#config.timeouts.logger;
+        case 'exiting':
+            return 1000; // 1 second
+        default:
+            return 5000;
+
         }
+
     }
 
     /**
@@ -415,11 +444,13 @@ export class LifecycleManager {
             // Second signal - force exit
             observer.emit('app:fatal', {
                 error: new Error(`Forced exit on second ${signal}`),
-            })
-            process.exit(128 + this.#getSignalCode(signal))
+            });
+            process.exit(128 + this.#getSignalCode(signal));
+
         }
 
-        await this.shutdown('signal', 0)
+        await this.shutdown('signal', 0);
+
     }
 
     /**
@@ -427,16 +458,17 @@ export class LifecycleManager {
      */
     async #handleFatalError(error: Error, type: 'exception' | 'rejection'): Promise<void> {
 
-        observer.emit('app:fatal', { error, type })
+        observer.emit('app:fatal', { error, type });
 
         // Try to do minimal cleanup
-        this.#cleanup()
+        this.#cleanup();
 
-        this.#state = 'failed'
-        this.#exitCode = 1
+        this.#state = 'failed';
+        this.#exitCode = 1;
 
         // Don't await full shutdown - just exit
-        observer.emit('app:exit', { code: 1 })
+        observer.emit('app:exit', { code: 1 });
+
     }
 
     /**
@@ -446,15 +478,17 @@ export class LifecycleManager {
 
         switch (signal) {
 
-            case 'SIGINT':
-                return 2
-            case 'SIGTERM':
-                return 15
-            case 'SIGHUP':
-                return 1
-            default:
-                return 0
+        case 'SIGINT':
+            return 2;
+        case 'SIGTERM':
+            return 15;
+        case 'SIGHUP':
+            return 1;
+        default:
+            return 0;
+
         }
+
     }
 
     /**
@@ -469,10 +503,12 @@ export class LifecycleManager {
             priority: 10,
             cleanup: async () => {
 
-                const manager = getConnectionManager()
-                await manager.closeAll()
+                const manager = getConnectionManager();
+                await manager.closeAll();
+
             },
-        })
+        });
+
     }
 
     /**
@@ -482,22 +518,24 @@ export class LifecycleManager {
 
         if (this.#signalCleanup) {
 
-            this.#signalCleanup()
-            this.#signalCleanup = null
+            this.#signalCleanup();
+            this.#signalCleanup = null;
+
         }
 
         if (this.#exceptionCleanup) {
 
-            this.#exceptionCleanup()
-            this.#exceptionCleanup = null
+            this.#exceptionCleanup();
+            this.#exceptionCleanup = null;
+
         }
+
     }
+
 }
 
-
 // Singleton instance
-let instance: LifecycleManager | null = null
-
+let instance: LifecycleManager | null = null;
 
 /**
  * Get the global LifecycleManager instance.
@@ -515,25 +553,27 @@ let instance: LifecycleManager | null = null
  */
 export function getLifecycleManager(
     projectRoot?: string,
-    config?: Partial<Omit<LifecycleConfig, 'projectRoot'>>
+    config?: Partial<Omit<LifecycleConfig, 'projectRoot'>>,
 ): LifecycleManager {
 
     if (!instance) {
 
         if (!projectRoot) {
 
-            throw new Error('projectRoot is required when creating LifecycleManager')
+            throw new Error('projectRoot is required when creating LifecycleManager');
+
         }
 
         instance = new LifecycleManager({
             projectRoot,
             ...config,
-        })
+        });
+
     }
 
-    return instance
-}
+    return instance;
 
+}
 
 /**
  * Reset the global LifecycleManager.
@@ -554,10 +594,13 @@ export async function resetLifecycleManager(): Promise<void> {
 
         if (instance.isRunning) {
 
-            await instance.shutdown('programmatic')
+            await instance.shutdown('programmatic');
+
         }
 
-        removeAllHandlers()
-        instance = null
+        removeAllHandlers();
+        instance = null;
+
     }
+
 }

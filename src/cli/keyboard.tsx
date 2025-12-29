@@ -15,35 +15,33 @@
  * </FocusProvider>
  * ```
  */
-import { useInput, useApp } from 'ink'
-import { useCallback, useState } from 'react'
+import { useInput } from 'ink';
+import { useCallback, useState } from 'react';
 
-import type { ReactNode, ReactElement } from 'react'
+import type { ReactNode, ReactElement } from 'react';
 
-import { useFocusContext } from './focus.js'
-
+import { useFocusContext } from './focus.js';
+import { useShutdown } from './shutdown.js';
 
 /**
  * Props for GlobalKeyboard component.
  */
 export interface GlobalKeyboardProps {
-
     /** Child components */
-    children: ReactNode
+    children: ReactNode;
 
     /**
      * Callback when help overlay should be shown.
      * The parent component handles rendering the overlay.
      */
-    onHelp?: () => void
+    onHelp?: () => void;
 
     /**
      * Callback when Esc is pressed and no focus handling occurred.
      * Allows parent to implement ESC cascade behavior.
      */
-    onEscape?: () => boolean | void
+    onEscape?: () => boolean | void;
 }
-
 
 /**
  * Global keyboard handler component.
@@ -56,30 +54,30 @@ export interface GlobalKeyboardProps {
  * Individual screens/components register their own handlers
  * via useInput with focus-aware filtering.
  */
-export function GlobalKeyboard({
-    children,
-    onHelp,
-    onEscape
-}: GlobalKeyboardProps): ReactElement {
+export function GlobalKeyboard({ children, onHelp, onEscape }: GlobalKeyboardProps): ReactElement {
 
-    const { exit } = useApp()
-    const { stack } = useFocusContext()
+    const { gracefulExit } = useShutdown();
+    const { stack } = useFocusContext();
 
     useInput((input, key) => {
 
-        // Ctrl+C always exits
+        // Ctrl+C always exits gracefully
         if (key.ctrl && input === 'c') {
 
-            exit()
-            return
+            gracefulExit();
+
+            return;
+
         }
 
         // ? shows help when not typing in a text input
         // (focus stack > 1 means we're likely in an input component)
         if (input === '?' && stack.length <= 1) {
 
-            onHelp?.()
-            return
+            onHelp?.();
+
+            return;
+
         }
 
         // Note: ESC is NOT handled here globally.
@@ -90,13 +88,15 @@ export function GlobalKeyboard({
         // parent needs to be notified.
         if (key.escape && onEscape) {
 
-            onEscape()
+            onEscape();
+
         }
-    })
 
-    return <>{children}</>
+    });
+
+    return <>{children}</>;
+
 }
-
 
 /**
  * Hook to create a keyboard handler that only fires when focused.
@@ -117,20 +117,25 @@ export function GlobalKeyboard({
  */
 export function useFocusedInput(
     isFocused: boolean,
-    handler: (input: string, key: Parameters<Parameters<typeof useInput>[0]>[1]) => void
+    handler: (input: string, key: Parameters<Parameters<typeof useInput>[0]>[1]) => void,
 ): void {
 
     useInput(
-        useCallback((input, key) => {
+        useCallback(
+            (input, key) => {
 
-            if (isFocused) {
+                if (isFocused) {
 
-                handler(input, key)
-            }
-        }, [isFocused, handler])
-    )
+                    handler(input, key);
+
+                }
+
+            },
+            [isFocused, handler],
+        ),
+    );
+
 }
-
 
 /**
  * Hook for common list navigation keys.
@@ -147,91 +152,99 @@ export function useFocusedInput(
  * ```
  */
 export interface UseListKeysOptions<T> {
-
     /** Array of items to navigate */
-    items: T[]
+    items: T[];
 
     /** Whether this list has focus */
-    isFocused: boolean
+    isFocused: boolean;
 
     /** Callback when Enter is pressed on selected item */
-    onSelect?: (item: T, index: number) => void
+    onSelect?: (item: T, index: number) => void;
 
     /** Initial selected index */
-    initialIndex?: number
+    initialIndex?: number;
 }
-
 
 export interface UseListKeysResult {
-
     /** Currently selected index */
-    selectedIndex: number
+    selectedIndex: number;
 
     /** Set selected index manually */
-    setSelectedIndex: (index: number) => void
+    setSelectedIndex: (index: number) => void;
 
     /** Move selection up */
-    selectPrevious: () => void
+    selectPrevious: () => void;
 
     /** Move selection down */
-    selectNext: () => void
+    selectNext: () => void;
 }
-
 
 export function useListKeys<T>({
     items,
     isFocused,
     onSelect,
-    initialIndex = 0
+    initialIndex = 0,
 }: UseListKeysOptions<T>): UseListKeysResult {
 
-    const [selectedIndex, setSelectedIndex] = useState(initialIndex)
+    const [selectedIndex, setSelectedIndex] = useState(initialIndex);
 
     const selectPrevious = useCallback(() => {
 
-        setSelectedIndex(current => {
+        setSelectedIndex((current) => {
 
-            if (items.length === 0) return 0
-            return current > 0 ? current - 1 : items.length - 1
-        })
-    }, [items.length])
+            if (items.length === 0) return 0;
+
+            return current > 0 ? current - 1 : items.length - 1;
+
+        });
+
+    }, [items.length]);
 
     const selectNext = useCallback(() => {
 
-        setSelectedIndex(current => {
+        setSelectedIndex((current) => {
 
-            if (items.length === 0) return 0
-            return current < items.length - 1 ? current + 1 : 0
-        })
-    }, [items.length])
+            if (items.length === 0) return 0;
+
+            return current < items.length - 1 ? current + 1 : 0;
+
+        });
+
+    }, [items.length]);
 
     useFocusedInput(isFocused, (input, key) => {
 
         if (key.upArrow) {
 
-            selectPrevious()
+            selectPrevious();
+
         }
         else if (key.downArrow) {
 
-            selectNext()
+            selectNext();
+
         }
         else if (key.return && items[selectedIndex]) {
 
-            onSelect?.(items[selectedIndex], selectedIndex)
+            onSelect?.(items[selectedIndex], selectedIndex);
+
         }
-    })
+
+    });
 
     return {
         selectedIndex,
         setSelectedIndex,
         selectPrevious,
-        selectNext
-    }
-}
+        selectNext,
+    };
 
+}
 
 /**
  * Hook to handle quit confirmation from home screen.
+ *
+ * Uses graceful shutdown to ensure all resources are cleaned up.
  *
  * @example
  * ```typescript
@@ -244,12 +257,14 @@ export function useListKeys<T>({
  */
 export function useQuitHandler(): { handleQuit: () => void } {
 
-    const { exit } = useApp()
+    const { gracefulExit } = useShutdown();
 
     const handleQuit = useCallback(() => {
 
-        exit()
-    }, [exit])
+        gracefulExit();
 
-    return { handleQuit }
+    }, [gracefulExit]);
+
+    return { handleQuit };
+
 }

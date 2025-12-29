@@ -22,36 +22,18 @@
  * await version.ensureCompatible(db, state, settings, cliVersion)
  * ```
  */
-import type { Kysely } from 'kysely'
+import type { Kysely } from 'kysely';
 
-import { observer } from '../observer.js'
 import {
-    CURRENT_VERSIONS,
     type VersionStatus,
-    type LayerVersionStatus,
-    VersionMismatchError,
-    MigrationError,
-} from './types.js'
-import type { NoormDatabase } from './schema/tables.js'
+} from './types.js';
+import type { NoormDatabase } from './schema/tables.js';
 import {
     checkSchemaVersion,
     migrateSchema,
-    tablesExist,
-    getSchemaVersion,
-    updateVersionRecord,
-    getLatestVersionRecord,
-} from './schema/index.js'
-import {
-    checkStateVersion,
-    migrateState,
-    getStateVersion,
-} from './state/index.js'
-import {
-    checkSettingsVersion,
-    migrateSettings,
-    getSettingsVersion,
-} from './settings/index.js'
-
+} from './schema/index.js';
+import { checkStateVersion, migrateState, getStateVersion } from './state/index.js';
+import { checkSettingsVersion, migrateSettings, getSettingsVersion } from './settings/index.js';
 
 // ─────────────────────────────────────────────────────────────
 // Version Manager Class
@@ -61,11 +43,9 @@ import {
  * Options for VersionManager.
  */
 export interface VersionManagerOptions {
-
     /** Project root directory */
-    projectRoot: string
+    projectRoot: string;
 }
-
 
 /**
  * Unified version manager.
@@ -85,11 +65,12 @@ export interface VersionManagerOptions {
  */
 export class VersionManager {
 
-    readonly #projectRoot: string
+    readonly #projectRoot: string;
 
     constructor(options: VersionManagerOptions) {
 
-        this.#projectRoot = options.projectRoot
+        this.#projectRoot = options.projectRoot;
+
     }
 
     /**
@@ -100,18 +81,19 @@ export class VersionManager {
     async check(
         db: Kysely<NoormDatabase>,
         state: Record<string, unknown>,
-        settings: Record<string, unknown>
+        settings: Record<string, unknown>,
     ): Promise<VersionStatus> {
 
-        const schemaStatus = await checkSchemaVersion(db)
-        const stateStatus = checkStateVersion(state)
-        const settingsStatus = checkSettingsVersion(settings)
+        const schemaStatus = await checkSchemaVersion(db);
+        const stateStatus = checkStateVersion(state);
+        const settingsStatus = checkSettingsVersion(settings);
 
         return {
             schema: schemaStatus,
             state: stateStatus,
             settings: settingsStatus,
-        }
+        };
+
     }
 
     /**
@@ -128,29 +110,30 @@ export class VersionManager {
         db: Kysely<NoormDatabase>,
         state: Record<string, unknown>,
         settings: Record<string, unknown>,
-        cliVersion: string
+        cliVersion: string,
     ): Promise<{
-        state: Record<string, unknown>
-        settings: Record<string, unknown>
+        state: Record<string, unknown>;
+        settings: Record<string, unknown>;
     }> {
 
         // Migrate state (returns new object)
-        const migratedState = migrateState(state)
+        const migratedState = migrateState(state);
 
         // Migrate settings (returns new object)
-        const migratedSettings = migrateSettings(settings)
+        const migratedSettings = migrateSettings(settings);
 
         // Get migrated versions
-        const stateVersion = getStateVersion(migratedState)
-        const settingsVersion = getSettingsVersion(migratedSettings)
+        const stateVersion = getStateVersion(migratedState);
+        const settingsVersion = getSettingsVersion(migratedSettings);
 
         // Migrate schema (in-place in database) with state/settings versions
-        await migrateSchema(db, cliVersion, { stateVersion, settingsVersion })
+        await migrateSchema(db, cliVersion, { stateVersion, settingsVersion });
 
         return {
             state: migratedState,
             settings: migratedSettings,
-        }
+        };
+
     }
 
     /**
@@ -159,16 +142,17 @@ export class VersionManager {
     async needsMigration(
         db: Kysely<NoormDatabase>,
         state: Record<string, unknown>,
-        settings: Record<string, unknown>
+        settings: Record<string, unknown>,
     ): Promise<boolean> {
 
-        const status = await this.check(db, state, settings)
+        const status = await this.check(db, state, settings);
 
         return (
             status.schema.needsMigration ||
             status.state.needsMigration ||
             status.settings.needsMigration
-        )
+        );
+
     }
 
     /**
@@ -177,31 +161,28 @@ export class VersionManager {
     async hasNewerVersion(
         db: Kysely<NoormDatabase>,
         state: Record<string, unknown>,
-        settings: Record<string, unknown>
+        settings: Record<string, unknown>,
     ): Promise<boolean> {
 
-        const status = await this.check(db, state, settings)
+        const status = await this.check(db, state, settings);
 
-        return (
-            status.schema.isNewer ||
-            status.state.isNewer ||
-            status.settings.isNewer
-        )
+        return status.schema.isNewer || status.state.isNewer || status.settings.isNewer;
+
     }
 
     get projectRoot(): string {
 
-        return this.#projectRoot
-    }
-}
+        return this.#projectRoot;
 
+    }
+
+}
 
 // ─────────────────────────────────────────────────────────────
 // Singleton Instance
 // ─────────────────────────────────────────────────────────────
 
-let instance: VersionManager | null = null
-
+let instance: VersionManager | null = null;
 
 /**
  * Get the singleton VersionManager instance.
@@ -218,12 +199,13 @@ export function getVersionManager(projectRoot?: string): VersionManager {
 
         instance = new VersionManager({
             projectRoot: projectRoot ?? process.cwd(),
-        })
+        });
+
     }
 
-    return instance
-}
+    return instance;
 
+}
 
 /**
  * Reset the singleton instance.
@@ -232,9 +214,9 @@ export function getVersionManager(projectRoot?: string): VersionManager {
  */
 export function resetVersionManager(): void {
 
-    instance = null
-}
+    instance = null;
 
+}
 
 // ─────────────────────────────────────────────────────────────
 // Re-exports
@@ -251,7 +233,7 @@ export {
     type SchemaMigration,
     type StateMigration,
     type SettingsMigration,
-} from './types.js'
+} from './types.js';
 
 // Schema
 export {
@@ -263,16 +245,12 @@ export {
     getSchemaVersion,
     updateVersionRecord,
     getLatestVersionRecord,
-} from './schema/index.js'
+} from './schema/index.js';
 
-export type {
-    VersionRecordOptions,
-} from './schema/index.js'
+export type { VersionRecordOptions } from './schema/index.js';
 
 // Re-export shared table types
-export {
-    NOORM_TABLES,
-} from '../shared/index.js'
+export { NOORM_TABLES } from '../shared/index.js';
 
 export type {
     NoormTableName,
@@ -297,7 +275,7 @@ export type {
     Direction,
     ExecutionStatus,
     FileType,
-} from '../shared/index.js'
+} from '../shared/index.js';
 
 // State
 export {
@@ -307,7 +285,7 @@ export {
     needsStateMigration,
     createEmptyVersionedState,
     getStateVersion,
-} from './state/index.js'
+} from './state/index.js';
 
 // Settings
 export {
@@ -317,4 +295,4 @@ export {
     needsSettingsMigration,
     createEmptyVersionedSettings,
     getSettingsVersion,
-} from './settings/index.js'
+} from './settings/index.js';

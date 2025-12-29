@@ -23,22 +23,20 @@
  * })
  * ```
  */
-import path from 'node:path'
-import { mkdir, writeFile, rename, unlink, rm, stat } from 'node:fs/promises'
+import path from 'node:path';
+import { mkdir, writeFile, rename, unlink, rm, stat } from 'node:fs/promises';
 
-import { attempt } from '@logosdx/utils'
+import { attempt } from '@logosdx/utils';
 
-import { observer } from '../observer.js'
-import { parseChangeset, parseSequence, parseDescription } from './parser.js'
+import { observer } from '../observer.js';
+import { parseSequence, parseDescription } from './parser.js';
 import type {
     Changeset,
     ChangesetFile,
-    ChangesetFileType,
     CreateChangesetOptions,
     AddFileOptions,
-} from './types.js'
-import { ChangesetValidationError } from './types.js'
-
+} from './types.js';
+import { ChangesetValidationError } from './types.js';
 
 // ─────────────────────────────────────────────────────────────
 // Constants
@@ -46,7 +44,7 @@ import { ChangesetValidationError } from './types.js'
 
 /** Default template for new SQL files */
 const SQL_TEMPLATE = `-- TODO: Add SQL statements here
-`
+`;
 
 /** Default template for changelog */
 const CHANGELOG_TEMPLATE = `# Changelog
@@ -62,8 +60,7 @@ TODO: Describe the purpose of this changeset.
 ## Impact
 
 TODO: Describe any impact on existing data or functionality.
-`
-
+`;
 
 // ─────────────────────────────────────────────────────────────
 // Create Changeset
@@ -92,47 +89,49 @@ export async function createChangeset(
 ): Promise<Changeset> {
 
     // Generate name
-    const date = options.date ?? new Date()
-    const dateStr = formatDate(date)
-    const slug = slugify(options.description)
-    const name = `${dateStr}-${slug}`
+    const date = options.date ?? new Date();
+    const dateStr = formatDate(date);
+    const slug = slugify(options.description);
+    const name = `${dateStr}-${slug}`;
 
-    const changesetPath = path.join(changesetsDir, name)
+    const changesetPath = path.join(changesetsDir, name);
 
     // Check if changeset already exists
-    const [existingStats] = await attempt(() => stat(changesetPath))
+    const [existingStats] = await attempt(() => stat(changesetPath));
 
     if (existingStats) {
 
-        throw new Error(`Changeset already exists: ${name}`)
+        throw new Error(`Changeset already exists: ${name}`);
+
     }
 
     // Create directory structure
-    const [, mkdirErr] = await attempt(() =>
-        mkdir(changesetPath, { recursive: true })
-    )
+    const [, mkdirErr] = await attempt(() => mkdir(changesetPath, { recursive: true }));
 
     if (mkdirErr) {
 
-        throw new Error(`Failed to create changeset directory: ${changesetPath}`, { cause: mkdirErr })
+        throw new Error(`Failed to create changeset directory: ${changesetPath}`, {
+            cause: mkdirErr,
+        });
+
     }
 
     // Create change/ and revert/ folders
-    const changePath = path.join(changesetPath, 'change')
-    const revertPath = path.join(changesetPath, 'revert')
+    const changePath = path.join(changesetPath, 'change');
+    const revertPath = path.join(changesetPath, 'revert');
 
-    await mkdir(changePath, { recursive: true })
-    await mkdir(revertPath, { recursive: true })
+    await mkdir(changePath, { recursive: true });
+    await mkdir(revertPath, { recursive: true });
 
     // Create changelog.md
-    const changelogPath = path.join(changesetPath, 'changelog.md')
-    await writeFile(changelogPath, CHANGELOG_TEMPLATE, 'utf-8')
+    const changelogPath = path.join(changesetPath, 'changelog.md');
+    await writeFile(changelogPath, CHANGELOG_TEMPLATE, 'utf-8');
 
     // Emit event
     observer.emit('changeset:created', {
         name,
         path: changesetPath,
-    })
+    });
 
     // Return parsed changeset
     return {
@@ -143,9 +142,9 @@ export async function createChangeset(
         changeFiles: [],
         revertFiles: [],
         hasChangelog: true,
-    }
-}
+    };
 
+}
 
 // ─────────────────────────────────────────────────────────────
 // Add File
@@ -181,42 +180,46 @@ export async function addFile(
     options: AddFileOptions,
 ): Promise<Changeset> {
 
-    const files = folder === 'change' ? changeset.changeFiles : changeset.revertFiles
+    const files = folder === 'change' ? changeset.changeFiles : changeset.revertFiles;
 
     // Determine next sequence number
-    const maxSequence = getMaxSequence(files)
-    const sequence = maxSequence + 1
+    const maxSequence = getMaxSequence(files);
+    const sequence = maxSequence + 1;
 
     // Generate filename
-    const slug = slugify(options.name)
-    const extension = options.type === 'txt' ? '.txt' : '.sql'
-    const filename = `${padSequence(sequence)}_${slug}${extension}`
+    const slug = slugify(options.name);
+    const extension = options.type === 'txt' ? '.txt' : '.sql';
+    const filename = `${padSequence(sequence)}_${slug}${extension}`;
 
-    const folderPath = path.join(changeset.path, folder)
-    const filePath = path.join(folderPath, filename)
+    const folderPath = path.join(changeset.path, folder);
+    const filePath = path.join(folderPath, filename);
 
     // Determine content
-    let content: string
+    let content: string;
 
     if (options.content) {
 
-        content = options.content
+        content = options.content;
+
     }
     else if (options.type === 'txt' && options.paths) {
 
-        content = options.paths.join('\n') + '\n'
+        content = options.paths.join('\n') + '\n';
+
     }
     else {
 
-        content = SQL_TEMPLATE
+        content = SQL_TEMPLATE;
+
     }
 
     // Write file
-    const [, writeErr] = await attempt(() => writeFile(filePath, content, 'utf-8'))
+    const [, writeErr] = await attempt(() => writeFile(filePath, content, 'utf-8'));
 
     if (writeErr) {
 
-        throw new Error(`Failed to create file: ${filePath}`, { cause: writeErr })
+        throw new Error(`Failed to create file: ${filePath}`, { cause: writeErr });
+
     }
 
     // Create file object
@@ -224,26 +227,26 @@ export async function addFile(
         filename,
         path: filePath,
         type: options.type,
-    }
+    };
 
     if (options.type === 'txt' && options.paths) {
 
-        file.resolvedPaths = options.paths
+        file.resolvedPaths = options.paths;
+
     }
 
     // Update changeset
-    const updatedFiles = [...files, file].sort((a, b) =>
-        a.filename.localeCompare(b.filename)
-    )
+    const updatedFiles = [...files, file].sort((a, b) => a.filename.localeCompare(b.filename));
 
     if (folder === 'change') {
 
-        return { ...changeset, changeFiles: updatedFiles }
+        return { ...changeset, changeFiles: updatedFiles };
+
     }
 
-    return { ...changeset, revertFiles: updatedFiles }
-}
+    return { ...changeset, revertFiles: updatedFiles };
 
+}
 
 // ─────────────────────────────────────────────────────────────
 // Remove File
@@ -263,38 +266,38 @@ export async function removeFile(
     filename: string,
 ): Promise<Changeset> {
 
-    const files = folder === 'change' ? changeset.changeFiles : changeset.revertFiles
+    const files = folder === 'change' ? changeset.changeFiles : changeset.revertFiles;
 
     // Find file
-    const file = files.find(f => f.filename === filename)
+    const file = files.find((f) => f.filename === filename);
 
     if (!file) {
 
-        throw new ChangesetValidationError(
-            changeset.name,
-            `File not found: ${filename}`
-        )
+        throw new ChangesetValidationError(changeset.name, `File not found: ${filename}`);
+
     }
 
     // Delete file
-    const [, unlinkErr] = await attempt(() => unlink(file.path))
+    const [, unlinkErr] = await attempt(() => unlink(file.path));
 
     if (unlinkErr) {
 
-        throw new Error(`Failed to delete file: ${file.path}`, { cause: unlinkErr })
+        throw new Error(`Failed to delete file: ${file.path}`, { cause: unlinkErr });
+
     }
 
     // Update changeset
-    const updatedFiles = files.filter(f => f.filename !== filename)
+    const updatedFiles = files.filter((f) => f.filename !== filename);
 
     if (folder === 'change') {
 
-        return { ...changeset, changeFiles: updatedFiles }
+        return { ...changeset, changeFiles: updatedFiles };
+
     }
 
-    return { ...changeset, revertFiles: updatedFiles }
-}
+    return { ...changeset, revertFiles: updatedFiles };
 
+}
 
 // ─────────────────────────────────────────────────────────────
 // Rename File
@@ -316,52 +319,50 @@ export async function renameFile(
     newDescription: string,
 ): Promise<Changeset> {
 
-    const files = folder === 'change' ? changeset.changeFiles : changeset.revertFiles
+    const files = folder === 'change' ? changeset.changeFiles : changeset.revertFiles;
 
     // Find file
-    const fileIndex = files.findIndex(f => f.filename === oldFilename)
+    const fileIndex = files.findIndex((f) => f.filename === oldFilename);
 
     if (fileIndex === -1) {
 
-        throw new ChangesetValidationError(
-            changeset.name,
-            `File not found: ${oldFilename}`
-        )
+        throw new ChangesetValidationError(changeset.name, `File not found: ${oldFilename}`);
+
     }
 
-    const file = files[fileIndex]
+    const file = files[fileIndex];
 
     if (!file) {
 
-        throw new ChangesetValidationError(
-            changeset.name,
-            `File not found: ${oldFilename}`
-        )
+        throw new ChangesetValidationError(changeset.name, `File not found: ${oldFilename}`);
+
     }
 
     // Parse current filename
-    const sequence = parseSequence(file.filename)
-    const extension = getExtension(file.filename)
+    const sequence = parseSequence(file.filename);
+    const extension = getExtension(file.filename);
 
     if (sequence === null) {
 
         throw new ChangesetValidationError(
             changeset.name,
-            `Invalid filename format: ${oldFilename}`
-        )
+            `Invalid filename format: ${oldFilename}`,
+        );
+
     }
 
     // Generate new filename
-    const slug = slugify(newDescription)
-    const newFilename = `${padSequence(sequence)}_${slug}${extension}`
-    const newPath = path.join(path.dirname(file.path), newFilename)
+    const slug = slugify(newDescription);
+    const newFilename = `${padSequence(sequence)}_${slug}${extension}`;
+    const newPath = path.join(path.dirname(file.path), newFilename);
 
     // Rename file
-    const [, renameErr] = await attempt(() => rename(file.path, newPath))
+    const [, renameErr] = await attempt(() => rename(file.path, newPath));
 
     if (renameErr) {
 
-        throw new Error(`Failed to rename file: ${file.path}`, { cause: renameErr })
+        throw new Error(`Failed to rename file: ${file.path}`, { cause: renameErr });
+
     }
 
     // Update file object
@@ -369,21 +370,22 @@ export async function renameFile(
         ...file,
         filename: newFilename,
         path: newPath,
-    }
+    };
 
     // Update changeset
-    const updatedFiles = [...files]
-    updatedFiles[fileIndex] = updatedFile
-    updatedFiles.sort((a, b) => a.filename.localeCompare(b.filename))
+    const updatedFiles = [...files];
+    updatedFiles[fileIndex] = updatedFile;
+    updatedFiles.sort((a, b) => a.filename.localeCompare(b.filename));
 
     if (folder === 'change') {
 
-        return { ...changeset, changeFiles: updatedFiles }
+        return { ...changeset, changeFiles: updatedFiles };
+
     }
 
-    return { ...changeset, revertFiles: updatedFiles }
-}
+    return { ...changeset, revertFiles: updatedFiles };
 
+}
 
 // ─────────────────────────────────────────────────────────────
 // Reorder Files
@@ -414,18 +416,19 @@ export async function reorderFiles(
     newOrder: string[],
 ): Promise<Changeset> {
 
-    const files = folder === 'change' ? changeset.changeFiles : changeset.revertFiles
+    const files = folder === 'change' ? changeset.changeFiles : changeset.revertFiles;
 
     // Validate new order contains all files
-    const currentFilenames = new Set(files.map(f => f.filename))
-    const newOrderSet = new Set(newOrder)
+    const currentFilenames = new Set(files.map((f) => f.filename));
+    const newOrderSet = new Set(newOrder);
 
     if (currentFilenames.size !== newOrderSet.size) {
 
         throw new ChangesetValidationError(
             changeset.name,
-            'New order must contain all existing files'
-        )
+            'New order must contain all existing files',
+        );
+
     }
 
     for (const filename of newOrder) {
@@ -434,48 +437,51 @@ export async function reorderFiles(
 
             throw new ChangesetValidationError(
                 changeset.name,
-                `Unknown file in new order: ${filename}`
-            )
+                `Unknown file in new order: ${filename}`,
+            );
+
         }
+
     }
 
     // Create file map
-    const fileMap = new Map(files.map(f => [f.filename, f]))
+    const fileMap = new Map(files.map((f) => [f.filename, f]));
 
     // Rename files to new sequence
-    const updatedFiles: ChangesetFile[] = []
+    const updatedFiles: ChangesetFile[] = [];
 
     for (let i = 0; i < newOrder.length; i++) {
 
-        const oldFilename = newOrder[i]
+        const oldFilename = newOrder[i];
 
-        if (!oldFilename) continue
+        if (!oldFilename) continue;
 
-        const file = fileMap.get(oldFilename)
+        const file = fileMap.get(oldFilename);
 
-        if (!file) continue
+        if (!file) continue;
 
-        const newSequence = i + 1
+        const newSequence = i + 1;
 
         // Get description and extension
-        const description = parseDescription(oldFilename)
-        const extension = getExtension(oldFilename)
+        const description = parseDescription(oldFilename);
+        const extension = getExtension(oldFilename);
 
         // Generate new filename
-        const newFilename = `${padSequence(newSequence)}_${description}${extension}`
-        const newPath = path.join(path.dirname(file.path), newFilename)
+        const newFilename = `${padSequence(newSequence)}_${description}${extension}`;
+        const newPath = path.join(path.dirname(file.path), newFilename);
 
         // Rename if changed
         if (newFilename !== oldFilename) {
 
             // Use temp name to avoid conflicts
-            const tempPath = path.join(path.dirname(file.path), `_temp_${i}${extension}`)
+            const tempPath = path.join(path.dirname(file.path), `_temp_${i}${extension}`);
 
-            const [, renameErr] = await attempt(() => rename(file.path, tempPath))
+            const [, renameErr] = await attempt(() => rename(file.path, tempPath));
 
             if (renameErr) {
 
-                throw new Error(`Failed to rename file: ${file.path}`, { cause: renameErr })
+                throw new Error(`Failed to rename file: ${file.path}`, { cause: renameErr });
+
             }
 
             updatedFiles.push({
@@ -483,46 +489,54 @@ export async function reorderFiles(
                 filename: newFilename,
                 path: newPath,
                 _tempPath: tempPath, // Track temp path
-            } as ChangesetFile & { _tempPath: string })
+            } as ChangesetFile & { _tempPath: string });
+
         }
         else {
 
-            updatedFiles.push(file)
+            updatedFiles.push(file);
+
         }
+
     }
 
     // Final rename from temp to actual
     for (const file of updatedFiles) {
 
-        const tempPath = (file as ChangesetFile & { _tempPath?: string })._tempPath
+        const tempPath = (file as ChangesetFile & { _tempPath?: string })._tempPath;
 
         if (tempPath) {
 
-            const [, renameErr] = await attempt(() => rename(tempPath, file.path))
+            const [, renameErr] = await attempt(() => rename(tempPath, file.path));
 
             if (renameErr) {
 
-                throw new Error(`Failed to finalize rename: ${file.path}`, { cause: renameErr })
+                throw new Error(`Failed to finalize rename: ${file.path}`, { cause: renameErr });
+
             }
+
         }
+
     }
 
     // Clean up temp property
-    const cleanFiles = updatedFiles.map(f => {
+    const cleanFiles = updatedFiles.map((f) => {
 
-        const { _tempPath, ...clean } = f as ChangesetFile & { _tempPath?: string }
+        const { _tempPath, ...clean } = f as ChangesetFile & { _tempPath?: string };
 
-        return clean
-    })
+        return clean;
+
+    });
 
     if (folder === 'change') {
 
-        return { ...changeset, changeFiles: cleanFiles }
+        return { ...changeset, changeFiles: cleanFiles };
+
     }
 
-    return { ...changeset, revertFiles: cleanFiles }
-}
+    return { ...changeset, revertFiles: cleanFiles };
 
+}
 
 // ─────────────────────────────────────────────────────────────
 // Delete Changeset
@@ -535,16 +549,15 @@ export async function reorderFiles(
  */
 export async function deleteChangeset(changeset: Changeset): Promise<void> {
 
-    const [, rmErr] = await attempt(() =>
-        rm(changeset.path, { recursive: true, force: true })
-    )
+    const [, rmErr] = await attempt(() => rm(changeset.path, { recursive: true, force: true }));
 
     if (rmErr) {
 
-        throw new Error(`Failed to delete changeset: ${changeset.path}`, { cause: rmErr })
-    }
-}
+        throw new Error(`Failed to delete changeset: ${changeset.path}`, { cause: rmErr });
 
+    }
+
+}
 
 // ─────────────────────────────────────────────────────────────
 // Internal Helpers
@@ -555,13 +568,13 @@ export async function deleteChangeset(changeset: Changeset): Promise<void> {
  */
 function formatDate(date: Date): string {
 
-    const year = date.getFullYear()
-    const month = String(date.getMonth() + 1).padStart(2, '0')
-    const day = String(date.getDate()).padStart(2, '0')
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
 
-    return `${year}-${month}-${day}`
+    return `${year}-${month}-${day}`;
+
 }
-
 
 /**
  * Convert text to URL-safe slug.
@@ -572,39 +585,41 @@ function slugify(text: string): string {
         .toLowerCase()
         .trim()
         .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-+|-+$/g, '')
-}
+        .replace(/^-+|-+$/g, '');
 
+}
 
 /**
  * Pad sequence number to 3 digits.
  */
 function padSequence(seq: number): string {
 
-    return String(seq).padStart(3, '0')
-}
+    return String(seq).padStart(3, '0');
 
+}
 
 /**
  * Get max sequence number from files.
  */
 function getMaxSequence(files: ChangesetFile[]): number {
 
-    let max = 0
+    let max = 0;
 
     for (const file of files) {
 
-        const seq = parseSequence(file.filename)
+        const seq = parseSequence(file.filename);
 
         if (seq !== null && seq > max) {
 
-            max = seq
+            max = seq;
+
         }
+
     }
 
-    return max
-}
+    return max;
 
+}
 
 /**
  * Get file extension (including .sql.tmpl).
@@ -613,18 +628,22 @@ function getExtension(filename: string): string {
 
     if (filename.endsWith('.sql.tmpl')) {
 
-        return '.sql.tmpl'
+        return '.sql.tmpl';
+
     }
 
     if (filename.endsWith('.sql')) {
 
-        return '.sql'
+        return '.sql';
+
     }
 
     if (filename.endsWith('.txt')) {
 
-        return '.txt'
+        return '.txt';
+
     }
 
-    return ''
+    return '';
+
 }

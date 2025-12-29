@@ -126,6 +126,7 @@ Core modules emit events. The CLI subscribes. This keeps business logic separate
 | [Identity](./identity.md) | Audit tracking, cryptographic identity, secure sharing |
 | [State](./state.md) | Encrypted storage, configs, secrets, persistence |
 | [Config](./config.md) | Resolution, validation, protection, stages |
+| [Secrets](./secrets.md) | Encrypted secrets, required vs optional, CLI workflow |
 | [Settings](./settings.md) | Build rules, stages, project-wide behavior |
 | [Lock](./lock.md) | Concurrent operation protection, table-based locking |
 | [Template](./template.md) | Eta templating, data loading, helper inheritance |

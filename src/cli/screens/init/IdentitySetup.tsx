@@ -10,40 +10,35 @@
  * - Machine (from hostname, editable)
  * - OS (auto-detected, not editable)
  */
-import { useState, useEffect, useCallback } from 'react'
-import type { ReactElement } from 'react'
-import { Box, Text } from 'ink'
+import { useState, useEffect, useCallback } from 'react';
+import type { ReactElement } from 'react';
+import { Box, Text } from 'ink';
 
-import { Panel } from '../../components/layout/index.js'
-import { Form, type FormField, type FormValues } from '../../components/forms/index.js'
-import { Spinner } from '../../components/feedback/index.js'
-import { detectIdentityDefaults, type IdentityDefaults } from '../../../core/identity/index.js'
-
+import { Panel } from '../../components/layout/index.js';
+import { Form, type FormField, type FormValues } from '../../components/forms/index.js';
+import { Spinner } from '../../components/feedback/index.js';
+import { detectIdentityDefaults, type IdentityDefaults } from '../../../core/identity/index.js';
 
 /**
  * Props for IdentitySetup.
  */
 export interface IdentitySetupProps {
-
     /** Called when identity setup is complete */
-    onComplete: (values: IdentitySetupValues) => void
+    onComplete: (values: IdentitySetupValues) => void;
 
     /** Called when user cancels */
-    onCancel: () => void
+    onCancel: () => void;
 }
-
 
 /**
  * Values returned from identity setup.
  */
 export interface IdentitySetupValues {
-
-    name: string
-    email: string
-    machine: string
-    os: string
+    name: string;
+    email: string;
+    machine: string;
+    os: string;
 }
-
 
 /**
  * Identity setup component.
@@ -51,36 +46,38 @@ export interface IdentitySetupValues {
  * Shows a form pre-populated with detected values.
  * User can edit name, email, and machine; OS is auto-detected.
  */
-export function IdentitySetup({
-    onComplete,
-    onCancel,
-}: IdentitySetupProps): ReactElement {
+export function IdentitySetup({ onComplete, onCancel }: IdentitySetupProps): ReactElement {
 
     // Note: No useFocusScope here - let the Form manage its own focus.
     // Parent focus scopes interfere with child focus due to React effect order.
 
     // Detected defaults
-    const [defaults, setDefaults] = useState<IdentityDefaults | null>(null)
-    const [loading, setLoading] = useState(true)
+    const [defaults, setDefaults] = useState<IdentityDefaults | null>(null);
+    const [loading, setLoading] = useState(true);
 
     // Detect defaults on mount
     useEffect(() => {
 
-        const detected = detectIdentityDefaults()
-        setDefaults(detected)
-        setLoading(false)
-    }, [])
+        const detected = detectIdentityDefaults();
+        setDefaults(detected);
+        setLoading(false);
+
+    }, []);
 
     // Handle form submission
-    const handleSubmit = useCallback((values: FormValues) => {
+    const handleSubmit = useCallback(
+        (values: FormValues) => {
 
-        onComplete({
-            name: values['name'] as string,
-            email: values['email'] as string,
-            machine: values['machine'] as string,
-            os: defaults?.os ?? '',
-        })
-    }, [defaults?.os, onComplete])
+            onComplete({
+                name: values['name'] as string,
+                email: values['email'] as string,
+                machine: values['machine'] as string,
+                os: defaults?.os ?? '',
+            });
+
+        },
+        [defaults?.os, onComplete],
+    );
 
     // Show loading while detecting defaults
     if (loading || !defaults) {
@@ -91,7 +88,8 @@ export function IdentitySetup({
                     <Spinner label="Detecting identity defaults..." />
                 </Box>
             </Box>
-        )
+        );
+
     }
 
     // Build form fields
@@ -115,8 +113,10 @@ export function IdentitySetup({
 
                 if (typeof value === 'string' && !value.includes('@')) {
 
-                    return 'Invalid email address'
+                    return 'Invalid email address';
+
                 }
+
             },
         },
         {
@@ -127,17 +127,14 @@ export function IdentitySetup({
             required: true,
             placeholder: 'Machine name',
         },
-    ]
+    ];
 
     return (
         <Box flexDirection="column">
-
             {/* Welcome message */}
             <Panel title="Welcome to noorm" titleColor="cyan">
                 <Box flexDirection="column" marginBottom={1}>
-                    <Text>
-                        Let's set up your identity. This is used for:
-                    </Text>
+                    <Text>Let's set up your identity. This is used for:</Text>
                     <Box flexDirection="column" marginLeft={2} marginTop={1}>
                         <Text>
                             <Text dimColor>•</Text> Tracking who made changes (audit trail)
@@ -179,7 +176,7 @@ export function IdentitySetup({
                     On continue, we'll generate your keypair for secure config sharing.
                 </Text>
             </Box>
-
         </Box>
-    )
+    );
+
 }

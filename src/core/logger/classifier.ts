@@ -9,29 +9,18 @@
  * - '*:start', '*:complete', '*:created', etc. -> info
  * - Everything else -> debug
  */
-import type { EntryLevel, LogLevel } from './types.js'
-import { LOG_LEVEL_PRIORITY } from './types.js'
-
+import type { EntryLevel, LogLevel } from './types.js';
+import { LOG_LEVEL_PRIORITY } from './types.js';
 
 /**
  * Patterns that classify an event as error level.
  */
-const ERROR_PATTERNS = [
-    /^error$/,
-    /:error$/,
-    /:failed$/,
-]
-
+const ERROR_PATTERNS = [/^error$/, /:error$/, /:failed$/];
 
 /**
  * Patterns that classify an event as warn level.
  */
-const WARN_PATTERNS = [
-    /:warning$/,
-    /:blocked$/,
-    /:expired$/,
-]
-
+const WARN_PATTERNS = [/:warning$/, /:blocked$/, /:expired$/];
 
 /**
  * Patterns that classify an event as info level.
@@ -57,8 +46,7 @@ const INFO_PATTERNS = [
     /:flushed$/,
     /:started$/,
     /:initialized$/,
-]
-
+];
 
 /**
  * Classify an event name to determine its log level.
@@ -81,8 +69,10 @@ export function classifyEvent(event: string): EntryLevel {
 
         if (pattern.test(event)) {
 
-            return 'error'
+            return 'error';
+
         }
+
     }
 
     // Check warn patterns
@@ -90,8 +80,10 @@ export function classifyEvent(event: string): EntryLevel {
 
         if (pattern.test(event)) {
 
-            return 'warn'
+            return 'warn';
+
         }
+
     }
 
     // Check info patterns
@@ -99,14 +91,16 @@ export function classifyEvent(event: string): EntryLevel {
 
         if (pattern.test(event)) {
 
-            return 'info'
+            return 'info';
+
         }
+
     }
 
     // Default to debug
-    return 'debug'
-}
+    return 'debug';
 
+}
 
 /**
  * Check if an event should be logged at the given verbosity level.
@@ -127,21 +121,23 @@ export function shouldLog(event: string, configLevel: LogLevel): boolean {
 
     if (configLevel === 'silent') {
 
-        return false
+        return false;
+
     }
 
     if (configLevel === 'verbose') {
 
-        return true
+        return true;
+
     }
 
-    const eventLevel = classifyEvent(event)
-    const eventPriority = getEntryLevelPriority(eventLevel)
-    const configPriority = LOG_LEVEL_PRIORITY[configLevel]
+    const eventLevel = classifyEvent(event);
+    const eventPriority = getEntryLevelPriority(eventLevel);
+    const configPriority = LOG_LEVEL_PRIORITY[configLevel];
 
-    return eventPriority <= configPriority
+    return eventPriority <= configPriority;
+
 }
-
 
 /**
  * Map entry level to priority for comparison.
@@ -151,9 +147,15 @@ function getEntryLevelPriority(level: EntryLevel): number {
 
     switch (level) {
 
-        case 'error': return 1
-        case 'warn': return 2
-        case 'info': return 3
-        case 'debug': return 4
+    case 'error':
+        return 1;
+    case 'warn':
+        return 2;
+    case 'info':
+        return 3;
+    case 'debug':
+        return 4;
+
     }
+
 }

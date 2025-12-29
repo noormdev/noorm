@@ -8,20 +8,18 @@
  * Audit identity resolution is cached for the duration of a command.
  * Cryptographic identity is created on first run and stored in state.
  */
-import type { CryptoIdentity, Identity, IdentityOptions } from './types.js'
-import { resolveIdentity as resolve, formatIdentity, identityToString } from './resolver.js'
-
+import type { CryptoIdentity, Identity, IdentityOptions } from './types.js';
+import { resolveIdentity as resolve } from './resolver.js';
 
 // =============================================================================
 // Re-exports
 // =============================================================================
 
-
 // Types
-export * from './types.js'
+export * from './types.js';
 
 // Resolver utilities
-export { formatIdentity, identityToString } from './resolver.js'
+export { formatIdentity, identityToString } from './resolver.js';
 
 // Cryptographic operations
 export {
@@ -31,7 +29,7 @@ export {
     deriveStateKey,
     encryptState,
     decryptState,
-} from './crypto.js'
+} from './crypto.js';
 
 // Key storage
 export {
@@ -47,14 +45,10 @@ export {
     getNoormHomePath,
     saveIdentityMetadata,
     loadIdentityMetadata,
-} from './storage.js'
+} from './storage.js';
 
 // Hash utilities
-export {
-    computeIdentityHash,
-    isValidIdentityHash,
-    truncateHash,
-} from './hash.js'
+export { computeIdentityHash, isValidIdentityHash, truncateHash } from './hash.js';
 
 // Factory
 export {
@@ -63,19 +57,16 @@ export {
     createIdentityForExistingKeys,
     regenerateKeyPair,
     loadExistingIdentity,
-} from './factory.js'
+} from './factory.js';
 
-export type { IdentityDefaults, CreateIdentityResult } from './factory.js'
-export type { IdentityHashInput } from './hash.js'
-
+export type { IdentityDefaults, CreateIdentityResult } from './factory.js';
+export type { IdentityHashInput } from './hash.js';
 
 // =============================================================================
 // Audit Identity Resolution (cached)
 // =============================================================================
 
-
-let cachedIdentity: Identity | null = null
-
+let cachedIdentity: Identity | null = null;
 
 /**
  * Get the current audit identity (cached).
@@ -102,17 +93,19 @@ export function resolveIdentity(options: IdentityOptions = {}): Identity {
     // Don't cache if using overrides (might change between calls)
     if (options.configIdentity || options.cryptoIdentity) {
 
-        return resolve(options)
+        return resolve(options);
+
     }
 
     if (!cachedIdentity) {
 
-        cachedIdentity = resolve(options)
+        cachedIdentity = resolve(options);
+
     }
 
-    return cachedIdentity
-}
+    return cachedIdentity;
 
+}
 
 /**
  * Clear the identity cache.
@@ -121,9 +114,9 @@ export function resolveIdentity(options: IdentityOptions = {}): Identity {
  */
 export function clearIdentityCache(): void {
 
-    cachedIdentity = null
-}
+    cachedIdentity = null;
 
+}
 
 /**
  * Get audit identity with config awareness.
@@ -138,9 +131,9 @@ export function clearIdentityCache(): void {
  */
 export function getIdentityForConfig(config: { identity?: string }): Identity {
 
-    return resolveIdentity({ configIdentity: config.identity })
-}
+    return resolveIdentity({ configIdentity: config.identity });
 
+}
 
 /**
  * Get audit identity with crypto identity awareness.
@@ -155,11 +148,12 @@ export function getIdentityForConfig(config: { identity?: string }): Identity {
  */
 export function getIdentityWithCrypto(
     cryptoIdentity: CryptoIdentity | null,
-    config?: { identity?: string }
+    config?: { identity?: string },
 ): Identity {
 
     return resolveIdentity({
         configIdentity: config?.identity,
         cryptoIdentity,
-    })
+    });
+
 }

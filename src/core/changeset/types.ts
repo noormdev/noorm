@@ -8,11 +8,15 @@
  * WHY: Centralized type definitions ensure consistency across
  * parser, executor, history, and manager components.
  */
-import type { Kysely } from 'kysely'
+import type { Kysely } from 'kysely';
 
-import type { NoormDatabase, OperationStatus, Direction, ExecutionStatus } from '../shared/index.js'
-import type { Identity } from '../identity/index.js'
-
+import type {
+    NoormDatabase,
+    OperationStatus,
+    Direction,
+    ExecutionStatus,
+} from '../shared/index.js';
+import type { Identity } from '../identity/index.js';
 
 // ─────────────────────────────────────────────────────────────
 // File Types
@@ -24,8 +28,7 @@ import type { Identity } from '../identity/index.js'
  * - 'sql' for direct SQL files (.sql, .sql.tmpl)
  * - 'txt' for manifest files referencing build SQL
  */
-export type ChangesetFileType = 'sql' | 'txt'
-
+export type ChangesetFileType = 'sql' | 'txt';
 
 /**
  * A single file within a changeset.
@@ -40,26 +43,24 @@ export type ChangesetFileType = 'sql' | 'txt'
  * ```
  */
 export interface ChangesetFile {
-
     /** Filename (e.g., "001_alter-users.sql") */
-    filename: string
+    filename: string;
 
     /** Absolute path to file */
-    path: string
+    path: string;
 
     /** File type */
-    type: ChangesetFileType
+    type: ChangesetFileType;
 
     /** For .txt files, the resolved SQL paths (relative to schema dir) */
-    resolvedPaths?: string[]
+    resolvedPaths?: string[];
 
     /** Execution status after running */
-    status?: ExecutionStatus
+    status?: ExecutionStatus;
 
     /** Why the file was skipped */
-    skipReason?: string
+    skipReason?: string;
 }
-
 
 // ─────────────────────────────────────────────────────────────
 // Changeset (from disk)
@@ -84,29 +85,27 @@ export interface ChangesetFile {
  * ```
  */
 export interface Changeset {
-
     /** Folder name (e.g., "2024-01-15-add-email-verification") */
-    name: string
+    name: string;
 
     /** Absolute path to changeset folder */
-    path: string
+    path: string;
 
     /** Date parsed from name (null if no date prefix) */
-    date: Date | null
+    date: Date | null;
 
     /** Human-readable description from name */
-    description: string
+    description: string;
 
     /** Files in change/ folder */
-    changeFiles: ChangesetFile[]
+    changeFiles: ChangesetFile[];
 
     /** Files in revert/ folder */
-    revertFiles: ChangesetFile[]
+    revertFiles: ChangesetFile[];
 
     /** Whether changelog.md exists */
-    hasChangelog: boolean
+    hasChangelog: boolean;
 }
-
 
 // ─────────────────────────────────────────────────────────────
 // Changeset Status (from database)
@@ -130,26 +129,24 @@ export interface Changeset {
  * ```
  */
 export interface ChangesetStatus {
-
     /** Changeset name */
-    name: string
+    name: string;
 
     /** Current status */
-    status: OperationStatus
+    status: OperationStatus;
 
     /** When last applied (null if never) */
-    appliedAt: Date | null
+    appliedAt: Date | null;
 
     /** Who applied it */
-    appliedBy: string | null
+    appliedBy: string | null;
 
     /** When reverted (null if not reverted) */
-    revertedAt: Date | null
+    revertedAt: Date | null;
 
     /** Error message if failed */
-    errorMessage: string | null
+    errorMessage: string | null;
 }
-
 
 // ─────────────────────────────────────────────────────────────
 // Changeset List Item (merged disk + DB)
@@ -180,53 +177,51 @@ export interface ChangesetStatus {
  * ```
  */
 export interface ChangesetListItem {
-
     /** Changeset name (always present) */
-    name: string
+    name: string;
 
     // From disk (optional for orphaned)
     /** Absolute path to changeset folder */
-    path?: string
+    path?: string;
 
     /** Date parsed from name (null if no date prefix) */
-    date?: Date | null
+    date?: Date | null;
 
     /** Human-readable description from name */
-    description?: string
+    description?: string;
 
     /** Files in change/ folder */
-    changeFiles?: ChangesetFile[]
+    changeFiles?: ChangesetFile[];
 
     /** Files in revert/ folder */
-    revertFiles?: ChangesetFile[]
+    revertFiles?: ChangesetFile[];
 
     /** Whether changelog.md exists */
-    hasChangelog?: boolean
+    hasChangelog?: boolean;
 
     // From DB
     /** Current status */
-    status: OperationStatus
+    status: OperationStatus;
 
     /** When last applied (null if never) */
-    appliedAt: Date | null
+    appliedAt: Date | null;
 
     /** Who applied it */
-    appliedBy: string | null
+    appliedBy: string | null;
 
     /** When reverted (null if not reverted) */
-    revertedAt: Date | null
+    revertedAt: Date | null;
 
     /** Error message if failed */
-    errorMessage: string | null
+    errorMessage: string | null;
 
     // Computed
     /** True if exists on disk but no DB record */
-    isNew: boolean
+    isNew: boolean;
 
     /** True if exists in DB but folder deleted from disk */
-    orphaned: boolean
+    orphaned: boolean;
 }
-
 
 // ─────────────────────────────────────────────────────────────
 // Execution Options
@@ -245,52 +240,48 @@ export interface ChangesetListItem {
  * ```
  */
 export interface ChangesetOptions {
-
     /** Re-run even if already applied. Default: false */
-    force?: boolean
+    force?: boolean;
 
     /** Render to tmp/ without executing. Default: false */
-    dryRun?: boolean
+    dryRun?: boolean;
 
     /** Output rendered SQL without executing. Default: false */
-    preview?: boolean
+    preview?: boolean;
 
     /** Write preview output to file. Default: null */
-    output?: string | null
+    output?: string | null;
 }
-
 
 /**
  * Options for batch operations (next, ff, rewind).
  */
 export interface BatchChangesetOptions extends ChangesetOptions {
-
     /** Stop on first failure. Default: true */
-    abortOnError?: boolean
+    abortOnError?: boolean;
 }
-
 
 /**
  * Default changeset options.
  */
-export const DEFAULT_CHANGESET_OPTIONS: Required<Omit<ChangesetOptions, 'output'>> & { output: string | null } = {
-
+export const DEFAULT_CHANGESET_OPTIONS: Required<Omit<ChangesetOptions, 'output'>> & {
+    output: string | null;
+} = {
     force: false,
     dryRun: false,
     preview: false,
     output: null,
-}
-
+};
 
 /**
  * Default batch options.
  */
-export const DEFAULT_BATCH_OPTIONS: Required<Omit<BatchChangesetOptions, 'output'>> & { output: string | null } = {
-
+export const DEFAULT_BATCH_OPTIONS: Required<Omit<BatchChangesetOptions, 'output'>> & {
+    output: string | null;
+} = {
     ...DEFAULT_CHANGESET_OPTIONS,
     abortOnError: true,
-}
-
+};
 
 // ─────────────────────────────────────────────────────────────
 // Execution Context
@@ -312,35 +303,33 @@ export const DEFAULT_BATCH_OPTIONS: Required<Omit<BatchChangesetOptions, 'output
  * ```
  */
 export interface ChangesetContext {
-
     /** Kysely database connection */
-    db: Kysely<NoormDatabase>
+    db: Kysely<NoormDatabase>;
 
     /** Name of the active config */
-    configName: string
+    configName: string;
 
     /** User identity for tracking */
-    identity: Identity
+    identity: Identity;
 
     /** Project root for template resolution */
-    projectRoot: string
+    projectRoot: string;
 
     /** Directory containing changesets */
-    changesetsDir: string
+    changesetsDir: string;
 
     /** Schema directory for resolving .txt references */
-    schemaDir: string
+    schemaDir: string;
 
     /** Config object for template context */
-    config?: Record<string, unknown>
+    config?: Record<string, unknown>;
 
     /** Secrets for template context */
-    secrets?: Record<string, string>
+    secrets?: Record<string, string>;
 
     /** Global secrets for template context */
-    globalSecrets?: Record<string, string>
+    globalSecrets?: Record<string, string>;
 }
-
 
 // ─────────────────────────────────────────────────────────────
 // Execution Results
@@ -361,82 +350,76 @@ export interface ChangesetContext {
  * ```
  */
 export interface ChangesetResult {
-
     /** Changeset name */
-    name: string
+    name: string;
 
     /** Operation direction */
-    direction: Direction
+    direction: Direction;
 
     /** Final status */
-    status: OperationStatus
+    status: OperationStatus;
 
     /** Individual file results */
-    files: ChangesetFileResult[]
+    files: ChangesetFileResult[];
 
     /** Total execution time */
-    durationMs: number
+    durationMs: number;
 
     /** Error message if failed */
-    error?: string
+    error?: string;
 
     /** Operation ID in tracking table */
-    operationId?: number
+    operationId?: number;
 }
-
 
 /**
  * Result of executing a single file within a changeset.
  */
 export interface ChangesetFileResult {
-
     /** File path */
-    filepath: string
+    filepath: string;
 
     /** File checksum */
-    checksum: string
+    checksum: string;
 
     /** Execution status */
-    status: ExecutionStatus
+    status: ExecutionStatus;
 
     /** Why skipped (if skipped) */
-    skipReason?: string
+    skipReason?: string;
 
     /** Execution time in milliseconds */
-    durationMs?: number
+    durationMs?: number;
 
     /** Error message if failed */
-    error?: string
+    error?: string;
 
     /** Rendered SQL (only in preview mode) */
-    renderedSql?: string
+    renderedSql?: string;
 }
-
 
 /**
  * Result of a batch operation (next, ff, rewind).
  */
 export interface BatchChangesetResult {
-
     /** Overall status */
-    status: 'success' | 'failed' | 'partial'
+    status: 'success' | 'failed' | 'partial';
 
     /** Results for each changeset */
-    changesets: ChangesetResult[]
+    changesets: ChangesetResult[];
 
     /** Number of changesets executed */
-    executed: number
+    executed: number;
 
     /** Number of changesets skipped */
-    skipped: number
+    skipped: number;
 
     /** Number of changesets that failed */
-    failed: number
+    failed: number;
 
     /** Total execution time */
-    durationMs: number
+    durationMs: number;
 }
-
 
 // ─────────────────────────────────────────────────────────────
 // History Types
@@ -446,69 +429,65 @@ export interface BatchChangesetResult {
  * A single execution record from history.
  */
 export interface ChangesetHistoryRecord {
-
     /** Record ID */
-    id: number
+    id: number;
 
     /** Changeset name */
-    name: string
+    name: string;
 
     /** Operation direction */
-    direction: Direction
+    direction: Direction;
 
     /** Status */
-    status: OperationStatus
+    status: OperationStatus;
 
     /** When executed */
-    executedAt: Date
+    executedAt: Date;
 
     /** Who executed */
-    executedBy: string
+    executedBy: string;
 
     /** Duration in milliseconds */
-    durationMs: number
+    durationMs: number;
 
     /** Error message if failed */
-    errorMessage: string | null
+    errorMessage: string | null;
 
     /** Checksum of files */
-    checksum: string
+    checksum: string;
 }
-
 
 /**
  * File execution record from history.
  */
 export interface FileHistoryRecord {
-
     /** Record ID */
-    id: number
+    id: number;
 
     /** Parent changeset ID */
-    changesetId: number
+    changesetId: number;
 
     /** File path */
-    filepath: string
+    filepath: string;
 
     /** File type */
-    fileType: ChangesetFileType
+    fileType: ChangesetFileType;
 
     /** File checksum */
-    checksum: string
+    checksum: string;
 
     /** Execution status */
-    status: ExecutionStatus
+    status: ExecutionStatus;
 
     /** Skip reason if skipped */
-    skipReason: string | null
+    skipReason: string | null;
 
     /** Error message if failed */
-    errorMessage: string | null
+    errorMessage: string | null;
 
     /** Duration in milliseconds */
-    durationMs: number
+    durationMs: number;
 }
-
 
 // ─────────────────────────────────────────────────────────────
 // Change Detection
@@ -517,30 +496,27 @@ export interface FileHistoryRecord {
 /**
  * Why a changeset needs to run.
  */
-export type ChangesetRunReason = 'new' | 'changed' | 'failed' | 'reverted' | 'force'
-
+export type ChangesetRunReason = 'new' | 'changed' | 'failed' | 'reverted' | 'force';
 
 /**
  * Result of checking if a changeset needs to run.
  */
 export interface NeedsRunResult {
-
     /** Whether the changeset needs to run */
-    needsRun: boolean
+    needsRun: boolean;
 
     /** Why it needs to run (if needsRun is true) */
-    reason?: ChangesetRunReason
+    reason?: ChangesetRunReason;
 
     /** Why it was skipped (if needsRun is false) */
-    skipReason?: string
+    skipReason?: string;
 
     /** Previous checksum if exists */
-    previousChecksum?: string
+    previousChecksum?: string;
 
     /** Previous status if exists */
-    previousStatus?: OperationStatus
+    previousStatus?: OperationStatus;
 }
-
 
 // ─────────────────────────────────────────────────────────────
 // Scaffold Types
@@ -550,33 +526,29 @@ export interface NeedsRunResult {
  * Options for creating a new changeset.
  */
 export interface CreateChangesetOptions {
-
     /** Description for the changeset name */
-    description: string
+    description: string;
 
     /** Optional date (defaults to today) */
-    date?: Date
+    date?: Date;
 }
-
 
 /**
  * Options for adding a file to a changeset.
  */
 export interface AddFileOptions {
-
     /** Descriptive name for the file */
-    name: string
+    name: string;
 
     /** File type */
-    type: ChangesetFileType
+    type: ChangesetFileType;
 
     /** For 'txt' type, the paths to include */
-    paths?: string[]
+    paths?: string[];
 
     /** Initial content (optional) */
-    content?: string
+    content?: string;
 }
-
 
 // ─────────────────────────────────────────────────────────────
 // Error Types
@@ -587,89 +559,96 @@ export interface AddFileOptions {
  */
 export class ChangesetValidationError extends Error {
 
-    override readonly name = 'ChangesetValidationError' as const
+    override readonly name = 'ChangesetValidationError' as const;
 
     constructor(
         public readonly changesetName: string,
         public readonly issue: string,
     ) {
 
-        super(`Invalid changeset '${changesetName}': ${issue}`)
-    }
-}
+        super(`Invalid changeset '${changesetName}': ${issue}`);
 
+    }
+
+}
 
 /**
  * Error when changeset is not found.
  */
 export class ChangesetNotFoundError extends Error {
 
-    override readonly name = 'ChangesetNotFoundError' as const
+    override readonly name = 'ChangesetNotFoundError' as const;
 
     constructor(public readonly changesetName: string) {
 
-        super(`Changeset not found: ${changesetName}`)
-    }
-}
+        super(`Changeset not found: ${changesetName}`);
 
+    }
+
+}
 
 /**
  * Error when changeset is already applied.
  */
 export class ChangesetAlreadyAppliedError extends Error {
 
-    override readonly name = 'ChangesetAlreadyAppliedError' as const
+    override readonly name = 'ChangesetAlreadyAppliedError' as const;
 
     constructor(
         public readonly changesetName: string,
         public readonly appliedAt: Date,
     ) {
 
-        super(`Changeset '${changesetName}' already applied at ${appliedAt.toISOString()}`)
-    }
-}
+        super(`Changeset '${changesetName}' already applied at ${appliedAt.toISOString()}`);
 
+    }
+
+}
 
 /**
  * Error when trying to revert an unapplied changeset.
  */
 export class ChangesetNotAppliedError extends Error {
 
-    override readonly name = 'ChangesetNotAppliedError' as const
+    override readonly name = 'ChangesetNotAppliedError' as const;
 
     constructor(public readonly changesetName: string) {
 
-        super(`Cannot revert '${changesetName}': not applied`)
-    }
-}
+        super(`Cannot revert '${changesetName}': not applied`);
 
+    }
+
+}
 
 /**
  * Error when changeset is orphaned (in DB but not on disk).
  */
 export class ChangesetOrphanedError extends Error {
 
-    override readonly name = 'ChangesetOrphanedError' as const
+    override readonly name = 'ChangesetOrphanedError' as const;
 
     constructor(public readonly changesetName: string) {
 
-        super(`Changeset '${changesetName}' is orphaned (folder deleted from disk)`)
-    }
-}
+        super(`Changeset '${changesetName}' is orphaned (folder deleted from disk)`);
 
+    }
+
+}
 
 /**
  * Error when .txt manifest has invalid references.
  */
 export class ManifestReferenceError extends Error {
 
-    override readonly name = 'ManifestReferenceError' as const
+    override readonly name = 'ManifestReferenceError' as const;
 
     constructor(
         public readonly manifestPath: string,
         public readonly missingPath: string,
     ) {
 
-        super(`Manifest '${manifestPath}' references missing file: ${missingPath}`)
+        super(`Manifest '${manifestPath}' references missing file: ${missingPath}`);
+
     }
+
 }

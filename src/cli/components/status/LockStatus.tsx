@@ -14,71 +14,72 @@
  * />
  * ```
  */
-import { Box, Text } from 'ink'
-import { Badge } from '@inkjs/ui'
+import { Box, Text } from 'ink';
+import { Badge } from '@inkjs/ui';
 
-import type { ReactElement } from 'react'
-
+import type { ReactElement } from 'react';
 
 /**
  * Lock status types.
  */
-export type LockStatusType = 'free' | 'locked' | 'blocked' | 'expired'
-
+export type LockStatusType = 'free' | 'locked' | 'blocked' | 'expired';
 
 /**
  * Props for LockStatus component.
  */
 export interface LockStatusProps {
-
     /** Current lock status */
-    status: LockStatusType
+    status: LockStatusType;
 
     /** Identity holding the lock */
-    holder?: string | null
+    holder?: string | null;
 
     /** When the lock was acquired */
-    since?: Date | null
+    since?: Date | null;
 
     /** When the lock expires */
-    expires?: Date | null
+    expires?: Date | null;
 
     /** Show compact version (badge only) */
-    compact?: boolean
+    compact?: boolean;
 }
 
-
 // Status configuration
-const statusConfig: Record<LockStatusType, { label: string; color: 'green' | 'red' | 'yellow' | 'blue' }> = {
+const statusConfig: Record<
+    LockStatusType,
+    { label: string; color: 'green' | 'red' | 'yellow' | 'blue' }
+> = {
     free: { label: 'UNLOCKED', color: 'green' },
     locked: { label: 'LOCKED', color: 'red' },
     blocked: { label: 'BLOCKED', color: 'yellow' },
     expired: { label: 'EXPIRED', color: 'yellow' },
-}
-
+};
 
 /**
  * Format relative time (e.g., "5m ago", "in 30m").
  */
 function formatRelative(date: Date): string {
 
-    const now = Date.now()
-    const diff = date.getTime() - now
-    const absDiff = Math.abs(diff)
+    const now = Date.now();
+    const diff = date.getTime() - now;
+    const absDiff = Math.abs(diff);
 
-    const minutes = Math.floor(absDiff / 60000)
-    const hours = Math.floor(minutes / 60)
+    const minutes = Math.floor(absDiff / 60000);
+    const hours = Math.floor(minutes / 60);
 
     if (hours > 0) {
 
-        const label = `${hours}h ${minutes % 60}m`
-        return diff > 0 ? `in ${label}` : `${label} ago`
+        const label = `${hours}h ${minutes % 60}m`;
+
+        return diff > 0 ? `in ${label}` : `${label} ago`;
+
     }
 
-    const label = `${minutes}m`
-    return diff > 0 ? `in ${label}` : `${label} ago`
-}
+    const label = `${minutes}m`;
 
+    return diff > 0 ? `in ${label}` : `${label} ago`;
+
+}
 
 /**
  * LockStatus component.
@@ -93,11 +94,12 @@ export function LockStatus({
     compact = false,
 }: LockStatusProps): ReactElement {
 
-    const config = statusConfig[status]
+    const config = statusConfig[status];
 
     if (compact) {
 
-        return <Badge color={config.color}>{config.label}</Badge>
+        return <Badge color={config.color}>{config.label}</Badge>;
+
     }
 
     return (
@@ -127,5 +129,6 @@ export function LockStatus({
                 </Box>
             )}
         </Box>
-    )
+    );
+
 }

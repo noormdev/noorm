@@ -9,57 +9,56 @@
  * noorm change edit add-user-roles    # Same thing
  * ```
  */
-import { useState, useEffect, useCallback } from 'react'
-import { Box, Text, useInput } from 'ink'
-import { spawn } from 'child_process'
-import { join } from 'path'
+import { useState, useEffect } from 'react';
+import { Box, Text, useInput } from 'ink';
+import { spawn } from 'child_process';
 
-import type { ReactElement } from 'react'
-import type { ScreenProps } from '../../types.js'
+import type { ReactElement } from 'react';
+import type { ScreenProps } from '../../types.js';
 
-import { attempt } from '@logosdx/utils'
-import { useRouter } from '../../router.js'
-import { useFocusScope } from '../../focus.js'
-import { useAppContext } from '../../app-context.js'
-import { Panel, Spinner, StatusMessage } from '../../components/index.js'
-import { discoverChangesets } from '../../../core/changeset/parser.js'
-
+import { attempt } from '@logosdx/utils';
+import { useRouter } from '../../router.js';
+import { useFocusScope } from '../../focus.js';
+import { useAppContext } from '../../app-context.js';
+import { Panel, Spinner, StatusMessage } from '../../components/index.js';
+import { discoverChangesets } from '../../../core/changeset/parser.js';
 
 /**
  * Edit steps.
  */
 type EditStep =
-    | 'loading'        // Finding changeset
-    | 'opening'        // Opening editor
-    | 'complete'       // Success
-    | 'error'          // Error occurred
-
+    | 'loading' // Finding changeset
+    | 'opening' // Opening editor
+    | 'complete' // Success
+    | 'error'; // Error occurred
 
 /**
  * ChangeEditScreen component.
  */
 export function ChangeEditScreen({ params }: ScreenProps): ReactElement {
 
-    const { navigate, back } = useRouter()
-    const { isFocused } = useFocusScope('ChangeEdit')
-    const { activeConfig, settings } = useAppContext()
+    const { navigate: _navigate, back } = useRouter();
+    const { isFocused } = useFocusScope('ChangeEdit');
+    const { activeConfig, settings: _settings } = useAppContext();
 
-    const changesetName = params.name
+    const changesetName = params.name;
 
-    const [step, setStep] = useState<EditStep>('loading')
-    const [changesetPath, setChangesetPath] = useState('')
-    const [error, setError] = useState<string | null>(null)
+    const [step, setStep] = useState<EditStep>('loading');
+    const [changesetPath, setChangesetPath] = useState('');
+    const [error, setError] = useState<string | null>(null);
 
     // Find and open changeset
     useEffect(() => {
 
         if (!activeConfig || !changesetName) {
 
-            setStep('loading')
-            return
+            setStep('loading');
+
+            return;
+
         }
 
-        let cancelled = false
+        let cancelled = false;
 
         const openChangeset = async () => {
 
@@ -69,62 +68,71 @@ export function ChangeEditScreen({ params }: ScreenProps): ReactElement {
                 const changesets = await discoverChangesets(
                     activeConfig.paths.changesets,
                     activeConfig.paths.schema,
-                )
+                );
 
-                const changeset = changesets.find(cs => cs.name === changesetName)
+                const changeset = changesets.find((cs) => cs.name === changesetName);
 
                 if (!changeset) {
 
-                    throw new Error(`Changeset not found: ${changesetName}`)
+                    throw new Error(`Changeset not found: ${changesetName}`);
+
                 }
 
-                if (cancelled) return
+                if (cancelled) return;
 
-                setChangesetPath(changeset.path)
-                setStep('opening')
+                setChangesetPath(changeset.path);
+                setStep('opening');
 
                 // Get editor from environment
-                const editor = process.env['EDITOR'] || process.env['VISUAL'] || 'code'
+                const editor = process.env['EDITOR'] || process.env['VISUAL'] || 'code';
 
                 // Open in editor
                 const child = spawn(editor, [changeset.path], {
                     detached: true,
                     stdio: 'ignore',
-                })
+                });
 
-                child.unref()
+                child.unref();
 
-                setStep('complete')
-            })
+                setStep('complete');
+
+            });
 
             if (err) {
 
                 if (!cancelled) {
 
-                    setError(err instanceof Error ? err.message : String(err))
-                    setStep('error')
-                }
-            }
-        }
+                    setError(err instanceof Error ? err.message : String(err));
+                    setStep('error');
 
-        openChangeset()
+                }
+
+            }
+
+        };
+
+        openChangeset();
 
         return () => {
 
-            cancelled = true
-        }
-    }, [activeConfig, changesetName])
+            cancelled = true;
+
+        };
+
+    }, [activeConfig, changesetName]);
 
     // Keyboard handling
-    useInput((input, key) => {
+    useInput((_input, _key) => {
 
-        if (!isFocused) return
+        if (!isFocused) return;
 
         if (step === 'complete' || step === 'error') {
 
-            back()
+            back();
+
         }
-    })
+
+    });
 
     // No changeset name provided
     if (!changesetName) {
@@ -133,7 +141,8 @@ export function ChangeEditScreen({ params }: ScreenProps): ReactElement {
             <Panel title="Edit Changeset" paddingX={2} paddingY={1} borderColor="yellow">
                 <Text color="yellow">No changeset name provided.</Text>
             </Panel>
-        )
+        );
+
     }
 
     // No active config
@@ -143,7 +152,8 @@ export function ChangeEditScreen({ params }: ScreenProps): ReactElement {
             <Panel title="Edit Changeset" paddingX={2} paddingY={1} borderColor="yellow">
                 <Text color="yellow">No active configuration.</Text>
             </Panel>
-        )
+        );
+
     }
 
     // Loading
@@ -153,7 +163,8 @@ export function ChangeEditScreen({ params }: ScreenProps): ReactElement {
             <Panel title="Edit Changeset" paddingX={2} paddingY={1}>
                 <Spinner label="Finding changeset..." />
             </Panel>
-        )
+        );
+
     }
 
     // Opening
@@ -163,7 +174,8 @@ export function ChangeEditScreen({ params }: ScreenProps): ReactElement {
             <Panel title="Edit Changeset" paddingX={2} paddingY={1}>
                 <Spinner label="Opening in editor..." />
             </Panel>
-        )
+        );
+
     }
 
     // Complete
@@ -181,20 +193,20 @@ export function ChangeEditScreen({ params }: ScreenProps): ReactElement {
                     </Box>
                 </Box>
             </Panel>
-        )
+        );
+
     }
 
     // Error
     return (
         <Panel title="Edit Changeset" paddingX={2} paddingY={1} borderColor="red">
             <Box flexDirection="column" gap={1}>
-                <StatusMessage variant="error">
-                    {error}
-                </StatusMessage>
+                <StatusMessage variant="error">{error}</StatusMessage>
                 <Box marginTop={1}>
                     <Text dimColor>Press any key to continue...</Text>
                 </Box>
             </Box>
         </Panel>
-    )
+    );
+
 }

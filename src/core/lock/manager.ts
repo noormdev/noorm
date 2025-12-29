@@ -23,20 +23,19 @@
  * }
  * ```
  */
-import { attempt } from '@logosdx/utils'
-import type { Kysely } from 'kysely'
+import { attempt } from '@logosdx/utils';
+import type { Kysely } from 'kysely';
 
-import { observer } from '../observer.js'
-import { NOORM_TABLES, type NoormDatabase } from '../shared/index.js'
-import type { Lock, LockOptions, LockStatus } from './types.js'
-import { DEFAULT_LOCK_OPTIONS } from './types.js'
+import { observer } from '../observer.js';
+import { NOORM_TABLES, type NoormDatabase } from '../shared/index.js';
+import type { Lock, LockOptions, LockStatus } from './types.js';
+import { DEFAULT_LOCK_OPTIONS } from './types.js';
 import {
     LockAcquireError,
     LockExpiredError,
     LockNotFoundError,
     LockOwnershipError,
-} from './errors.js'
-
+} from './errors.js';
 
 /**
  * Manages database locks for concurrent operation protection.
@@ -64,31 +63,33 @@ class LockManager {
     ): Promise<Lock> {
 
         // Declaration
-        const opts = { ...DEFAULT_LOCK_OPTIONS, ...options }
-        const startTime = Date.now()
+        const opts = { ...DEFAULT_LOCK_OPTIONS, ...options };
+        const startTime = Date.now();
 
         // Emit acquiring event
-        observer.emit('lock:acquiring', { configName, identity })
+        observer.emit('lock:acquiring', { configName, identity });
 
         // Business Logic
         while (true) {
 
             // Clean up expired locks first
-            await this.cleanupExpired(db, configName)
+            await this.cleanupExpired(db, configName);
 
             // Try to get existing lock
-            const existing = await this.getLock(db, configName)
+            const existing = await this.getLock(db, configName);
 
             if (!existing) {
 
                 // No lock exists, create one
-                const lock = await this.createLock(db, configName, identity, opts)
+                const lock = await this.createLock(db, configName, identity, opts);
                 observer.emit('lock:acquired', {
                     configName,
                     identity,
                     expiresAt: lock.expiresAt,
-                })
-                return lock
+                });
+
+                return lock;
+
             }
 
             // Lock exists and is not expired (cleanup already ran)
@@ -96,13 +97,15 @@ class LockManager {
             if (existing.lockedBy === identity) {
 
                 // We already hold the lock - extend it
-                const lock = await this.extendLock(db, configName, identity, opts)
+                const lock = await this.extendLock(db, configName, identity, opts);
                 observer.emit('lock:acquired', {
                     configName,
                     identity,
                     expiresAt: lock.expiresAt,
-                })
-                return lock
+                });
+
+                return lock;
+
             }
 
             // Lock held by someone else
@@ -110,7 +113,7 @@ class LockManager {
                 configName,
                 holder: existing.lockedBy,
                 heldSince: existing.lockedAt,
-            })
+            });
 
             if (!opts.wait) {
 
@@ -120,11 +123,12 @@ class LockManager {
                     existing.lockedAt,
                     existing.expiresAt,
                     existing.reason,
-                )
+                );
+
             }
 
             // Check wait timeout
-            const elapsed = Date.now() - startTime
+            const elapsed = Date.now() - startTime;
             if (elapsed >= opts.waitTimeout) {
 
                 throw new LockAcquireError(
@@ -133,12 +137,15 @@ class LockManager {
                     existing.lockedAt,
                     existing.expiresAt,
                     existing.reason,
-                )
+                );
+
             }
 
             // Wait and retry
-            await sleep(opts.pollInterval)
+            await sleep(opts.pollInterval);
+
         }
+
     }
 
     /**
@@ -150,23 +157,21 @@ class LockManager {
      * @throws LockNotFoundError if no lock exists
      * @throws LockOwnershipError if lock is held by someone else
      */
-    async release(
-        db: Kysely<NoormDatabase>,
-        configName: string,
-        identity: string,
-    ): Promise<void> {
+    async release(db: Kysely<NoormDatabase>, configName: string, identity: string): Promise<void> {
 
         // Check existing lock
-        const existing = await this.getLock(db, configName)
+        const existing = await this.getLock(db, configName);
 
         if (!existing) {
 
-            throw new LockNotFoundError(configName, identity)
+            throw new LockNotFoundError(configName, identity);
+
         }
 
         if (existing.lockedBy !== identity) {
 
-            throw new LockOwnershipError(configName, identity, existing.lockedBy)
+            throw new LockOwnershipError(configName, identity, existing.lockedBy);
+
         }
 
         // Delete the lock
@@ -174,9 +179,10 @@ class LockManager {
             .deleteFrom(NOORM_TABLES.lock)
             .where('config_name', '=', configName)
             .where('locked_by', '=', identity)
-            .execute()
+            .execute();
 
-        observer.emit('lock:released', { configName, identity })
+        observer.emit('lock:released', { configName, identity });
+
     }
 
     /**
@@ -189,28 +195,24 @@ class LockManager {
      * @param configName - Config/database scope
      * @returns true if a lock was released, false if none existed
      */
-    async forceRelease(
-        db: Kysely<NoormDatabase>,
-        configName: string,
-    ): Promise<boolean> {
+    async forceRelease(db: Kysely<NoormDatabase>, configName: string): Promise<boolean> {
 
-        const existing = await this.getLock(db, configName)
+        const existing = await this.getLock(db, configName);
         if (!existing) {
 
-            return false
+            return false;
+
         }
 
-        await db
-            .deleteFrom(NOORM_TABLES.lock)
-            .where('config_name', '=', configName)
-            .execute()
+        await db.deleteFrom(NOORM_TABLES.lock).where('config_name', '=', configName).execute();
 
         observer.emit('lock:released', {
             configName,
             identity: existing.lockedBy,
-        })
+        });
 
-        return true
+        return true;
+
     }
 
     /**
@@ -234,15 +236,16 @@ class LockManager {
         options: LockOptions = {},
     ): Promise<T> {
 
-        await this.acquire(db, configName, identity, options)
+        await this.acquire(db, configName, identity, options);
 
         try {
 
-            return await operation()
+            return await operation();
+
         }
         finally {
 
-            const [, err] = await attempt(() => this.release(db, configName, identity))
+            const [, err] = await attempt(() => this.release(db, configName, identity));
 
             if (err) {
 
@@ -251,9 +254,12 @@ class LockManager {
                     source: 'lock',
                     error: err,
                     context: { configName, identity },
-                })
+                });
+
             }
+
         }
+
     }
 
     /**
@@ -268,31 +274,31 @@ class LockManager {
      * @throws LockOwnershipError if lock is held by someone else
      * @throws LockNotFoundError if no lock exists
      */
-    async validate(
-        db: Kysely<NoormDatabase>,
-        configName: string,
-        identity: string,
-    ): Promise<void> {
+    async validate(db: Kysely<NoormDatabase>, configName: string, identity: string): Promise<void> {
 
-        const existing = await this.getLock(db, configName)
+        const existing = await this.getLock(db, configName);
 
         if (!existing) {
 
-            throw new LockNotFoundError(configName, identity)
+            throw new LockNotFoundError(configName, identity);
+
         }
 
         if (existing.lockedBy !== identity) {
 
-            throw new LockOwnershipError(configName, identity, existing.lockedBy)
+            throw new LockOwnershipError(configName, identity, existing.lockedBy);
+
         }
 
         if (existing.expiresAt < new Date()) {
 
             // Clean it up
-            await this.cleanupExpired(db, configName)
+            await this.cleanupExpired(db, configName);
 
-            throw new LockExpiredError(configName, identity, existing.expiresAt)
+            throw new LockExpiredError(configName, identity, existing.expiresAt);
+
         }
+
     }
 
     /**
@@ -312,9 +318,10 @@ class LockManager {
     ): Promise<Lock> {
 
         // Validate first
-        await this.validate(db, configName, identity)
+        await this.validate(db, configName, identity);
 
-        return this.extendLock(db, configName, identity, options)
+        return this.extendLock(db, configName, identity, options);
+
     }
 
     /**
@@ -324,22 +331,19 @@ class LockManager {
      * @param configName - Config/database scope
      * @returns Lock status with isLocked flag and lock details
      */
-    async status(
-        db: Kysely<NoormDatabase>,
-        configName: string,
-    ): Promise<LockStatus> {
+    async status(db: Kysely<NoormDatabase>, configName: string): Promise<LockStatus> {
 
         // Clean up expired first
-        await this.cleanupExpired(db, configName)
+        await this.cleanupExpired(db, configName);
 
-        const lock = await this.getLock(db, configName)
+        const lock = await this.getLock(db, configName);
 
         return {
             isLocked: lock !== null,
             lock,
-        }
-    }
+        };
 
+    }
 
     // ─────────────────────────────────────────────────────────────
     // Private helpers
@@ -348,20 +352,18 @@ class LockManager {
     /**
      * Get lock from database, or null if none exists.
      */
-    private async getLock(
-        db: Kysely<NoormDatabase>,
-        configName: string,
-    ): Promise<Lock | null> {
+    private async getLock(db: Kysely<NoormDatabase>, configName: string): Promise<Lock | null> {
 
         const row = await db
             .selectFrom(NOORM_TABLES.lock)
             .selectAll()
             .where('config_name', '=', configName)
-            .executeTakeFirst()
+            .executeTakeFirst();
 
         if (!row) {
 
-            return null
+            return null;
+
         }
 
         return {
@@ -369,7 +371,8 @@ class LockManager {
             lockedAt: new Date(row.locked_at),
             expiresAt: new Date(row.expires_at),
             reason: row.reason || undefined,
-        }
+        };
+
     }
 
     /**
@@ -382,26 +385,27 @@ class LockManager {
         opts: Required<Omit<LockOptions, 'reason'>> & { reason?: string },
     ): Promise<Lock> {
 
-        const now = new Date()
-        const expiresAt = new Date(now.getTime() + opts.timeout)
+        const now = new Date();
+        const expiresAt = new Date(now.getTime() + opts.timeout);
 
         await db
             .insertInto(NOORM_TABLES.lock)
             .values({
                 config_name: configName,
                 locked_by: identity,
-                locked_at: now.toISOString(),
-                expires_at: expiresAt.toISOString(),
+                locked_at: now,
+                expires_at: expiresAt,
                 reason: opts.reason ?? '',
-            } as any)
-            .execute()
+            })
+            .execute();
 
         return {
             lockedBy: identity,
             lockedAt: now,
             expiresAt,
             reason: opts.reason,
-        }
+        };
+
     }
 
     /**
@@ -414,72 +418,73 @@ class LockManager {
         opts: Partial<LockOptions>,
     ): Promise<Lock> {
 
-        const timeout = opts.timeout ?? DEFAULT_LOCK_OPTIONS.timeout
-        const now = new Date()
-        const expiresAt = new Date(now.getTime() + timeout)
+        const timeout = opts.timeout ?? DEFAULT_LOCK_OPTIONS.timeout;
+        const now = new Date();
+        const expiresAt = new Date(now.getTime() + timeout);
 
         const updateValues: Record<string, string | undefined> = {
             expires_at: expiresAt.toISOString(),
-        }
+        };
 
         if (opts.reason !== undefined) {
 
-            updateValues['reason'] = opts.reason
+            updateValues['reason'] = opts.reason;
+
         }
 
         await db
             .updateTable(NOORM_TABLES.lock)
-            .set(updateValues as any)
+            .set(updateValues)
             .where('config_name', '=', configName)
             .where('locked_by', '=', identity)
-            .execute()
+            .execute();
 
         // Fetch the updated lock
-        const lock = await this.getLock(db, configName)
-        return lock!
+        const lock = await this.getLock(db, configName);
+
+        return lock!;
+
     }
 
     /**
      * Clean up expired locks.
      */
-    private async cleanupExpired(
-        db: Kysely<NoormDatabase>,
-        configName: string,
-    ): Promise<void> {
+    private async cleanupExpired(db: Kysely<NoormDatabase>, configName: string): Promise<void> {
 
-        const nowIso = new Date().toISOString()
+        const nowIso = new Date();
 
         // Get expired lock info for event
         const expired = await db
             .selectFrom(NOORM_TABLES.lock)
             .select(['locked_by'])
             .where('config_name', '=', configName)
-            .where('expires_at', '<', nowIso as any)
-            .executeTakeFirst()
+            .where('expires_at', '<', nowIso)
+            .executeTakeFirst();
 
         if (expired) {
 
             await db
                 .deleteFrom(NOORM_TABLES.lock)
                 .where('config_name', '=', configName)
-                .where('expires_at', '<', nowIso as any)
-                .execute()
+                .where('expires_at', '<', nowIso)
+                .execute();
 
             observer.emit('lock:expired', {
                 configName,
                 previousHolder: expired.locked_by,
-            })
-        }
-    }
-}
+            });
 
+        }
+
+    }
+
+}
 
 // ─────────────────────────────────────────────────────────────
 // Module singleton
 // ─────────────────────────────────────────────────────────────
 
-let instance: LockManager | null = null
-
+let instance: LockManager | null = null;
 
 /**
  * Get the global LockManager instance.
@@ -496,11 +501,13 @@ export function getLockManager(): LockManager {
 
     if (!instance) {
 
-        instance = new LockManager()
-    }
-    return instance
-}
+        instance = new LockManager();
 
+    }
+
+    return instance;
+
+}
 
 /**
  * Reset the global LockManager instance.
@@ -509,9 +516,9 @@ export function getLockManager(): LockManager {
  */
 export function resetLockManager(): void {
 
-    instance = null
-}
+    instance = null;
 
+}
 
 // ─────────────────────────────────────────────────────────────
 // Utility
@@ -519,9 +526,9 @@ export function resetLockManager(): void {
 
 function sleep(ms: number): Promise<void> {
 
-    return new Promise(resolve => setTimeout(resolve, ms))
+    return new Promise((resolve) => setTimeout(resolve, ms));
+
 }
 
-
 // Export class for typing
-export { LockManager }
+export { LockManager };

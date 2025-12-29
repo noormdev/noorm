@@ -9,27 +9,25 @@
  * - Only migrate state when state schema actually changes
  * - Simpler version checking (compare numbers, not semver)
  */
-import { attemptSync } from '@logosdx/utils'
+import { attemptSync } from '@logosdx/utils';
 
-import { observer } from '../../observer.js'
+import { observer } from '../../observer.js';
 import {
     CURRENT_VERSIONS,
     MigrationError,
     VersionMismatchError,
     type LayerVersionStatus,
     type StateMigration,
-} from '../types.js'
+} from '../types.js';
 
 // Import migrations
-import { v1 } from './migrations/v1.js'
-
+import { v1 } from './migrations/v1.js';
 
 /**
  * All state migrations in order.
  * Add new migrations here as they're created.
  */
-const MIGRATIONS: StateMigration[] = [v1]
-
+const MIGRATIONS: StateMigration[] = [v1];
 
 /**
  * Get state version from state object.
@@ -43,12 +41,13 @@ const MIGRATIONS: StateMigration[] = [v1]
  */
 export function getStateVersion(state: Record<string, unknown>): number {
 
-    const version = state['schemaVersion']
+    const version = state['schemaVersion'];
 
-    if (typeof version === 'number') return version
-    return 0
+    if (typeof version === 'number') return version;
+
+    return 0;
+
 }
-
 
 /**
  * Check state version status.
@@ -61,21 +60,19 @@ export function getStateVersion(state: Record<string, unknown>): number {
  * }
  * ```
  */
-export function checkStateVersion(
-    state: Record<string, unknown>
-): LayerVersionStatus {
+export function checkStateVersion(state: Record<string, unknown>): LayerVersionStatus {
 
-    const current = getStateVersion(state)
-    const expected = CURRENT_VERSIONS.state
+    const current = getStateVersion(state);
+    const expected = CURRENT_VERSIONS.state;
 
     return {
         current,
         expected,
         needsMigration: current < expected,
         isNewer: current > expected,
-    }
-}
+    };
 
+}
 
 /**
  * Check if state needs migration.
@@ -90,10 +87,11 @@ export function checkStateVersion(
  */
 export function needsStateMigration(state: Record<string, unknown>): boolean {
 
-    const status = checkStateVersion(state)
-    return status.needsMigration
-}
+    const status = checkStateVersion(state);
 
+    return status.needsMigration;
+
+}
 
 /**
  * Migrate state from current version to latest.
@@ -110,11 +108,9 @@ export function needsStateMigration(state: Record<string, unknown>): boolean {
  * await persistState(migrated)
  * ```
  */
-export function migrateState(
-    state: Record<string, unknown>
-): Record<string, unknown> {
+export function migrateState(state: Record<string, unknown>): Record<string, unknown> {
 
-    const status = checkStateVersion(state)
+    const status = checkStateVersion(state);
 
     // State is newer than CLI supports
     if (status.isNewer) {
@@ -123,46 +119,49 @@ export function migrateState(
             layer: 'state',
             current: status.current,
             expected: status.expected,
-        })
+        });
 
-        throw new VersionMismatchError('state', status.current, status.expected)
+        throw new VersionMismatchError('state', status.current, status.expected);
+
     }
 
     // No migration needed
-    if (!status.needsMigration) return state
+    if (!status.needsMigration) return state;
 
     observer.emit('version:state:migrating', {
         from: status.current,
         to: CURRENT_VERSIONS.state,
-    })
+    });
 
     // Run pending migrations
-    const pendingMigrations = MIGRATIONS.filter(m => m.version > status.current)
-    let migrated = { ...state }
+    const pendingMigrations = MIGRATIONS.filter((m) => m.version > status.current);
+    let migrated = { ...state };
 
     for (const migration of pendingMigrations) {
 
-        const [result, err] = attemptSync(() => migration.up(migrated))
+        const [result, err] = attemptSync(() => migration.up(migrated));
 
         if (err) {
 
-            throw new MigrationError('state', migration.version, err)
+            throw new MigrationError('state', migration.version, err);
+
         }
 
-        migrated = result
+        migrated = result;
+
     }
 
     // Ensure schemaVersion is set to current
-    migrated['schemaVersion'] = CURRENT_VERSIONS.state
+    migrated['schemaVersion'] = CURRENT_VERSIONS.state;
 
     observer.emit('version:state:migrated', {
         from: status.current,
         to: CURRENT_VERSIONS.state,
-    })
+    });
 
-    return migrated
+    return migrated;
+
 }
-
 
 /**
  * Create empty state with current version.
@@ -175,9 +174,9 @@ export function migrateState(
  */
 export function createEmptyVersionedState(): Record<string, unknown> {
 
-    return migrateState({})
-}
+    return migrateState({});
 
+}
 
 /**
  * Ensure state is at current version.
@@ -187,9 +186,8 @@ export function createEmptyVersionedState(): Record<string, unknown> {
  * @throws VersionMismatchError if state is newer than CLI supports
  * @throws MigrationError if a migration fails
  */
-export function ensureStateVersion(
-    state: Record<string, unknown>
-): Record<string, unknown> {
+export function ensureStateVersion(state: Record<string, unknown>): Record<string, unknown> {
 
-    return migrateState(state)
+    return migrateState(state);
+
 }

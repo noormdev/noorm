@@ -32,13 +32,13 @@
  * }
  * ```
  */
-import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react'
-import type { ReactNode } from 'react'
-import { Text } from 'ink'
-import { attempt, attemptSync } from '@logosdx/utils'
-import { execSync } from 'child_process'
-import { readFileSync, existsSync } from 'fs'
-import { join, basename } from 'path'
+import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import type { ReactNode } from 'react';
+import { Text } from 'ink';
+import { attempt, attemptSync } from '@logosdx/utils';
+import { execSync } from 'child_process';
+import { readFileSync, existsSync } from 'fs';
+import { join, basename } from 'path';
 
 import {
     observer,
@@ -47,16 +47,14 @@ import {
     type Config,
     type ConfigSummary,
     type Settings,
-} from '../core/index.js'
-import type { StateManager } from '../core/state/manager.js'
-import type { SettingsManager } from '../core/settings/manager.js'
-import type { CryptoIdentity } from '../core/identity/types.js'
-
+} from '../core/index.js';
+import type { StateManager } from '../core/state/manager.js';
+import type { SettingsManager } from '../core/settings/manager.js';
+import type { CryptoIdentity } from '../core/identity/types.js';
 
 // ─────────────────────────────────────────────────────────────
 // Project Name Detection
 // ─────────────────────────────────────────────────────────────
-
 
 /**
  * Detect project name from package.json, git remote, or folder name.
@@ -69,21 +67,24 @@ import type { CryptoIdentity } from '../core/identity/types.js'
 function detectProjectName(projectRoot: string): string {
 
     // Try package.json first
-    const packageJsonPath = join(projectRoot, 'package.json')
+    const packageJsonPath = join(projectRoot, 'package.json');
 
     if (existsSync(packageJsonPath)) {
 
-        const [content] = attemptSync(() => readFileSync(packageJsonPath, 'utf8'))
+        const [content] = attemptSync(() => readFileSync(packageJsonPath, 'utf8'));
 
         if (content) {
 
-            const [parsed] = attemptSync(() => JSON.parse(content) as { name?: string })
+            const [parsed] = attemptSync(() => JSON.parse(content) as { name?: string });
 
             if (parsed?.name) {
 
-                return parsed.name
+                return parsed.name;
+
             }
+
         }
+
     }
 
     // Try git remote origin
@@ -93,8 +94,8 @@ function detectProjectName(projectRoot: string): string {
             encoding: 'utf8',
             timeout: 5000,
             stdio: ['pipe', 'pipe', 'pipe'],
-        }).trim()
-    )
+        }).trim(),
+    );
 
     if (gitRemote) {
 
@@ -102,18 +103,20 @@ function detectProjectName(projectRoot: string): string {
         // - https://github.com/user/repo.git
         // - git@github.com:user/repo.git
         // - ssh://git@github.com/user/repo.git
-        const match = gitRemote.match(/[/:]([\w.-]+)\/([\w.-]+?)(?:\.git)?$/)
+        const match = gitRemote.match(/[/:]([\w.-]+)\/([\w.-]+?)(?:\.git)?$/);
 
         if (match) {
 
-            return `${match[1]}/${match[2]}`
+            return `${match[1]}/${match[2]}`;
+
         }
+
     }
 
     // Fallback to folder name
-    return basename(projectRoot)
-}
+    return basename(projectRoot);
 
+}
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -123,103 +126,94 @@ function detectProjectName(projectRoot: string): string {
  * Loading status for the app context.
  */
 export type LoadingStatus =
-    | 'not-initialized'  // Initial state before load()
-    | 'loading'          // Currently loading state/settings
-    | 'ready'            // Successfully loaded
-    | 'error'            // Failed to load
-
+    | 'not-initialized' // Initial state before load()
+    | 'loading' // Currently loading state/settings
+    | 'ready' // Successfully loaded
+    | 'error'; // Failed to load
 
 /**
  * Connection status derived from observer events.
  */
 export type ConnectionStatus =
-    | 'disconnected'  // No active connection
-    | 'connected'     // Connection open
-    | 'error'         // Connection failed
-
+    | 'disconnected' // No active connection
+    | 'connected' // Connection open
+    | 'error'; // Connection failed
 
 /**
  * Lock status derived from observer events.
  */
 export interface LockStatusInfo {
-
     /** Whether any lock is held */
-    status: 'free' | 'locked' | 'blocked'
+    status: 'free' | 'locked' | 'blocked';
 
     /** Identity holding the lock (if locked) */
-    holder?: string
+    holder?: string;
 
     /** When lock was acquired (if locked) */
-    since?: Date
+    since?: Date;
 
     /** When lock expires (if locked) */
-    expiresAt?: Date
+    expiresAt?: Date;
 }
-
 
 /**
  * Context value exposed to consumers.
  */
 export interface AppContextValue {
-
     // Loading state
-    loadingStatus: LoadingStatus
-    error: Error | null
+    loadingStatus: LoadingStatus;
+    error: Error | null;
 
     // Project info
-    projectName: string
+    projectName: string;
 
     // Core managers (null until loaded)
-    stateManager: StateManager | null
-    settingsManager: SettingsManager | null
+    stateManager: StateManager | null;
+    settingsManager: SettingsManager | null;
 
     // Active config info (derived from state manager)
-    activeConfig: Config | null
-    activeConfigName: string | null
-    configs: ConfigSummary[]
+    activeConfig: Config | null;
+    activeConfigName: string | null;
+    configs: ConfigSummary[];
 
     // Identity info
-    identity: CryptoIdentity | null
-    hasIdentity: boolean
+    identity: CryptoIdentity | null;
+    hasIdentity: boolean;
 
     // Settings info
-    settings: Settings | null
+    settings: Settings | null;
 
     // Connection status (from observer events)
-    connectionStatus: ConnectionStatus
-    connectedConfig: string | null
+    connectionStatus: ConnectionStatus;
+    connectedConfig: string | null;
 
     // Lock status (from observer events)
-    lockStatus: LockStatusInfo
+    lockStatus: LockStatusInfo;
 
     // Actions
-    refresh: () => Promise<void>
-    setActiveConfig: (name: string) => Promise<void>
+    refresh: () => Promise<void>;
+    setActiveConfig: (name: string) => Promise<void>;
 }
-
 
 // ─────────────────────────────────────────────────────────────
 // Context
 // ─────────────────────────────────────────────────────────────
 
-const AppContext = createContext<AppContextValue | null>(null)
-
+const AppContext = createContext<AppContextValue | null>(null);
 
 /**
  * Props for AppContextProvider.
  */
 export interface AppContextProviderProps {
-
     /** Project root directory (defaults to process.cwd()) */
-    projectRoot?: string
+    projectRoot?: string;
 
     /** Whether to auto-load on mount (defaults to true) */
-    autoLoad?: boolean
+    autoLoad?: boolean;
 
     /** Children to render */
-    children: ReactNode
+    children: ReactNode;
 }
-
 
 /**
  * Provides app context to the component tree.
@@ -241,205 +235,234 @@ export function AppContextProvider({
 }: AppContextProviderProps) {
 
     // Project name (detected once from package.json, git remote, or folder)
-    const projectName = useMemo(() => detectProjectName(projectRoot), [projectRoot])
+    const projectName = useMemo(() => detectProjectName(projectRoot), [projectRoot]);
 
     // Loading state
-    const [loadingStatus, setLoadingStatus] = useState<LoadingStatus>('not-initialized')
-    const [error, setError] = useState<Error | null>(null)
+    const [loadingStatus, setLoadingStatus] = useState<LoadingStatus>('not-initialized');
+    const [error, setError] = useState<Error | null>(null);
 
     // Core managers
-    const [stateManager, setStateManager] = useState<StateManager | null>(null)
-    const [settingsManager, setSettingsManager] = useState<SettingsManager | null>(null)
+    const [stateManager, setStateManager] = useState<StateManager | null>(null);
+    const [settingsManager, setSettingsManager] = useState<SettingsManager | null>(null);
 
     // Derived state from managers (refreshed via events)
-    const [activeConfig, setActiveConfig] = useState<Config | null>(null)
-    const [activeConfigName, setActiveConfigName] = useState<string | null>(null)
-    const [configs, setConfigs] = useState<ConfigSummary[]>([])
-    const [identity, setIdentity] = useState<CryptoIdentity | null>(null)
-    const [settings, setSettings] = useState<Settings | null>(null)
+    const [activeConfig, setActiveConfig] = useState<Config | null>(null);
+    const [activeConfigName, setActiveConfigName] = useState<string | null>(null);
+    const [configs, setConfigs] = useState<ConfigSummary[]>([]);
+    const [identity, setIdentity] = useState<CryptoIdentity | null>(null);
+    const [settings, setSettings] = useState<Settings | null>(null);
 
     // Observer-driven state
-    const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('disconnected')
-    const [connectedConfig, setConnectedConfig] = useState<string | null>(null)
-    const [lockStatus, setLockStatus] = useState<LockStatusInfo>({ status: 'free' })
+    const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('disconnected');
+    const [connectedConfig, setConnectedConfig] = useState<string | null>(null);
+    const [lockStatus, setLockStatus] = useState<LockStatusInfo>({ status: 'free' });
 
     /**
      * Sync derived state from loaded managers.
      */
-    const syncStateFromManagers = useCallback((
-        sm: StateManager | null,
-        settingsM: SettingsManager | null
-    ) => {
+    const syncStateFromManagers = useCallback(
+        (sm: StateManager | null, settingsM: SettingsManager | null) => {
 
-        if (sm) {
+            if (sm) {
 
-            setActiveConfig(sm.getActiveConfig())
-            setActiveConfigName(sm.getActiveConfigName())
-            setConfigs(sm.listConfigs())
-            setIdentity(sm.getIdentity())
-        }
+                setActiveConfig(sm.getActiveConfig());
+                setActiveConfigName(sm.getActiveConfigName());
+                setConfigs(sm.listConfigs());
+                setIdentity(sm.getIdentity());
 
-        if (settingsM && settingsM.isLoaded) {
+            }
 
-            setSettings(settingsM.settings)
-        }
-    }, [])
+            if (settingsM && settingsM.isLoaded) {
+
+                setSettings(settingsM.settings);
+
+            }
+
+        },
+        [],
+    );
 
     /**
      * Load state and settings managers.
      */
     const load = useCallback(async () => {
 
-        setLoadingStatus('loading')
-        setError(null)
+        setLoadingStatus('loading');
+        setError(null);
 
         // Get managers (may already exist as singletons)
-        const sm = getStateManager(projectRoot)
-        const settingsM = getSettingsManager(projectRoot)
+        const sm = getStateManager(projectRoot);
+        const settingsM = getSettingsManager(projectRoot);
 
         // Load both
         const [, loadErr] = await attempt(async () => {
 
-            await sm.load()
-            await settingsM.load()
-        })
+            await sm.load();
+            await settingsM.load();
+
+        });
 
         if (loadErr) {
 
-            setError(loadErr instanceof Error ? loadErr : new Error(String(loadErr)))
-            setLoadingStatus('error')
-            return
+            setError(loadErr instanceof Error ? loadErr : new Error(String(loadErr)));
+            setLoadingStatus('error');
+
+            return;
+
         }
 
-        setStateManager(sm)
-        setSettingsManager(settingsM)
+        setStateManager(sm);
+        setSettingsManager(settingsM);
 
         // Sync initial state
-        syncStateFromManagers(sm, settingsM)
+        syncStateFromManagers(sm, settingsM);
 
-        setLoadingStatus('ready')
-    }, [projectRoot, syncStateFromManagers])
+        setLoadingStatus('ready');
+
+    }, [projectRoot, syncStateFromManagers]);
 
     /**
      * Refresh state from managers.
      */
     const refresh = useCallback(async () => {
 
-        syncStateFromManagers(stateManager, settingsManager)
-    }, [stateManager, settingsManager, syncStateFromManagers])
+        syncStateFromManagers(stateManager, settingsManager);
+
+    }, [stateManager, settingsManager, syncStateFromManagers]);
 
     /**
      * Set active config (delegates to StateManager).
      */
-    const handleSetActiveConfig = useCallback(async (name: string) => {
+    const handleSetActiveConfig = useCallback(
+        async (name: string) => {
 
-        if (!stateManager) return
+            if (!stateManager) return;
 
-        await stateManager.setActiveConfig(name)
-        // State will sync via observer event
-    }, [stateManager])
+            await stateManager.setActiveConfig(name);
+            // State will sync via observer event
+
+        },
+        [stateManager],
+    );
 
     // Auto-load on mount
     useEffect(() => {
 
         if (autoLoad && loadingStatus === 'not-initialized') {
 
-            load()
+            load();
+
         }
-    }, [autoLoad, loadingStatus, load])
+
+    }, [autoLoad, loadingStatus, load]);
 
     // Subscribe to observer events
     useEffect(() => {
 
-        const cleanups: Array<() => void> = []
+        const cleanups: Array<() => void> = [];
 
         // State events
         cleanups.push(
             observer.on('state:loaded', (data) => {
 
-                setActiveConfigName(data.activeConfig)
+                setActiveConfigName(data.activeConfig);
                 if (stateManager) {
 
-                    setActiveConfig(stateManager.getActiveConfig())
-                    setConfigs(stateManager.listConfigs())
-                    setIdentity(stateManager.getIdentity())
+                    setActiveConfig(stateManager.getActiveConfig());
+                    setConfigs(stateManager.listConfigs());
+                    setIdentity(stateManager.getIdentity());
+
                 }
-            })
-        )
+
+            }),
+        );
 
         cleanups.push(
             observer.on('config:activated', (data) => {
 
-                setActiveConfigName(data.name)
+                setActiveConfigName(data.name);
                 if (stateManager) {
 
-                    setActiveConfig(stateManager.getConfig(data.name))
-                    setConfigs(stateManager.listConfigs())
+                    setActiveConfig(stateManager.getConfig(data.name));
+                    setConfigs(stateManager.listConfigs());
+
                 }
-            })
-        )
+
+            }),
+        );
 
         cleanups.push(
             observer.on('config:created', () => {
 
                 if (stateManager) {
 
-                    setConfigs(stateManager.listConfigs())
+                    setConfigs(stateManager.listConfigs());
+
                 }
-            })
-        )
+
+            }),
+        );
 
         cleanups.push(
             observer.on('config:deleted', () => {
 
                 if (stateManager) {
 
-                    setActiveConfig(stateManager.getActiveConfig())
-                    setActiveConfigName(stateManager.getActiveConfigName())
-                    setConfigs(stateManager.listConfigs())
+                    setActiveConfig(stateManager.getActiveConfig());
+                    setActiveConfigName(stateManager.getActiveConfigName());
+                    setConfigs(stateManager.listConfigs());
+
                 }
-            })
-        )
+
+            }),
+        );
 
         cleanups.push(
-            observer.on('identity:created', (data) => {
+            observer.on('identity:created', (_data) => {
 
                 if (stateManager) {
 
-                    setIdentity(stateManager.getIdentity())
+                    setIdentity(stateManager.getIdentity());
+
                 }
-            })
-        )
+
+            }),
+        );
 
         // Connection events
         cleanups.push(
             observer.on('connection:open', (data) => {
 
-                setConnectionStatus('connected')
-                setConnectedConfig(data.configName)
-            })
-        )
+                setConnectionStatus('connected');
+                setConnectedConfig(data.configName);
+
+            }),
+        );
 
         cleanups.push(
             observer.on('connection:close', (data) => {
 
                 if (connectedConfig === data.configName) {
 
-                    setConnectionStatus('disconnected')
-                    setConnectedConfig(null)
+                    setConnectionStatus('disconnected');
+                    setConnectedConfig(null);
+
                 }
-            })
-        )
+
+            }),
+        );
 
         cleanups.push(
             observer.on('connection:error', (data) => {
 
                 if (connectedConfig === data.configName || !connectedConfig) {
 
-                    setConnectionStatus('error')
+                    setConnectionStatus('error');
+
                 }
-            })
-        )
+
+            }),
+        );
 
         // Lock events
         cleanups.push(
@@ -449,16 +472,18 @@ export function AppContextProvider({
                     status: 'locked',
                     holder: data.identity,
                     expiresAt: data.expiresAt,
-                })
-            })
-        )
+                });
+
+            }),
+        );
 
         cleanups.push(
             observer.on('lock:released', () => {
 
-                setLockStatus({ status: 'free' })
-            })
-        )
+                setLockStatus({ status: 'free' });
+
+            }),
+        );
 
         cleanups.push(
             observer.on('lock:blocked', (data) => {
@@ -467,69 +492,73 @@ export function AppContextProvider({
                     status: 'blocked',
                     holder: data.holder,
                     since: data.heldSince,
-                })
-            })
-        )
+                });
+
+            }),
+        );
 
         cleanups.push(
             observer.on('lock:expired', () => {
 
-                setLockStatus({ status: 'free' })
-            })
-        )
+                setLockStatus({ status: 'free' });
+
+            }),
+        );
 
         return () => {
 
             for (const cleanup of cleanups) {
 
-                cleanup()
+                cleanup();
+
             }
-        }
-    }, [stateManager, connectedConfig])
+
+        };
+
+    }, [stateManager, connectedConfig]);
 
     // Memoize context value
-    const value = useMemo<AppContextValue>(() => ({
-        loadingStatus,
-        error,
-        projectName,
-        stateManager,
-        settingsManager,
-        activeConfig,
-        activeConfigName,
-        configs,
-        identity,
-        hasIdentity: identity !== null,
-        settings,
-        connectionStatus,
-        connectedConfig,
-        lockStatus,
-        refresh,
-        setActiveConfig: handleSetActiveConfig,
-    }), [
-        loadingStatus,
-        error,
-        projectName,
-        stateManager,
-        settingsManager,
-        activeConfig,
-        activeConfigName,
-        configs,
-        identity,
-        settings,
-        connectionStatus,
-        connectedConfig,
-        lockStatus,
-        refresh,
-        handleSetActiveConfig,
-    ])
+    const value = useMemo<AppContextValue>(
+        () => ({
+            loadingStatus,
+            error,
+            projectName,
+            stateManager,
+            settingsManager,
+            activeConfig,
+            activeConfigName,
+            configs,
+            identity,
+            hasIdentity: identity !== null,
+            settings,
+            connectionStatus,
+            connectedConfig,
+            lockStatus,
+            refresh,
+            setActiveConfig: handleSetActiveConfig,
+        }),
+        [
+            loadingStatus,
+            error,
+            projectName,
+            stateManager,
+            settingsManager,
+            activeConfig,
+            activeConfigName,
+            configs,
+            identity,
+            settings,
+            connectionStatus,
+            connectedConfig,
+            lockStatus,
+            refresh,
+            handleSetActiveConfig,
+        ],
+    );
 
-    return (
-        <AppContext.Provider value={value}>
-            {children}
-        </AppContext.Provider>
-    )
+    return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
+
 }
-
 
 // ─────────────────────────────────────────────────────────────
 // Hooks
@@ -559,16 +588,17 @@ export function AppContextProvider({
  */
 export function useAppContext(): AppContextValue {
 
-    const context = useContext(AppContext)
+    const context = useContext(AppContext);
 
     if (!context) {
 
-        throw new Error('useAppContext must be used within an AppContextProvider')
+        throw new Error('useAppContext must be used within an AppContextProvider');
+
     }
 
-    return context
-}
+    return context;
 
+}
 
 /**
  * Get loading status and error.
@@ -589,10 +619,11 @@ export function useAppContext(): AppContextValue {
  */
 export function useLoadingStatus(): Pick<AppContextValue, 'loadingStatus' | 'error'> {
 
-    const { loadingStatus, error } = useAppContext()
-    return { loadingStatus, error }
-}
+    const { loadingStatus, error } = useAppContext();
 
+    return { loadingStatus, error };
+
+}
 
 /**
  * Get active config info.
@@ -608,12 +639,16 @@ export function useLoadingStatus(): Pick<AppContextValue, 'loadingStatus' | 'err
  * }
  * ```
  */
-export function useActiveConfig(): Pick<AppContextValue, 'activeConfig' | 'activeConfigName' | 'configs'> {
+export function useActiveConfig(): Pick<
+    AppContextValue,
+    'activeConfig' | 'activeConfigName' | 'configs'
+    > {
 
-    const { activeConfig, activeConfigName, configs } = useAppContext()
-    return { activeConfig, activeConfigName, configs }
+    const { activeConfig, activeConfigName, configs } = useAppContext();
+
+    return { activeConfig, activeConfigName, configs };
+
 }
-
 
 /**
  * Get connection status.
@@ -631,12 +666,16 @@ export function useActiveConfig(): Pick<AppContextValue, 'activeConfig' | 'activ
  * }
  * ```
  */
-export function useConnectionStatus(): Pick<AppContextValue, 'connectionStatus' | 'connectedConfig'> {
+export function useConnectionStatus(): Pick<
+    AppContextValue,
+    'connectionStatus' | 'connectedConfig'
+    > {
 
-    const { connectionStatus, connectedConfig } = useAppContext()
-    return { connectionStatus, connectedConfig }
+    const { connectionStatus, connectedConfig } = useAppContext();
+
+    return { connectionStatus, connectedConfig };
+
 }
-
 
 /**
  * Get lock status.
@@ -656,10 +695,11 @@ export function useConnectionStatus(): Pick<AppContextValue, 'connectionStatus' 
  */
 export function useLockStatus(): Pick<AppContextValue, 'lockStatus'> {
 
-    const { lockStatus } = useAppContext()
-    return { lockStatus }
-}
+    const { lockStatus } = useAppContext();
 
+    return { lockStatus };
+
+}
 
 /**
  * Get project name.
@@ -676,10 +716,11 @@ export function useLockStatus(): Pick<AppContextValue, 'lockStatus'> {
  */
 export function useProjectName(): Pick<AppContextValue, 'projectName'> {
 
-    const { projectName } = useAppContext()
-    return { projectName }
-}
+    const { projectName } = useAppContext();
 
+    return { projectName };
+
+}
 
 /**
  * Get identity info.
@@ -697,10 +738,11 @@ export function useProjectName(): Pick<AppContextValue, 'projectName'> {
  */
 export function useIdentity(): Pick<AppContextValue, 'identity' | 'hasIdentity'> {
 
-    const { identity, hasIdentity } = useAppContext()
-    return { identity, hasIdentity }
-}
+    const { identity, hasIdentity } = useAppContext();
 
+    return { identity, hasIdentity };
+
+}
 
 /**
  * Get settings info.
@@ -719,10 +761,11 @@ export function useIdentity(): Pick<AppContextValue, 'identity' | 'hasIdentity'>
  */
 export function useSettings(): Pick<AppContextValue, 'settings' | 'settingsManager'> {
 
-    const { settings, settingsManager } = useAppContext()
-    return { settings, settingsManager }
-}
+    const { settings, settingsManager } = useAppContext();
 
+    return { settings, settingsManager };
+
+}
 
 // ─────────────────────────────────────────────────────────────
 // Guards
@@ -732,17 +775,15 @@ export function useSettings(): Pick<AppContextValue, 'settings' | 'settingsManag
  * Props for LoadingGuard.
  */
 export interface LoadingGuardProps {
-
     /** Content to show while loading */
-    loading?: ReactNode
+    loading?: ReactNode;
 
     /** Content to show on error */
-    error?: ReactNode | ((error: Error) => ReactNode)
+    error?: ReactNode | ((error: Error) => ReactNode);
 
     /** Children to render when ready */
-    children: ReactNode
+    children: ReactNode;
 }
-
 
 /**
  * Guard component that shows loading/error states.
@@ -767,39 +808,40 @@ export function LoadingGuard({
     children,
 }: LoadingGuardProps) {
 
-    const { loadingStatus, error: contextError } = useLoadingStatus()
+    const { loadingStatus, error: contextError } = useLoadingStatus();
 
     if (loadingStatus === 'not-initialized' || loadingStatus === 'loading') {
 
-        return <>{loading}</>
+        return <>{loading}</>;
+
     }
 
     if (loadingStatus === 'error' && contextError) {
 
         if (typeof error === 'function') {
 
-            return <>{error(contextError)}</>
+            return <>{error(contextError)}</>;
+
         }
 
-        return <>{error ?? <Text color="red">Error: {contextError.message}</Text>}</>
+        return <>{error ?? <Text color="red">Error: {contextError.message}</Text>}</>;
+
     }
 
-    return <>{children}</>
-}
+    return <>{children}</>;
 
+}
 
 /**
  * Props for ConfigGuard.
  */
 export interface ConfigGuardProps {
-
     /** Content to show when no config is selected */
-    fallback?: ReactNode
+    fallback?: ReactNode;
 
     /** Children to render when config is available */
-    children: ReactNode
+    children: ReactNode;
 }
-
 
 /**
  * Guard component that requires an active config.
@@ -816,29 +858,28 @@ export function ConfigGuard({
     children,
 }: ConfigGuardProps) {
 
-    const { activeConfig } = useActiveConfig()
+    const { activeConfig } = useActiveConfig();
 
     if (!activeConfig) {
 
-        return <>{fallback}</>
+        return <>{fallback}</>;
+
     }
 
-    return <>{children}</>
-}
+    return <>{children}</>;
 
+}
 
 /**
  * Props for IdentityGuard.
  */
 export interface IdentityGuardProps {
-
     /** Content to show when no identity is set */
-    fallback?: ReactNode
+    fallback?: ReactNode;
 
     /** Children to render when identity is available */
-    children: ReactNode
+    children: ReactNode;
 }
-
 
 /**
  * Guard component that requires identity to be set.
@@ -855,12 +896,14 @@ export function IdentityGuard({
     children,
 }: IdentityGuardProps) {
 
-    const { hasIdentity } = useIdentity()
+    const { hasIdentity } = useIdentity();
 
     if (!hasIdentity) {
 
-        return <>{fallback}</>
+        return <>{fallback}</>;
+
     }
 
-    return <>{children}</>
+    return <>{children}</>;
+
 }

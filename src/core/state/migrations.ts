@@ -7,10 +7,9 @@
  * WHY: State schema evolves over time. This ensures users don't lose data
  * when upgrading noorm, and we can add new fields without breaking existing state.
  */
-import type { State } from './types.js'
-import type { CryptoIdentity, KnownUser } from '../identity/types.js'
-import { observer } from '../observer.js'
-
+import type { State } from './types.js';
+import type { CryptoIdentity, KnownUser } from '../identity/types.js';
+import { observer } from '../observer.js';
 
 /**
  * Migrate state to current version.
@@ -29,11 +28,12 @@ export function migrateState(state: unknown, currentVersion: string): State {
 
     if (typeof state !== 'object' || state === null) {
 
-        throw new Error('Invalid state format: expected object')
+        throw new Error('Invalid state format: expected object');
+
     }
 
-    const obj = state as Record<string, unknown>
-    const previousVersion = obj['version'] as string | undefined
+    const obj = state as Record<string, unknown>;
+    const previousVersion = obj['version'] as string | undefined;
 
     // Build migrated state with defaults for missing fields
     const migrated: State = {
@@ -41,39 +41,41 @@ export function migrateState(state: unknown, currentVersion: string): State {
         identity: (obj['identity'] as CryptoIdentity | null) ?? null,
         knownUsers: (obj['knownUsers'] as Record<string, KnownUser>) ?? {},
         activeConfig: (obj['activeConfig'] as string | null) ?? null,
-        configs: (obj['configs'] as Record<string, unknown>) as State['configs'] ?? {},
+        configs: (obj['configs'] as Record<string, unknown> as State['configs']) ?? {},
         secrets: (obj['secrets'] as Record<string, Record<string, string>>) ?? {},
         globalSecrets: (obj['globalSecrets'] as Record<string, string>) ?? {},
-    }
+    };
 
     if (previousVersion !== currentVersion) {
 
         observer.emit('state:migrated', {
             from: previousVersion ?? 'unknown',
             to: currentVersion,
-        })
+        });
+
     }
 
-    return migrated
-}
+    return migrated;
 
+}
 
 /**
  * Check if state needs migration.
  */
 export function needsMigration(state: unknown, currentVersion: string): boolean {
 
-    if (typeof state !== 'object' || state === null) return true
+    if (typeof state !== 'object' || state === null) return true;
 
-    const obj = state as Record<string, unknown>
+    const obj = state as Record<string, unknown>;
 
     // Version mismatch
-    if (obj['version'] !== currentVersion) return true
+    if (obj['version'] !== currentVersion) return true;
 
     // Missing required fields (add new fields here as they're added)
-    if (!('globalSecrets' in obj)) return true
-    if (!('identity' in obj)) return true
-    if (!('knownUsers' in obj)) return true
+    if (!('globalSecrets' in obj)) return true;
+    if (!('identity' in obj)) return true;
+    if (!('knownUsers' in obj)) return true;
 
-    return false
+    return false;
+
 }

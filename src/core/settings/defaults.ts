@@ -4,8 +4,7 @@
  * Sensible defaults used when no settings.yml exists or when
  * optional fields are missing.
  */
-import type { Settings, BuildConfig, PathConfig, StrictConfig, LoggingConfig } from './types.js'
-
+import type { Settings, BuildConfig, PathConfig, StrictConfig, LoggingConfig } from './types.js';
 
 /**
  * Default build configuration.
@@ -15,8 +14,7 @@ import type { Settings, BuildConfig, PathConfig, StrictConfig, LoggingConfig } f
 export const DEFAULT_BUILD_CONFIG: BuildConfig = {
     include: ['schema'],
     exclude: [],
-}
-
+};
 
 /**
  * Default path configuration.
@@ -26,8 +24,7 @@ export const DEFAULT_BUILD_CONFIG: BuildConfig = {
 export const DEFAULT_PATH_CONFIG: PathConfig = {
     schema: './schema',
     changesets: './changesets',
-}
-
+};
 
 /**
  * Default strict mode configuration.
@@ -37,8 +34,7 @@ export const DEFAULT_PATH_CONFIG: PathConfig = {
 export const DEFAULT_STRICT_CONFIG: StrictConfig = {
     enabled: false,
     stages: [],
-}
-
+};
 
 /**
  * Default logging configuration.
@@ -49,8 +45,7 @@ export const DEFAULT_LOGGING_CONFIG: LoggingConfig = {
     file: '.noorm/noorm.log',
     maxSize: '10mb',
     maxFiles: 5,
-}
-
+};
 
 /**
  * Complete default settings.
@@ -70,8 +65,7 @@ export const DEFAULT_SETTINGS: Settings = {
     stages: {},
     strict: DEFAULT_STRICT_CONFIG,
     logging: DEFAULT_LOGGING_CONFIG,
-}
-
+};
 
 /**
  * Create a fresh copy of default settings.
@@ -100,17 +94,16 @@ export function createDefaultSettings(): Settings {
         stages: {},
         strict: { ...DEFAULT_STRICT_CONFIG, stages: [...(DEFAULT_STRICT_CONFIG.stages ?? [])] },
         logging: { ...DEFAULT_LOGGING_CONFIG },
-    }
-}
+    };
 
+}
 
 /**
  * Settings file location relative to project root.
  */
-export const SETTINGS_FILE_PATH = '.noorm/settings.yml'
-
+export const SETTINGS_FILE_PATH = '.noorm/settings.yml';
 
 /**
  * Settings directory relative to project root.
  */
-export const SETTINGS_DIR_PATH = '.noorm'
+export const SETTINGS_DIR_PATH = '.noorm';

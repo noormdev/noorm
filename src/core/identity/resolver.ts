@@ -9,12 +9,11 @@
  * 4. Git user
  * 5. System user
  */
-import { execSync } from 'child_process'
-import { userInfo } from 'os'
-import { attemptSync } from '@logosdx/utils'
-import type { CryptoIdentity, Identity, IdentityOptions, IdentitySource } from './types.js'
-import { observer } from '../observer.js'
-
+import { execSync } from 'child_process';
+import { userInfo } from 'os';
+import { attemptSync } from '@logosdx/utils';
+import type { CryptoIdentity, Identity, IdentityOptions, IdentitySource } from './types.js';
+import { observer } from '../observer.js';
 
 /**
  * Resolve the current user's audit identity.
@@ -50,44 +49,49 @@ import { observer } from '../observer.js'
  */
 export function resolveIdentity(options: IdentityOptions = {}): Identity {
 
-    let identity: Identity
+    let identity: Identity;
 
     // 1. Config override (explicit bot/service identity)
     if (options.configIdentity) {
 
-        identity = parseIdentityString(options.configIdentity, 'config')
+        identity = parseIdentityString(options.configIdentity, 'config');
+
     }
     // 2. Cryptographic identity from state
     else if (options.cryptoIdentity) {
 
-        identity = cryptoIdentityToAuditIdentity(options.cryptoIdentity)
+        identity = cryptoIdentityToAuditIdentity(options.cryptoIdentity);
+
     }
     // 3. Environment variable (CI)
     else if (process.env['NOORM_IDENTITY']) {
 
-        identity = parseIdentityString(process.env['NOORM_IDENTITY'], 'env')
+        identity = parseIdentityString(process.env['NOORM_IDENTITY'], 'env');
+
     }
     // 4. Git user
     else if (!options.skipGit) {
 
-        const gitIdentity = getGitIdentity()
-        identity = gitIdentity ?? getSystemIdentity()
+        const gitIdentity = getGitIdentity();
+        identity = gitIdentity ?? getSystemIdentity();
+
     }
     // 5. System user
     else {
 
-        identity = getSystemIdentity()
+        identity = getSystemIdentity();
+
     }
 
     observer.emit('identity:resolved', {
         name: identity.name,
         email: identity.email,
         source: identity.source,
-    })
+    });
 
-    return identity
+    return identity;
+
 }
-
 
 /**
  * Convert cryptographic identity to audit identity.
@@ -100,9 +104,9 @@ function cryptoIdentityToAuditIdentity(crypto: CryptoIdentity): Identity {
         name: crypto.name,
         email: crypto.email,
         source: 'state',
-    }
-}
+    };
 
+}
 
 /**
  * Parse an identity string like "Name <email>" or just "Name".
@@ -119,10 +123,10 @@ function cryptoIdentityToAuditIdentity(crypto: CryptoIdentity): Identity {
 function parseIdentityString(input: string, source: IdentitySource): Identity {
 
     // Trim leading/trailing whitespace first
-    const trimmed = input.trim()
+    const trimmed = input.trim();
 
     // Match "Name <email>" format
-    const match = trimmed.match(/^(.+?)\s*<([^>]+)>$/)
+    const match = trimmed.match(/^(.+?)\s*<([^>]+)>$/);
 
     if (match) {
 
@@ -130,16 +134,17 @@ function parseIdentityString(input: string, source: IdentitySource): Identity {
             name: match[1]!.trim(),
             email: match[2]!.trim(),
             source,
-        }
+        };
+
     }
 
     // Just a name
     return {
         name: trimmed,
         source,
-    }
-}
+    };
 
+}
 
 /**
  * Get identity from git config.
@@ -153,40 +158,40 @@ function getGitIdentity(): Identity | null {
             encoding: 'utf8',
             timeout: 5000,
             stdio: ['pipe', 'pipe', 'pipe'],
-        }).trim()
-    )
+        }).trim(),
+    );
 
-    if (nameErr || !name) return null
+    if (nameErr || !name) return null;
 
     const [email] = attemptSync(() =>
         execSync('git config user.email', {
             encoding: 'utf8',
             timeout: 5000,
             stdio: ['pipe', 'pipe', 'pipe'],
-        }).trim()
-    )
+        }).trim(),
+    );
 
     return {
         name,
         email: email || undefined,
         source: 'git',
-    }
-}
+    };
 
+}
 
 /**
  * Get identity from system user.
  */
 function getSystemIdentity(): Identity {
 
-    const info = userInfo()
+    const info = userInfo();
 
     return {
         name: info.username,
         source: 'system',
-    }
-}
+    };
 
+}
 
 /**
  * Format identity for display.
@@ -204,11 +209,13 @@ export function formatIdentity(identity: Identity): string {
 
     if (identity.email) {
 
-        return `${identity.name} <${identity.email}>`
-    }
-    return identity.name
-}
+        return `${identity.name} <${identity.email}>`;
 
+    }
+
+    return identity.name;
+
+}
 
 /**
  * Format identity for database storage.
@@ -217,5 +224,6 @@ export function formatIdentity(identity: Identity): string {
  */
 export function identityToString(identity: Identity): string {
 
-    return formatIdentity(identity)
+    return formatIdentity(identity);
+
 }

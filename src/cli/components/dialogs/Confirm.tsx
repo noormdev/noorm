@@ -13,53 +13,49 @@
  * />
  * ```
  */
-import { useState } from 'react'
-import { Box, Text, useInput } from 'ink'
+import { useState } from 'react';
+import { Box, Text, useInput } from 'ink';
 
-import type { ReactElement } from 'react'
+import type { ReactElement } from 'react';
 
-import { useFocusScope } from '../../focus.js'
-import { Panel } from '../layout/Panel.js'
-
+import { useFocusScope } from '../../focus.js';
+import { Panel } from '../layout/Panel.js';
 
 /**
  * Props for Confirm component.
  */
 export interface ConfirmProps {
-
     /** Confirmation message/question */
-    message: string
+    message: string;
 
     /** Optional title for the dialog */
-    title?: string
+    title?: string;
 
     /** Callback when user confirms */
-    onConfirm: () => void
+    onConfirm: () => void;
 
     /** Callback when user cancels */
-    onCancel: () => void
+    onCancel: () => void;
 
     /** Default choice */
-    defaultChoice?: 'confirm' | 'cancel'
+    defaultChoice?: 'confirm' | 'cancel';
 
     /** Dialog variant affects border color */
-    variant?: 'default' | 'danger' | 'warning'
+    variant?: 'default' | 'danger' | 'warning';
 
     /** Focus scope label */
-    focusLabel?: string
+    focusLabel?: string;
 
     /** External focus control - if provided, skips useFocusScope */
-    isFocused?: boolean
+    isFocused?: boolean;
 }
-
 
 // Border colors by variant
 const borderColors: Record<string, string> = {
     default: 'cyan',
     danger: 'red',
     warning: 'yellow',
-}
-
+};
 
 /**
  * Confirm dialog component.
@@ -78,46 +74,54 @@ export function Confirm({
     isFocused: externalFocused,
 }: ConfirmProps): ReactElement {
 
-    const hasExternalFocus = externalFocused !== undefined
+    const hasExternalFocus = externalFocused !== undefined;
     const internalFocus = useFocusScope({
         label: focusLabel,
         skip: hasExternalFocus,
-    })
-    const isFocused = hasExternalFocus ? externalFocused : internalFocus.isFocused
+    });
+    const isFocused = hasExternalFocus ? externalFocused : internalFocus.isFocused;
     const [selected, setSelected] = useState<'yes' | 'no'>(
-        defaultChoice === 'confirm' ? 'yes' : 'no'
-    )
+        defaultChoice === 'confirm' ? 'yes' : 'no',
+    );
 
     useInput((input, key) => {
 
-        if (!isFocused) return
+        if (!isFocused) return;
 
         // Y/y confirms
         if (input.toLowerCase() === 'y') {
 
-            onConfirm()
-            return
+            onConfirm();
+
+            return;
+
         }
 
         // N/n cancels
         if (input.toLowerCase() === 'n') {
 
-            onCancel()
-            return
+            onCancel();
+
+            return;
+
         }
 
         // Arrow keys toggle selection
         if (key.leftArrow || key.rightArrow) {
 
-            setSelected(s => s === 'yes' ? 'no' : 'yes')
-            return
+            setSelected((s) => (s === 'yes' ? 'no' : 'yes'));
+
+            return;
+
         }
 
         // Tab toggles selection
         if (key.tab) {
 
-            setSelected(s => s === 'yes' ? 'no' : 'yes')
-            return
+            setSelected((s) => (s === 'yes' ? 'no' : 'yes'));
+
+            return;
+
         }
 
         // Enter confirms current selection
@@ -125,29 +129,30 @@ export function Confirm({
 
             if (selected === 'yes') {
 
-                onConfirm()
+                onConfirm();
+
             }
             else {
 
-                onCancel()
+                onCancel();
+
             }
-            return
+
+            return;
+
         }
 
         // Escape cancels
         if (key.escape) {
 
-            onCancel()
+            onCancel();
+
         }
-    })
+
+    });
 
     return (
-        <Panel
-            title={title}
-            borderColor={borderColors[variant]}
-            paddingX={2}
-            paddingY={1}
-        >
+        <Panel title={title} borderColor={borderColors[variant]} paddingX={2} paddingY={1}>
             <Box flexDirection="column" gap={1}>
                 <Text>{message}</Text>
 
@@ -159,15 +164,13 @@ export function Confirm({
                         {selected === 'yes' ? '❯ ' : '  '}
                         Yes (y)
                     </Text>
-                    <Text
-                        color={selected === 'no' ? 'red' : undefined}
-                        bold={selected === 'no'}
-                    >
+                    <Text color={selected === 'no' ? 'red' : undefined} bold={selected === 'no'}>
                         {selected === 'no' ? '❯ ' : '  '}
                         No (n)
                     </Text>
                 </Box>
             </Box>
         </Panel>
-    )
+    );
+
 }

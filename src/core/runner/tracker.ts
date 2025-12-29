@@ -23,19 +23,14 @@
  * await tracker.recordExecution({ changesetId: opId, filepath: '...', ... })
  * ```
  */
-import type { Kysely } from 'kysely'
+import type { Kysely } from 'kysely';
 
-import { attempt } from '@logosdx/utils'
+import { attempt } from '@logosdx/utils';
 
-import { observer } from '../observer.js'
-import { NOORM_TABLES } from '../shared/index.js'
-import type { NoormDatabase, ChangeType, ExecutionStatus } from '../shared/index.js'
-import type {
-    NeedsRunResult,
-    CreateOperationData,
-    RecordExecutionData,
-} from './types.js'
-
+import { observer } from '../observer.js';
+import { NOORM_TABLES } from '../shared/index.js';
+import type { NoormDatabase, ChangeType, ExecutionStatus } from '../shared/index.js';
+import type { NeedsRunResult, CreateOperationData, RecordExecutionData } from './types.js';
 
 /**
  * Execution tracker for change detection and audit logging.
@@ -67,15 +62,15 @@ import type {
  */
 export class Tracker {
 
-    readonly #db: Kysely<NoormDatabase>
-    readonly #configName: string
+    readonly #db: Kysely<NoormDatabase>;
+    readonly #configName: string;
 
     constructor(db: Kysely<NoormDatabase>, configName: string) {
 
-        this.#db = db
-        this.#configName = configName
-    }
+        this.#db = db;
+        this.#configName = configName;
 
+    }
 
     /**
      * Check if a file needs to run.
@@ -91,16 +86,13 @@ export class Tracker {
      * @param force - Force re-run regardless of status
      * @returns Whether file needs to run and why
      */
-    async needsRun(
-        filepath: string,
-        checksum: string,
-        force: boolean,
-    ): Promise<NeedsRunResult> {
+    async needsRun(filepath: string, checksum: string, force: boolean): Promise<NeedsRunResult> {
 
         // Force always runs
         if (force) {
 
-            return { needsRun: true, reason: 'force' }
+            return { needsRun: true, reason: 'force' };
+
         }
 
         // Find most recent execution for this file and config
@@ -120,8 +112,8 @@ export class Tracker {
                 .where(`${NOORM_TABLES.changeset}.config_name`, '=', this.#configName)
                 .orderBy(`${NOORM_TABLES.executions}.id`, 'desc')
                 .limit(1)
-                .executeTakeFirst()
-        )
+                .executeTakeFirst(),
+        );
 
         if (err) {
 
@@ -129,16 +121,18 @@ export class Tracker {
                 source: 'runner',
                 error: err,
                 context: { filepath, operation: 'needs-run-check' },
-            })
+            });
 
             // On error, assume file needs to run
-            return { needsRun: true, reason: 'new' }
+            return { needsRun: true, reason: 'new' };
+
         }
 
         // No previous record - new file
         if (!record) {
 
-            return { needsRun: true, reason: 'new' }
+            return { needsRun: true, reason: 'new' };
+
         }
 
         // Previous execution failed - retry
@@ -148,7 +142,8 @@ export class Tracker {
                 needsRun: true,
                 reason: 'failed',
                 previousChecksum: record.checksum,
-            }
+            };
+
         }
 
         // Checksum changed
@@ -158,7 +153,8 @@ export class Tracker {
                 needsRun: true,
                 reason: 'changed',
                 previousChecksum: record.checksum,
-            }
+            };
+
         }
 
         // Unchanged - skip
@@ -166,9 +162,9 @@ export class Tracker {
             needsRun: false,
             skipReason: 'unchanged',
             previousChecksum: record.checksum,
-        }
-    }
+        };
 
+    }
 
     /**
      * Create a new operation record.
@@ -193,17 +189,18 @@ export class Tracker {
                     executed_by: data.executedBy,
                 })
                 .returning('id')
-                .executeTakeFirstOrThrow()
-        )
+                .executeTakeFirstOrThrow(),
+        );
 
         if (err) {
 
-            throw new Error('Failed to create operation record', { cause: err })
+            throw new Error('Failed to create operation record', { cause: err });
+
         }
 
-        return result.id
-    }
+        return result.id;
 
+    }
 
     /**
      * Record a file execution.
@@ -228,8 +225,8 @@ export class Tracker {
                     error_message: data.errorMessage ?? '',
                     duration_ms: data.durationMs ?? 0,
                 })
-                .execute()
-        )
+                .execute(),
+        );
 
         if (err) {
 
@@ -237,10 +234,11 @@ export class Tracker {
                 source: 'runner',
                 error: err,
                 context: { filepath: data.filepath, operation: 'record-execution' },
-            })
-        }
-    }
+            });
 
+        }
+
+    }
 
     /**
      * Finalize an operation.
@@ -271,8 +269,8 @@ export class Tracker {
                     error_message: errorMessage ?? '',
                 })
                 .where('id', '=', operationId)
-                .execute()
-        )
+                .execute(),
+        );
 
         if (err) {
 
@@ -280,7 +278,10 @@ export class Tracker {
                 source: 'runner',
                 error: err,
                 context: { operationId, operation: 'finalize-operation' },
-            })
+            });
+
         }
+
     }
+
 }

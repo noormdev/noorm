@@ -5,36 +5,33 @@
  * - Displays paths that will be created
  * - Option to add first database config
  */
-import { useState, useCallback } from 'react'
-import type { ReactElement } from 'react'
-import { Box, Text } from 'ink'
+import { useCallback } from 'react';
+import type { ReactElement } from 'react';
+import { Box, Text } from 'ink';
 
-import { Panel } from '../../components/layout/index.js'
-import { SelectList } from '../../components/lists/index.js'
-import type { SelectListItem } from '../../components/lists/index.js'
-
+import { Panel } from '../../components/layout/index.js';
+import { SelectList } from '../../components/lists/index.js';
+import type { SelectListItem } from '../../components/lists/index.js';
 
 /**
  * Props for ProjectSetup.
  */
 export interface ProjectSetupProps {
-
     /** Schema path (for display) */
-    schemaPath?: string
+    schemaPath?: string;
 
     /** Changesets path (for display) */
-    changesetsPath?: string
+    changesetsPath?: string;
 
     /** Called when user chooses to add config */
-    onAddConfig: () => void
+    onAddConfig: () => void;
 
     /** Called when user chooses to skip config */
-    onSkipConfig: () => void
+    onSkipConfig: () => void;
 
     /** Called when user cancels */
-    onCancel: () => void
+    onCancel: () => void;
 }
-
 
 /**
  * Project setup component.
@@ -46,7 +43,7 @@ export function ProjectSetup({
     changesetsPath = './changesets',
     onAddConfig,
     onSkipConfig,
-    onCancel,
+    onCancel: _onCancel,
 }: ProjectSetupProps): ReactElement {
 
     // Note: No useFocusScope here - let the SelectList manage its own focus.
@@ -66,31 +63,33 @@ export function ProjectSetup({
             value: 'skip',
             icon: '→',
         },
-    ]
+    ];
 
     // Handle selection
-    const handleSelect = useCallback((item: SelectListItem<string>) => {
+    const handleSelect = useCallback(
+        (item: SelectListItem<string>) => {
 
-        if (item.key === 'add') {
+            if (item.key === 'add') {
 
-            onAddConfig()
-        }
-        else {
+                onAddConfig();
 
-            onSkipConfig()
-        }
-    }, [onAddConfig, onSkipConfig])
+            }
+            else {
+
+                onSkipConfig();
+
+            }
+
+        },
+        [onAddConfig, onSkipConfig],
+    );
 
     return (
         <Box flexDirection="column">
-
             <Panel title="Initialize noorm" titleColor="cyan">
-
                 {/* Description */}
                 <Box flexDirection="column" marginBottom={1}>
-                    <Text>
-                        This will create the noorm directory structure in your project.
-                    </Text>
+                    <Text>This will create the noorm directory structure in your project.</Text>
                 </Box>
 
                 {/* Paths to be created */}
@@ -130,7 +129,6 @@ export function ProjectSetup({
                         </Text>
                     </Box>
                 </Box>
-
             </Panel>
 
             {/* Config question */}
@@ -147,11 +145,9 @@ export function ProjectSetup({
 
             {/* Keyboard hints */}
             <Box marginTop={1}>
-                <Text dimColor>
-                    [↑↓] navigate  [Enter] select  [Esc] cancel
-                </Text>
+                <Text dimColor>[↑↓] navigate [Enter] select [Esc] cancel</Text>
             </Box>
-
         </Box>
-    )
+    );
+
 }

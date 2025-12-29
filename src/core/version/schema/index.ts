@@ -9,30 +9,28 @@
  * - Type-safe schema definitions
  * - No SQL injection risks
  */
-import type { Kysely } from 'kysely'
-import { sql } from 'kysely'
-import { attempt } from '@logosdx/utils'
+import type { Kysely } from 'kysely';
+import { sql } from 'kysely';
+import { attempt } from '@logosdx/utils';
 
-import { observer } from '../../observer.js'
+import { observer } from '../../observer.js';
 import {
     CURRENT_VERSIONS,
     MigrationError,
     VersionMismatchError,
     type LayerVersionStatus,
     type SchemaMigration,
-} from '../types.js'
-import type { NoormDatabase } from './tables.js'
+} from '../types.js';
+import type { NoormDatabase } from './tables.js';
 
 // Import migrations
-import { v1 } from './migrations/v1.js'
-
+import { v1 } from './migrations/v1.js';
 
 /**
  * All schema migrations in order.
  * Add new migrations here as they're created.
  */
-const MIGRATIONS: SchemaMigration[] = [v1]
-
+const MIGRATIONS: SchemaMigration[] = [v1];
 
 /**
  * Check if tracking tables exist.
@@ -49,14 +47,17 @@ export async function tablesExist(db: Kysely<NoormDatabase>): Promise<boolean> {
 
     const [result, err] = await attempt(async () => {
 
-        await sql`SELECT 1 FROM __noorm_version__ LIMIT 1`.execute(db)
-        return true
-    })
+        await sql`SELECT 1 FROM __noorm_version__ LIMIT 1`.execute(db);
 
-    if (err) return false
-    return result
+        return true;
+
+    });
+
+    if (err) return false;
+
+    return result;
+
 }
-
 
 /**
  * Get current schema version from database.
@@ -70,8 +71,8 @@ export async function tablesExist(db: Kysely<NoormDatabase>): Promise<boolean> {
  */
 export async function getSchemaVersion(db: Kysely<NoormDatabase>): Promise<number> {
 
-    const exists = await tablesExist(db)
-    if (!exists) return 0
+    const exists = await tablesExist(db);
+    if (!exists) return 0;
 
     const [result, err] = await attempt(async () => {
 
@@ -80,13 +81,15 @@ export async function getSchemaVersion(db: Kysely<NoormDatabase>): Promise<numbe
             .select('schema_version')
             .orderBy('id', 'desc')
             .limit(1)
-            .executeTakeFirst()
-    })
+            .executeTakeFirst();
 
-    if (err) return 0
-    return result?.schema_version ?? 0
+    });
+
+    if (err) return 0;
+
+    return result?.schema_version ?? 0;
+
 }
-
 
 /**
  * Check schema version status.
@@ -99,39 +102,35 @@ export async function getSchemaVersion(db: Kysely<NoormDatabase>): Promise<numbe
  * }
  * ```
  */
-export async function checkSchemaVersion(
-    db: Kysely<NoormDatabase>
-): Promise<LayerVersionStatus> {
+export async function checkSchemaVersion(db: Kysely<NoormDatabase>): Promise<LayerVersionStatus> {
 
-    const current = await getSchemaVersion(db)
-    const expected = CURRENT_VERSIONS.schema
+    const current = await getSchemaVersion(db);
+    const expected = CURRENT_VERSIONS.schema;
 
-    observer.emit('version:schema:checking', { current })
+    observer.emit('version:schema:checking', { current });
 
     return {
         current,
         expected,
         needsMigration: current < expected,
         isNewer: current > expected,
-    }
-}
+    };
 
+}
 
 /**
  * Options for bootstrap and version record operations.
  */
 export interface VersionRecordOptions {
-
     /** CLI semver */
-    cliVersion: string
+    cliVersion: string;
 
     /** State schema version (defaults to CURRENT_VERSIONS.state) */
-    stateVersion?: number
+    stateVersion?: number;
 
     /** Settings schema version (defaults to CURRENT_VERSIONS.settings) */
-    settingsVersion?: number
+    settingsVersion?: number;
 }
-
 
 /**
  * Bootstrap tracking tables from scratch.
@@ -142,25 +141,27 @@ export interface VersionRecordOptions {
 export async function bootstrapSchema(
     db: Kysely<NoormDatabase>,
     cliVersion: string,
-    options?: { stateVersion?: number; settingsVersion?: number }
+    options?: { stateVersion?: number; settingsVersion?: number },
 ): Promise<void> {
 
-    const start = performance.now()
+    const start = performance.now();
 
     observer.emit('version:schema:migrating', {
         from: 0,
         to: CURRENT_VERSIONS.schema,
-    })
+    });
 
     // Run all migrations in order
     for (const migration of MIGRATIONS) {
 
-        const [, err] = await attempt(() => migration.up(db as Kysely<unknown>))
+        const [, err] = await attempt(() => migration.up(db as Kysely<unknown>));
 
         if (err) {
 
-            throw new MigrationError('schema', migration.version, err)
+            throw new MigrationError('schema', migration.version, err);
+
         }
+
     }
 
     // Insert initial version record with all versions
@@ -172,17 +173,17 @@ export async function bootstrapSchema(
             state_version: options?.stateVersion ?? CURRENT_VERSIONS.state,
             settings_version: options?.settingsVersion ?? CURRENT_VERSIONS.settings,
         })
-        .execute()
+        .execute();
 
-    const durationMs = performance.now() - start
+    const durationMs = performance.now() - start;
 
     observer.emit('version:schema:migrated', {
         from: 0,
         to: CURRENT_VERSIONS.schema,
         durationMs,
-    })
-}
+    });
 
+}
 
 /**
  * Update the version record with current versions.
@@ -202,10 +203,10 @@ export async function bootstrapSchema(
  */
 export async function updateVersionRecord(
     db: Kysely<NoormDatabase>,
-    options: VersionRecordOptions
+    options: VersionRecordOptions,
 ): Promise<void> {
 
-    const now = new Date().toISOString()
+    const now = new Date().toISOString();
 
     await db
         .insertInto('__noorm_version__')
@@ -216,9 +217,9 @@ export async function updateVersionRecord(
             settings_version: options.settingsVersion ?? CURRENT_VERSIONS.settings,
             upgraded_at: now as unknown as Date,
         })
-        .execute()
-}
+        .execute();
 
+}
 
 /**
  * Get the latest version record.
@@ -226,11 +227,11 @@ export async function updateVersionRecord(
  * Returns the most recent version record, or null if no tables exist.
  */
 export async function getLatestVersionRecord(
-    db: Kysely<NoormDatabase>
+    db: Kysely<NoormDatabase>,
 ): Promise<{ stateVersion: number; settingsVersion: number } | null> {
 
-    const exists = await tablesExist(db)
-    if (!exists) return null
+    const exists = await tablesExist(db);
+    if (!exists) return null;
 
     const [result, err] = await attempt(async () => {
 
@@ -239,17 +240,18 @@ export async function getLatestVersionRecord(
             .select(['state_version', 'settings_version'])
             .orderBy('id', 'desc')
             .limit(1)
-            .executeTakeFirst()
-    })
+            .executeTakeFirst();
 
-    if (err || !result) return null
+    });
+
+    if (err || !result) return null;
 
     return {
         stateVersion: result.state_version,
         settingsVersion: result.settings_version,
-    }
-}
+    };
 
+}
 
 /**
  * Migrate schema from current version to latest.
@@ -268,10 +270,10 @@ export async function getLatestVersionRecord(
 export async function migrateSchema(
     db: Kysely<NoormDatabase>,
     cliVersion: string,
-    options?: { stateVersion?: number; settingsVersion?: number }
+    options?: { stateVersion?: number; settingsVersion?: number },
 ): Promise<void> {
 
-    const status = await checkSchemaVersion(db)
+    const status = await checkSchemaVersion(db);
 
     // Schema is newer than CLI supports
     if (status.isNewer) {
@@ -280,42 +282,47 @@ export async function migrateSchema(
             layer: 'schema',
             current: status.current,
             expected: status.expected,
-        })
+        });
 
-        throw new VersionMismatchError('schema', status.current, status.expected)
+        throw new VersionMismatchError('schema', status.current, status.expected);
+
     }
 
     // No migration needed
-    if (!status.needsMigration) return
+    if (!status.needsMigration) return;
 
     // Bootstrap if no tables exist
     if (status.current === 0) {
 
-        await bootstrapSchema(db, cliVersion, options)
-        return
+        await bootstrapSchema(db, cliVersion, options);
+
+        return;
+
     }
 
-    const start = performance.now()
+    const start = performance.now();
 
     observer.emit('version:schema:migrating', {
         from: status.current,
         to: CURRENT_VERSIONS.schema,
-    })
+    });
 
     // Get existing versions to carry forward
-    const existing = await getLatestVersionRecord(db)
+    const existing = await getLatestVersionRecord(db);
 
     // Run pending migrations
-    const pendingMigrations = MIGRATIONS.filter(m => m.version > status.current)
+    const pendingMigrations = MIGRATIONS.filter((m) => m.version > status.current);
 
     for (const migration of pendingMigrations) {
 
-        const [, err] = await attempt(() => migration.up(db as Kysely<unknown>))
+        const [, err] = await attempt(() => migration.up(db as Kysely<unknown>));
 
         if (err) {
 
-            throw new MigrationError('schema', migration.version, err)
+            throw new MigrationError('schema', migration.version, err);
+
         }
+
     }
 
     // Update version record (carry forward existing versions or use provided)
@@ -324,20 +331,22 @@ export async function migrateSchema(
         .values({
             cli_version: cliVersion,
             schema_version: CURRENT_VERSIONS.schema,
-            state_version: options?.stateVersion ?? existing?.stateVersion ?? CURRENT_VERSIONS.state,
-            settings_version: options?.settingsVersion ?? existing?.settingsVersion ?? CURRENT_VERSIONS.settings,
+            state_version:
+                options?.stateVersion ?? existing?.stateVersion ?? CURRENT_VERSIONS.state,
+            settings_version:
+                options?.settingsVersion ?? existing?.settingsVersion ?? CURRENT_VERSIONS.settings,
         })
-        .execute()
+        .execute();
 
-    const durationMs = performance.now() - start
+    const durationMs = performance.now() - start;
 
     observer.emit('version:schema:migrated', {
         from: status.current,
         to: CURRENT_VERSIONS.schema,
         durationMs,
-    })
-}
+    });
 
+}
 
 /**
  * Ensure schema is at current version.
@@ -350,13 +359,13 @@ export async function migrateSchema(
 export async function ensureSchemaVersion(
     db: Kysely<NoormDatabase>,
     cliVersion: string,
-    options?: { stateVersion?: number; settingsVersion?: number }
+    options?: { stateVersion?: number; settingsVersion?: number },
 ): Promise<void> {
 
-    await migrateSchema(db, cliVersion, options)
+    await migrateSchema(db, cliVersion, options);
+
 }
 
-
 // Re-export types
-export type { NoormDatabase } from './tables.js'
-export * from './tables.js'
+export type { NoormDatabase } from './tables.js';
+export * from './tables.js';

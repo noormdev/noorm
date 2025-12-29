@@ -1,31 +1,35 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { readFile, mkdir, rm } from 'node:fs/promises'
-import { join } from 'node:path'
-import { tmpdir } from 'node:os'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { readFile, mkdir, rm } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 
-import { Logger, getLogger, resetLogger } from '../../../src/core/logger/logger.js'
-import { DEFAULT_LOGGER_CONFIG } from '../../../src/core/logger/types.js'
-import { observer } from '../../../src/core/observer.js'
-
+import { Logger, getLogger, resetLogger } from '../../../src/core/logger/logger.js';
+import { DEFAULT_LOGGER_CONFIG } from '../../../src/core/logger/types.js';
+import { observer } from '../../../src/core/observer.js';
 
 describe('logger: Logger class', () => {
 
-    let testDir: string
-    let projectRoot: string
+    let testDir: string;
+    let projectRoot: string;
 
     beforeEach(async () => {
 
-        testDir = join(tmpdir(), `noorm-test-logger-${Date.now()}-${Math.random().toString(36).slice(2)}`)
-        projectRoot = testDir
-        await mkdir(testDir, { recursive: true })
-        await mkdir(join(testDir, '.noorm'), { recursive: true })
-    })
+        testDir = join(
+            tmpdir(),
+            `noorm-test-logger-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        );
+        projectRoot = testDir;
+        await mkdir(testDir, { recursive: true });
+        await mkdir(join(testDir, '.noorm'), { recursive: true });
+
+    });
 
     afterEach(async () => {
 
-        await resetLogger()
-        await rm(testDir, { recursive: true, force: true })
-    })
+        await resetLogger();
+        await rm(testDir, { recursive: true, force: true });
+
+    });
 
     describe('construction', () => {
 
@@ -34,43 +38,48 @@ describe('logger: Logger class', () => {
             const logger = new Logger({
                 projectRoot,
                 config: DEFAULT_LOGGER_CONFIG,
-            })
+            });
 
-            expect(logger.level).toBe('info')
-            expect(logger.isEnabled).toBe(true)
-            expect(logger.state).toBe('idle')
-        })
+            expect(logger.level).toBe('info');
+            expect(logger.isEnabled).toBe(true);
+            expect(logger.state).toBe('idle');
+
+        });
 
         it('should respect disabled config', () => {
 
             const logger = new Logger({
                 projectRoot,
                 config: { ...DEFAULT_LOGGER_CONFIG, enabled: false },
-            })
+            });
 
-            expect(logger.isEnabled).toBe(false)
-        })
+            expect(logger.isEnabled).toBe(false);
+
+        });
 
         it('should respect silent level', () => {
 
             const logger = new Logger({
                 projectRoot,
                 config: { ...DEFAULT_LOGGER_CONFIG, level: 'silent' },
-            })
+            });
 
-            expect(logger.isEnabled).toBe(false)
-        })
+            expect(logger.isEnabled).toBe(false);
+
+        });
 
         it('should construct filepath correctly', () => {
 
             const logger = new Logger({
                 projectRoot: '/project',
                 config: { ...DEFAULT_LOGGER_CONFIG, file: '.noorm/app.log' },
-            })
+            });
 
-            expect(logger.filepath).toBe('/project/.noorm/app.log')
-        })
-    })
+            expect(logger.filepath).toBe('/project/.noorm/app.log');
+
+        });
+
+    });
 
     describe('start/stop', () => {
 
@@ -79,69 +88,75 @@ describe('logger: Logger class', () => {
             const logger = new Logger({
                 projectRoot,
                 config: DEFAULT_LOGGER_CONFIG,
-            })
+            });
 
-            await logger.start()
+            await logger.start();
 
-            expect(logger.state).toBe('running')
+            expect(logger.state).toBe('running');
 
-            await logger.stop()
-        })
+            await logger.stop();
+
+        });
 
         it('should not start if disabled', async () => {
 
             const logger = new Logger({
                 projectRoot,
                 config: { ...DEFAULT_LOGGER_CONFIG, enabled: false },
-            })
+            });
 
-            await logger.start()
+            await logger.start();
 
-            expect(logger.state).toBe('idle')
-        })
+            expect(logger.state).toBe('idle');
+
+        });
 
         it('should stop and set state to stopped', async () => {
 
             const logger = new Logger({
                 projectRoot,
                 config: DEFAULT_LOGGER_CONFIG,
-            })
+            });
 
-            await logger.start()
-            await logger.stop()
+            await logger.start();
+            await logger.stop();
 
-            expect(logger.state).toBe('stopped')
-        })
+            expect(logger.state).toBe('stopped');
+
+        });
 
         it('should be idempotent for start', async () => {
 
             const logger = new Logger({
                 projectRoot,
                 config: DEFAULT_LOGGER_CONFIG,
-            })
+            });
 
-            await logger.start()
-            await logger.start()
+            await logger.start();
+            await logger.start();
 
-            expect(logger.state).toBe('running')
+            expect(logger.state).toBe('running');
 
-            await logger.stop()
-        })
+            await logger.stop();
+
+        });
 
         it('should be idempotent for stop', async () => {
 
             const logger = new Logger({
                 projectRoot,
                 config: DEFAULT_LOGGER_CONFIG,
-            })
+            });
 
-            await logger.start()
-            await logger.stop()
-            await logger.stop()
+            await logger.start();
+            await logger.stop();
+            await logger.stop();
 
-            expect(logger.state).toBe('stopped')
-        })
-    })
+            expect(logger.state).toBe('stopped');
+
+        });
+
+    });
 
     describe('event logging', () => {
 
@@ -150,119 +165,137 @@ describe('logger: Logger class', () => {
             const logger = new Logger({
                 projectRoot,
                 config: { ...DEFAULT_LOGGER_CONFIG, level: 'info' },
-            })
+            });
 
-            await logger.start()
+            await logger.start();
 
-            observer.emit('config:created', { name: 'dev' })
+            observer.emit('config:created', { name: 'dev' });
 
-            await logger.flush()
-            await logger.stop()
+            await logger.flush();
+            await logger.stop();
 
-            const content = await readFile(logger.filepath, 'utf-8')
-            const entry = JSON.parse(content.trim())
+            const content = await readFile(logger.filepath, 'utf-8');
+            const entry = JSON.parse(content.trim());
 
-            expect(entry.event).toBe('config:created')
-            expect(entry.level).toBe('info')
-            expect(entry.message).toBe('Created config: dev')
-        })
+            expect(entry.event).toBe('config:created');
+            expect(entry.level).toBe('info');
+            expect(entry.message).toBe('Created config: dev');
+
+        });
 
         it('should not log debug events at info level', async () => {
 
             const logger = new Logger({
                 projectRoot,
                 config: { ...DEFAULT_LOGGER_CONFIG, level: 'info' },
-            })
+            });
 
-            await logger.start()
+            await logger.start();
 
-            observer.emit('file:before', { filepath: 'test.sql', checksum: 'abc', configName: 'dev' })
+            observer.emit('file:before', {
+                filepath: 'test.sql',
+                checksum: 'abc',
+                configName: 'dev',
+            });
 
-            await logger.flush()
-            await logger.stop()
+            await logger.flush();
+            await logger.stop();
 
             // File should be empty or not contain the debug event
             try {
 
-                const content = await readFile(logger.filepath, 'utf-8')
+                const content = await readFile(logger.filepath, 'utf-8');
 
-                expect(content.includes('file:before')).toBe(false)
+                expect(content.includes('file:before')).toBe(false);
+
             }
             catch {
 
                 // File might not exist if nothing was written
-                expect(true).toBe(true)
+                expect(true).toBe(true);
+
             }
-        })
+
+        });
 
         it('should log debug events at verbose level', async () => {
 
             const logger = new Logger({
                 projectRoot,
                 config: { ...DEFAULT_LOGGER_CONFIG, level: 'verbose' },
-            })
+            });
 
-            await logger.start()
+            await logger.start();
 
-            observer.emit('file:before', { filepath: 'test.sql', checksum: 'abc', configName: 'dev' })
+            observer.emit('file:before', {
+                filepath: 'test.sql',
+                checksum: 'abc',
+                configName: 'dev',
+            });
 
-            await logger.flush()
-            await logger.stop()
+            await logger.flush();
+            await logger.stop();
 
-            const content = await readFile(logger.filepath, 'utf-8')
+            const content = await readFile(logger.filepath, 'utf-8');
 
-            expect(content.includes('file:before')).toBe(true)
-        })
+            expect(content.includes('file:before')).toBe(true);
+
+        });
 
         it('should include data at verbose level', async () => {
 
             const logger = new Logger({
                 projectRoot,
                 config: { ...DEFAULT_LOGGER_CONFIG, level: 'verbose' },
-            })
+            });
 
-            await logger.start()
+            await logger.start();
 
-            observer.emit('config:created', { name: 'dev' })
+            observer.emit('config:created', { name: 'dev' });
 
-            await logger.flush()
-            await logger.stop()
+            await logger.flush();
+            await logger.stop();
 
-            const content = await readFile(logger.filepath, 'utf-8')
-            const entry = JSON.parse(content.trim())
+            const content = await readFile(logger.filepath, 'utf-8');
+            const entry = JSON.parse(content.trim());
 
-            expect(entry.data).toBeDefined()
-            expect(entry.data.name).toBe('dev')
-        })
+            expect(entry.data).toBeDefined();
+            expect(entry.data.name).toBe('dev');
+
+        });
 
         it('should not log its own events (avoid loops)', async () => {
 
             const logger = new Logger({
                 projectRoot,
                 config: { ...DEFAULT_LOGGER_CONFIG, level: 'verbose' },
-            })
+            });
 
-            await logger.start()
+            await logger.start();
 
             // This event is emitted by the logger itself
-            observer.emit('logger:started', { file: logger.filepath, level: 'verbose' })
+            observer.emit('logger:started', { file: logger.filepath, level: 'verbose' });
 
-            await logger.flush()
-            await logger.stop()
+            await logger.flush();
+            await logger.stop();
 
             try {
 
-                const content = await readFile(logger.filepath, 'utf-8')
+                const content = await readFile(logger.filepath, 'utf-8');
 
-                expect(content.includes('logger:started')).toBe(false)
+                expect(content.includes('logger:started')).toBe(false);
+
             }
             catch {
 
                 // File might not exist if nothing was written
-                expect(true).toBe(true)
+                expect(true).toBe(true);
+
             }
-        })
-    })
+
+        });
+
+    });
 
     describe('context', () => {
 
@@ -272,42 +305,44 @@ describe('logger: Logger class', () => {
                 projectRoot,
                 config: DEFAULT_LOGGER_CONFIG,
                 context: { config: 'dev', user: 'alice' },
-            })
+            });
 
-            await logger.start()
+            await logger.start();
 
-            observer.emit('config:created', { name: 'test' })
+            observer.emit('config:created', { name: 'test' });
 
-            await logger.flush()
-            await logger.stop()
+            await logger.flush();
+            await logger.stop();
 
-            const content = await readFile(logger.filepath, 'utf-8')
-            const entry = JSON.parse(content.trim())
+            const content = await readFile(logger.filepath, 'utf-8');
+            const entry = JSON.parse(content.trim());
 
-            expect(entry.context).toEqual({ config: 'dev', user: 'alice' })
-        })
+            expect(entry.context).toEqual({ config: 'dev', user: 'alice' });
+
+        });
 
         it('should update context with setContext', async () => {
 
             const logger = new Logger({
                 projectRoot,
                 config: DEFAULT_LOGGER_CONFIG,
-            })
+            });
 
-            await logger.start()
+            await logger.start();
 
-            logger.setContext({ config: 'prod' })
+            logger.setContext({ config: 'prod' });
 
-            observer.emit('config:created', { name: 'test' })
+            observer.emit('config:created', { name: 'test' });
 
-            await logger.flush()
-            await logger.stop()
+            await logger.flush();
+            await logger.stop();
 
-            const content = await readFile(logger.filepath, 'utf-8')
-            const entry = JSON.parse(content.trim())
+            const content = await readFile(logger.filepath, 'utf-8');
+            const entry = JSON.parse(content.trim());
 
-            expect(entry.context).toEqual({ config: 'prod' })
-        })
+            expect(entry.context).toEqual({ config: 'prod' });
+
+        });
 
         it('should merge context with setContext', async () => {
 
@@ -315,22 +350,23 @@ describe('logger: Logger class', () => {
                 projectRoot,
                 config: DEFAULT_LOGGER_CONFIG,
                 context: { config: 'dev' },
-            })
+            });
 
-            await logger.start()
+            await logger.start();
 
-            logger.setContext({ user: 'alice' })
+            logger.setContext({ user: 'alice' });
 
-            observer.emit('config:created', { name: 'test' })
+            observer.emit('config:created', { name: 'test' });
 
-            await logger.flush()
-            await logger.stop()
+            await logger.flush();
+            await logger.stop();
 
-            const content = await readFile(logger.filepath, 'utf-8')
-            const entry = JSON.parse(content.trim())
+            const content = await readFile(logger.filepath, 'utf-8');
+            const entry = JSON.parse(content.trim());
 
-            expect(entry.context).toEqual({ config: 'dev', user: 'alice' })
-        })
+            expect(entry.context).toEqual({ config: 'dev', user: 'alice' });
+
+        });
 
         it('should clear context with clearContext', async () => {
 
@@ -338,23 +374,25 @@ describe('logger: Logger class', () => {
                 projectRoot,
                 config: DEFAULT_LOGGER_CONFIG,
                 context: { config: 'dev' },
-            })
+            });
 
-            await logger.start()
+            await logger.start();
 
-            logger.clearContext()
+            logger.clearContext();
 
-            observer.emit('config:created', { name: 'test' })
+            observer.emit('config:created', { name: 'test' });
 
-            await logger.flush()
-            await logger.stop()
+            await logger.flush();
+            await logger.stop();
 
-            const content = await readFile(logger.filepath, 'utf-8')
-            const entry = JSON.parse(content.trim())
+            const content = await readFile(logger.filepath, 'utf-8');
+            const entry = JSON.parse(content.trim());
 
-            expect(entry.context).toBeUndefined()
-        })
-    })
+            expect(entry.context).toBeUndefined();
+
+        });
+
+    });
 
     describe('stats', () => {
 
@@ -363,66 +401,74 @@ describe('logger: Logger class', () => {
             const logger = new Logger({
                 projectRoot,
                 config: DEFAULT_LOGGER_CONFIG,
-            })
+            });
 
-            expect(logger.stats).toBeNull()
-        })
+            expect(logger.stats).toBeNull();
+
+        });
 
         it('should return stats when running', async () => {
 
             const logger = new Logger({
                 projectRoot,
                 config: DEFAULT_LOGGER_CONFIG,
-            })
+            });
 
-            await logger.start()
+            await logger.start();
 
-            expect(logger.stats).not.toBeNull()
-            expect(logger.stats!.pending).toBe(0)
+            expect(logger.stats).not.toBeNull();
+            expect(logger.stats!.pending).toBe(0);
 
-            await logger.stop()
-        })
+            await logger.stop();
+
+        });
 
         it('should track entries written', async () => {
 
             const logger = new Logger({
                 projectRoot,
                 config: DEFAULT_LOGGER_CONFIG,
-            })
+            });
 
-            await logger.start()
+            await logger.start();
 
-            observer.emit('config:created', { name: 'test1' })
-            observer.emit('config:created', { name: 'test2' })
+            observer.emit('config:created', { name: 'test1' });
+            observer.emit('config:created', { name: 'test2' });
 
-            await logger.flush()
+            await logger.flush();
 
-            expect(logger.stats!.totalWritten).toBe(2)
+            expect(logger.stats!.totalWritten).toBe(2);
 
-            await logger.stop()
-        })
-    })
+            await logger.stop();
+
+        });
+
+    });
 
     describe('singleton', () => {
 
         it('should return same instance', async () => {
 
-            const logger1 = getLogger(projectRoot)
-            const logger2 = getLogger(projectRoot)
+            const logger1 = getLogger(projectRoot);
+            const logger2 = getLogger(projectRoot);
 
-            expect(logger1).toBe(logger2)
-        })
+            expect(logger1).toBe(logger2);
+
+        });
 
         it('should reset singleton', async () => {
 
-            const logger1 = getLogger(projectRoot)
-            await logger1.start()
+            const logger1 = getLogger(projectRoot);
+            await logger1.start();
 
-            await resetLogger()
+            await resetLogger();
 
-            const logger2 = getLogger(projectRoot)
+            const logger2 = getLogger(projectRoot);
 
-            expect(logger2).not.toBe(logger1)
-        })
-    })
-})
+            expect(logger2).not.toBe(logger1);
+
+        });
+
+    });
+
+});

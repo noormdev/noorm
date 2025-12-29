@@ -5,12 +5,11 @@
  * Rotated files are named with timestamps and old files are
  * cleaned up when maxFiles is exceeded.
  */
-import { stat, rename, readdir, unlink } from 'node:fs/promises'
-import { dirname, basename, join, extname } from 'node:path'
-import { attempt } from '@logosdx/utils'
+import { stat, rename, readdir, unlink } from 'node:fs/promises';
+import { dirname, basename, join, extname } from 'node:path';
+import { attempt } from '@logosdx/utils';
 
-import type { RotationResult } from './types.js'
-
+import type { RotationResult } from './types.js';
 
 /**
  * Parse a size string (e.g., '10mb', '1gb') to bytes.
@@ -27,33 +26,35 @@ import type { RotationResult } from './types.js'
  */
 export function parseSize(size: string): number {
 
-    const match = size.toLowerCase().match(/^(\d+(?:\.\d+)?)\s*(b|kb|mb|gb)?$/)
+    const match = size.toLowerCase().match(/^(\d+(?:\.\d+)?)\s*(b|kb|mb|gb)?$/);
 
     if (!match || !match[1]) {
 
-        throw new Error(`Invalid size format: ${size}`)
+        throw new Error(`Invalid size format: ${size}`);
+
     }
 
-    const value = parseFloat(match[1])
-    const unit = match[2] ?? 'b'
+    const value = parseFloat(match[1]);
+    const unit = match[2] ?? 'b';
 
     const multipliers: Record<string, number> = {
         b: 1,
         kb: 1024,
         mb: 1024 * 1024,
         gb: 1024 * 1024 * 1024,
-    }
+    };
 
-    const multiplier = multipliers[unit]
+    const multiplier = multipliers[unit];
 
     if (multiplier === undefined) {
 
-        throw new Error(`Invalid size unit: ${unit}`)
+        throw new Error(`Invalid size unit: ${unit}`);
+
     }
 
-    return Math.floor(value * multiplier)
-}
+    return Math.floor(value * multiplier);
 
+}
 
 /**
  * Generate a rotated filename with timestamp.
@@ -69,19 +70,19 @@ export function parseSize(size: string): number {
  */
 export function generateRotatedName(filepath: string): string {
 
-    const dir = dirname(filepath)
-    const ext = extname(filepath)
-    const base = basename(filepath, ext)
+    const dir = dirname(filepath);
+    const ext = extname(filepath);
+    const base = basename(filepath, ext);
 
     // Use timestamp format that's valid on all filesystems
     const timestamp = new Date()
         .toISOString()
         .replace(/:/g, '-')
-        .replace(/\.\d+Z$/, '')
+        .replace(/\.\d+Z$/, '');
 
-    return join(dir, `${base}.${timestamp}${ext}`)
+    return join(dir, `${base}.${timestamp}${ext}`);
+
 }
-
 
 /**
  * Check if a log file needs rotation.
@@ -92,17 +93,18 @@ export function generateRotatedName(filepath: string): string {
  */
 export async function needsRotation(filepath: string, maxSize: number): Promise<boolean> {
 
-    const [stats, err] = await attempt(() => stat(filepath))
+    const [stats, err] = await attempt(() => stat(filepath));
 
     if (err) {
 
         // File doesn't exist or can't be read - no rotation needed
-        return false
+        return false;
+
     }
 
-    return stats.size >= maxSize
-}
+    return stats.size >= maxSize;
 
+}
 
 /**
  * Rotate a log file.
@@ -114,18 +116,19 @@ export async function needsRotation(filepath: string, maxSize: number): Promise<
  */
 export async function rotateFile(filepath: string): Promise<string> {
 
-    const newPath = generateRotatedName(filepath)
+    const newPath = generateRotatedName(filepath);
 
-    const [_, err] = await attempt(() => rename(filepath, newPath))
+    const [_, err] = await attempt(() => rename(filepath, newPath));
 
     if (err) {
 
-        throw new Error(`Failed to rotate log file: ${err.message}`)
+        throw new Error(`Failed to rotate log file: ${err.message}`);
+
     }
 
-    return newPath
-}
+    return newPath;
 
+}
 
 /**
  * List rotated log files for a given base file.
@@ -135,29 +138,30 @@ export async function rotateFile(filepath: string): Promise<string> {
  */
 export async function listRotatedFiles(filepath: string): Promise<string[]> {
 
-    const dir = dirname(filepath)
-    const ext = extname(filepath)
-    const base = basename(filepath, ext)
+    const dir = dirname(filepath);
+    const ext = extname(filepath);
+    const base = basename(filepath, ext);
 
     // Pattern: base.YYYY-MM-DDTHH-MM-SS.ext
     const pattern = new RegExp(
-        `^${escapeRegex(base)}\\.\\d{4}-\\d{2}-\\d{2}T\\d{2}-\\d{2}-\\d{2}${escapeRegex(ext)}$`
-    )
+        `^${escapeRegex(base)}\\.\\d{4}-\\d{2}-\\d{2}T\\d{2}-\\d{2}-\\d{2}${escapeRegex(ext)}$`,
+    );
 
-    const [files, err] = await attempt(() => readdir(dir))
+    const [files, err] = await attempt(() => readdir(dir));
 
     if (err) {
 
-        return []
+        return [];
+
     }
 
     return files
         .filter((f) => pattern.test(f))
         .map((f) => join(dir, f))
         .sort()
-        .reverse()  // Newest first
-}
+        .reverse(); // Newest first
 
+}
 
 /**
  * Clean up old rotated files.
@@ -166,30 +170,29 @@ export async function listRotatedFiles(filepath: string): Promise<string[]> {
  * @param maxFiles - Maximum number of rotated files to keep
  * @returns Array of deleted file paths
  */
-export async function cleanupRotatedFiles(
-    filepath: string,
-    maxFiles: number
-): Promise<string[]> {
+export async function cleanupRotatedFiles(filepath: string, maxFiles: number): Promise<string[]> {
 
-    const rotated = await listRotatedFiles(filepath)
+    const rotated = await listRotatedFiles(filepath);
 
     // Keep maxFiles, delete the rest
-    const toDelete = rotated.slice(maxFiles)
-    const deleted: string[] = []
+    const toDelete = rotated.slice(maxFiles);
+    const deleted: string[] = [];
 
     for (const file of toDelete) {
 
-        const [_, err] = await attempt(() => unlink(file))
+        const [_, err] = await attempt(() => unlink(file));
 
         if (!err) {
 
-            deleted.push(file)
+            deleted.push(file);
+
         }
+
     }
 
-    return deleted
-}
+    return deleted;
 
+}
 
 /**
  * Check and perform rotation if needed.
@@ -210,36 +213,38 @@ export async function cleanupRotatedFiles(
 export async function checkAndRotate(
     filepath: string,
     maxSizeStr: string,
-    maxFiles: number
+    maxFiles: number,
 ): Promise<RotationResult> {
 
-    const maxSize = parseSize(maxSizeStr)
-    const shouldRotate = await needsRotation(filepath, maxSize)
+    const maxSize = parseSize(maxSizeStr);
+    const shouldRotate = await needsRotation(filepath, maxSize);
 
     if (!shouldRotate) {
 
-        return { rotated: false }
+        return { rotated: false };
+
     }
 
     // Rotate current file
-    const newFile = await rotateFile(filepath)
+    const newFile = await rotateFile(filepath);
 
     // Cleanup old files
-    const deletedFiles = await cleanupRotatedFiles(filepath, maxFiles)
+    const deletedFiles = await cleanupRotatedFiles(filepath, maxFiles);
 
     return {
         rotated: true,
         oldFile: filepath,
         newFile,
         deletedFiles: deletedFiles.length > 0 ? deletedFiles : undefined,
-    }
-}
+    };
 
+}
 
 /**
  * Escape special regex characters in a string.
  */
 function escapeRegex(str: string): string {
 
-    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 }

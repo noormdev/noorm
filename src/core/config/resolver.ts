@@ -8,12 +8,11 @@
  * 4. Stage defaults (from settings.yml)
  * 5. Defaults
  */
-import { merge, clone } from '@logosdx/utils'
+import { merge, clone } from '@logosdx/utils';
 
-import type { Config, ConfigInput, Stage, CompletenessCheck } from './types.js'
-import { getEnvConfig, getEnvConfigName } from './env.js'
-import { parseConfig } from './schema.js'
-
+import type { Config, ConfigInput, Stage, CompletenessCheck } from './types.js';
+import { getEnvConfig, getEnvConfigName } from './env.js';
+import { parseConfig } from './schema.js';
 
 /**
  * Interface for state manager dependency.
@@ -21,12 +20,10 @@ import { parseConfig } from './schema.js'
  * Using an interface instead of the class to avoid circular dependencies.
  */
 export interface StateProvider {
-
-    getConfig(name: string): Config | null
-    getActiveConfigName(): string | null
-    listSecrets(configName: string): string[]
+    getConfig(name: string): Config | null;
+    getActiveConfigName(): string | null;
+    listSecrets(configName: string): string[];
 }
-
 
 /**
  * Interface for settings provider dependency.
@@ -35,20 +32,17 @@ export interface StateProvider {
  * Optional - config resolution works without settings.
  */
 export interface SettingsProvider {
-
     /** Get a stage by name */
-    getStage(name: string): Stage | null
+    getStage(name: string): Stage | null;
 
     /** Get stage that matches a config name (for auto-linking) */
-    findStageForConfig(configName: string): Stage | null
+    findStageForConfig(configName: string): Stage | null;
 }
-
 
 /**
  * Default config values.
  */
 const DEFAULTS: ConfigInput = {
-
     type: 'local',
     isTest: false,
     protected: false,
@@ -60,27 +54,24 @@ const DEFAULTS: ConfigInput = {
         host: 'localhost',
         pool: { min: 0, max: 10 },
     },
-}
-
+};
 
 /**
  * Options for resolving a config.
  */
 export interface ResolveOptions {
-
     /** Config name to load (overrides env var and active config) */
-    name?: string
+    name?: string;
 
     /** CLI flag overrides */
-    flags?: ConfigInput
+    flags?: ConfigInput;
 
     /** Stage name to use for defaults (from --stage flag) */
-    stage?: string
+    stage?: string;
 
     /** Settings provider for stage lookup */
-    settings?: SettingsProvider
+    settings?: SettingsProvider;
 }
-
 
 /**
  * Resolve the active config from all sources.
@@ -122,55 +113,55 @@ export interface ResolveOptions {
  * })
  * ```
  */
-export function resolveConfig(
-    state: StateProvider,
-    options: ResolveOptions = {}
-): Config | null {
+export function resolveConfig(state: StateProvider, options: ResolveOptions = {}): Config | null {
 
     // 1. Determine which config to use
-    const configName = options.name
-        ?? getEnvConfigName()
-        ?? state.getActiveConfigName()
+    const configName = options.name ?? getEnvConfigName() ?? state.getActiveConfigName();
 
     if (!configName) {
 
         // Check if we have enough env vars to run without a stored config
-        const envConfig = getEnvConfig()
+        const envConfig = getEnvConfig();
         if (envConfig.connection?.dialect && envConfig.connection?.database) {
 
-            return resolveFromEnvOnly(envConfig, options.flags, options.stage, options.settings)
+            return resolveFromEnvOnly(envConfig, options.flags, options.stage, options.settings);
+
         }
-        return null
+
+        return null;
+
     }
 
     // 2. Load stored config
-    const stored = state.getConfig(configName)
+    const stored = state.getConfig(configName);
     if (!stored) {
 
-        throw new Error(`Config "${configName}" not found`)
+        throw new Error(`Config "${configName}" not found`);
+
     }
 
     // 3. Get stage defaults (if settings available)
-    const stageDefaults = getStageDefaults(configName, options.stage, options.settings)
+    const stageDefaults = getStageDefaults(configName, options.stage, options.settings);
 
     // 4. Merge: defaults <- stage <- stored <- env <- flags
     // Clone DEFAULTS to avoid mutation
-    const envConfig = getEnvConfig()
-    let merged = clone(DEFAULTS)
+    const envConfig = getEnvConfig();
+    let merged = clone(DEFAULTS);
 
     if (stageDefaults) {
 
-        merged = merge(merged, stageDefaults)
+        merged = merge(merged, stageDefaults);
+
     }
 
-    merged = merge(merged, stored)
-    merged = merge(merged, envConfig)
-    merged = merge(merged, options.flags ?? {})
+    merged = merge(merged, stored);
+    merged = merge(merged, envConfig);
+    merged = merge(merged, options.flags ?? {});
 
     // 5. Validate and return with defaults applied
-    return parseConfig(merged)
-}
+    return parseConfig(merged);
 
+}
 
 /**
  * Get stage defaults for a config.
@@ -182,19 +173,19 @@ export function resolveConfig(
 function getStageDefaults(
     configName: string,
     stageName: string | undefined,
-    settings: SettingsProvider | undefined
+    settings: SettingsProvider | undefined,
 ): ConfigInput | null {
 
-    if (!settings) return null
+    if (!settings) return null;
 
     // Try explicit stage first, then auto-match by config name
     const stage = stageName
         ? settings.getStage(stageName)
-        : settings.findStageForConfig(configName)
+        : settings.findStageForConfig(configName);
 
-    return stage?.defaults ?? null
+    return stage?.defaults ?? null;
+
 }
-
 
 /**
  * Build a config purely from environment variables (CI mode).
@@ -205,35 +196,37 @@ function resolveFromEnvOnly(
     envConfig: ConfigInput,
     flags?: ConfigInput,
     stageName?: string,
-    settings?: SettingsProvider
+    settings?: SettingsProvider,
 ): Config {
 
     // Generate a name if not provided
-    const name = envConfig.name ?? flags?.name ?? '__env__'
+    const name = envConfig.name ?? flags?.name ?? '__env__';
 
     // Get stage defaults if available
-    const stageDefaults = getStageDefaults(name, stageName, settings)
+    const stageDefaults = getStageDefaults(name, stageName, settings);
 
     // Merge: defaults <- stage <- env <- flags
-    let merged = clone(DEFAULTS)
+    let merged = clone(DEFAULTS);
 
     if (stageDefaults) {
 
-        merged = merge(merged, stageDefaults)
+        merged = merge(merged, stageDefaults);
+
     }
 
-    merged = merge(merged, envConfig)
-    merged = merge(merged, flags ?? {})
+    merged = merge(merged, envConfig);
+    merged = merge(merged, flags ?? {});
 
     // Ensure name is set
     if (!merged.name) {
 
-        merged.name = '__env__'
+        merged.name = '__env__';
+
     }
 
-    return parseConfig(merged)
-}
+    return parseConfig(merged);
 
+}
 
 /**
  * Check if a config is complete and usable.
@@ -254,63 +247,70 @@ export function checkConfigCompleteness(
     config: Config,
     state: StateProvider,
     settings?: SettingsProvider,
-    stageName?: string
+    stageName?: string,
 ): CompletenessCheck {
 
     const result: CompletenessCheck = {
         complete: true,
         missingSecrets: [],
         violations: [],
-    }
+    };
 
     // Get stage for this config
     const stage = settings
-        ? (stageName ? settings.getStage(stageName) : settings.findStageForConfig(config.name))
-        : null
+        ? stageName
+            ? settings.getStage(stageName)
+            : settings.findStageForConfig(config.name)
+        : null;
 
     if (!stage) {
 
         // No stage = no requirements to check
-        return result
+        return result;
+
     }
 
     // Check required secrets
-    const existingSecrets = state.listSecrets(config.name)
+    const existingSecrets = state.listSecrets(config.name);
 
     for (const secret of stage.secrets ?? []) {
 
-        const isRequired = secret.required !== false // Default to true
+        const isRequired = secret.required !== false; // Default to true
         if (isRequired && !existingSecrets.includes(secret.key)) {
 
-            result.missingSecrets.push(secret.key)
+            result.missingSecrets.push(secret.key);
+
         }
+
     }
 
     // Check stage constraint violations
-    const defaults = stage.defaults ?? {}
+    const defaults = stage.defaults ?? {};
 
     // protected: true cannot be overridden to false
     if (defaults.protected === true && config.protected === false) {
 
         result.violations.push(
-            `Stage "${stageName ?? config.name}" requires protected=true, but config has protected=false`
-        )
+            `Stage "${stageName ?? config.name}" requires protected=true, but config has protected=false`,
+        );
+
     }
 
     // isTest: true cannot be overridden to false
     if (defaults.isTest === true && config.isTest === false) {
 
         result.violations.push(
-            `Stage "${stageName ?? config.name}" requires isTest=true, but config has isTest=false`
-        )
+            `Stage "${stageName ?? config.name}" requires isTest=true, but config has isTest=false`,
+        );
+
     }
 
     // Update complete flag
-    result.complete = result.missingSecrets.length === 0 && result.violations.length === 0
+    result.complete = result.missingSecrets.length === 0 && result.violations.length === 0;
 
-    return result
+    return result;
+
 }
-
 
 /**
  * Check if a config can be deleted.
@@ -320,25 +320,28 @@ export function checkConfigCompleteness(
 export function canDeleteConfig(
     configName: string,
     settings?: SettingsProvider,
-    stageName?: string
+    stageName?: string,
 ): { allowed: boolean; reason?: string } {
 
     if (!settings) {
 
-        return { allowed: true }
+        return { allowed: true };
+
     }
 
     const stage = stageName
         ? settings.getStage(stageName)
-        : settings.findStageForConfig(configName)
+        : settings.findStageForConfig(configName);
 
     if (stage?.locked) {
 
         return {
             allowed: false,
             reason: `Config "${configName}" is linked to a locked stage and cannot be deleted`,
-        }
+        };
+
     }
 
-    return { allowed: true }
+    return { allowed: true };
+
 }
