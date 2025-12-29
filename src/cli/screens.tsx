@@ -75,6 +75,13 @@ import {
     SettingsStageSecretRemoveScreen,
 } from './screens/settings/index.js';
 import { SecretListScreen, SecretSetScreen, SecretRemoveScreen } from './screens/secret/index.js';
+import {
+    LockListScreen,
+    LockStatusScreen,
+    LockAcquireScreen,
+    LockReleaseScreen,
+    LockForceScreen,
+} from './screens/lock/index.js';
 
 /**
  * Screen registry type.
@@ -288,6 +295,28 @@ const SCREENS: ScreenRegistry = {
     'secret/rm': {
         component: SecretRemoveScreen,
         label: 'Delete Secret',
+    },
+
+    // Lock
+    lock: {
+        component: LockListScreen,
+        label: 'Lock Management',
+    },
+    'lock/status': {
+        component: LockStatusScreen,
+        label: 'Lock Status',
+    },
+    'lock/acquire': {
+        component: LockAcquireScreen,
+        label: 'Acquire Lock',
+    },
+    'lock/release': {
+        component: LockReleaseScreen,
+        label: 'Release Lock',
+    },
+    'lock/force': {
+        component: LockForceScreen,
+        label: 'Force Release',
     },
 };
 
