@@ -82,6 +82,28 @@ Key actions to expose:
 - `reset()` - Clear history and return to home
 
 
+### Provider Hierarchy
+
+The app requires a specific nesting order for providers:
+
+```
+ShutdownProvider      # Lifecycle management, graceful exit
+└── AppContextProvider    # State/settings orchestration, observer subscriptions
+    └── ToastProvider     # Toast notifications
+        └── FocusProvider     # Focus stack management
+            └── RouterProvider    # Navigation state
+                └── GlobalKeyboard    # Ctrl+C, Escape handling
+                    └── AppShell      # Screen rendering
+```
+
+Key providers:
+
+- **ShutdownProvider** - Manages `LifecycleManager`, provides `useShutdown()` hook
+- **AppContextProvider** - Loads state/settings, subscribes to observer events
+- **ToastProvider** - Toast queue with `useToast()` hook
+- **FocusProvider** - Custom focus stack (not Ink's built-in focus)
+
+
 ### Screen Registry
 
 Map routes to React components using a simple record:
@@ -131,6 +153,12 @@ Add consistent keyboard shortcuts across all screens:
 - `Escape` to go back (when history exists)
 - Consider a wrapper component that uses Ink's `useInput` hook
 - Prevent duplicate handlers by managing focus appropriately
+
+Available keyboard helper hooks in `src/cli/keyboard.tsx`:
+
+- **`useFocusedInput(isFocused, handler)`** - Wraps `useInput` with focus checking
+- **`useListKeys(options)`** - List navigation (up/down, enter selection)
+- **`useQuitHandler()`** - Graceful shutdown on Ctrl+C
 
 
 ### Headless Mode for CI/CD

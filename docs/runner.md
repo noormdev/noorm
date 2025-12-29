@@ -53,10 +53,11 @@ This makes builds idempotent—run the same build command twice and unchanged fi
 | Option | Default | Description |
 |--------|---------|-------------|
 | `force` | `false` | Re-run even if unchanged |
-| `concurrency` | `1` | Parallel file execution (1 for DDL safety) |
 | `abortOnError` | `true` | Stop on first failure |
 | `dryRun` | `false` | Render and write to `tmp/` without executing |
 | `preview` | `false` | Output rendered SQL to stdout/file |
+
+> **Note:** Files are always executed sequentially for DDL safety. Parallel execution is not currently supported.
 
 
 ## Dry Run Mode

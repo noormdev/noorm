@@ -278,11 +278,13 @@ When resolving a config linked to a stage, stage defaults merge in:
 ```typescript
 const config = resolveConfig(state, {
     name: 'prod',
-    stage: 'prod',
+    stage: 'prod',  // Required when passing settings - must explicitly specify stage name
     settings: settingsManager,
 })
 // Stage defaults applied, then stored config, then env, then flags
 ```
+
+> **Note:** When passing `settings`, you must also pass `stage` explicitly. Auto-detection of stage from config name is not yet implemented.
 
 
 ## Config Completeness
@@ -292,11 +294,11 @@ A config is "complete" when all required secrets (from its stage) are set. Incom
 ```typescript
 import { checkConfigCompleteness } from './core/config'
 
-// Basic usage
-const check = checkConfigCompleteness(config, state, settings)
-
-// With explicit stage name (optional 4th parameter)
+// With explicit stage name (recommended)
 const check = checkConfigCompleteness(config, state, settings, 'prod')
+
+// Without stage name - only works if stage name matches config name exactly
+const check = checkConfigCompleteness(config, state, settings)
 
 if (!check.complete) {
     console.log('Missing secrets:', check.missingSecrets)

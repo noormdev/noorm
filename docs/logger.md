@@ -45,6 +45,7 @@ await settings.load()
 
 const logger = new Logger({
     projectRoot: process.cwd(),
+    settings,  // Required for secret detection/redaction
     config: settings.getLogging(),
 })
 
@@ -268,6 +269,7 @@ Add context that's included with every log entry:
 ```typescript
 const logger = new Logger({
     projectRoot: process.cwd(),
+    settings,
     config: loggingConfig,
     context: { config: 'dev' },  // Initial context
 })
@@ -293,8 +295,11 @@ Context appears in every entry:
 ```typescript
 const logger = new Logger({
     projectRoot: string,
-    config: LoggerConfig,
+    settings: Settings,           // Required for secret detection
+    config?: Partial<LoggerConfig>,
     context?: Record<string, unknown>,
+    file?: Writable,              // Custom file stream
+    console?: Writable,           // Custom console stream (defaults to stdout in CI)
 })
 
 // Lifecycle
@@ -322,8 +327,16 @@ For convenience, use the singleton:
 ```typescript
 import { getLogger, resetLogger } from './core/logger'
 
-const logger = getLogger(process.cwd(), loggingConfig)
+// First call initializes the singleton
+const logger = getLogger({
+    projectRoot: process.cwd(),
+    settings,
+    config: loggingConfig,
+})
 await logger.start()
+
+// Subsequent calls return the existing instance (options ignored)
+const sameLogger = getLogger()
 
 // In tests, reset between tests
 await resetLogger()
@@ -360,6 +373,7 @@ await settings.load()
 // 2. Start logger early to capture everything
 const logger = new Logger({
     projectRoot: process.cwd(),
+    settings,
     config: settings.getLogging(),
 })
 await logger.start()

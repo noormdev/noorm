@@ -130,7 +130,7 @@ This distinction helps you understand where the secret is defined:
 - **Universal secrets** — Defined in the global `secrets` section of `settings.yml`, required by all stages
 - **Stage secrets** — Defined within a specific stage's `secrets` array
 
-To remove a required secret definition, edit `settings.yml`.
+To manage secret definitions, use the settings screens (see below).
 
 
 ### Keyboard Shortcuts (TUI)
@@ -142,6 +142,22 @@ To remove a required secret definition, edit `settings.yml`.
 | `d` | Delete selected secret |
 | `Enter` | Edit selected secret |
 | `Esc` | Go back |
+
+
+### Managing Secret Definitions
+
+Secret definitions (what secrets are required) are managed through settings screens:
+
+```bash
+noorm settings secrets              # List universal secret definitions
+noorm settings secrets add          # Add new universal secret definition
+noorm settings secrets edit API_KEY # Edit a secret definition
+
+noorm settings stages prod secrets        # List stage-specific secrets
+noorm settings stages prod secrets add    # Add stage secret definition
+```
+
+These commands manage which secrets are **required**, not their values. To set actual secret values, use `noorm secret:set`.
 
 
 ## Headless Mode
@@ -267,12 +283,14 @@ const keys = state.listSecrets('prod')           // ['DB_PASSWORD']
 const all = state.getAllSecrets('prod')          // { DB_PASSWORD: '...' }
 await state.deleteSecret('prod', 'DB_PASSWORD')
 
-// Global secrets
+// Global secrets (shared values across all configs)
 await state.setGlobalSecret('API_KEY', 'sk-...')
 const key = state.getGlobalSecret('API_KEY')
 const globalKeys = state.listGlobalSecrets()     // ['API_KEY']
 await state.deleteGlobalSecret('API_KEY')
 ```
+
+> **Note:** Global secret values (stored in state) are API-only. The CLI manages config-scoped secret values via `noorm secret`, and universal secret definitions via `noorm settings secrets`.
 
 See [State Management](./state.md) for complete StateManager documentation.
 

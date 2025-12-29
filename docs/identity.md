@@ -81,12 +81,12 @@ Imagine Alice needs to give Bob access to the production database. She can't jus
 ```typescript
 import { encryptForRecipient, decryptWithPrivateKey } from './core/identity'
 
-// Alice encrypts for Bob (requires sender and recipient info for the payload)
+// Alice encrypts for Bob (requires sender and recipient emails for the payload metadata)
 const payload = encryptForRecipient(
     JSON.stringify(config),
     bobPublicKey,
-    aliceIdentityHash,  // sender identifier
-    bobIdentityHash,    // recipient identifier
+    aliceEmail,  // sender email (e.g., 'alice@example.com')
+    bobEmail,    // recipient email (e.g., 'bob@example.com')
 )
 
 // Bob decrypts with his private key

@@ -350,10 +350,10 @@ observer.on('global-secret:set', ({ key }) => { ... })
 observer.on('global-secret:deleted', ({ key }) => { ... })
 
 // Identity events
-observer.on('identity:created', ({ identityHash, name, email }) => { ... })
+observer.on('identity:created', ({ identityHash, name, email, machine }) => { ... })
 
-// Known user events
-observer.on('known-user:added', ({ identityHash, name, email }) => { ... })
+// Known user events (email and source config where user was discovered)
+observer.on('known-user:added', ({ email, source }) => { ... })
 ```
 
 

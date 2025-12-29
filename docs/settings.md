@@ -521,6 +521,16 @@ await settings.setLogging({
     file: '.noorm/debug.log'
 })
 
+// Manage universal secrets (required by all stages)
+await settings.addUniversalSecret({ key: 'API_KEY', type: 'env' })
+await settings.updateUniversalSecret('API_KEY', { key: 'API_KEY', type: 'password' })
+await settings.removeUniversalSecret('API_KEY')
+
+// Manage stage-specific secrets
+await settings.addStageSecret('prod', { key: 'DB_PASSWORD', type: 'password' })
+await settings.updateStageSecret('prod', 'DB_PASSWORD', { key: 'DB_PASSWORD', required: false })
+await settings.removeStageSecret('prod', 'DB_PASSWORD')
+
 // Evaluate rules programmatically
 const result = settings.evaluateRules({
     name: 'dev',
