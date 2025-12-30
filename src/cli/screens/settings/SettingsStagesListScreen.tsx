@@ -217,7 +217,7 @@ export function SettingsStagesListScreen({ params: _params }: ScreenProps): Reac
         }
 
         // View stage secrets
-        if (input === 's') {
+        if (input === 'k') {
 
             navigate('settings/stages/secrets', { name: highlightedStage });
 
@@ -270,7 +270,7 @@ export function SettingsStagesListScreen({ params: _params }: ScreenProps): Reac
             <Box gap={2} flexWrap="wrap">
                 <Text dimColor>[a] Add</Text>
                 <Text dimColor>[e] Edit</Text>
-                <Text dimColor>[s] Secrets</Text>
+                <Text dimColor>[k] Secrets</Text>
                 <Text dimColor>[d] Delete</Text>
                 <Text dimColor>[Enter] Edit</Text>
                 <Text dimColor>[Esc] Back</Text>

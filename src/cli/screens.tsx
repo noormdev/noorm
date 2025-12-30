@@ -82,6 +82,13 @@ import {
     LockReleaseScreen,
     LockForceScreen,
 } from './screens/lock/index.js';
+import {
+    IdentityScreen,
+    IdentityEditScreen,
+    IdentityExportScreen,
+    KnownUsersScreen,
+    IdentityInitScreen,
+} from './screens/identity/index.js';
 
 /**
  * Screen registry type.
@@ -317,6 +324,28 @@ const SCREENS: ScreenRegistry = {
     'lock/force': {
         component: LockForceScreen,
         label: 'Force Release',
+    },
+
+    // Identity
+    identity: {
+        component: IdentityScreen,
+        label: 'Identity',
+    },
+    'identity/edit': {
+        component: IdentityEditScreen,
+        label: 'Edit Identity',
+    },
+    'identity/init': {
+        component: IdentityInitScreen,
+        label: 'Regenerate Identity',
+    },
+    'identity/export': {
+        component: IdentityExportScreen,
+        label: 'Export Public Key',
+    },
+    'identity/list': {
+        component: KnownUsersScreen,
+        label: 'Known Users',
     },
 };
 

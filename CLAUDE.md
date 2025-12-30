@@ -90,6 +90,43 @@ Use Form's `busy` and `statusError` props for inline progress and error display.
 ```
 
 
+## Keyboard Shortcuts
+
+Consistent hotkey conventions across all screens:
+
+**Home navigation:**
+| Key | Action |
+|-----|--------|
+| `c` | config |
+| `g` | changesets |
+| `r` | run |
+| `d` | db |
+| `l` | lock |
+| `s` | settings |
+| `k` | secrets (keys) |
+| `i` | identity |
+| `q` | quit |
+
+**Common actions (sub-screens):**
+| Key | Action | Mnemonic |
+|-----|--------|----------|
+| `a` | add | |
+| `e` | edit | |
+| `d` | delete | |
+| `x` | export | e**x**port |
+| `i` | import | |
+| `u` | use/activate | |
+| `v` | validate | |
+| `k` | secrets | **k**eys |
+
+**Context-dependent keys:**
+- `[i]` = identity on Home, import in sub-screens
+- `[x]` = export where applicable, extend in Lock Status
+- `[s]` = settings on Home, status in Lock List
+
+Use `numberNav` prop on `SelectList` for 1-9 quick selection in lists.
+
+
 ## Ink Layout
 
 Ink uses Yoga (flexbox). For `justifyContent` or `<Spacer />` to work, parent needs explicit width:

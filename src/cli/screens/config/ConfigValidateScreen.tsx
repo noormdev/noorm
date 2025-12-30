@@ -172,7 +172,7 @@ export function ConfigValidateScreen({ params }: ScreenProps): ReactElement {
                 back();
 
             }
-            else if (input === 's') {
+            else if (input === 'k') {
 
                 // Navigate to secrets
                 navigate('secret', { name: configName });
@@ -250,7 +250,7 @@ export function ConfigValidateScreen({ params }: ScreenProps): ReactElement {
 
                 <Box marginTop={1} gap={2}>
                     <Text dimColor>[e] Edit</Text>
-                    <Text dimColor>[s] Secrets</Text>
+                    <Text dimColor>[k] Secrets</Text>
                     <Text dimColor>[Esc] Back</Text>
                 </Box>
             </Box>

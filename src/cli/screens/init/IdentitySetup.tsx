@@ -28,6 +28,9 @@ export interface IdentitySetupProps {
 
     /** Called when user cancels */
     onCancel: () => void;
+
+    /** Whether this is regenerating an existing identity (changes UI text) */
+    isRegeneration?: boolean;
 }
 
 /**
@@ -46,7 +49,7 @@ export interface IdentitySetupValues {
  * Shows a form pre-populated with detected values.
  * User can edit name, email, and machine; OS is auto-detected.
  */
-export function IdentitySetup({ onComplete, onCancel }: IdentitySetupProps): ReactElement {
+export function IdentitySetup({ onComplete, onCancel, isRegeneration = false }: IdentitySetupProps): ReactElement {
 
     // Note: No useFocusScope here - let the Form manage its own focus.
     // Parent focus scopes interfere with child focus due to React effect order.
@@ -131,19 +134,30 @@ export function IdentitySetup({ onComplete, onCancel }: IdentitySetupProps): Rea
 
     return (
         <Box flexDirection="column">
-            {/* Welcome message */}
-            <Panel title="Welcome to noorm" titleColor="cyan">
-                <Box flexDirection="column" marginBottom={1}>
-                    <Text>Let's set up your identity. This is used for:</Text>
-                    <Box flexDirection="column" marginLeft={2} marginTop={1}>
-                        <Text>
-                            <Text dimColor>•</Text> Tracking who made changes (audit trail)
-                        </Text>
-                        <Text>
-                            <Text dimColor>•</Text> Securely sharing configs with teammates
-                        </Text>
+            {/* Header message - varies based on regeneration */}
+            <Panel title={isRegeneration ? 'Regenerate Identity' : 'Welcome to noorm'} titleColor="cyan">
+                {isRegeneration ? (
+                    <Box flexDirection="column" marginBottom={1}>
+                        <Text color="yellow">You are regenerating your identity.</Text>
+                        <Box flexDirection="column" marginLeft={2} marginTop={1}>
+                            <Text dimColor>• Your keypair will be replaced</Text>
+                            <Text dimColor>• Old encrypted data becomes unreadable</Text>
+                            <Text dimColor>• Team members need your new public key</Text>
+                        </Box>
                     </Box>
-                </Box>
+                ) : (
+                    <Box flexDirection="column" marginBottom={1}>
+                        <Text>Let's set up your identity. This is used for:</Text>
+                        <Box flexDirection="column" marginLeft={2} marginTop={1}>
+                            <Text>
+                                <Text dimColor>•</Text> Tracking who made changes (audit trail)
+                            </Text>
+                            <Text>
+                                <Text dimColor>•</Text> Securely sharing configs with teammates
+                            </Text>
+                        </Box>
+                    </Box>
+                )}
 
                 {/* Detection source hints */}
                 <Box flexDirection="column" marginBottom={1}>
@@ -157,7 +171,7 @@ export function IdentitySetup({ onComplete, onCancel }: IdentitySetupProps): Rea
                     fields={fields}
                     onSubmit={handleSubmit}
                     onCancel={onCancel}
-                    submitLabel="Continue"
+                    submitLabel={isRegeneration ? 'Regenerate' : 'Continue'}
                 />
             </Box>
 
@@ -173,7 +187,9 @@ export function IdentitySetup({ onComplete, onCancel }: IdentitySetupProps): Rea
             {/* Info message */}
             <Box marginTop={1}>
                 <Text dimColor>
-                    On continue, we'll generate your keypair for secure config sharing.
+                    {isRegeneration
+                        ? 'Your identity hash will change after regeneration.'
+                        : "On continue, we'll generate your keypair for secure config sharing."}
                 </Text>
             </Box>
         </Box>

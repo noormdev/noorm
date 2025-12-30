@@ -26,7 +26,43 @@ import {
     type HistoryEntry,
     type RouterContextValue,
     getSection,
+    getParentRoute,
 } from './types.js';
+
+/**
+ * Build ancestral history from a route.
+ *
+ * When initializing with a deep route (e.g., 'settings/secrets/add'),
+ * this builds the history stack so back navigation works:
+ * ['home', 'settings', 'settings/secrets']
+ *
+ * @example
+ * ```typescript
+ * buildAncestorHistory('settings/secrets/add')
+ * // [{ route: 'home', params: {} }, { route: 'settings', params: {} }, { route: 'settings/secrets', params: {} }]
+ * ```
+ */
+function buildAncestorHistory(route: Route): HistoryEntry[] {
+
+    if (route === 'home') {
+
+        return [];
+
+    }
+
+    const ancestors: Route[] = [];
+    let current: Route | null = getParentRoute(route);
+
+    while (current !== null) {
+
+        ancestors.unshift(current);
+        current = getParentRoute(current);
+
+    }
+
+    return ancestors.map((r) => ({ route: r, params: {} }));
+
+}
 
 const RouterContext = createContext<RouterContextValue | null>(null);
 
@@ -64,7 +100,9 @@ export function RouterProvider({
 
     const [route, setRoute] = useState<Route>(initialRoute);
     const [params, setParams] = useState<RouteParams>(initialParams);
-    const [history, setHistory] = useState<HistoryEntry[]>([]);
+    const [history, setHistory] = useState<HistoryEntry[]>(() =>
+        buildAncestorHistory(initialRoute),
+    );
 
     const navigate = useCallback(
         (newRoute: Route, newParams: RouteParams = {}) => {

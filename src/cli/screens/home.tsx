@@ -13,7 +13,7 @@
  * noorm home     # Same thing
  * ```
  */
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import type { ReactElement } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { attempt } from '@logosdx/utils';
@@ -41,6 +41,16 @@ interface QuickStatus {
     connectionError?: string;
     pendingCount: number | null;
     lockStatus: LockStatus | null;
+}
+
+/**
+ * Setup status for a config.
+ */
+interface ConfigSetupStatus {
+    configName: string;
+    stageName: string | null;
+    complete: boolean;
+    missingSecrets: string[];
 }
 
 /**
@@ -89,7 +99,16 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
     const { gracefulExit } = useShutdown();
     const { navigate } = useRouter();
     const { isFocused } = useFocusScope('home');
-    const { activeConfig, activeConfigName, configs, loadingStatus, hasIdentity } = useAppContext();
+    const {
+        activeConfig,
+        activeConfigName,
+        configs,
+        loadingStatus,
+        hasIdentity,
+        settings,
+        settingsManager,
+        stateManager,
+    } = useAppContext();
 
     const [status, setStatus] = useState<QuickStatus>({
         connection: 'none',
@@ -98,6 +117,61 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
     });
     const [recentActivity, setRecentActivity] = useState<ChangesetHistoryRecord[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+
+    // Compute setup status for all configs
+    const setupStatus = useMemo<ConfigSetupStatus[]>(() => {
+
+        if (!settingsManager || !stateManager || !settings) {
+
+            return [];
+
+        }
+
+        const stages = settings.stages ?? {};
+        const results: ConfigSetupStatus[] = [];
+
+        for (const config of configs) {
+
+            // Check if config name matches a stage
+            const stageName = stages[config.name] ? config.name : null;
+
+            if (!stageName) {
+
+                // Config not linked to a stage - skip
+                continue;
+
+            }
+
+            // Get required secrets for this stage (universal + stage-specific)
+            const requiredSecrets = settingsManager.getRequiredSecrets(stageName);
+
+            // Get secrets that are set for this config
+            const setSecrets = stateManager.listSecrets(config.name);
+            const setSecretsSet: Record<string, boolean> = {};
+
+            for (const key of setSecrets) {
+
+                setSecretsSet[key] = true;
+
+            }
+
+            // Find missing secrets
+            const missingSecrets = requiredSecrets
+                .filter((s) => !setSecretsSet[s.key])
+                .map((s) => s.key);
+
+            results.push({
+                configName: config.name,
+                stageName,
+                complete: missingSecrets.length === 0,
+                missingSecrets,
+            });
+
+        }
+
+        return results;
+
+    }, [configs, settings, settingsManager, stateManager]);
 
     // Load status data when active config changes
     useEffect(() => {
@@ -247,12 +321,12 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
 
         // Navigation shortcuts
         if (input === 'c') navigate('config');
-        else if (input === 'h') navigate('change');
+        else if (input === 'g') navigate('change');
         else if (input === 'r') navigate('run');
         else if (input === 'd') navigate('db');
         else if (input === 'l') navigate('lock');
         else if (input === 's') navigate('settings');
-        else if (input === 'x') navigate('secret');
+        else if (input === 'k') navigate('secret');
         else if (input === 'i') navigate('identity');
         // Number shortcuts for quick actions
         else if (input === '1') navigate('run/build');
@@ -462,6 +536,27 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
                                 <Text dimColor>Lock:</Text>
                                 {isLoading ? <Spinner /> : renderLockStatus()}
                             </Box>
+                            {/* Stage setup status */}
+                            {setupStatus.length > 0 && (
+                                <>
+                                    <Box marginTop={1}>
+                                        <Text dimColor>Stage Configs:</Text>
+                                    </Box>
+                                    {setupStatus.map((s) => (
+                                        <Box key={s.configName} gap={1} marginLeft={2}>
+                                            <Text color={s.complete ? 'green' : undefined}>
+                                                {s.complete ? '✓' : ' '}
+                                            </Text>
+                                            <Text>{s.configName}</Text>
+                                            {!s.complete && s.missingSecrets.length > 0 && (
+                                                <Text color="red">
+                                                    ✗ secrets ({s.missingSecrets.length})
+                                                </Text>
+                                            )}
+                                        </Box>
+                                    ))}
+                                </>
+                            )}
                         </Box>
                     </Panel>
                 </Box>
@@ -514,7 +609,7 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
             {/* Navigation Hints */}
             <Box marginTop={1}>
                 <Text dimColor>
-                    [c]onfig [h]ange [r]un [d]b [l]ock [s]ettings [x]secret [i]dentity [q]uit
+                    [c]onfig chan[g]e [r]un [d]b [l]ock [s]ettings [k]eys [i]dentity [q]uit
                 </Text>
             </Box>
         </Box>

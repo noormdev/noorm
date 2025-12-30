@@ -76,6 +76,9 @@ export interface SelectListProps<T = unknown> {
 
     /** Show description on a separate line below label (dimmed, indented) */
     showDescriptionBelow?: boolean;
+
+    /** Enable number key navigation (1-9 to select items directly) */
+    numberNav?: boolean;
 }
 
 /**
@@ -95,6 +98,7 @@ export function SelectList<T = unknown>({
     defaultValue,
     isDisabled = false,
     showDescriptionBelow = false,
+    numberNav = false,
 }: SelectListProps<T>): ReactElement {
 
     // Use external focus if provided, otherwise manage own focus scope
@@ -225,6 +229,29 @@ export function SelectList<T = unknown>({
 
             }
 
+            return;
+
+        }
+
+        // Number keys (1-9) for quick selection
+        if (numberNav) {
+
+            const num = parseInt(input, 10);
+
+            if (num >= 1 && num <= 9) {
+
+                const currentItems = enabledItemsRef.current;
+                const currentOnSelect = onSelectRef.current;
+                const item = currentItems[num - 1];
+
+                if (item && currentOnSelect) {
+
+                    currentOnSelect(item);
+
+                }
+
+            }
+
         }
 
     });
@@ -255,9 +282,19 @@ export function SelectList<T = unknown>({
                 const actualIndex = startIndex + visibleIndex;
                 const isHighlighted = actualIndex === highlightedIndex;
 
+                // Number indicator (1-9, dimmed for items beyond 9)
+                const numberIndicator = numberNav
+                    ? actualIndex < 9
+                        ? `${actualIndex + 1} `
+                        : '  '
+                    : '';
+
                 return (
                     <Box key={item.key} flexDirection="column">
                         <Box>
+                            {numberNav && (
+                                <Text dimColor>{numberIndicator}</Text>
+                            )}
                             <Text
                                 color={isHighlighted && isFocused ? 'cyan' : undefined}
                                 bold={isHighlighted && isFocused}

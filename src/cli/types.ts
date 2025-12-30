@@ -80,6 +80,7 @@ export type Route =
     | 'lock/force'
     // Identity
     | 'identity'
+    | 'identity/edit'
     | 'identity/init'
     | 'identity/export'
     | 'identity/list'
