@@ -228,3 +228,45 @@ import {
     truncateHash,            // Truncate identity hash for display
 } from './core/identity'
 ```
+
+
+## CLI Workflow
+
+The TUI provides screens for managing identity:
+
+**Identity Screen** (`noorm identity` or `[i]` from home)
+
+Displays current identity details: name, email, machine, OS, truncated hash/public key, and creation date. Also shows count of known users discovered from database sync.
+
+| Key | Action |
+|-----|--------|
+| `e` | Edit identity details |
+| `x` | Export public key |
+| `r` | Regenerate identity (new keypair) |
+| `u` | View known users |
+| `Esc` | Back |
+
+
+**Edit Identity** (`[e]` from identity screen)
+
+Update name, email, or machine without regenerating keys. Your keypair stays the same—only the metadata changes. Note: changing details will change your identity hash.
+
+Use this when:
+- You changed your email
+- You want a different display name
+- You renamed your machine
+
+
+**Export Public Key** (`[x]` from identity screen)
+
+Copies your public key to clipboard for sharing with team members. They can use this to encrypt configs that only you can decrypt.
+
+
+**Regenerate Identity** (`[r]` from identity screen)
+
+Creates a new X25519 keypair. Use this if your private key was compromised. Warning: you'll lose access to any configs encrypted for your old public key.
+
+
+**Known Users** (`[u]` from identity screen)
+
+Lists team members discovered from database sync. Shows their name, email, machine, and truncated identity hash. Use this to find recipients when sharing encrypted configs.

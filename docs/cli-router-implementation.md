@@ -82,6 +82,18 @@ Key actions to expose:
 - `reset()` - Clear history and return to home
 
 
+**Deep Route Initialization**
+
+When the CLI starts with a deep route (e.g., `noorm settings/secrets/add`), the router builds ancestral history automatically. This ensures back navigation works correctly:
+
+```
+Initial route: 'settings/secrets/add'
+Built history: ['home', 'settings', 'settings/secrets']
+```
+
+The `buildAncestorHistory` function uses `getParentRoute` to walk up the route hierarchy, building the stack so pressing Escape navigates through parents correctly.
+
+
 ### Provider Hierarchy
 
 The app requires a specific nesting order for providers:

@@ -306,6 +306,23 @@ if (!check.complete) {
 }
 ```
 
+
+**Home Screen Status**
+
+The home screen displays setup status for all stage-linked configs:
+
+```
+Stage Configs:
+  ✓ dev
+  ✓ staging
+    prod     ✗ secrets (2)
+```
+
+- `✓` indicates all required secrets are set
+- `✗ secrets (N)` shows how many secrets are missing
+
+This helps track which environments are ready to use and which need secret values configured.
+
 Stage constraints that can't be violated:
 
 | Constraint | Behavior |
