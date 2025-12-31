@@ -26,6 +26,7 @@ import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
 import { Panel } from '../../components/index.js';
 import { truncateHash } from '../../../core/identity/index.js';
+import { relativeTimeAgo } from '../../utils/date.js';
 
 
 /**
@@ -34,28 +35,6 @@ import { truncateHash } from '../../../core/identity/index.js';
 interface UserGroup {
     email: string;
     users: KnownUser[];
-}
-
-
-/**
- * Format relative time for display.
- */
-function formatRelativeTime(isoDate: string): string {
-
-    const date = new Date(isoDate);
-    const now = Date.now();
-    const diffMs = now - date.getTime();
-
-    const minutes = Math.floor(diffMs / 60000);
-    const hours = Math.floor(minutes / 60);
-    const days = Math.floor(hours / 24);
-
-    if (days > 0) return `${days}d ago`;
-    if (hours > 0) return `${hours}h ago`;
-    if (minutes > 0) return `${minutes}m ago`;
-
-    return 'just now';
-
 }
 
 
@@ -254,7 +233,7 @@ export function KnownUsersScreen({ params: _params }: ScreenProps): ReactElement
                                                     <Box>
                                                         <Text dimColor>{linePrefix}</Text>
                                                         <Text dimColor>Last seen: </Text>
-                                                        <Text>{formatRelativeTime(user.lastSeen)}</Text>
+                                                        <Text>{relativeTimeAgo(user.lastSeen)}</Text>
                                                     </Box>
                                                 </Box>
                                             </Box>

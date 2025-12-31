@@ -50,7 +50,7 @@ export interface SelectListProps<T = unknown> {
     /** Items to display */
     items: SelectListItem<T>[];
 
-    /** Callback when item is selected (Enter pressed) */
+    /** Callback when item is selected (Enter pressed in single-select mode) */
     onSelect?: (item: SelectListItem<T>) => void;
 
     /** Callback when highlighted item changes */
@@ -79,6 +79,24 @@ export interface SelectListProps<T = unknown> {
 
     /** Enable number key navigation (1-9 to select items directly) */
     numberNav?: boolean;
+
+    /**
+     * Multi-select mode. When true:
+     * - Space toggles selection (calls onToggle)
+     * - Enter submits all selections (calls onSubmit)
+     * When false (default):
+     * - Enter selects the highlighted item (calls onSelect)
+     */
+    multiSelect?: boolean;
+
+    /** Callback when item is toggled (Space in multi-select mode) */
+    onToggle?: (item: SelectListItem<T>) => void;
+
+    /** Callback when selection is submitted (Enter in multi-select mode) */
+    onSubmit?: () => void;
+
+    /** Callback when Escape is pressed (for navigation) */
+    onCancel?: () => void;
 }
 
 /**
@@ -99,6 +117,10 @@ export function SelectList<T = unknown>({
     isDisabled = false,
     showDescriptionBelow = false,
     numberNav = false,
+    multiSelect = false,
+    onToggle,
+    onSubmit,
+    onCancel,
 }: SelectListProps<T>): ReactElement {
 
     // Use external focus if provided, otherwise manage own focus scope
@@ -115,8 +137,14 @@ export function SelectList<T = unknown>({
     // Refs for latest values - useInput handler reads these to avoid stale closures
     const enabledItemsRef = useRef(enabledItems);
     const onSelectRef = useRef(onSelect);
+    const onToggleRef = useRef(onToggle);
+    const onSubmitRef = useRef(onSubmit);
+    const onCancelRef = useRef(onCancel);
     enabledItemsRef.current = enabledItems;
     onSelectRef.current = onSelect;
+    onToggleRef.current = onToggle;
+    onSubmitRef.current = onSubmit;
+    onCancelRef.current = onCancel;
 
     // Find initial index from defaultValue
     const initialIndex = useMemo(() => {
@@ -198,6 +226,21 @@ export function SelectList<T = unknown>({
 
         if (!isFocused || isDisabled) return;
 
+        // Escape - cancel/back
+        if (key.escape) {
+
+            const currentOnCancel = onCancelRef.current;
+
+            if (currentOnCancel) {
+
+                currentOnCancel();
+
+            }
+
+            return;
+
+        }
+
         // Up arrow - move highlight up (use ref for latest length)
         if (key.upArrow) {
 
@@ -216,16 +259,50 @@ export function SelectList<T = unknown>({
 
         }
 
-        // Enter - select highlighted item (use refs for latest values)
-        if (key.return) {
+        // Space - toggle item in multi-select mode
+        if (input === ' ' && multiSelect) {
 
             const currentItems = enabledItemsRef.current;
-            const currentOnSelect = onSelectRef.current;
+            const currentOnToggle = onToggleRef.current;
             const item = currentItems[highlightedIndex];
 
-            if (item && currentOnSelect) {
+            if (item && currentOnToggle) {
 
-                currentOnSelect(item);
+                currentOnToggle(item);
+
+            }
+
+            return;
+
+        }
+
+        // Enter - select highlighted item or submit in multi-select mode
+        if (key.return) {
+
+            if (multiSelect) {
+
+                // In multi-select mode, Enter submits the selection
+                const currentOnSubmit = onSubmitRef.current;
+
+                if (currentOnSubmit) {
+
+                    currentOnSubmit();
+
+                }
+
+            }
+            else {
+
+                // In single-select mode, Enter selects the highlighted item
+                const currentItems = enabledItemsRef.current;
+                const currentOnSelect = onSelectRef.current;
+                const item = currentItems[highlightedIndex];
+
+                if (item && currentOnSelect) {
+
+                    currentOnSelect(item);
+
+                }
 
             }
 

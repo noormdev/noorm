@@ -60,6 +60,7 @@ export type {
     PathConfig,
     StrictConfig,
     LoggingConfig,
+    TeardownConfig,
     RulesEvaluationResult,
     ConfigForRuleMatch,
     SettingsManagerOptions,
@@ -95,8 +96,8 @@ export type {
     CleanupFn,
 } from './lifecycle/index.js';
 
-// Shared (table types and constants)
-export { NOORM_TABLES } from './shared/index.js';
+// Shared (table types, constants, and utilities)
+export { NOORM_TABLES, filterFilesByPaths, matchesPathPrefix } from './shared/index.js';
 export type {
     NoormTableName,
     NoormDatabase,
@@ -232,6 +233,7 @@ export {
     runFile,
     runDir,
     preview,
+    discoverFiles,
     Tracker,
     computeChecksum,
     computeChecksumFromContent,
@@ -254,6 +256,22 @@ export type {
 // Database lifecycle
 export { checkDbStatus, createDb, destroyDb, getDialectOperations } from './db/index.js';
 export type { DbStatus, DbOperationResult, CreateDbOptions, DestroyDbOptions } from './db/index.js';
+
+// Teardown (database reset/wipe)
+export {
+    truncateData,
+    teardownSchema,
+    previewTeardown,
+    getTeardownOperations,
+} from './teardown/index.js';
+export type {
+    TruncateOptions,
+    TruncateResult,
+    TeardownOptions,
+    TeardownResult,
+    TeardownPreview,
+    TeardownDialectOperations,
+} from './teardown/index.js';
 
 // Changeset
 export {
@@ -316,3 +334,12 @@ export type {
     CreateChangesetOptions,
     AddFileOptions,
 } from './changeset/index.js';
+
+// SQL Terminal
+export { SqlHistoryManager, executeRawSql } from './sql-terminal/index.js';
+export type {
+    SqlHistoryEntry,
+    SqlExecutionResult,
+    SqlHistoryFile,
+    ClearResult,
+} from './sql-terminal/index.js';

@@ -1431,7 +1431,6 @@ Shared utilities beyond core modules, specific to CLI layer.
 
 | Utility | Purpose | Examples |
 |---------|---------|----------|
-| `formatRelativeTime` | Human-readable timestamps | "2h ago", "3d ago", "just now" |
 | `formatDuration` | Execution time display | "42ms", "1.2s", "2m 15s" |
 | `formatBytes` | File/data sizes | "1.2 KB", "3.5 MB" |
 | `truncateHash` | Shorten hashes/keys | "a1b2c3d4..." (first 8 + ellipsis) |

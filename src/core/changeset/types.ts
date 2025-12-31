@@ -458,6 +458,17 @@ export interface ChangesetHistoryRecord {
 }
 
 /**
+ * Unified history record that includes the change type.
+ *
+ * Used to display all operation types (builds, runs, changesets)
+ * in a unified activity view.
+ */
+export interface UnifiedHistoryRecord extends ChangesetHistoryRecord {
+    /** Type of change operation */
+    changeType: 'build' | 'run' | 'changeset';
+}
+
+/**
  * File execution record from history.
  */
 export interface FileHistoryRecord {

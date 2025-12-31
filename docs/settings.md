@@ -94,6 +94,12 @@ logging:
     enabled: true
     level: info
     file: .noorm/noorm.log
+
+# Teardown behavior
+teardown:
+    preserveTables:
+        - AppSettings
+    postScript: schema/teardown/cleanup.sql
 ```
 
 
@@ -439,6 +445,46 @@ const logging = settings.getLogging()
 ```
 
 
+## Teardown Configuration
+
+Configure database reset and teardown behavior:
+
+```yaml
+teardown:
+    preserveTables:
+        - AppSettings
+        - UserRoles
+        - AuditLog
+    postScript: schema/teardown/cleanup.sql
+```
+
+| Property | Default | Description |
+|----------|---------|-------------|
+| `preserveTables` | `[]` | Tables to always preserve during truncate operations |
+| `postScript` | `null` | SQL script to run after schema teardown (relative to project root) |
+
+These settings are applied automatically when using teardown operations:
+
+```typescript
+import { truncateData, teardownSchema } from './core/teardown'
+
+// preserveTables from settings are automatically included
+const result = await truncateData(db, dialect, {
+    preserve: settings.getTeardown()?.preserveTables,
+})
+
+// postScript runs after teardown
+const teardownResult = await teardownSchema(db, dialect, {
+    postScript: settings.getTeardown()?.postScript,
+})
+```
+
+Use cases:
+
+- **preserveTables** - Lookup tables, configuration tables, or audit logs that should never be truncated
+- **postScript** - Re-seed essential data, reset sequences, or run cleanup SQL after teardown
+
+
 ## SettingsManager API
 
 The manager handles loading, saving, and accessing settings.
@@ -572,7 +618,8 @@ console.log(DEFAULT_SETTINGS)
 //     rules: [],
 //     stages: {},
 //     strict: { enabled: false, stages: [] },
-//     logging: { enabled: true, level: 'info', ... }
+//     logging: { enabled: true, level: 'info', ... },
+//     teardown: { preserveTables: [], postScript: undefined }
 // }
 
 // Create fresh copy (avoids shared references)

@@ -192,7 +192,7 @@ export async function runFile(
     await tracker.finalizeOperation(
         operationId!,
         result.status === 'failed' ? 'failed' : 'success',
-        result.durationMs ?? 0,
+        Math.round(result.durationMs ?? 0),
         result.checksum,
         result.error,
     );
@@ -246,6 +246,34 @@ export async function runDir(
 
     observer.emit('run:dir', {
         dirpath,
+        fileCount: files.length,
+        configName: context.configName,
+    });
+
+    // Execute files
+    return executeFiles(context, files, opts, 'run');
+
+}
+
+/**
+ * Run specific SQL files.
+ *
+ * Executes the given list of files in order.
+ *
+ * @param context - Run context
+ * @param files - Array of file paths to execute
+ * @param options - Run options
+ * @returns Batch result
+ */
+export async function runFiles(
+    context: RunContext,
+    files: string[],
+    options: RunOptions = {},
+): Promise<BatchResult> {
+
+    const opts = { ...DEFAULT_RUN_OPTIONS_INTERNAL, ...options };
+
+    observer.emit('run:files', {
         fileCount: files.length,
         configName: context.configName,
     });
@@ -461,7 +489,7 @@ async function executeFiles(
     await tracker.finalizeOperation(
         operationId!,
         status === 'failed' ? 'failed' : 'success',
-        durationMs,
+        Math.round(durationMs),
         combinedChecksum,
     );
 
@@ -509,7 +537,7 @@ async function executeSingleFile(
             checksum: '',
             status: 'failed',
             errorMessage: checksumErr.message,
-            durationMs: result.durationMs ?? 0,
+            durationMs: Math.round(result.durationMs ?? 0),
         });
 
         observer.emit('file:after', {
@@ -578,7 +606,7 @@ async function executeSingleFile(
             checksum,
             status: 'failed',
             errorMessage: loadErr.message,
-            durationMs,
+            durationMs: Math.round(durationMs),
         });
 
         observer.emit('file:after', {
@@ -613,7 +641,7 @@ async function executeSingleFile(
             checksum,
             status: 'failed',
             errorMessage: execErr.message,
-            durationMs,
+            durationMs: Math.round(durationMs),
         });
 
         observer.emit('file:after', {
@@ -640,7 +668,7 @@ async function executeSingleFile(
         filepath,
         checksum,
         status: 'success',
-        durationMs,
+        durationMs: Math.round(durationMs),
     });
 
     observer.emit('file:after', {
@@ -805,9 +833,21 @@ async function writeDryRunOutput(
 }
 
 /**
- * Discover SQL files in a directory.
+ * Discover SQL files in a directory recursively.
+ *
+ * Finds all `.sql` and `.sql.tmpl` files, sorted alphabetically
+ * for deterministic execution order.
+ *
+ * @param dirpath - Directory to scan
+ * @returns Sorted array of absolute file paths
+ *
+ * @example
+ * ```typescript
+ * const files = await discoverFiles('/project/schema')
+ * // ['/project/schema/tables/users.sql', '/project/schema/views/active_users.sql']
+ * ```
  */
-async function discoverFiles(dirpath: string): Promise<string[]> {
+export async function discoverFiles(dirpath: string): Promise<string[]> {
 
     const files: string[] = [];
 

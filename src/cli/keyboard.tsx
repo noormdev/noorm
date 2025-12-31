@@ -41,6 +41,30 @@ export interface GlobalKeyboardProps {
      * Allows parent to implement ESC cascade behavior.
      */
     onEscape?: () => boolean | void;
+
+    /**
+     * Callback when dry-run mode should be toggled.
+     * Triggered by 'D' (uppercase) key.
+     */
+    onToggleDryRun?: () => void;
+
+    /**
+     * Callback when force mode should be toggled.
+     * Triggered by 'F' (uppercase) key.
+     */
+    onToggleForce?: () => void;
+
+    /**
+     * Callback when log viewer should be toggled.
+     * Triggered by Shift+L from anywhere.
+     */
+    onToggleLogViewer?: () => void;
+
+    /**
+     * Callback when SQL terminal should be opened.
+     * Triggered by Shift+Q from anywhere.
+     */
+    onOpenSqlTerminal?: () => void;
 }
 
 /**
@@ -49,12 +73,22 @@ export interface GlobalKeyboardProps {
  * Wraps the app and handles:
  * - Ctrl+C: Exit application
  * - ?: Show help overlay (when not in text input)
+ * - D: Toggle dry-run mode (when not in text input)
+ * - F: Toggle force mode (when not in text input)
  * - Esc: Navigate back (when nothing else handles it)
  *
  * Individual screens/components register their own handlers
  * via useInput with focus-aware filtering.
  */
-export function GlobalKeyboard({ children, onHelp, onEscape }: GlobalKeyboardProps): ReactElement {
+export function GlobalKeyboard({
+    children,
+    onHelp,
+    onEscape,
+    onToggleDryRun,
+    onToggleForce,
+    onToggleLogViewer,
+    onOpenSqlTerminal,
+}: GlobalKeyboardProps): ReactElement {
 
     const { gracefulExit } = useShutdown();
     const { stack } = useFocusContext();
@@ -70,13 +104,54 @@ export function GlobalKeyboard({ children, onHelp, onEscape }: GlobalKeyboardPro
 
         }
 
-        // ? shows help when not typing in a text input
-        // (focus stack > 1 means we're likely in an input component)
-        if (input === '?' && stack.length <= 1) {
+        // Shift+L toggles log viewer (works from anywhere, even in text input)
+        if (key.shift && input === 'L') {
 
-            onHelp?.();
+            onToggleLogViewer?.();
 
             return;
+
+        }
+
+        // Shift+Q opens SQL terminal (works from anywhere)
+        if (key.shift && input === 'Q') {
+
+            onOpenSqlTerminal?.();
+
+            return;
+
+        }
+
+        // Global keys only work when not typing in a text input
+        // (focus stack > 1 means we're likely in an input component)
+        if (stack.length <= 1) {
+
+            // ? shows help
+            if (input === '?') {
+
+                onHelp?.();
+
+                return;
+
+            }
+
+            // D toggles dry-run mode
+            if (input === 'D') {
+
+                onToggleDryRun?.();
+
+                return;
+
+            }
+
+            // F toggles force mode
+            if (input === 'F') {
+
+                onToggleForce?.();
+
+                return;
+
+            }
 
         }
 

@@ -39,9 +39,11 @@ import type {
 import type {
     ChangesetStatus,
     ChangesetHistoryRecord,
+    UnifiedHistoryRecord,
     FileHistoryRecord,
     NeedsRunResult,
 } from './types.js';
+import type { ChangeType } from '../shared/index.js';
 
 // ─────────────────────────────────────────────────────────────
 // History Class
@@ -754,6 +756,93 @@ export class ChangesetHistory {
             errorMessage: r.error_message || null,
             checksum: r.checksum,
         }));
+
+    }
+
+    /**
+     * Get unified execution history across all operation types.
+     *
+     * Unlike getHistory() which only returns changesets, this returns
+     * builds, runs, and changesets in a unified view.
+     *
+     * @param changeTypes - Optional filter for specific types (default: all)
+     * @param limit - Max records to return
+     */
+    async getUnifiedHistory(
+        changeTypes?: ChangeType[],
+        limit?: number,
+    ): Promise<UnifiedHistoryRecord[]> {
+
+        let query = this.#db
+            .selectFrom(NOORM_TABLES.changeset)
+            .select([
+                'id',
+                'name',
+                'change_type',
+                'direction',
+                'status',
+                'executed_at',
+                'executed_by',
+                'duration_ms',
+                'error_message',
+                'checksum',
+            ])
+            .where('config_name', '=', this.#configName)
+            .orderBy('id', 'desc');
+
+        // Filter by change types if specified
+        if (changeTypes && changeTypes.length > 0) {
+
+            query = query.where('change_type', 'in', changeTypes);
+
+        }
+
+        if (limit) {
+
+            query = query.limit(limit);
+
+        }
+
+        const [records, err] = await attempt(() => query.execute());
+
+        if (err) {
+
+            observer.emit('error', {
+                source: 'changeset',
+                error: err,
+                context: { operation: 'get-unified-history' },
+            });
+
+            return [];
+
+        }
+
+        return records.map((r) => ({
+            id: r.id,
+            name: r.name,
+            changeType: r.change_type,
+            direction: r.direction,
+            status: r.status,
+            executedAt: r.executed_at,
+            executedBy: r.executed_by,
+            durationMs: r.duration_ms,
+            errorMessage: r.error_message || null,
+            checksum: r.checksum,
+        }));
+
+    }
+
+    /**
+     * Get build and run history only (excludes changesets).
+     *
+     * Convenience method for screens that want to show only
+     * build/run operations.
+     *
+     * @param limit - Max records to return
+     */
+    async getBuildRunHistory(limit?: number): Promise<UnifiedHistoryRecord[]> {
+
+        return this.getUnifiedHistory(['build', 'run'], limit);
 
     }
 

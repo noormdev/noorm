@@ -106,8 +106,102 @@ const MESSAGE_TEMPLATES: Record<string, (data: Record<string, unknown>) => strin
         `Settings initialized at ${d['path']}${d['force'] ? ' (forced)' : ''}`,
 
     // Generic error
-    error: (d) => `Error in ${d['source']}: ${(d['error'] as Error)?.message ?? d['error']}`,
+    error: (d) => `Error in ${d['source']}: ${formatErrorValue(d['error'])}`,
 };
+
+/**
+ * Format an error value for display.
+ * Handles Error objects, database errors, and plain objects.
+ */
+function formatErrorValue(err: unknown): string {
+
+    if (err === null || err === undefined) {
+
+        return 'Unknown error';
+
+    }
+
+    // Standard Error objects
+    if (err instanceof Error) {
+
+        return err.message;
+
+    }
+
+    // Object with message property
+    if (typeof err === 'object' && 'message' in err && typeof (err as { message: unknown }).message === 'string') {
+
+        return (err as { message: string }).message;
+
+    }
+
+    // Database error objects (PostgreSQL, MySQL, etc.)
+    if (typeof err === 'object') {
+
+        const e = err as Record<string, unknown>;
+
+        // PostgreSQL errors have code, severity, routine
+        if (e['code'] && e['severity']) {
+
+            const parts = [`${e['severity']} ${e['code']}`];
+
+            if (e['routine']) {
+
+                parts.push(`in ${e['routine']}`);
+
+            }
+
+            if (e['where']) {
+
+                parts.push(`- ${String(e['where']).slice(0, 100)}`);
+
+            }
+
+            return parts.join(' ');
+
+        }
+
+        // Generic object - try to summarize
+        const keys = Object.keys(e).slice(0, 3);
+
+        if (keys.length > 0) {
+
+            return `{${keys.map((k) => `${k}: ${summarizeForError(e[k])}`).join(', ')}}`;
+
+        }
+
+    }
+
+    return String(err);
+
+}
+
+/**
+ * Summarize a value for error display.
+ */
+function summarizeForError(value: unknown): string {
+
+    if (value === null || value === undefined) {
+
+        return String(value);
+
+    }
+
+    if (typeof value === 'string') {
+
+        return value.length > 30 ? `"${value.slice(0, 27)}..."` : `"${value}"`;
+
+    }
+
+    if (typeof value === 'number' || typeof value === 'boolean') {
+
+        return String(value);
+
+    }
+
+    return '[...]';
+
+}
 
 /**
  * Generate a human-readable message for an event.

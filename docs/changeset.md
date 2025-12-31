@@ -303,6 +303,132 @@ else if (err instanceof ManifestReferenceError) {
 **Note**: Already-applied changesets are not thrown as errors. Instead, they emit a `changeset:skip` event with `reason: 'already_applied'`. Use `--force` to re-run.
 
 
+## Execution History
+
+The `ChangesetHistory` class provides detailed execution tracking:
+
+```typescript
+import { ChangesetHistory } from './core/changeset'
+
+const history = new ChangesetHistory(db, 'production')
+
+// Get status for a specific changeset
+const status = await history.getStatus('2024-01-15-add-users')
+// {
+//     name: '2024-01-15-add-users',
+//     status: 'success',
+//     appliedAt: Date,
+//     appliedBy: 'Alice <alice@example.com>',
+//     revertedAt: null,
+//     errorMessage: null
+// }
+
+// Get all changeset statuses
+const allStatuses = await history.getAllStatuses()
+for (const [name, status] of allStatuses) {
+    console.log(`${name}: ${status.status}`)
+}
+```
+
+
+### Unified History
+
+Query execution history across all operation types—changesets, builds, and runs:
+
+```typescript
+// Get unified history (all types)
+const records = await history.getUnifiedHistory(undefined, 50)
+
+for (const record of records) {
+    console.log(`${record.changeType}: ${record.name}`)
+    console.log(`  ${record.status} at ${record.executedAt}`)
+    console.log(`  by ${record.executedBy} (${record.durationMs}ms)`)
+}
+
+// Filter by operation type
+const buildHistory = await history.getUnifiedHistory(['build', 'run'], 20)
+const changesetHistory = await history.getUnifiedHistory(['changeset'], 20)
+
+// Convenience method for build/run only
+const buildRunHistory = await history.getBuildRunHistory(20)
+```
+
+
+### File-Level History
+
+Get execution details for individual files within an operation:
+
+```typescript
+// Get file execution records for an operation
+const files = await history.getFileHistory(operationId)
+
+for (const file of files) {
+    console.log(`${file.filepath}: ${file.status}`)
+    if (file.status === 'failed') {
+        console.log(`  Error: ${file.errorMessage}`)
+    }
+    else if (file.status === 'skipped') {
+        console.log(`  Skipped: ${file.skipReason}`)
+    }
+    else {
+        console.log(`  ${file.durationMs}ms`)
+    }
+}
+```
+
+
+### History Types
+
+```typescript
+interface ChangesetHistoryRecord {
+    id: number
+    name: string
+    direction: 'change' | 'revert'
+    status: 'pending' | 'success' | 'failed' | 'reverted'
+    executedAt: Date
+    executedBy: string
+    durationMs: number
+    errorMessage: string | null
+    checksum: string
+}
+
+interface UnifiedHistoryRecord {
+    id: number
+    name: string
+    changeType: 'changeset' | 'build' | 'run'
+    direction: 'change' | 'revert' | null
+    status: 'pending' | 'success' | 'failed' | 'reverted'
+    executedAt: Date
+    executedBy: string
+    durationMs: number
+    errorMessage: string | null
+    checksum: string
+}
+
+interface FileHistoryRecord {
+    id: number
+    changesetId: number
+    filepath: string
+    fileType: 'sql' | 'txt'
+    checksum: string
+    status: 'pending' | 'success' | 'failed' | 'skipped'
+    skipReason: string | null
+    errorMessage: string | null
+    durationMs: number
+}
+```
+
+
+### CLI History Screens
+
+The CLI provides dedicated screens for browsing execution history:
+
+1. **Change History Screen** - Browse all changeset executions
+2. **Change History Detail** - View individual file executions for an operation
+
+Access via the changesets menu (`g` from home, then `h` for history).
+
+
 ## Best Practices
 
 1. **One logical change per changeset** - Don't bundle unrelated changes. If adding users and adding products, make two changesets.
@@ -316,3 +442,5 @@ else if (err instanceof ManifestReferenceError) {
 5. **Date prefix for ordering** - The `YYYY-MM-DD-` prefix ensures changesets apply in chronological order across team members.
 
 6. **Preview before production** - Use `--preview` or `--dry-run` to inspect exactly what will execute.
+
+7. **Review history after failures** - Use `getFileHistory()` to identify exactly which file failed and why.

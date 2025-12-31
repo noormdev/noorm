@@ -20,6 +20,7 @@ import type { NoormDatabase } from '../../../core/shared/index.js';
 import type { Kysely } from 'kysely';
 
 import { attempt } from '@logosdx/utils';
+
 import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
@@ -27,27 +28,7 @@ import { Panel, Spinner } from '../../components/index.js';
 import { discoverChangesets } from '../../../core/changeset/parser.js';
 import { ChangesetHistory } from '../../../core/changeset/history.js';
 import { createConnection } from '../../../core/connection/factory.js';
-
-/**
- * Format relative time for display.
- */
-function formatRelativeTime(date: Date): string {
-
-    const now = Date.now();
-    const diff = now - date.getTime();
-
-    const seconds = Math.floor(diff / 1000);
-    const minutes = Math.floor(seconds / 60);
-    const hours = Math.floor(minutes / 60);
-    const days = Math.floor(hours / 24);
-
-    if (days > 0) return `${days}d ago`;
-    if (hours > 0) return `${hours}h ago`;
-    if (minutes > 0) return `${minutes}m ago`;
-
-    return 'just now';
-
-}
+import { relativeTimeAgo } from '../../utils/date.js';
 
 /**
  * Get status indicator for a changeset.
@@ -329,6 +310,14 @@ export function ChangeListScreen({ params: _params }: ScreenProps): ReactElement
 
         }
 
+        if (input === 'h') {
+
+            navigate('change/history');
+
+            return;
+
+        }
+
         // Enter - smart action based on status
         if (key.return && selectedChangeset) {
 
@@ -443,7 +432,7 @@ export function ChangeListScreen({ params: _params }: ScreenProps): ReactElement
                                     </Text>
                                     <Text dimColor>
                                         {cs.status === 'success' && cs.appliedAt && (
-                                            <> {formatRelativeTime(cs.appliedAt)}</>
+                                            <> {relativeTimeAgo(cs.appliedAt)}</>
                                         )}
                                         {cs.status === 'pending' && '  pending'}
                                         {cs.status === 'reverted' && '  reverted'}
@@ -491,6 +480,7 @@ export function ChangeListScreen({ params: _params }: ScreenProps): ReactElement
                     <Text dimColor>[n]ext</Text>
                     <Text dimColor>[f]f</Text>
                     <Text dimColor>re[w]ind</Text>
+                    <Text dimColor>[h]istory</Text>
                     <Text dimColor>[Esc] Back</Text>
                 </Box>
             </Box>

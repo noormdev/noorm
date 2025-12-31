@@ -42,6 +42,7 @@
         "better-sqlite3": "^12.5.0",
         "commander": "^11.1.0",
         "csv-parse": "^5.6.0",
+        "dayjs": "^1.11.19",
         "eta": "^3.5.0",
         "ink": "^6.5.1",
         "ink-select-input": "^6.2.0",

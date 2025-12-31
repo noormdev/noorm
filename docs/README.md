@@ -83,6 +83,7 @@ console.log(`Using database: ${config.connection.database}`)
 ┌─────────────────────────────────────────────────────────┐
 │                     Observer (Events)                    │
 │  file:*, build:*, config:*, state:*, template:*, lock:* │
+│  teardown:*, sql-terminal:*, changeset:*, explore:*     │
 └────────────────────────────┬────────────────────────────┘
                              │ emits events
                              ▼
@@ -93,10 +94,15 @@ console.log(`Using database: ${config.connection.database}`)
 │  │ X25519   │  │ Encrypted│  │ Merge &  │  │Concur- │ │
 │  │ Keypairs │  │ Storage  │  │ Validate │  │ rency  │ │
 │  └──────────┘  └──────────┘  └──────────┘  └────────┘ │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌────────┐ │
+│  │ Template │  │  Runner  │  │Changeset │  │ Logger │ │
+│  │ Eta, SQL │  │ Execute, │  │ Versioned│  │ Events │ │
+│  │ Helpers  │  │ Tracking │  │ Migrations│  │Rotation│ │
+│  └──────────┘  └──────────┘  └──────────┘  └────────┘ │
 │  ┌──────────┐  ┌──────────┐  ┌──────────┐             │
-│  │ Template │  │  Runner  │  │Changeset │             │
-│  │ Eta, SQL │  │ Execute, │  │ Versioned│             │
-│  │ Helpers  │  │ Tracking │  │ Migrations│             │
+│  │ Explore  │  │ Teardown │  │   SQL    │             │
+│  │ Schema   │  │ Truncate │  │ Terminal │             │
+│  │ Browser  │  │  & Drop  │  │   REPL   │             │
 │  └──────────┘  └──────────┘  └──────────┘             │
 └─────────────────────────────────────────────────────────┘
 ```
@@ -110,7 +116,11 @@ Core modules emit events. The CLI subscribes. This keeps business logic separate
 .noorm/
 ├── state.enc         # Encrypted configs, secrets, identity (gitignored)
 ├── settings.yml      # Build rules, stages (version controlled)
-└── noorm.log         # Operation log (gitignored)
+├── noorm.log         # Operation log (gitignored)
+└── sql-history/      # SQL terminal history (gitignored)
+    ├── dev.json      # History index per config
+    └── dev/          # Gzipped query results
+        └── *.results.gz
 
 ~/.noorm/
 ├── identity.key      # Private key (mode 600)
@@ -120,6 +130,9 @@ Core modules emit events. The CLI subscribes. This keeps business logic separate
 
 ## Documentation Index
 
+
+### Core
+
 | Document | Description |
 |----------|-------------|
 | [Data Model](./datamodel.md) | Complete type reference, database schemas, file formats |
@@ -128,11 +141,32 @@ Core modules emit events. The CLI subscribes. This keeps business logic separate
 | [Config](./config.md) | Resolution, validation, protection, stages |
 | [Secrets](./secrets.md) | Encrypted secrets, required vs optional, CLI workflow |
 | [Settings](./settings.md) | Build rules, stages, project-wide behavior |
-| [Lock](./lock.md) | Concurrent operation protection, table-based locking |
-| [Template](./template.md) | Eta templating, data loading, helper inheritance |
+
+
+### Execution
+
+| Document | Description |
+|----------|-------------|
 | [Runner](./runner.md) | SQL execution, change detection, dry run, preview |
-| [Changeset](./changeset.md) | Versioned migrations, forward/rollback, manifest files |
-| [Logger](./logger.md) | File logging, event classification, rotation |
+| [Changeset](./changeset.md) | Versioned migrations, forward/rollback, execution history |
+| [Template](./template.md) | Eta templating, data loading, helper inheritance |
+| [Lock](./lock.md) | Concurrent operation protection, table-based locking |
+
+
+### Database Tools
+
+| Document | Description |
+|----------|-------------|
+| [Explore](./explore.md) | Schema introspection, browse tables/views/functions |
+| [Teardown](./teardown.md) | Data truncation, schema teardown, reset operations |
+| [SQL Terminal](./sql-terminal.md) | Interactive SQL REPL, query history, result storage |
+
+
+### Operations
+
+| Document | Description |
+|----------|-------------|
+| [Logger](./logger.md) | File logging, log viewer, event classification, rotation |
 
 
 ## Key Patterns

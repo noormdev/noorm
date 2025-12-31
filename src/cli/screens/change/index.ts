@@ -13,3 +13,5 @@ export { ChangeRevertScreen } from './ChangeRevertScreen.js';
 export { ChangeNextScreen } from './ChangeNextScreen.js';
 export { ChangeFFScreen } from './ChangeFFScreen.js';
 export { ChangeRewindScreen } from './ChangeRewindScreen.js';
+export { ChangeHistoryScreen } from './ChangeHistoryScreen.js';
+export { ChangeHistoryDetailScreen } from './ChangeHistoryDetailScreen.js';

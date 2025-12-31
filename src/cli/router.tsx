@@ -28,6 +28,7 @@ import {
     getSection,
     getParentRoute,
 } from './types.js';
+import { observer } from '../core/index.js';
 
 /**
  * Build ancestral history from a route.
@@ -107,12 +108,21 @@ export function RouterProvider({
     const navigate = useCallback(
         (newRoute: Route, newParams: RouteParams = {}) => {
 
+            const previousRoute = route;
+
             // Push current state to history
             setHistory((prev) => [...prev, { route, params }]);
 
             // Navigate to new route
             setRoute(newRoute);
             setParams(newParams);
+
+            // Emit event for listeners
+            observer.emit('router:navigated', {
+                from: previousRoute,
+                to: newRoute,
+                params: { ...newParams },
+            });
 
         },
         [route, params],
@@ -126,6 +136,8 @@ export function RouterProvider({
 
         }
 
+        const poppedRoute = route;
+
         // Pop the last entry from history
         const previous = history[history.length - 1]!;
 
@@ -133,7 +145,13 @@ export function RouterProvider({
         setRoute(previous.route);
         setParams(previous.params);
 
-    }, [history]);
+        // Emit event for listeners (e.g., to clear state when leaving a screen)
+        observer.emit('router:popped', {
+            popped: poppedRoute,
+            to: previous.route,
+        });
+
+    }, [history, route]);
 
     const replace = useCallback((newRoute: Route, newParams: RouteParams = {}) => {
 

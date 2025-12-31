@@ -217,6 +217,39 @@ export function DbListScreen({ params: _params }: ScreenProps): ReactElement {
 
         }
 
+        if (input === 'x') {
+
+            // Only allow explore if connected
+            if (!status?.connected) return;
+
+            navigate('db/explore');
+
+            return;
+
+        }
+
+        if (input === 'w') {
+
+            // Only allow wipe if connected
+            if (!status?.connected) return;
+
+            navigate('db/truncate');
+
+            return;
+
+        }
+
+        if (input === 't') {
+
+            // Only allow teardown if connected
+            if (!status?.connected) return;
+
+            navigate('db/teardown');
+
+            return;
+
+        }
+
     });
 
     // No active config
@@ -308,18 +341,30 @@ export function DbListScreen({ params: _params }: ScreenProps): ReactElement {
                     <Text>
                         <Text color="cyan">[d]</Text> Destroy - Drop all managed objects
                     </Text>
+                    <Text color={status?.connected ? undefined : 'gray'}>
+                        <Text color={status?.connected ? 'cyan' : 'gray'}>[x]</Text> Explore - Browse database schema
+                    </Text>
+                    <Text color={status?.connected ? undefined : 'gray'}>
+                        <Text color={status?.connected ? 'cyan' : 'gray'}>[w]</Text> Wipe - Truncate table data (keep schema)
+                    </Text>
+                    <Text color={status?.connected ? undefined : 'gray'}>
+                        <Text color={status?.connected ? 'cyan' : 'gray'}>[t]</Text> Teardown - Drop user objects (keep noorm)
+                    </Text>
                 </Box>
             </Panel>
 
             <Box paddingX={1}>
                 <Text color="yellow" dimColor>
-                    Warning: These operations modify the database schema directly.
+                    Warning: These operations modify the database directly.
                 </Text>
             </Box>
 
             <Box gap={2}>
                 <Text dimColor>[c] Create</Text>
                 <Text dimColor>[d] Destroy</Text>
+                <Text dimColor>[x] Explore</Text>
+                <Text dimColor>[w] Wipe</Text>
+                <Text dimColor>[t] Teardown</Text>
                 <Text dimColor>[Esc] Back</Text>
             </Box>
         </Box>

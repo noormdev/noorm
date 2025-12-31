@@ -28,10 +28,11 @@ import { testConnection, createConnection } from '../../core/connection/factory.
 import { ChangesetHistory } from '../../core/changeset/history.js';
 import { discoverChangesets } from '../../core/changeset/parser.js';
 import { getLockManager } from '../../core/lock/manager.js';
-import type { ChangesetHistoryRecord } from '../../core/changeset/types.js';
+import type { UnifiedHistoryRecord } from '../../core/changeset/types.js';
 import type { LockStatus } from '../../core/lock/types.js';
 import type { NoormDatabase } from '../../core/shared/index.js';
 import type { Kysely } from 'kysely';
+import { relativeTimeAgo } from '../utils/date.js';
 
 /**
  * Status for the quick status widget.
@@ -69,27 +70,6 @@ function isDatabaseMissingError(error: string): boolean {
 }
 
 /**
- * Format relative time for activity display.
- */
-function formatRelativeTime(date: Date): string {
-
-    const now = Date.now();
-    const diff = now - date.getTime();
-
-    const seconds = Math.floor(diff / 1000);
-    const minutes = Math.floor(seconds / 60);
-    const hours = Math.floor(minutes / 60);
-    const days = Math.floor(hours / 24);
-
-    if (days > 0) return `${days}d ago`;
-    if (hours > 0) return `${hours}h ago`;
-    if (minutes > 0) return `${minutes}m ago`;
-
-    return 'just now';
-
-}
-
-/**
  * Home screen component.
  *
  * Entry point for the TUI. Shows status and quick navigation.
@@ -115,7 +95,7 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
         pendingCount: null,
         lockStatus: null,
     });
-    const [recentActivity, setRecentActivity] = useState<ChangesetHistoryRecord[]>([]);
+    const [recentActivity, setRecentActivity] = useState<UnifiedHistoryRecord[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
     // Compute setup status for all configs
@@ -257,8 +237,8 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
 
                 }
 
-                // Get recent activity
-                const history = await changesetHistory.getHistory(undefined, 5);
+                // Get recent activity (all operation types)
+                const history = await changesetHistory.getUnifiedHistory(undefined, 5);
 
                 await conn.destroy();
 
@@ -590,18 +570,57 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
                     <Text dimColor>No recent activity</Text>
                 ) : (
                     <Box flexDirection="column" gap={0}>
-                        {recentActivity.map((record) => (
-                            <Box key={record.id} gap={1}>
-                                <Text color={record.status === 'success' ? 'green' : 'red'}>
-                                    {record.status === 'success' ? '✓' : '✗'}
-                                </Text>
-                                <Text color={record.direction === 'revert' ? 'yellow' : undefined}>
-                                    {record.direction === 'revert' ? 'Reverted' : 'Applied'}
-                                </Text>
-                                <Text>{record.name}</Text>
-                                <Text dimColor>{formatRelativeTime(record.executedAt)}</Text>
-                            </Box>
-                        ))}
+                        {recentActivity.map((record) => {
+
+                            // Determine status indicator
+                            const statusOk = record.status === 'success';
+                            const statusColor = statusOk ? 'green' : 'red';
+                            const statusIcon = statusOk ? '[OK]' : '[ERR]';
+
+                            // Determine type indicator
+                            let typeLabel: string;
+                            let typeColor: string | undefined;
+
+                            switch (record.changeType) {
+
+                            case 'build':
+                                typeLabel = '[BUILD]';
+                                typeColor = 'blue';
+
+                                break;
+
+                            case 'run':
+                                typeLabel = '[RUN]';
+                                typeColor = 'magenta';
+
+                                break;
+
+                            case 'changeset':
+                            default:
+                                typeLabel = record.direction === 'revert' ? 'Reverted' : 'Applied';
+                                typeColor = record.direction === 'revert' ? 'yellow' : undefined;
+
+                                break;
+
+                            }
+
+                            // Format duration if available
+                            const duration = record.durationMs
+                                ? `(${(record.durationMs / 1000).toFixed(1)}s)`
+                                : '';
+
+                            return (
+                                <Box key={record.id} gap={1}>
+                                    <Text color={statusColor}>{statusIcon}</Text>
+                                    <Text color={typeColor}>{typeLabel}</Text>
+                                    <Text>{record.name}</Text>
+                                    <Text dimColor>
+                                        {relativeTimeAgo(record.executedAt)} {duration}
+                                    </Text>
+                                </Box>
+                            );
+
+                        })}
                     </Box>
                 )}
             </Panel>

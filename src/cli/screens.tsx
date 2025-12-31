@@ -52,8 +52,22 @@ import {
     ChangeNextScreen,
     ChangeFFScreen,
     ChangeRewindScreen,
+    ChangeHistoryScreen,
+    ChangeHistoryDetailScreen,
 } from './screens/change/index.js';
-import { DbListScreen, DbCreateScreen, DbDestroyScreen } from './screens/db/index.js';
+import {
+    DbListScreen,
+    DbCreateScreen,
+    DbDestroyScreen,
+    DbTruncateScreen,
+    DbTeardownScreen,
+    ExploreOverviewScreen,
+    ExploreListScreen,
+    ExploreDetailScreen,
+    SqlTerminalScreen,
+    SqlHistoryScreen,
+    SqlClearScreen,
+} from './screens/db/index.js';
 import {
     SettingsListScreen,
     SettingsInitScreen,
@@ -89,6 +103,13 @@ import {
     KnownUsersScreen,
     IdentityInitScreen,
 } from './screens/identity/index.js';
+import {
+    RunListScreen,
+    RunBuildScreen,
+    RunExecScreen,
+    RunFileScreen,
+    RunDirScreen,
+} from './screens/run/index.js';
 
 /**
  * Screen registry type.
@@ -189,6 +210,14 @@ const SCREENS: ScreenRegistry = {
         component: ChangeRewindScreen,
         label: 'Rewind',
     },
+    'change/history': {
+        component: ChangeHistoryScreen,
+        label: 'Execution History',
+    },
+    'change/history/detail': {
+        component: ChangeHistoryDetailScreen,
+        label: 'File Executions',
+    },
 
     // Database
     db: {
@@ -202,6 +231,82 @@ const SCREENS: ScreenRegistry = {
     'db/destroy': {
         component: DbDestroyScreen,
         label: 'Destroy Database',
+    },
+    'db/truncate': {
+        component: DbTruncateScreen,
+        label: 'Wipe Data',
+    },
+    'db/teardown': {
+        component: DbTeardownScreen,
+        label: 'Schema Teardown',
+    },
+
+    // Database Exploration
+    'db/explore': {
+        component: ExploreOverviewScreen,
+        label: 'Explore Database',
+    },
+    'db/explore/tables': {
+        component: ExploreListScreen,
+        label: 'Tables',
+    },
+    'db/explore/tables/detail': {
+        component: ExploreDetailScreen,
+        label: 'Table Detail',
+    },
+    'db/explore/views': {
+        component: ExploreListScreen,
+        label: 'Views',
+    },
+    'db/explore/views/detail': {
+        component: ExploreDetailScreen,
+        label: 'View Detail',
+    },
+    'db/explore/procedures': {
+        component: ExploreListScreen,
+        label: 'Procedures',
+    },
+    'db/explore/procedures/detail': {
+        component: ExploreDetailScreen,
+        label: 'Procedure Detail',
+    },
+    'db/explore/functions': {
+        component: ExploreListScreen,
+        label: 'Functions',
+    },
+    'db/explore/functions/detail': {
+        component: ExploreDetailScreen,
+        label: 'Function Detail',
+    },
+    'db/explore/types': {
+        component: ExploreListScreen,
+        label: 'Types',
+    },
+    'db/explore/types/detail': {
+        component: ExploreDetailScreen,
+        label: 'Type Detail',
+    },
+    'db/explore/indexes': {
+        component: ExploreListScreen,
+        label: 'Indexes',
+    },
+    'db/explore/fks': {
+        component: ExploreListScreen,
+        label: 'Foreign Keys',
+    },
+
+    // SQL Terminal
+    'db/sql': {
+        component: SqlTerminalScreen,
+        label: 'SQL Terminal',
+    },
+    'db/sql/history': {
+        component: SqlHistoryScreen,
+        label: 'SQL History',
+    },
+    'db/sql/clear': {
+        component: SqlClearScreen,
+        label: 'Clear History',
     },
 
     // Settings
@@ -346,6 +451,28 @@ const SCREENS: ScreenRegistry = {
     'identity/list': {
         component: KnownUsersScreen,
         label: 'Known Users',
+    },
+
+    // Run
+    run: {
+        component: RunListScreen,
+        label: 'Run SQL',
+    },
+    'run/build': {
+        component: RunBuildScreen,
+        label: 'Run Build',
+    },
+    'run/exec': {
+        component: RunExecScreen,
+        label: 'Execute Files',
+    },
+    'run/file': {
+        component: RunFileScreen,
+        label: 'Run File',
+    },
+    'run/dir': {
+        component: RunDirScreen,
+        label: 'Run Directory',
     },
 };
 

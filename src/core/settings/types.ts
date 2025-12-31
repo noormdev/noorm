@@ -191,6 +191,7 @@ export interface StrictConfig {
  * Logging configuration.
  */
 export interface LoggingConfig {
+
     /** Enable file logging */
     enabled?: boolean;
 
@@ -205,6 +206,31 @@ export interface LoggingConfig {
 
     /** Number of rotated files to keep */
     maxFiles?: number;
+
+}
+
+/**
+ * Teardown configuration.
+ *
+ * Controls database reset and teardown behavior.
+ *
+ * @example
+ * ```yaml
+ * teardown:
+ *     preserveTables:
+ *         - AppSettings
+ *         - UserRoles
+ *     postScript: "schema/teardown/cleanup.sql"
+ * ```
+ */
+export interface TeardownConfig {
+
+    /** Tables to always preserve during truncate operations */
+    preserveTables?: string[];
+
+    /** SQL script to run after schema teardown (relative to project root) */
+    postScript?: string;
+
 }
 
 /**
@@ -213,6 +239,7 @@ export interface LoggingConfig {
  * Stored in .noorm/settings.yml and version controlled.
  */
 export interface Settings {
+
     /** Build configuration */
     build?: BuildConfig;
 
@@ -233,6 +260,10 @@ export interface Settings {
 
     /** Universal secrets required by ALL stages */
     secrets?: StageSecret[];
+
+    /** Database teardown/reset configuration */
+    teardown?: TeardownConfig;
+
 }
 
 /**

@@ -5,7 +5,7 @@
  */
 
 // Runner functions
-export { runBuild, runFile, runDir, preview } from './runner.js';
+export { runBuild, runFile, runDir, runFiles, preview, discoverFiles } from './runner.js';
 
 // Tracker
 export { Tracker } from './tracker.js';

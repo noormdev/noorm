@@ -55,3 +55,6 @@ export { Logger, getLogger, resetLogger, type LoggerOptions } from './logger.js'
 
 // Initialization
 export { enableAutoLoggerInit, disableAutoLoggerInit, getInitializedLogger } from './init.js';
+
+// Reader
+export { readLogFile, type ReadLogsOptions, type ReadLogsResult } from './reader.js';

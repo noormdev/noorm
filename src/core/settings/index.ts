@@ -21,6 +21,7 @@ export type {
     PathConfig,
     StrictConfig,
     LoggingConfig,
+    TeardownConfig,
     Settings,
     RuleEvaluationResult,
     RulesEvaluationResult,

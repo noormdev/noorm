@@ -151,6 +151,10 @@ export interface NoormEvents extends SettingsEvents {
     'app:exit': { code: number };
     'app:fatal': { error: Error; type?: 'exception' | 'rejection' };
 
+    // Router
+    'router:navigated': { from: string; to: string; params: Record<string, string | number | boolean | undefined> };
+    'router:popped': { popped: string; to: string };
+
     // Errors
     error: { source: string; error: Error; context?: Record<string, unknown> };
 }

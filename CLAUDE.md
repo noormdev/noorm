@@ -124,6 +124,11 @@ Consistent hotkey conventions across all screens:
 - `[x]` = export where applicable, extend in Lock Status
 - `[s]` = settings on Home, status in Lock List
 
+**Global shortcuts (available everywhere):**
+| Key | Action |
+|-----|--------|
+| `Shift+L` | Toggle log viewer overlay |
+
 Use `numberNav` prop on `SelectList` for 1-9 quick selection in lists.
 
 

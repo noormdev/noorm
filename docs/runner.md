@@ -15,13 +15,14 @@ noorm's runner solves this with checksum-based change detection and execution tr
 
 ## How It Works
 
-The runner provides three execution modes:
+The runner provides four execution modes:
 
 | Mode | Purpose | Input |
 |------|---------|-------|
 | **Build** | Execute all files in schema directory | Schema path from config |
 | **File** | Execute a single SQL file | File path |
 | **Dir** | Execute all files in a directory | Directory path |
+| **Files** | Execute specific files selectively | Array of file paths |
 
 When you run a file:
 
@@ -148,7 +149,7 @@ Every execution is recorded in two tables:
 ## Basic Usage
 
 ```typescript
-import { runBuild, runFile, runDir, preview } from './core/runner'
+import { runBuild, runFile, runDir, runFiles, preview } from './core/runner'
 
 // Execute all files in schema directory
 const result = await runBuild(context, '/project/sql', {
@@ -161,6 +162,16 @@ console.log(`Skipped ${result.filesSkipped} unchanged files`)
 
 // Execute a single file
 const fileResult = await runFile(context, '/project/sql/001_users.sql')
+
+// Execute all files in a directory
+const dirResult = await runDir(context, '/project/sql/views')
+
+// Execute specific files (selective execution)
+const filesResult = await runFiles(context, [
+    '/project/sql/tables/users.sql',
+    '/project/sql/tables/posts.sql',
+    '/project/sql/views/active_users.sql',
+])
 
 // Dry run - render to tmp/ without executing
 const dryResult = await runBuild(context, '/project/sql', {
@@ -188,6 +199,7 @@ const previewsToFile = await preview(context, [
 | `build:complete` | `{ status, filesRun, filesSkipped, filesFailed, durationMs }` | Build finished |
 | `run:file` | `{ filepath, configName }` | Single file execution started |
 | `run:dir` | `{ dirpath, fileCount, configName }` | Directory execution started |
+| `run:files` | `{ fileCount, configName }` | Selective file execution started |
 | `file:before` | `{ filepath, checksum, configName }` | About to execute a file |
 | `file:after` | `{ filepath, status, durationMs, error? }` | File execution completed |
 | `file:skip` | `{ filepath, reason }` | File skipped (unchanged) |
@@ -233,6 +245,31 @@ const contentChecksum = computeChecksumFromContent('SELECT * FROM users')
 // Combine multiple checksums (for changeset-level tracking)
 const combined = computeCombinedChecksum([checksum1, checksum2, checksum3])
 ```
+
+
+### File Filtering
+
+Filter files by include/exclude path patterns:
+
+```typescript
+import { filterFilesByPaths } from './core/shared'
+
+const files = [
+    '/project/schema/tables/users.sql',
+    '/project/schema/views/active.sql',
+    '/project/schema/archive/old.sql',
+]
+
+const filtered = filterFilesByPaths(
+    files,
+    '/project',
+    ['schema/tables', 'schema/views'],  // include
+    ['schema/archive']                   // exclude
+)
+// ['/project/schema/tables/users.sql', '/project/schema/views/active.sql']
+```
+
+This utility is used internally by build operations when applying settings rules. Exclude patterns take precedence when both match.
 
 
 ## Tracker Class

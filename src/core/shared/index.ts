@@ -5,6 +5,9 @@
  * Table types and constants live here to avoid circular dependencies.
  */
 
+// Files
+export { filterFilesByPaths, matchesPathPrefix } from './files.js';
+
 // Tables
 export { NOORM_TABLES } from './tables.js';
 

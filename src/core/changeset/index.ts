@@ -50,6 +50,7 @@ export type {
 
     // History
     ChangesetHistoryRecord,
+    UnifiedHistoryRecord,
     FileHistoryRecord,
 
     // Change detection

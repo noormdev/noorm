@@ -157,6 +157,35 @@ export interface LockStatusInfo {
 }
 
 /**
+ * Global modes that affect multiple operations across the TUI.
+ *
+ * Toggled via global hotkeys (D, F) and displayed in the status bar.
+ */
+export interface GlobalModes {
+    /** Render SQL to tmp/ without executing */
+    dryRun: boolean;
+
+    /** Ignore checksum-based change detection */
+    force: boolean;
+}
+
+/**
+ * Filter state for a single explore category.
+ */
+export interface ExploreFilterEntry {
+    /** Current search/filter term */
+    searchTerm: string;
+
+    /** Key of the highlighted item (for restoring position) */
+    highlightedKey?: string;
+}
+
+/**
+ * Explore filter state keyed by category.
+ */
+export type ExploreFilterState = Record<string, ExploreFilterEntry>;
+
+/**
  * Context value exposed to consumers.
  */
 export interface AppContextValue {
@@ -166,6 +195,7 @@ export interface AppContextValue {
 
     // Project info
     projectName: string;
+    projectRoot: string;
 
     // Core managers (null until loaded)
     stateManager: StateManager | null;
@@ -189,6 +219,16 @@ export interface AppContextValue {
 
     // Lock status (from observer events)
     lockStatus: LockStatusInfo;
+
+    // Global modes (dry-run, force)
+    globalModes: GlobalModes;
+    toggleDryRun: () => void;
+    toggleForce: () => void;
+
+    // Explore filter state (persists search/highlight across navigation)
+    exploreFilters: ExploreFilterState;
+    setExploreFilter: (category: string, filter: ExploreFilterEntry) => void;
+    clearExploreFilters: () => void;
 
     // Actions
     refresh: () => Promise<void>;
@@ -256,6 +296,51 @@ export function AppContextProvider({
     const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('disconnected');
     const [connectedConfig, setConnectedConfig] = useState<string | null>(null);
     const [lockStatus, setLockStatus] = useState<LockStatusInfo>({ status: 'free' });
+
+    // Global modes
+    const [globalModes, setGlobalModes] = useState<GlobalModes>({
+        dryRun: false,
+        force: false,
+    });
+
+    // Explore filter state
+    const [exploreFilters, setExploreFilters] = useState<ExploreFilterState>({});
+
+    /**
+     * Toggle dry-run mode.
+     */
+    const toggleDryRun = useCallback(() => {
+
+        setGlobalModes((prev) => ({ ...prev, dryRun: !prev.dryRun }));
+
+    }, []);
+
+    /**
+     * Toggle force mode.
+     */
+    const toggleForce = useCallback(() => {
+
+        setGlobalModes((prev) => ({ ...prev, force: !prev.force }));
+
+    }, []);
+
+    /**
+     * Set explore filter for a category.
+     */
+    const setExploreFilter = useCallback((category: string, filter: ExploreFilterEntry) => {
+
+        setExploreFilters((prev) => ({ ...prev, [category]: filter }));
+
+    }, []);
+
+    /**
+     * Clear all explore filters.
+     */
+    const clearExploreFilters = useCallback(() => {
+
+        setExploreFilters({});
+
+    }, []);
 
     /**
      * Sync derived state from loaded managers.
@@ -523,6 +608,7 @@ export function AppContextProvider({
             loadingStatus,
             error,
             projectName,
+            projectRoot,
             stateManager,
             settingsManager,
             activeConfig,
@@ -534,6 +620,12 @@ export function AppContextProvider({
             connectionStatus,
             connectedConfig,
             lockStatus,
+            globalModes,
+            toggleDryRun,
+            toggleForce,
+            exploreFilters,
+            setExploreFilter,
+            clearExploreFilters,
             refresh,
             setActiveConfig: handleSetActiveConfig,
         }),
@@ -541,6 +633,7 @@ export function AppContextProvider({
             loadingStatus,
             error,
             projectName,
+            projectRoot,
             stateManager,
             settingsManager,
             activeConfig,
@@ -551,6 +644,12 @@ export function AppContextProvider({
             connectionStatus,
             connectedConfig,
             lockStatus,
+            globalModes,
+            toggleDryRun,
+            toggleForce,
+            exploreFilters,
+            setExploreFilter,
+            clearExploreFilters,
             refresh,
             handleSetActiveConfig,
         ],
@@ -764,6 +863,119 @@ export function useSettings(): Pick<AppContextValue, 'settings' | 'settingsManag
     const { settings, settingsManager } = useAppContext();
 
     return { settings, settingsManager };
+
+}
+
+/**
+ * Get global modes state.
+ *
+ * Returns read-only access to all global modes.
+ *
+ * @example
+ * ```tsx
+ * function RunBuildScreen() {
+ *     const globalModes = useGlobalModes()
+ *
+ *     if (globalModes.dryRun) {
+ *         // Show dry-run warning banner
+ *     }
+ * }
+ * ```
+ */
+export function useGlobalModes(): GlobalModes {
+
+    const { globalModes } = useAppContext();
+
+    return globalModes;
+
+}
+
+/**
+ * Get dry-run mode state and toggle.
+ *
+ * @example
+ * ```tsx
+ * function DryRunIndicator() {
+ *     const { isDryRun, toggleDryRun } = useDryRunMode()
+ *
+ *     return (
+ *         <Text color={isDryRun ? 'yellow' : 'gray'}>
+ *             DRY {isDryRun && '●'}
+ *         </Text>
+ *     )
+ * }
+ * ```
+ */
+export function useDryRunMode(): { isDryRun: boolean; toggleDryRun: () => void } {
+
+    const { globalModes, toggleDryRun } = useAppContext();
+
+    return { isDryRun: globalModes.dryRun, toggleDryRun };
+
+}
+
+/**
+ * Get force mode state and toggle.
+ *
+ * @example
+ * ```tsx
+ * function ForceIndicator() {
+ *     const { isForce, toggleForce } = useForceMode()
+ *
+ *     return (
+ *         <Text color={isForce ? 'red' : 'gray'}>
+ *             FORCE {isForce && '●'}
+ *         </Text>
+ *     )
+ * }
+ * ```
+ */
+export function useForceMode(): { isForce: boolean; toggleForce: () => void } {
+
+    const { globalModes, toggleForce } = useAppContext();
+
+    return { isForce: globalModes.force, toggleForce };
+
+}
+
+/**
+ * Get explore filter state and setters.
+ *
+ * Used to persist search/highlight state across navigation in explore screens.
+ *
+ * @example
+ * ```tsx
+ * function ExploreListScreen() {
+ *     const { getFilter, setFilter } = useExploreFilters()
+ *
+ *     const filter = getFilter('tables')
+ *     // filter.searchTerm, filter.highlightedKey
+ *
+ *     // Update on change
+ *     setFilter('tables', { searchTerm: 'users', highlightedKey: 'public.users' })
+ * }
+ * ```
+ */
+export function useExploreFilters(): {
+    filters: ExploreFilterState;
+    getFilter: (category: string) => ExploreFilterEntry | undefined;
+    setFilter: (category: string, filter: ExploreFilterEntry) => void;
+    clearFilters: () => void;
+} {
+
+    const { exploreFilters, setExploreFilter, clearExploreFilters } = useAppContext();
+
+    const getFilter = useCallback(
+        (category: string) => exploreFilters[category],
+        [exploreFilters],
+    );
+
+    return {
+        filters: exploreFilters,
+        getFilter,
+        setFilter: setExploreFilter,
+        clearFilters: clearExploreFilters,
+    };
 
 }
 

@@ -14,10 +14,12 @@ export { Panel, Divider } from './layout/index.js';
 export type { PanelProps, DividerProps } from './layout/index.js';
 
 // Lists
-export { SelectList, ActionList, StatusList } from './lists/index.js';
+export { SelectList, SearchableList, ActionList, StatusList } from './lists/index.js';
 export type {
     SelectListProps,
     SelectListItem,
+    SearchableListProps,
+    SearchableListFilterState,
     ActionListProps,
     ActionItem,
     StatusListProps,
@@ -82,3 +84,11 @@ export type {
     StageSecret,
     SecretType,
 } from './secrets/index.js';
+
+// Overlays
+export { LogViewerOverlay } from './overlays/index.js';
+export type { LogViewerOverlayProps } from './overlays/index.js';
+
+// Terminal (SQL REPL)
+export { SqlInput, ResultTable } from './terminal/index.js';
+export type { SqlInputProps, ResultTableProps } from './terminal/index.js';

@@ -61,6 +61,8 @@ export type Route =
     | 'change/rewind'
     | 'change/next'
     | 'change/ff'
+    | 'change/history'
+    | 'change/history/detail'
     // Run operations
     | 'run'
     | 'run/list'
@@ -72,6 +74,26 @@ export type Route =
     | 'db'
     | 'db/create'
     | 'db/destroy'
+    | 'db/truncate'
+    | 'db/teardown'
+    // Database exploration
+    | 'db/explore'
+    | 'db/explore/tables'
+    | 'db/explore/tables/detail'
+    | 'db/explore/views'
+    | 'db/explore/views/detail'
+    | 'db/explore/procedures'
+    | 'db/explore/procedures/detail'
+    | 'db/explore/functions'
+    | 'db/explore/functions/detail'
+    | 'db/explore/types'
+    | 'db/explore/types/detail'
+    | 'db/explore/indexes'
+    | 'db/explore/fks'
+    // SQL Terminal
+    | 'db/sql'
+    | 'db/sql/history'
+    | 'db/sql/clear'
     // Lock management
     | 'lock'
     | 'lock/status'
@@ -111,6 +133,12 @@ export interface RouteParams {
 
     /** Stage name (for stage-specific secret operations) */
     stage?: string;
+
+    /** Schema name (for database exploration) */
+    schema?: string;
+
+    /** Operation ID (for history detail view) */
+    operationId?: number;
 }
 
 /**

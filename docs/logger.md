@@ -161,6 +161,36 @@ generateMessage('config:activated', { name: 'prod', previous: 'dev' })
 ```
 
 
+### Database Error Formatting
+
+Error events receive special formatting to extract useful information from database-specific error objects:
+
+```typescript
+// PostgreSQL errors (with severity, code, routine)
+generateMessage('error', {
+    source: 'executor',
+    error: { severity: 'ERROR', code: '42P01', routine: 'RangeVarGetRelidExtended' }
+})
+// "Error in executor: ERROR 42P01 in RangeVarGetRelidExtended"
+
+// Standard Error objects
+generateMessage('error', {
+    source: 'runner',
+    error: new Error('Connection refused')
+})
+// "Error in runner: Connection refused"
+
+// Objects with message property
+generateMessage('error', {
+    source: 'template',
+    error: { message: 'Invalid syntax', line: 42 }
+})
+// "Error in template: Invalid syntax"
+```
+
+This structured error formatting helps identify database-specific issues (constraint violations, syntax errors, connection problems) in logs without requiring access to the full error object.
+
+
 ## Sensitive Data Redaction
 
 The logger automatically masks sensitive fields using smart redaction. Instead of replacing values with `[REDACTED]`, it shows a masked preview with length information:
@@ -396,7 +426,7 @@ await logger.stop()
 
 ## Reading Log Files
 
-Log files are newline-delimited JSON. Parse with:
+Log files are newline-delimited JSON. Parse with shell tools:
 
 ```bash
 # View recent entries
@@ -411,3 +441,81 @@ cat .noorm/noorm.log | jq 'select(.event | startswith("build:"))'
 # Search by time range
 cat .noorm/noorm.log | jq 'select(.timestamp > "2024-01-15T10:00:00")'
 ```
+
+
+### Programmatic Reading
+
+The `readLogFile` function parses log files with graceful error handling:
+
+```typescript
+import { readLogFile } from './core/logger'
+
+// Read last 500 entries (default)
+const result = await readLogFile('.noorm/noorm.log')
+
+console.log(`Total lines: ${result.totalLines}`)
+console.log(`Returned: ${result.entries.length}`)
+console.log(`Has more: ${result.hasMore}`)
+
+for (const entry of result.entries) {
+    console.log(`[${entry.level}] ${entry.event}: ${entry.message}`)
+}
+
+// Read last 100 entries
+const recent = await readLogFile('.noorm/noorm.log', { limit: 100 })
+```
+
+Results are returned in reverse chronological order (newest first). Malformed JSON lines are silently skipped.
+
+### ReadLogsResult
+
+```typescript
+interface ReadLogsResult {
+    /** Parsed log entries (newest first) */
+    entries: LogEntry[]
+
+    /** Total number of lines in the file */
+    totalLines: number
+
+    /** Whether there are more entries beyond the limit */
+    hasMore: boolean
+}
+```
+
+
+## Log Viewer Overlay
+
+The CLI includes a global log viewer accessible via `Shift+L` from anywhere in the app:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Log Viewer                                    [Shift+L]    │
+├─────────────────────────────────────────────────────────────┤
+│  10:30:45 [info]  build:start         Starting schema build │
+│  10:30:46 [info]  file:after          Executed users.sql    │
+│  10:30:46 [debug] file:before         Processing posts.sql  │
+│  10:30:47 [error] file:after          Failed: posts.sql     │
+│                                                              │
+│  ↑/↓ Navigate  Enter Detail  / Search  p Pause  Esc Close  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+Features:
+
+| Feature | Description |
+|---------|-------------|
+| Live tail | Auto-refreshes every 2 seconds |
+| Search | Filter by event, message, or level |
+| Detail view | Shows full JSON for selected entry |
+| Pause/resume | Freeze updates while investigating |
+| Level colors | Red=error, yellow=warn, green=info, gray=debug |
+
+Keyboard shortcuts:
+
+| Key | Action |
+|-----|--------|
+| `↑/↓` | Navigate entries |
+| `Enter` | View entry detail |
+| `/` | Toggle search filter |
+| `p` | Pause/resume live tail |
+| `Esc` | Close overlay |

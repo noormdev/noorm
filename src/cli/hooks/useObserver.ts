@@ -20,7 +20,7 @@
  * const [result, error, pending, cancel] = useEventPromise('build:complete')
  * ```
  */
-import { useEffect, useCallback, useState, useRef, type DependencyList } from 'react';
+import { useEffect, useCallback, useState, useRef, useMemo, type DependencyList } from 'react';
 
 import { observer, type NoormEvents, type NoormEventNames } from '../../core/observer.js';
 
@@ -231,5 +231,59 @@ export function useEventPromise<E extends NoormEventNames>(
     }, []);
 
     return [state.value, state.error, state.pending, cancel];
+
+}
+
+/**
+ * Run a callback when specific screens are popped from history.
+ *
+ * This is useful for cleaning up state when navigating away from a screen.
+ * The callback fires when `back()` is called and the popped route matches
+ * one of the specified screens.
+ *
+ * @param screens - Screen route(s) to watch. Can be a single string or array.
+ *                  Use prefix patterns like 'db/explore' to match all sub-routes.
+ * @param callback - Function to run when a matching screen is popped.
+ *
+ * @example
+ * ```typescript
+ * // Clear explore filter state when any explore screen is popped
+ * useOnScreenPopped('db/explore', () => {
+ *     clearExploreFilters()
+ * })
+ *
+ * // Watch multiple screens
+ * useOnScreenPopped(['config/edit', 'config/add'], () => {
+ *     resetFormState()
+ * })
+ * ```
+ */
+export function useOnScreenPopped(
+    screens: string | string[],
+    callback: (poppedRoute: string, toRoute: string) => void,
+): void {
+
+    const screensArray = useMemo(
+        () => (Array.isArray(screens) ? screens : [screens]),
+        [screens],
+    );
+
+    const callbackRef = useRef(callback);
+    callbackRef.current = callback;
+
+    useOnEvent('router:popped', (data) => {
+
+        // Check if the popped route matches any of the watched screens
+        const matches = screensArray.some((screen) =>
+            data.popped === screen || data.popped.startsWith(screen + '/'),
+        );
+
+        if (matches) {
+
+            callbackRef.current(data.popped, data.to);
+
+        }
+
+    }, [screensArray]);
 
 }
