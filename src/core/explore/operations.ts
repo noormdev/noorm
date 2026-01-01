@@ -18,11 +18,15 @@ import type {
     TypeSummary,
     IndexSummary,
     ForeignKeySummary,
+    TriggerSummary,
+    LockSummary,
+    ConnectionSummary,
     TableDetail,
     ViewDetail,
     ProcedureDetail,
     FunctionDetail,
     TypeDetail,
+    TriggerDetail,
 } from './types.js';
 import { getExploreOperations } from './dialects/index.js';
 import { observer } from '../observer.js';
@@ -71,7 +75,7 @@ export async function fetchOverview(
     // If excluding noorm tables, we need to fetch lists and count manually
     if (!options.includeNoormTables) {
 
-        const [tables, views, procedures, functions, types, indexes, foreignKeys] =
+        const [tables, views, procedures, functions, types, indexes, foreignKeys, triggers, locks, connections] =
             await Promise.all([
                 ops.listTables(db),
                 ops.listViews(db),
@@ -80,6 +84,9 @@ export async function fetchOverview(
                 ops.listTypes(db),
                 ops.listIndexes(db),
                 ops.listForeignKeys(db),
+                ops.listTriggers(db),
+                ops.listLocks(db),
+                ops.listConnections(db),
             ]);
 
         return {
@@ -90,6 +97,9 @@ export async function fetchOverview(
             types: types.length,
             indexes: indexes.filter((i) => !isNoormTable(i.tableName)).length,
             foreignKeys: foreignKeys.filter((fk) => !isNoormTable(fk.tableName)).length,
+            triggers: triggers.filter((t) => !isNoormTable(t.tableName)).length,
+            locks: locks.length,
+            connections: connections.length,
         };
 
     }
@@ -118,6 +128,9 @@ type ListMethodMap = {
     types: TypeSummary[];
     indexes: IndexSummary[];
     foreignKeys: ForeignKeySummary[];
+    triggers: TriggerSummary[];
+    locks: LockSummary[];
+    connections: ConnectionSummary[];
 };
 
 /**
@@ -154,6 +167,9 @@ export async function fetchList<C extends ExploreCategory>(
         types: () => ops.listTypes(db),
         indexes: () => ops.listIndexes(db),
         foreignKeys: () => ops.listForeignKeys(db),
+        triggers: () => ops.listTriggers(db),
+        locks: () => ops.listLocks(db),
+        connections: () => ops.listConnections(db),
     };
 
     const [result, err] = await attempt(() => methodMap[category]());
@@ -192,6 +208,14 @@ export async function fetchList<C extends ExploreCategory>(
 
         }
 
+        if (category === 'triggers') {
+
+            return (result as TriggerSummary[]).filter(
+                (t) => !isNoormTable(t.tableName),
+            ) as ListMethodMap[C];
+
+        }
+
     }
 
     return result as ListMethodMap[C];
@@ -207,6 +231,7 @@ type DetailTypeMap = {
     procedures: ProcedureDetail;
     functions: FunctionDetail;
     types: TypeDetail;
+    triggers: TriggerDetail;
 };
 
 /**
@@ -250,6 +275,7 @@ export async function fetchDetail<C extends DetailCategory>(
         procedures: () => ops.getProcedureDetail(db, name, schema),
         functions: () => ops.getFunctionDetail(db, name, schema),
         types: () => ops.getTypeDetail(db, name, schema),
+        triggers: () => ops.getTriggerDetail(db, name, schema),
     };
 
     const [result, err] = await attempt(() => methodMap[category]());
@@ -357,6 +383,30 @@ export function formatSummaryDescription(
         const fk = item as ForeignKeySummary;
 
         return `${fk.tableName} → ${fk.referencedTable}`;
+
+    }
+
+    case 'triggers': {
+
+        const t = item as TriggerSummary;
+
+        return `${t.timing} ${t.events.join('/')} on ${t.tableName}`;
+
+    }
+
+    case 'locks': {
+
+        const l = item as LockSummary;
+
+        return `${l.lockType} ${l.mode}${l.objectName ? ` on ${l.objectName}` : ''}${l.granted ? '' : ' (waiting)'}`;
+
+    }
+
+    case 'connections': {
+
+        const c = item as ConnectionSummary;
+
+        return `${c.username}@${c.database} (${c.state})`;
 
     }
 

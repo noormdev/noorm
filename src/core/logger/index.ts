@@ -29,6 +29,9 @@ export { classifyEvent, shouldLog } from './classifier.js';
 // Formatter
 export { generateMessage, formatEntry, serializeEntry } from './formatter.js';
 
+// Color Formatter
+export { formatColorLine, formatDuration, STATUS_ICONS } from './color.js';
+
 // Rotation
 export {
     parseSize,

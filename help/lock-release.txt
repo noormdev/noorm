@@ -1,0 +1,20 @@
+LOCK RELEASE - Release the current lock
+
+USAGE
+    noorm lock release
+    noorm -H lock release
+
+DESCRIPTION
+    Releases the current database lock. Only the lock holder can release.
+    Use "lock force" to override ownership.
+
+EXAMPLES
+    noorm -H lock release
+
+EXIT CODES
+    0   Lock released successfully
+    1   No lock to release or not owner
+
+SEE ALSO
+    noorm help lock
+    noorm help lock acquire

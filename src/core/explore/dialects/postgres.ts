@@ -17,11 +17,15 @@ import type {
     TypeSummary,
     IndexSummary,
     ForeignKeySummary,
+    TriggerSummary,
+    LockSummary,
+    ConnectionSummary,
     TableDetail,
     ViewDetail,
     ProcedureDetail,
     FunctionDetail,
     TypeDetail,
+    TriggerDetail,
     ColumnDetail,
     ParameterDetail,
 } from '../types.js';
@@ -120,6 +124,9 @@ export const postgresExploreOperations: DialectExploreOperations = {
             types: parseInt(types.rows[0]?.count ?? '0', 10),
             indexes: parseInt(indexes.rows[0]?.count ?? '0', 10),
             foreignKeys: parseInt(foreignKeys.rows[0]?.count ?? '0', 10),
+            triggers: 0, // TODO: implement count
+            locks: 0,    // TODO: implement count
+            connections: 0, // TODO: implement count
         };
 
     },
@@ -822,6 +829,173 @@ export const postgresExploreOperations: DialectExploreOperations = {
             values,
             attributes,
             baseType: typeRow.basetype ?? undefined,
+        };
+
+    },
+
+    async listTriggers(db: Kysely<unknown>): Promise<TriggerSummary[]> {
+
+        const result = await sql<{
+            trigger_name: string;
+            trigger_schema: string;
+            event_object_table: string;
+            event_object_schema: string;
+            action_timing: string;
+            event_manipulation: string;
+        }>`
+            SELECT DISTINCT
+                trigger_name,
+                trigger_schema,
+                event_object_table,
+                event_object_schema,
+                action_timing,
+                event_manipulation
+            FROM information_schema.triggers
+            WHERE trigger_schema NOT IN (${sql.join(EXCLUDED_SCHEMAS)})
+            ORDER BY trigger_schema, event_object_table, trigger_name
+        `.execute(db);
+
+        // Group by trigger name to combine events
+        const triggerMap = new Map<string, TriggerSummary>();
+
+        for (const row of result.rows) {
+
+            const key = `${row.trigger_schema}.${row.trigger_name}`;
+            const existing = triggerMap.get(key);
+
+            if (existing) {
+
+                existing.events.push(row.event_manipulation as 'INSERT' | 'UPDATE' | 'DELETE');
+
+            }
+            else {
+
+                triggerMap.set(key, {
+                    name: row.trigger_name,
+                    schema: row.trigger_schema,
+                    tableName: row.event_object_table,
+                    tableSchema: row.event_object_schema,
+                    timing: row.action_timing as 'BEFORE' | 'AFTER' | 'INSTEAD OF',
+                    events: [row.event_manipulation as 'INSERT' | 'UPDATE' | 'DELETE'],
+                });
+
+            }
+
+        }
+
+        return Array.from(triggerMap.values());
+
+    },
+
+    async listLocks(db: Kysely<unknown>): Promise<LockSummary[]> {
+
+        const result = await sql<{
+            pid: number;
+            locktype: string;
+            relation: string | null;
+            mode: string;
+            granted: boolean;
+        }>`
+            SELECT
+                l.pid,
+                l.locktype,
+                l.relation::regclass::text as relation,
+                l.mode,
+                l.granted
+            FROM pg_locks l
+            WHERE l.locktype != 'virtualxid'
+            ORDER BY l.pid, l.locktype
+        `.execute(db);
+
+        return result.rows.map((row) => ({
+            pid: row.pid,
+            lockType: row.locktype,
+            objectName: row.relation ?? undefined,
+            mode: row.mode,
+            granted: row.granted,
+        }));
+
+    },
+
+    async listConnections(db: Kysely<unknown>): Promise<ConnectionSummary[]> {
+
+        const result = await sql<{
+            pid: number;
+            usename: string;
+            datname: string;
+            application_name: string;
+            client_addr: string | null;
+            backend_start: Date;
+            state: string;
+        }>`
+            SELECT
+                pid,
+                usename,
+                datname,
+                application_name,
+                client_addr::text,
+                backend_start,
+                COALESCE(state, 'unknown') as state
+            FROM pg_stat_activity
+            WHERE datname = current_database()
+            AND pid != pg_backend_pid()
+            ORDER BY backend_start DESC
+        `.execute(db);
+
+        return result.rows.map((row) => ({
+            pid: row.pid,
+            username: row.usename,
+            database: row.datname,
+            applicationName: row.application_name || undefined,
+            clientAddress: row.client_addr ?? undefined,
+            backendStart: row.backend_start,
+            state: row.state,
+        }));
+
+    },
+
+    async getTriggerDetail(
+        db: Kysely<unknown>,
+        name: string,
+        schema = 'public',
+    ): Promise<TriggerDetail | null> {
+
+        const result = await sql<{
+            trigger_name: string;
+            event_object_table: string;
+            action_timing: string;
+            event_manipulation: string;
+            action_statement: string;
+        }>`
+            SELECT
+                trigger_name,
+                event_object_table,
+                action_timing,
+                event_manipulation,
+                action_statement
+            FROM information_schema.triggers
+            WHERE trigger_name = ${name}
+            AND trigger_schema = ${schema}
+        `.execute(db);
+
+        if (result.rows.length === 0) {
+
+            return null;
+
+        }
+
+        const events = result.rows.map((r) => r.event_manipulation);
+        const row = result.rows[0]!;
+
+        return {
+            name: row.trigger_name,
+            schema,
+            tableName: row.event_object_table,
+            tableSchema: schema,
+            timing: row.action_timing,
+            events,
+            definition: row.action_statement,
+            isEnabled: true, // PostgreSQL triggers are always enabled when they exist
         };
 
     },

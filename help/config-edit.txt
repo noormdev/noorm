@@ -1,0 +1,17 @@
+CONFIG EDIT - Edit an existing configuration
+
+USAGE
+    noorm config edit NAME
+
+ARGUMENTS
+    NAME    Name of the configuration to edit
+
+DESCRIPTION
+    Opens the configuration editor for the named config.
+    Allows modifying connection details, paths, and settings.
+
+    TUI only - not available in headless mode.
+
+SEE ALSO
+    noorm help config
+    noorm help config add

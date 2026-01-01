@@ -1,0 +1,27 @@
+RUN FILE - Execute a single SQL file
+
+USAGE
+    noorm run file PATH
+    noorm -H run file PATH
+
+ARGUMENTS
+    PATH    Path to the SQL file to execute
+
+DESCRIPTION
+    Executes a single SQL file against the database.
+    Supports .sql and .sql.eta (templated) files.
+
+EXAMPLES
+    noorm -H run file seed.sql
+    noorm -H run file migrations/001_init.sql
+
+JSON OUTPUT (--json)
+    {
+        "filepath": "seed.sql",
+        "status": "success",
+        "durationMs": 45
+    }
+
+SEE ALSO
+    noorm help run
+    noorm help run dir

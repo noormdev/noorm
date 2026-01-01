@@ -1,0 +1,45 @@
+CHANGE FF - Fast-forward: apply all pending changesets
+
+USAGE
+    noorm change ff [options]
+    noorm -H change ff
+
+OPTIONS
+    -c, --config NAME   Use specific configuration
+    -f, --force         Skip checksum validation
+    --dry-run           Preview without executing
+
+DESCRIPTION
+    Applies all pending changesets in order. This is the primary command
+    for running migrations in CI/CD pipelines.
+
+    Changesets are applied in alphabetical order by name. Each changeset
+    is executed within a transaction when supported by the database.
+
+    If a changeset fails, execution stops and subsequent changesets are
+    not applied. The failed changeset is marked as 'failed' in the history.
+
+EXAMPLES
+    noorm -H change ff               Apply all pending (uses active config)
+    noorm -H -c prod change ff       Apply all pending on production
+    noorm -H --dry-run change ff     Preview what would be applied
+    noorm -H --force change ff       Skip checksum validation
+
+EXIT CODES
+    0   All changesets applied successfully
+    1   One or more changesets failed
+
+JSON OUTPUT (--json)
+    {
+        "status": "success",
+        "executed": 3,
+        "skipped": 0,
+        "failed": 0,
+        "changesets": [
+            { "name": "001_init", "status": "success", "durationMs": 45 }
+        ]
+    }
+
+SEE ALSO
+    noorm help change
+    noorm help change run

@@ -1,0 +1,33 @@
+RUN BUILD - Execute all SQL files in schema directory
+
+USAGE
+    noorm run build [options]
+    noorm -H run build
+
+OPTIONS
+    -f, --force     Force execution (skip checksum validation)
+    --dry-run       Preview without executing
+
+DESCRIPTION
+    Executes all SQL files in the schema/ directory in alphabetical order.
+    Tracks checksums to skip unchanged files on subsequent runs.
+
+    Use --force to rebuild everything regardless of checksums.
+
+EXAMPLES
+    noorm -H run build               Build schema
+    noorm -H --force run build       Force rebuild all
+    noorm -H --dry-run run build     Preview what would run
+
+JSON OUTPUT (--json)
+    {
+        "status": "success",
+        "filesRun": 5,
+        "filesSkipped": 2,
+        "filesFailed": 0,
+        "durationMs": 1234
+    }
+
+SEE ALSO
+    noorm help run
+    noorm help run file

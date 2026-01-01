@@ -31,8 +31,9 @@ const NOORM_TABLE_NAMES = new Set<string>(Object.values(NOORM_TABLES));
 
 /**
  * Check if a table name is a noorm internal table.
+ * Exported for testing purposes.
  */
-function isNoormTable(name: string): boolean {
+export function isNoormTable(name: string): boolean {
 
     return name.startsWith('__noorm_') || NOORM_TABLE_NAMES.has(name);
 
@@ -142,18 +143,27 @@ export async function truncateData(
             // Skip comments
             if (stmt.startsWith('--')) continue;
 
-            observer.emit('teardown:progress', {
-                category: 'tables',
-                object: stmt.includes('TRUNCATE') ? stmt : null,
-                action: 'truncating',
-            });
+            // Handle multi-statement strings (e.g., SQLite truncate returns two statements)
+            const subStatements = stmt.includes('; ')
+                ? stmt.split('; ').map(s => s.trim()).filter(s => s.length > 0)
+                : [stmt];
 
-            const [, execErr] = await attempt(() => sql.raw(stmt).execute(db));
+            for (const subStmt of subStatements) {
 
-            if (execErr) {
+                observer.emit('teardown:progress', {
+                    category: 'tables',
+                    object: subStmt.includes('DELETE') || subStmt.includes('TRUNCATE') ? subStmt : null,
+                    action: 'truncating',
+                });
 
-                observer.emit('teardown:error', { error: execErr, object: stmt });
-                throw execErr;
+                const [, execErr] = await attempt(() => sql.raw(subStmt).execute(db));
+
+                if (execErr) {
+
+                    observer.emit('teardown:error', { error: execErr, object: subStmt });
+                    throw execErr;
+
+                }
 
             }
 

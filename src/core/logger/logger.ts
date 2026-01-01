@@ -25,6 +25,7 @@ import { observer, type NoormEvents } from '../observer.js';
 import { isCi } from '../environment.js';
 import { classifyEvent, shouldLog } from './classifier.js';
 import { generateMessage, serializeEntry, formatEntry } from './formatter.js';
+import { formatColorLine } from './color.js';
 import { filterData } from './redact.js';
 import { checkAndRotate } from './rotation.js';
 import type { LogLevel, LoggerConfig, LoggerState, EntryLevel } from './types.js';
@@ -53,6 +54,9 @@ export interface LoggerOptions {
 
     /** Console stream to write to (defaults to stdout in CI mode) */
     console?: Writable;
+
+    /** Enable colored output for console (default: true if console provided) */
+    color?: boolean;
 }
 
 /**
@@ -71,6 +75,7 @@ export class Logger {
     #context: Record<string, unknown>;
     #file: Writable | null = null;
     #console: Writable | null = null;
+    #color: boolean = false;
     #queue: EventQueue<NoormEvents, RegExp> | null = null;
     #state: LoggerState = 'idle';
     #rotationInterval: ReturnType<typeof setInterval> | null = null;
@@ -87,11 +92,13 @@ export class Logger {
         if (options.console) {
 
             this.#console = options.console;
+            this.#color = options.color ?? true; // Default to color if console provided
 
         }
         else if (isCi()) {
 
             this.#console = process.stdout;
+            this.#color = options.color ?? false; // No color in CI by default
 
         }
 
@@ -339,34 +346,65 @@ export class Logger {
     }
 
     /**
-     * Write a compact log line (CI mode).
+     * Write a compact log line.
+     *
+     * Console gets colored output if color is enabled.
+     * File always gets plain text for parseability.
      */
     #writeLine(level: EntryLevel, event: string, data: Record<string, unknown>): void {
 
-        const timestamp = new Date().toISOString();
         const message = generateMessage(event, data);
-        const levelLabel = level.toUpperCase().padEnd(5);
+        const includeData = this.#config.level === 'verbose';
 
-        let line = `[${timestamp}] [${levelLabel}] [${event}] ${message}`;
-
-        // Add data in verbose mode
-        if (this.#config.level === 'verbose' && Object.keys(data).length > 0) {
-
-            line += ` ${JSON.stringify(data)}`;
-
-        }
-
-        line += '\n';
-
+        // Console output (colored if enabled)
         if (this.#console) {
 
-            this.#console.write(line);
+            if (this.#color) {
+
+                // Colored format: icon event  message  key=value key=value
+                const colorLine = formatColorLine(
+                    level,
+                    event,
+                    message,
+                    includeData ? data : undefined,
+                );
+
+                this.#console.write(colorLine + '\n');
+
+            }
+            else {
+
+                // Plain format for non-color console
+                const timestamp = new Date().toISOString();
+                const levelLabel = level.toUpperCase().padEnd(5);
+                let line = `[${timestamp}] [${levelLabel}] [${event}] ${message}`;
+
+                if (includeData && Object.keys(data).length > 0) {
+
+                    line += ` ${JSON.stringify(data)}`;
+
+                }
+
+                this.#console.write(line + '\n');
+
+            }
 
         }
 
+        // File output (always plain text)
         if (this.#file) {
 
-            this.#file.write(line);
+            const timestamp = new Date().toISOString();
+            const levelLabel = level.toUpperCase().padEnd(5);
+            let line = `[${timestamp}] [${levelLabel}] [${event}] ${message}`;
+
+            if (includeData && Object.keys(data).length > 0) {
+
+                line += ` ${JSON.stringify(data)}`;
+
+            }
+
+            this.#file.write(line + '\n');
 
         }
 

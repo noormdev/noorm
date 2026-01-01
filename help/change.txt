@@ -1,0 +1,38 @@
+CHANGE - Manage and apply changesets
+
+USAGE
+    noorm change [subcommand] [options]
+
+SUBCOMMANDS
+    (none)      List all changesets and their status
+    ff          Fast-forward: apply all pending changesets
+    run NAME    Apply a specific changeset
+    revert NAME Revert a specific changeset
+    history     Show execution history
+
+DESCRIPTION
+    Changesets are versioned SQL migrations stored in the changesets/
+    directory. Each changeset has forward (apply) and backward (revert)
+    SQL files.
+
+    Changeset status:
+    - pending   Not yet applied
+    - applied   Successfully applied
+    - failed    Execution failed
+
+EXAMPLES
+    noorm -H change                  List changesets
+    noorm -H change ff               Apply all pending changesets
+    noorm -H change run 001_users    Apply specific changeset
+    noorm -H change revert 001_users Revert specific changeset
+
+JSON OUTPUT (--json)
+    [
+        { "name": "001_users", "status": "applied" },
+        { "name": "002_posts", "status": "pending" }
+    ]
+
+SEE ALSO
+    noorm help change ff
+    noorm help change run
+    noorm help change history

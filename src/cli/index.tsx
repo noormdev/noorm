@@ -10,11 +10,11 @@
  * # TUI mode (default)
  * noorm                     # Open home screen
  * noorm config              # Jump to config screen
- * noorm config:edit prod    # Edit specific config
+ * noorm config edit prod    # Edit specific config
  *
  * # Headless mode
- * noorm -H run:build        # Run build non-interactively
- * noorm --json change:ff    # JSON output for scripting
+ * noorm -H run build        # Run build non-interactively
+ * noorm --json change ff    # JSON output for scripting
  * ```
  */
 import meow from 'meow';
@@ -30,57 +30,58 @@ import { enableAutoLoggerInit } from '../core/logger/init.js';
  */
 const HELP_TEXT = `
   Usage
-    $ noorm [command] [options]
+    $ noorm [command] [subcommand] [options]
 
   Commands
-    (none)              Open home screen (TUI mode)
-    config              Manage database configurations
-    config:add          Add a new configuration
-    config:edit <name>  Edit a configuration
-    config:rm <name>    Remove a configuration
-    config:use <name>   Set active configuration
+    (none)               Open home screen (TUI mode)
+    config               Manage database configurations
+    config add           Add a new configuration
+    config edit <name>   Edit a configuration
+    config rm <name>     Remove a configuration
+    config use <name>    Set active configuration
 
-    change              Manage changesets
-    change:add          Create a new changeset
-    change:run <name>   Apply a changeset
-    change:revert <name> Revert a changeset
-    change:next [count] Apply next N pending changesets
-    change:ff           Apply all pending changesets
-    change:rewind [n|name] Revert recent changesets
+    change               Manage changesets
+    change add           Create a new changeset
+    change run <name>    Apply a changeset
+    change revert <name> Revert a changeset
+    change next [count]  Apply next N pending changesets
+    change ff            Apply all pending changesets
+    change rewind [n]    Revert recent changesets
 
-    run:build           Build schema from SQL files
-    run:file <path>     Execute a single SQL file
-    run:dir <path>      Execute all SQL in a directory
+    run build            Build schema from SQL files
+    run file <path>      Execute a single SQL file
+    run dir <path>       Execute all SQL in a directory
 
-    db:create           Create database and tracking tables
-    db:destroy          Drop all managed objects
+    db create            Create database and tracking tables
+    db destroy           Drop all managed objects
+    db explore           Explore database schema
 
-    lock:status         Show lock status
-    lock:acquire        Acquire lock
-    lock:release        Release lock
-    lock:force          Force release lock
+    lock status          Show lock status
+    lock acquire         Acquire lock
+    lock release         Release lock
+    lock force           Force release lock
 
-    settings            View/edit project settings
-    secret              Manage secrets
-    identity            Manage identity
+    settings             View/edit project settings
+    secret               Manage secrets
+    identity             Manage identity
 
   Options
-    --headless, -H      Force headless mode (no TUI)
-    --tui, -T           Force TUI mode (ignore TTY detection)
-    --json              Output JSON (headless mode only)
-    --yes, -y           Skip confirmation prompts
-    --config, -c <name> Use specific configuration
-    --force, -f         Force operation
-    --dry-run           Preview without executing
-    --help, -h          Show this help
-    --version           Show version
+    --headless, -H       Force headless mode (no TUI)
+    --tui, -T            Force TUI mode (ignore TTY detection)
+    --json               Output JSON (headless mode only)
+    --yes, -y            Skip confirmation prompts
+    --config, -c <name>  Use specific configuration (defaults to active config)
+    --force, -f          Force operation
+    --dry-run            Preview without executing
+    --help, -h           Show this help
+    --version            Show version
 
   Examples
-    $ noorm                           # Start TUI
-    $ noorm config                    # Go to config screen
-    $ noorm -H run:build              # Build in CI
-    $ noorm --json change:ff          # Fast-forward with JSON output
-    $ noorm -c prod change:run users  # Run changeset on prod config
+    $ noorm                            # Start TUI
+    $ noorm config                     # Go to config screen
+    $ noorm -H run build               # Build in CI
+    $ noorm --json change ff           # Fast-forward with JSON output
+    $ noorm -c prod change run users   # Run changeset on prod config
 `;
 
 /**
@@ -147,14 +148,54 @@ function parseCli(): ParsedCli {
 }
 
 /**
+ * Actions that always take a parameter as their next argument.
+ * After these, stop building the route and treat remaining args as params.
+ */
+const TERMINAL_ACTIONS = new Set([
+    'help',     // help <topic> - everything after is the topic
+    'use',      // config use <name>
+    'edit',     // config edit <name>
+    'rm',       // config rm <name>
+    'add',      // config add (no param but terminal)
+    'run',      // change run <name>
+    'revert',   // change revert <name>
+    'file',     // run file <path>
+    'dir',      // run dir <path>
+    'detail',   // db explore tables detail <name>
+]);
+
+/**
+ * Check if a token looks like a route segment vs a parameter.
+ *
+ * Route segments are lowercase command words.
+ * Parameters are paths, numbers, or names with special chars.
+ */
+function isRouteSegment(token: string): boolean {
+
+    // Numbers are params (counts)
+    if (/^\d+$/.test(token)) return false;
+
+    // Paths are params (contain / or end with .sql/.eta)
+    if (token.includes('/') || token.endsWith('.sql') || token.endsWith('.eta')) return false;
+
+    // Route segments are lowercase letters only
+    return /^[a-z]+$/.test(token);
+
+}
+
+/**
  * Parse route and params from CLI input array.
  *
- * Supports both colon notation (config:edit) and space notation (config edit).
+ * Supports colon notation (config:edit), slash notation (config/edit),
+ * and space notation (config edit). Multi-level routes are supported.
  *
  * @example
  * ```typescript
  * parseRouteFromInput(['config', 'edit', 'prod'])
  * // { route: 'config/edit', params: { name: 'prod' } }
+ *
+ * parseRouteFromInput(['db', 'explore', 'tables', 'detail'])
+ * // { route: 'db/explore/tables/detail', params: {} }
  *
  * parseRouteFromInput(['config:edit', 'prod'])
  * // { route: 'config/edit', params: { name: 'prod' } }
@@ -168,66 +209,62 @@ function parseRouteFromInput(input: string[]): { route: Route; params: RoutePara
 
     }
 
-    // Handle colon notation (config:edit)
     const firstArg = input[0]!;
 
+    // Handle colon notation (config:edit) - convert to slash
     if (firstArg.includes(':')) {
 
-        const [section, action] = firstArg.split(':');
-        const route = action ? `${section}/${action}` : section;
+        const normalized = firstArg.replace(/:/g, '/');
         const params = extractParams(input.slice(1));
 
-        return { route: route as Route, params };
+        return { route: normalized as Route, params };
 
     }
 
-    // Handle space notation (config edit)
-    const [section, ...rest] = input;
+    // Handle slash notation passed directly (config/edit)
+    if (firstArg.includes('/')) {
 
-    // Check if second arg is an action or a param
-    const actions = new Set([
-        'add',
-        'edit',
-        'rm',
-        'cp',
-        'use',
-        'validate',
-        'export',
-        'import',
-        'set',
-        'run',
-        'revert',
-        'rewind',
-        'next',
-        'ff',
-        'list',
-        'build',
-        'exec',
-        'file',
-        'dir',
-        'create',
-        'destroy',
-        'status',
-        'acquire',
-        'release',
-        'force',
-        'init',
-    ]);
+        const params = extractParams(input.slice(1));
 
-    if (rest.length > 0 && actions.has(rest[0]!)) {
-
-        const action = rest[0]!;
-        const route = `${section}/${action}` as Route;
-        const params = extractParams(rest.slice(1));
-
-        return { route, params };
+        return { route: firstArg as Route, params };
 
     }
 
-    // Just a section route with params
-    const params = extractParams(rest);
+    // Handle space notation (db explore tables detail)
+    // Consume tokens as route segments until we hit a parameter or terminal action
+    const routeSegments: string[] = [];
+    let paramStartIndex = 0;
 
-    return { route: section as Route, params };
+    for (let i = 0; i < input.length; i++) {
+
+        const token = input[i]!;
+
+        if (isRouteSegment(token)) {
+
+            routeSegments.push(token);
+            paramStartIndex = i + 1;
+
+            // If this is a terminal action, stop - next args are params
+            if (TERMINAL_ACTIONS.has(token)) {
+
+                break;
+
+            }
+
+        }
+        else {
+
+            // Found a parameter, stop building route
+            break;
+
+        }
+
+    }
+
+    const route = routeSegments.join('/') || 'home';
+    const params = extractParams(input.slice(paramStartIndex));
+
+    return { route: route as Route, params };
 
 }
 
@@ -236,6 +273,7 @@ function parseRouteFromInput(input: string[]): { route: Route; params: RoutePara
  *
  * Convention:
  * - First positional arg is usually `name`
+ * - Multiple name-like args are joined as `topic` (for help command)
  * - Numeric arg could be `count`
  * - Path-like arg is `path`
  */
@@ -248,6 +286,7 @@ function extractParams(args: string[]): RouteParams {
     }
 
     const params: RouteParams = {};
+    const nameArgs: string[] = [];
 
     for (const arg of args) {
 
@@ -269,12 +308,22 @@ function extractParams(args: string[]): RouteParams {
 
         }
 
-        // Default to name parameter
-        if (!params.name) {
+        // Collect name-like arguments
+        nameArgs.push(arg);
 
-            params.name = arg;
+    }
 
-        }
+    // First name arg becomes `name`, all joined become `topic`
+    if (nameArgs.length > 0) {
+
+        params.name = nameArgs[0];
+
+    }
+
+    if (nameArgs.length > 1) {
+
+        // Multiple args - join as topic (for help db explore tables)
+        params.topic = nameArgs.join('/');
 
     }
 

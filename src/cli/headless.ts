@@ -4,6 +4,8 @@
  * When running without a TTY or with --headless flag, noorm executes
  * commands directly and outputs results as text or JSON.
  *
+ * Uses the Logger for event output with optional colors.
+ *
  * @example
  * ```bash
  * # Explicit headless mode
@@ -16,16 +18,21 @@
  * CI=1 noorm change:ff
  * ```
  */
-import { attempt } from '@logosdx/utils';
+import { createWriteStream } from 'node:fs';
+import { join } from 'node:path';
 
-import { observer, type NoormEvents, type NoormEventNames } from '../core/observer.js';
+import { attempt, attemptSync } from '@logosdx/utils';
+
+import { Logger, type LoggerOptions } from '../core/logger/index.js';
+import { getSettingsManager } from '../core/settings/index.js';
 
 import type { Route, RouteParams, CliFlags } from './types.js';
+import { HEADLESS_HANDLERS } from './headless-handlers.js';
 
 /**
  * Headless command handler function signature.
  */
-export type HeadlessHandler = (params: RouteParams, flags: CliFlags) => Promise<number>;
+export type HeadlessHandler = (params: RouteParams, flags: CliFlags, logger: Logger) => Promise<number>;
 
 /**
  * Registry of headless command handlers.
@@ -34,229 +41,8 @@ export type HeadlessHandler = (params: RouteParams, flags: CliFlags) => Promise<
  * Routes without handlers will print an error.
  */
 const HANDLERS: Partial<Record<Route, HeadlessHandler>> = {
-    // TODO: Add handlers as core modules are integrated
-    // 'run/build': handleRunBuild,
-    // 'change/ff': handleChangeFf,
-    // etc.
+    ...HEADLESS_HANDLERS,
 };
-
-/**
- * Event logger for headless mode.
- *
- * Subscribes to observer events and logs them to stdout/stderr.
- */
-export class HeadlessLogger {
-
-    #json: boolean;
-    #cleanup: Array<() => void> = [];
-
-    constructor(json: boolean) {
-
-        this.#json = json;
-
-    }
-
-    /**
-     * Start logging observer events.
-     */
-    start(): void {
-
-        // Subscribe to all events using pattern matching
-        const cleanup = observer.on(/.*/, ({ event, data }) => {
-
-            this.#logEvent(event as NoormEventNames, data);
-
-        });
-
-        this.#cleanup.push(cleanup);
-
-    }
-
-    /**
-     * Stop logging and clean up subscriptions.
-     */
-    stop(): void {
-
-        for (const cleanup of this.#cleanup) {
-
-            cleanup();
-
-        }
-
-        this.#cleanup = [];
-
-    }
-
-    /**
-     * Log a single event.
-     */
-    #logEvent<E extends NoormEventNames>(event: E, data: NoormEvents[E]): void {
-
-        if (this.#json) {
-
-            this.#logJson(event, data);
-
-        }
-        else {
-
-            this.#logHuman(event, data);
-
-        }
-
-    }
-
-    /**
-     * JSON output format.
-     */
-    #logJson<E extends NoormEventNames>(event: E, data: NoormEvents[E]): void {
-
-        const output = {
-            event,
-            timestamp: new Date().toISOString(),
-            ...data,
-        };
-
-        console.log(JSON.stringify(output));
-
-    }
-
-    /**
-     * Human-readable output format.
-     */
-    #logHuman<E extends NoormEventNames>(event: E, data: NoormEvents[E]): void {
-
-        const formatted = this.#formatEvent(event, data);
-
-        if (formatted) {
-
-            console.log(formatted);
-
-        }
-
-    }
-
-    /**
-     * Format an event for human-readable output.
-     */
-    #formatEvent<E extends NoormEventNames>(event: E, data: NoormEvents[E]): string | null {
-
-        // Type-safe event formatting
-        switch (event) {
-
-        case 'build:start': {
-
-            const d = data as NoormEvents['build:start'];
-
-            return `Building schema... (${d.fileCount} files)`;
-
-        }
-
-        case 'build:complete': {
-
-            const d = data as NoormEvents['build:complete'];
-            const status = d.status === 'success' ? '✓' : d.status === 'partial' ? '⚠' : '✗';
-
-            return `${status} Build ${d.status}: ${d.filesRun} run, ${d.filesSkipped} skipped, ${d.filesFailed} failed (${d.durationMs}ms)`;
-
-        }
-
-        case 'file:before': {
-
-            const d = data as NoormEvents['file:before'];
-
-            return `  Running ${d.filepath}...`;
-
-        }
-
-        case 'file:after': {
-
-            const d = data as NoormEvents['file:after'];
-            const status = d.status === 'success' ? '✓' : '✗';
-
-            return `  ${status} ${d.filepath} (${d.durationMs}ms)`;
-
-        }
-
-        case 'file:skip': {
-
-            const d = data as NoormEvents['file:skip'];
-
-            return `  ○ ${d.filepath} (${d.reason})`;
-
-        }
-
-        case 'changeset:start': {
-
-            const d = data as NoormEvents['changeset:start'];
-
-            return `${d.direction === 'change' ? 'Applying' : 'Reverting'} ${d.name}...`;
-
-        }
-
-        case 'changeset:complete': {
-
-            const d = data as NoormEvents['changeset:complete'];
-            const status = d.status === 'success' ? '✓' : '✗';
-
-            return `${status} ${d.name} ${d.direction === 'change' ? 'applied' : 'reverted'} (${d.durationMs}ms)`;
-
-        }
-
-        case 'lock:acquired': {
-
-            const d = data as NoormEvents['lock:acquired'];
-
-            return `🔒 Lock acquired (expires ${d.expiresAt.toISOString()})`;
-
-        }
-
-        case 'lock:released': {
-
-            return '🔓 Lock released';
-
-        }
-
-        case 'lock:blocked': {
-
-            const d = data as NoormEvents['lock:blocked'];
-
-            return `⚠ Lock held by ${d.holder} since ${d.heldSince.toISOString()}`;
-
-        }
-
-        case 'error': {
-
-            const d = data as NoormEvents['error'];
-
-            return `Error [${d.source}]: ${d.error.message}`;
-
-        }
-
-        case 'connection:open': {
-
-            const d = data as NoormEvents['connection:open'];
-
-            return `Connected to ${d.configName} (${d.dialect})`;
-
-        }
-
-        case 'connection:error': {
-
-            const d = data as NoormEvents['connection:error'];
-
-            return `Connection error: ${d.error}`;
-
-        }
-
-        default:
-            // Don't log events we don't have human formatting for
-            return null;
-
-        }
-
-    }
-
-}
 
 /**
  * Detect if we should run in headless mode.
@@ -326,6 +112,45 @@ export function shouldRunHeadless(flags: CliFlags): boolean {
 }
 
 /**
+ * Create a logger for headless mode.
+ *
+ * Always returns a Logger. Uses colored console output unless JSON mode.
+ * File logging attempted but not required.
+ */
+async function createHeadlessLogger(
+    projectRoot: string,
+    json: boolean,
+): Promise<Logger> {
+
+    const settingsManager = getSettingsManager(projectRoot);
+    const [, settingsErr] = await attempt(() => settingsManager.load());
+
+    // Use loaded settings or empty defaults
+    const settings = settingsErr ? {} : settingsManager.settings;
+
+    // Attempt file logging (optional)
+    const logPath = join(projectRoot, '.noorm', 'noorm.log');
+    const [fileStream] = attemptSync(() =>
+        createWriteStream(logPath, { flags: 'a' }),
+    );
+
+    const options: LoggerOptions = {
+        projectRoot,
+        settings,
+        config: {
+            enabled: true,
+            level: 'info',
+        },
+        console: json ? undefined : process.stdout,
+        file: fileStream ?? undefined,
+        color: !json,
+    };
+
+    return new Logger(options);
+
+}
+
+/**
  * Run a command in headless mode.
  *
  * @returns Exit code (0 for success, non-zero for errors)
@@ -336,53 +161,33 @@ export async function runHeadless(
     flags: CliFlags,
 ): Promise<number> {
 
+    const projectRoot = process.cwd();
+    const logger = await createHeadlessLogger(projectRoot, flags.json);
+    await logger.start();
+
     const handler = HANDLERS[route];
 
     if (!handler) {
 
-        const message = flags.json
-            ? JSON.stringify({ error: 'unknown_command', route })
-            : `Error: Unknown command '${route}'`;
-
-        console.error(message);
-
+        logger.error(`Unknown command: ${route}`);
+        await logger.stop();
         return 1;
 
     }
 
-    // Set up event logging
-    const logger = new HeadlessLogger(flags.json);
+    // Run the handler
+    const [exitCode, err] = await attempt(() => handler(params, flags, logger));
 
-    logger.start();
+    if (err) {
 
-    const [exitCode, error] = await attempt(() => handler(params, flags));
-
-    logger.stop();
-
-    if (error) {
-
-        const err = error instanceof Error ? error : new Error(String(error));
-
-        if (flags.json) {
-
-            console.error(
-                JSON.stringify({
-                    error: 'execution_failed',
-                    message: err.message,
-                }),
-            );
-
-        }
-        else {
-
-            console.error(`Error: ${err.message}`);
-
-        }
-
+        const error = err instanceof Error ? err : new Error(String(err));
+        logger.error(error.message);
+        await logger.stop();
         return 1;
 
     }
 
+    await logger.stop();
     return exitCode;
 
 }

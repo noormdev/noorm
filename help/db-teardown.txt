@@ -1,0 +1,31 @@
+DB TEARDOWN - Drop all database objects
+
+USAGE
+    noorm db teardown
+    noorm -H db teardown
+
+DESCRIPTION
+    Drops all database objects including tables, views, functions,
+    and types. Keeps noorm tracking tables.
+
+    WARNING: This is a destructive operation. Protected configs
+    require --force or confirmation.
+
+EXAMPLES
+    noorm -H db teardown
+    noorm -H -y db teardown          Skip confirmation
+
+JSON OUTPUT (--json)
+    {
+        "dropped": {
+            "tables": 5,
+            "views": 2,
+            "functions": 3,
+            "types": 1
+        },
+        "count": 11
+    }
+
+SEE ALSO
+    noorm help db
+    noorm help db truncate

@@ -16,19 +16,18 @@ import type {
     TypeSummary,
     IndexSummary,
     ForeignKeySummary,
+    TriggerSummary,
+    LockSummary,
+    ConnectionSummary,
     TableDetail,
     ViewDetail,
     ProcedureDetail,
     FunctionDetail,
     TypeDetail,
+    TriggerDetail,
     ColumnDetail,
     ParameterDetail,
 } from '../types.js';
-
-/**
- * Schemas to exclude from exploration (system schemas).
- */
-const EXCLUDED_SCHEMAS = ['information_schema', 'mysql', 'performance_schema', 'sys'];
 
 /**
  * MySQL explore operations.
@@ -51,6 +50,9 @@ export const mysqlExploreOperations: DialectExploreOperations = {
                 types: 0,
                 indexes: 0,
                 foreignKeys: 0,
+                triggers: 0,
+                locks: 0,
+                connections: 0,
             };
 
         }
@@ -106,6 +108,9 @@ export const mysqlExploreOperations: DialectExploreOperations = {
             types: 0, // MySQL doesn't have custom types like PostgreSQL
             indexes: parseInt(String(indexes.rows[0]?.count ?? '0'), 10),
             foreignKeys: parseInt(String(foreignKeys.rows[0]?.count ?? '0'), 10),
+            triggers: 0, // TODO: implement count
+            locks: 0,    // TODO: implement count
+            connections: 0, // TODO: implement count
         };
 
     },
@@ -684,6 +689,146 @@ export const mysqlExploreOperations: DialectExploreOperations = {
 
         // MySQL doesn't have custom types
         return null;
+
+    },
+
+    async listTriggers(db: Kysely<unknown>): Promise<TriggerSummary[]> {
+
+        const result = await sql<{
+            TRIGGER_NAME: string;
+            TRIGGER_SCHEMA: string;
+            EVENT_OBJECT_TABLE: string;
+            ACTION_TIMING: string;
+            EVENT_MANIPULATION: string;
+        }>`
+            SELECT
+                TRIGGER_NAME,
+                TRIGGER_SCHEMA,
+                EVENT_OBJECT_TABLE,
+                ACTION_TIMING,
+                EVENT_MANIPULATION
+            FROM information_schema.TRIGGERS
+            WHERE TRIGGER_SCHEMA = DATABASE()
+            ORDER BY EVENT_OBJECT_TABLE, TRIGGER_NAME
+        `.execute(db);
+
+        return result.rows.map((row) => ({
+            name: row.TRIGGER_NAME,
+            schema: row.TRIGGER_SCHEMA,
+            tableName: row.EVENT_OBJECT_TABLE,
+            tableSchema: row.TRIGGER_SCHEMA,
+            timing: row.ACTION_TIMING as 'BEFORE' | 'AFTER' | 'INSTEAD OF',
+            events: [row.EVENT_MANIPULATION as 'INSERT' | 'UPDATE' | 'DELETE'],
+        }));
+
+    },
+
+    async listLocks(db: Kysely<unknown>): Promise<LockSummary[]> {
+
+        // MySQL 8.0+ uses performance_schema.metadata_locks
+        const result = await sql<{
+            OBJECT_TYPE: string;
+            OBJECT_NAME: string | null;
+            LOCK_TYPE: string;
+            LOCK_STATUS: string;
+            OWNER_THREAD_ID: number;
+        }>`
+            SELECT
+                OBJECT_TYPE,
+                OBJECT_NAME,
+                LOCK_TYPE,
+                LOCK_STATUS,
+                OWNER_THREAD_ID
+            FROM performance_schema.metadata_locks
+            WHERE OBJECT_SCHEMA = DATABASE()
+            ORDER BY OWNER_THREAD_ID
+        `.execute(db);
+
+        return result.rows.map((row) => ({
+            pid: row.OWNER_THREAD_ID,
+            lockType: row.OBJECT_TYPE,
+            objectName: row.OBJECT_NAME ?? undefined,
+            mode: row.LOCK_TYPE,
+            granted: row.LOCK_STATUS === 'GRANTED',
+        }));
+
+    },
+
+    async listConnections(db: Kysely<unknown>): Promise<ConnectionSummary[]> {
+
+        const result = await sql<{
+            ID: number;
+            USER: string;
+            HOST: string;
+            DB: string;
+            STATE: string | null;
+            INFO: string | null;
+        }>`
+            SELECT
+                ID,
+                USER,
+                HOST,
+                DB,
+                STATE,
+                INFO
+            FROM information_schema.PROCESSLIST
+            WHERE DB = DATABASE()
+            AND ID != CONNECTION_ID()
+            ORDER BY ID
+        `.execute(db);
+
+        return result.rows.map((row) => ({
+            pid: row.ID,
+            username: row.USER,
+            database: row.DB,
+            clientAddress: row.HOST,
+            state: row.STATE || 'unknown',
+        }));
+
+    },
+
+    async getTriggerDetail(
+        db: Kysely<unknown>,
+        name: string,
+        schema?: string,
+    ): Promise<TriggerDetail | null> {
+
+        const result = await sql<{
+            TRIGGER_NAME: string;
+            EVENT_OBJECT_TABLE: string;
+            ACTION_TIMING: string;
+            EVENT_MANIPULATION: string;
+            ACTION_STATEMENT: string;
+        }>`
+            SELECT
+                TRIGGER_NAME,
+                EVENT_OBJECT_TABLE,
+                ACTION_TIMING,
+                EVENT_MANIPULATION,
+                ACTION_STATEMENT
+            FROM information_schema.TRIGGERS
+            WHERE TRIGGER_NAME = ${name}
+            AND TRIGGER_SCHEMA = DATABASE()
+        `.execute(db);
+
+        if (result.rows.length === 0) {
+
+            return null;
+
+        }
+
+        const row = result.rows[0]!;
+
+        return {
+            name: row.TRIGGER_NAME,
+            schema: schema || undefined,
+            tableName: row.EVENT_OBJECT_TABLE,
+            tableSchema: schema,
+            timing: row.ACTION_TIMING,
+            events: [row.EVENT_MANIPULATION],
+            definition: row.ACTION_STATEMENT,
+            isEnabled: true,
+        };
 
     },
 

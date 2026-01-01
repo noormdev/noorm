@@ -49,6 +49,14 @@ export interface Lock {
  */
 export interface LockOptions {
     /**
+     * Database dialect for date formatting.
+     *
+     * SQLite stores dates as ISO strings, other dialects can use Date objects.
+     * @default 'postgres'
+     */
+    dialect?: 'postgres' | 'mysql' | 'sqlite' | 'mssql';
+
+    /**
      * Lock duration in milliseconds.
      *
      * After this time, the lock expires and can be claimed by others.
@@ -103,6 +111,7 @@ export interface LockStatus {
  * Default lock options.
  */
 export const DEFAULT_LOCK_OPTIONS: Required<Omit<LockOptions, 'reason'>> = {
+    dialect: 'postgres',
     timeout: 5 * 60 * 1000, // 5 minutes
     wait: false,
     waitTimeout: 30 * 1000, // 30 seconds

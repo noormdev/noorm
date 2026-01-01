@@ -28,6 +28,7 @@ import type { Kysely } from 'kysely';
 
 import { observer } from '../observer.js';
 import { NOORM_TABLES, type NoormDatabase } from '../shared/index.js';
+import type { Dialect } from '../connection/types.js';
 import type { Lock, LockOptions, LockStatus } from './types.js';
 import { DEFAULT_LOCK_OPTIONS } from './types.js';
 import {
@@ -36,6 +37,28 @@ import {
     LockNotFoundError,
     LockOwnershipError,
 } from './errors.js';
+
+// ─────────────────────────────────────────────────────────────
+// Dialect-aware date helpers
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Format a Date for database storage based on dialect.
+ *
+ * SQLite stores dates as TEXT (ISO strings), while other dialects
+ * can bind Date objects directly.
+ */
+function formatDateForDialect(date: Date, dialect: Dialect): Date | string {
+
+    if (dialect === 'sqlite') {
+
+        return date.toISOString();
+
+    }
+
+    return date;
+
+}
 
 /**
  * Manages database locks for concurrent operation protection.
@@ -73,7 +96,7 @@ class LockManager {
         while (true) {
 
             // Clean up expired locks first
-            await this.cleanupExpired(db, configName);
+            await this.cleanupExpired(db, configName, opts.dialect);
 
             // Try to get existing lock
             const existing = await this.getLock(db, configName);
@@ -274,7 +297,12 @@ class LockManager {
      * @throws LockOwnershipError if lock is held by someone else
      * @throws LockNotFoundError if no lock exists
      */
-    async validate(db: Kysely<NoormDatabase>, configName: string, identity: string): Promise<void> {
+    async validate(
+        db: Kysely<NoormDatabase>,
+        configName: string,
+        identity: string,
+        dialect: Dialect = 'postgres',
+    ): Promise<void> {
 
         const existing = await this.getLock(db, configName);
 
@@ -293,7 +321,7 @@ class LockManager {
         if (existing.expiresAt < new Date()) {
 
             // Clean it up
-            await this.cleanupExpired(db, configName);
+            await this.cleanupExpired(db, configName, dialect);
 
             throw new LockExpiredError(configName, identity, existing.expiresAt);
 
@@ -329,12 +357,17 @@ class LockManager {
      *
      * @param db - Kysely database instance
      * @param configName - Config/database scope
+     * @param dialect - Database dialect for date formatting
      * @returns Lock status with isLocked flag and lock details
      */
-    async status(db: Kysely<NoormDatabase>, configName: string): Promise<LockStatus> {
+    async status(
+        db: Kysely<NoormDatabase>,
+        configName: string,
+        dialect: Dialect = 'postgres',
+    ): Promise<LockStatus> {
 
         // Clean up expired first
-        await this.cleanupExpired(db, configName);
+        await this.cleanupExpired(db, configName, dialect);
 
         const lock = await this.getLock(db, configName);
 
@@ -393,8 +426,8 @@ class LockManager {
             .values({
                 config_name: configName,
                 locked_by: identity,
-                locked_at: now,
-                expires_at: expiresAt,
+                locked_at: formatDateForDialect(now, opts.dialect) as Date,
+                expires_at: formatDateForDialect(expiresAt, opts.dialect) as Date,
                 reason: opts.reason ?? '',
             })
             .execute();
@@ -418,12 +451,13 @@ class LockManager {
         opts: Partial<LockOptions>,
     ): Promise<Lock> {
 
+        const dialect = opts.dialect ?? DEFAULT_LOCK_OPTIONS.dialect;
         const timeout = opts.timeout ?? DEFAULT_LOCK_OPTIONS.timeout;
         const now = new Date();
         const expiresAt = new Date(now.getTime() + timeout);
 
-        const updateValues: Record<string, string | undefined> = {
-            expires_at: expiresAt.toISOString(),
+        const updateValues: Record<string, Date | string | undefined> = {
+            expires_at: formatDateForDialect(expiresAt, dialect),
         };
 
         if (opts.reason !== undefined) {
@@ -434,7 +468,7 @@ class LockManager {
 
         await db
             .updateTable(NOORM_TABLES.lock)
-            .set(updateValues)
+            .set(updateValues as Record<string, string>)
             .where('config_name', '=', configName)
             .where('locked_by', '=', identity)
             .execute();
@@ -449,16 +483,21 @@ class LockManager {
     /**
      * Clean up expired locks.
      */
-    private async cleanupExpired(db: Kysely<NoormDatabase>, configName: string): Promise<void> {
+    private async cleanupExpired(
+        db: Kysely<NoormDatabase>,
+        configName: string,
+        dialect: Dialect = 'postgres',
+    ): Promise<void> {
 
-        const nowIso = new Date();
+        const now = new Date();
+        const nowForDb = formatDateForDialect(now, dialect);
 
         // Get expired lock info for event
         const expired = await db
             .selectFrom(NOORM_TABLES.lock)
             .select(['locked_by'])
             .where('config_name', '=', configName)
-            .where('expires_at', '<', nowIso)
+            .where('expires_at', '<', nowForDb as Date)
             .executeTakeFirst();
 
         if (expired) {
@@ -466,7 +505,7 @@ class LockManager {
             await db
                 .deleteFrom(NOORM_TABLES.lock)
                 .where('config_name', '=', configName)
-                .where('expires_at', '<', nowIso)
+                .where('expires_at', '<', nowForDb as Date)
                 .execute();
 
             observer.emit('lock:expired', {

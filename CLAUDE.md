@@ -47,11 +47,55 @@ src/
 │   ├── screens/                # Screen components by feature
 │   ├── components/             # Shared UI components
 │   ├── hooks/                  # React hooks
-│   └── headless.ts             # CI/CD JSON output
+│   ├── headless.ts             # CI/CD JSON output
+│   └── help.ts                 # Help file registry
 │
+help/                           # CLI help files (plain text)
 tests/                          # Test suite
 docs/                           # Documentation
 ```
+
+
+## Help Files
+
+CLI help is stored in `help/*.txt` files. These are plain text, terminal-friendly (not markdown).
+
+**Registry:** `src/cli/help.ts` maps routes to help files. Uses hierarchical fallback:
+
+```
+noorm help db explore tables detail
+  → tries: db/explore/tables/detail → db/explore/tables → db/explore → db
+```
+
+**File naming:** `<route-with-dashes>.txt` (e.g., `config-use.txt` for `config/use`)
+
+**Format structure:**
+
+```
+COMMAND NAME - Brief description
+
+USAGE
+    noorm command [subcommand] [options]
+
+SUBCOMMANDS
+    sub1    Description
+    sub2    Description
+
+DESCRIPTION
+    Detailed explanation of what the command does.
+
+EXAMPLES
+    noorm -H command sub1            Comment
+    noorm -H --json command sub2     Comment
+
+JSON OUTPUT (--json)
+    { "example": "output" }
+
+SEE ALSO
+    noorm help related-command
+```
+
+**Maintenance:** When adding new headless commands, add corresponding help files. Update the registry in `src/cli/help.ts`.
 
 
 ## Principles

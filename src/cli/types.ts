@@ -12,8 +12,9 @@
  * This union provides compile-time safety for navigation.
  */
 export type Route =
-    // Home
+    // Home & Help
     | 'home'
+    | 'help'
     // Config management
     | 'config'
     | 'config/add'
@@ -139,6 +140,9 @@ export interface RouteParams {
 
     /** Operation ID (for history detail view) */
     operationId?: number;
+
+    /** Help topic (multi-part, e.g., "db/explore/tables") */
+    topic?: string;
 }
 
 /**

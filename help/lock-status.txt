@@ -1,0 +1,31 @@
+LOCK STATUS - Check current lock status
+
+USAGE
+    noorm lock status
+    noorm -H lock status
+
+DESCRIPTION
+    Shows whether the database is currently locked and by whom.
+    Use this to check before running migrations in a shared environment.
+
+EXAMPLES
+    noorm -H lock status
+
+JSON OUTPUT (--json)
+    {
+        "isLocked": true,
+        "lock": {
+            "lockedBy": "deploy@ci-runner",
+            "lockedAt": "2024-01-15T10:30:00Z",
+            "expiresAt": "2024-01-15T10:35:00Z"
+        }
+    }
+
+    When not locked:
+    {
+        "isLocked": false
+    }
+
+SEE ALSO
+    noorm help lock
+    noorm help lock acquire

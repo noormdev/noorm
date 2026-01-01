@@ -5,23 +5,40 @@
 
 This document outlines the testing requirements for noorm. The codebase has grown significantly with new features that require both unit tests and integration tests against live databases.
 
-**Current State:**
+**Current State (Updated 2025-12-31):**
 
-- 56 test files covering 13 of 18 core modules
-- 5 modules with zero test coverage (~4,900 lines)
-- 4 database dialects requiring dialect-specific integration tests
+- 68 test files covering 16 of 18 core modules
+- ✅ explore, teardown, sql-terminal modules now have full test coverage
+- ✅ Infrastructure complete: docker-compose.test.yml, test utilities, fixture schemas
+- 2 modules still need tests (db, shared)
 - 24 new CLI screens without integration coverage
+
+
+## ✅ COMPLETED: Priority Items 1-4
+
+The following high-priority items have been implemented:
+
+| Item | Status | Test Files | Tests |
+|------|--------|------------|-------|
+| Docker Compose setup | ✅ Complete | `docker-compose.test.yml` | - |
+| Test utilities | ✅ Complete | `tests/utils/db.ts` | - |
+| Fixture schemas | ✅ Complete | `tests/fixtures/schema/{dialect}/*.sql` | - |
+| explore module | ✅ Complete | 5 files (unit + 4 integration) | 38 unit + integration |
+| teardown module | ✅ Complete | 6 files (unit + 4 integration) | 113 unit + integration |
+| sql-terminal module | ✅ Complete | 6 files (unit + 4 integration) | 53 unit + integration |
+
+**Total new tests: 204 unit tests + 12 integration test files**
 
 
 ---
 
 
-## Infrastructure Requirements
+## ✅ Infrastructure Requirements (COMPLETE)
 
 
-### Docker Compose Setup
+### ✅ Docker Compose Setup
 
-Before writing integration tests, we need a Docker Compose configuration that provides all four supported databases:
+Docker Compose configuration is complete at `docker-compose.test.yml`:
 
 **Why:** Dialect-specific code (explore, teardown, db lifecycle) generates different SQL for each database. Unit tests with mocks cannot verify that the generated SQL is valid. We need live databases to confirm queries work in production.
 
@@ -249,9 +266,16 @@ After applying the schema, explore should return:
 ---
 
 
-## Module: explore (NO TESTS - 3,700 lines)
+## ✅ Module: explore (COMPLETE - 3,700 lines)
 
-The explore module provides read-only database schema introspection across all dialects. This is the largest untested module. All tests use the Reference Test Schema defined above.
+The explore module provides read-only database schema introspection across all dialects.
+
+**Test Files:**
+- `tests/core/explore/operations.test.ts` - 38 tests for `formatSummaryDescription`
+- `tests/integration/explore/postgres.test.ts` - fetchOverview, fetchList, fetchDetail
+- `tests/integration/explore/mysql.test.ts` - MySQL-specific behavior
+- `tests/integration/explore/mssql.test.ts` - types, scalar functions, procedures
+- `tests/integration/explore/sqlite.test.ts` - SQLite limitations
 
 
 ### Feature: Fetch database overview
@@ -462,9 +486,20 @@ The explore module provides read-only database schema introspection across all d
 ---
 
 
-## Module: teardown (NO TESTS - 654 lines)
+## ✅ Module: teardown (COMPLETE - 654 lines)
 
-The teardown module provides fast database reset without dropping/recreating the database. All tests use the Reference Test Schema defined above.
+The teardown module provides fast database reset without dropping/recreating the database.
+
+**Test Files:**
+- `tests/core/teardown/operations.test.ts` - 7 tests for `isNoormTable`
+- `tests/core/teardown/dialects/postgres.test.ts` - 30 tests for SQL generation
+- `tests/core/teardown/dialects/mysql.test.ts` - 23 tests for SQL generation
+- `tests/core/teardown/dialects/mssql.test.ts` - 30 tests for SQL generation
+- `tests/core/teardown/dialects/sqlite.test.ts` - 23 tests for SQL generation
+- `tests/integration/teardown/postgres.test.ts` - truncateData, teardownSchema, previewTeardown
+- `tests/integration/teardown/mysql.test.ts` - MySQL FK handling
+- `tests/integration/teardown/mssql.test.ts` - MSSQL type/procedure drops
+- `tests/integration/teardown/sqlite.test.ts` - DELETE instead of TRUNCATE
 
 
 ### Feature: Truncate data
@@ -536,9 +571,17 @@ The teardown module provides fast database reset without dropping/recreating the
 ---
 
 
-## Module: sql-terminal (NO TESTS - 542 lines)
+## ✅ Module: sql-terminal (COMPLETE - 542 lines)
 
-The sql-terminal module provides an interactive SQL REPL with history persistence. All tests use the Reference Test Schema defined above.
+The sql-terminal module provides an interactive SQL REPL with history persistence.
+
+**Test Files:**
+- `tests/core/sql-terminal/history.test.ts` - 40 tests for `SqlHistoryManager`
+- `tests/core/sql-terminal/executor.test.ts` - 13 tests for `executeRawSql` with mocked db
+- `tests/integration/sql-terminal/postgres.test.ts` - RETURNING clause, CTEs, window functions
+- `tests/integration/sql-terminal/mysql.test.ts` - CALL procedure, SHOW commands
+- `tests/integration/sql-terminal/mssql.test.ts` - TOP, WAITFOR, OUTPUT clause
+- `tests/integration/sql-terminal/sqlite.test.ts` - PRAGMA, transactions
 
 
 ### Feature: Execute raw SQL
@@ -1027,11 +1070,176 @@ These scenarios require multiple modules working together with live databases. A
 
 ## Priority Order
 
-1. **Docker Compose setup** - Required for all integration tests
-2. **explore module tests** - Largest untested codebase, high user visibility
-3. **teardown module tests** - Critical for test workflows, destructive operations
-4. **sql-terminal module tests** - User-facing feature, data persistence
+1. ✅ **Docker Compose setup** - COMPLETE
+2. ✅ **explore module tests** - COMPLETE (38 unit + 4 integration files)
+3. ✅ **teardown module tests** - COMPLETE (113 unit + 4 integration files)
+4. ✅ **sql-terminal module tests** - COMPLETE (53 unit + 4 integration files)
 5. **db module tests** - Enables test automation
 6. **changeset integration tests** - Core feature, needs dialect coverage
 7. **runner integration tests** - Template execution validation
 8. **CLI component tests** - User experience validation
+
+
+---
+
+
+## ✅ Future Testing Opportunities (IMPLEMENTED 2025-12-31)
+
+Additional testing opportunities identified during the implementation. Most items have been implemented with 166+ new tests.
+
+
+### ✅ Module: explore - Edge Cases & New Object Types
+
+**New object types implemented:**
+- ✅ Triggers - `listTriggers()`, `getTriggerDetail()` in all 4 dialects
+- ✅ Active locks - `listLocks()` in PostgreSQL, MySQL, MSSQL (SQLite returns empty)
+- ✅ Active connections - `listConnections()` in PostgreSQL, MySQL, MSSQL (SQLite returns empty)
+
+**Edge cases tested (24 tests in `tests/integration/explore/edge-cases.test.ts`):**
+- ✅ Tables with 60+ character names
+- ✅ Tables with special characters (spaces, hyphens)
+- ✅ Self-referencing foreign keys (`employees.manager_id → employees.id`)
+- ✅ Composite primary keys (2-column and 3-column)
+- ✅ Composite foreign keys
+- ✅ Circular foreign key references
+- ⏳ Views referencing other views (nested view dependencies)
+- ⏳ Materialized views (PostgreSQL-specific)
+- ⏳ Partitioned tables (PostgreSQL, MySQL 8.0+)
+
+
+### Module: teardown - Error Reporting
+
+Current tests verify successful operations. For failure scenarios, the main value is clear error reporting since manual intervention is required:
+
+- Clear error messages when teardown fails mid-operation (explain what was dropped, what remains)
+- Handling of locked tables during truncate/drop (report which table is locked)
+- Timeout handling for long-running DROP operations
+- Circular foreign key dependencies (detect and report)
+
+
+### ✅ Module: sql-terminal - Advanced Queries
+
+**Tests added to integration tests (`tests/integration/sql-terminal/*.test.ts`):**
+- ✅ Recursive CTEs (WITH RECURSIVE) - all 4 dialects
+- ✅ EXPLAIN/EXPLAIN ANALYZE output - PostgreSQL, MySQL, SQLite
+- ✅ Explicit transactions (BEGIN/COMMIT/ROLLBACK) - PostgreSQL
+- ✅ PRAGMA commands - SQLite
+- ⏳ Transaction isolation levels (SERIALIZABLE, REPEATABLE READ)
+- ⏳ Savepoints within transactions
+- ⏳ Batch statement execution (multiple statements separated by `;`)
+- ⏳ Binary data (BLOB/BYTEA) handling in results
+
+
+### ✅ Module: logger - Reader Component
+
+**Tests created (`tests/core/logger/reader.test.ts` - 18 tests):**
+- ✅ Read and parse log files with correct encoding
+- ✅ Skip malformed JSON entries gracefully
+- ✅ Limit entries to specified count
+- ✅ Return entries in reverse chronological order
+- ✅ Handle missing/empty files gracefully
+- ✅ Validate required log entry fields
+- ⏳ Filter logs by level (not implemented in reader)
+- ⏳ Filter logs by date range (not implemented in reader)
+- ⏳ Handle rotated log files (*.log.1, *.log.2)
+
+
+### Module: connection - SSL & Edge Cases
+
+The connection module needs more dialect-specific edge case coverage:
+
+- PostgreSQL SSL modes (disable, allow, prefer, require, verify-ca, verify-full)
+- MySQL SSL certificate configuration
+- MSSQL TrustServerCertificate and encryption settings
+- SQLite WAL mode vs journal mode
+- Connection pool exhaustion under load
+- Connection retry with exponential backoff
+- Graceful handling of network interruptions mid-query
+
+
+### ✅ Module: encryption - Security Tests
+
+**Tests created (`tests/core/state/encryption/crypto.test.ts` - 15 tests):**
+- ✅ Round-trip encryption/decryption (short text, long text, JSON)
+- ✅ Random IV generation (different ciphertext for same plaintext)
+- ✅ AES-256-GCM authentication tag verification
+- ✅ Tampered ciphertext detection
+- ✅ Tampered auth tag detection
+- ✅ Corrupted IV detection
+- ✅ Wrong key detection
+- ✅ Unsupported algorithm error
+- ⏳ Memory safety (clearing sensitive data after use)
+- ⏳ Timing attack resistance in comparison operations
+
+
+### CLI Components - Ink/React Testing
+
+The CLI uses Ink/React and has 24 screens without tests:
+
+- **SearchableList**: Filter behavior, keyboard navigation, selection state
+- **ResultTable**: Column alignment, NULL display, truncation, pagination
+- **SqlInput**: Multi-line input, paste handling, execution shortcuts
+- **Form**: Validation, busy states, error display
+- **Toast**: Timing, stacking, dismissal
+- **Screen navigation**: History stack, breadcrumbs, back/forward
+
+
+### Performance & Load Tests
+
+Performance tests to ensure the system scales with realistic workloads:
+
+- Explore performance with 1000+ tables
+- SQL terminal performance with 10K+ row results
+- History performance with 10K+ entries
+- Concurrent connection handling (10+ simultaneous)
+
+
+### ✅ Security Tests
+
+**Tests created:**
+- ✅ Credential sanitization (`tests/core/logger/redact.test.ts` - 45 tests)
+  - maskValue, isMaskedField, filterData, addMaskedFields, listenForSecrets
+  - Case variations (camelCase, snake_case, UPPERCASE, noorm_ prefix)
+  - Recursive object/array filtering
+- ✅ File path traversal prevention (`tests/core/template/security.test.ts` - 15 tests)
+  - `../../../etc/passwd` attempts rejected
+  - Absolute paths outside project rejected
+  - Null byte injection rejected
+  - Symlink traversal attempts handled
+- ⏳ Input validation for user-provided config values
+
+
+---
+
+
+## Summary of Future Testing Implementation
+
+**Date:** 2025-12-31
+
+**New Test Files Created:**
+
+| File | Tests | Description |
+|------|-------|-------------|
+| `tests/core/logger/reader.test.ts` | 18 | Log file reading and parsing |
+| `tests/core/logger/redact.test.ts` | 45 | Credential sanitization |
+| `tests/core/state/encryption/crypto.test.ts` | 15 | AES-256-GCM encryption |
+| `tests/core/template/security.test.ts` | 15 | Path traversal prevention |
+| `tests/core/explore/dialects/postgres.test.ts` | 11 | PostgreSQL trigger/lock/connection queries |
+| `tests/core/explore/dialects/mysql.test.ts` | 11 | MySQL trigger/lock/connection queries |
+| `tests/core/explore/dialects/mssql.test.ts` | 13 | MSSQL trigger/lock/connection queries |
+| `tests/core/explore/dialects/sqlite.test.ts` | 14 | SQLite trigger queries |
+| `tests/integration/explore/edge-cases.test.ts` | 24 | Edge case integration tests |
+| **Total** | **166** | |
+
+**New Features Implemented:**
+
+| Feature | Files Modified |
+|---------|----------------|
+| Trigger exploration | `src/core/explore/types.ts`, `src/core/explore/operations.ts`, all 4 dialect files |
+| Lock exploration | All 4 dialect files |
+| Connection exploration | All 4 dialect files |
+
+**New Fixture Files:**
+
+- `tests/fixtures/schema/{dialect}/00X_triggers.sql` - Trigger fixtures for all dialects
+- `tests/fixtures/schema/edge-cases/*.sql` - Edge case fixtures (long names, self-ref FK, composite keys, special chars, circular FK)

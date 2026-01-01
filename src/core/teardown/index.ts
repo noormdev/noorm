@@ -10,6 +10,7 @@ export {
     truncateData,
     teardownSchema,
     previewTeardown,
+    isNoormTable,
 } from './operations.js';
 
 // Types

@@ -1,0 +1,38 @@
+DB EXPLORE - Explore database schema
+
+USAGE
+    noorm db explore [subcommand] [options]
+
+SUBCOMMANDS
+    (none)          Get database overview with object counts
+    tables          List all tables
+    tables detail   Describe a specific table
+
+DESCRIPTION
+    Explore your database schema to understand its structure.
+    Useful for debugging, documentation, and development.
+
+EXAMPLES
+    noorm -H db explore
+    noorm -H db explore tables
+    noorm -H db explore tables detail users
+    noorm -H --json db explore > schema.json
+
+JSON OUTPUT (--json)
+    Overview:
+    {
+        "tables": 12,
+        "views": 3,
+        "functions": 5,
+        "procedures": 0,
+        "types": 2
+    }
+
+    Tables list:
+    [
+        { "name": "users", "columnCount": 8 },
+        { "name": "posts", "columnCount": 5 }
+    ]
+
+SEE ALSO
+    noorm help db explore tables detail

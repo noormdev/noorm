@@ -5,6 +5,9 @@ export default defineConfig({
         globals: true,
         environment: "node",
         include: ["tests/**/*.test.{ts,tsx}"],
+        // Run integration tests sequentially to avoid resource contention
+        // (they spawn CLI processes that compete for file system resources)
+        fileParallelism: false,
         coverage: {
             provider: "v8",
             reporter: ["text", "json", "html"],

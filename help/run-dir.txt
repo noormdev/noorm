@@ -1,0 +1,20 @@
+RUN DIR - Execute all SQL files in a directory
+
+USAGE
+    noorm run dir PATH
+    noorm -H run dir PATH
+
+ARGUMENTS
+    PATH    Path to the directory containing SQL files
+
+DESCRIPTION
+    Executes all SQL files in the specified directory in alphabetical order.
+    Supports .sql and .sql.eta (templated) files.
+
+EXAMPLES
+    noorm -H run dir migrations/
+    noorm -H run dir seeds/
+
+SEE ALSO
+    noorm help run
+    noorm help run file

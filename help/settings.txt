@@ -1,0 +1,19 @@
+SETTINGS - View/edit project settings
+
+USAGE
+    noorm settings
+
+DESCRIPTION
+    Opens the settings screen to view and modify project configuration.
+    Settings are stored in .noorm/settings.yml.
+
+    Settings include:
+    - Stage definitions (dev, staging, production)
+    - Build rules and paths
+    - Logging configuration
+    - Identity defaults
+
+    TUI only - not available in headless mode.
+
+SEE ALSO
+    noorm help config

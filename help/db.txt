@@ -1,0 +1,33 @@
+DB - Database operations and exploration
+
+USAGE
+    noorm db [subcommand] [options]
+
+SUBCOMMANDS
+    explore         Get database overview with object counts
+    explore tables  List all tables
+    explore tables detail NAME
+                    Describe a specific table
+    truncate        Wipe all data, keep schema
+    teardown        Drop all database objects
+
+DESCRIPTION
+    Database commands for exploration and management. Use explore to
+    understand your schema, truncate for test resets, and teardown
+    for complete cleanup.
+
+    WARNING: truncate and teardown are destructive operations.
+    Protected configs require --force or confirmation.
+
+EXAMPLES
+    noorm -H db explore              Show database overview
+    noorm -H db explore tables       List all tables
+    noorm -H db explore tables detail users
+                                     Describe 'users' table
+    noorm -H db truncate             Wipe all data (requires confirmation)
+    noorm -H db teardown             Drop all objects
+
+SEE ALSO
+    noorm help db explore
+    noorm help db truncate
+    noorm help db teardown

@@ -17,11 +17,15 @@ import type {
     TypeSummary,
     IndexSummary,
     ForeignKeySummary,
+    TriggerSummary,
+    LockSummary,
+    ConnectionSummary,
     TableDetail,
     ViewDetail,
     ProcedureDetail,
     FunctionDetail,
     TypeDetail,
+    TriggerDetail,
     ColumnDetail,
 } from '../types.js';
 
@@ -86,6 +90,9 @@ export const sqliteExploreOperations: DialectExploreOperations = {
             types: 0,      // SQLite doesn't support custom types
             indexes: indexes.rows[0]?.count ?? 0,
             foreignKeys: fkCount,
+            triggers: 0,   // TODO: implement count
+            locks: 0,      // SQLite doesn't expose lock information
+            connections: 0, // SQLite doesn't have connection tracking
         };
 
     },
@@ -419,6 +426,150 @@ export const sqliteExploreOperations: DialectExploreOperations = {
 
         // SQLite doesn't support custom types
         return null;
+
+    },
+
+    async listTriggers(db: Kysely<unknown>): Promise<TriggerSummary[]> {
+
+        const result = await sql<{
+            name: string;
+            tbl_name: string;
+            sql: string;
+        }>`
+            SELECT name, tbl_name, sql
+            FROM sqlite_master
+            WHERE type = 'trigger'
+            ORDER BY tbl_name, name
+        `.execute(db);
+
+        return result.rows.map((row) => {
+
+            // Parse timing and events from SQL
+            const sqlUpper = row.sql.toUpperCase();
+            let timing: 'BEFORE' | 'AFTER' | 'INSTEAD OF' = 'AFTER';
+
+            if (sqlUpper.includes('BEFORE')) {
+
+                timing = 'BEFORE';
+
+            }
+            else if (sqlUpper.includes('INSTEAD OF')) {
+
+                timing = 'INSTEAD OF';
+
+            }
+
+            const events: ('INSERT' | 'UPDATE' | 'DELETE')[] = [];
+
+            if (sqlUpper.includes('INSERT')) {
+
+                events.push('INSERT');
+
+            }
+
+            if (sqlUpper.includes('UPDATE')) {
+
+                events.push('UPDATE');
+
+            }
+
+            if (sqlUpper.includes('DELETE')) {
+
+                events.push('DELETE');
+
+            }
+
+            return {
+                name: row.name,
+                tableName: row.tbl_name,
+                timing,
+                events: events.length > 0 ? events : ['INSERT'],
+            };
+
+        });
+
+    },
+
+    async listLocks(_db: Kysely<unknown>): Promise<LockSummary[]> {
+
+        // SQLite doesn't expose lock information via SQL
+        return [];
+
+    },
+
+    async listConnections(_db: Kysely<unknown>): Promise<ConnectionSummary[]> {
+
+        // SQLite doesn't have connection tracking (single-user database)
+        return [];
+
+    },
+
+    async getTriggerDetail(
+        db: Kysely<unknown>,
+        name: string,
+    ): Promise<TriggerDetail | null> {
+
+        const result = await sql<{
+            name: string;
+            tbl_name: string;
+            sql: string;
+        }>`
+            SELECT name, tbl_name, sql
+            FROM sqlite_master
+            WHERE type = 'trigger'
+            AND name = ${name}
+        `.execute(db);
+
+        if (result.rows.length === 0) {
+
+            return null;
+
+        }
+
+        const row = result.rows[0]!;
+
+        const sqlUpper = row.sql.toUpperCase();
+        let timing = 'AFTER';
+
+        if (sqlUpper.includes('BEFORE')) {
+
+            timing = 'BEFORE';
+
+        }
+        else if (sqlUpper.includes('INSTEAD OF')) {
+
+            timing = 'INSTEAD OF';
+
+        }
+
+        const events: string[] = [];
+
+        if (sqlUpper.includes('INSERT')) {
+
+            events.push('INSERT');
+
+        }
+
+        if (sqlUpper.includes('UPDATE')) {
+
+            events.push('UPDATE');
+
+        }
+
+        if (sqlUpper.includes('DELETE')) {
+
+            events.push('DELETE');
+
+        }
+
+        return {
+            name: row.name,
+            tableName: row.tbl_name,
+            timing,
+            events: events.length > 0 ? events : ['INSERT'],
+            definition: row.sql,
+            isEnabled: true, // SQLite triggers are always enabled
+        };
 
     },
 

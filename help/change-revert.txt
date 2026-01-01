@@ -1,0 +1,20 @@
+CHANGE REVERT - Revert a specific changeset
+
+USAGE
+    noorm change revert NAME
+    noorm -H change revert NAME
+
+ARGUMENTS
+    NAME    Name of the changeset to revert
+
+DESCRIPTION
+    Reverts a single applied changeset by running its backward SQL.
+    The changeset must have been previously applied.
+
+EXAMPLES
+    noorm -H change revert 002_users
+    noorm -H change revert 001_init
+
+SEE ALSO
+    noorm help change
+    noorm help change run

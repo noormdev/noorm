@@ -1,0 +1,31 @@
+NOORM - Database Schema & Changeset Manager
+
+USAGE
+    noorm [command] [subcommand] [options]
+
+COMMANDS
+    config      Manage database configurations
+    change      Manage and apply changesets
+    run         Execute SQL files
+    db          Database operations and exploration
+    lock        Distributed lock management
+    settings    View/edit project settings
+    secret      Manage secrets
+    identity    Manage identity
+
+OPTIONS
+    -H, --headless      Force headless mode (no TUI)
+    -T, --tui           Force TUI mode
+    --json              Output JSON (headless only)
+    -c, --config NAME   Use specific configuration
+    -f, --force         Force operation
+    -y, --yes           Skip confirmations
+    --dry-run           Preview without executing
+
+EXAMPLES
+    noorm                          Start interactive TUI
+    noorm config                   Go to config screen
+    noorm -H run build             Build schema in CI
+    noorm -H --json change ff      Fast-forward with JSON output
+
+Run "noorm help <command>" for detailed help on a command.

@@ -16,11 +16,15 @@ import type {
     TypeSummary,
     IndexSummary,
     ForeignKeySummary,
+    TriggerSummary,
+    LockSummary,
+    ConnectionSummary,
     TableDetail,
     ViewDetail,
     ProcedureDetail,
     FunctionDetail,
     TypeDetail,
+    TriggerDetail,
     ColumnDetail,
     ParameterDetail,
 } from '../types.js';
@@ -101,6 +105,9 @@ export const mssqlExploreOperations: DialectExploreOperations = {
             types: types.rows[0]?.count ?? 0,
             indexes: indexes.rows[0]?.count ?? 0,
             foreignKeys: foreignKeys.rows[0]?.count ?? 0,
+            triggers: 0, // TODO: implement count
+            locks: 0,    // TODO: implement count
+            connections: 0, // TODO: implement count
         };
 
     },
@@ -744,6 +751,184 @@ export const mssqlExploreOperations: DialectExploreOperations = {
             kind: row.is_table_type ? 'composite' : 'domain',
             attributes,
             baseType: row.base_type ?? undefined,
+        };
+
+    },
+
+    async listTriggers(db: Kysely<unknown>): Promise<TriggerSummary[]> {
+
+        const result = await sql<{
+            trigger_name: string;
+            schema_name: string;
+            table_name: string;
+            is_instead_of_trigger: boolean;
+            is_disabled: boolean;
+            type_desc: string;
+        }>`
+            SELECT
+                t.name AS trigger_name,
+                s.name AS schema_name,
+                OBJECT_NAME(t.parent_id) AS table_name,
+                t.is_instead_of_trigger,
+                t.is_disabled,
+                te.type_desc
+            FROM sys.triggers t
+            INNER JOIN sys.trigger_events te ON t.object_id = te.object_id
+            INNER JOIN sys.tables tab ON t.parent_id = tab.object_id
+            INNER JOIN sys.schemas s ON tab.schema_id = s.schema_id
+            WHERE s.name NOT IN (${sql.join(EXCLUDED_SCHEMAS)})
+            ORDER BY s.name, table_name, t.name
+        `.execute(db);
+
+        // Group triggers by name
+        const triggerMap = new Map<string, TriggerSummary>();
+
+        for (const row of result.rows) {
+
+            const key = `${row.schema_name}.${row.trigger_name}`;
+            const event = row.type_desc as 'INSERT' | 'UPDATE' | 'DELETE';
+            const existing = triggerMap.get(key);
+
+            if (existing) {
+
+                if (!existing.events.includes(event)) {
+
+                    existing.events.push(event);
+
+                }
+
+            }
+            else {
+
+                triggerMap.set(key, {
+                    name: row.trigger_name,
+                    schema: row.schema_name,
+                    tableName: row.table_name,
+                    tableSchema: row.schema_name,
+                    timing: row.is_instead_of_trigger ? 'INSTEAD OF' : 'AFTER',
+                    events: [event],
+                });
+
+            }
+
+        }
+
+        return Array.from(triggerMap.values());
+
+    },
+
+    async listLocks(db: Kysely<unknown>): Promise<LockSummary[]> {
+
+        const result = await sql<{
+            request_session_id: number;
+            resource_type: string;
+            resource_description: string;
+            request_mode: string;
+            request_status: string;
+        }>`
+            SELECT
+                request_session_id,
+                resource_type,
+                resource_description,
+                request_mode,
+                request_status
+            FROM sys.dm_tran_locks
+            WHERE resource_database_id = DB_ID()
+            ORDER BY request_session_id
+        `.execute(db);
+
+        return result.rows.map((row) => ({
+            pid: row.request_session_id,
+            lockType: row.resource_type,
+            objectName: row.resource_description || undefined,
+            mode: row.request_mode,
+            granted: row.request_status === 'GRANT',
+        }));
+
+    },
+
+    async listConnections(db: Kysely<unknown>): Promise<ConnectionSummary[]> {
+
+        const result = await sql<{
+            session_id: number;
+            login_name: string;
+            host_name: string;
+            program_name: string;
+            status: string;
+            login_time: Date;
+        }>`
+            SELECT
+                s.session_id,
+                s.login_name,
+                s.host_name,
+                s.program_name,
+                s.status,
+                s.login_time
+            FROM sys.dm_exec_sessions s
+            WHERE s.database_id = DB_ID()
+            AND s.session_id != @@SPID
+            ORDER BY s.login_time DESC
+        `.execute(db);
+
+        return result.rows.map((row) => ({
+            pid: row.session_id,
+            username: row.login_name,
+            database: 'current',
+            applicationName: row.program_name || undefined,
+            clientAddress: row.host_name || undefined,
+            backendStart: row.login_time,
+            state: row.status,
+        }));
+
+    },
+
+    async getTriggerDetail(
+        db: Kysely<unknown>,
+        name: string,
+        schema = 'dbo',
+    ): Promise<TriggerDetail | null> {
+
+        const result = await sql<{
+            trigger_name: string;
+            table_name: string;
+            is_instead_of_trigger: boolean;
+            is_disabled: boolean;
+            definition: string;
+            type_desc: string;
+        }>`
+            SELECT
+                t.name AS trigger_name,
+                OBJECT_NAME(t.parent_id) AS table_name,
+                t.is_instead_of_trigger,
+                t.is_disabled,
+                OBJECT_DEFINITION(t.object_id) AS definition,
+                te.type_desc
+            FROM sys.triggers t
+            INNER JOIN sys.trigger_events te ON t.object_id = te.object_id
+            INNER JOIN sys.tables tab ON t.parent_id = tab.object_id
+            INNER JOIN sys.schemas s ON tab.schema_id = s.schema_id
+            WHERE t.name = ${name}
+            AND s.name = ${schema}
+        `.execute(db);
+
+        if (result.rows.length === 0) {
+
+            return null;
+
+        }
+
+        const events = [...new Set(result.rows.map((r) => r.type_desc))];
+        const row = result.rows[0]!;
+
+        return {
+            name: row.trigger_name,
+            schema,
+            tableName: row.table_name,
+            tableSchema: schema,
+            timing: row.is_instead_of_trigger ? 'INSTEAD OF' : 'AFTER',
+            events,
+            definition: row.definition,
+            isEnabled: !row.is_disabled,
         };
 
     },

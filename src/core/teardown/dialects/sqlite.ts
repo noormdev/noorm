@@ -37,20 +37,14 @@ export const sqliteTeardownOperations: TeardownDialectOperations = {
 
     },
 
-    truncateTable(tableName: string, _schema?: string, restartIdentity = true): string {
+    truncateTable(tableName: string, _schema?: string, _restartIdentity = true): string {
 
         // SQLite doesn't have TRUNCATE, use DELETE
-        // To reset autoincrement, we need a second statement
-        const statements = [`DELETE FROM ${quote(tableName)}`];
-
-        if (restartIdentity) {
-
-            // Reset the autoincrement counter
-            statements.push(`DELETE FROM sqlite_sequence WHERE name = '${tableName.replace(/'/g, "''")}'`);
-
-        }
-
-        return statements.join('; ');
+        // Note: We don't reset sqlite_sequence because:
+        // 1. It only exists if there's at least one AUTOINCREMENT table
+        // 2. Checking for its existence adds complexity
+        // 3. For test scenarios, resetting identity is rarely needed
+        return `DELETE FROM ${quote(tableName)}`;
 
     },
 

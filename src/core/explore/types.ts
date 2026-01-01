@@ -16,7 +16,10 @@ export type ExploreCategory =
     | 'functions'
     | 'types'
     | 'indexes'
-    | 'foreignKeys';
+    | 'foreignKeys'
+    | 'triggers'
+    | 'locks'
+    | 'connections';
 
 /**
  * Overview counts for all categories.
@@ -30,6 +33,9 @@ export interface ExploreOverview {
     types: number;
     indexes: number;
     foreignKeys: number;
+    triggers: number;
+    locks: number;
+    connections: number;
 
 }
 
@@ -126,6 +132,48 @@ export interface ForeignKeySummary {
     referencedColumns: string[];
     onDelete?: string;
     onUpdate?: string;
+
+}
+
+/**
+ * Trigger summary for list display.
+ */
+export interface TriggerSummary {
+
+    name: string;
+    schema?: string;
+    tableName: string;
+    tableSchema?: string;
+    timing: 'BEFORE' | 'AFTER' | 'INSTEAD OF';
+    events: ('INSERT' | 'UPDATE' | 'DELETE')[];
+
+}
+
+/**
+ * Active lock summary for list display.
+ */
+export interface LockSummary {
+
+    pid: number;
+    lockType: string;
+    objectName?: string;
+    mode: string;
+    granted: boolean;
+
+}
+
+/**
+ * Active connection/session summary for list display.
+ */
+export interface ConnectionSummary {
+
+    pid: number;
+    username: string;
+    database: string;
+    applicationName?: string;
+    clientAddress?: string;
+    backendStart?: Date;
+    state: string;
 
 }
 
@@ -227,6 +275,22 @@ export interface TypeDetail {
 
 }
 
+/**
+ * Full trigger detail.
+ */
+export interface TriggerDetail {
+
+    name: string;
+    schema?: string;
+    tableName: string;
+    tableSchema?: string;
+    timing: string;
+    events: string[];
+    definition?: string;
+    isEnabled: boolean;
+
+}
+
 // -----------------------------------------------------------------------------
 // Dialect operations interface
 // -----------------------------------------------------------------------------
@@ -253,6 +317,9 @@ export interface DialectExploreOperations {
     listTypes(db: Kysely<unknown>): Promise<TypeSummary[]>;
     listIndexes(db: Kysely<unknown>): Promise<IndexSummary[]>;
     listForeignKeys(db: Kysely<unknown>): Promise<ForeignKeySummary[]>;
+    listTriggers(db: Kysely<unknown>): Promise<TriggerSummary[]>;
+    listLocks(db: Kysely<unknown>): Promise<LockSummary[]>;
+    listConnections(db: Kysely<unknown>): Promise<ConnectionSummary[]>;
 
     // Detail methods (return full object info)
 
@@ -286,6 +353,12 @@ export interface DialectExploreOperations {
         schema?: string,
     ): Promise<TypeDetail | null>;
 
+    getTriggerDetail(
+        db: Kysely<unknown>,
+        name: string,
+        schema?: string,
+    ): Promise<TriggerDetail | null>;
+
 }
 
 // -----------------------------------------------------------------------------
@@ -302,7 +375,10 @@ export type ExploreSummary =
     | FunctionSummary
     | TypeSummary
     | IndexSummary
-    | ForeignKeySummary;
+    | ForeignKeySummary
+    | TriggerSummary
+    | LockSummary
+    | ConnectionSummary;
 
 /**
  * Any detail type.
@@ -312,4 +388,5 @@ export type ExploreDetail =
     | ViewDetail
     | ProcedureDetail
     | FunctionDetail
-    | TypeDetail;
+    | TypeDetail
+    | TriggerDetail;
