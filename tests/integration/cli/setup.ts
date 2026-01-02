@@ -34,11 +34,13 @@ import { $ } from 'zx';
 import { join } from 'node:path';
 import { mkdir, rm, cp } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
-import { sql, type Kysely } from 'kysely';
+import type { Kysely } from 'kysely';
 
 import { createConnection } from '../../../src/core/connection/factory.js';
 import type { ConnectionConfig } from '../../../src/core/connection/types.js';
 import { deployTestSchema, seedTestData } from '../../utils/db.js';
+import { bootstrapSchema } from '../../../src/core/version/index.js';
+import type { NoormDatabase } from '../../../src/core/shared/index.js';
 
 // ─────────────────────────────────────────────────────────────
 // Constants
@@ -371,8 +373,9 @@ export async function setupTestProject(): Promise<TestProject> {
     // Create connection and deploy schema
     const conn = await createConnection(connectionConfig, '__test__');
 
-    // Create noorm internal tables (needed for lock, changeset tracking)
-    await createNoormTables(conn.db as Kysely<unknown>);
+    // Create noorm internal tables using the official migration
+    // This ensures tests use the same schema as production
+    await bootstrapSchema(conn.db as Kysely<NoormDatabase>, '1.0.0');
 
     // Deploy test schema and seed data
     await deployTestSchema(conn.db as Kysely<unknown>, 'sqlite');
@@ -440,83 +443,3 @@ export async function cleanupAllTestProjects(): Promise<void> {
 
 }
 
-// ─────────────────────────────────────────────────────────────
-// Internal Tables Setup
-// ─────────────────────────────────────────────────────────────
-
-/**
- * Create noorm internal tables required for CLI operations.
- *
- * These tables are needed for:
- * - __noorm_version__: Schema version tracking
- * - __noorm_changeset__: Changeset execution history
- * - __noorm_executions__: File execution records
- * - __noorm_lock__: Database locking
- * - __noorm_identities__: Identity management
- */
-async function createNoormTables(db: Kysely<unknown>): Promise<void> {
-
-    // __noorm_version__
-    await sql`
-        CREATE TABLE IF NOT EXISTS __noorm_version__ (
-            id TEXT PRIMARY KEY,
-            version TEXT NOT NULL,
-            created_at TEXT NOT NULL DEFAULT (datetime('now')),
-            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-        )
-    `.execute(db);
-
-    // __noorm_changeset__
-    await sql`
-        CREATE TABLE IF NOT EXISTS __noorm_changeset__ (
-            id TEXT PRIMARY KEY,
-            name TEXT NOT NULL UNIQUE,
-            status TEXT NOT NULL DEFAULT 'pending',
-            applied_at TEXT,
-            reverted_at TEXT,
-            checksum TEXT,
-            created_at TEXT NOT NULL DEFAULT (datetime('now')),
-            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-        )
-    `.execute(db);
-
-    // __noorm_executions__
-    await sql`
-        CREATE TABLE IF NOT EXISTS __noorm_executions__ (
-            id TEXT PRIMARY KEY,
-            changeset_id TEXT REFERENCES __noorm_changeset__(id),
-            filepath TEXT NOT NULL,
-            status TEXT NOT NULL,
-            direction TEXT NOT NULL DEFAULT 'up',
-            checksum TEXT,
-            error TEXT,
-            duration_ms INTEGER,
-            executed_at TEXT NOT NULL DEFAULT (datetime('now'))
-        )
-    `.execute(db);
-
-    // __noorm_lock__
-    await sql`
-        CREATE TABLE IF NOT EXISTS __noorm_lock__ (
-            id TEXT PRIMARY KEY,
-            config_name TEXT NOT NULL UNIQUE,
-            locked_by TEXT NOT NULL,
-            locked_at TEXT NOT NULL DEFAULT (datetime('now')),
-            expires_at TEXT NOT NULL,
-            reason TEXT NOT NULL DEFAULT ''
-        )
-    `.execute(db);
-
-    // __noorm_identities__
-    await sql`
-        CREATE TABLE IF NOT EXISTS __noorm_identities__ (
-            id TEXT PRIMARY KEY,
-            config_name TEXT NOT NULL,
-            identity TEXT NOT NULL,
-            first_seen_at TEXT NOT NULL DEFAULT (datetime('now')),
-            last_seen_at TEXT NOT NULL DEFAULT (datetime('now')),
-            UNIQUE(config_name, identity)
-        )
-    `.execute(db);
-
-}

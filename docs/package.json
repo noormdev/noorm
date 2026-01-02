@@ -1,0 +1,24 @@
+{
+  "name": "noorm-docs",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vitepress dev",
+    "build": "vitepress build",
+    "preview": "vitepress preview"
+  },
+  "dependencies": {
+    "@fortawesome/fontawesome-svg-core": "^7.1.0",
+    "@fortawesome/free-brands-svg-icons": "^7.1.0",
+    "@fortawesome/free-regular-svg-icons": "^7.1.0",
+    "@fortawesome/free-solid-svg-icons": "^7.1.0",
+    "@fortawesome/vue-fontawesome": "^3.1.2",
+    "vitepress": "2.0.0-alpha.15"
+  },
+  "devDependencies": {
+    "mermaid": "^11.12.2",
+    "ts-dedent": "^2.2.0",
+    "vitepress-plugin-mermaid": "^2.0.17",
+    "vitepress-sidebar": "^1.33.0"
+  }
+}

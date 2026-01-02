@@ -1,0 +1,323 @@
+/**
+ * noorm Brand Styling for VitePress
+ * Modern Slate Palette - matching TUI
+ */
+
+:root {
+    /* Modern Slate Palette */
+    --noorm-primary: #3B82F6;           /* Bright Blue - Primary Brand */
+    --noorm-primary-light: #60A5FA;
+    --noorm-primary-dark: #2563EB;
+
+    /* Status Colors */
+    --noorm-success: #10B981;           /* Emerald Green */
+    --noorm-warning: #F59E0B;           /* Amber */
+    --noorm-error: #EF4444;             /* Red */
+    --noorm-info: #8B5CF6;              /* Purple */
+
+    /* UI Element Colors */
+    --noorm-secondary: #6B7280;         /* Gray-600 */
+    --noorm-muted: #9CA3AF;             /* Gray-400 */
+
+    /* Light mode colors */
+    --noorm-light-bg: #FFFFFF;
+    --noorm-light-surface: #F1F5F9;
+    --noorm-light-surface-hover: #E2E8F0;
+    --noorm-light-text-primary: #0F172A;
+    --noorm-light-text-secondary: #475569;
+    --noorm-light-text-muted: #94A3B8;
+
+    /* Dark mode colors */
+    --noorm-dark-bg: #030712;
+    --noorm-dark-surface: #1E293B;
+    --noorm-dark-surface-hover: #334155;
+    --noorm-dark-text-primary: #F8FAFC;
+    --noorm-dark-text-secondary: #CBD5E1;
+    --noorm-dark-text-muted: #64748B;
+}
+
+/* Light mode */
+:root:not(.dark) {
+    --vp-c-bg: var(--noorm-light-bg);
+    --vp-c-bg-alt: var(--noorm-light-surface);
+    --vp-c-bg-soft: var(--noorm-light-surface);
+    --vp-c-bg-mute: var(--noorm-light-surface-hover);
+    --vp-c-bg-elv: var(--noorm-light-bg);
+
+    --vp-c-text: var(--noorm-light-text-primary);
+    --vp-c-text-1: var(--noorm-light-text-primary);
+    --vp-c-text-2: var(--noorm-light-text-secondary);
+    --vp-c-text-3: var(--noorm-light-text-muted);
+
+    --vp-c-brand: var(--noorm-primary);
+    --vp-c-brand-1: var(--noorm-primary-light);
+    --vp-c-brand-2: var(--noorm-primary);
+    --vp-c-brand-3: var(--noorm-primary-dark);
+
+    --vp-c-divider: rgba(59, 130, 246, 0.15);
+    --vp-c-border: rgba(59, 130, 246, 0.2);
+}
+
+/* Dark mode */
+.dark {
+    --vp-c-bg: var(--noorm-dark-bg);
+    --vp-c-bg-alt: var(--noorm-dark-surface);
+    --vp-c-bg-soft: var(--noorm-dark-surface);
+    --vp-c-bg-mute: var(--noorm-dark-surface-hover);
+    --vp-c-bg-elv: var(--noorm-dark-surface);
+
+    --vp-c-text: var(--noorm-dark-text-primary);
+    --vp-c-text-1: var(--noorm-dark-text-primary);
+    --vp-c-text-2: var(--noorm-dark-text-secondary);
+    --vp-c-text-3: var(--noorm-dark-text-muted);
+
+    --vp-c-brand: var(--noorm-primary);
+    --vp-c-brand-1: var(--noorm-primary-light);
+    --vp-c-brand-2: var(--noorm-primary);
+    --vp-c-brand-3: var(--noorm-primary-dark);
+
+    --vp-c-divider: rgba(59, 130, 246, 0.2);
+    --vp-c-border: rgba(59, 130, 246, 0.15);
+}
+
+/* Navigation */
+.VPNav {
+    border-bottom: 1px solid rgba(59, 130, 246, 0.2);
+}
+
+.VPNavBarTitle .title {
+    color: var(--noorm-primary) !important;
+    font-weight: 600;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+}
+
+.VPNavBarMenuLink {
+    color: var(--vp-c-text-2) !important;
+}
+
+.VPNavBarMenuLink:hover,
+.VPNavBarMenuLink.active {
+    color: var(--noorm-primary) !important;
+}
+
+/* Sidebar */
+.VPSidebarItem.level-0 > .item > .text {
+    color: var(--vp-c-text-1) !important;
+    font-weight: 500;
+}
+
+.VPSidebarItem.level-1 > .item > .text,
+.VPSidebarItem.level-2 > .item > .text {
+    color: var(--vp-c-text-2) !important;
+}
+
+.VPSidebarItem.level-1 > .item:hover > .text,
+.VPSidebarItem.level-2 > .item:hover > .text,
+.VPSidebarItem.is-active > .item > .text {
+    color: var(--noorm-primary) !important;
+}
+
+/* Links */
+a {
+    color: var(--noorm-primary) !important;
+}
+
+a:hover {
+    color: var(--noorm-primary-light) !important;
+}
+
+/* Buttons */
+.VPButton.brand {
+    background: var(--noorm-primary) !important;
+    color: white !important;
+    border-color: var(--noorm-primary) !important;
+}
+
+.VPButton.brand:hover {
+    background: var(--noorm-primary-light) !important;
+    border-color: var(--noorm-primary-light) !important;
+}
+
+.VPButton.alt {
+    background: transparent !important;
+    color: var(--noorm-primary) !important;
+    border-color: var(--noorm-primary) !important;
+}
+
+.VPButton.alt:hover {
+    background: rgba(59, 130, 246, 0.1) !important;
+    color: var(--noorm-primary-light) !important;
+}
+
+/* Code blocks - terminal aesthetic */
+div[class*="language-"] {
+    background: var(--vp-c-bg-soft) !important;
+    border: 1px solid rgba(59, 130, 246, 0.1);
+}
+
+.vp-code-group .tabs label {
+    background: var(--vp-c-bg-soft) !important;
+    color: var(--vp-c-text-2) !important;
+}
+
+.vp-code-group .tabs label.active {
+    color: var(--noorm-primary) !important;
+    border-bottom-color: var(--noorm-primary) !important;
+}
+
+/* Custom blocks - using status colors */
+.custom-block.tip {
+    border-color: var(--noorm-success) !important;
+    background: rgba(16, 185, 129, 0.05) !important;
+}
+
+.custom-block.tip .custom-block-title {
+    color: var(--noorm-success) !important;
+}
+
+.custom-block.info {
+    border-color: var(--noorm-info) !important;
+    background: rgba(139, 92, 246, 0.05) !important;
+}
+
+.custom-block.info .custom-block-title {
+    color: var(--noorm-info) !important;
+}
+
+.custom-block.warning {
+    border-color: var(--noorm-warning) !important;
+    background: rgba(245, 158, 11, 0.05) !important;
+}
+
+.custom-block.warning .custom-block-title {
+    color: var(--noorm-warning) !important;
+}
+
+.custom-block.danger {
+    border-color: var(--noorm-error) !important;
+    background: rgba(239, 68, 68, 0.05) !important;
+}
+
+.custom-block.danger .custom-block-title {
+    color: var(--noorm-error) !important;
+}
+
+/* Hero section */
+.VPHero .VPHeroContent .name,
+.VPHero .name {
+    background: linear-gradient(135deg, var(--noorm-primary) 0%, var(--noorm-info) 100%) !important;
+    -webkit-background-clip: text !important;
+    background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
+    font-family: 'SF Mono', 'Fira Code', 'Menlo', monospace !important;
+    font-size: 3.5rem !important;
+    line-height: 1.2 !important;
+    font-weight: 800 !important;
+    letter-spacing: -0.02em;
+}
+
+.VPHero .VPHeroContent .text,
+.VPHero .text {
+    color: var(--vp-c-text-1) !important;
+    font-weight: 700 !important;
+    font-size: 2.5rem !important;
+    line-height: 1.3 !important;
+}
+
+.VPHero .VPHeroContent .tagline,
+.VPHero .tagline {
+    color: var(--vp-c-text-2) !important;
+    font-size: 1.25rem !important;
+    line-height: 1.6 !important;
+    max-width: 500px;
+}
+
+/* Feature cards */
+.VPFeatures .VPFeature {
+    background: var(--vp-c-bg-soft);
+    border: 1px solid var(--vp-c-bg-soft);
+    border-radius: 12px;
+    transition: border-color 0.25s;
+}
+
+.VPFeatures .VPFeature:hover {
+    border-color: var(--vp-c-brand);
+}
+
+/* Feature icons - style the VPImage directly */
+.VPFeature .VPImage {
+    padding: 10px;
+    border-radius: 6px;
+    border: 1px solid var(--vp-c-divider);
+    background-color: var(--vp-c-bg);
+}
+
+
+.VPFeature .title {
+    color: var(--vp-c-text-1);
+    font-weight: 600;
+}
+
+.VPFeature .details {
+    color: var(--vp-c-text-2);
+}
+
+/* Search */
+.VPLocalSearchBox .result-title mark {
+    background: rgba(59, 130, 246, 0.3) !important;
+    color: var(--noorm-primary-light) !important;
+}
+
+/* Table of contents */
+.VPDocAside .outline-link:hover,
+.VPDocAside .outline-link.active {
+    color: var(--noorm-primary) !important;
+}
+
+/* Tables */
+th {
+    background: var(--vp-c-bg-soft) !important;
+    color: var(--noorm-primary) !important;
+}
+
+/* Blockquotes */
+blockquote {
+    border-left-color: var(--noorm-primary) !important;
+}
+
+/* Focus states */
+:focus-visible {
+    outline: 2px solid var(--noorm-primary) !important;
+    outline-offset: 2px;
+}
+
+/* Badge */
+.badge {
+    background: var(--noorm-primary) !important;
+    color: white !important;
+}
+
+/* Footer */
+.VPFooter {
+    background: var(--vp-c-bg-soft) !important;
+    border-top: 1px solid rgba(59, 130, 246, 0.2);
+}
+
+/* Social links */
+.VPNavBarSocialLinks .link:hover {
+    color: var(--noorm-primary) !important;
+}
+
+/* Headings */
+h1 {
+    border-bottom-color: rgba(59, 130, 246, 0.3) !important;
+}
+
+h2 {
+    border-bottom-color: rgba(59, 130, 246, 0.2) !important;
+}
+
+/* Horizontal rules */
+hr {
+    border-color: rgba(59, 130, 246, 0.2) !important;
+}

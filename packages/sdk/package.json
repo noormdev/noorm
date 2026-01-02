@@ -1,0 +1,56 @@
+{
+  "name": "@noorm/sdk",
+  "version": "1.0.0",
+  "description": "Database schema & changeset manager SDK",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "peerDependencies": {
+    "kysely": "^0.28.0",
+    "better-sqlite3": "^12.0.0",
+    "pg": "^8.0.0",
+    "mysql2": "^3.0.0",
+    "tedious": "^18.0.0",
+    "tarn": "^3.0.0"
+  },
+  "peerDependenciesMeta": {
+    "better-sqlite3": {
+      "optional": true
+    },
+    "pg": {
+      "optional": true
+    },
+    "mysql2": {
+      "optional": true
+    },
+    "tedious": {
+      "optional": true
+    },
+    "tarn": {
+      "optional": true
+    }
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "database",
+    "schema",
+    "migrations",
+    "sdk",
+    "kysely",
+    "noorm"
+  ],
+  "license": "ISC"
+}

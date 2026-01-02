@@ -26,7 +26,6 @@ export async function createMssqlConnection(config: ConnectionConfig): Promise<C
 
     // Dynamic import to avoid compile-time dependency
     const Tedious = await import('tedious');
-    // @ts-expect-error - tarn types not installed, loaded dynamically
     const Tarn = await import('tarn');
 
     const db = new Kysely<unknown>({

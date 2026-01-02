@@ -1,0 +1,68 @@
+name: CI
+
+on:
+    push:
+        branches: [main, master]
+    pull_request:
+        branches: [main, master]
+
+jobs:
+    build:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: '20'
+                  cache: 'yarn'
+
+            - run: yarn install --frozen-lockfile
+            - run: yarn lint
+            - run: yarn typecheck
+            - run: yarn build
+            - run: yarn test
+
+    cli-e2e:
+        runs-on: ubuntu-latest
+        needs: build
+        steps:
+            - uses: actions/checkout@v4
+
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: '20'
+                  cache: 'yarn'
+
+            - run: yarn install --frozen-lockfile
+            - run: yarn build
+
+            # Test: Valid schema should build successfully (exit 0)
+            - name: Test valid schema build
+              env:
+                  NOORM_CONNECTION_DIALECT: sqlite
+                  NOORM_CONNECTION_DATABASE: ./tmp/ci-success.db
+                  NOORM_PATHS_SCHEMA: ./tests/fixtures/ci/success/schema
+              run: |
+                  mkdir -p ./tmp
+                  node dist/cli/index.js -H run build
+                  echo "Success: Valid schema built successfully"
+
+            # Test: Invalid schema should fail (exit 2)
+            - name: Test invalid schema build (expect failure)
+              env:
+                  NOORM_CONNECTION_DIALECT: sqlite
+                  NOORM_CONNECTION_DATABASE: ./tmp/ci-failure.db
+                  NOORM_PATHS_SCHEMA: ./tests/fixtures/ci/failure/schema
+              run: |
+                  mkdir -p ./tmp
+                  set +e
+                  node dist/cli/index.js -H run build
+                  EXIT_CODE=$?
+                  set -e
+                  if [ $EXIT_CODE -eq 2 ]; then
+                      echo "Success: CLI correctly returned exit code 2 for failed build"
+                  else
+                      echo "Failure: Expected exit code 2, got $EXIT_CODE"
+                      exit 1
+                  fi
