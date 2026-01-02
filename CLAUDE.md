@@ -3,9 +3,9 @@
 
 ## Overview
 
-**noorm** - Database Schema & Changeset Manager with Ink/React TUI.
+**noorm** - Database Schema & Change Manager with Ink/React TUI.
 
-Manage database configs, execute SQL changesets, run templated SQL files. Core modules emit events via `@logosdx/observer`, CLI subscribes. Configs stored encrypted in `.noorm/state.enc`. Headless mode for CI/CD with JSON output.
+Manage database configs, execute SQL changes, run templated SQL files. Core modules emit events via `@logosdx/observer`, CLI subscribes. Configs stored encrypted in `.noorm/state.enc`. Headless mode for CI/CD with JSON output.
 
 
 ## Commands
@@ -37,7 +37,7 @@ src/
 ├── core/                       # Business logic (no UI)
 │   ├── observer.ts             # Central event system
 │   ├── config/                 # Config management
-│   ├── changeset/              # Changeset parsing, execution
+│   ├── change/              # Change parsing, execution
 │   ├── runner/                 # SQL file execution
 │   ├── lock/                   # Concurrent operation locking
 │   ├── template/               # Eta templating
@@ -54,6 +54,18 @@ help/                           # CLI help files (plain text)
 tests/                          # Test suite
 docs/                           # Documentation
 ```
+
+
+## Development Rules
+
+Path-specific rules are in `.claude/rules/`:
+
+| File | Applies To | Covers |
+|------|------------|--------|
+| `typescript.md` | `**/*.{js,jsx,ts,tsx}` | 4-block function structure, error handling (no try-catch), imports, code style |
+| `tui-development.md` | `src/cli/**`, `tests/cli/**` | Focus system, UI patterns, Ink layout, observer hooks |
+| `testing.md` | `tests/**/*.{ts,tsx}` | Test naming, coverage, error assertions |
+| `documentation.md` | `docs/**/*.md` | Three-pillar structure, style, tone |
 
 
 ## Help Files
@@ -84,7 +96,7 @@ const HELP_REGISTRY: Record<string, string> = {
     'config/add': 'config-add.txt',
     'db/explore/tables': 'db-explore-tables.txt',
     // ...
-}
+};
 ```
 
 
@@ -105,16 +117,16 @@ This means parent help covers undocumented children automatically.
 ### API Functions
 
 ```typescript
-import { getHelp, getHelpMatch, listHelpTopics } from './help.js'
+import { getHelp, getHelpMatch, listHelpTopics } from './help.js';
 
 // Load help content (async, returns null if not found)
-const content = await getHelp('db/explore/tables')
+const content = await getHelp('db/explore/tables');
 
 // Get the matched route (useful for showing which help loaded)
-const match = getHelpMatch('db/explore/tables/detail')  // → 'db/explore/tables'
+const match = getHelpMatch('db/explore/tables/detail');  // → 'db/explore/tables'
 
 // List all available topics
-const topics = listHelpTopics()  // → ['change', 'change/ff', 'config', ...]
+const topics = listHelpTopics();  // → ['change', 'change/ff', 'config', ...]
 ```
 
 
@@ -156,38 +168,9 @@ Only add registry entries for routes with dedicated content. Parent routes autom
 
 ## Principles
 
-Use `attempt`/`attemptSync` from `@logosdx/utils` for I/O operations. Error tuples make failure paths explicit without try-catch.
-
-Use `@logosdx/observer` for all events. Core modules emit, CLI subscribes. This keeps business logic UI-agnostic.
-
-Validate inputs before business logic. The 4-block function structure (Declaration, Validation, Business Logic, Commit) prevents failures and organizes side effects.
-
 Use Kysely as the SQL translator. Write database operations once, Kysely handles dialect differences.
 
 For setup wizards where the target database may not exist yet, use `testConnection(config, { testServerOnly: true })`. This connects to the dialect's system database (postgres→`postgres`, mssql→`master`, mysql→no database) to verify credentials without requiring the target database.
-
-
-## UI Patterns
-
-Use toasts for success/error feedback instead of dead-end confirmation screens. Show toast and use `back()` to pop history:
-
-```tsx
-const { showToast } = useToast()
-const { back } = useRouter()
-
-showToast({ message: 'Config saved', variant: 'success' })
-back()  // Pops history stack, avoids duplicate breadcrumb entries
-```
-
-Use Form's `busy` and `statusError` props for inline progress and error display. Keeps user on form to fix errors:
-
-```tsx
-<Form
-    busy={isLoading}
-    busyLabel="Testing connection..."
-    statusError={connectionError}
-/>
-```
 
 
 ## Keyboard Shortcuts
@@ -198,7 +181,7 @@ Consistent hotkey conventions across all screens:
 | Key | Action |
 |-----|--------|
 | `c` | config |
-| `g` | changesets |
+| `g` | changes |
 | `r` | run |
 | `d` | db |
 | `l` | lock |
@@ -230,24 +213,3 @@ Consistent hotkey conventions across all screens:
 | `Shift+L` | Toggle log viewer overlay |
 
 Use `numberNav` prop on `SelectList` for 1-9 quick selection in lists.
-
-
-## Ink Layout
-
-Ink uses Yoga (flexbox). For `justifyContent` or `<Spacer />` to work, parent needs explicit width:
-
-```tsx
-<Box width="100%">
-    <Text>Left</Text>
-    <Spacer />
-    <Text>Right</Text>
-</Box>
-```
-
-For fixed-position elements (like toast), use fixed width to reserve space and prevent layout shift:
-
-```tsx
-<Box width={40} justifyContent="flex-end">
-    <ToastRenderer />
-</Box>
-```

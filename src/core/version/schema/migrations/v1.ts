@@ -15,7 +15,7 @@ import type { SchemaMigration } from '../../types.js';
  *
  * Tables created:
  * - __noorm_version__    - Version tracking
- * - __noorm_changeset__  - Operation batches
+ * - __noorm_change__  - Operation batches
  * - __noorm_executions__ - File executions
  * - __noorm_lock__       - Concurrent operation locks
  * - __noorm_identities__ - User identities for team discovery
@@ -31,7 +31,7 @@ export const v1: SchemaMigration = {
             .createTable('__noorm_version__')
             .addColumn('id', 'serial', (col) => col.primaryKey())
             .addColumn('cli_version', 'varchar(50)', (col) => col.notNull())
-            .addColumn('schema_version', 'integer', (col) => col.notNull())
+            .addColumn('noorm_version', 'integer', (col) => col.notNull())
             .addColumn('state_version', 'integer', (col) => col.notNull())
             .addColumn('settings_version', 'integer', (col) => col.notNull())
             .addColumn('installed_at', 'timestamp', (col) =>
@@ -42,9 +42,9 @@ export const v1: SchemaMigration = {
             )
             .execute();
 
-        // __noorm_changeset__ - Operation batches
+        // __noorm_change__ - Operation batches
         await db.schema
-            .createTable('__noorm_changeset__')
+            .createTable('__noorm_change__')
             .addColumn('id', 'serial', (col) => col.primaryKey())
             .addColumn('name', 'varchar(255)', (col) => col.notNull())
             .addColumn('change_type', 'varchar(50)', (col) => col.notNull())
@@ -65,8 +65,8 @@ export const v1: SchemaMigration = {
         await db.schema
             .createTable('__noorm_executions__')
             .addColumn('id', 'serial', (col) => col.primaryKey())
-            .addColumn('changeset_id', 'integer', (col) =>
-                col.notNull().references('__noorm_changeset__.id').onDelete('cascade'),
+            .addColumn('change_id', 'integer', (col) =>
+                col.notNull().references('__noorm_change__.id').onDelete('cascade'),
             )
             .addColumn('filepath', 'varchar(500)', (col) => col.notNull())
             .addColumn('file_type', 'varchar(10)', (col) => col.notNull())
@@ -109,17 +109,17 @@ export const v1: SchemaMigration = {
             )
             .execute();
 
-        // Create index on executions for faster lookups by changeset
+        // Create index on executions for faster lookups by change
         await db.schema
-            .createIndex('idx_executions_changeset_id')
+            .createIndex('idx_executions_change_id')
             .on('__noorm_executions__')
-            .column('changeset_id')
+            .column('change_id')
             .execute();
 
-        // Create index on changeset for faster lookups by name and config
+        // Create index on change for faster lookups by name and config
         await db.schema
-            .createIndex('idx_changeset_name_config')
-            .on('__noorm_changeset__')
+            .createIndex('idx_change_name_config')
+            .on('__noorm_change__')
             .columns(['name', 'config_name'])
             .execute();
 
@@ -128,14 +128,14 @@ export const v1: SchemaMigration = {
     async down(db: Kysely<unknown>): Promise<void> {
 
         // Drop indexes first
-        await db.schema.dropIndex('idx_changeset_name_config').execute();
-        await db.schema.dropIndex('idx_executions_changeset_id').execute();
+        await db.schema.dropIndex('idx_change_name_config').execute();
+        await db.schema.dropIndex('idx_executions_change_id').execute();
 
         // Drop tables in reverse order (child tables first due to FK constraints)
         await db.schema.dropTable('__noorm_identities__').execute();
         await db.schema.dropTable('__noorm_lock__').execute();
         await db.schema.dropTable('__noorm_executions__').execute();
-        await db.schema.dropTable('__noorm_changeset__').execute();
+        await db.schema.dropTable('__noorm_change__').execute();
         await db.schema.dropTable('__noorm_version__').execute();
 
     },

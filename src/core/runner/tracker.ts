@@ -6,7 +6,7 @@
  * previous executions.
  *
  * WHY: Idempotent builds require knowing which files have changed.
- * The tracker maintains an audit trail in __noorm_changeset__ and
+ * The tracker maintains an audit trail in __noorm_change__ and
  * __noorm_executions__ tables.
  *
  * @example
@@ -20,7 +20,7 @@
  *
  * // Create operation and record executions
  * const opId = await tracker.createOperation({ name: 'build:...', ... })
- * await tracker.recordExecution({ changesetId: opId, filepath: '...', ... })
+ * await tracker.recordExecution({ changeId: opId, filepath: '...', ... })
  * ```
  */
 import type { Kysely } from 'kysely';
@@ -49,7 +49,7 @@ import type { NeedsRunResult, CreateOperationData, RecordExecutionData } from '.
  *
  * // Record each file execution
  * await tracker.recordExecution({
- *     changesetId: opId,
+ *     changeId: opId,
  *     filepath: '/project/sql/001.sql',
  *     checksum: 'abc123...',
  *     status: 'success',
@@ -79,7 +79,7 @@ export class Tracker {
      * - Force flag is set
      * - No previous execution exists (new file)
      * - Previous execution failed
-     * - Parent changeset is stale (schema was torn down)
+     * - Parent change is stale (schema was torn down)
      * - Checksum differs (file changed)
      *
      * @param filepath - File path to check
@@ -97,22 +97,22 @@ export class Tracker {
         }
 
         // Find most recent execution for this file and config
-        // Also fetch the parent changeset status to check for stale
+        // Also fetch the parent change status to check for stale
         const [record, err] = await attempt(() =>
             this.#db
                 .selectFrom(NOORM_TABLES.executions)
                 .innerJoin(
-                    NOORM_TABLES.changeset,
-                    `${NOORM_TABLES.changeset}.id`,
-                    `${NOORM_TABLES.executions}.changeset_id`,
+                    NOORM_TABLES.change,
+                    `${NOORM_TABLES.change}.id`,
+                    `${NOORM_TABLES.executions}.change_id`,
                 )
                 .select((eb) => [
                     eb.ref(`${NOORM_TABLES.executions}.checksum`).as('checksum'),
                     eb.ref(`${NOORM_TABLES.executions}.status`).as('exec_status'),
-                    eb.ref(`${NOORM_TABLES.changeset}.status`).as('changeset_status'),
+                    eb.ref(`${NOORM_TABLES.change}.status`).as('change_status'),
                 ])
                 .where(`${NOORM_TABLES.executions}.filepath`, '=', filepath)
-                .where(`${NOORM_TABLES.changeset}.config_name`, '=', this.#configName)
+                .where(`${NOORM_TABLES.change}.config_name`, '=', this.#configName)
                 .orderBy(`${NOORM_TABLES.executions}.id`, 'desc')
                 .limit(1)
                 .executeTakeFirst(),
@@ -149,8 +149,8 @@ export class Tracker {
 
         }
 
-        // Parent changeset is stale (schema was torn down) - needs re-run
-        if (record.changeset_status === 'stale') {
+        // Parent change is stale (schema was torn down) - needs re-run
+        if (record.change_status === 'stale') {
 
             return {
                 needsRun: true,
@@ -183,7 +183,7 @@ export class Tracker {
     /**
      * Create a new operation record.
      *
-     * Operations are parent records in __noorm_changeset__ that
+     * Operations are parent records in __noorm_change__ that
      * group individual file executions.
      *
      * @param data - Operation data
@@ -193,7 +193,7 @@ export class Tracker {
 
         const [result, err] = await attempt(() =>
             this.#db
-                .insertInto(NOORM_TABLES.changeset)
+                .insertInto(NOORM_TABLES.change)
                 .values({
                     name: data.name,
                     change_type: data.changeType as ChangeType,
@@ -230,7 +230,7 @@ export class Tracker {
             this.#db
                 .insertInto(NOORM_TABLES.executions)
                 .values({
-                    changeset_id: data.changesetId,
+                    change_id: data.changeId,
                     filepath: data.filepath,
                     file_type: 'sql',
                     checksum: data.checksum,
@@ -275,7 +275,7 @@ export class Tracker {
 
         const [, err] = await attempt(() =>
             this.#db
-                .updateTable(NOORM_TABLES.changeset)
+                .updateTable(NOORM_TABLES.change)
                 .set({
                     status,
                     duration_ms: durationMs,

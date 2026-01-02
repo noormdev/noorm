@@ -75,16 +75,16 @@ describe('settings: SettingsManager', () => {
                 const yaml = `
 build:
     include:
-        - schema/custom
+        - sql/custom
     exclude:
-        - schema/ignored
+        - sql/ignored
 `;
                 writeFileSync(join(settingsDir, 'settings.yml'), yaml);
 
                 const settings = await manager.load();
 
-                expect(settings.build?.include).toEqual(['schema/custom']);
-                expect(settings.build?.exclude).toEqual(['schema/ignored']);
+                expect(settings.build?.include).toEqual(['sql/custom']);
+                expect(settings.build?.exclude).toEqual(['sql/ignored']);
 
             }
             finally {
@@ -389,8 +389,8 @@ stages:
 
                 const paths = manager.getPaths();
 
-                expect(paths.schema).toBe('./schema');
-                expect(paths.changesets).toBe('./changesets');
+                expect(paths.sql).toBe('./sql');
+                expect(paths.changes).toBe('./changes');
 
             }
             finally {
@@ -737,7 +737,7 @@ stages:
 
         const testRule: Rule = {
             match: { isTest: true },
-            include: ['schema/seeds'],
+            include: ['sql/seeds'],
         };
 
         it('should add a rule', async () => {
@@ -773,7 +773,7 @@ stages:
                 await manager.addRule(testRule);
                 await manager.addRule({
                     match: { protected: true },
-                    exclude: ['schema/dangerous'],
+                    exclude: ['sql/dangerous'],
                 });
 
                 const rules = manager.getRules();
@@ -799,7 +799,7 @@ stages:
                 await manager.addRule(testRule);
                 await manager.addRule({
                     match: { protected: true },
-                    exclude: ['schema/dangerous'],
+                    exclude: ['sql/dangerous'],
                 });
 
                 const removed = await manager.removeRule(0);
@@ -879,14 +879,14 @@ stages:
 
                 await manager.load();
                 await manager.setPaths({
-                    schema: './db/schema',
-                    changesets: './db/migrations',
+                    sql: './db/sql',
+                    changes: './db/migrations',
                 });
 
                 const paths = manager.getPaths();
 
-                expect(paths.schema).toBe('./db/schema');
-                expect(paths.changesets).toBe('./db/migrations');
+                expect(paths.sql).toBe('./db/sql');
+                expect(paths.changes).toBe('./db/migrations');
 
             }
             finally {
@@ -1033,10 +1033,10 @@ stages:
             try {
 
                 await manager.load();
-                await manager.addRule({ match: { isTest: true }, include: ['schema/seeds'] });
+                await manager.addRule({ match: { isTest: true }, include: ['sql/seeds'] });
                 await manager.addRule({
                     match: { protected: true },
-                    exclude: ['schema/dangerous'],
+                    exclude: ['sql/dangerous'],
                 });
 
                 const testConfig = {
@@ -1049,7 +1049,7 @@ stages:
                 const result = manager.evaluateRules(testConfig);
 
                 expect(result.matchedRules.length).toBe(1);
-                expect(result.include).toContain('schema/seeds');
+                expect(result.include).toContain('sql/seeds');
 
             }
             finally {
@@ -1068,13 +1068,13 @@ stages:
 
                 await manager.load();
                 await manager.setBuild({
-                    include: ['schema/tables', 'schema/views'],
-                    exclude: ['schema/archive'],
+                    include: ['sql/tables', 'sql/views'],
+                    exclude: ['sql/archive'],
                 });
-                await manager.addRule({ match: { isTest: true }, include: ['schema/seeds'] });
+                await manager.addRule({ match: { isTest: true }, include: ['sql/seeds'] });
                 await manager.addRule({
                     match: { protected: true },
-                    exclude: ['schema/dangerous'],
+                    exclude: ['sql/dangerous'],
                 });
 
                 const testConfig = {
@@ -1086,10 +1086,10 @@ stages:
 
                 const result = manager.getEffectiveBuildPaths(testConfig);
 
-                expect(result.include).toContain('schema/tables');
-                expect(result.include).toContain('schema/views');
-                expect(result.include).toContain('schema/seeds');
-                expect(result.exclude).toContain('schema/archive');
+                expect(result.include).toContain('sql/tables');
+                expect(result.include).toContain('sql/views');
+                expect(result.include).toContain('sql/seeds');
+                expect(result.exclude).toContain('sql/archive');
 
             }
             finally {
@@ -1116,7 +1116,7 @@ stages:
                     locked: true,
                     defaults: { dialect: 'postgres', protected: true },
                 });
-                await manager.addRule({ match: { isTest: true }, include: ['schema/seeds'] });
+                await manager.addRule({ match: { isTest: true }, include: ['sql/seeds'] });
 
                 // Create new manager and reload from same directory
                 const manager2 = new SettingsManager(tempDir, {

@@ -17,11 +17,11 @@ import type { SelectListItem } from '../../components/lists/index.js';
  * Props for ProjectSetup.
  */
 export interface ProjectSetupProps {
-    /** Schema path (for display) */
-    schemaPath?: string;
+    /** SQL path (for display) */
+    sqlPath?: string;
 
-    /** Changesets path (for display) */
-    changesetsPath?: string;
+    /** Changes path (for display) */
+    changesPath?: string;
 
     /** Called when user chooses to add config */
     onAddConfig: () => void;
@@ -39,8 +39,8 @@ export interface ProjectSetupProps {
  * Shows what will be created and offers to add first config.
  */
 export function ProjectSetup({
-    schemaPath = './schema',
-    changesetsPath = './changesets',
+    sqlPath = './sql',
+    changesPath = './changes',
     onAddConfig,
     onSkipConfig,
     onCancel: _onCancel,
@@ -97,12 +97,12 @@ export function ProjectSetup({
                     <Text bold>Paths:</Text>
                     <Box flexDirection="column" marginLeft={2} marginTop={1}>
                         <Text>
-                            <Text dimColor>Schema: </Text>
-                            <Text color="cyan">{schemaPath}</Text>
+                            <Text dimColor>SQL: </Text>
+                            <Text color="cyan">{sqlPath}</Text>
                         </Text>
                         <Text>
-                            <Text dimColor>Changesets: </Text>
-                            <Text color="cyan">{changesetsPath}</Text>
+                            <Text dimColor>Changes: </Text>
+                            <Text color="cyan">{changesPath}</Text>
                         </Text>
                     </Box>
                 </Box>
@@ -113,11 +113,11 @@ export function ProjectSetup({
                     <Box flexDirection="column" marginLeft={2} marginTop={1}>
                         <Text dimColor>
                             <Text>• </Text>
-                            <Text>{schemaPath}/.gitkeep</Text>
+                            <Text>{sqlPath}/.gitkeep</Text>
                         </Text>
                         <Text dimColor>
                             <Text>• </Text>
-                            <Text>{changesetsPath}/.gitkeep</Text>
+                            <Text>{changesPath}/.gitkeep</Text>
                         </Text>
                         <Text dimColor>
                             <Text>• </Text>

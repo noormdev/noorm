@@ -24,8 +24,8 @@ function createConfig(overrides: Partial<Config> = {}): Config {
             database: ':memory:',
         },
         paths: {
-            schema: './schema',
-            changesets: './changesets',
+            sql: './sql',
+            changes: './changes',
         },
         ...overrides,
     };

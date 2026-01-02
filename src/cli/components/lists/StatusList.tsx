@@ -8,9 +8,9 @@
  * ```tsx
  * <StatusList
  *     items={[
- *         { label: 'schema/001_users.sql', status: 'success' },
- *         { label: 'schema/002_posts.sql', status: 'pending' },
- *         { label: 'schema/003_comments.sql', status: 'error', detail: 'Syntax error' },
+ *         { label: 'sql/001_users.sql', status: 'success' },
+ *         { label: 'sql/002_posts.sql', status: 'pending' },
+ *         { label: 'sql/003_comments.sql', status: 'error', detail: 'Syntax error' },
  *     ]}
  * />
  * ```

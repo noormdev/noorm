@@ -1,5 +1,5 @@
 {
-    "name": "noorm",
+    "name": "@noormdev/main",
     "version": "1.0.0",
     "private": true,
     "workspaces": [

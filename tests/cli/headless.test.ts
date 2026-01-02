@@ -215,7 +215,7 @@ describe('cli: headless', () => {
 
             observer.emit('build:start', {
                 configName: 'test',
-                schemaPath: './schema',
+                sqlPath: './sql',
                 fileCount: 5,
             });
 
@@ -238,7 +238,7 @@ describe('cli: headless', () => {
 
             observer.emit('build:start', {
                 configName: 'test',
-                schemaPath: './schema',
+                sqlPath: './sql',
                 fileCount: 10,
             });
 
@@ -284,7 +284,7 @@ describe('cli: headless', () => {
             logger.start();
 
             observer.emit('file:before', {
-                filepath: './schema/001_users.sql',
+                filepath: './sql/001_users.sql',
                 checksum: 'abc123',
                 configName: 'test',
             });
@@ -294,7 +294,7 @@ describe('cli: headless', () => {
             const output = consoleSpy.mock.calls[0]?.[0] as string;
 
             expect(output).toContain('Running');
-            expect(output).toContain('./schema/001_users.sql');
+            expect(output).toContain('./sql/001_users.sql');
 
         });
 
@@ -304,7 +304,7 @@ describe('cli: headless', () => {
             logger.start();
 
             observer.emit('file:after', {
-                filepath: './schema/001_users.sql',
+                filepath: './sql/001_users.sql',
                 status: 'success',
                 durationMs: 45,
             });
@@ -314,7 +314,7 @@ describe('cli: headless', () => {
             const output = consoleSpy.mock.calls[0]?.[0] as string;
 
             expect(output).toContain('✓');
-            expect(output).toContain('./schema/001_users.sql');
+            expect(output).toContain('./sql/001_users.sql');
             expect(output).toContain('45ms');
 
         });
@@ -325,7 +325,7 @@ describe('cli: headless', () => {
             logger.start();
 
             observer.emit('file:after', {
-                filepath: './schema/001_users.sql',
+                filepath: './sql/001_users.sql',
                 status: 'failed',
                 durationMs: 10,
                 error: 'Syntax error',
@@ -345,7 +345,7 @@ describe('cli: headless', () => {
             logger.start();
 
             observer.emit('file:skip', {
-                filepath: './schema/001_users.sql',
+                filepath: './sql/001_users.sql',
                 reason: 'unchanged',
             });
 
@@ -358,12 +358,12 @@ describe('cli: headless', () => {
 
         });
 
-        it('should format changeset:start event', () => {
+        it('should format change:start event', () => {
 
             const logger = new HeadlessLogger(false);
             logger.start();
 
-            observer.emit('changeset:start', {
+            observer.emit('change:start', {
                 name: '2024-01-15_add-users',
                 direction: 'change',
                 configName: 'test',
@@ -378,12 +378,12 @@ describe('cli: headless', () => {
 
         });
 
-        it('should format changeset:start revert', () => {
+        it('should format change:start revert', () => {
 
             const logger = new HeadlessLogger(false);
             logger.start();
 
-            observer.emit('changeset:start', {
+            observer.emit('change:start', {
                 name: '2024-01-15_add-users',
                 direction: 'revert',
                 configName: 'test',
@@ -489,7 +489,7 @@ describe('cli: headless', () => {
             // This should not be logged
             observer.emit('build:start', {
                 configName: 'test',
-                schemaPath: './schema',
+                sqlPath: './sql',
                 fileCount: 5,
             });
 
@@ -549,7 +549,7 @@ describe('cli: headless', () => {
             registerHeadlessHandler('run/build', handler);
 
             const flags = createFlags();
-            const params = { path: './schema' };
+            const params = { path: './sql' };
 
             const result = await runHeadless('run/build', params, flags);
 

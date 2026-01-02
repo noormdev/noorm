@@ -110,10 +110,10 @@ export function RunExecScreen({ params: _params }: ScreenProps): ReactElement {
 
             setPhase('loading');
 
-            const schemaPath = settings.paths?.schema ?? 'schema';
-            const schemaFullPath = join(projectRoot, schemaPath);
+            const sqlPath = settings.paths?.sql ?? 'sql';
+            const sqlFullPath = join(projectRoot, sqlPath);
 
-            const [files, err] = await attempt(() => discoverFiles(schemaFullPath));
+            const [files, err] = await attempt(() => discoverFiles(sqlFullPath));
 
             if (cancelled) return;
 

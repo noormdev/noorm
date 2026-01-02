@@ -3,7 +3,7 @@ import { withContext, type HeadlessCommand } from './_helpers.js';
 export const help = `
 # CHANGE HISTORY
 
-Show changeset execution history
+Show change execution history
 
 ## Usage
 
@@ -16,7 +16,7 @@ Show changeset execution history
 
 ## Description
 
-Displays the history of changeset executions including timestamps,
+Displays the history of change executions including timestamps,
 status, and duration. Useful for auditing and debugging.
 
 ## Examples

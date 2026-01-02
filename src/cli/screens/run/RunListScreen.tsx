@@ -162,7 +162,7 @@ export function RunListScreen({ params: _params }: ScreenProps): ReactElement {
 
     }
 
-    const schemaPath = settings?.paths?.schema ?? 'schema';
+    const sqlPath = settings?.paths?.sql ?? 'sql';
 
     return (
         <Box flexDirection="column" gap={1}>
@@ -194,7 +194,7 @@ export function RunListScreen({ params: _params }: ScreenProps): ReactElement {
 
                     <Box gap={2}>
                         <Text>Schema Path:</Text>
-                        <Text dimColor>{schemaPath}</Text>
+                        <Text dimColor>{sqlPath}</Text>
                     </Box>
 
                     {effectivePaths && (

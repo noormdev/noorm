@@ -3,7 +3,7 @@ import { withContext, type HeadlessCommand } from './_helpers.js';
 export const help = `
 # CHANGE
 
-Manage and apply changesets
+Manage and apply changes
 
 ## Usage
 
@@ -11,19 +11,19 @@ Manage and apply changesets
 
 ## Subcommands
 
-    (none)      List all changesets and their status
-    ff          Fast-forward: apply all pending changesets
-    run NAME    Apply a specific changeset
-    revert NAME Revert a specific changeset
+    (none)      List all changes and their status
+    ff          Fast-forward: apply all pending changes
+    run NAME    Apply a specific change
+    revert NAME Revert a specific change
     history     Show execution history
 
 ## Description
 
-Changesets are versioned SQL migrations stored in the \`changesets/\`
-directory. Each changeset has forward (apply) and backward (revert)
+Changes are versioned SQL migrations stored in the \`changes/\`
+directory. Each change has forward (apply) and backward (revert)
 SQL files.
 
-Changeset status:
+Change status:
 - **pending** - Not yet applied
 - **applied** - Successfully applied
 - **failed** - Execution failed
@@ -49,25 +49,25 @@ See \`noorm help change ff\`, \`noorm help change run\`, or \`noorm help change 
 
 export const run: HeadlessCommand = async (_params, flags, logger) => {
 
-    const [changesets, error] = await withContext({
+    const [changes, error] = await withContext({
         flags,
         logger,
-        fn: (ctx) => ctx.getChangesetStatus(),
+        fn: (ctx) => ctx.getChangeStatus(),
     });
 
     if (error) return 1;
 
-    for (const cs of changesets) {
+    for (const cs of changes) {
 
         logger.info(`${cs.name} (${cs.status})`);
 
     }
 
-    const pending = changesets.filter((c) => c.status === 'pending').length;
+    const pending = changes.filter((c) => c.status === 'pending').length;
 
     if (pending > 0) {
 
-        logger.info(`${pending} pending changeset(s)`);
+        logger.info(`${pending} pending change(s)`);
 
     }
 

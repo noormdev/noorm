@@ -18,7 +18,7 @@ export type IdentitySource = 'state' | 'config' | 'env' | 'git' | 'system';
 /**
  * Resolved audit identity.
  *
- * Used for tracking "who" executed a changeset or SQL file.
+ * Used for tracking "who" executed a change or SQL file.
  *
  * @example
  * ```typescript
@@ -229,8 +229,8 @@ export interface ExportedConfig {
 
     /** File paths */
     paths: {
-        schema: string;
-        changesets: string;
+        sql: string;
+        changes: string;
     };
 
     /** Test database flag */

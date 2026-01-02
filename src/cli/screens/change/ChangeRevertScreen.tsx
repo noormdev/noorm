@@ -1,12 +1,12 @@
 /**
- * ChangeRevertScreen - rollback a single changeset.
+ * ChangeRevertScreen - rollback a single change.
  *
- * Executes the revert files for an applied changeset.
+ * Executes the revert files for an applied change.
  * Requires confirmation for protected configs.
  *
  * @example
  * ```bash
- * noorm change:revert add-user-roles    # Revert changeset
+ * noorm change:revert add-user-roles    # Revert change
  * noorm change revert add-user-roles    # Same thing
  * ```
  */
@@ -16,7 +16,7 @@ import { ProgressBar } from '@inkjs/ui';
 
 import type { ReactElement } from 'react';
 import type { ScreenProps } from '../../types.js';
-import type { Changeset, ChangesetResult } from '../../../core/changeset/types.js';
+import type { Change, ChangeResult } from '../../../core/change/types.js';
 import type { NoormDatabase } from '../../../core/shared/index.js';
 import type { Kysely } from 'kysely';
 
@@ -31,9 +31,9 @@ import {
     Confirm,
     ProtectedConfirm,
 } from '../../components/index.js';
-import { discoverChangesets } from '../../../core/changeset/parser.js';
-import { ChangesetHistory } from '../../../core/changeset/history.js';
-import { revertChangeset } from '../../../core/changeset/executor.js';
+import { discoverChanges } from '../../../core/change/parser.js';
+import { ChangeHistory } from '../../../core/change/history.js';
+import { revertChange } from '../../../core/change/executor.js';
 import { createConnection } from '../../../core/connection/factory.js';
 import { resolveIdentity } from '../../../core/identity/resolver.js';
 import { observer } from '../../../core/observer.js';
@@ -42,7 +42,7 @@ import { observer } from '../../../core/observer.js';
  * Revert steps.
  */
 type RevertStep =
-    | 'loading' // Finding changeset
+    | 'loading' // Finding change
     | 'confirm' // Awaiting confirmation
     | 'reverting' // Executing
     | 'complete' // Success
@@ -57,20 +57,20 @@ export function ChangeRevertScreen({ params }: ScreenProps): ReactElement {
     const { isFocused } = useFocusScope('ChangeRevert');
     const { activeConfig, activeConfigName, stateManager } = useAppContext();
 
-    const changesetName = params.name;
+    const changeName = params.name;
 
     const [step, setStep] = useState<RevertStep>('loading');
-    const [changeset, setChangeset] = useState<Changeset | null>(null);
-    const [result, setResult] = useState<ChangesetResult | null>(null);
+    const [change, setChange] = useState<Change | null>(null);
+    const [result, setResult] = useState<ChangeResult | null>(null);
     const [progress, setProgress] = useState({ current: 0, total: 0 });
     const [currentFile, setCurrentFile] = useState('');
     const [error, setError] = useState<string | null>(null);
     const [isProtected, setIsProtected] = useState(false);
 
-    // Load changeset info
+    // Load change info
     useEffect(() => {
 
-        if (!activeConfig || !changesetName) {
+        if (!activeConfig || !changeName) {
 
             return;
 
@@ -78,21 +78,21 @@ export function ChangeRevertScreen({ params }: ScreenProps): ReactElement {
 
         let cancelled = false;
 
-        const loadChangeset = async () => {
+        const loadChange = async () => {
 
             const [_, err] = await attempt(async () => {
 
-                // Find the changeset on disk
-                const changesets = await discoverChangesets(
-                    activeConfig.paths.changesets,
-                    activeConfig.paths.schema,
+                // Find the change on disk
+                const changes = await discoverChanges(
+                    activeConfig.paths.changes,
+                    activeConfig.paths.sql,
                 );
 
-                const found = changesets.find((cs) => cs.name === changesetName);
+                const found = changes.find((cs) => cs.name === changeName);
 
                 if (!found) {
 
-                    throw new Error(`Changeset not found: ${changesetName}`);
+                    throw new Error(`Change not found: ${changeName}`);
 
                 }
 
@@ -103,9 +103,9 @@ export function ChangeRevertScreen({ params }: ScreenProps): ReactElement {
                 );
                 const db = conn.db as Kysely<NoormDatabase>;
 
-                const history = new ChangesetHistory(db, activeConfigName ?? '');
+                const history = new ChangeHistory(db, activeConfigName ?? '');
                 const statuses = await history.getAllStatuses();
-                const status = statuses.get(changesetName);
+                const status = statuses.get(changeName);
 
                 await conn.destroy();
 
@@ -113,17 +113,17 @@ export function ChangeRevertScreen({ params }: ScreenProps): ReactElement {
 
                 if (status?.status !== 'success') {
 
-                    throw new Error(`Changeset "${changesetName}" is not applied`);
+                    throw new Error(`Change "${changeName}" is not applied`);
 
                 }
 
                 if (found.revertFiles.length === 0) {
 
-                    throw new Error(`Changeset "${changesetName}" has no revert files`);
+                    throw new Error(`Change "${changeName}" has no revert files`);
 
                 }
 
-                setChangeset(found);
+                setChange(found);
                 setIsProtected(activeConfig.protected ?? false);
                 setStep('confirm');
 
@@ -142,7 +142,7 @@ export function ChangeRevertScreen({ params }: ScreenProps): ReactElement {
 
         };
 
-        loadChangeset();
+        loadChange();
 
         return () => {
 
@@ -150,14 +150,14 @@ export function ChangeRevertScreen({ params }: ScreenProps): ReactElement {
 
         };
 
-    }, [activeConfig, activeConfigName, changesetName]);
+    }, [activeConfig, activeConfigName, changeName]);
 
     // Subscribe to progress events
     useEffect(() => {
 
-        const unsubFile = observer.on('changeset:file', (data) => {
+        const unsubFile = observer.on('change:file', (data) => {
 
-            if (data.changeset === changesetName) {
+            if (data.change === changeName) {
 
                 setProgress({ current: data.index, total: data.total });
                 setCurrentFile(data.filepath);
@@ -172,15 +172,15 @@ export function ChangeRevertScreen({ params }: ScreenProps): ReactElement {
 
         };
 
-    }, [changesetName]);
+    }, [changeName]);
 
     // Handle revert
     const handleRevert = useCallback(async () => {
 
-        if (!activeConfig || !changeset || !stateManager) return;
+        if (!activeConfig || !change || !stateManager) return;
 
         setStep('reverting');
-        setProgress({ current: 0, total: changeset.revertFiles.length });
+        setProgress({ current: 0, total: change.revertFiles.length });
 
         const [_, err] = await attempt(async () => {
 
@@ -201,12 +201,12 @@ export function ChangeRevertScreen({ params }: ScreenProps): ReactElement {
                 configName: activeConfigName ?? '',
                 identity,
                 projectRoot: process.cwd(),
-                changesetsDir: activeConfig.paths.changesets,
-                schemaDir: activeConfig.paths.schema,
+                changesDir: activeConfig.paths.changes,
+                sqlDir: activeConfig.paths.sql,
             };
 
             // Execute revert
-            const result = await revertChangeset(context, changeset);
+            const result = await revertChange(context, change);
 
             await conn.destroy();
 
@@ -228,7 +228,7 @@ export function ChangeRevertScreen({ params }: ScreenProps): ReactElement {
 
         }
 
-    }, [activeConfig, activeConfigName, changeset, stateManager]);
+    }, [activeConfig, activeConfigName, change, stateManager]);
 
     // Handle cancel
     const handleCancel = useCallback(() => {
@@ -250,12 +250,12 @@ export function ChangeRevertScreen({ params }: ScreenProps): ReactElement {
 
     });
 
-    // No changeset name provided
-    if (!changesetName) {
+    // No change name provided
+    if (!changeName) {
 
         return (
-            <Panel title="Revert Changeset" paddingX={2} paddingY={1} borderColor="yellow">
-                <Text color="yellow">No changeset name provided.</Text>
+            <Panel title="Revert Change" paddingX={2} paddingY={1} borderColor="yellow">
+                <Text color="yellow">No change name provided.</Text>
             </Panel>
         );
 
@@ -265,7 +265,7 @@ export function ChangeRevertScreen({ params }: ScreenProps): ReactElement {
     if (!activeConfig) {
 
         return (
-            <Panel title="Revert Changeset" paddingX={2} paddingY={1} borderColor="yellow">
+            <Panel title="Revert Change" paddingX={2} paddingY={1} borderColor="yellow">
                 <Text color="yellow">No active configuration.</Text>
             </Panel>
         );
@@ -276,40 +276,40 @@ export function ChangeRevertScreen({ params }: ScreenProps): ReactElement {
     if (step === 'loading') {
 
         return (
-            <Panel title="Revert Changeset" paddingX={2} paddingY={1}>
-                <Spinner label="Loading changeset..." />
+            <Panel title="Revert Change" paddingX={2} paddingY={1}>
+                <Spinner label="Loading change..." />
             </Panel>
         );
 
     }
 
     // Confirm
-    if (step === 'confirm' && changeset) {
+    if (step === 'confirm' && change) {
 
         const confirmContent = (
             <Box flexDirection="column" gap={1}>
                 <Text>
-                    Revert changeset:{' '}
+                    Revert change:{' '}
                     <Text bold color="yellow">
-                        {changesetName}
+                        {changeName}
                     </Text>
                 </Text>
                 <Text>
                     On config: <Text bold>{activeConfigName}</Text>
                 </Text>
-                <Text dimColor>Revert files to execute: {changeset.revertFiles.length}</Text>
+                <Text dimColor>Revert files to execute: {change.revertFiles.length}</Text>
             </Box>
         );
 
         if (isProtected) {
 
             return (
-                <Panel title="Revert Changeset" paddingX={2} paddingY={1} borderColor="yellow">
+                <Panel title="Revert Change" paddingX={2} paddingY={1} borderColor="yellow">
                     <Box flexDirection="column" gap={1}>
                         {confirmContent}
                         <ProtectedConfirm
                             configName={activeConfigName ?? 'config'}
-                            action="revert this changeset"
+                            action="revert this change"
                             onConfirm={handleRevert}
                             onCancel={handleCancel}
                             isFocused={isFocused}
@@ -321,11 +321,11 @@ export function ChangeRevertScreen({ params }: ScreenProps): ReactElement {
         }
 
         return (
-            <Panel title="Revert Changeset" paddingX={2} paddingY={1}>
+            <Panel title="Revert Change" paddingX={2} paddingY={1}>
                 <Box flexDirection="column" gap={1}>
                     {confirmContent}
                     <Confirm
-                        message="Revert this changeset?"
+                        message="Revert this change?"
                         onConfirm={handleRevert}
                         onCancel={handleCancel}
                         isFocused={isFocused}
@@ -342,12 +342,12 @@ export function ChangeRevertScreen({ params }: ScreenProps): ReactElement {
         const progressValue = progress.total > 0 ? progress.current / progress.total : 0;
 
         return (
-            <Panel title="Revert Changeset" paddingX={2} paddingY={1}>
+            <Panel title="Revert Change" paddingX={2} paddingY={1}>
                 <Box flexDirection="column" gap={1}>
                     <Text>
                         Reverting:{' '}
                         <Text bold color="yellow">
-                            {changesetName}
+                            {changeName}
                         </Text>
                     </Text>
 
@@ -369,10 +369,10 @@ export function ChangeRevertScreen({ params }: ScreenProps): ReactElement {
     if (step === 'complete' && result) {
 
         return (
-            <Panel title="Revert Changeset" paddingX={2} paddingY={1} borderColor="green">
+            <Panel title="Revert Change" paddingX={2} paddingY={1} borderColor="green">
                 <Box flexDirection="column" gap={1}>
                     <StatusMessage variant="success">
-                        Changeset "{changesetName}" reverted successfully!
+                        Change "{changeName}" reverted successfully!
                     </StatusMessage>
 
                     <Text dimColor>
@@ -390,9 +390,9 @@ export function ChangeRevertScreen({ params }: ScreenProps): ReactElement {
 
     // Error
     return (
-        <Panel title="Revert Changeset" paddingX={2} paddingY={1} borderColor="red">
+        <Panel title="Revert Change" paddingX={2} paddingY={1} borderColor="red">
             <Box flexDirection="column" gap={1}>
-                <StatusMessage variant="error">Failed to revert changeset: {error}</StatusMessage>
+                <StatusMessage variant="error">Failed to revert change: {error}</StatusMessage>
 
                 {result?.files && (
                     <Box flexDirection="column">

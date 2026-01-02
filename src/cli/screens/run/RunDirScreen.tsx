@@ -6,7 +6,7 @@
  * @example
  * ```bash
  * noorm run dir              # Opens this screen
- * noorm run dir schema/tables  # With pre-filled path
+ * noorm run dir sql/tables  # With pre-filled path
  * ```
  */
 import { useState, useEffect, useCallback, useMemo } from 'react';
@@ -78,12 +78,12 @@ function EscapeHandler({
  * Extract unique directories from file paths.
  * Returns directories relative to the project root.
  */
-function extractDirectories(files: string[], projectRoot: string, schemaPath: string): string[] {
+function extractDirectories(files: string[], projectRoot: string, sqlPath: string): string[] {
 
     const dirs = new Set<string>();
 
     // Always include the schema path itself as an option
-    dirs.add(schemaPath);
+    dirs.add(sqlPath);
 
     for (const file of files) {
 
@@ -132,7 +132,7 @@ export function RunDirScreen({ params }: ScreenProps): ReactElement {
     const [showConfirmDialog, setShowConfirmDialog] = useState(false);
 
     const projectRoot = process.cwd();
-    const schemaPath = settings?.paths?.schema ?? 'schema';
+    const sqlPath = settings?.paths?.sql ?? 'sql';
 
     // Load files and extract directories on mount
     useEffect(() => {
@@ -145,9 +145,9 @@ export function RunDirScreen({ params }: ScreenProps): ReactElement {
 
             setPhase('loading');
 
-            const schemaFullPath = join(projectRoot, schemaPath);
+            const sqlFullPath = join(projectRoot, sqlPath);
 
-            const [files, err] = await attempt(() => discoverFiles(schemaFullPath));
+            const [files, err] = await attempt(() => discoverFiles(sqlFullPath));
 
             if (cancelled) return;
 
@@ -162,7 +162,7 @@ export function RunDirScreen({ params }: ScreenProps): ReactElement {
 
             setAllFiles(files ?? []);
 
-            const dirs = extractDirectories(files ?? [], projectRoot, schemaPath);
+            const dirs = extractDirectories(files ?? [], projectRoot, sqlPath);
             setDirectories(dirs);
 
             // If pre-filled path provided, validate and go to confirm
@@ -200,7 +200,7 @@ export function RunDirScreen({ params }: ScreenProps): ReactElement {
 
         };
 
-    }, [activeConfig, settings, projectRoot, schemaPath, params.path]);
+    }, [activeConfig, settings, projectRoot, sqlPath, params.path]);
 
     // Handle directory selection
     const handleSelect = useCallback((item: SelectListItem<string>) => {
@@ -440,7 +440,7 @@ export function RunDirScreen({ params }: ScreenProps): ReactElement {
                             <>
                                 <EscapeHandler onEscape={handleCancel} />
                                 <Box flexDirection="column" gap={1}>
-                                    <Text color="yellow">No SQL files found in {schemaPath}/</Text>
+                                    <Text color="yellow">No SQL files found in {sqlPath}/</Text>
                                     <Text dimColor>
                                         Make sure your schema path is configured correctly in settings.
                                     </Text>

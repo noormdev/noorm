@@ -40,13 +40,13 @@ const HELP_TEXT = `
     config rm <name>     Remove a configuration
     config use <name>    Set active configuration
 
-    change               Manage changesets
-    change add           Create a new changeset
-    change run <name>    Apply a changeset
-    change revert <name> Revert a changeset
-    change next [count]  Apply next N pending changesets
-    change ff            Apply all pending changesets
-    change rewind [n]    Revert recent changesets
+    change               Manage changes
+    change add           Create a new change
+    change run <name>    Apply a change
+    change revert <name> Revert a change
+    change next [count]  Apply next N pending changes
+    change ff            Apply all pending changes
+    change rewind [n]    Revert recent changes
 
     run build            Build schema from SQL files
     run file <path>      Execute a single SQL file
@@ -81,7 +81,7 @@ const HELP_TEXT = `
     $ noorm config                     # Go to config screen
     $ noorm -H run build               # Build in CI
     $ noorm --json change ff           # Fast-forward with JSON output
-    $ noorm -c prod change run users   # Run changeset on prod config
+    $ noorm -c prod change run users   # Run change on prod config
 `;
 
 /**

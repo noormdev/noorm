@@ -152,7 +152,7 @@ describe('cli: components/dialogs', () => {
 
         it('should render file list', () => {
 
-            const files = ['schema/001_users.sql', 'schema/002_posts.sql'];
+            const files = ['sql/001_users.sql', 'sql/002_posts.sql'];
 
             const { lastFrame } = render(
                 <TestWrapper>

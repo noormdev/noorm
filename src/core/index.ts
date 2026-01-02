@@ -22,8 +22,8 @@ export {
 } from './state/index.js';
 export type { State, ConfigSummary, EncryptedPayload } from './state/index.js';
 
-// Config types
-export type { Config, ConfigInput, ConfigSummary as ConfigListSummary } from './config/types.js';
+// Config types (ConfigSummary is exported via state/index.js)
+export type { Config, ConfigInput } from './config/types.js';
 
 // Connection
 export {
@@ -106,11 +106,11 @@ export type {
     NoormVersion,
     NewNoormVersion,
     NoormVersionUpdate,
-    // Changeset table
-    NoormChangesetTable,
-    NoormChangeset,
-    NewNoormChangeset,
-    NoormChangesetUpdate,
+    // Change table
+    NoormChangeTable,
+    NoormChange,
+    NewNoormChange,
+    NoormChangeUpdate,
     OperationStatus,
     ChangeType,
     Direction,
@@ -273,67 +273,67 @@ export type {
     TeardownDialectOperations,
 } from './teardown/index.js';
 
-// Changeset
+// Change
 export {
     // Manager
-    ChangesetManager,
+    ChangeManager,
     // History
-    ChangesetHistory,
+    ChangeHistory,
     // Executor
-    executeChangeset,
-    revertChangeset,
+    executeChange,
+    revertChange,
     // Parser
-    parseChangeset,
-    discoverChangesets,
+    parseChange,
+    discoverChanges,
     resolveManifest,
-    validateChangeset,
+    validateChange,
     hasRevertFiles,
     parseSequence,
     parseDescription,
     // Scaffold
-    createChangeset,
+    createChange,
     addFile,
     removeFile,
     renameFile,
     reorderFiles,
-    deleteChangeset,
+    deleteChange,
     // Defaults
-    DEFAULT_CHANGESET_OPTIONS,
+    DEFAULT_CHANGE_OPTIONS,
     DEFAULT_BATCH_OPTIONS,
     // Errors
-    ChangesetValidationError,
-    ChangesetNotFoundError,
-    ChangesetAlreadyAppliedError,
-    ChangesetNotAppliedError,
-    ChangesetOrphanedError,
+    ChangeValidationError,
+    ChangeNotFoundError,
+    ChangeAlreadyAppliedError,
+    ChangeNotAppliedError,
+    ChangeOrphanedError,
     ManifestReferenceError,
-} from './changeset/index.js';
+} from './change/index.js';
 export type {
     // File types
-    ChangesetFileType,
-    ChangesetFile,
-    // Changeset types
-    Changeset,
-    ChangesetStatus,
-    ChangesetListItem,
+    ChangeFileType,
+    ChangeFile,
+    // Change types
+    Change,
+    ChangeStatus,
+    ChangeListItem,
     // Options
-    ChangesetOptions,
-    BatchChangesetOptions,
-    ChangesetContext,
+    ChangeOptions,
+    BatchChangeOptions,
+    ChangeContext,
     // Results
-    ChangesetResult,
-    ChangesetFileResult,
-    BatchChangesetResult,
+    ChangeResult,
+    ChangeFileResult,
+    BatchChangeResult,
     // History
-    ChangesetHistoryRecord,
+    ChangeHistoryRecord,
     FileHistoryRecord,
     // Change detection
-    ChangesetRunReason,
-    NeedsRunResult as ChangesetNeedsRunResult,
+    ChangeRunReason,
+    NeedsRunResult as ChangeNeedsRunResult,
     // Scaffold
-    CreateChangesetOptions,
+    CreateChangeOptions,
     AddFileOptions,
-} from './changeset/index.js';
+} from './change/index.js';
 
 // SQL Terminal
 export { SqlHistoryManager, executeRawSql } from './sql-terminal/index.js';

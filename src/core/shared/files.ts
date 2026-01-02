@@ -2,7 +2,7 @@
  * File path utilities.
  *
  * Cross-cutting utilities for file discovery and filtering
- * used by both runner and changeset modules.
+ * used by both runner and change modules.
  */
 import { relative, sep } from 'path';
 
@@ -20,25 +20,25 @@ import { relative, sep } from 'path';
  *
  * @param files - Absolute file paths (e.g., from discoverFiles())
  * @param baseDir - Base directory for relative path matching
- * @param include - Relative paths to include (e.g., ['schema/tables', 'schema/views'])
- * @param exclude - Relative paths to exclude (e.g., ['schema/archive'])
+ * @param include - Relative paths to include (e.g., ['sql/tables', 'sql/views'])
+ * @param exclude - Relative paths to exclude (e.g., ['sql/archive'])
  * @returns Filtered array of absolute file paths
  *
  * @example
  * ```typescript
  * const files = [
- *     '/project/schema/tables/users.sql',
- *     '/project/schema/views/active.sql',
- *     '/project/schema/archive/old.sql',
+ *     '/project/sql/tables/users.sql',
+ *     '/project/sql/views/active.sql',
+ *     '/project/sql/archive/old.sql',
  * ]
  *
  * const filtered = filterFilesByPaths(
  *     files,
  *     '/project',
- *     ['schema/tables', 'schema/views'],
- *     ['schema/archive']
+ *     ['sql/tables', 'sql/views'],
+ *     ['sql/archive']
  * )
- * // ['/project/schema/tables/users.sql', '/project/schema/views/active.sql']
+ * // ['/project/sql/tables/users.sql', '/project/sql/views/active.sql']
  * ```
  */
 export function filterFilesByPaths(

@@ -47,14 +47,14 @@ describe('logger: classifier', () => {
         it('should classify events ending with :start as info level', () => {
 
             expect(classifyEvent('build:start')).toBe('info');
-            expect(classifyEvent('changeset:start')).toBe('info');
+            expect(classifyEvent('change:start')).toBe('info');
 
         });
 
         it('should classify events ending with :complete as info level', () => {
 
             expect(classifyEvent('build:complete')).toBe('info');
-            expect(classifyEvent('changeset:complete')).toBe('info');
+            expect(classifyEvent('change:complete')).toBe('info');
 
         });
 
@@ -114,7 +114,7 @@ describe('logger: classifier', () => {
 
             expect(classifyEvent('file:before')).toBe('debug');
             expect(classifyEvent('lock:acquiring')).toBe('debug');
-            expect(classifyEvent('changeset:file')).toBe('debug');
+            expect(classifyEvent('change:file')).toBe('debug');
 
         });
 

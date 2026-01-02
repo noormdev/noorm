@@ -15,7 +15,7 @@ Manage identity
 Opens the identity management screen. Identity is used for:
 - Lock ownership
 - Audit logging
-- Changeset attribution
+- Change attribution
 
 Identity can be derived from:
 - Git config (\`user.name\`, \`user.email\`)

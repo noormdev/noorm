@@ -55,7 +55,7 @@ export function RunBuildScreen({ params: _params }: ScreenProps): ReactElement {
 
     const [phase, setPhase] = useState<Phase>('loading');
     const [files, setFiles] = useState<string[]>([]);
-    const [schemaPath, setSchemaPath] = useState<string>('');
+    const [sqlPath, setSqlPath] = useState<string>('');
     const [error, setError] = useState<string | null>(null);
 
     // Load settings and discover files
@@ -76,8 +76,8 @@ export function RunBuildScreen({ params: _params }: ScreenProps): ReactElement {
 
             // Get project root
             const projectRoot = process.cwd();
-            const schema = settings.paths?.schema ?? 'schema';
-            setSchemaPath(schema);
+            const schema = settings.paths?.sql ?? 'sql';
+            setSqlPath(schema);
 
             // Get effective build paths
             const buildInclude = settings.build?.include ?? ['schema'];
@@ -200,7 +200,7 @@ export function RunBuildScreen({ params: _params }: ScreenProps): ReactElement {
             };
 
             // Run build with filtered files
-            await runBuild(context, schemaPath, options);
+            await runBuild(context, sqlPath, options);
 
             setPhase('complete');
 
@@ -222,7 +222,7 @@ export function RunBuildScreen({ params: _params }: ScreenProps): ReactElement {
         activeConfigName,
         stateManager,
         files,
-        schemaPath,
+        sqlPath,
         globalModes,
         resetProgress,
     ]);
@@ -335,7 +335,7 @@ export function RunBuildScreen({ params: _params }: ScreenProps): ReactElement {
 
                         <Box gap={2}>
                             <Text>Schema Path:</Text>
-                            <Text dimColor>{schemaPath}</Text>
+                            <Text dimColor>{sqlPath}</Text>
                         </Box>
 
                         <Box gap={2}>

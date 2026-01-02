@@ -3,7 +3,7 @@ import { withContext, type HeadlessCommand } from './_helpers.js';
 export const help = `
 # CHANGE REVERT
 
-Revert a specific changeset
+Revert a specific change
 
 ## Usage
 
@@ -12,12 +12,12 @@ Revert a specific changeset
 
 ## Arguments
 
-    NAME    Name of the changeset to revert
+    NAME    Name of the change to revert
 
 ## Description
 
-Reverts a single applied changeset by running its backward SQL.
-The changeset must have been previously applied.
+Reverts a single applied change by running its backward SQL.
+The change must have been previously applied.
 
 ## Examples
 
@@ -31,7 +31,7 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
 
     if (!params.name) {
 
-        logger.error('Changeset name required. Use --name <changeset>');
+        logger.error('Change name required. Use --name <change>');
 
         return 1;
 
@@ -40,7 +40,7 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
     const [result, error] = await withContext({
         flags,
         logger,
-        fn: (ctx) => ctx.revertChangeset(params.name!),
+        fn: (ctx) => ctx.revertChange(params.name!),
     });
 
     if (error) return 1;

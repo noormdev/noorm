@@ -16,7 +16,7 @@
  * // Run SQL files
  * await ctx.runFile('./seeds/users.sql')
  *
- * // Apply changesets
+ * // Apply changes
  * await ctx.fastForward()
  *
  * await ctx.disconnect()
@@ -166,12 +166,12 @@ export type {
 export type { TruncateResult, TeardownResult } from '../core/teardown/index.js';
 export type { BatchResult, FileResult, RunOptions } from '../core/runner/index.js';
 export type {
-    ChangesetResult,
-    BatchChangesetResult,
-    ChangesetListItem,
-    ChangesetOptions,
-    ChangesetHistoryRecord,
-} from '../core/changeset/index.js';
+    ChangeResult,
+    BatchChangeResult,
+    ChangeListItem,
+    ChangeOptions,
+    ChangeHistoryRecord,
+} from '../core/change/index.js';
 
 // Lock types
 export type { Lock, LockStatus, LockOptions } from '../core/lock/index.js';

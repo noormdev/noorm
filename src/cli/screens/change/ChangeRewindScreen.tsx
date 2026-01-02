@@ -1,13 +1,13 @@
 /**
- * ChangeRewindScreen - revert multiple changesets.
+ * ChangeRewindScreen - revert multiple changes.
  *
- * Reverts changesets in reverse chronological order.
- * Can specify count or target changeset name.
+ * Reverts changes in reverse chronological order.
+ * Can specify count or target change name.
  *
  * @example
  * ```bash
  * noorm change:rewind 3                    # Revert last 3 applied
- * noorm change:rewind 2025-01-15-add-users # Revert to (including) this changeset
+ * noorm change:rewind 2025-01-15-add-users # Revert to (including) this change
  * noorm change rewind                      # Interactive mode
  * ```
  */
@@ -17,7 +17,7 @@ import { TextInput, ProgressBar } from '@inkjs/ui';
 
 import type { ReactElement } from 'react';
 import type { ScreenProps } from '../../types.js';
-import type { ChangesetListItem } from '../../../core/changeset/types.js';
+import type { ChangeListItem } from '../../../core/change/types.js';
 import type { NoormDatabase } from '../../../core/shared/index.js';
 import type { Kysely } from 'kysely';
 
@@ -34,9 +34,9 @@ import {
     StatusList,
     type StatusListItem,
 } from '../../components/index.js';
-import { discoverChangesets } from '../../../core/changeset/parser.js';
-import { ChangesetHistory } from '../../../core/changeset/history.js';
-import { ChangesetManager } from '../../../core/changeset/manager.js';
+import { discoverChanges } from '../../../core/change/parser.js';
+import { ChangeHistory } from '../../../core/change/history.js';
+import { ChangeManager } from '../../../core/change/manager.js';
 import { createConnection } from '../../../core/connection/factory.js';
 import { resolveIdentity } from '../../../core/identity/resolver.js';
 import { observer } from '../../../core/observer.js';
@@ -45,7 +45,7 @@ import { observer } from '../../../core/observer.js';
  * Rewind steps.
  */
 type RewindStep =
-    | 'loading' // Loading applied changesets
+    | 'loading' // Loading applied changes
     | 'input' // Entering count or name
     | 'confirm' // Awaiting confirmation
     | 'running' // Executing
@@ -61,20 +61,20 @@ export function ChangeRewindScreen({ params }: ScreenProps): ReactElement {
     const { isFocused } = useFocusScope('ChangeRewind');
     const { activeConfig, activeConfigName, stateManager } = useAppContext();
 
-    // Pre-fill from params - can be count or changeset name
+    // Pre-fill from params - can be count or change name
     const target = params.count ? String(params.count) : (params.name ?? '');
 
     const [step, setStep] = useState<RewindStep>('loading');
-    const [appliedChangesets, setAppliedChangesets] = useState<ChangesetListItem[]>([]);
-    const [changesetsToRevert, setChangesetsToRevert] = useState<ChangesetListItem[]>([]);
+    const [appliedChanges, setAppliedChanges] = useState<ChangeListItem[]>([]);
+    const [changesToRevert, setChangesToRevert] = useState<ChangeListItem[]>([]);
     const [targetInput, setTargetInput] = useState(target);
     const [results, setResults] = useState<StatusListItem[]>([]);
-    const [currentChangeset, setCurrentChangeset] = useState('');
+    const [currentChange, setCurrentChange] = useState('');
     const [progress, setProgress] = useState({ current: 0, total: 0 });
     const [error, setError] = useState<string | null>(null);
     const [isProtected, setIsProtected] = useState(false);
 
-    // Load applied changesets
+    // Load applied changes
     useEffect(() => {
 
         if (!activeConfig) return;
@@ -85,10 +85,10 @@ export function ChangeRewindScreen({ params }: ScreenProps): ReactElement {
 
             const [_, err] = await attempt(async () => {
 
-                // Discover changesets
-                const changesets = await discoverChangesets(
-                    activeConfig.paths.changesets,
-                    activeConfig.paths.schema,
+                // Discover changes
+                const changes = await discoverChanges(
+                    activeConfig.paths.changes,
+                    activeConfig.paths.sql,
                 );
 
                 // Get statuses from database
@@ -98,15 +98,15 @@ export function ChangeRewindScreen({ params }: ScreenProps): ReactElement {
                 );
                 const db = conn.db as Kysely<NoormDatabase>;
 
-                const history = new ChangesetHistory(db, activeConfigName ?? '');
+                const history = new ChangeHistory(db, activeConfigName ?? '');
                 const statuses = await history.getAllStatuses();
 
                 await conn.destroy();
 
                 if (cancelled) return;
 
-                // Find applied changesets (newest first for rewind order)
-                const applied: ChangesetListItem[] = changesets
+                // Find applied changes (newest first for rewind order)
+                const applied: ChangeListItem[] = changes
                     .filter((cs) => {
 
                         const status = statuses.get(cs.name);
@@ -145,18 +145,18 @@ export function ChangeRewindScreen({ params }: ScreenProps): ReactElement {
 
                     });
 
-                setAppliedChangesets(applied);
+                setAppliedChanges(applied);
                 setIsProtected(activeConfig.protected ?? false);
 
                 if (applied.length === 0) {
 
-                    setError('No applied changesets to revert');
+                    setError('No applied changes to revert');
                     setStep('error');
 
                 }
                 else if (target) {
 
-                    // Parse target and determine changesets to revert
+                    // Parse target and determine changes to revert
                     const parsed = parseTarget(target, applied);
 
                     if (parsed.error) {
@@ -167,7 +167,7 @@ export function ChangeRewindScreen({ params }: ScreenProps): ReactElement {
                     }
                     else {
 
-                        setChangesetsToRevert(parsed.changesets);
+                        setChangesToRevert(parsed.changes);
                         setStep('confirm');
 
                     }
@@ -207,13 +207,13 @@ export function ChangeRewindScreen({ params }: ScreenProps): ReactElement {
     // Subscribe to progress events
     useEffect(() => {
 
-        const unsubStart = observer.on('changeset:start', (data) => {
+        const unsubStart = observer.on('change:start', (data) => {
 
-            setCurrentChangeset(data.name);
+            setCurrentChange(data.name);
 
         });
 
-        const unsubComplete = observer.on('changeset:complete', (data) => {
+        const unsubComplete = observer.on('change:complete', (data) => {
 
             setResults((prev) => [
                 ...prev,
@@ -238,11 +238,11 @@ export function ChangeRewindScreen({ params }: ScreenProps): ReactElement {
 
     }, []);
 
-    // Parse target (count or changeset name)
+    // Parse target (count or change name)
     const parseTarget = (
         input: string,
-        applied: ChangesetListItem[],
-    ): { changesets: ChangesetListItem[]; error?: string } => {
+        applied: ChangeListItem[],
+    ): { changes: ChangeListItem[]; error?: string } => {
 
         // Try as number
         const count = parseInt(input, 10);
@@ -252,27 +252,27 @@ export function ChangeRewindScreen({ params }: ScreenProps): ReactElement {
             if (count > applied.length) {
 
                 return {
-                    changesets: [],
-                    error: `Only ${applied.length} applied changesets available`,
+                    changes: [],
+                    error: `Only ${applied.length} applied changes available`,
                 };
 
             }
 
-            return { changesets: applied.slice(0, count) };
+            return { changes: applied.slice(0, count) };
 
         }
 
-        // Try as changeset name
+        // Try as change name
         const targetIndex = applied.findIndex((cs) => cs.name === input);
 
         if (targetIndex === -1) {
 
-            return { changesets: [], error: `Changeset not found or not applied: ${input}` };
+            return { changes: [], error: `Change not found or not applied: ${input}` };
 
         }
 
-        // Return all changesets from newest to target (inclusive)
-        return { changesets: applied.slice(0, targetIndex + 1) };
+        // Return all changes from newest to target (inclusive)
+        return { changes: applied.slice(0, targetIndex + 1) };
 
     };
 
@@ -285,7 +285,7 @@ export function ChangeRewindScreen({ params }: ScreenProps): ReactElement {
 
         }
 
-        const parsed = parseTarget(targetInput.trim(), appliedChangesets);
+        const parsed = parseTarget(targetInput.trim(), appliedChanges);
 
         if (parsed.error) {
 
@@ -295,20 +295,20 @@ export function ChangeRewindScreen({ params }: ScreenProps): ReactElement {
         }
         else {
 
-            setChangesetsToRevert(parsed.changesets);
+            setChangesToRevert(parsed.changes);
             setStep('confirm');
 
         }
 
-    }, [targetInput, appliedChangesets]);
+    }, [targetInput, appliedChanges]);
 
     // Handle rewind
     const handleRewind = useCallback(async () => {
 
-        if (!activeConfig || !stateManager || changesetsToRevert.length === 0) return;
+        if (!activeConfig || !stateManager || changesToRevert.length === 0) return;
 
         setStep('running');
-        setProgress({ current: 0, total: changesetsToRevert.length });
+        setProgress({ current: 0, total: changesToRevert.length });
         setResults([]);
 
         const [_, err] = await attempt(async () => {
@@ -325,16 +325,16 @@ export function ChangeRewindScreen({ params }: ScreenProps): ReactElement {
             });
 
             // Create manager and rewind
-            const manager = new ChangesetManager({
+            const manager = new ChangeManager({
                 db,
                 configName: activeConfigName ?? '',
                 identity,
                 projectRoot: process.cwd(),
-                changesetsDir: activeConfig.paths.changesets,
-                schemaDir: activeConfig.paths.schema,
+                changesDir: activeConfig.paths.changes,
+                sqlDir: activeConfig.paths.sql,
             });
 
-            const result = await manager.rewind(changesetsToRevert.length);
+            const result = await manager.rewind(changesToRevert.length);
 
             await conn.destroy();
 
@@ -359,7 +359,7 @@ export function ChangeRewindScreen({ params }: ScreenProps): ReactElement {
 
         }
 
-    }, [activeConfig, activeConfigName, stateManager, changesetsToRevert]);
+    }, [activeConfig, activeConfigName, stateManager, changesToRevert]);
 
     // Handle cancel
     const handleCancel = useCallback(() => {
@@ -400,7 +400,7 @@ export function ChangeRewindScreen({ params }: ScreenProps): ReactElement {
     if (!activeConfig) {
 
         return (
-            <Panel title="Rewind Changesets" paddingX={2} paddingY={1} borderColor="yellow">
+            <Panel title="Rewind Changes" paddingX={2} paddingY={1} borderColor="yellow">
                 <Text color="yellow">No active configuration.</Text>
             </Panel>
         );
@@ -411,8 +411,8 @@ export function ChangeRewindScreen({ params }: ScreenProps): ReactElement {
     if (step === 'loading') {
 
         return (
-            <Panel title="Rewind Changesets" paddingX={2} paddingY={1}>
-                <Spinner label="Loading applied changesets..." />
+            <Panel title="Rewind Changes" paddingX={2} paddingY={1}>
+                <Spinner label="Loading applied changes..." />
             </Panel>
         );
 
@@ -422,15 +422,15 @@ export function ChangeRewindScreen({ params }: ScreenProps): ReactElement {
     if (step === 'input') {
 
         return (
-            <Panel title="Rewind Changesets" paddingX={2} paddingY={1}>
+            <Panel title="Rewind Changes" paddingX={2} paddingY={1}>
                 <Box flexDirection="column" gap={1}>
                     <Text>
-                        Applied changesets: <Text bold>{appliedChangesets.length}</Text>
+                        Applied changes: <Text bold>{appliedChanges.length}</Text>
                     </Text>
 
                     <Box flexDirection="column" marginTop={1}>
                         <Text dimColor>Recent applied (newest first):</Text>
-                        {appliedChangesets.slice(0, 5).map((cs) => (
+                        {appliedChanges.slice(0, 5).map((cs) => (
                             <Text key={cs.name} dimColor>
                                 {' '}
                                 • {cs.name}
@@ -441,7 +441,7 @@ export function ChangeRewindScreen({ params }: ScreenProps): ReactElement {
                     <Box marginTop={1}>
                         <Text>Revert (count or name): </Text>
                         <TextInput
-                            placeholder="1 or changeset-name"
+                            placeholder="1 or change-name"
                             defaultValue={targetInput}
                             onChange={setTargetInput}
                             isDisabled={!isFocused}
@@ -466,20 +466,20 @@ export function ChangeRewindScreen({ params }: ScreenProps): ReactElement {
                 <Text>
                     Revert{' '}
                     <Text bold color="yellow">
-                        {changesetsToRevert.length}
+                        {changesToRevert.length}
                     </Text>{' '}
-                    changeset(s):
+                    change(s):
                 </Text>
 
                 <Box flexDirection="column" marginTop={1}>
-                    {changesetsToRevert.slice(0, 5).map((cs) => (
+                    {changesToRevert.slice(0, 5).map((cs) => (
                         <Text key={cs.name} dimColor>
                             {' '}
                             • {cs.name}
                         </Text>
                     ))}
-                    {changesetsToRevert.length > 5 && (
-                        <Text dimColor> ... and {changesetsToRevert.length - 5} more</Text>
+                    {changesToRevert.length > 5 && (
+                        <Text dimColor> ... and {changesToRevert.length - 5} more</Text>
                     )}
                 </Box>
 
@@ -490,12 +490,12 @@ export function ChangeRewindScreen({ params }: ScreenProps): ReactElement {
         if (isProtected) {
 
             return (
-                <Panel title="Rewind Changesets" paddingX={2} paddingY={1} borderColor="yellow">
+                <Panel title="Rewind Changes" paddingX={2} paddingY={1} borderColor="yellow">
                     <Box flexDirection="column" gap={1}>
                         {confirmContent}
                         <ProtectedConfirm
                             configName={activeConfigName ?? 'config'}
-                            action="revert these changesets"
+                            action="revert these changes"
                             onConfirm={handleRewind}
                             onCancel={handleCancel}
                             isFocused={isFocused}
@@ -507,11 +507,11 @@ export function ChangeRewindScreen({ params }: ScreenProps): ReactElement {
         }
 
         return (
-            <Panel title="Rewind Changesets" paddingX={2} paddingY={1}>
+            <Panel title="Rewind Changes" paddingX={2} paddingY={1}>
                 <Box flexDirection="column" gap={1}>
                     {confirmContent}
                     <Confirm
-                        message="Revert these changesets?"
+                        message="Revert these changes?"
                         onConfirm={handleRewind}
                         onCancel={handleCancel}
                         isFocused={isFocused}
@@ -528,9 +528,9 @@ export function ChangeRewindScreen({ params }: ScreenProps): ReactElement {
         const progressValue = progress.total > 0 ? progress.current / progress.total : 0;
 
         return (
-            <Panel title="Rewind Changesets" paddingX={2} paddingY={1}>
+            <Panel title="Rewind Changes" paddingX={2} paddingY={1}>
                 <Box flexDirection="column" gap={1}>
-                    <Text>Reverting changesets...</Text>
+                    <Text>Reverting changes...</Text>
 
                     <Box width={50}>
                         <ProgressBar value={progressValue} />
@@ -538,7 +538,7 @@ export function ChangeRewindScreen({ params }: ScreenProps): ReactElement {
 
                     <Text dimColor>
                         {progress.current}/{progress.total}
-                        {currentChangeset && ` - ${currentChangeset}`}
+                        {currentChange && ` - ${currentChange}`}
                     </Text>
 
                     {results.length > 0 && (
@@ -558,10 +558,10 @@ export function ChangeRewindScreen({ params }: ScreenProps): ReactElement {
         const successCount = results.filter((r) => r.status === 'success').length;
 
         return (
-            <Panel title="Rewind Changesets" paddingX={2} paddingY={1} borderColor="green">
+            <Panel title="Rewind Changes" paddingX={2} paddingY={1} borderColor="green">
                 <Box flexDirection="column" gap={1}>
                     <StatusMessage variant="success">
-                        Reverted {successCount} changeset(s) successfully!
+                        Reverted {successCount} change(s) successfully!
                     </StatusMessage>
 
                     <StatusList items={results} />
@@ -577,7 +577,7 @@ export function ChangeRewindScreen({ params }: ScreenProps): ReactElement {
 
     // Error
     return (
-        <Panel title="Rewind Changesets" paddingX={2} paddingY={1} borderColor="red">
+        <Panel title="Rewind Changes" paddingX={2} paddingY={1} borderColor="red">
             <Box flexDirection="column" gap={1}>
                 <StatusMessage variant="error">{error}</StatusMessage>
 

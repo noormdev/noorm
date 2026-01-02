@@ -1,5 +1,5 @@
 {
-  "name": "@noorm/sdk",
+  "name": "@noormdev/sdk",
   "version": "1.0.0",
   "description": "Database schema & changeset manager SDK",
   "type": "module",

@@ -25,10 +25,10 @@ import { useAppContext } from '../app-context.js';
 import { useShutdown } from '../shutdown.js';
 import { Panel, Spinner } from '../components/index.js';
 import { testConnection, createConnection } from '../../core/connection/factory.js';
-import { ChangesetHistory } from '../../core/changeset/history.js';
-import { discoverChangesets } from '../../core/changeset/parser.js';
+import { ChangeHistory } from '../../core/change/history.js';
+import { discoverChanges } from '../../core/change/parser.js';
 import { getLockManager } from '../../core/lock/manager.js';
-import type { UnifiedHistoryRecord } from '../../core/changeset/types.js';
+import type { UnifiedHistoryRecord } from '../../core/change/types.js';
 import type { LockStatus } from '../../core/lock/types.js';
 import type { NoormDatabase } from '../../core/shared/index.js';
 import type { Kysely } from 'kysely';
@@ -212,21 +212,21 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
                 const lockManager = getLockManager();
                 const lockStatus = await lockManager.status(db, activeConfigName ?? '');
 
-                // Get changeset info - use ChangesetHistory directly for read-only operations
-                const changesetHistory = new ChangesetHistory(db, activeConfigName ?? '');
+                // Get change info - use ChangeHistory directly for read-only operations
+                const changeHistory = new ChangeHistory(db, activeConfigName ?? '');
 
-                // Discover changesets from disk
-                const diskChangesets = await discoverChangesets(
-                    activeConfig.paths.changesets,
-                    activeConfig.paths.schema,
+                // Discover changes from disk
+                const diskChanges = await discoverChanges(
+                    activeConfig.paths.changes,
+                    activeConfig.paths.sql,
                 );
 
                 // Get statuses from DB
-                const statuses = await changesetHistory.getAllStatuses();
+                const statuses = await changeHistory.getAllStatuses();
 
                 // Count pending (on disk but not applied, or reverted)
                 let pendingCount = 0;
-                for (const cs of diskChangesets) {
+                for (const cs of diskChanges) {
 
                     const status = statuses.get(cs.name);
                     if (!status || status.status === 'pending' || status.status === 'reverted') {
@@ -238,7 +238,7 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
                 }
 
                 // Get recent activity (all operation types)
-                const history = await changesetHistory.getUnifiedHistory(undefined, 5);
+                const history = await changeHistory.getUnifiedHistory(undefined, 5);
 
                 await conn.destroy();
 
@@ -415,7 +415,7 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
             <Box flexDirection="column" padding={1}>
                 <Box marginBottom={1}>
                     <Text bold>noorm</Text>
-                    <Text dimColor> - Database Schema & Changeset Manager</Text>
+                    <Text dimColor> - Database Schema & Change Manager</Text>
                 </Box>
 
                 <Panel title="Welcome" paddingX={2} paddingY={1} borderColor="cyan">
@@ -447,7 +447,7 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
             <Box flexDirection="column" padding={1}>
                 <Box marginBottom={1}>
                     <Text bold>noorm</Text>
-                    <Text dimColor> - Database Schema & Changeset Manager</Text>
+                    <Text dimColor> - Database Schema & Change Manager</Text>
                 </Box>
 
                 <Panel title="Select Config" paddingX={2} paddingY={1} borderColor="yellow">
@@ -479,7 +479,7 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
             {/* Header */}
             <Box marginBottom={1}>
                 <Text bold>noorm</Text>
-                <Text dimColor> - Database Schema & Changeset Manager</Text>
+                <Text dimColor> - Database Schema & Change Manager</Text>
             </Box>
 
             {/* Welcome / Config Summary */}
@@ -595,7 +595,7 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
 
                                 break;
 
-                            case 'changeset':
+                            case 'change':
                             default:
                                 typeLabel = record.direction === 'revert' ? 'Reverted' : 'Applied';
                                 typeColor = record.direction === 'revert' ? 'yellow' : undefined;

@@ -1,5 +1,5 @@
 {
-  "name": "noorm-docs",
+  "name": "@noormdev/docs",
   "private": true,
   "type": "module",
   "scripts": {

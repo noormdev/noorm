@@ -2,7 +2,7 @@
  * Kysely table types for noorm tracking tables.
  *
  * These types define the shape of the database tables used by noorm
- * to track changesets, executions, locks, identities, and versions.
+ * to track changes, executions, locks, identities, and versions.
  *
  * For full schema documentation, see plan/datamodel.md
  *
@@ -31,8 +31,8 @@ export const NOORM_TABLES = Object.freeze({
     /** Version tracking table */
     version: '__noorm_version__' as const,
 
-    /** Changeset/operation tracking table */
-    changeset: '__noorm_changeset__' as const,
+    /** Change/operation tracking table */
+    change: '__noorm_change__' as const,
 
     /** File execution tracking table */
     executions: '__noorm_executions__' as const,
@@ -66,8 +66,8 @@ export interface NoormVersionTable {
     /** CLI semver (e.g., "1.2.3") */
     cli_version: string;
 
-    /** Database tracking tables schema version */
-    schema_version: number;
+    /** Database tracking tables version */
+    noorm_version: number;
 
     /** State file (state.enc) schema version */
     state_version: number;
@@ -87,7 +87,7 @@ export type NewNoormVersion = Insertable<NoormVersionTable>;
 export type NoormVersionUpdate = Updateable<NoormVersionTable>;
 
 // ─────────────────────────────────────────────────────────────
-// __noorm_changeset__
+// __noorm_change__
 // ─────────────────────────────────────────────────────────────
 
 /**
@@ -104,7 +104,7 @@ export type OperationStatus = 'pending' | 'success' | 'failed' | 'reverted' | 's
 /**
  * Change type values.
  */
-export type ChangeType = 'build' | 'run' | 'changeset';
+export type ChangeType = 'build' | 'run' | 'change';
 
 /**
  * Direction values.
@@ -112,19 +112,19 @@ export type ChangeType = 'build' | 'run' | 'changeset';
 export type Direction = 'change' | 'revert';
 
 /**
- * Changeset tracking table.
+ * Change tracking table.
  *
- * Tracks all operation batches—changesets, builds, and ad-hoc runs.
- * See: plan/datamodel.md#__noorm_changeset__
+ * Tracks all operation batches—changes, builds, and ad-hoc runs.
+ * See: plan/datamodel.md#__noorm_change__
  */
-export interface NoormChangesetTable {
+export interface NoormChangeTable {
     /** Primary key */
     id: Generated<number>;
 
     /** Operation identifier */
     name: string;
 
-    /** 'build', 'run', or 'changeset' */
+    /** 'build', 'run', or 'change' */
     change_type: ChangeType;
 
     /** 'change' or 'revert' */
@@ -155,9 +155,9 @@ export interface NoormChangesetTable {
     duration_ms: Generated<number>;
 }
 
-export type NoormChangeset = Selectable<NoormChangesetTable>;
-export type NewNoormChangeset = Insertable<NoormChangesetTable>;
-export type NoormChangesetUpdate = Updateable<NoormChangesetTable>;
+export type NoormChange = Selectable<NoormChangeTable>;
+export type NewNoormChange = Insertable<NoormChangeTable>;
+export type NoormChangeUpdate = Updateable<NoormChangeTable>;
 
 // ─────────────────────────────────────────────────────────────
 // __noorm_executions__
@@ -183,8 +183,8 @@ export interface NoormExecutionsTable {
     /** Primary key */
     id: Generated<number>;
 
-    /** Parent operation (FK to __noorm_changeset__) */
-    changeset_id: number;
+    /** Parent operation (FK to __noorm_change__) */
+    change_id: number;
 
     /** File that was executed */
     filepath: string;
@@ -204,7 +204,7 @@ export interface NoormExecutionsTable {
     /** Error details (empty = no error) */
     error_message: Generated<string>;
 
-    /** 'unchanged', 'already-run', 'changeset failed' */
+    /** 'unchanged', 'already-run', 'change failed' */
     skip_reason: Generated<string>;
 
     /** Execution time (0 = never ran) */
@@ -318,7 +318,7 @@ export type NoormIdentityUpdate = Updateable<NoormIdentitiesTable>;
  */
 export interface NoormDatabase {
     __noorm_version__: NoormVersionTable;
-    __noorm_changeset__: NoormChangesetTable;
+    __noorm_change__: NoormChangeTable;
     __noorm_executions__: NoormExecutionsTable;
     __noorm_lock__: NoormLockTable;
     __noorm_identities__: NoormIdentitiesTable;

@@ -1,7 +1,7 @@
 /**
  * ChangeHistoryScreen - view execution history for all operation types.
  *
- * Shows unified history of changesets, builds, and runs with drill-down
+ * Shows unified history of changes, builds, and runs with drill-down
  * to file execution details.
  *
  * @example
@@ -14,7 +14,7 @@ import { Box, Text, useInput } from 'ink';
 
 import type { ReactElement } from 'react';
 import type { ScreenProps } from '../../types.js';
-import type { UnifiedHistoryRecord } from '../../../core/changeset/types.js';
+import type { UnifiedHistoryRecord } from '../../../core/change/types.js';
 import type { NoormDatabase } from '../../../core/shared/index.js';
 import type { Kysely } from 'kysely';
 
@@ -24,7 +24,7 @@ import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
 import { Panel, Spinner } from '../../components/index.js';
-import { ChangesetHistory } from '../../../core/changeset/history.js';
+import { ChangeHistory } from '../../../core/change/history.js';
 import { createConnection } from '../../../core/connection/factory.js';
 import { relativeTimeAgo } from '../../utils/date.js';
 
@@ -41,7 +41,7 @@ function getTypeIndicator(changeType: string): { label: string; color: string } 
     case 'run':
         return { label: '[RUN]', color: 'magenta' };
 
-    case 'changeset':
+    case 'change':
     default:
         return { label: '[CHANGESET]', color: 'cyan' };
 
@@ -89,8 +89,8 @@ export function ChangeHistoryScreen({ params: _params }: ScreenProps): ReactElem
                 );
                 const db = conn.db as Kysely<NoormDatabase>;
 
-                const changesetHistory = new ChangesetHistory(db, activeConfigName ?? '');
-                const records = await changesetHistory.getUnifiedHistory(undefined, 50);
+                const changeHistory = new ChangeHistory(db, activeConfigName ?? '');
+                const records = await changeHistory.getUnifiedHistory(undefined, 50);
 
                 await conn.destroy();
 
@@ -212,7 +212,7 @@ export function ChangeHistoryScreen({ params: _params }: ScreenProps): ReactElem
     }
 
     // Statistics
-    const totalChangesets = history.filter((r) => r.changeType === 'changeset').length;
+    const totalChanges = history.filter((r) => r.changeType === 'change').length;
     const totalBuilds = history.filter((r) => r.changeType === 'build').length;
     const totalRuns = history.filter((r) => r.changeType === 'run').length;
     const totalSuccess = history.filter((r) => r.status === 'success').length;
@@ -227,7 +227,7 @@ export function ChangeHistoryScreen({ params: _params }: ScreenProps): ReactElem
                         Total: <Text bold>{history.length}</Text>
                     </Text>
                     <Text>
-                        Changesets: <Text color="cyan">{totalChangesets}</Text>
+                        Changes: <Text color="cyan">{totalChanges}</Text>
                     </Text>
                     <Text>
                         Builds: <Text color="blue">{totalBuilds}</Text>

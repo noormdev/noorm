@@ -176,27 +176,27 @@ const SCREENS: ScreenRegistry = {
     // Change
     change: {
         component: ChangeListScreen,
-        label: 'Changesets',
+        label: 'Changes',
     },
     'change/add': {
         component: ChangeAddScreen,
-        label: 'Add Changeset',
+        label: 'Add Change',
     },
     'change/edit': {
         component: ChangeEditScreen,
-        label: 'Edit Changeset',
+        label: 'Edit Change',
     },
     'change/rm': {
         component: ChangeRemoveScreen,
-        label: 'Delete Changeset',
+        label: 'Delete Change',
     },
     'change/run': {
         component: ChangeRunScreen,
-        label: 'Run Changeset',
+        label: 'Run Change',
     },
     'change/revert': {
         component: ChangeRevertScreen,
-        label: 'Revert Changeset',
+        label: 'Revert Change',
     },
     'change/next': {
         component: ChangeNextScreen,

@@ -1,7 +1,7 @@
 /**
  * ChangeHistoryDetailScreen - view file executions for an operation.
  *
- * Shows all files executed as part of a build, run, or changeset
+ * Shows all files executed as part of a build, run, or change
  * with their individual status, duration, and errors.
  *
  * @example
@@ -14,7 +14,7 @@ import { Box, Text, useInput } from 'ink';
 
 import type { ReactElement } from 'react';
 import type { ScreenProps } from '../../types.js';
-import type { FileHistoryRecord } from '../../../core/changeset/types.js';
+import type { FileHistoryRecord } from '../../../core/change/types.js';
 import type { NoormDatabase } from '../../../core/shared/index.js';
 import type { Kysely } from 'kysely';
 
@@ -23,7 +23,7 @@ import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
 import { Panel, Spinner } from '../../components/index.js';
-import { ChangesetHistory } from '../../../core/changeset/history.js';
+import { ChangeHistory } from '../../../core/change/history.js';
 import { createConnection } from '../../../core/connection/factory.js';
 
 /**
@@ -102,8 +102,8 @@ export function ChangeHistoryDetailScreen({ params }: ScreenProps): ReactElement
                 );
                 const db = conn.db as Kysely<NoormDatabase>;
 
-                const changesetHistory = new ChangesetHistory(db, activeConfigName ?? '');
-                const records = await changesetHistory.getFileHistory(operationId);
+                const changeHistory = new ChangeHistory(db, activeConfigName ?? '');
+                const records = await changeHistory.getFileHistory(operationId);
 
                 await conn.destroy();
 

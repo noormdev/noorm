@@ -68,8 +68,8 @@ const DEFAULTS: ConfigInput = {
     isTest: false,
     protected: false,
     paths: {
-        schema: './schema',
-        changesets: './changesets',
+        sql: './sql',
+        changes: './changes',
     },
     connection: {
         host: 'localhost',

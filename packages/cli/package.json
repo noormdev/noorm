@@ -1,5 +1,5 @@
 {
-  "name": "@noorm/cli",
+  "name": "@noormdev/cli",
   "version": "1.0.0",
   "description": "Database schema & changeset manager CLI",
   "type": "module",

@@ -53,11 +53,11 @@ describe('cli: screens/init/ProjectSetup', () => {
             </TestWrapper>,
         );
 
-        expect(lastFrame()).toContain('./schema');
+        expect(lastFrame()).toContain('./sql');
 
     });
 
-    it('should show default changesets path', () => {
+    it('should show default changes path', () => {
 
         const { lastFrame } = render(
             <TestWrapper>
@@ -65,7 +65,7 @@ describe('cli: screens/init/ProjectSetup', () => {
             </TestWrapper>,
         );
 
-        expect(lastFrame()).toContain('./changesets');
+        expect(lastFrame()).toContain('./changes');
 
     });
 
@@ -74,7 +74,7 @@ describe('cli: screens/init/ProjectSetup', () => {
         const { lastFrame } = render(
             <TestWrapper>
                 <ProjectSetup
-                    schemaPath="./db/schema"
+                    sqlPath="./db/sql"
                     onAddConfig={() => {}}
                     onSkipConfig={() => {}}
                     onCancel={() => {}}
@@ -82,7 +82,7 @@ describe('cli: screens/init/ProjectSetup', () => {
             </TestWrapper>,
         );
 
-        expect(lastFrame()).toContain('./db/schema');
+        expect(lastFrame()).toContain('./db/sql');
 
     });
 

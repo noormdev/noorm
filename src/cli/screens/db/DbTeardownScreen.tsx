@@ -175,7 +175,7 @@ export function DbTeardownScreen({ params: _params }: ScreenProps): ReactElement
 
             const db = conn.db as Kysely<unknown>;
 
-            // Resolve identity for changeset tracking
+            // Resolve identity for change tracking
             const identity = resolveIdentity({
                 cryptoIdentity: stateManager?.getIdentity() ?? null,
             });
@@ -603,7 +603,7 @@ export function DbTeardownScreen({ params: _params }: ScreenProps): ReactElement
 
                         {result.staleCount !== undefined && result.staleCount > 0 && (
                             <Text dimColor>
-                                Marked {result.staleCount} changesets as stale (will re-run on next apply)
+                                Marked {result.staleCount} changes as stale (will re-run on next apply)
                             </Text>
                         )}
 

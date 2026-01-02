@@ -4,7 +4,7 @@ import { formatHelp } from '../../core/help-formatter.js';
 export const help = `
 # NOORM
 
-Database Schema & Changeset Manager
+Database Schema & Change Manager
 
 ## Usage
 
@@ -13,7 +13,7 @@ Database Schema & Changeset Manager
 ## Commands
 
     config      Manage database configurations
-    change      Manage and apply changesets
+    change      Manage and apply changes
     run         Execute SQL files
     db          Database operations and exploration
     lock        Distributed lock management

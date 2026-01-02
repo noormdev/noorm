@@ -1,7 +1,7 @@
 /**
  * SettingsPathsScreen - edit path configuration.
  *
- * Configure paths for schema and changeset files.
+ * Configure paths for schema and change files.
  *
  * @example
  * ```bash
@@ -34,7 +34,7 @@ export function SettingsPathsScreen({ params: _params }: ScreenProps): ReactElem
     // Get current paths config
     const paths = useMemo(() => {
 
-        if (!settingsManager) return { schema: './schema', changesets: './changesets' };
+        if (!settingsManager) return { sql: './sql', changes: './changes' };
 
         return settingsManager.getPaths();
 
@@ -44,18 +44,18 @@ export function SettingsPathsScreen({ params: _params }: ScreenProps): ReactElem
     const fields: FormField[] = useMemo(
         () => [
             {
-                key: 'schema',
-                label: 'Schema Path',
+                key: 'sql',
+                label: 'SQL Path',
                 type: 'text',
-                defaultValue: paths.schema ?? './schema',
-                placeholder: './schema',
+                defaultValue: paths.sql ?? './sql',
+                placeholder: './sql',
             },
             {
-                key: 'changesets',
-                label: 'Changesets Path',
+                key: 'changes',
+                label: 'Changes Path',
                 type: 'text',
-                defaultValue: paths.changesets ?? './changesets',
-                placeholder: './changesets',
+                defaultValue: paths.changes ?? './changes',
+                placeholder: './changes',
             },
         ],
         [paths],
@@ -77,8 +77,8 @@ export function SettingsPathsScreen({ params: _params }: ScreenProps): ReactElem
             setError(null);
 
             const newPaths = {
-                schema: String(values['schema'] || './schema'),
-                changesets: String(values['changesets'] || './changesets'),
+                sql: String(values['sql'] || './sql'),
+                changes: String(values['changes'] || './changes'),
             };
 
             const [_, err] = await attempt(async () => {

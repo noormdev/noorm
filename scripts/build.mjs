@@ -8,14 +8,14 @@ import { existsSync } from 'fs';
 const rootPkg = JSON.parse(await readFile('package.json', 'utf8'));
 const version = rootPkg.version;
 
-console.log(chalk.blue(`Building @noorm packages v${version}...`));
+console.log(chalk.blue(`Building @noormdev packages v${version}...`));
 
 // Ensure output directories exist
 await mkdir('packages/cli/dist', { recursive: true });
 await mkdir('packages/sdk/dist', { recursive: true });
 
 // Build CLI
-console.log(chalk.yellow('\nBuilding @noorm/cli...'));
+console.log(chalk.yellow('\nBuilding @noormdev/cli...'));
 
 await $`npx tsup src/cli/index.tsx \
   --format esm \
@@ -39,7 +39,7 @@ if (!cliContent.startsWith('#!')) {
 }
 
 // Build SDK
-console.log(chalk.yellow('\nBuilding @noorm/sdk...'));
+console.log(chalk.yellow('\nBuilding @noormdev/sdk...'));
 await $`npx tsup src/sdk/index.ts \
   --format esm \
   --target node18 \

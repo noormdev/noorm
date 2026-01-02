@@ -21,13 +21,13 @@ import type {
 import type { TruncateResult, TeardownResult } from '../core/teardown/index.js';
 import type { BatchResult, FileResult, RunOptions, RunContext } from '../core/runner/index.js';
 import type {
-    ChangesetResult,
-    BatchChangesetResult,
-    ChangesetListItem,
-    ChangesetOptions,
-    ChangesetContext,
-    ChangesetHistoryRecord,
-} from '../core/changeset/index.js';
+    ChangeResult,
+    BatchChangeResult,
+    ChangeListItem,
+    ChangeOptions,
+    ChangeContext,
+    ChangeHistoryRecord,
+} from '../core/change/index.js';
 import type { Lock, LockStatus, LockOptions } from '../core/lock/index.js';
 import type { ProcessResult as TemplateResult } from '../core/template/index.js';
 import { createConnection, testConnection as coreTestConnection } from '../core/connection/index.js';
@@ -40,7 +40,7 @@ import {
     runFiles as coreRunFiles,
     computeChecksum as coreComputeChecksum,
 } from '../core/runner/index.js';
-import { ChangesetManager } from '../core/changeset/index.js';
+import { ChangeManager } from '../core/change/index.js';
 import { getLockManager } from '../core/lock/index.js';
 import { processFile } from '../core/template/index.js';
 import { formatIdentity } from '../core/identity/index.js';
@@ -84,7 +84,7 @@ export class Context<DB = unknown> {
     #identity: Identity;
     #options: CreateContextOptions;
     #projectRoot: string;
-    #changesetManager: ChangesetManager | null = null;
+    #changeManager: ChangeManager | null = null;
 
     constructor(
         config: Config,
@@ -175,7 +175,7 @@ export class Context<DB = unknown> {
 
         await this.#connection.destroy();
         this.#connection = null;
-        this.#changesetManager = null;
+        this.#changeManager = null;
 
     }
 
@@ -294,12 +294,12 @@ export class Context<DB = unknown> {
     async build(options?: BuildOptions): Promise<BatchResult> {
 
         const runContext = this.#createRunContext();
-        const schemaPath = path.join(
+        const sqlPath = path.join(
             this.#projectRoot,
-            this.#config.paths.schema,
+            this.#config.paths.sql,
         );
 
-        return runBuild(runContext, schemaPath, { force: options?.force });
+        return runBuild(runContext, sqlPath, { force: options?.force });
 
     }
 
@@ -350,42 +350,42 @@ export class Context<DB = unknown> {
     }
 
     // ─────────────────────────────────────────────────────────
-    // Changesets
+    // Changes
     // ─────────────────────────────────────────────────────────
 
-    async applyChangeset(
+    async applyChange(
         name: string,
-        options?: ChangesetOptions,
-    ): Promise<ChangesetResult> {
+        options?: ChangeOptions,
+    ): Promise<ChangeResult> {
 
-        return this.#getChangesetManager().run(name, options);
+        return this.#getChangeManager().run(name, options);
 
     }
 
-    async revertChangeset(
+    async revertChange(
         name: string,
-        options?: ChangesetOptions,
-    ): Promise<ChangesetResult> {
+        options?: ChangeOptions,
+    ): Promise<ChangeResult> {
 
-        return this.#getChangesetManager().revert(name, options);
-
-    }
-
-    async fastForward(): Promise<BatchChangesetResult> {
-
-        return this.#getChangesetManager().ff();
+        return this.#getChangeManager().revert(name, options);
 
     }
 
-    async getChangesetStatus(): Promise<ChangesetListItem[]> {
+    async fastForward(): Promise<BatchChangeResult> {
 
-        return this.#getChangesetManager().list();
+        return this.#getChangeManager().ff();
 
     }
 
-    async getPendingChangesets(): Promise<ChangesetListItem[]> {
+    async getChangeStatus(): Promise<ChangeListItem[]> {
 
-        const all = await this.getChangesetStatus();
+        return this.#getChangeManager().list();
+
+    }
+
+    async getPendingChanges(): Promise<ChangeListItem[]> {
+
+        const all = await this.getChangeStatus();
 
         return all.filter(
             (cs) => !cs.orphaned && (cs.status === 'pending' || cs.status === 'reverted'),
@@ -464,6 +464,17 @@ export class Context<DB = unknown> {
 
     }
 
+    async forceReleaseLock(): Promise<boolean> {
+
+        const lockManager = getLockManager();
+
+        return lockManager.forceRelease(
+            this.kysely as unknown as Kysely<NoormDatabase>,
+            this.#config.name,
+        );
+
+    }
+
     // ─────────────────────────────────────────────────────────
     // Templates
     // ─────────────────────────────────────────────────────────
@@ -489,9 +500,9 @@ export class Context<DB = unknown> {
     // History
     // ─────────────────────────────────────────────────────────
 
-    async getHistory(limit?: number): Promise<ChangesetHistoryRecord[]> {
+    async getHistory(limit?: number): Promise<ChangeHistoryRecord[]> {
 
-        return this.#getChangesetManager().getHistory(undefined, limit);
+        return this.#getChangeManager().getHistory(undefined, limit);
 
     }
 
@@ -535,7 +546,7 @@ export class Context<DB = unknown> {
 
     }
 
-    #createChangesetContext(): ChangesetContext {
+    #createChangeContext(): ChangeContext {
 
         const state = getStateManager(this.#projectRoot);
 
@@ -544,8 +555,8 @@ export class Context<DB = unknown> {
             configName: this.#config.name,
             identity: this.#identity,
             projectRoot: this.#projectRoot,
-            changesetsDir: path.join(this.#projectRoot, this.#config.paths.changesets),
-            schemaDir: path.join(this.#projectRoot, this.#config.paths.schema),
+            changesDir: path.join(this.#projectRoot, this.#config.paths.changes),
+            sqlDir: path.join(this.#projectRoot, this.#config.paths.sql),
             config: this.#config as unknown as Record<string, unknown>,
             secrets: state.getAllSecrets(this.#config.name),
             globalSecrets: state.getAllGlobalSecrets(),
@@ -553,15 +564,15 @@ export class Context<DB = unknown> {
 
     }
 
-    #getChangesetManager(): ChangesetManager {
+    #getChangeManager(): ChangeManager {
 
-        if (!this.#changesetManager) {
+        if (!this.#changeManager) {
 
-            this.#changesetManager = new ChangesetManager(this.#createChangesetContext());
+            this.#changeManager = new ChangeManager(this.#createChangeContext());
 
         }
 
-        return this.#changesetManager;
+        return this.#changeManager;
 
     }
 

@@ -26,8 +26,8 @@ function createValidConfig(overrides: Partial<Config> = {}): Config {
             database: ':memory:',
         },
         paths: {
-            schema: './schema',
-            changesets: './changesets',
+            sql: './sql',
+            changes: './changes',
         },
         ...overrides,
     };
@@ -199,21 +199,21 @@ describe('config: schema validation', () => {
 
         });
 
-        it('should require schema path', () => {
+        it('should require sql path', () => {
 
             const config = createValidConfig();
             // @ts-expect-error testing invalid input
-            delete config.paths.schema;
+            delete config.paths.sql;
 
             expect(() => validateConfig(config)).toThrow(ConfigValidationError);
 
         });
 
-        it('should require changesets path', () => {
+        it('should require changes path', () => {
 
             const config = createValidConfig();
             // @ts-expect-error testing invalid input
-            delete config.paths.changesets;
+            delete config.paths.changes;
 
             expect(() => validateConfig(config)).toThrow(ConfigValidationError);
 
@@ -323,8 +323,8 @@ describe('config: schema validation', () => {
                     database: ':memory:',
                 },
                 paths: {
-                    schema: './schema',
-                    changesets: './changesets',
+                    sql: './sql',
+                    changes: './changes',
                 },
             };
 

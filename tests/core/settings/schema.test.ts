@@ -22,17 +22,17 @@ describe('settings: schema validation', () => {
 
             const settings = {
                 build: {
-                    include: ['schema/tables', 'schema/views'],
-                    exclude: ['schema/archive'],
+                    include: ['sql/tables', 'sql/views'],
+                    exclude: ['sql/archive'],
                 },
                 paths: {
-                    schema: './db/schema',
-                    changesets: './db/changesets',
+                    sql: './db/sql',
+                    changes: './db/changes',
                 },
                 rules: [
                     {
                         match: { isTest: true },
-                        include: ['schema/seeds'],
+                        include: ['sql/seeds'],
                     },
                 ],
                 stages: {
@@ -297,7 +297,7 @@ describe('settings: schema validation', () => {
 
             const rule = {
                 match: { isTest: true },
-                include: ['schema/seeds'],
+                include: ['sql/seeds'],
             };
 
             expect(() => validateRule(rule)).not.toThrow();
@@ -308,7 +308,7 @@ describe('settings: schema validation', () => {
 
             const rule = {
                 match: { protected: true },
-                exclude: ['schema/dangerous'],
+                exclude: ['sql/dangerous'],
             };
 
             expect(() => validateRule(rule)).not.toThrow();
@@ -319,8 +319,8 @@ describe('settings: schema validation', () => {
 
             const rule = {
                 match: { type: 'local' },
-                include: ['schema/dev-only'],
-                exclude: ['schema/prod-only'],
+                include: ['sql/dev-only'],
+                exclude: ['sql/prod-only'],
             };
 
             expect(() => validateRule(rule)).not.toThrow();
@@ -336,7 +336,7 @@ describe('settings: schema validation', () => {
                     isTest: false,
                     protected: false,
                 },
-                include: ['schema/all'],
+                include: ['sql/all'],
             };
 
             expect(() => validateRule(rule)).not.toThrow();
@@ -357,7 +357,7 @@ describe('settings: schema validation', () => {
 
             const rule = {
                 match: {},
-                include: ['schema/seeds'],
+                include: ['sql/seeds'],
             };
 
             expect(() => validateRule(rule)).toThrow(SettingsValidationError);
@@ -368,7 +368,7 @@ describe('settings: schema validation', () => {
 
             const rule = {
                 match: { type: 'cloud' }, // invalid type
-                include: ['schema/cloud'],
+                include: ['sql/cloud'],
             };
 
             expect(() => validateRule(rule)).toThrow(SettingsValidationError);

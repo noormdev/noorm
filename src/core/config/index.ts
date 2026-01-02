@@ -36,12 +36,12 @@ export const { allConfigs, getConfig } = makeNestedConfig<ConfigInput>(process.e
  * // NOORM_CONNECTION_DIALECT=postgres
  * // NOORM_CONNECTION_HOST=db.example.com
  * // NOORM_CONNECTION_PORT=5432
- * // NOORM_PATHS_SCHEMA=./schema
+ * // NOORM_PATHS_SQL=./sql
  *
  * const envConfig = getEnvConfig()
  * // {
  * //   connection: { dialect: 'postgres', host: 'db.example.com', port: 5432 },
- * //   paths: { schema: './schema' }
+ * //   paths: { sql: './sql' }
  * // }
  * ```
  */

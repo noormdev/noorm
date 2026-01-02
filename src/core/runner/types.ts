@@ -190,8 +190,8 @@ export interface BatchResult {
     /** Total execution time in milliseconds */
     durationMs: number;
 
-    /** Changeset ID in tracking table */
-    changesetId?: number;
+    /** Change ID in tracking table */
+    changeId?: number;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -246,7 +246,7 @@ export interface CreateOperationData {
  */
 export interface RecordExecutionData {
     /** Parent operation ID */
-    changesetId: number;
+    changeId: number;
 
     /** File path */
     filepath: string;

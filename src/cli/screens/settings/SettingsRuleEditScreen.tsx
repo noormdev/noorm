@@ -140,14 +140,14 @@ export function SettingsRuleEditScreen({ params }: ScreenProps): ReactElement {
                 label: 'Include Paths (comma-separated)',
                 type: 'text',
                 defaultValue: formatPathList(existingRule?.include),
-                placeholder: 'schema/seeds, schema/fixtures',
+                placeholder: 'sql/seeds, sql/fixtures',
             },
             {
                 key: 'exclude',
                 label: 'Exclude Paths (comma-separated)',
                 type: 'text',
                 defaultValue: formatPathList(existingRule?.exclude),
-                placeholder: 'schema/dangerous, schema/archive',
+                placeholder: 'sql/dangerous, sql/archive',
             },
         ];
 

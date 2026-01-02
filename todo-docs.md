@@ -105,7 +105,7 @@ This anti-ORM positioning differentiates immediately in a crowded market.
 │  [Code Snippet: Basic workflow]                                 │
 │                                                                  │
 │  # Structure your SQL                                           │
-│  schema/                                                        │
+│  sql/                                                           │
 │    tables/users.sql                                             │
 │    views/active_users.sql                                       │
 │                                                                  │

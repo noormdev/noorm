@@ -128,11 +128,11 @@ export interface RuleMatch {
  *     - match:
  *           isTest: true
  *       include:
- *           - schema/seeds
+ *           - sql/seeds
  *     - match:
  *           protected: true
  *       exclude:
- *           - schema/dangerous
+ *           - sql/dangerous
  * ```
  */
 export interface Rule {
@@ -167,11 +167,11 @@ export interface BuildConfig {
  * Path configuration - override default locations.
  */
 export interface PathConfig {
-    /** Path to schema files (relative to project root) */
-    schema?: string;
+    /** Path to SQL files (relative to project root) */
+    sql?: string;
 
-    /** Path to changeset files (relative to project root) */
-    changesets?: string;
+    /** Path to change files (relative to project root) */
+    changes?: string;
 }
 
 /**
@@ -220,7 +220,7 @@ export interface LoggingConfig {
  *     preserveTables:
  *         - AppSettings
  *         - UserRoles
- *     postScript: "schema/teardown/cleanup.sql"
+ *     postScript: "sql/teardown/cleanup.sql"
  * ```
  */
 export interface TeardownConfig {

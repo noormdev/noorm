@@ -133,8 +133,8 @@ const BuildConfigSchema = z.object({
  * Path configuration schema.
  */
 const PathConfigSchema = z.object({
-    schema: z.string().optional(),
-    changesets: z.string().optional(),
+    sql: z.string().optional(),
+    changes: z.string().optional(),
 });
 
 /**

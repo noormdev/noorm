@@ -84,8 +84,8 @@ const tables = await ctx.listTables()
 const table = await ctx.describeTable('users')
 const overview = await ctx.overview()
 
-// Run specific files (relative to schemaDir or absolute paths)
-await ctx.runFile('seeds/test-data.sql')                        // Relative to schemaDir
+// Run specific files (relative to sqlDir or absolute paths)
+await ctx.runFile('seeds/test-data.sql')                        // Relative to sqlDir
 await ctx.runFile('/absolute/path/to/test/fixtures/seed.sql')   // Absolute path for test-local seeds
 await ctx.runFiles(['functions/utils.sql', 'triggers/audit.sql'])
 
@@ -387,7 +387,7 @@ noorm change ff --configs dev,staging,prod --confirm-each
 Generate markdown documentation from schema (tables, columns, relationships, comments).
 
 ```bash
-noorm generate docs [--config <name>] [--output ./docs/schema.md]
+noorm generate docs [--config <name>] [--output ./docs/sql.md]
 ```
 
 
@@ -624,7 +624,7 @@ export default defineConfig({
 
     // Plugin system
     plugins: [
-        '@noorm/plugin-redshift',
+        '@noormdev/plugin-redshift',
         './my-custom-plugin',
     ],
 

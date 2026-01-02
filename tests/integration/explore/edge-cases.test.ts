@@ -24,7 +24,7 @@ import type {
     TableDetail,
 } from '../../../src/core/explore/types.js';
 
-const EDGE_CASES_DIR = join(import.meta.dirname, '../../fixtures/schema/edge-cases');
+const EDGE_CASES_DIR = join(import.meta.dirname, '../../fixtures/sql/edge-cases');
 
 /**
  * Execute a SQL file against the database.

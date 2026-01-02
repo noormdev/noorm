@@ -1,15 +1,15 @@
 /**
- * ChangeAddScreen - create a new changeset folder.
+ * ChangeAddScreen - create a new change folder.
  *
- * Prompts for changeset name and creates folder structure:
- * - changesets/{date}-{name}/
+ * Prompts for change name and creates folder structure:
+ * - changes/{date}-{name}/
  *   - change/001_change.sql
  *   - revert/001_revert.sql
  *   - changelog.md
  *
  * @example
  * ```bash
- * noorm change:add add-user-roles    # Create changeset
+ * noorm change:add add-user-roles    # Create change
  * noorm change add add-user-roles    # Same thing
  * ```
  */
@@ -25,7 +25,7 @@ import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
 import { Panel, Spinner, StatusMessage } from '../../components/index.js';
-import { createChangeset, addFile } from '../../../core/changeset/scaffold.js';
+import { createChange, addFile } from '../../../core/change/scaffold.js';
 
 /**
  * Add steps.
@@ -100,23 +100,23 @@ export function ChangeAddScreen({ params }: ScreenProps): ReactElement {
 
             const [_, err] = await attempt(async () => {
 
-                // Create changeset folder
-                const changeset = await createChangeset(activeConfig.paths.changesets, {
+                // Create change folder
+                const change = await createChange(activeConfig.paths.changes, {
                     description: nameValue.trim(),
                 });
 
                 // Add initial files
-                await addFile(changeset, 'change', {
+                await addFile(change, 'change', {
                     name: 'change',
                     type: 'sql',
                 });
 
-                await addFile(changeset, 'revert', {
+                await addFile(change, 'revert', {
                     name: 'revert',
                     type: 'sql',
                 });
 
-                setCreatedName(changeset.name);
+                setCreatedName(change.name);
                 setStep('complete');
 
             });
@@ -219,7 +219,7 @@ export function ChangeAddScreen({ params }: ScreenProps): ReactElement {
     if (!activeConfig) {
 
         return (
-            <Panel title="Add Changeset" paddingX={2} paddingY={1} borderColor="yellow">
+            <Panel title="Add Change" paddingX={2} paddingY={1} borderColor="yellow">
                 <Text color="yellow">No active configuration. Press 'c' to manage configs.</Text>
             </Panel>
         );
@@ -230,9 +230,9 @@ export function ChangeAddScreen({ params }: ScreenProps): ReactElement {
     if (step === 'input') {
 
         return (
-            <Panel title="Add Changeset" paddingX={2} paddingY={1}>
+            <Panel title="Add Change" paddingX={2} paddingY={1}>
                 <Box flexDirection="column" gap={1}>
-                    <Text>Create a new changeset for database changes.</Text>
+                    <Text>Create a new change for database changes.</Text>
                     <Text dimColor>
                         Folder will be created as: {new Date().toISOString().slice(0, 10)}-
                         {name || '<name>'}
@@ -262,8 +262,8 @@ export function ChangeAddScreen({ params }: ScreenProps): ReactElement {
     if (step === 'creating') {
 
         return (
-            <Panel title="Add Changeset" paddingX={2} paddingY={1}>
-                <Spinner label="Creating changeset folder..." />
+            <Panel title="Add Change" paddingX={2} paddingY={1}>
+                <Spinner label="Creating change folder..." />
             </Panel>
         );
 
@@ -273,10 +273,10 @@ export function ChangeAddScreen({ params }: ScreenProps): ReactElement {
     if (step === 'complete') {
 
         return (
-            <Panel title="Add Changeset" paddingX={2} paddingY={1} borderColor="green">
+            <Panel title="Add Change" paddingX={2} paddingY={1} borderColor="green">
                 <Box flexDirection="column" gap={1}>
                     <StatusMessage variant="success">
-                        Changeset "{createdName}" created!
+                        Change "{createdName}" created!
                     </StatusMessage>
 
                     <Text dimColor>Created folder structure with template files.</Text>
@@ -293,7 +293,7 @@ export function ChangeAddScreen({ params }: ScreenProps): ReactElement {
 
     // Error step
     return (
-        <Panel title="Add Changeset" paddingX={2} paddingY={1} borderColor="red">
+        <Panel title="Add Change" paddingX={2} paddingY={1} borderColor="red">
             <Box flexDirection="column" gap={1}>
                 <StatusMessage variant="error">{error}</StatusMessage>
 

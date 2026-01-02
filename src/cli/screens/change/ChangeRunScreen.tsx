@@ -1,12 +1,12 @@
 /**
- * ChangeRunScreen - apply a single changeset.
+ * ChangeRunScreen - apply a single change.
  *
- * Executes the change files for a pending changeset.
+ * Executes the change files for a pending change.
  * Requires confirmation for protected configs.
  *
  * @example
  * ```bash
- * noorm change:run add-user-roles    # Apply changeset
+ * noorm change:run add-user-roles    # Apply change
  * noorm change run add-user-roles    # Same thing
  * ```
  */
@@ -16,7 +16,7 @@ import { ProgressBar } from '@inkjs/ui';
 
 import type { ReactElement } from 'react';
 import type { ScreenProps } from '../../types.js';
-import type { Changeset, ChangesetResult } from '../../../core/changeset/types.js';
+import type { Change, ChangeResult } from '../../../core/change/types.js';
 import type { NoormDatabase } from '../../../core/shared/index.js';
 import type { Kysely } from 'kysely';
 
@@ -31,9 +31,9 @@ import {
     Confirm,
     ProtectedConfirm,
 } from '../../components/index.js';
-import { discoverChangesets } from '../../../core/changeset/parser.js';
-import { ChangesetHistory } from '../../../core/changeset/history.js';
-import { executeChangeset } from '../../../core/changeset/executor.js';
+import { discoverChanges } from '../../../core/change/parser.js';
+import { ChangeHistory } from '../../../core/change/history.js';
+import { executeChange } from '../../../core/change/executor.js';
 import { createConnection } from '../../../core/connection/factory.js';
 import { resolveIdentity } from '../../../core/identity/resolver.js';
 import { observer } from '../../../core/observer.js';
@@ -42,7 +42,7 @@ import { observer } from '../../../core/observer.js';
  * Run steps.
  */
 type RunStep =
-    | 'loading' // Finding changeset
+    | 'loading' // Finding change
     | 'confirm' // Awaiting confirmation
     | 'running' // Executing
     | 'complete' // Success
@@ -57,20 +57,20 @@ export function ChangeRunScreen({ params }: ScreenProps): ReactElement {
     const { isFocused } = useFocusScope('ChangeRun');
     const { activeConfig, activeConfigName, stateManager } = useAppContext();
 
-    const changesetName = params.name;
+    const changeName = params.name;
 
     const [step, setStep] = useState<RunStep>('loading');
-    const [changeset, setChangeset] = useState<Changeset | null>(null);
-    const [result, setResult] = useState<ChangesetResult | null>(null);
+    const [change, setChange] = useState<Change | null>(null);
+    const [result, setResult] = useState<ChangeResult | null>(null);
     const [progress, setProgress] = useState({ current: 0, total: 0 });
     const [currentFile, setCurrentFile] = useState('');
     const [error, setError] = useState<string | null>(null);
     const [isProtected, setIsProtected] = useState(false);
 
-    // Load changeset info
+    // Load change info
     useEffect(() => {
 
-        if (!activeConfig || !changesetName) {
+        if (!activeConfig || !changeName) {
 
             return;
 
@@ -78,21 +78,21 @@ export function ChangeRunScreen({ params }: ScreenProps): ReactElement {
 
         let cancelled = false;
 
-        const loadChangeset = async () => {
+        const loadChange = async () => {
 
             const [_, err] = await attempt(async () => {
 
-                // Find the changeset on disk
-                const changesets = await discoverChangesets(
-                    activeConfig.paths.changesets,
-                    activeConfig.paths.schema,
+                // Find the change on disk
+                const changes = await discoverChanges(
+                    activeConfig.paths.changes,
+                    activeConfig.paths.sql,
                 );
 
-                const found = changesets.find((cs) => cs.name === changesetName);
+                const found = changes.find((cs) => cs.name === changeName);
 
                 if (!found) {
 
-                    throw new Error(`Changeset not found: ${changesetName}`);
+                    throw new Error(`Change not found: ${changeName}`);
 
                 }
 
@@ -103,9 +103,9 @@ export function ChangeRunScreen({ params }: ScreenProps): ReactElement {
                 );
                 const db = conn.db as Kysely<NoormDatabase>;
 
-                const history = new ChangesetHistory(db, activeConfigName ?? '');
+                const history = new ChangeHistory(db, activeConfigName ?? '');
                 const statuses = await history.getAllStatuses();
-                const status = statuses.get(changesetName);
+                const status = statuses.get(changeName);
 
                 await conn.destroy();
 
@@ -113,11 +113,11 @@ export function ChangeRunScreen({ params }: ScreenProps): ReactElement {
 
                 if (status?.status === 'success') {
 
-                    throw new Error(`Changeset "${changesetName}" is already applied`);
+                    throw new Error(`Change "${changeName}" is already applied`);
 
                 }
 
-                setChangeset(found);
+                setChange(found);
                 setIsProtected(activeConfig.protected ?? false);
                 setStep('confirm');
 
@@ -136,7 +136,7 @@ export function ChangeRunScreen({ params }: ScreenProps): ReactElement {
 
         };
 
-        loadChangeset();
+        loadChange();
 
         return () => {
 
@@ -144,14 +144,14 @@ export function ChangeRunScreen({ params }: ScreenProps): ReactElement {
 
         };
 
-    }, [activeConfig, activeConfigName, changesetName]);
+    }, [activeConfig, activeConfigName, changeName]);
 
     // Subscribe to progress events
     useEffect(() => {
 
-        const unsubFile = observer.on('changeset:file', (data) => {
+        const unsubFile = observer.on('change:file', (data) => {
 
-            if (data.changeset === changesetName) {
+            if (data.change === changeName) {
 
                 setProgress({ current: data.index, total: data.total });
                 setCurrentFile(data.filepath);
@@ -166,15 +166,15 @@ export function ChangeRunScreen({ params }: ScreenProps): ReactElement {
 
         };
 
-    }, [changesetName]);
+    }, [changeName]);
 
     // Handle run
     const handleRun = useCallback(async () => {
 
-        if (!activeConfig || !changeset || !stateManager) return;
+        if (!activeConfig || !change || !stateManager) return;
 
         setStep('running');
-        setProgress({ current: 0, total: changeset.changeFiles.length });
+        setProgress({ current: 0, total: change.changeFiles.length });
 
         const [_, err] = await attempt(async () => {
 
@@ -195,12 +195,12 @@ export function ChangeRunScreen({ params }: ScreenProps): ReactElement {
                 configName: activeConfigName ?? '',
                 identity,
                 projectRoot: process.cwd(),
-                changesetsDir: activeConfig.paths.changesets,
-                schemaDir: activeConfig.paths.schema,
+                changesDir: activeConfig.paths.changes,
+                sqlDir: activeConfig.paths.sql,
             };
 
-            // Execute changeset
-            const result = await executeChangeset(context, changeset);
+            // Execute change
+            const result = await executeChange(context, change);
 
             await conn.destroy();
 
@@ -222,7 +222,7 @@ export function ChangeRunScreen({ params }: ScreenProps): ReactElement {
 
         }
 
-    }, [activeConfig, activeConfigName, changeset, stateManager]);
+    }, [activeConfig, activeConfigName, change, stateManager]);
 
     // Handle cancel
     const handleCancel = useCallback(() => {
@@ -244,12 +244,12 @@ export function ChangeRunScreen({ params }: ScreenProps): ReactElement {
 
     });
 
-    // No changeset name provided
-    if (!changesetName) {
+    // No change name provided
+    if (!changeName) {
 
         return (
-            <Panel title="Run Changeset" paddingX={2} paddingY={1} borderColor="yellow">
-                <Text color="yellow">No changeset name provided.</Text>
+            <Panel title="Run Change" paddingX={2} paddingY={1} borderColor="yellow">
+                <Text color="yellow">No change name provided.</Text>
             </Panel>
         );
 
@@ -259,7 +259,7 @@ export function ChangeRunScreen({ params }: ScreenProps): ReactElement {
     if (!activeConfig) {
 
         return (
-            <Panel title="Run Changeset" paddingX={2} paddingY={1} borderColor="yellow">
+            <Panel title="Run Change" paddingX={2} paddingY={1} borderColor="yellow">
                 <Text color="yellow">No active configuration.</Text>
             </Panel>
         );
@@ -270,40 +270,40 @@ export function ChangeRunScreen({ params }: ScreenProps): ReactElement {
     if (step === 'loading') {
 
         return (
-            <Panel title="Run Changeset" paddingX={2} paddingY={1}>
-                <Spinner label="Loading changeset..." />
+            <Panel title="Run Change" paddingX={2} paddingY={1}>
+                <Spinner label="Loading change..." />
             </Panel>
         );
 
     }
 
     // Confirm
-    if (step === 'confirm' && changeset) {
+    if (step === 'confirm' && change) {
 
         const confirmContent = (
             <Box flexDirection="column" gap={1}>
                 <Text>
-                    Run changeset:{' '}
+                    Run change:{' '}
                     <Text bold color="cyan">
-                        {changesetName}
+                        {changeName}
                     </Text>
                 </Text>
                 <Text>
                     On config: <Text bold>{activeConfigName}</Text>
                 </Text>
-                <Text dimColor>Files to execute: {changeset.changeFiles.length}</Text>
+                <Text dimColor>Files to execute: {change.changeFiles.length}</Text>
             </Box>
         );
 
         if (isProtected) {
 
             return (
-                <Panel title="Run Changeset" paddingX={2} paddingY={1} borderColor="yellow">
+                <Panel title="Run Change" paddingX={2} paddingY={1} borderColor="yellow">
                     <Box flexDirection="column" gap={1}>
                         {confirmContent}
                         <ProtectedConfirm
                             configName={activeConfigName ?? 'config'}
-                            action="apply this changeset"
+                            action="apply this change"
                             onConfirm={handleRun}
                             onCancel={handleCancel}
                             isFocused={isFocused}
@@ -315,11 +315,11 @@ export function ChangeRunScreen({ params }: ScreenProps): ReactElement {
         }
 
         return (
-            <Panel title="Run Changeset" paddingX={2} paddingY={1}>
+            <Panel title="Run Change" paddingX={2} paddingY={1}>
                 <Box flexDirection="column" gap={1}>
                     {confirmContent}
                     <Confirm
-                        message="Apply this changeset?"
+                        message="Apply this change?"
                         onConfirm={handleRun}
                         onCancel={handleCancel}
                         isFocused={isFocused}
@@ -336,12 +336,12 @@ export function ChangeRunScreen({ params }: ScreenProps): ReactElement {
         const progressValue = progress.total > 0 ? progress.current / progress.total : 0;
 
         return (
-            <Panel title="Run Changeset" paddingX={2} paddingY={1}>
+            <Panel title="Run Change" paddingX={2} paddingY={1}>
                 <Box flexDirection="column" gap={1}>
                     <Text>
                         Applying:{' '}
                         <Text bold color="cyan">
-                            {changesetName}
+                            {changeName}
                         </Text>
                     </Text>
 
@@ -363,10 +363,10 @@ export function ChangeRunScreen({ params }: ScreenProps): ReactElement {
     if (step === 'complete' && result) {
 
         return (
-            <Panel title="Run Changeset" paddingX={2} paddingY={1} borderColor="green">
+            <Panel title="Run Change" paddingX={2} paddingY={1} borderColor="green">
                 <Box flexDirection="column" gap={1}>
                     <StatusMessage variant="success">
-                        Changeset "{changesetName}" applied successfully!
+                        Change "{changeName}" applied successfully!
                     </StatusMessage>
 
                     <Text dimColor>
@@ -384,9 +384,9 @@ export function ChangeRunScreen({ params }: ScreenProps): ReactElement {
 
     // Error
     return (
-        <Panel title="Run Changeset" paddingX={2} paddingY={1} borderColor="red">
+        <Panel title="Run Change" paddingX={2} paddingY={1} borderColor="red">
             <Box flexDirection="column" gap={1}>
-                <StatusMessage variant="error">Failed to apply changeset: {error}</StatusMessage>
+                <StatusMessage variant="error">Failed to apply change: {error}</StatusMessage>
 
                 {result?.files && (
                     <Box flexDirection="column">

@@ -244,10 +244,10 @@ export async function destroyDb(
 
                 await db.deleteFrom('__noorm_executions__').execute();
 
-                // Try to clear changeset table (might not exist)
+                // Try to clear change table (might not exist)
                 try {
 
-                    await db.deleteFrom('__noorm_changeset__').execute();
+                    await db.deleteFrom('__noorm_change__').execute();
 
                 }
                 catch {

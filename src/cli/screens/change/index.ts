@@ -1,7 +1,7 @@
 /**
  * Change screens module.
  *
- * Screens for managing database changesets.
+ * Screens for managing database changes.
  */
 
 export { ChangeListScreen } from './ChangeListScreen.js';

@@ -93,11 +93,11 @@ export function ruleMatches(match: RuleMatch, config: ConfigForRuleMatch): boole
  * ```typescript
  * const rule = {
  *     match: { isTest: true },
- *     include: ['schema/seeds'],
+ *     include: ['sql/seeds'],
  * }
  *
  * const result = evaluateRule(rule, testConfig)
- * // { matched: true, include: ['schema/seeds'], exclude: [] }
+ * // { matched: true, include: ['sql/seeds'], exclude: [] }
  * ```
  */
 export function evaluateRule(rule: Rule, config: ConfigForRuleMatch): RuleEvaluationResult {
@@ -131,12 +131,12 @@ export function evaluateRule(rule: Rule, config: ConfigForRuleMatch): RuleEvalua
  * @example
  * ```typescript
  * const rules = [
- *     { match: { isTest: true }, include: ['schema/seeds'] },
- *     { match: { protected: true }, exclude: ['schema/dangerous'] },
+ *     { match: { isTest: true }, include: ['sql/seeds'] },
+ *     { match: { protected: true }, exclude: ['sql/dangerous'] },
  * ]
  *
  * const result = evaluateRules(rules, config)
- * // { matchedRules: [...], include: ['schema/seeds'], exclude: ['schema/dangerous'] }
+ * // { matchedRules: [...], include: ['sql/seeds'], exclude: ['sql/dangerous'] }
  * ```
  */
 export function evaluateRules(rules: Rule[], config: ConfigForRuleMatch): RulesEvaluationResult {
@@ -193,8 +193,8 @@ export function evaluateRules(rules: Rule[], config: ConfigForRuleMatch): RulesE
  *
  * @example
  * ```typescript
- * const buildInclude = ['schema/tables', 'schema/views']
- * const buildExclude = ['schema/archive']
+ * const buildInclude = ['sql/tables', 'sql/views']
+ * const buildExclude = ['sql/archive']
  * const ruleResult = evaluateRules(rules, config)
  *
  * const { include, exclude } = mergeWithBuildConfig(

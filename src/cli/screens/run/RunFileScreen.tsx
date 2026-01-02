@@ -6,7 +6,7 @@
  * @example
  * ```bash
  * noorm run file           # Opens this screen
- * noorm run file schema/tables/users.sql  # With pre-filled path
+ * noorm run file sql/tables/users.sql  # With pre-filled path
  * ```
  */
 import { useState, useCallback, useEffect } from 'react';
@@ -103,10 +103,10 @@ export function RunFileScreen({ params }: ScreenProps): ReactElement {
 
             setPhase('loading');
 
-            const schemaPath = settings.paths?.schema ?? 'schema';
-            const schemaFullPath = join(projectRoot, schemaPath);
+            const sqlPath = settings.paths?.sql ?? 'sql';
+            const sqlFullPath = join(projectRoot, sqlPath);
 
-            const [files, err] = await attempt(() => discoverFiles(schemaFullPath));
+            const [files, err] = await attempt(() => discoverFiles(sqlFullPath));
 
             if (cancelled) return;
 
@@ -310,7 +310,7 @@ export function RunFileScreen({ params }: ScreenProps): ReactElement {
     if (phase === 'picker') {
 
         const hasFiles = allFiles.length > 0;
-        const schemaPath = settings?.paths?.schema ?? 'schema';
+        const sqlPath = settings?.paths?.sql ?? 'sql';
 
         return (
             <Box flexDirection="column" gap={1}>
@@ -348,7 +348,7 @@ export function RunFileScreen({ params }: ScreenProps): ReactElement {
                             <>
                                 <EscapeHandler onEscape={handleCancel} />
                                 <Box flexDirection="column" gap={1}>
-                                    <Text color="yellow">No SQL files found in {schemaPath}/</Text>
+                                    <Text color="yellow">No SQL files found in {sqlPath}/</Text>
                                     <Text dimColor>
                                         Make sure your schema path is configured correctly in settings.
                                     </Text>

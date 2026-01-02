@@ -26,33 +26,33 @@ describe('logger: formatter', () => {
 
         it('should generate message for file:before event', () => {
 
-            const message = generateMessage('file:before', { filepath: 'schema/001_users.sql' });
+            const message = generateMessage('file:before', { filepath: 'sql/001_users.sql' });
 
-            expect(message).toBe('Executing schema/001_users.sql');
+            expect(message).toBe('Executing sql/001_users.sql');
 
         });
 
         it('should generate message for file:after success', () => {
 
             const message = generateMessage('file:after', {
-                filepath: 'schema/001_users.sql',
+                filepath: 'sql/001_users.sql',
                 status: 'success',
                 durationMs: 45,
             });
 
-            expect(message).toBe('Executed schema/001_users.sql (45ms)');
+            expect(message).toBe('Executed sql/001_users.sql (45ms)');
 
         });
 
         it('should generate message for file:after failure', () => {
 
             const message = generateMessage('file:after', {
-                filepath: 'schema/001_users.sql',
+                filepath: 'sql/001_users.sql',
                 status: 'failed',
                 error: 'syntax error',
             });
 
-            expect(message).toBe('Failed schema/001_users.sql: syntax error');
+            expect(message).toBe('Failed sql/001_users.sql: syntax error');
 
         });
 

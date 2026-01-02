@@ -123,13 +123,13 @@ describe('settings: rule evaluation', () => {
 
             const rule: Rule = {
                 match: { isTest: true },
-                include: ['schema/seeds', 'schema/test-data'],
+                include: ['sql/seeds', 'sql/test-data'],
             };
 
             const result = evaluateRule(rule, testConfig);
 
             expect(result.matched).toBe(true);
-            expect(result.include).toEqual(['schema/seeds', 'schema/test-data']);
+            expect(result.include).toEqual(['sql/seeds', 'sql/test-data']);
             expect(result.exclude).toEqual([]);
 
         });
@@ -138,14 +138,14 @@ describe('settings: rule evaluation', () => {
 
             const rule: Rule = {
                 match: { protected: true },
-                exclude: ['schema/dangerous'],
+                exclude: ['sql/dangerous'],
             };
 
             const result = evaluateRule(rule, prodConfig);
 
             expect(result.matched).toBe(true);
             expect(result.include).toEqual([]);
-            expect(result.exclude).toEqual(['schema/dangerous']);
+            expect(result.exclude).toEqual(['sql/dangerous']);
 
         });
 
@@ -153,7 +153,7 @@ describe('settings: rule evaluation', () => {
 
             const rule: Rule = {
                 match: { isTest: true },
-                include: ['schema/seeds'],
+                include: ['sql/seeds'],
             };
 
             const result = evaluateRule(rule, devConfig);
@@ -168,15 +168,15 @@ describe('settings: rule evaluation', () => {
 
             const rule: Rule = {
                 match: { type: 'local' },
-                include: ['schema/local-only'],
-                exclude: ['schema/remote-only'],
+                include: ['sql/local-only'],
+                exclude: ['sql/remote-only'],
             };
 
             const result = evaluateRule(rule, devConfig);
 
             expect(result.matched).toBe(true);
-            expect(result.include).toEqual(['schema/local-only']);
-            expect(result.exclude).toEqual(['schema/remote-only']);
+            expect(result.include).toEqual(['sql/local-only']);
+            expect(result.exclude).toEqual(['sql/remote-only']);
 
         });
 
@@ -186,7 +186,7 @@ describe('settings: rule evaluation', () => {
 
         it('should return empty results when no rules match', () => {
 
-            const rules: Rule[] = [{ match: { isTest: true }, include: ['schema/seeds'] }];
+            const rules: Rule[] = [{ match: { isTest: true }, include: ['sql/seeds'] }];
 
             const result = evaluateRules(rules, devConfig); // isTest=false
 
@@ -199,72 +199,72 @@ describe('settings: rule evaluation', () => {
         it('should combine includes from multiple matching rules', () => {
 
             const rules: Rule[] = [
-                { match: { type: 'local' }, include: ['schema/local'] },
-                { match: { isTest: false }, include: ['schema/main'] },
+                { match: { type: 'local' }, include: ['sql/local'] },
+                { match: { isTest: false }, include: ['sql/main'] },
             ];
 
             const result = evaluateRules(rules, devConfig);
 
             expect(result.matchedRules.length).toBe(2);
-            expect(result.include).toContain('schema/local');
-            expect(result.include).toContain('schema/main');
+            expect(result.include).toContain('sql/local');
+            expect(result.include).toContain('sql/main');
 
         });
 
         it('should combine excludes from multiple matching rules', () => {
 
             const rules: Rule[] = [
-                { match: { protected: true }, exclude: ['schema/dangerous'] },
-                { match: { type: 'remote' }, exclude: ['schema/local-only'] },
+                { match: { protected: true }, exclude: ['sql/dangerous'] },
+                { match: { type: 'remote' }, exclude: ['sql/local-only'] },
             ];
 
             const result = evaluateRules(rules, prodConfig);
 
             expect(result.matchedRules.length).toBe(2);
-            expect(result.exclude).toContain('schema/dangerous');
-            expect(result.exclude).toContain('schema/local-only');
+            expect(result.exclude).toContain('sql/dangerous');
+            expect(result.exclude).toContain('sql/local-only');
 
         });
 
         it('should let later rules override earlier rules', () => {
 
-            // First rule includes 'schema/seeds'
-            // Second rule excludes 'schema/seeds'
-            // Later rule wins, so 'schema/seeds' should be excluded
+            // First rule includes 'sql/seeds'
+            // Second rule excludes 'sql/seeds'
+            // Later rule wins, so 'sql/seeds' should be excluded
             const rules: Rule[] = [
-                { match: { type: 'local' }, include: ['schema/seeds'] },
-                { match: { isTest: false }, exclude: ['schema/seeds'] },
+                { match: { type: 'local' }, include: ['sql/seeds'] },
+                { match: { isTest: false }, exclude: ['sql/seeds'] },
             ];
 
             const result = evaluateRules(rules, devConfig);
 
-            expect(result.include).not.toContain('schema/seeds');
-            expect(result.exclude).toContain('schema/seeds');
+            expect(result.include).not.toContain('sql/seeds');
+            expect(result.exclude).toContain('sql/seeds');
 
         });
 
         it('should remove from exclude when later rule includes', () => {
 
-            // First rule excludes 'schema/special'
-            // Second rule includes 'schema/special'
+            // First rule excludes 'sql/special'
+            // Second rule includes 'sql/special'
             // Later rule wins
             const rules: Rule[] = [
-                { match: { type: 'local' }, exclude: ['schema/special'] },
-                { match: { name: 'dev' }, include: ['schema/special'] },
+                { match: { type: 'local' }, exclude: ['sql/special'] },
+                { match: { name: 'dev' }, include: ['sql/special'] },
             ];
 
             const result = evaluateRules(rules, devConfig);
 
-            expect(result.include).toContain('schema/special');
-            expect(result.exclude).not.toContain('schema/special');
+            expect(result.include).toContain('sql/special');
+            expect(result.exclude).not.toContain('sql/special');
 
         });
 
         it('should not include rules that do not match', () => {
 
             const rules: Rule[] = [
-                { match: { isTest: true }, include: ['schema/seeds'] },
-                { match: { protected: true }, exclude: ['schema/dangerous'] },
+                { match: { isTest: true }, include: ['sql/seeds'] },
+                { match: { protected: true }, exclude: ['sql/dangerous'] },
             ];
 
             const result = evaluateRules(rules, devConfig);
@@ -281,64 +281,64 @@ describe('settings: rule evaluation', () => {
 
         it('should combine build config with rule results', () => {
 
-            const buildInclude = ['schema/tables', 'schema/views'];
-            const buildExclude = ['schema/archive'];
+            const buildInclude = ['sql/tables', 'sql/views'];
+            const buildExclude = ['sql/archive'];
 
             const ruleResult = {
                 matchedRules: [],
-                include: ['schema/seeds'],
-                exclude: ['schema/heavy'],
+                include: ['sql/seeds'],
+                exclude: ['sql/heavy'],
             };
 
             const result = mergeWithBuildConfig(buildInclude, buildExclude, ruleResult);
 
             // Should have all build includes plus rule includes
-            expect(result.include).toContain('schema/tables');
-            expect(result.include).toContain('schema/views');
-            expect(result.include).toContain('schema/seeds');
+            expect(result.include).toContain('sql/tables');
+            expect(result.include).toContain('sql/views');
+            expect(result.include).toContain('sql/seeds');
 
             // Should have all build excludes plus rule excludes
-            expect(result.exclude).toContain('schema/archive');
-            expect(result.exclude).toContain('schema/heavy');
+            expect(result.exclude).toContain('sql/archive');
+            expect(result.exclude).toContain('sql/heavy');
 
         });
 
         it('should let rule results override build config', () => {
 
-            const buildInclude = ['schema/main'];
-            const buildExclude = ['schema/seeds']; // Normally excluded
+            const buildInclude = ['sql/main'];
+            const buildExclude = ['sql/seeds']; // Normally excluded
 
             const ruleResult = {
                 matchedRules: [],
-                include: ['schema/seeds'], // Rule says include it
+                include: ['sql/seeds'], // Rule says include it
                 exclude: [],
             };
 
             const result = mergeWithBuildConfig(buildInclude, buildExclude, ruleResult);
 
-            // schema/seeds should be included (rule override)
-            expect(result.include).toContain('schema/seeds');
-            expect(result.exclude).not.toContain('schema/seeds');
+            // sql/seeds should be included (rule override)
+            expect(result.include).toContain('sql/seeds');
+            expect(result.exclude).not.toContain('sql/seeds');
 
         });
 
         it('should let exclude override include', () => {
 
-            const buildInclude = ['schema/main', 'schema/dangerous'];
+            const buildInclude = ['sql/main', 'sql/dangerous'];
             const buildExclude: string[] = [];
 
             const ruleResult = {
                 matchedRules: [],
                 include: [],
-                exclude: ['schema/dangerous'], // Rule says exclude it
+                exclude: ['sql/dangerous'], // Rule says exclude it
             };
 
             const result = mergeWithBuildConfig(buildInclude, buildExclude, ruleResult);
 
-            // schema/dangerous should be excluded
-            expect(result.include).toContain('schema/main');
-            expect(result.include).not.toContain('schema/dangerous');
-            expect(result.exclude).toContain('schema/dangerous');
+            // sql/dangerous should be excluded
+            expect(result.include).toContain('sql/main');
+            expect(result.include).not.toContain('sql/dangerous');
+            expect(result.exclude).toContain('sql/dangerous');
 
         });
 
@@ -348,9 +348,9 @@ describe('settings: rule evaluation', () => {
 
         it('should return build config paths when no rules match', () => {
 
-            const buildInclude = ['schema/tables', 'schema/views'];
-            const buildExclude = ['schema/archive'];
-            const rules: Rule[] = [{ match: { isTest: true }, include: ['schema/seeds'] }];
+            const buildInclude = ['sql/tables', 'sql/views'];
+            const buildExclude = ['sql/archive'];
+            const rules: Rule[] = [{ match: { isTest: true }, include: ['sql/seeds'] }];
 
             const result = getEffectiveBuildPaths(
                 buildInclude,
@@ -359,16 +359,16 @@ describe('settings: rule evaluation', () => {
                 devConfig, // isTest=false, so rule won't match
             );
 
-            expect(result.include).toEqual(['schema/tables', 'schema/views']);
-            expect(result.exclude).toEqual(['schema/archive']);
+            expect(result.include).toEqual(['sql/tables', 'sql/views']);
+            expect(result.exclude).toEqual(['sql/archive']);
 
         });
 
         it('should include rule paths when rules match', () => {
 
-            const buildInclude = ['schema/tables'];
+            const buildInclude = ['sql/tables'];
             const buildExclude: string[] = [];
-            const rules: Rule[] = [{ match: { isTest: true }, include: ['schema/seeds'] }];
+            const rules: Rule[] = [{ match: { isTest: true }, include: ['sql/seeds'] }];
 
             const result = getEffectiveBuildPaths(
                 buildInclude,
@@ -377,37 +377,37 @@ describe('settings: rule evaluation', () => {
                 testConfig, // isTest=true, rule matches
             );
 
-            expect(result.include).toContain('schema/tables');
-            expect(result.include).toContain('schema/seeds');
+            expect(result.include).toContain('sql/tables');
+            expect(result.include).toContain('sql/seeds');
 
         });
 
         it('should handle complex rule scenarios', () => {
 
-            const buildInclude = ['schema/tables', 'schema/views', 'schema/functions'];
-            const buildExclude = ['schema/archive'];
+            const buildInclude = ['sql/tables', 'sql/views', 'sql/functions'];
+            const buildExclude = ['sql/archive'];
             const rules: Rule[] = [
                 // Include seeds for test databases
-                { match: { isTest: true }, include: ['schema/seeds'] },
+                { match: { isTest: true }, include: ['sql/seeds'] },
                 // Exclude dangerous scripts for protected configs
-                { match: { protected: true }, exclude: ['schema/dangerous'] },
+                { match: { protected: true }, exclude: ['sql/dangerous'] },
                 // Exclude heavy seeds for remote test databases
-                { match: { isTest: true, type: 'remote' }, exclude: ['schema/heavy-seeds'] },
+                { match: { isTest: true, type: 'remote' }, exclude: ['sql/heavy-seeds'] },
             ];
 
             // For stagingConfig: isTest=true, type=remote, protected=false
             const result = getEffectiveBuildPaths(buildInclude, buildExclude, rules, stagingConfig);
 
             // Should include base + seeds (from isTest rule)
-            expect(result.include).toContain('schema/tables');
-            expect(result.include).toContain('schema/seeds');
+            expect(result.include).toContain('sql/tables');
+            expect(result.include).toContain('sql/seeds');
 
             // Should exclude archive (from build) + heavy-seeds (from remote test rule)
-            expect(result.exclude).toContain('schema/archive');
-            expect(result.exclude).toContain('schema/heavy-seeds');
+            expect(result.exclude).toContain('sql/archive');
+            expect(result.exclude).toContain('sql/heavy-seeds');
 
             // Should NOT exclude dangerous (protected=false)
-            expect(result.exclude).not.toContain('schema/dangerous');
+            expect(result.exclude).not.toContain('sql/dangerous');
 
         });
 

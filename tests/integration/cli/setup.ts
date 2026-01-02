@@ -59,7 +59,7 @@ const TMP_BASE = join(import.meta.dirname, '../../../tmp');
 /**
  * Path to schema fixtures.
  */
-const FIXTURES_DIR = join(import.meta.dirname, '../../fixtures/schema/sqlite');
+const FIXTURES_DIR = join(import.meta.dirname, '../../fixtures/sql/sqlite');
 
 // ─────────────────────────────────────────────────────────────
 // CLI Execution
@@ -334,7 +334,7 @@ export function stripAnsi(output: string): string {
  * Create a test project directory with noorm structure.
  *
  * Uses env-only mode (no encrypted state files needed):
- * - Creates temp directory with schema/changesets
+ * - Creates temp directory with sql/changes
  * - Creates SQLite database with test schema
  * - Returns env vars for CLI commands
  *
@@ -356,7 +356,7 @@ export async function setupTestProject(): Promise<TestProject> {
     await mkdir(testDir, { recursive: true });
     await mkdir(join(testDir, '.noorm'), { recursive: true });
     await mkdir(join(testDir, 'schema'), { recursive: true });
-    await mkdir(join(testDir, 'changesets'), { recursive: true });
+    await mkdir(join(testDir, 'changes'), { recursive: true });
 
     // Copy schema fixtures
     await cp(FIXTURES_DIR, join(testDir, 'schema'), { recursive: true });
@@ -386,8 +386,8 @@ export async function setupTestProject(): Promise<TestProject> {
     const env: Record<string, string> = {
         NOORM_CONNECTION_DIALECT: 'sqlite',
         NOORM_CONNECTION_DATABASE: dbPath,
-        NOORM_PATHS_SCHEMA: './schema',
-        NOORM_PATHS_CHANGESETS: './changesets',
+        NOORM_PATHS_SQL: './sql',
+        NOORM_PATHS_CHANGESETS: './changes',
         NOORM_NAME: '__test__',
         NOORM_ISTEST: 'true',
     };

@@ -8,7 +8,7 @@
  * 4. Optionally add first config
  *
  * Creates:
- * - schema/ and changesets/ directories
+ * - sql/ and changes/ directories
  * - .noorm/settings.yml
  * - .noorm/state.enc
  * - Keypair in ~/.noorm/
@@ -223,15 +223,15 @@ export function InitScreen({ params }: ScreenProps): ReactElement {
             // Step 1: Create directories
             updateItem(0, { status: 'running' });
 
-            const schemaPath = join(projectRoot, 'schema');
-            const changesetsPath = join(projectRoot, 'changesets');
+            const sqlPath = join(projectRoot, 'sql');
+            const changesPath = join(projectRoot, 'changes');
             const noormPath = join(projectRoot, '.noorm');
 
-            mkdirSync(schemaPath, { recursive: true });
-            writeFileSync(join(schemaPath, '.gitkeep'), '', { flag: 'a' });
+            mkdirSync(sqlPath, { recursive: true });
+            writeFileSync(join(sqlPath, '.gitkeep'), '', { flag: 'a' });
 
-            mkdirSync(changesetsPath, { recursive: true });
-            writeFileSync(join(changesetsPath, '.gitkeep'), '', { flag: 'a' });
+            mkdirSync(changesPath, { recursive: true });
+            writeFileSync(join(changesPath, '.gitkeep'), '', { flag: 'a' });
 
             mkdirSync(noormPath, { recursive: true });
 
@@ -517,8 +517,8 @@ export function InitScreen({ params }: ScreenProps): ReactElement {
                         <Box marginTop={1} flexDirection="column">
                             <Text dimColor>Created:</Text>
                             <Box flexDirection="column" marginLeft={2}>
-                                <Text>• schema/.gitkeep</Text>
-                                <Text>• changesets/.gitkeep</Text>
+                                <Text>• sql/.gitkeep</Text>
+                                <Text>• changes/.gitkeep</Text>
                                 <Text>• .noorm/settings.yml</Text>
                                 <Text>• .noorm/state.enc</Text>
                                 {!hasExistingKeys && (

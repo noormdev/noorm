@@ -14,7 +14,7 @@
  *
  * // Emit events
  * const emitStart = useEmit('build:start')
- * emitStart({ schemaPath, fileCount })
+ * emitStart({ sqlPath, fileCount })
  *
  * // Promise-based subscription
  * const [result, error, pending, cancel] = useEventPromise('build:complete')
@@ -32,7 +32,7 @@ import { observer, type NoormEvents, type NoormEventNames } from '../../core/obs
  *
  * @example
  * ```typescript
- * useOnEvent('changeset:complete', (data) => {
+ * useOnEvent('change:complete', (data) => {
  *     setResults(prev => [...prev, data])
  * }, [])
  *
@@ -113,12 +113,12 @@ export function useOnceEvent<E extends NoormEventNames>(
  * const emitStart = useEmit('build:start')
  *
  * const handleStart = () => {
- *     emitStart({ schemaPath: '/schema', fileCount: 10 })
+ *     emitStart({ sqlPath: '/sql', fileCount: 10 })
  * }
  *
  * // With dependencies for dynamic event data
- * const emitProgress = useEmit('changeset:file')
- * emitProgress({ changeset: name, filepath, index, total })
+ * const emitProgress = useEmit('change:file')
+ * emitProgress({ change: name, filepath, index, total })
  * ```
  */
 export function useEmit<E extends NoormEventNames>(

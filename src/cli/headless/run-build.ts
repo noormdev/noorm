@@ -17,7 +17,7 @@ Execute all SQL files in schema directory
 
 ## Description
 
-Executes all SQL files in the \`schema/\` directory in alphabetical order.
+Executes all SQL files in the \`sql/\` directory in alphabetical order.
 Tracks checksums to skip unchanged files on subsequent runs.
 
 Use \`--force\` to rebuild everything regardless of checksums.

@@ -51,7 +51,7 @@ export interface TruncateOptions {
  * // Keep enums but drop everything else
  * await teardownSchema(db, 'postgres', {
  *     keepTypes: true,
- *     postScript: 'schema/teardown/cleanup.sql',
+ *     postScript: 'sql/teardown/cleanup.sql',
  * })
  * ```
  */
@@ -76,9 +76,9 @@ export interface TeardownOptions {
     dryRun?: boolean;
 
     /**
-     * Config name for changeset tracking.
-     * When provided, marks all successful changesets as 'stale' and
-     * records a reset event in the changeset history.
+     * Config name for change tracking.
+     * When provided, marks all successful changes as 'stale' and
+     * records a reset event in the change history.
      */
     configName?: string;
 
@@ -138,7 +138,7 @@ export interface TeardownResult {
         error?: string;
     };
 
-    /** Number of changesets marked as stale (if configName provided) */
+    /** Number of changes marked as stale (if configName provided) */
     staleCount?: number;
 
     /** ID of the reset record created (if configName provided) */

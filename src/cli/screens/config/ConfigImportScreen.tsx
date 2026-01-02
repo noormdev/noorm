@@ -182,8 +182,8 @@ export function ConfigImportScreen({ params }: ScreenProps): ReactElement {
                         ssl: importedData.config.connection?.ssl,
                     },
                     paths: {
-                        schema: importedData.config.paths?.schema ?? './schema',
-                        changesets: importedData.config.paths?.changesets ?? './changesets',
+                        sql: importedData.config.paths?.sql ?? './sql',
+                        changes: importedData.config.paths?.changes ?? './changes',
                     },
                 };
 

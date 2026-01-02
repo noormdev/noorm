@@ -18,10 +18,10 @@ Execute SQL files
 
 ## Description
 
-Run SQL files directly against the database. Unlike changesets,
+Run SQL files directly against the database. Unlike changes,
 these are not tracked for migration history.
 
-Build mode executes files in the \`schema/\` directory in order,
+Build mode executes files in the \`sql/\` directory in order,
 tracking checksums to skip unchanged files on subsequent runs.
 
 ## Options

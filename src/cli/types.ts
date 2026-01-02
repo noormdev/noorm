@@ -12,7 +12,7 @@
  * This union provides compile-time safety for navigation.
  */
 export type Route =
-    // Changesets
+    // Changes
     | 'change'
     | 'change/add'
     | 'change/edit'
@@ -133,13 +133,13 @@ export type Route =
  * Route parameters that can be passed during navigation.
  *
  * Different routes use different subsets of these params:
- * - `name`: Config name, changeset name, secret key
+ * - `name`: Config name, change name, secret key
  * - `count`: Numeric parameter (e.g., change/next 5)
  * - `path`: File or directory path
  * - `stage`: Stage name (for stage-specific secrets)
  */
 export interface RouteParams {
-    /** Named entity (config, changeset, secret key) */
+    /** Named entity (config, change, secret key) */
     name?: string;
 
     /** Numeric parameter (count for next/rewind) */

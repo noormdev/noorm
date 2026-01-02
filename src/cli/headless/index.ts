@@ -49,6 +49,7 @@ import * as CmdDbTruncate from './db-truncate.js';
 import * as CmdDb from './db.js';
 import * as CmdIdentity from './identity.js';
 import * as CmdLockAcquire from './lock-acquire.js';
+import * as CmdLockForce from './lock-force.js';
 import * as CmdLockRelease from './lock-release.js';
 import * as CmdLockStatus from './lock-status.js';
 import * as CmdLock from './lock.js';
@@ -93,6 +94,7 @@ const HANDLERS: Partial<Record<Route, RouteHandler>> = {
 
     'lock': CmdLock,
     'lock/acquire': CmdLockAcquire,
+    'lock/force': CmdLockForce,
     'lock/release': CmdLockRelease,
     'lock/status': CmdLockStatus,
 

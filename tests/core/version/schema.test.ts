@@ -133,7 +133,7 @@ describe('version: schema', () => {
 
             expect(version).toHaveLength(1);
             expect(version[0].cli_version).toBe('1.0.0');
-            expect(version[0].schema_version).toBe(CURRENT_VERSIONS.schema);
+            expect(version[0].noorm_version).toBe(CURRENT_VERSIONS.schema);
             expect(version[0].state_version).toBe(CURRENT_VERSIONS.state);
             expect(version[0].settings_version).toBe(CURRENT_VERSIONS.settings);
 
@@ -145,18 +145,18 @@ describe('version: schema', () => {
 
             const version = await db.selectFrom('__noorm_version__').selectAll().executeTakeFirst();
 
-            expect(version?.schema_version).toBe(CURRENT_VERSIONS.schema);
+            expect(version?.noorm_version).toBe(CURRENT_VERSIONS.schema);
             expect(version?.state_version).toBe(5);
             expect(version?.settings_version).toBe(3);
 
         });
 
-        it('should create __noorm_changeset__ table', async () => {
+        it('should create __noorm_change__ table', async () => {
 
             await bootstrapSchema(db, '1.0.0');
 
             // Should not throw
-            const result = await db.selectFrom('__noorm_changeset__').selectAll().execute();
+            const result = await db.selectFrom('__noorm_change__').selectAll().execute();
 
             expect(result).toEqual([]);
 
@@ -250,7 +250,7 @@ describe('version: schema', () => {
 
             // Create tables with fake higher version
             await bootstrapSchema(db, '1.0.0');
-            await db.updateTable('__noorm_version__').set({ schema_version: 999 }).execute();
+            await db.updateTable('__noorm_version__').set({ noorm_version: 999 }).execute();
 
             const events: unknown[] = [];
             observer.on('version:mismatch', (data) => events.push(data));
@@ -383,35 +383,35 @@ describe('version: schema', () => {
 
         });
 
-        it('should allow inserting changeset records', async () => {
+        it('should allow inserting change records', async () => {
 
             await db
-                .insertInto('__noorm_changeset__')
+                .insertInto('__noorm_change__')
                 .values({
-                    name: 'test-changeset',
-                    change_type: 'changeset',
+                    name: 'test-change',
+                    change_type: 'change',
                     direction: 'change',
                     status: 'pending',
                 })
                 .execute();
 
             const result = await db
-                .selectFrom('__noorm_changeset__')
+                .selectFrom('__noorm_change__')
                 .selectAll()
-                .where('name', '=', 'test-changeset')
+                .where('name', '=', 'test-change')
                 .executeTakeFirst();
 
             expect(result?.id).toBeDefined();
-            expect(result?.name).toBe('test-changeset');
+            expect(result?.name).toBe('test-change');
 
         });
 
         it.skip('should have executions table with required columns', async () => {
 
             // Verify table structure by inserting minimal valid data
-            // Need to use raw SQL for changeset_id since FK requires valid reference
+            // Need to use raw SQL for change_id since FK requires valid reference
             await sql`
-                INSERT INTO __noorm_changeset__ (name, change_type, direction, status)
+                INSERT INTO __noorm_change__ (name, change_type, direction, status)
                 VALUES ('test-for-execution', 'build', 'change', 'pending')
             `.execute(db);
 
@@ -419,12 +419,12 @@ describe('version: schema', () => {
             const { rows: rowIdResult } = await sql<{ id: number }>`
                 SELECT last_insert_rowid() as id
             `.execute(db);
-            const changesetId = rowIdResult[0]?.id;
+            const changeId = rowIdResult[0]?.id;
 
             await sql`
                 INSERT INTO __noorm_executions__
-                (changeset_id, filepath, file_type, status)
-                VALUES (${changesetId}, '/test/file.sql', 'sql', 'success')
+                (change_id, filepath, file_type, status)
+                VALUES (${changeId}, '/test/file.sql', 'sql', 'success')
             `.execute(db);
 
             const result = await db
@@ -537,9 +537,9 @@ describe('version: schema', () => {
 
         it.skip('should have FK column on executions table', async () => {
 
-            // Insert changeset using raw SQL
+            // Insert change using raw SQL
             await sql`
-                INSERT INTO __noorm_changeset__ (name, change_type, direction, status)
+                INSERT INTO __noorm_change__ (name, change_type, direction, status)
                 VALUES ('test-fk-parent', 'build', 'change', 'success')
             `.execute(db);
 
@@ -547,13 +547,13 @@ describe('version: schema', () => {
             const { rows: rowIdResult } = await sql<{ id: number }>`
                 SELECT last_insert_rowid() as id
             `.execute(db);
-            const changesetId = rowIdResult[0]?.id;
+            const changeId = rowIdResult[0]?.id;
 
             // Insert execution with valid FK reference
             await sql`
                 INSERT INTO __noorm_executions__
-                (changeset_id, filepath, file_type, status)
-                VALUES (${changesetId}, '/test.sql', 'sql', 'success')
+                (change_id, filepath, file_type, status)
+                VALUES (${changeId}, '/test.sql', 'sql', 'success')
             `.execute(db);
 
             // Verify we can select the execution
@@ -563,7 +563,7 @@ describe('version: schema', () => {
                 .executeTakeFirst();
 
             expect(execution?.filepath).toBe('/test.sql');
-            expect(execution?.changeset_id).toBeDefined();
+            expect(execution?.change_id).toBeDefined();
 
         });
 

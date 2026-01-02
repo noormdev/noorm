@@ -11,6 +11,7 @@ import type {
     PathConfig,
     StrictConfig,
     LoggingConfig,
+    StageSecret,
 } from './types.js';
 
 /**
@@ -75,5 +76,27 @@ export interface SettingsEvents {
     /** Logging config updated */
     'settings:logging-updated': {
         logging: LoggingConfig;
+    };
+
+    /** Secret added (universal or stage-scoped) */
+    'settings:secret-added': {
+        secret: StageSecret;
+        scope: 'universal' | 'stage';
+        stageName?: string;
+    };
+
+    /** Secret updated (universal or stage-scoped) */
+    'settings:secret-updated': {
+        key: string;
+        secret: StageSecret;
+        scope: 'universal' | 'stage';
+        stageName?: string;
+    };
+
+    /** Secret removed (universal or stage-scoped) */
+    'settings:secret-removed': {
+        key: string;
+        scope: 'universal' | 'stage';
+        stageName?: string;
     };
 }

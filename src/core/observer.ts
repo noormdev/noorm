@@ -28,7 +28,7 @@ import type { AppMode, ShutdownReason, ShutdownPhase, PhaseStatus } from './life
  * - `file:*` - Individual SQL file execution
  * - `build:*` - Schema build operations
  * - `run:*` - Ad-hoc file/dir execution
- * - `changeset:*` - Changeset execution
+ * - `change:*` - Change execution
  * - `lock:*` - Lock acquisition/release
  * - `state:*` - State load/persist
  * - `config:*` - Config CRUD
@@ -52,20 +52,20 @@ export interface NoormEvents extends SettingsEvents {
     'file:skip': { filepath: string; reason: 'unchanged' | 'already-run' };
     'file:dry-run': { filepath: string; outputPath: string };
 
-    // Changeset lifecycle
-    'changeset:created': { name: string; path: string };
-    'changeset:start': { name: string; direction: 'change' | 'revert'; files: string[] };
-    'changeset:file': { changeset: string; filepath: string; index: number; total: number };
-    'changeset:complete': {
+    // Change lifecycle
+    'change:created': { name: string; path: string };
+    'change:start': { name: string; direction: 'change' | 'revert'; files: string[] };
+    'change:file': { change: string; filepath: string; index: number; total: number };
+    'change:complete': {
         name: string;
         direction: 'change' | 'revert';
         status: 'success' | 'failed';
         durationMs: number;
     };
-    'changeset:skip': { name: string; reason: string };
+    'change:skip': { name: string; reason: string };
 
     // Build/Run
-    'build:start': { schemaPath: string; fileCount: number };
+    'build:start': { sqlPath: string; fileCount: number };
     'build:complete': {
         status: 'success' | 'failed' | 'partial';
         filesRun: number;

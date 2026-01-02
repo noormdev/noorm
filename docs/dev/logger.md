@@ -1,0 +1,521 @@
+# Logger
+
+
+## The Problem
+
+Database operations generate a lot of events: files executed, connections opened, configs changed, locks acquired. When something goes wrong at 3 AM, you need to know what happened. Console output scrolls away. Memory fades.
+
+noorm solves this with persistent file logging. Every significant event is captured, timestamped, and written to disk. The logger subscribes to all observer events and streams them to a log file using a queue-based system that never blocks your operations.
+
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      Core Modules                            │
+│  State, Config, Connection, Runner, Change, Lock, etc.   │
+└──────────────────────────┬──────────────────────────────────┘
+                           │ emit events
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│                        Observer                              │
+└──────────────────────────┬──────────────────────────────────┘
+                           │ subscribe to all
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│                         Logger                               │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐    │
+│  │Classifier│→ │Formatter │→ │  Queue   │→ │   File   │    │
+│  │          │  │          │  │          │  │          │    │
+│  │ Determine│  │ Create   │  │ Non-     │  │ Append   │    │
+│  │ level    │  │ entry    │  │ blocking │  │ + rotate │    │
+│  └──────────┘  └──────────┘  └──────────┘  └──────────┘    │
+└─────────────────────────────────────────────────────────────┘
+```
+
+
+## Quick Start
+
+```typescript
+import { Logger } from './core/logger'
+import { getSettingsManager } from './core/settings'
+
+const settings = getSettingsManager(process.cwd())
+await settings.load()
+
+const logger = new Logger({
+    projectRoot: process.cwd(),
+    settings,  // Required for secret detection/redaction
+    config: settings.getLogging(),
+})
+
+await logger.start()
+
+// Logger now captures all observer events...
+// Do your work...
+
+await logger.stop()
+```
+
+
+## Configuration
+
+Logger settings live in `.noorm/settings.yml`:
+
+```yaml
+logging:
+    enabled: true
+    level: info
+    file: .noorm/noorm.log
+    maxSize: 10mb
+    maxFiles: 5
+```
+
+| Property | Default | Description |
+|----------|---------|-------------|
+| `enabled` | `true` | Enable file logging |
+| `level` | `'info'` | Minimum level to capture |
+| `file` | `.noorm/noorm.log` | Log file path (relative to project) |
+| `maxSize` | `'10mb'` | Rotate when size exceeded |
+| `maxFiles` | `5` | Rotated files to keep |
+
+The log file lives in `.noorm/` and should be gitignored alongside `state.enc`.
+
+
+## Log Levels
+
+Five verbosity levels control what gets captured:
+
+| Level | Events Captured |
+|-------|-----------------|
+| `silent` | Nothing |
+| `error` | Errors only |
+| `warn` | Errors + warnings |
+| `info` | Errors + warnings + info (default) |
+| `verbose` | Everything including debug |
+
+```typescript
+import { shouldLog } from './core/logger'
+
+shouldLog('connection:error', 'info')  // true (error event)
+shouldLog('build:start', 'info')       // true (info event)
+shouldLog('file:before', 'info')       // false (debug event)
+shouldLog('file:before', 'verbose')    // true (verbose logs all)
+```
+
+
+## Event Classification
+
+Events are automatically classified by their naming pattern:
+
+| Pattern | Level | Examples |
+|---------|-------|----------|
+| `error`, `*:error`, `*:failed` | error | `error`, `connection:error`, `build:failed` |
+| `*:warning`, `*:blocked`, `*:expired` | warn | `lock:blocked`, `lock:expired` |
+| `*:start`, `*:complete`, `*:created`, `*:deleted`, `*:loaded`, etc. | info | `build:start`, `config:created` |
+| Everything else | debug | `file:before`, `lock:acquiring` |
+
+```typescript
+import { classifyEvent } from './core/logger'
+
+classifyEvent('error')            // 'error'
+classifyEvent('connection:error') // 'error'
+classifyEvent('lock:blocked')     // 'warn'
+classifyEvent('build:start')      // 'info'
+classifyEvent('file:before')      // 'debug'
+```
+
+
+## Log Entry Format
+
+Each entry is a JSON object on a single line:
+
+```json
+{"time":"2024-01-15T10:30:00.000Z","type":"build:start","level":"info","message":"Starting schema build (10 files)","context":{"config":"dev"}}
+```
+
+Entry structure:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `time` | string | ISO 8601 timestamp |
+| `level` | string | `error`, `warn`, `info`, or `debug` |
+| `type` | string | Observer event name |
+| `message` | string | Human-readable summary |
+| `data` | object | Event payload (verbose only) |
+| `context` | object | Config name, identity, etc. |
+
+The `message` field provides human-readable summaries:
+
+```typescript
+import { generateMessage } from './core/logger'
+
+generateMessage('build:start', { fileCount: 10 })
+// "Starting schema build (10 files)"
+
+generateMessage('file:after', { filepath: 'users.sql', status: 'success', durationMs: 45 })
+// "Executed users.sql (45ms)"
+
+generateMessage('config:activated', { name: 'prod', previous: 'dev' })
+// "Activated config: prod (was dev)"
+```
+
+
+### Database Error Formatting
+
+Error events receive special formatting to extract useful information from database-specific error objects:
+
+```typescript
+// PostgreSQL errors (with severity, code, routine)
+generateMessage('error', {
+    source: 'executor',
+    error: { severity: 'ERROR', code: '42P01', routine: 'RangeVarGetRelidExtended' }
+})
+// "Error in executor: ERROR 42P01 in RangeVarGetRelidExtended"
+
+// Standard Error objects
+generateMessage('error', {
+    source: 'runner',
+    error: new Error('Connection refused')
+})
+// "Error in runner: Connection refused"
+
+// Objects with message property
+generateMessage('error', {
+    source: 'template',
+    error: { message: 'Invalid syntax', line: 42 }
+})
+// "Error in template: Invalid syntax"
+```
+
+This structured error formatting helps identify database-specific issues (constraint violations, syntax errors, connection problems) in logs without requiring access to the full error object.
+
+
+## Sensitive Data Redaction
+
+The logger automatically masks sensitive fields using smart redaction. Instead of replacing values with `[REDACTED]`, it shows a masked preview with length information:
+
+```typescript
+import { maskValue } from './core/logger/redact'
+
+// Format: <FieldName mask (length) />
+maskValue('mysecretpassword', 'Password', 'info')
+// => '<Password ************... (16) />'
+
+// In verbose mode, first few chars are visible for debugging
+maskValue('sk-1234567890abcd', 'ApiKey', 'verbose')
+// => '<ApiKey sk-1********... (18) />'
+```
+
+The mask length is capped at 12 characters, with `...` indicating overflow. In verbose mode, up to 4 leading characters are revealed (proportional to value length) to help identify which secret is being referenced.
+
+
+### Built-in Masked Fields
+
+Common sensitive field names are automatically detected (case-insensitive):
+
+```
+password, pass, secret, token, key, credential, api_key, apikey,
+access_key, secret_key, db_pass, db_password, redis_pass,
+client_secret, private_key, encryption_key, auth_token,
+bearer_token, jwt_secret, session_secret
+```
+
+All case variations are checked: `password`, `PASSWORD`, `Password`, `db_password`, `DB_PASSWORD`, `dbPassword`, etc.
+
+
+### Dynamic Secret Registration
+
+Secrets from settings and user-defined secrets are automatically added to the redaction list:
+
+```typescript
+import { addMaskedFields, addSettingsSecrets, listenForSecrets } from './core/logger/redact'
+
+// Add custom field names
+addMaskedFields(['MY_CUSTOM_SECRET', 'vendor_api_token'])
+
+// Add all secrets defined in settings.yml stages
+addSettingsSecrets(settings)
+
+// Listen for runtime secret operations (call before logger starts)
+const cleanup = listenForSecrets()
+// Now any secret:set or global-secret:set events add keys to redaction
+```
+
+The logger calls `listenForSecrets()` at startup, so any secret you set during a session is immediately masked in logs.
+
+
+## Write Queue
+
+The logger uses a non-blocking queue for file writes:
+
+- **Non-blocking enqueue** - Callers never wait for disk I/O
+- **Order preservation** - Entries written in enqueue order
+- **Graceful shutdown** - Flush waits for pending writes
+
+```typescript
+// Entries enqueued immediately (non-blocking)
+observer.emit('config:created', { name: 'dev' })
+observer.emit('config:created', { name: 'prod' })
+
+// Flush forces all pending writes to complete
+await logger.flush()
+
+// Stop flushes before shutting down
+await logger.stop()
+```
+
+The `WriteQueue` class also exposes a `setFilepath()` method, used internally during log rotation to switch the queue to writing to a new file path.
+
+
+## Log Rotation
+
+When the log file exceeds `maxSize`, it's rotated:
+
+```
+.noorm/
+├── noorm.log                          # Current log
+├── noorm.2024-01-15T10-30-45.log     # Rotated
+├── noorm.2024-01-14T08-15-00.log     # Rotated
+└── noorm.2024-01-13T16-45-30.log     # Rotated
+```
+
+Old rotated files are deleted when count exceeds `maxFiles`.
+
+```typescript
+import { parseSize, checkAndRotate } from './core/logger'
+
+parseSize('10mb')  // 10485760 bytes
+
+const result = await checkAndRotate('/path/to/app.log', '10mb', 5)
+// { rotated: true, oldFile: '...', newFile: '...', deletedFiles: [...] }
+```
+
+
+## Context Injection
+
+Add context that's included with every log entry:
+
+```typescript
+const logger = new Logger({
+    projectRoot: process.cwd(),
+    settings,
+    config: loggingConfig,
+    context: { config: 'dev' },  // Initial context
+})
+
+await logger.start()
+
+// Update context as state changes
+logger.setContext({ config: 'prod', user: 'alice' })
+
+// Clear context
+logger.clearContext()
+```
+
+Context appears in every entry:
+
+```json
+{"time":"...","type":"build:start","level":"info","message":"...","context":{"config":"prod","user":"alice"}}
+```
+
+
+## Logger API
+
+```typescript
+const logger = new Logger({
+    projectRoot: string,
+    settings: Settings,           // Required for secret detection
+    config?: Partial<LoggerConfig>,
+    context?: Record<string, unknown>,
+    file?: Writable,              // Custom file stream
+    console?: Writable,           // Custom console stream (defaults to stdout in CI)
+})
+
+// Lifecycle
+await logger.start()   // Subscribe to events, start queue
+await logger.stop()    // Unsubscribe, flush, stop queue
+await logger.flush()   // Force pending writes to disk
+
+// State
+logger.state           // 'idle' | 'running' | 'flushing' | 'stopped'
+logger.level           // Current log level
+logger.filepath        // Full path to log file
+logger.isEnabled       // Whether logging is active
+logger.stats           // Queue statistics (pending, totalWritten, etc.)
+
+// Context
+logger.setContext({ key: value })  // Merge into context
+logger.clearContext()              // Clear all context
+```
+
+
+## Singleton Pattern
+
+For convenience, use the singleton:
+
+```typescript
+import { getLogger, resetLogger } from './core/logger'
+
+// First call initializes the singleton
+const logger = getLogger({
+    projectRoot: process.cwd(),
+    settings,
+    config: loggingConfig,
+})
+await logger.start()
+
+// Subsequent calls return the existing instance (options ignored)
+const sameLogger = getLogger()
+
+// In tests, reset between tests
+await resetLogger()
+```
+
+
+## Observer Events
+
+The logger emits events for its own lifecycle:
+
+| Event | Payload | When |
+|-------|---------|------|
+| `logger:started` | `{ file, level }` | Logger initialized |
+| `logger:rotated` | `{ oldFile, newFile }` | Log file rotated |
+| `logger:error` | `{ error }` | Write failure |
+| `logger:flushed` | `{ entriesWritten }` | Queue drained |
+
+Note: The logger ignores its own events to avoid infinite loops.
+
+
+## Integration Example
+
+Typical startup sequence:
+
+```typescript
+import { StateManager } from './core/state'
+import { getSettingsManager } from './core/settings'
+import { Logger } from './core/logger'
+
+// 1. Load settings (includes logging config)
+const settings = getSettingsManager(process.cwd())
+await settings.load()
+
+// 2. Start logger early to capture everything
+const logger = new Logger({
+    projectRoot: process.cwd(),
+    settings,
+    config: settings.getLogging(),
+})
+await logger.start()
+
+// 3. Load state (logger captures state:loaded event)
+const state = new StateManager(process.cwd())
+await state.load()
+
+// 4. Set context for all subsequent logs
+logger.setContext({
+    config: state.getActiveConfigName(),
+})
+
+// ... do work ...
+
+// 5. Shutdown in reverse order
+await logger.stop()
+```
+
+
+## Reading Log Files
+
+Log files are newline-delimited JSON. Parse with shell tools:
+
+```bash
+# View recent entries
+tail -20 .noorm/noorm.log | jq .
+
+# Filter by level
+cat .noorm/noorm.log | jq 'select(.level == "error")'
+
+# Filter by event type
+cat .noorm/noorm.log | jq 'select(.type | startswith("build:"))'
+
+# Search by time range
+cat .noorm/noorm.log | jq 'select(.time > "2024-01-15T10:00:00")'
+```
+
+
+### Programmatic Reading
+
+The `readLogFile` function parses log files with graceful error handling:
+
+```typescript
+import { readLogFile } from './core/logger'
+
+// Read last 500 entries (default)
+const result = await readLogFile('.noorm/noorm.log')
+
+console.log(`Total lines: ${result.totalLines}`)
+console.log(`Returned: ${result.entries.length}`)
+console.log(`Has more: ${result.hasMore}`)
+
+for (const entry of result.entries) {
+    console.log(`[${entry.level}] ${entry.event}: ${entry.message}`)
+}
+
+// Read last 100 entries
+const recent = await readLogFile('.noorm/noorm.log', { limit: 100 })
+```
+
+Results are returned in reverse chronological order (newest first). Malformed JSON lines are silently skipped.
+
+### ReadLogsResult
+
+```typescript
+interface ReadLogsResult {
+    /** Parsed log entries (newest first) */
+    entries: LogEntry[]
+
+    /** Total number of lines in the file */
+    totalLines: number
+
+    /** Whether there are more entries beyond the limit */
+    hasMore: boolean
+}
+```
+
+
+## Log Viewer Overlay
+
+The CLI includes a global log viewer accessible via `Shift+L` from anywhere in the app:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Log Viewer                                    [Shift+L]    │
+├─────────────────────────────────────────────────────────────┤
+│  10:30:45 [info]  build:start         Starting schema build │
+│  10:30:46 [info]  file:after          Executed users.sql    │
+│  10:30:46 [debug] file:before         Processing posts.sql  │
+│  10:30:47 [error] file:after          Failed: posts.sql     │
+│                                                              │
+│  ↑/↓ Navigate  Enter Detail  / Search  p Pause  Esc Close  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+Features:
+
+| Feature | Description |
+|---------|-------------|
+| Live tail | Auto-refreshes every 2 seconds |
+| Search | Filter by event, message, or level |
+| Detail view | Shows full JSON for selected entry |
+| Pause/resume | Freeze updates while investigating |
+| Level colors | Red=error, yellow=warn, green=info, gray=debug |
+
+Keyboard shortcuts:
+
+| Key | Action |
+|-----|--------|
+| `↑/↓` | Navigate entries |
+| `Enter` | View entry detail |
+| `/` | Toggle search filter |
+| `p` | Pause/resume live tail |
+| `Esc` | Close overlay |

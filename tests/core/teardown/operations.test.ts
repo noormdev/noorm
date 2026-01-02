@@ -23,7 +23,7 @@ describe('teardown: operations', () => {
         it('returns true for known NOORM_TABLES values', () => {
 
             expect(isNoormTable('__noorm_version__')).toBe(true);
-            expect(isNoormTable('__noorm_changeset__')).toBe(true);
+            expect(isNoormTable('__noorm_change__')).toBe(true);
             expect(isNoormTable('__noorm_executions__')).toBe(true);
             expect(isNoormTable('__noorm_lock__')).toBe(true);
             expect(isNoormTable('__noorm_identities__')).toBe(true);

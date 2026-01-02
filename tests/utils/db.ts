@@ -53,9 +53,9 @@ export const TEST_CONNECTIONS: Record<Dialect, ConnectionConfig> = {
 };
 
 /**
- * Directory containing fixture schema files.
+ * Directory containing fixture SQL files.
  */
-const FIXTURES_DIR = join(import.meta.dirname, '..', 'fixtures', 'schema');
+const FIXTURES_DIR = join(import.meta.dirname, '..', 'fixtures', 'sql');
 
 /**
  * Create a test database connection.

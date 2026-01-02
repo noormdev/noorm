@@ -4,7 +4,7 @@
  * Multi-step flow to collect config details:
  * 1. Name and dialect selection
  * 2. Connection details (host, port, database, user, password)
- * 3. Paths (schema, changesets directories)
+ * 3. Paths (schema, changes directories)
  * 4. Options (protected, test flags)
  * 5. Connection test
  * 6. Save
@@ -143,18 +143,18 @@ export function ConfigAddScreen({ params: _params }: ScreenProps): ReactElement 
             placeholder: '(optional)',
         },
         {
-            key: 'schemaPath',
-            label: 'Schema Path',
+            key: 'sqlPath',
+            label: 'SQL Path',
             type: 'text',
-            defaultValue: './schema',
-            placeholder: './schema',
+            defaultValue: './sql',
+            placeholder: './sql',
         },
         {
-            key: 'changesetsPath',
-            label: 'Changesets Path',
+            key: 'changesPath',
+            label: 'Changes Path',
             type: 'text',
-            defaultValue: './changesets',
-            placeholder: './changesets',
+            defaultValue: './changes',
+            placeholder: './changes',
         },
         {
             key: 'protected',
@@ -228,8 +228,8 @@ export function ConfigAddScreen({ params: _params }: ScreenProps): ReactElement 
                 protected: Boolean(values['protected']),
                 connection: connectionConfig,
                 paths: {
-                    schema: String(values['schemaPath'] || './schema'),
-                    changesets: String(values['changesetsPath'] || './changesets'),
+                    sql: String(values['sqlPath'] || './sql'),
+                    changes: String(values['changesPath'] || './changes'),
                 },
             };
 

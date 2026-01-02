@@ -22,11 +22,11 @@ const MESSAGE_TEMPLATES: Record<string, (data: Record<string, unknown>) => strin
             : `Failed ${d['filepath']}: ${d['error']}`,
     'file:skip': (d) => `Skipped ${d['filepath']} (${d['reason']})`,
 
-    // Changeset
-    'changeset:start': (d) =>
+    // Change
+    'change:start': (d) =>
         `Starting ${d['direction']} for ${d['name']} (${(d['files'] as string[])?.length ?? 0} files)`,
-    'changeset:file': (d) => `${d['changeset']}: ${d['filepath']} (${d['index']}/${d['total']})`,
-    'changeset:complete': (d) =>
+    'change:file': (d) => `${d['change']}: ${d['filepath']} (${d['index']}/${d['total']})`,
+    'change:complete': (d) =>
         `${d['direction']} ${d['name']}: ${d['status']} (${d['durationMs']}ms)`,
 
     // Build/Run

@@ -1,12 +1,12 @@
 /**
- * ChangeListScreen - view all changesets with status.
+ * ChangeListScreen - view all changes with status.
  *
- * Shows changesets from disk merged with database execution status.
+ * Shows changes from disk merged with database execution status.
  * Displays applied/pending/reverted/failed status for each.
  *
  * @example
  * ```bash
- * noorm change          # View changesets
+ * noorm change          # View changes
  * noorm change list     # Same thing
  * ```
  */
@@ -15,7 +15,7 @@ import { Box, Text, useInput } from 'ink';
 
 import type { ReactElement } from 'react';
 import type { ScreenProps } from '../../types.js';
-import type { ChangesetListItem } from '../../../core/changeset/types.js';
+import type { ChangeListItem } from '../../../core/change/types.js';
 import type { NoormDatabase } from '../../../core/shared/index.js';
 import type { Kysely } from 'kysely';
 
@@ -25,15 +25,15 @@ import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
 import { Panel, Spinner } from '../../components/index.js';
-import { discoverChangesets } from '../../../core/changeset/parser.js';
-import { ChangesetHistory } from '../../../core/changeset/history.js';
+import { discoverChanges } from '../../../core/change/parser.js';
+import { ChangeHistory } from '../../../core/change/history.js';
 import { createConnection } from '../../../core/connection/factory.js';
 import { relativeTimeAgo } from '../../utils/date.js';
 
 /**
- * Get status indicator for a changeset.
+ * Get status indicator for a change.
  */
-function getStatusIndicator(item: ChangesetListItem): { symbol: string; color: string } {
+function getStatusIndicator(item: ChangeListItem): { symbol: string; color: string } {
 
     if (item.orphaned) {
 
@@ -69,12 +69,12 @@ export function ChangeListScreen({ params: _params }: ScreenProps): ReactElement
     const { isFocused } = useFocusScope('ChangeList');
     const { activeConfig, activeConfigName, loadingStatus } = useAppContext();
 
-    const [changesets, setChangesets] = useState<ChangesetListItem[]>([]);
+    const [changes, setChanges] = useState<ChangeListItem[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [selectedIndex, setSelectedIndex] = useState(0);
 
-    // Load changesets
+    // Load changes
     useEffect(() => {
 
         if (!activeConfig || loadingStatus !== 'ready') {
@@ -87,17 +87,17 @@ export function ChangeListScreen({ params: _params }: ScreenProps): ReactElement
 
         let cancelled = false;
 
-        const loadChangesets = async () => {
+        const loadChanges = async () => {
 
             setIsLoading(true);
             setError(null);
 
             const [_, err] = await attempt(async () => {
 
-                // Discover changesets from disk
-                const diskChangesets = await discoverChangesets(
-                    activeConfig.paths.changesets,
-                    activeConfig.paths.schema,
+                // Discover changes from disk
+                const diskChanges = await discoverChanges(
+                    activeConfig.paths.changes,
+                    activeConfig.paths.sql,
                 );
 
                 // Get statuses from database
@@ -107,7 +107,7 @@ export function ChangeListScreen({ params: _params }: ScreenProps): ReactElement
                 );
                 const db = conn.db as Kysely<NoormDatabase>;
 
-                const history = new ChangesetHistory(db, activeConfigName ?? '');
+                const history = new ChangeHistory(db, activeConfigName ?? '');
                 const statuses = await history.getAllStatuses();
 
                 await conn.destroy();
@@ -115,10 +115,10 @@ export function ChangeListScreen({ params: _params }: ScreenProps): ReactElement
                 if (cancelled) return;
 
                 // Merge disk and database info
-                const merged: ChangesetListItem[] = [];
+                const merged: ChangeListItem[] = [];
 
-                // Add disk changesets with their status
-                for (const cs of diskChangesets) {
+                // Add disk changes with their status
+                for (const cs of diskChanges) {
 
                     const dbStatus = statuses.get(cs.name);
 
@@ -141,8 +141,8 @@ export function ChangeListScreen({ params: _params }: ScreenProps): ReactElement
 
                 }
 
-                // Add orphaned changesets (in DB but not on disk)
-                const diskNames = new Set(diskChangesets.map((cs) => cs.name));
+                // Add orphaned changes (in DB but not on disk)
+                const diskNames = new Set(diskChanges.map((cs) => cs.name));
                 for (const [name, status] of statuses) {
 
                     if (!diskNames.has(name)) {
@@ -180,7 +180,7 @@ export function ChangeListScreen({ params: _params }: ScreenProps): ReactElement
 
                 });
 
-                setChangesets(merged);
+                setChanges(merged);
 
             });
 
@@ -198,7 +198,7 @@ export function ChangeListScreen({ params: _params }: ScreenProps): ReactElement
 
         };
 
-        loadChangesets();
+        loadChanges();
 
         return () => {
 
@@ -208,12 +208,12 @@ export function ChangeListScreen({ params: _params }: ScreenProps): ReactElement
 
     }, [activeConfig, activeConfigName, loadingStatus]);
 
-    // Get selected changeset
-    const selectedChangeset = useMemo(() => {
+    // Get selected change
+    const selectedChange = useMemo(() => {
 
-        return changesets[selectedIndex];
+        return changes[selectedIndex];
 
-    }, [changesets, selectedIndex]);
+    }, [changes, selectedIndex]);
 
     // Keyboard handling
     useInput((input, key) => {
@@ -231,7 +231,7 @@ export function ChangeListScreen({ params: _params }: ScreenProps): ReactElement
 
         if (key.downArrow) {
 
-            setSelectedIndex((prev) => Math.min(changesets.length - 1, prev + 1));
+            setSelectedIndex((prev) => Math.min(changes.length - 1, prev + 1));
 
             return;
 
@@ -254,33 +254,33 @@ export function ChangeListScreen({ params: _params }: ScreenProps): ReactElement
 
         }
 
-        if (input === 'e' && selectedChangeset && !selectedChangeset.orphaned) {
+        if (input === 'e' && selectedChange && !selectedChange.orphaned) {
 
-            navigate('change/edit', { name: selectedChangeset.name });
-
-            return;
-
-        }
-
-        if (input === 'd' && selectedChangeset) {
-
-            navigate('change/rm', { name: selectedChangeset.name });
+            navigate('change/edit', { name: selectedChange.name });
 
             return;
 
         }
 
-        if (input === 'r' && selectedChangeset && selectedChangeset.status === 'pending') {
+        if (input === 'd' && selectedChange) {
 
-            navigate('change/run', { name: selectedChangeset.name });
+            navigate('change/rm', { name: selectedChange.name });
 
             return;
 
         }
 
-        if (input === 'v' && selectedChangeset && selectedChangeset.status === 'success') {
+        if (input === 'r' && selectedChange && selectedChange.status === 'pending') {
 
-            navigate('change/revert', { name: selectedChangeset.name });
+            navigate('change/run', { name: selectedChange.name });
+
+            return;
+
+        }
+
+        if (input === 'v' && selectedChange && selectedChange.status === 'success') {
+
+            navigate('change/revert', { name: selectedChange.name });
 
             return;
 
@@ -319,16 +319,16 @@ export function ChangeListScreen({ params: _params }: ScreenProps): ReactElement
         }
 
         // Enter - smart action based on status
-        if (key.return && selectedChangeset) {
+        if (key.return && selectedChange) {
 
-            if (selectedChangeset.status === 'pending') {
+            if (selectedChange.status === 'pending') {
 
-                navigate('change/run', { name: selectedChangeset.name });
+                navigate('change/run', { name: selectedChange.name });
 
             }
-            else if (selectedChangeset.status === 'success') {
+            else if (selectedChange.status === 'success') {
 
-                navigate('change/revert', { name: selectedChangeset.name });
+                navigate('change/revert', { name: selectedChange.name });
 
             }
 
@@ -340,7 +340,7 @@ export function ChangeListScreen({ params: _params }: ScreenProps): ReactElement
     if (!activeConfig) {
 
         return (
-            <Panel title="Changesets" paddingX={2} paddingY={1} borderColor="yellow">
+            <Panel title="Changes" paddingX={2} paddingY={1} borderColor="yellow">
                 <Text color="yellow">No active configuration. Press 'c' to manage configs.</Text>
             </Panel>
         );
@@ -351,8 +351,8 @@ export function ChangeListScreen({ params: _params }: ScreenProps): ReactElement
     if (isLoading) {
 
         return (
-            <Panel title="Changesets" paddingX={2} paddingY={1}>
-                <Spinner label="Loading changesets..." />
+            <Panel title="Changes" paddingX={2} paddingY={1}>
+                <Spinner label="Loading changes..." />
             </Panel>
         );
 
@@ -362,9 +362,9 @@ export function ChangeListScreen({ params: _params }: ScreenProps): ReactElement
     if (error) {
 
         return (
-            <Panel title="Changesets" paddingX={2} paddingY={1} borderColor="red">
+            <Panel title="Changes" paddingX={2} paddingY={1} borderColor="red">
                 <Box flexDirection="column" gap={1}>
-                    <Text color="red">Failed to load changesets: {error}</Text>
+                    <Text color="red">Failed to load changes: {error}</Text>
                     <Text dimColor>Press Esc to go back</Text>
                 </Box>
             </Panel>
@@ -373,18 +373,18 @@ export function ChangeListScreen({ params: _params }: ScreenProps): ReactElement
     }
 
     // Statistics
-    const applied = changesets.filter((cs) => cs.status === 'success').length;
-    const pending = changesets.filter((cs) => cs.status === 'pending').length;
-    const failed = changesets.filter((cs) => cs.status === 'failed').length;
-    const orphaned = changesets.filter((cs) => cs.orphaned).length;
+    const applied = changes.filter((cs) => cs.status === 'success').length;
+    const pending = changes.filter((cs) => cs.status === 'pending').length;
+    const failed = changes.filter((cs) => cs.status === 'failed').length;
+    const orphaned = changes.filter((cs) => cs.orphaned).length;
 
     return (
-        <Panel title="Changesets" paddingX={2} paddingY={1}>
+        <Panel title="Changes" paddingX={2} paddingY={1}>
             <Box flexDirection="column" gap={1}>
                 {/* Statistics */}
                 <Box gap={2}>
                     <Text>
-                        Total: <Text bold>{changesets.length}</Text>
+                        Total: <Text bold>{changes.length}</Text>
                     </Text>
                     <Text>
                         Applied: <Text color="green">{applied}</Text>
@@ -404,14 +404,14 @@ export function ChangeListScreen({ params: _params }: ScreenProps): ReactElement
                     )}
                 </Box>
 
-                {/* Changeset List */}
-                {changesets.length === 0 ? (
+                {/* Change List */}
+                {changes.length === 0 ? (
                     <Box marginTop={1}>
-                        <Text dimColor>No changesets found. Press [a] to create one.</Text>
+                        <Text dimColor>No changes found. Press [a] to create one.</Text>
                     </Box>
                 ) : (
                     <Box flexDirection="column" marginTop={1}>
-                        {changesets.map((cs, index) => {
+                        {changes.map((cs, index) => {
 
                             const isSelected = index === selectedIndex;
                             const indicator = getStatusIndicator(cs);
@@ -446,8 +446,8 @@ export function ChangeListScreen({ params: _params }: ScreenProps): ReactElement
                     </Box>
                 )}
 
-                {/* Selected changeset details */}
-                {selectedChangeset && (
+                {/* Selected change details */}
+                {selectedChange && (
                     <Box
                         marginTop={1}
                         flexDirection="column"
@@ -455,17 +455,17 @@ export function ChangeListScreen({ params: _params }: ScreenProps): ReactElement
                         borderColor="gray"
                         paddingX={1}
                     >
-                        <Text bold>{selectedChangeset.name}</Text>
+                        <Text bold>{selectedChange.name}</Text>
                         <Box gap={2}>
                             <Text dimColor>
-                                Change files: {selectedChangeset.changeFiles?.length ?? 0}
+                                Change files: {selectedChange.changeFiles?.length ?? 0}
                             </Text>
                             <Text dimColor>
-                                Revert files: {selectedChangeset.revertFiles?.length ?? 0}
+                                Revert files: {selectedChange.revertFiles?.length ?? 0}
                             </Text>
                         </Box>
-                        {selectedChangeset.appliedBy && (
-                            <Text dimColor>Applied by: {selectedChangeset.appliedBy}</Text>
+                        {selectedChange.appliedBy && (
+                            <Text dimColor>Applied by: {selectedChange.appliedBy}</Text>
                         )}
                     </Box>
                 )}

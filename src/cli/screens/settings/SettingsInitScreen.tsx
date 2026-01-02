@@ -222,7 +222,7 @@ export function SettingsInitScreen({ params }: ScreenProps): ReactElement {
                         </Text>
                         <Box marginLeft={2} flexDirection="column">
                             <Text dimColor>- build: include schema folder</Text>
-                            <Text dimColor>- paths: ./schema, ./changesets</Text>
+                            <Text dimColor>- paths: ./sql, ./changes</Text>
                             <Text dimColor>- rules: none</Text>
                             <Text dimColor>- stages: none</Text>
                             <Text dimColor>- strict: disabled</Text>

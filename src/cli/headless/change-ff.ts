@@ -3,7 +3,7 @@ import { withContext, type HeadlessCommand } from './_helpers.js';
 export const help = `
 # CHANGE FF
 
-Fast-forward: apply all pending changesets
+Fast-forward: apply all pending changes
 
 ## Usage
 
@@ -18,14 +18,14 @@ Fast-forward: apply all pending changesets
 
 ## Description
 
-Applies all pending changesets in order. This is the primary command
+Applies all pending changes in order. This is the primary command
 for running migrations in CI/CD pipelines.
 
-Changesets are applied in alphabetical order by name. Each changeset
+Changes are applied in alphabetical order by name. Each change
 is executed within a transaction when supported by the database.
 
-> If a changeset fails, execution stops and subsequent changesets are
-> not applied. The failed changeset is marked as 'failed' in the history.
+> If a change fails, execution stops and subsequent changes are
+> not applied. The failed change is marked as 'failed' in the history.
 
 ## Examples
 
@@ -36,8 +36,8 @@ is executed within a transaction when supported by the database.
 
 ## Exit Codes
 
-    0   All changesets applied successfully
-    1   One or more changesets failed
+    0   All changes applied successfully
+    1   One or more changes failed
 
 ## JSON Output
 
@@ -47,7 +47,7 @@ is executed within a transaction when supported by the database.
     "executed": 3,
     "skipped": 0,
     "failed": 0,
-    "changesets": [
+    "changes": [
         { "name": "001_init", "status": "success", "durationMs": 45 }
     ]
 }
@@ -72,7 +72,7 @@ export const run: HeadlessCommand = async (_params, flags, logger) => {
         failed: result.failed,
     });
 
-    for (const cs of result.changesets) {
+    for (const cs of result.changes) {
 
         logger.info(`  ${cs.name} (${cs.status})`);
 

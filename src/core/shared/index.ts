@@ -19,14 +19,14 @@ export type {
     NoormVersion,
     NewNoormVersion,
     NoormVersionUpdate,
-    // Changeset
+    // Change
     OperationStatus,
     ChangeType,
     Direction,
-    NoormChangesetTable,
-    NoormChangeset,
-    NewNoormChangeset,
-    NoormChangesetUpdate,
+    NoormChangeTable,
+    NoormChange,
+    NewNoormChange,
+    NoormChangeUpdate,
     // Executions
     ExecutionStatus,
     FileType,

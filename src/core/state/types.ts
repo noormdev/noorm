@@ -4,8 +4,11 @@
  * The State object is the in-memory representation of noorm's persistent data.
  * It holds identity, configs, secrets, and known users.
  */
-import type { Config } from '../config/types.js';
+import type { Config, ConfigSummary } from '../config/types.js';
 import type { CryptoIdentity, KnownUser } from '../identity/types.js';
+
+// Re-export ConfigSummary from config/types to avoid duplication
+export type { ConfigSummary };
 
 /**
  * The root state object stored in .noorm/state.enc
@@ -34,19 +37,6 @@ export interface State {
 
     /** App-level secrets (key -> value) */
     globalSecrets: Record<string, string>;
-}
-
-/**
- * Summary for config listings (used by StateManager).
- */
-export interface ConfigSummary {
-    name: string;
-    type: 'local' | 'remote';
-    isTest: boolean;
-    protected: boolean;
-    isActive: boolean;
-    dialect: string;
-    database: string;
 }
 
 /**

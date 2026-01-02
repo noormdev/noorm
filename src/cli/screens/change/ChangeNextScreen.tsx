@@ -1,12 +1,12 @@
 /**
- * ChangeNextScreen - apply next N pending changesets.
+ * ChangeNextScreen - apply next N pending changes.
  *
- * Applies pending changesets in chronological order.
+ * Applies pending changes in chronological order.
  *
  * @example
  * ```bash
- * noorm change:next 1    # Apply next 1 changeset (default)
- * noorm change:next 5    # Apply next 5 changesets
+ * noorm change:next 1    # Apply next 1 change (default)
+ * noorm change:next 5    # Apply next 5 changes
  * noorm change next      # Same as next 1
  * ```
  */
@@ -16,7 +16,7 @@ import { TextInput, ProgressBar } from '@inkjs/ui';
 
 import type { ReactElement } from 'react';
 import type { ScreenProps } from '../../types.js';
-import type { ChangesetListItem } from '../../../core/changeset/types.js';
+import type { ChangeListItem } from '../../../core/change/types.js';
 import type { NoormDatabase } from '../../../core/shared/index.js';
 import type { Kysely } from 'kysely';
 
@@ -33,9 +33,9 @@ import {
     StatusList,
     type StatusListItem,
 } from '../../components/index.js';
-import { discoverChangesets } from '../../../core/changeset/parser.js';
-import { ChangesetHistory } from '../../../core/changeset/history.js';
-import { ChangesetManager } from '../../../core/changeset/manager.js';
+import { discoverChanges } from '../../../core/change/parser.js';
+import { ChangeHistory } from '../../../core/change/history.js';
+import { ChangeManager } from '../../../core/change/manager.js';
 import { createConnection } from '../../../core/connection/factory.js';
 import { resolveIdentity } from '../../../core/identity/resolver.js';
 import { observer } from '../../../core/observer.js';
@@ -44,7 +44,7 @@ import { observer } from '../../../core/observer.js';
  * Next steps.
  */
 type NextStep =
-    | 'loading' // Loading pending changesets
+    | 'loading' // Loading pending changes
     | 'input' // Entering count
     | 'confirm' // Awaiting confirmation
     | 'running' // Executing
@@ -64,16 +64,16 @@ export function ChangeNextScreen({ params }: ScreenProps): ReactElement {
     const initialCount = params.count ? parseInt(String(params.count), 10) : 1;
 
     const [step, setStep] = useState<NextStep>('loading');
-    const [pendingChangesets, setPendingChangesets] = useState<ChangesetListItem[]>([]);
+    const [pendingChanges, setPendingChanges] = useState<ChangeListItem[]>([]);
     const [count, setCount] = useState(initialCount);
     const [countInput, setCountInput] = useState(String(initialCount));
     const [results, setResults] = useState<StatusListItem[]>([]);
-    const [currentChangeset, setCurrentChangeset] = useState('');
+    const [currentChange, setCurrentChange] = useState('');
     const [progress, setProgress] = useState({ current: 0, total: 0 });
     const [error, setError] = useState<string | null>(null);
     const [isProtected, setIsProtected] = useState(false);
 
-    // Load pending changesets
+    // Load pending changes
     useEffect(() => {
 
         if (!activeConfig) return;
@@ -84,10 +84,10 @@ export function ChangeNextScreen({ params }: ScreenProps): ReactElement {
 
             const [_, err] = await attempt(async () => {
 
-                // Discover changesets
-                const changesets = await discoverChangesets(
-                    activeConfig.paths.changesets,
-                    activeConfig.paths.schema,
+                // Discover changes
+                const changes = await discoverChanges(
+                    activeConfig.paths.changes,
+                    activeConfig.paths.sql,
                 );
 
                 // Get statuses from database
@@ -97,15 +97,15 @@ export function ChangeNextScreen({ params }: ScreenProps): ReactElement {
                 );
                 const db = conn.db as Kysely<NoormDatabase>;
 
-                const history = new ChangesetHistory(db, activeConfigName ?? '');
+                const history = new ChangeHistory(db, activeConfigName ?? '');
                 const statuses = await history.getAllStatuses();
 
                 await conn.destroy();
 
                 if (cancelled) return;
 
-                // Find pending changesets
-                const pending: ChangesetListItem[] = changesets
+                // Find pending changes
+                const pending: ChangeListItem[] = changes
                     .filter((cs) => {
 
                         const status = statuses.get(cs.name);
@@ -139,12 +139,12 @@ export function ChangeNextScreen({ params }: ScreenProps): ReactElement {
 
                     });
 
-                setPendingChangesets(pending);
+                setPendingChanges(pending);
                 setIsProtected(activeConfig.protected ?? false);
 
                 if (pending.length === 0) {
 
-                    setError('No pending changesets');
+                    setError('No pending changes');
                     setStep('error');
 
                 }
@@ -187,13 +187,13 @@ export function ChangeNextScreen({ params }: ScreenProps): ReactElement {
     // Subscribe to progress events
     useEffect(() => {
 
-        const unsubStart = observer.on('changeset:start', (data) => {
+        const unsubStart = observer.on('change:start', (data) => {
 
-            setCurrentChangeset(data.name);
+            setCurrentChange(data.name);
 
         });
 
-        const unsubComplete = observer.on('changeset:complete', (data) => {
+        const unsubComplete = observer.on('change:complete', (data) => {
 
             setResults((prev) => [
                 ...prev,
@@ -218,12 +218,12 @@ export function ChangeNextScreen({ params }: ScreenProps): ReactElement {
 
     }, []);
 
-    // Changesets to apply
-    const changesetsToApply = useMemo(() => {
+    // Changes to apply
+    const changesToApply = useMemo(() => {
 
-        return pendingChangesets.slice(0, count);
+        return pendingChanges.slice(0, count);
 
-    }, [pendingChangesets, count]);
+    }, [pendingChanges, count]);
 
     // Handle count input submit
     const handleCountSubmit = useCallback(() => {
@@ -236,18 +236,18 @@ export function ChangeNextScreen({ params }: ScreenProps): ReactElement {
 
         }
 
-        setCount(Math.min(parsed, pendingChangesets.length));
+        setCount(Math.min(parsed, pendingChanges.length));
         setStep('confirm');
 
-    }, [countInput, pendingChangesets.length]);
+    }, [countInput, pendingChanges.length]);
 
     // Handle run
     const handleRun = useCallback(async () => {
 
-        if (!activeConfig || !stateManager || changesetsToApply.length === 0) return;
+        if (!activeConfig || !stateManager || changesToApply.length === 0) return;
 
         setStep('running');
-        setProgress({ current: 0, total: changesetsToApply.length });
+        setProgress({ current: 0, total: changesToApply.length });
         setResults([]);
 
         const [_, err] = await attempt(async () => {
@@ -264,13 +264,13 @@ export function ChangeNextScreen({ params }: ScreenProps): ReactElement {
             });
 
             // Create manager and run next N
-            const manager = new ChangesetManager({
+            const manager = new ChangeManager({
                 db,
                 configName: activeConfigName ?? '',
                 identity,
                 projectRoot: process.cwd(),
-                changesetsDir: activeConfig.paths.changesets,
-                schemaDir: activeConfig.paths.schema,
+                changesDir: activeConfig.paths.changes,
+                sqlDir: activeConfig.paths.sql,
             });
 
             const result = await manager.next(count);
@@ -279,7 +279,7 @@ export function ChangeNextScreen({ params }: ScreenProps): ReactElement {
 
             if (result.failed > 0) {
 
-                setError(`${result.failed} changeset(s) failed`);
+                setError(`${result.failed} change(s) failed`);
                 setStep('error');
 
             }
@@ -298,7 +298,7 @@ export function ChangeNextScreen({ params }: ScreenProps): ReactElement {
 
         }
 
-    }, [activeConfig, activeConfigName, stateManager, changesetsToApply, count]);
+    }, [activeConfig, activeConfigName, stateManager, changesToApply, count]);
 
     // Handle cancel
     const handleCancel = useCallback(() => {
@@ -339,7 +339,7 @@ export function ChangeNextScreen({ params }: ScreenProps): ReactElement {
     if (!activeConfig) {
 
         return (
-            <Panel title="Apply Next Changesets" paddingX={2} paddingY={1} borderColor="yellow">
+            <Panel title="Apply Next Changes" paddingX={2} paddingY={1} borderColor="yellow">
                 <Text color="yellow">No active configuration.</Text>
             </Panel>
         );
@@ -350,8 +350,8 @@ export function ChangeNextScreen({ params }: ScreenProps): ReactElement {
     if (step === 'loading') {
 
         return (
-            <Panel title="Apply Next Changesets" paddingX={2} paddingY={1}>
-                <Spinner label="Loading pending changesets..." />
+            <Panel title="Apply Next Changes" paddingX={2} paddingY={1}>
+                <Spinner label="Loading pending changes..." />
             </Panel>
         );
 
@@ -361,10 +361,10 @@ export function ChangeNextScreen({ params }: ScreenProps): ReactElement {
     if (step === 'input') {
 
         return (
-            <Panel title="Apply Next Changesets" paddingX={2} paddingY={1}>
+            <Panel title="Apply Next Changes" paddingX={2} paddingY={1}>
                 <Box flexDirection="column" gap={1}>
                     <Text>
-                        Pending changesets: <Text bold>{pendingChangesets.length}</Text>
+                        Pending changes: <Text bold>{pendingChanges.length}</Text>
                     </Text>
 
                     <Box marginTop={1}>
@@ -397,18 +397,18 @@ export function ChangeNextScreen({ params }: ScreenProps): ReactElement {
                     <Text bold color="cyan">
                         {count}
                     </Text>{' '}
-                    changeset(s):
+                    change(s):
                 </Text>
 
                 <Box flexDirection="column" marginTop={1}>
-                    {changesetsToApply.slice(0, 5).map((cs) => (
+                    {changesToApply.slice(0, 5).map((cs) => (
                         <Text key={cs.name} dimColor>
                             {' '}
                             • {cs.name}
                         </Text>
                     ))}
-                    {changesetsToApply.length > 5 && (
-                        <Text dimColor> ... and {changesetsToApply.length - 5} more</Text>
+                    {changesToApply.length > 5 && (
+                        <Text dimColor> ... and {changesToApply.length - 5} more</Text>
                     )}
                 </Box>
             </Box>
@@ -417,12 +417,12 @@ export function ChangeNextScreen({ params }: ScreenProps): ReactElement {
         if (isProtected) {
 
             return (
-                <Panel title="Apply Next Changesets" paddingX={2} paddingY={1} borderColor="yellow">
+                <Panel title="Apply Next Changes" paddingX={2} paddingY={1} borderColor="yellow">
                     <Box flexDirection="column" gap={1}>
                         {confirmContent}
                         <ProtectedConfirm
                             configName={activeConfigName ?? 'config'}
-                            action="apply these changesets"
+                            action="apply these changes"
                             onConfirm={handleRun}
                             onCancel={handleCancel}
                             isFocused={isFocused}
@@ -434,11 +434,11 @@ export function ChangeNextScreen({ params }: ScreenProps): ReactElement {
         }
 
         return (
-            <Panel title="Apply Next Changesets" paddingX={2} paddingY={1}>
+            <Panel title="Apply Next Changes" paddingX={2} paddingY={1}>
                 <Box flexDirection="column" gap={1}>
                     {confirmContent}
                     <Confirm
-                        message="Apply these changesets?"
+                        message="Apply these changes?"
                         onConfirm={handleRun}
                         onCancel={handleCancel}
                         isFocused={isFocused}
@@ -455,9 +455,9 @@ export function ChangeNextScreen({ params }: ScreenProps): ReactElement {
         const progressValue = progress.total > 0 ? progress.current / progress.total : 0;
 
         return (
-            <Panel title="Apply Next Changesets" paddingX={2} paddingY={1}>
+            <Panel title="Apply Next Changes" paddingX={2} paddingY={1}>
                 <Box flexDirection="column" gap={1}>
-                    <Text>Applying changesets...</Text>
+                    <Text>Applying changes...</Text>
 
                     <Box width={50}>
                         <ProgressBar value={progressValue} />
@@ -465,7 +465,7 @@ export function ChangeNextScreen({ params }: ScreenProps): ReactElement {
 
                     <Text dimColor>
                         {progress.current}/{progress.total}
-                        {currentChangeset && ` - ${currentChangeset}`}
+                        {currentChange && ` - ${currentChange}`}
                     </Text>
 
                     {results.length > 0 && (
@@ -485,10 +485,10 @@ export function ChangeNextScreen({ params }: ScreenProps): ReactElement {
         const successCount = results.filter((r) => r.status === 'success').length;
 
         return (
-            <Panel title="Apply Next Changesets" paddingX={2} paddingY={1} borderColor="green">
+            <Panel title="Apply Next Changes" paddingX={2} paddingY={1} borderColor="green">
                 <Box flexDirection="column" gap={1}>
                     <StatusMessage variant="success">
-                        Applied {successCount} changeset(s) successfully!
+                        Applied {successCount} change(s) successfully!
                     </StatusMessage>
 
                     <StatusList items={results} />
@@ -504,7 +504,7 @@ export function ChangeNextScreen({ params }: ScreenProps): ReactElement {
 
     // Error
     return (
-        <Panel title="Apply Next Changesets" paddingX={2} paddingY={1} borderColor="red">
+        <Panel title="Apply Next Changes" paddingX={2} paddingY={1} borderColor="red">
             <Box flexDirection="column" gap={1}>
                 <StatusMessage variant="error">{error}</StatusMessage>
 

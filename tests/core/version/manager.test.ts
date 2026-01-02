@@ -168,7 +168,7 @@ describe('version: manager', () => {
             it('should throw for newer schema version', async () => {
 
                 await bootstrapSchema(db, '1.0.0');
-                await db.updateTable('__noorm_version__').set({ schema_version: 999 }).execute();
+                await db.updateTable('__noorm_version__').set({ noorm_version: 999 }).execute();
 
                 const manager = new VersionManager({ projectRoot: '/test' });
                 const state = { schemaVersion: CURRENT_VERSIONS.state };
@@ -243,7 +243,7 @@ describe('version: manager', () => {
             it('should return true when any layer is newer', async () => {
 
                 await bootstrapSchema(db, '1.0.0');
-                await db.updateTable('__noorm_version__').set({ schema_version: 999 }).execute();
+                await db.updateTable('__noorm_version__').set({ noorm_version: 999 }).execute();
 
                 const manager = new VersionManager({ projectRoot: '/test' });
                 const state = { schemaVersion: CURRENT_VERSIONS.state };

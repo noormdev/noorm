@@ -83,7 +83,7 @@ describe('cli: screens', () => {
             // Registered routes use their configured labels
             expect(getRouteLabel('config/add')).toBe('Add Config');
             expect(getRouteLabel('config/edit')).toBe('Edit Config');
-            expect(getRouteLabel('change/revert')).toBe('Revert Changeset');
+            expect(getRouteLabel('change/revert')).toBe('Revert Change');
             // Unregistered routes generate labels from last path segment
             expect(getRouteLabel('run/build')).toBe('Build');
             expect(getRouteLabel('secret/set')).toBe('Set');

@@ -4,7 +4,7 @@
  * Executes SQL files against a database connection with:
  * - Checksum-based change detection (skip unchanged files)
  * - Template rendering for .sql.tmpl files
- * - Execution tracking in __noorm_changeset__ / __noorm_executions__
+ * - Execution tracking in __noorm_change__ / __noorm_executions__
  * - Preview mode for inspecting rendered SQL
  *
  * WHY: Build systems need idempotent execution. Running unchanged
@@ -68,7 +68,7 @@ const FILE_HEADER_TEMPLATE = `-- ===============================================
  * execution order.
  *
  * @param context - Run context (db, identity, config)
- * @param schemaPath - Path to schema directory
+ * @param sqlPath - Path to SQL files directory
  * @param options - Run options
  * @returns Batch result with all file results
  *
@@ -81,7 +81,7 @@ const FILE_HEADER_TEMPLATE = `-- ===============================================
  */
 export async function runBuild(
     context: RunContext,
-    schemaPath: string,
+    sqlPath: string,
     options: RunOptions = {},
 ): Promise<BatchResult> {
 
@@ -89,14 +89,14 @@ export async function runBuild(
     const opts = { ...DEFAULT_RUN_OPTIONS_INTERNAL, ...options };
 
     // Discover files
-    const [files, discoverErr] = await attempt(() => discoverFiles(schemaPath));
+    const [files, discoverErr] = await attempt(() => discoverFiles(sqlPath));
 
     if (discoverErr) {
 
         observer.emit('error', {
             source: 'runner',
             error: discoverErr,
-            context: { schemaPath, operation: 'discover-files' },
+            context: { sqlPath, operation: 'discover-files' },
         });
 
         return createFailedBatchResult(discoverErr.message, performance.now() - start);
@@ -104,7 +104,7 @@ export async function runBuild(
     }
 
     observer.emit('build:start', {
-        schemaPath,
+        sqlPath,
         fileCount: files.length,
     });
 
@@ -501,7 +501,7 @@ async function executeFiles(
         filesSkipped,
         filesFailed,
         durationMs,
-        changesetId: operationId,
+        changeId: operationId,
     };
 
 }
@@ -533,7 +533,7 @@ async function executeSingleFile(
         };
 
         await tracker.recordExecution({
-            changesetId: operationId,
+            changeId: operationId,
             filepath,
             checksum: '',
             status: 'failed',
@@ -565,7 +565,7 @@ async function executeSingleFile(
         };
 
         await tracker.recordExecution({
-            changesetId: operationId,
+            changeId: operationId,
             filepath,
             checksum,
             status: 'skipped',
@@ -602,7 +602,7 @@ async function executeSingleFile(
         };
 
         await tracker.recordExecution({
-            changesetId: operationId,
+            changeId: operationId,
             filepath,
             checksum,
             status: 'failed',
@@ -637,7 +637,7 @@ async function executeSingleFile(
         };
 
         await tracker.recordExecution({
-            changesetId: operationId,
+            changeId: operationId,
             filepath,
             checksum,
             status: 'failed',
@@ -665,7 +665,7 @@ async function executeSingleFile(
     };
 
     await tracker.recordExecution({
-        changesetId: operationId,
+        changeId: operationId,
         filepath,
         checksum,
         status: 'success',
@@ -844,8 +844,8 @@ async function writeDryRunOutput(
  *
  * @example
  * ```typescript
- * const files = await discoverFiles('/project/schema')
- * // ['/project/schema/tables/users.sql', '/project/schema/views/active_users.sql']
+ * const files = await discoverFiles('/project/sql')
+ * // ['/project/sql/tables/users.sql', '/project/sql/views/active_users.sql']
  * ```
  */
 export async function discoverFiles(dirpath: string): Promise<string[]> {

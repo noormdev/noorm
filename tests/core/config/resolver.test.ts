@@ -82,8 +82,8 @@ function createConfig(overrides: Partial<Config> = {}): Config {
             database: ':memory:',
         },
         paths: {
-            schema: './schema',
-            changesets: './changesets',
+            sql: './sql',
+            changes: './changes',
         },
         ...overrides,
     };
@@ -107,7 +107,7 @@ describe('config: resolver', () => {
             'NOORM_CONNECTION_PASSWORD',
             'NOORM_CONNECTION_SSL',
             // Paths
-            'NOORM_PATHS_SCHEMA',
+            'NOORM_PATHS_SQL',
             'NOORM_PATHS_CHANGESETS',
             // Top-level
             'NOORM_CONFIG',
@@ -291,8 +291,8 @@ describe('config: resolver', () => {
             const config = resolveConfig(state);
 
             // Default paths should be applied if not in stored
-            expect(config!.paths.schema).toBe('./schema');
-            expect(config!.paths.changesets).toBe('./changesets');
+            expect(config!.paths.sql).toBe('./sql');
+            expect(config!.paths.changes).toBe('./changes');
 
         });
 
@@ -326,7 +326,7 @@ describe('config: resolver', () => {
                 'NOORM_CONNECTION_USER',
                 'NOORM_CONNECTION_PASSWORD',
                 'NOORM_CONNECTION_SSL',
-                'NOORM_PATHS_SCHEMA',
+                'NOORM_PATHS_SQL',
                 'NOORM_PATHS_CHANGESETS',
                 'NOORM_CONFIG',
                 'NOORM_PROTECTED',
@@ -380,7 +380,7 @@ describe('config: resolver', () => {
 
             expect(config!.type).toBe('local');
             expect(config!.protected).toBe(false);
-            expect(config!.paths.schema).toBe('./schema');
+            expect(config!.paths.sql).toBe('./sql');
 
         });
 
@@ -464,8 +464,8 @@ describe('config: resolver', () => {
                     host: 'localhost',
                 },
                 paths: {
-                    schema: './schema',
-                    changesets: './changesets',
+                    sql: './sql',
+                    changes: './changes',
                 },
             });
 

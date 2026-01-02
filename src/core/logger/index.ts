@@ -61,3 +61,6 @@ export { enableAutoLoggerInit, disableAutoLoggerInit, getInitializedLogger } fro
 
 // Reader
 export { readLogFile, type ReadLogsOptions, type ReadLogsResult } from './reader.js';
+
+// Queue
+export { WriteQueue, type QueueStats } from './queue.js';

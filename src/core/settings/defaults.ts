@@ -22,8 +22,8 @@ export const DEFAULT_BUILD_CONFIG: BuildConfig = {
  * Standard locations relative to project root.
  */
 export const DEFAULT_PATH_CONFIG: PathConfig = {
-    schema: './schema',
-    changesets: './changesets',
+    sql: './sql',
+    changes: './changes',
 };
 
 /**

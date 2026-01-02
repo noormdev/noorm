@@ -79,7 +79,7 @@ export async function getSchemaVersion(db: Kysely<NoormDatabase>): Promise<numbe
 
         return db
             .selectFrom('__noorm_version__')
-            .select('schema_version')
+            .select('noorm_version')
             .orderBy('id', 'desc')
             .limit(1)
             .executeTakeFirst();
@@ -88,7 +88,7 @@ export async function getSchemaVersion(db: Kysely<NoormDatabase>): Promise<numbe
 
     if (err) return 0;
 
-    return result?.schema_version ?? 0;
+    return result?.noorm_version ?? 0;
 
 }
 
@@ -170,7 +170,7 @@ export async function bootstrapSchema(
         .insertInto('__noorm_version__')
         .values({
             cli_version: cliVersion,
-            schema_version: CURRENT_VERSIONS.schema,
+            noorm_version: CURRENT_VERSIONS.schema,
             state_version: options?.stateVersion ?? CURRENT_VERSIONS.state,
             settings_version: options?.settingsVersion ?? CURRENT_VERSIONS.settings,
         })
@@ -213,7 +213,7 @@ export async function updateVersionRecord(
         .insertInto('__noorm_version__')
         .values({
             cli_version: options.cliVersion,
-            schema_version: CURRENT_VERSIONS.schema,
+            noorm_version: CURRENT_VERSIONS.schema,
             state_version: options.stateVersion ?? CURRENT_VERSIONS.state,
             settings_version: options.settingsVersion ?? CURRENT_VERSIONS.settings,
             upgraded_at: now as unknown as Date,
@@ -331,7 +331,7 @@ export async function migrateSchema(
         .insertInto('__noorm_version__')
         .values({
             cli_version: cliVersion,
-            schema_version: CURRENT_VERSIONS.schema,
+            noorm_version: CURRENT_VERSIONS.schema,
             state_version:
                 options?.stateVersion ?? existing?.stateVersion ?? CURRENT_VERSIONS.state,
             settings_version:

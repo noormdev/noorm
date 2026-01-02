@@ -56,7 +56,7 @@ function pathsSectionSummary(settings: Settings | null): string {
 
     const paths = settings.paths ?? {};
 
-    return `schema: ${paths.schema ?? './schema'}, changesets: ${paths.changesets ?? './changesets'}`;
+    return `schema: ${paths.sql ?? './sql'}, changes: ${paths.changes ?? './changes'}`;
 
 }
 

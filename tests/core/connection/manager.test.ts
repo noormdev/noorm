@@ -24,8 +24,8 @@ function createTestConfig(name: string): Config {
             database: ':memory:',
         },
         paths: {
-            schema: './schema',
-            changesets: './changesets',
+            sql: './sql',
+            changes: './changes',
         },
     };
 

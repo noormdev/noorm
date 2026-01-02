@@ -3,7 +3,7 @@ import { withContext, type HeadlessCommand } from './_helpers.js';
 export const help = `
 # CHANGE RUN
 
-Apply a specific changeset
+Apply a specific change
 
 ## Usage
 
@@ -12,12 +12,12 @@ Apply a specific changeset
 
 ## Arguments
 
-    NAME    Name of the changeset to apply
+    NAME    Name of the change to apply
 
 ## Description
 
-Applies a single changeset by name. Use this to apply changesets
-out of order or to retry a failed changeset.
+Applies a single change by name. Use this to apply changes
+out of order or to retry a failed change.
 
 ## Examples
 
@@ -31,7 +31,7 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
 
     if (!params.name) {
 
-        logger.error('Changeset name required. Use --name <changeset>');
+        logger.error('Change name required. Use --name <change>');
 
         return 1;
 
@@ -40,7 +40,7 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
     const [result, error] = await withContext({
         flags,
         logger,
-        fn: (ctx) => ctx.applyChangeset(params.name!),
+        fn: (ctx) => ctx.applyChange(params.name!),
     });
 
     if (error) return 1;

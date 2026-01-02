@@ -1,11 +1,11 @@
 /**
- * ChangeFFScreen - fast-forward all pending changesets.
+ * ChangeFFScreen - fast-forward all pending changes.
  *
- * Applies all pending changesets in chronological order.
+ * Applies all pending changes in chronological order.
  *
  * @example
  * ```bash
- * noorm change:ff    # Apply all pending changesets
+ * noorm change:ff    # Apply all pending changes
  * noorm change ff    # Same thing
  * ```
  */
@@ -15,7 +15,7 @@ import { ProgressBar } from '@inkjs/ui';
 
 import type { ReactElement } from 'react';
 import type { ScreenProps } from '../../types.js';
-import type { ChangesetListItem } from '../../../core/changeset/types.js';
+import type { ChangeListItem } from '../../../core/change/types.js';
 import type { NoormDatabase } from '../../../core/shared/index.js';
 import type { Kysely } from 'kysely';
 
@@ -32,9 +32,9 @@ import {
     StatusList,
     type StatusListItem,
 } from '../../components/index.js';
-import { discoverChangesets } from '../../../core/changeset/parser.js';
-import { ChangesetHistory } from '../../../core/changeset/history.js';
-import { ChangesetManager } from '../../../core/changeset/manager.js';
+import { discoverChanges } from '../../../core/change/parser.js';
+import { ChangeHistory } from '../../../core/change/history.js';
+import { ChangeManager } from '../../../core/change/manager.js';
 import { createConnection } from '../../../core/connection/factory.js';
 import { resolveIdentity } from '../../../core/identity/resolver.js';
 import { observer } from '../../../core/observer.js';
@@ -43,7 +43,7 @@ import { observer } from '../../../core/observer.js';
  * FF steps.
  */
 type FFStep =
-    | 'loading' // Loading pending changesets
+    | 'loading' // Loading pending changes
     | 'confirm' // Awaiting confirmation
     | 'running' // Executing
     | 'complete' // Success
@@ -59,14 +59,14 @@ export function ChangeFFScreen({ params: _params }: ScreenProps): ReactElement {
     const { activeConfig, activeConfigName, stateManager } = useAppContext();
 
     const [step, setStep] = useState<FFStep>('loading');
-    const [pendingChangesets, setPendingChangesets] = useState<ChangesetListItem[]>([]);
+    const [pendingChanges, setPendingChanges] = useState<ChangeListItem[]>([]);
     const [results, setResults] = useState<StatusListItem[]>([]);
-    const [currentChangeset, setCurrentChangeset] = useState('');
+    const [currentChange, setCurrentChange] = useState('');
     const [progress, setProgress] = useState({ current: 0, total: 0 });
     const [error, setError] = useState<string | null>(null);
     const [isProtected, setIsProtected] = useState(false);
 
-    // Load pending changesets
+    // Load pending changes
     useEffect(() => {
 
         if (!activeConfig) return;
@@ -77,10 +77,10 @@ export function ChangeFFScreen({ params: _params }: ScreenProps): ReactElement {
 
             const [_, err] = await attempt(async () => {
 
-                // Discover changesets
-                const changesets = await discoverChangesets(
-                    activeConfig.paths.changesets,
-                    activeConfig.paths.schema,
+                // Discover changes
+                const changes = await discoverChanges(
+                    activeConfig.paths.changes,
+                    activeConfig.paths.sql,
                 );
 
                 // Get statuses from database
@@ -90,15 +90,15 @@ export function ChangeFFScreen({ params: _params }: ScreenProps): ReactElement {
                 );
                 const db = conn.db as Kysely<NoormDatabase>;
 
-                const history = new ChangesetHistory(db, activeConfigName ?? '');
+                const history = new ChangeHistory(db, activeConfigName ?? '');
                 const statuses = await history.getAllStatuses();
 
                 await conn.destroy();
 
                 if (cancelled) return;
 
-                // Find pending changesets
-                const pending: ChangesetListItem[] = changesets
+                // Find pending changes
+                const pending: ChangeListItem[] = changes
                     .filter((cs) => {
 
                         const status = statuses.get(cs.name);
@@ -132,12 +132,12 @@ export function ChangeFFScreen({ params: _params }: ScreenProps): ReactElement {
 
                     });
 
-                setPendingChangesets(pending);
+                setPendingChanges(pending);
                 setIsProtected(activeConfig.protected ?? false);
 
                 if (pending.length === 0) {
 
-                    setError('No pending changesets');
+                    setError('No pending changes');
                     setStep('error');
 
                 }
@@ -175,13 +175,13 @@ export function ChangeFFScreen({ params: _params }: ScreenProps): ReactElement {
     // Subscribe to progress events
     useEffect(() => {
 
-        const unsubStart = observer.on('changeset:start', (data) => {
+        const unsubStart = observer.on('change:start', (data) => {
 
-            setCurrentChangeset(data.name);
+            setCurrentChange(data.name);
 
         });
 
-        const unsubComplete = observer.on('changeset:complete', (data) => {
+        const unsubComplete = observer.on('change:complete', (data) => {
 
             setResults((prev) => [
                 ...prev,
@@ -209,10 +209,10 @@ export function ChangeFFScreen({ params: _params }: ScreenProps): ReactElement {
     // Handle run
     const handleRun = useCallback(async () => {
 
-        if (!activeConfig || !stateManager || pendingChangesets.length === 0) return;
+        if (!activeConfig || !stateManager || pendingChanges.length === 0) return;
 
         setStep('running');
-        setProgress({ current: 0, total: pendingChangesets.length });
+        setProgress({ current: 0, total: pendingChanges.length });
         setResults([]);
 
         const [_, err] = await attempt(async () => {
@@ -229,13 +229,13 @@ export function ChangeFFScreen({ params: _params }: ScreenProps): ReactElement {
             });
 
             // Create manager and fast-forward
-            const manager = new ChangesetManager({
+            const manager = new ChangeManager({
                 db,
                 configName: activeConfigName ?? '',
                 identity,
                 projectRoot: process.cwd(),
-                changesetsDir: activeConfig.paths.changesets,
-                schemaDir: activeConfig.paths.schema,
+                changesDir: activeConfig.paths.changes,
+                sqlDir: activeConfig.paths.sql,
             });
 
             const result = await manager.ff();
@@ -244,7 +244,7 @@ export function ChangeFFScreen({ params: _params }: ScreenProps): ReactElement {
 
             if (result.failed > 0) {
 
-                setError(`${result.failed} changeset(s) failed`);
+                setError(`${result.failed} change(s) failed`);
                 setStep('error');
 
             }
@@ -263,7 +263,7 @@ export function ChangeFFScreen({ params: _params }: ScreenProps): ReactElement {
 
         }
 
-    }, [activeConfig, activeConfigName, stateManager, pendingChangesets]);
+    }, [activeConfig, activeConfigName, stateManager, pendingChanges]);
 
     // Handle cancel
     const handleCancel = useCallback(() => {
@@ -301,7 +301,7 @@ export function ChangeFFScreen({ params: _params }: ScreenProps): ReactElement {
 
         return (
             <Panel title="Fast-Forward" paddingX={2} paddingY={1}>
-                <Spinner label="Loading pending changesets..." />
+                <Spinner label="Loading pending changes..." />
             </Panel>
         );
 
@@ -315,20 +315,20 @@ export function ChangeFFScreen({ params: _params }: ScreenProps): ReactElement {
                 <Text>
                     Apply{' '}
                     <Text bold color="cyan">
-                        {pendingChangesets.length}
+                        {pendingChanges.length}
                     </Text>{' '}
-                    pending changeset(s):
+                    pending change(s):
                 </Text>
 
                 <Box flexDirection="column" marginTop={1}>
-                    {pendingChangesets.slice(0, 5).map((cs) => (
+                    {pendingChanges.slice(0, 5).map((cs) => (
                         <Text key={cs.name} dimColor>
                             {' '}
                             • {cs.name}
                         </Text>
                     ))}
-                    {pendingChangesets.length > 5 && (
-                        <Text dimColor> ... and {pendingChangesets.length - 5} more</Text>
+                    {pendingChanges.length > 5 && (
+                        <Text dimColor> ... and {pendingChanges.length - 5} more</Text>
                     )}
                 </Box>
             </Box>
@@ -342,7 +342,7 @@ export function ChangeFFScreen({ params: _params }: ScreenProps): ReactElement {
                         {confirmContent}
                         <ProtectedConfirm
                             configName={activeConfigName ?? 'config'}
-                            action="apply all pending changesets"
+                            action="apply all pending changes"
                             onConfirm={handleRun}
                             onCancel={handleCancel}
                             isFocused={isFocused}
@@ -358,7 +358,7 @@ export function ChangeFFScreen({ params: _params }: ScreenProps): ReactElement {
                 <Box flexDirection="column" gap={1}>
                     {confirmContent}
                     <Confirm
-                        message="Apply all pending changesets?"
+                        message="Apply all pending changes?"
                         onConfirm={handleRun}
                         onCancel={handleCancel}
                         isFocused={isFocused}
@@ -377,7 +377,7 @@ export function ChangeFFScreen({ params: _params }: ScreenProps): ReactElement {
         return (
             <Panel title="Fast-Forward" paddingX={2} paddingY={1}>
                 <Box flexDirection="column" gap={1}>
-                    <Text>Applying all pending changesets...</Text>
+                    <Text>Applying all pending changes...</Text>
 
                     <Box width={50}>
                         <ProgressBar value={progressValue} />
@@ -385,7 +385,7 @@ export function ChangeFFScreen({ params: _params }: ScreenProps): ReactElement {
 
                     <Text dimColor>
                         {progress.current}/{progress.total}
-                        {currentChangeset && ` - ${currentChangeset}`}
+                        {currentChange && ` - ${currentChange}`}
                     </Text>
 
                     {results.length > 0 && (
@@ -408,7 +408,7 @@ export function ChangeFFScreen({ params: _params }: ScreenProps): ReactElement {
             <Panel title="Fast-Forward" paddingX={2} paddingY={1} borderColor="green">
                 <Box flexDirection="column" gap={1}>
                     <StatusMessage variant="success">
-                        Applied {successCount} changeset(s) successfully!
+                        Applied {successCount} change(s) successfully!
                     </StatusMessage>
 
                     <StatusList items={results} />

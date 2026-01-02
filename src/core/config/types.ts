@@ -2,7 +2,7 @@
  * Configuration types.
  *
  * Configs define how noorm connects to databases and where to find
- * schema/changeset files. They support multiple environments,
+ * SQL/change files. They support multiple environments,
  * environment variable overrides, and protected configs for production safety.
  */
 import type { ConnectionConfig, Dialect } from '../connection/types.js';
@@ -27,8 +27,8 @@ import type { LogLevel } from '../logger/types.js';
  *         password: 'postgres',
  *     },
  *     paths: {
- *         schema: './schema',
- *         changesets: './changesets',
+ *         sql: './sql',
+ *         changes: './changes',
  *     },
  * }
  * ```
@@ -42,8 +42,8 @@ export interface Config {
     connection: ConnectionConfig;
 
     paths: {
-        schema: string; // Relative to project root
-        changesets: string; // Relative to project root
+        sql: string; // Relative to project root
+        changes: string; // Relative to project root
     };
 
     // Optional identity override
