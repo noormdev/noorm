@@ -93,6 +93,12 @@ describe('cli: lock status', () => {
 
         const result = await noormJson<LockStatus>(project, 'lock', 'status');
 
+        if (!result.ok) {
+
+            console.log('FLAKY TEST FAILURE:', result.error, result._raw);
+
+        }
+
         expect(result.ok).toBe(true);
         expect(result.data!.isLocked).toBe(false);
         expect(result.data!.lock).toBeNull();

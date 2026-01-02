@@ -155,9 +155,9 @@ describe('logger: formatter', () => {
 
             const entry = formatEntry('build:start', { fileCount: 10 });
 
-            expect(entry.timestamp).toBe('2024-01-15T10:30:00.000Z');
+            expect(entry.time).toBe('2024-01-15T10:30:00.000Z');
             expect(entry.level).toBe('info');
-            expect(entry.event).toBe('build:start');
+            expect(entry.type).toBe('build:start');
             expect(entry.message).toBe('Starting schema build (10 files)');
 
         });
@@ -276,9 +276,9 @@ describe('logger: formatter', () => {
         it('should serialize entry to JSON with newline', () => {
 
             const entry = {
-                timestamp: '2024-01-15T10:30:00.000Z',
+                time: '2024-01-15T10:30:00.000Z',
                 level: 'info' as const,
-                event: 'build:start',
+                type: 'build:start',
                 message: 'Starting schema build (10 files)',
             };
 
@@ -292,9 +292,9 @@ describe('logger: formatter', () => {
         it('should include all fields in serialized output', () => {
 
             const entry = {
-                timestamp: '2024-01-15T10:30:00.000Z',
+                time: '2024-01-15T10:30:00.000Z',
                 level: 'info' as const,
-                event: 'build:start',
+                type: 'build:start',
                 message: 'Starting build',
                 data: { fileCount: 10 },
                 context: { config: 'dev' },
@@ -303,9 +303,9 @@ describe('logger: formatter', () => {
             const line = serializeEntry(entry);
             const parsed = JSON.parse(line.trim());
 
-            expect(parsed.timestamp).toBe(entry.timestamp);
+            expect(parsed.time).toBe(entry.time);
             expect(parsed.level).toBe(entry.level);
-            expect(parsed.event).toBe(entry.event);
+            expect(parsed.type).toBe(entry.type);
             expect(parsed.message).toBe(entry.message);
             expect(parsed.data).toEqual(entry.data);
             expect(parsed.context).toEqual(entry.context);

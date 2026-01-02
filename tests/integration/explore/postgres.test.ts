@@ -141,7 +141,8 @@ describe('integration: postgres explore', () => {
             // todo_lists: id, user_id, title, description, color, position, created_at, updated_at, deleted_at = 9
             expect(todoLists?.columnCount).toBe(9);
 
-            // todo_items: id, list_id, title, description, is_completed, priority, due_date, completed_at, position, created_at, updated_at, deleted_at = 12
+            // todo_items: id, list_id, title, description, is_completed, priority, due_date,
+            // completed_at, position, created_at, updated_at, deleted_at = 12
             expect(todoItems?.columnCount).toBe(12);
 
         });
@@ -182,7 +183,8 @@ describe('integration: postgres explore', () => {
             // v_active_users: id, email, username, display_name, avatar_url, created_at, updated_at = 7
             expect(activeUsers?.columnCount).toBe(7);
 
-            // v_todo_lists_with_counts: id, user_id, title, description, color, position, created_at, updated_at, total_items, completed_items, pending_items = 11
+            // v_todo_lists_with_counts: id, user_id, title, description, color, position,
+            // created_at, updated_at, total_items, completed_items, pending_items = 11
             expect(listsWithCounts?.columnCount).toBe(11);
 
         });

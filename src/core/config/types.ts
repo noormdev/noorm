@@ -6,6 +6,7 @@
  * environment variable overrides, and protected configs for production safety.
  */
 import type { ConnectionConfig, Dialect } from '../connection/types.js';
+import type { LogLevel } from '../logger/types.js';
 
 /**
  * Full configuration object.
@@ -60,6 +61,9 @@ export interface ConfigInput {
     connection?: Partial<ConnectionConfig>;
     paths?: Partial<Config['paths']>;
     identity?: string;
+    log: {
+        level: LogLevel;
+    }
 }
 
 /**

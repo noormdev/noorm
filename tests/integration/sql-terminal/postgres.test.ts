@@ -602,11 +602,15 @@ describe('integration: postgres sql-terminal', () => {
             const events: Array<{ event: string; data: unknown }> = [];
 
             const beforeCleanup = observer.on('sql-terminal:execute:before', (data) => {
+
                 events.push({ event: 'before', data });
+
             });
 
             const afterCleanup = observer.on('sql-terminal:execute:after', (data) => {
+
                 events.push({ event: 'after', data });
+
             });
 
             try {
@@ -640,11 +644,15 @@ describe('integration: postgres sql-terminal', () => {
             const events: Array<{ event: string; data: unknown }> = [];
 
             const beforeCleanup = observer.on('sql-terminal:execute:before', (data) => {
+
                 events.push({ event: 'before', data });
+
             });
 
             const afterCleanup = observer.on('sql-terminal:execute:after', (data) => {
+
                 events.push({ event: 'after', data });
+
             });
 
             try {

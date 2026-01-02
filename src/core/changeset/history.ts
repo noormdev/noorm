@@ -336,6 +336,18 @@ export class ChangesetHistory {
 
         }
 
+        // Previous execution is stale (schema torn down) - needs re-apply
+        if (record.status === 'stale') {
+
+            return {
+                needsRun: true,
+                reason: 'stale',
+                previousChecksum: record.checksum,
+                previousStatus: record.status,
+            };
+
+        }
+
         // Checksum changed
         if (record.checksum !== checksum) {
 
@@ -624,6 +636,90 @@ export class ChangesetHistory {
             );
 
         }
+
+    }
+
+    /**
+     * Mark all operation records as stale.
+     *
+     * Called during teardown to indicate schema objects no longer exist.
+     * Marks changesets, builds, and runs - all types that created schema objects.
+     * Marks both 'success' and 'failed' records - anything that might have
+     * created schema objects needs to be re-run after teardown.
+     *
+     * @returns Number of records marked as stale
+     */
+    async markAllAsStale(): Promise<number> {
+
+        const [result, err] = await attempt(() =>
+            this.#db
+                .updateTable(NOORM_TABLES.changeset)
+                .set({ status: 'stale' })
+                .where('direction', '=', 'change')
+                .where('status', 'in', ['success', 'failed', 'pending'])
+                .where('config_name', '=', this.#configName)
+                .execute(),
+        );
+
+        if (err) {
+
+            observer.emit('error', {
+                source: 'changeset',
+                error: err,
+                context: { operation: 'mark-all-stale' },
+            });
+
+            return 0;
+
+        }
+
+        return result.reduce((acc, r) => acc + Number(r.numUpdatedRows ?? 0), 0);
+
+    }
+
+    /**
+     * Record a database reset event.
+     *
+     * Creates a special changeset entry to document when the database
+     * was torn down. Provides audit trail for reset operations.
+     *
+     * @param executedBy - Identity of who performed the reset
+     * @param reason - Optional reason for the reset
+     * @returns The created record's ID
+     */
+    async recordReset(executedBy: string, reason?: string): Promise<number> {
+
+        const [result, err] = await attempt(() =>
+            this.#db
+                .insertInto(NOORM_TABLES.changeset)
+                .values({
+                    name: '__reset__',
+                    change_type: 'changeset',
+                    direction: 'change',
+                    status: 'success',
+                    config_name: this.#configName,
+                    executed_by: executedBy,
+                    error_message: reason ?? '',
+                    duration_ms: 0,
+                    checksum: '',
+                })
+                .returning('id')
+                .executeTakeFirstOrThrow(),
+        );
+
+        if (err) {
+
+            observer.emit('error', {
+                source: 'changeset',
+                error: err,
+                context: { operation: 'record-reset' },
+            });
+
+            return 0;
+
+        }
+
+        return result.id;
 
     }
 

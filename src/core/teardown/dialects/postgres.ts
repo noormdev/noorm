@@ -37,13 +37,13 @@ export const postgresTeardownOperations: TeardownDialectOperations = {
     disableForeignKeyChecks(): string {
 
         // Session-level setting that disables FK triggers
-        return `SET session_replication_role = 'replica'`;
+        return 'SET session_replication_role = \'replica\'';
 
     },
 
     enableForeignKeyChecks(): string {
 
-        return `SET session_replication_role = 'origin'`;
+        return 'SET session_replication_role = \'origin\'';
 
     },
 

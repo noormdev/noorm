@@ -1,3 +1,4 @@
+
 /**
  * Environment Detection
  *
@@ -88,5 +89,43 @@ export function isDev(): boolean {
 export function isDebug(): boolean {
 
     return process.env['NOORM_DEBUG'] === 'true';
+
+}
+
+
+/**
+ * Check if confirmations should be skipped.
+ *
+ * Returns true if NOORM_YES is set, enabling non-interactive mode.
+ */
+export function shouldSkipConfirmations(): boolean {
+
+    const yes = process.env['NOORM_YES'];
+
+    return yes === '1' || yes === 'true';
+
+}
+
+/**
+ * Check if output should be JSON.
+ *
+ * Returns true if NOORM_JSON is set, enabling headless/parseable output.
+ */
+export function shouldOutputJson(): boolean {
+
+    const json = process.env['NOORM_JSON'];
+
+    return json === '1' || json === 'true';
+
+}
+
+/**
+ * Get the active config name from environment.
+ *
+ * Returns the value of NOORM_CONFIG if set.
+ */
+export function getEnvConfigName(): string | undefined {
+
+    return process.env['NOORM_CONFIG'];
 
 }

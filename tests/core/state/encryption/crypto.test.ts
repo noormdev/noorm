@@ -105,7 +105,7 @@ describe('encryption: crypto', () => {
 
             const keypair = generateKeyPair();
             const payload: EncryptedPayload = {
-                algorithm: 'aes-128-cbc' as any, // Invalid algorithm
+                algorithm: 'aes-128-cbc', // Invalid algorithm
                 iv: 'dmFsaWRpdnZhbGlkaXY=', // valid base64
                 authTag: 'dmFsaWR0YWd2YWxpZHRhZw==', // valid base64
                 ciphertext: 'dmFsaWRjaXBoZXJ0ZXh0', // valid base64

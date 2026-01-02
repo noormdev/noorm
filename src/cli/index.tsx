@@ -22,7 +22,7 @@ import { render } from 'ink';
 
 import type { Route, RouteParams, CliFlags, ParsedCli } from './types.js';
 import { App } from './app.js';
-import { shouldRunHeadless, runHeadless } from './headless.js';
+import { shouldRunHeadless, runHeadless } from './headless/index.js';
 import { enableAutoLoggerInit } from '../core/logger/init.js';
 
 /**

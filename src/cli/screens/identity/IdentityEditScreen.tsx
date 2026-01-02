@@ -14,7 +14,7 @@
  * noorm identity:edit    # Opens this screen
  * ```
  */
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { Box, Text } from 'ink';
 
 import type { ReactElement } from 'react';

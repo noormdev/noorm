@@ -6,18 +6,8 @@
  * **Modes:**
  * - Normal mode (default): Enter = execute, Shift+Enter = newline
  * - Edit mode (Shift+Tab toggle): Enter = newline, easier for multi-line SQL
- *
- * @example
- * ```tsx
- * <SqlInput
- *     value={query}
- *     onChange={setQuery}
- *     onSubmit={(sql) => executeQuery(sql)}
- *     onHistoryNavigate={(dir) => navigateHistory(dir)}
- * />
- * ```
  */
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Box, Text, useInput } from 'ink';
 import type { ReactElement } from 'react';
 
@@ -25,28 +15,22 @@ import type { ReactElement } from 'react';
  * Props for SqlInput component.
  */
 export interface SqlInputProps {
-
     /** Current input value */
     value: string;
-
     /** Called when value changes */
     onChange: (value: string) => void;
-
     /** Called when query is submitted (Enter in normal mode) */
     onSubmit: (query: string) => void;
-
     /** Called when navigating history (up/down when input empty) */
     onHistoryNavigate: (direction: 'up' | 'down') => void;
-
     /** Whether input is disabled (during execution) */
     disabled?: boolean;
-
     /** Whether input is active and should handle keyboard input */
     active?: boolean;
-
+    /** Whether currently browsing history (allows up/down even with content) */
+    historyBrowsing?: boolean;
     /** Placeholder text when empty */
     placeholder?: string;
-
 }
 
 /**
@@ -59,21 +43,38 @@ export function SqlInput({
     onHistoryNavigate,
     disabled = false,
     active = true,
+    historyBrowsing = false,
     placeholder = 'Enter SQL query...',
 }: SqlInputProps): ReactElement {
 
     const isActive = active && !disabled;
     const [editMode, setEditMode] = useState(false);
-    const [cursorPosition, setCursorPosition] = useState(value.length);
+    const [cursor, setCursor] = useState(value.length);
 
-    // Update cursor position when value changes externally
+    // Track what we last set to detect external changes
+    const lastValueRef = useRef(value);
+
+    // When value changes externally (e.g., history nav), move cursor to end
     useEffect(() => {
 
-        setCursorPosition(value.length);
+        if (value !== lastValueRef.current) {
+
+            setCursor(value.length);
+            lastValueRef.current = value;
+
+        }
 
     }, [value]);
 
-    // Handle keyboard input
+    // Helper to update value and track it
+    const updateValue = (newValue: string, newCursor: number) => {
+
+        lastValueRef.current = newValue;
+        onChange(newValue);
+        setCursor(newCursor);
+
+    };
+
     useInput((input, key) => {
 
         if (!isActive) return;
@@ -87,7 +88,7 @@ export function SqlInput({
 
         }
 
-        // Escape: Exit edit mode or signal back
+        // Escape: Exit edit mode
         if (key.escape) {
 
             if (editMode) {
@@ -100,8 +101,8 @@ export function SqlInput({
 
         }
 
-        // History navigation (up/down when input is empty)
-        if ((key.upArrow || key.downArrow) && value.trim() === '') {
+        // History navigation (up/down when input is empty OR browsing history)
+        if ((key.upArrow || key.downArrow) && (value.trim() === '' || historyBrowsing)) {
 
             onHistoryNavigate(key.upArrow ? 'up' : 'down');
 
@@ -109,34 +110,45 @@ export function SqlInput({
 
         }
 
-        // Arrow keys for cursor movement within multi-line
-        if (key.upArrow || key.downArrow || key.leftArrow || key.rightArrow) {
+        // Left arrow: move cursor left
+        if (key.leftArrow) {
 
-            // For now, just track cursor at end
-            // Full cursor navigation would require more complex state
+            setCursor((c) => Math.max(0, c - 1));
 
             return;
 
         }
 
-        // Enter handling depends on mode
+        // Right arrow: move cursor right
+        if (key.rightArrow) {
+
+            setCursor((c) => Math.min(value.length, c + 1));
+
+            return;
+
+        }
+
+        // Up/down in multi-line - just ignore for now
+        if (key.upArrow || key.downArrow) {
+
+            return;
+
+        }
+
+        // Enter handling
         if (key.return) {
 
             if (key.shift || editMode) {
 
-                // Shift+Enter or edit mode: Insert newline
-                onChange(value + '\n');
-                setCursorPosition(value.length + 1);
+                const before = value.slice(0, cursor);
+                const after = value.slice(cursor);
+
+                updateValue(before + '\n' + after, cursor + 1);
 
             }
-            else {
+            else if (value.trim()) {
 
-                // Normal mode: Submit query
-                if (value.trim()) {
-
-                    onSubmit(value);
-
-                }
+                onSubmit(value);
 
             }
 
@@ -144,23 +156,27 @@ export function SqlInput({
 
         }
 
-        // Tab: Insert spaces (4 spaces for indent)
+        // Tab: Insert 4 spaces
         if (key.tab && !key.shift) {
 
-            onChange(value + '    ');
-            setCursorPosition(value.length + 4);
+            const before = value.slice(0, cursor);
+            const after = value.slice(cursor);
+
+            updateValue(before + '    ' + after, cursor + 4);
 
             return;
 
         }
 
-        // Backspace: Delete last character
+        // Backspace: delete char before cursor
         if (key.backspace) {
 
-            if (value.length > 0) {
+            if (cursor > 0) {
 
-                onChange(value.slice(0, -1));
-                setCursorPosition(Math.max(0, value.length - 1));
+                const before = value.slice(0, cursor - 1);
+                const after = value.slice(cursor);
+
+                updateValue(before + after, cursor - 1);
 
             }
 
@@ -168,13 +184,15 @@ export function SqlInput({
 
         }
 
-        // Delete key: Same as backspace for now
+        // Delete: delete char at cursor
         if (key.delete) {
 
-            if (value.length > 0) {
+            if (cursor < value.length) {
 
-                onChange(value.slice(0, -1));
-                setCursorPosition(Math.max(0, value.length - 1));
+                const before = value.slice(0, cursor);
+                const after = value.slice(cursor + 1);
+
+                updateValue(before + after, cursor);
 
             }
 
@@ -185,52 +203,85 @@ export function SqlInput({
         // Regular character input
         if (input && !key.ctrl && !key.meta) {
 
-            onChange(value + input);
-            setCursorPosition(value.length + input.length);
+            const before = value.slice(0, cursor);
+            const after = value.slice(cursor);
+
+            updateValue(before + input + after, cursor + input.length);
 
         }
 
     });
 
-    // Split value into lines for rendering
+    // Render
     const lines = value.split('\n');
     const showPlaceholder = value.length === 0 && !disabled;
-
-    // Determine prompt based on mode
     const prompt = editMode ? '[EDIT]>' : '>';
     const promptColor = editMode ? 'yellow' : 'cyan';
 
+    // Find cursor line and column
+    let cursorLine = 0;
+    let cursorCol = cursor;
+    let count = 0;
+
+    for (let i = 0; i < lines.length; i++) {
+
+        const lineLen = lines[i]!.length;
+
+        if (count + lineLen >= cursor) {
+
+            cursorLine = i;
+            cursorCol = cursor - count;
+
+            break;
+
+        }
+
+        count += lineLen + 1;
+
+    }
+
+    const renderLine = (line: string, lineIndex: number): ReactElement => {
+
+        const hasCursor = isActive && lineIndex === cursorLine;
+
+        if (!hasCursor) {
+
+            return <Text color={disabled ? 'gray' : undefined}>{line || ' '}</Text>;
+
+        }
+
+        const before = line.slice(0, cursorCol);
+        const cursorChar = line[cursorCol] ?? ' ';
+        const after = line.slice(cursorCol + 1);
+
+        return (
+            <Text color={disabled ? 'gray' : undefined}>
+                {before}
+                <Text inverse>{cursorChar}</Text>
+                {after}
+            </Text>
+        );
+
+    };
+
     return (
         <Box flexDirection="column">
-            {/* Input area */}
             <Box flexDirection="column">
                 {lines.map((line, index) => (
                     <Box key={index}>
-                        {/* Show prompt only on first line */}
                         {index === 0 ? (
-                            <Text color={disabled ? 'gray' : promptColor}>
-                                {prompt}{' '}
-                            </Text>
+                            <Text color={disabled ? 'gray' : promptColor}>{prompt} </Text>
                         ) : (
                             <Text color="gray">{'  '} </Text>
                         )}
-                        {/* Line content */}
                         {showPlaceholder && index === 0 ? (
                             <Text dimColor>{placeholder}</Text>
                         ) : (
-                            <Text color={disabled ? 'gray' : undefined}>
-                                {line}
-                                {/* Cursor indicator on last line */}
-                                {index === lines.length - 1 && isActive && (
-                                    <Text inverse> </Text>
-                                )}
-                            </Text>
+                            renderLine(line, index)
                         )}
                     </Box>
                 ))}
             </Box>
-
-            {/* Mode indicator */}
             <Box marginTop={1}>
                 <Text dimColor>
                     {editMode

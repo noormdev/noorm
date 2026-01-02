@@ -24,13 +24,12 @@
  */
 import { initState, getStateManager } from '../core/state/index.js';
 import { getSettingsManager, type SettingsManager } from '../core/settings/index.js';
-import { resolveIdentity, getIdentityForConfig } from '../core/identity/index.js';
-import { resolveConfig, type SettingsProvider } from '../core/config/resolver.js';
-import type { Stage } from '../core/settings/types.js';
+import { getIdentityForConfig } from '../core/identity/index.js';
+import { resolveConfig, SettingsProvider } from '../core/config/resolver.js';
 
 import { Context } from './context.js';
 import { checkRequireTest } from './guards.js';
-import type { CreateContextOptions, Context as IContext } from './types.js';
+import type { CreateContextOptions } from './types.js';
 
 // ─────────────────────────────────────────────────────────────
 // Helpers
@@ -43,19 +42,7 @@ import type { CreateContextOptions, Context as IContext } from './types.js';
  */
 function toSettingsProvider(manager: SettingsManager): SettingsProvider {
 
-    return {
-        getStage(name: string): Stage | null {
-
-            return manager.getStage(name) ?? null;
-
-        },
-        findStageForConfig(configName: string): Stage | null {
-
-            // Auto-link: if a stage exists with same name as config, use it
-            return manager.getStage(configName) ?? null;
-
-        },
-    };
+    return new SettingsProvider(manager);
 
 }
 
@@ -100,8 +87,8 @@ function toSettingsProvider(manager: SettingsManager): SettingsProvider {
  * ```
  */
 export async function createContext<DB = unknown>(
-    options: CreateContextOptions<DB> = {},
-): Promise<IContext<DB>> {
+    options: CreateContextOptions = {},
+): Promise<Context<DB>> {
 
     // Resolve project root
     const projectRoot = options.projectRoot ?? process.cwd();
@@ -150,10 +137,11 @@ export async function createContext<DB = unknown>(
 // Re-exports
 // ─────────────────────────────────────────────────────────────
 
+export { Context } from './context.js';
+
 // Types
 export type {
     CreateContextOptions,
-    Context,
     ExecuteResult,
     TransactionContext,
     BuildOptions,

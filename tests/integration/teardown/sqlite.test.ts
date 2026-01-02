@@ -12,7 +12,6 @@ import {
     createTestConnection,
     deployTestSchema,
     seedTestData,
-    teardownTestSchema,
 } from '../../utils/db.js';
 import {
     truncateData,
@@ -285,10 +284,6 @@ describe('integration: sqlite teardown', () => {
             const result = await teardownSchema(db, 'sqlite');
 
             // SQLite FK drop returns comments, not actual SQL
-            const fkComments = result.statements.filter(
-                (s) => s.includes('does not support dropping individual FK constraints'),
-            );
-
             // SQLite version may or may not include these comments
             // The important thing is it doesn't error
             expect(result.dropped.foreignKeys.length).toBeGreaterThanOrEqual(0);

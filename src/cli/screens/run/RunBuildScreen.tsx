@@ -24,7 +24,7 @@ import type { ScreenProps } from '../../types.js';
 
 import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
-import { useActiveConfig, useSettings, useGlobalModes, useAppContext } from '../../app-context.js';
+import { useSettings, useGlobalModes, useAppContext } from '../../app-context.js';
 import { Panel, Spinner, Confirm, ProtectedConfirm, useToast } from '../../components/index.js';
 import { useRunProgress } from '../../hooks/index.js';
 import { getEffectiveBuildPaths } from '../../../core/settings/rules.js';
@@ -347,7 +347,7 @@ export function RunBuildScreen({ params: _params }: ScreenProps): ReactElement {
                     </Box>
                 </Panel>
 
-{activeConfig.protected ? (
+                {activeConfig.protected ? (
                     <ProtectedConfirm
                         focusLabel="RunBuildConfirm"
                         configName={activeConfigName ?? ''}

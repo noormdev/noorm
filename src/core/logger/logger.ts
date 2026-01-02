@@ -19,12 +19,16 @@
  * ```
  */
 import type { Writable } from 'node:stream';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
+import { createWriteStream } from 'node:fs';
+import { mkdir } from 'node:fs/promises';
+
+import dayjs from 'dayjs';
 
 import { observer, type NoormEvents } from '../observer.js';
 import { isCi } from '../environment.js';
 import { classifyEvent, shouldLog } from './classifier.js';
-import { generateMessage, serializeEntry, formatEntry } from './formatter.js';
+import { generateMessage } from './formatter.js';
 import { formatColorLine } from './color.js';
 import { filterData } from './redact.js';
 import { checkAndRotate } from './rotation.js';
@@ -32,6 +36,59 @@ import type { LogLevel, LoggerConfig, LoggerState, EntryLevel } from './types.js
 import { DEFAULT_LOGGER_CONFIG } from './types.js';
 import type { Settings } from '../settings/types.js';
 import type { EventQueue, QueueOpts } from '@logosdx/observer';
+import { merge } from '@logosdx/utils';
+
+/**
+ * Flatten object for JSON output with dot-notation keys.
+ *
+ * Different from color.ts flattenData which formats for display.
+ * This flattens one level deep for observability tools.
+ */
+function flattenToJson(
+    source: Record<string, unknown>,
+    target: Record<string, unknown>,
+): void {
+
+    for (const [key, value] of Object.entries(source)) {
+
+        if (key in target) continue; // Preserve core fields
+
+        if (value === null || value === undefined) {
+
+            target[key] = value;
+
+        }
+        else if (Array.isArray(value)) {
+
+            target[key] = JSON.stringify(value);
+
+        }
+        else if (typeof value === 'object') {
+
+            // Flatten one level with dot-notation
+            for (const [subKey, subValue] of Object.entries(value as Record<string, unknown>)) {
+
+                const nestedKey = `${key}.${subKey}`;
+                if (!(nestedKey in target)) {
+
+                    target[nestedKey] = typeof subValue === 'object' && subValue !== null
+                        ? JSON.stringify(subValue)
+                        : subValue;
+
+                }
+
+            }
+
+        }
+        else {
+
+            target[key] = value;
+
+        }
+
+    }
+
+}
 
 /**
  * Options for Logger construction.
@@ -57,6 +114,9 @@ export interface LoggerOptions {
 
     /** Enable colored output for console (default: true if console provided) */
     color?: boolean;
+
+    /** Enable JSON output (overrides color) */
+    json?: boolean;
 }
 
 /**
@@ -69,13 +129,12 @@ export class Logger {
 
     #projectRoot: string;
 
-    #settings: Settings;
-
     #config: LoggerConfig;
     #context: Record<string, unknown>;
     #file: Writable | null = null;
     #console: Writable | null = null;
     #color: boolean = false;
+    #json: boolean = false;
     #queue: EventQueue<NoormEvents, RegExp> | null = null;
     #state: LoggerState = 'idle';
     #rotationInterval: ReturnType<typeof setInterval> | null = null;
@@ -84,9 +143,16 @@ export class Logger {
     constructor(options: LoggerOptions) {
 
         this.#projectRoot = options.projectRoot;
-        this.#settings = options.settings;
         this.#config = { ...DEFAULT_LOGGER_CONFIG, ...options.config };
         this.#context = options.context ?? {};
+        this.#json = options.json ?? isCi();
+
+        // JSON mode disables color
+        if (this.#json) {
+
+            this.#color = false;
+
+        }
 
         // Set up streams
         if (options.console) {
@@ -98,7 +164,7 @@ export class Logger {
         else if (isCi()) {
 
             this.#console = process.stdout;
-            this.#color = options.color ?? false; // No color in CI by default
+            this.#color = options.color ?? true; // Enable color in CI (most terminals support it)
 
         }
 
@@ -154,6 +220,43 @@ export class Logger {
     }
 
     /**
+     * Get logger statistics.
+     *
+     * Returns null when logger is not running.
+     */
+    get stats(): { pending: number; totalWritten: number } | null {
+
+        if (this.#state !== 'running' || !this.#queue) {
+
+            return null;
+
+        }
+
+        return {
+            pending: this.#queue.pending,
+            totalWritten: this.#queue.stats.processed,
+        };
+
+    }
+
+    /**
+     * Flush pending log entries.
+     *
+     * Waits for all queued entries to be processed.
+     */
+    async flush(): Promise<void> {
+
+        if (!this.#queue || this.#state !== 'running') {
+
+            return;
+
+        }
+
+        await this.#queue.flush();
+
+    }
+
+    /**
      * Update the logging context.
      *
      * Context is included with every log entry.
@@ -189,6 +292,15 @@ export class Logger {
         if (!this.isEnabled) {
 
             return;
+
+        }
+
+        // Create file stream if config.file is set but no explicit file option
+        if (!this.#file && this.#config.file) {
+
+            const filePath = this.filepath;
+            await mkdir(dirname(filePath), { recursive: true });
+            this.#file = createWriteStream(filePath, { flags: 'a' });
 
         }
 
@@ -323,113 +435,159 @@ export class Logger {
 
         }
 
-        // Get event level for filtering
-        const entryLevel = classifyEvent(event);
+        // Get event level, with override for non-success status
+        let entryLevel = classifyEvent(event);
+
+        // Override to error for failed/partial completions and file executions
+        if (
+            (event.endsWith(':complete') || event.endsWith(':after')) &&
+            data['status'] !== 'success' &&
+            data['status'] !== 'skipped'
+        ) {
+
+            entryLevel = 'error';
+
+        }
 
         // Filter sensitive data
         const filteredData = filterData({ ...data }, this.#config.level);
 
-        // Format for output
-        if (isCi()) {
+        // Generate human-readable message
+        const message = generateMessage(event, filteredData);
 
-            // CI mode: compact line format
-            this.#writeLine(entryLevel, event, filteredData);
+        // Console output: based on user settings
+        this.#writeConsole(entryLevel, event, message, filteredData);
 
-        }
-        else {
-
-            // File mode: JSON entries
-            this.#writeEntry(event, filteredData);
-
-        }
+        // File output: always JSON
+        this.#writeFile(entryLevel, event, message, filteredData);
 
     }
 
     /**
-     * Write a compact log line.
+     * Write to console stream.
      *
-     * Console gets colored output if color is enabled.
-     * File always gets plain text for parseability.
+     * Format depends on user settings:
+     * - JSON mode: NDJSON with time, type, level, message
+     * - Color mode: Colored inline format
+     * - Plain mode: Bracketed timestamp format
      */
-    #writeLine(level: EntryLevel, event: string, data: Record<string, unknown>): void {
+    #writeConsole(
+        level: EntryLevel,
+        event: string,
+        message: string,
+        data: Record<string, unknown>,
+    ): void {
 
-        const message = generateMessage(event, data);
-        const includeData = this.#config.level === 'verbose';
+        if (!this.#console) {
 
-        // Console output (colored if enabled)
-        if (this.#console) {
-
-            if (this.#color) {
-
-                // Colored format: icon event  message  key=value key=value
-                const colorLine = formatColorLine(
-                    level,
-                    event,
-                    message,
-                    includeData ? data : undefined,
-                );
-
-                this.#console.write(colorLine + '\n');
-
-            }
-            else {
-
-                // Plain format for non-color console
-                const timestamp = new Date().toISOString();
-                const levelLabel = level.toUpperCase().padEnd(5);
-                let line = `[${timestamp}] [${levelLabel}] [${event}] ${message}`;
-
-                if (includeData && Object.keys(data).length > 0) {
-
-                    line += ` ${JSON.stringify(data)}`;
-
-                }
-
-                this.#console.write(line + '\n');
-
-            }
+            return;
 
         }
 
-        // File output (always plain text)
-        if (this.#file) {
+        const hasData = data && Object.keys(data).length > 0;
 
-            const timestamp = new Date().toISOString();
+        if (this.#json) {
+
+            // JSON mode for console
+            const entry = this.#buildJsonEntry(level, event, message, data, hasData);
+            this.#console.write(JSON.stringify(entry) + '\n');
+
+        }
+        else if (this.#color) {
+
+            // Colored format: [timestamp] icon event  message  key=value key=value
+            const timestamp = dayjs().format('YY-MM-DD HH:mm:ss');
+            const colorLine = formatColorLine(
+                level,
+                event,
+                message,
+                hasData ? data : undefined,
+            );
+            this.#console.write(`[${timestamp}] ${colorLine}\n`);
+
+        }
+        else {
+
+            // Plain format: [timestamp] [LEVEL] [event] message
+            const timestamp = dayjs().format('YY-MM-DD HH:mm:ss');
             const levelLabel = level.toUpperCase().padEnd(5);
             let line = `[${timestamp}] [${levelLabel}] [${event}] ${message}`;
 
-            if (includeData && Object.keys(data).length > 0) {
+            if (hasData) {
 
                 line += ` ${JSON.stringify(data)}`;
 
             }
 
-            this.#file.write(line + '\n');
+            this.#console.write(line + '\n');
 
         }
 
     }
 
     /**
-     * Write a JSON log entry (file mode).
+     * Write to file stream.
+     *
+     * Always outputs JSON format for parseability by observability tools.
      */
-    #writeEntry(event: string, data: Record<string, unknown>): void {
+    #writeFile(
+        level: EntryLevel,
+        event: string,
+        message: string,
+        data: Record<string, unknown>,
+    ): void {
 
-        const includeData = this.#config.level === 'verbose';
-        const entry = formatEntry(event, data, this.#context, includeData);
-        const line = serializeEntry(entry);
+        if (!this.#file) {
 
-        if (this.#console) {
+            return;
 
-            this.#console.write(line);
+        }
+
+        const hasData = data && Object.keys(data).length > 0;
+        const entry = this.#buildJsonEntry(level, event, message, data, hasData);
+        this.#file.write(JSON.stringify(entry) + '\n');
+
+    }
+
+    /**
+     * Build a JSON entry for observability tools.
+     *
+     * Uses field names compatible with Grafana, GitHub Actions:
+     * - time: ISO 8601 with local timezone
+     * - type: event type (observer event name)
+     * - level: log level
+     * - message: human-readable message
+     * - Plus flattened data fields with dot-notation
+     */
+    #buildJsonEntry(
+        level: EntryLevel,
+        event: string,
+        message: string,
+        data: Record<string, unknown>,
+        includeData: boolean,
+    ): Record<string, unknown> {
+
+        const entry: Record<string, unknown> = {
+            time: dayjs().format('YYYY-MM-DDTHH:mm:ss.SSSZ'),
+            type: event,
+            level,
+            message,
+        };
+
+        if (includeData && Object.keys(data).length > 0) {
+
+            flattenToJson(data, entry);
 
         }
 
-        if (this.#file) {
+        // Add context fields
+        if (this.#context && Object.keys(this.#context).length > 0) {
 
-            this.#file.write(line);
+            flattenToJson(this.#context, entry);
 
         }
+
+        return entry;
 
     }
 
@@ -468,7 +626,7 @@ export class Logger {
     /**
      * Log an info message directly.
      */
-    info(message: string, data?: Record<string, unknown>): void {
+    info(message: string, data?: object): void {
 
         this.#log('info', message, data);
 
@@ -477,7 +635,7 @@ export class Logger {
     /**
      * Log a warning message directly.
      */
-    warn(message: string, data?: Record<string, unknown>): void {
+    warn(message: string, data?: object): void {
 
         this.#log('warn', message, data);
 
@@ -486,16 +644,16 @@ export class Logger {
     /**
      * Log an error message directly.
      */
-    error(message: string, data?: Record<string, unknown>): void {
+    error(message: string, data?: unknown): void {
 
-        this.#log('error', message, data);
+        this.#log('error', message, data as never);
 
     }
 
     /**
      * Log a debug message directly.
      */
-    debug(message: string, data?: Record<string, unknown>): void {
+    debug(message: string, data?: object): void {
 
         this.#log('debug', message, data);
 
@@ -503,8 +661,10 @@ export class Logger {
 
     /**
      * Internal log method.
+     *
+     * Uses the same output methods as observer events for consistent formatting.
      */
-    #log(level: EntryLevel, message: string, data?: Record<string, unknown>): void {
+    #log(level: EntryLevel, message: string, data?: object): void {
 
         if (!this.isEnabled || this.#state !== 'running') {
 
@@ -524,30 +684,9 @@ export class Logger {
 
         const filteredData = data ? filterData({ ...data }, this.#config.level) : {};
 
-        const timestamp = new Date().toISOString();
-        const levelLabel = level.toUpperCase().padEnd(5);
-
-        let line = `[${timestamp}] [${levelLabel}] ${message}`;
-
-        if (this.#config.level === 'verbose' && data && Object.keys(data).length > 0) {
-
-            line += ` ${JSON.stringify(filteredData)}`;
-
-        }
-
-        line += '\n';
-
-        if (this.#console) {
-
-            this.#console.write(line);
-
-        }
-
-        if (this.#file) {
-
-            this.#file.write(line);
-
-        }
+        // Use same output methods as observer events
+        this.#writeConsole(level, 'log', message, filteredData);
+        this.#writeFile(level, 'log', message, filteredData);
 
     }
 
@@ -562,12 +701,28 @@ let loggerInstance: Logger | null = null;
 /**
  * Get or create a Logger instance.
  *
- * @param options - Logger options
+ * @param optionsOrProjectRoot - Logger options or just the project root path
  * @returns Logger instance
  */
-export function getLogger(options?: LoggerOptions): Logger | null {
+export function getLogger(optionsOrProjectRoot?: LoggerOptions | string): Logger | null {
 
-    if (!loggerInstance && options) {
+    if (!loggerInstance && optionsOrProjectRoot) {
+
+        let options: LoggerOptions = {
+            projectRoot: '',
+            settings: {} as Settings,
+        };
+
+        if (typeof optionsOrProjectRoot === 'string') {
+
+            options.projectRoot = optionsOrProjectRoot;
+
+        }
+        else {
+
+            options = merge(options, optionsOrProjectRoot) as LoggerOptions;
+
+        }
 
         loggerInstance = new Logger(options);
 

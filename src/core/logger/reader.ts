@@ -128,6 +128,7 @@ export async function readLogFile(
  * Type guard for valid log entries.
  *
  * Ensures the parsed object has the required fields.
+ * Uses 'time' and 'type' field names (Grafana/GitHub Actions compatible format).
  */
 function isValidLogEntry(obj: unknown): obj is LogEntry {
 
@@ -140,9 +141,9 @@ function isValidLogEntry(obj: unknown): obj is LogEntry {
     const entry = obj as Record<string, unknown>;
 
     return (
-        typeof entry['timestamp'] === 'string' &&
+        typeof entry['time'] === 'string' &&
         typeof entry['level'] === 'string' &&
-        typeof entry['event'] === 'string' &&
+        typeof entry['type'] === 'string' &&
         typeof entry['message'] === 'string'
     );
 

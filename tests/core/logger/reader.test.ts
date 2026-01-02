@@ -64,21 +64,21 @@ describe('logger: reader', () => {
 
             const entries: LogEntry[] = [
                 {
-                    timestamp: '2024-01-15T10:00:00.000Z',
+                    time: '2024-01-15T10:00:00.000Z',
                     level: 'info',
-                    event: 'build:start',
+                    type: 'build:start',
                     message: 'Starting build',
                 },
                 {
-                    timestamp: '2024-01-15T10:01:00.000Z',
+                    time: '2024-01-15T10:01:00.000Z',
                     level: 'debug',
-                    event: 'file:before',
+                    type: 'file:before',
                     message: 'Executing file',
                 },
                 {
-                    timestamp: '2024-01-15T10:02:00.000Z',
+                    time: '2024-01-15T10:02:00.000Z',
                     level: 'error',
-                    event: 'build:error',
+                    type: 'build:error',
                     message: 'Build failed',
                 },
             ];
@@ -93,18 +93,18 @@ describe('logger: reader', () => {
             expect(result.hasMore).toBe(false);
 
             // Verify newest first order (reverse chronological)
-            expect(result.entries[0].timestamp).toBe('2024-01-15T10:02:00.000Z');
-            expect(result.entries[1].timestamp).toBe('2024-01-15T10:01:00.000Z');
-            expect(result.entries[2].timestamp).toBe('2024-01-15T10:00:00.000Z');
+            expect(result.entries[0].time).toBe('2024-01-15T10:02:00.000Z');
+            expect(result.entries[1].time).toBe('2024-01-15T10:01:00.000Z');
+            expect(result.entries[2].time).toBe('2024-01-15T10:00:00.000Z');
 
         });
 
         it('should skip malformed JSON entries', async () => {
 
             const validEntry: LogEntry = {
-                timestamp: '2024-01-15T10:00:00.000Z',
+                time: '2024-01-15T10:00:00.000Z',
                 level: 'info',
-                event: 'build:start',
+                type: 'build:start',
                 message: 'Starting build',
             };
 
@@ -131,9 +131,9 @@ describe('logger: reader', () => {
 
             // Create 10 entries
             const entries: LogEntry[] = Array.from({ length: 10 }, (_, i) => ({
-                timestamp: `2024-01-15T10:${String(i).padStart(2, '0')}:00.000Z`,
+                time: `2024-01-15T10:${String(i).padStart(2, '0')}:00.000Z`,
                 level: 'info' as const,
-                event: 'test:event',
+                type: 'test:event',
                 message: `Entry ${i}`,
             }));
 
@@ -156,21 +156,21 @@ describe('logger: reader', () => {
 
             const entries: LogEntry[] = [
                 {
-                    timestamp: '2024-01-15T10:00:00.000Z',
+                    time: '2024-01-15T10:00:00.000Z',
                     level: 'info',
-                    event: 'first',
+                    type: 'first',
                     message: 'First entry',
                 },
                 {
-                    timestamp: '2024-01-15T11:00:00.000Z',
+                    time: '2024-01-15T11:00:00.000Z',
                     level: 'info',
-                    event: 'second',
+                    type: 'second',
                     message: 'Second entry',
                 },
                 {
-                    timestamp: '2024-01-15T12:00:00.000Z',
+                    time: '2024-01-15T12:00:00.000Z',
                     level: 'info',
-                    event: 'third',
+                    type: 'third',
                     message: 'Third entry',
                 },
             ];
@@ -181,9 +181,9 @@ describe('logger: reader', () => {
             const result = await readLogFile(testFilePath);
 
             // Most recent (third) should be first
-            expect(result.entries[0].event).toBe('third');
-            expect(result.entries[1].event).toBe('second');
-            expect(result.entries[2].event).toBe('first');
+            expect(result.entries[0].type).toBe('third');
+            expect(result.entries[1].type).toBe('second');
+            expect(result.entries[2].type).toBe('first');
 
         });
 
@@ -191,9 +191,9 @@ describe('logger: reader', () => {
 
             // Create 100 entries
             const entries: LogEntry[] = Array.from({ length: 100 }, (_, i) => ({
-                timestamp: `2024-01-15T10:00:${String(i).padStart(2, '0')}.000Z`,
+                time: `2024-01-15T10:00:${String(i).padStart(2, '0')}.000Z`,
                 level: 'info' as const,
-                event: 'test:event',
+                type: 'test:event',
                 message: `Entry ${i}`,
             }));
 
@@ -232,20 +232,20 @@ describe('logger: reader', () => {
         it('should skip entries missing required fields', async () => {
 
             const validEntry: LogEntry = {
-                timestamp: '2024-01-15T10:00:00.000Z',
+                time: '2024-01-15T10:00:00.000Z',
                 level: 'info',
-                event: 'valid',
+                type: 'valid',
                 message: 'Valid entry',
             };
 
             const invalidEntries = [
-                { level: 'info', event: 'test', message: 'Missing timestamp' },
-                { timestamp: '2024-01-15T10:00:00.000Z', event: 'test', message: 'Missing level' },
-                { timestamp: '2024-01-15T10:00:00.000Z', level: 'info', message: 'Missing event' },
+                { level: 'info', type: 'test', message: 'Missing time' },
+                { time: '2024-01-15T10:00:00.000Z', type: 'test', message: 'Missing level' },
+                { time: '2024-01-15T10:00:00.000Z', level: 'info', message: 'Missing type' },
                 {
-                    timestamp: '2024-01-15T10:00:00.000Z',
+                    time: '2024-01-15T10:00:00.000Z',
                     level: 'info',
-                    event: 'test',
+                    type: 'test',
                 },
             ];
 
@@ -261,17 +261,17 @@ describe('logger: reader', () => {
 
             // Should only parse the 2 valid entries
             expect(result.entries).toHaveLength(2);
-            expect(result.entries[0].event).toBe('valid');
-            expect(result.entries[1].event).toBe('valid');
+            expect(result.entries[0].type).toBe('valid');
+            expect(result.entries[1].type).toBe('valid');
 
         });
 
         it('should handle entries with optional data and context fields', async () => {
 
             const entryWithExtras: LogEntry = {
-                timestamp: '2024-01-15T10:00:00.000Z',
+                time: '2024-01-15T10:00:00.000Z',
                 level: 'info',
-                event: 'build:start',
+                type: 'build:start',
                 message: 'Starting build',
                 data: { fileCount: 10 },
                 context: { config: 'dev' },
@@ -291,9 +291,9 @@ describe('logger: reader', () => {
 
             // Create 600 entries
             const entries: LogEntry[] = Array.from({ length: 600 }, (_, i) => ({
-                timestamp: `2024-01-15T10:00:${String(i % 60).padStart(2, '0')}.${String(Math.floor(i / 60)).padStart(3, '0')}Z`,
+                time: `2024-01-15T10:00:${String(i % 60).padStart(2, '0')}.${String(Math.floor(i / 60)).padStart(3, '0')}Z`,
                 level: 'info' as const,
-                event: 'test:event',
+                type: 'test:event',
                 message: `Entry ${i}`,
             }));
 
@@ -318,9 +318,9 @@ describe('logger: reader', () => {
         it('should return true for valid entry with required fields', async () => {
 
             const validEntry: LogEntry = {
-                timestamp: '2024-01-15T10:00:00.000Z',
+                time: '2024-01-15T10:00:00.000Z',
                 level: 'info',
-                event: 'test',
+                type: 'test',
                 message: 'Test message',
             };
 
@@ -333,12 +333,12 @@ describe('logger: reader', () => {
 
         });
 
-        it('should return false for missing timestamp', async () => {
+        it('should return false for missing time', async () => {
 
             const invalidEntry = {
                 level: 'info',
-                event: 'test',
-                message: 'Missing timestamp',
+                type: 'test',
+                message: 'Missing time',
             };
 
             await fs.writeFile(testFilePath, JSON.stringify(invalidEntry), 'utf-8');
@@ -352,8 +352,8 @@ describe('logger: reader', () => {
         it('should return false for missing level', async () => {
 
             const invalidEntry = {
-                timestamp: '2024-01-15T10:00:00.000Z',
-                event: 'test',
+                time: '2024-01-15T10:00:00.000Z',
+                type: 'test',
                 message: 'Missing level',
             };
 
@@ -384,12 +384,12 @@ describe('logger: reader', () => {
 
         });
 
-        it('should return false for missing event', async () => {
+        it('should return false for missing type', async () => {
 
             const invalidEntry = {
-                timestamp: '2024-01-15T10:00:00.000Z',
+                time: '2024-01-15T10:00:00.000Z',
                 level: 'info',
-                message: 'Missing event',
+                message: 'Missing type',
             };
 
             await fs.writeFile(testFilePath, JSON.stringify(invalidEntry), 'utf-8');
@@ -403,9 +403,9 @@ describe('logger: reader', () => {
         it('should return false for missing message', async () => {
 
             const invalidEntry = {
-                timestamp: '2024-01-15T10:00:00.000Z',
+                time: '2024-01-15T10:00:00.000Z',
                 level: 'info',
-                event: 'test',
+                type: 'test',
             };
 
             await fs.writeFile(testFilePath, JSON.stringify(invalidEntry), 'utf-8');
@@ -419,10 +419,10 @@ describe('logger: reader', () => {
         it('should return false for non-string required fields', async () => {
 
             const invalidEntries = [
-                { timestamp: 123, level: 'info', event: 'test', message: 'msg' },
-                { timestamp: '2024-01-15T10:00:00.000Z', level: 123, event: 'test', message: 'msg' },
-                { timestamp: '2024-01-15T10:00:00.000Z', level: 'info', event: 123, message: 'msg' },
-                { timestamp: '2024-01-15T10:00:00.000Z', level: 'info', event: 'test', message: 123 },
+                { time: 123, level: 'info', type: 'test', message: 'msg' },
+                { time: '2024-01-15T10:00:00.000Z', level: 123, type: 'test', message: 'msg' },
+                { time: '2024-01-15T10:00:00.000Z', level: 'info', type: 123, message: 'msg' },
+                { time: '2024-01-15T10:00:00.000Z', level: 'info', type: 'test', message: 123 },
             ];
 
             const content = invalidEntries.map((e) => JSON.stringify(e)).join('\n');

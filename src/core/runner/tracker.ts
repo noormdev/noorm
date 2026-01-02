@@ -79,6 +79,7 @@ export class Tracker {
      * - Force flag is set
      * - No previous execution exists (new file)
      * - Previous execution failed
+     * - Parent changeset is stale (schema was torn down)
      * - Checksum differs (file changed)
      *
      * @param filepath - File path to check
@@ -96,6 +97,7 @@ export class Tracker {
         }
 
         // Find most recent execution for this file and config
+        // Also fetch the parent changeset status to check for stale
         const [record, err] = await attempt(() =>
             this.#db
                 .selectFrom(NOORM_TABLES.executions)
@@ -104,9 +106,10 @@ export class Tracker {
                     `${NOORM_TABLES.changeset}.id`,
                     `${NOORM_TABLES.executions}.changeset_id`,
                 )
-                .select([
-                    `${NOORM_TABLES.executions}.checksum`,
-                    `${NOORM_TABLES.executions}.status`,
+                .select((eb) => [
+                    eb.ref(`${NOORM_TABLES.executions}.checksum`).as('checksum'),
+                    eb.ref(`${NOORM_TABLES.executions}.status`).as('exec_status'),
+                    eb.ref(`${NOORM_TABLES.changeset}.status`).as('changeset_status'),
                 ])
                 .where(`${NOORM_TABLES.executions}.filepath`, '=', filepath)
                 .where(`${NOORM_TABLES.changeset}.config_name`, '=', this.#configName)
@@ -136,11 +139,22 @@ export class Tracker {
         }
 
         // Previous execution failed - retry
-        if (record.status === 'failed') {
+        if (record.exec_status === 'failed') {
 
             return {
                 needsRun: true,
                 reason: 'failed',
+                previousChecksum: record.checksum,
+            };
+
+        }
+
+        // Parent changeset is stale (schema was torn down) - needs re-run
+        if (record.changeset_status === 'stale') {
+
+            return {
+                needsRun: true,
+                reason: 'stale',
                 previousChecksum: record.checksum,
             };
 

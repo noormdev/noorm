@@ -19,10 +19,11 @@ import type {
     TeardownResult,
     TeardownPreview,
 } from './types.js';
-import { NOORM_TABLES } from '../shared/tables.js';
+import { NOORM_TABLES, type NoormDatabase } from '../shared/tables.js';
 import { fetchList } from '../explore/operations.js';
 import { getTeardownOperations } from './dialects/index.js';
 import { observer } from '../observer.js';
+import { ChangesetHistory } from '../changeset/history.js';
 
 /**
  * Names of all noorm internal tables as strings.
@@ -372,6 +373,25 @@ export async function teardownSchema(
 
         const postScriptResult = await executePostScript(db, options.postScript);
         result.postScriptResult = postScriptResult;
+
+    }
+
+    // Mark changesets as stale and record reset if config provided
+    if (options.configName && options.executedBy && !options.dryRun) {
+
+        const history = new ChangesetHistory(
+            db as Kysely<NoormDatabase>,
+            options.configName,
+        );
+
+        // Mark all successful changesets as stale
+        result.staleCount = await history.markAllAsStale();
+
+        // Record the reset event
+        result.resetRecordId = await history.recordReset(
+            options.executedBy,
+            `Schema teardown: dropped ${dropped.tables.length} tables, ${dropped.views.length} views`,
+        );
 
     }
 

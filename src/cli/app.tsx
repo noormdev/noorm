@@ -41,7 +41,7 @@ import { ShutdownProvider } from './shutdown.js';
 /**
  * Help screen content.
  *
- * Shows global keyboard shortcuts.
+ * Shows global keyboard shortcuts in a compact horizontal layout.
  */
 function HelpScreen({ onClose }: { onClose: () => void }): ReactElement {
 
@@ -59,53 +59,17 @@ function HelpScreen({ onClose }: { onClose: () => void }): ReactElement {
 
     });
 
+    // Shortcut item component
+    const Item = ({ k, desc }: { k: string; desc: string }) => (
+        <Text>
+            <Text color="yellow">{k.padEnd(12)}</Text>
+            <Text dimColor>{desc}</Text>
+        </Text>
+    );
+
     return (
-        <Box flexDirection="column" minHeight={20}>
-            {/* Header */}
-            <Box
-                borderStyle="single"
-                borderBottom
-                borderTop={false}
-                borderLeft={false}
-                borderRight={false}
-                borderColor="gray"
-                paddingX={1}
-            >
-                <Text dimColor bold>Keyboard Shortcuts</Text>
-            </Box>
-
-            {/* Content */}
-            <Box flexDirection="column" paddingX={1} paddingY={1} gap={1} flexGrow={1}>
-                <Box flexDirection="column">
-                    <Text dimColor bold>Navigation</Text>
-                    <Text dimColor>Esc       Go back / Cancel</Text>
-                    <Text dimColor>Enter     Confirm / Select</Text>
-                    <Text dimColor>Tab       Next field / Switch mode</Text>
-                    <Text dimColor>↑/↓       Navigate items</Text>
-                </Box>
-
-                <Box flexDirection="column">
-                    <Text dimColor bold>Global Modes</Text>
-                    <Text dimColor>
-                        D         Toggle dry-run mode{' '}
-                        {globalModes.dryRun && <Text color="yellow">(active)</Text>}
-                    </Text>
-                    <Text dimColor>
-                        F         Toggle force mode{' '}
-                        {globalModes.force && <Text color="red">(active)</Text>}
-                    </Text>
-                </Box>
-
-                <Box flexDirection="column">
-                    <Text dimColor bold>Global</Text>
-                    <Text dimColor>?         Show this help</Text>
-                    <Text dimColor>Shift+L   Toggle log viewer</Text>
-                    <Text dimColor>Shift+Q   Open SQL terminal</Text>
-                    <Text dimColor>Ctrl+C    Quit application</Text>
-                </Box>
-            </Box>
-
-            {/* Footer */}
+        <Box flexDirection="column">
+            {/* Divider line */}
             <Box
                 borderStyle="single"
                 borderTop
@@ -113,9 +77,31 @@ function HelpScreen({ onClose }: { onClose: () => void }): ReactElement {
                 borderLeft={false}
                 borderRight={false}
                 borderColor="gray"
-                paddingX={1}
-            >
-                <Text dimColor>Press any key to close</Text>
+            />
+
+            {/* Content - 3 columns */}
+            <Box paddingX={1} paddingTop={1}>
+                {/* Column 1 - Navigation */}
+                <Box flexDirection="column" width={30}>
+                    <Item k="esc" desc="go back / cancel" />
+                    <Item k="enter" desc="confirm / select" />
+                    <Item k="tab" desc="next field" />
+                    <Item k="↑ / ↓" desc="navigate items" />
+                </Box>
+
+                {/* Column 2 - Modes & Actions */}
+                <Box flexDirection="column" width={34}>
+                    <Item k="D" desc={`toggle dry-run${globalModes.dryRun ? ' (active)' : ''}`} />
+                    <Item k="F" desc={`toggle force${globalModes.force ? ' (active)' : ''}`} />
+                    <Item k="shift + L" desc="toggle log viewer" />
+                    <Item k="shift + Q" desc="open SQL terminal" />
+                </Box>
+
+                {/* Column 3 - Global */}
+                <Box flexDirection="column" width={28}>
+                    <Item k="?" desc="show this help" />
+                    <Item k="ctrl + c" desc="quit application" />
+                </Box>
             </Box>
         </Box>
     );

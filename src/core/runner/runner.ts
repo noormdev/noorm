@@ -32,6 +32,7 @@ import { sql } from 'kysely';
 import { attempt } from '@logosdx/utils';
 
 import { observer } from '../observer.js';
+import { formatIdentity } from '../identity/resolver.js';
 import { processFile, isTemplate } from '../template/index.js';
 import { computeChecksum, computeCombinedChecksum } from './checksum.js';
 import { Tracker } from './tracker.js';
@@ -485,10 +486,10 @@ async function executeFiles(
     const checksums = results.filter((r) => r.checksum).map((r) => r.checksum);
     const combinedChecksum = computeCombinedChecksum(checksums);
 
-    // Finalize operation
+    // Finalize operation (partial failures count as failed)
     await tracker.finalizeOperation(
         operationId!,
-        status === 'failed' ? 'failed' : 'success',
+        status === 'success' ? 'success' : 'failed',
         Math.round(durationMs),
         combinedChecksum,
     );
@@ -893,21 +894,6 @@ export async function discoverFiles(dirpath: string): Promise<string[]> {
 function isSqlFile(filename: string): boolean {
 
     return SQL_EXTENSIONS.some((ext) => filename.endsWith(ext));
-
-}
-
-/**
- * Format identity for tracking.
- */
-function formatIdentity(identity: { name: string; email?: string }): string {
-
-    if (identity.email) {
-
-        return `${identity.name} <${identity.email}>`;
-
-    }
-
-    return identity.name;
 
 }
 

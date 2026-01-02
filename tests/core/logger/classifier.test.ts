@@ -102,12 +102,19 @@ describe('logger: classifier', () => {
 
         });
 
+        it('should classify file execution events as info level', () => {
+
+            expect(classifyEvent('file:after')).toBe('info');
+            expect(classifyEvent('file:skip')).toBe('info');
+            expect(classifyEvent('file:dry-run')).toBe('info');
+
+        });
+
         it('should classify other events as debug level', () => {
 
             expect(classifyEvent('file:before')).toBe('debug');
             expect(classifyEvent('lock:acquiring')).toBe('debug');
             expect(classifyEvent('changeset:file')).toBe('debug');
-            expect(classifyEvent('file:skip')).toBe('debug');
 
         });
 

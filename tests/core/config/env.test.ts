@@ -12,11 +12,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
     getEnvConfig,
-    getEnvConfigName,
-    isCI,
-    shouldSkipConfirmations,
-    shouldOutputJson,
 } from '../../../src/core/config/index.js';
+import { getEnvConfigName, isCi, shouldOutputJson, shouldSkipConfirmations } from '../../../src/core/environment.js';
 
 describe('config: env', () => {
 
@@ -268,13 +265,13 @@ describe('config: env', () => {
             process.env['NOORM_YES'] = 'true';
             process.env['NOORM_JSON'] = 'true';
 
-            const config = getEnvConfig();
+            const config = getEnvConfig() as unknown as Record<string, unknown>;
 
             // These should not appear in the config object
             expect(config).toEqual({});
-            expect((config as Record<string, unknown>)['config']).toBeUndefined();
-            expect((config as Record<string, unknown>)['yes']).toBeUndefined();
-            expect((config as Record<string, unknown>)['json']).toBeUndefined();
+            expect(config.config).toBeUndefined();
+            expect(config.yes).toBeUndefined();
+            expect(config.json).toBeUndefined();
 
         });
 
@@ -302,7 +299,7 @@ describe('config: env', () => {
 
         it('should return false when CI not set', () => {
 
-            expect(isCI()).toBe(false);
+            expect(isCi()).toBe(false);
 
         });
 
@@ -310,7 +307,7 @@ describe('config: env', () => {
 
             process.env['CI'] = '1';
 
-            expect(isCI()).toBe(true);
+            expect(isCi()).toBe(true);
 
         });
 
@@ -318,7 +315,7 @@ describe('config: env', () => {
 
             process.env['CI'] = 'true';
 
-            expect(isCI()).toBe(true);
+            expect(isCi()).toBe(true);
 
         });
 
@@ -326,7 +323,7 @@ describe('config: env', () => {
 
             process.env['CI'] = 'false';
 
-            expect(isCI()).toBe(false);
+            expect(isCi()).toBe(false);
 
         });
 

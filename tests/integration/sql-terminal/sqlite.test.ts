@@ -82,7 +82,7 @@ describe('integration: sqlite sql-terminal', () => {
 
             const result = await executeRawSql(
                 db,
-                "SELECT id, title FROM todo_items WHERE priority >= 1",
+                'SELECT id, title FROM todo_items WHERE priority >= 1',
                 'test-config',
             );
 
@@ -438,11 +438,11 @@ describe('integration: sqlite sql-terminal', () => {
             // Verify column exists
             const check = await executeRawSql(
                 db,
-                "PRAGMA table_info(users)",
+                'PRAGMA table_info(users)',
                 'test-config',
             );
 
-            const columnNames = check.rows!.map((r: any) => r.name);
+            const columnNames = check.rows!.map((r) => r['name'] as string);
             expect(columnNames).toContain('bio');
 
         });

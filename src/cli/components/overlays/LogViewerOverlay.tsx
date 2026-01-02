@@ -64,20 +64,20 @@ function getLevelColor(level: string): string {
 }
 
 /**
- * Format timestamp for display.
+ * Format time for display.
  */
-function formatTime(timestamp: string): string {
+function formatTime(time: string): string {
 
     try {
 
-        const date = new Date(timestamp);
+        const date = new Date(time);
 
         return date.toLocaleTimeString('en-US', { hour12: false });
 
     }
     catch {
 
-        return timestamp.slice(11, 19);
+        return time.slice(11, 19);
 
     }
 
@@ -142,7 +142,7 @@ export function LogViewerOverlay({ onClose }: LogViewerOverlayProps): ReactEleme
         const term = searchTerm.toLowerCase();
 
         return entries.filter((e) =>
-            e.event.toLowerCase().includes(term) ||
+            e.type.toLowerCase().includes(term) ||
             e.message.toLowerCase().includes(term) ||
             e.level.toLowerCase().includes(term),
         );
@@ -193,7 +193,8 @@ export function LogViewerOverlay({ onClose }: LogViewerOverlayProps): ReactEleme
         // Search mode input
         if (searchMode) {
 
-            if (key.backspace) {
+            // Handle both backspace and delete (terminals vary)
+            if (key.backspace || key.delete) {
 
                 setSearchTerm((prev) => prev.slice(0, -1));
 
@@ -236,6 +237,23 @@ export function LogViewerOverlay({ onClose }: LogViewerOverlayProps): ReactEleme
         if (input === 'r' || input === 'R') {
 
             loadLogs();
+
+            return;
+
+        }
+
+        // g - jump to top (newest), G - jump to bottom (oldest)
+        if (input === 'g') {
+
+            setHighlightedIndex(0);
+
+            return;
+
+        }
+
+        if (input === 'G') {
+
+            setHighlightedIndex(Math.max(0, filteredEntries.length - 1));
 
             return;
 
@@ -379,12 +397,12 @@ export function LogViewerOverlay({ onClose }: LogViewerOverlayProps): ReactEleme
                             const isHighlighted = actualIdx === highlightedIndex;
 
                             return (
-                                <Box key={`${entry.timestamp}-${actualIdx}`} gap={1}>
+                                <Box key={`${entry.time}-${actualIdx}`} gap={1}>
                                     <Text inverse={isHighlighted}>
                                         {isHighlighted ? '>' : ' '}
                                     </Text>
                                     <Box width={8}>
-                                        <Text dimColor>{formatTime(entry.timestamp)}</Text>
+                                        <Text dimColor>{formatTime(entry.time)}</Text>
                                     </Box>
                                     <Box width={6}>
                                         <Text color={getLevelColor(entry.level)}>
@@ -392,7 +410,7 @@ export function LogViewerOverlay({ onClose }: LogViewerOverlayProps): ReactEleme
                                         </Text>
                                     </Box>
                                     <Box width={25}>
-                                        <Text color="cyan">{entry.event.slice(0, 24)}</Text>
+                                        <Text color="cyan">{entry.type.slice(0, 24)}</Text>
                                     </Box>
                                     <Text>{entry.message.slice(0, 45)}</Text>
                                 </Box>
@@ -415,9 +433,9 @@ export function LogViewerOverlay({ onClose }: LogViewerOverlayProps): ReactEleme
                 gap={2}
             >
                 <Text dimColor>[/] Search</Text>
+                <Text dimColor>[g/G] Top/Bottom</Text>
                 <Text dimColor>[Space] {paused ? 'Resume' : 'Pause'}</Text>
                 <Text dimColor>[Enter] Detail</Text>
-                <Text dimColor>[r] Refresh</Text>
                 <Text dimColor>[Shift+L] Close</Text>
             </Box>
         </Box>

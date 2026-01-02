@@ -46,6 +46,10 @@ const INFO_PATTERNS = [
     /:flushed$/,
     /:started$/,
     /:initialized$/,
+    // File execution events - important for tracking build progress
+    /:after$/,
+    /:skip$/,
+    /:dry-run$/,
 ];
 
 /**

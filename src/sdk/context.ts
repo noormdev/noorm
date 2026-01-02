@@ -50,7 +50,6 @@ import { getStateManager } from '../core/state/index.js';
 import { checkProtectedConfig } from './guards.js';
 import type {
     CreateContextOptions,
-    Context as IContext,
     ExecuteResult,
     TransactionContext,
     BuildOptions,
@@ -77,13 +76,13 @@ import type {
  * await ctx.disconnect()
  * ```
  */
-export class Context<DB = unknown> implements IContext<DB> {
+export class Context<DB = unknown> {
 
     #connection: ConnectionResult | null = null;
     #config: Config;
     #settings: Settings;
     #identity: Identity;
-    #options: CreateContextOptions<DB>;
+    #options: CreateContextOptions;
     #projectRoot: string;
     #changesetManager: ChangesetManager | null = null;
 
@@ -91,7 +90,7 @@ export class Context<DB = unknown> implements IContext<DB> {
         config: Config,
         settings: Settings,
         identity: Identity,
-        options: CreateContextOptions<DB>,
+        options: CreateContextOptions,
         projectRoot: string,
     ) {
 
@@ -285,7 +284,10 @@ export class Context<DB = unknown> implements IContext<DB> {
 
         checkProtectedConfig(this.#config, 'teardown', this.#options);
 
-        return teardownSchema(this.kysely as Kysely<unknown>, this.dialect);
+        return teardownSchema(this.kysely as Kysely<unknown>, this.dialect, {
+            configName: this.#config.name,
+            executedBy: formatIdentity(this.#identity),
+        });
 
     }
 

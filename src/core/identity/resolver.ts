@@ -205,7 +205,7 @@ function getSystemIdentity(): Identity {
  * // 'John'
  * ```
  */
-export function formatIdentity(identity: Identity): string {
+export function formatIdentity(identity: { name: string; email?: string }): string {
 
     if (identity.email) {
 
@@ -222,7 +222,7 @@ export function formatIdentity(identity: Identity): string {
  *
  * Same as formatIdentity - returns "Name <email>" or just "Name".
  */
-export function identityToString(identity: Identity): string {
+export function identityToString(identity: { name: string; email?: string }): string {
 
     return formatIdentity(identity);
 

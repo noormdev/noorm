@@ -10,7 +10,7 @@ describe('teardown: postgres dialect', () => {
 
             const sql = postgresTeardownOperations.disableForeignKeyChecks();
 
-            expect(sql).toBe(`SET session_replication_role = 'replica'`);
+            expect(sql).toBe('SET session_replication_role = \'replica\'');
 
         });
 
@@ -22,7 +22,7 @@ describe('teardown: postgres dialect', () => {
 
             const sql = postgresTeardownOperations.enableForeignKeyChecks();
 
-            expect(sql).toBe(`SET session_replication_role = 'origin'`);
+            expect(sql).toBe('SET session_replication_role = \'origin\'');
 
         });
 

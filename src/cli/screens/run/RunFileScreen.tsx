@@ -18,8 +18,8 @@ import type { ScreenProps } from '../../types.js';
 
 import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
-import { useActiveConfig, useSettings, useGlobalModes, useAppContext } from '../../app-context.js';
-import { Panel, Spinner, Confirm, SelectList, SearchableList, useToast } from '../../components/index.js';
+import { useSettings, useGlobalModes, useAppContext } from '../../app-context.js';
+import { Panel, Spinner, Confirm, SearchableList, useToast } from '../../components/index.js';
 import { useRunProgress } from '../../hooks/index.js';
 import { discoverFiles, runFile } from '../../../core/runner/index.js';
 import { createConnection, testConnection } from '../../../core/connection/index.js';

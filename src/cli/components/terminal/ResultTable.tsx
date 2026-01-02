@@ -45,6 +45,9 @@ export interface ResultTableProps {
     /** Called when user presses Escape to return focus */
     onEscape?: () => void;
 
+    /** Auto-sort by date column (desc) or ID (desc) on load. Default: true */
+    autoSort?: boolean;
+
 }
 
 /**
@@ -84,6 +87,159 @@ interface SortState {
 }
 
 /**
+ * Date column name patterns (priority order).
+ */
+const DATE_COLUMN_PATTERNS = [
+    /^created[_-]?at$/i,
+    /^updated[_-]?at$/i,
+    /^modified[_-]?at$/i,
+    /^timestamp$/i,
+    /^datetime$/i,
+    /^date$/i,
+    /[_-]at$/i,
+    /[_-]date$/i,
+    /[_-]time$/i,
+    /^created$/i,
+    /^updated$/i,
+    /^modified$/i,
+];
+
+/**
+ * ID column name patterns.
+ */
+const ID_COLUMN_PATTERNS = [
+    /^id$/i,
+    /^_id$/i,
+    /[_-]id$/i,
+];
+
+/**
+ * Check if a value looks like a date.
+ */
+function looksLikeDate(value: unknown): boolean {
+
+    if (value === null || value === undefined) return false;
+
+    // Already a Date object
+    if (value instanceof Date) return true;
+
+    // Check string patterns
+    if (typeof value === 'string') {
+
+        // ISO date: 2024-01-15 or 2024-01-15T10:30:00
+        if (/^\d{4}-\d{2}-\d{2}/.test(value)) return true;
+
+        // Common date formats: 01/15/2024, 15-01-2024
+        if (/^\d{1,2}[/-]\d{1,2}[/-]\d{2,4}/.test(value)) return true;
+
+        // Try parsing - valid if result is reasonable date
+        const parsed = Date.parse(value);
+        if (!isNaN(parsed)) {
+
+            const year = new Date(parsed).getFullYear();
+            return year >= 1970 && year <= 2100;
+
+        }
+
+    }
+
+    // Unix timestamp (number between 1970 and 2100 in seconds or ms)
+    if (typeof value === 'number') {
+
+        // Seconds (10 digits starting with 1)
+        if (value > 1e9 && value < 2e9) return true;
+
+        // Milliseconds (13 digits)
+        if (value > 1e12 && value < 2e12) return true;
+
+    }
+
+    return false;
+
+}
+
+/**
+ * Detect a date column from columns and sample rows.
+ * Returns the column name or null if none found.
+ */
+function detectDateColumn(
+    columns: string[],
+    rows: Record<string, unknown>[],
+): string | null {
+
+    // Try each pattern in priority order
+    for (const pattern of DATE_COLUMN_PATTERNS) {
+
+        for (const col of columns) {
+
+            if (pattern.test(col)) {
+
+                // Verify at least one non-null value looks like a date
+                const hasDateValue = rows.slice(0, 10).some((row) => {
+
+                    const val = row[col];
+                    return val !== null && val !== undefined;
+
+                });
+
+                if (hasDateValue) return col;
+
+            }
+
+        }
+
+    }
+
+    // Fallback: check values for date-like content
+    for (const col of columns) {
+
+        const sampleValues = rows.slice(0, 5).map((r) => r[col]);
+        const dateCount = sampleValues.filter(looksLikeDate).length;
+
+        // If majority of non-null samples look like dates
+        if (dateCount >= 3) return col;
+
+    }
+
+    return null;
+
+}
+
+/**
+ * Detect a numeric ID column from columns and sample rows.
+ * Returns the column name or null if none found.
+ */
+function detectNumericIdColumn(
+    columns: string[],
+    rows: Record<string, unknown>[],
+): string | null {
+
+    for (const pattern of ID_COLUMN_PATTERNS) {
+
+        for (const col of columns) {
+
+            if (pattern.test(col)) {
+
+                // Verify values are numeric
+                const sampleValues = rows.slice(0, 5).map((r) => r[col]);
+                const numericCount = sampleValues.filter((v) =>
+                    typeof v === 'number' ||
+                    (typeof v === 'string' && /^\d+$/.test(v)),
+                ).length;
+
+                if (numericCount >= 1) return col;
+
+            }
+
+        }
+
+    }
+
+    return null;
+
+}
+
+/**
  * Truncate a string to max length with ellipsis.
  */
 function truncate(str: string, maxLen: number): string {
@@ -117,17 +273,54 @@ export function ResultTable({
     maxColumnWidth = 30,
     active = true,
     onEscape,
+    autoSort = true,
 }: ResultTableProps): ReactElement {
 
     const isActive = active;
 
+    // Compute initial sort based on data
+    const initialSort = useMemo((): SortState | null => {
+
+        if (!autoSort || columns.length === 0 || rows.length === 0) {
+
+            return null;
+
+        }
+
+        // Priority 1: Date column (sort descending for most recent first)
+        const dateCol = detectDateColumn(columns, rows);
+        if (dateCol) {
+
+            return { column: dateCol, direction: 'desc' };
+
+        }
+
+        // Priority 2: Numeric ID column (sort descending for newest first)
+        const idCol = detectNumericIdColumn(columns, rows);
+        if (idCol) {
+
+            return { column: idCol, direction: 'desc' };
+
+        }
+
+        return null;
+
+    }, [autoSort, columns, rows]);
+
     // State
     const [mode, setMode] = useState<TableMode>('browse');
     const [filter, setFilter] = useState<FilterState>({ term: '', column: null });
-    const [sort, setSort] = useState<SortState | null>(null);
+    const [sort, setSort] = useState<SortState | null>(initialSort);
     const [scrollOffset, setScrollOffset] = useState(0);
     const [highlightedRow, setHighlightedRow] = useState(0);
     const [sortColumnIndex, setSortColumnIndex] = useState(0);
+
+    // Update sort when data changes (new query)
+    useEffect(() => {
+
+        setSort(initialSort);
+
+    }, [initialSort]);
 
     // Calculate column widths
     const columnWidths = useMemo(() => {
@@ -337,8 +530,10 @@ export function ResultTable({
 
                 const col = columns[sortColumnIndex];
                 if (col) {
+
                     setSort({ column: col, direction: 'asc' });
                     setMode('browse');
+
                 }
 
                 return;
@@ -350,8 +545,10 @@ export function ResultTable({
 
                 const col = columns[sortColumnIndex];
                 if (col) {
+
                     setSort({ column: col, direction: 'desc' });
                     setMode('browse');
+
                 }
 
                 return;

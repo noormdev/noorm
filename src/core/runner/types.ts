@@ -201,7 +201,7 @@ export interface BatchResult {
 /**
  * Why a file needs to run.
  */
-export type RunReason = 'new' | 'changed' | 'failed' | 'force';
+export type RunReason = 'new' | 'changed' | 'failed' | 'stale' | 'force';
 
 /**
  * Result of checking if a file needs to run.

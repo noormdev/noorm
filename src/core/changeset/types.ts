@@ -507,7 +507,7 @@ export interface FileHistoryRecord {
 /**
  * Why a changeset needs to run.
  */
-export type ChangesetRunReason = 'new' | 'changed' | 'failed' | 'reverted' | 'force';
+export type ChangesetRunReason = 'new' | 'changed' | 'failed' | 'reverted' | 'stale' | 'force';
 
 /**
  * Result of checking if a changeset needs to run.

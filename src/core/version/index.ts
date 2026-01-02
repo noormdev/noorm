@@ -27,7 +27,7 @@ import type { Kysely } from 'kysely';
 import {
     type VersionStatus,
 } from './types.js';
-import type { NoormDatabase } from './schema/tables.js';
+import type { NoormDatabase } from '../shared/tables.js';
 import {
     checkSchemaVersion,
     migrateSchema,

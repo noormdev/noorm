@@ -370,9 +370,9 @@ Minimum required env vars:
 
 ```typescript
 // Check if in CI mode
-import { isCI, shouldSkipConfirmations } from './core/config'
+import { isCi, shouldSkipConfirmations } from './core/environment'
 
-if (isCI()) {
+if (isCi()) {
     // Running in CI environment
 }
 

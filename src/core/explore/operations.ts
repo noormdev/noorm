@@ -299,7 +299,7 @@ export async function fetchDetail<C extends DetailCategory>(
  * @returns Formatted description string
  */
 export function formatSummaryDescription(
-    category: ExploreCategory,
+    category: ExploreCategory | string,
     item: unknown,
 ): string {
 

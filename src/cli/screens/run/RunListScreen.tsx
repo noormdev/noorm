@@ -40,7 +40,7 @@ export function RunListScreen({ params: _params }: ScreenProps): ReactElement {
     const { navigate, back } = useRouter();
     const { isFocused } = useFocusScope('RunList');
     const { activeConfig, activeConfigName } = useActiveConfig();
-    const { settings, settingsManager } = useSettings();
+    const { settings } = useSettings();
     const globalModes = useGlobalModes();
 
     const [effectivePaths, setEffectivePaths] = useState<{

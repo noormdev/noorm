@@ -97,11 +97,13 @@ describe('integration: sqlite explore', () => {
 
             const usersTable = tables.find((t) => t.name === 'users');
             expect(usersTable).toBeDefined();
-            expect(usersTable!.columnCount).toBe(8); // id, email, username, password_hash, display_name, avatar_url, created_at, updated_at, deleted_at
+            // id, email, username, password_hash, display_name, avatar_url, created_at, updated_at
+            expect(usersTable!.columnCount).toBe(8);
 
             const todoListsTable = tables.find((t) => t.name === 'todo_lists');
             expect(todoListsTable).toBeDefined();
-            expect(todoListsTable!.columnCount).toBe(9); // id, user_id, title, description, color, position, created_at, updated_at, deleted_at
+            // id, user_id, title, description, color, position, created_at, updated_at, deleted_at
+            expect(todoListsTable!.columnCount).toBe(9);
 
         });
 

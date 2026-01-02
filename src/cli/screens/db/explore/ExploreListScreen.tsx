@@ -117,7 +117,7 @@ type AnySummary =
  *
  * Displays a searchable list of database objects for the current category.
  */
-export function ExploreListScreen({ params }: ScreenProps): ReactElement {
+export function ExploreListScreen({ params: _params }: ScreenProps): ReactElement {
 
     const { navigate, back, route } = useRouter();
     const { isFocused } = useFocusScope('ExploreList');

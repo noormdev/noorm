@@ -177,7 +177,7 @@ describe('logger: Logger class', () => {
             const content = await readFile(logger.filepath, 'utf-8');
             const entry = JSON.parse(content.trim());
 
-            expect(entry.event).toBe('config:created');
+            expect(entry.type).toBe('config:created');
             expect(entry.level).toBe('info');
             expect(entry.message).toBe('Created config: dev');
 
@@ -259,8 +259,8 @@ describe('logger: Logger class', () => {
             const content = await readFile(logger.filepath, 'utf-8');
             const entry = JSON.parse(content.trim());
 
-            expect(entry.data).toBeDefined();
-            expect(entry.data.name).toBe('dev');
+            // Data is flattened into the entry at verbose level
+            expect(entry.name).toBe('dev');
 
         });
 
@@ -304,7 +304,7 @@ describe('logger: Logger class', () => {
             const logger = new Logger({
                 projectRoot,
                 config: DEFAULT_LOGGER_CONFIG,
-                context: { config: 'dev', user: 'alice' },
+                context: { configName: 'dev', user: 'alice' },
             });
 
             await logger.start();
@@ -317,7 +317,9 @@ describe('logger: Logger class', () => {
             const content = await readFile(logger.filepath, 'utf-8');
             const entry = JSON.parse(content.trim());
 
-            expect(entry.context).toEqual({ config: 'dev', user: 'alice' });
+            // Context is flattened into the entry
+            expect(entry.configName).toBe('dev');
+            expect(entry.user).toBe('alice');
 
         });
 
@@ -330,7 +332,7 @@ describe('logger: Logger class', () => {
 
             await logger.start();
 
-            logger.setContext({ config: 'prod' });
+            logger.setContext({ configName: 'prod' });
 
             observer.emit('config:created', { name: 'test' });
 
@@ -340,7 +342,8 @@ describe('logger: Logger class', () => {
             const content = await readFile(logger.filepath, 'utf-8');
             const entry = JSON.parse(content.trim());
 
-            expect(entry.context).toEqual({ config: 'prod' });
+            // Context is flattened into the entry
+            expect(entry.configName).toBe('prod');
 
         });
 
@@ -349,7 +352,7 @@ describe('logger: Logger class', () => {
             const logger = new Logger({
                 projectRoot,
                 config: DEFAULT_LOGGER_CONFIG,
-                context: { config: 'dev' },
+                context: { configName: 'dev' },
             });
 
             await logger.start();
@@ -364,7 +367,9 @@ describe('logger: Logger class', () => {
             const content = await readFile(logger.filepath, 'utf-8');
             const entry = JSON.parse(content.trim());
 
-            expect(entry.context).toEqual({ config: 'dev', user: 'alice' });
+            // Context is flattened into the entry
+            expect(entry.configName).toBe('dev');
+            expect(entry.user).toBe('alice');
 
         });
 
@@ -373,7 +378,7 @@ describe('logger: Logger class', () => {
             const logger = new Logger({
                 projectRoot,
                 config: DEFAULT_LOGGER_CONFIG,
-                context: { config: 'dev' },
+                context: { configName: 'dev' },
             });
 
             await logger.start();
@@ -388,7 +393,8 @@ describe('logger: Logger class', () => {
             const content = await readFile(logger.filepath, 'utf-8');
             const entry = JSON.parse(content.trim());
 
-            expect(entry.context).toBeUndefined();
+            // Context was cleared, so configName shouldn't be in entry
+            expect(entry.configName).toBeUndefined();
 
         });
 
@@ -416,6 +422,9 @@ describe('logger: Logger class', () => {
 
             await logger.start();
 
+            // Flush to process any startup events
+            await logger.flush();
+
             expect(logger.stats).not.toBeNull();
             expect(logger.stats!.pending).toBe(0);
 
@@ -432,12 +441,17 @@ describe('logger: Logger class', () => {
 
             await logger.start();
 
+            // Flush startup events first to get baseline
+            await logger.flush();
+            const baseline = logger.stats!.totalWritten;
+
             observer.emit('config:created', { name: 'test1' });
             observer.emit('config:created', { name: 'test2' });
 
             await logger.flush();
 
-            expect(logger.stats!.totalWritten).toBe(2);
+            // Should have processed 2 more events since baseline
+            expect(logger.stats!.totalWritten - baseline).toBe(2);
 
             await logger.stop();
 

@@ -18,7 +18,6 @@ import {
     createTestConnection,
     deployTestSchema,
     seedTestData,
-    resetTestData,
     teardownTestSchema,
     skipIfNoContainer,
 } from '../../utils/db.js';
@@ -270,8 +269,8 @@ describe('integration: postgres teardown', () => {
             expect(result.dropped.views.length).toBe(0);
 
             // Views still exist (though they may be invalid without their base tables)
-            const afterOverview = await fetchOverview(db, 'postgres');
             // Note: Views may fail after tables are dropped, but they weren't dropped
+            await fetchOverview(db, 'postgres');
 
         });
 

@@ -408,6 +408,12 @@ describe('cli: db teardown', () => {
         // Check that overview shows 0 tables
         const overview = await noormJson<ExploreOverview>(project, 'db', 'explore');
 
+        if (!overview.ok) {
+
+            console.log('FLAKY DB FAILURE:', overview.error, overview._raw);
+
+        }
+
         expect(overview.ok).toBe(true);
         expect(overview.data!.tables).toBe(0);
         expect(overview.data!.views).toBe(0);

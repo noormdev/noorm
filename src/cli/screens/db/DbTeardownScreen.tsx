@@ -21,6 +21,7 @@ import { useAppContext, useSettings } from '../../app-context.js';
 import { useToast, Panel, Spinner, ProtectedConfirm } from '../../components/index.js';
 import { createConnection } from '../../../core/connection/index.js';
 import { previewTeardown, teardownSchema } from '../../../core/teardown/index.js';
+import { resolveIdentity, formatIdentity } from '../../../core/identity/index.js';
 import { attempt } from '@logosdx/utils';
 
 import type { Kysely } from 'kysely';
@@ -45,7 +46,7 @@ export function DbTeardownScreen({ params: _params }: ScreenProps): ReactElement
 
     const { back } = useRouter();
     const { isFocused } = useFocusScope('DbTeardown');
-    const { activeConfig, activeConfigName } = useAppContext();
+    const { activeConfig, activeConfigName, stateManager } = useAppContext();
     const { settings } = useSettings();
     const { showToast } = useToast();
 
@@ -174,9 +175,16 @@ export function DbTeardownScreen({ params: _params }: ScreenProps): ReactElement
 
             const db = conn.db as Kysely<unknown>;
 
+            // Resolve identity for changeset tracking
+            const identity = resolveIdentity({
+                cryptoIdentity: stateManager?.getIdentity() ?? null,
+            });
+
             const teardownResult = await teardownSchema(db, activeConfig.connection.dialect, {
                 preserveTables,
                 postScript,
+                configName: activeConfigName,
+                executedBy: formatIdentity(identity),
             });
 
             setResult(teardownResult);
@@ -195,7 +203,7 @@ export function DbTeardownScreen({ params: _params }: ScreenProps): ReactElement
 
         }
 
-    }, [activeConfig, activeConfigName, preserveTables, postScript]);
+    }, [activeConfig, activeConfigName, preserveTables, postScript, stateManager]);
 
     // Get categories that have items
     const nonEmptyCategories = useMemo(() => {
@@ -592,6 +600,12 @@ export function DbTeardownScreen({ params: _params }: ScreenProps): ReactElement
                         <Text dimColor>
                             Preserved {result.preserved.length} tables. Duration: {(result.durationMs / 1000).toFixed(2)}s
                         </Text>
+
+                        {result.staleCount !== undefined && result.staleCount > 0 && (
+                            <Text dimColor>
+                                Marked {result.staleCount} changesets as stale (will re-run on next apply)
+                            </Text>
+                        )}
 
                         {result.postScriptResult && (
                             <Box marginTop={1}>

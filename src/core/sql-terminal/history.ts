@@ -14,7 +14,6 @@ import { attempt, attemptSync } from '@logosdx/utils';
 import type {
     SqlHistoryEntry,
     SqlExecutionResult,
-    SqlHistoryFile,
     SqlHistoryFileSerialized,
     SqlHistoryEntrySerialized,
     ClearResult,
@@ -46,14 +45,12 @@ const HISTORY_DIR = 'sql-history';
 export class SqlHistoryManager {
 
     readonly #projectRoot: string;
-    readonly #configName: string;
     readonly #historyPath: string;
     readonly #resultsDir: string;
 
     constructor(projectRoot: string, configName: string) {
 
         this.#projectRoot = projectRoot;
-        this.#configName = configName;
         this.#historyPath = join(projectRoot, '.noorm', HISTORY_DIR, `${configName}.json`);
         this.#resultsDir = join(projectRoot, '.noorm', HISTORY_DIR, configName);
 

@@ -75,6 +75,19 @@ export interface TeardownOptions {
     /** Dry run - return SQL without executing */
     dryRun?: boolean;
 
+    /**
+     * Config name for changeset tracking.
+     * When provided, marks all successful changesets as 'stale' and
+     * records a reset event in the changeset history.
+     */
+    configName?: string;
+
+    /**
+     * Identity of who performed the teardown.
+     * Required when configName is provided.
+     */
+    executedBy?: string;
+
 }
 
 /**
@@ -124,6 +137,12 @@ export interface TeardownResult {
         executed: boolean;
         error?: string;
     };
+
+    /** Number of changesets marked as stale (if configName provided) */
+    staleCount?: number;
+
+    /** ID of the reset record created (if configName provided) */
+    resetRecordId?: number;
 
 }
 

@@ -44,7 +44,7 @@ export function SqlTerminalScreen({ params }: ScreenProps): ReactElement {
 
     const { navigate, back } = useRouter();
     const { isFocused } = useFocusScope('SqlTerminal');
-    const { activeConfig, activeConfigName, projectRoot } = useAppContext();
+    const { activeConfig, activeConfigName, projectRoot, setHelpKeyEnabled } = useAppContext();
     const { showToast } = useToast();
 
     // State
@@ -74,6 +74,21 @@ export function SqlTerminalScreen({ params }: ScreenProps): ReactElement {
         }
 
     }, [params.name]);
+
+    // Disable help key when input has content (to allow typing '?')
+    useEffect(() => {
+
+        const hasContent = query.trim() !== '';
+        setHelpKeyEnabled(!hasContent);
+
+        // Re-enable on unmount
+        return () => {
+
+            setHelpKeyEnabled(true);
+
+        };
+
+    }, [query, setHelpKeyEnabled]);
 
     // Initialize connection and history
     useEffect(() => {
@@ -211,10 +226,10 @@ export function SqlTerminalScreen({ params }: ScreenProps): ReactElement {
 
         }
 
-        // Clear input on success
-        if (execResult.success) {
+        // Switch to results view if we have tabular data (keep query for editing)
+        if (execResult.success && execResult.rows && execResult.rows.length > 0) {
 
-            setQuery('');
+            setFocusArea('results');
 
         }
 
@@ -262,6 +277,20 @@ export function SqlTerminalScreen({ params }: ScreenProps): ReactElement {
 
     }, [history, historyIndex]);
 
+    // Handle user input - reset history browsing when user types
+    const handleQueryChange = useCallback((newQuery: string) => {
+
+        setQuery(newQuery);
+
+        // Reset history index when user modifies the input
+        if (historyIndex >= 0) {
+
+            setHistoryIndex(-1);
+
+        }
+
+    }, [historyIndex]);
+
     // Keyboard shortcuts
     useInput((input, key) => {
 
@@ -276,8 +305,8 @@ export function SqlTerminalScreen({ params }: ScreenProps): ReactElement {
 
         }
 
-        // h: Open history screen
-        if (input === 'h' && focusArea === 'input') {
+        // h: Open history screen (only when input is empty to avoid capturing typed 'h')
+        if (input === 'h' && focusArea === 'input' && query.trim() === '') {
 
             navigate('db/sql/history');
 
@@ -285,12 +314,19 @@ export function SqlTerminalScreen({ params }: ScreenProps): ReactElement {
 
         }
 
-        // Escape: Back (if input focused) or switch to input (if results focused)
+        // Escape: Clear input, switch focus, or go back
         if (key.escape) {
 
             if (focusArea === 'results') {
 
                 setFocusArea('input');
+
+            }
+            else if (query.trim() !== '') {
+
+                // Clear input first
+                setQuery('');
+                setHistoryIndex(-1);
 
             }
             else {
@@ -373,64 +409,75 @@ export function SqlTerminalScreen({ params }: ScreenProps): ReactElement {
                 )}
             </Box>
 
-            {/* Results area */}
-            {result && (
+            {/* Tabular results - only shown when in results view */}
+            {focusArea === 'results' && result?.success && result.columns && result.rows && result.rows.length > 0 && (
                 <Panel
-                    title={result.success ? 'Results' : 'Error'}
-                    borderColor={result.success ? undefined : 'red'}
+                    title="Results"
+                    borderColor="cyan"
                     paddingX={1}
                     paddingY={1}
                 >
-                    {result.success && result.columns && result.rows ? (
-                        <ResultTable
-                            columns={result.columns}
-                            rows={result.rows}
-                            active={focusArea === 'results'}
-                            onEscape={() => setFocusArea('input')}
-                        />
-                    ) : result.success && result.rowsAffected !== undefined ? (
-                        <Text color="green">
-                            {result.rowsAffected} row(s) affected ({result.durationMs.toFixed(0)}ms)
-                        </Text>
-                    ) : result.success ? (
-                        <Text dimColor>Query executed successfully ({result.durationMs.toFixed(0)}ms)</Text>
-                    ) : (
-                        <Text color="red">{result.errorMessage}</Text>
+                    <ResultTable
+                        columns={result.columns}
+                        rows={result.rows}
+                        active={true}
+                        onEscape={() => setFocusArea('input')}
+                    />
+                </Panel>
+            )}
+
+            {/* Query input view - shown when in input view OR no tabular results */}
+            {(focusArea === 'input' || !result?.rows || result.rows.length === 0) && (
+                <>
+                    {/* Non-tabular results (brief feedback) */}
+                    {result && !isExecuting && (
+                        <Box>
+                            {result.success && result.rowsAffected !== undefined ? (
+                                <Text color="green">
+                                    ✓ {result.rowsAffected} row(s) affected ({result.durationMs.toFixed(0)}ms)
+                                </Text>
+                            ) : result.success && (!result.rows || result.rows.length === 0) ? (
+                                <Text dimColor>✓ Query executed ({result.durationMs.toFixed(0)}ms)</Text>
+                            ) : !result.success ? (
+                                <Text color="red">✗ {result.errorMessage}</Text>
+                            ) : null}
+                        </Box>
                     )}
-                </Panel>
-            )}
 
-            {/* Executing indicator */}
-            {isExecuting && (
-                <Panel title="Executing" paddingX={1} paddingY={1}>
-                    <Spinner label="Running query..." />
-                </Panel>
-            )}
+                    {/* Executing indicator */}
+                    {isExecuting && (
+                        <Box>
+                            <Spinner label="Running query..." />
+                        </Box>
+                    )}
 
-            {/* Input area */}
-            <Panel
-                title="Query"
-                borderColor={focusArea === 'input' ? 'cyan' : undefined}
-                paddingX={1}
-                paddingY={1}
-            >
-                <SqlInput
-                    value={query}
-                    onChange={setQuery}
-                    onSubmit={handleExecute}
-                    onHistoryNavigate={handleHistoryNavigate}
-                    disabled={isExecuting}
-                    active={focusArea === 'input'}
-                />
-            </Panel>
+                    {/* Input area */}
+                    <Panel
+                        title="Query"
+                        borderColor="cyan"
+                        paddingX={1}
+                        paddingY={1}
+                    >
+                        <SqlInput
+                            value={query}
+                            onChange={handleQueryChange}
+                            onSubmit={handleExecute}
+                            onHistoryNavigate={handleHistoryNavigate}
+                            disabled={isExecuting}
+                            active={focusArea === 'input'}
+                            historyBrowsing={historyIndex >= 0}
+                        />
+                    </Panel>
+                </>
+            )}
 
             {/* Footer hints */}
             <Box gap={2}>
-                <Text dimColor>[h] History</Text>
+                {focusArea === 'input' && <Text dimColor>[h] History</Text>}
                 {result?.rows && result.rows.length > 0 && (
-                    <Text dimColor>[Tab] {focusArea === 'input' ? 'Results' : 'Input'}</Text>
+                    <Text dimColor>[Tab] {focusArea === 'input' ? 'View Results' : 'Edit Query'}</Text>
                 )}
-                <Text dimColor>[Esc] Back</Text>
+                <Text dimColor>[Esc] {focusArea === 'results' ? 'Edit Query' : query.trim() ? 'Clear' : 'Back'}</Text>
             </Box>
         </Box>
     );

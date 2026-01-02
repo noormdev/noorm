@@ -564,7 +564,7 @@ describe('explore: operations', () => {
 
             it('should return empty string for unknown category', () => {
 
-                const result = formatSummaryDescription('unknown' as any, {});
+                const result = formatSummaryDescription('unknown', {});
 
                 expect(result).toBe('');
 

@@ -594,3 +594,314 @@ noorm -H db:explore
 # Alternative: slash notation (internal representation)
 noorm -H change/ff
 ```
+
+
+## Adding New Commands
+
+The headless CLI uses a modular architecture where each command is self-contained in its own file. This makes adding, testing, and maintaining commands straightforward.
+
+
+### File Structure
+
+```
+src/cli/headless/
+├── _helpers.ts           # Shared utilities (withContext, types)
+├── index.ts              # Router and handler registry
+├── help.ts               # Special: help command with factory
+├── change.ts             # Parent command (shows help)
+├── change-ff.ts          # Subcommand with SDK handler
+├── change-run.ts         # Subcommand with SDK handler
+├── config.ts             # Parent command (shows help)
+├── config-use.ts         # Subcommand with SDK handler
+└── ...
+```
+
+
+### Command Module Pattern
+
+Each command file exports two things:
+
+```typescript
+// src/cli/headless/my-command.ts
+import { withContext, type HeadlessCommand } from './_helpers.js';
+
+// 1. Help text (shown by `noorm help my-command`)
+export const help = `
+# MY COMMAND
+
+Brief description of what this command does.
+
+## Usage
+
+    noorm my-command [options]
+    noorm -H my-command
+
+## Options
+
+    --name NAME    Some option
+
+## Description
+
+What this command does and when to use it.
+
+> Important notes go in blockquotes
+
+## Examples
+
+    noorm -H my-command
+    noorm -H --json my-command
+
+## JSON Output
+
+\\\`\\\`\\\`json
+{ "result": "example" }
+\\\`\\\`\\\`
+
+See \\\`noorm help related-command\\\` for more information.
+`;
+
+// 2. Handler function
+export const run: HeadlessCommand = async (params, flags, logger) => {
+
+    // SDK commands use withContext for connection lifecycle
+    const [result, error] = await withContext({
+        flags,
+        logger,
+        fn: (ctx) => ctx.someMethod(),
+    });
+
+    if (error) return 1;
+
+    logger.info('Success', result);
+
+    return 0;  // Exit code
+
+};
+```
+
+
+### Two Command Types
+
+
+#### SDK Commands (with database connection)
+
+For commands that need database access, use `withContext`:
+
+```typescript
+export const run: HeadlessCommand = async (params, flags, logger) => {
+
+    const [result, error] = await withContext({
+        flags,
+        logger,
+        fn: (ctx) => ctx.fastForward(),
+    });
+
+    if (error) return 1;
+
+    logger.info(`Applied ${result.executed} changesets`);
+
+    return result.status === 'success' ? 0 : 1;
+
+};
+```
+
+`withContext` handles:
+- Config resolution (flag → env var → active config)
+- Connection lifecycle (connect, execute, disconnect)
+- Error handling and logging
+
+
+#### Help-Only Commands (parent menus, TUI-only features)
+
+For commands that just display information:
+
+```typescript
+export const run: HeadlessCommand = async (_params, _flags, _logger) => {
+
+    process.stdout.write(help);
+    return 0;
+
+};
+```
+
+Use this for:
+- Parent commands that list subcommands (`config`, `db`, `lock`)
+- TUI-only features that can't run headless (`config add`, `settings`)
+
+
+### Registering Commands
+
+Add new commands to the handler registry in `index.ts`:
+
+```typescript
+// src/cli/headless/index.ts
+import * as CmdMyCommand from './my-command.js';
+
+const HANDLERS: Partial<Record<Route, RouteHandler>> = {
+    // ...existing commands...
+    'my/command': CmdMyCommand,
+};
+```
+
+The route key (`'my/command'`) maps to CLI syntax (`noorm my command` or `noorm my:command`).
+
+
+### Parameter Access
+
+Parameters are passed via the `params` object:
+
+```typescript
+export const run: HeadlessCommand = async (params, flags, logger) => {
+
+    // From --name flag or positional argument
+    if (!params.name) {
+
+        logger.error('Name required. Use --name <value>');
+        return 1;
+
+    }
+
+    // Use the parameter
+    const [result, error] = await withContext({
+        flags,
+        logger,
+        fn: (ctx) => ctx.describeTable(params.name!),
+    });
+
+    // ...
+
+};
+```
+
+Common params: `name`, `path`, `count`, `schema`, `force`, `topic`.
+
+
+### Help Text Format
+
+Help text uses markdown syntax with terminal color formatting. The `formatHelp()` function from `src/core/help-formatter.ts` parses markdown and applies the Modern Slate color theme.
+
+
+#### Markdown Elements
+
+| Syntax | Rendering |
+|--------|-----------|
+| `# Title` | Bold primary (blue) - command name |
+| `## Section` | Bold text (white) - main sections |
+| `### Subsection` | Bold muted (gray) - subsections |
+| `> note` | Dimmed italic - callouts and tips |
+| `` `code` `` | Info color (purple) - inline code |
+| `**bold**` | Bold text |
+| `*italic*` | Italic text |
+| ` ``` ` code blocks | Muted delimiters, code colored |
+| 4-space indent | Command/example highlighting |
+
+
+#### Command Syntax Highlighting
+
+Indented lines containing `noorm` get automatic syntax highlighting:
+
+| Element | Color | Example |
+|---------|-------|---------|
+| `noorm` | Primary (blue) | Command name |
+| First word after noorm | Info (purple) | Subcommand |
+| `-H`, `--flag` | Warning (amber) | Flags |
+| `[optional]` | Muted (gray) | Optional placeholders |
+| `<required>` | Warning (amber) | Required placeholders |
+| `NAME` (all caps) | Italic dim | Argument placeholders |
+
+
+#### Template
+
+```markdown
+# COMMAND NAME
+
+Brief description of what this command does.
+
+## Usage
+
+    noorm command [subcommand] [options]
+    noorm -H command
+
+## Arguments
+
+    NAME    Description of positional argument
+
+## Options
+
+    --flag          Boolean flag
+    -f, --force     Short and long form
+    --name NAME     Flag with value
+
+## Description
+
+Multi-paragraph explanation of what the command does,
+when to use it, and any important caveats.
+
+> Important notes go in blockquotes
+
+## Examples
+
+    noorm -H command
+    noorm -H --json command
+
+## JSON Output
+
+\`\`\`json
+{ "example": "output" }
+\`\`\`
+
+## See Also
+
+See \`noorm help related-command\` for more information.
+```
+
+
+#### Implementation
+
+```typescript
+import { formatHelp } from '../../core/help-formatter.js';
+
+export const help = `
+# CONFIG
+
+Manage database configurations
+
+## Usage
+
+    noorm config [subcommand] [options]
+
+> Configs are stored encrypted in \`.noorm/state.enc\`
+`;
+
+export const run: HeadlessCommand = async (_params, flags, _logger) => {
+
+    // Apply colors unless --json mode
+    const output = flags.json ? help : formatHelp(help);
+
+    process.stdout.write(output + '\n');
+
+    return 0;
+
+};
+```
+
+
+### Testing Commands
+
+Test headless commands via integration tests:
+
+```typescript
+import { runHeadless } from '../src/cli/headless/index.js';
+
+it('should execute my-command', async () => {
+
+    const exitCode = await runHeadless(
+        'my/command',
+        { name: 'test' },
+        { json: true },
+    );
+
+    expect(exitCode).toBe(0);
+
+});
+```

@@ -14,6 +14,8 @@ import { sql } from 'kysely';
 import { attempt } from '@logosdx/utils';
 
 import { observer } from '../../observer.js';
+import type { NoormDatabase } from '../../shared/tables.js';
+
 import {
     CURRENT_VERSIONS,
     MigrationError,
@@ -21,7 +23,6 @@ import {
     type LayerVersionStatus,
     type SchemaMigration,
 } from '../types.js';
-import type { NoormDatabase } from './tables.js';
 
 // Import migrations
 import { v1 } from './migrations/v1.js';
@@ -366,6 +367,3 @@ export async function ensureSchemaVersion(
 
 }
 
-// Re-export types
-export type { NoormDatabase } from './tables.js';
-export * from './tables.js';

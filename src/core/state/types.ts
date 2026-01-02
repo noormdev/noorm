@@ -55,8 +55,8 @@ export interface ConfigSummary {
  * Uses AES-256-GCM with key derived from the user's private key via HKDF.
  */
 export interface EncryptedPayload {
-    /** Encryption algorithm (always AES-256-GCM) */
-    algorithm: 'aes-256-gcm';
+    /** Encryption algorithm (expected: AES-256-GCM, validated at runtime) */
+    algorithm: string;
 
     /** Initialization vector (base64) */
     iv: string;

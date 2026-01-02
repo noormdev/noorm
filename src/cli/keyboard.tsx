@@ -22,6 +22,7 @@ import type { ReactNode, ReactElement } from 'react';
 
 import { useFocusContext } from './focus.js';
 import { useShutdown } from './shutdown.js';
+import { useAppContext } from './app-context.js';
 
 /**
  * Props for GlobalKeyboard component.
@@ -92,6 +93,7 @@ export function GlobalKeyboard({
 
     const { gracefulExit } = useShutdown();
     const { stack } = useFocusContext();
+    const { helpKeyEnabled } = useAppContext();
 
     useInput((input, key) => {
 
@@ -126,8 +128,8 @@ export function GlobalKeyboard({
         // (focus stack > 1 means we're likely in an input component)
         if (stack.length <= 1) {
 
-            // ? shows help
-            if (input === '?') {
+            // ? shows help (can be disabled by components with text input)
+            if (input === '?' && helpKeyEnabled) {
 
                 onHelp?.();
 

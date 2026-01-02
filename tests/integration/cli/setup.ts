@@ -102,6 +102,9 @@ export interface TestProject {
  */
 export async function noorm(project: TestProject, ...args: string[]) {
 
+    // Small delay to avoid resource contention between rapid CLI invocations
+    await new Promise((r) => setTimeout(r, 50));
+
     // zx handles arrays by joining with spaces, which is correct for CLI args
     const cmdArgs = ['-H', ...args];
 
@@ -128,6 +131,7 @@ export async function noormJson<T>(project: TestProject, ...args: string[]): Pro
     error: string | null;
     exitCode: number;
     ok: boolean;
+    _raw?: { stdout: string; stderr: string };
 }> {
 
     // zx handles arrays by joining with spaces, which is correct for CLI args
@@ -140,8 +144,9 @@ export async function noormJson<T>(project: TestProject, ...args: string[]): Pro
         return {
             data: null,
             error: result.stderr || result.stdout,
-            exitCode: result.exitCode,
+            exitCode: result.exitCode!,
             ok: false,
+            _raw: { stdout: result.stdout, stderr: result.stderr },
         };
 
     }
@@ -154,7 +159,7 @@ export async function noormJson<T>(project: TestProject, ...args: string[]): Pro
         return {
             data: null,
             error: `No JSON found in output: ${result.stdout}`,
-            exitCode: result.exitCode,
+            exitCode: result.exitCode!,
             ok: false,
         };
 
@@ -172,7 +177,7 @@ export async function noormJson<T>(project: TestProject, ...args: string[]): Pro
         return {
             data: null,
             error: `Failed to parse JSON: ${jsonStr}`,
-            exitCode: result.exitCode,
+            exitCode: result.exitCode!,
             ok: false,
         };
 
@@ -290,9 +295,14 @@ function extractJson(output: string): string | null {
  * expect(hasAnsiColors(result.stdout)).toBe(true)
  * ```
  */
+// Pre-compiled ANSI regex pattern (ESC char via fromCharCode to avoid no-control-regex)
+const ESC = String.fromCharCode(27);
+const ANSI_PATTERN = new RegExp(`${ESC}\\[[0-9;]*m`);
+const ANSI_PATTERN_GLOBAL = new RegExp(`${ESC}\\[[0-9;]*m`, 'g');
+
 export function hasAnsiColors(output: string): boolean {
 
-    return /\x1b\[[0-9;]*m/.test(output);
+    return ANSI_PATTERN.test(output);
 
 }
 
@@ -310,7 +320,7 @@ export function hasAnsiColors(output: string): boolean {
  */
 export function stripAnsi(output: string): string {
 
-    return output.replace(/\x1b\[[0-9;]*m/g, '');
+    return output.replace(ANSI_PATTERN_GLOBAL, '');
 
 }
 

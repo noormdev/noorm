@@ -303,9 +303,9 @@ function summarizeValue(value: unknown): string {
  * ```typescript
  * const entry = formatEntry('build:start', { fileCount: 10 }, { config: 'dev' }, true)
  * // {
- * //     timestamp: '2024-01-15T10:30:00.000Z',
+ * //     time: '2024-01-15T10:30:00.000Z',
  * //     level: 'info',
- * //     event: 'build:start',
+ * //     type: 'build:start',
  * //     message: 'Starting schema build (10 files)',
  * //     data: { fileCount: 10 },
  * //     context: { config: 'dev' }
@@ -319,10 +319,24 @@ export function formatEntry(
     includeData = false,
 ): LogEntry {
 
+    // Classify level, but override for non-success status
+    let level = classifyEvent(event);
+
+    // Override to error for failed/partial completions and file executions
+    if (
+        (event.endsWith(':complete') || event.endsWith(':after')) &&
+        data['status'] !== 'success' &&
+        data['status'] !== 'skipped'
+    ) {
+
+        level = 'error';
+
+    }
+
     const entry: LogEntry = {
-        timestamp: new Date().toISOString(),
-        level: classifyEvent(event),
-        event,
+        time: new Date().toISOString(),
+        level,
+        type: event,
         message: generateMessage(event, data),
     };
 

@@ -17,7 +17,7 @@ import { Box, Text, useInput } from 'ink';
 import { attempt } from '@logosdx/utils';
 
 import type { ReactElement } from 'react';
-import type { ScreenProps, Route } from '../../../types.js';
+import type { ScreenProps } from '../../../types.js';
 
 import { useRouter } from '../../../router.js';
 import { useFocusScope } from '../../../focus.js';
@@ -545,23 +545,23 @@ export function ExploreDetailScreen({ params }: ScreenProps): ReactElement {
 
         switch (category) {
 
-            case 'tables':
-                return <TableDetailView detail={detail as TableDetail} />;
+        case 'tables':
+            return <TableDetailView detail={detail as TableDetail} />;
 
-            case 'views':
-                return <ViewDetailView detail={detail as ViewDetail} />;
+        case 'views':
+            return <ViewDetailView detail={detail as ViewDetail} />;
 
-            case 'procedures':
-                return <ProcedureDetailView detail={detail as ProcedureDetail} />;
+        case 'procedures':
+            return <ProcedureDetailView detail={detail as ProcedureDetail} />;
 
-            case 'functions':
-                return <FunctionDetailView detail={detail as FunctionDetail} />;
+        case 'functions':
+            return <FunctionDetailView detail={detail as FunctionDetail} />;
 
-            case 'types':
-                return <TypeDetailView detail={detail as TypeDetail} />;
+        case 'types':
+            return <TypeDetailView detail={detail as TypeDetail} />;
 
-            default:
-                return <Text>Unknown category</Text>;
+        default:
+            return <Text>Unknown category</Text>;
 
         }
 

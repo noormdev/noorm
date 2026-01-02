@@ -39,27 +39,27 @@ export type EntryLevel = 'error' | 'warn' | 'info' | 'debug';
  * A single log entry.
  *
  * Entries are JSON-serialized, one per line in the log file.
+ * Field names are compatible with Grafana and GitHub Actions.
  *
  * @example
  * ```json
  * {
- *     "timestamp": "2024-01-15T10:30:00.000Z",
+ *     "time": "2024-01-15T10:30:00.000+00:00",
  *     "level": "info",
- *     "event": "build:start",
- *     "message": "Starting schema build",
- *     "context": { "config": "dev" }
+ *     "type": "build:start",
+ *     "message": "Starting schema build"
  * }
  * ```
  */
 export interface LogEntry {
-    /** ISO 8601 timestamp */
-    timestamp: string;
+    /** ISO 8601 timestamp with timezone */
+    time: string;
 
     /** Entry severity level */
     level: EntryLevel;
 
-    /** Observer event name */
-    event: string;
+    /** Observer event type (event name) */
+    type: string;
 
     /** Human-readable summary */
     message: string;

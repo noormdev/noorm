@@ -5,10 +5,29 @@
  * Verifies observer events, result structure, and error handling.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type { Kysely } from 'kysely';
+import type { Kysely, RawBuilder } from 'kysely';
 
 import { executeRawSql } from '../../../src/core/sql-terminal/executor.js';
 import { observer } from '../../../src/core/observer.js';
+
+/**
+ * Minimal mock for sql.raw() return value.
+ * Only implements the execute method needed for testing.
+ */
+type MockRawBuilder = Pick<RawBuilder<unknown>, 'execute'>;
+
+/**
+ * Event data emitted after SQL execution.
+ */
+interface ExecuteAfterEventData {
+    query: string;
+    configName: string;
+    success: boolean;
+    durationMs: number;
+    rowCount?: number;
+    rowsAffected?: number;
+    error?: string;
+}
 
 
 describe('sql-terminal: executor', () => {
@@ -25,11 +44,15 @@ describe('sql-terminal: executor', () => {
             events = [];
 
             const beforeCleanup = observer.on('sql-terminal:execute:before', (data) => {
+
                 events.push({ event: 'before', data });
+
             });
 
             const afterCleanup = observer.on('sql-terminal:execute:after', (data) => {
+
                 events.push({ event: 'after', data });
+
             });
 
             // Clean up listeners after test
@@ -59,7 +82,7 @@ describe('sql-terminal: executor', () => {
             const { sql } = await import('kysely');
             vi.spyOn(sql, 'raw').mockReturnValue({
                 execute: mockExecute,
-            } as any);
+            } as MockRawBuilder);
 
             await executeRawSql(mockDb, 'SELECT * FROM users', 'production');
 
@@ -85,14 +108,14 @@ describe('sql-terminal: executor', () => {
             const { sql } = await import('kysely');
             vi.spyOn(sql, 'raw').mockReturnValue({
                 execute: mockExecute,
-            } as any);
+            } as MockRawBuilder);
 
             await executeRawSql(mockDb, 'SELECT * FROM users', 'production');
 
             const afterEvent = events.find((e) => e.event === 'after');
             expect(afterEvent).toBeDefined();
 
-            const afterData = afterEvent!.data as any;
+            const afterData = afterEvent!.data as ExecuteAfterEventData;
             expect(afterData.query).toBe('SELECT * FROM users');
             expect(afterData.configName).toBe('production');
             expect(afterData.success).toBe(true);
@@ -110,14 +133,14 @@ describe('sql-terminal: executor', () => {
             const { sql } = await import('kysely');
             vi.spyOn(sql, 'raw').mockReturnValue({
                 execute: mockExecute,
-            } as any);
+            } as MockRawBuilder);
 
             await executeRawSql(mockDb, 'SELECT * FROM users', 'production');
 
             const afterEvent = events.find((e) => e.event === 'after');
             expect(afterEvent).toBeDefined();
 
-            const afterData = afterEvent!.data as any;
+            const afterData = afterEvent!.data as ExecuteAfterEventData;
             expect(afterData.query).toBe('SELECT * FROM users');
             expect(afterData.configName).toBe('production');
             expect(afterData.success).toBe(false);
@@ -139,7 +162,7 @@ describe('sql-terminal: executor', () => {
             const { sql } = await import('kysely');
             vi.spyOn(sql, 'raw').mockReturnValue({
                 execute: mockExecute,
-            } as any);
+            } as MockRawBuilder);
 
             const result = await executeRawSql(
                 mockDb,
@@ -167,7 +190,7 @@ describe('sql-terminal: executor', () => {
             const { sql } = await import('kysely');
             vi.spyOn(sql, 'raw').mockReturnValue({
                 execute: mockExecute,
-            } as any);
+            } as MockRawBuilder);
 
             const result = await executeRawSql(
                 mockDb,
@@ -193,7 +216,7 @@ describe('sql-terminal: executor', () => {
             const { sql } = await import('kysely');
             vi.spyOn(sql, 'raw').mockReturnValue({
                 execute: mockExecute,
-            } as any);
+            } as MockRawBuilder);
 
             const result = await executeRawSql(
                 mockDb,
@@ -217,7 +240,7 @@ describe('sql-terminal: executor', () => {
             const { sql } = await import('kysely');
             vi.spyOn(sql, 'raw').mockReturnValue({
                 execute: mockExecute,
-            } as any);
+            } as MockRawBuilder);
 
             const result = await executeRawSql(
                 mockDb,
@@ -239,7 +262,7 @@ describe('sql-terminal: executor', () => {
             const { sql } = await import('kysely');
             vi.spyOn(sql, 'raw').mockReturnValue({
                 execute: mockExecute,
-            } as any);
+            } as MockRawBuilder);
 
             const result = await executeRawSql(
                 mockDb,
@@ -262,7 +285,7 @@ describe('sql-terminal: executor', () => {
             const { sql } = await import('kysely');
             vi.spyOn(sql, 'raw').mockReturnValue({
                 execute: mockExecute,
-            } as any);
+            } as MockRawBuilder);
 
             const result = await executeRawSql(mockDb, 'SELECT 1', 'test');
 
@@ -281,7 +304,7 @@ describe('sql-terminal: executor', () => {
             const { sql } = await import('kysely');
             const rawSpy = vi.spyOn(sql, 'raw').mockReturnValue({
                 execute: mockExecute,
-            } as any);
+            } as MockRawBuilder);
 
             const query = 'SELECT * FROM users WHERE id = 42';
             await executeRawSql(mockDb, query, 'test');
@@ -301,7 +324,7 @@ describe('sql-terminal: executor', () => {
             const { sql } = await import('kysely');
             vi.spyOn(sql, 'raw').mockReturnValue({
                 execute: mockExecute,
-            } as any);
+            } as MockRawBuilder);
 
             const result = await executeRawSql(
                 mockDb,
@@ -333,7 +356,7 @@ describe('sql-terminal: executor', () => {
             const { sql } = await import('kysely');
             vi.spyOn(sql, 'raw').mockReturnValue({
                 execute: mockExecute,
-            } as any);
+            } as MockRawBuilder);
 
             const result = await executeRawSql(mockDb, 'SELECT 1', 'test');
 
@@ -360,7 +383,7 @@ describe('sql-terminal: executor', () => {
             const { sql } = await import('kysely');
             vi.spyOn(sql, 'raw').mockReturnValue({
                 execute: mockExecute,
-            } as any);
+            } as MockRawBuilder);
 
             const result = await executeRawSql(mockDb, 'SELECT * FROM complex_table', 'test');
 

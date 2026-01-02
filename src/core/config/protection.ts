@@ -4,8 +4,8 @@
  * Protected configs require confirmation for destructive operations.
  * Some operations (like db:destroy) are completely blocked.
  */
+import { shouldSkipConfirmations } from '../environment.js';
 import type { Config } from './types.js';
-import { shouldSkipConfirmations } from './env.js';
 
 /**
  * Actions that can be performed on configs.

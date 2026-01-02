@@ -2,20 +2,28 @@
  * Color Formatter
  *
  * Formats log entries with ANSI colors for console output.
+ * Uses the centralized theme for consistent styling with truecolor support.
  * Flattens data one level deep - nested objects are stringified.
  */
-import c from 'ansi-colors';
+import ansis from 'ansis';
+import { attemptSync } from '@logosdx/utils';
 
 import type { EntryLevel } from './types.js';
+import {
+    theme,
+    logLevelColors,
+    logLevelIcons,
+    data as dataFormatters,
+} from '../theme.js';
 
 /**
- * Level icons and colors.
+ * Level icons and colors from theme.
  */
 const LEVEL_STYLE: Record<EntryLevel, { icon: string; color: (s: string) => string }> = {
-    error: { icon: '✗', color: c.red },
-    warn: { icon: '⚠', color: c.yellow },
-    info: { icon: '•', color: c.cyan },
-    debug: { icon: '○', color: c.dim },
+    error: { icon: logLevelIcons.error, color: logLevelColors.error },
+    warn: { icon: logLevelIcons.warn, color: logLevelColors.warn },
+    info: { icon: logLevelIcons.info, color: logLevelColors.info },
+    debug: { icon: logLevelIcons.debug, color: logLevelColors.debug },
 };
 
 /**
@@ -27,43 +35,45 @@ function formatValue(value: unknown): string {
 
     if (value === null) {
 
-        return c.dim('null');
+        return dataFormatters.nil();
 
     }
 
     if (value === undefined) {
 
-        return c.dim('undefined');
+        return theme.muted('undefined');
 
     }
 
     if (typeof value === 'string') {
 
-        return value.length > 50 ? `"${value.slice(0, 47)}..."` : value;
+        return value.length > 50
+            ? theme.text(`"${value.slice(0, 47)}..."`)
+            : theme.text(value);
 
     }
 
     if (typeof value === 'number') {
 
-        return c.yellow(String(value));
+        return dataFormatters.number(value);
 
     }
 
     if (typeof value === 'boolean') {
 
-        return c.magenta(String(value));
+        return dataFormatters.boolean(value);
 
     }
 
     if (value instanceof Date) {
 
-        return c.dim(value.toISOString());
+        return theme.muted(value.toISOString());
 
     }
 
     if (value instanceof Error) {
 
-        return c.red(value.message);
+        return theme.error(value.message);
 
     }
 
@@ -71,39 +81,35 @@ function formatValue(value: unknown): string {
 
         if (value.length === 0) {
 
-            return c.dim('[]');
+            return theme.muted('[]');
 
         }
 
         if (value.length <= 3 && value.every((v) => typeof v === 'string' || typeof v === 'number')) {
 
-            return `[${value.join(', ')}]`;
+            return theme.text(`[${value.join(', ')}]`);
 
         }
 
-        return c.dim(`[${value.length} items]`);
+        return theme.muted(`[${value.length} items]`);
 
     }
 
     if (typeof value === 'object') {
 
-        // Stringify nested objects
-        try {
+        const [str, error] = attemptSync(() => JSON.stringify(value));
 
-            const str = JSON.stringify(value);
+        if (error) {
 
-            return str.length > 60 ? str.slice(0, 57) + '...' : str;
-
-        }
-        catch {
-
-            return c.dim('[object]');
+            return theme.muted('[object]');
 
         }
+
+        return theme.text(str.length > 60 ? str.slice(0, 57) + '...' : str);
 
     }
 
-    return String(value);
+    return theme.text(String(value));
 
 }
 
@@ -116,7 +122,7 @@ function flattenData(data: Record<string, unknown>): string {
 
     for (const [key, value] of Object.entries(data)) {
 
-        pairs.push(`${c.dim(key)}=${formatValue(value)}`);
+        pairs.push(`${theme.muted(key)}=${formatValue(value)}`);
 
     }
 
@@ -127,7 +133,7 @@ function flattenData(data: Record<string, unknown>): string {
 /**
  * Format a log entry as a colored line.
  *
- * Format: `[icon] event  key=value key=value ...`
+ * Format: `[icon] event  message  key=value key=value ...`
  *
  * @param level - Entry severity level
  * @param event - Observer event name
@@ -146,7 +152,7 @@ export function formatColorLine(
     const icon = style.color(style.icon);
     const eventStr = style.color(event);
 
-    let line = `${icon} ${eventStr}  ${message}`;
+    let line = `${icon} ${eventStr}  ${theme.text(message)}`;
 
     if (data && Object.keys(data).length > 0) {
 
@@ -160,14 +166,15 @@ export function formatColorLine(
 
 /**
  * Status icons for common result types.
+ * Uses theme colors for consistency.
  */
 export const STATUS_ICONS = {
-    success: c.green('✓'),
-    failed: c.red('✗'),
-    partial: c.yellow('⚠'),
-    pending: c.yellow('○'),
-    skipped: c.dim('○'),
-    reverted: c.blue('↩'),
+    success: theme.success('✓'),
+    failed: theme.error('✗'),
+    partial: theme.warning('⚠'),
+    pending: theme.warning('○'),
+    skipped: theme.muted('○'),
+    reverted: theme.info('↩'),
 } as const;
 
 /**
@@ -175,6 +182,11 @@ export const STATUS_ICONS = {
  */
 export function formatDuration(ms: number): string {
 
-    return c.dim(`(${ms}ms)`);
+    return dataFormatters.duration(ms);
 
 }
+
+/**
+ * Re-export ansis for direct use where needed.
+ */
+export { ansis };

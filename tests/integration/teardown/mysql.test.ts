@@ -17,7 +17,6 @@ import {
     createTestConnection,
     deployTestSchema,
     seedTestData,
-    resetTestData,
     teardownTestSchema,
     skipIfNoContainer,
 } from '../../utils/db.js';

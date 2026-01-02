@@ -343,3 +343,23 @@ export type {
     SqlHistoryFile,
     ClearResult,
 } from './sql-terminal/index.js';
+
+// Theme (Modern Slate color scheme)
+export {
+    palette,
+    theme,
+    status,
+    ui,
+    icons,
+    box,
+    borders,
+    data,
+    logLevelColors,
+    logLevelIcons,
+} from './theme.js';
+
+// Re-export ansis for direct color usage
+export { default as ansis } from 'ansis';
+
+// Help formatter (markdown-to-colored-terminal)
+export { formatHelp, stripColors } from './help-formatter.js';

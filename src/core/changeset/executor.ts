@@ -27,6 +27,7 @@ import { sql } from 'kysely';
 import { attempt, attemptSync } from '@logosdx/utils';
 
 import { observer } from '../observer.js';
+import { formatIdentity } from '../identity/resolver.js';
 import { processFile, isTemplate } from '../template/index.js';
 import { computeChecksum, computeCombinedChecksum } from '../runner/checksum.js';
 import { getLockManager } from '../lock/index.js';
@@ -848,21 +849,6 @@ function formatPreviewHeader(filepath: string): string {
 -- ============================================================
 
 `;
-
-}
-
-/**
- * Format identity for tracking.
- */
-function formatIdentity(identity: { name: string; email?: string }): string {
-
-    if (identity.email) {
-
-        return `${identity.name} <${identity.email}>`;
-
-    }
-
-    return identity.name;
 
 }
 

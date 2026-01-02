@@ -12,104 +12,123 @@
  * This union provides compile-time safety for navigation.
  */
 export type Route =
-    // Home & Help
-    | 'home'
-    | 'help'
+    // Changesets
+    | 'change'
+    | 'change/add'
+    | 'change/edit'
+    | 'change/ff'
+    | 'change/history'
+    | 'change/history/detail'
+    | 'change/next'
+    | 'change/revert'
+    | 'change/rewind'
+    | 'change/rm'
+    | 'change/run'
+
     // Config management
     | 'config'
     | 'config/add'
-    | 'config/edit'
-    | 'config/rm'
     | 'config/cp'
-    | 'config/use'
-    | 'config/validate'
+    | 'config/edit'
     | 'config/export'
     | 'config/import'
+    | 'config/rm'
+    | 'config/use'
+    | 'config/validate'
+
+    // Database lifecycle
+    | 'db'
+    | 'db/create'
+    | 'db/destroy'
+    | 'db/teardown'
+    | 'db/truncate'
+
+    // Database exploration
+    | 'db/explore'
+    | 'db/explore/fks'
+    | 'db/explore/functions'
+    | 'db/explore/functions/detail'
+    | 'db/explore/indexes'
+    | 'db/explore/procedures'
+    | 'db/explore/procedures/detail'
+    | 'db/explore/tables'
+    | 'db/explore/tables/detail'
+    | 'db/explore/types'
+    | 'db/explore/types/detail'
+    | 'db/explore/views'
+    | 'db/explore/views/detail'
+
+    // SQL Terminal
+    | 'db/sql'
+    | 'db/sql/clear'
+    | 'db/sql/history'
+
+    // Home & Help
+    | 'help'
+    | 'home'
+
+
+    // Identity
+    | 'identity'
+    | 'identity/edit'
+    | 'identity/export'
+    | 'identity/init'
+    | 'identity/list'
+
+    // Init (first run)
+    | 'init'
+
+    // Lock management
+    | 'lock'
+    | 'lock/acquire'
+    | 'lock/force'
+    | 'lock/release'
+    | 'lock/status'
+
+    // Run operations
+    | 'run'
+    | 'run/build'
+    | 'run/dir'
+    | 'run/exec'
+    | 'run/file'
+    | 'run/list'
+
     // Secret management
     | 'secret'
-    | 'secret/set'
     | 'secret/rm'
+    | 'secret/set'
+
     // Settings
     | 'settings'
-    | 'settings/init'
     | 'settings/build'
-    | 'settings/paths'
-    | 'settings/strict'
+    | 'settings/init'
     | 'settings/logging'
-    | 'settings/stages'
-    | 'settings/stages/add'
-    | 'settings/stages/edit'
+    | 'settings/paths'
+
+    // Settings - Rules
     | 'settings/rules'
     | 'settings/rules/add'
     | 'settings/rules/edit'
+
     // Settings - Universal secrets
     | 'settings/secrets'
     | 'settings/secrets/add'
     | 'settings/secrets/edit'
     | 'settings/secrets/rm'
+
+    // Settings - Stages
+    | 'settings/stages'
+    | 'settings/stages/add'
+    | 'settings/stages/edit'
+
     // Settings - Stage secrets
     | 'settings/stages/secrets'
     | 'settings/stages/secrets/add'
     | 'settings/stages/secrets/edit'
     | 'settings/stages/secrets/rm'
-    // Changesets
-    | 'change'
-    | 'change/add'
-    | 'change/edit'
-    | 'change/rm'
-    | 'change/run'
-    | 'change/revert'
-    | 'change/rewind'
-    | 'change/next'
-    | 'change/ff'
-    | 'change/history'
-    | 'change/history/detail'
-    // Run operations
-    | 'run'
-    | 'run/list'
-    | 'run/build'
-    | 'run/exec'
-    | 'run/file'
-    | 'run/dir'
-    // Database lifecycle
-    | 'db'
-    | 'db/create'
-    | 'db/destroy'
-    | 'db/truncate'
-    | 'db/teardown'
-    // Database exploration
-    | 'db/explore'
-    | 'db/explore/tables'
-    | 'db/explore/tables/detail'
-    | 'db/explore/views'
-    | 'db/explore/views/detail'
-    | 'db/explore/procedures'
-    | 'db/explore/procedures/detail'
-    | 'db/explore/functions'
-    | 'db/explore/functions/detail'
-    | 'db/explore/types'
-    | 'db/explore/types/detail'
-    | 'db/explore/indexes'
-    | 'db/explore/fks'
-    // SQL Terminal
-    | 'db/sql'
-    | 'db/sql/history'
-    | 'db/sql/clear'
-    // Lock management
-    | 'lock'
-    | 'lock/status'
-    | 'lock/acquire'
-    | 'lock/release'
-    | 'lock/force'
-    // Identity
-    | 'identity'
-    | 'identity/edit'
-    | 'identity/init'
-    | 'identity/export'
-    | 'identity/list'
-    // Init (first run)
-    | 'init';
 
+    // Settings - Strict mode
+    | 'settings/strict'
 /**
  * Route parameters that can be passed during navigation.
  *

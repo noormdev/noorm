@@ -58,18 +58,67 @@ docs/                           # Documentation
 
 ## Help Files
 
-CLI help is stored in `help/*.txt` files. These are plain text, terminal-friendly (not markdown).
+CLI help is stored in `help/*.txt` files. Plain text, terminal-friendly (not markdown).
 
-**Registry:** `src/cli/help.ts` maps routes to help files. Uses hierarchical fallback:
+
+### Architecture
 
 ```
-noorm help db explore tables detail
-  → tries: db/explore/tables/detail → db/explore/tables → db/explore → db
+help/                           # Help files directory
+├── home.txt                    # Top-level commands
+├── config.txt
+├── config-add.txt              # Subcommands use dashes
+├── config-edit.txt
+├── db-explore-tables.txt       # Nested routes flatten to dashes
+└── ...
+
+src/cli/help.ts                 # Registry and lookup functions
 ```
 
-**File naming:** `<route-with-dashes>.txt` (e.g., `config-use.txt` for `config/use`)
+**Registry:** Maps route paths to filenames. Not all routes need entries—hierarchical fallback finds parent help.
 
-**Format structure:**
+```typescript
+const HELP_REGISTRY: Record<string, string> = {
+    'home': 'home.txt',
+    'config': 'config.txt',
+    'config/add': 'config-add.txt',
+    'db/explore/tables': 'db-explore-tables.txt',
+    // ...
+}
+```
+
+
+### Hierarchical Fallback
+
+When help is requested, the system tries progressively shorter prefixes:
+
+```
+noorm help db explore tables detail users
+  → tries: db/explore/tables/detail/users  (not found)
+  → tries: db/explore/tables/detail        (not found)
+  → tries: db/explore/tables               ✓ found → db-explore-tables.txt
+```
+
+This means parent help covers undocumented children automatically.
+
+
+### API Functions
+
+```typescript
+import { getHelp, getHelpMatch, listHelpTopics } from './help.js'
+
+// Load help content (async, returns null if not found)
+const content = await getHelp('db/explore/tables')
+
+// Get the matched route (useful for showing which help loaded)
+const match = getHelpMatch('db/explore/tables/detail')  // → 'db/explore/tables'
+
+// List all available topics
+const topics = listHelpTopics()  // → ['change', 'change/ff', 'config', ...]
+```
+
+
+### File Format
 
 ```
 COMMAND NAME - Brief description
@@ -95,7 +144,14 @@ SEE ALSO
     noorm help related-command
 ```
 
-**Maintenance:** When adding new headless commands, add corresponding help files. Update the registry in `src/cli/help.ts`.
+
+### Adding New Help
+
+1. Create `help/<route-with-dashes>.txt` following the format above
+2. Add entry to `HELP_REGISTRY` in `src/cli/help.ts`
+3. File naming: `config/use` → `config-use.txt`, `db/explore/tables` → `db-explore-tables.txt`
+
+Only add registry entries for routes with dedicated content. Parent routes automatically cover children via fallback.
 
 
 ## Principles

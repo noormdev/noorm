@@ -92,8 +92,14 @@ export type NoormVersionUpdate = Updateable<NoormVersionTable>;
 
 /**
  * Operation status values.
+ *
+ * - pending: Operation started but not finished
+ * - success: Operation completed successfully
+ * - failed: Operation failed with error
+ * - reverted: Operation was reverted
+ * - stale: Operation's schema objects were torn down (needs re-run)
  */
-export type OperationStatus = 'pending' | 'success' | 'failed' | 'reverted';
+export type OperationStatus = 'pending' | 'success' | 'failed' | 'reverted' | 'stale';
 
 /**
  * Change type values.

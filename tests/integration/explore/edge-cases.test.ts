@@ -95,7 +95,7 @@ describe('integration: explore edge cases', () => {
             const tables = await fetchList(db, 'sqlite', 'tables') as TableSummary[];
 
             const longTable = tables.find(t =>
-                t.name === 'this_is_a_very_long_table_name_that_tests_identifier_limits'
+                t.name === 'this_is_a_very_long_table_name_that_tests_identifier_limits',
             );
 
             expect(longTable).toBeDefined();
@@ -109,13 +109,13 @@ describe('integration: explore edge cases', () => {
                 db,
                 'sqlite',
                 'tables',
-                'this_is_a_very_long_table_name_that_tests_identifier_limits'
+                'this_is_a_very_long_table_name_that_tests_identifier_limits',
             ) as TableDetail;
 
             expect(details).toBeDefined();
 
             const longCol = details.columns.find(c =>
-                c.name === 'this_is_a_very_long_column_name_that_tests_identifier_lim'
+                c.name === 'this_is_a_very_long_column_name_that_tests_identifier_lim',
             );
 
             expect(longCol).toBeDefined();
@@ -128,7 +128,7 @@ describe('integration: explore edge cases', () => {
             const indexes = await fetchList(db, 'sqlite', 'indexes') as IndexSummary[];
 
             const longIndex = indexes.find(i =>
-                i.name === 'idx_very_long_table_name_tests_identifier_limits_short_col'
+                i.name === 'idx_very_long_table_name_tests_identifier_limits_short_col',
             );
 
             expect(longIndex).toBeDefined();
@@ -201,7 +201,7 @@ describe('integration: explore edge cases', () => {
 
             const selfRefFk = fks.find(fk =>
                 fk.tableName === 'employees' &&
-                fk.referencedTable === 'employees'
+                fk.referencedTable === 'employees',
             );
 
             expect(selfRefFk).toBeDefined();
@@ -213,7 +213,7 @@ describe('integration: explore edge cases', () => {
             const fks = await fetchList(db, 'sqlite', 'foreignKeys') as ForeignKeySummary[];
             const selfRefFk = fks.find(fk =>
                 fk.tableName === 'employees' &&
-                fk.referencedTable === 'employees'
+                fk.referencedTable === 'employees',
             );
 
             expect(selfRefFk).toBeDefined();
@@ -230,7 +230,7 @@ describe('integration: explore edge cases', () => {
 
             const categoryFk = fks.find(fk =>
                 fk.tableName === 'categories' &&
-                fk.referencedTable === 'categories'
+                fk.referencedTable === 'categories',
             );
 
             expect(categoryFk).toBeDefined();
@@ -269,7 +269,7 @@ describe('integration: explore edge cases', () => {
 
             const compositeFk = fks.find(fk =>
                 fk.tableName === 'order_item_details' &&
-                fk.referencedTable === 'order_items'
+                fk.referencedTable === 'order_items',
             );
 
             expect(compositeFk).toBeDefined();
@@ -282,7 +282,7 @@ describe('integration: explore edge cases', () => {
             const fks = await fetchList(db, 'sqlite', 'foreignKeys') as ForeignKeySummary[];
             const compositeFk = fks.find(fk =>
                 fk.tableName === 'order_item_details' &&
-                fk.referencedTable === 'order_items'
+                fk.referencedTable === 'order_items',
             );
 
             expect(compositeFk).toBeDefined();
@@ -340,12 +340,12 @@ describe('integration: explore edge cases', () => {
 
             const userToDept = fks.find(fk =>
                 fk.tableName === 'department_users' &&
-                fk.referencedTable === 'departments'
+                fk.referencedTable === 'departments',
             );
 
             const deptToUser = fks.find(fk =>
                 fk.tableName === 'departments' &&
-                fk.referencedTable === 'department_users'
+                fk.referencedTable === 'department_users',
             );
 
             expect(userToDept).toBeDefined();
@@ -445,7 +445,7 @@ describe('integration: explore edge cases', () => {
             const tables = await fetchList(db, 'sqlite', 'tables') as TableSummary[];
 
             const mixedTable = tables.find(t =>
-                t.name.toLowerCase() === 'mixedcasetable'
+                t.name.toLowerCase() === 'mixedcasetable',
             );
 
             expect(mixedTable).toBeDefined();
@@ -456,7 +456,7 @@ describe('integration: explore edge cases', () => {
 
             const tables = await fetchList(db, 'sqlite', 'tables') as TableSummary[];
             const mixedTable = tables.find(t =>
-                t.name.toLowerCase() === 'mixedcasetable'
+                t.name.toLowerCase() === 'mixedcasetable',
             );
 
             expect(mixedTable).toBeDefined();

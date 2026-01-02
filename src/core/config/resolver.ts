@@ -10,9 +10,11 @@
  */
 import { merge, clone } from '@logosdx/utils';
 
-import type { Config, ConfigInput, Stage, CompletenessCheck } from './types.js';
-import { getEnvConfig, getEnvConfigName } from './env.js';
+import type { Config, ConfigInput, CompletenessCheck } from './types.js';
+import { getEnvConfigName } from '../environment.js';
 import { parseConfig } from './schema.js';
+import { getEnvConfig } from './index.js';
+import type { SettingsManager, StageDefaults } from '../settings/index.js';
 
 /**
  * Interface for state manager dependency.
@@ -31,12 +33,31 @@ export interface StateProvider {
  * Settings provide stage definitions and build rules.
  * Optional - config resolution works without settings.
  */
-export interface SettingsProvider {
+export class SettingsProvider {
+
+    #manager: SettingsManager;
+
+    constructor(manager: SettingsManager) {
+
+        this.#manager = manager;
+
+    }
+
     /** Get a stage by name */
-    getStage(name: string): Stage | null;
+    getStage(name: string) {
+
+        return this.#manager.getStage(name) ?? null;
+
+    }
 
     /** Get stage that matches a config name (for auto-linking) */
-    findStageForConfig(configName: string): Stage | null;
+    findStageForConfig(configName: string) {
+
+        // Auto-link: if a stage exists with same name as config, use it
+        return this.#manager.getStage(configName) ?? null;
+
+    }
+
 }
 
 /**
@@ -53,6 +74,9 @@ const DEFAULTS: ConfigInput = {
     connection: {
         host: 'localhost',
         pool: { min: 0, max: 10 },
+    },
+    log: {
+        level: 'info',
     },
 };
 
@@ -155,7 +179,7 @@ export function resolveConfig(state: StateProvider, options: ResolveOptions = {}
     }
 
     merged = merge(merged, stored);
-    merged = merge(merged, envConfig);
+    merged = merge(merged, envConfig) as ConfigInput;
     merged = merge(merged, options.flags ?? {});
 
     // 5. Validate and return with defaults applied
@@ -174,16 +198,12 @@ function getStageDefaults(
     configName: string,
     stageName: string | undefined,
     settings: SettingsProvider | undefined,
-): ConfigInput | null {
+): StageDefaults | null {
 
     if (!settings) return null;
+    if (stageName) return settings.getStage(stageName)?.defaults ?? null;
 
-    // Try explicit stage first, then auto-match by config name
-    const stage = stageName
-        ? settings.getStage(stageName)
-        : settings.findStageForConfig(configName);
-
-    return stage?.defaults ?? null;
+    return settings.findStageForConfig(configName)?.defaults ?? null;
 
 }
 
@@ -285,7 +305,7 @@ export function checkConfigCompleteness(
     }
 
     // Check stage constraint violations
-    const defaults = stage.defaults ?? {};
+    const defaults = stage.defaults ?? {} as ConfigInput;
 
     // protected: true cannot be overridden to false
     if (defaults.protected === true && config.protected === false) {
