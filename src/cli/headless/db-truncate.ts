@@ -45,9 +45,23 @@ export const run: HeadlessCommand = async (_params, flags, logger) => {
 
     if (error) return 1;
 
-    logger.info(`Truncated ${result.truncated.length} tables`, {
-        tables: result.truncated,
-    });
+    if (flags.json) {
+
+        // Output structured JSON
+        const output = {
+            truncated: result.truncated,
+            count: result.truncated.length,
+        };
+        process.stdout.write(JSON.stringify(output) + '\n');
+
+    }
+    else {
+
+        logger.info(`Truncated ${result.truncated.length} tables`, {
+            tables: result.truncated,
+        });
+
+    }
 
     return 0;
 

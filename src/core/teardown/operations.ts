@@ -130,7 +130,7 @@ export async function truncateData(
 
     for (const tableName of truncated) {
 
-        statements.push(ops.truncateTable(tableName, undefined, options.restartIdentity ?? true));
+        statements.push(ops.truncateTable(tableName, undefined, options.restartIdentity ?? false));
 
     }
 

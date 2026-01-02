@@ -55,12 +55,26 @@ export const run: HeadlessCommand = async (_params, flags, logger) => {
         result.dropped.functions.length +
         result.dropped.types.length;
 
-    logger.info(`Dropped ${droppedCount} objects`, {
-        tables: result.dropped.tables.length,
-        views: result.dropped.views.length,
-        functions: result.dropped.functions.length,
-        types: result.dropped.types.length,
-    });
+    if (flags.json) {
+
+        // Output structured JSON
+        const output = {
+            dropped: result.dropped,
+            count: droppedCount,
+        };
+        process.stdout.write(JSON.stringify(output) + '\n');
+
+    }
+    else {
+
+        logger.info(`Dropped ${droppedCount} objects`, {
+            tables: result.dropped.tables.length,
+            views: result.dropped.views.length,
+            functions: result.dropped.functions.length,
+            types: result.dropped.types.length,
+        });
+
+    }
 
     return 0;
 
