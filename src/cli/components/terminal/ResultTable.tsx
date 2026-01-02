@@ -137,6 +137,7 @@ function looksLikeDate(value: unknown): boolean {
         if (!isNaN(parsed)) {
 
             const year = new Date(parsed).getFullYear();
+
             return year >= 1970 && year <= 2100;
 
         }
@@ -178,6 +179,7 @@ function detectDateColumn(
                 const hasDateValue = rows.slice(0, 10).some((row) => {
 
                     const val = row[col];
+
                     return val !== null && val !== undefined;
 
                 });
