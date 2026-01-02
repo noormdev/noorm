@@ -149,7 +149,7 @@ export default withMermaid(
             },
 
             socialLinks: [
-                { icon: 'github', link: 'https://github.com/logosdx/noorm' }
+                { icon: 'github', link: 'https://github.com/noormdev/noorm' }
             ],
 
             search: {

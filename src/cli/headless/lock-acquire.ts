@@ -45,10 +45,25 @@ export const run: HeadlessCommand = async (_params, flags, logger) => {
 
     if (error) return 1;
 
-    logger.info('Lock acquired', {
-        lockedBy: lock.lockedBy,
-        expiresAt: lock.expiresAt.toISOString(),
-    });
+    if (flags.json) {
+
+        // Output structured JSON
+        const output = {
+            acquired: true,
+            lockedBy: lock.lockedBy,
+            expiresAt: lock.expiresAt.toISOString(),
+        };
+        process.stdout.write(JSON.stringify(output) + '\n');
+
+    }
+    else {
+
+        logger.info('Lock acquired', {
+            lockedBy: lock.lockedBy,
+            expiresAt: lock.expiresAt.toISOString(),
+        });
+
+    }
 
     return 0;
 

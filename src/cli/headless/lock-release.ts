@@ -43,7 +43,17 @@ export const run: HeadlessCommand = async (_params, flags, logger) => {
 
     if (error) return 1;
 
-    logger.info('Lock released');
+    if (flags.json) {
+
+        // Output structured JSON
+        process.stdout.write(JSON.stringify({ released: true }) + '\n');
+
+    }
+    else {
+
+        logger.info('Lock released');
+
+    }
 
     return 0;
 

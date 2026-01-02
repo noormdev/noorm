@@ -214,7 +214,7 @@ describe('cli: screens/init/InitScreen', () => {
 
         const { lastFrame } = render(
             <TestWrapper>
-                <InitScreen params={{ name: 'force' }} />
+                <InitScreen params={{ force: true }} />
             </TestWrapper>,
         );
 

@@ -6,11 +6,20 @@
 import type { TeardownDialectOperations } from '../types.js';
 
 /**
- * Quote a SQLite identifier.
+ * Quote a SQLite identifier with double quotes.
  */
 function quote(name: string): string {
 
     return `"${name.replace(/"/g, '""')}"`;
+
+}
+
+/**
+ * Escape a value for single-quoted string literal.
+ */
+function escapeString(value: string): string {
+
+    return value.replace(/'/g, "''");
 
 }
 
@@ -37,14 +46,22 @@ export const sqliteTeardownOperations: TeardownDialectOperations = {
 
     },
 
-    truncateTable(tableName: string, _schema?: string, _restartIdentity = true): string {
+    truncateTable(tableName: string, _schema?: string, restartIdentity = false): string {
 
         // SQLite doesn't have TRUNCATE, use DELETE
-        // Note: We don't reset sqlite_sequence because:
-        // 1. It only exists if there's at least one AUTOINCREMENT table
-        // 2. Checking for its existence adds complexity
-        // 3. For test scenarios, resetting identity is rarely needed
-        return `DELETE FROM ${quote(tableName)}`;
+        const deleteStmt = `DELETE FROM ${quote(tableName)}`;
+
+        if (restartIdentity) {
+
+            // Reset sqlite_sequence to restart AUTOINCREMENT counters
+            // Note: sqlite_sequence only exists if the table has AUTOINCREMENT
+            const sequenceStmt = `DELETE FROM sqlite_sequence WHERE name = '${escapeString(tableName)}'`;
+
+            return `${deleteStmt}; ${sequenceStmt}`;
+
+        }
+
+        return deleteStmt;
 
     },
 

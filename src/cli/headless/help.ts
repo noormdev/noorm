@@ -106,9 +106,22 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
 
         const topicsList = generateTopicsList();
         const fullHelp = `${help}\n${topicsList}`;
-        const output = flags.json ? fullHelp : formatHelp(fullHelp);
 
-        process.stdout.write(`${output}\n`);
+        if (flags.json) {
+
+            // Output structured JSON for scripting
+            const topics = Object.keys(handlers!)
+                .filter(r => r !== 'help')
+                .sort();
+            process.stdout.write(JSON.stringify({ topics }) + '\n');
+
+        }
+        else {
+
+            const output = formatHelp(fullHelp);
+            process.stdout.write(`${output}\n`);
+
+        }
 
         return 0;
 
@@ -128,10 +141,19 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
 
     const helpText = handler.help || 'No help available for this command.';
 
-    // Apply colors unless --json mode
-    const output = flags.json ? helpText : formatHelp(helpText);
+    if (flags.json) {
 
-    process.stdout.write(`${output}\n`);
+        // Output structured JSON for scripting
+        process.stdout.write(JSON.stringify({ topic: route, content: helpText }) + '\n');
+
+    }
+    else {
+
+        // Apply colors for human-readable output
+        const output = formatHelp(helpText);
+        process.stdout.write(`${output}\n`);
+
+    }
 
     return 0;
 

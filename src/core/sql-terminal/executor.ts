@@ -76,7 +76,8 @@ export async function executeRawSql(
     const columns = firstRow ? Object.keys(firstRow) : [];
 
     // Get affected rows for DML statements
-    const rowsAffected = result!.numAffectedRows
+    // Note: numAffectedRows can be 0n (bigint 0), which is falsy but valid
+    const rowsAffected = result!.numAffectedRows !== undefined
         ? Number(result!.numAffectedRows)
         : undefined;
 

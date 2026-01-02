@@ -100,6 +100,27 @@ Each includes:
 - README with setup instructions
 
 
+## CLI Auto-Update
+
+Check for updates on CLI startup and prompt user to update.
+
+**Behavior:**
+
+- On TUI launch, check NPM registry for latest version (if online)
+- If newer version available, show prompt: "Update available (v1.2.3 → v1.3.0). Update now? [y/n]"
+- Option to enable auto-update in settings (skip prompt, update automatically)
+- Respect offline mode / skip if no network
+
+**Settings:**
+
+```yaml
+# settings.yml
+cli:
+    autoUpdate: false      # true = update without asking
+    checkUpdates: true     # false = disable update checks entirely
+```
+
+
 ## SDK Finish Line
 
 Core SDK is implemented and packaged (`@noormdev/sdk`). Remaining:

@@ -11,7 +11,7 @@ hero:
       link: /getting-started/installation
     - theme: alt
       text: View on GitHub
-      link: https://github.com/logosdx/noorm
+      link: https://github.com/noormdev/noorm
 
 features:
   - icon:
