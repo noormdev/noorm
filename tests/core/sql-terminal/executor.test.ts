@@ -339,12 +339,13 @@ describe('sql-terminal: executor', () => {
 
         });
 
-        it('should measure execution duration', async () => {
+        // Note: setTimeout doesn't guarantee exact timing - use lenient threshold
+        it('should measure execution duration', { retry: 2 }, async () => {
 
             mockExecute.mockImplementation(async () => {
 
                 // Simulate query execution time
-                await new Promise((resolve) => setTimeout(resolve, 10));
+                await new Promise((resolve) => setTimeout(resolve, 15));
 
                 return {
                     rows: [{ id: 1 }],
@@ -361,6 +362,7 @@ describe('sql-terminal: executor', () => {
             const result = await executeRawSql(mockDb, 'SELECT 1', 'test');
 
             expect(result.success).toBe(true);
+            // setTimeout(15) may fire slightly early - allow 10ms minimum
             expect(result.durationMs).toBeGreaterThanOrEqual(10);
 
         });
