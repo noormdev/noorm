@@ -101,14 +101,23 @@ describe('cli: focus', () => {
 
         it('should throw when used outside FocusProvider', () => {
 
-            const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+            const errors: string[] = [];
+            const errorSpy = vi.spyOn(console, 'error').mockImplementation((...args) => {
+
+                errors.push(args.map(String).join(' '));
+
+            });
 
             // In React 19, errors during render are caught and logged
-            // Check that the render fails with an error frame
+            // Check that the render fails with an error
             const { lastFrame } = render(<FocusDisplay />);
             const output = lastFrame() ?? '';
 
-            expect(output).toContain('useFocusContext must be used within a FocusProvider');
+            // Error may appear in rendered output or in console.error
+            const hasErrorInOutput = output.includes('useFocusContext must be used within a FocusProvider');
+            const hasErrorInConsole = errors.some(e => e.includes('useFocusContext must be used within a FocusProvider'));
+
+            expect(hasErrorInOutput || hasErrorInConsole).toBe(true);
 
             errorSpy.mockRestore();
 

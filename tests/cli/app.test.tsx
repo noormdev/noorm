@@ -3,11 +3,12 @@
  *
  * Tests full app rendering and integration.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { render } from 'ink-testing-library';
 import React from 'react';
 
 import { App } from '../../src/cli/app.js';
+import { resetLifecycleManager } from '../../src/core/lifecycle/manager.js';
 
 // ANSI escape sequences
 const KEYS = {
@@ -16,6 +17,19 @@ const KEYS = {
 };
 
 describe('cli: app', () => {
+
+    // Reset lifecycle manager between tests to prevent state conflicts
+    beforeEach(async () => {
+
+        await resetLifecycleManager();
+
+    });
+
+    afterEach(async () => {
+
+        await resetLifecycleManager();
+
+    });
 
     describe('App', () => {
 
