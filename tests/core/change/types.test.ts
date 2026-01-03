@@ -9,7 +9,7 @@ import {
     ChangeNotAppliedError,
     ChangeOrphanedError,
     ManifestReferenceError,
-    DEFAULT_CHANGESET_OPTIONS,
+    DEFAULT_CHANGE_OPTIONS,
     DEFAULT_BATCH_OPTIONS,
 } from '../../../src/core/change/types.js';
 
@@ -120,14 +120,14 @@ describe('change: types', () => {
 
     });
 
-    describe('DEFAULT_CHANGESET_OPTIONS', () => {
+    describe('DEFAULT_CHANGE_OPTIONS', () => {
 
         it('should have expected defaults', () => {
 
-            expect(DEFAULT_CHANGESET_OPTIONS.force).toBe(false);
-            expect(DEFAULT_CHANGESET_OPTIONS.dryRun).toBe(false);
-            expect(DEFAULT_CHANGESET_OPTIONS.preview).toBe(false);
-            expect(DEFAULT_CHANGESET_OPTIONS.output).toBe(null);
+            expect(DEFAULT_CHANGE_OPTIONS.force).toBe(false);
+            expect(DEFAULT_CHANGE_OPTIONS.dryRun).toBe(false);
+            expect(DEFAULT_CHANGE_OPTIONS.preview).toBe(false);
+            expect(DEFAULT_CHANGE_OPTIONS.output).toBe(null);
 
         });
 

@@ -3,14 +3,16 @@
  *
  * Tests keyboard hooks and list navigation.
  */
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render } from 'ink-testing-library';
 import React, { useState, useCallback } from 'react';
 import { Text } from 'ink';
 
 import { RouterProvider } from '../../src/cli/router.js';
 import { FocusProvider, useFocusScope } from '../../src/cli/focus.js';
+import { ShutdownProvider } from '../../src/cli/shutdown.js';
 import { useFocusedInput, useListKeys, useQuitHandler } from '../../src/cli/keyboard.js';
+import { resetLifecycleManager } from '../../src/core/lifecycle/manager.js';
 
 // ANSI escape sequences for arrow keys
 const KEYS = {
@@ -26,14 +28,29 @@ const KEYS = {
 function TestWrapper({ children }: { children: React.ReactNode }) {
 
     return (
-        <FocusProvider>
-            <RouterProvider>{children}</RouterProvider>
-        </FocusProvider>
+        <ShutdownProvider projectRoot={process.cwd()}>
+            <FocusProvider>
+                <RouterProvider>{children}</RouterProvider>
+            </FocusProvider>
+        </ShutdownProvider>
     );
 
 }
 
 describe('cli: keyboard', () => {
+
+    // Reset lifecycle manager between tests to prevent state conflicts
+    beforeEach(async () => {
+
+        await resetLifecycleManager();
+
+    });
+
+    afterEach(async () => {
+
+        await resetLifecycleManager();
+
+    });
 
     describe('useFocusedInput', () => {
 

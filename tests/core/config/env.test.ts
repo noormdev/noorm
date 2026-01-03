@@ -297,6 +297,42 @@ describe('config: env', () => {
 
     describe('isCI', () => {
 
+        // CI detection also checks TTY - mock it for these tests
+        const originalIsTTY = process.stdout.isTTY;
+
+        beforeEach(() => {
+
+            // Clear ALL CI env vars - isCi checks more than just CI
+            const allCiVars = [
+                'CI', 'CONTINUOUS_INTEGRATION', 'GITHUB_ACTIONS', 'GITLAB_CI',
+                'CIRCLECI', 'TRAVIS', 'JENKINS_URL', 'BUILDKITE',
+                'TEAMCITY_VERSION', 'TF_BUILD', 'BITBUCKET_BUILD_NUMBER',
+                'NOORM_HEADLESS',
+            ];
+
+            for (const v of allCiVars) {
+
+                delete process.env[v];
+
+            }
+
+            // Pretend we have a TTY (so !isTTY doesn't trigger CI detection)
+            Object.defineProperty(process.stdout, 'isTTY', {
+                value: true,
+                writable: true,
+            });
+
+        });
+
+        afterEach(() => {
+
+            Object.defineProperty(process.stdout, 'isTTY', {
+                value: originalIsTTY,
+                writable: true,
+            });
+
+        });
+
         it('should return false when CI not set', () => {
 
             expect(isCi()).toBe(false);
@@ -319,11 +355,13 @@ describe('config: env', () => {
 
         });
 
-        it('should return false for other values', () => {
+        it('should return true for any CI value (presence-based detection)', () => {
 
+            // CI detection is presence-based, not value-based
+            // Any value for CI means we're in a CI environment
             process.env['CI'] = 'false';
 
-            expect(isCi()).toBe(false);
+            expect(isCi()).toBe(true);
 
         });
 

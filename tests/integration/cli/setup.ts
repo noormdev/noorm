@@ -104,8 +104,9 @@ export interface TestProject {
  */
 export async function noorm(project: TestProject, ...args: string[]) {
 
-    // Small delay to avoid resource contention between rapid CLI invocations
-    await new Promise((r) => setTimeout(r, 50));
+    // Delay to avoid resource contention between CLI invocations
+    // SQLite file handles need time to be released
+    await new Promise((r) => setTimeout(r, 100));
 
     // zx handles arrays by joining with spaces, which is correct for CLI args
     const cmdArgs = ['-H', ...args];

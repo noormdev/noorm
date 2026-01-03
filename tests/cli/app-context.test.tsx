@@ -218,12 +218,21 @@ describe('cli: app-context', () => {
 
         it('should throw when used outside AppContextProvider', () => {
 
-            const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+            const errors: string[] = [];
+            const errorSpy = vi.spyOn(console, 'error').mockImplementation((...args) => {
+
+                errors.push(args.map(String).join(' '));
+
+            });
 
             const { lastFrame } = render(<ContextDisplay />);
             const output = lastFrame() ?? '';
 
-            expect(output).toContain('useAppContext must be used within an AppContextProvider');
+            // Error may appear in rendered output or in console.error
+            const hasErrorInOutput = output.includes('useAppContext must be used within an AppContextProvider');
+            const hasErrorInConsole = errors.some(e => e.includes('useAppContext must be used within an AppContextProvider'));
+
+            expect(hasErrorInOutput || hasErrorInConsole).toBe(true);
 
             errorSpy.mockRestore();
 

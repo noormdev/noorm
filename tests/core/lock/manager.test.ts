@@ -14,6 +14,10 @@ import {
 } from '../../../src/core/lock/index.js';
 import { NOORM_TABLES, type NoormDatabase } from '../../../src/core/shared/index.js';
 import { v1 } from '../../../src/core/version/schema/migrations/v1.js';
+import type { LockOptions } from '../../../src/core/lock/types.js';
+
+// SQLite dialect option for all lock operations in tests
+const sqliteOpts: LockOptions = { dialect: 'sqlite' };
 
 /**
  * Create a test database with schema.
@@ -80,7 +84,7 @@ describe('lock: manager', () => {
 
             const manager = getLockManager();
 
-            const lock = await manager.acquire(db, 'dev', 'alice@example.com');
+            const lock = await manager.acquire(db, 'dev', 'alice@example.com', sqliteOpts);
 
             expect(lock.lockedBy).toBe('alice@example.com');
             expect(lock.lockedAt).toBeInstanceOf(Date);
@@ -93,7 +97,7 @@ describe('lock: manager', () => {
 
             const manager = getLockManager();
 
-            await manager.acquire(db, 'dev', 'alice@example.com');
+            await manager.acquire(db, 'dev', 'alice@example.com', sqliteOpts);
 
             const row = await db
                 .selectFrom(NOORM_TABLES.lock)
@@ -112,6 +116,7 @@ describe('lock: manager', () => {
             const manager = getLockManager();
 
             const lock = await manager.acquire(db, 'dev', 'alice@example.com', {
+                ...sqliteOpts,
                 reason: 'Running migrations',
             });
 
@@ -132,6 +137,7 @@ describe('lock: manager', () => {
             const manager = getLockManager();
 
             const lock = await manager.acquire(db, 'dev', 'alice@example.com', {
+                ...sqliteOpts,
                 timeout: 60_000, // 1 minute
             });
 
@@ -145,10 +151,10 @@ describe('lock: manager', () => {
             const manager = getLockManager();
 
             // Alice acquires the lock
-            await manager.acquire(db, 'dev', 'alice@example.com');
+            await manager.acquire(db, 'dev', 'alice@example.com', sqliteOpts);
 
             // Bob tries to acquire
-            await expect(manager.acquire(db, 'dev', 'bob@example.com')).rejects.toThrow(
+            await expect(manager.acquire(db, 'dev', 'bob@example.com', sqliteOpts)).rejects.toThrow(
                 LockAcquireError,
             );
 
@@ -158,12 +164,12 @@ describe('lock: manager', () => {
 
             const manager = getLockManager();
 
-            const lock1 = await manager.acquire(db, 'dev', 'alice@example.com');
+            const lock1 = await manager.acquire(db, 'dev', 'alice@example.com', sqliteOpts);
 
             // Small delay to ensure time difference
             await sleep(50);
 
-            const lock2 = await manager.acquire(db, 'dev', 'alice@example.com');
+            const lock2 = await manager.acquire(db, 'dev', 'alice@example.com', sqliteOpts);
 
             expect(lock2.lockedBy).toBe('alice@example.com');
             expect(lock2.expiresAt.getTime()).toBeGreaterThan(lock1.expiresAt.getTime());
@@ -176,6 +182,7 @@ describe('lock: manager', () => {
 
             // Alice acquires with very short timeout
             await manager.acquire(db, 'dev', 'alice@example.com', {
+                ...sqliteOpts,
                 timeout: 1, // 1ms
             });
 
@@ -183,7 +190,7 @@ describe('lock: manager', () => {
             await sleep(50);
 
             // Bob should now be able to acquire
-            const lock = await manager.acquire(db, 'dev', 'bob@example.com');
+            const lock = await manager.acquire(db, 'dev', 'bob@example.com', sqliteOpts);
 
             expect(lock.lockedBy).toBe('bob@example.com');
 
@@ -193,8 +200,8 @@ describe('lock: manager', () => {
 
             const manager = getLockManager();
 
-            const lock1 = await manager.acquire(db, 'dev', 'alice@example.com');
-            const lock2 = await manager.acquire(db, 'staging', 'bob@example.com');
+            const lock1 = await manager.acquire(db, 'dev', 'alice@example.com', sqliteOpts);
+            const lock2 = await manager.acquire(db, 'staging', 'bob@example.com', sqliteOpts);
 
             expect(lock1.lockedBy).toBe('alice@example.com');
             expect(lock2.lockedBy).toBe('bob@example.com');
@@ -211,11 +218,13 @@ describe('lock: manager', () => {
 
             // Alice acquires with short timeout
             await manager.acquire(db, 'dev', 'alice@example.com', {
+                ...sqliteOpts,
                 timeout: 100,
             });
 
             // Bob waits for lock
             const lockPromise = manager.acquire(db, 'dev', 'bob@example.com', {
+                ...sqliteOpts,
                 wait: true,
                 waitTimeout: 5000,
                 pollInterval: 50,
@@ -233,12 +242,14 @@ describe('lock: manager', () => {
 
             // Alice acquires with long timeout
             await manager.acquire(db, 'dev', 'alice@example.com', {
+                ...sqliteOpts,
                 timeout: 60_000,
             });
 
             // Bob waits with short timeout
             await expect(
                 manager.acquire(db, 'dev', 'bob@example.com', {
+                    ...sqliteOpts,
                     wait: true,
                     waitTimeout: 100,
                     pollInterval: 25,
@@ -255,7 +266,7 @@ describe('lock: manager', () => {
 
             const manager = getLockManager();
 
-            await manager.acquire(db, 'dev', 'alice@example.com');
+            await manager.acquire(db, 'dev', 'alice@example.com', sqliteOpts);
             await manager.release(db, 'dev', 'alice@example.com');
 
             const row = await db
@@ -282,7 +293,7 @@ describe('lock: manager', () => {
 
             const manager = getLockManager();
 
-            await manager.acquire(db, 'dev', 'alice@example.com');
+            await manager.acquire(db, 'dev', 'alice@example.com', sqliteOpts);
 
             await expect(manager.release(db, 'dev', 'bob@example.com')).rejects.toThrow(
                 LockOwnershipError,
@@ -298,7 +309,7 @@ describe('lock: manager', () => {
 
             const manager = getLockManager();
 
-            await manager.acquire(db, 'dev', 'alice@example.com');
+            await manager.acquire(db, 'dev', 'alice@example.com', sqliteOpts);
 
             const released = await manager.forceRelease(db, 'dev');
 
@@ -347,7 +358,7 @@ describe('lock: manager', () => {
                 expect(row).toBeDefined();
                 expect(row!.locked_by).toBe('alice@example.com');
 
-            });
+            }, sqliteOpts);
 
             expect(executed).toBe(true);
 
@@ -359,7 +370,7 @@ describe('lock: manager', () => {
 
             await manager.withLock(db, 'dev', 'alice@example.com', async () => {
                 // do nothing
-            });
+            }, sqliteOpts);
 
             const row = await db
                 .selectFrom(NOORM_TABLES.lock)
@@ -380,7 +391,7 @@ describe('lock: manager', () => {
 
                     throw new Error('Operation failed');
 
-                }),
+                }, sqliteOpts),
             ).rejects.toThrow('Operation failed');
 
             const row = await db
@@ -401,7 +412,7 @@ describe('lock: manager', () => {
 
                 return { success: true, count: 42 };
 
-            });
+            }, sqliteOpts);
 
             expect(result).toEqual({ success: true, count: 42 });
 
@@ -415,9 +426,9 @@ describe('lock: manager', () => {
 
             const manager = getLockManager();
 
-            await manager.acquire(db, 'dev', 'alice@example.com');
+            await manager.acquire(db, 'dev', 'alice@example.com', sqliteOpts);
 
-            await expect(manager.validate(db, 'dev', 'alice@example.com')).resolves.toBeUndefined();
+            await expect(manager.validate(db, 'dev', 'alice@example.com', 'sqlite')).resolves.toBeUndefined();
 
         });
 
@@ -435,9 +446,9 @@ describe('lock: manager', () => {
 
             const manager = getLockManager();
 
-            await manager.acquire(db, 'dev', 'alice@example.com');
+            await manager.acquire(db, 'dev', 'alice@example.com', sqliteOpts);
 
-            await expect(manager.validate(db, 'dev', 'bob@example.com')).rejects.toThrow(
+            await expect(manager.validate(db, 'dev', 'bob@example.com', 'sqlite')).rejects.toThrow(
                 LockOwnershipError,
             );
 
@@ -449,13 +460,14 @@ describe('lock: manager', () => {
 
             // Acquire with very short timeout
             await manager.acquire(db, 'dev', 'alice@example.com', {
+                ...sqliteOpts,
                 timeout: 1,
             });
 
             // Wait for expiry
             await sleep(50);
 
-            await expect(manager.validate(db, 'dev', 'alice@example.com')).rejects.toThrow(
+            await expect(manager.validate(db, 'dev', 'alice@example.com', 'sqlite')).rejects.toThrow(
                 LockExpiredError,
             );
 
@@ -470,12 +482,14 @@ describe('lock: manager', () => {
             const manager = getLockManager();
 
             const lock1 = await manager.acquire(db, 'dev', 'alice@example.com', {
+                ...sqliteOpts,
                 timeout: 60_000,
             });
 
             await sleep(50);
 
             const lock2 = await manager.extend(db, 'dev', 'alice@example.com', {
+                ...sqliteOpts,
                 timeout: 120_000,
             });
 
@@ -487,7 +501,7 @@ describe('lock: manager', () => {
 
             const manager = getLockManager();
 
-            await expect(manager.extend(db, 'dev', 'alice@example.com')).rejects.toThrow(
+            await expect(manager.extend(db, 'dev', 'alice@example.com', sqliteOpts)).rejects.toThrow(
                 LockNotFoundError,
             );
 
@@ -497,9 +511,9 @@ describe('lock: manager', () => {
 
             const manager = getLockManager();
 
-            await manager.acquire(db, 'dev', 'alice@example.com');
+            await manager.acquire(db, 'dev', 'alice@example.com', sqliteOpts);
 
-            await expect(manager.extend(db, 'dev', 'bob@example.com')).rejects.toThrow(
+            await expect(manager.extend(db, 'dev', 'bob@example.com', sqliteOpts)).rejects.toThrow(
                 LockOwnershipError,
             );
 
@@ -513,7 +527,7 @@ describe('lock: manager', () => {
 
             const manager = getLockManager();
 
-            const status = await manager.status(db, 'dev');
+            const status = await manager.status(db, 'dev', 'sqlite');
 
             expect(status.isLocked).toBe(false);
             expect(status.lock).toBeNull();
@@ -525,10 +539,11 @@ describe('lock: manager', () => {
             const manager = getLockManager();
 
             await manager.acquire(db, 'dev', 'alice@example.com', {
+                ...sqliteOpts,
                 reason: 'Testing',
             });
 
-            const status = await manager.status(db, 'dev');
+            const status = await manager.status(db, 'dev', 'sqlite');
 
             expect(status.isLocked).toBe(true);
             expect(status.lock).not.toBeNull();
@@ -542,12 +557,13 @@ describe('lock: manager', () => {
             const manager = getLockManager();
 
             await manager.acquire(db, 'dev', 'alice@example.com', {
+                ...sqliteOpts,
                 timeout: 1,
             });
 
             await sleep(50);
 
-            const status = await manager.status(db, 'dev');
+            const status = await manager.status(db, 'dev', 'sqlite');
 
             expect(status.isLocked).toBe(false);
             expect(status.lock).toBeNull();

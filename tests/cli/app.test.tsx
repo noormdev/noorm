@@ -117,10 +117,10 @@ describe('cli: app', () => {
             await new Promise((resolve) => setTimeout(resolve, 100));
 
             // Help overlay should contain keyboard shortcuts info
-            expect(lastFrame()).toContain('Keyboard Shortcuts');
-            expect(lastFrame()).toContain('Esc');
-            expect(lastFrame()).toContain('Enter');
-            expect(lastFrame()).toContain('Ctrl+C');
+            // Note: The help screen shows shortcuts in columns without a header
+            expect(lastFrame()).toContain('go back / cancel');
+            expect(lastFrame()).toContain('confirm / select');
+            expect(lastFrame()).toContain('quit application');
 
             unmount();
 
@@ -229,7 +229,7 @@ describe('cli: app', () => {
 
         it('should render not-found for unregistered routes', () => {
 
-            const { lastFrame } = render(<App initialRoute="lock/force" />);
+            const { lastFrame } = render(<App initialRoute="some/unregistered/route" />);
 
             expect(lastFrame()).toContain('Not Found');
 

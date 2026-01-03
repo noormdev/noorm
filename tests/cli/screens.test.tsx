@@ -55,7 +55,8 @@ describe('cli: screens', () => {
 
         it('should return undefined for unregistered route', () => {
 
-            const screen = getScreen('lock/acquire');
+            // Use a truly unregistered route
+            const screen = getScreen('some/unregistered/route');
 
             expect(screen).toBeUndefined();
 
@@ -73,8 +74,9 @@ describe('cli: screens', () => {
 
         it('should generate label from route for unregistered route', () => {
 
-            expect(getRouteLabel('db')).toBe('Db');
-            expect(getRouteLabel('settings')).toBe('Settings');
+            // Use truly unregistered routes - many routes are now registered
+            expect(getRouteLabel('unknown')).toBe('Unknown');
+            expect(getRouteLabel('some/path')).toBe('Path');
 
         });
 
@@ -84,16 +86,18 @@ describe('cli: screens', () => {
             expect(getRouteLabel('config/add')).toBe('Add Config');
             expect(getRouteLabel('config/edit')).toBe('Edit Config');
             expect(getRouteLabel('change/revert')).toBe('Revert Change');
+            // run/build is now registered with label 'Run Build'
+            expect(getRouteLabel('run/build')).toBe('Run Build');
             // Unregistered routes generate labels from last path segment
-            expect(getRouteLabel('run/build')).toBe('Build');
-            expect(getRouteLabel('secret/set')).toBe('Set');
+            expect(getRouteLabel('some/deep/nested')).toBe('Nested');
 
         });
 
         it('should capitalize first letter', () => {
 
-            expect(getRouteLabel('db')).toBe('Db');
-            expect(getRouteLabel('lock/status')).toBe('Status');
+            // Use unregistered routes for this test
+            expect(getRouteLabel('xyz')).toBe('Xyz');
+            expect(getRouteLabel('foo/bar')).toBe('Bar');
 
         });
 
@@ -122,7 +126,7 @@ describe('cli: screens', () => {
 
         it('should return false for unregistered route', () => {
 
-            expect(isRouteRegistered('lock/acquire')).toBe(false);
+            expect(isRouteRegistered('some/unregistered/route')).toBe(false);
 
         });
 
@@ -170,13 +174,13 @@ describe('cli: screens', () => {
         it('should render NotFoundScreen for unregistered route', () => {
 
             const { lastFrame } = render(
-                <TestWrapper initialRoute="lock/acquire">
+                <TestWrapper initialRoute="some/unregistered/route">
                     <ScreenRenderer />
                 </TestWrapper>,
             );
 
             expect(lastFrame()).toContain('Not Found');
-            expect(lastFrame()).toContain('lock/acquire');
+            expect(lastFrame()).toContain('some/unregistered/route');
 
         });
 
