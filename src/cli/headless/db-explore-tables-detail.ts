@@ -68,9 +68,19 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
 
     }
 
-    logger.info(`Table: ${detail.name}`, {
-        columns: detail.columns.map((c) => `${c.name}: ${c.dataType}`),
-    });
+    if (flags.json) {
+
+        // Output structured JSON
+        process.stdout.write(JSON.stringify(detail) + '\n');
+
+    }
+    else {
+
+        logger.info(`Table: ${detail.name}`, {
+            columns: detail.columns.map((c) => `${c.name}: ${c.dataType}`),
+        });
+
+    }
 
     return 0;
 

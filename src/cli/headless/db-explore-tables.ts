@@ -42,9 +42,19 @@ export const run: HeadlessCommand = async (_params, flags, logger) => {
 
     if (error) return 1;
 
-    logger.info(`Tables: ${tables.length}`, {
-        tables: tables.map((t) => `${t.name} (${t.columnCount} cols)`),
-    });
+    if (flags.json) {
+
+        // Output structured JSON (array of tables)
+        process.stdout.write(JSON.stringify(tables) + '\n');
+
+    }
+    else {
+
+        logger.info(`Tables: ${tables.length}`, {
+            tables: tables.map((t) => `${t.name} (${t.columnCount} cols)`),
+        });
+
+    }
 
     return 0;
 

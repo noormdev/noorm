@@ -63,7 +63,17 @@ export const run: HeadlessCommand = async (_params, flags, logger) => {
 
     if (error) return 1;
 
-    logger.info('Database Overview', overview);
+    if (flags.json) {
+
+        // Output structured JSON
+        process.stdout.write(JSON.stringify(overview) + '\n');
+
+    }
+    else {
+
+        logger.info('Database Overview', overview);
+
+    }
 
     return 0;
 
