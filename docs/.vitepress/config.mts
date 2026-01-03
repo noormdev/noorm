@@ -7,6 +7,13 @@ export default withMermaid(
         title: 'noorm',
         description: 'Database Schema & Change Manager',
         base: process.env.VITEPRESS_BASE || '/',
+        head: [
+            ['script', { async: '', src: 'https://www.googletagmanager.com/gtag/js?id=G-Y69K95866J' }],
+            ['script', {}, `window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-Y69K95866J');`],
+        ],
         vite: {
             resolve: {
                 preserveSymlinks: true,
