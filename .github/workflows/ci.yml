@@ -3,8 +3,24 @@ name: CI
 on:
     push:
         branches: [main, master]
+        paths:
+            - 'src/**'
+            - 'tests/**'
+            - 'packages/**'
+            - 'package.json'
+            - 'yarn.lock'
+            - 'tsconfig*.json'
+            - '.github/workflows/ci.yml'
     pull_request:
         branches: [main, master]
+        paths:
+            - 'src/**'
+            - 'tests/**'
+            - 'packages/**'
+            - 'package.json'
+            - 'yarn.lock'
+            - 'tsconfig*.json'
+            - '.github/workflows/ci.yml'
 
 jobs:
     build:
@@ -21,7 +37,13 @@ jobs:
             - run: yarn lint
             - run: yarn typecheck
             - run: yarn build
-            - run: yarn test
+            # Run tests with CI=false to match ink-testing-library behavior
+            # Exclude integration tests that require external database containers
+            - name: Run tests
+              env:
+                  CI: 'false'
+                  FORCE_COLOR: 'true'
+              run: yarn test --exclude=tests/integration/teardown/** --exclude=tests/integration/explore/** --exclude=tests/integration/sql-terminal/**
 
     cli-e2e:
         runs-on: ubuntu-latest
