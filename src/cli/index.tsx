@@ -150,6 +150,8 @@ function parseCli(): ParsedCli {
 /**
  * Actions that always take a parameter as their next argument.
  * After these, stop building the route and treat remaining args as params.
+ *
+ * Note: Some actions are context-dependent. See isTerminalAction().
  */
 const TERMINAL_ACTIONS = new Set([
     'help',     // help <topic> - everything after is the topic
@@ -157,12 +159,34 @@ const TERMINAL_ACTIONS = new Set([
     'edit',     // config edit <name>
     'rm',       // config rm <name>
     'add',      // config add (no param but terminal)
-    'run',      // change run <name>
     'revert',   // change revert <name>
     'file',     // run file <path>
     'dir',      // run dir <path>
     'detail',   // db explore tables detail <name>
 ]);
+
+/**
+ * Check if a token is a terminal action in context.
+ *
+ * Some actions like "run" are only terminal in certain contexts:
+ * - "change run <name>" - "run" is terminal (takes change name)
+ * - "run build" - "run" is NOT terminal (build is a subcommand)
+ */
+function isTerminalAction(token: string, routeSegments: string[]): boolean {
+
+    // Standard terminal actions
+    if (TERMINAL_ACTIONS.has(token)) return true;
+
+    // "run" is only terminal after "change" (for "change run <name>")
+    if (token === 'run' && routeSegments.length > 0 && routeSegments[routeSegments.length - 1] === 'change') {
+
+        return true;
+
+    }
+
+    return false;
+
+}
 
 /**
  * Check if a token looks like a route segment vs a parameter.
@@ -244,8 +268,8 @@ function parseRouteFromInput(input: string[]): { route: Route; params: RoutePara
             routeSegments.push(token);
             paramStartIndex = i + 1;
 
-            // If this is a terminal action, stop - next args are params
-            if (TERMINAL_ACTIONS.has(token)) {
+            // If this is a terminal action in context, stop - next args are params
+            if (isTerminalAction(token, routeSegments.slice(0, -1))) {
 
                 break;
 
