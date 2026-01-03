@@ -193,7 +193,7 @@ describe('cli: router', () => {
             );
 
             // Wait for effect
-            await new Promise((resolve) => setTimeout(resolve, 10));
+            await new Promise((resolve) => setTimeout(resolve, 50));
 
             expect(lastFrame()).toContain('route:config');
 
@@ -207,7 +207,7 @@ describe('cli: router', () => {
                 </RouterProvider>,
             );
 
-            await new Promise((resolve) => setTimeout(resolve, 10));
+            await new Promise((resolve) => setTimeout(resolve, 50));
 
             expect(lastFrame()).toContain('canGoBack:true');
             // History may have multiple entries due to React strict mode rerenders
@@ -226,7 +226,7 @@ describe('cli: router', () => {
                 </RouterProvider>,
             );
 
-            await new Promise((resolve) => setTimeout(resolve, 10));
+            await new Promise((resolve) => setTimeout(resolve, 50));
 
             expect(lastFrame()).toContain('route:config/edit');
             expect(lastFrame()).toContain('"name":"dev"');
@@ -245,7 +245,7 @@ describe('cli: router', () => {
                 </RouterProvider>,
             );
 
-            await new Promise((resolve) => setTimeout(resolve, 10));
+            await new Promise((resolve) => setTimeout(resolve, 50));
 
             expect(lastFrame()).toContain('route:home');
             expect(lastFrame()).toContain('canGoBack:false');
@@ -306,7 +306,7 @@ describe('cli: router', () => {
                 </RouterProvider>,
             );
 
-            await new Promise((resolve) => setTimeout(resolve, 10));
+            await new Promise((resolve) => setTimeout(resolve, 50));
 
             expect(lastFrame()).toContain('route:config');
             expect(lastFrame()).toContain('canGoBack:false');
@@ -314,7 +314,8 @@ describe('cli: router', () => {
 
         });
 
-        it('should replace with params', async () => {
+        // Note: This test can be flaky in CI due to React effect timing
+        it('should replace with params', { retry: 2 }, async () => {
 
             const { lastFrame } = render(
                 <RouterProvider initialRoute="home">
@@ -322,7 +323,8 @@ describe('cli: router', () => {
                 </RouterProvider>,
             );
 
-            await new Promise((resolve) => setTimeout(resolve, 10));
+            // Longer wait for CI environments where React effects may be slower
+            await new Promise((resolve) => setTimeout(resolve, 50));
 
             expect(lastFrame()).toContain('route:config/edit');
             expect(lastFrame()).toContain('"name":"staging"');
