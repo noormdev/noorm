@@ -1,23 +1,23 @@
-import { defineConfig } from 'vitepress'
-import { withMermaid } from 'vitepress-plugin-mermaid'
+import { defineConfig } from 'vitepress';
+import { withMermaid } from 'vitepress-plugin-mermaid';
 
 // https://vitepress.dev/reference/site-config
 export default withMermaid(
     defineConfig({
-        title: "noorm",
-        description: "Database Schema & Change Manager",
+        title: 'noorm',
+        description: 'Database Schema & Change Manager',
         base: process.env.VITEPRESS_BASE || '/',
         vite: {
             resolve: {
                 preserveSymlinks: true,
-                dedupe: ['ts-dedent', 'mermaid']
+                dedupe: ['ts-dedent', 'mermaid'],
             },
             optimizeDeps: {
-                include: ['ts-dedent', 'mermaid']
+                include: ['ts-dedent', 'mermaid'],
             },
             ssr: {
-                noExternal: ['mermaid', 'ts-dedent']
-            }
+                noExternal: ['mermaid', 'ts-dedent'],
+            },
         },
         themeConfig: {
             // https://vitepress.dev/reference/default-theme-config
@@ -30,8 +30,8 @@ export default withMermaid(
                 { text: 'Headless', link: '/headless' },
                 {
                     text: 'Dev Docs',
-                    link: '/dev/'
-                }
+                    link: '/dev/',
+                },
             ],
 
             sidebar: {
@@ -41,9 +41,9 @@ export default withMermaid(
                         items: [
                             { text: 'Installation', link: '/getting-started/installation' },
                             { text: 'First Build', link: '/getting-started/first-build' },
-                            { text: 'Concepts', link: '/getting-started/concepts' }
-                        ]
-                    }
+                            { text: 'Concepts', link: '/getting-started/concepts' },
+                        ],
+                    },
                 ],
                 '/guide/': [
                     {
@@ -51,33 +51,33 @@ export default withMermaid(
                         items: [
                             { text: 'Organization', link: '/guide/sql-files/organization' },
                             { text: 'Templates', link: '/guide/sql-files/templates' },
-                            { text: 'Execution', link: '/guide/sql-files/execution' }
-                        ]
+                            { text: 'Execution', link: '/guide/sql-files/execution' },
+                        ],
                     },
                     {
                         text: 'Environments',
                         items: [
                             { text: 'Configs', link: '/guide/environments/configs' },
                             { text: 'Stages', link: '/guide/environments/stages' },
-                            { text: 'Secrets', link: '/guide/environments/secrets' }
-                        ]
+                            { text: 'Secrets', link: '/guide/environments/secrets' },
+                        ],
                     },
                     {
                         text: 'Migrations',
                         items: [
                             { text: 'Changes', link: '/guide/migrations/changes' },
                             { text: 'Forward & Revert', link: '/guide/migrations/forward-revert' },
-                            { text: 'History', link: '/guide/migrations/history' }
-                        ]
+                            { text: 'History', link: '/guide/migrations/history' },
+                        ],
                     },
                     {
                         text: 'Database',
                         items: [
                             { text: 'Explorer', link: '/guide/database/explore' },
                             { text: 'Teardown', link: '/guide/database/teardown' },
-                            { text: 'Terminal', link: '/guide/database/terminal' }
-                        ]
-                    }
+                            { text: 'Terminal', link: '/guide/database/terminal' },
+                        ],
+                    },
                 ],
                 '/dev/': [
                     {
@@ -88,8 +88,8 @@ export default withMermaid(
                             { text: 'Configuration', link: '/dev/config' },
                             { text: 'Runner', link: '/dev/runner' },
                             { text: 'Settings', link: '/dev/settings' },
-                            { text: 'State', link: '/dev/state' }
-                        ]
+                            { text: 'State', link: '/dev/state' },
+                        ],
                     },
                     {
                         text: 'Features',
@@ -99,8 +99,8 @@ export default withMermaid(
                             { text: 'Templates', link: '/dev/template' },
                             { text: 'Secrets', link: '/dev/secrets' },
                             { text: 'Locking', link: '/dev/lock' },
-                            { text: 'Teardown', link: '/dev/teardown' }
-                        ]
+                            { text: 'Teardown', link: '/dev/teardown' },
+                        ],
                     },
                     {
                         text: 'Integration',
@@ -108,17 +108,17 @@ export default withMermaid(
                             { text: 'SDK', link: '/dev/sdk' },
                             { text: 'Headless Mode', link: '/dev/headless' },
                             { text: 'CI/CD', link: '/dev/ci' },
-                            { text: 'Identity', link: '/dev/identity' }
-                        ]
+                            { text: 'Identity', link: '/dev/identity' },
+                        ],
                     },
                     {
                         text: 'Reference',
                         items: [
                             { text: 'Data Model', link: '/dev/datamodel' },
                             { text: 'Logger', link: '/dev/logger' },
-                            { text: 'Versioning', link: '/dev/version' }
-                        ]
-                    }
+                            { text: 'Versioning', link: '/dev/version' },
+                        ],
+                    },
                 ],
                 '/': [
                     {
@@ -126,15 +126,15 @@ export default withMermaid(
                         items: [
                             { text: 'Installation', link: '/getting-started/installation' },
                             { text: 'First Build', link: '/getting-started/first-build' },
-                            { text: 'Concepts', link: '/getting-started/concepts' }
-                        ]
+                            { text: 'Concepts', link: '/getting-started/concepts' },
+                        ],
                     },
                     {
                         text: 'Features',
                         items: [
                             { text: 'Terminal UI', link: '/tui' },
-                            { text: 'Headless Mode', link: '/headless' }
-                        ]
+                            { text: 'Headless Mode', link: '/headless' },
+                        ],
                     },
                     {
                         text: 'Guide',
@@ -142,23 +142,23 @@ export default withMermaid(
                             { text: 'SQL Files', link: '/guide/sql-files/organization' },
                             { text: 'Environments', link: '/guide/environments/configs' },
                             { text: 'Migrations', link: '/guide/migrations/changes' },
-                            { text: 'Database', link: '/guide/database/explore' }
-                        ]
-                    }
-                ]
+                            { text: 'Database', link: '/guide/database/explore' },
+                        ],
+                    },
+                ],
             },
 
             socialLinks: [
-                { icon: 'github', link: 'https://github.com/noormdev/noorm' }
+                { icon: 'github', link: 'https://github.com/noormdev/noorm' },
             ],
 
             search: {
-                provider: 'local'
+                provider: 'local',
             },
 
             outline: {
-                level: [2, 3]
-            }
+                level: [2, 3],
+            },
         },
-    })
-)
+    }),
+);
