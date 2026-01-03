@@ -113,10 +113,10 @@ export function RunBuildScreen({ params: _params }: ScreenProps): ReactElement {
 
             }
 
-            // Filter by effective paths
+            // Filter by effective paths (patterns are relative to SQL directory)
             const filteredFiles = filterFilesByPaths(
                 allFiles ?? [],
-                projectRoot,
+                schemaFullPath,
                 effectivePaths.include,
                 effectivePaths.exclude,
             );
