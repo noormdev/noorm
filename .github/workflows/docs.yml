@@ -30,12 +30,13 @@ jobs:
 
             - name: Build docs
               env:
-                  VITEPRESS_BASE: /noorm/
+                  VITEPRESS_BASE: /
               run: cd docs && yarn build
 
             - name: Deploy to gh-pages
               run: |
                   cd docs/.vitepress/dist
+                  echo "noorm.dev" > CNAME
                   git init
                   git config user.name "GitHub Actions"
                   git config user.email "actions@github.com"
