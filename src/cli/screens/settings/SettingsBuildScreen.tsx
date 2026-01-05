@@ -10,6 +10,7 @@
  * ```
  */
 import { useState, useCallback, useMemo } from 'react';
+import { Box, Text } from 'ink';
 import { attempt } from '@logosdx/utils';
 
 import type { ReactElement } from 'react';
@@ -19,6 +20,7 @@ import type { FormValues, FormField } from '../../components/index.js';
 import { useRouter } from '../../router.js';
 import { useAppContext } from '../../app-context.js';
 import { Panel, Form, useToast } from '../../components/index.js';
+import { DEFAULT_PATH_CONFIG } from '../../../core/settings/defaults.js';
 
 /**
  * Parse comma-separated string to array.
@@ -60,9 +62,20 @@ export function SettingsBuildScreen({ params: _params }: ScreenProps): ReactElem
     // Get current build config
     const build = useMemo(() => {
 
-        if (!settingsManager) return { include: ['schema'], exclude: [] };
+        if (!settingsManager) return { include: [], exclude: [] };
 
         return settingsManager.getBuild();
+
+    }, [settingsManager]);
+
+    // Get current SQL path
+    const sqlPath = useMemo(() => {
+
+        if (!settingsManager) return DEFAULT_PATH_CONFIG.sql ?? './sql';
+
+        const paths = settingsManager.getPaths();
+
+        return paths.sql ?? DEFAULT_PATH_CONFIG.sql ?? './sql';
 
     }, [settingsManager]);
 
@@ -74,14 +87,14 @@ export function SettingsBuildScreen({ params: _params }: ScreenProps): ReactElem
                 label: 'Include Paths (comma-separated)',
                 type: 'text',
                 defaultValue: formatPathList(build.include),
-                placeholder: 'sql/tables, sql/views, sql/functions',
+                placeholder: 'tables, views, functions',
             },
             {
                 key: 'exclude',
                 label: 'Exclude Paths (comma-separated)',
                 type: 'text',
                 defaultValue: formatPathList(build.exclude),
-                placeholder: 'sql/archive, sql/experiments',
+                placeholder: 'archive, experiments',
             },
         ],
         [build],
@@ -142,16 +155,21 @@ export function SettingsBuildScreen({ params: _params }: ScreenProps): ReactElem
 
     return (
         <Panel title="Build Settings" paddingX={2} paddingY={1}>
-            <Form
-                fields={fields}
-                onSubmit={handleSubmit}
-                onCancel={handleCancel}
-                submitLabel="Save"
-                focusLabel="SettingsBuildForm"
-                busy={busy}
-                busyLabel="Saving..."
-                statusError={error ?? undefined}
-            />
+            <Box flexDirection="column" gap={1}>
+                <Box flexDirection="column">
+                    <Text dimColor>Paths are relative to your SQL path: <Text bold>{sqlPath}</Text></Text>
+                </Box>
+                <Form
+                    fields={fields}
+                    onSubmit={handleSubmit}
+                    onCancel={handleCancel}
+                    submitLabel="Save"
+                    focusLabel="SettingsBuildForm"
+                    busy={busy}
+                    busyLabel="Saving..."
+                    statusError={error ?? undefined}
+                />
+            </Box>
         </Panel>
     );
 

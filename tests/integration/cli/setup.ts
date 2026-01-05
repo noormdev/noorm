@@ -376,7 +376,7 @@ export async function setupTestProject(): Promise<TestProject> {
 
     // Create noorm internal tables using the official migration
     // This ensures tests use the same schema as production
-    await bootstrapSchema(conn.db as Kysely<NoormDatabase>, '1.0.0');
+    await bootstrapSchema(conn.db as Kysely<NoormDatabase>, 'sqlite', '1.0.0');
 
     // Deploy test schema and seed data
     await deployTestSchema(conn.db as Kysely<unknown>, 'sqlite');

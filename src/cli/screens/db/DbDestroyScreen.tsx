@@ -219,7 +219,7 @@ export function DbDestroyScreen({ params: _params }: ScreenProps): ReactElement 
                     </Box>
                 </Panel>
 
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[Enter/Esc] Back</Text>
                 </Box>
             </Box>
@@ -255,7 +255,7 @@ export function DbDestroyScreen({ params: _params }: ScreenProps): ReactElement 
                         </Box>
                     </Panel>
 
-                    <Box gap={2}>
+                    <Box flexWrap="wrap" columnGap={2}>
                         <Text dimColor>[Esc] Back</Text>
                     </Box>
                 </Box>
@@ -316,7 +316,7 @@ export function DbDestroyScreen({ params: _params }: ScreenProps): ReactElement 
                     </Box>
                 </Panel>
 
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[Enter/Esc] Done</Text>
                 </Box>
             </Box>
@@ -333,7 +333,7 @@ export function DbDestroyScreen({ params: _params }: ScreenProps): ReactElement 
                     <Text color="red">{error}</Text>
                 </Panel>
 
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[Enter/Esc] Back</Text>
                 </Box>
             </Box>

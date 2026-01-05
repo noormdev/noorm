@@ -363,3 +363,29 @@ export { default as ansis } from 'ansis';
 
 // Help formatter (markdown-to-colored-terminal)
 export { formatHelp, stripColors } from './help-formatter.js';
+
+// Debug (internal table inspection)
+export {
+    createDebugOperations,
+    getTableInfo,
+    getAllTableNames,
+    NOORM_TABLE_INFO,
+} from './debug/index.js';
+export type {
+    NoormTableInfo,
+    TableCountResult,
+    NoormTableRow,
+    SortDirection,
+    GetRowsOptions,
+    DebugOperations,
+} from './debug/index.js';
+
+// Project discovery
+export {
+    findProjectRoot,
+    initProjectContext,
+    isNoormProject,
+    getGlobalNoormPath,
+    hasGlobalNoorm,
+} from './project.js';
+export type { ProjectDiscoveryResult } from './project.js';

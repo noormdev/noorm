@@ -36,11 +36,10 @@ import {
     createCryptoIdentity,
     createIdentityForExistingKeys,
     hasKeyFiles,
-    loadExistingIdentity,
     loadIdentityMetadata,
 } from '../../../core/identity/index.js';
 import { SettingsManager } from '../../../core/settings/manager.js';
-import { StateManager } from '../../../core/state/manager.js';
+import { StateManager, getStateManager } from '../../../core/state/index.js';
 import { observer } from '../../../core/observer.js';
 
 /**
@@ -74,7 +73,7 @@ export function InitScreen({ params }: ScreenProps): ReactElement {
     const { navigate, back } = useRouter();
     // Note: No useFocusScope here - let child components manage their own focus.
     // We use useInput directly for the complete/error steps.
-    const { refresh, stateManager: _existingStateManager } = useAppContext();
+    const { refresh } = useAppContext();
 
     // Get force flag from params (--force/-f flag) OR from user confirmation
     const forceFromParams = Boolean(params.force);
@@ -291,58 +290,23 @@ export function InitScreen({ params }: ScreenProps): ReactElement {
             });
             await stateManager.load();
 
-            // Set identity in state based on scenario:
-            // 1. No keys existed, user filled form: Use freshly created identity
-            // 2. Keys existed but no metadata, user filled form: Create identity for existing keys
-            // 3. Keys + metadata existed: Load from metadata
-            if (!hasExistingKeys && identityValues) {
-
-                // Case 1: Keys were just created - use identity from that creation
-                const [idResult] = await attempt(() =>
-                    createCryptoIdentity(
-                        {
-                            name: identityValues.name,
-                            email: identityValues.email,
-                            machine: identityValues.machine,
-                        },
-                        false,
-                    ),
-                ); // Don't save keys again (already saved above)
-
-                if (idResult) {
-
-                    await stateManager.setIdentity(idResult.identity);
-
-                }
-
-            }
-            else if (hasExistingKeys && identityValues) {
+            // Identity is saved to global ~/.noorm/ by createCryptoIdentity() and
+            // createIdentityForExistingKeys(). We just need to refresh the app context
+            // to pick it up. No per-project state.identity needed.
+            //
+            // Scenarios:
+            // 1. No keys existed, user filled form: createCryptoIdentity() saved identity globally
+            // 2. Keys existed but no metadata, user filled form: createIdentityForExistingKeys() saved metadata
+            // 3. Keys + metadata existed: Nothing to do, identity already exists globally
+            if (hasExistingKeys && identityValues && !hasExistingMetadata) {
 
                 // Case 2: Keys exist but user filled form (metadata was missing)
-                // Create identity using existing public key
-                const identity = await createIdentityForExistingKeys({
+                // Create identity using existing public key - saves metadata globally
+                await createIdentityForExistingKeys({
                     name: identityValues.name,
                     email: identityValues.email,
                     machine: identityValues.machine,
                 });
-
-                if (identity) {
-
-                    await stateManager.setIdentity(identity);
-
-                }
-
-            }
-            else if (hasExistingKeys && hasExistingMetadata) {
-
-                // Case 3: Full identity exists - load and set in project state
-                const existingIdentity = await loadExistingIdentity();
-
-                if (existingIdentity) {
-
-                    await stateManager.setIdentity(existingIdentity);
-
-                }
 
             }
 
@@ -379,6 +343,11 @@ export function InitScreen({ params }: ScreenProps): ReactElement {
                 projectRoot,
                 hasIdentity: !hasExistingKeys,
             });
+
+            // Reload private key on singleton so app context can encrypt/decrypt
+            // The singleton may have been created before identity files existed
+            const singleton = getStateManager(projectRoot);
+            await singleton.reloadPrivateKey();
 
             // Refresh app context
             await refresh();
@@ -419,7 +388,7 @@ export function InitScreen({ params }: ScreenProps): ReactElement {
 
         if (shouldAddConfig) {
 
-            navigate('config/add');
+            navigate('config/add', { fromInit: true });
 
         }
         else {

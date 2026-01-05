@@ -284,11 +284,11 @@ All seven categories work across supported dialects with appropriate translation
 | Views | ✓ | ✓ | ✓ | ✓ |
 | Procedures | ✓ | ✓ | ✓ | — |
 | Functions | ✓ | ✓ | ✓ | — |
-| Types | ✓ (enum, composite, domain) | — | — | — |
+| Types | ✓ (enum, composite, domain) | — | ✓ (alias, table types) | — |
 | Indexes | ✓ | ✓ | ✓ | ✓ |
 | Foreign Keys | ✓ | ✓ | ✓ | ✓ |
 
-SQLite doesn't support stored procedures, functions, or user-defined types. These categories return empty arrays.
+SQLite doesn't support stored procedures, functions, or user-defined types. MySQL doesn't support user-defined types. These categories return empty arrays for unsupported dialects.
 
 
 ## CLI Integration
@@ -322,4 +322,4 @@ Keyboard shortcuts:
 
 4. **Compare environments** - Run overview on dev vs prod to spot schema drift.
 
-5. **Debug migrations** - When changes fail, explore the current schema state to understand what exists.
+5. **Debug changes** - When changes fail, explore the current schema state to understand what exists.

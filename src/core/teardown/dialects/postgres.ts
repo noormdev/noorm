@@ -52,7 +52,8 @@ export const postgresTeardownOperations: TeardownDialectOperations = {
         const fullName = qualifiedName(tableName, schema);
         const restart = restartIdentity ? ' RESTART IDENTITY' : '';
 
-        return `TRUNCATE TABLE ${fullName}${restart}`;
+        // CASCADE is needed to truncate tables with FK dependencies
+        return `TRUNCATE TABLE ${fullName}${restart} CASCADE`;
 
     },
 
@@ -72,6 +73,13 @@ export const postgresTeardownOperations: TeardownDialectOperations = {
 
         // PostgreSQL functions may have overloads, CASCADE drops all
         return `DROP FUNCTION IF EXISTS ${qualifiedName(name, schema)} CASCADE`;
+
+    },
+
+    dropProcedure(name: string, schema?: string): string {
+
+        // PostgreSQL procedures (introduced in v11)
+        return `DROP PROCEDURE IF EXISTS ${qualifiedName(name, schema)} CASCADE`;
 
     },
 

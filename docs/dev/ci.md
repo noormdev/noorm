@@ -85,7 +85,7 @@ jobs:
 
             - run: npm ci
 
-            - name: Apply migrations
+            - name: Apply changes
               env:
                   NOORM_CONNECTION_DIALECT: postgres
                   NOORM_CONNECTION_HOST: ${{ secrets.DB_HOST }}
@@ -118,4 +118,4 @@ noorm -H --json run build | jq '.status'
 
 - [Headless Mode](./headless.md) - Complete CLI reference for automation
 - [Runner](./runner.md) - Schema execution details
-- [Change](./change.md) - Migration management
+- [Change](./change.md) - Change management

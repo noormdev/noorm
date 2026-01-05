@@ -28,6 +28,7 @@ import {
     type VersionStatus,
 } from './types.js';
 import type { NoormDatabase } from '../shared/tables.js';
+import type { Dialect } from '../connection/types.js';
 import {
     checkSchemaVersion,
     migrateSchema,
@@ -108,6 +109,7 @@ export class VersionManager {
      */
     async ensureCompatible(
         db: Kysely<NoormDatabase>,
+        dialect: Dialect,
         state: Record<string, unknown>,
         settings: Record<string, unknown>,
         cliVersion: string,
@@ -127,7 +129,7 @@ export class VersionManager {
         const settingsVersion = getSettingsVersion(migratedSettings);
 
         // Migrate schema (in-place in database) with state/settings versions
-        await migrateSchema(db, cliVersion, { stateVersion, settingsVersion });
+        await migrateSchema(db, dialect, cliVersion, { stateVersion, settingsVersion });
 
         return {
             state: migratedState,

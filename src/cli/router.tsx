@@ -110,6 +110,13 @@ export function RouterProvider({
 
             const previousRoute = route;
 
+            if (newRoute === route && JSON.stringify(newParams) === JSON.stringify(params)) {
+
+                // No-op if navigating to the same route with same params
+                return;
+
+            }
+
             // Push current state to history
             setHistory((prev) => [...prev, { route, params }]);
 
@@ -125,7 +132,7 @@ export function RouterProvider({
             });
 
         },
-        [route, params],
+        [route, params, history],
     );
 
     const back = useCallback(() => {

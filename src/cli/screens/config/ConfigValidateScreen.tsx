@@ -248,7 +248,7 @@ export function ConfigValidateScreen({ params }: ScreenProps): ReactElement {
                     <StatusList items={items} />
                 </Box>
 
-                <Box marginTop={1} gap={2}>
+                <Box marginTop={1} flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[e] Edit</Text>
                     <Text dimColor>[k] Secrets</Text>
                     <Text dimColor>[Esc] Back</Text>

@@ -270,7 +270,7 @@ export function ChangeListScreen({ params: _params }: ScreenProps): ReactElement
 
         }
 
-        if (input === 'r' && selectedChange && selectedChange.status === 'pending') {
+        if (input === 'r' && selectedChange && (selectedChange.status === 'pending' || selectedChange.status === 'failed')) {
 
             navigate('change/run', { name: selectedChange.name });
 
@@ -321,7 +321,7 @@ export function ChangeListScreen({ params: _params }: ScreenProps): ReactElement
         // Enter - smart action based on status
         if (key.return && selectedChange) {
 
-            if (selectedChange.status === 'pending') {
+            if (selectedChange.status === 'pending' || selectedChange.status === 'failed') {
 
                 navigate('change/run', { name: selectedChange.name });
 
@@ -452,7 +452,7 @@ export function ChangeListScreen({ params: _params }: ScreenProps): ReactElement
                         marginTop={1}
                         flexDirection="column"
                         borderStyle="single"
-                        borderColor="gray"
+                        borderColor={selectedChange.status === 'failed' ? 'red' : 'gray'}
                         paddingX={1}
                     >
                         <Text bold>{selectedChange.name}</Text>
@@ -467,20 +467,28 @@ export function ChangeListScreen({ params: _params }: ScreenProps): ReactElement
                         {selectedChange.appliedBy && (
                             <Text dimColor>Applied by: {selectedChange.appliedBy}</Text>
                         )}
+                        {selectedChange.status === 'failed' && selectedChange.errorMessage && (
+                            <Box flexDirection="column" marginTop={1}>
+                                <Text color="red" bold>Error:</Text>
+                                <Text color="red" wrap="wrap">
+                                    {selectedChange.errorMessage}
+                                </Text>
+                            </Box>
+                        )}
                     </Box>
                 )}
 
                 {/* Keyboard hints */}
-                <Box marginTop={1} gap={2}>
-                    <Text dimColor>[a]dd</Text>
-                    <Text dimColor>[e]dit</Text>
-                    <Text dimColor>[d]elete</Text>
-                    <Text dimColor>[r]un</Text>
-                    <Text dimColor>re[v]ert</Text>
-                    <Text dimColor>[n]ext</Text>
-                    <Text dimColor>[f]f</Text>
-                    <Text dimColor>re[w]ind</Text>
-                    <Text dimColor>[h]istory</Text>
+                <Box marginTop={1} flexWrap="wrap" columnGap={2}>
+                    <Text dimColor>[a] Add</Text>
+                    <Text dimColor>[e] Edit</Text>
+                    <Text dimColor>[d] Delete</Text>
+                    <Text dimColor>[r] Run</Text>
+                    <Text dimColor>[v] Revert</Text>
+                    <Text dimColor>[n] Next</Text>
+                    <Text dimColor>[f] FF</Text>
+                    <Text dimColor>[w] Rewind</Text>
+                    <Text dimColor>[h] History</Text>
                     <Text dimColor>[Esc] Back</Text>
                 </Box>
             </Box>

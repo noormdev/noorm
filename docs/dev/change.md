@@ -49,8 +49,8 @@ The `.txt` manifest is particularly useful for referencing build SQL:
 ```txt
 # 001_schema-refs.txt
 # Reference existing schema files instead of duplicating
-sql/tables/verification_tokens.sql
-sql/functions/generate_token.sql
+01_tables/003_verification_tokens.sql
+03_functions/001_generate_token.sql
 ```
 
 Referenced paths are resolved relative to your schema directory.
@@ -235,7 +235,10 @@ Change execution is recorded in the same tables as the runner:
 | `change_id` | FK to parent operation |
 | `filepath` | File that was executed |
 | `checksum` | SHA-256 of file contents |
-| `status` | `'success'`, `'failed'`, `'skipped'` |
+| `status` | `'pending'`, `'success'`, `'failed'`, `'skipped'` |
+| `duration_ms` | Execution time (integer, not float) |
+
+**Note:** The `duration_ms` column is an integer. `performance.now()` returns floats, so all writes use `Math.round(durationMs)`. This is important for PostgreSQL compatibility.
 
 
 ## Observer Events
@@ -431,6 +434,62 @@ The CLI provides dedicated screens for browsing execution history:
 2. **Change History Detail** - View individual file executions for an operation
 
 Access via the changes menu (`g` from home, then `h` for history).
+
+
+## ChangeTracker
+
+The `ChangeTracker` class extends the base `Tracker` with change-specific operations:
+
+```typescript
+import { ChangeTracker } from './core/change'
+
+const tracker = new ChangeTracker(db, configName)
+
+// Check if a change can be reverted
+const canRevert = await tracker.canRevert('2024-01-15-add-users')
+
+// Mark a change as reverted
+await tracker.markAsReverted('2024-01-15-add-users')
+
+// Mark all changes as stale (used by teardown operations)
+await tracker.markAllAsStale()
+```
+
+The base `Tracker` class (from `core/runner`) provides:
+- `createOperation()` - Create operation records with direction
+- `createFileRecords()` - Create pending file records upfront
+- `updateFileExecution()` - Update individual file status
+- `skipRemainingFiles()` - Mark remaining files as skipped
+- `finalizeOperation()` - Complete operation with final status
+
+`ChangeTracker` adds change-specific methods:
+- `canRevert()` - Check if change was successfully applied
+- `markAsReverted()` - Update status to 'reverted'
+- `markAllAsStale()` - Mark all applied changes for re-execution
+
+**Note:** `ChangeHistory` is now query-focused. Mutation methods (`canRevert`, `markAsReverted`, `markAllAsStale`) moved to `ChangeTracker`.
+
+
+## Change Context
+
+The `ChangeContext` interface includes all parameters needed for change execution:
+
+```typescript
+interface ChangeContext {
+    db: Kysely<NoormDatabase>
+    dialect: Dialect             // Required for date formatting in locks
+    configName: string
+    identity: Identity
+    projectRoot: string
+    changesDir: string
+    schemaDir: string
+    config?: Record<string, unknown>
+    secrets?: Record<string, string>
+    globalSecrets?: Record<string, string>
+}
+```
+
+The `dialect` property is required because lock operations need dialect-specific date formatting.
 
 
 ## Best Practices

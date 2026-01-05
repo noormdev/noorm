@@ -259,7 +259,7 @@ export function SqlHistoryScreen({ params: _params }: ScreenProps): ReactElement
                     <Text color="yellow">No active configuration selected.</Text>
                 </Panel>
 
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[Esc] Back</Text>
                 </Box>
             </Box>
@@ -297,7 +297,7 @@ export function SqlHistoryScreen({ params: _params }: ScreenProps): ReactElement
                     )}
                 </Panel>
 
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[Esc] Close</Text>
                 </Box>
             </Box>
@@ -327,7 +327,7 @@ export function SqlHistoryScreen({ params: _params }: ScreenProps): ReactElement
                     <Text dimColor>No query history yet.</Text>
                 </Panel>
 
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[Esc] Back</Text>
                 </Box>
             </Box>
@@ -417,7 +417,7 @@ export function SqlHistoryScreen({ params: _params }: ScreenProps): ReactElement
             )}
 
             {/* Footer hints */}
-            <Box gap={2}>
+            <Box flexWrap="wrap" columnGap={2}>
                 <Text dimColor>[r] Re-run</Text>
                 <Text dimColor>[Enter] View result</Text>
                 <Text dimColor>[c] Clear</Text>

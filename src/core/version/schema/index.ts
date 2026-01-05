@@ -15,6 +15,7 @@ import { attempt } from '@logosdx/utils';
 
 import { observer } from '../../observer.js';
 import type { NoormDatabase } from '../../shared/tables.js';
+import type { Dialect } from '../../connection/types.js';
 
 import {
     CURRENT_VERSIONS,
@@ -141,6 +142,7 @@ export interface VersionRecordOptions {
  */
 export async function bootstrapSchema(
     db: Kysely<NoormDatabase>,
+    dialect: Dialect,
     cliVersion: string,
     options?: { stateVersion?: number; settingsVersion?: number },
 ): Promise<void> {
@@ -155,7 +157,7 @@ export async function bootstrapSchema(
     // Run all migrations in order
     for (const migration of MIGRATIONS) {
 
-        const [, err] = await attempt(() => migration.up(db as Kysely<unknown>));
+        const [, err] = await attempt(() => migration.up(db as Kysely<unknown>, dialect));
 
         if (err) {
 
@@ -265,11 +267,12 @@ export async function getLatestVersionRecord(
  *
  * @example
  * ```typescript
- * await migrateSchema(db, packageVersion)
+ * await migrateSchema(db, 'postgres', packageVersion)
  * ```
  */
 export async function migrateSchema(
     db: Kysely<NoormDatabase>,
+    dialect: Dialect,
     cliVersion: string,
     options?: { stateVersion?: number; settingsVersion?: number },
 ): Promise<void> {
@@ -295,7 +298,7 @@ export async function migrateSchema(
     // Bootstrap if no tables exist
     if (status.current === 0) {
 
-        await bootstrapSchema(db, cliVersion, options);
+        await bootstrapSchema(db, dialect, cliVersion, options);
 
         return;
 
@@ -316,7 +319,7 @@ export async function migrateSchema(
 
     for (const migration of pendingMigrations) {
 
-        const [, err] = await attempt(() => migration.up(db as Kysely<unknown>));
+        const [, err] = await attempt(() => migration.up(db as Kysely<unknown>, dialect));
 
         if (err) {
 
@@ -359,11 +362,12 @@ export async function migrateSchema(
  */
 export async function ensureSchemaVersion(
     db: Kysely<NoormDatabase>,
+    dialect: Dialect,
     cliVersion: string,
     options?: { stateVersion?: number; settingsVersion?: number },
 ): Promise<void> {
 
-    await migrateSchema(db, cliVersion, options);
+    await migrateSchema(db, dialect, cliVersion, options);
 
 }
 

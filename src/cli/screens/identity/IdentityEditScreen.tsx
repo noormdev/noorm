@@ -36,7 +36,7 @@ import { attempt } from '@logosdx/utils';
 export function IdentityEditScreen({ params: _params }: ScreenProps): ReactElement {
 
     const { back } = useRouter();
-    const { identity, hasIdentity, stateManager, refresh } = useAppContext();
+    const { identity, hasIdentity, refresh } = useAppContext();
     const { showToast } = useToast();
 
     // Note: No useFocusScope - let Form manage focus
@@ -121,26 +121,9 @@ export function IdentityEditScreen({ params: _params }: ScreenProps): ReactEleme
 
             }
 
-            // Save to state
-            const [, stateErr] = await attempt(async () => {
-
-                await stateManager?.setIdentity(newIdentity);
-                await refresh?.();
-
-            });
-
-            if (stateErr) {
-
-                setError(stateErr instanceof Error ? stateErr.message : String(stateErr));
-                setSaving(false);
-                showToast({
-                    message: 'Failed to save identity',
-                    variant: 'error',
-                });
-
-                return;
-
-            }
+            // Refresh app context to pick up the updated identity from global ~/.noorm/
+            // createIdentityForExistingKeys() already saved the identity globally
+            await refresh?.();
 
             showToast({
                 message: 'Identity updated',
@@ -149,7 +132,7 @@ export function IdentityEditScreen({ params: _params }: ScreenProps): ReactEleme
             back();
 
         },
-        [stateManager, refresh, showToast, back],
+        [refresh, showToast, back],
     );
 
     // No identity
@@ -166,7 +149,7 @@ export function IdentityEditScreen({ params: _params }: ScreenProps): ReactEleme
                     </Box>
                 </Panel>
 
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[Esc] Back</Text>
                 </Box>
             </Box>

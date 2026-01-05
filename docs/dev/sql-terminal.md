@@ -3,7 +3,7 @@
 
 ## The Problem
 
-You're debugging a migration. Did that INSERT actually work? What's in the table now? You could switch to a database client, reconnect with credentials, run a query—or you could just stay in noorm.
+You're debugging a change. Did that INSERT actually work? What's in the table now? You could switch to a database client, reconnect with credentials, run a query—or you could just stay in noorm.
 
 The SQL terminal provides an interactive REPL for running arbitrary SQL queries. Execute SELECT, INSERT, UPDATE, DELETE, or any other SQL your database supports. Results are displayed in a formatted table, and query history is persisted with compressed result storage.
 
@@ -295,7 +295,7 @@ Long values are truncated with ellipsis. Use the detail view to see full cell co
 
 ## Best Practices
 
-1. **Use for verification** - After running migrations, verify data with quick SELECT queries.
+1. **Use for verification** - After running changes, verify data with quick SELECT queries.
 
 2. **Limit large queries** - Always use LIMIT when exploring tables with many rows.
 

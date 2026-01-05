@@ -10,7 +10,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { attemptSync, attempt } from '@logosdx/utils';
 import type { Config } from '../config/types.js';
-import type { CryptoIdentity, KnownUser } from '../identity/types.js';
+import type { KnownUser } from '../identity/types.js';
 import { loadPrivateKey } from '../identity/storage.js';
 import { encrypt, decrypt } from './encryption/index.js';
 import type { State, ConfigSummary, EncryptedPayload } from './types.js';
@@ -181,6 +181,30 @@ export class StateManager {
             activeConfig: this.state.activeConfig,
             version: this.state.version,
         });
+
+    }
+
+    /**
+     * Reload private key from disk.
+     *
+     * Call this after identity is created to ensure the manager
+     * can encrypt/decrypt state. Useful when the singleton was
+     * created before the identity files existed.
+     *
+     * @returns true if key was loaded successfully
+     */
+    async reloadPrivateKey(): Promise<boolean> {
+
+        const [key] = await attempt(() => loadPrivateKey());
+        if (key) {
+
+            this.privateKey = key;
+
+            return true;
+
+        }
+
+        return false;
 
     }
 
@@ -513,57 +537,6 @@ export class StateManager {
         const state = this.getState();
 
         return Object.keys(state.globalSecrets);
-
-    }
-
-    // ─────────────────────────────────────────────────────────────
-    // Identity Operations
-    // ─────────────────────────────────────────────────────────────
-
-    /**
-     * Get the current user's cryptographic identity.
-     */
-    getIdentity(): CryptoIdentity | null {
-
-        const state = this.getState();
-
-        return state.identity;
-
-    }
-
-    /**
-     * Check if identity is set up.
-     */
-    hasIdentity(): boolean {
-
-        const state = this.getState();
-
-        return state.identity !== null;
-
-    }
-
-    /**
-     * Set the user's cryptographic identity.
-     *
-     * Called during first-time setup after keypair generation.
-     *
-     * @example
-     * ```typescript
-     * await state.setIdentity(cryptoIdentity)
-     * ```
-     */
-    async setIdentity(identity: CryptoIdentity): Promise<void> {
-
-        const state = this.getState();
-        state.identity = identity;
-        this.persist();
-
-        observer.emit('identity:created', {
-            identityHash: identity.identityHash,
-            name: identity.name,
-            email: identity.email,
-            machine: identity.machine,
-        });
 
     }
 

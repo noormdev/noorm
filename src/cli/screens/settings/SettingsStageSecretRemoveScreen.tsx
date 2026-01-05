@@ -124,7 +124,7 @@ export function SettingsStageSecretRemoveScreen({ params }: ScreenProps): ReactE
                     <Text color="yellow">No stage name provided.</Text>
                 </Panel>
 
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[Enter/Esc] Back</Text>
                 </Box>
             </Box>
@@ -141,7 +141,7 @@ export function SettingsStageSecretRemoveScreen({ params }: ScreenProps): ReactE
                     <Text color="red">Stage "{stageName}" not found.</Text>
                 </Panel>
 
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[Enter/Esc] Back</Text>
                 </Box>
             </Box>
@@ -158,7 +158,7 @@ export function SettingsStageSecretRemoveScreen({ params }: ScreenProps): ReactE
                     <Text color="yellow">No secret key provided.</Text>
                 </Panel>
 
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[Enter/Esc] Back</Text>
                 </Box>
             </Box>
@@ -177,7 +177,7 @@ export function SettingsStageSecretRemoveScreen({ params }: ScreenProps): ReactE
                     </Text>
                 </Panel>
 
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[Enter/Esc] Back</Text>
                 </Box>
             </Box>

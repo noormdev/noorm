@@ -65,7 +65,7 @@ export function LockStatusScreen({ params: _params }: ScreenProps): ReactElement
 
     const { navigate, back } = useRouter();
     const { isFocused } = useFocusScope('LockStatus');
-    const { activeConfig, activeConfigName, stateManager } = useAppContext();
+    const { activeConfig, activeConfigName, identity: cryptoIdentity } = useAppContext();
     const { showToast } = useToast();
 
     const [lockStatus, setLockStatus] = useState<LockStatusType | null>(null);
@@ -93,7 +93,7 @@ export function LockStatusScreen({ params: _params }: ScreenProps): ReactElement
 
             // Resolve identity
             const identity = resolveIdentity({
-                cryptoIdentity: stateManager?.getIdentity() ?? null,
+                cryptoIdentity: cryptoIdentity ?? null,
             });
             const formattedIdentity = formatIdentity(identity);
 
@@ -162,7 +162,7 @@ export function LockStatusScreen({ params: _params }: ScreenProps): ReactElement
 
         };
 
-    }, [activeConfig, activeConfigName, stateManager]);
+    }, [activeConfig, activeConfigName, cryptoIdentity]);
 
     // Keyboard shortcuts
     useInput((input, key) => {
@@ -293,7 +293,7 @@ export function LockStatusScreen({ params: _params }: ScreenProps): ReactElement
                     </Box>
                 </Panel>
 
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[Esc] Back</Text>
                 </Box>
             </Box>
@@ -326,7 +326,7 @@ export function LockStatusScreen({ params: _params }: ScreenProps): ReactElement
                     </Box>
                 </Panel>
 
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[Esc] Back</Text>
                 </Box>
             </Box>
@@ -427,7 +427,7 @@ export function LockStatusScreen({ params: _params }: ScreenProps): ReactElement
                 </Panel>
             )}
 
-            <Box gap={2}>
+            <Box flexWrap="wrap" columnGap={2}>
                 {!lockStatus?.isLocked && <Text dimColor>[a] Acquire</Text>}
                 {isOurLock && (
                     <>

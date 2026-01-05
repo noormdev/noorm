@@ -62,6 +62,16 @@ export {
 export type { IdentityDefaults, CreateIdentityResult } from './factory.js';
 export type { IdentityHashInput } from './hash.js';
 
+// Sync (database identity registration and discovery)
+export {
+    registerIdentity,
+    fetchKnownUsers,
+    syncIdentity,
+    syncIdentityWithConfig,
+} from './sync.js';
+
+export type { IdentitySyncResult } from './sync.js';
+
 // =============================================================================
 // Audit Identity Resolution (cached)
 // =============================================================================

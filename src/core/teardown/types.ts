@@ -63,8 +63,11 @@ export interface TeardownOptions {
     /** Keep views (default: false) */
     keepViews?: boolean;
 
-    /** Keep functions/procedures (default: false) */
+    /** Keep functions (default: false) */
     keepFunctions?: boolean;
+
+    /** Keep stored procedures (default: false) */
+    keepProcedures?: boolean;
 
     /** Keep types/enums (default: false) */
     keepTypes?: boolean;
@@ -119,6 +122,7 @@ export interface TeardownResult {
         tables: string[];
         views: string[];
         functions: string[];
+        procedures: string[];
         types: string[];
         foreignKeys: string[];
     };
@@ -156,6 +160,7 @@ export interface TeardownPreview {
         tables: string[];
         views: string[];
         functions: string[];
+        procedures: string[];
         types: string[];
         foreignKeys: string[];
     };
@@ -209,12 +214,27 @@ export interface TeardownDialectOperations {
     dropView(viewName: string, schema?: string): string;
 
     /**
-     * Generate SQL to drop a function or procedure.
+     * Generate SQL to drop a function.
      *
-     * @param name - Function/procedure name
+     * In MSSQL: scalar, inline table, or table-valued functions (FN/IF/TF).
+     * In PostgreSQL/MySQL: user-defined functions.
+     *
+     * @param name - Function name
      * @param schema - Optional schema name
      */
     dropFunction(name: string, schema?: string): string;
+
+    /**
+     * Generate SQL to drop a stored procedure.
+     *
+     * In MSSQL: stored procedures from sys.procedures.
+     * In PostgreSQL: procedures (since v11).
+     * In MySQL: stored procedures.
+     *
+     * @param name - Procedure name
+     * @param schema - Optional schema name
+     */
+    dropProcedure(name: string, schema?: string): string;
 
     /**
      * Generate SQL to drop a type.

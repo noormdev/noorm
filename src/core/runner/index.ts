@@ -5,7 +5,15 @@
  */
 
 // Runner functions
-export { runBuild, runFile, runDir, runFiles, preview, discoverFiles } from './runner.js';
+export {
+    runBuild,
+    runFile,
+    runDir,
+    runFiles,
+    preview,
+    discoverFiles,
+    executeFiles,
+} from './runner.js';
 
 // Tracker
 export { Tracker } from './tracker.js';
@@ -29,6 +37,11 @@ export type {
     NeedsRunResult,
     CreateOperationData,
     RecordExecutionData,
+    // New unified types
+    ChangeType,
+    Direction,
+    FileInput,
+    ExecuteFilesOptions,
 } from './types.js';
 
 export { DEFAULT_RUN_OPTIONS } from './types.js';

@@ -13,23 +13,29 @@ Everything in noorm is accessible through keyboard shortcuts. No mouse needed.
 ## Home Screen
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│  noorm                                              v1.0.0  │
-│  Config: dev (sqlite)                                       │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│    [c] config      Manage database configurations           │
-│    [g] changes     View and run migrations                  │
-│    [r] run         Execute schema files                     │
-│    [d] database    Explore schema, run queries              │
-│    [l] lock        View lock status                         │
-│    [s] settings    Project settings                         │
-│    [k] secrets     Manage secrets                           │
-│    [i] identity    View/edit your identity                  │
-│                                                             │
-│    [q] quit                                                 │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
+noorm - Database Schema & Change Manager
+
+Active Config:  dev  |  Configs: 2
+
+┌─ Status ─────────────────────┐  ┌─ Quick Actions ──────────────┐
+│                              │  │                              │
+│ Connection: ● Connected      │  │ [1] Run Build                │
+│ Pending:    0 pending        │  │ [2] Apply Changes (ff)       │
+│ Lock:       FREE             │  │ [3] View Lock Status         │
+│                              │  │                              │
+│ Stage Configs:               │  │                              │
+│   ✓ dev                      │  │                              │
+│     prod [protected]         │  │                              │
+│                              │  │                              │
+└──────────────────────────────┘  └──────────────────────────────┘
+
+┌─ Recent Activity ────────────────────────────────────────────┐
+│                                                              │
+│ [OK] [BUILD] build:2024-01-15T10:30:00Z in 2 hours (0.3s)   │
+│                                                              │
+└──────────────────────────────────────────────────────────────┘
+
+[c]onfig chan[g]e [r]un [d]b [l]ock [s]ettings [k]eys [i]dentity [q]uit
 ```
 
 
@@ -67,7 +73,7 @@ Everything in noorm is accessible through keyboard shortcuts. No mouse needed.
 | Key | Screen | Description |
 |-----|--------|-------------|
 | `c` | Config | Manage database connections |
-| `g` | Changes | View and run migrations |
+| `g` | Changes | View and apply changes |
 | `r` | Run | Execute schema files |
 | `d` | Database | Explore schema, run queries |
 | `l` | Lock | View/manage database locks |
@@ -84,10 +90,11 @@ Everything in noorm is accessible through keyboard shortcuts. No mouse needed.
 | `a` | Add new | Config, Changes, Secrets, Settings |
 | `e` | Edit | Config, Secrets, Settings |
 | `d` | Delete | Config, Changes, Secrets |
-| `u` | Use/Activate | Config (set as active) |
+| `c` | Copy | Config |
 | `v` | Validate | Config (test connection) |
 | `x` | Export | Config, Identity |
 | `i` | Import | Config |
+| `Enter` | Use/Activate | Config (set as active) |
 
 
 ### List Navigation
@@ -116,111 +123,194 @@ Everything in noorm is accessible through keyboard shortcuts. No mouse needed.
 ### Config List
 
 ```
+Home > Configurations
+
 ┌─ Configurations ────────────────────────────────────────────┐
 │                                                             │
-│  1. • dev        sqlite    ./data/dev.db                    │
-│  2.   staging    postgres  db.staging.example.com           │
-│  3.   prod       postgres  db.prod.example.com      🔒      │
+│ > ○ dev       postgres                                      │
+│   ● test      postgres (active) [test]                      │
+│   ○ prod      postgres [protected]                          │
 │                                                             │
-│  [a] add   [e] edit   [d] delete   [u] use   [v] validate   │
-│  [x] export   [i] import                                    │
 └─────────────────────────────────────────────────────────────┘
+
+[a] Add  [e] Edit  [d] Delete  [c] Copy  [x] Export  [i] Import  [v] Validate  [Enter] Use
+
+[Esc] Back
 ```
 
-- `•` indicates active config
-- 🔒 indicates protected config
-- Press `1`, `2`, `3` to quick-select
+- `●` indicates active config
+- `○` indicates inactive config
+- `>` indicates cursor position
+- `[protected]` tag shows protected configs
+- `[test]` tag shows test configs
+- Press `Enter` on a config to activate it
 
 
 ### Changes List
 
 ```
+Home > Changes
+
 ┌─ Changes ───────────────────────────────────────────────────┐
 │                                                             │
-│  1. ✓ 2024-01-15-init-schema         Applied 2024-01-15     │
-│  2. ✓ 2024-01-20-add-user-roles      Applied 2024-01-20     │
-│  3. ○ 2024-02-01-add-notifications   Pending                │
+│ Total: 3   Applied: 2   Pending: 1                          │
 │                                                             │
-│  [f] fast-forward   [r] run   [v] revert   [h] history      │
+│ > ✓ 2024-01-15-init-schema                                  │
+│   ✓ 2024-01-20-add-user-roles                               │
+│   ○ 2024-02-01-add-notifications                            │
+│                                                             │
 └─────────────────────────────────────────────────────────────┘
+
+[a]dd  [e]dit  [d]elete  [r]un  re[v]ert  [n]ext  [f]f  re[w]ind  [h]istory
+
+[Esc] Back
 ```
 
 - `✓` = Applied
 - `○` = Pending
 - `✗` = Failed
 
+When no changes exist:
+
+```
+No changes found. Press [a] to create one.
+```
+
 
 ### Run Menu
 
 ```
-┌─ Run ───────────────────────────────────────────────────────┐
+Home > Run SQL
+
+┌─ Run SQL Files ─────────────────────────────────────────────┐
 │                                                             │
-│  1. Build          Execute all schema files                 │
-│  2. File           Run a single SQL file                    │
-│  3. Directory      Run all files in a directory             │
+│ Config:       dev (local)                                   │
+│ Schema Path:  sql                                           │
+│                                                             │
+│ Effective Build Paths:                                      │
+│   Include: tables, views                                    │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
+
+┌─ Available Actions ─────────────────────────────────────────┐
+│                                                             │
+│ [b] Build - Execute full schema build                       │
+│ [e] Exec  - Pick files to execute                           │
+│ [f] File  - Execute a single file                           │
+│ [d] Dir   - Execute all files in a directory                │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+
+[b] Build  [e] Exec  [f] File  [d] Dir  [Esc] Back
 ```
 
 
 ### Database Menu
 
 ```
-┌─ Database ──────────────────────────────────────────────────┐
+Home > Databases
+
+┌─ Database Operations ───────────────────────────────────────┐
 │                                                             │
-│  [e] explore       Browse tables, views, indexes            │
-│  [t] terminal      Interactive SQL REPL                     │
-│  [w] truncate      Wipe all data (keep schema)              │
-│  [x] teardown      Drop all objects                         │
+│ Config:             dev                                     │
+│ Connection:         CONNECTED                               │
+│ Tracking Tables:    Initialized                             │
+│ Tracked Executions: 12                                      │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
+
+┌─ Available Actions ─────────────────────────────────────────┐
+│                                                             │
+│ [c] Create   - Build database from SQL files                │
+│ [d] Destroy  - Drop all managed objects                     │
+│ [x] Explore  - Browse database schema                       │
+│ [w] Wipe     - Truncate table data (keep schema)            │
+│ [t] Teardown - Drop user objects (keep noorm)               │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+
+Warning: These operations modify the database directly.
+
+[c] Create  [d] Destroy  [x] Explore  [w] Wipe  [t] Teardown  [Esc] Back
 ```
 
 
 ### Schema Explorer
 
 ```
-┌─ Schema Overview ───────────────────────────────────────────┐
-│                                                             │
-│  Tables:      12                                            │
-│  Views:        3                                            │
-│  Indexes:      8                                            │
-│  Foreign Keys: 5                                            │
-│  Functions:    2                                            │
-│  Procedures:   0                                            │
-│                                                             │
-│  [t] tables   [v] views   [i] indexes   [f] foreign keys    │
-└─────────────────────────────────────────────────────────────┘
-```
+Home > Databases > Explore Database
 
-Drill down into any category to see details:
-
-```
-┌─ Tables ────────────────────────────────────────────────────┐
+┌─ DB Explore ────────────────────────────────────────────────┐
 │                                                             │
-│  1. users              1,234 rows                           │
-│  2. posts             15,678 rows                           │
-│  3. comments          45,123 rows                           │
-│  4. notifications      8,901 rows                           │
+│ Config:        dev (postgres)                               │
+│ Database:      myapp_dev                                    │
+│ Total Objects: 47                                           │
+│                                                             │
+│ [1] Tables        3                                         │
+│ [2] Views         3                                         │
+│ [3] Procedures    0                                         │
+│ [4] Functions     5                                         │
+│ [5] Types         0                                         │
+│ [6] Indexes      13                                         │
+│ [7] Foreign Keys  2                                         │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
+
+[1-7] Navigate  [Esc] Back
 ```
 
-Select a table to see its schema:
+Press a number to drill into a category:
 
 ```
-┌─ users ─────────────────────────────────────────────────────┐
+Databases > Explore Database > Tables
+
+┌─ Tables (3) ────────────────────────────────────────────────┐
 │                                                             │
-│  Columns:                                                   │
-│    id          INTEGER      PRIMARY KEY                     │
-│    name        TEXT         NOT NULL                        │
-│    email       TEXT         UNIQUE                          │
-│    created_at  DATETIME     DEFAULT CURRENT_TIMESTAMP       │
+│ / Filter tables...                                          │
 │                                                             │
-│  Indexes:                                                   │
-│    users_email_idx    UNIQUE (email)                        │
+│ 1 > public.todo_items  13 columns                           │
+│ 2   public.todo_lists   9 columns                           │
+│ 3   public.users        9 columns                           │
+│                                                             │
+│ [/] Search                                                  │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
+
+[Enter] View detail  [Esc] Back
+```
+
+Select a table to see its full schema:
+
+```
+public.todo_items
+
+Columns (13)
+* id              uuid                      NOT NULL DEFAULT gen_random_uuid()
+  embedding       USER-DEFINED              NULL
+  created_at      timestamp with time zone  NOT NULL DEFAULT now()
+  updated_at      timestamp with time zone  NOT NULL DEFAULT now()
+  deleted_at      timestamp with time zone  NULL
+  list_id         uuid                      NOT NULL
+  title           character varying         NOT NULL
+  description     text                      NULL
+  is_completed    boolean                   NOT NULL DEFAULT false
+  priority        smallint                  NOT NULL DEFAULT 0
+  due_date        timestamp with time zone  NULL
+  completed_at    timestamp with time zone  NULL
+  position        integer                   NOT NULL DEFAULT 0
+
+Indexes (5)
+  idx_todo_items_due_date      (due_date)
+  idx_todo_items_embedding     (embedding vector_cosine_ops)
+  idx_todo_items_list_id       (list_id)
+  idx_todo_items_position      (list_id, "position")
+  todo_items_pkey              (id) UNIQUE
+
+Foreign Keys (1)
+  todo_items_list_id_fkey
+    (list_id) → todo_lists(id)
+
+[Esc] Back
 ```
 
 
@@ -261,10 +351,10 @@ Press `Shift+L` anywhere to toggle the log overlay:
 │                                                             │
 │  09:30:01 INFO  Connected to dev (sqlite)                   │
 │  09:30:02 INFO  Building schema...                          │
-│  09:30:02 DEBUG Checking sql/tables/users.sql            │
-│  09:30:02 INFO  ✓ sql/tables/users.sql (changed)         │
-│  09:30:03 DEBUG Checking sql/tables/posts.sql            │
-│  09:30:03 INFO  • sql/tables/posts.sql (unchanged)       │
+│  09:30:02 DEBUG Checking sql/01_tables/001_users.sql     │
+│  09:30:02 INFO  ✓ sql/01_tables/001_users.sql (changed)  │
+│  09:30:03 DEBUG Checking sql/01_tables/002_posts.sql     │
+│  09:30:03 INFO  • sql/01_tables/002_posts.sql (unchanged)│
 │                                                             │
 │  [/] search   [p] pause   [Shift+L] close                   │
 └─────────────────────────────────────────────────────────────┘
@@ -276,10 +366,10 @@ Press `Shift+L` anywhere to toggle the log overlay:
 
 ### Quick Config Switching
 
-From home, press `c` then the number of the config you want, then `u` to activate:
+From home, press `c` then the number of the config you want, then `Enter` to activate:
 
 ```
-c → 2 → u
+c → 2 → Enter
 ```
 
 
@@ -293,12 +383,7 @@ g → f
 ### Run Build
 
 ```
-r → 1
-```
-
-Or just:
-```
-r → Enter (Build is pre-selected)
+r → b
 ```
 
 

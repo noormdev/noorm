@@ -211,7 +211,7 @@ export function SqlClearScreen({ params: _params }: ScreenProps): ReactElement {
                     <Text color="yellow">No active configuration selected.</Text>
                 </Panel>
 
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[Esc] Back</Text>
                 </Box>
             </Box>
@@ -245,7 +245,7 @@ export function SqlClearScreen({ params: _params }: ScreenProps): ReactElement {
                     </Box>
                 </Panel>
 
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[Enter/Esc] Back</Text>
                 </Box>
             </Box>
@@ -329,7 +329,7 @@ export function SqlClearScreen({ params: _params }: ScreenProps): ReactElement {
             </Panel>
 
             {/* Footer hints */}
-            <Box gap={2}>
+            <Box flexWrap="wrap" columnGap={2}>
                 <Text dimColor>[Enter] Select</Text>
                 <Text dimColor>[↑/↓] Navigate</Text>
                 <Text dimColor>[Esc] Cancel</Text>

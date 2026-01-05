@@ -127,9 +127,9 @@ noorm -H --dry-run run build  # Preview without executing
 **Text output:**
 ```
 Building schema...
-✓ sql/tables/users.sql
-✓ sql/tables/posts.sql
-• sql/views/recent.sql (unchanged)
+✓ sql/01_tables/001_users.sql
+✓ sql/01_tables/002_posts.sql
+• sql/02_views/001_recent.sql (unchanged)
 
 Executed: 2
 Skipped: 1
@@ -152,7 +152,7 @@ Skipped: 1
 Execute a single SQL file.
 
 ```bash
-noorm -H run file sql/tables/users.sql
+noorm -H run file sql/01_tables/001_users.sql
 ```
 
 
@@ -161,7 +161,7 @@ noorm -H run file sql/tables/users.sql
 Execute all SQL files in a directory.
 
 ```bash
-noorm -H run dir sql/tables/
+noorm -H run dir sql/01_tables/
 ```
 
 
@@ -359,7 +359,7 @@ noorm -H lock release
 ### GitHub Actions
 
 ```yaml
-name: Database Migrations
+name: Database Changes
 
 on:
   push:
@@ -378,7 +378,7 @@ jobs:
       - name: Install noorm
         run: npm install -g @noormdev/cli
 
-      - name: Run migrations
+      - name: Apply changes
         env:
           NOORM_CONNECTION_DIALECT: postgres
           NOORM_CONNECTION_HOST: ${{ secrets.DB_HOST }}
@@ -429,7 +429,7 @@ export NOORM_CONNECTION_PASSWORD=$DB_PASSWORD
 # Build schema
 noorm -H run build
 
-# Apply migrations
+# Apply changes
 noorm -H change ff
 
 # Verify

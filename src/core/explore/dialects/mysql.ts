@@ -3,6 +3,7 @@
  *
  * Queries MySQL information_schema to retrieve database object metadata.
  */
+import { attempt } from '@logosdx/utils';
 import { sql } from 'kysely';
 
 import type { Kysely } from 'kysely';
@@ -129,15 +130,15 @@ export const mysqlExploreOperations: DialectExploreOperations = {
             table_rows: string | null;
         }>`
             SELECT
-                t.table_name,
-                t.table_schema,
+                t.table_name AS table_name,
+                t.table_schema AS table_schema,
                 (
                     SELECT COUNT(*)
                     FROM information_schema.columns c
                     WHERE c.table_schema = t.table_schema
                     AND c.table_name = t.table_name
-                ) as column_count,
-                t.table_rows
+                ) AS column_count,
+                t.table_rows AS table_rows
             FROM information_schema.tables t
             WHERE t.table_schema = ${dbName}
             AND t.table_type = 'BASE TABLE'
@@ -169,15 +170,15 @@ export const mysqlExploreOperations: DialectExploreOperations = {
             is_updatable: string;
         }>`
             SELECT
-                v.table_name,
-                v.table_schema,
+                v.table_name AS table_name,
+                v.table_schema AS table_schema,
                 (
                     SELECT COUNT(*)
                     FROM information_schema.columns c
                     WHERE c.table_schema = v.table_schema
                     AND c.table_name = v.table_name
-                ) as column_count,
-                v.is_updatable
+                ) AS column_count,
+                v.is_updatable AS is_updatable
             FROM information_schema.views v
             WHERE v.table_schema = ${dbName}
             ORDER BY v.table_name
@@ -205,15 +206,15 @@ export const mysqlExploreOperations: DialectExploreOperations = {
             param_count: string;
         }>`
             SELECT
-                r.routine_name,
-                r.routine_schema,
+                r.routine_name AS routine_name,
+                r.routine_schema AS routine_schema,
                 (
                     SELECT COUNT(*)
                     FROM information_schema.parameters p
                     WHERE p.specific_schema = r.routine_schema
                     AND p.specific_name = r.specific_name
                     AND p.ordinal_position > 0
-                ) as param_count
+                ) AS param_count
             FROM information_schema.routines r
             WHERE r.routine_schema = ${dbName}
             AND r.routine_type = 'PROCEDURE'
@@ -242,16 +243,16 @@ export const mysqlExploreOperations: DialectExploreOperations = {
             data_type: string;
         }>`
             SELECT
-                r.routine_name,
-                r.routine_schema,
+                r.routine_name AS routine_name,
+                r.routine_schema AS routine_schema,
                 (
                     SELECT COUNT(*)
                     FROM information_schema.parameters p
                     WHERE p.specific_schema = r.routine_schema
                     AND p.specific_name = r.specific_name
                     AND p.ordinal_position > 0
-                ) as param_count,
-                COALESCE(r.data_type, 'unknown') as data_type
+                ) AS param_count,
+                COALESCE(r.data_type, 'unknown') AS data_type
             FROM information_schema.routines r
             WHERE r.routine_schema = ${dbName}
             AND r.routine_type = 'FUNCTION'
@@ -289,11 +290,11 @@ export const mysqlExploreOperations: DialectExploreOperations = {
             seq_in_index: number;
         }>`
             SELECT
-                index_name,
-                table_name,
-                column_name,
-                non_unique,
-                seq_in_index
+                index_name AS index_name,
+                table_name AS table_name,
+                column_name AS column_name,
+                non_unique AS non_unique,
+                seq_in_index AS seq_in_index
             FROM information_schema.statistics
             WHERE table_schema = ${dbName}
             ORDER BY table_name, index_name, seq_in_index
@@ -348,13 +349,13 @@ export const mysqlExploreOperations: DialectExploreOperations = {
             delete_rule: string;
         }>`
             SELECT
-                kcu.constraint_name,
-                kcu.table_name,
-                kcu.column_name,
-                kcu.referenced_table_name,
-                kcu.referenced_column_name,
-                rc.update_rule,
-                rc.delete_rule
+                kcu.constraint_name AS constraint_name,
+                kcu.table_name AS table_name,
+                kcu.column_name AS column_name,
+                kcu.referenced_table_name AS referenced_table_name,
+                kcu.referenced_column_name AS referenced_column_name,
+                rc.update_rule AS update_rule,
+                rc.delete_rule AS delete_rule
             FROM information_schema.key_column_usage kcu
             JOIN information_schema.referential_constraints rc
                 ON kcu.constraint_name = rc.constraint_name
@@ -422,12 +423,12 @@ export const mysqlExploreOperations: DialectExploreOperations = {
             column_key: string;
         }>`
             SELECT
-                column_name,
-                data_type,
-                is_nullable,
-                column_default,
-                ordinal_position,
-                column_key
+                column_name AS column_name,
+                data_type AS data_type,
+                is_nullable AS is_nullable,
+                column_default AS column_default,
+                ordinal_position AS ordinal_position,
+                column_key AS column_key
             FROM information_schema.columns
             WHERE table_schema = ${dbName}
             AND table_name = ${name}
@@ -451,7 +452,7 @@ export const mysqlExploreOperations: DialectExploreOperations = {
 
         // Get row estimate
         const rowResult = await sql<{ table_rows: string | null }>`
-            SELECT table_rows
+            SELECT table_rows AS table_rows
             FROM information_schema.tables
             WHERE table_schema = ${dbName}
             AND table_name = ${name}
@@ -496,7 +497,7 @@ export const mysqlExploreOperations: DialectExploreOperations = {
             is_updatable: string;
             view_definition: string | null;
         }>`
-            SELECT is_updatable, view_definition
+            SELECT is_updatable AS is_updatable, view_definition AS view_definition
             FROM information_schema.views
             WHERE table_schema = ${dbName}
             AND table_name = ${name}
@@ -517,11 +518,11 @@ export const mysqlExploreOperations: DialectExploreOperations = {
             ordinal_position: number;
         }>`
             SELECT
-                column_name,
-                data_type,
-                is_nullable,
-                column_default,
-                ordinal_position
+                column_name AS column_name,
+                data_type AS data_type,
+                is_nullable AS is_nullable,
+                column_default AS column_default,
+                ordinal_position AS ordinal_position
             FROM information_schema.columns
             WHERE table_schema = ${dbName}
             AND table_name = ${name}
@@ -564,7 +565,7 @@ export const mysqlExploreOperations: DialectExploreOperations = {
             routine_definition: string | null;
             specific_name: string;
         }>`
-            SELECT routine_definition, specific_name
+            SELECT routine_definition AS routine_definition, specific_name AS specific_name
             FROM information_schema.routines
             WHERE routine_schema = ${dbName}
             AND routine_name = ${name}
@@ -587,10 +588,10 @@ export const mysqlExploreOperations: DialectExploreOperations = {
             ordinal_position: number;
         }>`
             SELECT
-                parameter_name,
-                data_type,
-                parameter_mode,
-                ordinal_position
+                parameter_name AS parameter_name,
+                data_type AS data_type,
+                parameter_mode AS parameter_mode,
+                ordinal_position AS ordinal_position
             FROM information_schema.parameters
             WHERE specific_schema = ${dbName}
             AND specific_name = ${procRow.specific_name}
@@ -630,7 +631,7 @@ export const mysqlExploreOperations: DialectExploreOperations = {
             specific_name: string;
             data_type: string;
         }>`
-            SELECT routine_definition, specific_name, data_type
+            SELECT routine_definition AS routine_definition, specific_name AS specific_name, data_type AS data_type
             FROM information_schema.routines
             WHERE routine_schema = ${dbName}
             AND routine_name = ${name}
@@ -653,10 +654,10 @@ export const mysqlExploreOperations: DialectExploreOperations = {
             ordinal_position: number;
         }>`
             SELECT
-                parameter_name,
-                data_type,
-                parameter_mode,
-                ordinal_position
+                parameter_name AS parameter_name,
+                data_type AS data_type,
+                parameter_mode AS parameter_mode,
+                ordinal_position AS ordinal_position
             FROM information_schema.parameters
             WHERE specific_schema = ${dbName}
             AND specific_name = ${funcRow.specific_name}
@@ -726,23 +727,33 @@ export const mysqlExploreOperations: DialectExploreOperations = {
     async listLocks(db: Kysely<unknown>): Promise<LockSummary[]> {
 
         // MySQL 8.0+ uses performance_schema.metadata_locks
-        const result = await sql<{
-            OBJECT_TYPE: string;
-            OBJECT_NAME: string | null;
-            LOCK_TYPE: string;
-            LOCK_STATUS: string;
-            OWNER_THREAD_ID: number;
-        }>`
-            SELECT
-                OBJECT_TYPE,
-                OBJECT_NAME,
-                LOCK_TYPE,
-                LOCK_STATUS,
-                OWNER_THREAD_ID
-            FROM performance_schema.metadata_locks
-            WHERE OBJECT_SCHEMA = DATABASE()
-            ORDER BY OWNER_THREAD_ID
-        `.execute(db);
+        // Requires SELECT privilege on performance_schema which may not be granted
+        const [result, err] = await attempt(() =>
+            sql<{
+                OBJECT_TYPE: string;
+                OBJECT_NAME: string | null;
+                LOCK_TYPE: string;
+                LOCK_STATUS: string;
+                OWNER_THREAD_ID: number;
+            }>`
+                SELECT
+                    OBJECT_TYPE,
+                    OBJECT_NAME,
+                    LOCK_TYPE,
+                    LOCK_STATUS,
+                    OWNER_THREAD_ID
+                FROM performance_schema.metadata_locks
+                WHERE OBJECT_SCHEMA = DATABASE()
+                ORDER BY OWNER_THREAD_ID
+            `.execute(db),
+        );
+
+        // Gracefully handle permission denied errors
+        if (err) {
+
+            return [];
+
+        }
 
         return result.rows.map((row) => ({
             pid: row.OWNER_THREAD_ID,

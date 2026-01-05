@@ -3,9 +3,9 @@
 
 ## The Problem
 
-Databases don't handle concurrent DDL operations well. When Alice runs migrations from her laptop while the CI pipeline runs the same migrations, you get race conditions:
+Databases don't handle concurrent DDL operations well. When Alice runs changes from her laptop while the CI pipeline runs the same changes, you get race conditions:
 
-- Partial migrations leave tables in inconsistent states
+- Partial changes leave tables in inconsistent states
 - Tracking tables record conflicting information
 - Schema changes apply out of order
 
@@ -50,9 +50,9 @@ const { db } = await createConnection(config.connection, config.name)
 await lockManager.withLock(db, 'production', 'alice@example.com', async () => {
 
     // Your exclusive operation here
-    await runMigrations(db)
+    await applyChanges(db)
 })
-// Lock automatically released, even if runMigrations() throws
+// Lock automatically released, even if applyChanges() throws
 ```
 
 
@@ -71,7 +71,7 @@ console.log(`Lock acquired, expires at ${lock.expiresAt}`)
 try {
 
     await rebuildSchema(db)
-    await runMigrations(db)
+    await applyChanges(db)
     await seedData(db)
 }
 finally {
@@ -262,8 +262,8 @@ Each config has independent lock scope. Work on different databases in parallel:
 ```typescript
 // These can run simultaneously
 await Promise.all([
-    lockManager.withLock(db, 'dev', identity, () => runMigrations('dev')),
-    lockManager.withLock(db, 'staging', identity, () => runMigrations('staging')),
+    lockManager.withLock(db, 'dev', identity, () => applyChanges('dev')),
+    lockManager.withLock(db, 'staging', identity, () => applyChanges('staging')),
 ])
 
 // But this would block - same config

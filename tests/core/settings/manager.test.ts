@@ -284,7 +284,8 @@ stages:
 
                 await manager.init(true);
 
-                expect(manager.getBuild().include).toEqual(['schema']);
+                // Force reinit should reset to defaults (empty array, not 'modified')
+                expect(manager.getBuild().include).toEqual([]);
 
             }
             finally {

@@ -6,7 +6,7 @@ Database cleanup that handles the tedious parts. Foreign key constraints, drop o
 
 ## When You Need This
 
-Development databases accumulate debris. Half-applied migrations, test data from last week, orphaned tables from abandoned features. Dropping and recreating the entire database works, but it is slow. Filesystem operations, permission grants, connection pool resets. What should take milliseconds becomes 5-10 seconds.
+Development databases accumulate debris. Half-applied changes, test data from last week, orphaned tables from abandoned features. Dropping and recreating the entire database works, but it is slow. Filesystem operations, permission grants, connection pool resets. What should take milliseconds becomes 5-10 seconds.
 
 noorm provides controlled reset operations that complete in milliseconds while handling the complexity for you.
 
@@ -16,7 +16,7 @@ noorm provides controlled reset operations that complete in milliseconds while h
 | Operation | What happens | When to use |
 |-----------|--------------|-------------|
 | `truncate` | Delete all rows, keep tables | Test resets, re-seeding data |
-| `teardown` | Drop all database objects | Full rebuild, migration testing |
+| `teardown` | Drop all database objects | Full rebuild, change testing |
 
 ::: danger Destructive Operations
 Both operations permanently destroy data. `truncate` wipes all rows. `teardown` drops tables, views, functions, and types. There is no undo. These commands require explicit confirmation.
@@ -76,7 +76,7 @@ noorm internal tables are always preserved:
 - `__noorm_executions__` - File execution records
 - `__noorm_locks__` - Active operation locks
 
-After teardown, noorm can still track what was applied previously. Changes are marked as `stale`, meaning they'll re-run on the next [fast-forward](/guide/migrations/forward-revert). See [History](/guide/migrations/history) for how this affects your execution log.
+After teardown, noorm can still track what was applied previously. Changes are marked as `stale`, meaning they'll re-run on the next [fast-forward](/guide/changes/forward-revert). See [History](/guide/changes/history) for how this affects your execution log.
 
 
 ## Protected Configs
@@ -359,5 +359,5 @@ noorm -H -y db teardown         # Execute after review
 ## What's Next?
 
 - [Execution](/guide/sql-files/execution) - Rebuild schema after teardown
-- [Changes](/guide/migrations/changes) - How changes work with teardown
+- [Changes](/guide/changes/overview) - How changes work with teardown
 - [Schema Explorer](/guide/database/explore) - Verify what was dropped

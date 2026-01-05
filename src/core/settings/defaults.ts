@@ -9,10 +9,11 @@ import type { Settings, BuildConfig, PathConfig, StrictConfig, LoggingConfig } f
 /**
  * Default build configuration.
  *
- * Includes only the schema folder by default.
+ * Empty include means all files in the SQL directory are included.
+ * Users can restrict to specific subdirectories via settings.
  */
 export const DEFAULT_BUILD_CONFIG: BuildConfig = {
-    include: ['schema'],
+    include: [],
     exclude: [],
 };
 

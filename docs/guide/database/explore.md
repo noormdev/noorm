@@ -283,7 +283,7 @@ Procedures work the same way as functions, but without a return type.
 
 ## Browsing Types
 
-Custom types are available in PostgreSQL. The explorer shows enum values, composite type attributes, and domain base types.
+Custom types are available in PostgreSQL and MSSQL. The explorer shows enum values, composite type attributes, and domain/alias base types.
 
 ```
 ┌─ Types (2) ─────────────────────────────────────────────────┐
@@ -451,9 +451,14 @@ The explorer works across all supported databases with appropriate translations:
 | Foreign Keys | Yes | Yes | Yes | Yes |
 | Functions | Yes | Yes | Yes | -- |
 | Procedures | Yes | Yes | Yes | -- |
-| Types | Yes | -- | -- | -- |
+| Types | Yes | -- | Yes | -- |
 
-SQLite does not support stored procedures, functions, or user-defined types. These categories return empty results.
+SQLite does not support stored procedures, functions, or user-defined types. MySQL does not support user-defined types. These categories return empty results for unsupported dialects.
+
+**Type support by dialect:**
+
+- **PostgreSQL** - Enums, composite types, domains
+- **MSSQL** - Alias types (e.g., `CREATE TYPE EmailAddress FROM VARCHAR(255)`), table types
 
 
 ## Common Use Cases
@@ -466,7 +471,7 @@ SQLite does not support stored procedures, functions, or user-defined types. The
 
 **Compare environments.** Run overview on dev vs prod to spot schema drift quickly. Use different [configs](/guide/environments/configs) with the `-c` flag.
 
-**Debug migrations.** When [changes](/guide/migrations/changes) fail, explore the current schema state to understand what exists.
+**Debug changes.** When [changes](/guide/changes/overview) fail, explore the current schema state to understand what exists.
 
 
 ## What's Next?

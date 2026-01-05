@@ -58,7 +58,7 @@ export function ChangeNextScreen({ params }: ScreenProps): ReactElement {
 
     const { navigate: _navigate, back } = useRouter();
     const { isFocused } = useFocusScope('ChangeNext');
-    const { activeConfig, activeConfigName, stateManager } = useAppContext();
+    const { activeConfig, activeConfigName, stateManager, identity: cryptoIdentity } = useAppContext();
 
     // Pre-fill count from params
     const initialCount = params.count ? parseInt(String(params.count), 10) : 1;
@@ -260,7 +260,7 @@ export function ChangeNextScreen({ params }: ScreenProps): ReactElement {
 
             // Resolve identity
             const identity = resolveIdentity({
-                cryptoIdentity: stateManager?.getIdentity() ?? null,
+                cryptoIdentity: cryptoIdentity ?? null,
             });
 
             // Create manager and run next N

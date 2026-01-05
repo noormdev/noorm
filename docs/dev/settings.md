@@ -20,6 +20,8 @@ noorm solves this with settings. A single `.noorm/settings.yml` file defines pro
 | Per-machine | Yes (encrypted) | No (shared) |
 | CLI management | `noorm config` | `noorm settings` |
 
+> **How is settings.yml found?** noorm walks up the directory tree to find the project root. See [Project Discovery](./project-discovery.md) for details.
+
 
 ## Quick Start
 
@@ -105,33 +107,34 @@ teardown:
 
 ## Build Configuration
 
-Control which folders are included in builds and their execution order.
+Control which folders are included in builds.
 
 ```yaml
 build:
-    # Folders to include, executed in this order
+    # Folders to include (filter only, not order)
     include:
-        - sql/tables
-        - sql/views
-        - sql/functions
-        - sql/seeds
+        - 01_tables
+        - 02_views
+        - 03_functions
+        - 04_seeds
 
     # Folders to exclude from all builds
     exclude:
-        - sql/archive
-        - sql/experiments
+        - archive
+        - experiments
 ```
 
 Key behaviors:
 
-- `include` defines execution order (first listed = first executed)
+- `include` filters which folders are processed (not execution order)
 - `exclude` prevents folders from ever being processed
-- Paths are relative to project root
+- Execution order is always alphanumeric—use numeric prefixes to control sequence
+- Paths are relative to `paths.sql` directory
 - Rules can dynamically modify these lists
 
 ```typescript
 const build = settings.getBuild()
-// { include: ['sql/tables', ...], exclude: ['sql/archive', ...] }
+// { include: ['01_tables', ...], exclude: ['archive', ...] }
 ```
 
 

@@ -230,9 +230,9 @@ describe('integration: postgres explore', () => {
             const createUser = functions.find((f) => f.name === 'create_user');
             expect(createUser?.returnType).toBe('uuid');
 
-            // get_user_by_id returns record/table
+            // get_user_by_id returns TABLE with column definitions
             const getUserById = functions.find((f) => f.name === 'get_user_by_id');
-            expect(getUserById?.returnType).toBe('record');
+            expect(getUserById?.returnType).toContain('TABLE');
 
         });
 

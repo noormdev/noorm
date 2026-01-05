@@ -51,6 +51,7 @@ import {
 import type { StateManager } from '../core/state/manager.js';
 import type { SettingsManager } from '../core/settings/manager.js';
 import type { CryptoIdentity } from '../core/identity/types.js';
+import { loadExistingIdentity } from '../core/identity/index.js';
 
 // ─────────────────────────────────────────────────────────────
 // Project Name Detection
@@ -353,20 +354,89 @@ export function AppContextProvider({
      * Sync derived state from loaded managers.
      */
     const syncStateFromManagers = useCallback(
-        (sm: StateManager | null, settingsM: SettingsManager | null) => {
+        async (sm: StateManager | null, settingsM: SettingsManager | null) => {
 
             if (sm) {
 
                 setActiveConfig(sm.getActiveConfig());
                 setActiveConfigName(sm.getActiveConfigName());
                 setConfigs(sm.listConfigs());
-                setIdentity(sm.getIdentity());
 
             }
+
+            // Load identity from global ~/.noorm/ (not project state)
+            const [globalIdentity] = await attempt(() => loadExistingIdentity());
+            setIdentity(globalIdentity ?? null);
 
             if (settingsM && settingsM.isLoaded) {
 
                 setSettings(settingsM.settings);
+
+            }
+
+        },
+        [],
+    );
+
+    /**
+     * Sync settings stages to state configs.
+     *
+     * For each stage defined in settings that has a dialect in its defaults,
+     * creates a placeholder config in state if one doesn't already exist.
+     * This ensures developers have visibility into required stages.
+     */
+    const syncSettingsStages = useCallback(
+        async (sm: StateManager, settingsM: SettingsManager) => {
+
+            // Only sync if both managers are loaded and state has identity
+            if (!settingsM.isLoaded || !sm.hasPrivateKey()) return;
+
+            const stages = settingsM.getStages();
+            const existingConfigs = sm.listConfigs();
+            const existingNames: Record<string, boolean> = {};
+
+            for (const config of existingConfigs) {
+
+                existingNames[config.name] = true;
+
+            }
+
+            // Get default paths from settings
+            const defaultPaths = {
+                sql: settingsM.settings?.paths?.sql ?? './sql',
+                changes: settingsM.settings?.paths?.changes ?? './changes',
+            };
+
+            for (const [stageName, stage] of Object.entries(stages)) {
+
+                // Skip if config already exists
+                if (existingNames[stageName]) continue;
+
+                // Skip if no defaults or no dialect specified
+                if (!stage.defaults?.dialect) continue;
+
+                // Create placeholder config from stage defaults
+                const config: Config = {
+                    name: stageName,
+                    type: stage.defaults.host && stage.defaults.host !== 'localhost'
+                        ? 'remote'
+                        : 'local',
+                    isTest: stage.defaults.isTest ?? false,
+                    protected: stage.defaults.protected ?? false,
+                    connection: {
+                        dialect: stage.defaults.dialect,
+                        host: stage.defaults.host ?? 'localhost',
+                        port: stage.defaults.port,
+                        database: stage.defaults.database ?? stageName,
+                        user: stage.defaults.user,
+                        password: stage.defaults.password,
+                        ssl: stage.defaults.ssl,
+                    },
+                    paths: defaultPaths,
+                };
+
+                // Save to state (emits config:created event)
+                await sm.setConfig(stageName, config);
 
             }
 
@@ -403,6 +473,9 @@ export function AppContextProvider({
 
         }
 
+        // Sync settings stages to state configs
+        await syncSettingsStages(sm, settingsM);
+
         setStateManager(sm);
         setSettingsManager(settingsM);
 
@@ -411,7 +484,7 @@ export function AppContextProvider({
 
         setLoadingStatus('ready');
 
-    }, [projectRoot, syncStateFromManagers]);
+    }, [projectRoot, syncStateFromManagers, syncSettingsStages]);
 
     /**
      * Refresh state from managers.
@@ -462,9 +535,11 @@ export function AppContextProvider({
 
                     setActiveConfig(stateManager.getActiveConfig());
                     setConfigs(stateManager.listConfigs());
-                    setIdentity(stateManager.getIdentity());
 
                 }
+
+                // Load identity from global ~/.noorm/
+                loadExistingIdentity().then((id) => setIdentity(id));
 
             }),
         );
@@ -512,11 +587,8 @@ export function AppContextProvider({
         cleanups.push(
             observer.on('identity:created', (_data) => {
 
-                if (stateManager) {
-
-                    setIdentity(stateManager.getIdentity());
-
-                }
+                // Reload identity from global ~/.noorm/
+                loadExistingIdentity().then((id) => setIdentity(id));
 
             }),
         );

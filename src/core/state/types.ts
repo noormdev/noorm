@@ -2,10 +2,12 @@
  * State types.
  *
  * The State object is the in-memory representation of noorm's persistent data.
- * It holds identity, configs, secrets, and known users.
+ * It holds configs, secrets, and known users.
+ *
+ * Note: Identity is stored globally in ~/.noorm/, not in project state.
  */
 import type { Config, ConfigSummary } from '../config/types.js';
-import type { CryptoIdentity, KnownUser } from '../identity/types.js';
+import type { KnownUser } from '../identity/types.js';
 
 // Re-export ConfigSummary from config/types to avoid duplication
 export type { ConfigSummary };
@@ -19,9 +21,6 @@ export type { ConfigSummary };
 export interface State {
     /** Package version that last saved this state */
     version: string;
-
-    /** User's cryptographic identity (null if not set up yet) */
-    identity: CryptoIdentity | null;
 
     /** Known users discovered from database syncs (identityHash -> KnownUser) */
     knownUsers: Record<string, KnownUser>;
@@ -73,7 +72,6 @@ export function createEmptyState(version: string): State {
 
     return {
         version,
-        identity: null,
         knownUsers: {},
         activeConfig: null,
         configs: {},

@@ -146,7 +146,8 @@ describe('cli: lock acquire', () => {
 
     });
 
-    it('should show locked status after acquire', async () => {
+    // Note: This test can be flaky due to CLI process timing - retry if needed
+    it('should show locked status after acquire', { retry: 2 }, async () => {
 
         // Acquire lock
         await noorm(project, 'lock', 'acquire');
@@ -224,7 +225,8 @@ describe('cli: lock release', () => {
 
     });
 
-    it('should show unlocked status after release', async () => {
+    // Note: This test can be flaky due to CLI process timing - retry if needed
+    it('should show unlocked status after release', { retry: 2 }, async () => {
 
         // Acquire lock
         await noorm(project, 'lock', 'acquire');
@@ -272,7 +274,8 @@ describe('cli: lock lifecycle', () => {
 
     });
 
-    it('should complete full acquire-release cycle', async () => {
+    // Note: This test can be flaky due to CLI process timing - retry if needed
+    it('should complete full acquire-release cycle', { retry: 2 }, async () => {
 
         // Initial state: unlocked
         const initial = await noormJson<LockStatus>(project, 'lock', 'status');

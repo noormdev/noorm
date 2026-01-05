@@ -230,6 +230,12 @@ function AppShell(): ReactElement {
 
     }, [navigate]);
 
+    const handleDebugMode = useCallback(() => {
+
+        navigate('debug');
+
+    }, [navigate]);
+
     return (
         <GlobalKeyboard
             onHelp={handleHelp}
@@ -237,6 +243,7 @@ function AppShell(): ReactElement {
             onToggleForce={toggleForce}
             onToggleLogViewer={handleToggleLogViewer}
             onOpenSqlTerminal={handleOpenSqlTerminal}
+            onDebugMode={handleDebugMode}
         >
             <Box flexDirection="column" minHeight={20}>
                 {/* Header */}

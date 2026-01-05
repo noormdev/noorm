@@ -257,6 +257,7 @@ export interface FunctionDetail {
     parameters: ParameterDetail[];
     returnType: string;
     definition?: string;
+    language?: string;
 
 }
 

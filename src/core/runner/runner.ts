@@ -29,12 +29,12 @@ import path from 'node:path';
 import { readFile, readdir, writeFile as fsWriteFile, mkdir } from 'node:fs/promises';
 import { sql } from 'kysely';
 
-import { attempt } from '@logosdx/utils';
+import { attempt, attemptSync } from '@logosdx/utils';
 
 import { observer } from '../observer.js';
 import { formatIdentity } from '../identity/resolver.js';
 import { processFile, isTemplate } from '../template/index.js';
-import { computeChecksum, computeCombinedChecksum } from './checksum.js';
+import { computeChecksum, computeChecksumFromContent, computeCombinedChecksum } from './checksum.js';
 import { Tracker } from './tracker.js';
 import type {
     RunOptions,
@@ -42,6 +42,9 @@ import type {
     FileResult,
     BatchResult,
     BatchStatus,
+    FileInput,
+    ExecuteFilesOptions,
+    ChangeType,
 } from './types.js';
 
 // ─────────────────────────────────────────────────────────────
@@ -109,7 +112,7 @@ export async function runBuild(
     });
 
     // Execute files
-    const result = await executeFiles(context, files, opts, 'build');
+    const result = await executeFilesInternal(context, files, opts, 'build');
 
     observer.emit('build:complete', {
         status: result.status,
@@ -252,7 +255,7 @@ export async function runDir(
     });
 
     // Execute files
-    return executeFiles(context, files, opts, 'run');
+    return executeFilesInternal(context, files, opts, 'run');
 
 }
 
@@ -280,7 +283,7 @@ export async function runFiles(
     });
 
     // Execute files
-    return executeFiles(context, files, opts, 'run');
+    return executeFilesInternal(context, files, opts, 'run');
 
 }
 
@@ -381,20 +384,34 @@ const DEFAULT_RUN_OPTIONS_INTERNAL = {
 
 /**
  * Execute multiple files with tracking.
+ *
+ * This is the unified execution function used by both runner and change modules.
+ * It creates pending records upfront for full batch visibility, then executes
+ * files sequentially, updating records as it goes.
+ *
+ * @param context - Run context
+ * @param files - Files to execute (gathered externally)
+ * @param runOptions - Execution options (force, dryRun, etc.)
+ * @param execOptions - Operation metadata (changeType, operationName, etc.)
+ * @returns Batch result with all file results
  */
-async function executeFiles(
+export async function executeFiles(
     context: RunContext,
-    files: string[],
-    options: Required<Omit<RunOptions, 'output'>> & { output: string | null },
-    changeType: 'build' | 'run',
+    files: FileInput[],
+    runOptions: RunOptions,
+    execOptions: ExecuteFilesOptions,
 ): Promise<BatchResult> {
 
     const start = performance.now();
+    const opts = { ...DEFAULT_RUN_OPTIONS_INTERNAL, ...runOptions };
+
+    // Convert FileInput[] to string[] for preview/dryRun modes
+    const filepaths = files.map((f) => f.path);
 
     // Handle preview mode
-    if (options.preview) {
+    if (opts.preview) {
 
-        const results = await preview(context, files, options.output);
+        const results = await preview(context, filepaths, opts.output);
         const durationMs = performance.now() - start;
 
         return {
@@ -409,9 +426,9 @@ async function executeFiles(
     }
 
     // Handle dry run mode - no tracking, just render and write to tmp/
-    if (options.dryRun) {
+    if (opts.dryRun) {
 
-        const results = await executeDryRun(context, files);
+        const results = await executeDryRun(context, filepaths);
         const durationMs = performance.now() - start;
 
         return {
@@ -425,14 +442,15 @@ async function executeFiles(
 
     }
 
-    // Create tracker and operation
-    const tracker = new Tracker(context.db, context.configName);
-    const operationName = `${changeType}:${new Date().toISOString()}`;
+    // Use provided tracker or create new one
+    const tracker = (execOptions.tracker as Tracker) ?? new Tracker(context.db, context.configName);
 
+    // Create operation record
     const [operationId, createErr] = await attempt(() =>
         tracker.createOperation({
-            name: operationName,
-            changeType,
+            name: execOptions.operationName,
+            changeType: execOptions.changeType,
+            direction: execOptions.direction,
             configName: context.configName,
             executedBy: formatIdentity(context.identity),
         }),
@@ -441,25 +459,96 @@ async function executeFiles(
     if (createErr) {
 
         observer.emit('error', {
-            source: 'runner',
+            source: 'runner:create-operation',
             error: createErr,
-            context: { operation: 'create-operation' },
+            context: { operationName: execOptions.operationName },
         });
 
         return createFailedBatchResult(createErr.message, performance.now() - start);
 
     }
 
+    // Compute checksums for files that don't have them
+    const fileRecords: Array<{ filepath: string; fileType: 'sql' | 'txt'; checksum: string }> = [];
+
+    for (const file of files) {
+
+        let checksum = file.checksum;
+
+        if (!checksum) {
+
+            const [computed, err] = await attempt(() => computeChecksum(file.path));
+            checksum = err ? '' : computed;
+
+        }
+
+        fileRecords.push({
+            filepath: file.path,
+            fileType: file.type,
+            checksum,
+        });
+
+    }
+
+    // Create ALL file records upfront (pending status)
+    // This gives full visibility into the batch before execution starts
+    const createRecordsErr = await tracker.createFileRecords(operationId!, fileRecords);
+
+    if (createRecordsErr) {
+
+        observer.emit('error', {
+            source: 'runner:create-file-records',
+            error: new Error(createRecordsErr),
+            context: { operationId: operationId! },
+        });
+
+        await tracker.finalizeOperation(operationId!, 'failed', 0, '', createRecordsErr);
+
+        return createFailedBatchResult(createRecordsErr, performance.now() - start);
+
+    }
+
     // Execute files sequentially (concurrency is typically 1 for DDL safety)
     const results: FileResult[] = [];
+    let failed = false;
 
-    for (const filepath of files) {
+    for (let i = 0; i < files.length; i++) {
 
-        const result = await executeSingleFile(context, filepath, options, tracker, operationId!);
+        const file = files[i]!;
+        const fileRecord = fileRecords[i]!;
+
+        const result = await executeSingleFileWithUpdate(
+            context,
+            file.path,
+            fileRecord.checksum,
+            opts,
+            tracker,
+            operationId!,
+            execOptions.changeType,
+        );
+
         results.push(result);
 
         // Abort on error if configured
-        if (result.status === 'failed' && options.abortOnError) {
+        if (result.status === 'failed' && opts.abortOnError) {
+
+            failed = true;
+
+            // Mark remaining files as skipped
+            const skipErr = await tracker.skipRemainingFiles(
+                operationId!,
+                `Skipped due to failure in ${file.path}`,
+            );
+
+            if (skipErr) {
+
+                observer.emit('error', {
+                    source: 'runner:skip-remaining',
+                    error: new Error(skipErr),
+                    context: { operationId: operationId! },
+                });
+
+            }
 
             break;
 
@@ -476,23 +565,37 @@ async function executeFiles(
     // Determine overall status
     let status: BatchStatus = 'success';
 
-    if (filesFailed > 0) {
+    if (filesFailed > 0 || failed) {
 
         status = filesRun > 0 ? 'partial' : 'failed';
 
     }
 
-    // Compute combined checksum
-    const checksums = results.filter((r) => r.checksum).map((r) => r.checksum);
-    const combinedChecksum = computeCombinedChecksum(checksums);
+    // Compute combined checksum (or use provided)
+    const combinedChecksum =
+        execOptions.checksum ?? computeCombinedChecksum(fileRecords.map((f) => f.checksum));
 
     // Finalize operation (partial failures count as failed)
-    await tracker.finalizeOperation(
+    // Compute final status AFTER all operations
+    const finalStatus = status === 'success' ? 'success' : 'failed';
+
+    const finalizeErr = await tracker.finalizeOperation(
         operationId!,
-        status === 'success' ? 'success' : 'failed',
+        finalStatus,
         Math.round(durationMs),
         combinedChecksum,
+        failed ? results.find((r) => r.status === 'failed')?.error : undefined,
     );
+
+    if (finalizeErr) {
+
+        observer.emit('error', {
+            source: 'runner:finalize',
+            error: new Error(finalizeErr),
+            context: { operationId: operationId! },
+        });
+
+    }
 
     return {
         status,
@@ -507,7 +610,201 @@ async function executeFiles(
 }
 
 /**
- * Execute a single file.
+ * Internal wrapper for legacy callers.
+ *
+ * Converts string[] to FileInput[] and creates ExecuteFilesOptions.
+ */
+async function executeFilesInternal(
+    context: RunContext,
+    files: string[],
+    options: Required<Omit<RunOptions, 'output'>> & { output: string | null },
+    changeType: 'build' | 'run',
+): Promise<BatchResult> {
+
+    // Convert string[] to FileInput[]
+    const fileInputs: FileInput[] = files.map((f) => ({
+        path: f,
+        type: 'sql' as const,
+    }));
+
+    // Create ExecuteFilesOptions
+    const execOptions: ExecuteFilesOptions = {
+        changeType,
+        direction: 'commit',
+        operationName: `${changeType}:${new Date().toISOString()}`,
+    };
+
+    return executeFiles(context, fileInputs, options, execOptions);
+
+}
+
+/**
+ * Execute a single file with upfront record update.
+ *
+ * This version uses updateFileExecution (records created upfront)
+ * instead of recordExecution (insert on execution).
+ *
+ * @param context - Run context
+ * @param filepath - File to execute
+ * @param checksum - Pre-computed checksum
+ * @param options - Run options
+ * @param tracker - Tracker instance
+ * @param operationId - Parent operation ID
+ * @param changeType - Type of operation (affects needsRun behavior)
+ */
+async function executeSingleFileWithUpdate(
+    context: RunContext,
+    filepath: string,
+    checksum: string,
+    options: Required<Omit<RunOptions, 'output'>> & { output: string | null },
+    tracker: Tracker,
+    operationId: number,
+    changeType: ChangeType,
+): Promise<FileResult> {
+
+    const start = performance.now();
+
+    // Load and render file
+    const [sqlContent, loadErr] = await attempt(() => loadAndRenderFile(context, filepath));
+
+    if (loadErr) {
+
+        const durationMs = performance.now() - start;
+        const result: FileResult = {
+            filepath,
+            checksum: checksum || '',
+            status: 'failed',
+            error: loadErr.message,
+            durationMs,
+        };
+
+        await tracker.updateFileExecution(
+            operationId,
+            filepath,
+            'failed',
+            Math.round(durationMs),
+            loadErr.message,
+        );
+
+        observer.emit('file:after', {
+            filepath,
+            status: 'failed',
+            durationMs,
+            error: loadErr.message,
+        });
+
+        return result;
+
+    }
+
+    // Recompute checksum from rendered content for templates
+    const [renderedChecksum, checksumErr] = attemptSync(() => computeChecksumFromContent(sqlContent));
+    const finalChecksum = checksumErr ? checksum : renderedChecksum;
+
+    observer.emit('file:before', {
+        filepath,
+        checksum: finalChecksum,
+        configName: context.configName,
+    });
+
+    // For 'build' and 'run', check if individual file needs to run
+    // For 'change', the change-level check was already done by the caller
+    if (changeType !== 'change') {
+
+        const needsRunResult = await tracker.needsRun(filepath, finalChecksum, options.force);
+
+        if (!needsRunResult.needsRun) {
+
+            const result: FileResult = {
+                filepath,
+                checksum: finalChecksum,
+                status: 'skipped',
+                skipReason: needsRunResult.skipReason,
+            };
+
+            await tracker.updateFileExecution(
+                operationId,
+                filepath,
+                'skipped',
+                0,
+                undefined,
+                needsRunResult.skipReason,
+            );
+
+            observer.emit('file:skip', {
+                filepath,
+                reason: needsRunResult.skipReason!,
+            });
+
+            return result;
+
+        }
+
+    }
+
+    // Execute SQL
+    const [, execErr] = await attempt(() => sql.raw(sqlContent).execute(context.db));
+
+    const durationMs = performance.now() - start;
+
+    if (execErr) {
+
+        const result: FileResult = {
+            filepath,
+            checksum: finalChecksum,
+            status: 'failed',
+            error: execErr.message,
+            durationMs,
+        };
+
+        await tracker.updateFileExecution(
+            operationId,
+            filepath,
+            'failed',
+            Math.round(durationMs),
+            execErr.message,
+        );
+
+        observer.emit('file:after', {
+            filepath,
+            status: 'failed',
+            durationMs,
+            error: execErr.message,
+        });
+
+        return result;
+
+    }
+
+    // Success
+    const result: FileResult = {
+        filepath,
+        checksum: finalChecksum,
+        status: 'success',
+        durationMs,
+    };
+
+    await tracker.updateFileExecution(
+        operationId,
+        filepath,
+        'success',
+        Math.round(durationMs),
+    );
+
+    observer.emit('file:after', {
+        filepath,
+        status: 'success',
+        durationMs,
+    });
+
+    return result;
+
+}
+
+/**
+ * Execute a single file (legacy version for runFile).
+ *
+ * Uses recordExecution (insert) instead of updateFileExecution.
  */
 async function executeSingleFile(
     context: RunContext,
@@ -519,8 +816,43 @@ async function executeSingleFile(
 
     const start = performance.now();
 
+    // Load and render file
+    // Needed before checksum to support templates
+    const [sqlContent, loadErr] = await attempt(() => loadAndRenderFile(context, filepath));
+
+    if (loadErr) {
+
+        const durationMs = performance.now() - start;
+        const result: FileResult = {
+            filepath,
+            checksum: '',
+            status: 'failed',
+            error: loadErr.message,
+            durationMs,
+        };
+
+        await tracker.recordExecution({
+            changeId: operationId,
+            filepath,
+            checksum: '',
+            status: 'failed',
+            errorMessage: loadErr.message,
+            durationMs: Math.round(durationMs),
+        });
+
+        observer.emit('file:after', {
+            filepath,
+            status: 'failed',
+            durationMs,
+            error: loadErr.message,
+        });
+
+        return result;
+
+    }
+
     // Compute checksum
-    const [checksum, checksumErr] = await attempt(() => computeChecksum(filepath));
+    const [checksum, checksumErr] = attemptSync(() => computeChecksumFromContent(sqlContent));
 
     if (checksumErr) {
 
@@ -552,6 +884,12 @@ async function executeSingleFile(
 
     }
 
+    observer.emit('file:before', {
+        filepath,
+        checksum,
+        configName: context.configName,
+    });
+
     // Check if file needs to run
     const needsRunResult = await tracker.needsRun(filepath, checksum, options.force);
 
@@ -575,46 +913,6 @@ async function executeSingleFile(
         observer.emit('file:skip', {
             filepath,
             reason: needsRunResult.skipReason!,
-        });
-
-        return result;
-
-    }
-
-    observer.emit('file:before', {
-        filepath,
-        checksum,
-        configName: context.configName,
-    });
-
-    // Load and render file
-    const [sqlContent, loadErr] = await attempt(() => loadAndRenderFile(context, filepath));
-
-    if (loadErr) {
-
-        const durationMs = performance.now() - start;
-        const result: FileResult = {
-            filepath,
-            checksum,
-            status: 'failed',
-            error: loadErr.message,
-            durationMs,
-        };
-
-        await tracker.recordExecution({
-            changeId: operationId,
-            filepath,
-            checksum,
-            status: 'failed',
-            errorMessage: loadErr.message,
-            durationMs: Math.round(durationMs),
-        });
-
-        observer.emit('file:after', {
-            filepath,
-            status: 'failed',
-            durationMs,
-            error: loadErr.message,
         });
 
         return result;

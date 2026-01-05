@@ -329,6 +329,9 @@ export interface ChangeContext {
 
     /** Global secrets for template context */
     globalSecrets?: Record<string, string>;
+
+    /** Database dialect for lock formatting. Default: 'postgres' */
+    dialect?: 'postgres' | 'mysql' | 'sqlite' | 'mssql';
 }
 
 // ─────────────────────────────────────────────────────────────

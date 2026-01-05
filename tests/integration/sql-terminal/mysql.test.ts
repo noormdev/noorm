@@ -558,7 +558,7 @@ describe('integration: mysql sql-terminal', () => {
 
             const result = await executeRawSql(
                 db,
-                'SELECT NOW() as current_time, CURDATE() as current_date',
+                'SELECT NOW() as `current_time`, CURDATE() as `current_date`',
                 configName,
             );
 

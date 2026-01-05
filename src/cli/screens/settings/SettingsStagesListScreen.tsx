@@ -249,6 +249,14 @@ export function SettingsStagesListScreen({ params: _params }: ScreenProps): Reac
     return (
         <Box flexDirection="column" gap={1}>
             <Panel title="Stages" paddingX={1} paddingY={1}>
+                <Box flexDirection="column" marginBottom={1}>
+                    <Text dimColor>
+                        Define required stages for your project. Stages with a dialect in their defaults
+                    </Text>
+                    <Text dimColor>
+                        are automatically created as configs in each user's local state on startup.
+                    </Text>
+                </Box>
                 {items.length === 0 ? (
                     <Box flexDirection="column" gap={1}>
                         <Text dimColor>No stages defined.</Text>
@@ -267,7 +275,7 @@ export function SettingsStagesListScreen({ params: _params }: ScreenProps): Reac
                 )}
             </Panel>
 
-            <Box gap={2} flexWrap="wrap">
+            <Box flexWrap="wrap" columnGap={2}>
                 <Text dimColor>[a] Add</Text>
                 <Text dimColor>[e] Edit</Text>
                 <Text dimColor>[k] Secrets</Text>

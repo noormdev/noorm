@@ -440,6 +440,9 @@ describe('integration: mssql teardown', () => {
             await teardownTestSchema(db, 'mssql').catch(() => {});
             await deployTestSchema(db, 'mssql');
 
+            // Drop any existing test table first (teardownSchema preserves __noorm_* tables)
+            await sql.raw('DROP TABLE IF EXISTS __noorm_test__').execute(db);
+
             // Create a noorm table to test preservation
             await sql.raw(`
                 CREATE TABLE __noorm_test__ (

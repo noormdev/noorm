@@ -168,8 +168,8 @@ export function SqlInput({
 
         }
 
-        // Backspace: delete char before cursor
-        if (key.backspace) {
+        // Backspace/delete: same pattern as @inkjs/ui TextInput
+        if (key.backspace || key.delete) {
 
             if (cursor > 0) {
 
@@ -184,24 +184,8 @@ export function SqlInput({
 
         }
 
-        // Delete: delete char at cursor
-        if (key.delete) {
-
-            if (cursor < value.length) {
-
-                const before = value.slice(0, cursor);
-                const after = value.slice(cursor + 1);
-
-                updateValue(before + after, cursor);
-
-            }
-
-            return;
-
-        }
-
         // Regular character input
-        if (input && !key.ctrl && !key.meta) {
+        if (input) {
 
             const before = value.slice(0, cursor);
             const after = value.slice(cursor);

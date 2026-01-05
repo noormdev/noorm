@@ -103,7 +103,7 @@ export function IdentityExportScreen({ params: _params }: ScreenProps): ReactEle
                     </Box>
                 </Panel>
 
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[Esc] Back</Text>
                 </Box>
             </Box>
@@ -141,7 +141,7 @@ export function IdentityExportScreen({ params: _params }: ScreenProps): ReactEle
             </Panel>
 
             {/* Keyboard shortcuts */}
-            <Box gap={2}>
+            <Box flexWrap="wrap" columnGap={2}>
                 {clipboardAvailable ? (
                     <Text dimColor>[c] Copy to Clipboard</Text>
                 ) : (

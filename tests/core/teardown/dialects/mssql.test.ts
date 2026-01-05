@@ -30,21 +30,21 @@ describe('teardown: mssql dialect', () => {
 
     describe('truncateTable', () => {
 
-        it('should generate TRUNCATE TABLE', () => {
+        it('should generate DELETE FROM (MSSQL cannot TRUNCATE FK-referenced tables)', () => {
 
             const sql = mssqlTeardownOperations.truncateTable('users');
 
-            expect(sql).toBe('TRUNCATE TABLE [users]');
+            expect(sql).toContain('DELETE FROM [users]');
 
         });
 
-        it('should ignore restartIdentity parameter (always resets identity)', () => {
+        it('should include DBCC CHECKIDENT when restartIdentity is true', () => {
 
             const sqlTrue = mssqlTeardownOperations.truncateTable('users', undefined, true);
             const sqlFalse = mssqlTeardownOperations.truncateTable('users', undefined, false);
 
-            expect(sqlTrue).toBe('TRUNCATE TABLE [users]');
-            expect(sqlFalse).toBe('TRUNCATE TABLE [users]');
+            expect(sqlTrue).toContain('DBCC CHECKIDENT');
+            expect(sqlFalse).toBe('DELETE FROM [users]');
 
         });
 
@@ -52,7 +52,7 @@ describe('teardown: mssql dialect', () => {
 
             const sql = mssqlTeardownOperations.truncateTable('user_accounts');
 
-            expect(sql).toBe('TRUNCATE TABLE [user_accounts]');
+            expect(sql).toContain('DELETE FROM [user_accounts]');
 
         });
 
@@ -60,7 +60,7 @@ describe('teardown: mssql dialect', () => {
 
             const sql = mssqlTeardownOperations.truncateTable('table]with]brackets');
 
-            expect(sql).toBe('TRUNCATE TABLE [table]]with]]brackets]');
+            expect(sql).toContain('DELETE FROM [table]]with]]brackets]');
 
         });
 
@@ -68,7 +68,7 @@ describe('teardown: mssql dialect', () => {
 
             const sql = mssqlTeardownOperations.truncateTable('users', 'sales');
 
-            expect(sql).toBe('TRUNCATE TABLE [sales].[users]');
+            expect(sql).toContain('DELETE FROM [sales].[users]');
 
         });
 
@@ -76,7 +76,8 @@ describe('teardown: mssql dialect', () => {
 
             const sql = mssqlTeardownOperations.truncateTable('users', 'dbo');
 
-            expect(sql).toBe('TRUNCATE TABLE [users]');
+            expect(sql).toContain('DELETE FROM [users]');
+            expect(sql).not.toContain('[dbo]');
 
         });
 
@@ -84,7 +85,7 @@ describe('teardown: mssql dialect', () => {
 
             const sql = mssqlTeardownOperations.truncateTable('users', 'my]schema');
 
-            expect(sql).toBe('TRUNCATE TABLE [my]]schema].[users]');
+            expect(sql).toContain('DELETE FROM [my]]schema].[users]');
 
         });
 
@@ -164,11 +165,11 @@ describe('teardown: mssql dialect', () => {
 
     describe('dropFunction', () => {
 
-        it('should generate DROP PROCEDURE with IF EXISTS', () => {
+        it('should generate DROP FUNCTION with IF EXISTS (for scalar/table functions)', () => {
 
             const sql = mssqlTeardownOperations.dropFunction('calculate_total');
 
-            expect(sql).toBe('DROP PROCEDURE IF EXISTS [calculate_total]');
+            expect(sql).toBe('DROP FUNCTION IF EXISTS [calculate_total]');
 
         });
 
@@ -176,7 +177,7 @@ describe('teardown: mssql dialect', () => {
 
             const sql = mssqlTeardownOperations.dropFunction('calculate_total', 'analytics');
 
-            expect(sql).toBe('DROP PROCEDURE IF EXISTS [analytics].[calculate_total]');
+            expect(sql).toBe('DROP FUNCTION IF EXISTS [analytics].[calculate_total]');
 
         });
 
@@ -184,7 +185,7 @@ describe('teardown: mssql dialect', () => {
 
             const sql = mssqlTeardownOperations.dropFunction('calculate_total', 'dbo');
 
-            expect(sql).toBe('DROP PROCEDURE IF EXISTS [calculate_total]');
+            expect(sql).toBe('DROP FUNCTION IF EXISTS [calculate_total]');
 
         });
 
@@ -192,7 +193,43 @@ describe('teardown: mssql dialect', () => {
 
             const sql = mssqlTeardownOperations.dropFunction('func]name');
 
-            expect(sql).toBe('DROP PROCEDURE IF EXISTS [func]]name]');
+            expect(sql).toBe('DROP FUNCTION IF EXISTS [func]]name]');
+
+        });
+
+    });
+
+    describe('dropProcedure', () => {
+
+        it('should generate DROP PROCEDURE with IF EXISTS', () => {
+
+            const sql = mssqlTeardownOperations.dropProcedure('process_orders');
+
+            expect(sql).toBe('DROP PROCEDURE IF EXISTS [process_orders]');
+
+        });
+
+        it('should include schema when provided and not dbo', () => {
+
+            const sql = mssqlTeardownOperations.dropProcedure('process_orders', 'jobs');
+
+            expect(sql).toBe('DROP PROCEDURE IF EXISTS [jobs].[process_orders]');
+
+        });
+
+        it('should omit dbo schema', () => {
+
+            const sql = mssqlTeardownOperations.dropProcedure('process_orders', 'dbo');
+
+            expect(sql).toBe('DROP PROCEDURE IF EXISTS [process_orders]');
+
+        });
+
+        it('should escape brackets in procedure name', () => {
+
+            const sql = mssqlTeardownOperations.dropProcedure('proc]name');
+
+            expect(sql).toBe('DROP PROCEDURE IF EXISTS [proc]]name]');
 
         });
 

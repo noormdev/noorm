@@ -87,7 +87,7 @@ export function RunExecScreen({ params: _params }: ScreenProps): ReactElement {
 
     const { back } = useRouter();
     // Don't use focus scope at screen level - SelectList owns focus in picker phase
-    const { activeConfig, activeConfigName, stateManager } = useAppContext();
+    const { activeConfig, activeConfigName, stateManager, identity: cryptoIdentity } = useAppContext();
     const { settings } = useSettings();
     const globalModes = useGlobalModes();
     const { showToast } = useToast();
@@ -177,7 +177,7 @@ export function RunExecScreen({ params: _params }: ScreenProps): ReactElement {
 
         // Resolve identity
         const identity = resolveIdentity({
-            cryptoIdentity: stateManager.getIdentity() ?? null,
+            cryptoIdentity: cryptoIdentity ?? null,
         });
 
         // Test connection
@@ -291,7 +291,7 @@ export function RunExecScreen({ params: _params }: ScreenProps): ReactElement {
                 <Panel title="Execute Files" borderColor="yellow" paddingX={1} paddingY={1}>
                     <Text color="yellow">No active configuration selected.</Text>
                 </Panel>
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[Esc] Back</Text>
                 </Box>
             </Box>
@@ -324,7 +324,7 @@ export function RunExecScreen({ params: _params }: ScreenProps): ReactElement {
                         <Text dimColor>{error}</Text>
                     </Box>
                 </Panel>
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[Esc] Back</Text>
                 </Box>
             </Box>
@@ -367,7 +367,7 @@ export function RunExecScreen({ params: _params }: ScreenProps): ReactElement {
                     </Box>
                 </Panel>
 
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[Space] Toggle</Text>
                     <Text dimColor>[Enter] Confirm</Text>
                     <Text dimColor>[Esc] Back</Text>
@@ -456,7 +456,7 @@ export function RunExecScreen({ params: _params }: ScreenProps): ReactElement {
                     </Box>
                 </Panel>
 
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[Esc] Back</Text>
                 </Box>
             </Box>

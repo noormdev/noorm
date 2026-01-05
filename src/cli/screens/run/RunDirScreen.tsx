@@ -116,7 +116,7 @@ function extractDirectories(files: string[], projectRoot: string, sqlPath: strin
 export function RunDirScreen({ params }: ScreenProps): ReactElement {
 
     const { back } = useRouter();
-    const { activeConfig, activeConfigName, stateManager } = useAppContext();
+    const { activeConfig, activeConfigName, stateManager, identity: cryptoIdentity } = useAppContext();
     const { settings } = useSettings();
     const globalModes = useGlobalModes();
     const { showToast } = useToast();
@@ -236,7 +236,7 @@ export function RunDirScreen({ params }: ScreenProps): ReactElement {
 
         // Resolve identity
         const identity = resolveIdentity({
-            cryptoIdentity: stateManager.getIdentity() ?? null,
+            cryptoIdentity: cryptoIdentity ?? null,
         });
 
         // Test connection
@@ -359,7 +359,7 @@ export function RunDirScreen({ params }: ScreenProps): ReactElement {
                 <Panel title="Run Directory" borderColor="yellow" paddingX={1} paddingY={1}>
                     <Text color="yellow">No active configuration selected.</Text>
                 </Panel>
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[Esc] Back</Text>
                 </Box>
             </Box>
@@ -392,7 +392,7 @@ export function RunDirScreen({ params }: ScreenProps): ReactElement {
                         <Text dimColor>{error}</Text>
                     </Box>
                 </Panel>
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[Esc] Back</Text>
                 </Box>
             </Box>
@@ -450,7 +450,7 @@ export function RunDirScreen({ params }: ScreenProps): ReactElement {
                     </Box>
                 </Panel>
 
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     {hasFiles && <Text dimColor>[Enter] Select</Text>}
                     <Text dimColor>[Esc] Back</Text>
                 </Box>
@@ -504,7 +504,7 @@ export function RunDirScreen({ params }: ScreenProps): ReactElement {
                     <Panel title={`Files in ${selectedDir}`} borderColor="yellow" paddingX={1} paddingY={1}>
                         <Text color="yellow">No SQL files found in this directory.</Text>
                     </Panel>
-                    <Box gap={2}>
+                    <Box flexWrap="wrap" columnGap={2}>
                         <Text dimColor>[Esc] Back</Text>
                     </Box>
                 </Box>
@@ -622,7 +622,7 @@ export function RunDirScreen({ params }: ScreenProps): ReactElement {
                     </Box>
                 </Panel>
 
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[Esc] Back</Text>
                 </Box>
             </Box>

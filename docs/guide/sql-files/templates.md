@@ -121,7 +121,7 @@ INSERT INTO config (data) VALUES ('{%~ $.escape($.json(settings)) %}');
 Includes another SQL file. The path is relative to the current template:
 
 ```sql
--- migrations/001_setup.sql.tmpl
+-- changes/2025-01-15-setup/change/001_setup.sql.tmpl
 
 -- Load shared functions
 {%~ await $.include('../lib/uuid_function.sql') %}
@@ -357,10 +357,10 @@ GRANT EXECUTE ON {%~ proc %} TO {%~ role %};
 
 ### Composing from Fragments
 
-Split complex migrations into logical pieces:
+Split complex changes into logical pieces:
 
 ```sql
--- migrations/001_full_setup.sql.tmpl
+-- changes/2025-01-15-full-setup/change/001_full_setup.sql.tmpl
 
 -- Common utilities
 {%~ await $.include('../lib/uuid_function.sql') %}
@@ -392,4 +392,4 @@ Split complex migrations into logical pieces:
 
 - [Organization](/guide/sql-files/organization) - Control execution order with file naming
 - [Secrets](/guide/environments/secrets) - Securely store credentials
-- [Changes](/guide/migrations/changes) - Versioned migrations with template support
+- [Changes](/guide/changes/overview) - Versioned changes with template support

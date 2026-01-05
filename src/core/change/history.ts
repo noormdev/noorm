@@ -24,6 +24,7 @@
  * ```
  */
 import type { Kysely } from 'kysely';
+import { sql } from 'kysely';
 
 import { attempt } from '@logosdx/utils';
 
@@ -370,56 +371,12 @@ export class ChangeHistory {
 
     }
 
-    /**
-     * Check if a change can be reverted.
-     *
-     * @param name - Change name
-     * @param force - Force revert regardless of status
-     * @returns Whether revert is allowed and current status
-     */
-    async canRevert(
-        name: string,
-        force: boolean,
-    ): Promise<{ canRevert: boolean; reason?: string; status?: OperationStatus }> {
-
-        const status = await this.getStatus(name);
-
-        if (!status) {
-
-            return { canRevert: false, reason: 'not applied' };
-
-        }
-
-        if (force) {
-
-            return { canRevert: true, status: status.status };
-
-        }
-
-        switch (status.status) {
-
-        case 'pending':
-            return { canRevert: false, reason: 'not applied yet', status: status.status };
-
-        case 'success':
-            return { canRevert: true, status: status.status };
-
-        case 'failed':
-            return { canRevert: true, status: status.status };
-
-        case 'reverted':
-            return { canRevert: false, reason: 'already reverted', status: status.status };
-
-        default:
-            return { canRevert: false, reason: 'unknown status' };
-
-        }
-
-    }
-
     // ─────────────────────────────────────────────────────────
     // Create Records
     // ─────────────────────────────────────────────────────────
+    //
+    // NOTE: canRevert has been moved to ChangeTracker.
+    //
 
     /**
      * Create a new operation record.
@@ -453,7 +410,34 @@ export class ChangeHistory {
 
         }
 
-        return result.id;
+        // Validate the returned ID
+        // Note: SQLite with better-sqlite3 may return null for RETURNING clause
+        // In that case, fall back to last_insert_rowid()
+        let id = result?.id;
+
+        if (id === null || id === undefined) {
+
+            const [lastIdResult, lastIdErr] = await attempt(() =>
+                sql<{ id: number }>`SELECT last_insert_rowid() as id`.execute(this.#db),
+            );
+
+            if (lastIdErr || !lastIdResult?.rows?.[0]?.id) {
+
+                throw new Error('Failed to retrieve last insert row id');
+
+            }
+
+            id = lastIdResult.rows[0].id;
+
+        }
+
+        if (typeof id !== 'number' || !Number.isFinite(id) || id <= 0) {
+
+            throw new Error(`Invalid operation ID returned: ${id}`);
+
+        }
+
+        return id;
 
     }
 
@@ -461,6 +445,8 @@ export class ChangeHistory {
      * Create pending file records for all files.
      *
      * Creates records upfront so we can mark remaining as skipped on failure.
+     *
+     * @returns Error message if creation failed, null on success
      */
     async createFileRecords(
         operationId: number,
@@ -469,9 +455,9 @@ export class ChangeHistory {
             fileType: FileType;
             checksum: string;
         }>,
-    ): Promise<void> {
+    ): Promise<string | null> {
 
-        if (files.length === 0) return;
+        if (files.length === 0) return null;
 
         const values = files.map((f) => ({
             change_id: operationId,
@@ -487,13 +473,19 @@ export class ChangeHistory {
 
         if (err) {
 
+            const errMsg = err instanceof Error ? err.message : String(err);
+
             observer.emit('error', {
                 source: 'change',
                 error: err,
                 context: { operationId, operation: 'create-file-records' },
             });
 
+            return `Failed to create file records: ${errMsg}`;
+
         }
+
+        return null;
 
     }
 
@@ -503,6 +495,8 @@ export class ChangeHistory {
 
     /**
      * Update a file execution record.
+     *
+     * @returns Error message if update failed, null on success
      */
     async updateFileExecution(
         operationId: number,
@@ -511,23 +505,25 @@ export class ChangeHistory {
         durationMs: number,
         errorMessage?: string,
         skipReason?: string,
-    ): Promise<void> {
+    ): Promise<string | null> {
 
-        const [, err] = await attempt(() =>
+        const [result, err] = await attempt(() =>
             this.#db
                 .updateTable(NOORM_TABLES.executions)
                 .set({
                     status,
-                    duration_ms: durationMs,
+                    duration_ms: Math.round(durationMs),
                     error_message: errorMessage ?? '',
                     skip_reason: skipReason ?? '',
                 })
                 .where('change_id', '=', operationId)
                 .where('filepath', '=', filepath)
-                .execute(),
+                .executeTakeFirst(),
         );
 
         if (err) {
+
+            const errMsg = err instanceof Error ? err.message : String(err);
 
             observer.emit('error', {
                 source: 'change',
@@ -535,14 +531,37 @@ export class ChangeHistory {
                 context: { filepath, operation: 'update-file-execution' },
             });
 
+            return `Failed to update file execution ${filepath}: ${errMsg}`;
+
         }
+
+        // Check if any rows were updated
+        const numUpdated = Number(result?.numUpdatedRows ?? 0);
+
+        if (numUpdated === 0) {
+
+            const errMsg = `No execution record found for ${filepath} (operationId: ${operationId})`;
+
+            observer.emit('error', {
+                source: 'change',
+                error: new Error(errMsg),
+                context: { operationId, filepath, operation: 'update-file-execution' },
+            });
+
+            return errMsg;
+
+        }
+
+        return null;
 
     }
 
     /**
      * Mark remaining files as skipped after failure.
+     *
+     * @returns Error message if skip failed, null on success
      */
-    async skipRemainingFiles(operationId: number, reason: string): Promise<void> {
+    async skipRemainingFiles(operationId: number, reason: string): Promise<string | null> {
 
         const [, err] = await attempt(() =>
             this.#db
@@ -564,12 +583,18 @@ export class ChangeHistory {
                 context: { operationId, operation: 'skip-remaining-files' },
             });
 
+            return `Failed to skip remaining files: ${err instanceof Error ? err.message : String(err)}`;
+
         }
+
+        return null;
 
     }
 
     /**
      * Finalize an operation.
+     *
+     * @returns Error message if finalization failed, null on success
      */
     async finalizeOperation(
         operationId: number,
@@ -577,22 +602,27 @@ export class ChangeHistory {
         checksum: string,
         durationMs: number,
         errorMessage?: string,
-    ): Promise<void> {
+    ): Promise<string | null> {
 
-        const [, err] = await attempt(() =>
+        // Truncate error message if too long (some DBs have limits)
+        const truncatedError = errorMessage ? errorMessage.slice(0, 2000) : '';
+
+        const [result, err] = await attempt(() =>
             this.#db
                 .updateTable(NOORM_TABLES.change)
                 .set({
                     status,
                     checksum,
-                    duration_ms: durationMs,
-                    error_message: errorMessage ?? '',
+                    duration_ms: Math.round(durationMs),
+                    error_message: truncatedError,
                 })
                 .where('id', '=', operationId)
-                .execute(),
+                .executeTakeFirst(),
         );
 
         if (err) {
+
+            const errMsg = err instanceof Error ? err.message : String(err);
 
             observer.emit('error', {
                 source: 'change',
@@ -600,82 +630,33 @@ export class ChangeHistory {
                 context: { operationId, operation: 'finalize-operation' },
             });
 
-        }
-
-    }
-
-    /**
-     * Mark the original change record as reverted.
-     *
-     * Called after successful revert.
-     */
-    async markAsReverted(name: string): Promise<void> {
-
-        // Find the most recent 'change' record
-        const [record] = await attempt(() =>
-            this.#db
-                .selectFrom(NOORM_TABLES.change)
-                .select(['id'])
-                .where('name', '=', name)
-                .where('change_type', '=', 'change')
-                .where('direction', '=', 'change')
-                .where('config_name', '=', this.#configName)
-                .orderBy('id', 'desc')
-                .limit(1)
-                .executeTakeFirst(),
-        );
-
-        if (record) {
-
-            await attempt(() =>
-                this.#db
-                    .updateTable(NOORM_TABLES.change)
-                    .set({ status: 'reverted' })
-                    .where('id', '=', record.id)
-                    .execute(),
-            );
+            // Return error instead of throwing - let caller decide how to handle
+            return `Failed to finalize operation ${operationId}: ${errMsg}`;
 
         }
 
-    }
+        // Check if any rows were updated
+        const numUpdated = Number(result?.numUpdatedRows ?? 0);
 
-    /**
-     * Mark all operation records as stale.
-     *
-     * Called during teardown to indicate schema objects no longer exist.
-     * Marks changes, builds, and runs - all types that created schema objects.
-     * Marks both 'success' and 'failed' records - anything that might have
-     * created schema objects needs to be re-run after teardown.
-     *
-     * @returns Number of records marked as stale
-     */
-    async markAllAsStale(): Promise<number> {
+        if (numUpdated === 0) {
 
-        const [result, err] = await attempt(() =>
-            this.#db
-                .updateTable(NOORM_TABLES.change)
-                .set({ status: 'stale' })
-                .where('direction', '=', 'change')
-                .where('status', 'in', ['success', 'failed', 'pending'])
-                .where('config_name', '=', this.#configName)
-                .execute(),
-        );
-
-        if (err) {
+            const errMsg = `No operation record found with id ${operationId}`;
 
             observer.emit('error', {
                 source: 'change',
-                error: err,
-                context: { operation: 'mark-all-stale' },
+                error: new Error(errMsg),
+                context: { operationId, operation: 'finalize-operation' },
             });
 
-            return 0;
+            return errMsg;
 
         }
 
-        return result.reduce((acc, r) => acc + Number(r.numUpdatedRows ?? 0), 0);
+        return null;
 
     }
+
+    // NOTE: markAsReverted and markAllAsStale have been moved to ChangeTracker.
 
     /**
      * Record a database reset event.

@@ -6,7 +6,7 @@
 The noorm SDK provides programmatic access to noorm-managed databases. Use it for:
 
 - **Test suites** - Reset and seed databases between tests
-- **Scripts** - Data migrations, exports, and automation
+- **Scripts** - Data transforms, exports, and automation
 - **CI/CD** - Headless database operations
 - **SDK generation** - Introspect schema to generate types
 
@@ -53,11 +53,21 @@ Creates an SDK context for programmatic database access.
 ```typescript
 interface CreateContextOptions<DB = unknown> {
     config?: string          // Config name (or use NOORM_CONFIG env var)
-    projectRoot?: string     // Defaults to process.cwd()
+    projectRoot?: string     // Project root path (see note below)
     requireTest?: boolean    // Refuse if config.isTest !== true
     allowProtected?: boolean // Allow destructive ops on protected configs
     stage?: string           // Stage name for stage defaults
 }
+```
+
+> **Finding the project root**: Unlike the CLI, the SDK does not automatically walk up directories to find the project. Pass `projectRoot` explicitly, or use [Project Discovery](./project-discovery.md) to find it first:
+> ```typescript
+> import { findProjectRoot } from 'noorm/core'
+> const { projectRoot } = findProjectRoot()
+> const ctx = await createContext({ projectRoot })
+> ```
+
+```typescript
 
 const ctx = await createContext<MyDatabase>({
     config: 'test',
@@ -546,7 +556,7 @@ if (!test.ok) {
     process.exit(1)
 }
 
-// Apply migrations with lock
+// Apply changes with lock
 await ctx.withLock(async () => {
     await ctx.fastForward()
 })
@@ -652,7 +662,7 @@ Use `--tui` to force TUI mode in CI environments.
 ### GitHub Actions Example
 
 ```yaml
-name: Database Migrations
+name: Database Changes
 on:
   push:
     branches: [main]
@@ -666,7 +676,7 @@ jobs:
         with:
           node-version: '20'
       - run: npm ci
-      - name: Apply migrations
+      - name: Apply changes
         run: |
           npx noorm -H --config ${{ vars.DB_CONFIG }} change/ff
         env:

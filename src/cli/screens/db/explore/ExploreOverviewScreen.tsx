@@ -209,7 +209,7 @@ export function ExploreOverviewScreen({ params: _params }: ScreenProps): ReactEl
                     </Box>
                 </Panel>
 
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[Esc] Back</Text>
                 </Box>
             </Box>
@@ -242,7 +242,7 @@ export function ExploreOverviewScreen({ params: _params }: ScreenProps): ReactEl
                     </Box>
                 </Panel>
 
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[Esc] Back</Text>
                 </Box>
             </Box>
@@ -305,7 +305,7 @@ export function ExploreOverviewScreen({ params: _params }: ScreenProps): ReactEl
             </Panel>
 
             {/* Hotkeys */}
-            <Box gap={2}>
+            <Box flexWrap="wrap" columnGap={2}>
                 <Text dimColor>[1-7] Navigate</Text>
                 <Text dimColor>[Esc] Back</Text>
             </Box>

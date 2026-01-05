@@ -13,9 +13,10 @@
  * gracefulExit()
  * ```
  */
-import { createContext, useContext, useCallback, useEffect, useRef } from 'react';
+import { createContext, useContext, useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactNode, ReactElement } from 'react';
-import { useApp } from 'ink';
+import { useApp, Box } from 'ink';
+import { Spinner } from '@inkjs/ui';
 
 import { getLifecycleManager } from '../core/lifecycle/manager.js';
 import type { LifecycleManager } from '../core/lifecycle/manager.js';
@@ -39,6 +40,24 @@ export interface ShutdownContextValue {
 }
 
 const ShutdownContext = createContext<ShutdownContextValue | null>(null);
+
+/**
+ * Shutdown screen component.
+ *
+ * Displays a clean, minimal screen during graceful shutdown.
+ * This replaces the full TUI to prevent terminal corruption.
+ */
+function ShutdownScreen(): ReactElement {
+
+    return (
+        <Box flexDirection="column" padding={1}>
+            <Box>
+                <Spinner label="Gracefully shutting down..." />
+            </Box>
+        </Box>
+    );
+
+}
 
 /**
  * Props for ShutdownProvider.
@@ -70,6 +89,7 @@ export function ShutdownProvider({ children, projectRoot }: ShutdownProviderProp
     const lifecycleRef = useRef<LifecycleManager | null>(null);
     const isShuttingDownRef = useRef(false);
     const isReadyRef = useRef(false);
+    const [isShuttingDown, setIsShuttingDown] = useState(false);
 
     // Initialize lifecycle manager on mount
     useEffect(() => {
@@ -127,6 +147,13 @@ export function ShutdownProvider({ children, projectRoot }: ShutdownProviderProp
 
         isShuttingDownRef.current = true;
 
+        // Show shutdown screen immediately before any cleanup
+        setIsShuttingDown(true);
+
+        // Wait a tick for React to re-render the shutdown screen
+        // This ensures the TUI shows "shutting down" before any console output
+        await new Promise((resolve) => setTimeout(resolve, 50));
+
         if (process.env['NOORM_DEBUG']) {
 
             console.error(
@@ -167,10 +194,15 @@ export function ShutdownProvider({ children, projectRoot }: ShutdownProviderProp
 
     const value: ShutdownContextValue = {
         gracefulExit,
-        isShuttingDown: isShuttingDownRef.current,
+        isShuttingDown,
     };
 
-    return <ShutdownContext.Provider value={value}>{children}</ShutdownContext.Provider>;
+    // Render shutdown screen when shutting down, otherwise render children
+    return (
+        <ShutdownContext.Provider value={value}>
+            {isShuttingDown ? <ShutdownScreen /> : children}
+        </ShutdownContext.Provider>
+    );
 
 }
 

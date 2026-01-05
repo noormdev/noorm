@@ -79,7 +79,7 @@ function EscapeHandler({
 export function RunFileScreen({ params }: ScreenProps): ReactElement {
 
     const { back } = useRouter();
-    const { activeConfig, activeConfigName, stateManager } = useAppContext();
+    const { activeConfig, activeConfigName, stateManager, identity: cryptoIdentity } = useAppContext();
     const { settings } = useSettings();
     const globalModes = useGlobalModes();
     const { showToast } = useToast();
@@ -177,7 +177,7 @@ export function RunFileScreen({ params }: ScreenProps): ReactElement {
 
         // Resolve identity
         const identity = resolveIdentity({
-            cryptoIdentity: stateManager.getIdentity() ?? null,
+            cryptoIdentity: cryptoIdentity ?? null,
         });
 
         // Test connection
@@ -265,7 +265,7 @@ export function RunFileScreen({ params }: ScreenProps): ReactElement {
                 <Panel title="Run File" borderColor="yellow" paddingX={1} paddingY={1}>
                     <Text color="yellow">No active configuration selected.</Text>
                 </Panel>
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[Esc] Back</Text>
                 </Box>
             </Box>
@@ -298,7 +298,7 @@ export function RunFileScreen({ params }: ScreenProps): ReactElement {
                         <Text dimColor>{error}</Text>
                     </Box>
                 </Panel>
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[Esc] Back</Text>
                 </Box>
             </Box>
@@ -358,7 +358,7 @@ export function RunFileScreen({ params }: ScreenProps): ReactElement {
                     </Box>
                 </Panel>
 
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     {hasFiles && (
                         <>
                             <Text dimColor>[/] Search</Text>
@@ -467,7 +467,7 @@ export function RunFileScreen({ params }: ScreenProps): ReactElement {
                     </Box>
                 </Panel>
 
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[Esc] Back</Text>
                 </Box>
             </Box>

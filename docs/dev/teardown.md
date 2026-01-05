@@ -3,7 +3,7 @@
 
 ## The Problem
 
-Development databases get messy. You're testing migrations, rebuilding schemas, verifying rollback scripts. Each iteration leaves behind remnants—stale data, orphaned tables, half-applied changes.
+Development databases get messy. You're testing changes, rebuilding schemas, verifying rollback scripts. Each iteration leaves behind remnants—stale data, orphaned tables, half-applied changes.
 
 The obvious solution—drop the database and recreate it—is slow. Database creation involves filesystem operations, permission grants, and connection pool resets. What should be instantaneous becomes 5-10 seconds. Run that before every test and your suite crawls.
 
@@ -17,7 +17,7 @@ noorm's teardown module provides controlled database reset operations. Wipe data
 | Operation | What it does | Use case |
 |-----------|--------------|----------|
 | `truncateData` | Delete all rows, keep schema | Test data reset, seed re-runs |
-| `teardownSchema` | Drop all objects | Full rebuild, migration testing |
+| `teardownSchema` | Drop all objects | Full rebuild, change testing |
 
 Both operations:
 - Automatically disable/enable FK constraints

@@ -252,7 +252,7 @@ export function DbTruncateScreen({ params: _params }: ScreenProps): ReactElement
                 <Panel title="Wipe Data Failed" borderColor="red" paddingX={1} paddingY={1}>
                     <Text color="red">{error}</Text>
                 </Panel>
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[Enter/Esc] Back</Text>
                 </Box>
             </Box>
@@ -310,7 +310,7 @@ export function DbTruncateScreen({ params: _params }: ScreenProps): ReactElement
                     </Box>
                 </Panel>
 
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[Enter/y] Continue</Text>
                     <Text dimColor>[Esc] Cancel</Text>
                 </Box>
@@ -372,7 +372,7 @@ export function DbTruncateScreen({ params: _params }: ScreenProps): ReactElement
                     </Box>
                 </Panel>
 
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[Enter/Esc] Done</Text>
                 </Box>
             </Box>

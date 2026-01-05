@@ -28,12 +28,13 @@ This executes all SQL files in your schema directory (defined in settings). File
 
 ```
 sql/
-├── 001_extensions.sql        # Runs first
-├── tables/
-│   ├── 001_users.sql         # Runs second
-│   └── 002_posts.sql         # Runs third
-└── views/
-    └── active_users.sql      # Runs last
+├── 00_extensions/
+│   └── 001_extensions.sql        # Runs first
+├── 01_tables/
+│   ├── 001_users.sql             # Runs second
+│   └── 002_posts.sql             # Runs third
+└── 02_views/
+    └── 001_active_users.sql      # Runs last
 ```
 
 Output shows what ran and what was skipped:
@@ -41,9 +42,9 @@ Output shows what ran and what was skipped:
 ```
 Building schema...
 
-✓ sql/tables/users.sql
-• sql/tables/posts.sql (unchanged)
-✓ sql/views/active_users.sql
+✓ sql/01_tables/001_users.sql
+• sql/01_tables/002_posts.sql (unchanged)
+✓ sql/02_views/001_active_users.sql
 
 Executed: 2
 Skipped:  1
@@ -55,7 +56,7 @@ Skipped:  1
 Execute a single SQL file:
 
 ```bash
-noorm run file sql/tables/users.sql
+noorm run file sql/01_tables/001_users.sql
 ```
 
 Useful for testing a specific file or re-running one file after a quick fix. The same change detection applies—if the file hasn't changed since its last successful run, it won't execute unless you use `--force`.
@@ -66,7 +67,7 @@ Useful for testing a specific file or re-running one file after a quick fix. The
 Execute all files in a specific directory:
 
 ```bash
-noorm run dir sql/views
+noorm run dir sql/02_views
 ```
 
 Processes all `.sql` and `.sql.tmpl` files in that directory (and subdirectories), alphabetically. This is helpful when you want to rebuild just views or just a subset of your schema.
@@ -101,8 +102,8 @@ This renders all SQL files (including templates) and writes them to a local `tmp
 
 ```
 Source:                              Dry run output:
-sql/views/my_view.sql         →   tmp/sql/views/my_view.sql
-sql/seed/users.sql.tmpl       →   tmp/sql/seed/users.sql
+sql/02_views/001_my_view.sql  →   tmp/sql/02_views/001_my_view.sql
+sql/03_seeds/001_users.sql.tmpl  →   tmp/sql/03_seeds/001_users.sql
 ```
 
 Templates are fully rendered with your current config context. The `.tmpl` extension is stripped from output files.
@@ -193,4 +194,4 @@ The checksum system means you can run `noorm run build` as often as you want—o
 
 - [Organization](/guide/sql-files/organization) - Structure your SQL files for predictable execution order
 - [Templates](/guide/sql-files/templates) - Add dynamic content to `.sql.tmpl` files
-- [Changes](/guide/migrations/changes) - One-time migrations with rollback support
+- [Changes](/guide/changes/overview) - One-time operations with rollback support

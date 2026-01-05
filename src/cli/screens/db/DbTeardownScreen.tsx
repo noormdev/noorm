@@ -46,7 +46,7 @@ export function DbTeardownScreen({ params: _params }: ScreenProps): ReactElement
 
     const { back } = useRouter();
     const { isFocused } = useFocusScope('DbTeardown');
-    const { activeConfig, activeConfigName, stateManager } = useAppContext();
+    const { activeConfig, activeConfigName, identity: cryptoIdentity } = useAppContext();
     const { settings } = useSettings();
     const { showToast } = useToast();
 
@@ -177,7 +177,7 @@ export function DbTeardownScreen({ params: _params }: ScreenProps): ReactElement
 
             // Resolve identity for change tracking
             const identity = resolveIdentity({
-                cryptoIdentity: stateManager?.getIdentity() ?? null,
+                cryptoIdentity: cryptoIdentity ?? null,
             });
 
             const teardownResult = await teardownSchema(db, activeConfig.connection.dialect, {
@@ -203,7 +203,7 @@ export function DbTeardownScreen({ params: _params }: ScreenProps): ReactElement
 
         }
 
-    }, [activeConfig, activeConfigName, preserveTables, postScript, stateManager]);
+    }, [activeConfig, activeConfigName, preserveTables, postScript, cryptoIdentity]);
 
     // Get categories that have items
     const nonEmptyCategories = useMemo(() => {
@@ -373,7 +373,7 @@ export function DbTeardownScreen({ params: _params }: ScreenProps): ReactElement
                 <Panel title="Schema Teardown Failed" borderColor="red" paddingX={1} paddingY={1}>
                     <Text color="red">{error}</Text>
                 </Panel>
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[Enter/Esc] Back</Text>
                 </Box>
             </Box>
@@ -453,7 +453,7 @@ export function DbTeardownScreen({ params: _params }: ScreenProps): ReactElement
                     </Box>
                 </Panel>
 
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     {nonEmptyCategories.length > 0 && (
                         <Text dimColor>[v] View details</Text>
                     )}
@@ -518,7 +518,7 @@ export function DbTeardownScreen({ params: _params }: ScreenProps): ReactElement
                     </Box>
                 </Panel>
 
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[←/→] Category</Text>
                     {hasMore && <Text dimColor>[↑/↓] Scroll</Text>}
                     <Text dimColor>[Esc] Back</Text>
@@ -619,7 +619,7 @@ export function DbTeardownScreen({ params: _params }: ScreenProps): ReactElement
                     </Box>
                 </Panel>
 
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[Enter/Esc] Done</Text>
                 </Box>
             </Box>

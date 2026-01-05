@@ -23,7 +23,7 @@ import { NOORM_TABLES, type NoormDatabase } from '../shared/tables.js';
 import { fetchList } from '../explore/operations.js';
 import { getTeardownOperations } from './dialects/index.js';
 import { observer } from '../observer.js';
-import { ChangeHistory } from '../change/history.js';
+import { ChangeHistory, ChangeTracker } from '../change/index.js';
 
 /**
  * Names of all noorm internal tables as strings.
@@ -34,7 +34,9 @@ const NOORM_TABLE_NAMES = new Set<string>(Object.values(NOORM_TABLES));
  * Check if a table name is a noorm internal table.
  * Exported for testing purposes.
  */
-export function isNoormTable(name: string): boolean {
+export function isNoormTable(name: string | undefined | null): boolean {
+
+    if (!name) return false;
 
     return name.startsWith('__noorm_') || NOORM_TABLE_NAMES.has(name);
 
@@ -80,8 +82,8 @@ export async function truncateData(
 
     observer.emit('teardown:start', { type: 'truncate' });
 
-    // Fetch all tables
-    const [tables, err] = await attempt(() => fetchList(db, dialect, 'tables'));
+    // Fetch all tables (including noorm tables so we can preserve them)
+    const [tables, err] = await attempt(() => fetchList(db, dialect, 'tables', { includeNoormTables: true }));
 
     if (err) {
 
@@ -130,7 +132,7 @@ export async function truncateData(
 
     for (const tableName of truncated) {
 
-        statements.push(ops.truncateTable(tableName, undefined, options.restartIdentity ?? false));
+        statements.push(ops.truncateTable(tableName, undefined, options.restartIdentity ?? true));
 
     }
 
@@ -225,6 +227,7 @@ export async function teardownSchema(
         tables: [],
         views: [],
         functions: [],
+        procedures: [],
         types: [],
         foreignKeys: [],
     };
@@ -233,17 +236,19 @@ export async function teardownSchema(
 
     const preserveSet = new Set(options.preserveTables ?? []);
 
-    // Fetch all objects in parallel
+    // Fetch all objects in parallel (include noorm tables so we can preserve them)
     const [
         [tables, tablesErr],
         [views, viewsErr],
         [functions, functionsErr],
+        [procedures, proceduresErr],
         [types, typesErr],
         [foreignKeys, fksErr],
     ] = await Promise.all([
-        attempt(() => fetchList(db, dialect, 'tables')),
+        attempt(() => fetchList(db, dialect, 'tables', { includeNoormTables: true })),
         attempt(() => fetchList(db, dialect, 'views')),
         attempt(() => fetchList(db, dialect, 'functions')),
+        attempt(() => fetchList(db, dialect, 'procedures')),
         attempt(() => fetchList(db, dialect, 'types')),
         attempt(() => fetchList(db, dialect, 'foreignKeys')),
     ]);
@@ -251,6 +256,7 @@ export async function teardownSchema(
     if (tablesErr) throw tablesErr;
     if (viewsErr) throw viewsErr;
     if (functionsErr) throw functionsErr;
+    if (proceduresErr) throw proceduresErr;
     if (typesErr) throw typesErr;
     if (fksErr) throw fksErr;
 
@@ -308,7 +314,7 @@ export async function teardownSchema(
 
     }
 
-    // 4. Drop functions/procedures (unless keepFunctions)
+    // 4. Drop functions (unless keepFunctions)
     if (!options.keepFunctions) {
 
         for (const fn of functions) {
@@ -320,7 +326,19 @@ export async function teardownSchema(
 
     }
 
-    // 5. Drop types (unless keepTypes)
+    // 5. Drop procedures (unless keepProcedures)
+    if (!options.keepProcedures) {
+
+        for (const proc of procedures) {
+
+            dropped.procedures.push(proc.name);
+            statements.push(ops.dropProcedure(proc.name, proc.schema));
+
+        }
+
+    }
+
+    // 6. Drop types (unless keepTypes)
     if (!options.keepTypes) {
 
         for (const type of types) {
@@ -379,18 +397,29 @@ export async function teardownSchema(
     // Mark changes as stale and record reset if config provided
     if (options.configName && options.executedBy && !options.dryRun) {
 
+        const tracker = new ChangeTracker(
+            db as Kysely<NoormDatabase>,
+            options.configName,
+        );
+
         const history = new ChangeHistory(
             db as Kysely<NoormDatabase>,
             options.configName,
         );
 
         // Mark all successful changes as stale
-        result.staleCount = await history.markAllAsStale();
+        result.staleCount = await tracker.markAllAsStale();
 
         // Record the reset event
+        const parts = [
+            `${dropped.tables.length} tables`,
+            `${dropped.views.length} views`,
+            `${dropped.functions.length} functions`,
+            `${dropped.procedures.length} procedures`,
+        ];
         result.resetRecordId = await history.recordReset(
             options.executedBy,
-            `Schema teardown: dropped ${dropped.tables.length} tables, ${dropped.views.length} views`,
+            `Schema teardown: dropped ${parts.join(', ')}`,
         );
 
     }

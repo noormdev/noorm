@@ -66,10 +66,10 @@ This makes builds idempotent—run the same build command twice and unchanged fi
 The `--dry-run` flag renders all SQL files and writes them to a local `tmp/` directory that mirrors the source structure. This lets you inspect the exact SQL that would be executed without actually running it.
 
 ```
-Source:                              Dry run output:
-sql/views/my_view.sql           →    tmp/sql/views/my_view.sql
-sql/seed/users.sql.tmpl         →    tmp/sql/seed/users.sql
-sql/Auth/02-Permissions.sql.tmpl →   tmp/sql/Auth/02-Permissions.sql
+Source:                                     Dry run output:
+sql/02_views/001_my_view.sql           →    tmp/sql/02_views/001_my_view.sql
+sql/03_seeds/001_users.sql.tmpl        →    tmp/sql/03_seeds/001_users.sql
+sql/04_auth/002_permissions.sql.tmpl   →    tmp/sql/04_auth/002_permissions.sql
 ```
 
 Templates are fully rendered with the current config context. The `.tmpl` extension is stripped from output files.
@@ -111,7 +111,7 @@ noorm run build --preview --output build.sql
 Files ending in `.sql.tmpl` are processed through the template engine before execution:
 
 ```sql
--- sql/seed/users.sql.tmpl
+-- sql/03_seeds/001_users.sql.tmpl
 {% for (const user of $.users) { %}
 INSERT INTO users (email, name) VALUES ({%~ $.quote(user.email) %}, {%~ $.quote(user.name) %});
 {% } %}
@@ -164,13 +164,13 @@ console.log(`Skipped ${result.filesSkipped} unchanged files`)
 const fileResult = await runFile(context, '/project/sql/001_users.sql')
 
 // Execute all files in a directory
-const dirResult = await runDir(context, '/project/sql/views')
+const dirResult = await runDir(context, '/project/sql/02_views')
 
 // Execute specific files (selective execution)
 const filesResult = await runFiles(context, [
-    '/project/sql/tables/users.sql',
-    '/project/sql/tables/posts.sql',
-    '/project/sql/views/active_users.sql',
+    '/project/sql/01_tables/001_users.sql',
+    '/project/sql/01_tables/002_posts.sql',
+    '/project/sql/02_views/001_active_users.sql',
 ])
 
 // Dry run - render to tmp/ without executing
@@ -255,44 +255,101 @@ Filter files by include/exclude path patterns:
 import { filterFilesByPaths } from './core/shared'
 
 const files = [
-    '/project/sql/tables/users.sql',
-    '/project/sql/views/active.sql',
+    '/project/sql/01_tables/001_users.sql',
+    '/project/sql/02_views/001_active.sql',
     '/project/sql/archive/old.sql',
 ]
 
 const filtered = filterFilesByPaths(
     files,
     '/project',
-    ['sql/tables', 'sql/views'],  // include
-    ['sql/archive']                   // exclude
+    ['sql/01_tables', 'sql/02_views'],  // include
+    ['sql/archive']                     // exclude
 )
-// ['/project/sql/tables/users.sql', '/project/sql/views/active.sql']
+// ['/project/sql/01_tables/001_users.sql', '/project/sql/02_views/001_active.sql']
 ```
 
-This utility is used internally by build operations when applying settings rules. Exclude patterns take precedence when both match.
+This utility is used internally by build operations when applying settings rules. The CLI passes the SQL directory (`paths.sql`) as the base directory, so settings patterns like `01_tables` resolve relative to the SQL path, not the project root. Exclude patterns take precedence when both match.
+
+
+## Unified executeFiles
+
+The `executeFiles` function provides low-level file execution with full tracking. Both runner and change modules use this internally:
+
+```typescript
+import { executeFiles, FileInput } from './core/runner'
+
+// Prepare file inputs with pre-computed checksums
+const files: FileInput[] = [
+    { filepath: '/project/sql/001_users.sql', checksum: 'abc123' },
+    { filepath: '/project/sql/002_posts.sql', checksum: 'def456' },
+]
+
+const result = await executeFiles(context, files, {
+    operationId,          // Pre-created operation ID
+    force: false,
+    abortOnError: true,
+    dryRun: false,
+})
+```
+
+The `FileInput` type:
+
+```typescript
+interface FileInput {
+    filepath: string
+    checksum: string      // Pre-computed SHA-256
+    fileType?: 'sql' | 'txt'  // Default: 'sql'
+}
+```
+
+This design separates file discovery (external) from execution (internal), enabling:
+- Pre-validation before database operations begin
+- Checksum computation for all files upfront
+- Full batch visibility via `createFileRecords()`
 
 
 ## Tracker Class
 
-The `Tracker` class handles execution history and change detection:
+The `Tracker` class handles execution history and change detection. It serves as the base for both runner and change operations.
 
 ```typescript
 import { Tracker } from './core/runner'
 
 const tracker = new Tracker(db)
 
-// Check if file needs to run
+// Check if file needs to run (by filepath)
 const { needsRun, reason, record } = await tracker.needsRun(filepath, checksum, force)
+
+// Check if file needs to run (by name only - for changes)
+const { needsRun, reason, record } = await tracker.needsRunByName(name, checksum, force)
 
 // Create an operation record
 const operationId = await tracker.createOperation({
     name: 'build:2024-01-15T10:30:00',
     changeType: 'build',
+    direction: 'commit',  // 'commit' or 'revert'
     configName: 'dev',
     executedBy: 'alice@example.com',
 })
 
-// Record a file execution
+// Create file records upfront (for full batch visibility)
+await tracker.createFileRecords(operationId, [
+    { filepath: '/path/to/file1.sql', checksum: 'abc123' },
+    { filepath: '/path/to/file2.sql', checksum: 'def456' },
+])
+
+// Update individual file after execution
+await tracker.updateFileExecution(operationId, filepath, {
+    status: 'success',
+    durationMs: 45,
+    checksum: 'abc123',
+})
+
+// Skip remaining files (e.g., on error with abortOnError)
+await tracker.skipRemainingFiles(operationId, 'aborted due to previous error')
+
+// Legacy: Record a file execution (still supported)
 await tracker.recordExecution({
     operationId,
     filepath,
@@ -304,6 +361,54 @@ await tracker.recordExecution({
 // Finalize operation with optional checksum and error message
 await tracker.finalizeOperation(operationId, 'success', 1234, checksum, errorMessage)
 ```
+
+
+### Direction and ChangeType
+
+Operations have both a `changeType` and `direction`:
+
+| ChangeType | Direction | Meaning |
+|------------|-----------|---------|
+| `build` | `commit` | Schema build operation |
+| `run` | `commit` | Ad-hoc file/directory execution |
+| `change` | `commit` | Forward change |
+| `change` | `revert` | Rollback change |
+
+The API uses `'commit'` | `'revert'` for clarity, but the database stores `'change'` | `'revert'` for backwards compatibility. The mapping happens in `createOperation()`.
+
+
+### Batch Visibility
+
+Creating file records upfront provides complete audit trails:
+
+```typescript
+// All files are visible immediately as 'pending'
+await tracker.createFileRecords(operationId, files)
+
+// As each executes, status updates to 'success' or 'failed'
+await tracker.updateFileExecution(operationId, filepath, { status: 'success', ... })
+
+// If aborted, remaining files marked as 'skipped'
+await tracker.skipRemainingFiles(operationId, 'aborted due to error')
+```
+
+This means even if a build fails midway, users can see which files would have run.
+
+
+### Template Checksums
+
+For template files (`.sql.tmpl`), checksums are computed from the **rendered content**, not the source file:
+
+```typescript
+// Template source checksum (what's on disk)
+const sourceChecksum = await computeChecksum('/path/to/seed.sql.tmpl')
+
+// Rendered content checksum (what actually executes)
+const renderedSql = await renderTemplate(templateContent, context)
+const executionChecksum = computeChecksumFromContent(renderedSql)
+```
+
+This ensures change detection works correctly when template variables change (e.g., different secrets between environments) even if the template source is unchanged.
 
 
 ## Run Context
@@ -335,4 +440,4 @@ The optional `config` field exposes the active configuration as a template varia
 
 4. **Dry run before production** - Always `--dry-run` against production config to inspect what will execute
 
-5. **Don't modify executed files** - If you need to change a table, create a new migration file instead of editing the old one
+5. **Don't modify executed files** - If you need to change a table, create a new change instead of editing the old one

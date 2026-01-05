@@ -254,7 +254,7 @@ export function mergeWithBuildConfig(
  * const config = state.getActiveConfig()
  *
  * const { include, exclude } = getEffectiveBuildPaths(
- *     settings.build?.include ?? ['schema'],
+ *     settings.build?.include ?? [],
  *     settings.build?.exclude ?? [],
  *     settings.rules ?? [],
  *     config

@@ -38,19 +38,15 @@ describe('teardown: sqlite dialect', () => {
 
         });
 
-        it('should include sqlite_sequence DELETE with restartIdentity true', () => {
+        it('should ignore restartIdentity (SQLite has no safe way to reset sequences)', () => {
 
-            const sql = sqliteTeardownOperations.truncateTable('users', undefined, true);
+            // restartIdentity is ignored because sqlite_sequence only exists
+            // when tables use AUTOINCREMENT, and we can't safely check that
+            const sqlTrue = sqliteTeardownOperations.truncateTable('users', undefined, true);
+            const sqlFalse = sqliteTeardownOperations.truncateTable('users', undefined, false);
 
-            expect(sql).toBe('DELETE FROM "users"; DELETE FROM sqlite_sequence WHERE name = \'users\'');
-
-        });
-
-        it('should not include sqlite_sequence DELETE when restartIdentity false', () => {
-
-            const sql = sqliteTeardownOperations.truncateTable('users', undefined, false);
-
-            expect(sql).toBe('DELETE FROM "users"');
+            expect(sqlTrue).toBe('DELETE FROM "users"');
+            expect(sqlFalse).toBe('DELETE FROM "users"');
 
         });
 
@@ -67,14 +63,6 @@ describe('teardown: sqlite dialect', () => {
             const sql = sqliteTeardownOperations.truncateTable('table"with"quotes');
 
             expect(sql).toContain('DELETE FROM "table""with""quotes"');
-
-        });
-
-        it('should escape single quotes in table name for sqlite_sequence', () => {
-
-            const sql = sqliteTeardownOperations.truncateTable('table\'with\'quotes', undefined, true);
-
-            expect(sql).toContain('WHERE name = \'table\'\'with\'\'quotes\'');
 
         });
 
@@ -162,11 +150,11 @@ describe('teardown: sqlite dialect', () => {
 
     describe('dropFunction', () => {
 
-        it('should return comment indicating SQLite does not support stored procedures', () => {
+        it('should return comment indicating SQLite does not support user-defined functions', () => {
 
             const sql = sqliteTeardownOperations.dropFunction('calculate_total');
 
-            expect(sql).toBe('-- SQLite does not support stored procedures');
+            expect(sql).toBe('-- SQLite does not support user-defined functions');
 
         });
 
@@ -174,6 +162,28 @@ describe('teardown: sqlite dialect', () => {
 
             const sql1 = sqliteTeardownOperations.dropFunction('func1');
             const sql2 = sqliteTeardownOperations.dropFunction('func2', 'schema');
+
+            expect(sql1).toBe('-- SQLite does not support user-defined functions');
+            expect(sql2).toBe('-- SQLite does not support user-defined functions');
+
+        });
+
+    });
+
+    describe('dropProcedure', () => {
+
+        it('should return comment indicating SQLite does not support stored procedures', () => {
+
+            const sql = sqliteTeardownOperations.dropProcedure('calculate_total');
+
+            expect(sql).toBe('-- SQLite does not support stored procedures');
+
+        });
+
+        it('should return same comment regardless of parameters', () => {
+
+            const sql1 = sqliteTeardownOperations.dropProcedure('proc1');
+            const sql2 = sqliteTeardownOperations.dropProcedure('proc2', 'schema');
 
             expect(sql1).toBe('-- SQLite does not support stored procedures');
             expect(sql2).toBe('-- SQLite does not support stored procedures');

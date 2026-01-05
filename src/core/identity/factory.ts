@@ -169,15 +169,13 @@ export async function createCryptoIdentity(
         createdAt: new Date().toISOString(),
     };
 
-    // Save keys to disk (only if requested)
+    // Save to disk only if requested (tests pass false to avoid polluting ~/.noorm)
     if (saveKeys) {
 
         await saveKeyPair(keypair);
+        await saveIdentityMetadata(identity);
 
     }
-
-    // Always save metadata (needed for multi-project identity sharing)
-    await saveIdentityMetadata(identity);
 
     // Emit event
     observer.emit('identity:created', {

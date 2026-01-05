@@ -1,11 +1,12 @@
-import { defineConfig } from "vitest/config";
+import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
     test: {
         globals: true,
-        environment: "node",
-        include: ["tests/**/*.test.{ts,tsx}"],
-        globalSetup: "./tests/global-setup.ts",
+        environment: 'node',
+        include: ['tests/**/*.test.{ts,tsx}'],
+        globalSetup: './tests/global-setup.ts',
+        globalTeardown: './tests/global-teardown.ts',
         // Run tests sequentially to avoid resource contention
         // (integration tests spawn CLI processes that compete for resources)
         fileParallelism: false,
@@ -13,9 +14,9 @@ export default defineConfig({
             concurrent: false,
         },
         coverage: {
-            provider: "v8",
-            reporter: ["text", "json", "html"],
-            exclude: ["node_modules/", "dist/", "tests/", "*.config.*"],
+            provider: 'v8',
+            reporter: ['text', 'json', 'html'],
+            exclude: ['node_modules/', 'dist/', 'tests/', '*.config.*'],
         },
     },
 });

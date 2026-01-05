@@ -23,12 +23,13 @@ The file contains:
 | Field | Purpose |
 |-------|---------|
 | `version` | Schema version for migrations |
-| `identity` | Your cryptographic identity (if set up) |
 | `knownUsers` | Discovered team members' public keys |
 | `activeConfig` | Currently selected config name |
 | `configs` | Database configurations (credentials included) |
 | `secrets` | Per-config secrets for SQL templates |
 | `globalSecrets` | App-level secrets shared across configs |
+
+**Note:** Identity is stored globally at `~/.noorm/`, not in the project state file. See [Identity](./identity.md) for details.
 
 
 ## Loading State
@@ -208,23 +209,6 @@ Global secrets use `$.globalSecrets`:
 ```
 
 
-## Identity Storage
-
-The state file stores your cryptographic identity for audit and sharing purposes.
-
-```typescript
-// Check if identity exists
-if (!state.hasIdentity()) {
-    const identity = await createCryptoIdentity()
-    await state.setIdentity(identity)
-}
-
-// Get current identity
-const identity = state.getIdentity()
-// { identityHash, name, email, publicKey, machine, os, createdAt }
-```
-
-
 ## Known Users
 
 Team members discovered during database sync are cached locally.
@@ -297,7 +281,6 @@ Migrations are additive - they never delete data, only add missing fields:
 
 ```typescript
 // If 'globalSecrets' field is missing, add it as {}
-// If 'identity' field is missing, add it as null
 // If 'knownUsers' field is missing, add it as {}
 ```
 
@@ -348,9 +331,6 @@ observer.on('secret:set', ({ configName, key }) => { ... })
 observer.on('secret:deleted', ({ configName, key }) => { ... })
 observer.on('global-secret:set', ({ key }) => { ... })
 observer.on('global-secret:deleted', ({ key }) => { ... })
-
-// Identity events
-observer.on('identity:created', ({ identityHash, name, email, machine }) => { ... })
 
 // Known user events (email and source config where user was discovered)
 observer.on('known-user:added', ({ email, source }) => { ... })

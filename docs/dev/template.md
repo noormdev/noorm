@@ -335,7 +335,7 @@ INSERT INTO config (key, value) VALUES
 ### Including Fragments
 
 ```sql
--- sql/migrations/001_full_setup.sql.tmpl
+-- changes/2025-01-15-full-setup/change/001_full_setup.sql.tmpl
 
 -- Common functions
 {%~ await $.include('../lib/uuid_function.sql') %}

@@ -68,8 +68,14 @@ export const mysqlTeardownOperations: TeardownDialectOperations = {
 
     dropFunction(name: string, schema?: string): string {
 
-        // MySQL uses PROCEDURE for stored procedures
-        // Functions require different syntax, but we'll use a combined approach
+        // MySQL user-defined functions
+        return `DROP FUNCTION IF EXISTS ${qualifiedName(name, schema)}`;
+
+    },
+
+    dropProcedure(name: string, schema?: string): string {
+
+        // MySQL stored procedures
         return `DROP PROCEDURE IF EXISTS ${qualifiedName(name, schema)}`;
 
     },

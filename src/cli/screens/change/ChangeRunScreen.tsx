@@ -11,6 +11,7 @@
  * ```
  */
 import { useState, useEffect, useCallback } from 'react';
+import { readFile } from 'fs/promises';
 import { Box, Text, useInput } from 'ink';
 import { ProgressBar } from '@inkjs/ui';
 
@@ -38,6 +39,65 @@ import { createConnection } from '../../../core/connection/factory.js';
 import { resolveIdentity } from '../../../core/identity/resolver.js';
 import { observer } from '../../../core/observer.js';
 
+/** Default SQL template - files with only this content are considered empty */
+const SQL_TEMPLATE = '-- TODO: Add SQL statements here\n';
+
+/**
+ * Check if a change has meaningful content in its files.
+ * Returns null if valid, or an error message if files are empty/template-only.
+ */
+async function validateChangeContent(change: Change): Promise<string | null> {
+
+    if (change.changeFiles.length === 0) {
+
+        return 'Change has no files to execute';
+
+    }
+
+    let hasContent = false;
+
+    for (const file of change.changeFiles) {
+
+        // Skip .txt manifest files - they reference other files
+        if (file.type === 'txt') {
+
+            hasContent = true;
+
+            continue;
+
+        }
+
+        const [content, err] = await attempt(() => readFile(file.path, 'utf-8'));
+
+        if (err) {
+
+            continue; // Skip files we can't read
+
+        }
+
+        const trimmed = content?.trim() ?? '';
+
+        // Check if file has actual content (not empty, not just the template)
+        if (trimmed && trimmed !== SQL_TEMPLATE.trim()) {
+
+            hasContent = true;
+
+            break;
+
+        }
+
+    }
+
+    if (!hasContent) {
+
+        return 'Change files are empty or contain only template placeholders. Edit the SQL files before running.';
+
+    }
+
+    return null;
+
+}
+
 /**
  * Run steps.
  */
@@ -55,7 +115,7 @@ export function ChangeRunScreen({ params }: ScreenProps): ReactElement {
 
     const { navigate: _navigate, back } = useRouter();
     const { isFocused } = useFocusScope('ChangeRun');
-    const { activeConfig, activeConfigName, stateManager } = useAppContext();
+    const { activeConfig, activeConfigName, stateManager, identity: cryptoIdentity } = useAppContext();
 
     const changeName = params.name;
 
@@ -114,6 +174,15 @@ export function ChangeRunScreen({ params }: ScreenProps): ReactElement {
                 if (status?.status === 'success') {
 
                     throw new Error(`Change "${changeName}" is already applied`);
+
+                }
+
+                // Validate change has actual content
+                const contentError = await validateChangeContent(found);
+
+                if (contentError) {
+
+                    throw new Error(contentError);
 
                 }
 
@@ -186,7 +255,7 @@ export function ChangeRunScreen({ params }: ScreenProps): ReactElement {
 
             // Resolve identity
             const identity = resolveIdentity({
-                cryptoIdentity: stateManager?.getIdentity() ?? null,
+                cryptoIdentity: cryptoIdentity ?? null,
             });
 
             // Build context
@@ -383,19 +452,53 @@ export function ChangeRunScreen({ params }: ScreenProps): ReactElement {
     }
 
     // Error
+    const failedFile = result?.files?.find((f) => f.status === 'failed');
+
     return (
         <Panel title="Run Change" paddingX={2} paddingY={1} borderColor="red">
             <Box flexDirection="column" gap={1}>
-                <StatusMessage variant="error">Failed to apply change: {error}</StatusMessage>
+                <StatusMessage variant="error">Failed to apply change</StatusMessage>
 
-                {result?.files && (
-                    <Box flexDirection="column">
-                        <Text dimColor>Executed files:</Text>
-                        {result.files.map((f, i) => (
-                            <Text key={i} color={f.status === 'success' ? 'green' : 'red'}>
-                                {f.status === 'success' ? '✓' : '✗'} {f.filepath.split('/').pop()}
-                            </Text>
-                        ))}
+                {/* Show the actual error */}
+                {failedFile && (
+                    <Box flexDirection="column" marginTop={1}>
+                        <Text color="red" bold>
+                            Error in {failedFile.filepath.split('/').pop()}:
+                        </Text>
+                        <Text color="red" wrap="wrap">
+                            {failedFile.error}
+                        </Text>
+                    </Box>
+                )}
+
+                {/* Fallback to generic error if no failed file */}
+                {!failedFile && error && (
+                    <Box flexDirection="column" marginTop={1}>
+                        <Text color="red" wrap="wrap">
+                            {error}
+                        </Text>
+                    </Box>
+                )}
+
+                {result?.files && result.files.length > 0 && (
+                    <Box flexDirection="column" marginTop={1}>
+                        <Text dimColor bold>File execution summary:</Text>
+                        {result.files.map((f, i) => {
+
+                            const filename = f.filepath.split('/').pop();
+                            const icon = f.status === 'success' ? '✓' : f.status === 'failed' ? '✗' : '○';
+                            const color = f.status === 'success' ? 'green' : f.status === 'failed' ? 'red' : 'yellow';
+
+                            return (
+                                <Text key={i} color={color}>
+                                    {icon} {filename}
+                                    {f.status === 'failed' && f.error && (
+                                        <Text dimColor> - {f.error.slice(0, 60)}{f.error.length > 60 ? '...' : ''}</Text>
+                                    )}
+                                </Text>
+                            );
+
+                        })}
                     </Box>
                 )}
 

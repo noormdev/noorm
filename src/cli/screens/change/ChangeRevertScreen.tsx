@@ -55,7 +55,7 @@ export function ChangeRevertScreen({ params }: ScreenProps): ReactElement {
 
     const { navigate: _navigate, back } = useRouter();
     const { isFocused } = useFocusScope('ChangeRevert');
-    const { activeConfig, activeConfigName, stateManager } = useAppContext();
+    const { activeConfig, activeConfigName, identity: cryptoIdentity } = useAppContext();
 
     const changeName = params.name;
 
@@ -177,7 +177,7 @@ export function ChangeRevertScreen({ params }: ScreenProps): ReactElement {
     // Handle revert
     const handleRevert = useCallback(async () => {
 
-        if (!activeConfig || !change || !stateManager) return;
+        if (!activeConfig || !change) return;
 
         setStep('reverting');
         setProgress({ current: 0, total: change.revertFiles.length });
@@ -192,7 +192,7 @@ export function ChangeRevertScreen({ params }: ScreenProps): ReactElement {
 
             // Resolve identity
             const identity = resolveIdentity({
-                cryptoIdentity: stateManager?.getIdentity() ?? null,
+                cryptoIdentity: cryptoIdentity ?? null,
             });
 
             // Build context
@@ -228,7 +228,7 @@ export function ChangeRevertScreen({ params }: ScreenProps): ReactElement {
 
         }
 
-    }, [activeConfig, activeConfigName, change, stateManager]);
+    }, [activeConfig, activeConfigName, change, cryptoIdentity]);
 
     // Handle cancel
     const handleCancel = useCallback(() => {

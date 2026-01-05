@@ -238,25 +238,11 @@ src/cli/
 
 ## Alternatives Considered
 
+Other approaches were evaluated but didn't fit our requirements:
 
-### Commander.js
-
-Full-featured CLI framework with subcommand support. More complex than needed for routing to a TUI - meow's simplicity is a better fit when the TUI handles most interaction.
-
-
-### React Router / Wouter
-
-Designed for URL-based routing which doesn't map well to CLI navigation. Adds unnecessary complexity for our use case.
-
-
-### Custom State Machine (XState)
-
-Overkill for simple navigation. Better suited for complex multi-step workflows within a single screen rather than screen-to-screen navigation.
-
-
-### Wait for Pastel v3
-
-Pastel may eventually support Ink v6. However, building our own gives us full control and no external dependency risk.
+- **React Router / Wouter** - URL-based routing doesn't map well to CLI navigation
+- **XState** - Better suited for multi-step workflows within a single screen, overkill for screen navigation
+- **Pastel** - May eventually support Ink v6, but building our own gives full control without external dependency risk
 
 
 ## Considerations

@@ -232,6 +232,22 @@ div[class*="language-"] {
     max-width: 500px;
 }
 
+/* Hero image with branded glow */
+.VPHero .VPImage {
+    border-radius: 12px;
+    box-shadow:
+        0 0 20px rgba(59, 130, 246, 0.3),
+        0 0 40px rgba(59, 130, 246, 0.2),
+        0 0 60px rgba(59, 130, 246, 0.1);
+}
+
+.dark .VPHero .VPImage {
+    box-shadow:
+        0 0 30px rgba(59, 130, 246, 0.4),
+        0 0 60px rgba(59, 130, 246, 0.25),
+        0 0 90px rgba(59, 130, 246, 0.15);
+}
+
 /* Feature cards */
 .VPFeatures .VPFeature {
     background: var(--vp-c-bg-soft);

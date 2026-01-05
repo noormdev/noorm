@@ -216,7 +216,7 @@ export function SecretListScreen({ params: _params }: ScreenProps): ReactElement
                     </Box>
                 </Panel>
 
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[Esc] Back</Text>
                 </Box>
             </Box>

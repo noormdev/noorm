@@ -333,22 +333,26 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
 
         case 'db-missing':
             return (
-                <Box gap={1}>
-                    <Text color="yellow">●</Text>
-                    <Text color="yellow">Success</Text>
+                <Box flexDirection="column">
+                    <Box gap={1}>
+                        <Text color="yellow">●</Text>
+                        <Text color="yellow">Success</Text>
+                    </Box>
                     {status.connectionError && (
-                        <Text dimColor> ({status.connectionError.slice(0, 50)})</Text>
+                        <Text dimColor wrap="truncate">  {status.connectionError}</Text>
                     )}
                 </Box>
             );
 
         case 'error':
             return (
-                <Box gap={1}>
-                    <Text color="red">●</Text>
-                    <Text color="red">Error</Text>
+                <Box flexDirection="column">
+                    <Box gap={1}>
+                        <Text color="red">●</Text>
+                        <Text color="red">Error</Text>
+                    </Box>
                     {status.connectionError && (
-                        <Text dimColor> ({status.connectionError.slice(0, 50)})</Text>
+                        <Text dimColor wrap="truncate">  {status.connectionError}</Text>
                     )}
                 </Box>
             );
@@ -433,7 +437,7 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
                 </Panel>
 
                 <Box marginTop={1}>
-                    <Text dimColor>[c]onfig [q]uit</Text>
+                    <Text dimColor>[c] Config [q] Quit</Text>
                 </Box>
             </Box>
         );
@@ -467,7 +471,7 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
                 </Panel>
 
                 <Box marginTop={1}>
-                    <Text dimColor>[c]onfig [q]uit</Text>
+                    <Text dimColor>[c] Config [q] Quit</Text>
                 </Box>
             </Box>
         );
@@ -523,16 +527,18 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
                                         <Text dimColor>Stage Configs:</Text>
                                     </Box>
                                     {setupStatus.map((s) => (
-                                        <Box key={s.configName} gap={1} marginLeft={2}>
-                                            <Text color={s.complete ? 'green' : undefined}>
-                                                {s.complete ? '✓' : ' '}
-                                            </Text>
-                                            <Text>{s.configName}</Text>
-                                            {!s.complete && s.missingSecrets.length > 0 && (
-                                                <Text color="red">
-                                                    ✗ secrets ({s.missingSecrets.length})
+                                        <Box key={s.configName} marginLeft={2}>
+                                            <Text>
+                                                <Text color={s.complete ? 'green' : undefined}>
+                                                    {s.complete ? '✓' : ' '}
                                                 </Text>
-                                            )}
+                                                {' '}{s.configName}
+                                                {!s.complete && s.missingSecrets.length > 0 && (
+                                                    <Text color="red">
+                                                        {' '}✗ secrets ({s.missingSecrets.length})
+                                                    </Text>
+                                                )}
+                                            </Text>
                                         </Box>
                                     ))}
                                 </>
@@ -545,18 +551,15 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
                 <Box flexDirection="column" flexGrow={1}>
                     <Panel title="Quick Actions" paddingX={2} paddingY={1}>
                         <Box flexDirection="column" gap={0}>
-                            <Box>
-                                <Text color="cyan">[1]</Text>
-                                <Text> Run Build</Text>
-                            </Box>
-                            <Box>
-                                <Text color="cyan">[2]</Text>
-                                <Text> Apply Changes (ff)</Text>
-                            </Box>
-                            <Box>
-                                <Text color="cyan">[3]</Text>
-                                <Text> View Lock Status</Text>
-                            </Box>
+                            <Text>
+                                <Text color="cyan">[1]</Text> Run Build
+                            </Text>
+                            <Text>
+                                <Text color="cyan">[2]</Text> Apply Changes (ff)
+                            </Text>
+                            <Text>
+                                <Text color="cyan">[3]</Text> View Lock Status
+                            </Text>
                         </Box>
                     </Panel>
                 </Box>
@@ -626,10 +629,16 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
             </Panel>
 
             {/* Navigation Hints */}
-            <Box marginTop={1}>
-                <Text dimColor>
-                    [c]onfig chan[g]e [r]un [d]b [l]ock [s]ettings [k]eys [i]dentity [q]uit
-                </Text>
+            <Box marginTop={1} flexWrap="wrap" columnGap={2}>
+                <Text dimColor>[c] Config</Text>
+                <Text dimColor>[g] Change</Text>
+                <Text dimColor>[r] Run</Text>
+                <Text dimColor>[d] DB</Text>
+                <Text dimColor>[l] Lock</Text>
+                <Text dimColor>[s] Settings</Text>
+                <Text dimColor>[k] Secrets</Text>
+                <Text dimColor>[i] Identity</Text>
+                <Text dimColor>[q] Quit</Text>
             </Box>
         </Box>
     );

@@ -140,11 +140,11 @@ describe('teardown: mysql dialect', () => {
 
     describe('dropFunction', () => {
 
-        it('should generate DROP PROCEDURE with IF EXISTS', () => {
+        it('should generate DROP FUNCTION with IF EXISTS', () => {
 
             const sql = mysqlTeardownOperations.dropFunction('calculate_total');
 
-            expect(sql).toBe('DROP PROCEDURE IF EXISTS `calculate_total`');
+            expect(sql).toBe('DROP FUNCTION IF EXISTS `calculate_total`');
 
         });
 
@@ -152,7 +152,7 @@ describe('teardown: mysql dialect', () => {
 
             const sql = mysqlTeardownOperations.dropFunction('calculate_total', 'analytics');
 
-            expect(sql).toBe('DROP PROCEDURE IF EXISTS `analytics`.`calculate_total`');
+            expect(sql).toBe('DROP FUNCTION IF EXISTS `analytics`.`calculate_total`');
 
         });
 
@@ -160,7 +160,35 @@ describe('teardown: mysql dialect', () => {
 
             const sql = mysqlTeardownOperations.dropFunction('func`name');
 
-            expect(sql).toBe('DROP PROCEDURE IF EXISTS `func``name`');
+            expect(sql).toBe('DROP FUNCTION IF EXISTS `func``name`');
+
+        });
+
+    });
+
+    describe('dropProcedure', () => {
+
+        it('should generate DROP PROCEDURE with IF EXISTS', () => {
+
+            const sql = mysqlTeardownOperations.dropProcedure('calculate_total');
+
+            expect(sql).toBe('DROP PROCEDURE IF EXISTS `calculate_total`');
+
+        });
+
+        it('should include database when provided', () => {
+
+            const sql = mysqlTeardownOperations.dropProcedure('calculate_total', 'analytics');
+
+            expect(sql).toBe('DROP PROCEDURE IF EXISTS `analytics`.`calculate_total`');
+
+        });
+
+        it('should escape backticks in procedure name', () => {
+
+            const sql = mysqlTeardownOperations.dropProcedure('proc`name');
+
+            expect(sql).toBe('DROP PROCEDURE IF EXISTS `proc``name`');
 
         });
 

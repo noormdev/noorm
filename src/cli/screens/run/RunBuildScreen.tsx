@@ -47,7 +47,7 @@ export function RunBuildScreen({ params: _params }: ScreenProps): ReactElement {
 
     const { back } = useRouter();
     const { isFocused } = useFocusScope('RunBuild');
-    const { activeConfig, activeConfigName, stateManager } = useAppContext();
+    const { activeConfig, activeConfigName, stateManager, identity: cryptoIdentity } = useAppContext();
     const { settings } = useSettings();
     const globalModes = useGlobalModes();
     const { showToast } = useToast();
@@ -80,7 +80,7 @@ export function RunBuildScreen({ params: _params }: ScreenProps): ReactElement {
             setSqlPath(schema);
 
             // Get effective build paths
-            const buildInclude = settings.build?.include ?? ['schema'];
+            const buildInclude = settings.build?.include ?? [];
             const buildExclude = settings.build?.exclude ?? [];
             const rules = settings.rules ?? [];
 
@@ -148,7 +148,7 @@ export function RunBuildScreen({ params: _params }: ScreenProps): ReactElement {
 
         // Resolve identity
         const identity = resolveIdentity({
-            cryptoIdentity: stateManager.getIdentity() ?? null,
+            cryptoIdentity: cryptoIdentity ?? null,
         });
 
         // Test connection
@@ -262,7 +262,7 @@ export function RunBuildScreen({ params: _params }: ScreenProps): ReactElement {
                     </Box>
                 </Panel>
 
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[Esc] Back</Text>
                 </Box>
             </Box>
@@ -295,7 +295,7 @@ export function RunBuildScreen({ params: _params }: ScreenProps): ReactElement {
                     </Box>
                 </Panel>
 
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[Esc] Back</Text>
                 </Box>
             </Box>
@@ -518,7 +518,7 @@ export function RunBuildScreen({ params: _params }: ScreenProps): ReactElement {
                     </Box>
                 </Panel>
 
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[Esc] Back</Text>
                 </Box>
             </Box>

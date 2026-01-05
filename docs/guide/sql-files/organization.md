@@ -10,24 +10,24 @@ Start with this layout:
 
 ```
 sql/
-├── tables/
+├── 01_tables/
 │   ├── 001_users.sql
 │   ├── 002_posts.sql
 │   └── 003_comments.sql
-├── views/
+├── 02_views/
 │   ├── 001_active_users.sql
 │   └── 002_recent_posts.sql
-├── functions/
+├── 03_functions/
 │   └── 001_calculate_score.sql
-└── seeds/
+└── 04_seeds/
     └── 001_default_roles.sql
 ```
 
 This structure works because:
 
-- **Numbered prefixes** - Guarantee execution order within each folder
+- **Numbered folder prefixes** - Guarantee execution order between folders (`01_` before `02_`)
+- **Numbered file prefixes** - Guarantee execution order within each folder
 - **Logical grouping** - Easy to find and maintain related files
-- **Folder prefixes control order** - Without prefixes, `functions/` would run before `tables/` (alphabetically). See [Execution Order](#execution-order) below.
 
 
 ## Naming Conventions
@@ -93,26 +93,37 @@ noorm processes files in **alphabetical order by full path**. This is the critic
 1. Folders are sorted first
 2. Files within each folder are sorted second
 
+Without numeric folder prefixes, alphabetical order causes problems:
+
 ```
 sql/
-├── functions/          # f comes before t
+├── functions/          # f comes before t—runs first!
 │   └── 001_helpers.sql
-├── tables/             # t comes before v
+├── tables/             # t comes after f—runs second
 │   ├── 001_users.sql
 │   └── 002_posts.sql
 └── views/              # v is last
     └── 001_summary.sql
 ```
 
-Execution order:
-1. `sql/functions/001_helpers.sql`
-2. `sql/tables/001_users.sql`
-3. `sql/tables/002_posts.sql`
-4. `sql/views/001_summary.sql`
+This is wrong—functions often depend on tables. Use numeric prefixes on folders:
 
-::: tip
-If you need tables before functions, prefix your folders: `01_tables/`, `02_functions/`, `03_views/`.
-:::
+```
+sql/
+├── 01_tables/          # runs first
+│   ├── 001_users.sql
+│   └── 002_posts.sql
+├── 02_views/           # runs second
+│   └── 001_summary.sql
+└── 03_functions/       # runs third (can reference tables/views)
+    └── 001_helpers.sql
+```
+
+Execution order:
+1. `sql/01_tables/001_users.sql`
+2. `sql/01_tables/002_posts.sql`
+3. `sql/02_views/001_summary.sql`
+4. `sql/03_functions/001_helpers.sql`
 
 
 ## Using Settings for Build Order
@@ -122,15 +133,26 @@ The `settings.yml` file lets you control which folders run and in what order:
 ```yaml
 build:
     include:
-        - sql/tables      # Runs first
-        - sql/views       # Runs second
-        - sql/functions   # Runs third
-        - sql/seeds       # Runs last
+        - 01_tables
+        - 02_views
+        - 03_functions
+        - 04_seeds
     exclude:
-        - sql/archive     # Never runs
+        - archive         # Never runs
 ```
 
-The `include` array defines execution order. Folders listed first execute first, regardless of alphabetical ordering.
+The `include` array is a **filter**—it controls which folders are included, not their order. Execution order is always alphanumeric. Use numeric prefixes to control the sequence:
+
+```
+sql/
+├── 01_tables/    ← runs first
+├── 02_views/     ← runs second
+├── 03_functions/ ← runs third
+├── 04_seeds/     ← runs last
+└── archive/      ← excluded, never runs
+```
+
+This keeps the filesystem self-documenting. Anyone can see the execution order without consulting settings.
 
 
 ### Conditional Includes with Rules
@@ -143,14 +165,14 @@ rules:
     - match:
           isTest: true
       include:
-          - sql/seeds
-          - sql/test-fixtures
+          - sql/04_seeds
+          - sql/05_test-fixtures
 
     # Skip heavy seeds for CI
     - match:
           name: ci-test
       exclude:
-          - sql/seeds/large-dataset.sql
+          - sql/04_seeds/003_large-dataset.sql
 ```
 
 This means:
@@ -170,16 +192,16 @@ Group files by what they are:
 
 ```
 sql/
-├── tables/
-├── views/
-├── functions/
-├── procedures/
-└── seeds/
+├── 01_tables/
+├── 02_views/
+├── 03_functions/
+├── 04_procedures/
+└── 05_seeds/
 ```
 
 **Pros:**
-- Clear execution order (tables before views)
-- Easy to set up include order in settings
+- Clear execution order from numeric prefixes
+- Filesystem is self-documenting
 - Matches how databases organize objects
 
 **Cons:**
@@ -239,11 +261,11 @@ Keep schema definitions separate from data operations:
 
 ```
 sql/
-├── ddl/              # CREATE, ALTER statements
-│   ├── tables/
-│   └── views/
-└── dml/              # INSERT, UPDATE statements
-    └── seeds/
+├── 01_ddl/              # CREATE, ALTER statements
+│   ├── 01_tables/
+│   └── 02_views/
+└── 02_dml/              # INSERT, UPDATE statements
+    └── 01_seeds/
 ```
 
 
@@ -253,11 +275,11 @@ Use rules to include environment-specific folders:
 
 ```
 sql/
-├── tables/
-├── views/
-├── seeds-dev/        # Development data
-├── seeds-staging/    # Staging data
-└── seeds-prod/       # Production defaults only
+├── 01_tables/
+├── 02_views/
+├── 03_seeds-dev/        # Development data
+├── 03_seeds-staging/    # Staging data
+└── 03_seeds-prod/       # Production defaults only
 ```
 
 ```yaml
@@ -265,28 +287,28 @@ rules:
     - match:
           name: dev
       include:
-          - sql/seeds-dev
+          - sql/03_seeds-dev
 
     - match:
           name: staging
       include:
-          - sql/seeds-staging
+          - sql/03_seeds-staging
 
     - match:
           name: prod
       include:
-          - sql/seeds-prod
+          - sql/03_seeds-prod
 ```
 
 
 ### Archive Pattern
 
-Keep old migrations without running them:
+Keep old files without running them:
 
 ```
 sql/
-├── tables/
-├── views/
+├── 01_tables/
+├── 02_views/
 └── archive/          # Old files, excluded from builds
     └── deprecated_table.sql
 ```
@@ -294,7 +316,7 @@ sql/
 ```yaml
 build:
     exclude:
-        - sql/archive
+        - archive
 ```
 
 

@@ -44,9 +44,10 @@ const DEFAULT_PORTS: Record<Dialect, number> = {
  *
  * A multi-field form wizard for creating database configurations.
  */
-export function ConfigAddScreen({ params: _params }: ScreenProps): ReactElement {
+export function ConfigAddScreen({ params }: ScreenProps): ReactElement {
 
-    const { back } = useRouter();
+    const { back, navigate } = useRouter();
+    const fromInit = Boolean(params.fromInit);
     const { stateManager, configs, refresh } = useAppContext();
     const { showToast } = useToast();
 
@@ -260,23 +261,44 @@ export function ConfigAddScreen({ params: _params }: ScreenProps): ReactElement 
 
             }
 
-            // Success - show toast and go back (pops history)
+            // Success - show toast and navigate appropriately
             showToast({
                 message: `Configuration "${configName}" created`,
                 variant: 'success',
             });
-            back();
+
+            // If coming from init flow, go home instead of back to init
+            if (fromInit) {
+
+                navigate('home');
+
+            }
+            else {
+
+                back();
+
+            }
 
         },
-        [stateManager, configs, refresh, showToast, back],
+        [stateManager, configs, refresh, showToast, back, navigate, fromInit],
     );
 
     // Handle cancel
     const handleCancel = useCallback(() => {
 
-        back();
+        // If coming from init flow, go home instead of back to init
+        if (fromInit) {
 
-    }, [back]);
+            navigate('home');
+
+        }
+        else {
+
+            back();
+
+        }
+
+    }, [back, navigate, fromInit]);
 
     return (
         <Panel title="Add Configuration" paddingX={2} paddingY={1}>

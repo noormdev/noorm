@@ -262,7 +262,7 @@ export function SettingsListScreen({ params: _params }: ScreenProps): ReactEleme
                 />
             </Panel>
 
-            <Box gap={2} flexWrap="wrap">
+            <Box flexWrap="wrap" columnGap={2}>
                 <Text dimColor>[Enter] Edit</Text>
                 <Text dimColor>[i] Init</Text>
                 <Text dimColor>[Esc] Back</Text>

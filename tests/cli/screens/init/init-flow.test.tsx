@@ -103,8 +103,15 @@ vi.mock('../../../../src/core/identity/index.js', async () => {
 
 });
 
-// Mock state manager - must be a proper class
-vi.mock('../../../../src/core/state/manager.js', () => {
+// Mock state manager singleton - the code uses getStateManager from index.js
+vi.mock('../../../../src/core/state/index.js', () => {
+
+    const mockStateManager = {
+        load: vi.fn(() => Promise.resolve()),
+        setIdentity: vi.fn(() => Promise.resolve()),
+        hasPrivateKey: vi.fn(() => true),
+        reloadPrivateKey: vi.fn(() => Promise.resolve(true)),
+    };
 
     return {
         StateManager: class MockStateManager {
@@ -112,8 +119,12 @@ vi.mock('../../../../src/core/state/manager.js', () => {
             load = vi.fn(() => Promise.resolve());
             setIdentity = vi.fn(() => Promise.resolve());
             hasPrivateKey = vi.fn(() => true);
+            reloadPrivateKey = vi.fn(() => Promise.resolve(true));
 
         },
+        getStateManager: vi.fn(() => mockStateManager),
+        initState: vi.fn(() => Promise.resolve(mockStateManager)),
+        resetStateManager: vi.fn(),
     };
 
 });

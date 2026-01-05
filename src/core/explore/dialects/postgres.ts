@@ -331,25 +331,39 @@ export const postgresExploreOperations: DialectExploreOperations = {
 
     async listIndexes(db: Kysely<unknown>): Promise<IndexSummary[]> {
 
+        // Query indexes with primary key constraint info from pg_constraint
         const result = await sql<{
             indexname: string;
             schemaname: string;
             tablename: string;
             indexdef: string;
+            is_primary: boolean;
         }>`
             SELECT
-                indexname,
-                schemaname,
-                tablename,
-                indexdef
-            FROM pg_indexes
-            WHERE schemaname NOT IN (${sql.join(EXCLUDED_SCHEMAS)})
-            ORDER BY schemaname, tablename, indexname
+                i.indexname,
+                i.schemaname,
+                i.tablename,
+                i.indexdef,
+                COALESCE(
+                    EXISTS (
+                        SELECT 1 FROM pg_constraint c
+                        JOIN pg_class idx ON idx.oid = c.conindid
+                        JOIN pg_class tbl ON tbl.oid = c.conrelid
+                        JOIN pg_namespace n ON n.oid = tbl.relnamespace
+                        WHERE c.contype = 'p'
+                        AND idx.relname = i.indexname
+                        AND n.nspname = i.schemaname
+                    ),
+                    false
+                ) as is_primary
+            FROM pg_indexes i
+            WHERE i.schemaname NOT IN (${sql.join(EXCLUDED_SCHEMAS)})
+            ORDER BY i.schemaname, i.tablename, i.indexname
         `.execute(db);
 
         return result.rows.map((row) => {
 
-            const isPrimary = row.indexdef.includes('PRIMARY KEY');
+            const isPrimary = row.is_primary;
             const isUnique = row.indexdef.includes('UNIQUE') || isPrimary;
 
             // Extract columns from index definition
@@ -675,13 +689,16 @@ export const postgresExploreOperations: DialectExploreOperations = {
             oid: string;
             prosrc: string;
             return_type: string;
+            language: string;
         }>`
             SELECT
                 p.oid::text,
                 p.prosrc,
-                pg_get_function_result(p.oid) as return_type
+                pg_get_function_result(p.oid) as return_type,
+                l.lanname as language
             FROM pg_proc p
             JOIN pg_namespace n ON p.pronamespace = n.oid
+            JOIN pg_language l ON p.prolang = l.oid
             WHERE n.nspname = ${schema}
             AND p.proname = ${name}
             AND p.prokind = 'f'
@@ -697,7 +714,7 @@ export const postgresExploreOperations: DialectExploreOperations = {
 
         const oid = funcRow.oid;
 
-        // Get parameters
+        // Get parameters using specific_name which is function_name_oid format
         const paramsResult = await sql<{
             parameter_name: string | null;
             data_type: string;
@@ -713,7 +730,7 @@ export const postgresExploreOperations: DialectExploreOperations = {
                 parameter_default
             FROM information_schema.parameters
             WHERE specific_schema = ${schema}
-            AND specific_name = ${name || sql.raw(`'_' || ${oid}`)}
+            AND specific_name = ${name + '_' + oid}
             AND parameter_mode IN ('IN', 'INOUT')
             ORDER BY ordinal_position
         `.execute(db);
@@ -732,6 +749,7 @@ export const postgresExploreOperations: DialectExploreOperations = {
             parameters,
             returnType: funcRow.return_type,
             definition: funcRow.prosrc,
+            language: funcRow.language,
         };
 
     },

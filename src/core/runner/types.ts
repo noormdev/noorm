@@ -221,6 +221,66 @@ export interface NeedsRunResult {
 }
 
 // ─────────────────────────────────────────────────────────────
+// Operation Types (Shared by Runner and Change)
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Type of operation being executed.
+ *
+ * - build: Executing a build configuration
+ * - run: Executing individual files or directory
+ * - change: Executing a change set (migration)
+ */
+export type ChangeType = 'build' | 'run' | 'change';
+
+/**
+ * Direction of a change operation.
+ *
+ * - commit: Apply the change (forward migration)
+ * - revert: Undo the change (rollback migration)
+ */
+export type Direction = 'commit' | 'revert';
+
+/**
+ * Input file for execution.
+ *
+ * Used to pass pre-gathered files to executeFiles.
+ * File gathering happens OUTSIDE executeFiles for clarity.
+ */
+export interface FileInput {
+    /** Absolute path to the file */
+    path: string;
+
+    /** File type */
+    type: 'sql' | 'txt';
+
+    /** Pre-computed checksum (optional, computed if not provided) */
+    checksum?: string;
+}
+
+/**
+ * Options for unified executeFiles.
+ *
+ * Supports both runner (build/run) and change execution.
+ */
+export interface ExecuteFilesOptions {
+    /** Type of operation */
+    changeType: ChangeType;
+
+    /** Direction (for changes). Defaults to 'commit' */
+    direction?: Direction;
+
+    /** Operation name for tracking */
+    operationName: string;
+
+    /** Overall checksum for the operation (optional) */
+    checksum?: string;
+
+    /** External tracker instance (optional, created internally if not provided) */
+    tracker?: unknown; // Tracker type - using unknown to avoid circular import
+}
+
+// ─────────────────────────────────────────────────────────────
 // Tracker Types
 // ─────────────────────────────────────────────────────────────
 
@@ -231,8 +291,11 @@ export interface CreateOperationData {
     /** Operation name (e.g., 'build:2024-01-15T10:30:00') */
     name: string;
 
-    /** 'build' or 'run' */
-    changeType: 'build' | 'run';
+    /** Type of operation */
+    changeType: ChangeType;
+
+    /** Direction (for changes). Defaults to 'commit' */
+    direction?: Direction;
 
     /** Config name */
     configName: string;

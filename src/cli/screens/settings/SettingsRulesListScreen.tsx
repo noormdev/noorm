@@ -276,7 +276,7 @@ export function SettingsRulesListScreen({ params: _params }: ScreenProps): React
                 )}
             </Panel>
 
-            <Box gap={2} flexWrap="wrap">
+            <Box flexWrap="wrap" columnGap={2}>
                 <Text dimColor>[a] Add</Text>
                 <Text dimColor>[e] Edit</Text>
                 <Text dimColor>[d] Delete</Text>

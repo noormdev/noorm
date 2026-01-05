@@ -157,7 +157,7 @@ export function SecretRemoveScreen({ params }: ScreenProps): ReactElement {
                     </Box>
                 </Panel>
 
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[Enter/Esc] Back</Text>
                 </Box>
             </Box>
@@ -176,7 +176,7 @@ export function SecretRemoveScreen({ params }: ScreenProps): ReactElement {
                     </Text>
                 </Panel>
 
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[Enter/Esc] Back</Text>
                 </Box>
             </Box>
@@ -193,7 +193,7 @@ export function SecretRemoveScreen({ params }: ScreenProps): ReactElement {
                     <Text color="red">Secret "{secretKey}" not found.</Text>
                 </Panel>
 
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[Enter/Esc] Back</Text>
                 </Box>
             </Box>
@@ -216,7 +216,7 @@ export function SecretRemoveScreen({ params }: ScreenProps): ReactElement {
                     </Box>
                 </Panel>
 
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[Enter/Esc] Back</Text>
                 </Box>
             </Box>

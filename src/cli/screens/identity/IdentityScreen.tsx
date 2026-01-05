@@ -127,7 +127,7 @@ export function IdentityScreen({ params: _params }: ScreenProps): ReactElement {
                     </Box>
                 </Panel>
 
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[Esc] Back</Text>
                 </Box>
             </Box>
@@ -209,7 +209,7 @@ export function IdentityScreen({ params: _params }: ScreenProps): ReactElement {
             )}
 
             {/* Keyboard shortcuts */}
-            <Box gap={2} flexWrap="wrap">
+            <Box flexWrap="wrap" columnGap={2}>
                 <Text dimColor>[e] Edit</Text>
                 <Text dimColor>[x] Export Key</Text>
                 <Text dimColor>[r] Regenerate</Text>

@@ -61,7 +61,7 @@ export function RunListScreen({ params: _params }: ScreenProps): ReactElement {
         }
 
         // Get effective build paths based on config and rules
-        const buildInclude = settings.build?.include ?? ['schema'];
+        const buildInclude = settings.build?.include ?? [];
         const buildExclude = settings.build?.exclude ?? [];
         const rules = settings.rules ?? [];
 
@@ -141,7 +141,7 @@ export function RunListScreen({ params: _params }: ScreenProps): ReactElement {
                     </Box>
                 </Panel>
 
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[Esc] Back</Text>
                 </Box>
             </Box>
@@ -238,7 +238,7 @@ export function RunListScreen({ params: _params }: ScreenProps): ReactElement {
                 </Box>
             </Panel>
 
-            <Box gap={2}>
+            <Box flexWrap="wrap" columnGap={2}>
                 <Text dimColor>[b] Build</Text>
                 <Text dimColor>[e] Exec</Text>
                 <Text dimColor>[f] File</Text>

@@ -49,7 +49,7 @@ export function IdentityInitScreen({ params: _params }: ScreenProps): ReactEleme
 
     const { back } = useRouter();
     const { isFocused } = useFocusScope('IdentityInit');
-    const { identity, hasIdentity, stateManager, refresh } = useAppContext();
+    const { identity, hasIdentity, refresh } = useAppContext();
     const { showToast } = useToast();
 
     // Determine initial step based on existing identity
@@ -71,7 +71,7 @@ export function IdentityInitScreen({ params: _params }: ScreenProps): ReactEleme
             setError(null);
 
             // Create new identity with new keypair
-            const [result, err] = await attempt(() =>
+            const [, err] = await attempt(() =>
                 createCryptoIdentity({
                     name: values.name,
                     email: values.email,
@@ -92,26 +92,9 @@ export function IdentityInitScreen({ params: _params }: ScreenProps): ReactEleme
 
             }
 
-            // Update state with new identity
-            const [, stateErr] = await attempt(async () => {
-
-                await stateManager?.setIdentity(result.identity);
-                await refresh?.();
-
-            });
-
-            if (stateErr) {
-
-                setError(stateErr instanceof Error ? stateErr.message : String(stateErr));
-                setStep('form');
-                showToast({
-                    message: 'Failed to save identity',
-                    variant: 'error',
-                });
-
-                return;
-
-            }
+            // Refresh app context to pick up the new identity from global ~/.noorm/
+            // createCryptoIdentity() already saved the identity globally
+            await refresh?.();
 
             // Success
             showToast({
@@ -121,7 +104,7 @@ export function IdentityInitScreen({ params: _params }: ScreenProps): ReactEleme
             back();
 
         },
-        [stateManager, refresh, hasIdentity, showToast, back],
+        [refresh, hasIdentity, showToast, back],
     );
 
     // Handle cancel
@@ -198,7 +181,7 @@ export function IdentityInitScreen({ params: _params }: ScreenProps): ReactEleme
                     </Box>
                 </Panel>
 
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[Enter] Continue</Text>
                     <Text dimColor>[Esc] Cancel</Text>
                 </Box>

@@ -1,19 +1,25 @@
 /**
  * ChangeAddScreen - create a new change folder.
  *
- * Prompts for change name and creates folder structure:
- * - changes/{date}-{name}/
+ * Prompts for a description and creates folder structure:
+ * - changes/{date}-{kebab-cased-description}/
  *   - change/001_change.sql
  *   - revert/001_revert.sql
  *   - changelog.md
  *
+ * The description is automatically converted to kebab-case:
+ * - "Add user roles table" -> "add-user-roles-table"
+ * - "Fix the bug!" -> "fix-the-bug"
+ *
  * @example
  * ```bash
- * noorm change:add add-user-roles    # Create change
- * noorm change add add-user-roles    # Same thing
+ * noorm change:add "Add user roles"    # Create change
+ * noorm change add "Add user roles"    # Same thing
  * ```
  */
 import { useState, useCallback } from 'react';
+import { existsSync } from 'fs';
+import { join } from 'path';
 import { Box, Text, useInput } from 'ink';
 import { TextInput } from '@inkjs/ui';
 
@@ -26,6 +32,7 @@ import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
 import { Panel, Spinner, StatusMessage } from '../../components/index.js';
 import { createChange, addFile } from '../../../core/change/scaffold.js';
+import { toKebabCase } from '../../utils/index.js';
 
 /**
  * Add steps.
@@ -53,18 +60,17 @@ export function ChangeAddScreen({ params }: ScreenProps): ReactElement {
     const [createdName, setCreatedName] = useState('');
     const [error, setError] = useState<string | null>(null);
 
-    // Validate name
+    // Convert input to kebab-case for preview
+    const kebabName = toKebabCase(name);
+
+    // Validate name - just check it's not empty after conversion
     const validateName = useCallback((value: string): string | null => {
 
-        if (!value.trim()) {
+        const converted = toKebabCase(value);
 
-            return 'Name is required';
+        if (!converted) {
 
-        }
-
-        if (!/^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$/i.test(value.trim())) {
-
-            return 'Use letters, numbers, and hyphens only';
+            return 'Description is required';
 
         }
 
@@ -96,13 +102,30 @@ export function ChangeAddScreen({ params }: ScreenProps): ReactElement {
 
             }
 
+            // Convert to kebab-case
+            const kebabDescription = toKebabCase(nameValue);
+
+            // Check for duplicate folder name
+            const datePrefix = new Date().toISOString().slice(0, 10);
+            const expectedFolder = `${datePrefix}-${kebabDescription}`;
+            const folderPath = join(activeConfig.paths.changes, expectedFolder);
+
+            if (existsSync(folderPath)) {
+
+                setError(`Change "${expectedFolder}" already exists`);
+                setStep('error');
+
+                return;
+
+            }
+
             setStep('creating');
 
             const [_, err] = await attempt(async () => {
 
                 // Create change folder
                 const change = await createChange(activeConfig.paths.changes, {
-                    description: nameValue.trim(),
+                    description: kebabDescription,
                 });
 
                 // Add initial files
@@ -232,23 +255,25 @@ export function ChangeAddScreen({ params }: ScreenProps): ReactElement {
         return (
             <Panel title="Add Change" paddingX={2} paddingY={1}>
                 <Box flexDirection="column" gap={1}>
-                    <Text>Create a new change for database changes.</Text>
-                    <Text dimColor>
-                        Folder will be created as: {new Date().toISOString().slice(0, 10)}-
-                        {name || '<name>'}
-                    </Text>
+                    <Text>Describe the change you want to make:</Text>
 
                     <Box marginTop={1}>
-                        <Text>Name: </Text>
+                        <Text>Description: </Text>
                         <TextInput
-                            placeholder="add-user-roles"
+                            placeholder="Add user roles table"
                             defaultValue={name}
                             onChange={setName}
                             isDisabled={!isFocused}
                         />
                     </Box>
 
-                    <Box marginTop={1} gap={2}>
+                    {kebabName && (
+                        <Text dimColor>
+                            Folder: {new Date().toISOString().slice(0, 10)}-{kebabName}
+                        </Text>
+                    )}
+
+                    <Box marginTop={1} flexWrap="wrap" columnGap={2}>
                         <Text dimColor>[Enter] Create</Text>
                         <Text dimColor>[Esc] Cancel</Text>
                     </Box>
@@ -281,7 +306,7 @@ export function ChangeAddScreen({ params }: ScreenProps): ReactElement {
 
                     <Text dimColor>Created folder structure with template files.</Text>
 
-                    <Box marginTop={1} gap={2}>
+                    <Box marginTop={1} flexWrap="wrap" columnGap={2}>
                         <Text dimColor>[e] Edit in editor</Text>
                         <Text dimColor>[any] Back to list</Text>
                     </Box>
@@ -297,7 +322,7 @@ export function ChangeAddScreen({ params }: ScreenProps): ReactElement {
             <Box flexDirection="column" gap={1}>
                 <StatusMessage variant="error">{error}</StatusMessage>
 
-                <Box marginTop={1} gap={2}>
+                <Box marginTop={1} flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[r] Retry</Text>
                     <Text dimColor>[any] Back</Text>
                 </Box>

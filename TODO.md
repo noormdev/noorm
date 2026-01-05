@@ -1,7 +1,28 @@
 # noorm TODO
 
 
-## Priority 1: Secrets Vault
+## Priority 1: Separate Schema for Internal Tables
+
+Move `__noorm_*` tables to a dedicated `noorm` schema on dialects that support it. Keeps user schema clean and avoids naming collisions.
+
+**Dialect support:**
+
+| Dialect | Schema Support | Action |
+|---------|----------------|--------|
+| PostgreSQL | ✓ | Create `noorm` schema, move tables |
+| MSSQL | ✓ | Create `noorm` schema, move tables |
+| MySQL | ✗ (database = schema) | No change needed |
+| SQLite | ✗ | No change needed |
+
+**Implementation:**
+
+- [ ] Create schema on first run if not exists
+- [ ] Migrate existing `__noorm_*` tables to new schema
+- [ ] Update all internal queries to use schema-qualified names
+- [ ] Handle upgrade path for existing installations
+
+
+## Priority 2: Secrets Vault
 
 Encrypted secrets storage for shared databases and team environments. When multiple developers work against a shared database, they need access to secrets (API keys, service credentials) without manual distribution.
 
@@ -104,6 +125,28 @@ Each includes:
 
 Check for updates on CLI startup and prompt user to update.
 
+
+## NVM Node Version Persistence
+
+Global npm packages don't persist when switching Node versions with nvm. Users lose their `noorm` installation.
+
+**Research findings:**
+
+Our database drivers (`pg`, `tedious`, `mysql2`, `tarn`) are pure JavaScript - bundling is technically feasible. The problem child is `better-sqlite3` which requires native C++ bindings.
+
+| Bundling Tool | Status | Native Module Support |
+|---------------|--------|----------------------|
+| Bun compile | Active | Built-in `Bun.sql` for Postgres/MySQL/SQLite (Zig) - would require Kysely migration |
+| vercel/pkg | Archived Jan 2024 | Ships alongside executable, not embedded |
+| Node.js SEA | Experimental | Ships alongside executable, not embedded |
+
+**Practical options (in order of effort):**
+
+1. Document `npx noorm` as primary usage (zero effort)
+2. Document `nvm reinstall-packages` in install instructions
+3. Publish to Homebrew for macOS users (nvm-independent)
+4. Investigate Bun compile if/when migrating to `Bun.sql` makes sense
+
 **Behavior:**
 
 - On TUI launch, check NPM registry for latest version (if online)
@@ -156,6 +199,7 @@ Core SDK is implemented and packaged (`@noormdev/sdk`). Remaining:
 
 ## Pre-Release Checklist
 
+- [ ] **Change table CLI version** - Ensure change rows include CLI version (currently null)
 - [ ] **Events audit** - Revisit all observer events, ensure uniform naming, verify all typed in `NoormEvents`
 - [ ] **Test coverage** - Write tests for core modules (see `TODO-tests.md`)
 - [ ] **Cleanup plans** - Remove or archive `plan/` directory contents
@@ -205,6 +249,12 @@ noorm change ff --configs dev,staging,prod --confirm-each
 **Backup & Restore** - Snapshot database before destructive operations using native tools (pg_dump, mysqldump).
 
 **AI Database Chat** - Interactive chat against schema and data with tool-based exploration. Model configured in `noorm.config.ts`.
+
+**llms.txt for Context7** - Publish noorm documentation in llms.txt format for LLM context providers (context7, etc.). Enables AI assistants to understand noorm commands, workflows, and patterns.
+
+**MCP Server for Database Access** - TUI spawns an MCP server giving LLMs read-only access to the connected database. Schema introspection, sample queries, data exploration - all through the MCP protocol.
+
+**User Project LLM Files** - Generate helper files (`CLAUDE.md`, `.cursorrules`) for user projects describing their noorm setup, SQL structure, and available template variables. Command: `noorm init llm`.
 
 
 ---

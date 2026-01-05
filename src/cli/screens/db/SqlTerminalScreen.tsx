@@ -15,8 +15,8 @@
  * # Or press Shift+Q from anywhere
  * ```
  */
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { Box, Text, useInput } from 'ink';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { Box, Text, useInput, useStdout } from 'ink';
 import { attempt } from '@logosdx/utils';
 
 import type { ReactElement } from 'react';
@@ -46,6 +46,20 @@ export function SqlTerminalScreen({ params }: ScreenProps): ReactElement {
     const { isFocused } = useFocusScope('SqlTerminal');
     const { activeConfig, activeConfigName, projectRoot, setHelpKeyEnabled } = useAppContext();
     const { showToast } = useToast();
+    const { stdout } = useStdout();
+
+    // Calculate max visible rows as 75% of terminal height, accounting for UI chrome
+    // UI chrome: header (2), panel border (2), status bar (1), separator (1), footer (2), help (1) = ~9 lines
+    const maxResultRows = useMemo(() => {
+
+        const terminalHeight = stdout.rows ?? 24;
+        const uiChrome = 9;
+        const availableHeight = terminalHeight - uiChrome;
+        const maxRows = Math.floor(availableHeight * 0.75);
+
+        return Math.max(5, Math.min(maxRows, 30));
+
+    }, [stdout.rows]);
 
     // State
     const [query, setQuery] = useState('');
@@ -353,7 +367,7 @@ export function SqlTerminalScreen({ params }: ScreenProps): ReactElement {
                     </Box>
                 </Panel>
 
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[Esc] Back</Text>
                 </Box>
             </Box>
@@ -386,7 +400,7 @@ export function SqlTerminalScreen({ params }: ScreenProps): ReactElement {
                     </Box>
                 </Panel>
 
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[Esc] Back</Text>
                 </Box>
             </Box>
@@ -420,6 +434,7 @@ export function SqlTerminalScreen({ params }: ScreenProps): ReactElement {
                     <ResultTable
                         columns={result.columns}
                         rows={result.rows}
+                        maxVisibleRows={maxResultRows}
                         active={true}
                         onEscape={() => setFocusArea('input')}
                     />
@@ -472,7 +487,7 @@ export function SqlTerminalScreen({ params }: ScreenProps): ReactElement {
             )}
 
             {/* Footer hints */}
-            <Box gap={2}>
+            <Box flexWrap="wrap" columnGap={2}>
                 {focusArea === 'input' && <Text dimColor>[h] History</Text>}
                 {result?.rows && result.rows.length > 0 && (
                     <Text dimColor>[Tab] {focusArea === 'input' ? 'View Results' : 'Edit Query'}</Text>

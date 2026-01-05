@@ -482,7 +482,7 @@ export function ExploreDetailScreen({ params }: ScreenProps): ReactElement {
                     <Text color="red">Missing object name</Text>
                 </Panel>
 
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[Esc] Back</Text>
                 </Box>
             </Box>
@@ -499,7 +499,7 @@ export function ExploreDetailScreen({ params }: ScreenProps): ReactElement {
                     <Text color="yellow">No active configuration selected.</Text>
                 </Panel>
 
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[Esc] Back</Text>
                 </Box>
             </Box>
@@ -532,7 +532,7 @@ export function ExploreDetailScreen({ params }: ScreenProps): ReactElement {
                     </Box>
                 </Panel>
 
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[Esc] Back</Text>
                 </Box>
             </Box>
@@ -573,7 +573,7 @@ export function ExploreDetailScreen({ params }: ScreenProps): ReactElement {
                 {renderDetail()}
             </Panel>
 
-            <Box gap={2}>
+            <Box flexWrap="wrap" columnGap={2}>
                 <Text dimColor>[Esc] Back</Text>
             </Box>
         </Box>

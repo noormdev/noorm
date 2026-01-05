@@ -424,7 +424,7 @@ export class SettingsManager {
         const rules = this.getRules();
 
         return getEffectiveBuildPaths(
-            build.include ?? ['schema'],
+            build.include ?? [],
             build.exclude ?? [],
             rules,
             config,

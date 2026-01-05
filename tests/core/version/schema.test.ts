@@ -54,7 +54,7 @@ describe('version: schema', () => {
 
         it('should return true when tables exist', async () => {
 
-            await bootstrapSchema(db, '1.0.0');
+            await bootstrapSchema(db, 'sqlite', '1.0.0');
             const exists = await tablesExist(db);
 
             expect(exists).toBe(true);
@@ -75,7 +75,7 @@ describe('version: schema', () => {
 
         it('should return version from database', async () => {
 
-            await bootstrapSchema(db, '1.0.0');
+            await bootstrapSchema(db, 'sqlite', '1.0.0');
             const version = await getSchemaVersion(db);
 
             expect(version).toBe(CURRENT_VERSIONS.schema);
@@ -99,7 +99,7 @@ describe('version: schema', () => {
 
         it('should detect current version as not needing migration', async () => {
 
-            await bootstrapSchema(db, '1.0.0');
+            await bootstrapSchema(db, 'sqlite', '1.0.0');
             const status = await checkSchemaVersion(db);
 
             expect(status.current).toBe(CURRENT_VERSIONS.schema);
@@ -126,7 +126,7 @@ describe('version: schema', () => {
 
         it('should create all tracking tables', async () => {
 
-            await bootstrapSchema(db, '1.0.0');
+            await bootstrapSchema(db, 'sqlite', '1.0.0');
 
             // Verify all tables exist by querying them
             const version = await db.selectFrom('__noorm_version__').selectAll().execute();
@@ -141,7 +141,7 @@ describe('version: schema', () => {
 
         it('should record custom state and settings versions', async () => {
 
-            await bootstrapSchema(db, '1.0.0', { stateVersion: 5, settingsVersion: 3 });
+            await bootstrapSchema(db, 'sqlite', '1.0.0', { stateVersion: 5, settingsVersion: 3 });
 
             const version = await db.selectFrom('__noorm_version__').selectAll().executeTakeFirst();
 
@@ -153,7 +153,7 @@ describe('version: schema', () => {
 
         it('should create __noorm_change__ table', async () => {
 
-            await bootstrapSchema(db, '1.0.0');
+            await bootstrapSchema(db, 'sqlite', '1.0.0');
 
             // Should not throw
             const result = await db.selectFrom('__noorm_change__').selectAll().execute();
@@ -164,7 +164,7 @@ describe('version: schema', () => {
 
         it('should create __noorm_executions__ table', async () => {
 
-            await bootstrapSchema(db, '1.0.0');
+            await bootstrapSchema(db, 'sqlite', '1.0.0');
 
             // Should not throw
             const result = await db.selectFrom('__noorm_executions__').selectAll().execute();
@@ -175,7 +175,7 @@ describe('version: schema', () => {
 
         it('should create __noorm_lock__ table', async () => {
 
-            await bootstrapSchema(db, '1.0.0');
+            await bootstrapSchema(db, 'sqlite', '1.0.0');
 
             // Should not throw
             const result = await db.selectFrom('__noorm_lock__').selectAll().execute();
@@ -186,7 +186,7 @@ describe('version: schema', () => {
 
         it('should create __noorm_identities__ table', async () => {
 
-            await bootstrapSchema(db, '1.0.0');
+            await bootstrapSchema(db, 'sqlite', '1.0.0');
 
             // Should not throw
             const result = await db.selectFrom('__noorm_identities__').selectAll().execute();
@@ -205,7 +205,7 @@ describe('version: schema', () => {
                 events.push({ type: 'migrated', ...data }),
             );
 
-            await bootstrapSchema(db, '1.0.0');
+            await bootstrapSchema(db, 'sqlite', '1.0.0');
 
             expect(events).toHaveLength(2);
             expect(events[0]).toMatchObject({
@@ -227,7 +227,7 @@ describe('version: schema', () => {
 
         it('should bootstrap if no tables exist', async () => {
 
-            await migrateSchema(db, '1.0.0');
+            await migrateSchema(db, 'sqlite', '1.0.0');
 
             const exists = await tablesExist(db);
             expect(exists).toBe(true);
@@ -236,10 +236,10 @@ describe('version: schema', () => {
 
         it('should do nothing if already at current version', async () => {
 
-            await bootstrapSchema(db, '1.0.0');
+            await bootstrapSchema(db, 'sqlite', '1.0.0');
             observer.clear();
 
-            await migrateSchema(db, '1.0.0');
+            await migrateSchema(db, 'sqlite', '1.0.0');
 
             // No migration events should be emitted
             // (can't easily verify, but test doesn't throw)
@@ -249,13 +249,13 @@ describe('version: schema', () => {
         it('should emit version:mismatch for newer schema', async () => {
 
             // Create tables with fake higher version
-            await bootstrapSchema(db, '1.0.0');
+            await bootstrapSchema(db, 'sqlite', '1.0.0');
             await db.updateTable('__noorm_version__').set({ noorm_version: 999 }).execute();
 
             const events: unknown[] = [];
             observer.on('version:mismatch', (data) => events.push(data));
 
-            await expect(migrateSchema(db, '1.0.0')).rejects.toThrow(VersionMismatchError);
+            await expect(migrateSchema(db, 'sqlite', '1.0.0')).rejects.toThrow(VersionMismatchError);
 
             expect(events).toHaveLength(1);
             expect(events[0]).toEqual({
@@ -272,7 +272,7 @@ describe('version: schema', () => {
 
         it('should bootstrap if needed', async () => {
 
-            await ensureSchemaVersion(db, '1.0.0');
+            await ensureSchemaVersion(db, 'sqlite', '1.0.0');
 
             const exists = await tablesExist(db);
             expect(exists).toBe(true);
@@ -281,10 +281,10 @@ describe('version: schema', () => {
 
         it('should work if already current', async () => {
 
-            await bootstrapSchema(db, '1.0.0');
+            await bootstrapSchema(db, 'sqlite', '1.0.0');
 
             // Should not throw
-            await ensureSchemaVersion(db, '1.0.0');
+            await ensureSchemaVersion(db, 'sqlite', '1.0.0');
 
         });
 
@@ -302,7 +302,7 @@ describe('version: schema', () => {
 
         it('should return state and settings versions', async () => {
 
-            await bootstrapSchema(db, '1.0.0', { stateVersion: 2, settingsVersion: 3 });
+            await bootstrapSchema(db, 'sqlite', '1.0.0', { stateVersion: 2, settingsVersion: 3 });
 
             const record = await getLatestVersionRecord(db);
 
@@ -315,7 +315,7 @@ describe('version: schema', () => {
 
         it('should return latest record when multiple exist', async () => {
 
-            await bootstrapSchema(db, '1.0.0', { stateVersion: 1, settingsVersion: 1 });
+            await bootstrapSchema(db, 'sqlite', '1.0.0', { stateVersion: 1, settingsVersion: 1 });
             await updateVersionRecord(db, {
                 cliVersion: '1.1.0',
                 stateVersion: 2,
@@ -337,7 +337,7 @@ describe('version: schema', () => {
 
         it('should insert a new version record', async () => {
 
-            await bootstrapSchema(db, '1.0.0');
+            await bootstrapSchema(db, 'sqlite', '1.0.0');
             await updateVersionRecord(db, {
                 cliVersion: '1.1.0',
                 stateVersion: 2,
@@ -359,7 +359,7 @@ describe('version: schema', () => {
 
         it('should use defaults when versions not provided', async () => {
 
-            await bootstrapSchema(db, '1.0.0');
+            await bootstrapSchema(db, 'sqlite', '1.0.0');
             await updateVersionRecord(db, { cliVersion: '1.1.0' });
 
             const versions = await db
@@ -379,7 +379,7 @@ describe('version: schema', () => {
 
         beforeEach(async () => {
 
-            await bootstrapSchema(db, '1.0.0');
+            await bootstrapSchema(db, 'sqlite', '1.0.0');
 
         });
 

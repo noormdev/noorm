@@ -51,11 +51,28 @@ export const mssqlTeardownOperations: TeardownDialectOperations = {
 
     },
 
-    truncateTable(tableName: string, schema?: string, _restartIdentity = true): string {
+    truncateTable(tableName: string, schema?: string, restartIdentity = true): string {
 
-        // MSSQL TRUNCATE requires special handling for identity reset
-        // TRUNCATE automatically resets identity if the table has one
-        return `TRUNCATE TABLE ${qualifiedName(tableName, schema)}`;
+        // MSSQL TRUNCATE cannot be used on tables referenced by FK constraints
+        // even with NOCHECK CONSTRAINT. Use DELETE instead.
+        const qualified = qualifiedName(tableName, schema);
+        const deleteStmt = `DELETE FROM ${qualified}`;
+
+        // If restarting identity, also reset the seed
+        if (restartIdentity) {
+
+            // DBCC CHECKIDENT resets identity; IF EXISTS check prevents error if no identity column
+            // Use schemaName.tableName format for DBCC (without brackets)
+            const dbccName = schema && schema !== 'dbo'
+                ? `${schema}.${tableName}`
+                : tableName;
+
+            // eslint-disable-next-line max-len
+            return `${deleteStmt}; IF EXISTS (SELECT * FROM sys.identity_columns WHERE OBJECT_NAME(object_id) = '${tableName}') DBCC CHECKIDENT ('${dbccName}', RESEED, 0)`;
+
+        }
+
+        return deleteStmt;
 
     },
 
@@ -73,7 +90,14 @@ export const mssqlTeardownOperations: TeardownDialectOperations = {
 
     dropFunction(name: string, schema?: string): string {
 
-        // MSSQL uses PROCEDURE for stored procedures
+        // MSSQL functions (FN=scalar, IF=inline table, TF=table-valued)
+        return `DROP FUNCTION IF EXISTS ${qualifiedName(name, schema)}`;
+
+    },
+
+    dropProcedure(name: string, schema?: string): string {
+
+        // MSSQL stored procedures
         return `DROP PROCEDURE IF EXISTS ${qualifiedName(name, schema)}`;
 
     },

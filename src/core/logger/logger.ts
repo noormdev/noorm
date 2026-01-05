@@ -449,6 +449,12 @@ export class Logger {
 
         }
 
+        if (data['error']) {
+
+            entryLevel = 'error';
+
+        }
+
         // Filter sensitive data
         const filteredData = filterData({ ...data }, this.#config.level);
 

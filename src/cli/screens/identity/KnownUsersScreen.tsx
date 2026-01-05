@@ -149,7 +149,7 @@ export function KnownUsersScreen({ params: _params }: ScreenProps): ReactElement
                     </Box>
                 </Panel>
 
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[Esc] Back</Text>
                 </Box>
             </Box>
@@ -256,7 +256,7 @@ export function KnownUsersScreen({ params: _params }: ScreenProps): ReactElement
             </Box>
 
             {/* Keyboard shortcuts */}
-            <Box gap={2}>
+            <Box flexWrap="wrap" columnGap={2}>
                 <Text dimColor>[Enter] Expand/Collapse</Text>
                 <Text dimColor>[Up/Down] Navigate</Text>
                 <Text dimColor>[Esc] Back</Text>

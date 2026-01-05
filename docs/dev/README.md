@@ -97,7 +97,7 @@ console.log(`Using database: ${config.connection.database}`)
 │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌────────┐ │
 │  │ Template │  │  Runner  │  │Change │  │ Logger │ │
 │  │ Eta, SQL │  │ Execute, │  │ Versioned│  │ Events │ │
-│  │ Helpers  │  │ Tracking │  │ Migrations│  │Rotation│ │
+│  │ Helpers  │  │ Tracking │  │  Changes  │  │Rotation│ │
 │  └──────────┘  └──────────┘  └──────────┘  └────────┘ │
 │  ┌──────────┐  ┌──────────┐  ┌──────────┐             │
 │  │ Explore  │  │ Teardown │  │   SQL    │             │
@@ -148,7 +148,7 @@ Core modules emit events. The CLI subscribes. This keeps business logic separate
 | Document | Description |
 |----------|-------------|
 | [Runner](./runner.md) | SQL execution, change detection, dry run, preview |
-| [Change](./change.md) | Versioned migrations, forward/rollback, execution history |
+| [Change](./change.md) | Versioned changes, forward/rollback, execution history |
 | [Template](./template.md) | Eta templating, data loading, helper inheritance |
 | [Lock](./lock.md) | Concurrent operation protection, table-based locking |
 

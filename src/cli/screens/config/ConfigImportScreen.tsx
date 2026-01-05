@@ -9,7 +9,7 @@
  * noorm config import staging.noorm.enc   # Same thing
  * ```
  */
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { readFileSync, existsSync, readdirSync } from 'fs';
 import { join } from 'path';
@@ -21,7 +21,6 @@ import type { FormValues, FormField } from '../../components/index.js';
 import type { Config } from '../../../core/config/types.js';
 
 import { useRouter } from '../../router.js';
-import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
 import {
     Panel,
@@ -59,8 +58,10 @@ interface ImportedData {
  */
 export function ConfigImportScreen({ params }: ScreenProps): ReactElement {
 
+    // Note: No useFocusScope here - let SelectList and Form manage their own focus.
+    // Parent focus scopes interfere with child focus due to React effect order.
+
     const { navigate: _navigate, back } = useRouter();
-    const { isFocused } = useFocusScope('ConfigImport');
     const { stateManager, configs, refresh } = useAppContext();
 
     const filePath = params.path;
@@ -82,70 +83,106 @@ export function ConfigImportScreen({ params }: ScreenProps): ReactElement {
         [configs],
     );
 
-    // Handle file selection
-    const handleFileSelect = useCallback(async (path: string) => {
-
-        setSelectedFile(path);
-        await decryptFile(path);
-
-    }, []);
-
-    // Decrypt the file
+    // Decrypt the file with detailed error handling
     const decryptFile = useCallback(async (path: string) => {
 
         setStep('decrypting');
 
-        const [_, err] = await attempt(async () => {
+        // 1. Check file exists
+        if (!existsSync(path)) {
 
-            if (!existsSync(path)) {
-
-                throw new Error(`File not found: ${path}`);
-
-            }
-
-            const content = readFileSync(path, 'utf8');
-            const payload = JSON.parse(content) as SharedConfigPayload;
-
-            setSenderEmail(payload.sender);
-
-            const privateKey = await loadPrivateKey();
-
-            if (!privateKey) {
-
-                throw new Error('No private key found. Run "noorm init" first.');
-
-            }
-
-            const decrypted = decryptWithPrivateKey(payload, privateKey);
-            const data = JSON.parse(decrypted) as ImportedData;
-
-            setImportedData(data);
-
-        });
-
-        if (err) {
-
-            setError(err instanceof Error ? err.message : String(err));
+            setError(`File not found: ${path}`);
             setStep('error');
 
             return;
 
         }
 
+        // 2. Read file content
+        const [content, readErr] = attemptSync(() => readFileSync(path, 'utf8'));
+
+        if (readErr) {
+
+            setError('Could not read file.');
+            setStep('error');
+
+            return;
+
+        }
+
+        // 3. Parse payload (file format check)
+        const [payload, parseErr] = attemptSync(() => JSON.parse(content) as SharedConfigPayload);
+
+        if (parseErr) {
+
+            setError('Invalid file format. Not a valid noorm export file.');
+            setStep('error');
+
+            return;
+
+        }
+
+        setSenderEmail(payload.sender);
+
+        // 4. Load private key
+        const [privateKey, keyErr] = await attempt(() => loadPrivateKey());
+
+        if (keyErr || !privateKey) {
+
+            setError('No private key found. Run "noorm init" first.');
+            setStep('error');
+
+            return;
+
+        }
+
+        // 5. Decrypt (recipient check)
+        const [decrypted, decryptErr] = attemptSync(() => decryptWithPrivateKey(payload, privateKey));
+
+        if (decryptErr) {
+
+            setError('Could not decrypt file. You may not be the intended recipient.');
+            setStep('error');
+
+            return;
+
+        }
+
+        // 6. Parse decrypted content
+        const [data, dataErr] = attemptSync(() => JSON.parse(decrypted) as ImportedData);
+
+        if (dataErr) {
+
+            setError('Decrypted content is invalid. File may be corrupted.');
+            setStep('error');
+
+            return;
+
+        }
+
+        setImportedData(data);
         setStep('preview');
 
     }, []);
 
+    // Handle file selection
+    const handleFileSelect = useCallback(async (path: string) => {
+
+        setSelectedFile(path);
+        await decryptFile(path);
+
+    }, [decryptFile]);
+
     // Auto-decrypt if file path provided
-    useMemo(() => {
+    useEffect(() => {
 
         if (filePath && step === 'decrypting') {
 
-            decryptFile(filePath);
+            void decryptFile(filePath);
 
         }
 
-    }, [filePath]);
+    }, [filePath, step, decryptFile]);
 
     // Handle form submission with credentials
     const handleCredentialsSubmit = useCallback(
@@ -224,18 +261,11 @@ export function ConfigImportScreen({ params }: ScreenProps): ReactElement {
 
     }, [back]);
 
-    // Keyboard handling
-    useInput((input, key) => {
-
-        if (!isFocused) return;
+    // Keyboard handling for complete/error states only
+    // Note: file-select and preview steps have their own focusable components
+    useInput(() => {
 
         if (step === 'complete' || step === 'error') {
-
-            back();
-
-        }
-
-        if (step === 'file-select' && key.escape) {
 
             back();
 
@@ -301,6 +331,7 @@ export function ConfigImportScreen({ params }: ScreenProps): ReactElement {
                     <SelectList
                         items={fileItems}
                         onSelect={handleFileListSelect}
+                        onCancel={back}
                         focusLabel="ConfigImportFile"
                     />
                 </Box>

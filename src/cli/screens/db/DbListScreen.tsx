@@ -264,7 +264,7 @@ export function DbListScreen({ params: _params }: ScreenProps): ReactElement {
                     </Box>
                 </Panel>
 
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[Esc] Back</Text>
                 </Box>
             </Box>
@@ -359,7 +359,7 @@ export function DbListScreen({ params: _params }: ScreenProps): ReactElement {
                 </Text>
             </Box>
 
-            <Box gap={2}>
+            <Box flexWrap="wrap" columnGap={2}>
                 <Text dimColor>[c] Create</Text>
                 <Text dimColor>[d] Destroy</Text>
                 <Text dimColor>[x] Explore</Text>

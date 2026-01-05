@@ -5,7 +5,7 @@
 
 The SQL terminal is an interactive REPL built into noorm. Run queries against your database without leaving the tool or switching to another client.
 
-Debugging a migration? Check if that INSERT worked. Exploring a table structure? Run a quick SELECT. The terminal keeps you in flow while you work.
+Debugging a change? Check if that INSERT worked. Exploring a table structure? Run a quick SELECT. The terminal keeps you in flow while you work.
 
 
 ## Launching the Terminal

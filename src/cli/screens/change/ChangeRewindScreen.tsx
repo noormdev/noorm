@@ -59,7 +59,7 @@ export function ChangeRewindScreen({ params }: ScreenProps): ReactElement {
 
     const { navigate: _navigate, back } = useRouter();
     const { isFocused } = useFocusScope('ChangeRewind');
-    const { activeConfig, activeConfigName, stateManager } = useAppContext();
+    const { activeConfig, activeConfigName, stateManager, identity: cryptoIdentity } = useAppContext();
 
     // Pre-fill from params - can be count or change name
     const target = params.count ? String(params.count) : (params.name ?? '');
@@ -321,7 +321,7 @@ export function ChangeRewindScreen({ params }: ScreenProps): ReactElement {
 
             // Resolve identity
             const identity = resolveIdentity({
-                cryptoIdentity: stateManager?.getIdentity() ?? null,
+                cryptoIdentity: cryptoIdentity ?? null,
             });
 
             // Create manager and rewind

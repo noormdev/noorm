@@ -103,10 +103,11 @@ export {
 } from './scaffold.js';
 
 // ─────────────────────────────────────────────────────────────
-// History
+// History & Tracking
 // ─────────────────────────────────────────────────────────────
 
 export { ChangeHistory } from './history.js';
+export { ChangeTracker, type CanRevertResult } from './tracker.js';
 
 // ─────────────────────────────────────────────────────────────
 // Executor

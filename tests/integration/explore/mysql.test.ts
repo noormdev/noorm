@@ -76,7 +76,7 @@ describe('integration: mysql explore', () => {
             expect(overview.tables).toBe(3);
             expect(overview.views).toBe(3);
             expect(overview.functions).toBe(0);
-            expect(overview.procedures).toBe(15);
+            expect(overview.procedures).toBe(16);
             expect(overview.types).toBe(0);
 
         });
@@ -182,12 +182,12 @@ describe('integration: mysql explore', () => {
 
         describe('procedures', () => {
 
-            it('should return all 15 procedures', async () => {
+            it('should return all 16 procedures', async () => {
 
                 const procedures = await fetchList(db, 'mysql', 'procedures');
 
-                // MySQL test schema has 15 procedures (not functions)
-                expect(procedures.length).toBe(15);
+                // MySQL test schema has 16 procedures (not functions)
+                expect(procedures.length).toBe(16);
 
             });
 

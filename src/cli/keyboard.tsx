@@ -66,6 +66,12 @@ export interface GlobalKeyboardProps {
      * Triggered by Shift+Q from anywhere.
      */
     onOpenSqlTerminal?: () => void;
+
+    /**
+     * Callback when debug mode should be activated.
+     * Triggered by pressing '?' 8 times within 3 seconds.
+     */
+    onDebugMode?: () => void;
 }
 
 /**
@@ -81,6 +87,15 @@ export interface GlobalKeyboardProps {
  * Individual screens/components register their own handlers
  * via useInput with focus-aware filtering.
  */
+// Easter egg constants
+const DEBUGMODE_THRESHOLD = 4;
+const DEBUGMODE_CONSECUTIVE_MS = 750;
+
+const DEBUGMODE_STATE = {
+    count: 0,
+    lastPress: 0,
+};
+
 export function GlobalKeyboard({
     children,
     onHelp,
@@ -89,6 +104,7 @@ export function GlobalKeyboard({
     onToggleForce,
     onToggleLogViewer,
     onOpenSqlTerminal,
+    onDebugMode,
 }: GlobalKeyboardProps): ReactElement {
 
     const { gracefulExit } = useShutdown();
@@ -131,9 +147,47 @@ export function GlobalKeyboard({
             // ? shows help (can be disabled by components with text input)
             if (input === '?' && helpKeyEnabled) {
 
+                // Toggle help on every press (help shows on odd presses, hides on even)
                 onHelp?.();
 
+            }
+
+            // Implements easter egg: THRESHOLD presses within CONSECUTIVE_MS → debug mode
+            // Help toggles on every press (so it shows 4 times before debug)
+            if (input === '?') {
+
+                const now = Date.now();
+                const diff = now - DEBUGMODE_STATE.lastPress;
+
+                if (diff > DEBUGMODE_CONSECUTIVE_MS) {
+
+                    // Reset counter if last press was too long ago
+                    DEBUGMODE_STATE.count = 0;
+
+                }
+
+                // Increment easter egg counter
+                DEBUGMODE_STATE.lastPress = Date.now();
+                DEBUGMODE_STATE.count += 1;
+
+                // Check if threshold reached
+                if (DEBUGMODE_STATE.count >= DEBUGMODE_THRESHOLD) {
+
+                    DEBUGMODE_STATE.count = 0;
+
+                    onDebugMode?.();
+
+                    return;
+
+                }
+
                 return;
+
+            }
+            // Reset easter egg counter on any other key
+            else {
+
+                DEBUGMODE_STATE.count = 0;
 
             }
 

@@ -20,6 +20,7 @@ import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
 import { Panel, Spinner, StatusMessage } from '../../components/index.js';
+import { syncIdentityWithConfig } from '../../../core/identity/index.js';
 
 /**
  * Use steps.
@@ -80,6 +81,16 @@ export function ConfigUseScreen({ params }: ScreenProps): ReactElement {
             const [_, err] = await attempt(async () => {
 
                 await stateManager.setActiveConfig(configName);
+
+                // Sync identity with the database (non-blocking)
+                const syncResult = await syncIdentityWithConfig(config);
+
+                if (syncResult.ok && syncResult.knownUsers?.length) {
+
+                    await stateManager.addKnownUsers(syncResult.knownUsers);
+
+                }
+
                 await refresh();
 
             });

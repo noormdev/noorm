@@ -164,8 +164,9 @@ describe('integration: postgres teardown', () => {
 
         it('should always preserve noorm internal tables', async () => {
 
-            // Create a fake noorm table
-            await sql.raw('CREATE TABLE IF NOT EXISTS __noorm_test__ (id SERIAL PRIMARY KEY)').execute(db);
+            // Create a fake noorm table (drop first to ensure clean state)
+            await sql.raw('DROP TABLE IF EXISTS __noorm_test__').execute(db);
+            await sql.raw('CREATE TABLE __noorm_test__ (id SERIAL PRIMARY KEY)').execute(db);
             await sql.raw('INSERT INTO __noorm_test__ (id) VALUES (1)').execute(db);
 
             const result = await truncateData(db, 'postgres');
@@ -215,8 +216,9 @@ describe('integration: postgres teardown', () => {
 
         it('should preserve noorm tables during teardown', async () => {
 
-            // Create a fake noorm table
-            await sql.raw('CREATE TABLE IF NOT EXISTS __noorm_version__ (id SERIAL PRIMARY KEY)').execute(db);
+            // Create a fake noorm table (drop first to ensure clean state)
+            await sql.raw('DROP TABLE IF EXISTS __noorm_version__').execute(db);
+            await sql.raw('CREATE TABLE __noorm_version__ (id SERIAL PRIMARY KEY)').execute(db);
             await sql.raw('INSERT INTO __noorm_version__ (id) VALUES (1)').execute(db);
 
             // Teardown schema

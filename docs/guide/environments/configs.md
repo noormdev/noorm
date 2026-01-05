@@ -232,7 +232,7 @@ noorm run build  # Uses env-only config
 
 ## Validating Connections
 
-Before running migrations, verify your config connects successfully.
+Before running changes, verify your config connects successfully.
 
 **In the TUI:** Select a config and press `v` to validate.
 

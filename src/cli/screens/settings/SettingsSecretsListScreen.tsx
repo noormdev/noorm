@@ -15,7 +15,7 @@
  * ```
  */
 import { useCallback } from 'react';
-import { Box } from 'ink';
+import { Box, Text } from 'ink';
 import { attempt, wait } from '@logosdx/utils';
 
 import type { ReactElement } from 'react';
@@ -99,16 +99,26 @@ export function SettingsSecretsListScreen({ params: _params }: ScreenProps): Rea
     return (
         <Box flexDirection="column" gap={1}>
             <Panel title="Universal Secrets" paddingX={1} paddingY={1}>
-                <SecretDefinitionList
-                    secrets={secrets}
-                    scopeLabel="universal"
-                    onAdd={handleAdd}
-                    onEdit={handleEdit}
-                    onDelete={handleDelete}
-                    deleteWarning="This will remove the secret requirement from all stages."
-                    isFocused={isFocused}
-                    onBack={back}
-                />
+                <Box flexDirection="column" gap={1}>
+                    <Box flexDirection="column">
+                        <Text dimColor>
+                            Define which secrets are <Text bold>required</Text> for all configs, regardless of stage.
+                        </Text>
+                        <Text dimColor>
+                            Actual values are set per-config via <Text bold>Home › Secrets</Text>.
+                        </Text>
+                    </Box>
+                    <SecretDefinitionList
+                        secrets={secrets}
+                        scopeLabel="universal"
+                        onAdd={handleAdd}
+                        onEdit={handleEdit}
+                        onDelete={handleDelete}
+                        deleteWarning="This will remove the secret requirement from all stages."
+                        isFocused={isFocused}
+                        onBack={back}
+                    />
+                </Box>
             </Panel>
 
             <SecretDefinitionListHelp />

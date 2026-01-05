@@ -44,9 +44,9 @@ export interface ExploreOptions {
 /**
  * Check if a name is a noorm internal table.
  */
-function isNoormTable(name: string): boolean {
+function isNoormTable(name: string | undefined | null): boolean {
 
-    return name.startsWith('__noorm_');
+    return name?.startsWith('__noorm_') ?? false;
 
 }
 

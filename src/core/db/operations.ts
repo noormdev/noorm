@@ -177,7 +177,7 @@ export async function createDb(
                 tables: ['__noorm_version__', '__noorm_executions__', '__noorm_lock__'],
             });
 
-            await bootstrapSchema(db, '1.0.0');
+            await bootstrapSchema(db, config.dialect, '1.0.0');
             await conn.destroy();
 
         });

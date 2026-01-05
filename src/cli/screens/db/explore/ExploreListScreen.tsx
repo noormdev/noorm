@@ -272,7 +272,7 @@ export function ExploreListScreen({ params: _params }: ScreenProps): ReactElemen
                     <Text color="red">Invalid explore route: {route}</Text>
                 </Panel>
 
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[Esc] Back</Text>
                 </Box>
             </Box>
@@ -289,7 +289,7 @@ export function ExploreListScreen({ params: _params }: ScreenProps): ReactElemen
                     <Text color="yellow">No active configuration selected.</Text>
                 </Panel>
 
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[Esc] Back</Text>
                 </Box>
             </Box>
@@ -322,7 +322,7 @@ export function ExploreListScreen({ params: _params }: ScreenProps): ReactElemen
                     </Box>
                 </Panel>
 
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[Esc] Back</Text>
                 </Box>
             </Box>
@@ -349,7 +349,7 @@ export function ExploreListScreen({ params: _params }: ScreenProps): ReactElemen
             </Panel>
 
             {/* Hotkeys */}
-            <Box gap={2}>
+            <Box flexWrap="wrap" columnGap={2}>
                 {meta.hasDetail && <Text dimColor>[Enter] View detail</Text>}
                 <Text dimColor>[Esc] Back</Text>
             </Box>

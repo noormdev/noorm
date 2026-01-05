@@ -21,7 +21,7 @@
  * ```
  */
 import path from 'node:path';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile as fsWriteFile, mkdir } from 'node:fs/promises';
 import { sql } from 'kysely';
 
 import { attempt, attemptSync } from '@logosdx/utils';
@@ -32,6 +32,7 @@ import { processFile, isTemplate } from '../template/index.js';
 import { computeChecksum, computeCombinedChecksum } from '../runner/checksum.js';
 import { getLockManager } from '../lock/index.js';
 import { ChangeHistory } from './history.js';
+import { ChangeTracker } from './tracker.js';
 import { resolveManifest, validateChange, hasRevertFiles } from './parser.js';
 import type {
     Change,
@@ -53,6 +54,9 @@ const DEFAULT_OPTIONS: Required<Omit<ChangeOptions, 'output'>> & { output: strin
     preview: false,
     output: null,
 };
+
+/** Default SQL template - files with only this content are considered empty */
+const SQL_TEMPLATE = '-- TODO: Add SQL statements here';
 
 // ─────────────────────────────────────────────────────────────
 // Execute Change (Change Direction)
@@ -112,6 +116,18 @@ export async function executeChange(
     if (files.length === 0) {
 
         throw new ChangeValidationError(change.name, 'No files in change/ folder');
+
+    }
+
+    // Validate files have actual content (not empty or template-only)
+    const [contentValid, contentErr] = await attempt(() => validateFilesHaveContent(files));
+
+    if (contentErr || !contentValid) {
+
+        throw new ChangeValidationError(
+            change.name,
+            'Files are empty or contain only template placeholders. Edit the SQL files before running.',
+        );
 
     }
 
@@ -180,6 +196,7 @@ export async function executeChange(
     const [, lockErr] = await attempt(() =>
         lockManager.acquire(context.db, context.configName, identity, {
             reason: `Change: ${change.name}`,
+            dialect: context.dialect,
         }),
     );
 
@@ -190,10 +207,9 @@ export async function executeChange(
 
     }
 
-    try {
-
-        // Execute files
-        const result = await executeFiles(
+    // Execute files (lock will be released after, regardless of outcome)
+    const [result, execErr] = await attempt(() =>
+        executeFiles(
             context,
             change,
             files,
@@ -201,17 +217,19 @@ export async function executeChange(
             changeChecksum,
             history,
             start,
-        );
+        ),
+    );
 
-        return result;
+    // Always release lock
+    await attempt(() => lockManager.release(context.db, context.configName, identity));
+
+    if (execErr) {
+
+        throw execErr;
 
     }
-    finally {
 
-        // Always release lock
-        await attempt(() => lockManager.release(context.db, context.configName, identity));
-
-    }
+    return result;
 
 }
 
@@ -261,13 +279,14 @@ export async function revertChange(
 
     const revertChecksum = computeCombinedChecksum(checksums);
 
-    // Create history tracker
+    // Create trackers
     const history = new ChangeHistory(context.db, context.configName);
+    const tracker = new ChangeTracker(context.db, context.configName);
 
     // Check if can revert (unless dry run or preview)
     if (!opts.dryRun && !opts.preview) {
 
-        const canRevertResult = await history.canRevert(change.name, opts.force);
+        const canRevertResult = await tracker.canRevert(change.name, opts.force);
 
         if (!canRevertResult.canRevert) {
 
@@ -315,6 +334,7 @@ export async function revertChange(
     const [, lockErr] = await attempt(() =>
         lockManager.acquire(context.db, context.configName, identity, {
             reason: `Revert: ${change.name}`,
+            dialect: context.dialect,
         }),
     );
 
@@ -324,10 +344,9 @@ export async function revertChange(
 
     }
 
-    try {
-
-        // Execute files
-        const result = await executeFiles(
+    // Execute files (lock will be released after, regardless of outcome)
+    const [result, execErr] = await attempt(() =>
+        executeFiles(
             context,
             change,
             files,
@@ -335,24 +354,26 @@ export async function revertChange(
             revertChecksum,
             history,
             start,
-        );
+        ),
+    );
 
-        // If successful, mark original as reverted
-        if (result.status === 'success') {
+    // Always release lock
+    await attempt(() => lockManager.release(context.db, context.configName, identity));
 
-            await history.markAsReverted(change.name);
+    if (execErr) {
 
-        }
-
-        return result;
-
-    }
-    finally {
-
-        // Always release lock
-        await attempt(() => lockManager.release(context.db, context.configName, identity));
+        throw execErr;
 
     }
+
+    // If successful, mark original as reverted
+    if (result.status === 'success') {
+
+        await tracker.markAsReverted(change.name);
+
+    }
+
+    return result;
 
 }
 
@@ -408,7 +429,7 @@ async function executeFiles(
     }
 
     // Create pending file records
-    await history.createFileRecords(
+    const createRecordsErr = await history.createFileRecords(
         operationId,
         expandedFiles.map((f) => ({
             filepath: f.path,
@@ -416,6 +437,23 @@ async function executeFiles(
             checksum: fileChecksums.get(f.path) ?? '',
         })),
     );
+
+    if (createRecordsErr) {
+
+        // File records couldn't be created - finalize as failed and return
+        await history.finalizeOperation(operationId, 'failed', checksum, 0, createRecordsErr);
+
+        return {
+            name: change.name,
+            direction,
+            status: 'failed',
+            files: [],
+            durationMs: performance.now() - startTime,
+            error: createRecordsErr,
+            operationId,
+        };
+
+    }
 
     // Emit start event
     observer.emit('change:start', {
@@ -427,108 +465,210 @@ async function executeFiles(
     // Execute each file
     const results: ChangeFileResult[] = [];
     let failed = false;
+    let failedFile: string | undefined;
+    let failureError: string | undefined;
 
-    for (let i = 0; i < expandedFiles.length; i++) {
+    // Execute loop wrapped in attempt to catch unexpected errors
+    const [, unexpectedErr] = await attempt(async () => {
 
-        const file = expandedFiles[i];
+        for (let i = 0; i < expandedFiles.length; i++) {
 
-        if (!file) continue;
+            const file = expandedFiles[i];
 
-        observer.emit('change:file', {
-            change: change.name,
-            filepath: file.path,
-            index: i,
-            total: expandedFiles.length,
-        });
+            if (!file) continue;
 
-        const fileStart = performance.now();
+            observer.emit('change:file', {
+                change: change.name,
+                filepath: file.path,
+                index: i,
+                total: expandedFiles.length,
+            });
 
-        // Load and render file
-        const [sqlContent, loadErr] = await attempt(() => loadAndRenderFile(context, file.path));
+            const fileStart = performance.now();
 
-        if (loadErr) {
+            // Load and render file
+            const [sqlContent, loadErr] = await attempt(() => loadAndRenderFile(context, file.path));
+
+            if (loadErr) {
+
+                const durationMs = performance.now() - fileStart;
+
+                // Capture error info FIRST
+                failed = true;
+                failedFile = file.path;
+                failureError = loadErr.message;
+
+                results.push({
+                    filepath: file.path,
+                    checksum: fileChecksums.get(file.path) ?? '',
+                    status: 'failed',
+                    error: loadErr.message,
+                    durationMs,
+                });
+
+                // Update DB record
+                const updateErr = await history.updateFileExecution(
+                    operationId,
+                    file.path,
+                    'failed',
+                    durationMs,
+                    loadErr.message,
+                );
+
+                if (updateErr) {
+
+                    // Log but don't fail - we already have the error captured
+                    observer.emit('error', {
+                        source: 'change',
+                        error: new Error(updateErr),
+                        context: { filepath: file.path, operation: 'update-failed-record' },
+                    });
+
+                }
+
+                break;
+
+            }
+
+            // Execute SQL
+            const [, execErr] = await attempt(() => sql.raw(sqlContent).execute(context.db));
 
             const durationMs = performance.now() - fileStart;
 
+            if (execErr) {
+
+                // Capture error info FIRST
+                failed = true;
+                failedFile = file.path;
+                failureError = execErr.message;
+
+                results.push({
+                    filepath: file.path,
+                    checksum: fileChecksums.get(file.path) ?? '',
+                    status: 'failed',
+                    error: execErr.message,
+                    durationMs,
+                });
+
+                // Update DB record
+                const updateErr = await history.updateFileExecution(
+                    operationId,
+                    file.path,
+                    'failed',
+                    durationMs,
+                    execErr.message,
+                );
+
+                if (updateErr) {
+
+                    // Log but don't fail - we already have the error captured
+                    observer.emit('error', {
+                        source: 'change',
+                        error: new Error(updateErr),
+                        context: { filepath: file.path, operation: 'update-failed-record' },
+                    });
+
+                }
+
+                break;
+
+            }
+
+            // Success
             results.push({
                 filepath: file.path,
                 checksum: fileChecksums.get(file.path) ?? '',
-                status: 'failed',
-                error: loadErr.message,
+                status: 'success',
                 durationMs,
             });
 
-            await history.updateFileExecution(
+            // Update DB record
+            const updateErr = await history.updateFileExecution(
                 operationId,
                 file.path,
-                'failed',
+                'success',
                 durationMs,
-                loadErr.message,
             );
 
-            failed = true;
-            break;
+            if (updateErr) {
+
+                // Log but continue - the file was executed successfully
+                observer.emit('error', {
+                    source: 'change',
+                    error: new Error(updateErr),
+                    context: { filepath: file.path, operation: 'update-success-record' },
+                });
+
+            }
 
         }
 
-        // Execute SQL
-        const [, execErr] = await attempt(() => sql.raw(sqlContent).execute(context.db));
+    });
 
-        const durationMs = performance.now() - fileStart;
+    // Handle unexpected errors from the execution loop
+    if (unexpectedErr) {
 
-        if (execErr) {
-
-            results.push({
-                filepath: file.path,
-                checksum: fileChecksums.get(file.path) ?? '',
-                status: 'failed',
-                error: execErr.message,
-                durationMs,
-            });
-
-            await history.updateFileExecution(
-                operationId,
-                file.path,
-                'failed',
-                durationMs,
-                execErr.message,
-            );
+        if (!failed) {
 
             failed = true;
-            break;
+            failureError = unexpectedErr.message;
 
         }
 
-        // Success
-        results.push({
-            filepath: file.path,
-            checksum: fileChecksums.get(file.path) ?? '',
-            status: 'success',
-            durationMs,
+        observer.emit('error', {
+            source: 'change',
+            error: unexpectedErr,
+            context: { name: change.name, operation: 'execute-files' },
         });
-
-        await history.updateFileExecution(operationId, file.path, 'success', durationMs);
 
     }
 
-    // If failed, skip remaining files
+    // Mark remaining pending files as skipped if there was a failure
+    // This handles both normal failures and unexpected exceptions
     if (failed) {
 
-        await history.skipRemainingFiles(operationId, 'change failed');
+        const skipReason = failedFile
+            ? `${path.basename(failedFile)} failed: ${failureError ?? 'unknown error'}`
+            : 'change failed';
+
+        const skipError = await history.skipRemainingFiles(operationId, skipReason);
+
+        if (skipError) {
+
+            // Log skip failure but continue - the change already failed
+            observer.emit('error', {
+                source: 'change',
+                error: new Error(skipError),
+                context: { operationId, operation: 'skip-remaining-files' },
+            });
+
+        }
 
     }
 
     // Finalize operation
-    const finalStatus = failed ? 'failed' : 'success';
     const totalDurationMs = performance.now() - startTime;
+    const executionStatus = failed ? 'failed' : 'success';
 
-    await history.finalizeOperation(
+    // Build detailed error message for the change record
+    const errorMessage = failedFile
+        ? `${path.basename(failedFile)}: ${failureError ?? 'unknown error'}`
+        : failureError;
+
+    const finalizeError = await history.finalizeOperation(
         operationId,
-        finalStatus,
+        executionStatus,
         checksum,
         totalDurationMs,
-        failed ? results.find((r) => r.error)?.error : undefined,
+        failed ? errorMessage : undefined,
     );
+
+    // Final status accounts for BOTH execution AND finalization
+    // If finalization failed, the change is effectively failed regardless of execution
+    const finalStatus = finalizeError ? 'failed' : executionStatus;
+    const combinedError = finalizeError
+        ? `${errorMessage ?? 'Execution succeeded but finalization failed'}. Additionally: ${finalizeError}`
+        : errorMessage;
 
     // Emit complete event
     observer.emit('change:complete', {
@@ -544,84 +684,8 @@ async function executeFiles(
         status: finalStatus,
         files: results,
         durationMs: totalDurationMs,
-        error: failed ? results.find((r) => r.error)?.error : undefined,
+        error: finalStatus === 'failed' ? combinedError : undefined,
         operationId,
-    };
-
-}
-
-// ─────────────────────────────────────────────────────────────
-// Internal: Dry Run
-// ─────────────────────────────────────────────────────────────
-
-/**
- * Execute dry run mode.
- */
-async function executeDryRun(
-    context: ChangeContext,
-    change: Change,
-    files: ChangeFile[],
-    direction: 'change' | 'revert',
-    startTime: number,
-): Promise<ChangeResult> {
-
-    const { mkdir, writeFile } = await import('node:fs/promises');
-
-    const expandedFiles = await expandFiles(files, context.sqlDir);
-    const results: ChangeFileResult[] = [];
-
-    for (const file of expandedFiles) {
-
-        const fileStart = performance.now();
-
-        // Compute checksum
-        const [checksum] = await attempt(() => computeChecksum(file.path));
-
-        // Load and render file
-        const [sqlContent, loadErr] = await attempt(() => loadAndRenderFile(context, file.path));
-
-        if (loadErr) {
-
-            results.push({
-                filepath: file.path,
-                checksum: checksum ?? '',
-                status: 'failed',
-                error: loadErr.message,
-                durationMs: performance.now() - fileStart,
-            });
-
-            continue;
-
-        }
-
-        // Write to tmp/
-        const outputPath = getDryRunOutputPath(context.projectRoot, file.path);
-        const outputDir = path.dirname(outputPath);
-
-        await mkdir(outputDir, { recursive: true });
-        await writeFile(outputPath, sqlContent, 'utf-8');
-
-        observer.emit('file:dry-run', {
-            filepath: file.path,
-            outputPath,
-        });
-
-        results.push({
-            filepath: file.path,
-            checksum: checksum ?? '',
-            status: 'success',
-            durationMs: performance.now() - fileStart,
-            renderedSql: sqlContent,
-        });
-
-    }
-
-    return {
-        name: change.name,
-        direction,
-        status: results.every((r) => r.status === 'success') ? 'success' : 'failed',
-        files: results,
-        durationMs: performance.now() - startTime,
     };
 
 }
@@ -795,51 +859,6 @@ async function computeFileChecksums(files: ChangeFile[], sqlDir: string): Promis
 }
 
 /**
- * Load and optionally render a SQL file.
- */
-async function loadAndRenderFile(context: ChangeContext, filepath: string): Promise<string> {
-
-    if (isTemplate(filepath)) {
-
-        const result = await processFile(filepath, {
-            projectRoot: context.projectRoot,
-            config: context.config,
-            secrets: context.secrets,
-            globalSecrets: context.globalSecrets,
-        });
-
-        return result.sql;
-
-    }
-
-    const [content, err] = await attempt(() => readFile(filepath, 'utf-8'));
-
-    if (err) {
-
-        throw new Error(`Failed to read file: ${filepath}`, { cause: err });
-
-    }
-
-    return content;
-
-}
-
-/**
- * Get the output path for a dry run file.
- */
-function getDryRunOutputPath(projectRoot: string, filepath: string): string {
-
-    const relativePath = path.relative(projectRoot, filepath);
-
-    const outputRelativePath = relativePath.endsWith('.tmpl')
-        ? relativePath.slice(0, -5)
-        : relativePath;
-
-    return path.join(projectRoot, 'tmp', outputRelativePath);
-
-}
-
-/**
  * Format preview header for a file.
  */
 function formatPreviewHeader(filepath: string): string {
@@ -849,6 +868,44 @@ function formatPreviewHeader(filepath: string): string {
 -- ============================================================
 
 `;
+
+}
+
+/**
+ * Validate that at least one file has actual content (not empty or template-only).
+ * Returns true if valid, false if all files are empty/template.
+ */
+async function validateFilesHaveContent(files: ChangeFile[]): Promise<boolean> {
+
+    for (const file of files) {
+
+        // .txt manifest files are considered valid (they reference other files)
+        if (file.type === 'txt') {
+
+            return true;
+
+        }
+
+        const [content, err] = await attempt(() => readFile(file.path, 'utf-8'));
+
+        if (err) {
+
+            continue; // Skip files we can't read
+
+        }
+
+        const trimmed = content?.trim() ?? '';
+
+        // Check if file has actual content (not empty, not just the template)
+        if (trimmed && trimmed !== SQL_TEMPLATE) {
+
+            return true;
+
+        }
+
+    }
+
+    return false;
 
 }
 
@@ -870,5 +927,149 @@ function createFailedResult(
         durationMs: performance.now() - startTime,
         error,
     };
+
+}
+
+/**
+ * Execute dry run mode.
+ *
+ * Writes rendered SQL to tmp/ without executing or tracking.
+ */
+async function executeDryRun(
+    context: ChangeContext,
+    change: Change,
+    files: ChangeFile[],
+    direction: 'change' | 'revert',
+    startTime: number,
+): Promise<ChangeResult> {
+
+    const expandedFiles = await expandFiles(files, context.sqlDir);
+    const results: ChangeFileResult[] = [];
+
+    for (const file of expandedFiles) {
+
+        const fileStart = performance.now();
+
+        // Compute checksum
+        const [checksum] = await attempt(() => computeChecksum(file.path));
+
+        // Load and render file
+        const [sqlContent, loadErr] = await attempt(() => loadAndRenderFile(context, file.path));
+
+        if (loadErr) {
+
+            results.push({
+                filepath: file.path,
+                checksum: checksum ?? '',
+                status: 'failed',
+                error: loadErr.message,
+                durationMs: performance.now() - fileStart,
+            });
+
+            continue;
+
+        }
+
+        // Write to tmp/
+        const [, writeErr] = await attempt(() =>
+            writeDryRunOutput(context.projectRoot, file.path, sqlContent),
+        );
+
+        const durationMs = performance.now() - fileStart;
+
+        if (writeErr) {
+
+            observer.emit('error', {
+                source: 'change',
+                error: writeErr,
+                context: { filepath: file.path, operation: 'dry-run-write' },
+            });
+
+        }
+
+        results.push({
+            filepath: file.path,
+            checksum: checksum ?? '',
+            status: 'success',
+            durationMs,
+            renderedSql: sqlContent,
+        });
+
+    }
+
+    return {
+        name: change.name,
+        direction,
+        status: results.every((r) => r.status === 'success') ? 'success' : 'failed',
+        files: results,
+        durationMs: performance.now() - startTime,
+    };
+
+}
+
+/**
+ * Get the output path for a dry run file.
+ *
+ * Mirrors the source path structure under tmp/.
+ */
+function getDryRunOutputPath(projectRoot: string, filepath: string): string {
+
+    const relativePath = path.relative(projectRoot, filepath);
+
+    const outputRelativePath = relativePath.endsWith('.tmpl')
+        ? relativePath.slice(0, -5)
+        : relativePath;
+
+    return path.join(projectRoot, 'tmp', outputRelativePath);
+
+}
+
+/**
+ * Write rendered SQL to tmp/ directory for dry run.
+ */
+async function writeDryRunOutput(
+    projectRoot: string,
+    filepath: string,
+    content: string,
+): Promise<void> {
+
+    const outputPath = getDryRunOutputPath(projectRoot, filepath);
+
+    // Ensure directory exists
+    const outputDir = path.dirname(outputPath);
+    await mkdir(outputDir, { recursive: true });
+
+    // Write file
+    await fsWriteFile(outputPath, content, 'utf-8');
+
+}
+
+/**
+ * Load and optionally render a SQL file.
+ */
+async function loadAndRenderFile(context: ChangeContext, filepath: string): Promise<string> {
+
+    if (isTemplate(filepath)) {
+
+        const result = await processFile(filepath, {
+            projectRoot: context.projectRoot,
+            config: undefined, // Change context doesn't have config
+            secrets: undefined,
+            globalSecrets: undefined,
+        });
+
+        return result.sql;
+
+    }
+
+    const [content, err] = await attempt(() => readFile(filepath, 'utf-8'));
+
+    if (err) {
+
+        throw new Error(`Failed to read file: ${filepath}`, { cause: err });
+
+    }
+
+    return content;
 
 }

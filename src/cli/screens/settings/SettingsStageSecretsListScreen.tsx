@@ -127,7 +127,7 @@ export function SettingsStageSecretsListScreen({ params }: ScreenProps): ReactEl
                     <Text color="yellow">No stage name provided.</Text>
                 </Panel>
 
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[Esc] Back</Text>
                 </Box>
             </Box>
@@ -144,7 +144,7 @@ export function SettingsStageSecretsListScreen({ params }: ScreenProps): ReactEl
                     <Text color="red">Stage "{stageName}" not found.</Text>
                 </Panel>
 
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[Esc] Back</Text>
                 </Box>
             </Box>
@@ -155,15 +155,25 @@ export function SettingsStageSecretsListScreen({ params }: ScreenProps): ReactEl
     return (
         <Box flexDirection="column" gap={1}>
             <Panel title={`Secrets for Stage: ${stageName}`} paddingX={1} paddingY={1}>
-                <SecretDefinitionList
-                    secrets={secrets}
-                    scopeLabel={`stage: ${stageName}`}
-                    onAdd={handleAdd}
-                    onEdit={handleEdit}
-                    onDelete={handleDelete}
-                    isFocused={isFocused}
-                    onBack={back}
-                />
+                <Box flexDirection="column" gap={1}>
+                    <Box flexDirection="column">
+                        <Text dimColor>
+                            Define which secrets are <Text bold>required</Text> for configs in this stage.
+                        </Text>
+                        <Text dimColor>
+                            Actual values are set per-config via <Text bold>Home › Secrets</Text>.
+                        </Text>
+                    </Box>
+                    <SecretDefinitionList
+                        secrets={secrets}
+                        scopeLabel={`stage: ${stageName}`}
+                        onAdd={handleAdd}
+                        onEdit={handleEdit}
+                        onDelete={handleDelete}
+                        isFocused={isFocused}
+                        onBack={back}
+                    />
+                </Box>
             </Panel>
 
             <SecretDefinitionListHelp />

@@ -79,11 +79,11 @@ describe('integration: mssql explore', () => {
 
             const overview = await fetchOverview(db, 'mssql');
 
-            // From fixtures: 3 tables, 3 views, 3 functions, 15 procedures, 5 types
+            // From fixtures: 3 tables, 3 views, 3 functions, 16 procedures, 5 types
             expect(overview.tables).toBe(3);
             expect(overview.views).toBe(3);
             expect(overview.functions).toBe(3);
-            expect(overview.procedures).toBe(15);
+            expect(overview.procedures).toBe(16);
             expect(overview.types).toBe(5);
 
             // Indexes and FKs are present from table definitions
@@ -223,11 +223,11 @@ describe('integration: mssql explore', () => {
 
     describe('fetchList: procedures', () => {
 
-        it('should return all 15 stored procedures', async () => {
+        it('should return all 16 stored procedures', async () => {
 
             const procedures = await fetchList(db, 'mssql', 'procedures');
 
-            expect(procedures.length).toBeGreaterThanOrEqual(15);
+            expect(procedures.length).toBeGreaterThanOrEqual(16);
 
             const procNames = procedures.map((p: ProcedureSummary) => p.name);
 

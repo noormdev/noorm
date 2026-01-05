@@ -1,6 +1,7 @@
 import { attempt } from '@logosdx/utils';
 
 import { initState, getStateManager } from '../../core/state/index.js';
+import { syncIdentityWithConfig } from '../../core/identity/index.js';
 import { type HeadlessCommand } from './_helpers.js';
 
 export const help = `
@@ -80,6 +81,21 @@ export const run: HeadlessCommand = async (params, _flags, logger) => {
         logger.error(setErr.message);
 
         return 1;
+
+    }
+
+    // Sync identity with the database (non-blocking)
+    const config = stateManager.getConfig(configName);
+
+    if (config) {
+
+        const syncResult = await syncIdentityWithConfig(config);
+
+        if (syncResult.ok && syncResult.knownUsers?.length) {
+
+            await stateManager.addKnownUsers(syncResult.knownUsers);
+
+        }
 
     }
 

@@ -10,12 +10,13 @@
  * ```
  */
 import { useState, useEffect, useCallback } from 'react';
+import { readFile } from 'fs/promises';
 import { Box, Text, useInput } from 'ink';
 import { ProgressBar } from '@inkjs/ui';
 
 import type { ReactElement } from 'react';
 import type { ScreenProps } from '../../types.js';
-import type { ChangeListItem } from '../../../core/change/types.js';
+import type { Change, ChangeListItem } from '../../../core/change/types.js';
 import type { NoormDatabase } from '../../../core/shared/index.js';
 import type { Kysely } from 'kysely';
 
@@ -39,6 +40,65 @@ import { createConnection } from '../../../core/connection/factory.js';
 import { resolveIdentity } from '../../../core/identity/resolver.js';
 import { observer } from '../../../core/observer.js';
 
+/** Default SQL template - files with only this content are considered empty */
+const SQL_TEMPLATE = '-- TODO: Add SQL statements here\n';
+
+/**
+ * Check if a change has meaningful content in its files.
+ * Returns null if valid, or an error message if files are empty/template-only.
+ */
+async function validateChangeContent(change: Change): Promise<string | null> {
+
+    if (change.changeFiles.length === 0) {
+
+        return `"${change.name}" has no files to execute`;
+
+    }
+
+    let hasContent = false;
+
+    for (const file of change.changeFiles) {
+
+        // Skip .txt manifest files - they reference other files
+        if (file.type === 'txt') {
+
+            hasContent = true;
+
+            continue;
+
+        }
+
+        const [content, err] = await attempt(() => readFile(file.path, 'utf-8'));
+
+        if (err) {
+
+            continue; // Skip files we can't read
+
+        }
+
+        const trimmed = content?.trim() ?? '';
+
+        // Check if file has actual content (not empty, not just the template)
+        if (trimmed && trimmed !== SQL_TEMPLATE.trim()) {
+
+            hasContent = true;
+
+            break;
+
+        }
+
+    }
+
+    if (!hasContent) {
+
+        return `"${change.name}" has empty or template-only files`;
+
+    }
+
+    return null;
+
+}
+
 /**
  * FF steps.
  */
@@ -56,7 +116,7 @@ export function ChangeFFScreen({ params: _params }: ScreenProps): ReactElement {
 
     const { navigate: _navigate, back } = useRouter();
     const { isFocused } = useFocusScope('ChangeFF');
-    const { activeConfig, activeConfigName, stateManager } = useAppContext();
+    const { activeConfig, activeConfigName, stateManager, identity: cryptoIdentity } = useAppContext();
 
     const [step, setStep] = useState<FFStep>('loading');
     const [pendingChanges, setPendingChanges] = useState<ChangeListItem[]>([]);
@@ -131,6 +191,32 @@ export function ChangeFFScreen({ params: _params }: ScreenProps): ReactElement {
                         return dateA - dateB; // Oldest first
 
                     });
+
+                // Validate all pending changes have actual content
+                const emptyChanges: string[] = [];
+
+                for (const cs of changes.filter((c) => pending.some((p) => p.name === c.name))) {
+
+                    const contentError = await validateChangeContent(cs);
+
+                    if (contentError) {
+
+                        emptyChanges.push(cs.name);
+
+                    }
+
+                }
+
+                if (emptyChanges.length > 0) {
+
+                    const names = emptyChanges.slice(0, 3).join(', ');
+                    const more = emptyChanges.length > 3 ? ` and ${emptyChanges.length - 3} more` : '';
+
+                    throw new Error(
+                        `Cannot fast-forward: ${names}${more} have empty or template-only files. Edit the SQL files before running.`,
+                    );
+
+                }
 
                 setPendingChanges(pending);
                 setIsProtected(activeConfig.protected ?? false);
@@ -225,7 +311,7 @@ export function ChangeFFScreen({ params: _params }: ScreenProps): ReactElement {
 
             // Resolve identity
             const identity = resolveIdentity({
-                cryptoIdentity: stateManager?.getIdentity() ?? null,
+                cryptoIdentity: cryptoIdentity ?? null,
             });
 
             // Create manager and fast-forward

@@ -34,7 +34,7 @@ describe('teardown: postgres dialect', () => {
 
             const sql = postgresTeardownOperations.truncateTable('users');
 
-            expect(sql).toBe('TRUNCATE TABLE "users" RESTART IDENTITY');
+            expect(sql).toBe('TRUNCATE TABLE "users" RESTART IDENTITY CASCADE');
 
         });
 
@@ -42,7 +42,7 @@ describe('teardown: postgres dialect', () => {
 
             const sql = postgresTeardownOperations.truncateTable('users', undefined, false);
 
-            expect(sql).toBe('TRUNCATE TABLE "users"');
+            expect(sql).toBe('TRUNCATE TABLE "users" CASCADE');
 
         });
 
@@ -50,7 +50,7 @@ describe('teardown: postgres dialect', () => {
 
             const sql = postgresTeardownOperations.truncateTable('user_accounts');
 
-            expect(sql).toBe('TRUNCATE TABLE "user_accounts" RESTART IDENTITY');
+            expect(sql).toBe('TRUNCATE TABLE "user_accounts" RESTART IDENTITY CASCADE');
 
         });
 
@@ -58,7 +58,7 @@ describe('teardown: postgres dialect', () => {
 
             const sql = postgresTeardownOperations.truncateTable('table"with"quotes');
 
-            expect(sql).toBe('TRUNCATE TABLE "table""with""quotes" RESTART IDENTITY');
+            expect(sql).toBe('TRUNCATE TABLE "table""with""quotes" RESTART IDENTITY CASCADE');
 
         });
 
@@ -66,7 +66,7 @@ describe('teardown: postgres dialect', () => {
 
             const sql = postgresTeardownOperations.truncateTable('users', 'private');
 
-            expect(sql).toBe('TRUNCATE TABLE "private"."users" RESTART IDENTITY');
+            expect(sql).toBe('TRUNCATE TABLE "private"."users" RESTART IDENTITY CASCADE');
 
         });
 
@@ -74,7 +74,7 @@ describe('teardown: postgres dialect', () => {
 
             const sql = postgresTeardownOperations.truncateTable('users', 'public');
 
-            expect(sql).toBe('TRUNCATE TABLE "users" RESTART IDENTITY');
+            expect(sql).toBe('TRUNCATE TABLE "users" RESTART IDENTITY CASCADE');
 
         });
 
@@ -82,7 +82,7 @@ describe('teardown: postgres dialect', () => {
 
             const sql = postgresTeardownOperations.truncateTable('users', 'my"schema');
 
-            expect(sql).toBe('TRUNCATE TABLE "my""schema"."users" RESTART IDENTITY');
+            expect(sql).toBe('TRUNCATE TABLE "my""schema"."users" RESTART IDENTITY CASCADE');
 
         });
 
@@ -191,6 +191,42 @@ describe('teardown: postgres dialect', () => {
             const sql = postgresTeardownOperations.dropFunction('func"name');
 
             expect(sql).toBe('DROP FUNCTION IF EXISTS "func""name" CASCADE');
+
+        });
+
+    });
+
+    describe('dropProcedure', () => {
+
+        it('should generate DROP PROCEDURE with IF EXISTS and CASCADE', () => {
+
+            const sql = postgresTeardownOperations.dropProcedure('process_orders');
+
+            expect(sql).toBe('DROP PROCEDURE IF EXISTS "process_orders" CASCADE');
+
+        });
+
+        it('should include schema when provided and not public', () => {
+
+            const sql = postgresTeardownOperations.dropProcedure('process_orders', 'jobs');
+
+            expect(sql).toBe('DROP PROCEDURE IF EXISTS "jobs"."process_orders" CASCADE');
+
+        });
+
+        it('should omit public schema', () => {
+
+            const sql = postgresTeardownOperations.dropProcedure('process_orders', 'public');
+
+            expect(sql).toBe('DROP PROCEDURE IF EXISTS "process_orders" CASCADE');
+
+        });
+
+        it('should escape quotes in procedure name', () => {
+
+            const sql = postgresTeardownOperations.dropProcedure('proc"name');
+
+            expect(sql).toBe('DROP PROCEDURE IF EXISTS "proc""name" CASCADE');
 
         });
 

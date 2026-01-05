@@ -159,14 +159,14 @@ noorm -H --force run build  # Skip checksums
 Execute a single SQL file.
 
 ```bash
-noorm -H run file migrations/001_init.sql
-noorm -H --path migrations/001_init.sql run file
+noorm -H run file sql/01_tables/001_users.sql
+noorm -H --path sql/01_tables/001_users.sql run file
 ```
 
 **JSON output:**
 ```json
 {
-    "filepath": "migrations/001_init.sql",
+    "filepath": "sql/01_tables/001_users.sql",
     "status": "success",
     "durationMs": 45
 }
@@ -177,7 +177,7 @@ noorm -H --path migrations/001_init.sql run file
 Execute all SQL files in a directory.
 
 ```bash
-noorm -H run dir migrations/
+noorm -H run dir sql/01_tables/
 ```
 
 
@@ -432,7 +432,7 @@ noorm -H change ff || exit 1
 ### GitHub Actions
 
 ```yaml
-name: Database Migrations
+name: Database Changes
 
 on:
     push:
@@ -448,7 +448,7 @@ jobs:
                   node-version: '20'
             - run: npm ci
 
-            - name: Apply migrations
+            - name: Apply changes
               env:
                   NOORM_CONFIG: production
                   NOORM_CONNECTION_HOST: ${{ secrets.DB_HOST }}
@@ -465,7 +465,7 @@ jobs:
 For ephemeral environments without stored configs:
 
 ```yaml
-- name: Apply migrations
+- name: Apply changes
   env:
       NOORM_CONNECTION_DIALECT: postgres
       NOORM_CONNECTION_HOST: ${{ secrets.DB_HOST }}
@@ -525,7 +525,7 @@ noorm -H lock acquire
 # Ensure lock is released on exit
 trap "noorm -H lock release" EXIT
 
-# Safe to run migrations
+# Safe to apply changes
 noorm -H change ff
 ```
 
@@ -541,7 +541,7 @@ noorm -H change ff
 
 3. **Check exit codes** - Non-zero means failure
    ```bash
-   noorm -H change ff || { echo "Migration failed"; exit 1; }
+   noorm -H change ff || { echo "Change failed"; exit 1; }
    ```
 
 4. **Use locks for concurrent operations** - Prevent race conditions in parallel deployments

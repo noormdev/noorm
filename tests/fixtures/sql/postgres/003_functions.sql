@@ -107,7 +107,7 @@ RETURNS TABLE (
     title VARCHAR(255),
     description TEXT,
     color VARCHAR(7),
-    position INTEGER,
+    "position" INTEGER,
     created_at TIMESTAMPTZ,
     updated_at TIMESTAMPTZ
 ) AS $$
@@ -125,7 +125,7 @@ RETURNS TABLE (
     title VARCHAR(255),
     description TEXT,
     color VARCHAR(7),
-    position INTEGER,
+    "position" INTEGER,
     created_at TIMESTAMPTZ,
     updated_at TIMESTAMPTZ
 ) AS $$
@@ -196,7 +196,7 @@ RETURNS TABLE (
     priority SMALLINT,
     due_date TIMESTAMPTZ,
     completed_at TIMESTAMPTZ,
-    position INTEGER,
+    "position" INTEGER,
     created_at TIMESTAMPTZ,
     updated_at TIMESTAMPTZ
 ) AS $$
@@ -218,7 +218,7 @@ RETURNS TABLE (
     priority SMALLINT,
     due_date TIMESTAMPTZ,
     completed_at TIMESTAMPTZ,
-    position INTEGER,
+    "position" INTEGER,
     created_at TIMESTAMPTZ,
     updated_at TIMESTAMPTZ
 ) AS $$

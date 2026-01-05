@@ -3,7 +3,7 @@
 
 ## The Problem
 
-When multiple developers run migrations against the same database, you need to know *who* did *what*. But identity isn't just about audit trails. In a team environment, you also need to share sensitive configs securely between machines.
+When multiple developers run changes against the same database, you need to know *who* did *what*. But identity isn't just about audit trails. In a team environment, you also need to share sensitive configs securely between machines.
 
 noorm solves both problems with a dual identity system: a simple audit identity for tracking, and a cryptographic identity for secure sharing.
 
@@ -45,13 +45,16 @@ const config = {
 
 Audit identity tells you *who*. Cryptographic identity proves it and enables secure sharing.
 
-When you first run noorm, it generates an X25519 keypair stored at `~/.noorm/`:
+When you first run noorm, it generates an X25519 keypair stored globally at `~/.noorm/`:
 
 ```
 ~/.noorm/
 ├── identity.key     # Private key (mode 600, never shared)
-└── identity.pub     # Public key (mode 644, shareable)
+├── identity.pub     # Public key (mode 644, shareable)
+└── identity.json    # Metadata (name, email, machine, os)
 ```
+
+**Important:** Identity is always global, never per-project. A developer's identity is the same across all noorm projects on their machine. The encrypted state file (`.noorm/state.enc`) stores configs and secrets, but identity lives at the user level.
 
 Your identity is uniquely identified by a hash combining your email, name, machine, and OS. Two machines belonging to the same person have different identity hashes - this is intentional. It lets you track which *device* performed an operation, not just which person.
 
@@ -100,7 +103,7 @@ This works because X25519 enables asymmetric encryption: anyone can encrypt usin
 
 ## Known Users
 
-When you sync with a database, noorm discovers other users who have run migrations. Their public keys are cached locally as "known users."
+When you sync with a database, noorm discovers other users who have run changes. Their public keys are cached locally as "known users."
 
 ```typescript
 const knownUsers = state.getKnownUsers()
@@ -166,24 +169,31 @@ On first run, noorm:
 
 1. Detects your name/email from git config (or prompts)
 2. Generates an X25519 keypair
-3. Saves keys to `~/.noorm/`
+3. Saves keys and metadata to `~/.noorm/`
 4. Creates your cryptographic identity
-5. Stores identity in encrypted state
+
+No per-project storage is needed. The `createCryptoIdentity` function handles everything:
 
 ```typescript
-import { createCryptoIdentity, saveKeyPair } from './core/identity'
+import { createCryptoIdentity } from './core/identity'
 
 // Generate identity with auto-detected defaults
+// Keys and metadata are automatically saved to ~/.noorm/
 const { identity, keypair } = await createCryptoIdentity({
     name: 'Alice',
     email: 'alice@example.com',
 })
+// identity.identityHash, identity.publicKey, etc. are now available
+// Keys are persisted at ~/.noorm/identity.key and ~/.noorm/identity.pub
+```
 
-// Save keypair to ~/.noorm/
-await saveKeyPair(keypair)
+To load an existing identity (e.g., in CLI app context):
 
-// Store in state
-await state.setIdentity(identity)
+```typescript
+import { loadExistingIdentity } from './core/identity'
+
+const identity = await loadExistingIdentity()
+// Returns CryptoIdentity if keys exist, null otherwise
 ```
 
 
@@ -204,7 +214,7 @@ observer.on('identity:resolved', ({ name, source }) => {
 
 ## Recovering Identity Metadata
 
-When key files exist but the state is missing (new project, reset state, or corrupted state), use `createIdentityForExistingKeys` to reconstruct the identity metadata:
+When key files exist but metadata is missing or needs updating, use `createIdentityForExistingKeys` to reconstruct the identity:
 
 ```typescript
 import { createIdentityForExistingKeys, hasKeyFiles } from './core/identity'
@@ -218,20 +228,53 @@ if (await hasKeyFiles()) {
         email: 'alice@example.com',
     })
 
-    if (identity) {
-
-        await state.setIdentity(identity)
-
-    }
+    // identity is ready to use - metadata is saved to ~/.noorm/identity.json
 
 }
 ```
 
 This loads your existing public key from `~/.noorm/identity.pub` and creates the identity metadata (hash, machine info, etc.) without regenerating keys. Use this when:
 
-- Setting up a new project with existing global keys
-- Recovering from corrupted or reset state
 - Migrating to a new machine where keys were copied
+- Updating name or email without regenerating keys
+- Recovering from corrupted metadata file
+
+
+## Identity Sync on Config Activation
+
+When you activate a database config (`noorm config use <name>`), noorm automatically syncs identities:
+
+1. Registers your identity to the database's `__noorm_identities__` table
+2. Fetches other team members' identities from the database
+3. Caches discovered users locally as "known users"
+
+This happens silently and non-blocking—connection failures don't prevent config activation.
+
+```typescript
+import { syncIdentityWithConfig } from './core/identity'
+
+// Sync returns known users instead of storing them directly
+const result = await syncIdentityWithConfig(config, cryptoIdentity)
+
+if (result.success) {
+    // Store discovered users in state
+    await stateManager.addKnownUsers(result.knownUsers)
+}
+```
+
+The sync function:
+- Connects to the database
+- Checks if noorm tracking tables exist (skips sync if not bootstrapped)
+- Upserts your identity (updates `last_seen_at` if already registered)
+- Fetches all identities from the table
+- Returns the list of known users
+
+**Observer events:**
+
+| Event | Payload | Description |
+|-------|---------|-------------|
+| `identity:registered` | `{ identityHash, configName }` | Your identity added to database |
+| `identity:synced` | `{ configName, usersDiscovered }` | Sync completed |
 
 
 ## Additional Utilities
@@ -240,6 +283,8 @@ The identity module exports several utility functions:
 
 ```typescript
 import {
+    loadExistingIdentity,            // Load identity from global ~/.noorm/
+    syncIdentityWithConfig,          // Sync identity with database on config activation
     clearIdentityCache,              // Clear cached audit identity
     getIdentityForConfig,            // Extract identity override from config
     getIdentityWithCrypto,           // Resolve with crypto identity awareness

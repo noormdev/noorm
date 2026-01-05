@@ -201,7 +201,7 @@ export function SettingsInitScreen({ params }: ScreenProps): ReactElement {
                     <Text color="red">{error ?? 'An error occurred'}</Text>
                 </Panel>
 
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[Enter/Esc] Back</Text>
                 </Box>
             </Box>

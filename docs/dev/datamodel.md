@@ -226,10 +226,10 @@ Controls which files are included in build operations.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| include | string[] | Glob patterns for included files (execution order) |
+| include | string[] | Glob patterns for included files (filter only) |
 | exclude | string[] | Glob patterns for excluded files |
 
-Files are executed in the order they appear in `include`. If not specified, all `.sql` files in the schema directory are included.
+Include acts as a filter, not an ordering mechanism. Files are executed in alphanumeric order—use numeric prefixes on directories and files to control the sequence. If not specified, all `.sql` files in the schema directory are included.
 
 
 ### PathConfig (Settings)
@@ -1019,7 +1019,7 @@ noorm's data model spans three tiers with clear separation of concerns:
 2. **Settings** - Team rules, stages, build config (`.noorm/settings.yml`)
 3. **Database Tables** - Execution history, locks, identities (`__noorm_*`)
 
-The change file system provides versioned migrations, while runtime types enable flexible execution modes (dry run, preview, force).
+The change file system provides versioned changes, while runtime types enable flexible execution modes (dry run, preview, force).
 
 All types follow consistent patterns:
 - Clear status enums for operation tracking

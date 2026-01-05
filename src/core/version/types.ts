@@ -10,6 +10,7 @@
  * - Gradually rollout changes across layers
  */
 import type { Kysely } from 'kysely';
+import type { Dialect } from '../connection/types.js';
 
 // ─────────────────────────────────────────────────────────────
 // Version Numbers
@@ -52,13 +53,18 @@ export type VersionLayer = 'schema' | 'state' | 'settings';
  * export const v1: SchemaMigration = {
  *     version: 1,
  *     description: 'Create tracking tables',
- *     async up(db) {
+ *     async up(db, dialect) {
+ *         const idType = dialect === 'postgres' ? 'serial' : 'integer';
  *         await db.schema
  *             .createTable('__noorm_version__')
- *             .addColumn('id', 'serial', col => col.primaryKey())
+ *             .addColumn('id', idType, col =>
+ *                 dialect === 'postgres'
+ *                     ? col.primaryKey()
+ *                     : col.primaryKey().autoIncrement()
+ *             )
  *             .execute()
  *     },
- *     async down(db) {
+ *     async down(db, dialect) {
  *         await db.schema.dropTable('__noorm_version__').execute()
  *     }
  * }
@@ -72,10 +78,10 @@ export interface SchemaMigration {
     description: string;
 
     /** Apply the migration */
-    up(db: Kysely<unknown>): Promise<void>;
+    up(db: Kysely<unknown>, dialect: Dialect): Promise<void>;
 
     /** Rollback the migration */
-    down(db: Kysely<unknown>): Promise<void>;
+    down(db: Kysely<unknown>, dialect: Dialect): Promise<void>;
 }
 
 // ─────────────────────────────────────────────────────────────

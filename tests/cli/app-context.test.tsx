@@ -29,15 +29,17 @@ const createMockStateManager = () => ({
     getActiveConfig: vi.fn().mockReturnValue(null),
     getActiveConfigName: vi.fn().mockReturnValue(null),
     listConfigs: vi.fn().mockReturnValue([]),
-    getIdentity: vi.fn().mockReturnValue(null),
     getConfig: vi.fn().mockReturnValue(null),
     setActiveConfig: vi.fn().mockResolvedValue(undefined),
+    hasPrivateKey: vi.fn().mockReturnValue(true),
+    isLoaded: true,
 });
 
 const createMockSettingsManager = () => ({
     load: vi.fn().mockResolvedValue({ version: '0.1.0' }),
     isLoaded: true,
     settings: { version: '0.1.0' },
+    getStages: vi.fn().mockReturnValue([]),
 });
 
 // Mock the state and settings managers
@@ -51,6 +53,18 @@ vi.mock('../../src/core/index.js', async () => {
         getSettingsManager: vi.fn(() => createMockSettingsManager()),
         resetStateManager: vi.fn(),
         resetSettingsManager: vi.fn(),
+    };
+
+});
+
+// Mock identity loading to return null (no global identity)
+vi.mock('../../src/core/identity/index.js', async () => {
+
+    const actual = await vi.importActual('../../src/core/identity/index.js');
+
+    return {
+        ...actual,
+        loadExistingIdentity: vi.fn().mockResolvedValue(null),
     };
 
 });

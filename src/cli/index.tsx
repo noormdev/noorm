@@ -24,6 +24,8 @@ import type { Route, RouteParams, CliFlags, ParsedCli } from './types.js';
 import { App } from './app.js';
 import { shouldRunHeadless, runHeadless } from './headless/index.js';
 import { enableAutoLoggerInit } from '../core/logger/init.js';
+import { hasKeyFiles } from '../core/identity/storage.js';
+import { initProjectContext } from '../core/project.js';
 
 /**
  * Help text for the CLI.
@@ -360,18 +362,52 @@ function extractParams(args: string[]): RouteParams {
  */
 async function main(): Promise<void> {
 
+    // Discover project root by walking up directory tree
+    // If found, process.chdir() to the project root so relative paths work
+    // This enables running noorm from any subdirectory within a project
+    const projectDiscovery = initProjectContext();
+
     // Enable event-driven logger initialization
     // This sets up listeners for settings:loaded and secret events
     // so the logger can start capturing events as soon as settings are loaded
+    // Note: process.cwd() is now the project root if one was found
     enableAutoLoggerInit(process.cwd());
 
     const { mode, route, params, flags } = parseCli();
 
+    // Check if identity exists (global keys or env var)
+    const hasIdentity = await hasKeyFiles() || !!process.env['NOORM_IDENTITY'];
+
     if (mode === 'headless') {
+
+        // In headless mode, require identity (except for init command)
+        if (!hasIdentity && route !== 'init' && route !== 'identity/init') {
+
+            console.error('No identity configured. Run: noorm init');
+            process.exit(1);
+
+        }
 
         // Run in headless mode
         const exitCode = await runHeadless(route, params, flags);
         process.exit(exitCode);
+
+    }
+
+    // Determine effective route based on identity and project status
+    let effectiveRoute: Route = route;
+
+    if (!hasIdentity) {
+
+        // No identity - go to init screen for identity setup
+        effectiveRoute = 'init';
+
+    }
+    else if (!projectDiscovery.hasProject && route === 'home') {
+
+        // Has identity but no project found - go to init for project setup
+        // Only redirect if user didn't explicitly request a different route
+        effectiveRoute = 'init';
 
     }
 
@@ -383,7 +419,7 @@ async function main(): Promise<void> {
     };
 
     // Start TUI mode
-    const { waitUntilExit } = render(<App initialRoute={route} initialParams={mergedParams} />, {
+    const { waitUntilExit } = render(<App initialRoute={effectiveRoute} initialParams={mergedParams} />, {
         exitOnCtrlC: true,
         patchConsole: true,
     });

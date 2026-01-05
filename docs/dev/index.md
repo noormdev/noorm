@@ -8,7 +8,8 @@ For user-facing documentation, see the [main docs](/).
 
 ## Core Modules
 
-- [Change Management](./change.md) - Versioned migrations with forward/revert
+- [Project Discovery](./project-discovery.md) - Finding project root from any directory
+- [Change Management](./change.md) - Versioned changes with forward/revert
 - [Configuration](./config.md) - Multi-source config resolution
 - [Runner](./runner.md) - SQL file execution with checksums
 - [Settings](./settings.md) - Project-wide configuration

@@ -45,7 +45,7 @@ export function LockReleaseScreen({ params: _params }: ScreenProps): ReactElemen
 
     const { back } = useRouter();
     const { isFocused } = useFocusScope('LockRelease');
-    const { activeConfig, activeConfigName, stateManager } = useAppContext();
+    const { activeConfig, activeConfigName, identity: cryptoIdentity } = useAppContext();
     const { showToast } = useToast();
 
     const [phase, setPhase] = useState<Phase>('loading');
@@ -71,7 +71,7 @@ export function LockReleaseScreen({ params: _params }: ScreenProps): ReactElemen
 
             // Resolve identity
             const identity = resolveIdentity({
-                cryptoIdentity: stateManager?.getIdentity() ?? null,
+                cryptoIdentity: cryptoIdentity ?? null,
             });
             const formattedIdentity = formatIdentity(identity);
 
@@ -158,7 +158,7 @@ export function LockReleaseScreen({ params: _params }: ScreenProps): ReactElemen
 
         };
 
-    }, [activeConfig, activeConfigName, stateManager]);
+    }, [activeConfig, activeConfigName, cryptoIdentity]);
 
     // Execute lock release
     const handleConfirm = useCallback(async () => {
@@ -291,7 +291,7 @@ export function LockReleaseScreen({ params: _params }: ScreenProps): ReactElemen
                     </Box>
                 </Panel>
 
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[Enter/Esc] Back</Text>
                 </Box>
             </Box>
@@ -317,7 +317,7 @@ export function LockReleaseScreen({ params: _params }: ScreenProps): ReactElemen
                     </Box>
                 </Panel>
 
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[Enter/Esc] Back</Text>
                 </Box>
             </Box>
@@ -363,7 +363,7 @@ export function LockReleaseScreen({ params: _params }: ScreenProps): ReactElemen
                     </Box>
                 </Panel>
 
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[Enter/Esc] Done</Text>
                 </Box>
             </Box>
@@ -380,7 +380,7 @@ export function LockReleaseScreen({ params: _params }: ScreenProps): ReactElemen
                     <Text color="red">{error}</Text>
                 </Panel>
 
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[Enter/Esc] Back</Text>
                 </Box>
             </Box>

@@ -15,15 +15,6 @@ function quote(name: string): string {
 }
 
 /**
- * Escape a value for single-quoted string literal.
- */
-function escapeString(value: string): string {
-
-    return value.replace(/'/g, "''");
-
-}
-
-/**
  * SQLite teardown operations.
  *
  * SQLite has limited DDL compared to other databases:
@@ -46,22 +37,12 @@ export const sqliteTeardownOperations: TeardownDialectOperations = {
 
     },
 
-    truncateTable(tableName: string, _schema?: string, restartIdentity = false): string {
+    truncateTable(tableName: string, _schema?: string, _restartIdentity = false): string {
 
         // SQLite doesn't have TRUNCATE, use DELETE
-        const deleteStmt = `DELETE FROM ${quote(tableName)}`;
-
-        if (restartIdentity) {
-
-            // Reset sqlite_sequence to restart AUTOINCREMENT counters
-            // Note: sqlite_sequence only exists if the table has AUTOINCREMENT
-            const sequenceStmt = `DELETE FROM sqlite_sequence WHERE name = '${escapeString(tableName)}'`;
-
-            return `${deleteStmt}; ${sequenceStmt}`;
-
-        }
-
-        return deleteStmt;
+        // Note: restartIdentity is ignored because sqlite_sequence only exists
+        // when tables use AUTOINCREMENT, and we can't safely check that here
+        return `DELETE FROM ${quote(tableName)}`;
 
     },
 
@@ -79,7 +60,14 @@ export const sqliteTeardownOperations: TeardownDialectOperations = {
 
     dropFunction(_name: string, _schema?: string): string {
 
-        // SQLite doesn't support stored procedures/functions
+        // SQLite doesn't support user-defined functions in SQL
+        return '-- SQLite does not support user-defined functions';
+
+    },
+
+    dropProcedure(_name: string, _schema?: string): string {
+
+        // SQLite doesn't support stored procedures
         return '-- SQLite does not support stored procedures';
 
     },

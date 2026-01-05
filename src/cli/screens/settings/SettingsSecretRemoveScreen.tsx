@@ -119,7 +119,7 @@ export function SettingsSecretRemoveScreen({ params }: ScreenProps): ReactElemen
                     <Text color="yellow">No secret key provided.</Text>
                 </Panel>
 
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[Enter/Esc] Back</Text>
                 </Box>
             </Box>
@@ -136,7 +136,7 @@ export function SettingsSecretRemoveScreen({ params }: ScreenProps): ReactElemen
                     <Text color="red">Secret "{secretKey}" not found.</Text>
                 </Panel>
 
-                <Box gap={2}>
+                <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[Enter/Esc] Back</Text>
                 </Box>
             </Box>

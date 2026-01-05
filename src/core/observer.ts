@@ -126,6 +126,8 @@ export interface NoormEvents extends SettingsEvents {
 
     // Identity (cryptographic)
     'identity:created': { identityHash: string; name: string; email: string; machine: string };
+    'identity:registered': { identityHash: string; name: string; email: string };
+    'identity:synced': { configName: string; registered: boolean; knownUsersCount: number };
 
     // Connection
     'connection:open': { configName: string; dialect: string };

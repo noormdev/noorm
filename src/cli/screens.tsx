@@ -110,6 +110,11 @@ import {
     RunFileScreen,
     RunDirScreen,
 } from './screens/run/index.js';
+import {
+    DebugOverviewScreen,
+    DebugListScreen,
+    DebugDetailScreen,
+} from './screens/debug/index.js';
 
 /**
  * Screen registry type.
@@ -473,6 +478,20 @@ const SCREENS: ScreenRegistry = {
     'run/dir': {
         component: RunDirScreen,
         label: 'Run Directory',
+    },
+
+    // Debug (hidden easter egg)
+    debug: {
+        component: DebugOverviewScreen,
+        label: 'Debug',
+    },
+    'debug/table': {
+        component: DebugListScreen,
+        label: 'Debug Table',
+    },
+    'debug/table/detail': {
+        component: DebugDetailScreen,
+        label: 'Debug Row',
     },
 };
 

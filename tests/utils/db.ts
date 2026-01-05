@@ -83,14 +83,332 @@ export async function createTestConnection(dialect: Dialect): Promise<Connection
 }
 
 /**
+ * Split SQL content into individual statements.
+ *
+ * Handles:
+ * - PostgreSQL dollar-quoted strings ($$...$$) which can contain semicolons
+ * - MySQL/MSSQL BEGIN...END blocks which contain semicolons
+ *
+ * Uses the pattern of semicolon followed by whitespace and newline as statement separator,
+ * but skips such patterns inside dollar-quoted strings or BEGIN...END blocks.
+ *
+ * @param content - SQL content to split
+ * @returns Array of SQL statements
+ */
+export function splitSqlStatements(content: string): string[] {
+
+    const statements: string[] = [];
+    let current = '';
+    let inDollarQuote = false;
+    let dollarTag = '';
+    let beginDepth = 0;
+    let inString = false;
+    let stringChar = '';
+    let i = 0;
+
+    // Helper to check for a keyword at position (case-insensitive, word boundary)
+    const matchKeyword = (pos: number, keyword: string): boolean => {
+
+        if (pos + keyword.length > content.length) return false;
+
+        const slice = content.slice(pos, pos + keyword.length);
+
+        if (slice.toLowerCase() !== keyword.toLowerCase()) return false;
+
+        // Check word boundary before
+        if (pos > 0) {
+
+            const charBefore = content[pos - 1];
+
+            if (/[a-zA-Z0-9_]/.test(charBefore!)) return false;
+
+        }
+
+        // Check word boundary after
+        if (pos + keyword.length < content.length) {
+
+            const charAfter = content[pos + keyword.length];
+
+            if (/[a-zA-Z0-9_]/.test(charAfter!)) return false;
+
+        }
+
+        return true;
+
+    };
+
+    while (i < content.length) {
+
+        const char = content[i]!;
+
+        // Track string literals (single quotes)
+        if (char === "'" && !inDollarQuote) {
+
+            if (inString && stringChar === "'") {
+
+                // Check for escaped quote ('')
+                if (i + 1 < content.length && content[i + 1] === "'") {
+
+                    current += "''";
+                    i += 2;
+                    continue;
+
+                }
+
+                inString = false;
+                stringChar = '';
+
+            }
+            else if (!inString) {
+
+                inString = true;
+                stringChar = "'";
+
+            }
+
+            current += char;
+            i++;
+            continue;
+
+        }
+
+        // Skip processing if inside a string literal
+        if (inString) {
+
+            current += char;
+            i++;
+            continue;
+
+        }
+
+        // Check for dollar-quote start/end (PostgreSQL)
+        if (char === '$' && !inString) {
+
+            // Look for dollar-quote tag pattern: $tag$ or $$
+            let j = i + 1;
+
+            while (j < content.length && (content[j] === '_' || /[a-zA-Z0-9]/.test(content[j]!))) {
+
+                j++;
+
+            }
+
+            if (j < content.length && content[j] === '$') {
+
+                const tag = content.slice(i, j + 1);
+
+                if (!inDollarQuote) {
+
+                    // Starting a dollar-quoted string
+                    inDollarQuote = true;
+                    dollarTag = tag;
+                    current += tag;
+                    i = j + 1;
+                    continue;
+
+                }
+                else if (tag === dollarTag) {
+
+                    // Ending the dollar-quoted string
+                    inDollarQuote = false;
+                    dollarTag = '';
+                    current += tag;
+                    i = j + 1;
+                    continue;
+
+                }
+
+            }
+
+        }
+
+        // Skip processing if inside a dollar-quote
+        if (inDollarQuote) {
+
+            current += char;
+            i++;
+            continue;
+
+        }
+
+        // Check for BEGIN keyword
+        if (matchKeyword(i, 'BEGIN')) {
+
+            beginDepth++;
+            current += content.slice(i, i + 5);
+            i += 5;
+            continue;
+
+        }
+
+        // Check for END keyword that closes a BEGIN block
+        // Only decrement depth if END is followed by ; (to avoid CASE...END expressions)
+        // Skip END IF, END LOOP, END WHILE, END CASE, END REPEAT (these don't close BEGIN)
+        if (matchKeyword(i, 'END') && beginDepth > 0) {
+
+            // Look ahead to see what follows END
+            let afterEnd = i + 3;
+
+            // Skip whitespace (but not newlines for now)
+            while (afterEnd < content.length && content[afterEnd] === ' ') {
+
+                afterEnd++;
+
+            }
+
+            // Check for compound statement keywords (END IF, END LOOP, etc.)
+            const compoundKeywords = ['IF', 'LOOP', 'WHILE', 'CASE', 'REPEAT'];
+            let isCompoundEnd = false;
+
+            for (const kw of compoundKeywords) {
+
+                if (matchKeyword(afterEnd, kw)) {
+
+                    isCompoundEnd = true;
+                    break;
+
+                }
+
+            }
+
+            // Only decrement if:
+            // 1. Not a compound END (END IF, END LOOP, etc.)
+            // 2. Followed by ; (to avoid CASE...END expressions where END is not followed by ;)
+            const followedBySemicolon = content[afterEnd] === ';';
+
+            if (!isCompoundEnd && followedBySemicolon) {
+
+                beginDepth--;
+
+            }
+
+            current += content.slice(i, i + 3);
+            i += 3;
+            continue;
+
+        }
+
+        // Check for statement-ending semicolon (followed by whitespace+newline)
+        if (char === ';' && beginDepth === 0) {
+
+            // Look ahead for whitespace followed by newline
+            let j = i + 1;
+
+            while (j < content.length && content[j] !== '\n' && /\s/.test(content[j]!)) {
+
+                j++;
+
+            }
+
+            // Statement ends if semicolon is at end of content or followed by whitespace+newline
+            if (j >= content.length || content[j] === '\n') {
+
+                current += content.slice(i, j + 1);
+                const trimmed = current.trim();
+
+                if (trimmed.length > 0 && !trimmed.startsWith('--')) {
+
+                    statements.push(trimmed);
+
+                }
+                current = '';
+                i = j + 1;
+                continue;
+
+            }
+
+        }
+
+        current += char;
+        i++;
+
+    }
+
+    // Add final statement if any
+    const trimmed = current.trim();
+
+    if (trimmed.length > 0 && !trimmed.startsWith('--')) {
+
+        statements.push(trimmed);
+
+    }
+
+    return statements;
+
+}
+
+/**
+ * Preprocess MySQL DELIMITER syntax.
+ *
+ * MySQL uses DELIMITER to change the statement terminator for procedures.
+ * This function converts DELIMITER-based files to standard semicolon-terminated statements.
+ *
+ * @param content - SQL file content
+ * @returns Preprocessed content with DELIMITER syntax removed
+ */
+function preprocessMySqlDelimiter(content: string): string {
+
+    // Check if this file uses DELIMITER
+    if (!content.includes('DELIMITER')) {
+
+        return content;
+
+    }
+
+    // Find all DELIMITER declarations
+    const delimiterMatch = content.match(/DELIMITER\s+(\S+)/);
+
+    if (!delimiterMatch) {
+
+        return content;
+
+    }
+
+    const customDelimiter = delimiterMatch[1]!;
+
+    // Remove DELIMITER lines
+    let processed = content.replace(/DELIMITER\s+\S+[\r\n]*/g, '');
+
+    // Replace custom delimiter with semicolon
+    processed = processed.replace(new RegExp(customDelimiter.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), ';');
+
+    return processed;
+
+}
+
+/**
+ * Preprocess MSSQL GO batch separator.
+ *
+ * MSSQL uses GO to separate batches, not semicolons.
+ * This function splits content by GO and returns individual batches.
+ *
+ * @param content - SQL file content
+ * @returns Array of SQL batches
+ */
+function splitMssqlBatches(content: string): string[] {
+
+    // Split by GO on its own line (case-insensitive)
+    const batches = content.split(/^\s*GO\s*$/mi);
+
+    return batches
+        .map(b => b.trim())
+        .filter(b => b.length > 0 && !b.startsWith('--'));
+
+}
+
+/**
  * Execute a SQL file against the database.
  *
  * @param db - Kysely database instance
  * @param filePath - Path to SQL file
+ * @param dialect - Database dialect (for MSSQL GO handling)
  */
-async function executeSqlFile(db: Kysely<unknown>, filePath: string): Promise<void> {
+async function executeSqlFile(db: Kysely<unknown>, filePath: string, dialect?: Dialect): Promise<void> {
 
-    const content = await readFile(filePath, 'utf-8');
+    let content = await readFile(filePath, 'utf-8');
+
+    // Handle MySQL DELIMITER syntax
+    content = preprocessMySqlDelimiter(content);
 
     // Remove comment lines before splitting
     const cleanedContent = content
@@ -98,12 +416,22 @@ async function executeSqlFile(db: Kysely<unknown>, filePath: string): Promise<vo
         .filter((line) => !line.trim().startsWith('--'))
         .join('\n');
 
-    // Split on semicolons followed by newline (handles triggers/procedures with internal semicolons)
-    // This works because well-formatted SQL has statement terminators on their own line or followed by newline
-    const statements = cleanedContent
-        .split(/;[\s]*\n/)
-        .map((s) => s.trim())
-        .filter((s) => s.length > 0);
+    // MSSQL uses GO as batch separator
+    if (dialect === 'mssql') {
+
+        const batches = splitMssqlBatches(cleanedContent);
+
+        for (const batch of batches) {
+
+            await sql.raw(batch).execute(db);
+
+        }
+
+        return;
+
+    }
+
+    const statements = splitSqlStatements(cleanedContent);
 
     for (const statement of statements) {
 
@@ -149,8 +477,11 @@ export async function deployTestSchema(db: Kysely<unknown>, dialect: Dialect): P
     }
     else if (dialect === 'mssql') {
 
-        // MSSQL has types before tables
-        files.unshift('001_types.sql');
+        // MSSQL uses different numbering: types → tables → views → functions → procedures
+        files.length = 0; // Clear default files
+        files.push('001_types.sql');
+        files.push('002_tables.sql');
+        files.push('003_views.sql');
         files.push('004_functions.sql');
         files.push('005_procedures.sql');
         // TODO: Triggers disabled - SQL splitter can't handle BEGIN...END blocks with internal semicolons
@@ -167,7 +498,7 @@ export async function deployTestSchema(db: Kysely<unknown>, dialect: Dialect): P
     for (const file of files) {
 
         const filePath = join(dialectDir, file);
-        await executeSqlFile(db, filePath);
+        await executeSqlFile(db, filePath, dialect);
 
     }
 
@@ -198,6 +529,20 @@ export async function seedTestData(db: Kysely<unknown>, dialect: Dialect): Promi
             return `'${value}'`;
 
         }
+
+    };
+
+    // Boolean literals vary by dialect
+    const bool = (value: boolean): string => {
+
+        // MSSQL uses BIT (0/1), others use true/false
+        if (dialect === 'mssql') {
+
+            return value ? '1' : '0';
+
+        }
+
+        return value ? 'true' : 'false';
 
     };
 
@@ -242,17 +587,17 @@ export async function seedTestData(db: Kysely<unknown>, dialect: Dialect): Promi
 
     await sql.raw(`
         INSERT INTO todo_items (id, list_id, title, description, is_completed, priority, position)
-        VALUES (${uuid(itemIds[0]!)}, ${uuid(listIds[0]!)}, 'Complete report', 'Finish Q4 report', false, 2, 0)
+        VALUES (${uuid(itemIds[0]!)}, ${uuid(listIds[0]!)}, 'Complete report', 'Finish Q4 report', ${bool(false)}, 2, 0)
     `).execute(db);
 
     await sql.raw(`
         INSERT INTO todo_items (id, list_id, title, description, is_completed, priority, position)
-        VALUES (${uuid(itemIds[1]!)}, ${uuid(listIds[0]!)}, 'Review PRs', 'Review pending pull requests', true, 1, 1)
+        VALUES (${uuid(itemIds[1]!)}, ${uuid(listIds[0]!)}, 'Review PRs', 'Review pending pull requests', ${bool(true)}, 1, 1)
     `).execute(db);
 
     await sql.raw(`
         INSERT INTO todo_items (id, list_id, title, description, is_completed, priority, position)
-        VALUES (${uuid(itemIds[2]!)}, ${uuid(listIds[1]!)}, 'Buy groceries', 'Weekly shopping', false, 0, 0)
+        VALUES (${uuid(itemIds[2]!)}, ${uuid(listIds[1]!)}, 'Buy groceries', 'Weekly shopping', ${bool(false)}, 0, 0)
     `).execute(db);
 
 }
@@ -396,7 +741,32 @@ export async function teardownTestSchema(db: Kysely<unknown>, dialect: Dialect):
     // Drop tables (FK order)
     for (const table of tables) {
 
-        await sql.raw(`DROP TABLE IF EXISTS ${table} CASCADE`).execute(db);
+        if (dialect === 'mssql') {
+
+            // MSSQL doesn't support CASCADE - drop FK constraints manually first
+            // Get and drop all FK constraints referencing this table
+            const fks = await sql.raw(`
+                SELECT fk.name AS fk_name, OBJECT_NAME(fk.parent_object_id) AS table_name
+                FROM sys.foreign_keys fk
+                WHERE OBJECT_NAME(fk.referenced_object_id) = '${table}'
+                   OR OBJECT_NAME(fk.parent_object_id) = '${table}'
+            `).execute(db);
+
+            for (const fk of fks.rows as Array<{ fk_name: string; table_name: string }>) {
+
+                await sql.raw(`ALTER TABLE [${fk.table_name}] DROP CONSTRAINT [${fk.fk_name}]`).execute(db);
+
+            }
+
+            // Now drop the table
+            await sql.raw(`DROP TABLE IF EXISTS [${table}]`).execute(db);
+
+        }
+        else {
+
+            await sql.raw(`DROP TABLE IF EXISTS ${table} CASCADE`).execute(db);
+
+        }
 
     }
 

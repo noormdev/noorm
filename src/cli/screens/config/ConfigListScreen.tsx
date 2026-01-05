@@ -26,6 +26,7 @@ import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
 import { Panel, SelectList, type SelectListItem } from '../../components/index.js';
+import { syncIdentityWithConfig } from '../../../core/identity/index.js';
 
 /**
  * Config list item value.
@@ -85,6 +86,22 @@ export function ConfigListScreen({ params: _params }: ScreenProps): ReactElement
 
                 // Set as active
                 await stateManager.setActiveConfig(item.value.name);
+
+                // Sync identity with the database
+                const config = stateManager.getConfig(item.value.name);
+
+                if (config) {
+
+                    const syncResult = await syncIdentityWithConfig(config);
+
+                    if (syncResult.ok && syncResult.knownUsers?.length) {
+
+                        await stateManager.addKnownUsers(syncResult.knownUsers);
+
+                    }
+
+                }
+
                 await refresh();
 
             }
@@ -203,7 +220,7 @@ export function ConfigListScreen({ params: _params }: ScreenProps): ReactElement
                 )}
             </Panel>
 
-            <Box gap={2} flexWrap="wrap">
+            <Box flexWrap="wrap" columnGap={2}>
                 <Text dimColor>[a] Add</Text>
                 <Text dimColor>[e] Edit</Text>
                 <Text dimColor>[d] Delete</Text>

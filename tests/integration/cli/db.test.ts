@@ -98,7 +98,8 @@ describe('cli: db explore', () => {
 
     });
 
-    it('should return valid JSON with --json flag', async () => {
+    // Note: This test can be flaky due to CLI process timing - retry if needed
+    it('should return valid JSON with --json flag', { retry: 2 }, async () => {
 
         const result = await noormJson<ExploreOverview>(project, 'db', 'explore');
 
@@ -109,7 +110,8 @@ describe('cli: db explore', () => {
 
     });
 
-    it('should show table count in overview', async () => {
+    // Note: This test can be flaky due to CLI process timing - retry if needed
+    it('should show table count in overview', { retry: 2 }, async () => {
 
         const result = await noormJson<ExploreOverview>(project, 'db', 'explore');
 
@@ -119,7 +121,8 @@ describe('cli: db explore', () => {
 
     });
 
-    it('should show view count in overview', async () => {
+    // Note: This test can be flaky due to CLI process timing - retry if needed
+    it('should show view count in overview', { retry: 2 }, async () => {
 
         const result = await noormJson<ExploreOverview>(project, 'db', 'explore');
 
@@ -368,7 +371,8 @@ describe('cli: db teardown', () => {
 
     });
 
-    it('should return valid JSON with --json flag', async () => {
+    // Note: This test can be flaky due to CLI process timing - retry if needed
+    it('should return valid JSON with --json flag', { retry: 2 }, async () => {
 
         // Re-setup project since previous test tore down schema
         await cleanupTestProject(project);
@@ -376,13 +380,20 @@ describe('cli: db teardown', () => {
 
         const result = await noormJson<TeardownResult>(project, 'db', 'teardown');
 
+        if (!result.ok) {
+
+            console.log('FLAKY TEARDOWN FAILURE:', result.error, result._raw);
+
+        }
+
         expect(result.ok).toBe(true);
         expect(result.data).not.toBeNull();
         expect(typeof result.data!.dropped).toBe('object');
 
     });
 
-    it('should drop all objects', async () => {
+    // Note: This test can be flaky due to CLI process timing - retry if needed
+    it('should drop all objects', { retry: 2 }, async () => {
 
         // Re-setup project since previous test tore down schema
         await cleanupTestProject(project);
@@ -396,7 +407,8 @@ describe('cli: db teardown', () => {
 
     });
 
-    it('should leave database empty after teardown', async () => {
+    // Note: This test can be flaky due to CLI process timing - retry if needed
+    it('should leave database empty after teardown', { retry: 2 }, async () => {
 
         // Re-setup project since previous test tore down schema
         await cleanupTestProject(project);

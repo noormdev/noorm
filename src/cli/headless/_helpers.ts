@@ -55,7 +55,7 @@ export const withContext = async <T>(opts: {
 
     // Bootstrap internal tables if they don't exist (for fresh databases in CI)
     const [, schemaError] = await attempt(() =>
-        ensureSchemaVersion(ctx.kysely as unknown as Kysely<NoormDatabase>, CLI_VERSION),
+        ensureSchemaVersion(ctx.kysely as unknown as Kysely<NoormDatabase>, ctx.dialect, CLI_VERSION),
     );
 
     if (schemaError) {

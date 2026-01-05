@@ -79,7 +79,7 @@ describe('version: manager', () => {
 
             it('should detect state migration needed', async () => {
 
-                await bootstrapSchema(db, '1.0.0');
+                await bootstrapSchema(db, 'sqlite', '1.0.0');
                 const manager = new VersionManager({ projectRoot: '/test' });
                 const state = {};
                 const settings = { schemaVersion: CURRENT_VERSIONS.settings };
@@ -93,7 +93,7 @@ describe('version: manager', () => {
 
             it('should detect settings migration needed', async () => {
 
-                await bootstrapSchema(db, '1.0.0');
+                await bootstrapSchema(db, 'sqlite', '1.0.0');
                 const manager = new VersionManager({ projectRoot: '/test' });
                 const state = { schemaVersion: CURRENT_VERSIONS.state };
                 const settings = {};
@@ -107,7 +107,7 @@ describe('version: manager', () => {
 
             it('should detect all current versions', async () => {
 
-                await bootstrapSchema(db, '1.0.0');
+                await bootstrapSchema(db, 'sqlite', '1.0.0');
                 const manager = new VersionManager({ projectRoot: '/test' });
                 const state = { schemaVersion: CURRENT_VERSIONS.state };
                 const settings = { schemaVersion: CURRENT_VERSIONS.settings };
@@ -130,7 +130,7 @@ describe('version: manager', () => {
                 const state = {};
                 const settings = {};
 
-                const result = await manager.ensureCompatible(db, state, settings, '1.0.0');
+                const result = await manager.ensureCompatible(db, 'sqlite', state, settings, '1.0.0');
 
                 expect(result.state['schemaVersion']).toBe(CURRENT_VERSIONS.state);
                 expect(result.settings['schemaVersion']).toBe(CURRENT_VERSIONS.settings);
@@ -139,12 +139,12 @@ describe('version: manager', () => {
 
             it('should return migrated state', async () => {
 
-                await bootstrapSchema(db, '1.0.0');
+                await bootstrapSchema(db, 'sqlite', '1.0.0');
                 const manager = new VersionManager({ projectRoot: '/test' });
                 const state = { identity: { name: 'test' } };
                 const settings = { schemaVersion: CURRENT_VERSIONS.settings };
 
-                const result = await manager.ensureCompatible(db, state, settings, '1.0.0');
+                const result = await manager.ensureCompatible(db, 'sqlite', state, settings, '1.0.0');
 
                 expect(result.state['identity']).toEqual({ name: 'test' });
                 expect(result.state['schemaVersion']).toBe(CURRENT_VERSIONS.state);
@@ -153,12 +153,12 @@ describe('version: manager', () => {
 
             it('should return migrated settings', async () => {
 
-                await bootstrapSchema(db, '1.0.0');
+                await bootstrapSchema(db, 'sqlite', '1.0.0');
                 const manager = new VersionManager({ projectRoot: '/test' });
                 const state = { schemaVersion: CURRENT_VERSIONS.state };
                 const settings = { build: { include: ['schema'] } };
 
-                const result = await manager.ensureCompatible(db, state, settings, '1.0.0');
+                const result = await manager.ensureCompatible(db, 'sqlite', state, settings, '1.0.0');
 
                 expect(result.settings['build']).toEqual({ include: ['schema'] });
                 expect(result.settings['schemaVersion']).toBe(CURRENT_VERSIONS.settings);
@@ -167,7 +167,7 @@ describe('version: manager', () => {
 
             it('should throw for newer schema version', async () => {
 
-                await bootstrapSchema(db, '1.0.0');
+                await bootstrapSchema(db, 'sqlite', '1.0.0');
                 await db.updateTable('__noorm_version__').set({ noorm_version: 999 }).execute();
 
                 const manager = new VersionManager({ projectRoot: '/test' });
@@ -175,33 +175,33 @@ describe('version: manager', () => {
                 const settings = { schemaVersion: CURRENT_VERSIONS.settings };
 
                 await expect(
-                    manager.ensureCompatible(db, state, settings, '1.0.0'),
+                    manager.ensureCompatible(db, 'sqlite', state, settings, '1.0.0'),
                 ).rejects.toThrow(VersionMismatchError);
 
             });
 
             it('should throw for newer state version', async () => {
 
-                await bootstrapSchema(db, '1.0.0');
+                await bootstrapSchema(db, 'sqlite', '1.0.0');
                 const manager = new VersionManager({ projectRoot: '/test' });
                 const state = { schemaVersion: 999 };
                 const settings = { schemaVersion: CURRENT_VERSIONS.settings };
 
                 await expect(
-                    manager.ensureCompatible(db, state, settings, '1.0.0'),
+                    manager.ensureCompatible(db, 'sqlite', state, settings, '1.0.0'),
                 ).rejects.toThrow(VersionMismatchError);
 
             });
 
             it('should throw for newer settings version', async () => {
 
-                await bootstrapSchema(db, '1.0.0');
+                await bootstrapSchema(db, 'sqlite', '1.0.0');
                 const manager = new VersionManager({ projectRoot: '/test' });
                 const state = { schemaVersion: CURRENT_VERSIONS.state };
                 const settings = { schemaVersion: 999 };
 
                 await expect(
-                    manager.ensureCompatible(db, state, settings, '1.0.0'),
+                    manager.ensureCompatible(db, 'sqlite', state, settings, '1.0.0'),
                 ).rejects.toThrow(VersionMismatchError);
 
             });
@@ -225,7 +225,7 @@ describe('version: manager', () => {
 
             it('should return false when all layers are current', async () => {
 
-                await bootstrapSchema(db, '1.0.0');
+                await bootstrapSchema(db, 'sqlite', '1.0.0');
                 const manager = new VersionManager({ projectRoot: '/test' });
                 const state = { schemaVersion: CURRENT_VERSIONS.state };
                 const settings = { schemaVersion: CURRENT_VERSIONS.settings };
@@ -242,7 +242,7 @@ describe('version: manager', () => {
 
             it('should return true when any layer is newer', async () => {
 
-                await bootstrapSchema(db, '1.0.0');
+                await bootstrapSchema(db, 'sqlite', '1.0.0');
                 await db.updateTable('__noorm_version__').set({ noorm_version: 999 }).execute();
 
                 const manager = new VersionManager({ projectRoot: '/test' });
@@ -257,7 +257,7 @@ describe('version: manager', () => {
 
             it('should return false when no layer is newer', async () => {
 
-                await bootstrapSchema(db, '1.0.0');
+                await bootstrapSchema(db, 'sqlite', '1.0.0');
                 const manager = new VersionManager({ projectRoot: '/test' });
                 const state = { schemaVersion: CURRENT_VERSIONS.state };
                 const settings = { schemaVersion: CURRENT_VERSIONS.settings };

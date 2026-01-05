@@ -9,7 +9,7 @@ import { mkdtempSync, rmSync, existsSync } from 'fs';
 import { join } from 'path';
 import { StateManager, resetStateManager } from '../../../src/core/state/index.js';
 import type { Config } from '../../../src/core/config/types.js';
-import type { CryptoIdentity, KnownUser } from '../../../src/core/identity/types.js';
+import type { KnownUser } from '../../../src/core/identity/types.js';
 import { generateKeyPair } from '../../../src/core/identity/crypto.js';
 
 /**
@@ -423,70 +423,8 @@ describe('state: manager', () => {
     // Identity Operations
     // ─────────────────────────────────────────────────────────────
 
-    describe('identity operations', () => {
-
-        beforeEach(async () => {
-
-            await state.load();
-
-        });
-
-        it('should start with no identity', () => {
-
-            expect(state.hasIdentity()).toBe(false);
-            expect(state.getIdentity()).toBeNull();
-
-        });
-
-        it('should set and get identity', async () => {
-
-            const keyPair = await generateKeyPair();
-            const identity: CryptoIdentity = {
-                identityHash: 'hash123',
-                name: 'Test User',
-                email: 'test@example.com',
-                publicKey: keyPair.publicKey,
-                machine: 'test-machine',
-                os: 'darwin',
-                createdAt: new Date().toISOString(),
-            };
-
-            await state.setIdentity(identity);
-
-            expect(state.hasIdentity()).toBe(true);
-            expect(state.getIdentity()).toEqual(identity);
-
-        });
-
-        it('should persist identity across reloads', async () => {
-
-            const keyPair = await generateKeyPair();
-            const identity: CryptoIdentity = {
-                identityHash: 'hash456',
-                name: 'Persistent User',
-                email: 'persist@example.com',
-                publicKey: keyPair.publicKey,
-                machine: 'machine-1',
-                os: 'linux',
-                createdAt: new Date().toISOString(),
-            };
-
-            await state.setIdentity(identity);
-
-            // Create new instance and reload with same key
-            const state2 = new StateManager(tempDir, {
-                stateDir: '.test-state',
-                stateFile: 'state.enc',
-                privateKey: testPrivateKey,
-            });
-            await state2.load();
-
-            expect(state2.hasIdentity()).toBe(true);
-            expect(state2.getIdentity()?.email).toBe('persist@example.com');
-
-        });
-
-    });
+    // Note: Identity is now stored globally in ~/.noorm/, not in project state.
+    // Identity-related tests have been moved to tests/core/identity/.
 
     // ─────────────────────────────────────────────────────────────
     // Known Users Operations

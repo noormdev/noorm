@@ -63,6 +63,11 @@ export type Route =
     | 'db/sql/clear'
     | 'db/sql/history'
 
+    // Debug (hidden easter egg)
+    | 'debug'
+    | 'debug/table'
+    | 'debug/table/detail'
+
     // Home & Help
     | 'help'
     | 'home'
@@ -162,6 +167,15 @@ export interface RouteParams {
 
     /** Help topic (multi-part, e.g., "db/explore/tables") */
     topic?: string;
+
+    /** Flag indicating navigation came from init screen */
+    fromInit?: boolean;
+
+    /** Debug table name (for debug screen) */
+    table?: string;
+
+    /** Row ID (for debug detail view) */
+    rowId?: number;
 }
 
 /**
@@ -388,6 +402,7 @@ export interface HelpEntry {
 export type Section =
     | 'home'
     | 'config'
+    | 'debug'
     | 'secret'
     | 'settings'
     | 'change'
