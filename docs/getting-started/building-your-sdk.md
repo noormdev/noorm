@@ -750,4 +750,3 @@ my-project/
 
 - [SDK Reference](/reference/sdk) - Full API documentation
 - [Templates](/guide/sql-files/templates) - Dynamic SQL generation
-- [CI/CD Integration](/guide/ci-cd) - Headless mode for pipelines
