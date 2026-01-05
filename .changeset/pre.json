@@ -8,6 +8,7 @@
   "changesets": [
     "bundle-fix",
     "cjs-shim-fix",
-    "gold-items-feel"
+    "gold-items-feel",
+    "rebuild-fix"
   ]
 }

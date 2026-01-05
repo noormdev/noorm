@@ -1,5 +1,11 @@
 # @noormdev/cli
 
+## 1.0.0-alpha.3
+
+### Patch Changes
+
+- ac0b3c1: Rebuild with complete bundling fixes
+
 ## 1.0.0-alpha.2
 
 ### Patch Changes
