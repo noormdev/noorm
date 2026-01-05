@@ -65,6 +65,7 @@ jobs:
                   NOORM_CONNECTION_DIALECT: sqlite
                   NOORM_CONNECTION_DATABASE: ./tmp/ci-success.db
                   NOORM_PATHS_SQL: ./tests/fixtures/ci/success/sql
+                  NOORM_IDENTITY: ci
               run: |
                   mkdir -p ./tmp
                   node dist/cli/index.js -H run build
@@ -76,6 +77,7 @@ jobs:
                   NOORM_CONNECTION_DIALECT: sqlite
                   NOORM_CONNECTION_DATABASE: ./tmp/ci-failure.db
                   NOORM_PATHS_SQL: ./tests/fixtures/ci/failure/sql
+                  NOORM_IDENTITY: ci
               run: |
                   mkdir -p ./tmp
                   set +e
