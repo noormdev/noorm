@@ -14,6 +14,7 @@ export default defineConfig({
     entry: ['src/cli/index.tsx'],
     format: ['esm'],
     target: 'node18',
+    platform: 'node',
     minify: true,
     clean: true,
     outDir: 'packages/cli/dist',
@@ -24,6 +25,10 @@ export default defineConfig({
         options.jsx = 'automatic';
         // Override: mark specific packages as external
         options.external = EXTERNAL_PACKAGES;
+        // Inject shims for CJS packages that use require('process') etc
+        options.banner = {
+            js: `import { createRequire } from 'module'; const require = createRequire(import.meta.url);`,
+        };
 
     },
 });
