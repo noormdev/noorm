@@ -27,7 +27,7 @@
         "build:packages": "zx scripts/build.mjs",
         "changeset": "changeset",
         "version": "changeset version",
-        "release": "zx scripts/release.mjs"
+        "release": "zx scripts/build.mjs && changeset publish"
     },
     "keywords": [
         "cli",

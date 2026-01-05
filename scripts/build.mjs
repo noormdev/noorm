@@ -59,19 +59,6 @@ await $`npx tsup src/sdk/index.ts \
 console.log(chalk.yellow('\nGenerating bundled types...'));
 await $`npx dts-bundle-generator src/sdk/index.ts -o packages/sdk/dist/index.d.ts --no-check --external-inlines @logosdx/observer --external-inlines @logosdx/utils`;
 
-// Sync versions to package.json files
-console.log(chalk.yellow('\nSyncing versions...'));
-await syncVersion('packages/cli/package.json', version);
-await syncVersion('packages/sdk/package.json', version);
-
 console.log(chalk.green('\nBuild complete!'));
 console.log(chalk.gray('  packages/cli/dist/ - CLI bundle'));
 console.log(chalk.gray('  packages/sdk/dist/ - SDK bundle + types'));
-
-async function syncVersion(pkgPath, version) {
-    if (!existsSync(pkgPath)) return;
-    const pkg = JSON.parse(await readFile(pkgPath, 'utf8'));
-    pkg.version = version;
-    await writeFile(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
-    console.log(chalk.gray(`  ${pkgPath} -> v${version}`));
-}
