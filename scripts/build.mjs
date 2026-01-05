@@ -17,18 +17,7 @@ await mkdir('packages/sdk/dist', { recursive: true });
 // Build CLI
 console.log(chalk.yellow('\nBuilding @noormdev/cli...'));
 
-await $`npx tsup src/cli/index.tsx \
-  --format esm \
-  --target node18 \
-  --platform node \
-  --minify \
-  --clean \
-  --out-dir packages/cli/dist \
-  --external better-sqlite3 \
-  --external pg \
-  --external mysql2 \
-  --external tedious \
-  --external tarn`;
+await $`npx tsup --config tsup.cli.config.ts`;
 
 // Add shebang to CLI output
 const cliBundlePath = 'packages/cli/dist/index.js';

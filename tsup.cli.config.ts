@@ -1,0 +1,29 @@
+import { defineConfig } from 'tsup';
+
+// Packages that MUST remain external (native bindings only)
+const EXTERNAL_PACKAGES = [
+    // Native C++ bindings - cannot be bundled
+    'better-sqlite3',
+    // Optional native pg driver (pure JS pg is bundled)
+    'pg-native',
+    // Optional devtools (not needed at runtime)
+    'react-devtools-core',
+];
+
+export default defineConfig({
+    entry: ['src/cli/index.tsx'],
+    format: ['esm'],
+    target: 'node18',
+    minify: true,
+    clean: true,
+    outDir: 'packages/cli/dist',
+    // Bundle everything by default
+    noExternal: [/.*/],
+    esbuildOptions(options) {
+
+        options.jsx = 'automatic';
+        // Override: mark specific packages as external
+        options.external = EXTERNAL_PACKAGES;
+
+    },
+});
