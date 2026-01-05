@@ -2,11 +2,16 @@
  * Package version accessor.
  *
  * Provides the current package version for state versioning.
- * Uses createRequire since ESM JSON imports are experimental.
+ * Version is injected at build time via esbuild define.
  */
-import { createRequire } from 'module';
 
-const require = createRequire(import.meta.url);
+// Declare the build-time injected constant
+declare const __CLI_VERSION__: string;
+
+// Fallback for development (when not bundled)
+const VERSION = typeof __CLI_VERSION__ !== 'undefined'
+    ? __CLI_VERSION__
+    : '0.0.0-dev';
 
 /**
  * Get the current package version.
@@ -16,8 +21,6 @@ const require = createRequire(import.meta.url);
  */
 export function getPackageVersion(): string {
 
-    const pkg = require('../../../package.json') as { version: string };
-
-    return pkg.version;
+    return VERSION;
 
 }

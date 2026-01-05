@@ -1,4 +1,9 @@
 import { defineConfig } from 'tsup';
+import { readFileSync } from 'fs';
+
+// Read CLI package version for injection at build time
+const cliPkg = JSON.parse(readFileSync('packages/cli/package.json', 'utf8'));
+const CLI_VERSION = cliPkg.version;
 
 // Packages that MUST remain external (native bindings only)
 const EXTERNAL_PACKAGES = [
@@ -28,6 +33,10 @@ export default defineConfig({
         // Inject shims for CJS packages that use require('process') etc
         options.banner = {
             js: `import { createRequire } from 'module'; const require = createRequire(import.meta.url);`,
+        };
+        // Inject version at build time (replaces __CLI_VERSION__ placeholder)
+        options.define = {
+            '__CLI_VERSION__': JSON.stringify(CLI_VERSION),
         };
 
     },

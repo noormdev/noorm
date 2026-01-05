@@ -1,5 +1,11 @@
 # @noormdev/cli
 
+## 1.0.0-alpha.6
+
+### Patch Changes
+
+- Fix bundle: inject version at build time instead of requiring package.json
+
 ## 1.0.0-alpha.5
 
 ### Patch Changes
