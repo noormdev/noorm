@@ -1,5 +1,15 @@
 # @noormdev/cli
 
+## 1.0.0-alpha.2
+
+### Patch Changes
+
+- b22c1ec: ## CLI
+
+  ### Fixed
+
+  - `fix(build):` Add CJS compatibility shim for dynamic require in ESM bundle
+
 ## 1.0.0-alpha.1
 
 ### Patch Changes
