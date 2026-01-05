@@ -1,5 +1,15 @@
 # @noormdev/cli
 
+## 1.0.0-alpha.1
+
+### Patch Changes
+
+- 9673054: ## CLI
+
+  ### Fixed
+
+  - `fix(build):` Bundle all pure JS dependencies (meow, ink, react, pg, mysql2, tedious) - only better-sqlite3 remains external due to native bindings
+
 ## 1.0.0-alpha.0
 
 ### Major Changes

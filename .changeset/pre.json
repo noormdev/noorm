@@ -6,6 +6,7 @@
     "@noormdev/sdk": "0.0.1"
   },
   "changesets": [
+    "bundle-fix",
     "gold-items-feel"
   ]
 }
