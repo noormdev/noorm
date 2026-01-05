@@ -5,5 +5,7 @@
     "@noormdev/cli": "0.0.1",
     "@noormdev/sdk": "0.0.1"
   },
-  "changesets": []
+  "changesets": [
+    "gold-items-feel"
+  ]
 }
