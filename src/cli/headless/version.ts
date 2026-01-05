@@ -31,7 +31,7 @@ import { getStateManager } from '../../core/state/index.js';
 // =============================================================================
 
 // CLI version - updated during release process
-const CLI_VERSION = '1.0.0-alpha.4';
+const CLI_VERSION = '1.0.0-alpha.5';
 
 // =============================================================================
 // Types
@@ -60,6 +60,7 @@ interface VersionInfo {
         cwd: string;
         configCount: number;
         activeConfig: string | null;
+        stateError: string | null;
     };
 }
 
@@ -95,10 +96,11 @@ async function gatherVersionInfo(): Promise<VersionInfo> {
     // Try to load state for config info
     let configCount = 0;
     let activeConfig: string | null = null;
+    let stateError: string | null = null;
 
     if (projectResult.hasProject && projectResult.projectRoot) {
 
-        const [manager] = await attempt(async () => {
+        const [manager, loadErr] = await attempt(async () => {
 
             const mgr = getStateManager(projectResult.projectRoot!);
             await mgr.load();
@@ -107,7 +109,12 @@ async function gatherVersionInfo(): Promise<VersionInfo> {
 
         });
 
-        if (manager) {
+        if (loadErr) {
+
+            stateError = loadErr.message;
+
+        }
+        else if (manager) {
 
             const configs = manager.listConfigs();
             configCount = configs.length;
@@ -142,6 +149,7 @@ async function gatherVersionInfo(): Promise<VersionInfo> {
             cwd: process.cwd(),
             configCount,
             activeConfig,
+            stateError,
         },
     };
 
@@ -207,16 +215,26 @@ function formatVersionOutput(info: VersionInfo): string {
     if (info.project.found) {
 
         lines.push(`  path:         ${info.project.path}`);
-        lines.push(`  configs:      ${info.project.configCount}`);
 
-        if (info.project.activeConfig) {
+        if (info.project.stateError) {
 
-            lines.push(`  active:       ${info.project.activeConfig}`);
+            lines.push(`  state error:  ${info.project.stateError}`);
 
         }
-        else if (info.project.configCount > 0) {
+        else {
 
-            lines.push('  active:       none selected');
+            lines.push(`  configs:      ${info.project.configCount}`);
+
+            if (info.project.activeConfig) {
+
+                lines.push(`  active:       ${info.project.activeConfig}`);
+
+            }
+            else if (info.project.configCount > 0) {
+
+                lines.push('  active:       none selected');
+
+            }
 
         }
 

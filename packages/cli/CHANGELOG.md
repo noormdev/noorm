@@ -1,5 +1,11 @@
 # @noormdev/cli
 
+## 1.0.0-alpha.5
+
+### Patch Changes
+
+- Add state loading error output to version command for debugging
+
 ## 1.0.0-alpha.4
 
 ### Patch Changes

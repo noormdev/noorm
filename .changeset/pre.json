@@ -10,6 +10,7 @@
     "cjs-shim-fix",
     "gold-items-feel",
     "rebuild-fix",
-    "version-command"
+    "version-command",
+    "version-debug"
   ]
 }
