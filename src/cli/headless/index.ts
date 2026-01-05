@@ -61,6 +61,7 @@ import * as CmdSecret from './secret.js';
 import * as CmdSettings from './settings.js';
 
 import * as CmdHelp from './help.js';
+import * as CmdVersion from './version.js';
 import { getConfig } from '../../core/config/index.js';
 
 /**
@@ -105,6 +106,8 @@ const HANDLERS: Partial<Record<Route, RouteHandler>> = {
 
     'secret': CmdSecret,
     'settings': CmdSettings,
+
+    'version': CmdVersion,
 };
 
 HANDLERS['help'] = CmdHelp.factory!(HANDLERS);

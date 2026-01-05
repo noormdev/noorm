@@ -9,6 +9,7 @@
     "bundle-fix",
     "cjs-shim-fix",
     "gold-items-feel",
-    "rebuild-fix"
+    "rebuild-fix",
+    "version-command"
   ]
 }

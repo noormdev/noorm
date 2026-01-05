@@ -1,5 +1,11 @@
 # @noormdev/cli
 
+## 1.0.0-alpha.4
+
+### Patch Changes
+
+- Add `noorm version` command for diagnostic output showing CLI version, identity paths, and project status
+
 ## 1.0.0-alpha.3
 
 ### Patch Changes

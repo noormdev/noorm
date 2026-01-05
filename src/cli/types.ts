@@ -134,6 +134,9 @@ export type Route =
 
     // Settings - Strict mode
     | 'settings/strict'
+
+    // Version info
+    | 'version'
 /**
  * Route parameters that can be passed during navigation.
  *

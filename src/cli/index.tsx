@@ -67,6 +67,8 @@ const HELP_TEXT = `
     secret               Manage secrets
     identity             Manage identity
 
+    version              Show version and diagnostic info
+
   Options
     --headless, -H       Force headless mode (no TUI)
     --tui, -T            Force TUI mode (ignore TTY detection)
@@ -93,6 +95,8 @@ function parseCli(): ParsedCli {
 
     const cli = meow(HELP_TEXT, {
         importMeta: import.meta,
+        // Disable auto version - we handle --version with our custom version command
+        autoVersion: false,
         flags: {
             headless: {
                 type: 'boolean',
@@ -126,6 +130,11 @@ function parseCli(): ParsedCli {
                 type: 'boolean',
                 default: false,
             },
+            version: {
+                type: 'boolean',
+                shortFlag: 'v',
+                default: false,
+            },
         },
     });
 
@@ -139,8 +148,22 @@ function parseCli(): ParsedCli {
         dryRun: cli.flags.dryRun,
     };
 
+    // Handle --version/-v flag - route to version command
+    if (cli.flags.version) {
+
+        return { mode: 'headless', route: 'version', params: {}, flags };
+
+    }
+
     // Parse route from input
     const { route, params } = parseRouteFromInput(cli.input);
+
+    // Version command always runs headless (no TUI screen for it)
+    if (route === 'version') {
+
+        return { mode: 'headless', route, params, flags };
+
+    }
 
     // Determine execution mode
     const mode = shouldRunHeadless(flags) ? 'headless' : 'tui';
@@ -380,8 +403,8 @@ async function main(): Promise<void> {
 
     if (mode === 'headless') {
 
-        // In headless mode, require identity (except for init command)
-        if (!hasIdentity && route !== 'init' && route !== 'identity/init') {
+        // In headless mode, require identity (except for init/version commands)
+        if (!hasIdentity && route !== 'init' && route !== 'identity/init' && route !== 'version') {
 
             console.error('No identity configured. Run: noorm init');
             process.exit(1);
