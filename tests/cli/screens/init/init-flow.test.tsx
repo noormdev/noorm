@@ -21,6 +21,7 @@ const _TEST_PROJECT_ROOT = join(tmpdir(), `noorm-test-${Date.now()}`);
 // Track mock state
 let mockNoormExists = false;
 let mockHasKeyFiles = false;
+let mockHasMetadata = false;
 let createdDirs: string[] = [];
 let writtenFiles: string[] = [];
 
@@ -76,6 +77,21 @@ vi.mock('../../../../src/core/identity/index.js', async () => {
     return {
         ...actual,
         hasKeyFiles: vi.fn(() => Promise.resolve(mockHasKeyFiles)),
+        loadIdentityMetadata: vi.fn(() =>
+            Promise.resolve(
+                mockHasMetadata
+                    ? {
+                        identityHash: 'abc123',
+                        name: 'Test User',
+                        email: 'test@example.com',
+                        publicKey: 'pubkey123',
+                        machine: 'test-machine',
+                        os: 'darwin 24.5.0',
+                        createdAt: new Date().toISOString(),
+                    }
+                    : null,
+            ),
+        ),
         detectIdentityDefaults: vi.fn(() => ({
             name: 'Test User',
             email: 'test@example.com',
@@ -181,6 +197,7 @@ describe('cli: screens/init - flow integration', () => {
         vi.clearAllMocks();
         mockNoormExists = false;
         mockHasKeyFiles = false;
+        mockHasMetadata = false;
         createdDirs = [];
         writtenFiles = [];
 
@@ -331,7 +348,8 @@ describe('cli: screens/init - flow integration', () => {
     it('should skip identity setup when identity already exists', async () => {
 
         mockNoormExists = false;
-        mockHasKeyFiles = true; // Identity exists
+        mockHasKeyFiles = true; // Key files exist
+        mockHasMetadata = true; // Metadata exists - full identity present
 
         const { lastFrame, unmount } = render(
             <TestWrapper>

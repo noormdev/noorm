@@ -17,6 +17,7 @@ import { InitScreen } from '../../../../src/cli/screens/init/InitScreen.js';
 // Track mock state
 let mockNoormExists = false;
 let mockHasKeyFiles = false;
+let mockHasMetadata = false;
 
 // Mock fs - needs to be before imports
 vi.mock('fs', async () => {
@@ -52,6 +53,21 @@ vi.mock('../../../../src/core/identity/index.js', async () => {
     return {
         ...actual,
         hasKeyFiles: vi.fn(() => Promise.resolve(mockHasKeyFiles)),
+        loadIdentityMetadata: vi.fn(() =>
+            Promise.resolve(
+                mockHasMetadata
+                    ? {
+                        identityHash: 'abc123',
+                        name: 'Test User',
+                        email: 'test@example.com',
+                        publicKey: 'pubkey123',
+                        machine: 'test-machine',
+                        os: 'darwin 24.5.0',
+                        createdAt: new Date().toISOString(),
+                    }
+                    : null,
+            ),
+        ),
         detectIdentityDefaults: vi.fn(() => ({
             name: 'Test User',
             email: 'test@example.com',
@@ -134,6 +150,7 @@ describe('cli: screens/init/InitScreen', () => {
         vi.clearAllMocks();
         mockNoormExists = false;
         mockHasKeyFiles = false;
+        mockHasMetadata = false;
 
     });
 
@@ -193,6 +210,7 @@ describe('cli: screens/init/InitScreen', () => {
 
         mockNoormExists = false;
         mockHasKeyFiles = true;
+        mockHasMetadata = true; // Full identity requires both keys and metadata
 
         const { lastFrame } = render(
             <TestWrapper>
@@ -211,6 +229,7 @@ describe('cli: screens/init/InitScreen', () => {
 
         mockNoormExists = true;
         mockHasKeyFiles = true;
+        mockHasMetadata = true; // Full identity requires both keys and metadata
 
         const { lastFrame } = render(
             <TestWrapper>

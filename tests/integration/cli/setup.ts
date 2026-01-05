@@ -391,6 +391,8 @@ export async function setupTestProject(): Promise<TestProject> {
         NOORM_PATHS_CHANGESETS: './changes',
         NOORM_NAME: '__test__',
         NOORM_ISTEST: 'true',
+        // Bypass identity check in headless mode (CI has no ~/.noorm/identity.key)
+        NOORM_IDENTITY: 'test',
     };
 
     return { dir: testDir, dbPath, env };
