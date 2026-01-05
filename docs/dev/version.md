@@ -635,7 +635,7 @@ async function initialize(projectRoot: string): Promise<void> {
     catch (err) {
         if (err instanceof VersionMismatchError) {
             console.error('Your data was created by a newer version of noorm.')
-            console.error(`Please upgrade: npm install -g noorm`)
+            console.error(`Please upgrade: npm install -g @noormdev/cli`)
             process.exit(1)
         }
         throw err

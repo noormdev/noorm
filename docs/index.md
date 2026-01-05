@@ -94,7 +94,7 @@ You pay for bad relational design later in complexity and bugs.
 
 ```bash
 # Install
-npm install -g noorm
+npm install -g @noormdev/cli
 
 # Launch the TUI
 noorm
