@@ -12,6 +12,7 @@
     "gold-items-feel",
     "rebuild-fix",
     "version-command",
-    "version-debug"
+    "version-debug",
+    "dry-run-error-display"
   ]
 }
