@@ -1,5 +1,13 @@
 # @noormdev/cli
 
+## 1.0.0-alpha.7
+
+### Patch Changes
+
+- cb9f9c2: Display template errors during dry-run in UI feedback
+
+  Template rendering errors during dry-run were silently captured in results but never emitted via the observer event system, making them invisible in the UI. Now `file:dry-run` events include status and error fields, and the progress hook properly tracks failed dry-runs.
+
 ## 1.0.0-alpha.6
 
 ### Patch Changes

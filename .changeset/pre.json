@@ -8,6 +8,7 @@
   "changesets": [
     "bundle-fix",
     "cjs-shim-fix",
+    "dry-run-error-display",
     "fix-bundle-version",
     "gold-items-feel",
     "rebuild-fix",
