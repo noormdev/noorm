@@ -1,0 +1,1 @@
+import{_ as i,c as a,o as t,a6 as n}from"./chunks/framework.YF6eQPX_.js";const g=JSON.parse('{"title":"noorm SDK","description":"","frontmatter":{},"headers":[],"relativePath":"dev/sdk.md","filePath":"dev/sdk.md"}'),h={name:"dev/sdk.md"};function e(l,s,k,p,r,d){return t(),a("div",null,[...s[0]||(s[0]=[n("",163)])])}const c=i(h,[["render",e]]);export{g as __pageData,c as default};

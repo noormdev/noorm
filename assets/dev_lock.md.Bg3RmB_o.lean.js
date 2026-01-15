@@ -1,0 +1,1 @@
+import{_ as i,c as a,o as n,a6 as l}from"./chunks/framework.YF6eQPX_.js";const g=JSON.parse('{"title":"Lock","description":"","frontmatter":{},"headers":[],"relativePath":"dev/lock.md","filePath":"dev/lock.md"}'),h={name:"dev/lock.md"};function k(t,s,e,p,r,E){return n(),a("div",null,[...s[0]||(s[0]=[l("",48)])])}const c=i(h,[["render",k]]);export{g as __pageData,c as default};
