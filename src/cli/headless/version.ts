@@ -11,8 +11,6 @@
  * ```
  */
 import { existsSync } from 'fs';
-import { homedir } from 'os';
-import { join } from 'path';
 import { attempt } from '@logosdx/utils';
 
 import type { HeadlessCommand, RouteHandler } from './_helpers.js';
@@ -23,7 +21,7 @@ import {
     hasKeyFiles,
     loadIdentityMetadata,
 } from '../../core/identity/storage.js';
-import { findProjectRoot, getGlobalNoormPath } from '../../core/project.js';
+import { findProjectRoot } from '../../core/project.js';
 import { getStateManager } from '../../core/state/index.js';
 
 // =============================================================================
