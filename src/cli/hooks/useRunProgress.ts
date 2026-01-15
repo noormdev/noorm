@@ -230,15 +230,18 @@ export function useRunProgress(): UseRunProgressReturn {
 
             setState((prev) => {
 
+                const isSuccess = data.status === 'success';
                 const result: ProgressFileResult = {
                     filepath: data.filepath,
-                    status: 'dry-run',
+                    status: isSuccess ? 'dry-run' : 'failed',
                     outputPath: data.outputPath,
+                    error: data.error,
                 };
 
                 return {
                     ...prev,
-                    filesDryRun: prev.filesDryRun + 1,
+                    filesDryRun: prev.filesDryRun + (isSuccess ? 1 : 0),
+                    filesFailed: prev.filesFailed + (isSuccess ? 0 : 1),
                     results: [...prev.results, result],
                     currentFile: null,
                 };

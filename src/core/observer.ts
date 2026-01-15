@@ -50,7 +50,12 @@ export interface NoormEvents extends SettingsEvents {
         error?: string;
     };
     'file:skip': { filepath: string; reason: 'unchanged' | 'already-run' };
-    'file:dry-run': { filepath: string; outputPath: string };
+    'file:dry-run': {
+        filepath: string;
+        status: 'success' | 'failed';
+        outputPath?: string;
+        error?: string;
+    };
 
     // Change lifecycle
     'change:created': { name: string; path: string };

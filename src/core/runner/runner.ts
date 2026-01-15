@@ -1028,6 +1028,12 @@ async function executeDryRun(context: RunContext, files: string[]): Promise<File
 
         if (checksumErr) {
 
+            observer.emit('file:dry-run', {
+                filepath,
+                status: 'failed',
+                error: checksumErr.message,
+            });
+
             results.push({
                 filepath,
                 checksum: '',
@@ -1043,6 +1049,12 @@ async function executeDryRun(context: RunContext, files: string[]): Promise<File
         const [sqlContent, loadErr] = await attempt(() => loadAndRenderFile(context, filepath));
 
         if (loadErr) {
+
+            observer.emit('file:dry-run', {
+                filepath,
+                status: 'failed',
+                error: loadErr.message,
+            });
 
             results.push({
                 filepath,
@@ -1076,6 +1088,7 @@ async function executeDryRun(context: RunContext, files: string[]): Promise<File
 
         observer.emit('file:dry-run', {
             filepath,
+            status: 'success',
             outputPath,
         });
 

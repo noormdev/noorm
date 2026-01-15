@@ -958,6 +958,12 @@ async function executeDryRun(
 
         if (loadErr) {
 
+            observer.emit('file:dry-run', {
+                filepath: file.path,
+                status: 'failed',
+                error: loadErr.message,
+            });
+
             results.push({
                 filepath: file.path,
                 checksum: checksum ?? '',
@@ -986,6 +992,14 @@ async function executeDryRun(
             });
 
         }
+
+        const outputPath = getDryRunOutputPath(context.projectRoot, file.path);
+
+        observer.emit('file:dry-run', {
+            filepath: file.path,
+            status: 'success',
+            outputPath,
+        });
 
         results.push({
             filepath: file.path,
