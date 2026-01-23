@@ -9,7 +9,7 @@
  * noorm run dir sql/tables  # With pre-filled path
  * ```
  */
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { ProgressBar } from '@inkjs/ui';
 import { join, relative, dirname } from 'path';
@@ -22,7 +22,8 @@ import { useFocusScope } from '../../focus.js';
 import { useSettings, useGlobalModes, useAppContext } from '../../app-context.js';
 import { Panel, Spinner, Confirm, SelectList, FilePicker, useToast } from '../../components/index.js';
 import { useRunProgress } from '../../hooks/index.js';
-import { discoverFiles, runFiles } from '../../../core/runner/index.js';
+import { discoverFiles, runFiles, checkFilesStatus } from '../../../core/runner/index.js';
+import type { FilesStatusResult } from '../../../core/runner/index.js';
 import { createConnection, testConnection } from '../../../core/connection/index.js';
 import { resolveIdentity } from '../../../core/identity/index.js';
 import { attempt } from '@logosdx/utils';
@@ -32,32 +33,34 @@ import type { Kysely } from 'kysely';
 import type { RunContext } from '../../../core/runner/index.js';
 import type { SelectListItem } from '../../components/index.js';
 
-type Phase = 'loading' | 'picker' | 'confirm' | 'running' | 'complete' | 'error';
+type Phase = 'loading' | 'picker' | 'confirm' | 'checking' | 'rerun-confirm' | 'running' | 'complete' | 'error';
 
 /**
- * Simple component that handles Escape key to go back.
+ * Component that handles Escape, Cancel (c), and Retry (r) keys.
  */
-function EscapeHandler({
+function KeyHandler({
+    focusLabel,
     onEscape,
-    toastMessage,
-    showToast,
+    onRetry,
+    onCancel,
 }: {
+    focusLabel: string;
     onEscape?: () => void;
-    toastMessage?: string;
-    showToast?: (opts: { message: string; variant: 'warning' }) => void;
+    onRetry?: () => void;
+    onCancel?: () => void;
 }): null {
 
-    const { isFocused } = useFocusScope('EscapeHandler');
+    const { isFocused } = useFocusScope(focusLabel);
 
-    useInput((_, key) => {
+    useInput((input, key) => {
 
         if (!isFocused) return;
 
         if (key.escape) {
 
-            if (toastMessage && showToast) {
+            if (onCancel) {
 
-                showToast({ message: toastMessage, variant: 'warning' });
+                onCancel();
 
             }
             else if (onEscape) {
@@ -65,6 +68,20 @@ function EscapeHandler({
                 onEscape();
 
             }
+
+            return;
+
+        }
+
+        if (input === 'r' && onRetry) {
+
+            onRetry();
+
+        }
+
+        if (input === 'c' && onCancel) {
+
+            onCancel();
 
         }
 
@@ -130,6 +147,12 @@ export function RunDirScreen({ params }: ScreenProps): ReactElement {
     const [fileCount, setFileCount] = useState(0);
     const [error, setError] = useState<string | null>(null);
     const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+    const [filesStatus, setFilesStatus] = useState<FilesStatusResult | null>(null);
+    const [forceRerun, setForceRerun] = useState(false);
+
+    // Refs for cancellation support
+    const activeConnectionRef = useRef<{ destroy: () => Promise<void> } | null>(null);
+    const cancelledRef = useRef(false);
 
     const projectRoot = process.cwd();
     const sqlPath = settings?.paths?.sql ?? 'sql';
@@ -226,13 +249,25 @@ export function RunDirScreen({ params }: ScreenProps): ReactElement {
 
     }, [back]);
 
-    // Execute selected files
-    const executeDir = useCallback(async () => {
+    // Track whether we should proceed to execution after status check
+    const [proceedToExecute, setProceedToExecute] = useState(false);
+
+    // Check files status before execution
+    const checkDirFilesStatus = useCallback(async () => {
 
         if (!activeConfig || !activeConfigName || !stateManager || selectedDirFiles.length === 0) return;
 
-        setPhase('running');
-        resetProgress(selectedDirFiles.length);
+        // If global force mode is enabled, skip the check and execute directly
+        if (globalModes.force) {
+
+            setForceRerun(true);
+            setProceedToExecute(true);
+
+            return;
+
+        }
+
+        setPhase('checking');
 
         // Resolve identity
         const identity = resolveIdentity({
@@ -279,14 +314,21 @@ export function RunDirScreen({ params }: ScreenProps): ReactElement {
                 globalSecrets: stateManager.getAllGlobalSecrets(),
             };
 
-            const options = {
-                force: globalModes.force,
-                dryRun: globalModes.dryRun,
-                abortOnError: true,
-            };
+            const status = await checkFilesStatus(context, selectedDirFiles);
+            setFilesStatus(status);
 
-            await runFiles(context, selectedDirFiles, options);
-            setPhase('complete');
+            // If any files were previously run (would be skipped), show rerun confirmation
+            if (status.previouslyRunFiles.length > 0) {
+
+                setPhase('rerun-confirm');
+
+            }
+            else {
+
+                // All files are new or changed, proceed to execution
+                setProceedToExecute(true);
+
+            }
 
         }
         catch (err) {
@@ -301,7 +343,187 @@ export function RunDirScreen({ params }: ScreenProps): ReactElement {
 
         }
 
-    }, [activeConfig, activeConfigName, stateManager, selectedDirFiles, globalModes, resetProgress, projectRoot]);
+    }, [activeConfig, activeConfigName, stateManager, selectedDirFiles, globalModes.force, cryptoIdentity, projectRoot]);
+
+    // Execute selected files (actual execution)
+    const executeDir = useCallback(async (force: boolean = false) => {
+
+        if (!activeConfig || !activeConfigName || !stateManager || selectedDirFiles.length === 0) return;
+
+        // Reset cancellation flag
+        cancelledRef.current = false;
+
+        setPhase('running');
+        resetProgress(selectedDirFiles.length);
+
+        // Resolve identity
+        const identity = resolveIdentity({
+            cryptoIdentity: cryptoIdentity ?? null,
+        });
+
+        // Test connection
+        const testResult = await testConnection(activeConfig.connection);
+
+        if (!testResult.ok) {
+
+            setError(`Connection failed: ${testResult.error}`);
+            setPhase('error');
+
+            return;
+
+        }
+
+        // Check if cancelled during connection test
+        if (cancelledRef.current) {
+
+            setError('Execution cancelled');
+            setPhase('error');
+
+            return;
+
+        }
+
+        // Create connection
+        const [conn, connErr] = await attempt(() =>
+            createConnection(activeConfig.connection, activeConfigName),
+        );
+
+        if (connErr || !conn) {
+
+            setError(`Connection failed: ${connErr?.message ?? 'Unknown error'}`);
+            setPhase('error');
+
+            return;
+
+        }
+
+        // Store connection ref for cancellation
+        activeConnectionRef.current = conn;
+
+        try {
+
+            // Check if cancelled during connection creation
+            if (cancelledRef.current) {
+
+                setError('Execution cancelled');
+                setPhase('error');
+
+                return;
+
+            }
+
+            const db = conn.db as Kysely<NoormDatabase>;
+
+            const context: RunContext = {
+                db,
+                configName: activeConfigName,
+                identity,
+                projectRoot,
+                config: activeConfig as unknown as Record<string, unknown>,
+                secrets: stateManager.getAllSecrets(activeConfigName),
+                globalSecrets: stateManager.getAllGlobalSecrets(),
+            };
+
+            const options = {
+                force: force || forceRerun || globalModes.force,
+                dryRun: globalModes.dryRun,
+                abortOnError: true,
+            };
+
+            await runFiles(context, selectedDirFiles, options);
+
+            // Check if cancelled during execution
+            if (cancelledRef.current) {
+
+                setError('Execution cancelled');
+                setPhase('error');
+
+                return;
+
+            }
+
+            setPhase('complete');
+
+        }
+        catch (err) {
+
+            // Don't show error if cancelled (connection destroyed intentionally)
+            if (cancelledRef.current) {
+
+                setError('Execution cancelled');
+
+            }
+            else {
+
+                setError(err instanceof Error ? err.message : String(err));
+
+            }
+
+            setPhase('error');
+
+        }
+        finally {
+
+            activeConnectionRef.current = null;
+            await conn.destroy();
+
+        }
+
+    }, [activeConfig, activeConfigName, stateManager, selectedDirFiles, globalModes, forceRerun, resetProgress, projectRoot, cryptoIdentity]);
+
+    // Cancel running execution
+    const cancelExecution = useCallback(async () => {
+
+        cancelledRef.current = true;
+
+        if (activeConnectionRef.current) {
+
+            showToast({ message: 'Cancelling execution...', variant: 'warning' });
+
+            try {
+
+                await activeConnectionRef.current.destroy();
+
+            }
+            catch {
+                // Ignore destroy errors during cancellation
+            }
+
+            activeConnectionRef.current = null;
+
+        }
+
+    }, [showToast]);
+
+    // Handle rerun confirmation
+    const handleConfirmRerun = useCallback(() => {
+
+        setForceRerun(true);
+        executeDir(true);
+
+    }, [executeDir]);
+
+    // Handle cancel rerun (go back to file picker)
+    const handleCancelRerun = useCallback(() => {
+
+        setFilesStatus(null);
+        setForceRerun(false);
+        setShowConfirmDialog(false);
+        setPhase('confirm');
+
+    }, []);
+
+    // Trigger execution when proceedToExecute becomes true
+    useEffect(() => {
+
+        if (proceedToExecute) {
+
+            setProceedToExecute(false);
+            executeDir(forceRerun);
+
+        }
+
+    }, [proceedToExecute, executeDir, forceRerun]);
 
     // Create directory items for SelectList
     const dirItems: SelectListItem<string>[] = useMemo(() => {
@@ -355,7 +577,7 @@ export function RunDirScreen({ params }: ScreenProps): ReactElement {
 
         return (
             <Box flexDirection="column" gap={1}>
-                <EscapeHandler onEscape={back} />
+                <KeyHandler focusLabel="RunDirNoConfig" onEscape={back} />
                 <Panel title="Run Directory" borderColor="yellow" paddingX={1} paddingY={1}>
                     <Text color="yellow">No active configuration selected.</Text>
                 </Panel>
@@ -385,7 +607,7 @@ export function RunDirScreen({ params }: ScreenProps): ReactElement {
 
         return (
             <Box flexDirection="column" gap={1}>
-                <EscapeHandler onEscape={back} />
+                <KeyHandler focusLabel="RunDirError" onEscape={back} onRetry={() => executeDir(true)} />
                 <Panel title="Run Directory" borderColor="red" paddingX={1} paddingY={1}>
                     <Box flexDirection="column" gap={1}>
                         <Text color="red">Error</Text>
@@ -393,6 +615,7 @@ export function RunDirScreen({ params }: ScreenProps): ReactElement {
                     </Box>
                 </Panel>
                 <Box flexWrap="wrap" columnGap={2}>
+                    <Text dimColor>[r] Retry</Text>
                     <Text dimColor>[Esc] Back</Text>
                 </Box>
             </Box>
@@ -438,7 +661,7 @@ export function RunDirScreen({ params }: ScreenProps): ReactElement {
                             </>
                         ) : (
                             <>
-                                <EscapeHandler onEscape={handleCancel} />
+                                <KeyHandler focusLabel="RunDirEmpty" onEscape={handleCancel} />
                                 <Box flexDirection="column" gap={1}>
                                     <Text color="yellow">No SQL files found in {sqlPath}/</Text>
                                     <Text dimColor>
@@ -487,7 +710,7 @@ export function RunDirScreen({ params }: ScreenProps): ReactElement {
                     <Confirm
                         focusLabel="RunDirConfirm"
                         message={`Execute ${fileCount} files from ${selectedDir}?`}
-                        onConfirm={executeDir}
+                        onConfirm={checkDirFilesStatus}
                         onCancel={handleBackToList}
                     />
                 </Box>
@@ -500,7 +723,7 @@ export function RunDirScreen({ params }: ScreenProps): ReactElement {
 
             return (
                 <Box flexDirection="column" gap={1}>
-                    <EscapeHandler onEscape={() => setPhase('picker')} />
+                    <KeyHandler focusLabel="RunDirNoFiles" onEscape={() => setPhase('picker')} />
                     <Panel title={`Files in ${selectedDir}`} borderColor="yellow" paddingX={1} paddingY={1}>
                         <Text color="yellow">No SQL files found in this directory.</Text>
                     </Panel>
@@ -538,6 +761,77 @@ export function RunDirScreen({ params }: ScreenProps): ReactElement {
 
     }
 
+    // Checking files status
+    if (phase === 'checking') {
+
+        return (
+            <Box flexDirection="column" gap={1}>
+                <Panel title="Run Directory" paddingX={1} paddingY={1}>
+                    <Spinner label={`Checking status of ${fileCount} files...`} />
+                </Panel>
+            </Box>
+        );
+
+    }
+
+    // Rerun confirmation
+    if (phase === 'rerun-confirm' && filesStatus) {
+
+        const previouslyRunCount = filesStatus.previouslyRunFiles.length;
+        const newCount = filesStatus.newFiles.length;
+        const changedCount = filesStatus.changedFiles.length;
+        const totalNew = newCount + changedCount;
+
+        return (
+            <Box flexDirection="column" gap={1}>
+                <Panel title="Files Previously Run" borderColor="yellow" paddingX={1} paddingY={1}>
+                    <Box flexDirection="column" gap={1}>
+                        <Box gap={2}>
+                            <Text>Directory:</Text>
+                            <Text bold color="cyan">{selectedDir}</Text>
+                        </Box>
+                        <Box gap={2}>
+                            <Text>Config:</Text>
+                            <Text dimColor>{activeConfigName}</Text>
+                        </Box>
+
+                        <Box marginTop={1} flexDirection="column" gap={0}>
+                            <Box gap={2}>
+                                <Text color="yellow" bold>{previouslyRunCount}</Text>
+                                <Text color="yellow">
+                                    file{previouslyRunCount === 1 ? '' : 's'} previously run
+                                </Text>
+                            </Box>
+                            {totalNew > 0 && (
+                                <Box gap={2}>
+                                    <Text color="green" bold>{totalNew}</Text>
+                                    <Text color="green">
+                                        file{totalNew === 1 ? '' : 's'} {changedCount > 0 ? 'new or changed' : 'new'}
+                                    </Text>
+                                </Box>
+                            )}
+                        </Box>
+
+                        <Box marginTop={1}>
+                            <Text dimColor>
+                                Run all {fileCount} files including previously executed ones?
+                            </Text>
+                        </Box>
+                    </Box>
+                </Panel>
+
+                <Confirm
+                    focusLabel="RunDirRerunConfirm"
+                    message={`Run all ${fileCount} files?`}
+                    variant="warning"
+                    onConfirm={handleConfirmRerun}
+                    onCancel={handleCancelRerun}
+                />
+            </Box>
+        );
+
+    }
+
     // Running
     if (phase === 'running') {
 
@@ -546,9 +840,9 @@ export function RunDirScreen({ params }: ScreenProps): ReactElement {
 
         return (
             <Box flexDirection="column" gap={1}>
-                <EscapeHandler
-                    toastMessage="Cannot cancel running directory"
-                    showToast={showToast}
+                <KeyHandler
+                    focusLabel="RunDirRunning"
+                    onCancel={cancelExecution}
                 />
                 <Panel title="Running Directory" paddingX={1} paddingY={1}>
                     <Box flexDirection="column" gap={1}>
@@ -567,6 +861,9 @@ export function RunDirScreen({ params }: ScreenProps): ReactElement {
                         </Box>
                     </Box>
                 </Panel>
+                <Box flexWrap="wrap" columnGap={2}>
+                    <Text dimColor>[Esc] Cancel</Text>
+                </Box>
             </Box>
         );
 
@@ -580,7 +877,7 @@ export function RunDirScreen({ params }: ScreenProps): ReactElement {
 
         return (
             <Box flexDirection="column" gap={1}>
-                <EscapeHandler onEscape={back} />
+                <KeyHandler focusLabel="RunDirComplete" onEscape={back} onRetry={() => executeDir(true)} />
                 <Panel title="Directory Complete" borderColor={statusColor} paddingX={1} paddingY={1}>
                     <Box flexDirection="column" gap={1}>
                         <Box gap={2}>
@@ -623,6 +920,7 @@ export function RunDirScreen({ params }: ScreenProps): ReactElement {
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
+                    <Text dimColor>[r] Retry</Text>
                     <Text dimColor>[Esc] Back</Text>
                 </Box>
             </Box>

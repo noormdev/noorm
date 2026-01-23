@@ -109,6 +109,7 @@ import {
     RunExecScreen,
     RunFileScreen,
     RunDirScreen,
+    RunInspectScreen,
 } from './screens/run/index.js';
 import {
     DebugOverviewScreen,
@@ -478,6 +479,10 @@ const SCREENS: ScreenRegistry = {
     'run/dir': {
         component: RunDirScreen,
         label: 'Run Directory',
+    },
+    'run/inspect': {
+        component: RunInspectScreen,
+        label: 'Inspect Template',
     },
 
     // Debug (hidden easter egg)

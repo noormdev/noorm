@@ -7,6 +7,7 @@
  * - RunExecScreen: Interactive file picker for selective execution
  * - RunFileScreen: Execute a single SQL file
  * - RunDirScreen: Execute all SQL files in a directory
+ * - RunInspectScreen: View template context without executing
  *
  * @example
  * ```typescript
@@ -16,6 +17,7 @@
  *     RunExecScreen,
  *     RunFileScreen,
  *     RunDirScreen,
+ *     RunInspectScreen,
  * } from './screens/run/index.js'
  * ```
  */
@@ -25,3 +27,4 @@ export { RunBuildScreen } from './RunBuildScreen.js';
 export { RunExecScreen } from './RunExecScreen.js';
 export { RunFileScreen } from './RunFileScreen.js';
 export { RunDirScreen } from './RunDirScreen.js';
+export { RunInspectScreen } from './RunInspectScreen.js';

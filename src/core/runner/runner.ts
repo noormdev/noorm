@@ -45,6 +45,9 @@ import type {
     FileInput,
     ExecuteFilesOptions,
     ChangeType,
+    FilesStatusResult,
+    FileStatusResult,
+    FileStatusCategory,
 } from './types.js';
 
 // ─────────────────────────────────────────────────────────────
@@ -363,6 +366,133 @@ export async function preview(
     }
 
     return results;
+
+}
+
+// ─────────────────────────────────────────────────────────────
+// File Status Check (Pre-execution)
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Check status of files before execution.
+ *
+ * Determines which files are new, previously run, changed, or failed
+ * without actually executing them. Useful for showing confirmation
+ * dialogs before re-running files.
+ *
+ * @param context - Run context (db, configName required)
+ * @param files - File paths to check
+ * @returns Categorized file statuses
+ *
+ * @example
+ * ```typescript
+ * const status = await checkFilesStatus(context, ['/sql/seed.sql'])
+ *
+ * if (status.previouslyRunFiles.length > 0) {
+ *     // Show confirmation dialog
+ *     console.log(`${status.previouslyRunFiles.length} file(s) were previously run`)
+ * }
+ * ```
+ */
+export async function checkFilesStatus(
+    context: RunContext,
+    files: string[],
+): Promise<FilesStatusResult> {
+
+    const tracker = new Tracker(context.db, context.configName);
+    const results: FileStatusResult[] = [];
+
+    for (const filepath of files) {
+
+        // Load and render file to compute checksum
+        // Templates need rendering before checksum computation
+        const [sqlContent, loadErr] = await attempt(() => loadAndRenderFile(context, filepath));
+
+        if (loadErr) {
+
+            // Can't check status if we can't read the file
+            results.push({
+                filepath,
+                checksum: '',
+                category: 'new',
+                wouldSkip: false,
+            });
+            continue;
+
+        }
+
+        // Compute checksum from rendered content
+        const [checksum, checksumErr] = attemptSync(() => computeChecksumFromContent(sqlContent));
+
+        if (checksumErr) {
+
+            results.push({
+                filepath,
+                checksum: '',
+                category: 'new',
+                wouldSkip: false,
+            });
+            continue;
+
+        }
+
+        // Check if file needs to run (without force flag)
+        const needsRunResult = await tracker.needsRun(filepath, checksum, false);
+
+        let category: FileStatusCategory;
+
+        if (!needsRunResult.needsRun) {
+
+            // File would be skipped - it was previously run with same content
+            category = 'previously-run';
+
+        }
+        else if (needsRunResult.reason === 'new') {
+
+            category = 'new';
+
+        }
+        else if (needsRunResult.reason === 'changed') {
+
+            category = 'changed';
+
+        }
+        else if (needsRunResult.reason === 'failed') {
+
+            category = 'failed';
+
+        }
+        else {
+
+            // stale, force, etc. - treat as new
+            category = 'new';
+
+        }
+
+        results.push({
+            filepath,
+            checksum,
+            category,
+            wouldSkip: !needsRunResult.needsRun,
+        });
+
+    }
+
+    // Categorize results
+    const newFiles = results.filter((r) => r.category === 'new').map((r) => r.filepath);
+    const previouslyRunFiles = results.filter((r) => r.category === 'previously-run').map((r) => r.filepath);
+    const changedFiles = results.filter((r) => r.category === 'changed').map((r) => r.filepath);
+    const failedFiles = results.filter((r) => r.category === 'failed').map((r) => r.filepath);
+    const wouldSkipCount = results.filter((r) => r.wouldSkip).length;
+
+    return {
+        files: results,
+        newFiles,
+        previouslyRunFiles,
+        changedFiles,
+        failedFiles,
+        wouldSkipCount,
+    };
 
 }
 

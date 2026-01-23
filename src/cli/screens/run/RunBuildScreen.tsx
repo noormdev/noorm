@@ -248,6 +248,13 @@ export function RunBuildScreen({ params: _params }: ScreenProps): ReactElement {
 
         }
 
+        // Retry on 'r' in error or complete phase
+        if (input === 'r' && (phase === 'error' || phase === 'complete')) {
+
+            executeBuild();
+
+        }
+
     });
 
     // No active config
@@ -296,6 +303,7 @@ export function RunBuildScreen({ params: _params }: ScreenProps): ReactElement {
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
+                    <Text dimColor>[r] Retry</Text>
                     <Text dimColor>[Esc] Back</Text>
                 </Box>
             </Box>
@@ -519,6 +527,7 @@ export function RunBuildScreen({ params: _params }: ScreenProps): ReactElement {
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
+                    <Text dimColor>[r] Retry</Text>
                     <Text dimColor>[Esc] Back</Text>
                 </Box>
             </Box>

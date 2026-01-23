@@ -96,6 +96,7 @@ export type Route =
     | 'run/dir'
     | 'run/exec'
     | 'run/file'
+    | 'run/inspect'
     | 'run/list'
 
     // Secret management

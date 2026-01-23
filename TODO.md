@@ -197,6 +197,24 @@ Core SDK is implemented and packaged (`@noormdev/sdk`). Remaining:
 - [ ] `run files <path...>` - Run multiple specific files
 
 
+## Immediate: Artifacts Consolidation
+
+**Design principle:** All generated artifacts (state, history, logs, etc.) should live under a single directory (`.noorm/`) so gitignore needs only one entry.
+
+**Current state:** Files are scattered, requiring multiple gitignore entries. `sql-history` is not ignored at all.
+
+**Action:**
+- [ ] Audit all generated files and their current locations
+- [ ] Move artifacts into `.noorm/`:
+  - `state.enc` → `.noorm/state.enc` (already there?)
+  - `sql-history` → `.noorm/sql-history`
+  - Logs → `.noorm/logs/`
+  - Snapshots → `.noorm/snapshots/`
+- [ ] Update `noorm init` to generate single gitignore entry: `.noorm/`
+- [ ] Handle migration for existing installations
+- [ ] Document this as a codebase principle in CLAUDE.md
+
+
 ## Pre-Release Checklist
 
 - [ ] **Change table CLI version** - Ensure change rows include CLI version (currently null)
@@ -246,7 +264,47 @@ noorm change ff --configs dev,staging,prod --confirm-each
 
 **Drift Detection** - Passive monitoring with snapshots at `.noorm/snapshots/`. Show drift warnings on TUI launch.
 
-**Backup & Restore** - Snapshot database before destructive operations using native tools (pg_dump, mysqldump).
+**Backup & Restore** - Full database backup and restore to/from local filesystem.
+
+- `noorm db backup [--config <name>] [--output <path>]` - Backup database to local file
+- `noorm db restore [--config <name>] [--input <path>]` - Restore database from backup file
+- Use native tools per dialect: `pg_dump`/`pg_restore` for PostgreSQL, `mysqldump` for MySQL, `.backup` for SQLite, `BACKUP DATABASE` for MSSQL
+- Automatic compression (gzip)
+- Snapshot before destructive operations (optional)
+
+**Data Transfer** - Transfer table data between databases.
+
+- `noorm db transfer [--from <config>] [--to <config>] [--tables <list>] [--on-conflict <strategy>]`
+
+*Conflict handling (`--on-conflict`):*
+- `fail` (default) - Abort on first duplicate, safest option
+- `skip` - Ignore rows with existing PKs (`INSERT IGNORE`, `ON CONFLICT DO NOTHING`)
+- `update` - Upsert existing rows (`ON DUPLICATE KEY UPDATE`, `ON CONFLICT DO UPDATE`, `MERGE`)
+- `replace` - Delete + insert (atomic replacement)
+
+*Same-server transfer:*
+- Detect when source and target share host/port/credentials
+- Use optimized `INSERT INTO target.table SELECT * FROM source.table` statements
+- Support table filtering, WHERE clauses
+
+*Cross-server transfer:*
+- Connect to two different servers and transfer data between them
+- CSV intermediate format for dialect-agnostic transfers
+- Dialect-specific optimizations:
+  - PostgreSQL: `COPY` command for efficient bulk operations
+  - SQL Server: BCP utility for high-performance transfers
+  - MySQL: `SELECT INTO OUTFILE` / `LOAD DATA INFILE`
+- Progress reporting for large transfers
+- Transaction support with rollback on failure
+
+*Considerations:*
+- **Foreign keys** - Insertion order matters; auto-detect dependency order or disable FK checks during transfer
+- **Identity columns** - Preserve original IDs vs generate new; SQL Server needs `IDENTITY_INSERT ON`, PostgreSQL needs sequence resync
+- **Large datasets** - Batching (`--batch-size`), streaming, resume capability on failure
+- **Schema mismatches** - Validate compatibility before starting (`--dry-run`)
+- **Triggers** - Target triggers may cause side effects; option to disable (`--disable-triggers`)
+- **Cross-server atomicity** - No single transaction across servers; checkpoint/resume mechanism for partial failures
+- **Data type edge cases** - BLOBs in CSV (base64?), NULL representation, date/time format differences
 
 **AI Database Chat** - Interactive chat against schema and data with tool-based exploration. Model configured in `noorm.config.ts`.
 

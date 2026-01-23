@@ -13,6 +13,7 @@ export {
     preview,
     discoverFiles,
     executeFiles,
+    checkFilesStatus,
 } from './runner.js';
 
 // Tracker
@@ -42,6 +43,10 @@ export type {
     Direction,
     FileInput,
     ExecuteFilesOptions,
+    // File status check types
+    FileStatusCategory,
+    FileStatusResult,
+    FilesStatusResult,
 } from './types.js';
 
 export { DEFAULT_RUN_OPTIONS } from './types.js';

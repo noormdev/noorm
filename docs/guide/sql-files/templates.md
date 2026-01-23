@@ -152,6 +152,19 @@ File names are converted to camelCase:
 | `API_KEYS.json` | `$.apiKeys` |
 
 
+### Naming Collisions
+
+Different naming patterns can produce the same context key:
+
+| Filename | Context Key |
+|----------|-------------|
+| `asc_fasb_org.json` | `$.ascFasbOrg` |
+| `asc.fasb.org.yaml` | `$.ascFasbOrg` |
+| `asc-fasb-org.csv` | `$.ascFasbOrg` |
+
+If two files resolve to the same key, one silently overwrites the other. Use distinct base names to avoid conflicts.
+
+
 ### Supported Formats
 
 | Extension | Notes |

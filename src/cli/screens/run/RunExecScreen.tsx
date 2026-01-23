@@ -40,22 +40,25 @@ import type { RunContext } from '../../../core/runner/index.js';
 type Phase = 'loading' | 'picker' | 'confirm' | 'running' | 'complete' | 'error';
 
 /**
- * Simple component that handles Escape key to go back.
- * Used for static phases (complete, error) that don't have interactive children.
+ * Component that handles Escape and optional Retry keys.
  */
-function EscapeHandler({
+function KeyHandler({
+    focusLabel,
     onEscape,
+    onRetry,
     toastMessage,
     showToast,
 }: {
+    focusLabel: string;
     onEscape?: () => void;
+    onRetry?: () => void;
     toastMessage?: string;
     showToast?: (opts: { message: string; variant: 'warning' }) => void;
 }): null {
 
-    const { isFocused } = useFocusScope('EscapeHandler');
+    const { isFocused } = useFocusScope(focusLabel);
 
-    useInput((_, key) => {
+    useInput((input, key) => {
 
         if (!isFocused) return;
 
@@ -71,6 +74,14 @@ function EscapeHandler({
                 onEscape();
 
             }
+
+            return;
+
+        }
+
+        if (input === 'r' && onRetry) {
+
+            onRetry();
 
         }
 
@@ -287,7 +298,7 @@ export function RunExecScreen({ params: _params }: ScreenProps): ReactElement {
 
         return (
             <Box flexDirection="column" gap={1}>
-                <EscapeHandler onEscape={back} />
+                <KeyHandler focusLabel="RunExecNoConfig" onEscape={back} />
                 <Panel title="Execute Files" borderColor="yellow" paddingX={1} paddingY={1}>
                     <Text color="yellow">No active configuration selected.</Text>
                 </Panel>
@@ -317,7 +328,7 @@ export function RunExecScreen({ params: _params }: ScreenProps): ReactElement {
 
         return (
             <Box flexDirection="column" gap={1}>
-                <EscapeHandler onEscape={back} />
+                <KeyHandler focusLabel="RunExecError" onEscape={back} onRetry={executeFiles} />
                 <Panel title="Execute Files" borderColor="red" paddingX={1} paddingY={1}>
                     <Box flexDirection="column" gap={1}>
                         <Text color="red">Error</Text>
@@ -325,6 +336,7 @@ export function RunExecScreen({ params: _params }: ScreenProps): ReactElement {
                     </Box>
                 </Panel>
                 <Box flexWrap="wrap" columnGap={2}>
+                    <Text dimColor>[r] Retry</Text>
                     <Text dimColor>[Esc] Back</Text>
                 </Box>
             </Box>
@@ -409,7 +421,8 @@ export function RunExecScreen({ params: _params }: ScreenProps): ReactElement {
 
         return (
             <Box flexDirection="column" gap={1}>
-                <EscapeHandler
+                <KeyHandler
+                    focusLabel="RunExecRunning"
                     toastMessage="Cannot cancel running files"
                     showToast={showToast}
                 />
@@ -440,7 +453,7 @@ export function RunExecScreen({ params: _params }: ScreenProps): ReactElement {
 
         return (
             <Box flexDirection="column" gap={1}>
-                <EscapeHandler onEscape={back} />
+                <KeyHandler focusLabel="RunExecComplete" onEscape={back} onRetry={executeFiles} />
                 <Panel title="Execution Complete" borderColor="green" paddingX={1} paddingY={1}>
                     <Box flexDirection="column" gap={1}>
                         <Box gap={2}>
@@ -457,6 +470,7 @@ export function RunExecScreen({ params: _params }: ScreenProps): ReactElement {
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
+                    <Text dimColor>[r] Retry</Text>
                     <Text dimColor>[Esc] Back</Text>
                 </Box>
             </Box>

@@ -11,6 +11,7 @@
  * - e/2: Navigate to exec screen (file picker)
  * - f/3: Navigate to file screen
  * - d/4: Navigate to dir screen
+ * - i/5: Navigate to inspect screen (template context)
  * - Esc: Go back
  *
  * @example
@@ -127,6 +128,14 @@ export function RunListScreen({ params: _params }: ScreenProps): ReactElement {
 
         }
 
+        if (input === 'i' || input === '5') {
+
+            navigate('run/inspect');
+
+            return;
+
+        }
+
     });
 
     // No active config
@@ -235,6 +244,9 @@ export function RunListScreen({ params: _params }: ScreenProps): ReactElement {
                     <Text>
                         <Text color="cyan">[d]</Text> Dir - Execute all files in a directory
                     </Text>
+                    <Text>
+                        <Text color="cyan">[i]</Text> Inspect - View template context
+                    </Text>
                 </Box>
             </Panel>
 
@@ -243,6 +255,7 @@ export function RunListScreen({ params: _params }: ScreenProps): ReactElement {
                 <Text dimColor>[e] Exec</Text>
                 <Text dimColor>[f] File</Text>
                 <Text dimColor>[d] Dir</Text>
+                <Text dimColor>[i] Inspect</Text>
                 <Text dimColor>[Esc] Back</Text>
             </Box>
         </Box>

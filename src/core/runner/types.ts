@@ -329,3 +329,52 @@ export interface RecordExecutionData {
     /** Duration in milliseconds */
     durationMs?: number;
 }
+
+// ─────────────────────────────────────────────────────────────
+// File Status Check (Pre-execution)
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Status of a file for pre-execution check.
+ */
+export type FileStatusCategory = 'new' | 'previously-run' | 'changed' | 'failed';
+
+/**
+ * Result of checking a single file's status.
+ */
+export interface FileStatusResult {
+    /** Absolute file path */
+    filepath: string;
+
+    /** File's current checksum */
+    checksum: string;
+
+    /** Status category */
+    category: FileStatusCategory;
+
+    /** Whether the file would be skipped without force */
+    wouldSkip: boolean;
+}
+
+/**
+ * Result of checking multiple files' statuses.
+ */
+export interface FilesStatusResult {
+    /** All file status results */
+    files: FileStatusResult[];
+
+    /** Files that are new (never run) */
+    newFiles: string[];
+
+    /** Files that were previously run (unchanged) */
+    previouslyRunFiles: string[];
+
+    /** Files that changed since last run */
+    changedFiles: string[];
+
+    /** Files that previously failed */
+    failedFiles: string[];
+
+    /** Total count of files that would be skipped */
+    wouldSkipCount: number;
+}

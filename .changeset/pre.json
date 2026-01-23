@@ -8,6 +8,7 @@
   "changesets": [
     "bundle-fix",
     "cjs-shim-fix",
+    "crisp-taxis-pick",
     "dry-run-error-display",
     "fix-bundle-version",
     "gold-items-feel",
