@@ -1,0 +1,1 @@
+import{_ as a,c as n,o as e,a6 as i}from"./chunks/framework.YF6eQPX_.js";const g=JSON.parse('{"title":"Terminal UI","description":"","frontmatter":{},"headers":[],"relativePath":"tui.md","filePath":"tui.md"}'),p={name:"tui.md"};function t(l,s,c,d,o,r){return e(),n("div",null,[...s[0]||(s[0]=[i("",54)])])}const b=a(p,[["render",t]]);export{g as __pageData,b as default};
