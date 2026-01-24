@@ -13,9 +13,7 @@
     "fix-bundle-version",
     "gold-items-feel",
     "rebuild-fix",
-    "tender-lions-enter",
     "version-command",
-    "version-debug",
-    "dry-run-error-display"
+    "version-debug"
   ]
 }
