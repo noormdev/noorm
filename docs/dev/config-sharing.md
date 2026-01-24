@@ -228,7 +228,7 @@ Identity keys are stored in the user's home directory:
 └── identity.json    # Metadata (name, email, machine, os)
 ```
 
-Identity is stored globally at `~/.noorm/`, separate from the project's encrypted state file (`.noorm/state.enc`). This separation means:
+Identity is stored globally at `~/.noorm/`, separate from the project's encrypted state file (`.noorm/state/state.enc`). This separation means:
 - Identity works across all noorm projects on your machine
 - You can decrypt state files from any project with the same private key
 - The private key never needs to be stored in project state

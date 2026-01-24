@@ -20,6 +20,7 @@ import { ObserverEngine, type Events } from '@logosdx/observer';
 
 import type { SettingsEvents } from './settings/index.js';
 import type { AppMode, ShutdownReason, ShutdownPhase, PhaseStatus } from './lifecycle/types.js';
+import type { UpdateEvents } from './update/types.js';
 
 /**
  * All events emitted by noorm core modules.
@@ -40,7 +41,7 @@ import type { AppMode, ShutdownReason, ShutdownPhase, PhaseStatus } from './life
  * - `settings:*` - Settings lifecycle and mutations
  * - `error` - Catch-all errors
  */
-export interface NoormEvents extends SettingsEvents {
+export interface NoormEvents extends SettingsEvents, UpdateEvents {
     // File execution
     'file:before': { filepath: string; checksum: string; configName: string };
     'file:after': {

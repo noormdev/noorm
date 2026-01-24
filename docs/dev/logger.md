@@ -66,7 +66,7 @@ Logger settings live in `.noorm/settings.yml`:
 logging:
     enabled: true
     level: info
-    file: .noorm/noorm.log
+    file: .noorm/state/noorm.log
     maxSize: 10mb
     maxFiles: 5
 ```
@@ -75,7 +75,7 @@ logging:
 |----------|---------|-------------|
 | `enabled` | `true` | Enable file logging |
 | `level` | `'info'` | Minimum level to capture |
-| `file` | `.noorm/noorm.log` | Log file path (relative to project) |
+| `file` | `.noorm/state/noorm.log` | Log file path (relative to project) |
 | `maxSize` | `'10mb'` | Rotate when size exceeded |
 | `maxFiles` | `5` | Rotated files to keep |
 
@@ -430,16 +430,16 @@ Log files are newline-delimited JSON. Parse with shell tools:
 
 ```bash
 # View recent entries
-tail -20 .noorm/noorm.log | jq .
+tail -20 .noorm/state/noorm.log | jq .
 
 # Filter by level
-cat .noorm/noorm.log | jq 'select(.level == "error")'
+cat .noorm/state/noorm.log | jq 'select(.level == "error")'
 
 # Filter by event type
-cat .noorm/noorm.log | jq 'select(.type | startswith("build:"))'
+cat .noorm/state/noorm.log | jq 'select(.type | startswith("build:"))'
 
 # Search by time range
-cat .noorm/noorm.log | jq 'select(.time > "2024-01-15T10:00:00")'
+cat .noorm/state/noorm.log | jq 'select(.time > "2024-01-15T10:00:00")'
 ```
 
 
@@ -451,7 +451,7 @@ The `readLogFile` function parses log files with graceful error handling:
 import { readLogFile } from './core/logger'
 
 // Read last 500 entries (default)
-const result = await readLogFile('.noorm/noorm.log')
+const result = await readLogFile('.noorm/state/noorm.log')
 
 console.log(`Total lines: ${result.totalLines}`)
 console.log(`Returned: ${result.entries.length}`)
@@ -462,7 +462,7 @@ for (const entry of result.entries) {
 }
 
 // Read last 100 entries
-const recent = await readLogFile('.noorm/noorm.log', { limit: 100 })
+const recent = await readLogFile('.noorm/state/noorm.log', { limit: 100 })
 ```
 
 Results are returned in reverse chronological order (newest first). Malformed JSON lines are silently skipped.

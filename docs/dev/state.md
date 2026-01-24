@@ -10,12 +10,15 @@ noorm encrypts all sensitive data in a single state file. This file travels with
 
 ## The State File
 
-All persistent data lives in `.noorm/state.enc`:
+All persistent data lives in `.noorm/state/state.enc`:
 
 ```
 your-project/
 └── .noorm/
-    └── state.enc    # Encrypted JSON, gitignored
+    ├── .gitignore       # Contains: state/
+    ├── settings.yml     # Team-shared settings (committed)
+    └── state/           # Gitignored directory
+        └── state.enc    # Encrypted JSON
 ```
 
 The file contains:

@@ -934,7 +934,7 @@ stages:
                 await manager.setLogging({
                     enabled: true,
                     level: 'verbose',
-                    file: '.noorm/verbose.log',
+                    file: '.noorm/state/verbose.log',
                     maxSize: '50mb',
                     maxFiles: 10,
                 });
@@ -942,7 +942,7 @@ stages:
                 const logging = manager.getLogging();
 
                 expect(logging.level).toBe('verbose');
-                expect(logging.file).toBe('.noorm/verbose.log');
+                expect(logging.file).toBe('.noorm/state/verbose.log');
 
             }
             finally {

@@ -99,7 +99,7 @@ export interface LoggerConfig {
 export const DEFAULT_LOGGER_CONFIG: LoggerConfig = {
     enabled: true,
     level: 'info',
-    file: '.noorm/noorm.log',
+    file: '.noorm/state/noorm.log',
     maxSize: '10mb',
     maxFiles: 5,
 };

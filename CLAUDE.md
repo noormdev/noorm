@@ -5,7 +5,7 @@
 
 **noorm** - Database Schema & Change Manager with Ink/React TUI.
 
-Manage database configs, execute SQL changes, run templated SQL files. Core modules emit events via `@logosdx/observer`, CLI subscribes. Configs stored encrypted in `.noorm/state.enc`. Headless mode for CI/CD with JSON output.
+Manage database configs, execute SQL changes, run templated SQL files. Core modules emit events via `@logosdx/observer`, CLI subscribes. Configs stored encrypted in `.noorm/state/state.enc`. Headless mode for CI/CD with JSON output.
 
 
 ## Commands

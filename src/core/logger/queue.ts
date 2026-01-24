@@ -7,7 +7,7 @@
  *
  * @example
  * ```typescript
- * const queue = new WriteQueue('.noorm/noorm.log');
+ * const queue = new WriteQueue('.noorm/state/noorm.log');
  * await queue.start();
  *
  * queue.enqueue('{"time":"...","level":"info"}\n');

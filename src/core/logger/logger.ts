@@ -11,7 +11,7 @@
  * const logger = new Logger({
  *     settings,
  *     level: 'info',
- *     file: createWriteStream('.noorm/noorm.log', { flags: 'a' }),
+ *     file: createWriteStream('.noorm/state/noorm.log', { flags: 'a' }),
  * })
  *
  * // Logger automatically captures all observer events

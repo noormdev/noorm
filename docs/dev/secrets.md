@@ -231,7 +231,7 @@ noorm secret                        # Shows DB_PASSWORD, DEBUG_KEY as required
 
 ## Security Model
 
-1. **Encryption at rest** — Secrets are stored in `.noorm/state.enc`, encrypted with AES-256-GCM
+1. **Encryption at rest** — Secrets are stored in `.noorm/state/state.enc`, encrypted with AES-256-GCM
 2. **Key derivation** — Encryption key derives from your private key via HKDF
 3. **Values never displayed** — CLI shows keys only, never values
 4. **Masked input** — Password types use non-echoing input

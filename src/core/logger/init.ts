@@ -86,7 +86,7 @@ export function enableAutoLoggerInit(projectRoot: string): void {
 
         if (!isCi()) {
 
-            const filePath = join(projectRoot, settings.logging.file ?? '.noorm/noorm.log');
+            const filePath = join(projectRoot, settings.logging.file ?? '.noorm/state/noorm.log');
 
             // Ensure directory exists
             const [, mkdirErr] = await attempt(() => mkdir(dirname(filePath), { recursive: true }));

@@ -556,7 +556,7 @@ noorm -H change ff
    noorm -H --dry-run change ff
    ```
 
-7. **Capture logs** - noorm appends to `.noorm/noorm.log` for debugging
+7. **Capture logs** - noorm appends to `.noorm/state/noorm.log` for debugging
 
 
 ## Error Messages
@@ -870,7 +870,7 @@ Manage database configurations
 
     noorm config [subcommand] [options]
 
-> Configs are stored encrypted in \`.noorm/state.enc\`
+> Configs are stored encrypted in \`.noorm/state/state.enc\`
 `;
 
 export const run: HeadlessCommand = async (_params, flags, _logger) => {

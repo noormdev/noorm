@@ -389,3 +389,33 @@ export {
     hasGlobalNoorm,
 } from './project.js';
 export type { ProjectDiscoveryResult } from './project.js';
+
+// Update (auto-update feature)
+export {
+    loadGlobalSettings,
+    saveGlobalSettings,
+    updateGlobalSetting,
+    updateDismissablePreference,
+    getDismissablePreference,
+    getGlobalSettingsPath,
+    resetGlobalSettingsForTesting,
+    setTestOverridePath,
+    fetchPackageInfo,
+    getLatestForChannel,
+    getVersionsOnChannel,
+    getCurrentVersion,
+    parsePrerelease,
+    isMajorVersionUpdate,
+    compareVersions,
+    checkForUpdate,
+    installUpdate,
+} from './update/index.js';
+export type {
+    DismissablePreference,
+    GlobalSettings,
+    UpdateCheckResult,
+    UpdateResult,
+    UpdateEvents,
+    RegistryPackageInfo,
+    PrereleaseInfo,
+} from './update/index.js';

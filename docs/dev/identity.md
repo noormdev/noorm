@@ -54,7 +54,7 @@ When you first run noorm, it generates an X25519 keypair stored globally at `~/.
 └── identity.json    # Metadata (name, email, machine, os)
 ```
 
-**Important:** Identity is always global, never per-project. A developer's identity is the same across all noorm projects on their machine. The encrypted state file (`.noorm/state.enc`) stores configs and secrets, but identity lives at the user level.
+**Important:** Identity is always global, never per-project. A developer's identity is the same across all noorm projects on their machine. The encrypted state file (`.noorm/state/state.enc`) stores configs and secrets, but identity lives at the user level.
 
 Your identity is uniquely identified by a hash combining your email, name, machine, and OS. Two machines belonging to the same person have different identity hashes - this is intentional. It lets you track which *device* performed an operation, not just which person.
 
@@ -148,7 +148,7 @@ isValidIdentityHash(hash)  // true
 
 ## State Encryption
 
-Your local state file (`.noorm/state.enc`) contains sensitive data: database credentials, secrets, your identity. It's encrypted using AES-256-GCM.
+Your local state file (`.noorm/state/state.enc`) contains sensitive data: database credentials, secrets, your identity. It's encrypted using AES-256-GCM.
 
 Encryption uses your private key with HKDF to derive the AES-256-GCM key. This approach means:
 

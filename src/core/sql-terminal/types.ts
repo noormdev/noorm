@@ -69,7 +69,7 @@ export interface SqlExecutionResult {
 /**
  * History file structure.
  *
- * Stored at `.noorm/sql-history/{configName}.json`.
+ * Stored at `.noorm/state/history/{configName}.json`.
  */
 export interface SqlHistoryFile {
 

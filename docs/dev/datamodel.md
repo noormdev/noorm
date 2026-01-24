@@ -9,7 +9,7 @@ noorm separates data into three tiers:
 
 | Tier | Storage | Encryption | Versioned |
 |------|---------|------------|-----------|
-| **State** | `.noorm/state.enc` | AES-256-GCM | Git-ignored |
+| **State** | `.noorm/state/state.enc` | AES-256-GCM | Git-ignored |
 | **Settings** | `.noorm/settings.yml` | None | Committed |
 | **Database** | Target database | N/A | Tracked in-db |
 
@@ -50,7 +50,7 @@ erDiagram
 
 ### State File
 
-The encrypted state file at `.noorm/state.enc` contains all sensitive configuration.
+The encrypted state file at `.noorm/state/state.enc` contains all sensitive configuration.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -214,7 +214,7 @@ strict:
 logging:
     enabled: true
     level: info
-    file: .noorm/noorm.log
+    file: .noorm/state/noorm.log
     maxSize: 10mb
     maxFiles: 5
 ```
@@ -326,7 +326,7 @@ File logging configuration.
 |-------|------|---------|-------------|
 | enabled | boolean | `true` | Enable file logging |
 | level | enum | `info` | `silent`, `error`, `warn`, `info`, or `verbose` |
-| file | string | `.noorm/noorm.log` | Log file path |
+| file | string | `.noorm/state/noorm.log` | Log file path |
 | maxSize | string | `10mb` | Maximum file size before rotation |
 | maxFiles | number | `5` | Maximum rotated files to keep |
 
@@ -990,7 +990,7 @@ Full result from query execution.
 
 ### SqlHistoryFile
 
-Persistent history stored at `.noorm/sql-history/{configName}.json`.
+Persistent history stored at `.noorm/state/history/{configName}.json`.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -1015,7 +1015,7 @@ Result of clearing history.
 
 noorm's data model spans three tiers with clear separation of concerns:
 
-1. **Encrypted State** - Secrets, credentials, configs (`.noorm/state.enc`)
+1. **Encrypted State** - Secrets, credentials, configs (`.noorm/state/state.enc`)
 2. **Settings** - Team rules, stages, build config (`.noorm/settings.yml`)
 3. **Database Tables** - Execution history, locks, identities (`__noorm_*`)
 

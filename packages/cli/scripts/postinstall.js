@@ -7,7 +7,7 @@
  * creates a symlink in /usr/local/bin so `noorm` works across version switches.
  */
 
-import { symlink, unlink, readlink } from 'fs/promises';
+import { symlink, unlink, readlink, readFile, writeFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import { dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
@@ -29,6 +29,32 @@ async function main() {
     if (__dirname.includes('node_modules') && !__dirname.includes('/lib/node_modules/')) {
 
         return;
+
+    }
+
+    // Update hashbang in dist/index.js with current Node path
+    if (existsSync(SOURCE)) {
+
+        try {
+
+            const nodeLocation = process.execPath;
+            const content = await readFile(SOURCE, 'utf8');
+            const lines = content.split('\n');
+
+            if (lines[0].startsWith('#!')) {
+
+                lines[0] = `#!/usr/bin/env ${nodeLocation}`;
+                await writeFile(SOURCE, lines.join('\n'), 'utf8');
+                console.log(`✓ Updated hashbang to use /usr/bin/env ${nodeLocation}`);
+
+            }
+
+        }
+        catch (err) {
+
+            console.error('Error updating hashbang:', err.message);
+
+        }
 
     }
 

@@ -19,7 +19,7 @@ import { migrateState, needsMigration } from './migrations.js';
 import { getPackageVersion } from './version.js';
 import { observer } from '../observer.js';
 
-const DEFAULT_STATE_DIR = '.noorm';
+const DEFAULT_STATE_DIR = '.noorm/state';
 const DEFAULT_STATE_FILE = 'state.enc';
 
 /**

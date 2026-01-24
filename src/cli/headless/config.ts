@@ -23,7 +23,7 @@ Manage database configurations
 Configurations store database connection details, paths, and settings.
 Each config has a name and can be set as **active** for default use.
 
-> Configs are stored encrypted in \`.noorm/state.enc\`
+> Configs are stored encrypted in \`.noorm/state/state.enc\`
 
 Config resolution order:
 1. \`--config\` flag

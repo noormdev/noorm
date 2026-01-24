@@ -7,7 +7,7 @@
  *
  * @example
  * ```typescript
- * const result = await readLogFile('.noorm/noorm.log', { limit: 100 })
+ * const result = await readLogFile('.noorm/state/noorm.log', { limit: 100 })
  * console.log(result.entries) // Most recent 100 entries
  * ```
  */
@@ -56,10 +56,10 @@ export interface ReadLogsResult {
  * @example
  * ```typescript
  * // Get last 500 entries
- * const result = await readLogFile('.noorm/noorm.log')
+ * const result = await readLogFile('.noorm/state/noorm.log')
  *
  * // Get last 100 entries
- * const result = await readLogFile('.noorm/noorm.log', { limit: 100 })
+ * const result = await readLogFile('.noorm/state/noorm.log', { limit: 100 })
  *
  * // Handle missing file gracefully
  * const result = await readLogFile('missing.log')

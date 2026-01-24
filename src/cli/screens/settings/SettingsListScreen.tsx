@@ -125,7 +125,7 @@ function loggingSectionSummary(settings: Settings | null): string {
 
     if (!logging.enabled) return 'disabled';
 
-    return `${logging.level ?? 'info'} → ${logging.file ?? '.noorm/noorm.log'}`;
+    return `${logging.level ?? 'info'} → ${logging.file ?? '.noorm/state/noorm.log'}`;
 
 }
 

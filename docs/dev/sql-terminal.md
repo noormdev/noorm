@@ -28,7 +28,7 @@ The SQL terminal provides an interactive REPL for running arbitrary SQL queries.
 └─────────────────────────────────────────────────────────────┘
 ```
 
-The terminal executes queries via Kysely's `sql.raw()` and stores history per-config in `.noorm/sql-history/`.
+The terminal executes queries via Kysely's `sql.raw()` and stores history per-config in `.noorm/state/history/`.
 
 
 ## Quick Start

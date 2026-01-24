@@ -46,9 +46,9 @@ describe('sql-terminal: history', () => {
             it('should return empty array when file contains corrupted JSON', async () => {
 
                 const manager = new SqlHistoryManager(TMP_DIR, 'test-config');
-                const historyPath = join(TMP_DIR, '.noorm', 'sql-history', 'test-config.json');
+                const historyPath = join(TMP_DIR, '.noorm', 'state', 'history', 'test-config.json');
 
-                await mkdir(join(TMP_DIR, '.noorm', 'sql-history'), { recursive: true });
+                await mkdir(join(TMP_DIR, '.noorm', 'state', 'history'), { recursive: true });
                 await writeFile(historyPath, '{ invalid json }', 'utf-8');
 
                 const entries = await manager.load();
@@ -60,7 +60,7 @@ describe('sql-terminal: history', () => {
             it('should deserialize Date objects correctly', async () => {
 
                 const manager = new SqlHistoryManager(TMP_DIR, 'test-config');
-                const historyPath = join(TMP_DIR, '.noorm', 'sql-history', 'test-config.json');
+                const historyPath = join(TMP_DIR, '.noorm', 'state', 'history', 'test-config.json');
 
                 const now = new Date();
                 const serialized = {
@@ -77,7 +77,7 @@ describe('sql-terminal: history', () => {
                     ] as SqlHistoryEntrySerialized[],
                 };
 
-                await mkdir(join(TMP_DIR, '.noorm', 'sql-history'), { recursive: true });
+                await mkdir(join(TMP_DIR, '.noorm', 'state', 'history'), { recursive: true });
                 await writeFile(historyPath, JSON.stringify(serialized), 'utf-8');
 
                 const entries = await manager.load();
@@ -92,7 +92,7 @@ describe('sql-terminal: history', () => {
             it('should load multiple entries', async () => {
 
                 const manager = new SqlHistoryManager(TMP_DIR, 'test-config');
-                const historyPath = join(TMP_DIR, '.noorm', 'sql-history', 'test-config.json');
+                const historyPath = join(TMP_DIR, '.noorm', 'state', 'history', 'test-config.json');
 
                 const serialized = {
                     version: '1.0.0',
@@ -116,7 +116,7 @@ describe('sql-terminal: history', () => {
                     ] as SqlHistoryEntrySerialized[],
                 };
 
-                await mkdir(join(TMP_DIR, '.noorm', 'sql-history'), { recursive: true });
+                await mkdir(join(TMP_DIR, '.noorm', 'state', 'history'), { recursive: true });
                 await writeFile(historyPath, JSON.stringify(serialized), 'utf-8');
 
                 const entries = await manager.load();
@@ -130,7 +130,7 @@ describe('sql-terminal: history', () => {
             it('should preserve optional fields', async () => {
 
                 const manager = new SqlHistoryManager(TMP_DIR, 'test-config');
-                const historyPath = join(TMP_DIR, '.noorm', 'sql-history', 'test-config.json');
+                const historyPath = join(TMP_DIR, '.noorm', 'state', 'history', 'test-config.json');
 
                 const serialized = {
                     version: '1.0.0',
@@ -155,7 +155,7 @@ describe('sql-terminal: history', () => {
                     ] as SqlHistoryEntrySerialized[],
                 };
 
-                await mkdir(join(TMP_DIR, '.noorm', 'sql-history'), { recursive: true });
+                await mkdir(join(TMP_DIR, '.noorm', 'state', 'history'), { recursive: true });
                 await writeFile(historyPath, JSON.stringify(serialized), 'utf-8');
 
                 const entries = await manager.load();
@@ -233,7 +233,7 @@ describe('sql-terminal: history', () => {
 
                 expect(entries[0].resultsFile).toBe(`${id}.results.gz`);
 
-                const resultsDir = join(TMP_DIR, '.noorm', 'sql-history', 'test-config');
+                const resultsDir = join(TMP_DIR, '.noorm', 'state', 'history', 'test-config');
                 const files = await readdir(resultsDir);
 
                 expect(files).toContain(`${id}.results.gz`);
@@ -392,7 +392,7 @@ describe('sql-terminal: history', () => {
                 const id = 'compression-test';
                 await manager.saveResults(id, result);
 
-                const resultsPath = join(TMP_DIR, '.noorm', 'sql-history', 'test-config', `${id}.results.gz`);
+                const resultsPath = join(TMP_DIR, '.noorm', 'state', 'history', 'test-config', `${id}.results.gz`);
                 const compressed = await readFile(resultsPath);
                 const uncompressed = JSON.stringify({
                     columns: result.columns,
@@ -578,7 +578,7 @@ describe('sql-terminal: history', () => {
             it('should remove entries older than cutoff', async () => {
 
                 const manager = new SqlHistoryManager(TMP_DIR, 'test-config');
-                const historyPath = join(TMP_DIR, '.noorm', 'sql-history', 'test-config.json');
+                const historyPath = join(TMP_DIR, '.noorm', 'state', 'history', 'test-config.json');
 
                 const oldDate = new Date();
                 oldDate.setMonth(oldDate.getMonth() - 6);
@@ -603,7 +603,7 @@ describe('sql-terminal: history', () => {
                     ] as SqlHistoryEntrySerialized[],
                 };
 
-                await mkdir(join(TMP_DIR, '.noorm', 'sql-history'), { recursive: true });
+                await mkdir(join(TMP_DIR, '.noorm', 'state', 'history'), { recursive: true });
                 await writeFile(historyPath, JSON.stringify(serialized), 'utf-8');
 
                 const clearResult = await manager.clearOlderThan(3);
@@ -620,8 +620,8 @@ describe('sql-terminal: history', () => {
             it('should delete result files for removed entries', async () => {
 
                 const manager = new SqlHistoryManager(TMP_DIR, 'test-config');
-                const historyPath = join(TMP_DIR, '.noorm', 'sql-history', 'test-config.json');
-                const resultsDir = join(TMP_DIR, '.noorm', 'sql-history', 'test-config');
+                const historyPath = join(TMP_DIR, '.noorm', 'state', 'history', 'test-config.json');
+                const resultsDir = join(TMP_DIR, '.noorm', 'state', 'history', 'test-config');
 
                 const oldDate = new Date();
                 oldDate.setMonth(oldDate.getMonth() - 6);
@@ -660,7 +660,7 @@ describe('sql-terminal: history', () => {
             it('should handle entries without result files', async () => {
 
                 const manager = new SqlHistoryManager(TMP_DIR, 'test-config');
-                const historyPath = join(TMP_DIR, '.noorm', 'sql-history', 'test-config.json');
+                const historyPath = join(TMP_DIR, '.noorm', 'state', 'history', 'test-config.json');
 
                 const oldDate = new Date();
                 oldDate.setMonth(oldDate.getMonth() - 6);
@@ -678,7 +678,7 @@ describe('sql-terminal: history', () => {
                     ] as SqlHistoryEntrySerialized[],
                 };
 
-                await mkdir(join(TMP_DIR, '.noorm', 'sql-history'), { recursive: true });
+                await mkdir(join(TMP_DIR, '.noorm', 'state', 'history'), { recursive: true });
                 await writeFile(historyPath, JSON.stringify(serialized), 'utf-8');
 
                 const clearResult = await manager.clearOlderThan(3);
@@ -691,7 +691,7 @@ describe('sql-terminal: history', () => {
             it('should handle missing result files gracefully', async () => {
 
                 const manager = new SqlHistoryManager(TMP_DIR, 'test-config');
-                const historyPath = join(TMP_DIR, '.noorm', 'sql-history', 'test-config.json');
+                const historyPath = join(TMP_DIR, '.noorm', 'state', 'history', 'test-config.json');
 
                 const oldDate = new Date();
                 oldDate.setMonth(oldDate.getMonth() - 6);
@@ -710,7 +710,7 @@ describe('sql-terminal: history', () => {
                     ] as SqlHistoryEntrySerialized[],
                 };
 
-                await mkdir(join(TMP_DIR, '.noorm', 'sql-history'), { recursive: true });
+                await mkdir(join(TMP_DIR, '.noorm', 'state', 'history'), { recursive: true });
                 await writeFile(historyPath, JSON.stringify(serialized), 'utf-8');
 
                 const clearResult = await manager.clearOlderThan(3);
@@ -766,7 +766,7 @@ describe('sql-terminal: history', () => {
                 expect(clearResult.entriesRemoved).toBe(2);
                 expect(clearResult.filesRemoved).toBe(2);
 
-                const resultsDir = join(TMP_DIR, '.noorm', 'sql-history', 'test-config');
+                const resultsDir = join(TMP_DIR, '.noorm', 'state', 'history', 'test-config');
                 const files = await readdir(resultsDir);
                 const resultFiles = files.filter(f => f.endsWith('.results.gz'));
 
@@ -797,7 +797,7 @@ describe('sql-terminal: history', () => {
 
                 await manager.addEntry('SELECT 1', result);
 
-                const resultsDir = join(TMP_DIR, '.noorm', 'sql-history', 'test-config');
+                const resultsDir = join(TMP_DIR, '.noorm', 'state', 'history', 'test-config');
                 await rm(resultsDir, { recursive: true, force: true });
 
                 const clearResult = await manager.clearAll();
@@ -904,7 +904,7 @@ describe('sql-terminal: history', () => {
 
                 await manager.addEntry('SELECT 1', result);
 
-                const resultsDir = join(TMP_DIR, '.noorm', 'sql-history', 'test-config');
+                const resultsDir = join(TMP_DIR, '.noorm', 'state', 'history', 'test-config');
                 await rm(resultsDir, { recursive: true, force: true });
 
                 const stats = await manager.getStats();
@@ -927,7 +927,7 @@ describe('sql-terminal: history', () => {
 
                 await manager.addEntry('SELECT 1', result);
 
-                const resultsDir = join(TMP_DIR, '.noorm', 'sql-history', 'test-config');
+                const resultsDir = join(TMP_DIR, '.noorm', 'state', 'history', 'test-config');
                 await writeFile(join(resultsDir, 'other-file.txt'), 'random content');
 
                 const stats = await manager.getStats();
@@ -996,7 +996,7 @@ describe('sql-terminal: history', () => {
 
                 await manager.addEntry('SELECT 1', result);
 
-                const historyPath = join(TMP_DIR, '.noorm', 'sql-history', 'test-config.json');
+                const historyPath = join(TMP_DIR, '.noorm', 'state', 'history', 'test-config.json');
                 const content = await readFile(historyPath, 'utf-8');
 
                 const parsed = JSON.parse(content);

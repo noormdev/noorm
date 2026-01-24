@@ -16,3 +16,5 @@ export {
     type RunPhase,
     type ProgressFileResult,
 } from './useRunProgress.js';
+
+export { useUpdateChecker, type UseUpdateCheckerResult } from './useUpdateChecker.js';

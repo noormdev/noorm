@@ -2,7 +2,7 @@
  * SQL History Manager.
  *
  * Manages SQL query history with gzipped results storage.
- * History is stored per-config in `.noorm/sql-history/`.
+ * History is stored per-config in `.noorm/state/history/`.
  */
 import { gzip, gunzip } from 'node:zlib';
 import { promisify } from 'node:util';
@@ -23,7 +23,7 @@ const gzipAsync = promisify(gzip);
 const gunzipAsync = promisify(gunzip);
 
 const HISTORY_VERSION = '1.0.0';
-const HISTORY_DIR = 'sql-history';
+const HISTORY_DIR = 'state/history';
 
 /**
  * SQL History Manager.

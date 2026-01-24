@@ -23,7 +23,7 @@ Set the active configuration
 Sets the specified configuration as the active default.
 Once set, commands will use this config unless overridden with \`--config\`.
 
-> The active config is stored in \`.noorm/state.enc\` and persists across
+> The active config is stored in \`.noorm/state/state.enc\` and persists across
 > sessions. Headless mode respects the active config, allowing you to
 > set it once and run CI commands without specifying \`--config\`.
 

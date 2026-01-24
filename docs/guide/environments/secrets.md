@@ -6,7 +6,7 @@ Sensitive values like database passwords and API keys have no place in config fi
 
 ## What Secrets Are
 
-Secrets are encrypted key-value pairs stored in your local state file (`.noorm/state.enc`). They never touch disk in plain text.
+Secrets are encrypted key-value pairs stored in your local state file (`.noorm/state/state.enc`). They never touch disk in plain text.
 
 Common uses:
 
@@ -168,7 +168,7 @@ This keeps secrets out of command history while still automating setup.
 
 noorm takes several measures to protect your secrets:
 
-1. **Encryption at rest** - Secrets are stored in `.noorm/state.enc` using AES-256-GCM encryption
+1. **Encryption at rest** - Secrets are stored in `.noorm/state/state.enc` using AES-256-GCM encryption
 2. **Key derivation** - The encryption key derives from your private identity key via HKDF
 3. **Values never displayed** - The CLI shows secret keys only, never values
 4. **Masked input** - Password-type secrets use non-echoing input
@@ -176,7 +176,7 @@ noorm takes several measures to protect your secrets:
 6. **Automatic redaction** - The logger masks secret fields if they appear in event data
 
 ::: warning Don't Commit state.enc
-Add `.noorm/state.enc` to your `.gitignore`. The file is encrypted with machine-specific keys and won't work on other machines.
+Add `.noorm/state/state.enc` to your `.gitignore`. The file is encrypted with machine-specific keys and won't work on other machines.
 :::
 
 

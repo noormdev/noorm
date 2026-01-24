@@ -258,7 +258,7 @@ Secrets are **config-scoped**. Each config has its own set of secrets (dev AWS v
 
 Your **identity** lives in `~/.noorm/identity.json` along with your public and private keys. These are machine-local and never shared.
 
-Your **state** lives in `.noorm/state.enc` and contains:
+Your **state** lives in `.noorm/state/state.enc` and contains:
 
 - Your saved configs (database credentials)
 - Secrets (encrypted with your keys)
@@ -266,7 +266,7 @@ Your **state** lives in `.noorm/state.enc` and contains:
 State is encrypted with your identity keys. It's not portable between machines—each developer has their own configs and secrets.
 
 ::: warning Don't Commit state.enc
-Add `.noorm/state.enc` to `.gitignore`. It contains machine-specific encrypted data that won't work on other machines anyway.
+Add `.noorm/state/state.enc` to `.gitignore`. It contains machine-specific encrypted data that won't work on other machines anyway.
 :::
 
 

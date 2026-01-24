@@ -15,7 +15,7 @@ noorm solves this with layered versioning. Three independent version numbers—s
 | Layer | Storage | Format | Migration Type |
 |-------|---------|--------|----------------|
 | Schema | Target database | SQL tables | Kysely DDL |
-| State | `.noorm/state.enc` | Encrypted JSON | Object transform |
+| State | `.noorm/state/state.enc` | Encrypted JSON | Object transform |
 | Settings | `.noorm/settings.yml` | YAML | Object transform |
 
 Each layer has its own version number in `CURRENT_VERSIONS`:

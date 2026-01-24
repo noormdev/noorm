@@ -31,6 +31,5 @@ tmp/
 .tmp/
 
 # noorm
-.noorm/state.enc
-.noorm/*.log
+.noorm/state/
 docs/.vitepress/cache/

@@ -43,7 +43,7 @@ export const DEFAULT_STRICT_CONFIG: StrictConfig = {
 export const DEFAULT_LOGGING_CONFIG: LoggingConfig = {
     enabled: true,
     level: 'info',
-    file: '.noorm/noorm.log',
+    file: '.noorm/state/noorm.log',
     maxSize: '10mb',
     maxFiles: 5,
 };
@@ -108,3 +108,10 @@ export const SETTINGS_FILE_PATH = '.noorm/settings.yml';
  * Settings directory relative to project root.
  */
 export const SETTINGS_DIR_PATH = '.noorm';
+
+/**
+ * State directory relative to project root.
+ *
+ * Contains gitignored artifacts: logs, sql history, etc.
+ */
+export const STATE_DIR_PATH = '.noorm/state';

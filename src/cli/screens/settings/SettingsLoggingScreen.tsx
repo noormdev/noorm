@@ -39,7 +39,7 @@ export function SettingsLoggingScreen({ params: _params }: ScreenProps): ReactEl
             return {
                 enabled: true,
                 level: 'info' as const,
-                file: '.noorm/noorm.log',
+                file: '.noorm/state/noorm.log',
                 maxSize: '10mb',
                 maxFiles: 5,
             };
@@ -76,8 +76,8 @@ export function SettingsLoggingScreen({ params: _params }: ScreenProps): ReactEl
                 key: 'file',
                 label: 'Log File Path',
                 type: 'text',
-                defaultValue: logging.file ?? '.noorm/noorm.log',
-                placeholder: '.noorm/noorm.log',
+                defaultValue: logging.file ?? '.noorm/state/noorm.log',
+                placeholder: '.noorm/state/noorm.log',
             },
             {
                 key: 'maxSize',
@@ -135,7 +135,7 @@ export function SettingsLoggingScreen({ params: _params }: ScreenProps): ReactEl
                     | 'warn'
                     | 'info'
                     | 'verbose',
-                file: String(values['file'] || '.noorm/noorm.log'),
+                file: String(values['file'] || '.noorm/state/noorm.log'),
                 maxSize: String(values['maxSize'] || '10mb'),
                 maxFiles: parseInt(String(values['maxFiles'] || '5'), 10),
             };

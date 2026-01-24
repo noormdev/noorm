@@ -151,7 +151,7 @@ describe('settings: schema validation', () => {
 
             expect(result.logging?.enabled).toBe(true);
             expect(result.logging?.level).toBe('info');
-            expect(result.logging?.file).toBe('.noorm/noorm.log');
+            expect(result.logging?.file).toBe('.noorm/state/noorm.log');
             expect(result.logging?.maxSize).toBe('10mb');
             expect(result.logging?.maxFiles).toBe(5);
 

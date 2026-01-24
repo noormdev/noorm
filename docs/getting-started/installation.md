@@ -78,7 +78,7 @@ your-project/
 ```
 
 ::: warning Git Ignore
-Add `.noorm/state.enc` to your `.gitignore`. This file contains encrypted configs and secrets specific to each developer's machine. The `.noorm/settings.yml` should be committed—it's the shared project configuration.
+Add `.noorm/state/` to your `.gitignore`. This file contains encrypted configs and secrets specific to each developer's machine. The `.noorm/settings.yml` should be committed—it's the shared project configuration.
 :::
 
 

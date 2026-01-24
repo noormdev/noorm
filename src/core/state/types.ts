@@ -13,7 +13,7 @@ import type { KnownUser } from '../identity/types.js';
 export type { ConfigSummary };
 
 /**
- * The root state object stored in .noorm/state.enc
+ * The root state object stored in .noorm/state/state.enc
  *
  * Version tracks the package version that last wrote the state.
  * This enables migrations when the state schema changes between versions.

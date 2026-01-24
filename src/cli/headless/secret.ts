@@ -20,7 +20,7 @@ Common secrets:
 - \`SSL_CERTIFICATE\`
 - \`API_KEY\`
 
-> Secrets are stored encrypted in \`.noorm/state.enc\`.
+> Secrets are stored encrypted in \`.noorm/state/state.enc\`.
 
 > TUI only - not available in headless mode.
 

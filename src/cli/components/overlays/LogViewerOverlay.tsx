@@ -44,7 +44,7 @@ const REFRESH_INTERVAL = 2000;
 const VISIBLE_ENTRIES = 12;
 
 /** Default log file path */
-const DEFAULT_LOG_PATH = '.noorm/noorm.log';
+const DEFAULT_LOG_PATH = '.noorm/state/noorm.log';
 
 /**
  * Get color for log level.

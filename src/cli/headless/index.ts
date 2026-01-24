@@ -161,7 +161,7 @@ async function createHeadlessLogger(
     const settings = settingsErr ? {} : settingsManager.settings;
 
     // Attempt file logging (optional)
-    const logPath = join(projectRoot, '.noorm', 'noorm.log');
+    const logPath = join(projectRoot, '.noorm', 'state', 'noorm.log');
     const [fileStream] = attemptSync(() =>
         createWriteStream(logPath, { flags: 'a' }),
     );

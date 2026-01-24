@@ -14,7 +14,7 @@ noorm solves this with settings. A single `.noorm/settings.yml` file defines pro
 
 | Aspect | Config | Settings |
 |--------|--------|----------|
-| Location | `.noorm/state.enc` | `.noorm/settings.yml` |
+| Location | `.noorm/state/state.enc` | `.noorm/settings.yml` |
 | Contains | Credentials, secrets | Build rules, paths, stages |
 | Version control | Gitignored | Committed |
 | Per-machine | Yes (encrypted) | No (shared) |
@@ -95,7 +95,7 @@ strict:
 logging:
     enabled: true
     level: info
-    file: .noorm/noorm.log
+    file: .noorm/state/noorm.log
 
 # Teardown behavior
 teardown:
@@ -429,7 +429,7 @@ Configure file-based logging:
 logging:
     enabled: true
     level: info
-    file: .noorm/noorm.log
+    file: .noorm/state/noorm.log
     maxSize: 10mb
     maxFiles: 5
 ```
@@ -438,13 +438,13 @@ logging:
 |----------|---------|-------------|
 | `enabled` | `true` | Enable file logging |
 | `level` | `'info'` | Minimum level: silent, error, warn, info, verbose |
-| `file` | `.noorm/noorm.log` | Log file path |
+| `file` | `.noorm/state/noorm.log` | Log file path |
 | `maxSize` | `'10mb'` | Rotate when size exceeded |
 | `maxFiles` | `5` | Rotated files to keep |
 
 ```typescript
 const logging = settings.getLogging()
-// { enabled: true, level: 'info', file: '.noorm/noorm.log', ... }
+// { enabled: true, level: 'info', file: '.noorm/state/noorm.log', ... }
 ```
 
 

@@ -151,7 +151,7 @@ const StrictConfigSchema = z.object({
 const LoggingConfigSchema = z.object({
     enabled: z.boolean().default(true),
     level: LogLevelSchema.default('info'),
-    file: z.string().default('.noorm/noorm.log'),
+    file: z.string().default('.noorm/state/noorm.log'),
     maxSize: FileSizeSchema.default('10mb'),
     maxFiles: z.number().int().min(1).default(5),
 });

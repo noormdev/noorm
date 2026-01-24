@@ -10,7 +10,7 @@
  * Creates:
  * - sql/ and changes/ directories
  * - .noorm/settings.yml
- * - .noorm/state.enc
+ * - .noorm/state/state.enc
  * - Keypair in ~/.noorm/
  */
 import { useState, useEffect, useCallback } from 'react';
@@ -225,6 +225,7 @@ export function InitScreen({ params }: ScreenProps): ReactElement {
             const sqlPath = join(projectRoot, 'sql');
             const changesPath = join(projectRoot, 'changes');
             const noormPath = join(projectRoot, '.noorm');
+            const statePath = join(noormPath, 'state');
 
             mkdirSync(sqlPath, { recursive: true });
             writeFileSync(join(sqlPath, '.gitkeep'), '', { flag: 'a' });
@@ -233,6 +234,8 @@ export function InitScreen({ params }: ScreenProps): ReactElement {
             writeFileSync(join(changesPath, '.gitkeep'), '', { flag: 'a' });
 
             mkdirSync(noormPath, { recursive: true });
+            mkdirSync(statePath, { recursive: true });
+            writeFileSync(join(noormPath, '.gitignore'), 'state/\n');
 
             updateItem(0, { status: 'success' });
 
@@ -317,13 +320,13 @@ export function InitScreen({ params }: ScreenProps): ReactElement {
             updateItem(gitignoreIndex, { status: 'running' });
 
             const gitignorePath = join(projectRoot, '.gitignore');
-            const gitignoreEntries = '\n# noorm\n.noorm/state.enc\n.noorm/*.log\n';
+            const gitignoreEntries = '\n# noorm\n';
 
             if (existsSync(gitignorePath)) {
 
                 const existing = readFileSync(gitignorePath, 'utf-8');
 
-                if (!existing.includes('.noorm/state.enc')) {
+                if (!existing.includes('# noorm')) {
 
                     appendFileSync(gitignorePath, gitignoreEntries);
 
@@ -489,7 +492,8 @@ export function InitScreen({ params }: ScreenProps): ReactElement {
                                 <Text>• sql/.gitkeep</Text>
                                 <Text>• changes/.gitkeep</Text>
                                 <Text>• .noorm/settings.yml</Text>
-                                <Text>• .noorm/state.enc</Text>
+                                <Text>• .noorm/.gitignore</Text>
+                                <Text>• .noorm/state/state.enc</Text>
                                 {!hasExistingKeys && (
                                     <>
                                         <Text>• ~/.noorm/identity.key</Text>

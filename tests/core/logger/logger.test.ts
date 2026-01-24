@@ -20,7 +20,7 @@ describe('logger: Logger class', () => {
         );
         projectRoot = testDir;
         await mkdir(testDir, { recursive: true });
-        await mkdir(join(testDir, '.noorm'), { recursive: true });
+        await mkdir(join(testDir, '.noorm', 'state'), { recursive: true });
 
     });
 
@@ -72,10 +72,10 @@ describe('logger: Logger class', () => {
 
             const logger = new Logger({
                 projectRoot: '/project',
-                config: { ...DEFAULT_LOGGER_CONFIG, file: '.noorm/app.log' },
+                config: { ...DEFAULT_LOGGER_CONFIG, file: '.noorm/state/app.log' },
             });
 
-            expect(logger.filepath).toBe('/project/.noorm/app.log');
+            expect(logger.filepath).toBe('/project/.noorm/state/app.log');
 
         });
 

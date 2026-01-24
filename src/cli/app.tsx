@@ -14,7 +14,7 @@
  *                           └── ScreenRenderer
  * ```
  */
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import type { ReactElement } from 'react';
 import { Box, Text, Spacer, useInput } from 'ink';
 
@@ -35,8 +35,9 @@ import {
     useDryRunMode,
     useForceMode,
 } from './app-context.js';
-import { ToastProvider, ToastRenderer, LogViewerOverlay } from './components/index.js';
+import { ToastProvider, ToastRenderer, LogViewerOverlay, useToast } from './components/index.js';
 import { ShutdownProvider } from './shutdown.js';
+import { useUpdateChecker, useOnEvent } from './hooks/index.js';
 
 /**
  * Help screen content.
@@ -205,6 +206,60 @@ function AppShell(): ReactElement {
     const { toggleDryRun } = useDryRunMode();
     const { toggleForce } = useForceMode();
     const { navigate } = useRouter();
+    const { showToast } = useToast();
+    const { updateInfo, installing } = useUpdateChecker();
+
+    // Show toast when update available (non-major updates)
+    useEffect(() => {
+
+        if (updateInfo?.updateAvailable && !updateInfo.isMajorUpdate && !installing) {
+
+            showToast({
+                message: `Update available: ${updateInfo.currentVersion} -> ${updateInfo.latestVersion}`,
+                variant: 'info',
+                duration: 8000,
+            });
+
+        }
+
+    }, [updateInfo, installing, showToast]);
+
+    // Show toast when major update available
+    useEffect(() => {
+
+        if (updateInfo?.updateAvailable && updateInfo.isMajorUpdate && !installing) {
+
+            showToast({
+                message: `Major update: ${updateInfo.latestVersion} (current: ${updateInfo.currentVersion})`,
+                variant: 'warning',
+                duration: 10000,
+            });
+
+        }
+
+    }, [updateInfo, installing, showToast]);
+
+    // Listen for update completion
+    useOnEvent('update:complete', (data) => {
+
+        showToast({
+            message: `Updated to ${data.newVersion}. Restart to apply.`,
+            variant: 'success',
+            duration: 5000,
+        });
+
+    }, [showToast]);
+
+    // Listen for update failure
+    useOnEvent('update:failed', (data) => {
+
+        showToast({
+            message: `Update failed: ${data.error}`,
+            variant: 'error',
+            duration: 5000,
+        });
+
+    }, [showToast]);
 
     const handleHelp = useCallback(() => {
 

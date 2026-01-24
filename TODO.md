@@ -197,22 +197,30 @@ Core SDK is implemented and packaged (`@noormdev/sdk`). Remaining:
 - [ ] `run files <path...>` - Run multiple specific files
 
 
-## Immediate: Artifacts Consolidation
+## ~~Immediate: Artifacts Consolidation~~ COMPLETED
 
-**Design principle:** All generated artifacts (state, history, logs, etc.) should live under a single directory (`.noorm/`) so gitignore needs only one entry.
+**Design principle:** All gitignored artifacts live under `.noorm/state/`. Only `settings.yml` is tracked.
 
-**Current state:** Files are scattered, requiring multiple gitignore entries. `sql-history` is not ignored at all.
+**Final structure:**
+```
+.noorm/
+├── .gitignore        # Contains: state/
+├── settings.yml      # Tracked (team-shared)
+└── state/            # Gitignored - ALL generated/sensitive artifacts
+    ├── state.enc     # Encrypted configs and secrets
+    ├── noorm.log
+    ├── noorm.*.log   # Rotated logs
+    └── history/      # SQL terminal history
+        ├── {configName}.json
+        └── {configName}/*.results.gz
+```
 
-**Action:**
-- [ ] Audit all generated files and their current locations
-- [ ] Move artifacts into `.noorm/`:
-  - `state.enc` → `.noorm/state.enc` (already there?)
-  - `sql-history` → `.noorm/sql-history`
-  - Logs → `.noorm/logs/`
-  - Snapshots → `.noorm/snapshots/`
-- [ ] Update `noorm init` to generate single gitignore entry: `.noorm/`
-- [ ] Handle migration for existing installations
-- [ ] Document this as a codebase principle in CLAUDE.md
+**Completed:**
+- [x] State file moved to `.noorm/state/state.enc`
+- [x] Log file path updated to `.noorm/state/noorm.log`
+- [x] SQL history moved to `.noorm/state/history/`
+- [x] Init flow creates `.noorm/state/` and `.noorm/.gitignore`
+- [x] All defaults, tests, and docs updated
 
 
 ## Pre-Release Checklist
