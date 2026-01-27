@@ -23,18 +23,7 @@ import {
 } from '../../core/identity/storage.js';
 import { findProjectRoot } from '../../core/project.js';
 import { getStateManager } from '../../core/state/index.js';
-
-// =============================================================================
-// Constants
-// =============================================================================
-
-// Declare the build-time injected constant
-declare const __CLI_VERSION__: string;
-
-// CLI version - injected at build time, fallback for dev
-const CLI_VERSION = typeof __CLI_VERSION__ !== 'undefined'
-    ? __CLI_VERSION__
-    : '0.0.0-dev';
+import { getCurrentVersion } from '../../core/update/checker.js';
 
 // =============================================================================
 // Types
@@ -130,7 +119,7 @@ async function gatherVersionInfo(): Promise<VersionInfo> {
 
     // === Commit block ===
     return {
-        version: CLI_VERSION,
+        version: getCurrentVersion(),
         node: process.version,
         platform: process.platform,
         arch: process.arch,

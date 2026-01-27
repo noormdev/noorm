@@ -32,6 +32,7 @@ export type Route =
     | 'config/edit'
     | 'config/export'
     | 'config/import'
+    | 'config/more'
     | 'config/rm'
     | 'config/use'
     | 'config/validate'
@@ -71,7 +72,7 @@ export type Route =
     // Home & Help
     | 'help'
     | 'home'
-
+    | 'more'
 
     // Identity
     | 'identity'
@@ -135,6 +136,15 @@ export type Route =
 
     // Settings - Strict mode
     | 'settings/strict'
+
+    // Vault
+    | 'vault'
+    | 'vault/cp'
+    | 'vault/init'
+    | 'vault/list'
+    | 'vault/propagate'
+    | 'vault/rm'
+    | 'vault/set'
 
     // Version info
     | 'version'
@@ -414,7 +424,8 @@ export type Section =
     | 'db'
     | 'lock'
     | 'identity'
-    | 'init';
+    | 'init'
+    | 'vault';
 
 /**
  * Extract section from a route.

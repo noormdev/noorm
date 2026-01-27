@@ -102,6 +102,7 @@ export {
     type ResolveOptions,
     type StateProvider,
     type SettingsProvider,
+    type CompletenessCheckOptions,
 } from './resolver.js';
 
 // Protection

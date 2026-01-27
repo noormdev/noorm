@@ -28,6 +28,9 @@ import {
 // Import migrations
 import { v1 } from './migrations/v1.js';
 
+import { waitForIdentityToLoad } from '../../identity/index.js';
+import { getCurrentVersion } from '../../update/checker.js';
+
 /**
  * All schema migrations in order.
  * Add new migrations here as they're created.
@@ -124,9 +127,6 @@ export async function checkSchemaVersion(db: Kysely<NoormDatabase>): Promise<Lay
  * Options for bootstrap and version record operations.
  */
 export interface VersionRecordOptions {
-    /** CLI semver */
-    cliVersion: string;
-
     /** State schema version (defaults to CURRENT_VERSIONS.state) */
     stateVersion?: number;
 
@@ -143,8 +143,7 @@ export interface VersionRecordOptions {
 export async function bootstrapSchema(
     db: Kysely<NoormDatabase>,
     dialect: Dialect,
-    cliVersion: string,
-    options?: { stateVersion?: number; settingsVersion?: number },
+    options?: VersionRecordOptions,
 ): Promise<void> {
 
     const start = performance.now();
@@ -171,7 +170,7 @@ export async function bootstrapSchema(
     await db
         .insertInto('__noorm_version__')
         .values({
-            cli_version: cliVersion,
+            cli_version: getCurrentVersion(),
             noorm_version: CURRENT_VERSIONS.schema,
             state_version: options?.stateVersion ?? CURRENT_VERSIONS.state,
             settings_version: options?.settingsVersion ?? CURRENT_VERSIONS.settings,
@@ -186,6 +185,9 @@ export async function bootstrapSchema(
         durationMs,
     });
 
+    // Ensure identity is registered in the new schema
+    await waitForIdentityToLoad(db);
+
 }
 
 /**
@@ -198,7 +200,6 @@ export async function bootstrapSchema(
  * ```typescript
  * // After migrating state and settings
  * await updateVersionRecord(db, {
- *     cliVersion: '1.0.0',
  *     stateVersion: CURRENT_VERSIONS.state,
  *     settingsVersion: CURRENT_VERSIONS.settings,
  * })
@@ -206,7 +207,7 @@ export async function bootstrapSchema(
  */
 export async function updateVersionRecord(
     db: Kysely<NoormDatabase>,
-    options: VersionRecordOptions,
+    options?: VersionRecordOptions,
 ): Promise<void> {
 
     const now = new Date().toISOString();
@@ -214,10 +215,10 @@ export async function updateVersionRecord(
     await db
         .insertInto('__noorm_version__')
         .values({
-            cli_version: options.cliVersion,
+            cli_version: getCurrentVersion(),
             noorm_version: CURRENT_VERSIONS.schema,
-            state_version: options.stateVersion ?? CURRENT_VERSIONS.state,
-            settings_version: options.settingsVersion ?? CURRENT_VERSIONS.settings,
+            state_version: options?.stateVersion ?? CURRENT_VERSIONS.state,
+            settings_version: options?.settingsVersion ?? CURRENT_VERSIONS.settings,
             upgraded_at: now as unknown as Date,
         })
         .execute();
@@ -267,14 +268,13 @@ export async function getLatestVersionRecord(
  *
  * @example
  * ```typescript
- * await migrateSchema(db, 'postgres', packageVersion)
+ * await migrateSchema(db, 'postgres')
  * ```
  */
 export async function migrateSchema(
     db: Kysely<NoormDatabase>,
     dialect: Dialect,
-    cliVersion: string,
-    options?: { stateVersion?: number; settingsVersion?: number },
+    options?: VersionRecordOptions,
 ): Promise<void> {
 
     const status = await checkSchemaVersion(db);
@@ -298,7 +298,7 @@ export async function migrateSchema(
     // Bootstrap if no tables exist
     if (status.current === 0) {
 
-        await bootstrapSchema(db, dialect, cliVersion, options);
+        await bootstrapSchema(db, dialect, options);
 
         return;
 
@@ -333,7 +333,7 @@ export async function migrateSchema(
     await db
         .insertInto('__noorm_version__')
         .values({
-            cli_version: cliVersion,
+            cli_version: getCurrentVersion(),
             noorm_version: CURRENT_VERSIONS.schema,
             state_version:
                 options?.stateVersion ?? existing?.stateVersion ?? CURRENT_VERSIONS.state,
@@ -350,6 +350,8 @@ export async function migrateSchema(
         durationMs,
     });
 
+    await waitForIdentityToLoad(db);
+
 }
 
 /**
@@ -363,11 +365,10 @@ export async function migrateSchema(
 export async function ensureSchemaVersion(
     db: Kysely<NoormDatabase>,
     dialect: Dialect,
-    cliVersion: string,
-    options?: { stateVersion?: number; settingsVersion?: number },
+    options?: VersionRecordOptions,
 ): Promise<void> {
 
-    await migrateSchema(db, dialect, cliVersion, options);
+    await migrateSchema(db, dialect, options);
 
 }
 

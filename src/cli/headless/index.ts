@@ -59,6 +59,13 @@ import * as CmdRunFile from './run-file.js';
 import * as CmdRun from './run.js';
 import * as CmdSecret from './secret.js';
 import * as CmdSettings from './settings.js';
+import * as CmdVault from './vault.js';
+import * as CmdVaultCp from './vault-cp.js';
+import * as CmdVaultInit from './vault-init.js';
+import * as CmdVaultList from './vault-list.js';
+import * as CmdVaultPropagate from './vault-propagate.js';
+import * as CmdVaultRm from './vault-rm.js';
+import * as CmdVaultSet from './vault-set.js';
 
 import * as CmdHelp from './help.js';
 import * as CmdVersion from './version.js';
@@ -106,6 +113,14 @@ const HANDLERS: Partial<Record<Route, RouteHandler>> = {
 
     'secret': CmdSecret,
     'settings': CmdSettings,
+
+    'vault': CmdVault,
+    'vault/cp': CmdVaultCp,
+    'vault/init': CmdVaultInit,
+    'vault/list': CmdVaultList,
+    'vault/propagate': CmdVaultPropagate,
+    'vault/rm': CmdVaultRm,
+    'vault/set': CmdVaultSet,
 
     'version': CmdVersion,
 };

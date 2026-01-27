@@ -9,6 +9,7 @@ import { retry, attempt } from '@logosdx/utils';
 import type { ConnectionConfig, ConnectionResult, Dialect } from './types.js';
 import { observer } from '../observer.js';
 import { getConnectionManager } from './manager.js';
+import { waitForIdentityToLoad } from '../identity/index.js';
 
 type DialectFactory = (config: ConnectionConfig) => ConnectionResult | Promise<ConnectionResult>;
 
@@ -169,6 +170,8 @@ export async function createConnection(
     };
 
     observer.emit('connection:open', { configName, dialect: config.dialect });
+
+    await waitForIdentityToLoad(trackedConn.db as never);
 
     return trackedConn;
 

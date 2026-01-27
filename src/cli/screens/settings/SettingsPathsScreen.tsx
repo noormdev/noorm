@@ -9,6 +9,7 @@
  * ```
  */
 import { useState, useCallback, useMemo } from 'react';
+import { Box, Text } from 'ink';
 import { attempt } from '@logosdx/utils';
 
 import type { ReactElement } from 'react';
@@ -116,6 +117,16 @@ export function SettingsPathsScreen({ params: _params }: ScreenProps): ReactElem
 
     return (
         <Panel title="Path Settings" paddingX={2} paddingY={1}>
+            <Box flexDirection="column" gap={1}>
+                <Box flexDirection="column">
+                    <Text dimColor>
+                        Set default directories for your project's SQL schema and change files.
+                    </Text>
+                    <Text dimColor>
+                        These paths are used by all team members unless overridden per-config.
+                    </Text>
+                </Box>
+            </Box>
             <Form
                 fields={fields}
                 onSubmit={handleSubmit}

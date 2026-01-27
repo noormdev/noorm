@@ -21,6 +21,7 @@ import { ObserverEngine, type Events } from '@logosdx/observer';
 import type { SettingsEvents } from './settings/index.js';
 import type { AppMode, ShutdownReason, ShutdownPhase, PhaseStatus } from './lifecycle/types.js';
 import type { UpdateEvents } from './update/types.js';
+import type { VaultEvents } from './vault/events.js';
 
 /**
  * All events emitted by noorm core modules.
@@ -39,9 +40,10 @@ import type { UpdateEvents } from './update/types.js';
  * - `identity:*` - Identity resolution
  * - `connection:*` - Database connections
  * - `settings:*` - Settings lifecycle and mutations
+ * - `vault:*` - Vault operations
  * - `error` - Catch-all errors
  */
-export interface NoormEvents extends SettingsEvents, UpdateEvents {
+export interface NoormEvents extends SettingsEvents, UpdateEvents, VaultEvents {
     // File execution
     'file:before': { filepath: string; checksum: string; configName: string };
     'file:after': {
@@ -134,6 +136,7 @@ export interface NoormEvents extends SettingsEvents, UpdateEvents {
     'identity:created': { identityHash: string; name: string; email: string; machine: string };
     'identity:registered': { identityHash: string; name: string; email: string };
     'identity:synced': { configName: string; registered: boolean; knownUsersCount: number };
+    'identity:not-found': void;
 
     // Connection
     'connection:open': { configName: string; dialect: string };

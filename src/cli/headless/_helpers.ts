@@ -1,15 +1,23 @@
 import type { Kysely } from 'kysely';
+import { attempt } from '@logosdx/utils';
 
-import type { RouteParams, CliFlags } from '../types.js';
 import { Logger } from '../../core/logger/index.js';
 import type { Context } from '../../sdk/context.js';
-import type { NoormDatabase } from '../../core/shared/index.js';
-import { attempt } from '@logosdx/utils';
+import type { CryptoIdentity } from '../../core/identity/types.js';
 import { createContext } from '../../sdk/index.js';
-import { ensureSchemaVersion } from '../../core/version/index.js';
+import { ensureSchemaVersion, type NoormDatabase } from '../../core/version/index.js';
+import { loadPrivateKey, loadIdentityMetadata } from '../../core/identity/storage.js';
+import { registerIdentity } from '../../core/identity/sync.js';
+import type { RouteParams, CliFlags } from '../types.js';
 
-// Version string for schema tracking
-const CLI_VERSION = '1.0.0';
+/**
+ * Extended context with crypto identity for vault operations.
+ */
+export interface VaultContext {
+    ctx: Context<NoormDatabase>;
+    cryptoIdentity: CryptoIdentity;
+    privateKey: string;
+}
 
 export interface HeadlessCommand {
     (
@@ -33,7 +41,7 @@ export const withContext = async <T>(opts: {
 
     const { flags, logger, fn } = opts;
 
-    const [ctx, ctxError] = await attempt(() => createContext({ config: flags.config }));
+    const [ctx, ctxError] = await attempt(() => createContext<NoormDatabase>({ config: flags.config }));
 
     if (ctxError) {
 
@@ -55,7 +63,10 @@ export const withContext = async <T>(opts: {
 
     // Bootstrap internal tables if they don't exist (for fresh databases in CI)
     const [, schemaError] = await attempt(() =>
-        ensureSchemaVersion(ctx.kysely as unknown as Kysely<NoormDatabase>, ctx.dialect, CLI_VERSION),
+        ensureSchemaVersion(
+            ctx.kysely as unknown as Kysely<NoormDatabase>,
+            ctx.dialect,
+        ),
     );
 
     if (schemaError) {
@@ -67,7 +78,112 @@ export const withContext = async <T>(opts: {
 
     }
 
-    const [result, opError] = await attempt(() => fn(ctx));
+    const [result, opError] = await attempt(() => fn(ctx as never));
+
+    // Always disconnect
+    await attempt(() => ctx.disconnect());
+
+    if (opError) {
+
+        logger.error(opError.message);
+
+        return [null, opError];
+
+    }
+
+    return [result, null];
+
+};
+
+/**
+ * Helper for vault commands that need crypto identity.
+ *
+ * Extends withContext to also load the crypto identity and private key.
+ */
+export const withVaultContext = async <T>(opts: {
+    flags: CliFlags;
+    logger: Logger;
+    fn: (vault: VaultContext) => Promise<T>;
+}): Promise<[T, null] | [null, Error]> => {
+
+    const { flags, logger, fn } = opts;
+
+    // Load crypto identity
+    const [cryptoIdentity, identityErr] = await attempt(() => loadIdentityMetadata());
+
+    if (identityErr || !cryptoIdentity) {
+
+        const msg = 'Identity not set up. Run: noorm identity init';
+        logger.error(msg);
+
+        return [null, new Error(msg)];
+
+    }
+
+    // Load private key
+    const [privateKey, keyErr] = await attempt(() => loadPrivateKey());
+
+    if (keyErr || !privateKey) {
+
+        const msg = 'Private key not found. Run: noorm identity init';
+        logger.error(msg);
+
+        return [null, new Error(msg)];
+
+    }
+
+    // Create context and connect
+    const [ctx, ctxError] = await attempt(() => createContext<NoormDatabase>({ config: flags.config }));
+
+    if (ctxError) {
+
+        logger.error('Failed to create context', ctxError);
+
+        return [null, ctxError];
+
+    }
+
+    const [, connectError] = await attempt(() => ctx.connect());
+
+    if (connectError) {
+
+        logger.error('Failed to connect', connectError);
+
+        return [null, connectError];
+
+    }
+
+    // Bootstrap internal tables
+    const [, schemaError] = await attempt(() =>
+        ensureSchemaVersion(
+            ctx.kysely as unknown as Kysely<NoormDatabase>,
+            ctx.dialect,
+        ),
+    );
+
+    if (schemaError) {
+
+        logger.error('Failed to initialize database schema', schemaError);
+        await attempt(() => ctx.disconnect());
+
+        return [null, schemaError];
+
+    }
+
+    // Ensure identity is registered in database
+    await attempt(() =>
+        registerIdentity(
+            ctx.kysely as unknown as Kysely<NoormDatabase>,
+            cryptoIdentity,
+        ),
+    );
+
+    const [result, opError] = await attempt(() => fn({
+        // Type assertion for generic Context bc it comes from SDK and we allow users to specify DB type
+        ctx: ctx as never,
+        cryptoIdentity,
+        privateKey,
+    }));
 
     // Always disconnect
     await attempt(() => ctx.disconnect());

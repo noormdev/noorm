@@ -7,9 +7,17 @@
  *
  * Audit identity resolution is cached for the duration of a command.
  * Cryptographic identity is created on first run and stored in state.
- */
+*/
+import { attempt } from '@logosdx/utils';
+import type { Kysely } from 'kysely';
+
+import type { NoormDatabase } from '../shared/tables.js';
+import { observer } from '../observer.js';
+
 import type { CryptoIdentity, Identity, IdentityOptions } from './types.js';
 import { resolveIdentity as resolve } from './resolver.js';
+import { loadExistingIdentity } from './factory.js';
+import { registerIdentity } from './sync.js';
 
 // =============================================================================
 // Re-exports
@@ -71,6 +79,7 @@ export {
 } from './sync.js';
 
 export type { IdentitySyncResult } from './sync.js';
+
 
 // =============================================================================
 // Audit Identity Resolution (cached)
@@ -164,6 +173,24 @@ export function getIdentityWithCrypto(
     return resolveIdentity({
         configIdentity: config?.identity,
         cryptoIdentity,
+    });
+
+}
+
+export async function waitForIdentityToLoad(db: Kysely<NoormDatabase>) {
+
+    // Load identity from ~/.noorm/
+    const identity = await loadExistingIdentity();
+
+    if (!identity) observer.emit('identity:not-found');
+    if (!identity) return;
+
+    const [, err] = await attempt(() => registerIdentity(db, identity));
+
+    if (err) observer.emit('error', {
+        error: err,
+        source: 'identity:ensure',
+        context: { identity },
     });
 
 }

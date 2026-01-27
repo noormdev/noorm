@@ -157,7 +157,15 @@ export function SettingsBuildScreen({ params: _params }: ScreenProps): ReactElem
         <Panel title="Build Settings" paddingX={2} paddingY={1}>
             <Box flexDirection="column" gap={1}>
                 <Box flexDirection="column">
-                    <Text dimColor>Paths are relative to your SQL path: <Text bold>{sqlPath}</Text></Text>
+                    <Text dimColor>
+                        Control which folders are included when building your schema.
+                    </Text>
+                    <Text dimColor>
+                        Include patterns add folders; exclude patterns remove them from the build.
+                    </Text>
+                    <Text dimColor>
+                        Paths are relative to: <Text bold>{sqlPath}</Text>
+                    </Text>
                 </Box>
                 <Form
                     fields={fields}

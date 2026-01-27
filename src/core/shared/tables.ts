@@ -42,6 +42,9 @@ export const NOORM_TABLES = Object.freeze({
 
     /** Team member identity table */
     identities: '__noorm_identities__' as const,
+
+    /** Vault secrets table */
+    vault: '__noorm_vault__' as const,
 });
 
 /**
@@ -287,11 +290,49 @@ export interface NoormIdentitiesTable {
 
     /** Last activity */
     last_seen_at: Generated<Date>;
+
+    /** Vault key encrypted with user's public key (nullable for users without vault access) */
+    encrypted_vault_key: string | null;
 }
 
 export type NoormIdentity = Selectable<NoormIdentitiesTable>;
 export type NewNoormIdentity = Insertable<NoormIdentitiesTable>;
 export type NoormIdentityUpdate = Updateable<NoormIdentitiesTable>;
+
+// ─────────────────────────────────────────────────────────────
+// __noorm_vault__
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Vault secrets table.
+ *
+ * Stores encrypted secrets shared across the team.
+ * Secrets are encrypted with a vault key that is distributed
+ * to team members via their public keys.
+ */
+export interface NoormVaultTable {
+    /** Primary key */
+    id: Generated<number>;
+
+    /** Secret key name (e.g., 'API_KEY', 'DB_PASSWORD') */
+    secret_key: string;
+
+    /** AES-256-GCM encrypted value (JSON: {iv, authTag, ciphertext}) */
+    encrypted_value: string;
+
+    /** Identity who set this secret */
+    set_by: string;
+
+    /** When created */
+    created_at: Generated<Date>;
+
+    /** When last updated */
+    updated_at: Generated<Date>;
+}
+
+export type NoormVault = Selectable<NoormVaultTable>;
+export type NewNoormVault = Insertable<NoormVaultTable>;
+export type NoormVaultUpdate = Updateable<NoormVaultTable>;
 
 // ─────────────────────────────────────────────────────────────
 // Combined Database Interface
@@ -322,4 +363,5 @@ export interface NoormDatabase {
     __noorm_executions__: NoormExecutionsTable;
     __noorm_lock__: NoormLockTable;
     __noorm_identities__: NoormIdentitiesTable;
+    __noorm_vault__: NoormVaultTable;
 }

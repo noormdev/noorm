@@ -249,14 +249,28 @@ function resolveFromEnvOnly(
 }
 
 /**
+ * Options for config completeness check.
+ */
+export interface CompletenessCheckOptions {
+    /** Stage name to check against (defaults to finding stage for config) */
+    stageName?: string;
+
+    /** Vault secret keys that are available (count as "set") */
+    vaultSecretKeys?: string[];
+}
+
+/**
  * Check if a config is complete and usable.
  *
  * A config is complete when all required secrets (from its stage) are set.
+ * Secrets can come from local state OR the vault.
  * Also checks for stage constraint violations.
  *
  * @example
  * ```typescript
- * const check = checkConfigCompleteness(config, state, settings)
+ * const check = checkConfigCompleteness(config, state, settings, {
+ *     vaultSecretKeys: ['API_KEY', 'DB_PASSWORD'],
+ * })
  * if (!check.complete) {
  *     console.log('Missing secrets:', check.missingSecrets)
  *     console.log('Violations:', check.violations)
@@ -267,8 +281,10 @@ export function checkConfigCompleteness(
     config: Config,
     state: StateProvider,
     settings?: SettingsProvider,
-    stageName?: string,
+    options?: CompletenessCheckOptions,
 ): CompletenessCheck {
+
+    const { stageName, vaultSecretKeys = [] } = options ?? {};
 
     const result: CompletenessCheck = {
         complete: true,
@@ -290,13 +306,14 @@ export function checkConfigCompleteness(
 
     }
 
-    // Check required secrets
-    const existingSecrets = state.listSecrets(config.name);
+    // Check required secrets (local secrets + vault secrets count as "set")
+    const localSecrets = state.listSecrets(config.name);
+    const availableSecrets = new Set([...localSecrets, ...vaultSecretKeys]);
 
     for (const secret of stage.secrets ?? []) {
 
         const isRequired = secret.required !== false; // Default to true
-        if (isRequired && !existingSecrets.includes(secret.key)) {
+        if (isRequired && !availableSecrets.has(secret.key)) {
 
             result.missingSecrets.push(secret.key);
 

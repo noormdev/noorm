@@ -112,10 +112,24 @@ export const v1: SchemaMigration = {
             .addColumn('machine', 'varchar(255)', (col) => col.notNull())
             .addColumn('os', 'varchar(255)', (col) => col.notNull())
             .addColumn('public_key', 'text', (col) => col.notNull())
+            .addColumn('encrypted_vault_key', 'text')
             .addColumn('registered_at', 'timestamp', (col) =>
                 col.notNull().defaultTo(sql`CURRENT_TIMESTAMP`),
             )
             .addColumn('last_seen_at', 'timestamp', (col) =>
+                col.notNull().defaultTo(sql`CURRENT_TIMESTAMP`),
+            )
+            .execute();
+
+        // Create __noorm_vault__ table for shared secrets
+        await addIdColumn(db.schema.createTable('__noorm_vault__'), dialect)
+            .addColumn('secret_key', 'varchar(255)', (col) => col.notNull().unique())
+            .addColumn('encrypted_value', 'text', (col) => col.notNull())
+            .addColumn('set_by', 'varchar(255)', (col) => col.notNull())
+            .addColumn('created_at', 'timestamp', (col) =>
+                col.notNull().defaultTo(sql`CURRENT_TIMESTAMP`),
+            )
+            .addColumn('updated_at', 'timestamp', (col) =>
                 col.notNull().defaultTo(sql`CURRENT_TIMESTAMP`),
             )
             .execute();
@@ -134,6 +148,13 @@ export const v1: SchemaMigration = {
             .columns(['name', 'config_name'])
             .execute();
 
+        // Create index on secret_key for faster lookups
+        await db.schema
+            .createIndex('idx_vault_secret_key')
+            .on('__noorm_vault__')
+            .column('secret_key')
+            .execute();
+
     },
 
     async down(db: Kysely<unknown>, _dialect: Dialect): Promise<void> {
@@ -141,8 +162,10 @@ export const v1: SchemaMigration = {
         // Drop indexes first
         await db.schema.dropIndex('idx_change_name_config').execute();
         await db.schema.dropIndex('idx_executions_change_id').execute();
+        await db.schema.dropIndex('idx_vault_secret_key').execute();
 
         // Drop tables in reverse order (child tables first due to FK constraints)
+        await db.schema.dropTable('__noorm_vault__').execute();
         await db.schema.dropTable('__noorm_identities__').execute();
         await db.schema.dropTable('__noorm_lock__').execute();
         await db.schema.dropTable('__noorm_executions__').execute();

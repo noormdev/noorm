@@ -11,22 +11,21 @@
  */
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Box, Text, useInput } from 'ink';
+import { attempt } from '@logosdx/utils';
 
 import type { ReactElement } from 'react';
-import type { ScreenProps } from '../../types.js';
 
+import type { TruncateResult } from '../../../core/teardown/index.js';
+import type { TableSummary } from '../../../core/explore/types.js';
+import { createConnection } from '../../../core/connection/index.js';
+import { truncateData } from '../../../core/teardown/index.js';
+import { fetchList } from '../../../core/explore/operations.js';
+
+import type { ScreenProps } from '../../types.js';
 import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useAppContext, useSettings } from '../../app-context.js';
 import { useToast, Panel, Spinner, ProtectedConfirm } from '../../components/index.js';
-import { createConnection } from '../../../core/connection/index.js';
-import { truncateData } from '../../../core/teardown/index.js';
-import { fetchList } from '../../../core/explore/operations.js';
-import { attempt } from '@logosdx/utils';
-
-import type { Kysely } from 'kysely';
-import type { TruncateResult } from '../../../core/teardown/index.js';
-import type { TableSummary } from '../../../core/explore/types.js';
 
 type Phase = 'loading' | 'preview' | 'confirm' | 'running' | 'done' | 'error';
 
@@ -94,35 +93,31 @@ export function DbTruncateScreen({ params: _params }: ScreenProps): ReactElement
 
             }
 
-            try {
+            const db = conn.db;
+            const [tableList, tableListErr] = await attempt(
+                () => fetchList(
+                    db,
+                    activeConfig.connection.dialect,
+                    'tables',
+                ),
+            );
 
-                const db = conn.db as Kysely<unknown>;
-                const tableList = await fetchList(db, activeConfig.connection.dialect, 'tables');
+            if (!cancelled && tableListErr) {
 
-                if (!cancelled) {
-
-                    setTables(tableList);
-                    setPhase('preview');
-
-                }
-
-            }
-            catch (err) {
-
-                if (!cancelled) {
-
-                    setError(err instanceof Error ? err.message : String(err));
-                    setPhase('error');
-
-                }
+                setError(tableListErr instanceof Error ? tableListErr.message : String(tableListErr));
+                setPhase('error');
 
             }
-            finally {
 
-                await conn.destroy();
-                loadingRef.current = false;
+            if (!cancelled && tableList) {
+
+                setTables(tableList);
+                setPhase('preview');
 
             }
+
+            await conn.destroy();
+            loadingRef.current = false;
 
         };
 
@@ -158,7 +153,7 @@ export function DbTruncateScreen({ params: _params }: ScreenProps): ReactElement
 
         try {
 
-            const db = conn.db as Kysely<unknown>;
+            const db = conn.db;
 
             const truncateResult = await truncateData(db, activeConfig.connection.dialect, {
                 preserve: preserveTables,

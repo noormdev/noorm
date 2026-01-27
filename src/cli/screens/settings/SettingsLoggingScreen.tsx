@@ -9,6 +9,7 @@
  * ```
  */
 import { useState, useCallback, useMemo } from 'react';
+import { Box, Text } from 'ink';
 import { attempt } from '@logosdx/utils';
 
 import type { ReactElement } from 'react';
@@ -175,6 +176,16 @@ export function SettingsLoggingScreen({ params: _params }: ScreenProps): ReactEl
 
     return (
         <Panel title="Logging Settings" paddingX={2} paddingY={1}>
+            <Box flexDirection="column" gap={1}>
+                <Box flexDirection="column">
+                    <Text dimColor>
+                        Configure file logging for debugging and audit purposes.
+                    </Text>
+                    <Text dimColor>
+                        Logs are rotated automatically when they exceed the max size.
+                    </Text>
+                </Box>
+            </Box>
             <Form
                 fields={fields}
                 onSubmit={handleSubmit}

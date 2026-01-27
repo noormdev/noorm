@@ -29,6 +29,7 @@ import { useRouter } from './router.js';
 
 // Placeholder screens until real implementations
 import { HomeScreen } from './screens/home.js';
+import { MoreScreen } from './screens/MoreScreen.js';
 import { NotFoundScreen } from './screens/not-found.js';
 import { InitScreen } from './screens/init/index.js';
 import {
@@ -41,6 +42,7 @@ import {
     ConfigValidateScreen,
     ConfigExportScreen,
     ConfigImportScreen,
+    ConfigMoreScreen,
 } from './screens/config/index.js';
 import {
     ChangeListScreen,
@@ -90,6 +92,12 @@ import {
 } from './screens/settings/index.js';
 import { SecretListScreen, SecretSetScreen, SecretRemoveScreen } from './screens/secret/index.js';
 import {
+    VaultScreen,
+    VaultInitScreen,
+    VaultSetScreen,
+    VaultRemoveScreen,
+} from './screens/vault/index.js';
+import {
     LockListScreen,
     LockStatusScreen,
     LockAcquireScreen,
@@ -134,6 +142,10 @@ const SCREENS: ScreenRegistry = {
         component: HomeScreen,
         label: 'Home',
     },
+    more: {
+        component: MoreScreen,
+        label: 'More Options',
+    },
 
     // Init
     init: {
@@ -177,6 +189,10 @@ const SCREENS: ScreenRegistry = {
     'config/import': {
         component: ConfigImportScreen,
         label: 'Import Config',
+    },
+    'config/more': {
+        component: ConfigMoreScreen,
+        label: 'More',
     },
 
     // Change
@@ -413,6 +429,24 @@ const SCREENS: ScreenRegistry = {
     'secret/rm': {
         component: SecretRemoveScreen,
         label: 'Delete Secret',
+    },
+
+    // Vault
+    vault: {
+        component: VaultScreen,
+        label: 'Vault',
+    },
+    'vault/init': {
+        component: VaultInitScreen,
+        label: 'Initialize Vault',
+    },
+    'vault/set': {
+        component: VaultSetScreen,
+        label: 'Set Vault Secret',
+    },
+    'vault/rm': {
+        component: VaultRemoveScreen,
+        label: 'Delete Vault Secret',
     },
 
     // Lock

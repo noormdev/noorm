@@ -112,7 +112,6 @@ export class VersionManager {
         dialect: Dialect,
         state: Record<string, unknown>,
         settings: Record<string, unknown>,
-        cliVersion: string,
     ): Promise<{
         state: Record<string, unknown>;
         settings: Record<string, unknown>;
@@ -129,7 +128,7 @@ export class VersionManager {
         const settingsVersion = getSettingsVersion(migratedSettings);
 
         // Migrate schema (in-place in database) with state/settings versions
-        await migrateSchema(db, dialect, cliVersion, { stateVersion, settingsVersion });
+        await migrateSchema(db, dialect, { stateVersion, settingsVersion });
 
         return {
             state: migratedState,

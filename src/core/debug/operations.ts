@@ -131,6 +131,12 @@ export const NOORM_TABLE_INFO: NoormTableInfo[] = [
         displayName: 'Identities',
         description: 'Team member identities',
     },
+    {
+        key: 'vault',
+        name: NOORM_TABLES.vault,
+        displayName: 'Vault',
+        description: 'Encrypted vault secrets',
+    },
 ];
 
 /**
@@ -190,6 +196,15 @@ const TABLE_COLUMNS: Record<NoormTableName, string[]> = {
         'public_key',
         'registered_at',
         'last_seen_at',
+        'encrypted_vault_key',
+    ],
+    [NOORM_TABLES.vault]: [
+        'id',
+        'secret_key',
+        'encrypted_value',
+        'set_by',
+        'created_at',
+        'updated_at',
     ],
 };
 

@@ -9,6 +9,7 @@
  * ```
  */
 import { useState, useCallback, useMemo } from 'react';
+import { Box, Text } from 'ink';
 import { attempt } from '@logosdx/utils';
 
 import type { ReactElement } from 'react';
@@ -140,6 +141,19 @@ export function SettingsStrictScreen({ params: _params }: ScreenProps): ReactEle
 
     return (
         <Panel title="Strict Mode Settings" paddingX={2} paddingY={1}>
+            <Box flexDirection="column" gap={1}>
+                <Box flexDirection="column">
+                    <Text dimColor>
+                        When enabled, operations like apply and revert require the config
+                    </Text>
+                    <Text dimColor>
+                        to be linked to a stage. Required stages must all be defined before
+                    </Text>
+                    <Text dimColor>
+                        any destructive operations are allowed.
+                    </Text>
+                </Box>
+            </Box>
             <Form
                 fields={fields}
                 onSubmit={handleSubmit}

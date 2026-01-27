@@ -81,8 +81,20 @@ const MESSAGE_TEMPLATES: Record<string, (data: Record<string, unknown>) => strin
     // Identity
     'identity:resolved': (d) => `Identity resolved: ${d['name']} (${d['source']})`,
     'identity:created': (d) => `Created identity: ${d['name']} <${d['email']}>`,
+    'identity:registered': (d) => `Registered identity for ${d['name']}`,
     'identity:synced': (d) => `Synced ${d['discovered']} identities for ${d['configName']}`,
-    'identity:registered': (d) => `Registered identity for ${d['configName']}`,
+    'identity:not-found': () => 'No identity found',
+
+    // Vault
+    'vault:initialized': (d) => `Vault initialized for ${d['identityHash']}`,
+    'vault:secret:created': (d) => `Created vault secret: ${d['key']} (by ${d['setBy']})`,
+    'vault:secret:updated': (d) => `Updated vault secret: ${d['key']} (by ${d['setBy']})`,
+    'vault:secret:deleted': (d) => `Deleted vault secret: ${d['key']}`,
+    'vault:propagated': (d) => `Propagated vault access to ${d['toEmail']}`,
+    'vault:copy:starting': (d) =>
+        `Copying vault secrets from ${d['source']} to ${d['destination']} (${d['keys'] === 'all' ? 'all' : `${d['keys']} keys`})`,
+    'vault:copy:completed': (d) =>
+        `Vault copy complete: ${d['copied']} copied, ${d['skipped']} skipped, ${d['errors']} errors`,
 
     // Config sharing
     'config:exported': (d) => `Exported ${d['configName']} to ${d['recipient']}`,

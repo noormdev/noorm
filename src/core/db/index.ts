@@ -25,6 +25,14 @@
 // Main operations
 export { checkDbStatus, createDb, destroyDb } from './operations.js';
 
+// Dual connection infrastructure
+export { withDualConnection } from './dual.js';
+export type {
+    DualConnectionContext,
+    DualConnectionEntry,
+    DualConnectionOptions,
+} from './dual.js';
+
 // Types
 export type {
     DbStatus,

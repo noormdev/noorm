@@ -136,21 +136,6 @@ export function ConfigValidateScreen({ params }: ScreenProps): ReactElement {
 
             }
 
-            // Check secrets (if any are defined for this config)
-            const secrets = stateManager.listSecrets(configName);
-
-            if (secrets.length > 0) {
-
-                results.push({
-                    key: 'secrets',
-                    label: 'Secrets',
-                    status: 'success',
-                    detail: `${secrets.length} secret(s) configured`,
-                });
-                setItems([...results]);
-
-            }
-
             setIsValid(allValid);
             setStep('complete');
 
@@ -170,12 +155,6 @@ export function ConfigValidateScreen({ params }: ScreenProps): ReactElement {
             if (key.escape) {
 
                 back();
-
-            }
-            else if (input === 'k') {
-
-                // Navigate to secrets
-                navigate('secret', { name: configName });
 
             }
             else if (input === 'e') {
@@ -250,7 +229,6 @@ export function ConfigValidateScreen({ params }: ScreenProps): ReactElement {
 
                 <Box marginTop={1} flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[e] Edit</Text>
-                    <Text dimColor>[k] Secrets</Text>
                     <Text dimColor>[Esc] Back</Text>
                 </Box>
             </Box>

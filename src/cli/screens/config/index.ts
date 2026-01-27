@@ -10,3 +10,4 @@ export { ConfigUseScreen } from './ConfigUseScreen.js';
 export { ConfigValidateScreen } from './ConfigValidateScreen.js';
 export { ConfigExportScreen } from './ConfigExportScreen.js';
 export { ConfigImportScreen } from './ConfigImportScreen.js';
+export { ConfigMoreScreen } from './ConfigMoreScreen.js';

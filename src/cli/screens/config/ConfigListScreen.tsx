@@ -8,8 +8,8 @@
  * - e: Edit selected config
  * - d: Delete selected config
  * - c: Copy selected config
- * - x: Export selected config
- * - v: Validate selected config
+ * - k: Secrets for selected config
+ * - +: More actions (export, import, validate)
  *
  * @example
  * ```bash
@@ -140,10 +140,10 @@ export function ConfigListScreen({ params: _params }: ScreenProps): ReactElement
 
         }
 
-        // Import config
-        if (input === 'i') {
+        // More actions
+        if (input === '+') {
 
-            navigate('config/import');
+            navigate('config/more', highlightedConfig ? { name: highlightedConfig } : undefined);
 
             return;
 
@@ -179,19 +179,10 @@ export function ConfigListScreen({ params: _params }: ScreenProps): ReactElement
 
         }
 
-        // Export config
-        if (input === 'x') {
+        // Secrets for config
+        if (input === 'k') {
 
-            navigate('config/export', { name: highlightedConfig });
-
-            return;
-
-        }
-
-        // Validate config
-        if (input === 'v') {
-
-            navigate('config/validate', { name: highlightedConfig });
+            navigate('secret', { name: highlightedConfig });
 
             return;
 
@@ -225,9 +216,8 @@ export function ConfigListScreen({ params: _params }: ScreenProps): ReactElement
                 <Text dimColor>[e] Edit</Text>
                 <Text dimColor>[d] Delete</Text>
                 <Text dimColor>[c] Copy</Text>
-                <Text dimColor>[x] Export</Text>
-                <Text dimColor>[i] Import</Text>
-                <Text dimColor>[v] Validate</Text>
+                <Text dimColor>[k] Secrets</Text>
+                <Text dimColor>[+] More</Text>
                 <Text dimColor>[Enter] Use</Text>
                 <Text dimColor>[Esc] Back</Text>
             </Box>

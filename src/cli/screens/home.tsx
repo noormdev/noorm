@@ -50,8 +50,6 @@ interface QuickStatus {
 interface ConfigSetupStatus {
     configName: string;
     stageName: string | null;
-    complete: boolean;
-    missingSecrets: string[];
 }
 
 /**
@@ -86,8 +84,6 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
         loadingStatus,
         hasIdentity,
         settings,
-        settingsManager,
-        stateManager,
     } = useAppContext();
 
     const [status, setStatus] = useState<QuickStatus>({
@@ -98,60 +94,25 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
     const [recentActivity, setRecentActivity] = useState<UnifiedHistoryRecord[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
-    // Compute setup status for all configs
+    // Compute setup status for all configs (configs linked to stages)
     const setupStatus = useMemo<ConfigSetupStatus[]>(() => {
 
-        if (!settingsManager || !stateManager || !settings) {
+        if (!settings) {
 
             return [];
 
         }
 
         const stages = settings.stages ?? {};
-        const results: ConfigSetupStatus[] = [];
 
-        for (const config of configs) {
-
-            // Check if config name matches a stage
-            const stageName = stages[config.name] ? config.name : null;
-
-            if (!stageName) {
-
-                // Config not linked to a stage - skip
-                continue;
-
-            }
-
-            // Get required secrets for this stage (universal + stage-specific)
-            const requiredSecrets = settingsManager.getRequiredSecrets(stageName);
-
-            // Get secrets that are set for this config
-            const setSecrets = stateManager.listSecrets(config.name);
-            const setSecretsSet: Record<string, boolean> = {};
-
-            for (const key of setSecrets) {
-
-                setSecretsSet[key] = true;
-
-            }
-
-            // Find missing secrets
-            const missingSecrets = requiredSecrets
-                .filter((s) => !setSecretsSet[s.key])
-                .map((s) => s.key);
-
-            results.push({
+        return configs
+            .filter((config) => stages[config.name])
+            .map((config) => ({
                 configName: config.name,
-                stageName,
-                complete: missingSecrets.length === 0,
-                missingSecrets,
-            });
+                stageName: config.name,
+            }));
 
-        }
-
-        return results;
-
-    }, [configs, settings, settingsManager, stateManager]);
+    }, [configs, settings]);
 
     // Load status data when active config changes
     useEffect(() => {
@@ -198,7 +159,7 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
                     activeConfig.connection,
                     activeConfigName ?? '__status__',
                 );
-                const db = conn.db as Kysely<NoormDatabase>;
+                const db = conn.db;
 
                 if (cancelled) {
 
@@ -210,10 +171,10 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
 
                 // Get lock status
                 const lockManager = getLockManager();
-                const lockStatus = await lockManager.status(db, activeConfigName ?? '');
+                const lockStatus = await lockManager.status(db as Kysely<NoormDatabase>, activeConfigName ?? '');
 
                 // Get change info - use ChangeHistory directly for read-only operations
-                const changeHistory = new ChangeHistory(db, activeConfigName ?? '');
+                const changeHistory = new ChangeHistory(db as Kysely<NoormDatabase>, activeConfigName ?? '');
 
                 // Discover changes from disk
                 const diskChanges = await discoverChanges(
@@ -299,15 +260,17 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
 
         }
 
-        // Navigation shortcuts
-        if (input === 'c') navigate('config');
+        // Navigation shortcuts (main options)
+        if (input === 'r') navigate('run');
+        else if (input === 'c') navigate('config');
         else if (input === 'g') navigate('change');
-        else if (input === 'r') navigate('run');
         else if (input === 'd') navigate('db');
-        else if (input === 'l') navigate('lock');
+        else if (input === '+') navigate('more');
+        // Secondary options (also accessible from More screen)
         else if (input === 's') navigate('settings');
-        else if (input === 'k') navigate('secret');
+        else if (input === 'v') navigate('vault');
         else if (input === 'i') navigate('identity');
+        else if (input === 'l') navigate('lock');
         // Number shortcuts for quick actions
         else if (input === '1') navigate('run/build');
         else if (input === '2') navigate('change/ff');
@@ -529,15 +492,8 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
                                     {setupStatus.map((s) => (
                                         <Box key={s.configName} marginLeft={2}>
                                             <Text>
-                                                <Text color={s.complete ? 'green' : undefined}>
-                                                    {s.complete ? '✓' : ' '}
-                                                </Text>
+                                                <Text color="green">✓</Text>
                                                 {' '}{s.configName}
-                                                {!s.complete && s.missingSecrets.length > 0 && (
-                                                    <Text color="red">
-                                                        {' '}✗ secrets ({s.missingSecrets.length})
-                                                    </Text>
-                                                )}
                                             </Text>
                                         </Box>
                                     ))}
@@ -630,15 +586,12 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
 
             {/* Navigation Hints */}
             <Box marginTop={1} flexWrap="wrap" columnGap={2}>
+                <Text dimColor>[r] Run</Text>
                 <Text dimColor>[c] Config</Text>
                 <Text dimColor>[g] Change</Text>
-                <Text dimColor>[r] Run</Text>
                 <Text dimColor>[d] DB</Text>
-                <Text dimColor>[l] Lock</Text>
-                <Text dimColor>[s] Settings</Text>
-                <Text dimColor>[k] Secrets</Text>
-                <Text dimColor>[i] Identity</Text>
                 <Text dimColor>[q] Quit</Text>
+                <Text dimColor>[+] More</Text>
             </Box>
         </Box>
     );

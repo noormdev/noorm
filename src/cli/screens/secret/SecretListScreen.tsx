@@ -16,11 +16,15 @@
  * noorm secret           # Opens this screen
  * ```
  */
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useState, useEffect, useRef } from 'react';
 import { Box, Text, useInput } from 'ink';
+import type { Kysely } from 'kysely';
+import { attempt } from '@logosdx/utils';
 
 import type { ReactElement } from 'react';
 import type { ScreenProps } from '../../types.js';
+import type { NoormDatabase } from '../../../core/shared/index.js';
+import type { ConnectionResult } from '../../../core/connection/types.js';
 
 import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
@@ -33,6 +37,9 @@ import {
     type SecretValueItem,
 } from '../../components/index.js';
 import { maskValue } from '../../../core/logger/redact.js';
+import { createConnection } from '../../../core/connection/index.js';
+import { getVaultStatus, getVaultKey, getAllVaultSecrets } from '../../../core/vault/index.js';
+import { loadPrivateKey } from '../../../core/identity/storage.js';
 
 /**
  * SecretListScreen component.
@@ -43,8 +50,76 @@ export function SecretListScreen({ params: _params }: ScreenProps): ReactElement
 
     const { navigate, back } = useRouter();
     const { isFocused } = useFocusScope('SecretList');
-    const { activeConfig, activeConfigName, stateManager, settingsManager } = useAppContext();
+    const { activeConfig, activeConfigName, stateManager, settingsManager, identity } = useAppContext();
     const { showToast } = useToast();
+
+    // Vault secret keys (loaded async)
+    const [vaultSecretKeys, setVaultSecretKeys] = useState<string[]>([]);
+    const connRef = useRef<ConnectionResult | null>(null);
+    const loadingRef = useRef(false);
+
+    // Load vault secrets on mount
+    useEffect(() => {
+
+        if (!activeConfig || !activeConfigName || !identity) return;
+        if (loadingRef.current) return;
+        loadingRef.current = true;
+
+        let cancelled = false;
+
+        const loadVaultSecrets = async (): Promise<void> => {
+
+            const [conn, connErr] = await attempt(() =>
+                createConnection(activeConfig.connection, activeConfigName),
+            );
+
+            if (connErr || !conn || cancelled) return;
+
+            connRef.current = conn;
+            const db = conn.db as Kysely<NoormDatabase>;
+
+            const vaultStatus = await getVaultStatus(db, identity.identityHash);
+
+            if (vaultStatus.hasAccess && !cancelled) {
+
+                const privateKey = await loadPrivateKey();
+
+                if (privateKey && !cancelled) {
+
+                    const vaultKey = await getVaultKey(db, identity.identityHash, privateKey);
+
+                    if (vaultKey && !cancelled) {
+
+                        const allSecrets = await getAllVaultSecrets(db, vaultKey);
+                        setVaultSecretKeys(Object.keys(allSecrets));
+
+                    }
+
+                }
+
+            }
+
+            await conn.destroy();
+            connRef.current = null;
+
+        };
+
+        loadVaultSecrets();
+
+        return () => {
+
+            cancelled = true;
+
+            if (connRef.current) {
+
+                connRef.current.destroy();
+                connRef.current = null;
+
+            }
+
+        };
+
+    }, [activeConfig, activeConfigName, identity]);
 
     // Try to match config name to a stage (common pattern: config "prod" -> stage "prod")
     const stageName = activeConfigName;
@@ -73,6 +148,9 @@ export function SecretListScreen({ params: _params }: ScreenProps): ReactElement
         const result: SecretValueItem[] = [];
         const requiredKeys = new Set(requiredSecrets.map((s) => s.key));
 
+        // All available secrets (local + vault)
+        const availableSecrets = new Set([...storedSecretKeys, ...vaultSecretKeys]);
+
         // Helper to get masked value for a key
         const getMasked = (key: string): string | undefined => {
 
@@ -84,18 +162,26 @@ export function SecretListScreen({ params: _params }: ScreenProps): ReactElement
 
         };
 
+        // Helper to check if secret is from vault only
+        const isVaultOnly = (key: string): boolean => {
+
+            return vaultSecretKeys.includes(key) && !storedSecretKeys.includes(key);
+
+        };
+
         // Add required secrets first
         for (const required of requiredSecrets) {
 
-            const isSet = storedSecretKeys.includes(required.key);
+            const isSet = availableSecrets.has(required.key);
+            const fromVault = isVaultOnly(required.key);
 
             result.push({
                 key: required.key,
                 isRequired: true,
                 isSet,
                 type: required.type,
-                description: required.description,
-                maskedValue: isSet ? getMasked(required.key) : undefined,
+                description: fromVault ? `${required.description ?? ''} (vault)`.trim() : required.description,
+                maskedValue: isSet && !fromVault ? getMasked(required.key) : (fromVault ? '(vault)' : undefined),
             });
 
         }
@@ -118,7 +204,7 @@ export function SecretListScreen({ params: _params }: ScreenProps): ReactElement
 
         return result;
 
-    }, [requiredSecrets, storedSecretKeys, stateManager, activeConfigName]);
+    }, [requiredSecrets, storedSecretKeys, vaultSecretKeys, stateManager, activeConfigName]);
 
     // Required keys set for delete check
     const requiredKeys = useMemo(() => {
@@ -165,14 +251,18 @@ export function SecretListScreen({ params: _params }: ScreenProps): ReactElement
         [navigate],
     );
 
-    // Check if can delete (only optional secrets can be deleted)
+    // Check if can delete (required secrets can be deleted if they exist in vault)
     const canDelete = useCallback(
         (secretKey: string) => {
 
-            return !requiredKeys.has(secretKey);
+            const isRequired = requiredKeys.has(secretKey);
+            const inVault = vaultSecretKeys.includes(secretKey);
+
+            // Can delete if not required, or if required but exists in vault
+            return !isRequired || inVault;
 
         },
-        [requiredKeys],
+        [requiredKeys, vaultSecretKeys],
     );
 
     // Handle blocked delete (show toast with reason)
@@ -183,7 +273,7 @@ export function SecretListScreen({ params: _params }: ScreenProps): ReactElement
             const scope = isUniversal ? 'universal' : 'stage';
 
             showToast({
-                message: `"${secretKey}" is a ${scope} secret and cannot be deleted`,
+                message: `"${secretKey}" is a ${scope} secret and cannot be deleted (not in vault)`,
                 variant: 'warning',
             });
 

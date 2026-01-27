@@ -258,6 +258,14 @@ export function SettingsRulesListScreen({ params: _params }: ScreenProps): React
     return (
         <Box flexDirection="column" gap={1}>
             <Panel title="Rules" paddingX={1} paddingY={1}>
+                <Box flexDirection="column" marginBottom={1}>
+                    <Text dimColor>
+                        Rules conditionally include or exclude files from builds based on matching conditions.
+                    </Text>
+                    <Text dimColor>
+                        Match by name pattern, file type, test files, or protected status.
+                    </Text>
+                </Box>
                 {items.length === 0 ? (
                     <Box flexDirection="column" gap={1}>
                         <Text dimColor>No rules defined.</Text>
