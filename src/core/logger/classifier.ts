@@ -23,6 +23,12 @@ const ERROR_PATTERNS = [/^error$/, /:error$/, /:failed$/];
 const WARN_PATTERNS = [/:warning$/, /:blocked$/, /:expired$/];
 
 /**
+ * Patterns that force debug level even when a broader info prefix matches.
+ * These are high-frequency or pre-execution events too noisy for info.
+ */
+const DEBUG_PATTERNS = [/:before$/, /:acquiring$/, /:file$/];
+
+/**
  * Patterns that classify an event as info level.
  * These are significant lifecycle events worth logging at default verbosity.
  */
@@ -79,6 +85,17 @@ export function classifyEvent(event: string): EntryLevel {
         if (pattern.test(event)) {
 
             return 'warn';
+
+        }
+
+    }
+
+    // Check debug overrides before info
+    for (const pattern of DEBUG_PATTERNS) {
+
+        if (pattern.test(event)) {
+
+            return 'debug';
 
         }
 

@@ -167,7 +167,7 @@ describe('settings: schema validation', () => {
                 },
             });
 
-            expect(result.stages?.dev?.locked).toBe(false);
+            expect(result.stages?.['dev']?.locked).toBe(false);
 
         });
 

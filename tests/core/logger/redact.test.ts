@@ -235,10 +235,10 @@ describe('logger: redact', () => {
             const filtered = filterData(data, 'info');
             const users = filtered['users'] as Array<Record<string, unknown>>;
 
-            expect(users[0]['username']).toBe('alice');
-            expect(users[0]['password']).toContain('<Password ');
-            expect(users[1]['username']).toBe('bob');
-            expect(users[1]['password']).toContain('<Password ');
+            expect(users[0]!['username']).toBe('alice');
+            expect(users[0]!['password']).toContain('<Password ');
+            expect(users[1]!['username']).toBe('bob');
+            expect(users[1]!['password']).toContain('<Password ');
 
         });
 
@@ -513,7 +513,7 @@ describe('logger: redact', () => {
 
             const cleanup = listenForSecrets();
 
-            observer.emit('secret:set', { key: 'DYNAMIC_SECRET_1', value: 'test' });
+            observer.emit('secret:set', { configName: 'test', key: 'DYNAMIC_SECRET_1' });
 
             expect(isMaskedField('DYNAMIC_SECRET_1')).toBe(true);
             expect(isMaskedField('dynamic_secret_1')).toBe(true);
@@ -526,7 +526,7 @@ describe('logger: redact', () => {
 
             const cleanup = listenForSecrets();
 
-            observer.emit('global-secret:set', { key: 'GLOBAL_SECRET_1', value: 'test' });
+            observer.emit('global-secret:set', { key: 'GLOBAL_SECRET_1' });
 
             expect(isMaskedField('GLOBAL_SECRET_1')).toBe(true);
             expect(isMaskedField('global_secret_1')).toBe(true);
@@ -541,7 +541,7 @@ describe('logger: redact', () => {
             cleanup();
 
             // Emit event after cleanup
-            observer.emit('secret:set', { key: 'SHOULD_NOT_BE_ADDED', value: 'test' });
+            observer.emit('secret:set', { configName: 'test', key: 'SHOULD_NOT_BE_ADDED' });
 
             // The field will still be masked because MASKED_FIELDS is persistent,
             // but we can verify the cleanup function doesn't throw

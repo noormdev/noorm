@@ -144,7 +144,7 @@ describe('encryption: crypto', () => {
 
             // Tamper with ciphertext by flipping first two hex chars
             const cipherBuffer = Buffer.from(payload.ciphertext, 'base64');
-            cipherBuffer[0] ^= 0xFF; // Flip all bits in first byte
+            cipherBuffer[0] = cipherBuffer[0]! ^ 0xFF; // Flip all bits in first byte
             const tampered: EncryptedPayload = {
                 ...payload,
                 ciphertext: cipherBuffer.toString('base64'),
@@ -167,7 +167,7 @@ describe('encryption: crypto', () => {
 
             // Tamper with auth tag
             const authBuffer = Buffer.from(payload.authTag, 'base64');
-            authBuffer[0] ^= 0xFF; // Flip all bits in first byte
+            authBuffer[0] = authBuffer[0]! ^ 0xFF; // Flip all bits in first byte
             const tampered: EncryptedPayload = {
                 ...payload,
                 authTag: authBuffer.toString('base64'),
@@ -190,7 +190,7 @@ describe('encryption: crypto', () => {
 
             // Corrupt IV by changing its value
             const ivBuffer = Buffer.from(payload.iv, 'base64');
-            ivBuffer[0] ^= 0xFF; // Flip all bits in first byte
+            ivBuffer[0] = ivBuffer[0]! ^ 0xFF; // Flip all bits in first byte
             const corrupted: EncryptedPayload = {
                 ...payload,
                 iv: ivBuffer.toString('base64'),

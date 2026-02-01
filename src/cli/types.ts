@@ -42,6 +42,7 @@ export type Route =
     | 'db/create'
     | 'db/destroy'
     | 'db/teardown'
+    | 'db/transfer'
     | 'db/truncate'
 
     // Database exploration
@@ -359,6 +360,9 @@ export interface CliFlags {
 
     /** Preview without executing */
     dryRun: boolean;
+
+    /** Allow additional arbitrary flags for commands */
+    [key: string]: boolean | string | number | undefined;
 }
 
 /**

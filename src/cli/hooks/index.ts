@@ -17,4 +17,11 @@ export {
     type ProgressFileResult,
 } from './useRunProgress.js';
 
+export {
+    useTransferProgress,
+    type TransferProgressState,
+    type TransferPhase,
+    type TransferTableProgress,
+} from './useTransferProgress.js';
+
 export { useUpdateChecker, type UseUpdateCheckerResult } from './useUpdateChecker.js';

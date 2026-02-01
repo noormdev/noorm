@@ -11,6 +11,9 @@ import { tmpdir } from 'node:os';
 
 import { Logger, resetLogger } from '../../../src/core/logger/logger.js';
 import { DEFAULT_LOGGER_CONFIG } from '../../../src/core/logger/types.js';
+import type { Settings } from '../../../src/core/settings/types.js';
+
+const settings = {} as Settings;
 
 /**
  * Create a mock writable stream that captures output.
@@ -68,6 +71,7 @@ describe('logger: output formats', () => {
 
             const logger = new Logger({
                 projectRoot,
+                settings,
                 config: DEFAULT_LOGGER_CONFIG,
                 console: stream,
                 json: true,
@@ -88,6 +92,7 @@ describe('logger: output formats', () => {
 
             const logger = new Logger({
                 projectRoot,
+                settings,
                 config: DEFAULT_LOGGER_CONFIG,
                 file: fileStream,
                 json: true,
@@ -109,6 +114,7 @@ describe('logger: output formats', () => {
 
             const logger = new Logger({
                 projectRoot,
+                settings,
                 config: DEFAULT_LOGGER_CONFIG,
                 console: consoleStream,
                 file: fileStream,
@@ -136,6 +142,7 @@ describe('logger: output formats', () => {
 
             const logger = new Logger({
                 projectRoot,
+                settings,
                 config: DEFAULT_LOGGER_CONFIG,
                 console: stream,
                 json: true,
@@ -147,7 +154,7 @@ describe('logger: output formats', () => {
 
             expect(output.length).toBeGreaterThan(0);
 
-            const parsed = JSON.parse(output[0]);
+            const parsed = JSON.parse(output[0]!);
             expect(parsed).toHaveProperty('time');
             expect(parsed).toHaveProperty('type', 'log');
             expect(parsed).toHaveProperty('level', 'info');
@@ -161,6 +168,7 @@ describe('logger: output formats', () => {
 
             const logger = new Logger({
                 projectRoot,
+                settings,
                 config: DEFAULT_LOGGER_CONFIG,
                 console: stream,
                 json: true,
@@ -171,7 +179,7 @@ describe('logger: output formats', () => {
             await logger.stop();
 
             expect(output.length).toBeGreaterThan(0);
-            const parsed = JSON.parse(output[0]);
+            const parsed = JSON.parse(output[0]!);
             // Should have ISO 8601 format with timezone offset
             expect(parsed.time).toMatch(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
 
@@ -183,6 +191,7 @@ describe('logger: output formats', () => {
 
             const logger = new Logger({
                 projectRoot,
+                settings,
                 config: { ...DEFAULT_LOGGER_CONFIG, level: 'verbose' },
                 console: stream,
                 json: true,
@@ -196,7 +205,7 @@ describe('logger: output formats', () => {
             await logger.stop();
 
             expect(output.length).toBeGreaterThan(0);
-            const parsed = JSON.parse(output[0]);
+            const parsed = JSON.parse(output[0]!);
             // Should have flattened keys
             expect(parsed['error.message']).toBe('timeout');
             expect(parsed['error.code']).toBe(500);
@@ -210,6 +219,7 @@ describe('logger: output formats', () => {
 
             const logger = new Logger({
                 projectRoot,
+                settings,
                 config: { ...DEFAULT_LOGGER_CONFIG, level: 'verbose' },
                 console: stream,
                 json: true,
@@ -222,7 +232,7 @@ describe('logger: output formats', () => {
             await logger.stop();
 
             expect(output.length).toBeGreaterThan(0);
-            const parsed = JSON.parse(output[0]);
+            const parsed = JSON.parse(output[0]!);
             // Arrays should be stringified
             expect(typeof parsed.items).toBe('string');
             expect(parsed.items).toBe('["a","b","c"]');
@@ -239,6 +249,7 @@ describe('logger: output formats', () => {
 
             const logger = new Logger({
                 projectRoot,
+                settings,
                 config: DEFAULT_LOGGER_CONFIG,
                 console: stream,
                 json: false,
@@ -261,6 +272,7 @@ describe('logger: output formats', () => {
 
             const logger = new Logger({
                 projectRoot,
+                settings,
                 config: DEFAULT_LOGGER_CONFIG,
                 console: stream,
                 json: false,
@@ -292,6 +304,7 @@ describe('logger: output formats', () => {
 
             const logger = new Logger({
                 projectRoot,
+                settings,
                 config: DEFAULT_LOGGER_CONFIG,
                 console: stream,
                 json: true,
@@ -302,7 +315,7 @@ describe('logger: output formats', () => {
             await logger.stop();
 
             expect(output.length).toBeGreaterThan(0);
-            const parsed = JSON.parse(output[0]);
+            const parsed = JSON.parse(output[0]!);
             expect(parsed).toHaveProperty('time');
             expect(parsed).toHaveProperty('level', 'info');
             expect(parsed).toHaveProperty('message', 'info message');
@@ -315,6 +328,7 @@ describe('logger: output formats', () => {
 
             const logger = new Logger({
                 projectRoot,
+                settings,
                 config: DEFAULT_LOGGER_CONFIG,
                 console: stream,
                 json: true,
@@ -325,7 +339,7 @@ describe('logger: output formats', () => {
             await logger.stop();
 
             expect(output.length).toBeGreaterThan(0);
-            const parsed = JSON.parse(output[0]);
+            const parsed = JSON.parse(output[0]!);
             expect(parsed).toHaveProperty('level', 'error');
 
         });
@@ -336,6 +350,7 @@ describe('logger: output formats', () => {
 
             const logger = new Logger({
                 projectRoot,
+                settings,
                 config: DEFAULT_LOGGER_CONFIG,
                 console: stream,
                 json: false,

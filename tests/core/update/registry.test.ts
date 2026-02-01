@@ -44,7 +44,7 @@ describe('update: registry', () => {
             const info = await fetchPackageInfo();
 
             expect(info).not.toBeNull();
-            expect(info?.['dist-tags'].latest).toBe('1.2.0');
+            expect(info?.['dist-tags']['latest']).toBe('1.2.0');
 
         });
 
@@ -86,7 +86,7 @@ describe('update: registry', () => {
 
         it('should use AbortController for timeout', async () => {
 
-            let capturedSignal: AbortSignal | undefined;
+            let capturedSignal: AbortSignal | null | undefined;
 
             vi.mocked(fetch).mockImplementation(async (_url, options) => {
 

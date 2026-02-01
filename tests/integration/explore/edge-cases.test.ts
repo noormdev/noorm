@@ -151,10 +151,10 @@ describe('integration: explore edge cases', () => {
 
             const tables = await fetchList(db, 'sqlite', 'tables') as TableSummary[];
 
-            const spaceTable = tables.find(t => t.name === 'User Profiles') as TableDetail;
+            const spaceTable = tables.find(t => t.name === 'User Profiles');
 
             expect(spaceTable).toBeDefined();
-            expect(spaceTable!.name).toBe('User Profiles') as TableDetail;
+            expect(spaceTable!.name).toBe('User Profiles');
 
         });
 
@@ -317,7 +317,7 @@ describe('integration: explore edge cases', () => {
 
             // Verify the table was created successfully
             const tables = await fetchList(db, 'sqlite', 'tables') as TableSummary[];
-            const permTable = tables.find(t => t.name === 'user_permissions') as TableDetail;
+            const permTable = tables.find(t => t.name === 'user_permissions');
 
             expect(permTable).toBeDefined();
 
@@ -512,7 +512,7 @@ describe('integration: explore edge cases', () => {
 
             const indexes = await fetchList(db, 'sqlite', 'indexes') as IndexSummary[];
 
-            const tableIndexes = indexes.filter(i => i.tableName === 'empty_table') as TableDetail;
+            const tableIndexes = indexes.filter(i => i.tableName === 'empty_table');
 
             // May have implicit PK index or none at all depending on SQLite version
             expect(Array.isArray(tableIndexes)).toBe(true);

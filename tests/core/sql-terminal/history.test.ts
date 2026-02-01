@@ -83,9 +83,9 @@ describe('sql-terminal: history', () => {
                 const entries = await manager.load();
 
                 expect(entries).toHaveLength(1);
-                expect(entries[0].id).toBe('test-id-1');
-                expect(entries[0].executedAt).toBeInstanceOf(Date);
-                expect(entries[0].executedAt.toISOString()).toBe(now.toISOString());
+                expect(entries[0]!.id).toBe('test-id-1');
+                expect(entries[0]!.executedAt).toBeInstanceOf(Date);
+                expect(entries[0]!.executedAt.toISOString()).toBe(now.toISOString());
 
             });
 
@@ -122,8 +122,8 @@ describe('sql-terminal: history', () => {
                 const entries = await manager.load();
 
                 expect(entries).toHaveLength(2);
-                expect(entries[0].id).toBe('test-id-1');
-                expect(entries[1].id).toBe('test-id-2');
+                expect(entries[0]!.id).toBe('test-id-1');
+                expect(entries[1]!.id).toBe('test-id-2');
 
             });
 
@@ -161,8 +161,8 @@ describe('sql-terminal: history', () => {
                 const entries = await manager.load();
 
                 expect(entries).toHaveLength(2);
-                expect(entries[0].errorMessage).toBe('Table not found');
-                expect(entries[1].resultsFile).toBe('test-id-2.results.gz');
+                expect(entries[0]!.errorMessage).toBe('Table not found');
+                expect(entries[1]!.resultsFile).toBe('test-id-2.results.gz');
 
             });
 
@@ -208,8 +208,8 @@ describe('sql-terminal: history', () => {
                 const entries = await manager.load();
 
                 expect(entries).toHaveLength(2);
-                expect(entries[0].id).toBe(id2);
-                expect(entries[1].id).toBe(id1);
+                expect(entries[0]!.id).toBe(id2);
+                expect(entries[1]!.id).toBe(id1);
 
             });
 
@@ -231,7 +231,7 @@ describe('sql-terminal: history', () => {
 
                 const entries = await manager.load();
 
-                expect(entries[0].resultsFile).toBe(`${id}.results.gz`);
+                expect(entries[0]!.resultsFile).toBe(`${id}.results.gz`);
 
                 const resultsDir = join(TMP_DIR, '.noorm', 'state', 'history', 'test-config');
                 const files = await readdir(resultsDir);
@@ -254,7 +254,7 @@ describe('sql-terminal: history', () => {
 
                 const entries = await manager.load();
 
-                expect(entries[0].resultsFile).toBeUndefined();
+                expect(entries[0]!.resultsFile).toBeUndefined();
 
             });
 
@@ -273,7 +273,7 @@ describe('sql-terminal: history', () => {
 
                 const entries = await manager.load();
 
-                expect(entries[0].resultsFile).toBeUndefined();
+                expect(entries[0]!.resultsFile).toBeUndefined();
 
             });
 
@@ -292,9 +292,9 @@ describe('sql-terminal: history', () => {
                 const entries = await manager.load();
 
                 expect(entries).toHaveLength(1);
-                expect(entries[0].success).toBe(false);
-                expect(entries[0].errorMessage).toBe('Syntax error');
-                expect(entries[0].resultsFile).toBeUndefined();
+                expect(entries[0]!.success).toBe(false);
+                expect(entries[0]!.errorMessage).toBe('Syntax error');
+                expect(entries[0]!.resultsFile).toBeUndefined();
 
             });
 
@@ -313,7 +313,7 @@ describe('sql-terminal: history', () => {
 
                 const entries = await manager.load();
 
-                expect(entries[0].rowCount).toBe(3);
+                expect(entries[0]!.rowCount).toBe(3);
 
             });
 
@@ -331,7 +331,7 @@ describe('sql-terminal: history', () => {
 
                 const entries = await manager.load();
 
-                expect(entries[0].rowCount).toBe(5);
+                expect(entries[0]!.rowCount).toBe(5);
 
             });
 
@@ -526,8 +526,8 @@ describe('sql-terminal: history', () => {
 
                 const recent = await manager.getRecent(2);
 
-                expect(recent[0].query).toBe('SECOND QUERY');
-                expect(recent[1].query).toBe('FIRST QUERY');
+                expect(recent[0]!.query).toBe('SECOND QUERY');
+                expect(recent[1]!.query).toBe('FIRST QUERY');
 
             });
 
@@ -613,7 +613,7 @@ describe('sql-terminal: history', () => {
                 const entries = await manager.load();
 
                 expect(entries).toHaveLength(1);
-                expect(entries[0].id).toBe('new-entry');
+                expect(entries[0]!.id).toBe('new-entry');
 
             });
 
@@ -978,9 +978,9 @@ describe('sql-terminal: history', () => {
                 const entries = await manager.load();
 
                 expect(entries).toHaveLength(3);
-                expect(entries[0].query).toBe('SELECT 3');
-                expect(entries[1].query).toBe('SELECT 2');
-                expect(entries[2].query).toBe('SELECT 1');
+                expect(entries[0]!.query).toBe('SELECT 3');
+                expect(entries[1]!.query).toBe('SELECT 2');
+                expect(entries[2]!.query).toBe('SELECT 1');
 
             });
 

@@ -65,8 +65,8 @@ describe('connection: factory', () => {
             }>`SELECT * FROM test ORDER BY id`.execute(conn.db);
 
             expect(result.rows).toHaveLength(2);
-            expect(result.rows[0].name).toBe('Alice');
-            expect(result.rows[1].name).toBe('Bob');
+            expect(result.rows[0]!.name).toBe('Alice');
+            expect(result.rows[1]!.name).toBe('Bob');
 
         });
 
@@ -78,22 +78,6 @@ describe('connection: factory', () => {
             };
 
             await expect(createConnection(config)).rejects.toThrow('Unsupported dialect');
-
-        });
-
-        it.skip('should throw helpful error for missing driver', async () => {
-
-            // Skip: All drivers (pg, mysql2, tedious) are installed in this project
-            // This test would only apply when a driver is missing
-            const config: ConnectionConfig = {
-                dialect: 'mysql',
-                host: 'localhost',
-                database: 'test',
-            };
-
-            await expect(createConnection(config)).rejects.toThrow(
-                /Cannot find module|Missing driver/,
-            );
 
         });
 

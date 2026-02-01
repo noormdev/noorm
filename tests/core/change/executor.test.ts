@@ -25,7 +25,7 @@ describe('change: executor', () => {
     let changesDir: string;
     let sqlDir: string;
 
-    const testIdentity = { name: 'Test User', email: 'test@example.com' };
+    const testIdentity = { name: 'Test User', email: 'test@example.com', source: 'config' as const };
 
     /**
      * Create a test change on disk.
@@ -104,7 +104,7 @@ describe('change: executor', () => {
         });
 
         // Bootstrap the noorm tracking tables
-        await v1.up(db);
+        await v1.up(db as Kysely<unknown>, 'sqlite');
 
     });
 

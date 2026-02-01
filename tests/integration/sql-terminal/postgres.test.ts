@@ -67,7 +67,7 @@ describe('integration: postgres sql-terminal', () => {
             expect(result.rows).toHaveLength(3);
 
             // Verify row data
-            const emails = result.rows!.map((r) => r.email);
+            const emails = result.rows!.map((r) => r['email']);
             expect(emails).toContain('user1@test.com');
             expect(emails).toContain('user2@test.com');
             expect(emails).toContain('user3@test.com');
@@ -110,8 +110,8 @@ describe('integration: postgres sql-terminal', () => {
 
             expect(result.success).toBe(true);
             expect(result.rows).toHaveLength(1);
-            expect(result.rows![0].email).toBe('user1@test.com');
-            expect(result.rows![0].username).toBe('user1');
+            expect(result.rows![0]!['email']).toBe('user1@test.com');
+            expect(result.rows![0]!['username']).toBe('user1');
 
         });
 
@@ -142,7 +142,7 @@ describe('integration: postgres sql-terminal', () => {
             expect(result.success).toBe(true);
             expect(result.columns).toEqual(['user_count']);
             expect(result.rows).toHaveLength(1);
-            expect(Number(result.rows![0].user_count)).toBe(3);
+            expect(Number(result.rows![0]!['user_count'])).toBe(3);
 
         });
 
@@ -161,8 +161,8 @@ describe('integration: postgres sql-terminal', () => {
             expect(result.success).toBe(true);
             expect(result.rows!.length).toBeGreaterThan(0);
 
-            const user1 = result.rows!.find((r) => r.username === 'user1');
-            expect(Number(user1?.list_count)).toBe(2);
+            const user1 = result.rows!.find((r) => r['username'] === 'user1');
+            expect(Number(user1?.['list_count'])).toBe(2);
 
         });
 
@@ -176,8 +176,8 @@ describe('integration: postgres sql-terminal', () => {
 
             expect(result.success).toBe(true);
             expect(result.rows).toHaveLength(2);
-            expect(result.rows![0].username).toBe('user1');
-            expect(result.rows![1].username).toBe('user2');
+            expect(result.rows![0]!['username']).toBe('user1');
+            expect(result.rows![1]!['username']).toBe('user2');
 
         });
 
@@ -262,8 +262,8 @@ describe('integration: postgres sql-terminal', () => {
             expect(result.success).toBe(true);
             expect(result.columns).toEqual(['id', 'email', 'username']);
             expect(result.rows).toHaveLength(1);
-            expect(result.rows![0].email).toBe('returning@test.com');
-            expect(result.rows![0].id).toBeDefined();
+            expect(result.rows![0]!['email']).toBe('returning@test.com');
+            expect(result.rows![0]!['id']).toBeDefined();
 
         });
 
@@ -288,7 +288,7 @@ describe('integration: postgres sql-terminal', () => {
                 "SELECT display_name FROM users WHERE username = 'user1'",
                 'test',
             );
-            expect(verify.rows![0].display_name).toBe('Updated Name');
+            expect(verify.rows![0]!['display_name']).toBe('Updated Name');
 
         });
 
@@ -332,7 +332,7 @@ describe('integration: postgres sql-terminal', () => {
             expect(result.success).toBe(true);
             expect(result.columns).toEqual(['id', 'username', 'display_name']);
             expect(result.rows).toHaveLength(1);
-            expect(result.rows![0].display_name).toBe('Returned Update');
+            expect(result.rows![0]!['display_name']).toBe('Returned Update');
 
         });
 
@@ -392,7 +392,7 @@ describe('integration: postgres sql-terminal', () => {
             expect(result.success).toBe(true);
             expect(result.columns).toEqual(['id', 'title']);
             expect(result.rows).toHaveLength(1);
-            expect(result.rows![0].title).toBe('Complete report');
+            expect(result.rows![0]!['title']).toBe('Complete report');
 
         });
 
@@ -687,10 +687,10 @@ describe('integration: postgres sql-terminal', () => {
             );
 
             expect(result.success).toBe(true);
-            expect(result.rows![0].id).toBeDefined();
+            expect(result.rows![0]!['id']).toBeDefined();
             // UUID should be a string in format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-            expect(typeof result.rows![0].id).toBe('string');
-            expect((result.rows![0].id as string).length).toBe(36);
+            expect(typeof result.rows![0]!['id']).toBe('string');
+            expect((result.rows![0]!['id'] as string).length).toBe(36);
 
         });
 
@@ -703,9 +703,9 @@ describe('integration: postgres sql-terminal', () => {
             );
 
             expect(result.success).toBe(true);
-            expect(result.rows![0].created_at).toBeDefined();
+            expect(result.rows![0]!['created_at']).toBeDefined();
             // Should be a Date object
-            expect(result.rows![0].created_at instanceof Date).toBe(true);
+            expect(result.rows![0]!['created_at'] instanceof Date).toBe(true);
 
         });
 
@@ -718,8 +718,8 @@ describe('integration: postgres sql-terminal', () => {
             );
 
             expect(result.success).toBe(true);
-            expect(result.rows!.some((r) => r.is_completed === true)).toBe(true);
-            expect(result.rows!.some((r) => r.is_completed === false)).toBe(true);
+            expect(result.rows!.some((r) => r['is_completed'] === true)).toBe(true);
+            expect(result.rows!.some((r) => r['is_completed'] === false)).toBe(true);
 
         });
 
@@ -732,7 +732,7 @@ describe('integration: postgres sql-terminal', () => {
             );
 
             expect(result.success).toBe(true);
-            expect(result.rows![0].deleted_at).toBeNull();
+            expect(result.rows![0]!['deleted_at']).toBeNull();
 
         });
 
@@ -745,7 +745,7 @@ describe('integration: postgres sql-terminal', () => {
             );
 
             expect(result.success).toBe(true);
-            expect(typeof result.rows![0].priority).toBe('number');
+            expect(typeof result.rows![0]!['priority']).toBe('number');
 
         });
 
@@ -758,7 +758,7 @@ describe('integration: postgres sql-terminal', () => {
             );
 
             expect(result.success).toBe(true);
-            expect(typeof result.rows![0].description).toBe('string');
+            expect(typeof result.rows![0]!['description']).toBe('string');
 
         });
 
@@ -839,7 +839,7 @@ describe('integration: postgres sql-terminal', () => {
             expect(result.success).toBe(true);
             expect(result.columns).toContain('priority_label');
 
-            const labels = result.rows!.map((r) => r.priority_label);
+            const labels = result.rows!.map((r) => r['priority_label']);
             expect(labels.some((l) => ['low', 'medium', 'high', 'urgent'].includes(l as string))).toBe(true);
 
         });
@@ -865,8 +865,8 @@ describe('integration: postgres sql-terminal', () => {
 
                 expect(result.success).toBe(true);
                 expect(result.rows).toHaveLength(5);
-                expect(result.rows![0].n).toBe(1);
-                expect(result.rows![4].n).toBe(5);
+                expect(result.rows![0]!['n']).toBe(1);
+                expect(result.rows![4]!['n']).toBe(5);
 
             });
 

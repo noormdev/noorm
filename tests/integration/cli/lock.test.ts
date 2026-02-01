@@ -3,7 +3,7 @@
  *
  * Tests for lock/status, lock/acquire, and lock/release commands.
  */
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 
 import {
     noorm,

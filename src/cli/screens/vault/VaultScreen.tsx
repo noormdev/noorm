@@ -231,7 +231,7 @@ export function VaultScreen({ params: _params }: ScreenProps): ReactElement {
     );
 
     // Handle delete
-    const handleDelete = useCallback(
+    const _handleDelete = useCallback(
         (key: string) => {
 
             navigate('vault/rm', { name: key });

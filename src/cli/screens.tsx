@@ -61,6 +61,7 @@ import {
     DbListScreen,
     DbCreateScreen,
     DbDestroyScreen,
+    DbTransferScreen,
     DbTruncateScreen,
     DbTeardownScreen,
     ExploreOverviewScreen,
@@ -261,6 +262,10 @@ const SCREENS: ScreenRegistry = {
     'db/teardown': {
         component: DbTeardownScreen,
         label: 'Schema Teardown',
+    },
+    'db/transfer': {
+        component: DbTransferScreen,
+        label: 'Data Transfer',
     },
 
     // Database Exploration

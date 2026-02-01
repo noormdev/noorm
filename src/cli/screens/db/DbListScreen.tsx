@@ -250,6 +250,17 @@ export function DbListScreen({ params: _params }: ScreenProps): ReactElement {
 
         }
 
+        if (input === 'r') {
+
+            // Only allow transfer if connected
+            if (!status?.connected) return;
+
+            navigate('db/transfer');
+
+            return;
+
+        }
+
     });
 
     // No active config
@@ -350,6 +361,9 @@ export function DbListScreen({ params: _params }: ScreenProps): ReactElement {
                     <Text color={status?.connected ? undefined : 'gray'}>
                         <Text color={status?.connected ? 'cyan' : 'gray'}>[t]</Text> Teardown - Drop user objects (keep noorm)
                     </Text>
+                    <Text color={status?.connected ? undefined : 'gray'}>
+                        <Text color={status?.connected ? 'cyan' : 'gray'}>[r]</Text> Transfer - Copy data to another database
+                    </Text>
                 </Box>
             </Panel>
 
@@ -365,6 +379,7 @@ export function DbListScreen({ params: _params }: ScreenProps): ReactElement {
                 <Text dimColor>[x] Explore</Text>
                 <Text dimColor>[w] Wipe</Text>
                 <Text dimColor>[t] Teardown</Text>
+                <Text dimColor>[r] Transfer</Text>
                 <Text dimColor>[Esc] Back</Text>
             </Box>
         </Box>

@@ -96,7 +96,7 @@ describe('integration: mysql sql-terminal', () => {
             expect(result.rows![0]).toHaveProperty('email');
             expect(result.rows![0]).toHaveProperty('username');
 
-            const emails = result.rows!.map((r) => r.email);
+            const emails = result.rows!.map((r) => r['email']);
             expect(emails).toContain('user1@test.com');
             expect(emails).toContain('user2@test.com');
             expect(emails).toContain('user3@test.com');
@@ -113,7 +113,7 @@ describe('integration: mysql sql-terminal', () => {
 
             expect(result.success).toBe(true);
             expect(result.rows).toHaveLength(1);
-            expect(result.rows![0].email).toBe('user1@test.com');
+            expect(result.rows![0]!['email']).toBe('user1@test.com');
 
         });
 
@@ -577,8 +577,8 @@ describe('integration: mysql sql-terminal', () => {
             );
 
             expect(result.success).toBe(true);
-            expect(result.rows![0].formatted).toContain('<');
-            expect(result.rows![0].formatted).toContain('>');
+            expect(result.rows![0]!['formatted']).toContain('<');
+            expect(result.rows![0]!['formatted']).toContain('>');
 
         });
 
@@ -629,8 +629,8 @@ describe('integration: mysql sql-terminal', () => {
 
                 expect(result.success).toBe(true);
                 expect(result.rows).toHaveLength(5);
-                expect(result.rows![0].n).toBe(1);
-                expect(result.rows![4].n).toBe(5);
+                expect(result.rows![0]!['n']).toBe(1);
+                expect(result.rows![4]!['n']).toBe(5);
 
             });
 

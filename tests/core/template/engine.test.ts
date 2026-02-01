@@ -206,8 +206,8 @@ describe('template: engine', () => {
             const results = await processFiles([filepath1, filepath2]);
 
             expect(results).toHaveLength(2);
-            expect(results[0].sql).toBe('SELECT 1;');
-            expect(results[1].sql).toBe('SELECT 2;');
+            expect(results[0]!.sql).toBe('SELECT 1;');
+            expect(results[1]!.sql).toBe('SELECT 2;');
 
         });
 
@@ -220,10 +220,10 @@ describe('template: engine', () => {
                 projectRoot: FIXTURES_DIR,
             });
 
-            expect(results[0].isTemplate).toBe(false);
-            expect(results[1].isTemplate).toBe(true);
-            expect(results[0].sql).toBe('SELECT 1;');
-            expect(results[1].sql).toBe('SELECT 2;');
+            expect(results[0]!.isTemplate).toBe(false);
+            expect(results[1]!.isTemplate).toBe(true);
+            expect(results[0]!.sql).toBe('SELECT 1;');
+            expect(results[1]!.sql).toBe('SELECT 2;');
 
         });
 

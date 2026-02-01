@@ -187,7 +187,6 @@ describe('identity: resolver', () => {
             const result = formatIdentity({
                 name: 'John',
                 email: 'john@example.com',
-                source: 'git',
             });
 
             expect(result).toBe('John <john@example.com>');
@@ -198,7 +197,6 @@ describe('identity: resolver', () => {
 
             const result = formatIdentity({
                 name: 'John',
-                source: 'system',
             });
 
             expect(result).toBe('John');

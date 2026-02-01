@@ -1,0 +1,101 @@
+DATA TRANSFER - Copy data between databases
+
+USAGE
+
+    noorm db transfer
+    noorm -H db transfer --to <config> [options]
+
+DESCRIPTION
+
+    Transfers data from source to destination database. Both databases must
+    use the same dialect (PostgreSQL, MySQL, or MSSQL).
+
+    Tables are automatically ordered by foreign key dependencies to ensure
+    referential integrity. Same-server transfers use efficient direct SQL;
+    cross-server transfers use batched reads/writes.
+
+    TUI mode provides an interactive wizard. Headless mode requires the
+    --to flag to specify the destination config.
+
+SUBCOMMANDS
+
+    (none)          Interactive transfer wizard
+
+CONFLICT STRATEGIES
+
+    fail            Abort on first primary key conflict (default)
+    skip            Skip conflicting rows, continue transfer
+    update          Update existing rows with source data
+    replace         Delete and re-insert conflicting rows
+
+FLAGS (HEADLESS)
+
+    --to            Destination config name (required)
+    --tables        Comma-separated list of tables (default: all)
+    --on-conflict   Conflict strategy: fail, skip, update, replace
+    --batch-size    Rows per batch for cross-server (default: 1000)
+    --truncate      Truncate destination tables before transfer
+    --no-fk         Do not disable foreign key checks
+    --no-identity   Do not preserve identity/auto-increment values
+    --dry-run       Show transfer plan without executing
+
+EXAMPLES
+
+    # Interactive mode
+    noorm db transfer
+
+    # Transfer all tables from active config to backup
+    noorm -H db transfer --to backup
+
+    # Transfer specific tables
+    noorm -H db transfer --to backup --tables users,posts,comments
+
+    # Transfer with upsert behavior
+    noorm -H db transfer --to backup --on-conflict update
+
+    # Preview transfer plan
+    noorm -H db transfer --to backup --dry-run
+
+    # Clear destination tables before transfer
+    noorm -H db transfer --to backup --truncate
+
+    # JSON output for scripting
+    noorm -H --json db transfer --to backup
+
+JSON OUTPUT (--json)
+
+    {
+        "success": true,
+        "status": "success",
+        "tables": [
+            {
+                "table": "users",
+                "status": "success",
+                "rowsTransferred": 1500,
+                "rowsSkipped": 0,
+                "durationMs": 234
+            }
+        ],
+        "totalRows": 1500,
+        "durationMs": 1234
+    }
+
+    Dry run output:
+
+    {
+        "success": true,
+        "dryRun": true,
+        "sameServer": false,
+        "tableCount": 5,
+        "estimatedRows": 10000,
+        "tables": [
+            { "name": "users", "rowCount": 1000, "hasIdentity": true }
+        ],
+        "warnings": []
+    }
+
+SEE ALSO
+
+    noorm help db truncate
+    noorm help db teardown
+    noorm help config

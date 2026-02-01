@@ -9,6 +9,7 @@ import React from 'react';
 
 import { App } from '../../src/cli/app.js';
 import { resetLifecycleManager } from '../../src/core/lifecycle/manager.js';
+import type { Route } from '../../src/cli/types.js';
 
 // ANSI escape sequences
 const KEYS = {
@@ -229,7 +230,7 @@ describe('cli: app', () => {
 
         it('should render not-found for unregistered routes', () => {
 
-            const { lastFrame } = render(<App initialRoute="some/unregistered/route" />);
+            const { lastFrame } = render(<App initialRoute={'some/unregistered/route' as Route} />);
 
             expect(lastFrame()).toContain('Not Found');
 

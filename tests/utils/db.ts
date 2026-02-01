@@ -2,7 +2,9 @@
  * Test Database Utilities.
  *
  * Provides helpers for integration tests that require live database connections.
- * Uses non-default ports to avoid conflicts with local databases.
+ * Configuration via environment variables with fallbacks to docker-compose.test.yml defaults.
+ *
+ * See tests/sample.env for available environment variables.
  */
 import { sql, type Kysely } from 'kysely';
 import { readFile } from 'node:fs/promises';
@@ -10,39 +12,42 @@ import { join } from 'node:path';
 
 import { createConnection } from '../../src/core/connection/factory.js';
 import type { ConnectionConfig, ConnectionResult, Dialect } from '../../src/core/connection/types.js';
+import type { Config } from '../../src/core/config/types.js';
 
 /**
- * Test connection configurations with non-default ports.
+ * Test connection configurations.
  *
- * These match the docker-compose.test.yml configuration.
+ * Reads from environment variables with fallbacks to docker-compose.test.yml defaults.
+ * Set TEST_*_HOST, TEST_*_PORT, TEST_*_USER, TEST_*_PASSWORD, TEST_*_DATABASE
+ * environment variables to override.
  */
 export const TEST_CONNECTIONS: Record<Dialect, ConnectionConfig> = {
 
     postgres: {
         dialect: 'postgres',
-        host: 'localhost',
-        port: 15432,
-        user: 'noorm_test',
-        password: 'noorm_test',
-        database: 'noorm_test',
+        host: process.env['TEST_POSTGRES_HOST'] ?? 'localhost',
+        port: parseInt(process.env['TEST_POSTGRES_PORT'] ?? '15432', 10),
+        user: process.env['TEST_POSTGRES_USER'] ?? 'noorm_test',
+        password: process.env['TEST_POSTGRES_PASSWORD'] ?? 'noorm_test',
+        database: process.env['TEST_POSTGRES_DATABASE'] ?? 'noorm_test',
     },
 
     mysql: {
         dialect: 'mysql',
-        host: 'localhost',
-        port: 13306,
-        user: 'noorm_test',
-        password: 'noorm_test',
-        database: 'noorm_test',
+        host: process.env['TEST_MYSQL_HOST'] ?? 'localhost',
+        port: parseInt(process.env['TEST_MYSQL_PORT'] ?? '13306', 10),
+        user: process.env['TEST_MYSQL_USER'] ?? 'noorm_test',
+        password: process.env['TEST_MYSQL_PASSWORD'] ?? 'noorm_test',
+        database: process.env['TEST_MYSQL_DATABASE'] ?? 'noorm_test',
     },
 
     mssql: {
         dialect: 'mssql',
-        host: 'localhost',
-        port: 11433,
-        user: 'sa',
-        password: 'NoOrm_Test123!',
-        database: 'noorm_test',
+        host: process.env['TEST_MSSQL_HOST'] ?? 'localhost',
+        port: parseInt(process.env['TEST_MSSQL_PORT'] ?? '11433', 10),
+        user: process.env['TEST_MSSQL_USER'] ?? 'sa',
+        password: process.env['TEST_MSSQL_PASSWORD'] ?? 'NoOrm_Test123!',
+        database: process.env['TEST_MSSQL_DATABASE'] ?? 'noorm_test',
     },
 
     sqlite: {
@@ -829,5 +834,31 @@ export async function skipIfNoContainer(dialect: Dialect): Promise<void> {
         );
 
     }
+
+}
+
+/**
+ * Build a complete Config object for testing.
+ *
+ * Transfer tests only need `name` and `connection`, but the Config type
+ * requires all fields. This helper fills in sensible test defaults.
+ *
+ * @param name - Config name
+ * @param connection - Connection configuration
+ * @returns Complete Config object
+ */
+export function makeTestConfig(name: string, connection: ConnectionConfig): Config {
+
+    return {
+        name,
+        type: 'local',
+        isTest: true,
+        protected: false,
+        connection,
+        paths: {
+            sql: './sql',
+            changes: './changes',
+        },
+    };
 
 }

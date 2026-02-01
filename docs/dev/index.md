@@ -24,6 +24,7 @@ For user-facing documentation, see the [main docs](/).
 - [Secrets](./secrets.md) - Encrypted secret storage
 - [Locking](./lock.md) - Concurrency control
 - [Teardown](./teardown.md) - Database reset operations
+- [Data Transfer](./transfer.md) - Cross-database data transfer
 
 
 ## Integration

@@ -21,6 +21,18 @@ import {
 import type { ScreenProps, Route } from '../../src/cli/types.js';
 
 /**
+ * Helper to create a fake route string for testing unregistered route behavior.
+ *
+ * Routes are typed as a union, but some tests deliberately use
+ * strings that are NOT valid routes to test fallback behavior.
+ */
+function fakeRoute(path: string): Route {
+
+    return path as Route;
+
+}
+
+/**
  * Full context wrapper for screen tests.
  */
 function TestWrapper({
@@ -56,7 +68,7 @@ describe('cli: screens', () => {
         it('should return undefined for unregistered route', () => {
 
             // Use a truly unregistered route
-            const screen = getScreen('some/unregistered/route');
+            const screen = getScreen(fakeRoute('some/unregistered/route'));
 
             expect(screen).toBeUndefined();
 
@@ -75,8 +87,8 @@ describe('cli: screens', () => {
         it('should generate label from route for unregistered route', () => {
 
             // Use truly unregistered routes - many routes are now registered
-            expect(getRouteLabel('unknown')).toBe('Unknown');
-            expect(getRouteLabel('some/path')).toBe('Path');
+            expect(getRouteLabel(fakeRoute('unknown'))).toBe('Unknown');
+            expect(getRouteLabel(fakeRoute('some/path'))).toBe('Path');
 
         });
 
@@ -89,15 +101,15 @@ describe('cli: screens', () => {
             // run/build is now registered with label 'Run Build'
             expect(getRouteLabel('run/build')).toBe('Run Build');
             // Unregistered routes generate labels from last path segment
-            expect(getRouteLabel('some/deep/nested')).toBe('Nested');
+            expect(getRouteLabel(fakeRoute('some/deep/nested'))).toBe('Nested');
 
         });
 
         it('should capitalize first letter', () => {
 
             // Use unregistered routes for this test
-            expect(getRouteLabel('xyz')).toBe('Xyz');
-            expect(getRouteLabel('foo/bar')).toBe('Bar');
+            expect(getRouteLabel(fakeRoute('xyz'))).toBe('Xyz');
+            expect(getRouteLabel(fakeRoute('foo/bar'))).toBe('Bar');
 
         });
 
@@ -126,7 +138,7 @@ describe('cli: screens', () => {
 
         it('should return false for unregistered route', () => {
 
-            expect(isRouteRegistered('some/unregistered/route')).toBe(false);
+            expect(isRouteRegistered(fakeRoute('some/unregistered/route'))).toBe(false);
 
         });
 
@@ -174,7 +186,7 @@ describe('cli: screens', () => {
         it('should render NotFoundScreen for unregistered route', () => {
 
             const { lastFrame } = render(
-                <TestWrapper initialRoute="some/unregistered/route">
+                <TestWrapper initialRoute={fakeRoute('some/unregistered/route')}>
                     <ScreenRenderer />
                 </TestWrapper>,
             );

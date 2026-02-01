@@ -106,9 +106,9 @@ describe('integration: mssql sql-terminal', () => {
             expect(result.success).toBe(true);
             expect(result.rows).toHaveLength(1);
 
-            const row = result.rows![0] as Record<string, unknown>;
-            expect(row.email).toBe('user1@test.com');
-            expect(row.username).toBe('user1');
+            const row = result.rows![0]!;
+            expect(row['email']).toBe('user1@test.com');
+            expect(row['username']).toBe('user1');
 
         });
 
@@ -138,8 +138,8 @@ describe('integration: mssql sql-terminal', () => {
             expect(result.columns).toContain('user_count');
             expect(result.rows).toHaveLength(1);
 
-            const row = result.rows![0] as Record<string, unknown>;
-            expect(row.user_count).toBe(3);
+            const row = result.rows![0]!;
+            expect(row['user_count']).toBe(3);
 
         });
 
@@ -171,7 +171,7 @@ describe('integration: mssql sql-terminal', () => {
             expect(result.success).toBe(true);
             expect(result.rows).toHaveLength(3);
 
-            const usernames = result.rows!.map((r: Record<string, unknown>) => r.username);
+            const usernames = result.rows!.map((r) => r['username']);
             expect(usernames).toEqual(['user1', 'user2', 'user3']);
 
         });
@@ -647,9 +647,9 @@ describe('integration: mssql sql-terminal', () => {
             expect(result.columns).toContain('upper_name');
             expect(result.columns).toContain('email_length');
 
-            const row = result.rows![0] as Record<string, unknown>;
-            expect(typeof row.upper_name).toBe('string');
-            expect(typeof row.email_length).toBe('number');
+            const row = result.rows![0]!;
+            expect(typeof row['upper_name']).toBe('string');
+            expect(typeof row['email_length']).toBe('number');
 
         });
 
@@ -745,8 +745,8 @@ describe('integration: mssql sql-terminal', () => {
 
                 expect(result.success).toBe(true);
                 expect(result.rows).toHaveLength(5);
-                expect(result.rows![0].n).toBe(1);
-                expect(result.rows![4].n).toBe(5);
+                expect(result.rows![0]!['n']).toBe(1);
+                expect(result.rows![4]!['n']).toBe(5);
 
             });
 

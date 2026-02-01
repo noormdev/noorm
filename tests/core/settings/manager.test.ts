@@ -810,7 +810,7 @@ stages:
                 const rules = manager.getRules();
 
                 expect(rules.length).toBe(1);
-                expect(rules[0].match.protected).toBe(true);
+                expect(rules[0]!.match.protected).toBe(true);
 
             }
             finally {

@@ -352,9 +352,11 @@ describe('integration: postgres explore', () => {
             expect(detail).not.toBeNull();
 
             // todo_items has a CHECK constraint on priority
-            if (detail!.checkConstraints && detail!.checkConstraints.length > 0) {
+            const detailObj = detail! as unknown as Record<string, unknown>;
+            const checkConstraints = detailObj['checkConstraints'] as Array<{ definition?: string }> | undefined;
+            if (checkConstraints && checkConstraints.length > 0) {
 
-                const priorityCheck = detail!.checkConstraints.find(
+                const priorityCheck = checkConstraints.find(
                     (c) => c.definition?.includes('priority'),
                 );
                 expect(priorityCheck).toBeDefined();

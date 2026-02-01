@@ -8,8 +8,8 @@ import {
     checkConfigCompleteness,
     canDeleteConfig,
     type StateProvider,
-    type SettingsProvider,
 } from '../../../src/core/config/index.js';
+import { SettingsProvider } from '../../../src/core/config/resolver.js';
 import type { Config, Stage } from '../../../src/core/config/index.js';
 
 /**
@@ -52,7 +52,7 @@ function createMockState(
  */
 function createMockSettings(stages: Record<string, Stage> = {}): SettingsProvider {
 
-    return {
+    const mock = {
         getStage(name: string): Stage | null {
 
             return stages[name] ?? null;
@@ -64,6 +64,8 @@ function createMockSettings(stages: Record<string, Stage> = {}): SettingsProvide
 
         },
     };
+
+    return Object.assign(Object.create(SettingsProvider.prototype), mock);
 
 }
 
@@ -273,7 +275,7 @@ describe('config: resolver', () => {
             });
 
             const config = resolveConfig(state, {
-                flags: { connection: { host: 'from-flags' } },
+                flags: { connection: { host: 'from-flags' }, log: { level: 'info' } },
             });
 
             expect(config!.connection.host).toBe('from-flags');
@@ -407,7 +409,7 @@ describe('config: resolver', () => {
             // Override host to empty via flags to trigger validation error
             expect(() =>
                 resolveConfig(state, {
-                    flags: { connection: { host: '' } },
+                    flags: { connection: { host: '' }, log: { level: 'info' } },
                 }),
             ).toThrow('Host is required for non-SQLite');
 
@@ -438,6 +440,7 @@ describe('config: resolver', () => {
                     defaults: {
                         protected: true,
                         connection: { host: 'stage-default.local' },
+                        log: { level: 'info' },
                     },
                 },
             });
@@ -478,6 +481,7 @@ describe('config: resolver', () => {
                 prod: {
                     defaults: {
                         identity: 'stage-identity',
+                        log: { level: 'info' },
                     },
                 },
             });
@@ -502,6 +506,7 @@ describe('config: resolver', () => {
                 staging: {
                     defaults: {
                         protected: true,
+                        log: { level: 'info' },
                     },
                 },
             });
@@ -526,11 +531,13 @@ describe('config: resolver', () => {
                 myconfig: {
                     defaults: {
                         identity: 'from-myconfig-stage',
+                        log: { level: 'info' },
                     },
                 },
                 production: {
                     defaults: {
                         identity: 'from-production-stage',
+                        log: { level: 'info' },
                     },
                 },
             });
@@ -617,6 +624,7 @@ describe('config: resolver', () => {
                 prod: {
                     defaults: {
                         protected: true,
+                        log: { level: 'info' },
                     },
                 },
             });
@@ -641,6 +649,7 @@ describe('config: resolver', () => {
                 test: {
                     defaults: {
                         isTest: true,
+                        log: { level: 'info' },
                     },
                 },
             });
@@ -667,6 +676,7 @@ describe('config: resolver', () => {
                 prod: {
                     defaults: {
                         protected: true,
+                        log: { level: 'info' },
                     },
                     secrets: [
                         { key: 'DB_PASSWORD', type: 'password' },

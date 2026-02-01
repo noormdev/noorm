@@ -20,6 +20,7 @@
 export { DbListScreen } from './DbListScreen.js';
 export { DbCreateScreen } from './DbCreateScreen.js';
 export { DbDestroyScreen } from './DbDestroyScreen.js';
+export { DbTransferScreen } from './DbTransferScreen.js';
 export { DbTruncateScreen } from './DbTruncateScreen.js';
 export { DbTeardownScreen } from './DbTeardownScreen.js';
 export {

@@ -39,9 +39,9 @@ describe('runner: preview', () => {
         const results = await preview(mockContext, [filepath]);
 
         expect(results).toHaveLength(1);
-        expect(results[0].status).toBe('success');
-        expect(results[0].renderedSql).toBe('SELECT * FROM users;');
-        expect(results[0].filepath).toBe(filepath);
+        expect(results[0]!.status).toBe('success');
+        expect(results[0]!.renderedSql).toBe('SELECT * FROM users;');
+        expect(results[0]!.filepath).toBe(filepath);
 
     });
 
@@ -52,8 +52,8 @@ describe('runner: preview', () => {
         const results = await preview(mockContext, [filepath]);
 
         expect(results).toHaveLength(1);
-        expect(results[0].status).toBe('success');
-        expect(results[0].renderedSql).toBe('SELECT * FROM users;');
+        expect(results[0]!.status).toBe('success');
+        expect(results[0]!.renderedSql).toBe('SELECT * FROM users;');
 
     });
 
@@ -65,8 +65,8 @@ describe('runner: preview', () => {
         const results = await preview(mockContext, [file1, file2]);
 
         expect(results).toHaveLength(2);
-        expect(results[0].renderedSql).toBe('SELECT 1;');
-        expect(results[1].renderedSql).toBe('SELECT 2;');
+        expect(results[0]!.renderedSql).toBe('SELECT 1;');
+        expect(results[1]!.renderedSql).toBe('SELECT 2;');
 
     });
 
@@ -76,8 +76,8 @@ describe('runner: preview', () => {
 
         const results = await preview(mockContext, [filepath]);
 
-        expect(results[0].status).toBe('success');
-        expect(results[0].renderedSql).toContain('secret123');
+        expect(results[0]!.status).toBe('success');
+        expect(results[0]!.renderedSql).toContain('secret123');
 
     });
 
@@ -88,8 +88,8 @@ describe('runner: preview', () => {
         const results = await preview(mockContext, [filepath]);
 
         expect(results).toHaveLength(1);
-        expect(results[0].status).toBe('failed');
-        expect(results[0].error).toBeDefined();
+        expect(results[0]!.status).toBe('failed');
+        expect(results[0]!.error).toBeDefined();
 
     });
 
@@ -101,8 +101,8 @@ describe('runner: preview', () => {
         const results = await preview(mockContext, [invalidFile, validFile]);
 
         expect(results).toHaveLength(2);
-        expect(results[0].status).toBe('failed');
-        expect(results[1].status).toBe('success');
+        expect(results[0]!.status).toBe('failed');
+        expect(results[1]!.status).toBe('success');
 
     });
 
@@ -129,7 +129,7 @@ describe('runner: preview', () => {
 
         const results = await preview(mockContext, [filepath]);
 
-        expect(results[0].checksum).toMatch(/^[a-f0-9]{64}$/);
+        expect(results[0]!.checksum).toMatch(/^[a-f0-9]{64}$/);
 
     });
 

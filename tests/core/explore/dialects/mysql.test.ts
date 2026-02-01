@@ -27,7 +27,7 @@ function createMockDb(rows: unknown[]) {
 
     return {
         getExecutor: () => mockExecutor,
-        withPlugin: vi.fn(function() {
+        withPlugin: vi.fn(function(this: unknown) {
 
             return this;
 

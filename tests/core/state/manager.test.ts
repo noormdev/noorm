@@ -453,7 +453,9 @@ describe('state: manager', () => {
                 email: 'alice@example.com',
                 publicKey: 'alice-public-key',
                 source: 'db-sync',
-                discoveredAt: new Date().toISOString(),
+                machine: 'test-machine',
+                os: 'test-os',
+                lastSeen: new Date().toISOString(),
             };
 
             await state.addKnownUser(user);
@@ -478,7 +480,9 @@ describe('state: manager', () => {
                 email: 'alice@example.com',
                 publicKey: 'alice-laptop-key',
                 source: 'db-sync',
-                discoveredAt: new Date().toISOString(),
+                machine: 'test-machine',
+                os: 'test-os',
+                lastSeen: new Date().toISOString(),
             };
             const user2: KnownUser = {
                 identityHash: 'user-hash-2',
@@ -486,7 +490,9 @@ describe('state: manager', () => {
                 email: 'alice@example.com',
                 publicKey: 'alice-desktop-key',
                 source: 'db-sync',
-                discoveredAt: new Date().toISOString(),
+                machine: 'test-machine',
+                os: 'test-os',
+                lastSeen: new Date().toISOString(),
             };
             const user3: KnownUser = {
                 identityHash: 'user-hash-3',
@@ -494,7 +500,9 @@ describe('state: manager', () => {
                 email: 'bob@example.com',
                 publicKey: 'bob-key',
                 source: 'db-sync',
-                discoveredAt: new Date().toISOString(),
+                machine: 'test-machine',
+                os: 'test-os',
+                lastSeen: new Date().toISOString(),
             };
 
             await state.addKnownUser(user1);
@@ -519,7 +527,9 @@ describe('state: manager', () => {
                     email: 'user1@example.com',
                     publicKey: 'key1',
                     source: 'db-sync',
-                    discoveredAt: new Date().toISOString(),
+                    machine: 'test-machine',
+                    os: 'test-os',
+                    lastSeen: new Date().toISOString(),
                 },
                 {
                     identityHash: 'batch-2',
@@ -527,7 +537,9 @@ describe('state: manager', () => {
                     email: 'user2@example.com',
                     publicKey: 'key2',
                     source: 'db-sync',
-                    discoveredAt: new Date().toISOString(),
+                    machine: 'test-machine',
+                    os: 'test-os',
+                    lastSeen: new Date().toISOString(),
                 },
             ];
 
@@ -548,7 +560,9 @@ describe('state: manager', () => {
                 email: 'persist@example.com',
                 publicKey: 'persist-key',
                 source: 'manual',
-                discoveredAt: new Date().toISOString(),
+                machine: 'test-machine',
+                os: 'test-os',
+                lastSeen: new Date().toISOString(),
             };
 
             await state.addKnownUser(user);
@@ -574,7 +588,9 @@ describe('state: manager', () => {
                 email: 'update@example.com',
                 publicKey: 'key1',
                 source: 'db-sync',
-                discoveredAt: new Date().toISOString(),
+                machine: 'test-machine',
+                os: 'test-os',
+                lastSeen: new Date().toISOString(),
             };
 
             await state.addKnownUser(user);

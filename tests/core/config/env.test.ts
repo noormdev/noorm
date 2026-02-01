@@ -269,9 +269,9 @@ describe('config: env', () => {
 
             // These should not appear in the config object
             expect(config).toEqual({});
-            expect(config.config).toBeUndefined();
-            expect(config.yes).toBeUndefined();
-            expect(config.json).toBeUndefined();
+            expect(config['config']).toBeUndefined();
+            expect(config['yes']).toBeUndefined();
+            expect(config['json']).toBeUndefined();
 
         });
 

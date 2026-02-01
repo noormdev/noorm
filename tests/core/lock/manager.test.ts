@@ -31,7 +31,7 @@ async function createTestDb(): Promise<Kysely<NoormDatabase>> {
     });
 
     // Run schema migration to create tables
-    await v1.up(db);
+    await v1.up(db as Kysely<unknown>, 'sqlite');
 
     return db;
 

@@ -93,9 +93,9 @@ describe('logger: reader', () => {
             expect(result.hasMore).toBe(false);
 
             // Verify newest first order (reverse chronological)
-            expect(result.entries[0].time).toBe('2024-01-15T10:02:00.000Z');
-            expect(result.entries[1].time).toBe('2024-01-15T10:01:00.000Z');
-            expect(result.entries[2].time).toBe('2024-01-15T10:00:00.000Z');
+            expect(result.entries[0]!.time).toBe('2024-01-15T10:02:00.000Z');
+            expect(result.entries[1]!.time).toBe('2024-01-15T10:01:00.000Z');
+            expect(result.entries[2]!.time).toBe('2024-01-15T10:00:00.000Z');
 
         });
 
@@ -122,8 +122,8 @@ describe('logger: reader', () => {
             // Should only parse the 2 valid entries, skip malformed ones
             expect(result.entries).toHaveLength(2);
             expect(result.totalLines).toBe(4);
-            expect(result.entries[0].message).toBe('Starting build');
-            expect(result.entries[1].message).toBe('Starting build');
+            expect(result.entries[0]!.message).toBe('Starting build');
+            expect(result.entries[1]!.message).toBe('Starting build');
 
         });
 
@@ -147,8 +147,8 @@ describe('logger: reader', () => {
             expect(result.hasMore).toBe(true);
 
             // Should return the last 5 entries in reverse order
-            expect(result.entries[0].message).toBe('Entry 9');
-            expect(result.entries[4].message).toBe('Entry 5');
+            expect(result.entries[0]!.message).toBe('Entry 9');
+            expect(result.entries[4]!.message).toBe('Entry 5');
 
         });
 
@@ -181,9 +181,9 @@ describe('logger: reader', () => {
             const result = await readLogFile(testFilePath);
 
             // Most recent (third) should be first
-            expect(result.entries[0].type).toBe('third');
-            expect(result.entries[1].type).toBe('second');
-            expect(result.entries[2].type).toBe('first');
+            expect(result.entries[0]!.type).toBe('third');
+            expect(result.entries[1]!.type).toBe('second');
+            expect(result.entries[2]!.type).toBe('first');
 
         });
 
@@ -261,8 +261,8 @@ describe('logger: reader', () => {
 
             // Should only parse the 2 valid entries
             expect(result.entries).toHaveLength(2);
-            expect(result.entries[0].type).toBe('valid');
-            expect(result.entries[1].type).toBe('valid');
+            expect(result.entries[0]!.type).toBe('valid');
+            expect(result.entries[1]!.type).toBe('valid');
 
         });
 
@@ -282,8 +282,8 @@ describe('logger: reader', () => {
             const result = await readLogFile(testFilePath);
 
             expect(result.entries).toHaveLength(1);
-            expect(result.entries[0].data).toEqual({ fileCount: 10 });
-            expect(result.entries[0].context).toEqual({ config: 'dev' });
+            expect(result.entries[0]!.data).toEqual({ fileCount: 10 });
+            expect(result.entries[0]!.context).toEqual({ config: 'dev' });
 
         });
 

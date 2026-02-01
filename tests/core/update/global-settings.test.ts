@@ -131,7 +131,7 @@ describe('update: global-settings', () => {
             expect(loaded.autoUpdate).toBe(true);
             expect(loaded.lastCheck).toBe('2025-01-01T00:00:00.000Z');
             expect(loaded.cachedVersion).toBe('1.2.0');
-            expect(loaded.dismissable?.majorVersionUpdate).toBe('always');
+            expect(loaded.dismissable?.['majorVersionUpdate']).toBe('always');
 
         });
 
@@ -176,7 +176,7 @@ describe('update: global-settings', () => {
 
             const settings = await loadGlobalSettings();
 
-            expect(settings.dismissable?.majorVersionUpdate).toBe('always');
+            expect(settings.dismissable?.['majorVersionUpdate']).toBe('always');
 
         });
 

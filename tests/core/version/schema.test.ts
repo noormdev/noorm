@@ -7,7 +7,7 @@ import Database from 'better-sqlite3';
 
 import { observer } from '../../../src/core/observer.js';
 import { CURRENT_VERSIONS, VersionMismatchError } from '../../../src/core/version/types.js';
-import type { NoormDatabase } from '../../../src/core/version/schema/tables.js';
+import type { NoormDatabase } from '../../../src/core/shared/tables.js';
 import {
     tablesExist,
     getSchemaVersion,
@@ -54,7 +54,7 @@ describe('version: schema', () => {
 
         it('should return true when tables exist', async () => {
 
-            await bootstrapSchema(db, 'sqlite', '1.0.0');
+            await bootstrapSchema(db, 'sqlite');
             const exists = await tablesExist(db);
 
             expect(exists).toBe(true);
@@ -75,7 +75,7 @@ describe('version: schema', () => {
 
         it('should return version from database', async () => {
 
-            await bootstrapSchema(db, 'sqlite', '1.0.0');
+            await bootstrapSchema(db, 'sqlite');
             const version = await getSchemaVersion(db);
 
             expect(version).toBe(CURRENT_VERSIONS.schema);
@@ -99,7 +99,7 @@ describe('version: schema', () => {
 
         it('should detect current version as not needing migration', async () => {
 
-            await bootstrapSchema(db, 'sqlite', '1.0.0');
+            await bootstrapSchema(db, 'sqlite');
             const status = await checkSchemaVersion(db);
 
             expect(status.current).toBe(CURRENT_VERSIONS.schema);
@@ -126,34 +126,34 @@ describe('version: schema', () => {
 
         it('should create all tracking tables', async () => {
 
-            await bootstrapSchema(db, 'sqlite', '1.0.0');
+            await bootstrapSchema(db, 'sqlite');
 
             // Verify all tables exist by querying them
             const version = await db.selectFrom('__noorm_version__').selectAll().execute();
 
             expect(version).toHaveLength(1);
-            expect(version[0].cli_version).toBe('1.0.0');
-            expect(version[0].noorm_version).toBe(CURRENT_VERSIONS.schema);
-            expect(version[0].state_version).toBe(CURRENT_VERSIONS.state);
-            expect(version[0].settings_version).toBe(CURRENT_VERSIONS.settings);
+            expect(version[0]!['cli_version']).toBe('0.0.0-dev');
+            expect(version[0]!['noorm_version']).toBe(CURRENT_VERSIONS.schema);
+            expect(version[0]!['state_version']).toBe(CURRENT_VERSIONS.state);
+            expect(version[0]!['settings_version']).toBe(CURRENT_VERSIONS.settings);
 
         });
 
         it('should record custom state and settings versions', async () => {
 
-            await bootstrapSchema(db, 'sqlite', '1.0.0', { stateVersion: 5, settingsVersion: 3 });
+            await bootstrapSchema(db, 'sqlite', { stateVersion: 5, settingsVersion: 3 });
 
             const version = await db.selectFrom('__noorm_version__').selectAll().executeTakeFirst();
 
-            expect(version?.noorm_version).toBe(CURRENT_VERSIONS.schema);
-            expect(version?.state_version).toBe(5);
-            expect(version?.settings_version).toBe(3);
+            expect(version?.['noorm_version']).toBe(CURRENT_VERSIONS.schema);
+            expect(version?.['state_version']).toBe(5);
+            expect(version?.['settings_version']).toBe(3);
 
         });
 
         it('should create __noorm_change__ table', async () => {
 
-            await bootstrapSchema(db, 'sqlite', '1.0.0');
+            await bootstrapSchema(db, 'sqlite');
 
             // Should not throw
             const result = await db.selectFrom('__noorm_change__').selectAll().execute();
@@ -164,7 +164,7 @@ describe('version: schema', () => {
 
         it('should create __noorm_executions__ table', async () => {
 
-            await bootstrapSchema(db, 'sqlite', '1.0.0');
+            await bootstrapSchema(db, 'sqlite');
 
             // Should not throw
             const result = await db.selectFrom('__noorm_executions__').selectAll().execute();
@@ -175,7 +175,7 @@ describe('version: schema', () => {
 
         it('should create __noorm_lock__ table', async () => {
 
-            await bootstrapSchema(db, 'sqlite', '1.0.0');
+            await bootstrapSchema(db, 'sqlite');
 
             // Should not throw
             const result = await db.selectFrom('__noorm_lock__').selectAll().execute();
@@ -186,12 +186,12 @@ describe('version: schema', () => {
 
         it('should create __noorm_identities__ table', async () => {
 
-            await bootstrapSchema(db, 'sqlite', '1.0.0');
+            await bootstrapSchema(db, 'sqlite');
 
-            // Should not throw
+            // Should not throw - table exists and may have auto-inserted identity
             const result = await db.selectFrom('__noorm_identities__').selectAll().execute();
 
-            expect(result).toEqual([]);
+            expect(Array.isArray(result)).toBe(true);
 
         });
 
@@ -205,7 +205,7 @@ describe('version: schema', () => {
                 events.push({ type: 'migrated', ...data }),
             );
 
-            await bootstrapSchema(db, 'sqlite', '1.0.0');
+            await bootstrapSchema(db, 'sqlite');
 
             expect(events).toHaveLength(2);
             expect(events[0]).toMatchObject({
@@ -227,7 +227,7 @@ describe('version: schema', () => {
 
         it('should bootstrap if no tables exist', async () => {
 
-            await migrateSchema(db, 'sqlite', '1.0.0');
+            await migrateSchema(db, 'sqlite');
 
             const exists = await tablesExist(db);
             expect(exists).toBe(true);
@@ -236,10 +236,10 @@ describe('version: schema', () => {
 
         it('should do nothing if already at current version', async () => {
 
-            await bootstrapSchema(db, 'sqlite', '1.0.0');
+            await bootstrapSchema(db, 'sqlite');
             observer.clear();
 
-            await migrateSchema(db, 'sqlite', '1.0.0');
+            await migrateSchema(db, 'sqlite');
 
             // No migration events should be emitted
             // (can't easily verify, but test doesn't throw)
@@ -249,13 +249,13 @@ describe('version: schema', () => {
         it('should emit version:mismatch for newer schema', async () => {
 
             // Create tables with fake higher version
-            await bootstrapSchema(db, 'sqlite', '1.0.0');
+            await bootstrapSchema(db, 'sqlite');
             await db.updateTable('__noorm_version__').set({ noorm_version: 999 }).execute();
 
             const events: unknown[] = [];
             observer.on('version:mismatch', (data) => events.push(data));
 
-            await expect(migrateSchema(db, 'sqlite', '1.0.0')).rejects.toThrow(VersionMismatchError);
+            await expect(migrateSchema(db, 'sqlite')).rejects.toThrow(VersionMismatchError);
 
             expect(events).toHaveLength(1);
             expect(events[0]).toEqual({
@@ -272,7 +272,7 @@ describe('version: schema', () => {
 
         it('should bootstrap if needed', async () => {
 
-            await ensureSchemaVersion(db, 'sqlite', '1.0.0');
+            await ensureSchemaVersion(db, 'sqlite');
 
             const exists = await tablesExist(db);
             expect(exists).toBe(true);
@@ -281,10 +281,10 @@ describe('version: schema', () => {
 
         it('should work if already current', async () => {
 
-            await bootstrapSchema(db, 'sqlite', '1.0.0');
+            await bootstrapSchema(db, 'sqlite');
 
             // Should not throw
-            await ensureSchemaVersion(db, 'sqlite', '1.0.0');
+            await ensureSchemaVersion(db, 'sqlite');
 
         });
 
@@ -302,7 +302,7 @@ describe('version: schema', () => {
 
         it('should return state and settings versions', async () => {
 
-            await bootstrapSchema(db, 'sqlite', '1.0.0', { stateVersion: 2, settingsVersion: 3 });
+            await bootstrapSchema(db, 'sqlite', { stateVersion: 2, settingsVersion: 3 });
 
             const record = await getLatestVersionRecord(db);
 
@@ -315,9 +315,8 @@ describe('version: schema', () => {
 
         it('should return latest record when multiple exist', async () => {
 
-            await bootstrapSchema(db, 'sqlite', '1.0.0', { stateVersion: 1, settingsVersion: 1 });
+            await bootstrapSchema(db, 'sqlite', { stateVersion: 1, settingsVersion: 1 });
             await updateVersionRecord(db, {
-                cliVersion: '1.1.0',
                 stateVersion: 2,
                 settingsVersion: 3,
             });
@@ -337,9 +336,8 @@ describe('version: schema', () => {
 
         it('should insert a new version record', async () => {
 
-            await bootstrapSchema(db, 'sqlite', '1.0.0');
+            await bootstrapSchema(db, 'sqlite');
             await updateVersionRecord(db, {
-                cliVersion: '1.1.0',
                 stateVersion: 2,
                 settingsVersion: 3,
             });
@@ -351,16 +349,16 @@ describe('version: schema', () => {
                 .execute();
 
             expect(versions).toHaveLength(2);
-            expect(versions[1].cli_version).toBe('1.1.0');
-            expect(versions[1].state_version).toBe(2);
-            expect(versions[1].settings_version).toBe(3);
+            expect(versions[1]!['cli_version']).toBe('0.0.0-dev');
+            expect(versions[1]!['state_version']).toBe(2);
+            expect(versions[1]!['settings_version']).toBe(3);
 
         });
 
         it('should use defaults when versions not provided', async () => {
 
-            await bootstrapSchema(db, 'sqlite', '1.0.0');
-            await updateVersionRecord(db, { cliVersion: '1.1.0' });
+            await bootstrapSchema(db, 'sqlite');
+            await updateVersionRecord(db);
 
             const versions = await db
                 .selectFrom('__noorm_version__')
@@ -368,8 +366,8 @@ describe('version: schema', () => {
                 .orderBy('id', 'desc')
                 .executeTakeFirst();
 
-            expect(versions?.state_version).toBe(CURRENT_VERSIONS.state);
-            expect(versions?.settings_version).toBe(CURRENT_VERSIONS.settings);
+            expect(versions?.['state_version']).toBe(CURRENT_VERSIONS.state);
+            expect(versions?.['settings_version']).toBe(CURRENT_VERSIONS.settings);
 
         });
 
@@ -379,7 +377,7 @@ describe('version: schema', () => {
 
         beforeEach(async () => {
 
-            await bootstrapSchema(db, 'sqlite', '1.0.0');
+            await bootstrapSchema(db, 'sqlite');
 
         });
 
@@ -401,12 +399,12 @@ describe('version: schema', () => {
                 .where('name', '=', 'test-change')
                 .executeTakeFirst();
 
-            expect(result?.id).toBeDefined();
-            expect(result?.name).toBe('test-change');
+            expect(result?.['id']).toBeDefined();
+            expect(result?.['name']).toBe('test-change');
 
         });
 
-        it.skip('should have executions table with required columns', async () => {
+        it('should have executions table with required columns', async () => {
 
             // Verify table structure by inserting minimal valid data
             // Need to use raw SQL for change_id since FK requires valid reference
@@ -432,9 +430,9 @@ describe('version: schema', () => {
                 .selectAll()
                 .executeTakeFirst();
 
-            expect(result?.filepath).toBe('/test/file.sql');
-            expect(result?.file_type).toBe('sql');
-            expect(result?.status).toBe('success');
+            expect(result?.['filepath']).toBe('/test/file.sql');
+            expect(result?.['file_type']).toBe('sql');
+            expect(result?.['status']).toBe('success');
 
         });
 
@@ -454,7 +452,7 @@ describe('version: schema', () => {
 
             const result = await db.selectFrom('__noorm_lock__').selectAll().executeTakeFirst();
 
-            expect(result?.id).toBeDefined();
+            expect(result?.['id']).toBeDefined();
 
         });
 
@@ -535,7 +533,7 @@ describe('version: schema', () => {
 
         });
 
-        it.skip('should have FK column on executions table', async () => {
+        it('should have FK column on executions table', async () => {
 
             // Insert change using raw SQL
             await sql`
@@ -562,8 +560,8 @@ describe('version: schema', () => {
                 .selectAll()
                 .executeTakeFirst();
 
-            expect(execution?.filepath).toBe('/test.sql');
-            expect(execution?.change_id).toBeDefined();
+            expect(execution?.['filepath']).toBe('/test.sql');
+            expect(execution?.['change_id']).toBeDefined();
 
         });
 

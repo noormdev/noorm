@@ -305,7 +305,6 @@ describe('config: schema validation', () => {
 
             expect(() => validateConfigInput({ type: 'local' })).not.toThrow();
             expect(() => validateConfigInput({ type: 'remote' })).not.toThrow();
-            // @ts-expect-error testing invalid input
             expect(() => validateConfigInput({ type: 'invalid' })).toThrow();
 
         });

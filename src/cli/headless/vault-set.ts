@@ -3,12 +3,9 @@
  *
  * Sets a vault secret.
  */
-import type { Kysely } from 'kysely';
-
 import { type HeadlessCommand, withVaultContext } from './_helpers.js';
 import { formatHelp } from '../../core/help-formatter.js';
 import { getVaultKey, setVaultSecret } from '../../core/vault/index.js';
-import type { NoormDatabase } from '../../core/shared/index.js';
 
 export const help = `
 # VAULT SET

@@ -45,6 +45,7 @@ import * as CmdDbExploreTablesDetail from './db-explore-tables-detail.js';
 import * as CmdDbExploreTables from './db-explore-tables.js';
 import * as CmdDbExplore from './db-explore.js';
 import * as CmdDbTeardown from './db-teardown.js';
+import * as CmdDbTransfer from './db-transfer.js';
 import * as CmdDbTruncate from './db-truncate.js';
 import * as CmdDb from './db.js';
 import * as CmdIdentity from './identity.js';
@@ -96,6 +97,7 @@ const HANDLERS: Partial<Record<Route, RouteHandler>> = {
     'db/explore/tables/detail': CmdDbExploreTablesDetail,
     'db/explore/tables': CmdDbExploreTables,
     'db/teardown': CmdDbTeardown,
+    'db/transfer': CmdDbTransfer,
     'db/truncate': CmdDbTruncate,
 
     'identity': CmdIdentity,

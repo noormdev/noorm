@@ -1,0 +1,220 @@
+/**
+ * Data transfer module.
+ *
+ * Provides cross-database data transfer functionality with:
+ * - Same-server optimization (direct SQL)
+ * - Cross-server batch transfers
+ * - Configurable conflict resolution
+ * - FK ordering with dependency analysis
+ * - Identity column preservation
+ *
+ * @example
+ * ```typescript
+ * const [result, err] = await transferData(sourceConfig, destConfig, {
+ *     tables: ['users', 'posts'],
+ *     onConflict: 'skip',
+ *     batchSize: 5000,
+ * });
+ *
+ * if (err) {
+ *     console.error('Transfer failed:', err.message);
+ * } else {
+ *     console.log(`Transferred ${result.totalRows} rows`);
+ * }
+ * ```
+ */
+import { withDualConnection } from '../db/dual.js';
+import type { Config } from '../config/types.js';
+import type { TransferOptions, TransferResult, TransferPlan } from './types.js';
+
+import { planTransfer } from './planner.js';
+import { executeTransfer } from './executor.js';
+import { isTransferSupported, TRANSFER_SUPPORTED_DIALECTS } from './dialects/index.js';
+
+/**
+ * Transfer data between two database configurations.
+ *
+ * Both databases must use the same dialect (PostgreSQL, MySQL, or MSSQL).
+ * Tables are transferred in FK dependency order.
+ *
+ * @param sourceConfig - Source database config
+ * @param destConfig - Destination database config
+ * @param options - Transfer options
+ * @returns Transfer result or error
+ *
+ * @example
+ * ```typescript
+ * // Transfer all tables
+ * const [result, err] = await transferData(staging, production);
+ *
+ * // Transfer specific tables with options
+ * const [result, err] = await transferData(staging, production, {
+ *     tables: ['users', 'posts', 'comments'],
+ *     onConflict: 'update',
+ *     batchSize: 2000,
+ *     truncateFirst: true,
+ * });
+ *
+ * // Dry run to see the plan
+ * const [result, err] = await transferData(staging, production, {
+ *     dryRun: true,
+ * });
+ * console.log(result.plan.tables); // Shows table order
+ * ```
+ */
+export async function transferData(
+    sourceConfig: Config,
+    destConfig: Config,
+    options: TransferOptions = {},
+): Promise<[TransferResult | null, Error | null]> {
+
+    // Validate dialects match
+    const srcDialect = sourceConfig.connection.dialect;
+    const dstDialect = destConfig.connection.dialect;
+
+    if (srcDialect !== dstDialect) {
+
+        return [null, new Error(`Cross-dialect transfer not supported. Source: ${srcDialect}, Destination: ${dstDialect}`)];
+
+    }
+
+    // Validate dialect is supported
+    if (!isTransferSupported(srcDialect)) {
+
+        return [null, new Error(`Transfer not supported for dialect: ${srcDialect}. Supported: ${TRANSFER_SUPPORTED_DIALECTS.join(', ')}`)];
+
+    }
+
+    // Use dual connection infrastructure
+    return withDualConnection(
+        {
+            sourceConfig,
+            destConfig,
+            ensureSchema: false, // Don't create noorm tables on destination
+        },
+        async (ctx) => {
+
+            // Plan the transfer
+            const [plan, planErr] = await planTransfer(ctx, options);
+
+            if (planErr) {
+
+                throw planErr;
+
+            }
+
+            if (!plan || plan.tables.length === 0) {
+
+                return {
+                    status: 'success',
+                    tables: [],
+                    totalRows: 0,
+                    durationMs: 0,
+                };
+
+            }
+
+            // Dry run - return plan info
+            if (options.dryRun) {
+
+                return {
+                    status: 'success',
+                    tables: plan.tables.map((t) => ({
+                        table: t.name,
+                        status: 'skipped' as const,
+                        rowsTransferred: 0,
+                        rowsSkipped: 0,
+                        durationMs: 0,
+                    })),
+                    totalRows: 0,
+                    durationMs: 0,
+                };
+
+            }
+
+            // Execute the transfer
+            const [result, execErr] = await executeTransfer(ctx, plan, options);
+
+            if (execErr) {
+
+                throw execErr;
+
+            }
+
+            return result!;
+
+        },
+    );
+
+}
+
+/**
+ * Get transfer plan without executing.
+ *
+ * Useful for previewing what will be transferred.
+ *
+ * @param sourceConfig - Source database config
+ * @param destConfig - Destination database config
+ * @param options - Transfer options
+ * @returns Transfer plan or error
+ */
+export async function getTransferPlan(
+    sourceConfig: Config,
+    destConfig: Config,
+    options: TransferOptions = {},
+): Promise<[TransferPlan | null, Error | null]> {
+
+    // Validate dialects
+    const srcDialect = sourceConfig.connection.dialect;
+    const dstDialect = destConfig.connection.dialect;
+
+    if (srcDialect !== dstDialect) {
+
+        return [null, new Error('Cross-dialect transfer not supported')];
+
+    }
+
+    if (!isTransferSupported(srcDialect)) {
+
+        return [null, new Error(`Transfer not supported for dialect: ${srcDialect}`)];
+
+    }
+
+    return withDualConnection(
+        {
+            sourceConfig,
+            destConfig,
+            ensureSchema: false,
+        },
+        async (ctx) => {
+
+            const [plan, err] = await planTransfer(ctx, options);
+
+            if (err) {
+
+                throw err;
+
+            }
+
+            return plan!;
+
+        },
+    );
+
+}
+
+// Re-export types
+export type {
+    TransferOptions,
+    TransferPlan,
+    TransferTablePlan,
+    TransferResult,
+    TransferTableResult,
+    ConflictStrategy,
+} from './types.js';
+
+export type { TransferEvents } from './events.js';
+
+// Re-export utilities
+export { isSameServer } from './same-server.js';
+export { isTransferSupported, TRANSFER_SUPPORTED_DIALECTS } from './dialects/index.js';

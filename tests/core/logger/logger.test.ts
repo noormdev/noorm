@@ -6,6 +6,9 @@ import { tmpdir } from 'node:os';
 import { Logger, getLogger, resetLogger } from '../../../src/core/logger/logger.js';
 import { DEFAULT_LOGGER_CONFIG } from '../../../src/core/logger/types.js';
 import { observer } from '../../../src/core/observer.js';
+import type { Settings } from '../../../src/core/settings/types.js';
+
+const settings = {} as Settings;
 
 describe('logger: Logger class', () => {
 
@@ -37,6 +40,7 @@ describe('logger: Logger class', () => {
 
             const logger = new Logger({
                 projectRoot,
+                settings,
                 config: DEFAULT_LOGGER_CONFIG,
             });
 
@@ -50,6 +54,7 @@ describe('logger: Logger class', () => {
 
             const logger = new Logger({
                 projectRoot,
+                settings,
                 config: { ...DEFAULT_LOGGER_CONFIG, enabled: false },
             });
 
@@ -61,6 +66,7 @@ describe('logger: Logger class', () => {
 
             const logger = new Logger({
                 projectRoot,
+                settings,
                 config: { ...DEFAULT_LOGGER_CONFIG, level: 'silent' },
             });
 
@@ -72,6 +78,7 @@ describe('logger: Logger class', () => {
 
             const logger = new Logger({
                 projectRoot: '/project',
+                settings,
                 config: { ...DEFAULT_LOGGER_CONFIG, file: '.noorm/state/app.log' },
             });
 
@@ -87,6 +94,7 @@ describe('logger: Logger class', () => {
 
             const logger = new Logger({
                 projectRoot,
+                settings,
                 config: DEFAULT_LOGGER_CONFIG,
             });
 
@@ -102,6 +110,7 @@ describe('logger: Logger class', () => {
 
             const logger = new Logger({
                 projectRoot,
+                settings,
                 config: { ...DEFAULT_LOGGER_CONFIG, enabled: false },
             });
 
@@ -115,6 +124,7 @@ describe('logger: Logger class', () => {
 
             const logger = new Logger({
                 projectRoot,
+                settings,
                 config: DEFAULT_LOGGER_CONFIG,
             });
 
@@ -129,6 +139,7 @@ describe('logger: Logger class', () => {
 
             const logger = new Logger({
                 projectRoot,
+                settings,
                 config: DEFAULT_LOGGER_CONFIG,
             });
 
@@ -145,6 +156,7 @@ describe('logger: Logger class', () => {
 
             const logger = new Logger({
                 projectRoot,
+                settings,
                 config: DEFAULT_LOGGER_CONFIG,
             });
 
@@ -164,6 +176,7 @@ describe('logger: Logger class', () => {
 
             const logger = new Logger({
                 projectRoot,
+                settings,
                 config: { ...DEFAULT_LOGGER_CONFIG, level: 'info' },
             });
 
@@ -187,6 +200,7 @@ describe('logger: Logger class', () => {
 
             const logger = new Logger({
                 projectRoot,
+                settings,
                 config: { ...DEFAULT_LOGGER_CONFIG, level: 'info' },
             });
 
@@ -222,6 +236,7 @@ describe('logger: Logger class', () => {
 
             const logger = new Logger({
                 projectRoot,
+                settings,
                 config: { ...DEFAULT_LOGGER_CONFIG, level: 'verbose' },
             });
 
@@ -246,6 +261,7 @@ describe('logger: Logger class', () => {
 
             const logger = new Logger({
                 projectRoot,
+                settings,
                 config: { ...DEFAULT_LOGGER_CONFIG, level: 'verbose' },
             });
 
@@ -268,6 +284,7 @@ describe('logger: Logger class', () => {
 
             const logger = new Logger({
                 projectRoot,
+                settings,
                 config: { ...DEFAULT_LOGGER_CONFIG, level: 'verbose' },
             });
 
@@ -303,6 +320,7 @@ describe('logger: Logger class', () => {
 
             const logger = new Logger({
                 projectRoot,
+                settings,
                 config: DEFAULT_LOGGER_CONFIG,
                 context: { configName: 'dev', user: 'alice' },
             });
@@ -327,6 +345,7 @@ describe('logger: Logger class', () => {
 
             const logger = new Logger({
                 projectRoot,
+                settings,
                 config: DEFAULT_LOGGER_CONFIG,
             });
 
@@ -351,6 +370,7 @@ describe('logger: Logger class', () => {
 
             const logger = new Logger({
                 projectRoot,
+                settings,
                 config: DEFAULT_LOGGER_CONFIG,
                 context: { configName: 'dev' },
             });
@@ -377,6 +397,7 @@ describe('logger: Logger class', () => {
 
             const logger = new Logger({
                 projectRoot,
+                settings,
                 config: DEFAULT_LOGGER_CONFIG,
                 context: { configName: 'dev' },
             });
@@ -406,6 +427,7 @@ describe('logger: Logger class', () => {
 
             const logger = new Logger({
                 projectRoot,
+                settings,
                 config: DEFAULT_LOGGER_CONFIG,
             });
 
@@ -417,6 +439,7 @@ describe('logger: Logger class', () => {
 
             const logger = new Logger({
                 projectRoot,
+                settings,
                 config: DEFAULT_LOGGER_CONFIG,
             });
 
@@ -436,6 +459,7 @@ describe('logger: Logger class', () => {
 
             const logger = new Logger({
                 projectRoot,
+                settings,
                 config: DEFAULT_LOGGER_CONFIG,
             });
 
@@ -473,7 +497,7 @@ describe('logger: Logger class', () => {
         it('should reset singleton', async () => {
 
             const logger1 = getLogger(projectRoot);
-            await logger1.start();
+            await logger1!.start();
 
             await resetLogger();
 
