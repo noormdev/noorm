@@ -200,7 +200,7 @@ export function RunBuildScreen({ params: _params }: ScreenProps): ReactElement {
             };
 
             // Run build with filtered files
-            await runBuild(context, sqlPath, options);
+            await runBuild(context, sqlPath, options, files);
 
             setPhase('complete');
 

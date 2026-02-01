@@ -76,6 +76,7 @@ const FILE_HEADER_TEMPLATE = `-- ===============================================
  * @param context - Run context (db, identity, config)
  * @param sqlPath - Path to SQL files directory
  * @param options - Run options
+ * @param preFilteredFiles - Optional pre-filtered file list to skip discovery
  * @returns Batch result with all file results
  *
  * @example
@@ -89,23 +90,37 @@ export async function runBuild(
     context: RunContext,
     sqlPath: string,
     options: RunOptions = {},
+    preFilteredFiles?: string[],
 ): Promise<BatchResult> {
 
     const start = performance.now();
     const opts = { ...DEFAULT_RUN_OPTIONS_INTERNAL, ...options };
 
-    // Discover files
-    const [files, discoverErr] = await attempt(() => discoverFiles(sqlPath));
+    // Use pre-filtered files or discover from directory
+    let files: string[];
 
-    if (discoverErr) {
+    if (preFilteredFiles) {
 
-        observer.emit('error', {
-            source: 'runner',
-            error: discoverErr,
-            context: { sqlPath, operation: 'discover-files' },
-        });
+        files = preFilteredFiles;
 
-        return createFailedBatchResult(discoverErr.message, performance.now() - start);
+    }
+    else {
+
+        const [discovered, discoverErr] = await attempt(() => discoverFiles(sqlPath));
+
+        if (discoverErr) {
+
+            observer.emit('error', {
+                source: 'runner',
+                error: discoverErr,
+                context: { sqlPath, operation: 'discover-files' },
+            });
+
+            return createFailedBatchResult(discoverErr.message, performance.now() - start);
+
+        }
+
+        files = discovered;
 
     }
 

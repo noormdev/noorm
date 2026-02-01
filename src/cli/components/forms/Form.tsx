@@ -407,6 +407,10 @@ export function Form({
 
             onSubmit(values);
 
+            // Reset submitting - parent's `busy` prop guards against double-submit
+            // during async operations
+            setSubmitting(false);
+
         }
         else {
 
