@@ -69,16 +69,17 @@ This creates:
 ```
 your-project/
 ├── .noorm/
-│   ├── settings.yml       # Project configuration
-│   └── state.enc          # Encrypted state (configs, secrets)
-├── sql/                   # Your SQL files
+│   ├── settings.yml           # Project settings (commit this)
+│   └── state/
+│       └── state.enc          # Encrypted state (don't commit)
+├── sql/                       # Your SQL files
 │   └── .gitkeep
-└── changes/               # Versioned changes
+└── changes/                   # Versioned changes
     └── .gitkeep
 ```
 
 ::: warning Git Ignore
-Add `.noorm/state/` to your `.gitignore`. This file contains encrypted configs and secrets specific to each developer's machine. The `.noorm/settings.yml` should be committed—it's the shared project configuration.
+Add `.noorm/state/` to your `.gitignore`. This folder contains encrypted configs and secrets specific to each developer's machine. The `.noorm/settings.yml` should be committed—it's the shared project configuration.
 :::
 
 

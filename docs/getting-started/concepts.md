@@ -195,11 +195,11 @@ A **config** is a saved database connection. You can have multiple configs for d
 - `prod` - Production (protected)
 
 ```
-┌─ Configs ─────────────────────────────┐
-│  • dev        sqlite   ./data/dev.db  │
-│    staging    postgres db.staging.com │
-│    prod       postgres db.prod.com    │
-└───────────────────────────────────────┘
+┌─ Configs ─────────────────────────────────┐
+│  • dev        postgres localhost:5432     │
+│    staging    postgres db.staging.com     │
+│    prod       postgres db.prod.com        │
+└───────────────────────────────────────────┘
 ```
 
 The dot (•) shows which config is active. All commands use the active config unless you specify otherwise.
@@ -265,8 +265,8 @@ Your **state** lives in `.noorm/state/state.enc` and contains:
 
 State is encrypted with your identity keys. It's not portable between machines—each developer has their own configs and secrets.
 
-::: warning Don't Commit state.enc
-Add `.noorm/state/state.enc` to `.gitignore`. It contains machine-specific encrypted data that won't work on other machines anyway.
+::: warning Don't Commit State
+Add `.noorm/state/` to `.gitignore`. It contains machine-specific encrypted data that won't work on other machines anyway.
 :::
 
 

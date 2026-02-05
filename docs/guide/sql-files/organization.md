@@ -208,65 +208,63 @@ sql/
 - Related files are spread across folders
 
 
-### By Feature (For Large Projects)
+### By Domain (For Projects with SDK)
 
-Group files by what they relate to:
+If you're building a [typed SDK](/getting-started/building-your-sdk), organize SQL to mirror your domain classes:
 
 ```
 sql/
-├── auth/
-│   ├── 01_tables/
-│   ├── 02_views/
-│   └── 03_functions/
-├── billing/
-│   ├── 01_tables/
-│   ├── 02_views/
-│   └── 03_functions/
-└── core/
-    ├── 01_tables/
-    └── 02_views/
+├── 01_core/
+│   ├── tables/           # Base entities (users, accounts)
+│   └── functions/        # Shared utilities
+├── 02_auth/
+│   ├── tables/           # Sessions, tokens, permissions
+│   ├── views/            # Active sessions, user permissions
+│   └── functions/        # Authentication helpers
+├── 03_billing/
+│   ├── tables/           # Invoices, payments, subscriptions
+│   ├── views/            # Revenue reports, aging
+│   └── procedures/       # Billing transactions
+└── 04_seeds/
+    └── defaults.sql      # Reference data
 ```
 
+This aligns your database layer with your application layer. The SDK's `auth` domain class maps to `sql/02_auth/`, making it easy to find related code.
+
 **Pros:**
-- Related files stay together
-- Teams can own specific folders
+- SQL and SDK stay in sync
+- Clear ownership boundaries
+- Domain changes are localized
 
 **Cons:**
-- Need numbered subfolders to maintain order
+- Need numbered folders to control cross-domain dependencies
 - More complex include configuration
 
 
 ### Hybrid Approach
 
-Combine both when it makes sense:
+Start simple and add domains as needed:
 
 ```
 sql/
-├── 01_core/
-│   ├── tables/
-│   └── views/
-├── 02_features/
-│   ├── auth/
-│   └── billing/
-└── 03_seeds/
+├── 01_tables/            # All tables (simple start)
+├── 02_views/
+├── 03_functions/
+└── 04_seeds/
+```
+
+When a domain grows complex, extract it:
+
+```
+sql/
+├── 01_core/              # Moved tables, views, functions
+├── 02_billing/           # Extracted billing domain
+├── 03_functions/         # Shared functions
+└── 04_seeds/
 ```
 
 
 ## Common Patterns
-
-
-### Separating DDL and DML
-
-Keep schema definitions separate from data operations:
-
-```
-sql/
-├── 01_ddl/              # CREATE, ALTER statements
-│   ├── 01_tables/
-│   └── 02_views/
-└── 02_dml/              # INSERT, UPDATE statements
-    └── 01_seeds/
-```
 
 
 ### Environment-Specific Files

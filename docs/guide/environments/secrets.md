@@ -8,14 +8,14 @@ Sensitive values like database passwords and API keys have no place in config fi
 
 Secrets are encrypted key-value pairs stored in your local state file (`.noorm/state/state.enc`). They never touch disk in plain text.
 
-Common uses:
+Secrets are for sensitive values that get **inserted into your database** via SQL templates—not for database connection credentials. Common uses:
 
-- Database passwords
-- API keys
-- Service credentials
-- Connection strings
+- API keys stored in configuration tables
+- Encryption keys for sensitive data columns
+- Service credentials (AWS, Stripe, SendGrid)
+- OAuth client secrets
 
-Secrets integrate directly with SQL templates, so you can reference them without exposing values in your source code.
+Secrets integrate directly with SQL templates, so you can reference them without exposing values in your source code or version control.
 
 
 ## Setting a Secret

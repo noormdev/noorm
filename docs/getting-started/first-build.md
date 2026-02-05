@@ -31,10 +31,11 @@ This creates the project structure:
 ```
 noorm-tutorial/
 ├── .noorm/
-│   ├── settings.yml       # Project settings (commit this)
-│   └── state.enc          # Encrypted state (don't commit)
-├── sql/                   # Your SQL files go here
-└── changes/               # Versioned changes go here
+│   ├── settings.yml           # Project settings (commit this)
+│   └── state/
+│       └── state.enc          # Encrypted state (don't commit)
+├── sql/                       # Your SQL files go here
+└── changes/                   # Versioned changes go here
 ```
 
 

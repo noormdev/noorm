@@ -3,8 +3,8 @@ layout: home
 
 hero:
   name: noorm
-  text: SQL defines the truth. Everything else builds on top.
-  tagline: Express what ORMs can't. Compound keys, check constraints, triggers, stored procedures—real SQL.
+  text: A CLI for SQL-first database development.
+  tagline: Manage SQL files, track changes, and run builds across dev, staging, and production—no ORM required.
   image:
     src: /image/0105.gif
     alt: noorm TUI demo
@@ -33,16 +33,25 @@ features:
       src: /icons/terminal.svg
     title: Built-in Tools
     details: Schema explorer, SQL terminal, dynamic templates, encrypted secrets. Full database management without leaving your terminal.
+  - icon:
+      src: /icons/lock.svg
+    title: Type-Safe SDK
+    details: Build your API layer with domain classes—consumers (queries), producers (mutations), and guards (validation). One package, used everywhere.
 ---
 
 
 ## Why noorm?
 
-**noorm is NOT an ORM.** ORMs replace your SQL with inefficient abstractions. noorm runs your SQL directly.
+noorm is a command-line tool for managing SQL-first database applications. It handles everything ORMs won't touch: compound keys, check constraints, triggers, stored procedures—the full relational model.
 
-Raw SQL lets you design databases properly. Inherited keys, base/subtype hierarchies, complex constraints—the relational model as it was intended.
+**What it does:**
 
-noorm makes it manageable. SQL files define your schema. Changes evolve existing databases. Execution tracking, environment configs, encrypted secrets, team collaboration—all handled from your terminal. You focus on the SQL.
+- **SQL files** define your current schema—no migration archaeology
+- **Changes** evolve existing databases from any state to current
+- **Stages** manage dev, staging, and production with different configs
+- **SDK** provides type-safe programmatic access to your database
+
+You write SQL. noorm executes it, tracks what ran, and keeps multiple environments in sync.
 
 ### The Case for Proper Relational Design
 
@@ -156,12 +165,12 @@ noorm -H run build     # Fresh DB gets current schema directly
 <div class="next-steps">
 
 [**Installation**](/getting-started/installation)
-Get noorm installed and running in 2 minutes.
+Get noorm installed and running.
 
 [**First Build**](/getting-started/first-build)
-Complete the 5-minute tutorial and see the core value prop.
+Complete the tutorial and see the core value.
 
-[**Concepts**](/getting-started/concepts)
-Understand the mental model behind noorm.
+[**Building Your SDK**](/getting-started/building-your-sdk)
+Create a type-safe database package for your apps.
 
 </div>

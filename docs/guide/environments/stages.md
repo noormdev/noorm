@@ -3,11 +3,15 @@
 
 ## The Problem
 
-Your team has three environments: development, staging, and production. Each needs different settings. Production databases must be protected. Staging might need specific secrets. Development should default to local connections.
+Your team has three environments: development, staging, and production. Each has different requirements:
 
-Without a shared definition, every developer configures these differently. Someone marks dev as protected. Someone else forgets to require the production password. Inconsistency leads to mistakes.
+- **Production** should be protected from accidental teardowns
+- **Staging** might require specific API keys for integration testing
+- **Development** should default to localhost
 
-Stages solve this. They're templates defined in your project settings that every team member shares.
+Without a shared definition, every developer configures these differently. Someone creates an unprotected production config. Someone else forgets the staging API key. The inconsistency causes problems down the line.
+
+Stages solve this. They're templates defined in your project's `settings.yml` that every team member shares.
 
 
 ## What Stages Are
@@ -16,9 +20,9 @@ A **stage** is a named template for database configs. When you create a config a
 
 Think of stages as blueprints:
 
-- `dev` stage: local postgres, no protection needed
-- `staging` stage: remote postgres, optional protection
-- `prod` stage: remote postgres, always protected, requires password
+- `dev` stage: localhost defaults, no protection needed
+- `staging` stage: requires integration API keys
+- `prod` stage: always protected, cannot be deleted
 
 Your project defines these once in `settings.yml`. Every developer on the team gets the same blueprints.
 
@@ -42,6 +46,11 @@ stages:
         defaults:
             dialect: postgres
             protected: false
+        secrets:
+            - key: STRIPE_TEST_KEY
+              type: api_key
+              description: Stripe test API key for payment testing
+              required: true
 
     prod:
         description: Production database
@@ -49,17 +58,12 @@ stages:
         defaults:
             dialect: postgres
             protected: true
-        secrets:
-            - key: DB_PASSWORD
-              type: password
-              description: Database password
-              required: true
 ```
 
-When a developer creates a config from the `prod` stage, it automatically:
+When a developer creates a config from the `staging` stage, it automatically:
 - Uses postgres dialect
-- Is marked as protected
-- Requires a `DB_PASSWORD` secret before use
+- Is not protected (staging data is expendable)
+- Requires a `STRIPE_TEST_KEY` secret before builds can run
 
 
 ## Stage Properties
@@ -68,7 +72,7 @@ Each stage can define these properties:
 
 | Property | Type | Description |
 |----------|------|-------------|
-| `description` | string | Human-readable description shown in the CLI |
+| `description` | string | Human-readable description shown in the TUI |
 | `locked` | boolean | If true, configs cannot be deleted (default: false) |
 | `defaults` | object | Values applied when creating a config from this stage |
 | `secrets` | array | Secrets that must be configured |
@@ -76,7 +80,7 @@ Each stage can define these properties:
 
 ### Defaults
 
-Defaults provide initial values when creating a config. Most can be overridden by the developer:
+Defaults provide initial values when creating a config. Most can be overridden by the developer in the TUI:
 
 ```yaml
 stages:
@@ -88,15 +92,19 @@ stages:
             database: myapp_dev
 ```
 
-Some defaults are **enforced** and cannot be overridden:
+Some defaults are **enforced** and cannot be overridden in the TUI:
 
 | Default | Behavior |
 |---------|----------|
-| `protected: true` | Cannot be set to false by the developer |
-| `isTest: true` | Cannot be set to false by the developer |
+| `protected: true` | Cannot be set to false in the TUI |
+| `isTest: true` | Cannot be set to false in the TUI |
 | `dialect` | Cannot be changed after config creation |
 
-This means if your `prod` stage sets `protected: true`, developers cannot create an unprotected production config.
+This means if your `prod` stage sets `protected: true`, developers cannot create an unprotected production config through the normal workflow.
+
+::: tip Manual Override
+These enforced defaults can still be changed by manually editing the encrypted state file, but this requires deliberate action. The protection is against accidents, not determined circumvention.
+:::
 
 
 ### Locked Stages
@@ -116,7 +124,7 @@ A locked production config cannot be accidentally removed. The developer must fi
 
 ## Assigning a Config to a Stage
 
-When you create a new config, noorm asks which stage to use:
+When you create a new config in the TUI, noorm asks which stage to use:
 
 ```
 ? Select stage for new config:
@@ -125,44 +133,40 @@ When you create a new config, noorm asks which stage to use:
   prod       Production database
 ```
 
-The config inherits that stage's defaults. You can also assign programmatically:
-
-```bash
-noorm config add --stage prod
-```
-
-Or through the TUI by selecting a stage during config creation.
+The config inherits that stage's defaults. The stage selection happens during config creation through the TUI.
 
 
 ## Stage-Specific Secrets
 
-Stages can require secrets before a config is usable. This ensures production configs always have proper credentials.
+Stages can require secrets that get inserted into your database via SQL templates. These are for sensitive values like API keys and encryption keys—not database connection credentials.
 
 ```yaml
 stages:
-    prod:
+    staging:
         secrets:
-            - key: DB_PASSWORD
-              type: password
-              description: Database password
+            - key: STRIPE_TEST_KEY
+              type: api_key
+              description: Stripe test API key for payment testing
               required: true
 
-            - key: SSL_CERT
-              type: string
-              description: SSL certificate path
+            - key: SENDGRID_KEY
+              type: api_key
+              description: SendGrid API key for email testing
               required: false
 ```
 
-Secret types control how the CLI handles input:
+Secret types control how the TUI handles input:
 
 | Type | Behavior |
 |------|----------|
 | `string` | Plain text input |
 | `password` | Masked input, no echo |
-| `api_key` | Masked input, validated format |
-| `connection_string` | Validated as URI |
+| `api_key` | Masked input, no echo |
+| `connection_string` | Plain text, URI validation |
 
-Required secrets must be set before the config can run operations. Optional secrets are prompted but can be skipped.
+**Required secrets** must be set before builds can run. If a template references a missing required secret, the build fails with a clear error.
+
+**Optional secrets** are prompted but can be skipped. Templates that reference them should handle the undefined case.
 
 
 ### Universal Secrets
@@ -174,17 +178,18 @@ Some secrets apply to all configs regardless of stage. Define these at the setti
 secrets:
     - key: ENCRYPTION_KEY
       type: password
-      description: Application encryption key
+      description: Application encryption key for sensitive data
 
 stages:
     prod:
         # Additional secrets for prod only
         secrets:
-            - key: DB_PASSWORD
-              type: password
+            - key: AWS_SECRET_KEY
+              type: api_key
+              description: AWS credentials for S3 uploads
 ```
 
-A production config would need both `ENCRYPTION_KEY` (universal) and `DB_PASSWORD` (stage-specific).
+A production config would need both `ENCRYPTION_KEY` (universal) and `AWS_SECRET_KEY` (stage-specific).
 
 
 ## Common Stage Patterns
@@ -209,8 +214,8 @@ stages:
             dialect: postgres
             protected: false
         secrets:
-            - key: DB_PASSWORD
-              type: password
+            - key: STRIPE_TEST_KEY
+              type: api_key
               required: true
 
     prod:
@@ -220,8 +225,8 @@ stages:
             dialect: postgres
             protected: true
         secrets:
-            - key: DB_PASSWORD
-              type: password
+            - key: STRIPE_LIVE_KEY
+              type: api_key
               required: true
 ```
 
@@ -233,52 +238,17 @@ stages:
     test:
         description: Ephemeral test database
         defaults:
-            dialect: sqlite
-            isTest: true
-            database: ":memory:"
-```
-
-The `isTest: true` flag marks this as a test database. noorm uses this for conditional build rules (like including seed data only in test environments).
-
-
-### Multi-Dialect Team
-
-```yaml
-stages:
-    dev-postgres:
-        description: Local Postgres
-        defaults:
             dialect: postgres
             host: localhost
-
-    dev-mysql:
-        description: Local MySQL
-        defaults:
-            dialect: mysql
-            host: localhost
-
-    dev-sqlite:
-        description: Local SQLite
-        defaults:
-            dialect: sqlite
-            database: ./data/dev.db
-```
-
-
-### CI/CD Stage
-
-```yaml
-stages:
-    ci:
-        description: CI pipeline database
-        defaults:
-            dialect: postgres
+            port: 5432
             isTest: true
-        secrets:
-            - key: DATABASE_URL
-              type: connection_string
-              required: true
 ```
+
+The `isTest: true` flag marks this as a test database. noorm uses this for:
+
+- Conditional build rules (include seed data only in test environments)
+- SDK's `requireTest` option (refuses to connect if `isTest` is not true)
+- Preventing accidental test operations against production
 
 
 ## What's Next?

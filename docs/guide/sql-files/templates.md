@@ -1,16 +1,16 @@
 # SQL Templates
 
 
-Static SQL works for simple schemas. But real projects need dynamic SQL:
+Static SQL handles most database work. But sometimes you need SQL generated from structured data:
 
-- Generating DDL for multiple similar tables
-- Seeding data from external files
-- Environment-aware SQL based on active configuration
-- Injecting secrets without hardcoding
+- Seeding reference data from CSV or JSON files
+- Generating similar objects (triggers, policies, grants) from configuration
+- Inserting secrets like API keys into config tables
+- Adapting SQL based on environment or stage
 
-You could write custom scripts for each case. But then you're maintaining two systems—your SQL files and your generation scripts.
+Custom scripts work, but then you're maintaining two systems. Templates keep everything in one place: structured data files plus SQL templates that read them.
 
-noorm solves this with **templates**. Any file ending in `.sql.tmpl` is processed before execution. Templates look like SQL with embedded logic. They auto-load data files, inherit helpers, and have access to secrets and config.
+Any file ending in `.sql.tmpl` is processed before execution. Templates look like SQL with embedded logic. They auto-load data files, inherit helpers, and have access to secrets and config.
 
 
 ## Basic Syntax
@@ -158,9 +158,9 @@ Different naming patterns can produce the same context key:
 
 | Filename | Context Key |
 |----------|-------------|
-| `asc_fasb_org.json` | `$.ascFasbOrg` |
-| `asc.fasb.org.yaml` | `$.ascFasbOrg` |
-| `asc-fasb-org.csv` | `$.ascFasbOrg` |
+| `user_roles.json` | `$.userRoles` |
+| `user-roles.yaml` | `$.userRoles` |
+| `user.roles.csv` | `$.userRoles` |
 
 If two files resolve to the same key, one silently overwrites the other. Use distinct base names to avoid conflicts.
 
@@ -308,21 +308,36 @@ INSERT INTO roles (name, permissions) VALUES
 
 ### Environment-Aware SQL
 
-The active configuration is available through `$.config`. Use it to adapt SQL based on environment:
+The active configuration is available through `$.config`. Use it to adapt SQL based on stage, config name, or database:
 
 ```sql
 -- setup_monitoring.sql.tmpl
 {% const db = $.config.connection.database %}
+{% const stage = $.config.stage %}
 
 -- Tag all entries with the source database
 INSERT INTO monitoring.activity_log (source_db, event, created_at) VALUES
     ({%~ $.quote(db) %}, 'schema_deployed', '{%~ $.now() %}');
 
-{% if ($.config.name === 'production') { %}
--- Only production gets strict constraints
+{% if (stage === 'prod') { %}
+-- Only production stage gets strict constraints
 ALTER TABLE orders ADD CONSTRAINT chk_amount CHECK (amount > 0);
 {% } %}
+
+{% if ($.config.isTest) { %}
+-- Test databases get sample data
+INSERT INTO users (name, email) VALUES ('Test User', 'test@example.com');
+{% } %}
 ```
+
+Common conditions:
+
+| Condition | Use Case |
+|-----------|----------|
+| `$.config.stage === 'prod'` | Production-only constraints or settings |
+| `$.config.isTest` | Test fixtures and sample data |
+| `$.config.name === 'dev'` | Local development overrides |
+| `$.config.connection.database` | Database-specific configuration |
 
 
 ### Using Secrets
