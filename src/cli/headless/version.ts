@@ -289,13 +289,13 @@ Useful for debugging installation issues.
 }
 `;
 
-export const run: HeadlessCommand = async (_params, flags, _logger) => {
+export const run: HeadlessCommand = async (_params, flags, logger) => {
 
     const info = await gatherVersionInfo();
 
     if (flags.json) {
 
-        process.stdout.write(JSON.stringify(info, null, 2) + '\n');
+        logger.result(info);
 
     }
     else {

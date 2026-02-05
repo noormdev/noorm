@@ -5,7 +5,7 @@ Static SQL works for simple schemas. But real projects need dynamic SQL:
 
 - Generating DDL for multiple similar tables
 - Seeding data from external files
-- Conditional logic based on database dialect
+- Environment-aware SQL based on active configuration
 - Injecting secrets without hardcoding
 
 You could write custom scripts for each case. But then you're maintaining two systems—your SQL files and your generation scripts.
@@ -172,7 +172,8 @@ If two files resolve to the same key, one silently overwrites the other. Use dis
 | `.json`, `.json5` | JSON5 supports comments and trailing commas |
 | `.yaml`, `.yml` | Full YAML support |
 | `.csv` | Parsed into array of row objects |
-| `.js`, `.mjs`, `.ts` | Module's default export or exports object |
+| `.dt`, `.dtz` | Exported database tables (see [Data Transfer](/guide/database/transfer)) |
+| `.js`, `.mjs`, `.ts` | Module's default export or exports object (`.ts` requires Node >= 22.13) |
 
 
 ### JSON5 Example
@@ -210,6 +211,27 @@ INSERT INTO users (email, name, role) VALUES
 ```
 
 
+### .dt Files (Exported Database Tables)
+
+`.dt` and `.dtz` files exported from [Data Transfer](/guide/database/transfer) can be used directly as seed data. The loader reads the embedded schema, maps positional values to column names, and exposes the data as an array of row objects—just like CSV.
+
+```
+sql/users/
+├── 001_seed.sql.tmpl     # Template
+└── users.dt              # -> $.users (exported from another database)
+```
+
+```sql
+-- seed.sql.tmpl
+{% for (const user of $.users) { %}
+INSERT INTO users (id, email, name) VALUES
+    ({%~ user.id %}, {%~ $.quote(user.email) %}, {%~ $.quote(user.name) %});
+{% } %}
+```
+
+This lets you export data from one environment and use it as seed data in templates—without converting formats. Compressed `.dtz` files work too. Encrypted `.dtzx` files are not supported as template data since there's no way to provide a passphrase in the template context.
+
+
 ## Helper Inheritance
 
 Helper files named `$helpers.ts` (or `$helpers.js`) are automatically loaded and inherited up the directory tree:
@@ -229,6 +251,8 @@ Child helpers override parent helpers with the same name. This lets you define p
 
 
 ### Writing Helpers
+
+Helper files can be written in TypeScript (`.ts`) or JavaScript (`.js`, `.mjs`). TypeScript helpers require Node >= 22.13, which supports type stripping natively. On older Node versions, use `.js` instead.
 
 ```typescript
 // sql/$helpers.ts
@@ -282,22 +306,21 @@ INSERT INTO roles (name, permissions) VALUES
 ```
 
 
-### Conditional SQL by Dialect
+### Environment-Aware SQL
 
-Different databases have different syntax. Use the config to branch:
+The active configuration is available through `$.config`. Use it to adapt SQL based on environment:
 
 ```sql
--- indexes.sql.tmpl
-CREATE INDEX idx_users_email ON users(email);
+-- setup_monitoring.sql.tmpl
+{% const db = $.config.connection.database %}
 
-{% if ($.config.connection.dialect === 'postgres') { %}
--- PostgreSQL supports functional indexes
-CREATE INDEX idx_users_email_lower ON users(LOWER(email));
-{% } %}
+-- Tag all entries with the source database
+INSERT INTO monitoring.activity_log (source_db, event, created_at) VALUES
+    ({%~ $.quote(db) %}, 'schema_deployed', '{%~ $.now() %}');
 
-{% if ($.config.connection.dialect === 'mysql') { %}
--- MySQL needs prefix indexes for long text columns
-CREATE INDEX idx_posts_body ON posts(body(100));
+{% if ($.config.name === 'production') { %}
+-- Only production gets strict constraints
+ALTER TABLE orders ADD CONSTRAINT chk_amount CHECK (amount > 0);
 {% } %}
 ```
 
@@ -312,6 +335,8 @@ INSERT INTO app_config (key, value) VALUES
     ('stripe_key', {%~ $.quote($.secrets.STRIPE_KEY) %}),
     ('api_endpoint', {%~ $.quote($.env.API_URL || 'https://api.example.com') %});
 ```
+
+Secrets resolve through a three-tier hierarchy: config-specific local secrets override global local secrets, which override team-shared [vault](/guide/environments/vault) secrets. This means you can store production credentials in the vault and override them locally for development without affecting teammates. See the [secret resolution hierarchy](/guide/environments/vault#secret-resolution-hierarchy) for details.
 
 
 ### Generating Multiple Similar Objects
@@ -370,24 +395,32 @@ GRANT EXECUTE ON {%~ proc %} TO {%~ role %};
 
 ### Composing from Fragments
 
-Split complex changes into logical pieces:
+Large table schemas are easier to review when split into logical groups. Use `$.include()` to compose them into a single change:
+
+```
+changes/2025-01-15-full-setup/
+├── change/
+│   └── 001_schema.sql.tmpl
+└── lib/
+    ├── core_tables.sql
+    ├── content_tables.sql
+    └── seed_defaults.sql
+```
 
 ```sql
--- changes/2025-01-15-full-setup/change/001_full_setup.sql.tmpl
+-- changes/2025-01-15-full-setup/change/001_schema.sql.tmpl
 
--- Common utilities
-{%~ await $.include('../lib/uuid_function.sql') %}
+-- Core tables (users, roles, user_roles)
+{%~ await $.include('../lib/core_tables.sql') %}
 
--- Core tables
-{%~ await $.include('./tables/users.sql') %}
-{%~ await $.include('./tables/posts.sql') %}
+-- Content tables (posts, comments, tags, post_tags)
+{%~ await $.include('../lib/content_tables.sql') %}
 
--- Views
-{%~ await $.include('./views/recent_posts.sql') %}
-
--- Seed data
-{%~ await $.include('./seeds/default_roles.sql') %}
+-- Default seed data
+{%~ await $.include('../lib/seed_defaults.sql') %}
 ```
+
+Each fragment is plain SQL that could run on its own. The template just stitches them together so the change stays atomic while the source stays organized.
 
 
 ## Security Notes
@@ -405,4 +438,6 @@ Split complex changes into logical pieces:
 
 - [Organization](/guide/sql-files/organization) - Control execution order with file naming
 - [Secrets](/guide/environments/secrets) - Securely store credentials
+- [Vault](/guide/environments/vault) - Team-shared secrets with resolution hierarchy
 - [Changes](/guide/changes/overview) - Versioned changes with template support
+- [Data Transfer](/guide/database/transfer) - Export/import .dt files for seeding templates

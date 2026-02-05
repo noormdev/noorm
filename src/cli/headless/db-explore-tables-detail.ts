@@ -55,7 +55,7 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
     const [detail, error] = await withContext({
         flags,
         logger,
-        fn: (ctx) => ctx.describeTable(params.name!, params.schema),
+        fn: (ctx) => ctx.noorm.describeTable(params.name!, params.schema),
     });
 
     if (error) return 1;
@@ -70,8 +70,7 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
 
     if (flags.json) {
 
-        // Output structured JSON
-        process.stdout.write(JSON.stringify(detail) + '\n');
+        logger.result(detail);
 
     }
     else {

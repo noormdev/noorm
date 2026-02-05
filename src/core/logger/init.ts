@@ -17,9 +17,8 @@
  * ```
  */
 import { createWriteStream } from 'node:fs';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
 import { mkdir } from 'node:fs/promises';
-import { dirname } from 'node:path';
 import type { Writable } from 'node:stream';
 
 import { attempt } from '@logosdx/utils';
@@ -30,9 +29,20 @@ import { Logger, getLogger, resetLogger } from './logger.js';
 import { addSettingsSecrets, listenForSecrets } from './redact.js';
 import type { Settings } from '../settings/types.js';
 
+/**
+ * Options for auto logger initialization.
+ */
+export interface AutoLoggerOptions {
+    /** Stream for console output (JSON logs). Pass null stream to suppress. */
+    console?: Writable;
+    /** Stream for diagnostic output (colored/plain logs). Pass null stream to suppress. */
+    diagnostics?: Writable;
+}
+
 let secretsCleanup: (() => void) | null = null;
 let settingsCleanup: (() => void) | null = null;
 let logger: Logger | null = null;
+let initOptions: AutoLoggerOptions = {};
 
 /**
  * Enable event-driven logger initialization.
@@ -41,18 +51,23 @@ let logger: Logger | null = null;
  * Call this once at app startup, before any other initialization.
  *
  * @param projectRoot - Project root directory
+ * @param options - Optional configuration for logger streams
  *
  * @example
  * ```typescript
- * // At app startup
+ * // At app startup (headless mode - logs to stderr)
  * enableAutoLoggerInit(process.cwd())
+ *
+ * // TUI mode - suppress stderr output
+ * const nullStream = new Writable({ write: (_, __, cb) => cb() });
+ * enableAutoLoggerInit(process.cwd(), { diagnostics: nullStream });
  *
  * // Later, when settings are loaded, logger starts automatically
  * await settingsManager.load() // Emits 'settings:loaded'
  * // Logger is now running and capturing events
  * ```
  */
-export function enableAutoLoggerInit(projectRoot: string): void {
+export function enableAutoLoggerInit(projectRoot: string, options?: AutoLoggerOptions): void {
 
     // Prevent double registration
     if (settingsCleanup) {
@@ -60,6 +75,9 @@ export function enableAutoLoggerInit(projectRoot: string): void {
         return;
 
     }
+
+    // Store options for logger creation
+    initOptions = options ?? {};
 
     // Start listening for secret events BEFORE logger queue is created
     // This ensures any secret:set or global-secret:set events add keys
@@ -105,6 +123,8 @@ export function enableAutoLoggerInit(projectRoot: string): void {
             settings,
             config: settings.logging,
             file: fileStream,
+            console: initOptions.console,
+            diagnostics: initOptions.diagnostics,
         });
 
         await logger.start();

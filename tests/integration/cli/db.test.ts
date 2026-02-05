@@ -93,7 +93,7 @@ describe('cli: db explore', () => {
 
         expect(result.ok).toBe(true);
 
-        const text = stripAnsi(result.stdout);
+        const text = stripAnsi(result.stderr);
         expect(text).toContain('Database Overview');
 
     });
@@ -169,7 +169,7 @@ describe('cli: db explore tables', () => {
 
         expect(result.ok).toBe(true);
 
-        const text = stripAnsi(result.stdout);
+        const text = stripAnsi(result.stderr);
         expect(text).toContain('Tables:');
 
     });

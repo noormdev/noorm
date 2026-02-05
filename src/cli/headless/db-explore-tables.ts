@@ -37,15 +37,14 @@ export const run: HeadlessCommand = async (_params, flags, logger) => {
     const [tables, error] = await withContext({
         flags,
         logger,
-        fn: (ctx) => ctx.listTables(),
+        fn: (ctx) => ctx.noorm.listTables(),
     });
 
     if (error) return 1;
 
     if (flags.json) {
 
-        // Output structured JSON (array of tables)
-        process.stdout.write(JSON.stringify(tables) + '\n');
+        logger.result(tables);
 
     }
     else {

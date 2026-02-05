@@ -39,7 +39,7 @@
     "author": "",
     "license": "ISC",
     "engines": {
-        "node": ">=18"
+        "node": ">=22.13"
     },
     "files": [
         "dist"

@@ -23,6 +23,8 @@ import type {
 
 import { observer } from '../observer.js';
 import { getTransferOperations } from './dialects/index.js';
+import { DtStreamer } from '../dt/streamer.js';
+import { queryDatabaseVersion } from '../dt/version.js';
 
 /**
  * Default batch size for cross-server transfers.
@@ -44,12 +46,13 @@ export async function executeTransfer(
 ): Promise<[TransferResult | null, Error | null]> {
 
     const startTime = Date.now();
-    const { dialect } = ctx.source;
-    const ops = getTransferOperations(dialect);
+    const { dialect: _srcDialect } = ctx.source;
+    const destDialect = ctx.destination.dialect;
+    const ops = getTransferOperations(destDialect);
 
     if (!ops) {
 
-        return [null, new Error(`Unsupported dialect: ${dialect}`)];
+        return [null, new Error(`Unsupported dialect: ${destDialect}`)];
 
     }
 
@@ -96,66 +99,60 @@ export async function executeTransfer(
         let result: TransferTableResult;
         const strategy = options.onConflict ?? 'fail';
 
-        // Same-server direct INSERT...SELECT only works when no conflict handling needed
-        // For skip/update/replace strategies, use cross-server batch path
-        const useSameServer = plan.sameServer && strategy === 'fail';
+        // Choose transfer strategy
+        const useSameServer = plan.sameServer && strategy === 'fail' && !plan.crossDialect;
+        const useCrossDialect = plan.crossDialect && tablePlan.columnTypes;
+
+        let tableResult: TransferTableResult | null = null;
+        let tableErr: Error | null = null;
 
         if (useSameServer) {
 
-            const [tableResult, tableErr] = await transferTableSameServer(
+            [tableResult, tableErr] = await transferTableSameServer(
                 ctx,
                 tablePlan,
                 options,
                 ops,
             );
 
-            if (tableErr) {
+        }
+        else if (useCrossDialect) {
 
-                result = {
-                    table: tablePlan.name,
-                    status: 'failed',
-                    rowsTransferred: 0,
-                    rowsSkipped: 0,
-                    durationMs: Date.now() - tableStart,
-                    error: tableErr.message,
-                };
-                hasFailures = true;
-
-            }
-            else {
-
-                result = tableResult!;
-
-            }
+            [tableResult, tableErr] = await transferTableCrossDialect(
+                ctx,
+                tablePlan,
+                plan,
+                options,
+            );
 
         }
         else {
 
-            const [tableResult, tableErr] = await transferTableCrossServer(
+            [tableResult, tableErr] = await transferTableCrossServer(
                 ctx,
                 tablePlan,
                 options,
                 ops,
             );
 
-            if (tableErr) {
+        }
 
-                result = {
-                    table: tablePlan.name,
-                    status: 'failed',
-                    rowsTransferred: 0,
-                    rowsSkipped: 0,
-                    durationMs: Date.now() - tableStart,
-                    error: tableErr.message,
-                };
-                hasFailures = true;
+        if (tableErr) {
 
-            }
-            else {
+            result = {
+                table: tablePlan.name,
+                status: 'failed',
+                rowsTransferred: 0,
+                rowsSkipped: 0,
+                durationMs: Date.now() - tableStart,
+                error: tableErr.message,
+            };
+            hasFailures = true;
 
-                result = tableResult!;
+        }
+        else {
 
-            }
+            result = tableResult!;
 
         }
 
@@ -507,6 +504,213 @@ async function transferTableCrossServer(
         rowsTransferred,
         rowsSkipped,
         durationMs: Date.now() - startTime,
+    }, null];
+
+}
+
+/**
+ * Transfer table using cross-dialect conversion via DtStreamer.
+ *
+ * Fetches rows from source, converts types in memory, inserts into target.
+ */
+async function transferTableCrossDialect(
+    ctx: DualConnectionContext,
+    plan: TransferTablePlan,
+    transferPlan: TransferPlan,
+    options: TransferOptions,
+): Promise<[TransferTableResult | null, Error | null]> {
+
+    const startTime = Date.now();
+    const batchSize = options.batchSize ?? DEFAULT_BATCH_SIZE;
+    const destOps = getTransferOperations(ctx.destination.dialect);
+
+    if (!destOps || !plan.columnTypes) {
+
+        return [null, new Error('Missing dialect operations or column types for cross-dialect transfer')];
+
+    }
+
+    // Detect database versions for version-aware type conversion
+    const [srcVersion] = await queryDatabaseVersion({ db: ctx.source.db, dialect: ctx.source.dialect });
+    const [dstVersion] = await queryDatabaseVersion({ db: ctx.destination.db, dialect: ctx.destination.dialect });
+
+    // Create streamer for in-memory type conversion
+    const streamer = new DtStreamer({
+        sourceDialect: ctx.source.dialect,
+        sourceVersion: srcVersion ?? undefined,
+        targetDialect: ctx.destination.dialect,
+        targetVersion: dstVersion ?? undefined,
+        columns: plan.columnTypes,
+        batchSize,
+    });
+
+    // Truncate if requested
+    if (options.truncateFirst) {
+
+        const [, truncateErr] = await truncateTable(
+            ctx.destination.db,
+            ctx.destination.dialect,
+            plan.name,
+        );
+
+        if (truncateErr) {
+
+            return [null, new Error(`Failed to truncate: ${truncateErr.message}`)];
+
+        }
+
+    }
+
+    // Enable identity insert if needed
+    if (options.preserveIdentity !== false && plan.hasIdentity) {
+
+        const enableSql = destOps.getEnableIdentityInsertSql(plan.name);
+
+        if (enableSql) {
+
+            const [, enableErr] = await attempt(() =>
+                sql.raw(enableSql).execute(ctx.destination.db),
+            );
+
+            if (enableErr) {
+
+                return [null, new Error(`Failed to enable identity insert: ${enableErr.message}`)];
+
+            }
+
+        }
+
+    }
+
+    let rowsTransferred = 0;
+    let rowsSkipped = 0;
+    let offset = 0;
+    let transferError: Error | null = null;
+
+    observer.emit('dt:stream:start', {
+        table: plan.name,
+        sourceDialect: ctx.source.dialect,
+        targetDialect: ctx.destination.dialect,
+    });
+
+    while (true) {
+
+        // Fetch batch from source
+        const [rows, fetchErr] = await attempt(() =>
+            fetchBatch(
+                ctx.source.db,
+                ctx.source.dialect,
+                plan.name,
+                plan.columns,
+                batchSize,
+                offset,
+                plan.schema,
+            ),
+        );
+
+        if (fetchErr) {
+
+            transferError = new Error(`Failed to fetch batch: ${fetchErr.message}`);
+            break;
+
+        }
+
+        if (rows.length === 0) break;
+
+        // Convert types via DtStreamer
+        const convertedRows = streamer.convertBatch(rows);
+
+        // Insert converted rows into destination
+        for (const row of convertedRows) {
+
+            const [, insertErr] = await attempt(() =>
+                ctx.destination.db.insertInto(plan.name as never).values(row as never).execute(),
+            );
+
+            if (insertErr) {
+
+                const lower = insertErr.message.toLowerCase();
+                const isDuplicate = lower.includes('duplicate') || lower.includes('unique') || lower.includes('primary key');
+
+                if (isDuplicate && options.onConflict === 'skip') {
+
+                    rowsSkipped++;
+
+                }
+                else if (options.onConflict !== 'fail') {
+
+                    rowsSkipped++;
+
+                }
+                else {
+
+                    transferError = new Error(`Failed to insert row: ${insertErr.message}`);
+                    break;
+
+                }
+
+            }
+            else {
+
+                rowsTransferred++;
+
+            }
+
+        }
+
+        if (transferError) break;
+
+        offset += rows.length;
+
+        observer.emit('transfer:table:progress', {
+            table: plan.name,
+            rowsTransferred,
+            rowsTotal: plan.rowCount,
+            rowsSkipped,
+        });
+
+        observer.emit('dt:stream:progress', {
+            table: plan.name,
+            rowsConverted: rowsTransferred + rowsSkipped,
+        });
+
+        if (rows.length < batchSize) break;
+
+    }
+
+    // Cleanup: disable identity insert
+    if (options.preserveIdentity !== false && plan.hasIdentity) {
+
+        const disableSql = destOps.getDisableIdentityInsertSql(plan.name);
+
+        if (disableSql) {
+
+            await attempt(() => sql.raw(disableSql).execute(ctx.destination.db));
+
+        }
+
+    }
+
+    const durationMs = Date.now() - startTime;
+
+    observer.emit('dt:stream:complete', {
+        table: plan.name,
+        rowsConverted: rowsTransferred + rowsSkipped,
+        durationMs,
+    });
+
+    if (transferError) {
+
+        return [null, transferError];
+
+    }
+
+    return [{
+        table: plan.name,
+        status: 'success',
+        rowsTransferred,
+        rowsSkipped,
+        durationMs,
     }, null];
 
 }

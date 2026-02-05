@@ -37,7 +37,7 @@ export const run: HeadlessCommand = async (_params, flags, logger) => {
         logger,
         fn: async (ctx) => {
 
-            await ctx.forceReleaseLock();
+            await ctx.noorm.forceReleaseLock();
 
             return true;
 

@@ -65,46 +65,6 @@ export interface CreateContextOptions {
 }
 
 // ─────────────────────────────────────────────────────────────
-// SQL Execution Types
-// ─────────────────────────────────────────────────────────────
-
-/**
- * Result of an execute() call.
- */
-export interface ExecuteResult {
-
-    /** Number of rows affected (if available) */
-    rowsAffected?: number;
-
-}
-
-/**
- * Transaction context for use within transaction callbacks.
- *
- * @example
- * ```typescript
- * await ctx.transaction(async (tx) => {
- *     const [user] = await tx.query('SELECT * FROM users WHERE id = $1', [id])
- *     await tx.execute('UPDATE users SET login_count = login_count + 1 WHERE id = $1', [id])
- *     return user
- * })
- * ```
- */
-export interface TransactionContext {
-
-    /**
-     * Execute a SELECT query within the transaction.
-     */
-    query<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<T[]>;
-
-    /**
-     * Execute an INSERT/UPDATE/DELETE within the transaction.
-     */
-    execute(sql: string, params?: unknown[]): Promise<ExecuteResult>;
-
-}
-
-// ─────────────────────────────────────────────────────────────
 // Build Options
 // ─────────────────────────────────────────────────────────────
 
@@ -115,5 +75,64 @@ export interface BuildOptions {
 
     /** Skip checksum checks, rebuild everything. Default: false */
     force?: boolean;
+
+}
+
+// ─────────────────────────────────────────────────────────────
+// DT Export/Import Options
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Options for exporting a table to a .dt file.
+ *
+ * Connection details (db, dialect) come from the context automatically.
+ *
+ * @example
+ * ```typescript
+ * const [result, err] = await ctx.exportTable('users', './exports/users.dtz', {
+ *     passphrase: 'secret',
+ *     batchSize: 5000,
+ * });
+ * ```
+ */
+export interface ExportOptions {
+
+    /** Passphrase for .dtzx encryption. */
+    passphrase?: string;
+
+    /** Schema/namespace (e.g., 'public' for PostgreSQL). */
+    schema?: string;
+
+    /** Rows per batch. Default: 1000. */
+    batchSize?: number;
+
+}
+
+/**
+ * Options for importing a .dt file into the database.
+ *
+ * Connection details (db, dialect) come from the context automatically.
+ *
+ * @example
+ * ```typescript
+ * const [result, err] = await ctx.importFile('./exports/users.dtz', {
+ *     onConflict: 'skip',
+ *     truncate: true,
+ * });
+ * ```
+ */
+export interface ImportOptions {
+
+    /** Passphrase for .dtzx decryption. */
+    passphrase?: string;
+
+    /** Rows per batch. Default: 1000. */
+    batchSize?: number;
+
+    /** Conflict strategy. Default: 'fail'. */
+    onConflict?: 'fail' | 'skip' | 'update' | 'replace';
+
+    /** Truncate target table before import. Default: false. */
+    truncate?: boolean;
 
 }

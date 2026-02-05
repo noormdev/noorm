@@ -45,7 +45,7 @@ export const run: HeadlessCommand = async (_params, flags, logger) => {
     const [result, error] = await withContext({
         flags,
         logger,
-        fn: (ctx) => ctx.teardown(),
+        fn: (ctx) => ctx.noorm.teardown(),
     });
 
     if (error) return 1;
@@ -57,12 +57,10 @@ export const run: HeadlessCommand = async (_params, flags, logger) => {
 
     if (flags.json) {
 
-        // Output structured JSON
-        const output = {
+        logger.result({
             dropped: result.dropped,
             count: droppedCount,
-        };
-        process.stdout.write(JSON.stringify(output) + '\n');
+        });
 
     }
     else {

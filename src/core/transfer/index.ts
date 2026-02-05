@@ -68,20 +68,19 @@ export async function transferData(
     options: TransferOptions = {},
 ): Promise<[TransferResult | null, Error | null]> {
 
-    // Validate dialects match
+    // Validate dialects are supported
     const srcDialect = sourceConfig.connection.dialect;
     const dstDialect = destConfig.connection.dialect;
 
-    if (srcDialect !== dstDialect) {
-
-        return [null, new Error(`Cross-dialect transfer not supported. Source: ${srcDialect}, Destination: ${dstDialect}`)];
-
-    }
-
-    // Validate dialect is supported
     if (!isTransferSupported(srcDialect)) {
 
         return [null, new Error(`Transfer not supported for dialect: ${srcDialect}. Supported: ${TRANSFER_SUPPORTED_DIALECTS.join(', ')}`)];
+
+    }
+
+    if (!isTransferSupported(dstDialect)) {
+
+        return [null, new Error(`Transfer not supported for dialect: ${dstDialect}. Supported: ${TRANSFER_SUPPORTED_DIALECTS.join(', ')}`)];
 
     }
 
@@ -164,19 +163,19 @@ export async function getTransferPlan(
     options: TransferOptions = {},
 ): Promise<[TransferPlan | null, Error | null]> {
 
-    // Validate dialects
+    // Validate dialects are supported
     const srcDialect = sourceConfig.connection.dialect;
     const dstDialect = destConfig.connection.dialect;
-
-    if (srcDialect !== dstDialect) {
-
-        return [null, new Error('Cross-dialect transfer not supported')];
-
-    }
 
     if (!isTransferSupported(srcDialect)) {
 
         return [null, new Error(`Transfer not supported for dialect: ${srcDialect}`)];
+
+    }
+
+    if (!isTransferSupported(dstDialect)) {
+
+        return [null, new Error(`Transfer not supported for dialect: ${dstDialect}`)];
 
     }
 

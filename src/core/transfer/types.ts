@@ -2,8 +2,10 @@
  * Data transfer types.
  *
  * Defines types for cross-database data transfer operations.
- * Supports same-dialect transfers with configurable conflict resolution.
+ * Supports same-dialect and cross-dialect transfers with configurable conflict resolution.
  */
+import type { DtColumn } from '../dt/types.js';
+import type { Dialect } from '../connection/types.js';
 
 /**
  * Strategy for handling primary key conflicts during transfer.
@@ -51,6 +53,12 @@ export interface TransferOptions {
     /** Validate only, don't execute. Default: false */
     dryRun?: boolean;
 
+    /** Export to .dt file instead of DB insert. */
+    exportPath?: string;
+
+    /** Passphrase for .dtzx export encryption. */
+    passphrase?: string;
+
 }
 
 /**
@@ -82,6 +90,9 @@ export interface TransferTablePlan {
     /** Tables this table depends on (FK references) */
     dependsOn: string[];
 
+    /** Column type definitions for cross-dialect transfers. */
+    columnTypes?: DtColumn[];
+
 }
 
 /**
@@ -102,6 +113,15 @@ export interface TransferPlan {
 
     /** Warnings about potential issues */
     warnings: string[];
+
+    /** Whether this is a cross-dialect transfer. */
+    crossDialect: boolean;
+
+    /** Source database dialect. */
+    sourceDialect: Dialect;
+
+    /** Destination database dialect. */
+    destinationDialect: Dialect;
 
 }
 

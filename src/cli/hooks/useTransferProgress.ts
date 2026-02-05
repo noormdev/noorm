@@ -64,6 +64,56 @@ export interface TransferTableProgress {
 }
 
 /**
+ * Per-table export result tracked by useTransferProgress.
+ */
+export interface ExportTableProgress {
+
+    /** Table name */
+    table: string;
+
+    /** Output file path */
+    filepath: string;
+
+    /** Rows written so far */
+    rowsWritten: number;
+
+    /** Bytes written so far */
+    bytesWritten: number;
+
+    /** Duration in ms (set on complete) */
+    durationMs?: number;
+
+}
+
+/**
+ * Import progress tracked by useTransferProgress.
+ */
+export interface ImportProgress {
+
+    /** Input file path */
+    filepath: string;
+
+    /** Source dialect from .dt schema header */
+    sourceDialect: string;
+
+    /** Source version from .dt schema header */
+    sourceVersion: string;
+
+    /** Table being imported */
+    table: string;
+
+    /** Rows imported so far */
+    rowsImported: number;
+
+    /** Rows skipped so far */
+    rowsSkipped: number;
+
+    /** Duration in ms (set on complete) */
+    durationMs?: number;
+
+}
+
+/**
  * State tracked by useTransferProgress.
  */
 export interface TransferProgressState {
@@ -111,6 +161,12 @@ export interface TransferProgressState {
     /** Final status (set on complete) */
     status: 'success' | 'partial' | 'failed' | null;
 
+    /** Export progress (populated during dt:export operations) */
+    exportTables: ExportTableProgress[];
+
+    /** Import progress (populated during dt:import operations) */
+    importProgress: ImportProgress | null;
+
 }
 
 /**
@@ -132,6 +188,8 @@ const INITIAL_STATE: TransferProgressState = {
     warnings: [],
     durationMs: 0,
     status: null,
+    exportTables: [],
+    importProgress: null,
 };
 
 type UseTransferProgressReturn = {
@@ -326,6 +384,179 @@ export function useTransferProgress(): UseTransferProgressReturn {
                 status: data.status,
                 durationMs: data.durationMs,
                 currentTable: null,
+            }));
+
+        },
+        [],
+    );
+
+    // -----------------------------------------------------------------------
+    // .dt export events
+    // -----------------------------------------------------------------------
+
+    useOnEvent(
+        'dt:export:start',
+        (data) => {
+
+            setState((prev) => ({
+                ...prev,
+                phase: 'running',
+                currentTable: data.table,
+                exportTables: [
+                    ...prev.exportTables,
+                    {
+                        table: data.table,
+                        filepath: data.filepath,
+                        rowsWritten: 0,
+                        bytesWritten: 0,
+                    },
+                ],
+            }));
+
+        },
+        [],
+    );
+
+    useOnEvent(
+        'dt:export:progress',
+        (data) => {
+
+            setState((prev) => {
+
+                const exportTables = prev.exportTables.map((t) => {
+
+                    if (t.table === data.table) {
+
+                        return {
+                            ...t,
+                            rowsWritten: data.rowsWritten,
+                            bytesWritten: data.bytesWritten,
+                        };
+
+                    }
+
+                    return t;
+
+                });
+
+                return {
+                    ...prev,
+                    currentRowsTransferred: data.rowsWritten,
+                    exportTables,
+                };
+
+            });
+
+        },
+        [],
+    );
+
+    useOnEvent(
+        'dt:export:complete',
+        (data) => {
+
+            setState((prev) => {
+
+                const exportTables = prev.exportTables.map((t) => {
+
+                    if (t.table === data.table) {
+
+                        return {
+                            ...t,
+                            rowsWritten: data.rowsWritten,
+                            bytesWritten: data.bytesWritten,
+                            durationMs: data.durationMs,
+                        };
+
+                    }
+
+                    return t;
+
+                });
+
+                return {
+                    ...prev,
+                    tablesCompleted: prev.tablesCompleted + 1,
+                    rowsTransferred: prev.rowsTransferred + data.rowsWritten,
+                    currentTable: null,
+                    currentRowsTransferred: 0,
+                    exportTables,
+                };
+
+            });
+
+        },
+        [],
+    );
+
+    // -----------------------------------------------------------------------
+    // .dt import events
+    // -----------------------------------------------------------------------
+
+    useOnEvent(
+        'dt:import:start',
+        (data) => {
+
+            setState((prev) => ({
+                ...prev,
+                phase: 'running',
+                currentTable: data.table,
+                tableCount: prev.tableCount + 1,
+                importProgress: {
+                    filepath: data.filepath,
+                    sourceDialect: data.sourceDialect,
+                    sourceVersion: data.sourceVersion,
+                    table: data.table,
+                    rowsImported: 0,
+                    rowsSkipped: 0,
+                },
+            }));
+
+        },
+        [],
+    );
+
+    useOnEvent(
+        'dt:import:progress',
+        (data) => {
+
+            setState((prev) => ({
+                ...prev,
+                currentRowsTransferred: data.rowsImported,
+                importProgress: prev.importProgress
+                    ? {
+                        ...prev.importProgress,
+                        rowsImported: data.rowsImported,
+                        rowsSkipped: data.rowsSkipped,
+                    }
+                    : null,
+            }));
+
+        },
+        [],
+    );
+
+    useOnEvent(
+        'dt:import:complete',
+        (data) => {
+
+            setState((prev) => ({
+                ...prev,
+                phase: 'complete',
+                status: 'success',
+                durationMs: prev.durationMs + data.durationMs,
+                rowsTransferred: prev.rowsTransferred + data.rowsImported,
+                rowsSkipped: prev.rowsSkipped + data.rowsSkipped,
+                tablesCompleted: prev.tablesCompleted + 1,
+                currentTable: null,
+                importProgress: prev.importProgress
+                    ? {
+                        ...prev.importProgress,
+                        rowsImported: data.rowsImported,
+                        rowsSkipped: data.rowsSkipped,
+                        durationMs: data.durationMs,
+                    }
+                    : null,
             }));
 
         },

@@ -50,6 +50,9 @@ const INFO_PATTERNS = [
     /^identity:/,
     /^connection:/,
     /^app:/,
+    /^transfer:/,
+    /^dt:/,
+    /^vault:/,
 ];
 
 /**

@@ -98,10 +98,10 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
 
         if (flags.json) {
 
-            process.stdout.write(JSON.stringify({
+            logger.result({
                 success: false,
                 error: 'Usage: noorm vault cp [--all] <key> <source> <destination>',
-            }) + '\n');
+            });
 
         }
         else {
@@ -124,7 +124,7 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
 
         if (flags.json) {
 
-            process.stdout.write(JSON.stringify({ success: false, error: msg }) + '\n');
+            logger.result({ success: false, error: msg });
 
         }
         else {
@@ -146,7 +146,7 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
 
         if (flags.json) {
 
-            process.stdout.write(JSON.stringify({ success: false, error: msg }) + '\n');
+            logger.result({ success: false, error: msg });
 
         }
         else {
@@ -167,7 +167,7 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
 
         if (flags.json) {
 
-            process.stdout.write(JSON.stringify({ success: false, error: loadErr.message }) + '\n');
+            logger.result({ success: false, error: loadErr.message });
 
         }
         else {
@@ -189,7 +189,7 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
 
         if (flags.json) {
 
-            process.stdout.write(JSON.stringify({ success: false, error: msg }) + '\n');
+            logger.result({ success: false, error: msg });
 
         }
         else {
@@ -208,7 +208,7 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
 
         if (flags.json) {
 
-            process.stdout.write(JSON.stringify({ success: false, error: msg }) + '\n');
+            logger.result({ success: false, error: msg });
 
         }
         else {
@@ -225,14 +225,14 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
 
         if (flags.json) {
 
-            process.stdout.write(JSON.stringify({
+            logger.result({
                 success: true,
                 dryRun: true,
                 source: sourceConfigName,
                 destination: destConfigName,
                 keys: keys === 'all' ? 'all' : keys,
                 force: flags.force,
-            }) + '\n');
+            });
 
         }
         else {
@@ -266,7 +266,7 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
 
         if (flags.json) {
 
-            process.stdout.write(JSON.stringify({ success: false, error: copyErr.message }) + '\n');
+            logger.result({ success: false, error: copyErr.message });
 
         }
         else {
@@ -281,12 +281,12 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
 
     if (flags.json) {
 
-        process.stdout.write(JSON.stringify({
+        logger.result({
             success: true,
             copied: result?.copied ?? [],
             skipped: result?.skipped ?? [],
             errors: result?.errors ?? [],
-        }) + '\n');
+        });
 
     }
     else {

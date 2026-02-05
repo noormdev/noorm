@@ -21,6 +21,7 @@ import { loadYaml } from './yaml.js';
 import { loadCsv } from './csv.js';
 import { loadJs } from './js.js';
 import { loadSql } from './sql.js';
+import { loadDt } from './dt.js';
 
 /**
  * Registry of loaders by file extension.
@@ -35,6 +36,9 @@ const loaders: LoaderRegistry = {
     '.mjs': loadJs,
     '.ts': loadJs,
     '.sql': loadSql,
+    '.dt': loadDt,
+    '.dtz': loadDt,
+    // NO .dtzx — can't provide passphrase in template context
 };
 
 /**
@@ -109,3 +113,4 @@ export { loadYaml } from './yaml.js';
 export { loadCsv } from './csv.js';
 export { loadJs } from './js.js';
 export { loadSql } from './sql.js';
+export { loadDt } from './dt.js';

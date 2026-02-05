@@ -7,11 +7,14 @@
  * ```typescript
  * import { createContext } from 'noorm/sdk'
  *
- * const ctx = await createContext({ config: 'dev' })
+ * const ctx = await createContext<MyDatabase>({ config: 'dev' })
  * await ctx.connect()
  *
- * // Query the database
- * const users = await ctx.query<User>('SELECT * FROM users')
+ * // Type-safe queries via Kysely
+ * const users = await ctx.kysely
+ *     .selectFrom('users')
+ *     .selectAll()
+ *     .execute()
  *
  * // Run SQL files
  * await ctx.runFile('./seeds/users.sql')
@@ -86,9 +89,9 @@ function toSettingsProvider(manager: SettingsManager): SettingsProvider {
  * const ctx = await createContext()
  * ```
  */
-export async function createContext<DB = unknown>(
+export async function createContext<DB = unknown, Procs = object, Funcs = object>(
     options: CreateContextOptions = {},
-): Promise<Context<DB>> {
+): Promise<Context<DB, Procs, Funcs>> {
 
     // Resolve project root
     const projectRoot = options.projectRoot ?? process.cwd();
@@ -129,7 +132,7 @@ export async function createContext<DB = unknown>(
     // Resolve identity (respecting config override if set)
     const identity = getIdentityForConfig(config);
 
-    return new Context<DB>(config, settings, identity, options, projectRoot);
+    return new Context<DB, Procs, Funcs>(config, settings, identity, options, projectRoot);
 
 }
 
@@ -138,13 +141,14 @@ export async function createContext<DB = unknown>(
 // ─────────────────────────────────────────────────────────────
 
 export { Context } from './context.js';
+export { NoormOps } from './noorm-ops.js';
 
 // Types
 export type {
     CreateContextOptions,
-    ExecuteResult,
-    TransactionContext,
     BuildOptions,
+    ExportOptions,
+    ImportOptions,
 } from './types.js';
 
 // Guards (errors for catching)
@@ -179,3 +183,13 @@ export { LockAcquireError, LockExpiredError } from '../core/lock/index.js';
 
 // Template types
 export type { ProcessResult as TemplateResult } from '../core/template/index.js';
+
+// Transfer types
+export type {
+    TransferOptions,
+    TransferPlan,
+    TransferTablePlan,
+    TransferResult,
+    TransferTableResult,
+    ConflictStrategy,
+} from '../core/transfer/index.js';

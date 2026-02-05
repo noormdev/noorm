@@ -7,7 +7,7 @@ You have two databases with the same schema—staging and production, dev and QA
 
 Database-native tools (`pg_dump`, `mysqldump`, `bcp`) work but they're dialect-specific, require shell access, and don't integrate with your config management. Writing custom scripts means handling FK ordering, identity columns, conflict resolution, and batch sizing yourself. Every dialect has its own quirks.
 
-noorm's transfer module moves data between any two same-dialect databases using your existing configs. It handles FK dependency ordering, identity column preservation, same-server optimization, and configurable conflict resolution. PostgreSQL, MySQL, and MSSQL are supported.
+noorm's transfer module moves data between databases using your existing configs. It handles FK dependency ordering, identity column preservation, same-server optimization, and configurable conflict resolution. PostgreSQL, MySQL, and MSSQL are supported—including cross-dialect transfers (e.g., PostgreSQL to MySQL) with automatic type conversion.
 
 
 ## How It Works
@@ -16,12 +16,13 @@ Transfer operates in two phases:
 
 1. **Planning** — Introspects source and destination schemas, builds a dependency graph from foreign keys, topologically sorts tables, and detects whether both databases share a server.
 
-2. **Execution** — Transfers tables in dependency order using one of two strategies:
+2. **Execution** — Transfers tables in dependency order using one of three strategies:
 
 | Strategy | When | How |
 |----------|------|-----|
-| Same-server | Source and destination on same host/port | Direct `INSERT INTO dest SELECT * FROM source` |
-| Cross-server | Different hosts or ports | Batched read from source, write to destination |
+| Same-server | Same host/port, same dialect | Direct `INSERT INTO dest SELECT * FROM source` |
+| Cross-server | Different hosts, same dialect | Batched read from source, write to destination |
+| Cross-dialect | Different dialects | Batched read → type conversion via DtStreamer → write |
 
 Same-server detection varies by dialect:
 
@@ -82,6 +83,12 @@ interface TransferOptions {
 
     /** Validate only, don't execute. Default: false */
     dryRun?: boolean
+
+    /** Export to .dt file instead of DB insert. */
+    exportPath?: string
+
+    /** Passphrase for .dtzx export encryption. */
+    passphrase?: string
 
 }
 ```
@@ -194,6 +201,144 @@ Foreign key checks are disabled on the destination before transfer and re-enable
 | MSSQL | `ALTER TABLE ... NOCHECK CONSTRAINT ALL` (per table) | `ALTER TABLE ... CHECK CONSTRAINT ALL` |
 
 
+## Cross-Dialect Transfers
+
+When source and destination use different dialects (e.g., PostgreSQL to MySQL), the transfer module uses the `DtStreamer` for in-memory type conversion.
+
+### How It Works
+
+1. Query source database version via `queryDatabaseVersion()`
+2. Build column type mappings via `buildDtSchema()` — maps dialect-specific types to universal intermediates
+3. Validate target schema compatibility via `validateSchema()`
+4. For each batch:
+   - Fetch rows from source
+   - Convert via `streamer.convertBatch()` — source values → universal → target values
+   - Insert into destination
+
+No file I/O or JSON serialization occurs—conversion happens entirely in memory on native JavaScript objects.
+
+### Universal Type System
+
+The `DtStreamer` converts between dialect types through a universal intermediate:
+
+| Category | Universal Types |
+|----------|-----------------|
+| Simple | `string`, `int`, `bigint`, `float`, `decimal`, `bool`, `timestamp`, `date`, `uuid` |
+| Encoded | `json`, `binary`, `vector`, `array`, `custom` |
+
+Version-aware mappings handle dialect differences:
+
+| Type | PostgreSQL | MySQL | MSSQL |
+|------|------------|-------|-------|
+| JSON | `jsonb` | `JSON` | `NVARCHAR(MAX)` (pre-2025), `JSON` (2025+) |
+| Vector | `vector(N)` | `VECTOR(N)` (9.0+) | `VECTOR(N)` (2025+) |
+| UUID | `uuid` | `CHAR(36)` | `UNIQUEIDENTIFIER` |
+| Boolean | `boolean` | `TINYINT(1)` | `BIT` |
+| Array | `type[]` | JSON fallback | JSON fallback |
+
+### Soft-Limit Batching
+
+Cross-dialect transfers use soft-limit batching to prevent OOM on tables with large BLOB/BINARY columns:
+
+- Default batch size: 1000 rows
+- Memory threshold: 1GB per batch
+- Whichever limit is reached first triggers a flush
+
+```typescript
+const streamer = createStreamer({
+    sourceDialect: 'postgres',
+    targetDialect: 'mysql',
+    columns: schema.columns,
+    batchSize: 1000,        // soft row limit
+    maxBatchBytes: gigabytes(1),  // memory limit
+})
+```
+
+
+## File Export/Import
+
+The `.dt` format provides portable data files for backup, migration, and seeding.
+
+### File Extensions
+
+| Extension | Description |
+|-----------|-------------|
+| `.dt` | Plain text (human-readable JSON5) |
+| `.dtz` | Gzip-compressed |
+| `.dtzx` | Encrypted + compressed (AES-256-GCM with passphrase) |
+
+### Format Structure
+
+Each `.dt` file is line-based JSON5:
+
+```
+{v:1,d:"postgres",dv:"16.2",t:"users",columns:[{name:"id",type:"int"},{name:"email",type:"string"}]}
+[1,"alice@example.com"]
+[2,"bob@example.com"]
+```
+
+Line 1 is the schema header with source dialect, version, table name, and column definitions. Subsequent lines are data rows as JSON5 arrays.
+
+### Encoding
+
+Values use smart encoding based on size and compressibility:
+
+| Condition | Encoding |
+|-----------|----------|
+| Small values (< 128 bytes) | `raw` (inline) |
+| Binary data | `b64` (base64) |
+| Large compressible data (gzip saves ≥15%) | `gz64` (gzip + base64) |
+
+Encoded values appear as tuples: `["SGVsbG8gV29ybGQ=", "b64"]`
+
+### API
+
+```typescript
+import { exportTable, importDtFile } from './core/dt'
+
+// Export a table to .dt file
+const [result, err] = await exportTable({
+    db: kyselyDb,
+    dialect: 'postgres',
+    tableName: 'users',
+    filepath: './backup/users.dtz',
+    batchSize: 5000,
+})
+
+// Import from .dt file
+const [importResult, importErr] = await importDtFile({
+    filepath: './backup/users.dtz',
+    db: destDb,
+    dialect: 'mysql',
+    onConflict: 'update',
+})
+```
+
+### Encryption
+
+`.dtzx` files use passphrase-based encryption:
+
+- Key derivation: PBKDF2 with random salt
+- Cipher: AES-256-GCM with random IV
+- Format: `{ salt, iv, authTag, ciphertext }` (all base64)
+
+The encryption is self-contained—no dependency on noorm's identity system. Files can be shared and decrypted anywhere with the passphrase.
+
+### Template Loader Integration
+
+`.dt` and `.dtz` files work as seed data in templates:
+
+```sql
+-- seeds/users.sql
+<% const users = await load('./users.dt') %>
+<% for (const row of users) { %>
+INSERT INTO users (id, email) VALUES (<%= row.id %>, '<%= row.email %>');
+<% } %>
+```
+
+Note: `.dtzx` files are not supported in templates—there's no secure way to provide the passphrase.
+
+
 ## Dialect Operations
 
 Each dialect implements the `TransferDialectOperations` interface:
@@ -263,6 +408,15 @@ interface TransferPlan {
     /** Warnings about potential issues */
     warnings: string[]
 
+    /** Whether this is a cross-dialect transfer */
+    crossDialect: boolean
+
+    /** Source database dialect */
+    sourceDialect: Dialect
+
+    /** Destination database dialect */
+    destinationDialect: Dialect
+
 }
 
 interface TransferTablePlan {
@@ -275,6 +429,9 @@ interface TransferTablePlan {
     primaryKey: string[]
     columns: string[]
     dependsOn: string[]
+
+    /** Column type definitions for cross-dialect transfers */
+    columnTypes?: DtColumn[]
 
 }
 ```
@@ -313,6 +470,8 @@ interface TransferTableResult {
 
 ## Observer Events
 
+### Transfer Events
+
 | Event | Payload | When |
 |-------|---------|------|
 | `transfer:planning` | `{ source, destination }` | Planning phase starts |
@@ -322,6 +481,27 @@ interface TransferTableResult {
 | `transfer:table:progress` | `{ table, rowsTransferred, rowsTotal, rowsSkipped }` | During batch transfers |
 | `transfer:table:after` | `{ table, status, rowsTransferred, rowsSkipped, durationMs, error? }` | After each table |
 | `transfer:complete` | `{ status, totalRows, tableCount, durationMs }` | Transfer finished |
+
+### Export/Import Events
+
+| Event | Payload | When |
+|-------|---------|------|
+| `dt:export:start` | `{ filepath, table, columnCount }` | Export begins |
+| `dt:export:progress` | `{ filepath, table, rowsWritten, bytesWritten }` | After each batch flush |
+| `dt:export:complete` | `{ filepath, table, rowsWritten, bytesWritten, durationMs }` | Export finished |
+| `dt:import:start` | `{ filepath, sourceDialect, sourceVersion, table }` | Import begins |
+| `dt:import:schema` | `{ filepath, table, columns, validation }` | Schema parsed and validated |
+| `dt:import:progress` | `{ filepath, table, rowsImported, rowsSkipped }` | After each batch insert |
+| `dt:import:complete` | `{ filepath, table, rowsImported, rowsSkipped, durationMs }` | Import finished |
+
+### Cross-Dialect Stream Events
+
+| Event | Payload | When |
+|-------|---------|------|
+| `dt:stream:start` | `{ table, sourceDialect, targetDialect }` | Cross-dialect stream begins |
+| `dt:stream:progress` | `{ table, rowsConverted }` | After each batch conversion |
+| `dt:stream:complete` | `{ table, rowsConverted, durationMs }` | Cross-dialect stream finished |
+| `dt:validate:result` | `{ table, valid, errors, warnings }` | Schema validation completed |
 
 ```typescript
 import { observer } from './core/observer'
@@ -334,6 +514,10 @@ observer.on('transfer:table:progress', ({ table, rowsTransferred, rowsTotal }) =
 observer.on('transfer:complete', ({ status, totalRows, durationMs }) => {
     console.log(`Transfer ${status}: ${totalRows} rows in ${durationMs}ms`)
 })
+
+observer.on('dt:export:progress', ({ table, rowsWritten, bytesWritten }) => {
+    console.log(`Exporting ${table}: ${rowsWritten} rows, ${bytesWritten} bytes`)
+})
 ```
 
 
@@ -341,25 +525,42 @@ observer.on('transfer:complete', ({ status, totalRows, durationMs }) => {
 
 ### Interactive Mode (TUI)
 
-From the database menu, the transfer screen provides a wizard:
+From the database menu, the transfer screen provides a wizard with three modes:
 
-1. Select source config
-2. Select destination config
-3. Choose tables (all or specific)
-4. Set conflict strategy and options
-5. Preview plan
-6. Execute with live progress
+**DB-to-DB Transfer:**
+1. Select destination config
+2. Choose tables (all or specific)
+3. Set conflict strategy and options
+4. Preview plan
+5. Execute with live progress
+
+**Export to File:**
+1. Select "Export to .dt file" from destination list
+2. Choose tables
+3. Set export path, compression, and encryption options
+4. Execute with progress
+
+**Import from File:**
+1. Select "Import from .dt file" from destination list
+2. Enter file path
+3. Enter passphrase (if `.dtzx`)
+4. Preview schema validation
+5. Set conflict strategy
+6. Execute with progress
 
 Access via: Home → `d` (database) → select config → transfer option
 
 ### Headless Mode
 
 ```bash
-# Transfer all tables
+# Transfer all tables to another config
 noorm -H db transfer --to backup
 
 # Transfer specific tables with upsert
 noorm -H db transfer --to backup --tables users,posts --on-conflict update
+
+# Cross-dialect transfer (postgres to mysql)
+noorm -H db transfer --to mysql-staging --tables users
 
 # Dry run to preview plan
 noorm -H db transfer --to backup --dry-run
@@ -369,7 +570,42 @@ noorm -H db transfer --to backup --truncate
 
 # JSON output for scripting
 noorm -H --json db transfer --to backup
+
+# Export single table to .dt file
+noorm -H db transfer --export ./backup/users.dt --tables users
+
+# Export multiple tables to directory (compressed)
+noorm -H db transfer --export ./backup/ --tables users,posts --compress
+
+# Export with encryption
+noorm -H db transfer --export ./backup/ --tables users,posts --passphrase "my-secret"
+
+# Import from .dt file
+noorm -H db transfer --import ./backup/users.dt
+
+# Import encrypted file with upsert
+noorm -H db transfer --import ./backup.dtzx --passphrase "my-secret" --on-conflict update
+
+# Validate import schema without executing
+noorm -H db transfer --import ./backup.dt --dry-run
 ```
+
+### Export Path Rules
+
+The `--tables` flag is required for export. The `--export` path is interpreted based on table count:
+
+| Scenario | Path | Result |
+|----------|------|--------|
+| Single table | `./data/users.dt` | Writes to that exact path |
+| Multiple tables | `./data/backup/` | Creates `<table>.dt` per table |
+
+Extension determines format when specified explicitly. Otherwise:
+
+| Flags | Output Extension |
+|-------|------------------|
+| (none) | `.dt` |
+| `--compress` | `.dtz` |
+| `--passphrase` | `.dtzx` |
 
 
 ## Module Structure
@@ -380,7 +616,7 @@ src/core/transfer/
 ├── types.ts            # Type definitions
 ├── events.ts           # Observer event types
 ├── planner.ts          # Schema analysis, FK ordering, plan building
-├── executor.ts         # Transfer execution (same-server + cross-server)
+├── executor.ts         # Transfer execution (same-server, cross-server, cross-dialect)
 ├── same-server.ts      # Same-server detection logic
 └── dialects/
     ├── index.ts        # Dialect factory
@@ -388,17 +624,40 @@ src/core/transfer/
     ├── postgres.ts     # PostgreSQL implementation
     ├── mysql.ts        # MySQL implementation
     └── mssql.ts        # MSSQL implementation
+
+src/core/dt/
+├── index.ts            # Public API: exportTable, importDtFile, createStreamer
+├── types.ts            # DtSchema, DtColumn, UniversalType, Encoding, etc.
+├── constants.ts        # Thresholds (GZIP_THRESHOLD=128, GZIP_RATIO_THRESHOLD=0.85)
+├── events.ts           # Observer event types for dt operations
+├── type-map.ts         # toUniversalType(), toDialectType()
+├── serialize.ts        # serializeRow(), encodeValue()
+├── deserialize.ts      # deserializeRow(), decodeValue()
+├── writer.ts           # DtWriter class (streaming file writer)
+├── reader.ts           # DtReader class (streaming file reader)
+├── streamer.ts         # DtStreamer class (in-memory cross-dialect conversion)
+├── schema.ts           # buildDtSchema(), validateSchema()
+├── version.ts          # queryDatabaseVersion()
+├── crypto.ts           # encryptWithPassphrase(), decryptWithPassphrase()
+├── paths.ts            # resolveExportPath(), resolveExportExtension()
+└── dialects/
+    ├── index.ts        # Dialect registry
+    ├── postgres.ts     # PostgreSQL type mappings
+    ├── mysql.ts        # MySQL type mappings (version-aware)
+    └── mssql.ts        # MSSQL type mappings (version-aware)
 ```
 
 
 ## Limitations
 
-1. **Same-dialect only** — Source and destination must use the same database dialect. Cross-dialect transfers (e.g., PostgreSQL to MySQL) are not supported.
+1. **SQLite not supported** — SQLite has no server concept and limited ALTER TABLE support, making it impractical for transfer operations.
 
-2. **SQLite not supported** — SQLite has no server concept and limited ALTER TABLE support, making it impractical for transfer operations.
+2. **Schema must pre-exist** — The destination database must already have matching table structures. Transfer does not create or modify schema.
 
-3. **Schema must pre-exist** — The destination database must already have matching table structures. Transfer does not create or modify schema.
+3. **Row-by-row conflict handling** — Cross-server and cross-dialect transfers with conflict strategies insert rows individually rather than in bulk, which is slower for large datasets with many conflicts.
 
-4. **Row-by-row conflict handling** — Cross-server transfers with conflict strategies insert rows individually rather than in bulk, which is slower for large datasets with many conflicts.
+4. **PostgreSQL cross-database** — PostgreSQL cannot query across databases without the `dblink` or `postgres_fdw` extensions. Same-server optimization only applies when both configs point to the same database.
 
-5. **PostgreSQL cross-database** — PostgreSQL cannot query across databases without the `dblink` or `postgres_fdw` extensions. Same-server optimization only applies when both configs point to the same database.
+5. **Type conversion fidelity** — Cross-dialect transfers convert through universal types. Some dialect-specific features may be lost (e.g., PostgreSQL arrays become JSON in MySQL, custom types become strings). The schema validation warns about potential issues before transfer begins.
+
+6. **No .dtzx in templates** — Encrypted `.dtzx` files cannot be used as seed data in templates because there's no secure way to provide the passphrase in the template context.

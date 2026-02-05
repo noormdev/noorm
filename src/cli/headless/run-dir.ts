@@ -40,7 +40,7 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
     const [result, error] = await withContext({
         flags,
         logger,
-        fn: (ctx) => ctx.runDir(params.path!),
+        fn: (ctx) => ctx.noorm.runDir(params.path!),
     });
 
     if (error) return 1;

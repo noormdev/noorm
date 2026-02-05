@@ -19,9 +19,10 @@
  * ```
  */
 import { createWriteStream } from 'node:fs';
-import { join } from 'node:path';
+import { mkdir } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 
-import { attempt, attemptSync } from '@logosdx/utils';
+import { attempt } from '@logosdx/utils';
 
 import { Logger, type LoggerOptions, type LogLevel } from '../../core/logger/index.js';
 import { getSettingsManager } from '../../core/settings/index.js';
@@ -177,11 +178,18 @@ async function createHeadlessLogger(
     // Use loaded settings or empty defaults
     const settings = settingsErr ? {} : settingsManager.settings;
 
-    // Attempt file logging (optional)
+    // Attempt file logging (optional — directory may not exist)
     const logPath = join(projectRoot, '.noorm', 'state', 'noorm.log');
-    const [fileStream] = attemptSync(() =>
-        createWriteStream(logPath, { flags: 'a' }),
-    );
+    const [, mkdirErr] = await attempt(() => mkdir(dirname(logPath), { recursive: true }));
+
+    let fileStream: ReturnType<typeof createWriteStream> | undefined;
+
+    if (!mkdirErr) {
+
+        fileStream = createWriteStream(logPath, { flags: 'a' });
+        fileStream.on('error', () => {}); // File logging is best-effort
+
+    }
 
     let defaultLevel: LogLevel = 'info';
 

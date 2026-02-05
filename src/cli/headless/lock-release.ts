@@ -34,7 +34,7 @@ export const run: HeadlessCommand = async (_params, flags, logger) => {
         logger,
         fn: async (ctx) => {
 
-            await ctx.releaseLock();
+            await ctx.noorm.releaseLock();
 
             return true;
 
@@ -45,8 +45,7 @@ export const run: HeadlessCommand = async (_params, flags, logger) => {
 
     if (flags.json) {
 
-        // Output structured JSON
-        process.stdout.write(JSON.stringify({ released: true }) + '\n');
+        logger.result({ released: true });
 
     }
     else {

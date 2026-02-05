@@ -23,6 +23,7 @@ import type { AppMode, ShutdownReason, ShutdownPhase, PhaseStatus } from './life
 import type { UpdateEvents } from './update/types.js';
 import type { VaultEvents } from './vault/events.js';
 import type { TransferEvents } from './transfer/events.js';
+import type { DtEvents } from './dt/events.js';
 
 /**
  * All events emitted by noorm core modules.
@@ -43,9 +44,10 @@ import type { TransferEvents } from './transfer/events.js';
  * - `settings:*` - Settings lifecycle and mutations
  * - `vault:*` - Vault operations
  * - `transfer:*` - Data transfer operations
+ * - `dt:*` - .dt format export/import/stream operations
  * - `error` - Catch-all errors
  */
-export interface NoormEvents extends SettingsEvents, UpdateEvents, VaultEvents, TransferEvents {
+export interface NoormEvents extends SettingsEvents, UpdateEvents, VaultEvents, TransferEvents, DtEvents {
     // File execution
     'file:before': { filepath: string; checksum: string; configName: string };
     'file:after': {

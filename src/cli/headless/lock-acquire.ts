@@ -40,20 +40,18 @@ export const run: HeadlessCommand = async (_params, flags, logger) => {
     const [lock, error] = await withContext({
         flags,
         logger,
-        fn: (ctx) => ctx.acquireLock(),
+        fn: (ctx) => ctx.noorm.acquireLock(),
     });
 
     if (error) return 1;
 
     if (flags.json) {
 
-        // Output structured JSON
-        const output = {
+        logger.result({
             acquired: true,
             lockedBy: lock.lockedBy,
             expiresAt: lock.expiresAt.toISOString(),
-        };
-        process.stdout.write(JSON.stringify(output) + '\n');
+        });
 
     }
     else {

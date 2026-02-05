@@ -17,6 +17,8 @@
  * noorm --json change ff    # JSON output for scripting
  * ```
  */
+import { Writable } from 'node:stream';
+
 import meow from 'meow';
 import { render } from 'ink';
 
@@ -26,6 +28,14 @@ import { shouldRunHeadless, runHeadless } from './headless/index.js';
 import { enableAutoLoggerInit } from '../core/logger/init.js';
 import { hasKeyFiles } from '../core/identity/storage.js';
 import { initProjectContext } from '../core/project.js';
+
+/**
+ * No-op stream that discards all writes.
+ *
+ * Used in TUI mode to suppress logger diagnostics output to stderr,
+ * which would otherwise bleed through and corrupt the Ink UI.
+ */
+const nullStream = new Writable({ write: (_, __, cb) => cb() });
 
 /**
  * Help text for the CLI.
@@ -390,12 +400,7 @@ async function main(): Promise<void> {
     // This enables running noorm from any subdirectory within a project
     const projectDiscovery = initProjectContext();
 
-    // Enable event-driven logger initialization
-    // This sets up listeners for settings:loaded and secret events
-    // so the logger can start capturing events as soon as settings are loaded
-    // Note: process.cwd() is now the project root if one was found
-    enableAutoLoggerInit(process.cwd());
-
+    // Parse CLI args early to determine mode before logger setup
     const { mode, route, params, flags } = parseCli();
 
     // Check if identity exists (global keys or env var)
@@ -411,11 +416,20 @@ async function main(): Promise<void> {
 
         }
 
-        // Run in headless mode
+        // Run in headless mode - creates its own Logger with stdout
         const exitCode = await runHeadless(route, params, flags);
         process.exit(exitCode);
 
     }
+
+    // TUI mode: Enable event-driven logger initialization
+    // This sets up listeners for settings:loaded and secret events
+    // so the logger can start capturing events as soon as settings are loaded
+    // Note: process.cwd() is now the project root if one was found
+    //
+    // Pass nullStream for both console and diagnostics to suppress all terminal
+    // output. Logs still go to file; only terminal output is suppressed.
+    enableAutoLoggerInit(process.cwd(), { console: nullStream, diagnostics: nullStream });
 
     // Determine effective route based on identity and project status
     let effectiveRoute: Route = route;

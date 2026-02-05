@@ -109,11 +109,10 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
 
         if (flags.json) {
 
-            // Output structured JSON for scripting
             const topics = Object.keys(handlers!)
                 .filter(r => r !== 'help')
                 .sort();
-            process.stdout.write(JSON.stringify({ topics }) + '\n');
+            logger.result({ topics });
 
         }
         else {
@@ -143,8 +142,7 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
 
     if (flags.json) {
 
-        // Output structured JSON for scripting
-        process.stdout.write(JSON.stringify({ topic: route, content: helpText }) + '\n');
+        logger.result({ topic: route, content: helpText });
 
     }
     else {

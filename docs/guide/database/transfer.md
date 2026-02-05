@@ -1,7 +1,7 @@
 # Data Transfer
 
 
-Move data between databases using your existing noorm configs. Source and destination must use the same dialect. Tables are transferred in foreign key order so referential integrity is maintained.
+Move data between databases using your existing noorm configs. Tables are transferred in foreign key order so referential integrity is maintained. Cross-dialect transfers (e.g., PostgreSQL to MySQL) are supported with automatic type conversion.
 
 
 ## When You Need This
@@ -13,14 +13,16 @@ The databases share the same schema—same tables, same columns. You need the da
 
 ## Supported Dialects
 
-| Dialect | Supported | Same-server optimization |
-|---------|-----------|--------------------------|
-| PostgreSQL | Yes | Only within same database |
-| MySQL | Yes | Yes (cross-database on same host) |
-| MSSQL | Yes | Yes (cross-database on same host) |
-| SQLite | No | — |
+| Dialect | Supported | Same-server optimization | Cross-dialect |
+|---------|-----------|--------------------------|---------------|
+| PostgreSQL | Yes | Only within same database | Yes |
+| MySQL | Yes | Yes (cross-database on same host) | Yes |
+| MSSQL | Yes | Yes (cross-database on same host) | Yes |
+| SQLite | No | — | — |
 
 Same-server optimization uses direct `INSERT...SELECT` SQL instead of reading data into the application and writing it back. Significantly faster for large datasets.
+
+Cross-dialect transfers convert data types automatically through a universal type system. Most common types map cleanly; some dialect-specific features (like PostgreSQL arrays) become JSON in dialects that don't support them natively.
 
 
 ## Interactive Mode
@@ -31,13 +33,17 @@ From the home screen:
 2. Select a config
 3. Choose the transfer option
 4. Walk through the wizard:
-   - Pick source and destination configs
+   - Pick destination (another config, export to file, or import from file)
    - Select tables (all or specific)
    - Choose a conflict strategy
    - Review the plan
    - Execute
 
 The TUI shows live progress per table with row counts and batch completion.
+
+**Export/Import options** appear in the destination selection list:
+- "Export to .dt file" — saves data to portable files
+- "Import from .dt file" — loads data from previously exported files
 
 
 ## Headless Mode
@@ -175,9 +181,9 @@ Dry run result:
 
 ## Requirements
 
-- Both databases must use the **same dialect** (both PostgreSQL, both MySQL, or both MSSQL)
-- Destination tables must **already exist** with matching column structure
+- Destination tables must **already exist** with compatible column structure
 - The noorm project must have configs for both source and destination databases
+- For cross-dialect transfers, column types must be convertible (most are; check the dry-run output for warnings)
 
 
 ## Common Patterns
@@ -221,3 +227,143 @@ noorm -H --json db transfer staging --to ci-test --truncate --on-conflict fail
 ```
 
 Clean transfer for test environments. JSON output for pipeline integration. Fails fast if anything goes wrong.
+
+### Cross-dialect migration
+
+```bash
+noorm -H db transfer postgres-legacy --to mysql-new --dry-run
+noorm -H db transfer postgres-legacy --to mysql-new
+```
+
+Migrate from PostgreSQL to MySQL. Run `--dry-run` first to check for type conversion warnings.
+
+
+## File Export/Import
+
+Export data to portable `.dt` files for backup, sharing, or migration without a live destination database.
+
+### File Formats
+
+| Extension | Description |
+|-----------|-------------|
+| `.dt` | Plain text (human-readable) |
+| `.dtz` | Compressed (gzip) |
+| `.dtzx` | Encrypted + compressed (requires passphrase) |
+
+### Export to Files
+
+The `--tables` flag is required for export.
+
+```bash
+# Export single table
+noorm -H db transfer --export ./backup/users.dt --tables users
+
+# Export multiple tables to a directory
+noorm -H db transfer --export ./backup/ --tables users,posts,comments
+
+# Export compressed
+noorm -H db transfer --export ./backup/ --tables users,posts --compress
+
+# Export encrypted (implies compression)
+noorm -H db transfer --export ./backup/ --tables users --passphrase "my-secret"
+```
+
+**Path rules:**
+- Single table → path is the output file
+- Multiple tables → path is a directory, noorm creates `<table>.dt` per table
+
+### Import from Files
+
+```bash
+# Import from .dt file
+noorm -H db transfer --import ./backup/users.dt
+
+# Import with upsert
+noorm -H db transfer --import ./backup/users.dtz --on-conflict update
+
+# Import encrypted file
+noorm -H db transfer --import ./backup.dtzx --passphrase "my-secret"
+
+# Validate schema compatibility only
+noorm -H db transfer --import ./backup/users.dt --dry-run
+```
+
+### Export/Import JSON Output
+
+Export result (single table):
+
+```json
+{
+    "success": true,
+    "mode": "export",
+    "filepath": "./backup/users.dt",
+    "tables": [
+        { "table": "users", "filepath": "./backup/users.dt", "rowsExported": 1500, "bytesWritten": 45230 }
+    ],
+    "totalRows": 1500,
+    "totalBytes": 45230
+}
+```
+
+Export result (multiple tables):
+
+```json
+{
+    "success": true,
+    "mode": "export",
+    "directory": "./backup/",
+    "tables": [
+        { "table": "users", "filepath": "./backup/users.dt", "rowsExported": 1500, "bytesWritten": 45230 },
+        { "table": "posts", "filepath": "./backup/posts.dt", "rowsExported": 800, "bytesWritten": 23100 }
+    ],
+    "totalRows": 2300,
+    "totalBytes": 68330
+}
+```
+
+Import result:
+
+```json
+{
+    "success": true,
+    "mode": "import",
+    "filepath": "./backup/users.dt",
+    "rowsImported": 1500,
+    "rowsSkipped": 0
+}
+```
+
+### Common Export/Import Patterns
+
+**Backup specific tables before risky operation:**
+
+```bash
+noorm -H db transfer --export ./pre-migration-backup/ --tables users,orders --compress
+# ... run migration ...
+# If something goes wrong:
+noorm -H db transfer --import ./pre-migration-backup/users.dt --truncate
+noorm -H db transfer --import ./pre-migration-backup/orders.dt --truncate
+```
+
+**Share test data with team:**
+
+```bash
+# Export encrypted for sharing
+noorm -H db transfer --export ./fixtures.dtzx --passphrase "team-secret" --tables users,posts
+
+# Teammate imports
+noorm -H db transfer --import ./fixtures.dtzx --passphrase "team-secret"
+```
+
+**Cross-dialect migration via file:**
+
+```bash
+# Export from PostgreSQL
+noorm use postgres-source
+noorm -H db transfer --export ./migration-data/ --tables users,posts
+
+# Import into MySQL
+noorm use mysql-target
+noorm -H db transfer --import ./migration-data/users.dt
+noorm -H db transfer --import ./migration-data/posts.dt
+```

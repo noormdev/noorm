@@ -40,19 +40,17 @@ export const run: HeadlessCommand = async (_params, flags, logger) => {
     const [result, error] = await withContext({
         flags,
         logger,
-        fn: (ctx) => ctx.truncate(),
+        fn: (ctx) => ctx.noorm.truncate(),
     });
 
     if (error) return 1;
 
     if (flags.json) {
 
-        // Output structured JSON
-        const output = {
+        logger.result({
             truncated: result.truncated,
             count: result.truncated.length,
-        };
-        process.stdout.write(JSON.stringify(output) + '\n');
+        });
 
     }
     else {

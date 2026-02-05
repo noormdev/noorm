@@ -58,15 +58,14 @@ export const run: HeadlessCommand = async (_params, flags, logger) => {
     const [overview, error] = await withContext({
         flags,
         logger,
-        fn: (ctx) => ctx.overview(),
+        fn: (ctx) => ctx.noorm.overview(),
     });
 
     if (error) return 1;
 
     if (flags.json) {
 
-        // Output structured JSON
-        process.stdout.write(JSON.stringify(overview) + '\n');
+        logger.result(overview);
 
     }
     else {

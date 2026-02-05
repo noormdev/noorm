@@ -50,14 +50,13 @@ export const run: HeadlessCommand = async (_params, flags, logger) => {
     const [status, error] = await withContext({
         flags,
         logger,
-        fn: (ctx) => ctx.getLockStatus(),
+        fn: (ctx) => ctx.noorm.getLockStatus(),
     });
 
     if (error) return 1;
 
     if (flags.json) {
 
-        // Output structured JSON
         const output = status.isLocked && status.lock
             ? {
                 isLocked: true,
@@ -68,7 +67,7 @@ export const run: HeadlessCommand = async (_params, flags, logger) => {
                 },
             }
             : { isLocked: false, lock: null };
-        process.stdout.write(JSON.stringify(output) + '\n');
+        logger.result(output);
 
     }
     else if (status.isLocked && status.lock) {

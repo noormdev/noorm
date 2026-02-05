@@ -325,15 +325,19 @@ describe('integration: mssql transfer', () => {
 
         });
 
-        it('should fail for dialect mismatch', async () => {
+        it('should attempt cross-dialect transfer without dialect rejection', async () => {
 
             const mismatchConfig = makeTestConfig('test_postgres', { ...TEST_CONNECTIONS.postgres });
 
-            const [result, err] = await transferData(sourceConfig, mismatchConfig);
+            const [, err] = await transferData(sourceConfig, mismatchConfig);
 
-            expect(result).toBeNull();
-            expect(err).not.toBeNull();
-            expect(err!.message).toContain('Cross-dialect transfer not supported');
+            // Cross-dialect is now supported — no early dialect rejection
+            // Transfer may still fail due to connection/schema issues
+            if (err) {
+
+                expect(err.message).not.toContain('Cross-dialect transfer not supported');
+
+            }
 
         });
 

@@ -5,7 +5,7 @@
 
 ### Cross-Database Data Transfer
 
-Add a complete data transfer system for copying data between databases of the same dialect (PostgreSQL, MySQL, MSSQL).
+Add a complete data transfer system for copying data between databases, including cross-dialect transfers (PostgreSQL ↔ MySQL ↔ MSSQL).
 
 **Planning & Execution**
 
@@ -36,6 +36,62 @@ Four strategies for handling primary key conflicts:
 - 7-phase TUI wizard: destination selection → table picker (multi-select with "all" toggle) → options → plan preview with dependency visualization → confirm → live progress bars → completion summary
 - Headless mode with `--to <config>` and full JSON output support
 - Observer events for real-time progress: `transfer:planning`, `transfer:plan:ready`, `transfer:table:progress`, `transfer:complete`
+
+---
+
+### Portable .dt Data Format
+
+Add a portable data format (`.dt`) for file-based export/import and cross-dialect database transfers.
+
+**Format**
+
+- JSON5-based line format: schema header line followed by data rows
+- Three extensions: `.dt` (plain), `.dtz` (gzip compressed), `.dtzx` (encrypted + compressed)
+- Schema header captures source dialect, version, table name, and column types
+- Universal type system maps dialect-specific types to portable intermediates
+
+**Type System**
+
+- Simple types: `string`, `int`, `bigint`, `float`, `decimal`, `bool`, `timestamp`, `date`, `uuid`
+- Encoded types: `json`, `binary`, `vector`, `array`, `custom`
+- Version-aware mappings: MySQL VECTOR (9.0+), MSSQL JSON/VECTOR (2025+), PostgreSQL array notation
+- Smart encoding: raw for small values, base64 for binary, gzip+base64 when compression saves ≥15%
+
+**Cross-Dialect Transfers**
+
+- In-memory `DtStreamer` converts source rows → universal intermediates → target rows
+- No file I/O or serialization overhead — pure type conversion
+- Soft-limit batching: flush at row count OR 1GB memory threshold to prevent OOM on large BLOBs
+- Version detection via `queryDatabaseVersion()` enables version-aware type mapping
+
+**File Export/Import**
+
+- `DtWriter`: streaming writer with extension-based format selection
+- `DtReader`: streaming reader with async row iteration
+- Passphrase-based encryption: PBKDF2 key derivation + AES-256-GCM
+- Schema validation: target table structure checked before import begins
+
+**CLI Integration**
+
+- `--export <path>` with `--tables`: single table → file path, multiple tables → directory with `<table>.dt` per table
+- `--import <path>`: load `.dt`/`.dtz`/`.dtzx` into active config
+- `--compress`: produce `.dtz` output
+- `--passphrase`: produce/consume encrypted `.dtzx`
+- Mutually exclusive with `--to` (file export vs db-to-db transfer)
+
+**TUI Integration**
+
+- Export/import options in destination selection phase
+- Export flow: destination → tables → export options (path, compress, encrypt) → confirm → progress → complete
+- Import flow: file path → passphrase (if `.dtzx`) → schema preview with validation → options → confirm → progress → complete
+
+**Template Loader**
+
+- `.dt` and `.dtz` files usable as seed data in templates
+- Registered in template loader system alongside SQL and JSON loaders
+- No `.dtzx` support in templates (no way to provide passphrase)
+
+**Observer Events**: `dt:export:start`, `dt:export:progress`, `dt:export:complete`, `dt:import:start`, `dt:import:schema`, `dt:import:progress`, `dt:import:complete`, `dt:stream:start`, `dt:stream:progress`, `dt:stream:complete`, `dt:validate:result`
 
 ---
 
@@ -74,6 +130,34 @@ Secrets available in template context as `<%= secrets.KEY_NAME %>` via `buildSec
 - Observer events: `vault:initialized`, `vault:secret:created`, `vault:secret:updated`, `vault:secret:deleted`, `vault:propagated`, `vault:copy:completed`
 
 **Database Schema**: New `__noorm_vault__` table (`secret_key`, `encrypted_value`, `set_by`, timestamps) and `encrypted_vault_key` column on `__noorm_identities__`
+
+---
+
+### SDK: Move noorm operations to `ctx.noorm` namespace
+
+**Breaking:** Refactor the SDK Context to separate SQL-focused operations from noorm management operations. All schema, change, lock, runner, explore, transfer, and DT methods move from the top-level `ctx` to a new `ctx.noorm` namespace via a lazy-initialized `NoormOps` class.
+
+Top-level Context retains only SQL-focused API: `kysely`, `dialect`, `connected`, `connect()`, `disconnect()`, `transaction()`, `proc()`, `func()`.
+
+**Before:**
+```ts
+await ctx.build()
+await ctx.fastForward()
+const tables = await ctx.listTables()
+await ctx.acquireLock()
+```
+
+**After:**
+```ts
+await ctx.noorm.build()
+await ctx.noorm.fastForward()
+const tables = await ctx.noorm.listTables()
+await ctx.noorm.acquireLock()
+```
+
+Properties `config`, `settings`, `identity`, `observer` also move to `ctx.noorm`.
+
+**Migration:** Add `.noorm` between `ctx` and any management method call. SQL operations (`kysely`, `transaction`, `proc`, `func`) and lifecycle (`connect`, `disconnect`) are unchanged.
 
 ---
 

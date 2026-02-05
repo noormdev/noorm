@@ -251,7 +251,7 @@ describe('logger: output formats', () => {
                 projectRoot,
                 settings,
                 config: DEFAULT_LOGGER_CONFIG,
-                console: stream,
+                diagnostics: stream,
                 json: false,
                 color: false,
             });
@@ -274,7 +274,7 @@ describe('logger: output formats', () => {
                 projectRoot,
                 settings,
                 config: DEFAULT_LOGGER_CONFIG,
-                console: stream,
+                diagnostics: stream,
                 json: false,
                 color: false,
             });
@@ -352,7 +352,7 @@ describe('logger: output formats', () => {
                 projectRoot,
                 settings,
                 config: DEFAULT_LOGGER_CONFIG,
-                console: stream,
+                diagnostics: stream,
                 json: false,
                 color: false,
             });

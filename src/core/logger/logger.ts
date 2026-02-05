@@ -112,6 +112,9 @@ export interface LoggerOptions {
     /** Console stream to write to (defaults to stdout in CI mode) */
     console?: Writable;
 
+    /** Error stream to write to (defaults to stderr) */
+    diagnostics?: Writable;
+
     /** Enable colored output for console (default: true if console provided) */
     color?: boolean;
 
@@ -131,8 +134,16 @@ export class Logger {
 
     #config: LoggerConfig;
     #context: Record<string, unknown>;
-    #file: Writable | null = null;
-    #console: Writable | null = null;
+    #writers: {
+        file: Writable | null;
+        console: Writable;
+        diagnostics: Writable;
+    } = {
+            file: null,
+            console: process.stdout,
+            diagnostics: process.stderr,
+        };
+
     #color: boolean = false;
     #json: boolean = false;
     #queue: EventQueue<NoormEvents, RegExp> | null = null;
@@ -154,23 +165,28 @@ export class Logger {
 
         }
 
+        if (options.color) {
+
+            this.#color = options.color;
+
+        }
+
         // Set up streams
         if (options.console) {
 
-            this.#console = options.console;
-            this.#color = options.color ?? true; // Default to color if console provided
+            this.#writers.console = options.console;
 
         }
-        else if (isCi()) {
 
-            this.#console = process.stdout;
-            this.#color = options.color ?? true; // Enable color in CI (most terminals support it)
+        if (options.diagnostics) {
+
+            this.#writers.diagnostics = options.diagnostics;
 
         }
 
         if (options.file) {
 
-            this.#file = options.file;
+            this.#writers.file = options.file;
 
         }
 
@@ -296,16 +312,16 @@ export class Logger {
         }
 
         // Create file stream if config.file is set but no explicit file option
-        if (!this.#file && this.#config.file) {
+        if (!this.#writers.file && this.#config.file) {
 
             const filePath = this.filepath;
             await mkdir(dirname(filePath), { recursive: true });
-            this.#file = createWriteStream(filePath, { flags: 'a' });
+            this.#writers.file = createWriteStream(filePath, { flags: 'a' });
 
         }
 
         // Check rotation before starting (if file logging)
-        if (this.#file) {
+        if (this.#writers.file) {
 
             const rotationResult = await checkAndRotate(
                 this.filepath,
@@ -394,11 +410,11 @@ export class Logger {
         }
 
         // Close file stream if we own it
-        if (this.#file && this.#file !== process.stdout && this.#file !== process.stderr) {
+        if (this.#writers.file && this.#writers.file !== process.stdout && this.#writers.file !== process.stderr) {
 
             await new Promise<void>((resolve) => {
 
-                this.#file!.end(() => resolve());
+                this.#writers.file!.end(() => resolve());
 
             });
 
@@ -439,8 +455,10 @@ export class Logger {
         let entryLevel = classifyEvent(event);
 
         // Override to error for failed/partial completions and file executions
+        // Only apply if the event actually has a status field
         if (
             (event.endsWith(':complete') || event.endsWith(':after')) &&
+            'status' in data &&
             data['status'] !== 'success' &&
             data['status'] !== 'skipped'
         ) {
@@ -484,19 +502,13 @@ export class Logger {
         data: Record<string, unknown>,
     ): void {
 
-        if (!this.#console) {
-
-            return;
-
-        }
-
         const hasData = data && Object.keys(data).length > 0;
 
         if (this.#json) {
 
             // JSON mode for console
             const entry = this.#buildJsonEntry(level, event, message, data, hasData);
-            this.#console.write(JSON.stringify(entry) + '\n');
+            this.#writers.console.write(JSON.stringify(entry) + '\n');
 
         }
         else if (this.#color) {
@@ -509,7 +521,7 @@ export class Logger {
                 message,
                 hasData ? data : undefined,
             );
-            this.#console.write(`[${timestamp}] ${colorLine}\n`);
+            this.#writers.diagnostics.write(`[${timestamp}] ${colorLine}\n`);
 
         }
         else {
@@ -525,7 +537,7 @@ export class Logger {
 
             }
 
-            this.#console.write(line + '\n');
+            this.#writers.diagnostics.write(line + '\n');
 
         }
 
@@ -543,7 +555,7 @@ export class Logger {
         data: Record<string, unknown>,
     ): void {
 
-        if (!this.#file) {
+        if (!this.#writers.file) {
 
             return;
 
@@ -551,7 +563,7 @@ export class Logger {
 
         const hasData = data && Object.keys(data).length > 0;
         const entry = this.#buildJsonEntry(level, event, message, data, hasData);
-        this.#file.write(JSON.stringify(entry) + '\n');
+        this.#writers.file.write(JSON.stringify(entry) + '\n');
 
     }
 
@@ -602,7 +614,7 @@ export class Logger {
      */
     async #checkRotation(): Promise<void> {
 
-        if (!this.#file || this.#state !== 'running') {
+        if (!this.#writers.file || this.#state !== 'running') {
 
             return;
 
@@ -693,6 +705,40 @@ export class Logger {
         // Use same output methods as observer events
         this.#writeConsole(level, 'log', message, filteredData);
         this.#writeFile(level, 'log', message, filteredData);
+
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Result output (for headless commands)
+    // ─────────────────────────────────────────────────────────────
+
+    /**
+     * Output a command result as JSON.
+     *
+     * Used by headless commands to output their final result.
+     * Writes raw JSON to stdout (for scripting) and to log file.
+     *
+     * @example
+     * ```typescript
+     * logger.result({ success: true, tables: [...], totalRows: 100 });
+     * // stdout: {"success":true,"tables":[...],"totalRows":100}
+     * ```
+     */
+    result(data: unknown): void {
+
+        const json = JSON.stringify(data) + '\n';
+
+        if (this.#writers.console) {
+
+            this.#writers.console.write(json);
+
+        }
+
+        if (this.#writers.file) {
+
+            this.#writers.file.write(json);
+
+        }
 
     }
 

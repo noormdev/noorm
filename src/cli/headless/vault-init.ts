@@ -101,7 +101,7 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
 
         if (flags.json) {
 
-            process.stdout.write(JSON.stringify({ success: false, error: err.message }) + '\n');
+            logger.result({ success: false, error: err.message });
 
         }
         else {
@@ -116,7 +116,7 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
 
     if (flags.json) {
 
-        process.stdout.write(JSON.stringify(result) + '\n');
+        logger.result(result);
 
     }
     else {

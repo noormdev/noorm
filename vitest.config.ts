@@ -6,7 +6,6 @@ export default defineConfig({
         environment: 'node',
         include: ['tests/**/*.test.{ts,tsx}'],
         globalSetup: './tests/global-setup.ts',
-        globalTeardown: './tests/global-teardown.ts',
         // Run tests sequentially to avoid resource contention
         // (integration tests spawn CLI processes that compete for resources)
         fileParallelism: false,

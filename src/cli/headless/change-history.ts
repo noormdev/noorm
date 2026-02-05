@@ -46,7 +46,7 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
     const [history, error] = await withContext({
         flags,
         logger,
-        fn: (ctx) => ctx.getHistory(params.count ?? 20),
+        fn: (ctx) => ctx.noorm.getHistory(params.count ?? 20),
     });
 
     if (error) return 1;

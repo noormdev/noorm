@@ -16,6 +16,7 @@ import type { TransferOptions, TransferPlan, TransferTablePlan } from './types.j
 import { observer } from '../observer.js';
 import { isSameServer } from './same-server.js';
 import { isTransferSupported } from './dialects/index.js';
+import { buildDtSchema } from '../dt/schema.js';
 
 /**
  * Table metadata for planning.
@@ -70,14 +71,22 @@ export async function planTransfer(
 
     }
 
-    // Validate same dialect
-    if (ctx.source.dialect !== ctx.destination.dialect) {
+    const crossDialect = ctx.source.dialect !== ctx.destination.dialect;
 
-        return [null, new Error('Cross-dialect transfer not supported')];
+    // Validate both dialects are supported
+    if (!isTransferSupported(ctx.destination.dialect)) {
+
+        return [null, new Error(`Transfer not supported for dialect: ${ctx.destination.dialect}`)];
 
     }
 
     const warnings: string[] = [];
+
+    if (crossDialect) {
+
+        warnings.push(`Cross-dialect transfer: ${ctx.source.dialect} → ${ctx.destination.dialect}. Type conversion will be applied.`);
+
+    }
 
     // Get all user tables from source
     const [allTables, tablesErr] = await listUserTables(ctx.source.db, dialect, options);
@@ -162,11 +171,32 @@ export async function planTransfer(
 
     }
 
-    // Detect same-server
-    const sameServer = isSameServer(
-        ctx.source.config.connection,
-        ctx.destination.config.connection,
-    );
+    // For cross-dialect transfers, build column type info for each table
+    if (crossDialect) {
+
+        for (const tablePlan of tablePlans) {
+
+            const [dtSchema] = await buildDtSchema({
+                db: ctx.source.db,
+                dialect: ctx.source.dialect,
+                tableName: tablePlan.name,
+                schema: tablePlan.schema,
+            });
+
+            if (dtSchema) {
+
+                tablePlan.columnTypes = dtSchema.columns;
+
+            }
+
+        }
+
+    }
+
+    // Detect same-server (only meaningful for same-dialect)
+    const sameServer = crossDialect
+        ? false
+        : isSameServer(ctx.source.config.connection, ctx.destination.config.connection);
 
     const estimatedRows = tablePlans.reduce((sum, t) => sum + t.rowCount, 0);
 
@@ -175,6 +205,9 @@ export async function planTransfer(
         sameServer,
         estimatedRows,
         warnings,
+        crossDialect,
+        sourceDialect: ctx.source.dialect,
+        destinationDialect: ctx.destination.dialect,
     };
 
     observer.emit('transfer:plan:ready', {

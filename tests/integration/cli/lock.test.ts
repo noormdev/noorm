@@ -73,7 +73,7 @@ describe('cli: lock status', () => {
 
         expect(result.ok).toBe(true);
 
-        const text = stripAnsi(result.stdout);
+        const text = stripAnsi(result.stderr);
         // Should show unlocked state (no active lock)
         expect(text.toLowerCase()).toMatch(/unlock|no.*lock/i);
 
