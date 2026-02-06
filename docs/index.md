@@ -18,23 +18,19 @@ hero:
 
 features:
   - icon:
-      src: /icons/bolt.svg
+      src: /icons/fast-forward.svg
     title: No Migration Sprawl
-    details: Fresh databases don't replay 3 years of history. Run your SQL files directly and get the current schema. Test databases rebuild in seconds.
+    details: SQL files show what IS, not archaeology of what WAS. Fresh databases build in seconds from current schema—no replaying 3 years of history.
   - icon:
-      src: /icons/code-branch.svg
-    title: See Current State
-    details: SQL files show what IS, not archaeology of what WAS. Open a file, see the schema. No tracing through 200 migrations to understand a table.
-  - icon:
-      src: /icons/flask.svg
+      src: /icons/database.svg
     title: Raw SQL Power
     details: Compound keys, complex constraints, proper relational modeling. Write the schema ORMs won't let you express.
   - icon:
-      src: /icons/terminal.svg
+      src: /icons/toolbox.svg
     title: Built-in Tools
     details: Schema explorer, SQL terminal, dynamic templates, encrypted secrets. Full database management without leaving your terminal.
   - icon:
-      src: /icons/lock.svg
+      src: /icons/cubes.svg
     title: Type-Safe SDK
     details: Build your API layer with domain classes—consumers (queries), producers (mutations), and guards (validation). One package, used everywhere.
 ---
