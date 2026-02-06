@@ -24,6 +24,52 @@ on:
 jobs:
     build:
         runs-on: ubuntu-latest
+
+        services:
+            postgres:
+                image: postgres:17-alpine
+                ports:
+                    - 15432:5432
+                env:
+                    POSTGRES_USER: noorm_test
+                    POSTGRES_PASSWORD: noorm_test
+                    POSTGRES_DB: noorm_test
+                options: >-
+                    --health-cmd "pg_isready -U noorm_test"
+                    --health-interval 5s
+                    --health-timeout 5s
+                    --health-retries 5
+
+            mysql:
+                image: mysql:8.0
+                ports:
+                    - 13306:3306
+                env:
+                    MYSQL_ROOT_PASSWORD: noorm_test
+                    MYSQL_DATABASE: noorm_test
+                    MYSQL_USER: noorm_test
+                    MYSQL_PASSWORD: noorm_test
+                options: >-
+                    --health-cmd "mysqladmin ping -h localhost"
+                    --health-interval 5s
+                    --health-timeout 5s
+                    --health-retries 5
+
+            mssql:
+                image: mcr.microsoft.com/mssql/server:2022-latest
+                ports:
+                    - 11433:1433
+                env:
+                    ACCEPT_EULA: 'Y'
+                    SA_PASSWORD: 'NoOrm_Test123!'
+                    MSSQL_PID: Developer
+                options: >-
+                    --health-cmd "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'NoOrm_Test123!' -C -Q 'SELECT 1' || exit 1"
+                    --health-interval 10s
+                    --health-timeout 5s
+                    --health-retries 10
+                    --health-start-period 30s
+
         steps:
             - uses: actions/checkout@v4
 
@@ -37,12 +83,11 @@ jobs:
             - run: yarn typecheck
             - run: yarn build
             # Run tests with CI=false to match ink-testing-library behavior
-            # Exclude integration tests that require external database containers
             - name: Run tests
               env:
                   CI: 'false'
                   FORCE_COLOR: 'true'
-              run: yarn test --exclude=tests/integration/teardown/** --exclude=tests/integration/explore/** --exclude=tests/integration/sql-terminal/**
+              run: yarn test
 
     cli-e2e:
         runs-on: ubuntu-latest

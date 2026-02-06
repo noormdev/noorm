@@ -10,7 +10,7 @@ import { sql, type Kysely } from 'kysely';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { createConnection } from '../../src/core/connection/factory.js';
+import { createConnection, testConnection } from '../../src/core/connection/factory.js';
 import type { ConnectionConfig, ConnectionResult, Dialect } from '../../src/core/connection/types.js';
 import type { Config } from '../../src/core/config/types.js';
 
@@ -800,19 +800,10 @@ export async function isContainerRunning(dialect: Dialect): Promise<boolean> {
 
     if (dialect === 'sqlite') return true; // No container needed
 
-    try {
+    const config = TEST_CONNECTIONS[dialect];
+    const result = await testConnection(config, { testServerOnly: true });
 
-        const conn = await createTestConnection(dialect);
-        await conn.destroy();
-
-        return true;
-
-    }
-    catch {
-
-        return false;
-
-    }
+    return result.ok;
 
 }
 
