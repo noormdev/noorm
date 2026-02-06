@@ -54,12 +54,11 @@ import {
     importDtFile,
     DtReader,
     resolveExportExtension,
-    resolveExportPath,
     ensureExportDirectory,
 } from '../../../core/dt/index.js';
 import type { TransferOptions, TransferPlan, ConflictStrategy } from '../../../core/transfer/index.js';
 import type { Config } from '../../../core/config/types.js';
-import type { DtSchema, SchemaValidationResult } from '../../../core/dt/index.js';
+import type { DtSchema } from '../../../core/dt/index.js';
 
 type TransferMode = 'db-to-db' | 'export' | 'import';
 
@@ -308,7 +307,7 @@ export function DbTransferScreen({ params: _params }: ScreenProps): ReactElement
 
             setScanningFiles(true);
 
-            const { readdir, stat } = await import('fs/promises');
+            const { readdir } = await import('fs/promises');
             const { join } = await import('path');
 
             const dtFiles: string[] = [];

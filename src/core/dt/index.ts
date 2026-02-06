@@ -563,7 +563,7 @@ async function attemptUpdate(
     }
 
     // Use Kysely's update builder for proper value handling
-    const [result, err] = await attempt(() =>
+    const [, err] = await attempt(() =>
         db
             .updateTable(table as never)
             .set(updateValues as never)
