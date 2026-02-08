@@ -1,5 +1,7 @@
 # @noormdev/cli
 
+## 1.0.0-alpha.10
+
 ## 1.0.0-alpha.9
 
 ### Major Changes
