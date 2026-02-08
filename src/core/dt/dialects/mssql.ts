@@ -68,15 +68,17 @@ export const MSSQL_TO_UNIVERSAL: TypePattern[] = [
     { pattern: /^sql_variant$/i, universalType: 'custom', native: true },
     { pattern: /^hierarchyid$/i, universalType: 'custom', native: true },
 
-    // String types
-    { pattern: /^nvarchar\(max\)$/i, universalType: 'string', native: true },
-    { pattern: /^varchar\(max\)$/i, universalType: 'string', native: true },
+    // Text types (large variable-length text with smart compression)
+    { pattern: /^nvarchar\(max\)$/i, universalType: 'text', native: true },
+    { pattern: /^varchar\(max\)$/i, universalType: 'text', native: true },
+    { pattern: /^ntext$/i, universalType: 'text', native: true },
+    { pattern: /^text$/i, universalType: 'text', native: true },
+
+    // String types (short text-like types)
     { pattern: /^nvarchar/i, universalType: 'string', native: true },
     { pattern: /^varchar/i, universalType: 'string', native: true },
     { pattern: /^nchar/i, universalType: 'string', native: true },
     { pattern: /^char/i, universalType: 'string', native: true },
-    { pattern: /^ntext$/i, universalType: 'string', native: true },
-    { pattern: /^text$/i, universalType: 'string', native: true },
 
     // Everything else → custom
     { pattern: /.*/, universalType: 'custom', native: false },
@@ -100,6 +102,9 @@ export function getUniversalToMssql(universalType: UniversalType, version?: Data
 
     case 'string':
         return 'nvarchar(255)';
+
+    case 'text':
+        return 'nvarchar(max)';
 
     case 'int':
         return 'int';

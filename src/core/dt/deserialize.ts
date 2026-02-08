@@ -185,6 +185,10 @@ function convertEncodedForTarget(
     case 'json':
         return convertJsonForTarget(decoded, targetDialect, targetVersion);
 
+    case 'text':
+        // Text is a plain string after decoding, no target conversion needed
+        return decoded;
+
     case 'binary':
         // Binary is always a Buffer after decoding
         return decoded;

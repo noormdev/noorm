@@ -49,6 +49,7 @@ export type EncodedType =
     | 'binary'
     | 'vector'
     | 'array'
+    | 'text'
     | 'custom';
 
 /**

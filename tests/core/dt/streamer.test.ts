@@ -214,6 +214,30 @@ describe('dt: streamer', () => {
 
         });
 
+        it('should passthrough text between all dialect combinations', () => {
+
+            const columns: DtColumn[] = [{ name: 'content', type: 'text' }];
+            const content = 'Article body with multiline\ncontent and "quotes"';
+
+            for (const source of ['postgres', 'mysql', 'mssql'] as const) {
+
+                for (const target of ['postgres', 'mysql', 'mssql'] as const) {
+
+                    const streamer = new DtStreamer({
+                        sourceDialect: source,
+                        targetDialect: target,
+                        columns,
+                    });
+
+                    const result = streamer.convertBatch([{ content }]);
+                    expect(result[0]!.content).toBe(content);
+
+                }
+
+            }
+
+        });
+
     });
 
     // -----------------------------------------------------------------------

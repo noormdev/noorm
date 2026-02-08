@@ -173,6 +173,10 @@ export class DtStreamer {
         case 'json':
             return this.#convertJson(value);
 
+        case 'text':
+            // Text passes through unchanged
+            return value;
+
         case 'binary':
             // Binary data passes through unchanged
             return value;

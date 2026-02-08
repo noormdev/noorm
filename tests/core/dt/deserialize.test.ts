@@ -262,6 +262,48 @@ describe('dt: deserialize', () => {
 
         });
 
+        it('should decode raw text for all dialects', () => {
+
+            const col: DtColumn = { name: 'v', type: 'text' };
+            const text = 'Article body content here';
+
+            for (const dialect of ['postgres', 'mysql', 'mssql'] as const) {
+
+                const result = deserializeValue([text, 'raw'], col, dialect);
+                expect(result).toBe(text);
+
+            }
+
+        });
+
+        it('should decode gz64 text', () => {
+
+            const col: DtColumn = { name: 'v', type: 'text' };
+            const text = 'The quick brown fox. '.repeat(50);
+            const compressed = gzipSync(Buffer.from(JSON.stringify(text), 'utf8'));
+            const b64 = compressed.toString('base64');
+
+            const result = deserializeValue([b64, 'gz64'], col, 'postgres');
+            expect(result).toBe(text);
+
+        });
+
+        it('should decode text with special characters', () => {
+
+            const col: DtColumn = { name: 'v', type: 'text' };
+            const text = 'Line 1\nLine 2\n"quoted"\ttab\u0000null';
+            const result = deserializeValue([text, 'raw'], col, 'postgres');
+            expect(result).toBe(text);
+
+        });
+
+        it('should return null for null text', () => {
+
+            const col: DtColumn = { name: 'v', type: 'text' };
+            expect(deserializeValue(null, col, 'postgres')).toBe(null);
+
+        });
+
     });
 
 });

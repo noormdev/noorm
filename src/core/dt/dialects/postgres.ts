@@ -86,8 +86,10 @@ export const POSTGRES_TO_UNIVERSAL: TypePattern[] = [
     { pattern: /\[\]$/i, universalType: 'array', native: true },
     { pattern: /^ARRAY$/i, universalType: 'array', native: true },
 
-    // String types (catch-all for text-like types)
-    { pattern: /^text$/i, universalType: 'string', native: true },
+    // Text types (large variable-length text with smart compression)
+    { pattern: /^text$/i, universalType: 'text', native: true },
+
+    // String types (short text-like types)
     { pattern: /^varchar/i, universalType: 'string', native: true },
     { pattern: /^character varying/i, universalType: 'string', native: true },
     { pattern: /^char/i, universalType: 'string', native: true },
@@ -106,6 +108,7 @@ export const POSTGRES_TO_UNIVERSAL: TypePattern[] = [
  */
 export const UNIVERSAL_TO_POSTGRES: Record<UniversalType, string> = {
     string: 'text',
+    text: 'text',
     int: 'integer',
     bigint: 'bigint',
     float: 'double precision',

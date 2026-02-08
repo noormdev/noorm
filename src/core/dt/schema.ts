@@ -356,7 +356,12 @@ async function queryMssqlColumns(
         }>`
             SELECT
                 c.name,
-                TYPE_NAME(c.user_type_id) as type_name,
+                CASE
+                    WHEN TYPE_NAME(c.user_type_id) IN ('varchar', 'nvarchar', 'varbinary')
+                        AND c.max_length = -1
+                    THEN TYPE_NAME(c.user_type_id) + '(max)'
+                    ELSE TYPE_NAME(c.user_type_id)
+                END as type_name,
                 c.is_nullable
             FROM sys.columns c
             JOIN sys.tables t ON c.object_id = t.object_id

@@ -67,13 +67,15 @@ export const MYSQL_TO_UNIVERSAL: TypePattern[] = [
     { pattern: /^enum/i, universalType: 'custom', native: true },
     { pattern: /^set/i, universalType: 'custom', native: true },
 
-    // String types
+    // Text types (large variable-length text with smart compression)
+    { pattern: /^text$/i, universalType: 'text', native: true },
+    { pattern: /^mediumtext$/i, universalType: 'text', native: true },
+    { pattern: /^longtext$/i, universalType: 'text', native: true },
+
+    // String types (short text-like types)
     { pattern: /^char/i, universalType: 'string', native: true },
     { pattern: /^varchar/i, universalType: 'string', native: true },
     { pattern: /^tinytext$/i, universalType: 'string', native: true },
-    { pattern: /^text$/i, universalType: 'string', native: true },
-    { pattern: /^mediumtext$/i, universalType: 'string', native: true },
-    { pattern: /^longtext$/i, universalType: 'string', native: true },
 
     // Everything else → custom
     { pattern: /.*/, universalType: 'custom', native: false },
@@ -97,6 +99,9 @@ export function getUniversalToMysql(universalType: UniversalType, version?: Data
 
     case 'string':
         return 'varchar(255)';
+
+    case 'text':
+        return 'longtext';
 
     case 'int':
         return 'int';

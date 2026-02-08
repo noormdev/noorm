@@ -141,9 +141,17 @@ describe('dt: type-map', () => {
 
             });
 
+            it('should map text to text type', () => {
+
+                const result = toUniversalType({ dbType: 'text', dialect: 'postgres' });
+                expect(result.universalType).toBe('text');
+                expect(result.native).toBe(true);
+
+            });
+
             it('should map string types', () => {
 
-                for (const dbType of ['text', 'varchar(255)', 'character varying(100)', 'char(10)', 'citext', 'name']) {
+                for (const dbType of ['varchar(255)', 'character varying(100)', 'char(10)', 'citext', 'name']) {
 
                     const result = toUniversalType({ dbType, dialect: 'postgres' });
                     expect(result.universalType).toBe('string');
@@ -232,9 +240,21 @@ describe('dt: type-map', () => {
 
             });
 
+            it('should map text types to text', () => {
+
+                for (const dbType of ['text', 'mediumtext', 'longtext']) {
+
+                    const result = toUniversalType({ dbType, dialect: 'mysql' });
+                    expect(result.universalType).toBe('text');
+                    expect(result.native).toBe(true);
+
+                }
+
+            });
+
             it('should map string types', () => {
 
-                for (const dbType of ['varchar(255)', 'text', 'longtext', 'char(10)']) {
+                for (const dbType of ['varchar(255)', 'char(10)', 'tinytext']) {
 
                     const result = toUniversalType({ dbType, dialect: 'mysql' });
                     expect(result.universalType).toBe('string');
@@ -297,10 +317,15 @@ describe('dt: type-map', () => {
 
             });
 
-            it('should map nvarchar(max) to string', () => {
+            it('should map text types to text', () => {
 
-                const result = toUniversalType({ dbType: 'nvarchar(max)', dialect: 'mssql' });
-                expect(result.universalType).toBe('string');
+                for (const dbType of ['text', 'ntext', 'nvarchar(max)', 'varchar(max)']) {
+
+                    const result = toUniversalType({ dbType, dialect: 'mssql' });
+                    expect(result.universalType).toBe('text');
+                    expect(result.native).toBe(true);
+
+                }
 
             });
 
@@ -382,6 +407,27 @@ describe('dt: type-map', () => {
 
         });
 
+        it('should map text to text for postgres', () => {
+
+            const result = toDialectType({ universalType: 'text', dialect: 'postgres' });
+            expect(result).toBe('text');
+
+        });
+
+        it('should map text to longtext for mysql', () => {
+
+            const result = toDialectType({ universalType: 'text', dialect: 'mysql' });
+            expect(result).toBe('longtext');
+
+        });
+
+        it('should map text to nvarchar(max) for mssql', () => {
+
+            const result = toDialectType({ universalType: 'text', dialect: 'mssql' });
+            expect(result).toBe('nvarchar(max)');
+
+        });
+
         it('should map bool to boolean for postgres', () => {
 
             const result = toDialectType({ universalType: 'bool', dialect: 'postgres' });
@@ -438,6 +484,7 @@ describe('dt: type-map', () => {
             expect(isEncodedType('binary')).toBe(true);
             expect(isEncodedType('vector')).toBe(true);
             expect(isEncodedType('array')).toBe(true);
+            expect(isEncodedType('text')).toBe(true);
             expect(isEncodedType('custom')).toBe(true);
 
         });

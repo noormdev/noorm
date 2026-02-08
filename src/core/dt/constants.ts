@@ -53,6 +53,7 @@ export const ENCODED_TYPES: { [key in EncodedType]: true } = {
     binary: true,
     vector: true,
     array: true,
+    text: true,
     custom: true,
 };
 

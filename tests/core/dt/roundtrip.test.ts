@@ -273,6 +273,42 @@ describe('dt: roundtrip', () => {
 
         });
 
+        it('should round-trip small text (raw encoding)', async () => {
+
+            const columns: DtColumn[] = [{ name: 'content', type: 'text' }];
+            const rows = [{ content: 'short article' }, { content: '' }];
+
+            const result = await roundTrip(columns, rows, '.dt');
+
+            expect(result[0]!.content).toBe('short article');
+            expect(result[1]!.content).toBe('');
+
+        });
+
+        it('should round-trip large text (gz64 encoding)', async () => {
+
+            const columns: DtColumn[] = [{ name: 'content', type: 'text' }];
+            const largeText = 'The quick brown fox jumps over the lazy dog. '.repeat(100);
+            const rows = [{ content: largeText }];
+
+            const result = await roundTrip(columns, rows, '.dt');
+
+            expect(result[0]!.content).toBe(largeText);
+
+        });
+
+        it('should round-trip text with multiline and special characters', async () => {
+
+            const columns: DtColumn[] = [{ name: 'content', type: 'text' }];
+            const text = 'Line 1\nLine 2\n\t"quoted"\n\u{1F600} emoji\nend';
+            const rows = [{ content: text }];
+
+            const result = await roundTrip(columns, rows, '.dt');
+
+            expect(result[0]!.content).toBe(text);
+
+        });
+
     });
 
     // -----------------------------------------------------------------------
@@ -343,6 +379,7 @@ describe('dt: roundtrip', () => {
             const columns: DtColumn[] = [
                 { name: 'id', type: 'int' },
                 { name: 'name', type: 'string' },
+                { name: 'Content', type: 'text' },
                 { name: 'amount', type: 'decimal' },
                 { name: 'active', type: 'bool' },
                 { name: 'uid', type: 'uuid' },
@@ -350,9 +387,12 @@ describe('dt: roundtrip', () => {
                 { name: 'created_at', type: 'timestamp' },
             ];
 
+            const largeContent = 'This is a long article body with real content. '.repeat(50);
+
             const rows = [{
                 id: 42,
                 name: 'Alice Wonderland',
+                Content: largeContent,
                 amount: '1234.56',
                 active: true,
                 uid: '550e8400-e29b-41d4-a716-446655440000',
@@ -364,6 +404,7 @@ describe('dt: roundtrip', () => {
 
             expect(result[0]!.id).toBe(42);
             expect(result[0]!.name).toBe('Alice Wonderland');
+            expect(result[0]!.Content).toBe(largeContent);
             expect(result[0]!.amount).toBe('1234.56');
             expect(result[0]!.active).toBe(true);
             expect(result[0]!.uid).toBe('550e8400-e29b-41d4-a716-446655440000');

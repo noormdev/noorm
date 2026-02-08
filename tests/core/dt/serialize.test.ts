@@ -276,6 +276,73 @@ describe('dt: serialize', () => {
 
         });
 
+        it('should encode small text as raw', () => {
+
+            const result = encodeValue('hello world', 'text');
+            expect(result[0]).toBe('hello world');
+            expect(result[1]).toBe('raw');
+
+        });
+
+        it('should encode large compressible text as gz64', () => {
+
+            const largeText = 'x'.repeat(500);
+            const result = encodeValue(largeText, 'text');
+            expect(result[1]).toBe('gz64');
+
+        });
+
+        it('should encode text with special characters as raw when small', () => {
+
+            const text = 'Line 1\nLine 2\n"quoted"\ttab';
+            const result = encodeValue(text, 'text');
+            expect(result[0]).toBe(text);
+            expect(result[1]).toBe('raw');
+
+        });
+
+    });
+
+    // -----------------------------------------------------------------------
+    // serializeValue - text type
+    // -----------------------------------------------------------------------
+
+    describe('serializeValue - text type', () => {
+
+        it('should encode text column as tuple', () => {
+
+            const col: DtColumn = { name: 'content', type: 'text' };
+            const result = serializeValue('article body', col) as EncodedValue;
+            expect(Array.isArray(result)).toBe(true);
+            expect(result[0]).toBe('article body');
+            expect(result[1]).toBe('raw');
+
+        });
+
+        it('should return null for null text', () => {
+
+            const col: DtColumn = { name: 'content', type: 'text' };
+            expect(serializeValue(null, col)).toBe(null);
+
+        });
+
+        it('should return null for undefined text', () => {
+
+            const col: DtColumn = { name: 'content', type: 'text' };
+            expect(serializeValue(undefined, col)).toBe(null);
+
+        });
+
+        it('should compress large text content', () => {
+
+            const col: DtColumn = { name: 'content', type: 'text' };
+            const largeContent = 'The quick brown fox jumps over the lazy dog. '.repeat(50);
+            const result = serializeValue(largeContent, col) as EncodedValue;
+            expect(Array.isArray(result)).toBe(true);
+            expect(result[1]).toBe('gz64');
+
+        });
+
     });
 
 });
