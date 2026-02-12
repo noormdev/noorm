@@ -1247,15 +1247,19 @@ export function DbTransferScreen({ params: _params }: ScreenProps): ReactElement
 
                         {progress.currentTable && progress.currentRowsTotal > 0 && (
                             <Box flexDirection="column" gap={1}>
-                                <Box gap={1}>
-                                    <Text dimColor>Table:</Text>
-                                    <Box width={40}>
-                                        <ProgressBar value={rowProgress} />
+                                {progress.sameServer && progress.currentRowsTransferred === 0 ? (
+                                    <Spinner label={`Transferring ~${progress.currentRowsTotal.toLocaleString()} rows...`} />
+                                ) : (
+                                    <Box gap={1}>
+                                        <Text dimColor>Table:</Text>
+                                        <Box width={40}>
+                                            <ProgressBar value={rowProgress} />
+                                        </Box>
+                                        <Text dimColor>
+                                            {progress.currentRowsTransferred.toLocaleString()}/{progress.currentRowsTotal.toLocaleString()}
+                                        </Text>
                                     </Box>
-                                    <Text dimColor>
-                                        {progress.currentRowsTransferred.toLocaleString()}/{progress.currentRowsTotal.toLocaleString()}
-                                    </Text>
-                                </Box>
+                                )}
                             </Box>
                         )}
 

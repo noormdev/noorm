@@ -317,9 +317,13 @@ export function useTransferProgress(): UseTransferProgressReturn {
 
                 });
 
+                // Update aggregate: swap old currentRowsTransferred for new value
+                const newRowsTransferred = prev.rowsTransferred - prev.currentRowsTransferred + data.rowsTransferred;
+
                 return {
                     ...prev,
                     currentRowsTransferred: data.rowsTransferred,
+                    rowsTransferred: newRowsTransferred,
                     results,
                 };
 
@@ -356,10 +360,13 @@ export function useTransferProgress(): UseTransferProgressReturn {
 
                 });
 
+                // Swap current table's live-tracked rows for final count
+                const newRowsTransferred = prev.rowsTransferred - prev.currentRowsTransferred + data.rowsTransferred;
+
                 return {
                     ...prev,
                     tablesCompleted: prev.tablesCompleted + 1,
-                    rowsTransferred: prev.rowsTransferred + data.rowsTransferred,
+                    rowsTransferred: newRowsTransferred,
                     rowsSkipped: prev.rowsSkipped + data.rowsSkipped,
                     currentTable: null,
                     currentRowsTransferred: 0,
@@ -523,6 +530,7 @@ export function useTransferProgress(): UseTransferProgressReturn {
             setState((prev) => ({
                 ...prev,
                 currentRowsTransferred: data.rowsImported,
+                rowsTransferred: prev.rowsTransferred - prev.currentRowsTransferred + data.rowsImported,
                 importProgress: prev.importProgress
                     ? {
                         ...prev.importProgress,
@@ -540,24 +548,31 @@ export function useTransferProgress(): UseTransferProgressReturn {
         'dt:import:complete',
         (data) => {
 
-            setState((prev) => ({
-                ...prev,
-                phase: 'complete',
-                status: 'success',
-                durationMs: prev.durationMs + data.durationMs,
-                rowsTransferred: prev.rowsTransferred + data.rowsImported,
-                rowsSkipped: prev.rowsSkipped + data.rowsSkipped,
-                tablesCompleted: prev.tablesCompleted + 1,
-                currentTable: null,
-                importProgress: prev.importProgress
-                    ? {
-                        ...prev.importProgress,
-                        rowsImported: data.rowsImported,
-                        rowsSkipped: data.rowsSkipped,
-                        durationMs: data.durationMs,
-                    }
-                    : null,
-            }));
+            setState((prev) => {
+
+                // Compute aggregate rows: remove stale currentRowsTransferred and add final count
+                const newRowsTransferred = prev.rowsTransferred - prev.currentRowsTransferred + data.rowsImported;
+
+                return {
+                    ...prev,
+                    durationMs: prev.durationMs + data.durationMs,
+                    rowsTransferred: newRowsTransferred,
+                    rowsSkipped: prev.rowsSkipped + data.rowsSkipped,
+                    tablesCompleted: prev.tablesCompleted + 1,
+                    currentTable: null,
+                    currentRowsTransferred: 0,
+                    currentRowsTotal: 0,
+                    importProgress: prev.importProgress
+                        ? {
+                            ...prev.importProgress,
+                            rowsImported: data.rowsImported,
+                            rowsSkipped: data.rowsSkipped,
+                            durationMs: data.durationMs,
+                        }
+                        : null,
+                };
+
+            });
 
         },
         [],

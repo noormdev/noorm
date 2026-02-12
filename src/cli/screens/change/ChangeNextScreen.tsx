@@ -11,6 +11,7 @@
  * ```
  */
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { join } from 'path';
 import { Box, Text, useInput } from 'ink';
 import { TextInput, ProgressBar } from '@inkjs/ui';
 
@@ -58,7 +59,7 @@ export function ChangeNextScreen({ params }: ScreenProps): ReactElement {
 
     const { navigate: _navigate, back } = useRouter();
     const { isFocused } = useFocusScope('ChangeNext');
-    const { activeConfig, activeConfigName, stateManager, identity: cryptoIdentity } = useAppContext();
+    const { activeConfig, activeConfigName, projectRoot, stateManager, identity: cryptoIdentity } = useAppContext();
 
     // Pre-fill count from params
     const initialCount = params.count ? parseInt(String(params.count), 10) : 1;
@@ -86,8 +87,8 @@ export function ChangeNextScreen({ params }: ScreenProps): ReactElement {
 
                 // Discover changes
                 const changes = await discoverChanges(
-                    activeConfig.paths.changes,
-                    activeConfig.paths.sql,
+                    join(projectRoot, activeConfig.paths.changes),
+                    join(projectRoot, activeConfig.paths.sql),
                 );
 
                 // Get statuses from database
@@ -268,9 +269,9 @@ export function ChangeNextScreen({ params }: ScreenProps): ReactElement {
                 db,
                 configName: activeConfigName ?? '',
                 identity,
-                projectRoot: process.cwd(),
-                changesDir: activeConfig.paths.changes,
-                sqlDir: activeConfig.paths.sql,
+                projectRoot,
+                changesDir: join(projectRoot, activeConfig.paths.changes),
+                sqlDir: join(projectRoot, activeConfig.paths.sql),
             });
 
             const result = await manager.next(count);

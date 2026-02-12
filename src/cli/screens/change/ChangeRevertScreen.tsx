@@ -11,6 +11,7 @@
  * ```
  */
 import { useState, useEffect, useCallback } from 'react';
+import { join } from 'path';
 import { Box, Text, useInput } from 'ink';
 import { ProgressBar } from '@inkjs/ui';
 
@@ -55,7 +56,7 @@ export function ChangeRevertScreen({ params }: ScreenProps): ReactElement {
 
     const { navigate: _navigate, back } = useRouter();
     const { isFocused } = useFocusScope('ChangeRevert');
-    const { activeConfig, activeConfigName, identity: cryptoIdentity } = useAppContext();
+    const { activeConfig, activeConfigName, projectRoot, identity: cryptoIdentity } = useAppContext();
 
     const changeName = params.name;
 
@@ -84,8 +85,8 @@ export function ChangeRevertScreen({ params }: ScreenProps): ReactElement {
 
                 // Find the change on disk
                 const changes = await discoverChanges(
-                    activeConfig.paths.changes,
-                    activeConfig.paths.sql,
+                    join(projectRoot, activeConfig.paths.changes),
+                    join(projectRoot, activeConfig.paths.sql),
                 );
 
                 const found = changes.find((cs) => cs.name === changeName);
@@ -200,9 +201,9 @@ export function ChangeRevertScreen({ params }: ScreenProps): ReactElement {
                 db,
                 configName: activeConfigName ?? '',
                 identity,
-                projectRoot: process.cwd(),
-                changesDir: activeConfig.paths.changes,
-                sqlDir: activeConfig.paths.sql,
+                projectRoot,
+                changesDir: join(projectRoot, activeConfig.paths.changes),
+                sqlDir: join(projectRoot, activeConfig.paths.sql),
             };
 
             // Execute revert

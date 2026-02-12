@@ -65,38 +65,9 @@ Each includes:
 - README with setup instructions
 
 
-## Priority 1: Data Transfer
+## ✓ Priority 1: Data Transfer (Complete)
 
-Transfer table data between databases.
-
-```bash
-noorm db transfer [--from <config>] [--to <config>] [--tables <list>] [--on-conflict <strategy>]
-```
-
-**Conflict handling (`--on-conflict`):**
-- `fail` (default) - Abort on first duplicate, safest option
-- `skip` - Ignore rows with existing PKs (`INSERT IGNORE`, `ON CONFLICT DO NOTHING`)
-- `update` - Upsert existing rows (`ON DUPLICATE KEY UPDATE`, `ON CONFLICT DO UPDATE`, `MERGE`)
-- `replace` - Delete + insert (atomic replacement)
-
-**Same-server transfer:**
-- Detect when source and target share host/port/credentials
-- Use optimized `INSERT INTO target.table SELECT * FROM source.table` statements
-- Support table filtering, WHERE clauses
-
-**Cross-server transfer:**
-- Connect to two different servers and transfer data between them
-- CSV intermediate format for dialect-agnostic transfers
-- Dialect-specific optimizations (PostgreSQL `COPY`, SQL Server BCP, MySQL `LOAD DATA`)
-- Progress reporting for large transfers
-- Transaction support with rollback on failure
-
-**Considerations:**
-- Foreign keys (insertion order, disable FK checks)
-- Identity columns (preserve IDs, sequence resync)
-- Large datasets (batching, streaming, resume)
-- Schema mismatches (`--dry-run` validation)
-- Triggers (option to disable)
+Data transfer functionality implemented with full conflict handling and cross-server support.
 
 
 ## SDK Finish Line
@@ -133,7 +104,11 @@ Core SDK is implemented and packaged (`@noormdev/sdk`). Remaining:
 
 ## Bugs
 
-- [ ] **Config Import focus broken** - Configurations › More › Import Config has broken keyboard focus. Needs investigation and fix.
+- [x] **Config Import focus broken** - Fixed: guarded `useInput` with `isActive` so it only fires during complete/error steps.
+- [x] **Config edit screen too large** - Fixed: added terminal-height-aware `overflowY="hidden"` constraint to the form wrapper.
+- [x] **Shift+Tab navigation broken** - Fixed: added `key.shift && key.tab` check before `key.tab` in Form.tsx.
+- [x] **Transfer progress inaccurate** - Fixed: aggregate `rowsTransferred` now updates in real-time via delta tracking in `transfer:table:progress`, `dt:import:progress`, and `dt:import:complete` handlers. Same-server transfers show spinner instead of misleading 0% bar.
+- [x] **Change add ignores changes folder setting** - Fixed: all 6 change screens now resolve paths with `path.join(projectRoot, config.paths.changes)`, matching the SDK pattern.
 
 
 ## Pre-Release Checklist

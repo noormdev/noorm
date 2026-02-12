@@ -12,6 +12,7 @@
  */
 import { useState, useEffect, useCallback } from 'react';
 import { readFile } from 'fs/promises';
+import { join } from 'path';
 import { Box, Text, useInput } from 'ink';
 import { ProgressBar } from '@inkjs/ui';
 
@@ -115,7 +116,7 @@ export function ChangeRunScreen({ params }: ScreenProps): ReactElement {
 
     const { navigate: _navigate, back } = useRouter();
     const { isFocused } = useFocusScope('ChangeRun');
-    const { activeConfig, activeConfigName, stateManager, identity: cryptoIdentity } = useAppContext();
+    const { activeConfig, activeConfigName, projectRoot, stateManager, identity: cryptoIdentity } = useAppContext();
 
     const changeName = params.name;
 
@@ -144,8 +145,8 @@ export function ChangeRunScreen({ params }: ScreenProps): ReactElement {
 
                 // Find the change on disk
                 const changes = await discoverChanges(
-                    activeConfig.paths.changes,
-                    activeConfig.paths.sql,
+                    join(projectRoot, activeConfig.paths.changes),
+                    join(projectRoot, activeConfig.paths.sql),
                 );
 
                 const found = changes.find((cs) => cs.name === changeName);
@@ -263,9 +264,9 @@ export function ChangeRunScreen({ params }: ScreenProps): ReactElement {
                 db,
                 configName: activeConfigName ?? '',
                 identity,
-                projectRoot: process.cwd(),
-                changesDir: activeConfig.paths.changes,
-                sqlDir: activeConfig.paths.sql,
+                projectRoot,
+                changesDir: join(projectRoot, activeConfig.paths.changes),
+                sqlDir: join(projectRoot, activeConfig.paths.sql),
             };
 
             // Execute change

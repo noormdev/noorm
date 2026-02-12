@@ -11,7 +11,7 @@
  * ```
  */
 import { useState, useCallback, useMemo } from 'react';
-import { Text } from 'ink';
+import { Box, Text, useStdout } from 'ink';
 import { attempt } from '@logosdx/utils';
 
 import type { ReactElement } from 'react';
@@ -288,18 +288,26 @@ export function ConfigEditScreen({ params }: ScreenProps): ReactElement {
 
     }
 
+    const { stdout } = useStdout();
+    const terminalHeight = stdout.rows ?? 24;
+
+    // Reserve space for Panel border (2), title (2), padding (2)
+    const formHeight = Math.max(terminalHeight - 6, 10);
+
     return (
         <Panel title={`Edit: ${configName}`} paddingX={2} paddingY={1}>
-            <Form
-                fields={fields}
-                onSubmit={handleSubmit}
-                onCancel={handleCancel}
-                submitLabel="Save Changes"
-                focusLabel="ConfigEditForm"
-                busy={busy}
-                busyLabel={busyLabel}
-                statusError={connectionError ?? undefined}
-            />
+            <Box height={formHeight} overflowY="hidden">
+                <Form
+                    fields={fields}
+                    onSubmit={handleSubmit}
+                    onCancel={handleCancel}
+                    submitLabel="Save Changes"
+                    focusLabel="ConfigEditForm"
+                    busy={busy}
+                    busyLabel={busyLabel}
+                    statusError={connectionError ?? undefined}
+                />
+            </Box>
         </Panel>
     );
 

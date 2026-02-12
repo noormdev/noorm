@@ -50,7 +50,7 @@ export function ChangeAddScreen({ params }: ScreenProps): ReactElement {
 
     const { navigate, back } = useRouter();
     const { isFocused } = useFocusScope('ChangeAdd');
-    const { activeConfig, settings: _settings } = useAppContext();
+    const { activeConfig, projectRoot, settings: _settings } = useAppContext();
 
     // Pre-fill from params if provided
     const initialName = params.name ?? '';
@@ -108,7 +108,7 @@ export function ChangeAddScreen({ params }: ScreenProps): ReactElement {
             // Check for duplicate folder name
             const datePrefix = new Date().toISOString().slice(0, 10);
             const expectedFolder = `${datePrefix}-${kebabDescription}`;
-            const folderPath = join(activeConfig.paths.changes, expectedFolder);
+            const folderPath = join(projectRoot, activeConfig.paths.changes, expectedFolder);
 
             if (existsSync(folderPath)) {
 
@@ -124,7 +124,7 @@ export function ChangeAddScreen({ params }: ScreenProps): ReactElement {
             const [_, err] = await attempt(async () => {
 
                 // Create change folder
-                const change = await createChange(activeConfig.paths.changes, {
+                const change = await createChange(join(projectRoot, activeConfig.paths.changes), {
                     description: kebabDescription,
                 });
 

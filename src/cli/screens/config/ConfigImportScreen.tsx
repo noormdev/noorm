@@ -263,15 +263,11 @@ export function ConfigImportScreen({ params }: ScreenProps): ReactElement {
 
     // Keyboard handling for complete/error states only
     // Note: file-select and preview steps have their own focusable components
-    useInput(() => {
+    useInput((_input, _key) => {
 
-        if (step === 'complete' || step === 'error') {
+        back();
 
-            back();
-
-        }
-
-    });
+    }, { isActive: step === 'complete' || step === 'error' });
 
     // Find .noorm.enc files in current directory
     const encFiles = useMemo(() => {

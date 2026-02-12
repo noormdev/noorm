@@ -460,7 +460,16 @@ export function Form({
         const isSelectField = fieldType === 'select';
         const isTextInput = fieldType === 'text' || fieldType === 'password';
 
-        // Tab - always moves to next field
+        // Shift+Tab - moves to previous field
+        if (key.tab && key.shift) {
+
+            prevField();
+
+            return;
+
+        }
+
+        // Tab - moves to next field
         if (key.tab) {
 
             nextField();
