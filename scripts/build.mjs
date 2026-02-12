@@ -23,7 +23,7 @@ await $`npx tsup --config tsup.cli.config.ts`;
 const cliBundlePath = 'packages/cli/dist/index.js';
 const cliContent = await readFile(cliBundlePath, 'utf8');
 if (!cliContent.startsWith('#!')) {
-    await writeFile(cliBundlePath, `#!/usr/bin/env -S node --experimental-strip-types\n${cliContent}`);
+    await writeFile(cliBundlePath, `#!/usr/bin/env node\n${cliContent}`);
     console.log(chalk.gray('  Added shebang to CLI bundle'));
 }
 

@@ -43,9 +43,9 @@ async function main() {
 
             if (lines[0].startsWith('#!')) {
 
-                lines[0] = `#!${nodeLocation} --experimental-strip-types`;
+                lines[0] = `#!${nodeLocation}`;
                 await writeFile(SOURCE, lines.join('\n'), 'utf8');
-                console.log(`✓ Updated hashbang to use /usr/bin/env ${nodeLocation}`);
+                console.log(`✓ Updated hashbang to use ${nodeLocation}`);
 
             }
 

@@ -25,6 +25,12 @@ async function getDialectFactory(dialect: Dialect): Promise<DialectFactory> {
     switch (dialect) {
 
     case 'sqlite':
+        if (typeof (globalThis as Record<string, unknown>)['Bun'] !== 'undefined') {
+
+            return (await import('./dialects/sqlite-bun.js')).createBunSqliteConnection;
+
+        }
+
         return (await import('./dialects/sqlite.js')).createSqliteConnection;
 
     case 'postgres':
@@ -51,7 +57,7 @@ function getInstallCommand(dialect: Dialect): string {
     const commands: Record<Dialect, string> = {
         postgres: 'npm install pg',
         mysql: 'npm install mysql2',
-        sqlite: 'npm install better-sqlite3',
+        sqlite: 'npm install better-sqlite3  (not needed with noorm binary)',
         mssql: 'npm install tedious tarn',
     };
 

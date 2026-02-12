@@ -125,6 +125,7 @@ import {
     DebugListScreen,
     DebugDetailScreen,
 } from './screens/debug/index.js';
+import { UpdateScreen } from './screens/UpdateScreen.js';
 
 /**
  * Screen registry type.
@@ -522,6 +523,12 @@ const SCREENS: ScreenRegistry = {
     'run/inspect': {
         component: RunInspectScreen,
         label: 'Inspect Template',
+    },
+
+    // Update
+    update: {
+        component: UpdateScreen,
+        label: 'Update',
     },
 
     // Debug (hidden easter egg)

@@ -147,6 +147,9 @@ export type Route =
     | 'vault/rm'
     | 'vault/set'
 
+    // Update
+    | 'update'
+
     // Version info
     | 'version'
 /**

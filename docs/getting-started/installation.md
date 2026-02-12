@@ -3,7 +3,6 @@
 
 ## Requirements
 
-- **Node.js 18** or higher
 - A supported database:
     - PostgreSQL
     - MySQL
@@ -15,21 +14,33 @@
 
 The CLI provides both an interactive terminal UI and headless mode for CI/CD.
 
+### macOS / Linux
+
 ```bash
-# npm
-npm install -g @noormdev/cli
-
-# yarn
-yarn global add @noormdev/cli
-
-# pnpm
-pnpm add -g @noormdev/cli
+curl -fsSL https://noorm.dev/install.sh | bash
 ```
 
-Verify the installation:
+This downloads a self-contained binary for your platform and installs it to `/usr/local/bin`. No runtime dependencies needed.
+
+### Windows
+
+Download [noorm-windows-x64.exe](https://github.com/noormdev/noorm/releases) from the latest `@noormdev/cli` release, rename it to `noorm.exe`, and add it to your PATH.
+
+### Verify
 
 ```bash
 noorm --version
+```
+
+### Update
+
+noorm can update itself:
+
+```bash
+# Headless
+noorm -H update
+
+# Or from the TUI home screen, press [u]
 ```
 
 
@@ -51,7 +62,7 @@ The SDK uses peer dependencies. Install the driver for your database:
 | SQL Server | `npm install tedious tarn` |
 
 ::: tip CLI Includes Drivers
-The CLI bundles all drivers—no extra installation needed. These are only required if you're using the SDK directly.
+The CLI bundles all drivers — no extra installation needed. These are only required if you're using the SDK directly.
 :::
 
 
@@ -79,7 +90,7 @@ your-project/
 ```
 
 ::: warning Git Ignore
-Add `.noorm/state/` to your `.gitignore`. This folder contains encrypted configs and secrets specific to each developer's machine. The `.noorm/settings.yml` should be committed—it's the shared project configuration.
+Add `.noorm/state/` to your `.gitignore`. This folder contains encrypted configs and secrets specific to each developer's machine. The `.noorm/settings.yml` should be committed — it's the shared project configuration.
 :::
 
 

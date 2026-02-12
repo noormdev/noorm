@@ -11,13 +11,13 @@ Manage database configs, execute SQL changes, run templated SQL files. Core modu
 ## Commands
 
 ```bash
-yarn build                      # Build project
-yarn test                       # Run tests
-yarn test:watch                 # Watch mode
-yarn test:coverage              # With coverage
-yarn dev                        # Development with ts-node
-yarn lint                       # Lint
-yarn typecheck                  # Type check
+bun run build                   # Build project
+bun run test                    # Run tests
+bun run test:watch              # Watch mode
+bun run test:coverage           # With coverage
+bun run dev                     # Development with ts-node
+bun run lint                    # Lint
+bun run typecheck               # Type check
 ```
 
 

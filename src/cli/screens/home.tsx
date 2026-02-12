@@ -276,6 +276,7 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
         else if (input === 'v') navigate('vault');
         else if (input === 'i') navigate('identity');
         else if (input === 'l') navigate('lock');
+        else if (input === 'u') navigate('update');
         // Number shortcuts for quick actions
         else if (input === '1') navigate('run/build');
         else if (input === '2') navigate('change/ff');

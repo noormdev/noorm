@@ -22,17 +22,19 @@ jobs:
               uses: actions/setup-node@v4
               with:
                   node-version: 24
-                  cache: yarn
+
+            - name: Setup Bun
+              uses: oven-sh/setup-bun@v2
 
             - name: Install dependencies
               run: |
-                  yarn install --frozen-lockfile
-                  cd docs && yarn install --frozen-lockfile
+                  bun install --frozen-lockfile
+                  cd docs && bun install --frozen-lockfile
 
             - name: Build docs
               env:
                   VITEPRESS_BASE: /
-              run: cd docs && yarn build
+              run: cd docs && bun run build
 
             - name: Deploy to gh-pages
               run: |

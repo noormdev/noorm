@@ -58,5 +58,12 @@ export {
     type PrereleaseInfo,
 } from './checker.js';
 
+// Install mode detection
+export {
+    detectInstallMode,
+    getBinaryDownloadUrl,
+    type InstallMode,
+} from './install-mode.js';
+
 // Updater
 export { installUpdate } from './updater.js';

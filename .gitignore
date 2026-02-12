@@ -32,4 +32,5 @@ tmp/
 
 # noorm
 .noorm/state/
+packages/cli/bin/
 docs/.vitepress/cache/

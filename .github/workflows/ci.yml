@@ -8,7 +8,7 @@ on:
             - 'src/**'
             - 'tests/**'
             - 'packages/**'
-            - 'yarn.lock'
+            - 'bun.lockb'
             - 'tsconfig*.json'
             - '.github/workflows/ci.yml'
     pull_request:
@@ -17,7 +17,7 @@ on:
             - 'src/**'
             - 'tests/**'
             - 'packages/**'
-            - 'yarn.lock'
+            - 'bun.lockb'
             - 'tsconfig*.json'
             - '.github/workflows/ci.yml'
 
@@ -76,18 +76,19 @@ jobs:
             - uses: actions/setup-node@v4
               with:
                   node-version: '24'
-                  cache: 'yarn'
 
-            - run: yarn install --frozen-lockfile
-            - run: yarn lint
-            - run: yarn typecheck
-            - run: yarn build
+            - uses: oven-sh/setup-bun@v2
+
+            - run: bun install --frozen-lockfile
+            - run: bun run lint
+            - run: bun run typecheck
+            - run: bun run build
             # Run tests with CI=false to match ink-testing-library behavior
             - name: Run tests
               env:
                   CI: 'false'
                   FORCE_COLOR: 'true'
-              run: yarn test
+              run: bun run test
 
     cli-e2e:
         runs-on: ubuntu-latest
@@ -98,10 +99,11 @@ jobs:
             - uses: actions/setup-node@v4
               with:
                   node-version: '24'
-                  cache: 'yarn'
 
-            - run: yarn install --frozen-lockfile
-            - run: yarn build
+            - uses: oven-sh/setup-bun@v2
+
+            - run: bun install --frozen-lockfile
+            - run: bun run build
 
             # Test: Valid SQL should build successfully (exit 0)
             - name: Test valid SQL build

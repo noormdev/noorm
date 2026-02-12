@@ -70,6 +70,7 @@ import * as CmdVaultRm from './vault-rm.js';
 import * as CmdVaultSet from './vault-set.js';
 
 import * as CmdHelp from './help.js';
+import * as CmdUpdate from './update.js';
 import * as CmdVersion from './version.js';
 import { getConfig } from '../../core/config/index.js';
 
@@ -125,6 +126,7 @@ const HANDLERS: Partial<Record<Route, RouteHandler>> = {
     'vault/rm': CmdVaultRm,
     'vault/set': CmdVaultSet,
 
+    'update': CmdUpdate,
     'version': CmdVersion,
 };
 
