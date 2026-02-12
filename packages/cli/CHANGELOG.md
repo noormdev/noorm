@@ -1,5 +1,13 @@
 # @noormdev/cli
 
+## 1.0.0-alpha.12
+
+### Patch Changes
+
+- a22973c: ## Fixed
+
+  - `fix(change):` Use `settings.paths` from `settings.yml` for change directory resolution instead of per-config `activeConfig.paths`, matching the pattern used by runner screens
+
 ## 1.0.0-alpha.11
 
 ### Patch Changes
