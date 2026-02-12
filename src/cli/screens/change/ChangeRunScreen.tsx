@@ -116,7 +116,7 @@ export function ChangeRunScreen({ params }: ScreenProps): ReactElement {
 
     const { navigate: _navigate, back } = useRouter();
     const { isFocused } = useFocusScope('ChangeRun');
-    const { activeConfig, activeConfigName, projectRoot, stateManager, identity: cryptoIdentity } = useAppContext();
+    const { activeConfig, activeConfigName, projectRoot, settings, stateManager, identity: cryptoIdentity } = useAppContext();
 
     const changeName = params.name;
 
@@ -144,9 +144,11 @@ export function ChangeRunScreen({ params }: ScreenProps): ReactElement {
             const [_, err] = await attempt(async () => {
 
                 // Find the change on disk
+                const changesDir = settings?.paths?.changes ?? 'changes';
+                const sqlDir = settings?.paths?.sql ?? 'sql';
                 const changes = await discoverChanges(
-                    join(projectRoot, activeConfig.paths.changes),
-                    join(projectRoot, activeConfig.paths.sql),
+                    join(projectRoot, changesDir),
+                    join(projectRoot, sqlDir),
                 );
 
                 const found = changes.find((cs) => cs.name === changeName);
@@ -260,13 +262,15 @@ export function ChangeRunScreen({ params }: ScreenProps): ReactElement {
             });
 
             // Build context
+            const changesPath = settings?.paths?.changes ?? 'changes';
+            const sqlPath = settings?.paths?.sql ?? 'sql';
             const context = {
                 db,
                 configName: activeConfigName ?? '',
                 identity,
                 projectRoot,
-                changesDir: join(projectRoot, activeConfig.paths.changes),
-                sqlDir: join(projectRoot, activeConfig.paths.sql),
+                changesDir: join(projectRoot, changesPath),
+                sqlDir: join(projectRoot, sqlPath),
             };
 
             // Execute change

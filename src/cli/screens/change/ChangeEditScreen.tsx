@@ -10,6 +10,7 @@
  * ```
  */
 import { useState, useEffect } from 'react';
+import { join } from 'path';
 import { Box, Text, useInput } from 'ink';
 import { spawn } from 'child_process';
 
@@ -39,7 +40,7 @@ export function ChangeEditScreen({ params }: ScreenProps): ReactElement {
 
     const { navigate: _navigate, back } = useRouter();
     const { isFocused } = useFocusScope('ChangeEdit');
-    const { activeConfig, settings: _settings } = useAppContext();
+    const { activeConfig, projectRoot, settings } = useAppContext();
 
     const changeName = params.name;
 
@@ -65,9 +66,11 @@ export function ChangeEditScreen({ params }: ScreenProps): ReactElement {
             const [_, err] = await attempt(async () => {
 
                 // Find the change
+                const changesDir = settings?.paths?.changes ?? 'changes';
+                const sqlDir = settings?.paths?.sql ?? 'sql';
                 const changes = await discoverChanges(
-                    activeConfig.paths.changes,
-                    activeConfig.paths.sql,
+                    join(projectRoot, changesDir),
+                    join(projectRoot, sqlDir),
                 );
 
                 const change = changes.find((cs) => cs.name === changeName);

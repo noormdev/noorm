@@ -59,7 +59,7 @@ export function ChangeNextScreen({ params }: ScreenProps): ReactElement {
 
     const { navigate: _navigate, back } = useRouter();
     const { isFocused } = useFocusScope('ChangeNext');
-    const { activeConfig, activeConfigName, projectRoot, stateManager, identity: cryptoIdentity } = useAppContext();
+    const { activeConfig, activeConfigName, projectRoot, settings, stateManager, identity: cryptoIdentity } = useAppContext();
 
     // Pre-fill count from params
     const initialCount = params.count ? parseInt(String(params.count), 10) : 1;
@@ -86,9 +86,11 @@ export function ChangeNextScreen({ params }: ScreenProps): ReactElement {
             const [_, err] = await attempt(async () => {
 
                 // Discover changes
+                const changesDir = settings?.paths?.changes ?? 'changes';
+                const sqlDir = settings?.paths?.sql ?? 'sql';
                 const changes = await discoverChanges(
-                    join(projectRoot, activeConfig.paths.changes),
-                    join(projectRoot, activeConfig.paths.sql),
+                    join(projectRoot, changesDir),
+                    join(projectRoot, sqlDir),
                 );
 
                 // Get statuses from database
@@ -265,13 +267,15 @@ export function ChangeNextScreen({ params }: ScreenProps): ReactElement {
             });
 
             // Create manager and run next N
+            const changesPath = settings?.paths?.changes ?? 'changes';
+            const sqlPath = settings?.paths?.sql ?? 'sql';
             const manager = new ChangeManager({
                 db,
                 configName: activeConfigName ?? '',
                 identity,
                 projectRoot,
-                changesDir: join(projectRoot, activeConfig.paths.changes),
-                sqlDir: join(projectRoot, activeConfig.paths.sql),
+                changesDir: join(projectRoot, changesPath),
+                sqlDir: join(projectRoot, sqlPath),
             });
 
             const result = await manager.next(count);

@@ -117,7 +117,7 @@ export function ChangeFFScreen({ params: _params }: ScreenProps): ReactElement {
 
     const { navigate: _navigate, back } = useRouter();
     const { isFocused } = useFocusScope('ChangeFF');
-    const { activeConfig, activeConfigName, projectRoot, stateManager, identity: cryptoIdentity } = useAppContext();
+    const { activeConfig, activeConfigName, projectRoot, settings, stateManager, identity: cryptoIdentity } = useAppContext();
 
     const [step, setStep] = useState<FFStep>('loading');
     const [pendingChanges, setPendingChanges] = useState<ChangeListItem[]>([]);
@@ -139,9 +139,11 @@ export function ChangeFFScreen({ params: _params }: ScreenProps): ReactElement {
             const [_, err] = await attempt(async () => {
 
                 // Discover changes
+                const changesDir = settings?.paths?.changes ?? 'changes';
+                const sqlDir = settings?.paths?.sql ?? 'sql';
                 const changes = await discoverChanges(
-                    join(projectRoot, activeConfig.paths.changes),
-                    join(projectRoot, activeConfig.paths.sql),
+                    join(projectRoot, changesDir),
+                    join(projectRoot, sqlDir),
                 );
 
                 // Get statuses from database
@@ -316,13 +318,15 @@ export function ChangeFFScreen({ params: _params }: ScreenProps): ReactElement {
             });
 
             // Create manager and fast-forward
+            const changesPath = settings?.paths?.changes ?? 'changes';
+            const sqlPath = settings?.paths?.sql ?? 'sql';
             const manager = new ChangeManager({
                 db,
                 configName: activeConfigName ?? '',
                 identity,
                 projectRoot,
-                changesDir: join(projectRoot, activeConfig.paths.changes),
-                sqlDir: join(projectRoot, activeConfig.paths.sql),
+                changesDir: join(projectRoot, changesPath),
+                sqlDir: join(projectRoot, sqlPath),
             });
 
             const result = await manager.ff();

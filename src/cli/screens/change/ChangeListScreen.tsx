@@ -11,6 +11,7 @@
  * ```
  */
 import { useState, useEffect, useMemo } from 'react';
+import { join } from 'path';
 import { Box, Text, useInput } from 'ink';
 
 import type { ReactElement } from 'react';
@@ -67,7 +68,7 @@ export function ChangeListScreen({ params: _params }: ScreenProps): ReactElement
 
     const { navigate, back } = useRouter();
     const { isFocused } = useFocusScope('ChangeList');
-    const { activeConfig, activeConfigName, loadingStatus } = useAppContext();
+    const { activeConfig, activeConfigName, projectRoot, settings, loadingStatus } = useAppContext();
 
     const [changes, setChanges] = useState<ChangeListItem[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -95,9 +96,11 @@ export function ChangeListScreen({ params: _params }: ScreenProps): ReactElement
             const [_, err] = await attempt(async () => {
 
                 // Discover changes from disk
+                const changesDir = settings?.paths?.changes ?? 'changes';
+                const sqlDir = settings?.paths?.sql ?? 'sql';
                 const diskChanges = await discoverChanges(
-                    activeConfig.paths.changes,
-                    activeConfig.paths.sql,
+                    join(projectRoot, changesDir),
+                    join(projectRoot, sqlDir),
                 );
 
                 // Get statuses from database

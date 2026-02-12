@@ -60,7 +60,7 @@ export function ChangeRewindScreen({ params }: ScreenProps): ReactElement {
 
     const { navigate: _navigate, back } = useRouter();
     const { isFocused } = useFocusScope('ChangeRewind');
-    const { activeConfig, activeConfigName, projectRoot, stateManager, identity: cryptoIdentity } = useAppContext();
+    const { activeConfig, activeConfigName, projectRoot, settings, stateManager, identity: cryptoIdentity } = useAppContext();
 
     // Pre-fill from params - can be count or change name
     const target = params.count ? String(params.count) : (params.name ?? '');
@@ -87,9 +87,11 @@ export function ChangeRewindScreen({ params }: ScreenProps): ReactElement {
             const [_, err] = await attempt(async () => {
 
                 // Discover changes
+                const changesDir = settings?.paths?.changes ?? 'changes';
+                const sqlDir = settings?.paths?.sql ?? 'sql';
                 const changes = await discoverChanges(
-                    join(projectRoot, activeConfig.paths.changes),
-                    join(projectRoot, activeConfig.paths.sql),
+                    join(projectRoot, changesDir),
+                    join(projectRoot, sqlDir),
                 );
 
                 // Get statuses from database
@@ -326,13 +328,15 @@ export function ChangeRewindScreen({ params }: ScreenProps): ReactElement {
             });
 
             // Create manager and rewind
+            const changesPath = settings?.paths?.changes ?? 'changes';
+            const sqlPath = settings?.paths?.sql ?? 'sql';
             const manager = new ChangeManager({
                 db,
                 configName: activeConfigName ?? '',
                 identity,
                 projectRoot,
-                changesDir: join(projectRoot, activeConfig.paths.changes),
-                sqlDir: join(projectRoot, activeConfig.paths.sql),
+                changesDir: join(projectRoot, changesPath),
+                sqlDir: join(projectRoot, sqlPath),
             });
 
             const result = await manager.rewind(changesToRevert.length);

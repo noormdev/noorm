@@ -11,6 +11,7 @@
  * ```
  */
 import { useState, useEffect, useCallback } from 'react';
+import { join } from 'path';
 import { Box, Text, useInput } from 'ink';
 
 import type { ReactElement } from 'react';
@@ -46,7 +47,7 @@ export function ChangeRemoveScreen({ params }: ScreenProps): ReactElement {
 
     const { navigate: _navigate, back } = useRouter();
     const { isFocused } = useFocusScope('ChangeRemove');
-    const { activeConfig, activeConfigName } = useAppContext();
+    const { activeConfig, activeConfigName, projectRoot, settings } = useAppContext();
 
     const changeName = params.name;
 
@@ -72,9 +73,11 @@ export function ChangeRemoveScreen({ params }: ScreenProps): ReactElement {
             const [_, err] = await attempt(async () => {
 
                 // Find the change on disk
+                const changesDir = settings?.paths?.changes ?? 'changes';
+                const sqlDir = settings?.paths?.sql ?? 'sql';
                 const changes = await discoverChanges(
-                    activeConfig.paths.changes,
-                    activeConfig.paths.sql,
+                    join(projectRoot, changesDir),
+                    join(projectRoot, sqlDir),
                 );
 
                 const found = changes.find((cs) => cs.name === changeName);
