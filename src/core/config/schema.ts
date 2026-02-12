@@ -76,14 +76,6 @@ export const ConnectionSchema = z
     });
 
 /**
- * Paths configuration schema.
- */
-const PathsSchema = z.object({
-    sql: z.string().min(1, 'SQL path is required'),
-    changes: z.string().min(1, 'Changes path is required'),
-});
-
-/**
  * Full config schema.
  */
 export const ConfigSchema = z.object({
@@ -92,7 +84,6 @@ export const ConfigSchema = z.object({
     isTest: z.boolean().default(false),
     protected: z.boolean().default(false),
     connection: ConnectionSchema,
-    paths: PathsSchema,
     identity: z.string().optional(),
 });
 
@@ -112,14 +103,6 @@ const PartialConnectionSchema = z.object({
 });
 
 /**
- * Partial paths schema.
- */
-const PartialPathsSchema = z.object({
-    sql: z.string().optional(),
-    changes: z.string().optional(),
-});
-
-/**
  * Partial config schema for updates.
  *
  * All fields are optional for partial updates.
@@ -133,7 +116,6 @@ export const ConfigInputSchema = z.object({
     isTest: z.boolean().optional(),
     protected: z.boolean().optional(),
     connection: PartialConnectionSchema.optional(),
-    paths: PartialPathsSchema.optional(),
     identity: z.string().optional(),
 });
 
@@ -252,7 +234,6 @@ export function validateConfigInput(input: unknown): asserts input is ConfigInpu
  * const minimal = {
  *     name: 'dev',
  *     connection: { dialect: 'sqlite', database: ':memory:' },
- *     paths: { sql: './sql', changes: './changes' },
  * }
  *
  * const config = parseConfig(minimal)

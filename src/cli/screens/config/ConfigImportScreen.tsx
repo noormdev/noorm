@@ -218,10 +218,6 @@ export function ConfigImportScreen({ params }: ScreenProps): ReactElement {
                         password: values['password'] ? String(values['password']) : undefined,
                         ssl: importedData.config.connection?.ssl,
                     },
-                    paths: {
-                        sql: importedData.config.paths?.sql ?? './sql',
-                        changes: importedData.config.paths?.changes ?? './changes',
-                    },
                 };
 
                 // Save config

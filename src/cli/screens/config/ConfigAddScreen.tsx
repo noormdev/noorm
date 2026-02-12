@@ -4,10 +4,9 @@
  * Multi-step flow to collect config details:
  * 1. Name and dialect selection
  * 2. Connection details (host, port, database, user, password)
- * 3. Paths (schema, changes directories)
- * 4. Options (protected, test flags)
- * 5. Connection test
- * 6. Save
+ * 3. Options (protected, test flags)
+ * 4. Connection test
+ * 5. Save
  *
  * @example
  * ```bash
@@ -144,20 +143,6 @@ export function ConfigAddScreen({ params }: ScreenProps): ReactElement {
             placeholder: '(optional)',
         },
         {
-            key: 'sqlPath',
-            label: 'SQL Path',
-            type: 'text',
-            defaultValue: './sql',
-            placeholder: './sql',
-        },
-        {
-            key: 'changesPath',
-            label: 'Changes Path',
-            type: 'text',
-            defaultValue: './changes',
-            placeholder: './changes',
-        },
-        {
             key: 'protected',
             label: 'Protected (requires confirmation for destructive ops)',
             type: 'checkbox',
@@ -228,10 +213,6 @@ export function ConfigAddScreen({ params }: ScreenProps): ReactElement {
                 isTest: Boolean(values['isTest']),
                 protected: Boolean(values['protected']),
                 connection: connectionConfig,
-                paths: {
-                    sql: String(values['sqlPath'] || './sql'),
-                    changes: String(values['changesPath'] || './changes'),
-                },
             };
 
             // Save config

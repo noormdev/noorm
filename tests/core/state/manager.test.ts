@@ -26,10 +26,6 @@ function createTestConfig(name: string, overrides: Partial<Config> = {}): Config
             dialect: 'sqlite',
             database: ':memory:',
         },
-        paths: {
-            sql: './sql',
-            changes: './changes',
-        },
         ...overrides,
     };
 

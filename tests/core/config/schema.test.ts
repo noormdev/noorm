@@ -25,10 +25,6 @@ function createValidConfig(overrides: Partial<Config> = {}): Config {
             dialect: 'sqlite',
             database: ':memory:',
         },
-        paths: {
-            sql: './sql',
-            changes: './changes',
-        },
         ...overrides,
     };
 
@@ -189,36 +185,6 @@ describe('config: schema validation', () => {
 
         });
 
-        it('should require paths', () => {
-
-            const config = createValidConfig();
-            // @ts-expect-error testing invalid input
-            delete config.paths;
-
-            expect(() => validateConfig(config)).toThrow(ConfigValidationError);
-
-        });
-
-        it('should require sql path', () => {
-
-            const config = createValidConfig();
-            // @ts-expect-error testing invalid input
-            delete config.paths.sql;
-
-            expect(() => validateConfig(config)).toThrow(ConfigValidationError);
-
-        });
-
-        it('should require changes path', () => {
-
-            const config = createValidConfig();
-            // @ts-expect-error testing invalid input
-            delete config.paths.changes;
-
-            expect(() => validateConfig(config)).toThrow(ConfigValidationError);
-
-        });
-
         it('should validate type enum', () => {
 
             const config = createValidConfig();
@@ -320,10 +286,6 @@ describe('config: schema validation', () => {
                 connection: {
                     dialect: 'sqlite' as const,
                     database: ':memory:',
-                },
-                paths: {
-                    sql: './sql',
-                    changes: './changes',
                 },
             };
 

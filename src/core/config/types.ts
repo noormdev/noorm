@@ -26,10 +26,6 @@ import type { LogLevel } from '../logger/types.js';
  *         user: 'postgres',
  *         password: 'postgres',
  *     },
- *     paths: {
- *         sql: './sql',
- *         changes: './changes',
- *     },
  * }
  * ```
  */
@@ -40,11 +36,6 @@ export interface Config {
     protected: boolean;
 
     connection: ConnectionConfig;
-
-    paths: {
-        sql: string; // Relative to project root
-        changes: string; // Relative to project root
-    };
 
     // Optional identity override
     identity?: string;
@@ -59,7 +50,6 @@ export interface ConfigInput {
     isTest?: boolean;
     protected?: boolean;
     connection?: Partial<ConnectionConfig>;
-    paths?: Partial<Config['paths']>;
     identity?: string;
     log: {
         level: LogLevel;

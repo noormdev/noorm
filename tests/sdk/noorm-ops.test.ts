@@ -25,7 +25,6 @@ function createMockConfig(dialect: Config['connection']['dialect'] = 'postgres')
         isTest: true,
         protected: false,
         connection: { dialect, database: 'testdb' },
-        paths: { sql: 'sql', changes: 'changes' },
     };
 
 }

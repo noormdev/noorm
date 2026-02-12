@@ -7,7 +7,6 @@
  * @example
  * NOORM_CONNECTION_DIALECT=postgres  ->  { connection: { dialect: 'postgres' } }
  * NOORM_CONNECTION_HOST=localhost    ->  { connection: { host: 'localhost' } }
- * NOORM_PATHS_SQL=./sql              ->  { paths: { sql: './sql' } }
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
@@ -33,9 +32,6 @@ describe('config: env', () => {
             'NOORM_CONNECTION_SSL',
             'NOORM_CONNECTION_POOL_MIN',
             'NOORM_CONNECTION_POOL_MAX',
-            // Paths
-            'NOORM_PATHS_SQL',
-            'NOORM_PATHS_CHANGES',
             // Top-level
             'NOORM_NAME',
             'NOORM_TYPE',
@@ -177,18 +173,6 @@ describe('config: env', () => {
                 expect(config.connection?.dialect).toBe(dialect);
 
             }
-
-        });
-
-        it('should read path properties', () => {
-
-            process.env['NOORM_PATHS_SQL'] = './custom/sql';
-            process.env['NOORM_PATHS_CHANGES'] = './custom/changes';
-
-            const config = getEnvConfig();
-
-            expect(config.paths?.sql).toBe('./custom/sql');
-            expect(config.paths?.changes).toBe('./custom/changes');
 
         });
 

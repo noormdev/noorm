@@ -13,6 +13,8 @@
  * noorm home     # Same thing
  * ```
  */
+import { join } from 'path';
+
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import type { ReactElement } from 'react';
 import { Box, Text, useInput } from 'ink';
@@ -84,6 +86,7 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
         loadingStatus,
         hasIdentity,
         settings,
+        projectRoot,
     } = useAppContext();
 
     const [status, setStatus] = useState<QuickStatus>({
@@ -177,9 +180,11 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
                 const changeHistory = new ChangeHistory(db as Kysely<NoormDatabase>, activeConfigName ?? '');
 
                 // Discover changes from disk
+                const changesDir = settings?.paths?.changes ?? 'changes';
+                const sqlDir = settings?.paths?.sql ?? 'sql';
                 const diskChanges = await discoverChanges(
-                    activeConfig.paths.changes,
-                    activeConfig.paths.sql,
+                    join(projectRoot, changesDir),
+                    join(projectRoot, sqlDir),
                 );
 
                 // Get statuses from DB
@@ -244,7 +249,7 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
 
         };
 
-    }, [activeConfig, activeConfigName, loadingStatus]);
+    }, [activeConfig, activeConfigName, loadingStatus, settings, projectRoot]);
 
     // Keyboard handling
     useInput((input, _key) => {

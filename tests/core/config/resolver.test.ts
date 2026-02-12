@@ -83,10 +83,6 @@ function createConfig(overrides: Partial<Config> = {}): Config {
             dialect: 'sqlite',
             database: ':memory:',
         },
-        paths: {
-            sql: './sql',
-            changes: './changes',
-        },
         ...overrides,
     };
 
@@ -108,9 +104,6 @@ describe('config: resolver', () => {
             'NOORM_CONNECTION_USER',
             'NOORM_CONNECTION_PASSWORD',
             'NOORM_CONNECTION_SSL',
-            // Paths
-            'NOORM_PATHS_SQL',
-            'NOORM_PATHS_CHANGESETS',
             // Top-level
             'NOORM_CONFIG',
             'NOORM_PROTECTED',
@@ -292,9 +285,8 @@ describe('config: resolver', () => {
 
             const config = resolveConfig(state);
 
-            // Default paths should be applied if not in stored
-            expect(config!.paths.sql).toBe('./sql');
-            expect(config!.paths.changes).toBe('./changes');
+            expect(config!.type).toBe('local');
+            expect(config!.isTest).toBe(true);
 
         });
 
@@ -382,7 +374,6 @@ describe('config: resolver', () => {
 
             expect(config!.type).toBe('local');
             expect(config!.protected).toBe(false);
-            expect(config!.paths.sql).toBe('./sql');
 
         });
 
@@ -465,10 +456,6 @@ describe('config: resolver', () => {
                     dialect: 'postgres',
                     database: 'myapp',
                     host: 'localhost',
-                },
-                paths: {
-                    sql: './sql',
-                    changes: './changes',
                 },
             });
 

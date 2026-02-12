@@ -235,7 +235,7 @@ export class NoormOps {
         const runContext = this.#createRunContext();
         const sqlPath = path.join(
             this.#state.projectRoot,
-            this.#state.config.paths.sql,
+            this.#state.settings.paths?.sql ?? 'sql',
         );
 
         return runBuild(runContext, sqlPath, { force: options?.force });
@@ -750,8 +750,8 @@ export class NoormOps {
             configName: this.#state.config.name,
             identity: this.#state.identity,
             projectRoot: this.#state.projectRoot,
-            changesDir: path.join(this.#state.projectRoot, this.#state.config.paths.changes),
-            sqlDir: path.join(this.#state.projectRoot, this.#state.config.paths.sql),
+            changesDir: path.join(this.#state.projectRoot, this.#state.settings.paths?.changes ?? 'changes'),
+            sqlDir: path.join(this.#state.projectRoot, this.#state.settings.paths?.sql ?? 'sql'),
             config: this.#state.config as unknown as Record<string, unknown>,
             secrets: state.getAllSecrets(this.#state.config.name),
             globalSecrets: state.getAllGlobalSecrets(),

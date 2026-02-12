@@ -67,10 +67,6 @@ const DEFAULTS: ConfigInput = {
     type: 'local',
     isTest: false,
     protected: false,
-    paths: {
-        sql: './sql',
-        changes: './changes',
-    },
     connection: {
         host: 'localhost',
         pool: { min: 0, max: 10 },

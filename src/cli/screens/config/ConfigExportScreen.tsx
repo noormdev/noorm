@@ -142,7 +142,6 @@ export function ConfigExportScreen({ params }: ScreenProps): ReactElement {
                             ssl: config.connection.ssl,
                             // NO user/password - recipient uses their own
                         },
-                        paths: config.paths,
                     },
                     secrets: stateManager.getAllSecrets(configName),
                 };

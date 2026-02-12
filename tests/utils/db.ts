@@ -846,10 +846,6 @@ export function makeTestConfig(name: string, connection: ConnectionConfig): Conf
         isTest: true,
         protected: false,
         connection,
-        paths: {
-            sql: './sql',
-            changes: './changes',
-        },
     };
 
 }

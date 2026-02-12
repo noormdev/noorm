@@ -129,18 +129,6 @@ export function ConfigEditScreen({ params }: ScreenProps): ReactElement {
                 placeholder: '(unchanged if empty)',
             },
             {
-                key: 'sqlPath',
-                label: 'SQL Path',
-                type: 'text',
-                defaultValue: config.paths.sql,
-            },
-            {
-                key: 'changesPath',
-                label: 'Changes Path',
-                type: 'text',
-                defaultValue: config.paths.changes,
-            },
-            {
                 key: 'protected',
                 label: 'Protected',
                 type: 'checkbox',
@@ -214,10 +202,6 @@ export function ConfigEditScreen({ params }: ScreenProps): ReactElement {
                 isTest: Boolean(values['isTest']),
                 protected: Boolean(values['protected']),
                 connection: connectionConfig,
-                paths: {
-                    sql: String(values['sqlPath'] || './sql'),
-                    changes: String(values['changesPath'] || './changes'),
-                },
             };
 
             // Save config

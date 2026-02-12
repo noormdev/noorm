@@ -401,12 +401,6 @@ export function AppContextProvider({
 
             }
 
-            // Get default paths from settings
-            const defaultPaths = {
-                sql: settingsM.settings?.paths?.sql ?? './sql',
-                changes: settingsM.settings?.paths?.changes ?? './changes',
-            };
-
             for (const [stageName, stage] of Object.entries(stages)) {
 
                 // Skip if config already exists
@@ -432,7 +426,6 @@ export function AppContextProvider({
                         password: stage.defaults.password,
                         ssl: stage.defaults.ssl,
                     },
-                    paths: defaultPaths,
                 };
 
                 // Save to state (emits config:created event)

@@ -101,8 +101,6 @@ export function ConfigValidateScreen({ params }: ScreenProps): ReactElement {
             const requiredChecks = [
                 { key: 'name', label: 'Name', value: config.name },
                 { key: 'database', label: 'Database', value: config.connection.database },
-                { key: 'sqlPath', label: 'SQL Path', value: config.paths.sql },
-                { key: 'changesPath', label: 'Changes Path', value: config.paths.changes },
             ];
 
             for (const check of requiredChecks) {

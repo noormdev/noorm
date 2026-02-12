@@ -34,10 +34,6 @@ function createTestConfig(name: string): Config {
             dialect: 'sqlite',
             database: ':memory:',
         },
-        paths: {
-            sql: './sql',
-            changes: './changes',
-        },
     };
 
 }
