@@ -70,7 +70,8 @@ describe('cli: useUpdateChecker', () => {
         latestResult = null;
 
         // Default mock implementations
-        vi.mocked(loadGlobalSettings).mockResolvedValue({
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (loadGlobalSettings as any).mockResolvedValue({
             checkUpdates: true,
             autoUpdate: false,
         } as GlobalSettings);
@@ -93,7 +94,8 @@ describe('cli: useUpdateChecker', () => {
             isPrerelease: false,
         };
 
-        vi.mocked(checkForUpdate).mockResolvedValue(mockResult);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (checkForUpdate as any).mockResolvedValue(mockResult);
 
         const { lastFrame, unmount } = render(<TestComponent onResult={captureResult} />);
 
@@ -108,7 +110,8 @@ describe('cli: useUpdateChecker', () => {
 
     it('should not check when disabled in settings', async () => {
 
-        vi.mocked(loadGlobalSettings).mockResolvedValue({
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (loadGlobalSettings as any).mockResolvedValue({
             checkUpdates: false,
             autoUpdate: false,
         } as GlobalSettings);
@@ -125,7 +128,8 @@ describe('cli: useUpdateChecker', () => {
 
     it('should handle null result (offline/error)', async () => {
 
-        vi.mocked(checkForUpdate).mockResolvedValue(null);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (checkForUpdate as any).mockResolvedValue(null);
 
         const { lastFrame, unmount } = render(<TestComponent onResult={captureResult} />);
 
@@ -143,7 +147,8 @@ describe('cli: useUpdateChecker', () => {
 
         let resolveCheck: ((value: UpdateCheckResult | null) => void) | undefined;
 
-        vi.mocked(checkForUpdate).mockImplementation(() => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (checkForUpdate as any).mockImplementation(() => {
 
             return new Promise((resolve) => {
 
@@ -185,8 +190,10 @@ describe('cli: useUpdateChecker', () => {
             isPrerelease: false,
         };
 
-        vi.mocked(checkForUpdate).mockResolvedValue(mockCheckResult);
-        vi.mocked(installUpdate).mockResolvedValue({
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (checkForUpdate as any).mockResolvedValue(mockCheckResult);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (installUpdate as any).mockResolvedValue({
             success: true,
             previousVersion: '1.0.0',
             newVersion: '1.1.0',
@@ -209,7 +216,8 @@ describe('cli: useUpdateChecker', () => {
 
     it('should not perform update when no update available', async () => {
 
-        vi.mocked(checkForUpdate).mockResolvedValue({
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (checkForUpdate as any).mockResolvedValue({
             currentVersion: '1.0.0',
             latestVersion: '1.0.0',
             updateAvailable: false,
@@ -232,7 +240,8 @@ describe('cli: useUpdateChecker', () => {
 
     it('should dismiss update notification', async () => {
 
-        vi.mocked(checkForUpdate).mockResolvedValue({
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (checkForUpdate as any).mockResolvedValue({
             currentVersion: '1.0.0',
             latestVersion: '1.1.0',
             updateAvailable: true,

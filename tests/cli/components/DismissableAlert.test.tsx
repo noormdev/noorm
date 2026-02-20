@@ -33,8 +33,10 @@ describe('cli: DismissableAlert', () => {
 
         vi.clearAllMocks();
         // Default: show the alert (preference is 'ask')
-        vi.mocked(getDismissablePreference).mockResolvedValue('ask');
-        vi.mocked(updateDismissablePreference).mockResolvedValue();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (getDismissablePreference as any).mockResolvedValue('ask');
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (updateDismissablePreference as any).mockResolvedValue();
 
     });
 
@@ -194,7 +196,8 @@ describe('cli: DismissableAlert', () => {
 
     it('should auto-confirm when preference is always', async () => {
 
-        vi.mocked(getDismissablePreference).mockResolvedValue('always');
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (getDismissablePreference as any).mockResolvedValue('always');
 
         const onConfirm = vi.fn();
 
@@ -219,7 +222,8 @@ describe('cli: DismissableAlert', () => {
 
     it('should auto-deny when preference is never', async () => {
 
-        vi.mocked(getDismissablePreference).mockResolvedValue('never');
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (getDismissablePreference as any).mockResolvedValue('never');
 
         const onDeny = vi.fn();
 

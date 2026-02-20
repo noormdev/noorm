@@ -38,7 +38,8 @@ describe('update: registry', () => {
                 time: {},
             };
 
-            vi.mocked(fetch).mockResolvedValue({
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (fetch as any).mockResolvedValue({
                 ok: true,
                 json: () => Promise.resolve(mockPackageInfo),
             } as Response);
@@ -52,7 +53,8 @@ describe('update: registry', () => {
 
         it('should return null on network error', async () => {
 
-            vi.mocked(fetch).mockRejectedValue(new Error('Network error'));
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (fetch as any).mockRejectedValue(new Error('Network error'));
 
             const info = await fetchPackageInfo();
 
@@ -62,7 +64,8 @@ describe('update: registry', () => {
 
         it('should return null on HTTP error', async () => {
 
-            vi.mocked(fetch).mockResolvedValue({
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (fetch as any).mockResolvedValue({
                 ok: false,
                 status: 404,
             } as Response);
@@ -75,7 +78,8 @@ describe('update: registry', () => {
 
         it('should return null on invalid JSON', async () => {
 
-            vi.mocked(fetch).mockResolvedValue({
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (fetch as any).mockResolvedValue({
                 ok: true,
                 json: () => Promise.reject(new SyntaxError('Invalid JSON')),
             } as Response);
@@ -90,7 +94,8 @@ describe('update: registry', () => {
 
             let capturedSignal: AbortSignal | null | undefined;
 
-            vi.mocked(fetch).mockImplementation(async (_url, options) => {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (fetch as any).mockImplementation(async (_url, options) => {
 
                 capturedSignal = options?.signal;
 
