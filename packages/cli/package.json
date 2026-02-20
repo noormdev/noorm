@@ -4,21 +4,17 @@
   "description": "Database schema & changeset manager CLI",
   "type": "module",
   "bin": {
-    "noorm": "./dist/index.js"
+    "noorm": "./noorm.js"
   },
-  "main": "./dist/index.js",
   "files": [
-    "dist",
+    "noorm.js",
     "scripts"
   ],
   "scripts": {
     "postinstall": "node scripts/postinstall.js"
   },
-  "dependencies": {
-    "better-sqlite3": "^12.5.0"
-  },
   "engines": {
-    "node": ">=22.13"
+    "node": ">=18"
   },
   "keywords": [
     "database",
