@@ -27,7 +27,7 @@ import { useRouter } from '../../router.js';
 import { useAppContext } from '../../app-context.js';
 import { Panel, Form, useToast } from '../../components/index.js';
 import { testConnection } from '../../../core/connection/factory.js';
-import { getErrorMessage, validateConfigName, validatePort, buildConnectionConfig, DEFAULT_PORTS } from '../../utils/index.js';
+import { getErrorMessage, validateConfigName, validatePort, buildConnectionConfig } from '../../utils/index.js';
 
 /**
  * ConfigAddScreen component.

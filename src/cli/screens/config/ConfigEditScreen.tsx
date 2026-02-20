@@ -11,7 +11,7 @@
  * ```
  */
 import { useState, useCallback, useMemo } from 'react';
-import { Box, Text, useStdout } from 'ink';
+import { Box, useStdout } from 'ink';
 import { attempt } from '@logosdx/utils';
 
 import type { ReactElement } from 'react';

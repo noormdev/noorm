@@ -15,8 +15,6 @@ import { Box, Text, useInput } from 'ink';
 import type { ReactElement } from 'react';
 import type { ScreenProps } from '../../types.js';
 import type { FileHistoryRecord } from '../../../core/change/types.js';
-import type { NoormDatabase } from '../../../core/shared/index.js';
-import type { Kysely } from 'kysely';
 
 import { attempt } from '@logosdx/utils';
 import { useRouter } from '../../router.js';

@@ -3,7 +3,7 @@
  *
  * Shows vault command help.
  */
-import { type HeadlessCommand, createHelpOnlyCommand } from './_helpers.js';
+import { createHelpOnlyCommand } from './_helpers.js';
 
 export const help = `
 # VAULT

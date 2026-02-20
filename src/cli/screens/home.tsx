@@ -31,8 +31,6 @@ import { discoverChanges } from '../../core/change/parser.js';
 import { getLockManager } from '../../core/lock/manager.js';
 import type { UnifiedHistoryRecord } from '../../core/change/types.js';
 import type { LockStatus } from '../../core/lock/types.js';
-import type { NoormDatabase } from '../../core/shared/index.js';
-import type { Kysely } from 'kysely';
 import { relativeTimeAgo } from '../utils/date.js';
 
 /**

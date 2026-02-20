@@ -34,3 +34,4 @@ tmp/
 .noorm/state/
 packages/cli/bin/
 docs/.vitepress/cache/
+examples/todo-db/.noorm/state/state.enc
