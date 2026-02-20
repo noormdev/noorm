@@ -58,7 +58,7 @@ export function DebugListScreen({ params }: ScreenProps): ReactElement {
 
     const { navigate, back } = useRouter();
     const { isFocused } = useFocusScope('DebugList');
-    const { activeConfig, activeConfigName } = useAppContext();
+    const { activeConfig, activeConfigName: _activeConfigName } = useAppContext();
     const { showToast } = useToast();
 
     // Data state

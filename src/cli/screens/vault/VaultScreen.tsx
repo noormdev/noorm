@@ -36,7 +36,7 @@ import {
 } from '../../../core/vault/index.js';
 
 
-type Phase = 'connecting' | 'ready' | 'error';
+type _Phase = 'connecting' | 'ready' | 'error';
 
 /**
  * VaultScreen component.

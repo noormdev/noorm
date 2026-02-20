@@ -42,7 +42,7 @@ import type { NoormEvents, NoormEventNames } from '../../core/observer.js';
 export function useOnEvent<E extends NoormEventNames>(
     event: E,
     callback: (data: NoormEvents[E]) => void,
-    deps: DependencyList,
+    _deps: DependencyList,
 ): void {
 
     const callbackRef = useRef(callback);
@@ -71,7 +71,7 @@ export function useOnEvent<E extends NoormEventNames>(
 export function useOnceEvent<E extends NoormEventNames>(
     event: E,
     callback: (data: NoormEvents[E]) => void,
-    deps: DependencyList,
+    _deps: DependencyList,
 ): void {
 
     const callbackRef = useRef(callback);
@@ -97,7 +97,7 @@ export function useOnceEvent<E extends NoormEventNames>(
  */
 export function useEmit<E extends NoormEventNames>(
     event: E,
-    deps: DependencyList = [],
+    _deps: DependencyList = [],
 ): (data: NoormEvents[E]) => void {
 
     const { emitFactory } = useNoormObserver();

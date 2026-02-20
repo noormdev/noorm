@@ -363,7 +363,7 @@ export function ExploreDetailScreen({ params }: ScreenProps): ReactElement {
 
     const { back, route } = useRouter();
     const { isFocused } = useFocusScope('ExploreDetail');
-    const { activeConfig, activeConfigName } = useAppContext();
+    const { activeConfig, activeConfigName: _activeConfigName } = useAppContext();
 
     const [detail, setDetail] = useState<AnyDetail | null>(null);
     const [isLoading, setIsLoading] = useState(true);

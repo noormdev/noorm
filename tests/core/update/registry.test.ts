@@ -18,7 +18,7 @@ describe('update: registry', () => {
 
     beforeEach(() => {
 
-        globalThis.fetch = vi.fn() as any;
+        globalThis.fetch = vi.fn() as unknown as typeof fetch;
 
     });
 
@@ -38,7 +38,7 @@ describe('update: registry', () => {
                 time: {},
             };
 
-            (fetch as any).mockResolvedValue({
+            vi.mocked(fetch).mockResolvedValue({
                 ok: true,
                 json: () => Promise.resolve(mockPackageInfo),
             } as Response);
@@ -52,7 +52,7 @@ describe('update: registry', () => {
 
         it('should return null on network error', async () => {
 
-            (fetch as any).mockRejectedValue(new Error('Network error'));
+            vi.mocked(fetch).mockRejectedValue(new Error('Network error'));
 
             const info = await fetchPackageInfo();
 
@@ -62,7 +62,7 @@ describe('update: registry', () => {
 
         it('should return null on HTTP error', async () => {
 
-            (fetch as any).mockResolvedValue({
+            vi.mocked(fetch).mockResolvedValue({
                 ok: false,
                 status: 404,
             } as Response);
@@ -75,7 +75,7 @@ describe('update: registry', () => {
 
         it('should return null on invalid JSON', async () => {
 
-            (fetch as any).mockResolvedValue({
+            vi.mocked(fetch).mockResolvedValue({
                 ok: true,
                 json: () => Promise.reject(new SyntaxError('Invalid JSON')),
             } as Response);
@@ -90,7 +90,7 @@ describe('update: registry', () => {
 
             let capturedSignal: AbortSignal | null | undefined;
 
-            (fetch as any).mockImplementation(async (_url, options) => {
+            vi.mocked(fetch).mockImplementation(async (_url, options) => {
 
                 capturedSignal = options?.signal;
 

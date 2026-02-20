@@ -42,7 +42,7 @@ export function DebugDetailScreen({ params }: ScreenProps): ReactElement {
 
     const { back } = useRouter();
     const { isFocused } = useFocusScope('DebugDetail');
-    const { activeConfig, activeConfigName } = useAppContext();
+    const { activeConfig, activeConfigName: _activeConfigName } = useAppContext();
     const { showToast } = useToast();
 
     // Data state

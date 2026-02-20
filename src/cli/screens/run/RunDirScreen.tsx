@@ -83,7 +83,7 @@ export function RunDirScreen({ params }: ScreenProps): ReactElement {
     const { state: progress, reset: resetProgress } = useRunProgress();
 
     // Shared connection for status checks
-    const { db: sharedDb, loading: connLoading, error: connError } = useConnection();
+    const { db: sharedDb, loading: _connLoading, error: connError } = useConnection();
 
     const [phase, setPhase] = useState<Phase>('loading');
     const [allFiles, setAllFiles] = useState<string[]>([]);

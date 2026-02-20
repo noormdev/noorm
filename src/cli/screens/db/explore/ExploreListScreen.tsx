@@ -122,7 +122,7 @@ export function ExploreListScreen({ params: _params }: ScreenProps): ReactElemen
 
     const { navigate, back, route } = useRouter();
     const { isFocused } = useFocusScope('ExploreList');
-    const { activeConfig, activeConfigName } = useAppContext();
+    const { activeConfig, activeConfigName: _activeConfigName } = useAppContext();
     const { getFilter, setFilter } = useExploreFilters();
     const { settings } = useSettings();
 
