@@ -4,7 +4,7 @@
  * Tests AES-256-GCM encryption/decryption for state persistence.
  * Validates security properties: random IVs, auth tags, tampering detection.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import { generateKeyPair } from '../../../../src/core/identity/crypto.js';
 import { encrypt, decrypt } from '../../../../src/core/state/encryption/crypto.js';
 import type { EncryptedPayload } from '../../../../src/core/state/types.js';

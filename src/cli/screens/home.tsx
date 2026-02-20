@@ -13,9 +13,7 @@
  * noorm home     # Same thing
  * ```
  */
-import { join } from 'path';
-
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import type { ReactElement } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { attempt } from '@logosdx/utils';
@@ -26,7 +24,8 @@ import { useFocusScope } from '../focus.js';
 import { useAppContext } from '../app-context.js';
 import { useShutdown } from '../shutdown.js';
 import { Panel, Spinner } from '../components/index.js';
-import { testConnection, createConnection } from '../../core/connection/factory.js';
+import { useConnection, useAsyncEffect } from '../hooks/index.js';
+import { getErrorMessage, resolveChangesDir, resolveSqlDir } from '../utils/index.js';
 import { ChangeHistory } from '../../core/change/history.js';
 import { discoverChanges } from '../../core/change/parser.js';
 import { getLockManager } from '../../core/lock/manager.js';
@@ -97,6 +96,9 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
     const [recentActivity, setRecentActivity] = useState<UnifiedHistoryRecord[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
+    // Shared connection
+    const { db, loading: connLoading, error: connError } = useConnection();
+
     // Compute setup status for all configs (configs linked to stages)
     const setupStatus = useMemo<ConfigSetupStatus[]>(() => {
 
@@ -117,10 +119,10 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
 
     }, [configs, settings]);
 
-    // Load status data when active config changes
-    useEffect(() => {
+    // Load status data when connection is ready
+    useAsyncEffect(async (isCancelled) => {
 
-        if (!activeConfig || loadingStatus !== 'ready') {
+        if (loadingStatus !== 'ready') {
 
             setIsLoading(false);
 
@@ -128,128 +130,105 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
 
         }
 
-        let cancelled = false;
+        if (connLoading) {
 
-        const loadStatus = async () => {
-
-            setIsLoading(true);
             setStatus((prev) => ({ ...prev, connection: 'checking' }));
 
-            // Test connection
-            const connResult = await testConnection(activeConfig.connection);
+            return;
 
-            if (cancelled) return;
+        }
 
-            if (!connResult.ok) {
+        if (connError) {
 
-                const errorMsg = connResult.error ?? 'Connection failed';
-                setStatus({
-                    connection: isDatabaseMissingError(errorMsg) ? 'db-missing' : 'error',
-                    connectionError: errorMsg,
-                    pendingCount: null,
-                    lockStatus: null,
-                });
-                setIsLoading(false);
-
-                return;
-
-            }
-
-            // Connection successful - get more data
-            const [result, err] = await attempt(async () => {
-
-                const conn = await createConnection(
-                    activeConfig.connection,
-                    activeConfigName ?? '__status__',
-                );
-                const db = conn.db;
-
-                if (cancelled) {
-
-                    await conn.destroy();
-
-                    return null;
-
-                }
-
-                // Get lock status
-                const lockManager = getLockManager();
-                const lockStatus = await lockManager.status(db as Kysely<NoormDatabase>, activeConfigName ?? '');
-
-                // Get change info - use ChangeHistory directly for read-only operations
-                const changeHistory = new ChangeHistory(db as Kysely<NoormDatabase>, activeConfigName ?? '');
-
-                // Discover changes from disk
-                const changesDir = settings?.paths?.changes ?? 'changes';
-                const sqlDir = settings?.paths?.sql ?? 'sql';
-                const diskChanges = await discoverChanges(
-                    join(projectRoot, changesDir),
-                    join(projectRoot, sqlDir),
-                );
-
-                // Get statuses from DB
-                const statuses = await changeHistory.getAllStatuses();
-
-                // Count pending (on disk but not applied, or reverted)
-                let pendingCount = 0;
-                for (const cs of diskChanges) {
-
-                    const status = statuses.get(cs.name);
-                    if (!status || status.status === 'pending' || status.status === 'reverted') {
-
-                        pendingCount++;
-
-                    }
-
-                }
-
-                // Get recent activity (all operation types)
-                const history = await changeHistory.getUnifiedHistory(undefined, 5);
-
-                await conn.destroy();
-
-                return { lockStatus, pendingCount, history };
-
+            const errorMsg = connError;
+            setStatus({
+                connection: isDatabaseMissingError(errorMsg) ? 'db-missing' : 'error',
+                connectionError: errorMsg,
+                pendingCount: null,
+                lockStatus: null,
             });
+            setIsLoading(false);
 
-            if (err) {
+            return;
 
-                if (!cancelled) {
+        }
 
-                    setStatus({
-                        connection: 'error',
-                        connectionError: err instanceof Error ? err.message : String(err),
-                        pendingCount: null,
-                        lockStatus: null,
-                    });
-
-                }
-
-            }
-            else if (result && !cancelled) {
-
-                setStatus({
-                    connection: 'connected',
-                    pendingCount: result.pendingCount,
-                    lockStatus: result.lockStatus,
-                });
-                setRecentActivity(result.history);
-
-            }
+        if (!db) {
 
             setIsLoading(false);
 
-        };
+            return;
 
-        loadStatus();
+        }
 
-        return () => {
+        setIsLoading(true);
 
-            cancelled = true;
+        const [result, err] = await attempt(async () => {
 
-        };
+            // Get lock status
+            const lockManager = getLockManager();
+            const lockStatus = await lockManager.status(db, activeConfigName ?? '');
 
-    }, [activeConfig, activeConfigName, loadingStatus, settings, projectRoot]);
+            // Get change info - use ChangeHistory directly for read-only operations
+            const changeHistory = new ChangeHistory(db, activeConfigName ?? '');
+
+            // Discover changes from disk
+            const diskChanges = await discoverChanges(
+                resolveChangesDir(projectRoot, settings),
+                resolveSqlDir(projectRoot, settings),
+            );
+
+            // Get statuses from DB
+            const statuses = await changeHistory.getAllStatuses();
+
+            // Count pending (on disk but not applied, or reverted)
+            let pendingCount = 0;
+            for (const cs of diskChanges) {
+
+                const status = statuses.get(cs.name);
+                if (!status || status.status === 'pending' || status.status === 'reverted') {
+
+                    pendingCount++;
+
+                }
+
+            }
+
+            // Get recent activity (all operation types)
+            const history = await changeHistory.getUnifiedHistory(undefined, 5);
+
+            return { lockStatus, pendingCount, history };
+
+        });
+
+        if (err) {
+
+            if (!isCancelled()) {
+
+                setStatus({
+                    connection: 'error',
+                    connectionError: getErrorMessage(err),
+                    pendingCount: null,
+                    lockStatus: null,
+                });
+
+            }
+
+        }
+        else if (result && !isCancelled()) {
+
+            setStatus({
+                connection: 'connected',
+                pendingCount: result.pendingCount,
+                lockStatus: result.lockStatus,
+            });
+            setRecentActivity(result.history);
+
+        }
+
+        setIsLoading(false);
+
+    }, [db, connLoading, connError, activeConfigName, loadingStatus, settings, projectRoot]);
 
     // Keyboard handling
     useInput((input, _key) => {

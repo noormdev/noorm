@@ -12,18 +12,19 @@
  * noorm db         # Then press 'e' > '1' > select a table
  * ```
  */
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { attempt } from '@logosdx/utils';
 
 import type { ReactElement } from 'react';
+import type { Kysely } from 'kysely';
 import type { ScreenProps } from '../../../types.js';
 
 import { useRouter } from '../../../router.js';
 import { useFocusScope } from '../../../focus.js';
 import { useAppContext } from '../../../app-context.js';
 import { Panel, Spinner } from '../../../components/index.js';
-import { createConnection } from '../../../../core/connection/index.js';
+import { useConnection, useAsyncEffect } from '../../../hooks/index.js';
 import { fetchDetail } from '../../../../core/explore/index.js';
 
 import type { DetailCategory } from '../../../../core/explore/index.js';
@@ -373,76 +374,50 @@ export function ExploreDetailScreen({ params }: ScreenProps): ReactElement {
     const name = params.name;
     const schema = params.schema;
 
-    // Load detail
-    useEffect(() => {
+    // Shared connection
+    const { db, dialect, loading: connLoading, error: connError } = useConnection();
 
-        if (!activeConfig || !category || !name) {
+    // Load detail when connection is ready
+    useAsyncEffect(async (isCancelled) => {
 
-            setIsLoading(false);
+        if (!db || !dialect || !category || !name) {
+
+            if (!connLoading && !connError) setIsLoading(false);
 
             return;
 
         }
 
-        let cancelled = false;
+        setIsLoading(true);
+        setError(null);
 
-        const load = async () => {
+        const [result, err] = await attempt(async () => {
 
-            setIsLoading(true);
-            setError(null);
+            return await fetchDetail(db as Kysely<unknown>, dialect, category, name, schema);
 
-            const [result, err] = await attempt(async () => {
+        });
 
-                const conn = await createConnection(
-                    activeConfig.connection,
-                    activeConfigName ?? '__explore__',
-                );
+        if (isCancelled()) return;
 
-                const data = await fetchDetail(
-                    conn.db,
-                    activeConfig.connection.dialect,
-                    category,
-                    name,
-                    schema,
-                );
+        if (err) {
 
-                await conn.destroy();
+            setError(err.message);
 
-                return data;
+        }
+        else if (!result) {
 
-            });
+            setError(`${name} not found`);
 
-            if (cancelled) return;
+        }
+        else {
 
-            if (err) {
+            setDetail(result as AnyDetail);
 
-                setError(err.message);
+        }
 
-            }
-            else if (!result) {
+        setIsLoading(false);
 
-                setError(`${name} not found`);
-
-            }
-            else {
-
-                setDetail(result as AnyDetail);
-
-            }
-
-            setIsLoading(false);
-
-        };
-
-        load();
-
-        return () => {
-
-            cancelled = true;
-
-        };
-
-    }, [activeConfig, activeConfigName, category, name, schema]);
+    }, [db, dialect, category, name, schema]);
 
     // Handle escape
     useInput((input, key) => {
@@ -508,7 +483,7 @@ export function ExploreDetailScreen({ params }: ScreenProps): ReactElement {
     }
 
     // Loading state
-    if (isLoading) {
+    if (isLoading || connLoading) {
 
         return (
             <Box flexDirection="column" gap={1}>
@@ -521,14 +496,14 @@ export function ExploreDetailScreen({ params }: ScreenProps): ReactElement {
     }
 
     // Error state
-    if (error || !detail) {
+    if (error || connError || !detail) {
 
         return (
             <Box flexDirection="column" gap={1}>
                 <Panel title={getTitle()} borderColor="red" paddingX={1} paddingY={1}>
                     <Box flexDirection="column" gap={1}>
                         <Text color="red">Error</Text>
-                        <Text dimColor>{error ?? 'Object not found'}</Text>
+                        <Text dimColor>{error ?? connError ?? 'Object not found'}</Text>
                     </Box>
                 </Panel>
 

@@ -21,6 +21,7 @@ import type { ScreenProps } from '../../types.js';
 import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
+import { getErrorMessage } from '../../utils/index.js';
 import {
     Panel,
     SelectList,
@@ -136,7 +137,7 @@ export function SettingsStagesListScreen({ params: _params }: ScreenProps): Reac
         if (err) {
 
             showToast({
-                message: err instanceof Error ? err.message : String(err),
+                message: getErrorMessage(err),
                 variant: 'error',
             });
 

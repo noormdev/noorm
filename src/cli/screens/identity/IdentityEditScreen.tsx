@@ -26,6 +26,7 @@ import { Panel, Spinner, useToast } from '../../components/index.js';
 import { Form, type FormField, type FormValues } from '../../components/forms/index.js';
 import { createIdentityForExistingKeys } from '../../../core/identity/index.js';
 import { attempt } from '@logosdx/utils';
+import { getErrorMessage } from '../../utils/index.js';
 
 
 /**
@@ -101,7 +102,7 @@ export function IdentityEditScreen({ params: _params }: ScreenProps): ReactEleme
 
             if (err) {
 
-                setError(err instanceof Error ? err.message : String(err));
+                setError(getErrorMessage(err));
                 setSaving(false);
                 showToast({
                     message: 'Failed to update identity',

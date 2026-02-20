@@ -69,6 +69,8 @@ import * as CmdVaultPropagate from './vault-propagate.js';
 import * as CmdVaultRm from './vault-rm.js';
 import * as CmdVaultSet from './vault-set.js';
 
+import * as CmdSql from './sql.js';
+
 import * as CmdHelp from './help.js';
 import * as CmdUpdate from './update.js';
 import * as CmdVersion from './version.js';
@@ -117,6 +119,8 @@ const HANDLERS: Partial<Record<Route, RouteHandler>> = {
 
     'secret': CmdSecret,
     'settings': CmdSettings,
+
+    'sql': CmdSql,
 
     'vault': CmdVault,
     'vault/cp': CmdVaultCp,

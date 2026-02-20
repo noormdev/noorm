@@ -3,7 +3,7 @@
  *
  * Tests pure utility functions for route parsing.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 
 import { getSection, getParentRoute } from '../../src/cli/types.js';
 import type { Route, Section } from '../../src/cli/types.js';

@@ -21,6 +21,7 @@ import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
 import { Panel, Spinner, StatusMessage } from '../../components/index.js';
 import { syncIdentityWithConfig } from '../../../core/identity/index.js';
+import { getErrorMessage } from '../../utils/index.js';
 
 /**
  * Use steps.
@@ -97,7 +98,7 @@ export function ConfigUseScreen({ params }: ScreenProps): ReactElement {
 
             if (err) {
 
-                setError(err instanceof Error ? err.message : String(err));
+                setError(getErrorMessage(err));
                 setStep('error');
 
                 return;

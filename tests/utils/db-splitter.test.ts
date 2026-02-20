@@ -3,7 +3,7 @@
  *
  * Ensures the splitter correctly handles dollar-quoted strings and other SQL constructs.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 

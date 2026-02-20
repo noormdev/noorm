@@ -27,17 +27,18 @@
  * noorm db transfer    # Opens this screen
  * ```
  */
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { ProgressBar, TextInput } from '@inkjs/ui';
 
 import type { ReactElement } from 'react';
 import type { ScreenProps } from '../../types.js';
+import { getErrorMessage } from '../../utils/index.js';
 
 import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
-import { useTransferProgress } from '../../hooks/index.js';
+import { useTransferProgress, useLoadGuard, useAsyncEffect } from '../../hooks/index.js';
 import {
     useToast,
     Panel,
@@ -110,7 +111,7 @@ export function DbTransferScreen({ params: _params }: ScreenProps): ReactElement
     const [importSchemas, setImportSchemas] = useState<Map<string, DtSchema>>(new Map());
     const [loadingSchemas, setLoadingSchemas] = useState(false);
 
-    const loadingRef = useRef(false);
+    const { tryAcquire, release } = useLoadGuard();
 
     // Get available configs (excluding active)
     const availableConfigs = useMemo(() => {
@@ -190,185 +191,142 @@ export function DbTransferScreen({ params: _params }: ScreenProps): ReactElement
     ];
 
     // Load tables from active config for export mode
-    useEffect(() => {
+    useAsyncEffect(async (isCancelled) => {
 
         if (transferMode !== 'export' || phase !== 'select-tables') return;
         if (!stateManager || !activeConfig) return;
         if (allTables.length > 0) return;
 
-        let cancelled = false;
+        // Use a dummy dest config (same as source) to get table list
+        const [planResult, planErr] = await getTransferPlan(activeConfig, activeConfig, {});
 
-        const load = async () => {
+        if (!isCancelled()) {
 
-            // Use a dummy dest config (same as source) to get table list
-            const [planResult, planErr] = await getTransferPlan(activeConfig, activeConfig, {});
+            if (planErr) {
 
-            if (!cancelled) {
+                setError(planErr.message);
+                setPhase('error');
 
-                if (planErr) {
+            }
+            else if (planResult) {
 
-                    setError(planErr.message);
-                    setPhase('error');
-
-                }
-                else if (planResult) {
-
-                    setAllTables(planResult.tables.map((t) => t.name));
-
-                }
+                setAllTables(planResult.tables.map((t) => t.name));
 
             }
 
-        };
-
-        load();
-
-        return () => {
-
-            cancelled = true;
-
-        };
+        }
 
     }, [transferMode, phase, stateManager, activeConfig, allTables.length]);
 
     // Load destination config and tables when selected
-    useEffect(() => {
+    useAsyncEffect(async (isCancelled) => {
 
         if (!destConfigName || !stateManager || !activeConfig) return;
-        if (loadingRef.current) return;
+        if (!tryAcquire()) return;
 
-        loadingRef.current = true;
-        let cancelled = false;
+        const config = stateManager.getConfig(destConfigName);
 
-        const load = async () => {
+        if (!config) {
 
-            const config = stateManager.getConfig(destConfigName);
+            if (!isCancelled()) {
 
-            if (!config) {
-
-                if (!cancelled) {
-
-                    setError(`Config not found: ${destConfigName}`);
-                    setPhase('error');
-
-                }
-
-                loadingRef.current = false;
-
-                return;
+                setError(`Config not found: ${destConfigName}`);
+                setPhase('error');
 
             }
 
-            setDestConfig(config);
+            release();
 
-            // Get transfer plan to list tables
-            const [planResult, planErr] = await getTransferPlan(activeConfig, config, {});
+            return;
 
-            if (!cancelled) {
+        }
 
-                if (planErr) {
+        setDestConfig(config);
 
-                    setError(planErr.message);
-                    setPhase('error');
+        // Get transfer plan to list tables
+        const [planResult, planErr] = await getTransferPlan(activeConfig, config, {});
 
-                }
-                else if (planResult) {
+        if (!isCancelled()) {
 
-                    setAllTables(planResult.tables.map((t) => t.name));
-                    setPhase('select-tables');
+            if (planErr) {
 
-                }
+                setError(planErr.message);
+                setPhase('error');
+
+            }
+            else if (planResult) {
+
+                setAllTables(planResult.tables.map((t) => t.name));
+                setPhase('select-tables');
 
             }
 
-            loadingRef.current = false;
+        }
 
-        };
-
-        load();
-
-        return () => {
-
-            cancelled = true;
-
-        };
+        release();
 
     }, [destConfigName, stateManager, activeConfig]);
 
     // Scan for .dt files when entering import mode
-    useEffect(() => {
+    useAsyncEffect(async (isCancelled) => {
 
         if (transferMode !== 'import' || phase !== 'import-file') return;
         if (availableDtFiles.length > 0) return;
 
-        let cancelled = false;
+        setScanningFiles(true);
 
-        const scan = async () => {
+        const { readdir } = await import('fs/promises');
+        const { join } = await import('path');
 
-            setScanningFiles(true);
+        const dtFiles: string[] = [];
+        const ignoreDirs = new Set(['node_modules', '.git', '.noorm', 'dist', 'build']);
 
-            const { readdir } = await import('fs/promises');
-            const { join } = await import('path');
+        const scanDir = async (dir: string, prefix = ''): Promise<void> => {
 
-            const dtFiles: string[] = [];
-            const ignoreDirs = new Set(['node_modules', '.git', '.noorm', 'dist', 'build']);
+            if (isCancelled()) return;
 
-            const scanDir = async (dir: string, prefix = ''): Promise<void> => {
+            const entries = await readdir(dir, { withFileTypes: true });
 
-                if (cancelled) return;
+            for (const entry of entries) {
 
-                const entries = await readdir(dir, { withFileTypes: true });
+                if (isCancelled()) break;
 
-                for (const entry of entries) {
+                const fullPath = join(dir, entry.name);
+                const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
 
-                    if (cancelled) break;
+                if (entry.isDirectory()) {
 
-                    const fullPath = join(dir, entry.name);
-                    const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
+                    if (!ignoreDirs.has(entry.name) && !entry.name.startsWith('.')) {
 
-                    if (entry.isDirectory()) {
-
-                        if (!ignoreDirs.has(entry.name) && !entry.name.startsWith('.')) {
-
-                            await scanDir(fullPath, relativePath);
-
-                        }
+                        await scanDir(fullPath, relativePath);
 
                     }
-                    else if (entry.isFile()) {
 
-                        const lower = entry.name.toLowerCase();
+                }
+                else if (entry.isFile()) {
 
-                        if (lower.endsWith('.dt') || lower.endsWith('.dtz') || lower.endsWith('.dtzx')) {
+                    const lower = entry.name.toLowerCase();
 
-                            dtFiles.push(relativePath);
+                    if (lower.endsWith('.dt') || lower.endsWith('.dtz') || lower.endsWith('.dtzx')) {
 
-                        }
+                        dtFiles.push(relativePath);
 
                     }
 
                 }
 
-            };
-
-            await scanDir(process.cwd());
-
-            if (!cancelled) {
-
-                setAvailableDtFiles(dtFiles.sort());
-                setScanningFiles(false);
-
             }
 
         };
 
-        scan();
+        await scanDir(process.cwd());
 
-        return () => {
+        if (!isCancelled()) {
 
-            cancelled = true;
+            setAvailableDtFiles(dtFiles.sort());
+            setScanningFiles(false);
 
-        };
+        }
 
     }, [transferMode, phase, availableDtFiles.length]);
 
@@ -635,73 +593,59 @@ export function DbTransferScreen({ params: _params }: ScreenProps): ReactElement
     }, [showToast]);
 
     // Load import schemas for preview
-    useEffect(() => {
+    useAsyncEffect(async (isCancelled) => {
 
         if (phase !== 'import-preview') return;
         if (importFiles.length === 0) return;
         if (importSchemas.size > 0) return;
 
-        let cancelled = false;
+        setLoadingSchemas(true);
+        const schemas = new Map<string, DtSchema>();
 
-        const load = async () => {
+        for (const filepath of importFiles) {
 
-            setLoadingSchemas(true);
-            const schemas = new Map<string, DtSchema>();
+            if (isCancelled()) break;
 
-            for (const filepath of importFiles) {
+            const reader = new DtReader({
+                filepath,
+                passphrase: passphrase || undefined,
+            });
 
-                if (cancelled) break;
+            try {
 
-                const reader = new DtReader({
-                    filepath,
-                    passphrase: passphrase || undefined,
-                });
+                await reader.open();
+                const schema = reader.schema;
+                reader.close();
 
-                try {
+                if (schema) {
 
-                    await reader.open();
-                    const schema = reader.schema;
-                    reader.close();
-
-                    if (schema) {
-
-                        schemas.set(filepath, schema);
-
-                    }
+                    schemas.set(filepath, schema);
 
                 }
-                catch (err) {
 
-                    if (!cancelled) {
+            }
+            catch (err) {
 
-                        setError(`Failed to read ${filepath}: ${err instanceof Error ? err.message : String(err)}`);
-                        setPhase('error');
-                        setLoadingSchemas(false);
+                if (!isCancelled()) {
 
-                        return;
+                    setError(`Failed to read ${filepath}: ${getErrorMessage(err)}`);
+                    setPhase('error');
+                    setLoadingSchemas(false);
 
-                    }
+                    return;
 
                 }
 
             }
 
-            if (!cancelled) {
+        }
 
-                setImportSchemas(schemas);
-                setLoadingSchemas(false);
+        if (!isCancelled()) {
 
-            }
+            setImportSchemas(schemas);
+            setLoadingSchemas(false);
 
-        };
-
-        load();
-
-        return () => {
-
-            cancelled = true;
-
-        };
+        }
 
     }, [phase, importFiles, passphrase, importSchemas.size]);
 

@@ -27,16 +27,7 @@ import { useRouter } from '../../router.js';
 import { useAppContext } from '../../app-context.js';
 import { Panel, Form, useToast } from '../../components/index.js';
 import { testConnection } from '../../../core/connection/factory.js';
-
-/**
- * Default ports by dialect.
- */
-const DEFAULT_PORTS: Record<Dialect, number> = {
-    postgres: 5432,
-    mysql: 3306,
-    sqlite: 0,
-    mssql: 1433,
-};
+import { getErrorMessage, validateConfigName, validatePort, buildConnectionConfig, DEFAULT_PORTS } from '../../utils/index.js';
 
 /**
  * ConfigAddScreen component.
@@ -62,25 +53,7 @@ export function ConfigAddScreen({ params }: ScreenProps): ReactElement {
             type: 'text',
             required: true,
             placeholder: 'e.g., dev, staging, prod',
-            validate: (value) => {
-
-                if (typeof value !== 'string') return 'Name is required';
-
-                if (!/^[a-z0-9_-]+$/i.test(value)) {
-
-                    return 'Only letters, numbers, hyphens, underscores';
-
-                }
-
-                if (configs.some((c) => c.name === value)) {
-
-                    return 'Config name already exists';
-
-                }
-
-                return undefined;
-
-            },
+            validate: (value) => validateConfigName(String(value ?? ''), configs.map((c) => c.name)),
         },
         {
             key: 'dialect',
@@ -107,21 +80,7 @@ export function ConfigAddScreen({ params }: ScreenProps): ReactElement {
             label: 'Port',
             type: 'text',
             placeholder: '5432',
-            validate: (value) => {
-
-                if (typeof value !== 'string' || !value) return undefined;
-
-                const port = parseInt(value, 10);
-
-                if (isNaN(port) || port < 1 || port > 65535) {
-
-                    return 'Port must be 1-65535';
-
-                }
-
-                return undefined;
-
-            },
+            validate: (value) => validatePort(typeof value === 'string' ? value : undefined),
         },
         {
             key: 'database',
@@ -169,25 +128,9 @@ export function ConfigAddScreen({ params }: ScreenProps): ReactElement {
             }
 
             const dialect = values['dialect'] as Dialect;
-            const isSqlite = dialect === 'sqlite';
 
             // Build connection config
-            const connectionConfig = {
-                dialect,
-                host: isSqlite ? undefined : String(values['host'] || 'localhost'),
-                port: isSqlite
-                    ? undefined
-                    : values['port']
-                        ? parseInt(String(values['port']), 10)
-                        : DEFAULT_PORTS[dialect],
-                database: String(values['database']),
-                user: isSqlite ? undefined : values['user'] ? String(values['user']) : undefined,
-                password: isSqlite
-                    ? undefined
-                    : values['password']
-                        ? String(values['password'])
-                        : undefined,
-            };
+            const connectionConfig = buildConnectionConfig(values, dialect);
 
             // Test connection first (server only - database may not exist yet)
             setBusy(true);
@@ -235,7 +178,7 @@ export function ConfigAddScreen({ params }: ScreenProps): ReactElement {
 
             if (err) {
 
-                setConnectionError(err instanceof Error ? err.message : String(err));
+                setConnectionError(getErrorMessage(err));
                 setBusy(false);
 
                 return;

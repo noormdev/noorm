@@ -8,7 +8,7 @@
  * NOORM_CONNECTION_DIALECT=postgres  ->  { connection: { dialect: 'postgres' } }
  * NOORM_CONNECTION_HOST=localhost    ->  { connection: { host: 'localhost' } }
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import {
     getEnvConfig,
 } from '../../../src/core/config/index.js';

@@ -4,7 +4,7 @@
  * Tests the planning logic: topological sort, FK dependency ordering,
  * table filtering, and schema validation.
  */
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'bun:test';
 import { sql } from 'kysely';
 
 import type { Kysely } from 'kysely';

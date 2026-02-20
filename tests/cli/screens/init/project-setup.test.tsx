@@ -3,7 +3,7 @@
  *
  * Tests the project setup step during initialization.
  */
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi } from 'bun:test';
 import { render } from 'ink-testing-library';
 import React from 'react';
 

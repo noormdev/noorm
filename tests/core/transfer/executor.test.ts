@@ -4,7 +4,7 @@
  * Tests executor behavior: same-server vs cross-server paths,
  * identity handling, batch processing, conflict strategies.
  */
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'bun:test';
 import { sql } from 'kysely';
 
 import type { Kysely } from 'kysely';

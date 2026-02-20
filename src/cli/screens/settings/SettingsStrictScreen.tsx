@@ -8,9 +8,8 @@
  * noorm settings strict    # Edit strict mode settings
  * ```
  */
-import { useState, useCallback, useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { Box, Text } from 'ink';
-import { attempt } from '@logosdx/utils';
 
 import type { ReactElement } from 'react';
 import type { ScreenProps } from '../../types.js';
@@ -18,7 +17,8 @@ import type { FormValues, FormField } from '../../components/index.js';
 
 import { useRouter } from '../../router.js';
 import { useAppContext } from '../../app-context.js';
-import { Panel, Form, useToast } from '../../components/index.js';
+import { Panel, Form } from '../../components/index.js';
+import { useSettingsOperation } from '../../hooks/index.js';
 
 /**
  * Parse comma-separated string to array.
@@ -51,11 +51,12 @@ function formatStageList(stages: string[] | undefined): string {
 export function SettingsStrictScreen({ params: _params }: ScreenProps): ReactElement {
 
     const { back } = useRouter();
-    const { settingsManager, refresh } = useAppContext();
-    const { showToast } = useToast();
+    const { settingsManager } = useAppContext();
 
-    const [busy, setBusy] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+    const { execute, busy, error } = useSettingsOperation(
+        async (mgr, data: { enabled: boolean; stages: string[] }) => mgr.setStrict(data),
+        'Strict mode settings saved',
+    );
 
     // Get current strict config
     const strict = useMemo(() => {
@@ -90,46 +91,13 @@ export function SettingsStrictScreen({ params: _params }: ScreenProps): ReactEle
     const handleSubmit = useCallback(
         async (values: FormValues) => {
 
-            if (!settingsManager) {
-
-                setError('Settings manager not available');
-
-                return;
-
-            }
-
-            setBusy(true);
-            setError(null);
-
-            const newStrict = {
+            await execute({
                 enabled: Boolean(values['enabled']),
                 stages: parseStageList(values['stages']),
-            };
-
-            const [_, err] = await attempt(async () => {
-
-                await settingsManager.setStrict(newStrict);
-                await refresh();
-
             });
-
-            if (err) {
-
-                setError(err instanceof Error ? err.message : String(err));
-                setBusy(false);
-
-                return;
-
-            }
-
-            showToast({
-                message: 'Strict mode settings saved',
-                variant: 'success',
-            });
-            back();
 
         },
-        [settingsManager, refresh, showToast, back],
+        [execute],
     );
 
     // Handle cancel

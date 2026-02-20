@@ -28,7 +28,6 @@ import { ScreenRenderer, getRouteLabel } from './screens.js';
 import {
     AppContextProvider,
     useActiveConfig,
-    useConnectionStatus,
     useLockStatus,
     useProjectName,
     useGlobalModes,
@@ -37,6 +36,8 @@ import {
 } from './app-context.js';
 import { ToastProvider, ToastRenderer, LogViewerOverlay, useToast } from './components/index.js';
 import { ShutdownProvider } from './shutdown.js';
+import { ConnectionProvider, useConnectionContext } from './providers/ConnectionProvider.js';
+import { NoormObserver } from './observer-context.js';
 import { useUpdateChecker, useOnEvent } from './hooks/index.js';
 
 /**
@@ -145,12 +146,12 @@ function StatusBar(): ReactElement {
 
     const { projectName } = useProjectName();
     const { activeConfigName } = useActiveConfig();
-    const { connectionStatus } = useConnectionStatus();
+    const { state: connState } = useConnectionContext();
     const { lockStatus } = useLockStatus();
     const globalModes = useGlobalModes();
 
     const configName = activeConfigName ?? 'none';
-    const isConnected = connectionStatus === 'connected';
+    const isConnected = connState.db !== null && !connState.error;
     const isLockFree = lockStatus.status === 'free';
 
     return (
@@ -381,15 +382,19 @@ export function App({
 
     return (
         <ShutdownProvider projectRoot={root}>
-            <AppContextProvider projectRoot={projectRoot} autoLoad={autoLoad}>
-                <ToastProvider>
-                    <FocusProvider>
-                        <RouterProvider initialRoute={initialRoute} initialParams={initialParams}>
-                            <AppShell />
-                        </RouterProvider>
-                    </FocusProvider>
-                </ToastProvider>
-            </AppContextProvider>
+            <NoormObserver>
+                <AppContextProvider projectRoot={projectRoot} autoLoad={autoLoad}>
+                    <ConnectionProvider>
+                        <ToastProvider>
+                            <FocusProvider>
+                                <RouterProvider initialRoute={initialRoute} initialParams={initialParams}>
+                                    <AppShell />
+                                </RouterProvider>
+                            </FocusProvider>
+                        </ToastProvider>
+                    </ConnectionProvider>
+                </AppContextProvider>
+            </NoormObserver>
         </ShutdownProvider>
     );
 

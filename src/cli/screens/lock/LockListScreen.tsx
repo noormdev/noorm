@@ -18,24 +18,16 @@
  * noorm lock           # Opens this screen
  * ```
  */
-import { useState, useEffect } from 'react';
 import { Box, Text, useInput } from 'ink';
 
 import type { ReactElement } from 'react';
 import type { ScreenProps } from '../../types.js';
-import type { LockStatus as LockStatusType } from '../../../core/lock/index.js';
 
 import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
 import { Panel, Spinner, LockStatus, useToast } from '../../components/index.js';
-import { createConnection, testConnection } from '../../../core/connection/index.js';
-import { getLockManager } from '../../../core/lock/index.js';
-import { resolveIdentity, formatIdentity } from '../../../core/identity/index.js';
-import { attempt } from '@logosdx/utils';
-
-import type { NoormDatabase } from '../../../core/shared/index.js';
-import type { Kysely } from 'kysely';
+import { useLockStatus } from '../../hooks/index.js';
 
 /**
  * LockListScreen component.
@@ -49,101 +41,12 @@ export function LockListScreen({ params: _params }: ScreenProps): ReactElement {
     const { activeConfig, activeConfigName, identity: cryptoIdentity } = useAppContext();
     const { showToast } = useToast();
 
-    const [lockStatus, setLockStatus] = useState<LockStatusType | null>(null);
-    const [isLoading, setIsLoading] = useState(true);
-    const [connectionError, setConnectionError] = useState<string | null>(null);
-    const [identityStr, setIdentityStr] = useState<string>('');
-
-    // Load lock status
-    useEffect(() => {
-
-        if (!activeConfig || !activeConfigName) {
-
-            setIsLoading(false);
-
-            return;
-
-        }
-
-        let cancelled = false;
-
-        const loadStatus = async () => {
-
-            setIsLoading(true);
-            setConnectionError(null);
-
-            // Resolve identity
-            const identity = resolveIdentity({
-                cryptoIdentity: cryptoIdentity ?? null,
-            });
-            const formattedIdentity = formatIdentity(identity);
-
-            if (!cancelled) {
-
-                setIdentityStr(formattedIdentity);
-
-            }
-
-            // Test connection first
-            const testResult = await testConnection(activeConfig.connection);
-
-            if (!testResult.ok) {
-
-                if (!cancelled) {
-
-                    setConnectionError(testResult.error ?? 'Connection failed');
-                    setIsLoading(false);
-
-                }
-
-                return;
-
-            }
-
-            // Connect and check lock status
-            const [result, err] = await attempt(async () => {
-
-                const conn = await createConnection(
-                    activeConfig.connection,
-                    activeConfigName ?? undefined,
-                );
-                const db = conn.db as Kysely<NoormDatabase>;
-                const lockManager = getLockManager();
-
-                const status = await lockManager.status(db, activeConfigName ?? '');
-
-                await conn.destroy();
-
-                return status;
-
-            });
-
-            if (cancelled) return;
-
-            if (err) {
-
-                setConnectionError(err.message);
-
-            }
-            else if (result) {
-
-                setLockStatus(result);
-
-            }
-
-            setIsLoading(false);
-
-        };
-
-        loadStatus();
-
-        return () => {
-
-            cancelled = true;
-
-        };
-
-    }, [activeConfig, activeConfigName, cryptoIdentity]);
+    const {
+        status: lockStatus,
+        identityStr,
+        loading: isLoading,
+        error: connectionError,
+    } = useLockStatus(activeConfig, activeConfigName, cryptoIdentity);
 
     // Keyboard shortcuts
     useInput((input, key) => {

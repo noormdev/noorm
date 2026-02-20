@@ -4,14 +4,14 @@
  * Tests rendering, keyboard navigation, and preference persistence.
  */
 import React from 'react';
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi, mock } from 'bun:test';
 import { render } from 'ink-testing-library';
 
 import { FocusProvider } from '../../../src/cli/focus.js';
 import { DismissableAlert } from '../../../src/cli/components/feedback/DismissableAlert.js';
 
 // Mock the global settings module
-vi.mock('../../../src/core/update/global-settings.js', () => ({
+mock.module('../../../src/core/update/global-settings.js', () => ({
     getDismissablePreference: vi.fn(),
     updateDismissablePreference: vi.fn(),
 }));
@@ -33,8 +33,8 @@ describe('cli: DismissableAlert', () => {
 
         vi.clearAllMocks();
         // Default: show the alert (preference is 'ask')
-        vi.mocked(getDismissablePreference).mockResolvedValue('ask');
-        vi.mocked(updateDismissablePreference).mockResolvedValue();
+        (getDismissablePreference as any).mockResolvedValue('ask');
+        (updateDismissablePreference as any).mockResolvedValue();
 
     });
 
@@ -194,7 +194,7 @@ describe('cli: DismissableAlert', () => {
 
     it('should auto-confirm when preference is always', async () => {
 
-        vi.mocked(getDismissablePreference).mockResolvedValue('always');
+        (getDismissablePreference as any).mockResolvedValue('always');
 
         const onConfirm = vi.fn();
 
@@ -219,7 +219,7 @@ describe('cli: DismissableAlert', () => {
 
     it('should auto-deny when preference is never', async () => {
 
-        vi.mocked(getDismissablePreference).mockResolvedValue('never');
+        (getDismissablePreference as any).mockResolvedValue('never');
 
         const onDeny = vi.fn();
 

@@ -1,9 +1,9 @@
 /**
  * Tests for schema version manager.
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { Kysely, SqliteDialect, sql } from 'kysely';
-import Database from 'better-sqlite3';
+import { BunSqliteDatabase } from '../../../src/core/connection/dialects/sqlite-bun.js';
 
 import { observer } from '../../../src/core/observer.js';
 import { CURRENT_VERSIONS, VersionMismatchError } from '../../../src/core/version/types.js';
@@ -30,7 +30,7 @@ describe('version: schema', () => {
         // Create in-memory SQLite database for each test
         db = new Kysely<NoormDatabase>({
             dialect: new SqliteDialect({
-                database: new Database(':memory:'),
+                database: new BunSqliteDatabase(':memory:') as never,
             }),
         });
 

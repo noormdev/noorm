@@ -628,7 +628,7 @@ export async function executeFiles(
         }
 
         fileRecords.push({
-            filepath: file.path,
+            filepath: path.relative(context.projectRoot, file.path),
             fileType: file.type,
             checksum,
         });
@@ -809,6 +809,9 @@ async function executeSingleFileWithUpdate(
 
     const start = performance.now();
 
+    // Relative path for DB storage (avoids leaking absolute paths)
+    const relFilepath = path.relative(context.projectRoot, filepath);
+
     // Load and render file
     const [sqlContent, loadErr] = await attempt(() => loadAndRenderFile(context, filepath));
 
@@ -825,7 +828,7 @@ async function executeSingleFileWithUpdate(
 
         await tracker.updateFileExecution(
             operationId,
-            filepath,
+            relFilepath,
             'failed',
             Math.round(durationMs),
             loadErr.message,
@@ -856,7 +859,7 @@ async function executeSingleFileWithUpdate(
     // For 'change', the change-level check was already done by the caller
     if (changeType !== 'change') {
 
-        const needsRunResult = await tracker.needsRun(filepath, finalChecksum, options.force);
+        const needsRunResult = await tracker.needsRun(relFilepath, finalChecksum, options.force);
 
         if (!needsRunResult.needsRun) {
 
@@ -869,7 +872,7 @@ async function executeSingleFileWithUpdate(
 
             await tracker.updateFileExecution(
                 operationId,
-                filepath,
+                relFilepath,
                 'skipped',
                 0,
                 undefined,
@@ -904,7 +907,7 @@ async function executeSingleFileWithUpdate(
 
         await tracker.updateFileExecution(
             operationId,
-            filepath,
+            relFilepath,
             'failed',
             Math.round(durationMs),
             execErr.message,
@@ -931,7 +934,7 @@ async function executeSingleFileWithUpdate(
 
     await tracker.updateFileExecution(
         operationId,
-        filepath,
+        relFilepath,
         'success',
         Math.round(durationMs),
     );
@@ -961,6 +964,9 @@ async function executeSingleFile(
 
     const start = performance.now();
 
+    // Relative path for DB storage (avoids leaking absolute paths)
+    const relFilepath = path.relative(context.projectRoot, filepath);
+
     // Load and render file
     // Needed before checksum to support templates
     const [sqlContent, loadErr] = await attempt(() => loadAndRenderFile(context, filepath));
@@ -978,7 +984,7 @@ async function executeSingleFile(
 
         await tracker.recordExecution({
             changeId: operationId,
-            filepath,
+            filepath: relFilepath,
             checksum: '',
             status: 'failed',
             errorMessage: loadErr.message,
@@ -1011,7 +1017,7 @@ async function executeSingleFile(
 
         await tracker.recordExecution({
             changeId: operationId,
-            filepath,
+            filepath: relFilepath,
             checksum: '',
             status: 'failed',
             errorMessage: checksumErr.message,
@@ -1036,7 +1042,7 @@ async function executeSingleFile(
     });
 
     // Check if file needs to run
-    const needsRunResult = await tracker.needsRun(filepath, checksum, options.force);
+    const needsRunResult = await tracker.needsRun(relFilepath, checksum, options.force);
 
     if (!needsRunResult.needsRun) {
 
@@ -1049,7 +1055,7 @@ async function executeSingleFile(
 
         await tracker.recordExecution({
             changeId: operationId,
-            filepath,
+            filepath: relFilepath,
             checksum,
             status: 'skipped',
             skipReason: needsRunResult.skipReason,
@@ -1081,7 +1087,7 @@ async function executeSingleFile(
 
         await tracker.recordExecution({
             changeId: operationId,
-            filepath,
+            filepath: relFilepath,
             checksum,
             status: 'failed',
             errorMessage: execErr.message,
@@ -1109,7 +1115,7 @@ async function executeSingleFile(
 
     await tracker.recordExecution({
         changeId: operationId,
-        filepath,
+        filepath: relFilepath,
         checksum,
         status: 'success',
         durationMs: Math.round(durationMs),

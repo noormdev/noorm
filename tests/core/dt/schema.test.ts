@@ -4,7 +4,7 @@
  * Tests buildDtSchema() and validateSchema() using mock database queries.
  * These are unit tests that mock the Kysely database layer.
  */
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi } from 'bun:test';
 import { buildDtSchema, validateSchema } from '../../../src/core/dt/schema.js';
 import type { DtSchema } from '../../../src/core/dt/types.js';
 

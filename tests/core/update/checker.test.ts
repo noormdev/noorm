@@ -3,7 +3,7 @@
  *
  * Tests version parsing, comparison, and update detection.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 
 import {
     parsePrerelease,

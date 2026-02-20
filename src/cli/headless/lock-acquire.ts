@@ -1,4 +1,4 @@
-import { withContext, type HeadlessCommand } from './_helpers.js';
+import { withContext, outputResult, type HeadlessCommand } from './_helpers.js';
 
 export const help = `
 # LOCK ACQUIRE
@@ -45,23 +45,14 @@ export const run: HeadlessCommand = async (_params, flags, logger) => {
 
     if (error) return 1;
 
-    if (flags.json) {
-
-        logger.result({
-            acquired: true,
-            lockedBy: lock.lockedBy,
-            expiresAt: lock.expiresAt.toISOString(),
-        });
-
-    }
-    else {
-
-        logger.info('Lock acquired', {
-            lockedBy: lock.lockedBy,
-            expiresAt: lock.expiresAt.toISOString(),
-        });
-
-    }
+    outputResult(flags, logger, {
+        acquired: true,
+        lockedBy: lock.lockedBy,
+        expiresAt: lock.expiresAt.toISOString(),
+    }, 'Lock acquired', {
+        lockedBy: lock.lockedBy,
+        expiresAt: lock.expiresAt.toISOString(),
+    });
 
     return 0;
 

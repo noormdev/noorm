@@ -7,7 +7,7 @@
  * - d: Delete this row
  * - Esc: Go back
  */
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { attempt } from '@logosdx/utils';
 
@@ -18,10 +18,10 @@ import type { NoormTableName, NoormTableRow } from '../../../core/index.js';
 import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
+import { useConnection, useAsyncEffect } from '../../hooks/index.js';
 import type { Kysely } from 'kysely';
 
 import { Panel, Spinner, Confirm, useToast } from '../../components/index.js';
-import { createConnection, testConnection } from '../../../core/connection/index.js';
 import { type NoormDatabase } from '../../../core/index.js';
 import {
     createDebugOperations,
@@ -57,85 +57,52 @@ export function DebugDetailScreen({ params }: ScreenProps): ReactElement {
     // Operations ref for delete
     const [operations, setOperations] = useState<DebugOperations | null>(null);
 
-    // Load row data
-    useEffect(() => {
+    // Shared connection
+    const { db, loading: connLoading, error: connError } = useConnection();
 
-        if (!activeConfig || !tableName || rowId == null) {
+    // Load row data when connection is ready
+    useAsyncEffect(async (isCancelled) => {
 
-            setIsLoading(false);
+        if (!db || !tableName || rowId == null) {
+
+            if (!connLoading && !connError) setIsLoading(false);
 
             return;
 
         }
 
-        let cancelled = false;
+        setIsLoading(true);
+        setError(null);
 
-        const load = async () => {
+        const [result, err] = await attempt(async () => {
 
-            setIsLoading(true);
-            setError(null);
+            const ops = createDebugOperations(db as Kysely<NoormDatabase>);
+            const cols = ops.getTableColumns(tableName);
+            const data = await ops.getRowById(tableName, rowId);
 
-            // Test connection first
-            const testResult = await testConnection(activeConfig.connection);
+            setOperations(ops);
 
-            if (!testResult.ok) {
+            return { cols, data };
 
-                if (!cancelled) {
+        });
 
-                    setError(testResult.error ?? 'Connection failed');
-                    setIsLoading(false);
+        if (isCancelled()) return;
 
-                }
+        if (err) {
 
-                return;
+            setError(err.message);
 
-            }
+        }
+        else if (result) {
 
-            // Fetch row
-            const [result, err] = await attempt(async () => {
+            setColumns(result.cols);
+            setRow(result.data);
 
-                const conn = await createConnection(
-                    activeConfig.connection,
-                    activeConfigName ?? '__debug__',
-                );
+        }
 
-                const ops = createDebugOperations(conn.db as Kysely<NoormDatabase>);
-                const cols = ops.getTableColumns(tableName);
-                const data = await ops.getRowById(tableName, rowId);
+        setIsLoading(false);
 
-                setOperations(ops);
-
-                return { cols, data };
-
-            });
-
-            if (cancelled) return;
-
-            if (err) {
-
-                setError(err.message);
-
-            }
-            else if (result) {
-
-                setColumns(result.cols);
-                setRow(result.data);
-
-            }
-
-            setIsLoading(false);
-
-        };
-
-        load();
-
-        return () => {
-
-            cancelled = true;
-
-        };
-
-    }, [activeConfig, activeConfigName, tableName, rowId]);
+    }, [db, tableName, rowId]);
 
     // Perform delete
     const performDelete = useCallback(async () => {
@@ -218,7 +185,7 @@ export function DebugDetailScreen({ params }: ScreenProps): ReactElement {
     }
 
     // Loading state
-    if (isLoading) {
+    if (isLoading || connLoading) {
 
         return (
             <Box flexDirection="column" gap={1}>
@@ -231,14 +198,14 @@ export function DebugDetailScreen({ params }: ScreenProps): ReactElement {
     }
 
     // Error state
-    if (error) {
+    if (error || connError) {
 
         return (
             <Box flexDirection="column" gap={1}>
                 <Panel title={`DEBUG: Row #${rowId}`} borderColor="red" paddingX={1} paddingY={1}>
                     <Box flexDirection="column" gap={1}>
                         <Text color="red">Error</Text>
-                        <Text dimColor>{error}</Text>
+                        <Text dimColor>{error ?? connError}</Text>
                     </Box>
                 </Panel>
 

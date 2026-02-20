@@ -3,7 +3,7 @@
  *
  * Tests Tab and Shift+Tab keyboard navigation between form fields.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import { render } from 'ink-testing-library';
 import React from 'react';
 

@@ -9,7 +9,7 @@
  * noorm db teardown    # Opens this screen
  * ```
  */
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { Box, Text, useInput } from 'ink';
 
 import type { ReactElement } from 'react';
@@ -21,7 +21,9 @@ import { useAppContext, useSettings } from '../../app-context.js';
 import { useToast, Panel, Spinner, ProtectedConfirm } from '../../components/index.js';
 import { createConnection } from '../../../core/connection/index.js';
 import { previewTeardown, teardownSchema } from '../../../core/teardown/index.js';
-import { resolveIdentity, formatIdentity } from '../../../core/identity/index.js';
+import { formatIdentity } from '../../../core/identity/index.js';
+import { getErrorMessage, resolveScreenIdentity } from '../../utils/index.js';
+import { useConnection, useAsyncEffect } from '../../hooks/index.js';
 import { attempt } from '@logosdx/utils';
 
 import type { Kysely } from 'kysely';
@@ -64,11 +66,11 @@ export function DbTeardownScreen({ params: _params }: ScreenProps): ReactElement
         [settings?.teardown?.preserveTables],
     );
 
-    // Track if we've already started loading to prevent duplicate loads
-    const loadingRef = useRef(false);
+    // Shared connection for preview phase
+    const { db, dialect, loading: connLoading, error: connError } = useConnection();
 
-    // Load preview
-    useEffect(() => {
+    // Load preview when connection is ready
+    useAsyncEffect(async (isCancelled) => {
 
         if (!activeConfig || !activeConfigName) {
 
@@ -79,77 +81,39 @@ export function DbTeardownScreen({ params: _params }: ScreenProps): ReactElement
 
         }
 
-        // Prevent duplicate loads (React strict mode, fast remounts)
-        if (loadingRef.current) return;
-        loadingRef.current = true;
+        if (connError) {
 
-        let cancelled = false;
+            setError(connError);
+            setPhase('error');
 
-        const load = async () => {
+            return;
 
-            const [conn, connErr] = await attempt(() =>
-                createConnection(activeConfig.connection, activeConfigName),
-            );
+        }
 
-            if (connErr || !conn) {
+        if (!db || !dialect || connLoading) return;
 
-                if (!cancelled) {
+        const [previewResult, err] = await attempt(() =>
+            previewTeardown(db as Kysely<unknown>, dialect, {
+                preserveTables,
+                postScript,
+            }),
+        );
 
-                    setError(`Connection failed: ${connErr?.message ?? 'Unknown error'}`);
-                    setPhase('error');
+        if (isCancelled()) return;
 
-                }
+        if (err || !previewResult) {
 
-                loadingRef.current = false;
+            setError(getErrorMessage(err));
+            setPhase('error');
 
-                return;
+            return;
 
-            }
+        }
 
-            try {
+        setPreview(previewResult);
+        setPhase('preview');
 
-                const db = conn.db as Kysely<unknown>;
-                const previewResult = await previewTeardown(db, activeConfig.connection.dialect, {
-                    preserveTables,
-                    postScript,
-                });
-
-                if (!cancelled) {
-
-                    setPreview(previewResult);
-                    setPhase('preview');
-
-                }
-
-            }
-            catch (err) {
-
-                if (!cancelled) {
-
-                    setError(err instanceof Error ? err.message : String(err));
-                    setPhase('error');
-
-                }
-
-            }
-            finally {
-
-                await conn.destroy();
-                loadingRef.current = false;
-
-            }
-
-        };
-
-        load();
-
-        return () => {
-
-            cancelled = true;
-
-        };
-
-    }, [activeConfig, activeConfigName, preserveTables, postScript]);
+    }, [activeConfig, activeConfigName, db, dialect, connLoading, connError, preserveTables, postScript]);
 
     // Execute teardown
     const executeTeardown = useCallback(async () => {
@@ -176,9 +140,7 @@ export function DbTeardownScreen({ params: _params }: ScreenProps): ReactElement
             const db = conn.db as Kysely<unknown>;
 
             // Resolve identity for change tracking
-            const identity = resolveIdentity({
-                cryptoIdentity: cryptoIdentity ?? null,
-            });
+            const identity = resolveScreenIdentity(cryptoIdentity);
 
             const teardownResult = await teardownSchema(db, activeConfig.connection.dialect, {
                 preserveTables,
@@ -193,7 +155,7 @@ export function DbTeardownScreen({ params: _params }: ScreenProps): ReactElement
         }
         catch (err) {
 
-            setError(err instanceof Error ? err.message : String(err));
+            setError(getErrorMessage(err));
             setPhase('error');
 
         }

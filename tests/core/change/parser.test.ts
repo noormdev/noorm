@@ -4,7 +4,7 @@
  * Uses permanent fixture files in ./fixtures/ for testing.
  * See fixtures/changes/ for example change structures.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import path from 'node:path';
 import {
     parseChange,

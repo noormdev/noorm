@@ -3,7 +3,7 @@
  *
  * Uses permanent fixture files in ./fixtures/ for testing.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import path from 'node:path';
 import {
     computeChecksum,

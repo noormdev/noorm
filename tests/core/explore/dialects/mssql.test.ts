@@ -3,7 +3,7 @@
  *
  * Tests SQL generation and response parsing without requiring a live database.
  */
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi } from 'bun:test';
 import { mssqlExploreOperations } from '../../../../src/core/explore/dialects/mssql.js';
 
 import type { Kysely } from 'kysely';

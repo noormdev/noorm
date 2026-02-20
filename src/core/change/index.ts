@@ -116,6 +116,12 @@ export { ChangeTracker, type CanRevertResult } from './tracker.js';
 export { executeChange, revertChange } from './executor.js';
 
 // ─────────────────────────────────────────────────────────────
+// Validation
+// ─────────────────────────────────────────────────────────────
+
+export { validateChangeContent } from './validation.js';
+
+// ─────────────────────────────────────────────────────────────
 // Manager
 // ─────────────────────────────────────────────────────────────
 

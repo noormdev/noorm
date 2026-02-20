@@ -4,7 +4,7 @@
  * Covers toUniversalType(), toDialectType(), isEncodedType() across
  * all three dialects with version-aware behavior.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import {
     toUniversalType,
     toDialectType,

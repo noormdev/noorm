@@ -4,7 +4,7 @@
  * Tests explore functions against a real SQLite database with edge case fixtures.
  * Covers long identifiers, special characters, self-referencing FKs, composite keys, etc.
  */
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
 import { sql, type Kysely } from 'kysely';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';

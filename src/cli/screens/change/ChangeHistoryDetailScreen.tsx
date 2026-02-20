@@ -9,7 +9,7 @@
  * # Navigate from ChangeHistoryScreen by pressing Enter
  * ```
  */
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { Box, Text, useInput } from 'ink';
 
 import type { ReactElement } from 'react';
@@ -23,8 +23,9 @@ import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
 import { Panel, Spinner } from '../../components/index.js';
+import { useConnection, useAsyncEffect } from '../../hooks/index.js';
 import { ChangeHistory } from '../../../core/change/history.js';
-import { createConnection } from '../../../core/connection/factory.js';
+import { getErrorMessage } from '../../utils/index.js';
 
 /**
  * Get status indicator for a file execution.
@@ -76,66 +77,47 @@ export function ChangeHistoryDetailScreen({ params }: ScreenProps): ReactElement
     const [error, setError] = useState<string | null>(null);
     const [selectedIndex, setSelectedIndex] = useState(0);
 
-    // Load file history
-    useEffect(() => {
+    // Shared connection
+    const { db, loading: connLoading, error: connError } = useConnection();
 
-        if (!activeConfig || loadingStatus !== 'ready' || !operationId) {
+    // Load file history when connection is ready
+    useAsyncEffect(async (isCancelled) => {
 
-            setIsLoading(false);
+        if (!db || loadingStatus !== 'ready' || !operationId) {
+
+            if (!connLoading && !connError) setIsLoading(false);
 
             return;
 
         }
 
-        let cancelled = false;
+        setIsLoading(true);
+        setError(null);
 
-        const loadFiles = async () => {
+        const [_, err] = await attempt(async () => {
 
-            setIsLoading(true);
-            setError(null);
+            const changeHistory = new ChangeHistory(db, activeConfigName ?? '');
+            const records = await changeHistory.getFileHistory(operationId);
 
-            const [_, err] = await attempt(async () => {
+            if (isCancelled()) return;
 
-                const conn = await createConnection(
-                    activeConfig.connection,
-                    activeConfigName ?? '__detail__',
-                );
-                const db = conn.db as Kysely<NoormDatabase>;
+            setFiles(records);
 
-                const changeHistory = new ChangeHistory(db, activeConfigName ?? '');
-                const records = await changeHistory.getFileHistory(operationId);
+        });
 
-                await conn.destroy();
+        if (err) {
 
-                if (cancelled) return;
+            if (!isCancelled()) {
 
-                setFiles(records);
-
-            });
-
-            if (err) {
-
-                if (!cancelled) {
-
-                    setError(err instanceof Error ? err.message : String(err));
-
-                }
+                setError(getErrorMessage(err));
 
             }
 
-            setIsLoading(false);
+        }
 
-        };
+        setIsLoading(false);
 
-        loadFiles();
-
-        return () => {
-
-            cancelled = true;
-
-        };
-
-    }, [activeConfig, activeConfigName, loadingStatus, operationId]);
+    }, [db, activeConfigName, loadingStatus, operationId]);
 
     // Get selected file
     const selectedFile = useMemo(() => {
@@ -199,7 +181,7 @@ export function ChangeHistoryDetailScreen({ params }: ScreenProps): ReactElement
     }
 
     // Loading
-    if (isLoading) {
+    if (isLoading || connLoading) {
 
         return (
             <Panel title={`File Executions (${operationName})`} paddingX={2} paddingY={1}>
@@ -210,12 +192,12 @@ export function ChangeHistoryDetailScreen({ params }: ScreenProps): ReactElement
     }
 
     // Error
-    if (error) {
+    if (error || connError) {
 
         return (
             <Panel title="File Executions" paddingX={2} paddingY={1} borderColor="red">
                 <Box flexDirection="column" gap={1}>
-                    <Text color="red">Failed to load files: {error}</Text>
+                    <Text color="red">Failed to load files: {error ?? connError}</Text>
                     <Text dimColor>Press Esc to go back</Text>
                 </Box>
             </Panel>

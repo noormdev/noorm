@@ -5,7 +5,7 @@
  * Uses ink-testing-library with a wrapper component.
  */
 import React, { useEffect } from 'react';
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi, mock } from 'bun:test';
 import { render } from 'ink-testing-library';
 import { Text } from 'ink';
 
@@ -13,16 +13,16 @@ import { useUpdateChecker, type UseUpdateCheckerResult } from '../../../src/cli/
 import type { UpdateCheckResult, GlobalSettings } from '../../../src/core/update/types.js';
 
 // Mock the core modules
-vi.mock('../../../src/core/update/checker.js', () => ({
+mock.module('../../../src/core/update/checker.js', () => ({
     checkForUpdate: vi.fn(),
     getCurrentVersion: vi.fn(() => '1.0.0'),
 }));
 
-vi.mock('../../../src/core/update/updater.js', () => ({
+mock.module('../../../src/core/update/updater.js', () => ({
     installUpdate: vi.fn(),
 }));
 
-vi.mock('../../../src/core/update/global-settings.js', () => ({
+mock.module('../../../src/core/update/global-settings.js', () => ({
     loadGlobalSettings: vi.fn(),
 }));
 
@@ -70,7 +70,7 @@ describe('cli: useUpdateChecker', () => {
         latestResult = null;
 
         // Default mock implementations
-        vi.mocked(loadGlobalSettings).mockResolvedValue({
+        (loadGlobalSettings as any).mockResolvedValue({
             checkUpdates: true,
             autoUpdate: false,
         } as GlobalSettings);
@@ -93,7 +93,7 @@ describe('cli: useUpdateChecker', () => {
             isPrerelease: false,
         };
 
-        vi.mocked(checkForUpdate).mockResolvedValue(mockResult);
+        (checkForUpdate as any).mockResolvedValue(mockResult);
 
         const { lastFrame, unmount } = render(<TestComponent onResult={captureResult} />);
 
@@ -108,7 +108,7 @@ describe('cli: useUpdateChecker', () => {
 
     it('should not check when disabled in settings', async () => {
 
-        vi.mocked(loadGlobalSettings).mockResolvedValue({
+        (loadGlobalSettings as any).mockResolvedValue({
             checkUpdates: false,
             autoUpdate: false,
         } as GlobalSettings);
@@ -125,7 +125,7 @@ describe('cli: useUpdateChecker', () => {
 
     it('should handle null result (offline/error)', async () => {
 
-        vi.mocked(checkForUpdate).mockResolvedValue(null);
+        (checkForUpdate as any).mockResolvedValue(null);
 
         const { lastFrame, unmount } = render(<TestComponent onResult={captureResult} />);
 
@@ -143,7 +143,7 @@ describe('cli: useUpdateChecker', () => {
 
         let resolveCheck: ((value: UpdateCheckResult | null) => void) | undefined;
 
-        vi.mocked(checkForUpdate).mockImplementation(() => {
+        (checkForUpdate as any).mockImplementation(() => {
 
             return new Promise((resolve) => {
 
@@ -185,8 +185,8 @@ describe('cli: useUpdateChecker', () => {
             isPrerelease: false,
         };
 
-        vi.mocked(checkForUpdate).mockResolvedValue(mockCheckResult);
-        vi.mocked(installUpdate).mockResolvedValue({
+        (checkForUpdate as any).mockResolvedValue(mockCheckResult);
+        (installUpdate as any).mockResolvedValue({
             success: true,
             previousVersion: '1.0.0',
             newVersion: '1.1.0',
@@ -209,7 +209,7 @@ describe('cli: useUpdateChecker', () => {
 
     it('should not perform update when no update available', async () => {
 
-        vi.mocked(checkForUpdate).mockResolvedValue({
+        (checkForUpdate as any).mockResolvedValue({
             currentVersion: '1.0.0',
             latestVersion: '1.0.0',
             updateAvailable: false,
@@ -232,7 +232,7 @@ describe('cli: useUpdateChecker', () => {
 
     it('should dismiss update notification', async () => {
 
-        vi.mocked(checkForUpdate).mockResolvedValue({
+        (checkForUpdate as any).mockResolvedValue({
             currentVersion: '1.0.0',
             latestVersion: '1.1.0',
             updateAvailable: true,

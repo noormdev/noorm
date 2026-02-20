@@ -8,9 +8,8 @@
  * noorm settings logging    # Edit logging settings
  * ```
  */
-import { useState, useCallback, useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { Box, Text } from 'ink';
-import { attempt } from '@logosdx/utils';
 
 import type { ReactElement } from 'react';
 import type { ScreenProps } from '../../types.js';
@@ -18,7 +17,8 @@ import type { FormValues, FormField } from '../../components/index.js';
 
 import { useRouter } from '../../router.js';
 import { useAppContext } from '../../app-context.js';
-import { Panel, Form, useToast } from '../../components/index.js';
+import { Panel, Form } from '../../components/index.js';
+import { useSettingsOperation } from '../../hooks/index.js';
 
 /**
  * SettingsLoggingScreen component.
@@ -26,11 +26,13 @@ import { Panel, Form, useToast } from '../../components/index.js';
 export function SettingsLoggingScreen({ params: _params }: ScreenProps): ReactElement {
 
     const { back } = useRouter();
-    const { settingsManager, refresh } = useAppContext();
-    const { showToast } = useToast();
+    const { settingsManager } = useAppContext();
 
-    const [busy, setBusy] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+    const { execute, busy, error } = useSettingsOperation(
+        async (mgr, data: { enabled: boolean; level: string; file: string; maxSize: string; maxFiles: number }) =>
+            mgr.setLogging(data as Parameters<typeof mgr.setLogging>[0]),
+        'Logging settings saved',
+    );
 
     // Get current logging config
     const logging = useMemo(() => {
@@ -117,54 +119,16 @@ export function SettingsLoggingScreen({ params: _params }: ScreenProps): ReactEl
     const handleSubmit = useCallback(
         async (values: FormValues) => {
 
-            if (!settingsManager) {
-
-                setError('Settings manager not available');
-
-                return;
-
-            }
-
-            setBusy(true);
-            setError(null);
-
-            const newLogging = {
+            await execute({
                 enabled: Boolean(values['enabled']),
-                level: String(values['level'] || 'info') as
-                    | 'silent'
-                    | 'error'
-                    | 'warn'
-                    | 'info'
-                    | 'verbose',
+                level: String(values['level'] || 'info'),
                 file: String(values['file'] || '.noorm/state/noorm.log'),
                 maxSize: String(values['maxSize'] || '10mb'),
                 maxFiles: parseInt(String(values['maxFiles'] || '5'), 10),
-            };
-
-            const [_, err] = await attempt(async () => {
-
-                await settingsManager.setLogging(newLogging);
-                await refresh();
-
             });
-
-            if (err) {
-
-                setError(err instanceof Error ? err.message : String(err));
-                setBusy(false);
-
-                return;
-
-            }
-
-            showToast({
-                message: 'Logging settings saved',
-                variant: 'success',
-            });
-            back();
 
         },
-        [settingsManager, refresh, showToast, back],
+        [execute],
     );
 
     // Handle cancel

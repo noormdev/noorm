@@ -4,7 +4,7 @@
  * Tests truncateData, teardownSchema, and previewTeardown against a real PostgreSQL database.
  * Requires docker-compose.test.yml containers to be running.
  */
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'bun:test';
 import { sql } from 'kysely';
 import type { Kysely } from 'kysely';
 

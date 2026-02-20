@@ -4,7 +4,7 @@
  * These tests create/delete files since they test scaffolding operations.
  * Uses tmp/ directory for dynamic test files.
  */
-import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'bun:test';
 import path from 'node:path';
 import { mkdir, rm, readdir, readFile, stat } from 'node:fs/promises';
 import {

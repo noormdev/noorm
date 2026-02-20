@@ -3,7 +3,7 @@
  *
  * Uses SQLite in-memory databases for testing (no external DB needed).
  */
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach } from 'bun:test';
 import { sql } from 'kysely';
 import { createConnection, testConnection } from '../../../src/core/connection/index.js';
 import type { ConnectionConfig } from '../../../src/core/connection/index.js';

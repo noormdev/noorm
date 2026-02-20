@@ -21,6 +21,7 @@ import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useSettings, useAppContext } from '../../app-context.js';
 import { Panel, Spinner, SearchableList } from '../../components/index.js';
+import { useAsyncEffect } from '../../hooks/index.js';
 import { discoverFiles } from '../../../core/runner/index.js';
 import { buildContext } from '../../../core/template/context.js';
 import { processFile } from '../../../core/template/engine.js';
@@ -288,64 +289,50 @@ export function RunInspectScreen({ params }: ScreenProps): ReactElement {
     const projectRoot = process.cwd();
 
     // Load template files on mount
-    useEffect(() => {
+    useAsyncEffect(async (isCancelled) => {
 
         if (!settings) return;
 
-        let cancelled = false;
+        setPhase('loading');
 
-        const load = async () => {
+        const sqlPath = settings.paths?.sql ?? 'sql';
+        const sqlFullPath = join(projectRoot, sqlPath);
 
-            setPhase('loading');
+        const [files, err] = await attempt(() => discoverFiles(sqlFullPath));
 
-            const sqlPath = settings.paths?.sql ?? 'sql';
-            const sqlFullPath = join(projectRoot, sqlPath);
+        if (isCancelled()) return;
 
-            const [files, err] = await attempt(() => discoverFiles(sqlFullPath));
+        if (err) {
 
-            if (cancelled) return;
+            setError(`Failed to discover files: ${err.message}`);
+            setPhase('error');
 
-            if (err) {
+            return;
 
-                setError(`Failed to discover files: ${err.message}`);
-                setPhase('error');
+        }
 
-                return;
+        // Filter to only .sql.tmpl files
+        const templates = (files ?? []).filter(f => f.endsWith('.sql.tmpl'));
+        setAllFiles(templates);
 
-            }
+        // If pre-filled path provided, validate and go to inspecting
+        if (params.path) {
 
-            // Filter to only .sql.tmpl files
-            const templates = (files ?? []).filter(f => f.endsWith('.sql.tmpl'));
-            setAllFiles(templates);
+            const fullPath = join(projectRoot, params.path);
+            const found = templates.find((f) =>
+                f === fullPath || relative(projectRoot, f) === params.path,
+            );
 
-            // If pre-filled path provided, validate and go to inspecting
-            if (params.path) {
+            if (found) {
 
-                const fullPath = join(projectRoot, params.path);
-                const found = templates.find((f) =>
-                    f === fullPath || relative(projectRoot, f) === params.path,
-                );
-
-                if (found) {
-
-                    setSelectedFile(found);
-                    // Will trigger loadContext effect
-
-                }
+                setSelectedFile(found);
+                // Will trigger loadContext effect
 
             }
 
-            setPhase('picker');
+        }
 
-        };
-
-        load();
-
-        return () => {
-
-            cancelled = true;
-
-        };
+        setPhase('picker');
 
     }, [settings, projectRoot, params.path]);
 

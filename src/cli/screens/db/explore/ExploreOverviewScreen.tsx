@@ -12,19 +12,19 @@
  * noorm db         # Then press 'x' to explore
  * ```
  */
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { attempt } from '@logosdx/utils';
 
 import type { ReactElement } from 'react';
+import type { Kysely } from 'kysely';
 import type { ScreenProps, Route } from '../../../types.js';
 
 import { useRouter } from '../../../router.js';
 import { useFocusScope } from '../../../focus.js';
 import { useAppContext, useExploreFilters, useSettings } from '../../../app-context.js';
-import { useOnScreenPopped } from '../../../hooks/index.js';
+import { useOnScreenPopped, useConnection, useAsyncEffect } from '../../../hooks/index.js';
 import { Panel, Spinner } from '../../../components/index.js';
-import { createConnection, testConnection } from '../../../../core/connection/index.js';
 import { fetchOverview } from '../../../../core/explore/index.js';
 
 import type { ExploreOverview, ExploreOptions } from '../../../../core/explore/index.js';
@@ -84,82 +84,45 @@ export function ExploreOverviewScreen({ params: _params }: ScreenProps): ReactEl
 
     });
 
-    // Load overview data
-    useEffect(() => {
+    // Shared connection
+    const { db, dialect, loading: connLoading, error: connError } = useConnection();
 
-        if (!activeConfig) {
+    // Load overview data when connection is ready
+    useAsyncEffect(async (isCancelled) => {
 
-            setIsLoading(false);
+        if (!db || !dialect) {
+
+            if (!connLoading && !connError) setIsLoading(false);
 
             return;
 
         }
 
-        let cancelled = false;
+        setIsLoading(true);
+        setError(null);
 
-        const load = async () => {
+        const [result, err] = await attempt(async () => {
 
-            setIsLoading(true);
-            setError(null);
+            return await fetchOverview(db as Kysely<unknown>, dialect, exploreOptions);
 
-            // Test connection first
-            const testResult = await testConnection(activeConfig.connection);
+        });
 
-            if (!testResult.ok) {
+        if (isCancelled()) return;
 
-                if (!cancelled) {
+        if (err) {
 
-                    setError(testResult.error ?? 'Connection failed');
-                    setIsLoading(false);
+            setError(err.message);
 
-                }
+        }
+        else {
 
-                return;
+            setOverview(result);
 
-            }
+        }
 
-            // Fetch overview
-            const [result, err] = await attempt(async () => {
+        setIsLoading(false);
 
-                const conn = await createConnection(
-                    activeConfig.connection,
-                    activeConfigName ?? '__explore__',
-                );
-
-                const data = await fetchOverview(conn.db, activeConfig.connection.dialect, exploreOptions);
-
-                await conn.destroy();
-
-                return data;
-
-            });
-
-            if (cancelled) return;
-
-            if (err) {
-
-                setError(err.message);
-
-            }
-            else {
-
-                setOverview(result);
-
-            }
-
-            setIsLoading(false);
-
-        };
-
-        load();
-
-        return () => {
-
-            cancelled = true;
-
-        };
-
-    }, [activeConfig, activeConfigName, settings?.logging?.level]);
+    }, [db, dialect, settings?.logging?.level]);
 
     // Keyboard navigation
     useInput((input, key) => {
@@ -218,7 +181,7 @@ export function ExploreOverviewScreen({ params: _params }: ScreenProps): ReactEl
     }
 
     // Loading state
-    if (isLoading) {
+    if (isLoading || connLoading) {
 
         return (
             <Box flexDirection="column" gap={1}>
@@ -231,14 +194,14 @@ export function ExploreOverviewScreen({ params: _params }: ScreenProps): ReactEl
     }
 
     // Error state
-    if (error) {
+    if (error || connError) {
 
         return (
             <Box flexDirection="column" gap={1}>
                 <Panel title="DB Explore" borderColor="red" paddingX={1} paddingY={1}>
                     <Box flexDirection="column" gap={1}>
                         <Text color="red">Connection Error</Text>
-                        <Text dimColor>{error}</Text>
+                        <Text dimColor>{error ?? connError}</Text>
                     </Box>
                 </Panel>
 

@@ -21,6 +21,7 @@ import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
 import { Panel, Confirm, Spinner, useToast } from '../../components/index.js';
+import { getErrorMessage } from '../../utils/index.js';
 
 type InitStep =
     | 'checking'
@@ -113,7 +114,7 @@ export function SettingsInitScreen({ params }: ScreenProps): ReactElement {
 
             if (err) {
 
-                setError(err instanceof Error ? err.message : String(err));
+                setError(getErrorMessage(err));
                 setStep('error');
 
                 return;

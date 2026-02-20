@@ -3,8 +3,7 @@
  *
  * Removes a vault secret.
  */
-import { type HeadlessCommand, withVaultContext } from './_helpers.js';
-import { formatHelp } from '../../core/help-formatter.js';
+import { type HeadlessCommand, handleVaultResult, requireParams, withVaultContext } from './_helpers.js';
 import { getVaultKey, deleteVaultSecret, vaultSecretExists } from '../../core/vault/index.js';
 
 export const help = `
@@ -41,28 +40,9 @@ Requires vault access.
 
 export const run: HeadlessCommand = async (params, flags, logger) => {
 
-    const key = params.name;
+    const key = params.name as string;
 
-    if (!key) {
-
-        if (flags.json) {
-
-            logger.result({
-                success: false,
-                error: 'Usage: noorm vault rm <key>',
-            });
-
-        }
-        else {
-
-            const output = formatHelp(help);
-            process.stdout.write(output + '\n');
-
-        }
-
-        return 1;
-
-    }
+    if (!requireParams({ key }, flags, logger, help)) return 1;
 
     const [result, err] = await withVaultContext({
         flags,
@@ -106,43 +86,10 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
         },
     });
 
-    if (err) {
+    return handleVaultResult(result, err, flags, logger, () => {
 
-        if (flags.json) {
+        logger.info(`Vault secret "${key}" deleted`);
 
-            logger.result({ success: false, error: err.message });
-
-        }
-        else {
-
-            logger.error(err.message);
-
-        }
-
-        return 1;
-
-    }
-
-    if (flags.json) {
-
-        logger.result(result);
-
-    }
-    else {
-
-        if (result?.success) {
-
-            logger.info(`Vault secret "${key}" deleted`);
-
-        }
-        else {
-
-            logger.error(result?.error ?? 'Unknown error');
-
-        }
-
-    }
-
-    return result?.success ? 0 : 1;
+    });
 
 };

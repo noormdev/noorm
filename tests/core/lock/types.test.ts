@@ -1,7 +1,7 @@
 /**
  * Lock types tests.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import { DEFAULT_LOCK_OPTIONS } from '../../../src/core/lock/index.js';
 
 describe('lock: types', () => {

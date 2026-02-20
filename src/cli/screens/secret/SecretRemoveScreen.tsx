@@ -10,23 +10,18 @@
  * noorm secret rm MY_API_KEY   # Same thing
  * ```
  */
-import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { attempt } from '@logosdx/utils';
-import type { Kysely } from 'kysely';
 
 import type { ReactElement } from 'react';
 import type { ScreenProps } from '../../types.js';
-import type { NoormDatabase } from '../../../core/shared/index.js';
-import type { ConnectionResult } from '../../../core/connection/types.js';
 
 import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
+import { useVaultSecretKeys } from '../../hooks/index.js';
 import { Panel, Confirm, Spinner, useToast } from '../../components/index.js';
-import { createConnection } from '../../../core/connection/index.js';
-import { getVaultStatus, getVaultKey, getAllVaultSecrets } from '../../../core/vault/index.js';
-import { loadPrivateKey } from '../../../core/identity/storage.js';
 
 /**
  * SecretRemoveScreen component.
@@ -35,95 +30,14 @@ export function SecretRemoveScreen({ params }: ScreenProps): ReactElement {
 
     const { back } = useRouter();
     const { isFocused } = useFocusScope('SecretRemove');
-    const { activeConfig, activeConfigName, stateManager, settingsManager, identity, refresh } =
+    const { activeConfig, activeConfigName, stateManager, refresh } =
         useAppContext();
     const { showToast } = useToast();
+    const { vaultSecretKeys, requiredSecrets } = useVaultSecretKeys();
 
     const secretKey = params.name;
 
     const [deleting, setDeleting] = useState(false);
-    const [vaultSecretKeys, setVaultSecretKeys] = useState<string[]>([]);
-    const connRef = useRef<ConnectionResult | null>(null);
-    const loadingRef = useRef(false);
-
-    // Load vault secrets on mount
-    useEffect(() => {
-
-        if (!activeConfig || !activeConfigName || !identity) return;
-        if (loadingRef.current) return;
-        loadingRef.current = true;
-
-        let cancelled = false;
-
-        const loadVaultSecrets = async (): Promise<void> => {
-
-            const [conn, connErr] = await attempt(() =>
-                createConnection(activeConfig.connection, activeConfigName),
-            );
-
-            if (connErr || !conn || cancelled) return;
-
-            connRef.current = conn;
-            const db = conn.db as Kysely<NoormDatabase>;
-
-            const vaultStatus = await getVaultStatus(db, identity.identityHash);
-
-            if (vaultStatus.hasAccess && !cancelled) {
-
-                const privateKey = await loadPrivateKey();
-
-                if (privateKey && !cancelled) {
-
-                    const vaultKey = await getVaultKey(db, identity.identityHash, privateKey);
-
-                    if (vaultKey && !cancelled) {
-
-                        const allSecrets = await getAllVaultSecrets(db, vaultKey);
-                        setVaultSecretKeys(Object.keys(allSecrets));
-
-                    }
-
-                }
-
-            }
-
-            await conn.destroy();
-            connRef.current = null;
-
-        };
-
-        loadVaultSecrets();
-
-        return () => {
-
-            cancelled = true;
-
-            if (connRef.current) {
-
-                connRef.current.destroy();
-                connRef.current = null;
-
-            }
-
-        };
-
-    }, [activeConfig, activeConfigName, identity]);
-
-    // Try to match config name to a stage (common pattern: config "prod" -> stage "prod")
-    const stageName = activeConfigName;
-
-    // Get required secrets (universal + stage-specific merged)
-    const requiredSecrets = useMemo<{ key: string; type: string; description?: string }[]>(() => {
-
-        if (!stageName || !settingsManager) {
-
-            return [];
-
-        }
-
-        return settingsManager.getRequiredSecrets(stageName);
-
-    }, [stageName, settingsManager]);
 
     // Find the secret definition to get description
     const secretDefinition = useMemo(() => {

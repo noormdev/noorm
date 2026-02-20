@@ -10,25 +10,20 @@
  * noorm change list     # Same thing
  * ```
  */
-import { useState, useEffect, useMemo } from 'react';
-import { join } from 'path';
+import { useState, useMemo } from 'react';
 import { Box, Text, useInput } from 'ink';
 
 import type { ReactElement } from 'react';
 import type { ScreenProps } from '../../types.js';
 import type { ChangeListItem } from '../../../core/change/types.js';
-import type { NoormDatabase } from '../../../core/shared/index.js';
-import type { Kysely } from 'kysely';
-
 import { attempt } from '@logosdx/utils';
 
 import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
 import { Panel, Spinner } from '../../components/index.js';
-import { discoverChanges } from '../../../core/change/parser.js';
-import { ChangeHistory } from '../../../core/change/history.js';
-import { createConnection } from '../../../core/connection/factory.js';
+import { useAsyncEffect } from '../../hooks/index.js';
+import { getErrorMessage, loadChangesWithStatus, buildMergedChangeList } from '../../utils/index.js';
 import { relativeTimeAgo } from '../../utils/date.js';
 
 /**
@@ -76,7 +71,7 @@ export function ChangeListScreen({ params: _params }: ScreenProps): ReactElement
     const [selectedIndex, setSelectedIndex] = useState(0);
 
     // Load changes
-    useEffect(() => {
+    useAsyncEffect(async (isCancelled) => {
 
         if (!activeConfig || loadingStatus !== 'ready') {
 
@@ -86,128 +81,34 @@ export function ChangeListScreen({ params: _params }: ScreenProps): ReactElement
 
         }
 
-        let cancelled = false;
+        setIsLoading(true);
+        setError(null);
 
-        const loadChanges = async () => {
+        const [_, err] = await attempt(async () => {
 
-            setIsLoading(true);
-            setError(null);
+            const { changes: diskChanges, statuses } = await loadChangesWithStatus(
+                activeConfig, activeConfigName ?? '', settings, projectRoot,
+            );
 
-            const [_, err] = await attempt(async () => {
+            if (isCancelled()) return;
 
-                // Discover changes from disk
-                const changesDir = settings?.paths?.changes ?? 'changes';
-                const sqlDir = settings?.paths?.sql ?? 'sql';
-                const diskChanges = await discoverChanges(
-                    join(projectRoot, changesDir),
-                    join(projectRoot, sqlDir),
-                );
+            const merged = buildMergedChangeList(diskChanges, statuses);
 
-                // Get statuses from database
-                const conn = await createConnection(
-                    activeConfig.connection,
-                    activeConfigName ?? '__list__',
-                );
-                const db = conn.db as Kysely<NoormDatabase>;
+            setChanges(merged);
 
-                const history = new ChangeHistory(db, activeConfigName ?? '');
-                const statuses = await history.getAllStatuses();
+        });
 
-                await conn.destroy();
+        if (err) {
 
-                if (cancelled) return;
+            if (!isCancelled()) {
 
-                // Merge disk and database info
-                const merged: ChangeListItem[] = [];
-
-                // Add disk changes with their status
-                for (const cs of diskChanges) {
-
-                    const dbStatus = statuses.get(cs.name);
-
-                    merged.push({
-                        name: cs.name,
-                        path: cs.path,
-                        date: cs.date,
-                        description: cs.description,
-                        changeFiles: cs.changeFiles,
-                        revertFiles: cs.revertFiles,
-                        hasChangelog: cs.hasChangelog,
-                        status: dbStatus?.status ?? 'pending',
-                        appliedAt: dbStatus?.appliedAt ?? null,
-                        appliedBy: dbStatus?.appliedBy ?? null,
-                        revertedAt: dbStatus?.revertedAt ?? null,
-                        errorMessage: dbStatus?.errorMessage ?? null,
-                        isNew: !dbStatus,
-                        orphaned: false,
-                    });
-
-                }
-
-                // Add orphaned changes (in DB but not on disk)
-                const diskNames = new Set(diskChanges.map((cs) => cs.name));
-                for (const [name, status] of statuses) {
-
-                    if (!diskNames.has(name)) {
-
-                        merged.push({
-                            name,
-                            path: '',
-                            date: null,
-                            description: name,
-                            status: status.status,
-                            appliedAt: status.appliedAt,
-                            appliedBy: status.appliedBy,
-                            revertedAt: status.revertedAt,
-                            errorMessage: status.errorMessage,
-                            isNew: false,
-                            orphaned: true,
-                        });
-
-                    }
-
-                }
-
-                // Sort by date (newest first) with pending at top
-                merged.sort((a, b) => {
-
-                    // Pending first
-                    if (a.status === 'pending' && b.status !== 'pending') return -1;
-                    if (b.status === 'pending' && a.status !== 'pending') return 1;
-
-                    // Then by date
-                    const dateA = a.date?.getTime() ?? 0;
-                    const dateB = b.date?.getTime() ?? 0;
-
-                    return dateB - dateA;
-
-                });
-
-                setChanges(merged);
-
-            });
-
-            if (err) {
-
-                if (!cancelled) {
-
-                    setError(err instanceof Error ? err.message : String(err));
-
-                }
+                setError(getErrorMessage(err));
 
             }
 
-            setIsLoading(false);
+        }
 
-        };
-
-        loadChanges();
-
-        return () => {
-
-            cancelled = true;
-
-        };
+        setIsLoading(false);
 
     }, [activeConfig, activeConfigName, loadingStatus]);
 

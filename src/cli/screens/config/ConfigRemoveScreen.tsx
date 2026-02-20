@@ -21,7 +21,8 @@ import type { ScreenProps } from '../../types.js';
 import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
-import { Panel, Confirm, ProtectedConfirm, Spinner, useToast } from '../../components/index.js';
+import { Panel, Confirm, ProtectedConfirm, Spinner, useToast, MissingParamPanel, NotFoundPanel } from '../../components/index.js';
+import { getErrorMessage } from '../../utils/index.js';
 
 /**
  * ConfigRemoveScreen component.
@@ -73,7 +74,7 @@ export function ConfigRemoveScreen({ params }: ScreenProps): ReactElement {
         if (err) {
 
             showToast({
-                message: err instanceof Error ? err.message : String(err),
+                message: getErrorMessage(err),
                 variant: 'error',
             });
             setDeleting(false);
@@ -119,36 +120,14 @@ export function ConfigRemoveScreen({ params }: ScreenProps): ReactElement {
     // No config name provided
     if (!configName) {
 
-        return (
-            <Box flexDirection="column" gap={1}>
-                <Panel title="Delete Configuration" paddingX={2} paddingY={1} borderColor="yellow">
-                    <Text color="yellow">
-                        No config name provided. Use: noorm config:rm &lt;name&gt;
-                    </Text>
-                </Panel>
-
-                <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Enter/Esc] Back</Text>
-                </Box>
-            </Box>
-        );
+        return <MissingParamPanel title="Delete Configuration" param="config name" usage="noorm config:rm <name>" />;
 
     }
 
     // Config not found
     if (!config) {
 
-        return (
-            <Box flexDirection="column" gap={1}>
-                <Panel title="Delete Configuration" paddingX={2} paddingY={1} borderColor="red">
-                    <Text color="red">Config "{configName}" not found.</Text>
-                </Panel>
-
-                <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Enter/Esc] Back</Text>
-                </Box>
-            </Box>
-        );
+        return <NotFoundPanel title="Delete Configuration" type="Config" name={configName} />;
 
     }
 

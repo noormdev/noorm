@@ -5,7 +5,7 @@
  */
 import { attempt } from '@logosdx/utils';
 
-import { type HeadlessCommand } from './_helpers.js';
+import { outputError, type HeadlessCommand } from './_helpers.js';
 import { formatHelp } from '../../core/help-formatter.js';
 import { copyVaultSecrets } from '../../core/vault/index.js';
 import { loadPrivateKey, loadIdentityMetadata } from '../../core/identity/storage.js';
@@ -120,20 +120,7 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
 
     if (identityErr || !cryptoIdentity) {
 
-        const msg = 'Identity not set up. Run: noorm identity init';
-
-        if (flags.json) {
-
-            logger.result({ success: false, error: msg });
-
-        }
-        else {
-
-            logger.error(msg);
-
-        }
-
-        return 1;
+        return outputError(flags, logger, 'Identity not set up. Run: noorm identity init');
 
     }
 
@@ -142,20 +129,7 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
 
     if (keyErr || !privateKey) {
 
-        const msg = 'Private key not found. Run: noorm identity init';
-
-        if (flags.json) {
-
-            logger.result({ success: false, error: msg });
-
-        }
-        else {
-
-            logger.error(msg);
-
-        }
-
-        return 1;
+        return outputError(flags, logger, 'Private key not found. Run: noorm identity init');
 
     }
 
@@ -165,18 +139,7 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
 
     if (loadErr) {
 
-        if (flags.json) {
-
-            logger.result({ success: false, error: loadErr.message });
-
-        }
-        else {
-
-            logger.error(loadErr.message);
-
-        }
-
-        return 1;
+        return outputError(flags, logger, loadErr.message);
 
     }
 
@@ -185,39 +148,13 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
 
     if (!sourceConfig) {
 
-        const msg = `Source config not found: ${sourceConfigName}`;
-
-        if (flags.json) {
-
-            logger.result({ success: false, error: msg });
-
-        }
-        else {
-
-            logger.error(msg);
-
-        }
-
-        return 1;
+        return outputError(flags, logger, `Source config not found: ${sourceConfigName}`);
 
     }
 
     if (!destConfig) {
 
-        const msg = `Destination config not found: ${destConfigName}`;
-
-        if (flags.json) {
-
-            logger.result({ success: false, error: msg });
-
-        }
-        else {
-
-            logger.error(msg);
-
-        }
-
-        return 1;
+        return outputError(flags, logger, `Destination config not found: ${destConfigName}`);
 
     }
 
@@ -264,18 +201,7 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
 
     if (copyErr) {
 
-        if (flags.json) {
-
-            logger.result({ success: false, error: copyErr.message });
-
-        }
-        else {
-
-            logger.error(copyErr.message);
-
-        }
-
-        return 1;
+        return outputError(flags, logger, copyErr.message);
 
     }
 

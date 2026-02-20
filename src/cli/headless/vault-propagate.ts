@@ -3,7 +3,7 @@
  *
  * Propagates vault access to users without it.
  */
-import { type HeadlessCommand, withVaultContext } from './_helpers.js';
+import { type HeadlessCommand, handleVaultResult, withVaultContext } from './_helpers.js';
 import {
     getVaultKey,
     propagateVaultKey,
@@ -88,60 +88,27 @@ export const run: HeadlessCommand = async (_params, flags, logger) => {
         },
     });
 
-    if (err) {
+    return handleVaultResult(result, err, flags, logger, (r) => {
 
-        if (flags.json) {
+        const propagated = r.propagatedTo ?? [];
 
-            logger.result({ success: false, error: err.message });
+        if (propagated.length === 0) {
 
-        }
-        else {
-
-            logger.error(err.message);
-
-        }
-
-        return 1;
-
-    }
-
-    if (flags.json) {
-
-        logger.result(result);
-
-    }
-    else {
-
-        if (result?.success) {
-
-            const propagated = result.propagatedTo ?? [];
-
-            if (propagated.length === 0) {
-
-                logger.info(result.message ?? 'All users already have vault access');
-
-            }
-            else {
-
-                logger.info(`Granted vault access to ${propagated.length} users`);
-
-                for (const hash of propagated) {
-
-                    logger.info(`  ${hash}`);
-
-                }
-
-            }
+            logger.info(r.message ?? 'All users already have vault access');
 
         }
         else {
 
-            logger.error(result?.error ?? 'Unknown error');
+            logger.info(`Granted vault access to ${propagated.length} users`);
+
+            for (const hash of propagated) {
+
+                logger.info(`  ${hash}`);
+
+            }
 
         }
 
-    }
-
-    return result?.success ? 0 : 1;
+    });
 
 };

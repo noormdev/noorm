@@ -4,7 +4,7 @@
  * Tests the teardown module against a real SQLite in-memory database.
  * Verifies truncateData, teardownSchema, and previewTeardown operations.
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { sql } from 'kysely';
 import type { Kysely } from 'kysely';
 

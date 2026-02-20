@@ -4,7 +4,7 @@
  * Covers encryptWithPassphrase(), decryptWithPassphrase() round-trip,
  * wrong passphrase errors, and tamper detection.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import {
     encryptWithPassphrase,
     decryptWithPassphrase,

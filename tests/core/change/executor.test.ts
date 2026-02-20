@@ -4,12 +4,12 @@
  * Integration tests for change execution with real SQLite database.
  * Tests the full flow: create operation → execute files → finalize.
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { mkdtemp, rm, mkdir, writeFile } from 'fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Kysely, SqliteDialect } from 'kysely';
-import Database from 'better-sqlite3';
+import { BunSqliteDatabase } from '../../../src/core/connection/dialects/sqlite-bun.js';
 
 import { executeChange } from '../../../src/core/change/executor.js';
 import { ChangeHistory } from '../../../src/core/change/history.js';
@@ -99,7 +99,7 @@ describe('change: executor', () => {
         // Create in-memory SQLite database using Kysely directly
         db = new Kysely<NoormDatabase>({
             dialect: new SqliteDialect({
-                database: new Database(':memory:'),
+                database: new BunSqliteDatabase(':memory:') as never,
             }),
         });
 

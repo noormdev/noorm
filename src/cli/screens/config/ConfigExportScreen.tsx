@@ -32,6 +32,7 @@ import {
 } from '../../components/index.js';
 import { encryptForRecipient } from '../../../core/identity/crypto.js';
 import type { KnownUser } from '../../../core/identity/types.js';
+import { getErrorMessage } from '../../utils/index.js';
 
 /**
  * Export steps.
@@ -165,7 +166,7 @@ export function ConfigExportScreen({ params }: ScreenProps): ReactElement {
 
             if (err) {
 
-                setError(err instanceof Error ? err.message : String(err));
+                setError(getErrorMessage(err));
                 setStep('error');
 
                 return;

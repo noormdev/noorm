@@ -1,7 +1,7 @@
 /**
  * Protected config handling tests.
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import {
     checkProtection,
     validateConfirmation,

@@ -1,0 +1,14 @@
+[
+  {
+    "name": "admin",
+    "permissions": ["read", "write", "delete", "manage_users"]
+  },
+  {
+    "name": "editor",
+    "permissions": ["read", "write"]
+  },
+  {
+    "name": "viewer",
+    "permissions": ["read"]
+  }
+]

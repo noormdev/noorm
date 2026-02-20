@@ -1,7 +1,7 @@
 /**
  * Tests for version types.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 
 import {
     CURRENT_VERSIONS,

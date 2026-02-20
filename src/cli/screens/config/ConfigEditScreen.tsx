@@ -21,8 +21,9 @@ import type { Dialect } from '../../../core/connection/types.js';
 
 import { useRouter } from '../../router.js';
 import { useAppContext } from '../../app-context.js';
-import { Panel, Form, useToast } from '../../components/index.js';
+import { Panel, Form, useToast, MissingParamPanel, NotFoundPanel } from '../../components/index.js';
 import { testConnection } from '../../../core/connection/factory.js';
+import { getErrorMessage, validateConfigName, validatePort, buildConnectionConfig } from '../../utils/index.js';
 
 /**
  * ConfigEditScreen component.
@@ -60,19 +61,7 @@ export function ConfigEditScreen({ params }: ScreenProps): ReactElement {
                 type: 'text',
                 required: true,
                 defaultValue: config.name,
-                validate: (value) => {
-
-                    if (typeof value !== 'string') return 'Name is required';
-
-                    if (!/^[a-z0-9_-]+$/i.test(value)) {
-
-                        return 'Only letters, numbers, hyphens, underscores';
-
-                    }
-
-                    return undefined;
-
-                },
+                validate: (value) => validateConfigName(String(value ?? '')),
             },
             {
                 key: 'dialect',
@@ -92,21 +81,7 @@ export function ConfigEditScreen({ params }: ScreenProps): ReactElement {
                 label: 'Port',
                 type: 'text',
                 defaultValue: String(config.connection.port ?? ''),
-                validate: (value) => {
-
-                    if (typeof value !== 'string' || !value) return undefined;
-
-                    const port = parseInt(value, 10);
-
-                    if (isNaN(port) || port < 1 || port > 65535) {
-
-                        return 'Port must be 1-65535';
-
-                    }
-
-                    return undefined;
-
-                },
+                validate: (value) => validatePort(typeof value === 'string' ? value : undefined),
             },
             {
                 key: 'database',
@@ -157,26 +132,12 @@ export function ConfigEditScreen({ params }: ScreenProps): ReactElement {
             }
 
             const dialect = config.connection.dialect as Dialect;
-            const isSqlite = dialect === 'sqlite';
 
-            // Build connection config (keep dialect from original)
-            const connectionConfig = {
-                dialect,
-                host: isSqlite ? undefined : String(values['host'] || 'localhost'),
-                port: isSqlite
-                    ? undefined
-                    : values['port']
-                        ? parseInt(String(values['port']), 10)
-                        : config.connection.port,
-                database: String(values['database']),
-                user: isSqlite ? undefined : values['user'] ? String(values['user']) : undefined,
-                // Only update password if provided
-                password: isSqlite
-                    ? undefined
-                    : values['password']
-                        ? String(values['password'])
-                        : config.connection.password,
-            };
+            // Build connection config (keep dialect from original, preserve port and password if not provided)
+            const connectionConfig = buildConnectionConfig(values, dialect, {
+                port: config.connection.port,
+                password: config.connection.password,
+            });
 
             // Test connection first
             setBusy(true);
@@ -223,7 +184,7 @@ export function ConfigEditScreen({ params }: ScreenProps): ReactElement {
 
             if (err) {
 
-                setConnectionError(err instanceof Error ? err.message : String(err));
+                setConnectionError(getErrorMessage(err));
                 setBusy(false);
 
                 return;
@@ -251,24 +212,14 @@ export function ConfigEditScreen({ params }: ScreenProps): ReactElement {
     // No config name provided
     if (!configName) {
 
-        return (
-            <Panel title="Edit Configuration" paddingX={2} paddingY={1} borderColor="yellow">
-                <Text color="yellow">
-                    No config name provided. Use: noorm config:edit &lt;name&gt;
-                </Text>
-            </Panel>
-        );
+        return <MissingParamPanel title="Edit Configuration" param="config name" usage="noorm config:edit <name>" />;
 
     }
 
     // Config not found
     if (!config) {
 
-        return (
-            <Panel title="Edit Configuration" paddingX={2} paddingY={1} borderColor="red">
-                <Text color="red">Config "{configName}" not found.</Text>
-            </Panel>
-        );
+        return <NotFoundPanel title="Edit Configuration" type="Config" name={configName} />;
 
     }
 

@@ -3,7 +3,7 @@
  *
  * Tests the identity setup form for first-time initialization.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, mock, beforeEach } from 'bun:test';
 import { render } from 'ink-testing-library';
 import { act } from 'react';
 import React from 'react';
@@ -12,7 +12,7 @@ import { FocusProvider } from '../../../../src/cli/focus.js';
 import { IdentitySetup } from '../../../../src/cli/screens/init/IdentitySetup.js';
 
 // Mock the identity module
-vi.mock('../../../../src/core/identity/index.js', () => ({
+mock.module('../../../../src/core/identity/index.js', () => ({
     detectIdentityDefaults: vi.fn(() => ({
         name: 'Test User',
         email: 'test@example.com',

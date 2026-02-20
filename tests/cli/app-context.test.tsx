@@ -3,7 +3,7 @@
  *
  * Tests the AppContextProvider, hooks, and guard components.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, mock, beforeEach, afterEach } from 'bun:test';
 import { render } from 'ink-testing-library';
 import React from 'react';
 import { Text } from 'ink';
@@ -43,31 +43,18 @@ const createMockSettingsManager = () => ({
 });
 
 // Mock the state and settings managers
-vi.mock('../../src/core/index.js', async () => {
-
-    const actual = await vi.importActual('../../src/core/index.js');
-
-    return {
-        ...actual,
-        getStateManager: vi.fn(() => createMockStateManager()),
-        getSettingsManager: vi.fn(() => createMockSettingsManager()),
-        resetStateManager: vi.fn(),
-        resetSettingsManager: vi.fn(),
-    };
-
-});
+mock.module('../../src/core/index.js', () => ({
+    observer,
+    getStateManager: vi.fn(() => createMockStateManager()),
+    getSettingsManager: vi.fn(() => createMockSettingsManager()),
+    resetStateManager: vi.fn(),
+    resetSettingsManager: vi.fn(),
+}));
 
 // Mock identity loading to return null (no global identity)
-vi.mock('../../src/core/identity/index.js', async () => {
-
-    const actual = await vi.importActual('../../src/core/identity/index.js');
-
-    return {
-        ...actual,
-        loadExistingIdentity: vi.fn().mockResolvedValue(null),
-    };
-
-});
+mock.module('../../src/core/identity/index.js', () => ({
+    loadExistingIdentity: vi.fn().mockResolvedValue(null),
+}));
 
 /**
  * Test component that displays context state.
@@ -182,6 +169,13 @@ describe('cli: app-context', () => {
     beforeEach(() => {
 
         vi.clearAllMocks();
+        observer.clear();
+
+    });
+
+    afterEach(() => {
+
+        observer.clear();
 
     });
 
@@ -189,7 +183,7 @@ describe('cli: app-context', () => {
 
         it('should render children', () => {
 
-            const { lastFrame } = render(
+            const { lastFrame, unmount } = render(
                 <AppContextProvider autoLoad={false}>
                     <Text>Hello World</Text>
                 </AppContextProvider>,
@@ -197,11 +191,13 @@ describe('cli: app-context', () => {
 
             expect(lastFrame()).toContain('Hello World');
 
+            unmount();
+
         });
 
         it('should start with not-initialized status when autoLoad is false', () => {
 
-            const { lastFrame } = render(
+            const { lastFrame, unmount } = render(
                 <AppContextProvider autoLoad={false}>
                     <LoadingStatusDisplay />
                 </AppContextProvider>,
@@ -209,11 +205,13 @@ describe('cli: app-context', () => {
 
             expect(lastFrame()).toContain('loading:not-initialized');
 
+            unmount();
+
         });
 
         it('should auto-load on mount by default', async () => {
 
-            const { lastFrame } = render(
+            const { lastFrame, unmount } = render(
                 <AppContextProvider>
                     <LoadingStatusDisplay />
                 </AppContextProvider>,
@@ -223,6 +221,8 @@ describe('cli: app-context', () => {
             await new Promise((resolve) => setTimeout(resolve, 50));
 
             expect(lastFrame()).toContain('loading:ready');
+
+            unmount();
 
         });
 
@@ -239,7 +239,7 @@ describe('cli: app-context', () => {
 
             });
 
-            const { lastFrame } = render(<ContextDisplay />);
+            const { lastFrame, unmount } = render(<ContextDisplay />);
             const output = lastFrame() ?? '';
 
             // Error may appear in rendered output or in console.error
@@ -248,13 +248,14 @@ describe('cli: app-context', () => {
 
             expect(hasErrorInOutput || hasErrorInConsole).toBe(true);
 
+            unmount();
             errorSpy.mockRestore();
 
         });
 
         it('should provide context value inside provider', async () => {
 
-            const { lastFrame } = render(
+            const { lastFrame, unmount } = render(
                 <AppContextProvider>
                     <ContextDisplay />
                 </AppContextProvider>,
@@ -268,6 +269,8 @@ describe('cli: app-context', () => {
             expect(lastFrame()).toContain('connection:disconnected');
             expect(lastFrame()).toContain('lock:free');
 
+            unmount();
+
         });
 
     });
@@ -276,7 +279,7 @@ describe('cli: app-context', () => {
 
         it('should return loading status and error', async () => {
 
-            const { lastFrame } = render(
+            const { lastFrame, unmount } = render(
                 <AppContextProvider>
                     <LoadingStatusDisplay />
                 </AppContextProvider>,
@@ -287,6 +290,8 @@ describe('cli: app-context', () => {
             expect(lastFrame()).toContain('loading:ready');
             expect(lastFrame()).toContain('error:null');
 
+            unmount();
+
         });
 
     });
@@ -295,7 +300,7 @@ describe('cli: app-context', () => {
 
         it('should return active config info', async () => {
 
-            const { lastFrame } = render(
+            const { lastFrame, unmount } = render(
                 <AppContextProvider>
                     <ActiveConfigDisplay />
                 </AppContextProvider>,
@@ -307,6 +312,8 @@ describe('cli: app-context', () => {
             expect(lastFrame()).toContain('hasConfig:false');
             expect(lastFrame()).toContain('count:0');
 
+            unmount();
+
         });
 
     });
@@ -315,7 +322,7 @@ describe('cli: app-context', () => {
 
         it('should return connection status', async () => {
 
-            const { lastFrame } = render(
+            const { lastFrame, unmount } = render(
                 <AppContextProvider>
                     <ConnectionStatusDisplay />
                 </AppContextProvider>,
@@ -325,6 +332,8 @@ describe('cli: app-context', () => {
 
             expect(lastFrame()).toContain('status:disconnected');
             expect(lastFrame()).toContain('config:null');
+
+            unmount();
 
         });
 
@@ -383,7 +392,7 @@ describe('cli: app-context', () => {
 
         it('should return lock status', async () => {
 
-            const { lastFrame } = render(
+            const { lastFrame, unmount } = render(
                 <AppContextProvider>
                     <LockStatusDisplay />
                 </AppContextProvider>,
@@ -393,6 +402,8 @@ describe('cli: app-context', () => {
 
             expect(lastFrame()).toContain('status:free');
             expect(lastFrame()).toContain('holder:null');
+
+            unmount();
 
         });
 
@@ -482,7 +493,7 @@ describe('cli: app-context', () => {
 
         it('should return identity info', async () => {
 
-            const { lastFrame } = render(
+            const { lastFrame, unmount } = render(
                 <AppContextProvider>
                     <IdentityDisplay />
                 </AppContextProvider>,
@@ -493,6 +504,8 @@ describe('cli: app-context', () => {
             expect(lastFrame()).toContain('hasIdentity:false');
             expect(lastFrame()).toContain('name:null');
 
+            unmount();
+
         });
 
     });
@@ -501,7 +514,7 @@ describe('cli: app-context', () => {
 
         it('should return settings info', async () => {
 
-            const { lastFrame } = render(
+            const { lastFrame, unmount } = render(
                 <AppContextProvider>
                     <SettingsDisplay />
                 </AppContextProvider>,
@@ -512,6 +525,8 @@ describe('cli: app-context', () => {
             expect(lastFrame()).toContain('hasSettings:true');
             expect(lastFrame()).toContain('hasManager:true');
 
+            unmount();
+
         });
 
     });
@@ -520,7 +535,7 @@ describe('cli: app-context', () => {
 
         it('should show loading content while loading', () => {
 
-            const { lastFrame } = render(
+            const { lastFrame, unmount } = render(
                 <AppContextProvider autoLoad={false}>
                     <LoadingGuard loading={<Text>Loading...</Text>}>
                         <Text>Content</Text>
@@ -530,11 +545,13 @@ describe('cli: app-context', () => {
 
             expect(lastFrame()).toContain('Loading...');
 
+            unmount();
+
         });
 
         it('should show children when ready', async () => {
 
-            const { lastFrame } = render(
+            const { lastFrame, unmount } = render(
                 <AppContextProvider>
                     <LoadingGuard loading={<Text>Loading...</Text>}>
                         <Text>Content</Text>
@@ -546,6 +563,8 @@ describe('cli: app-context', () => {
 
             expect(lastFrame()).toContain('Content');
 
+            unmount();
+
         });
 
     });
@@ -554,7 +573,7 @@ describe('cli: app-context', () => {
 
         it('should show fallback when no config is selected', async () => {
 
-            const { lastFrame } = render(
+            const { lastFrame, unmount } = render(
                 <AppContextProvider>
                     <ConfigGuard fallback={<Text>No config</Text>}>
                         <Text>Has config</Text>
@@ -566,6 +585,8 @@ describe('cli: app-context', () => {
 
             expect(lastFrame()).toContain('No config');
 
+            unmount();
+
         });
 
     });
@@ -574,7 +595,7 @@ describe('cli: app-context', () => {
 
         it('should show fallback when no identity is set', async () => {
 
-            const { lastFrame } = render(
+            const { lastFrame, unmount } = render(
                 <AppContextProvider>
                     <IdentityGuard fallback={<Text>No identity</Text>}>
                         <Text>Has identity</Text>
@@ -585,6 +606,8 @@ describe('cli: app-context', () => {
             await new Promise((resolve) => setTimeout(resolve, 50));
 
             expect(lastFrame()).toContain('No identity');
+
+            unmount();
 
         });
 

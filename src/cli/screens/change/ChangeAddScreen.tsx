@@ -32,7 +32,7 @@ import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
 import { Panel, Spinner, StatusMessage } from '../../components/index.js';
 import { createChange, addFile } from '../../../core/change/scaffold.js';
-import { toKebabCase } from '../../utils/index.js';
+import { getErrorMessage, toKebabCase, resolveChangesDir } from '../../utils/index.js';
 
 /**
  * Add steps.
@@ -108,8 +108,8 @@ export function ChangeAddScreen({ params }: ScreenProps): ReactElement {
             // Check for duplicate folder name
             const datePrefix = new Date().toISOString().slice(0, 10);
             const expectedFolder = `${datePrefix}-${kebabDescription}`;
-            const changesDir = settings?.paths?.changes ?? 'changes';
-            const folderPath = join(projectRoot, changesDir, expectedFolder);
+            const changesFullDir = resolveChangesDir(projectRoot, settings);
+            const folderPath = join(changesFullDir, expectedFolder);
 
             if (existsSync(folderPath)) {
 
@@ -125,7 +125,7 @@ export function ChangeAddScreen({ params }: ScreenProps): ReactElement {
             const [_, err] = await attempt(async () => {
 
                 // Create change folder
-                const change = await createChange(join(projectRoot, changesDir), {
+                const change = await createChange(changesFullDir, {
                     description: kebabDescription,
                 });
 
@@ -147,7 +147,7 @@ export function ChangeAddScreen({ params }: ScreenProps): ReactElement {
 
             if (err) {
 
-                setError(err instanceof Error ? err.message : String(err));
+                setError(getErrorMessage(err));
                 setStep('error');
 
             }

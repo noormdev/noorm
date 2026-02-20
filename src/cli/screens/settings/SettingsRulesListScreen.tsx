@@ -23,6 +23,7 @@ import type { Rule } from '../../../core/settings/types.js';
 import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
+import { getErrorMessage } from '../../utils/index.js';
 import {
     Panel,
     SelectList,
@@ -161,7 +162,7 @@ export function SettingsRulesListScreen({ params: _params }: ScreenProps): React
         if (err) {
 
             showToast({
-                message: err instanceof Error ? err.message : String(err),
+                message: getErrorMessage(err),
                 variant: 'error',
             });
 

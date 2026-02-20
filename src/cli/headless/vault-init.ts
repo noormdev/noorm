@@ -5,8 +5,7 @@
  */
 import type { Kysely } from 'kysely';
 
-import { type HeadlessCommand, withVaultContext } from './_helpers.js';
-import { formatHelp } from '../../core/help-formatter.js';
+import { type HeadlessCommand, handleVaultResult, withVaultContext } from './_helpers.js';
 import { initializeVault, getVaultStatus } from '../../core/vault/index.js';
 import type { NoormDatabase } from '../../core/shared/index.js';
 
@@ -44,7 +43,7 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
 
     if (flags.json && !params.name && !flags.config) {
 
-        const output = flags.json ? help : formatHelp(help);
+        const output = flags.json ? help : help;
         process.stdout.write(output + '\n');
 
         return 0;
@@ -97,43 +96,10 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
         },
     });
 
-    if (err) {
+    return handleVaultResult(result, err, flags, logger, (r) => {
 
-        if (flags.json) {
+        logger.info(r.message);
 
-            logger.result({ success: false, error: err.message });
-
-        }
-        else {
-
-            logger.error(err.message);
-
-        }
-
-        return 1;
-
-    }
-
-    if (flags.json) {
-
-        logger.result(result);
-
-    }
-    else {
-
-        if (result?.success) {
-
-            logger.info(result.message);
-
-        }
-        else {
-
-            logger.error(result?.message ?? 'Unknown error');
-
-        }
-
-    }
-
-    return result?.success ? 0 : 1;
+    });
 
 };

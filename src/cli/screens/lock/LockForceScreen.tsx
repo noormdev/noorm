@@ -9,7 +9,7 @@
  * noorm lock:force    # Opens this screen
  * ```
  */
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { Box, Text, useInput } from 'ink';
 
 import type { ReactElement } from 'react';
@@ -23,6 +23,7 @@ import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
 import { Panel, Spinner, ProtectedConfirm, useToast } from '../../components/index.js';
+import { useAsyncEffect } from '../../hooks/index.js';
 import { createConnection, testConnection } from '../../../core/connection/index.js';
 import { getLockManager } from '../../../core/lock/index.js';
 
@@ -48,7 +49,7 @@ export function LockForceScreen({ params: _params }: ScreenProps): ReactElement 
     const [lockStatus, setLockStatus] = useState<LockStatusType | null>(null);
 
     // Check current lock status
-    useEffect(() => {
+    useAsyncEffect(async (isCancelled) => {
 
         if (!activeConfig || !activeConfigName) {
 
@@ -59,77 +60,63 @@ export function LockForceScreen({ params: _params }: ScreenProps): ReactElement 
 
         }
 
-        let cancelled = false;
+        // Test connection
+        const testResult = await testConnection(activeConfig.connection);
 
-        const checkStatus = async () => {
+        if (!testResult.ok) {
 
-            // Test connection
-            const testResult = await testConnection(activeConfig.connection);
+            if (!isCancelled()) {
 
-            if (!testResult.ok) {
-
-                if (!cancelled) {
-
-                    setError(`Cannot connect to database: ${testResult.error}`);
-                    setPhase('error');
-
-                }
-
-                return;
-
-            }
-
-            // Check lock status
-            const [result, err] = await attempt(async () => {
-
-                const conn = await createConnection(
-                    activeConfig.connection,
-                    activeConfigName ?? undefined,
-                );
-                const db = conn.db as Kysely<NoormDatabase>;
-                const lockManager = getLockManager();
-
-                const status = await lockManager.status(db, activeConfigName ?? '');
-
-                await conn.destroy();
-
-                return status;
-
-            });
-
-            if (cancelled) return;
-
-            if (err) {
-
-                setError(err.message);
+                setError(`Cannot connect to database: ${testResult.error}`);
                 setPhase('error');
 
-                return;
-
             }
 
-            setLockStatus(result);
+            return;
 
-            // No lock exists
-            if (!result?.isLocked) {
+        }
 
-                setPhase('no-lock');
+        // Check lock status
+        const [result, err] = await attempt(async () => {
 
-                return;
+            const conn = await createConnection(
+                activeConfig.connection,
+                activeConfigName ?? undefined,
+            );
+            const db = conn.db as Kysely<NoormDatabase>;
+            const lockManager = getLockManager();
 
-            }
+            const status = await lockManager.status(db, activeConfigName ?? '');
 
-            setPhase('confirm');
+            await conn.destroy();
 
-        };
+            return status;
 
-        checkStatus();
+        });
 
-        return () => {
+        if (isCancelled()) return;
 
-            cancelled = true;
+        if (err) {
 
-        };
+            setError(err.message);
+            setPhase('error');
+
+            return;
+
+        }
+
+        setLockStatus(result);
+
+        // No lock exists
+        if (!result?.isLocked) {
+
+            setPhase('no-lock');
+
+            return;
+
+        }
+
+        setPhase('confirm');
 
     }, [activeConfig, activeConfigName]);
 

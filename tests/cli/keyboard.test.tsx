@@ -3,7 +3,7 @@
  *
  * Tests keyboard hooks and list navigation.
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'bun:test';
 import { render } from 'ink-testing-library';
 import React, { useState, useCallback } from 'react';
 import { Text } from 'ink';

@@ -3,8 +3,7 @@
  *
  * Shows vault command help.
  */
-import { type HeadlessCommand } from './_helpers.js';
-import { formatHelp } from '../../core/help-formatter.js';
+import { type HeadlessCommand, createHelpOnlyCommand } from './_helpers.js';
 
 export const help = `
 # VAULT
@@ -49,11 +48,4 @@ Local always wins over vault.
 See \`noorm help vault init\`, \`noorm help vault set\`, etc.
 `;
 
-export const run: HeadlessCommand = async (_params, flags, _logger) => {
-
-    const output = flags.json ? help : formatHelp(help);
-    process.stdout.write(output + '\n');
-
-    return 0;
-
-};
+export const run = createHelpOnlyCommand(help);

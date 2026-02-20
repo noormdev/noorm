@@ -10,8 +10,7 @@
  * noorm change revert add-user-roles    # Same thing
  * ```
  */
-import { useState, useEffect, useCallback } from 'react';
-import { join } from 'path';
+import { useState, useCallback } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { ProgressBar } from '@inkjs/ui';
 
@@ -29,15 +28,18 @@ import {
     Panel,
     Spinner,
     StatusMessage,
-    Confirm,
-    ProtectedConfirm,
+    SmartConfirm,
+    MissingParamPanel,
 } from '../../components/index.js';
-import { discoverChanges } from '../../../core/change/parser.js';
-import { ChangeHistory } from '../../../core/change/history.js';
+import { useChangeProgress, useAsyncEffect } from '../../hooks/index.js';
+import { getErrorMessage,
+    loadChangesWithStatus,
+    resolveScreenIdentity,
+    resolveChangesDir,
+    resolveSqlDir,
+} from '../../utils/index.js';
 import { revertChange } from '../../../core/change/executor.js';
 import { createConnection } from '../../../core/connection/factory.js';
-import { resolveIdentity } from '../../../core/identity/resolver.js';
-import { observer } from '../../../core/observer.js';
 
 /**
  * Revert steps.
@@ -60,16 +62,16 @@ export function ChangeRevertScreen({ params }: ScreenProps): ReactElement {
 
     const changeName = params.name;
 
+    const { currentFile, fileProgress } = useChangeProgress();
+
     const [step, setStep] = useState<RevertStep>('loading');
     const [change, setChange] = useState<Change | null>(null);
     const [result, setResult] = useState<ChangeResult | null>(null);
-    const [progress, setProgress] = useState({ current: 0, total: 0 });
-    const [currentFile, setCurrentFile] = useState('');
     const [error, setError] = useState<string | null>(null);
-    const [isProtected, setIsProtected] = useState(false);
+
 
     // Load change info
-    useEffect(() => {
+    useAsyncEffect(async (isCancelled) => {
 
         if (!activeConfig || !changeName) {
 
@@ -77,105 +79,53 @@ export function ChangeRevertScreen({ params }: ScreenProps): ReactElement {
 
         }
 
-        let cancelled = false;
+        const [_, err] = await attempt(async () => {
 
-        const loadChange = async () => {
+            const { changes, statuses } = await loadChangesWithStatus(
+                activeConfig, activeConfigName ?? '', settings, projectRoot,
+            );
 
-            const [_, err] = await attempt(async () => {
+            const found = changes.find((cs) => cs.name === changeName);
 
-                // Find the change on disk
-                const changesDir = settings?.paths?.changes ?? 'changes';
-                const sqlDir = settings?.paths?.sql ?? 'sql';
-                const changes = await discoverChanges(
-                    join(projectRoot, changesDir),
-                    join(projectRoot, sqlDir),
-                );
+            if (!found) {
 
-                const found = changes.find((cs) => cs.name === changeName);
-
-                if (!found) {
-
-                    throw new Error(`Change not found: ${changeName}`);
-
-                }
-
-                // Check if applied
-                const conn = await createConnection(
-                    activeConfig.connection,
-                    activeConfigName ?? '__revert__',
-                );
-                const db = conn.db as Kysely<NoormDatabase>;
-
-                const history = new ChangeHistory(db, activeConfigName ?? '');
-                const statuses = await history.getAllStatuses();
-                const status = statuses.get(changeName);
-
-                await conn.destroy();
-
-                if (cancelled) return;
-
-                if (status?.status !== 'success') {
-
-                    throw new Error(`Change "${changeName}" is not applied`);
-
-                }
-
-                if (found.revertFiles.length === 0) {
-
-                    throw new Error(`Change "${changeName}" has no revert files`);
-
-                }
-
-                setChange(found);
-                setIsProtected(activeConfig.protected ?? false);
-                setStep('confirm');
-
-            });
-
-            if (err) {
-
-                if (!cancelled) {
-
-                    setError(err instanceof Error ? err.message : String(err));
-                    setStep('error');
-
-                }
+                throw new Error(`Change not found: ${changeName}`);
 
             }
 
-        };
+            if (isCancelled()) return;
 
-        loadChange();
+            const status = statuses.get(changeName);
 
-        return () => {
+            if (status?.status !== 'success') {
 
-            cancelled = true;
-
-        };
-
-    }, [activeConfig, activeConfigName, changeName]);
-
-    // Subscribe to progress events
-    useEffect(() => {
-
-        const unsubFile = observer.on('change:file', (data) => {
-
-            if (data.change === changeName) {
-
-                setProgress({ current: data.index, total: data.total });
-                setCurrentFile(data.filepath);
+                throw new Error(`Change "${changeName}" is not applied`);
 
             }
+
+            if (found.revertFiles.length === 0) {
+
+                throw new Error(`Change "${changeName}" has no revert files`);
+
+            }
+
+            setChange(found);
+            setStep('confirm');
 
         });
 
-        return () => {
+        if (err) {
 
-            unsubFile();
+            if (!isCancelled()) {
 
-        };
+                setError(getErrorMessage(err));
+                setStep('error');
 
-    }, [changeName]);
+            }
+
+        }
+
+    }, [activeConfig, activeConfigName, changeName]);
 
     // Handle revert
     const handleRevert = useCallback(async () => {
@@ -183,7 +133,6 @@ export function ChangeRevertScreen({ params }: ScreenProps): ReactElement {
         if (!activeConfig || !change) return;
 
         setStep('reverting');
-        setProgress({ current: 0, total: change.revertFiles.length });
 
         const [_, err] = await attempt(async () => {
 
@@ -193,21 +142,14 @@ export function ChangeRevertScreen({ params }: ScreenProps): ReactElement {
             );
             const db = conn.db as Kysely<NoormDatabase>;
 
-            // Resolve identity
-            const identity = resolveIdentity({
-                cryptoIdentity: cryptoIdentity ?? null,
-            });
-
             // Build context
-            const changesPath = settings?.paths?.changes ?? 'changes';
-            const sqlPath = settings?.paths?.sql ?? 'sql';
             const context = {
                 db,
                 configName: activeConfigName ?? '',
-                identity,
+                identity: resolveScreenIdentity(cryptoIdentity),
                 projectRoot,
-                changesDir: join(projectRoot, changesPath),
-                sqlDir: join(projectRoot, sqlPath),
+                changesDir: resolveChangesDir(projectRoot, settings),
+                sqlDir: resolveSqlDir(projectRoot, settings),
             };
 
             // Execute revert
@@ -228,7 +170,7 @@ export function ChangeRevertScreen({ params }: ScreenProps): ReactElement {
 
         if (err) {
 
-            setError(err instanceof Error ? err.message : String(err));
+            setError(getErrorMessage(err));
             setStep('error');
 
         }
@@ -258,11 +200,7 @@ export function ChangeRevertScreen({ params }: ScreenProps): ReactElement {
     // No change name provided
     if (!changeName) {
 
-        return (
-            <Panel title="Revert Change" paddingX={2} paddingY={1} borderColor="yellow">
-                <Text color="yellow">No change name provided.</Text>
-            </Panel>
-        );
+        return <MissingParamPanel title="Revert Change" param="change name" />;
 
     }
 
@@ -306,30 +244,14 @@ export function ChangeRevertScreen({ params }: ScreenProps): ReactElement {
             </Box>
         );
 
-        if (isProtected) {
-
-            return (
-                <Panel title="Revert Change" paddingX={2} paddingY={1} borderColor="yellow">
-                    <Box flexDirection="column" gap={1}>
-                        {confirmContent}
-                        <ProtectedConfirm
-                            configName={activeConfigName ?? 'config'}
-                            action="revert this change"
-                            onConfirm={handleRevert}
-                            onCancel={handleCancel}
-                            isFocused={isFocused}
-                        />
-                    </Box>
-                </Panel>
-            );
-
-        }
-
         return (
-            <Panel title="Revert Change" paddingX={2} paddingY={1}>
+            <Panel title="Revert Change" paddingX={2} paddingY={1} borderColor={activeConfig.protected ? 'yellow' : undefined}>
                 <Box flexDirection="column" gap={1}>
                     {confirmContent}
-                    <Confirm
+                    <SmartConfirm
+                        protected={activeConfig.protected ?? false}
+                        configName={activeConfigName ?? 'config'}
+                        action="revert this change"
                         message="Revert this change?"
                         onConfirm={handleRevert}
                         onCancel={handleCancel}
@@ -344,7 +266,7 @@ export function ChangeRevertScreen({ params }: ScreenProps): ReactElement {
     // Reverting
     if (step === 'reverting') {
 
-        const progressValue = progress.total > 0 ? progress.current / progress.total : 0;
+        const progressValue = fileProgress.total > 0 ? fileProgress.current / fileProgress.total : 0;
 
         return (
             <Panel title="Revert Change" paddingX={2} paddingY={1}>
@@ -361,7 +283,7 @@ export function ChangeRevertScreen({ params }: ScreenProps): ReactElement {
                     </Box>
 
                     <Text dimColor>
-                        {progress.current}/{progress.total} files
+                        {fileProgress.current}/{fileProgress.total} files
                         {currentFile && ` - ${currentFile.split('/').pop()}`}
                     </Text>
                 </Box>

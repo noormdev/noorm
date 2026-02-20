@@ -4,7 +4,7 @@
  * Tests the sql-terminal executor against a real SQLite in-memory database.
  * Verifies SELECT, INSERT, UPDATE, DELETE, DDL operations and error handling.
  */
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'bun:test';
 import type { Kysely } from 'kysely';
 
 import {

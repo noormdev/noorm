@@ -9,11 +9,12 @@
  * noorm db truncate    # Opens this screen
  * ```
  */
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { attempt } from '@logosdx/utils';
 
 import type { ReactElement } from 'react';
+import type { Kysely } from 'kysely';
 
 import type { TruncateResult } from '../../../core/teardown/index.js';
 import type { TableSummary } from '../../../core/explore/types.js';
@@ -26,6 +27,8 @@ import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useAppContext, useSettings } from '../../app-context.js';
 import { useToast, Panel, Spinner, ProtectedConfirm } from '../../components/index.js';
+import { useConnection, useAsyncEffect } from '../../hooks/index.js';
+import { getErrorMessage } from '../../utils/index.js';
 
 type Phase = 'loading' | 'preview' | 'confirm' | 'running' | 'done' | 'error';
 
@@ -51,11 +54,11 @@ export function DbTruncateScreen({ params: _params }: ScreenProps): ReactElement
         [settings?.teardown?.preserveTables],
     );
 
-    // Track if we've already started loading to prevent duplicate loads
-    const loadingRef = useRef(false);
+    // Shared connection for preview phase
+    const { db, dialect, loading: connLoading, error: connError } = useConnection();
 
-    // Load tables
-    useEffect(() => {
+    // Load tables when connection is ready
+    useAsyncEffect(async (isCancelled) => {
 
         if (!activeConfig || !activeConfigName) {
 
@@ -66,70 +69,36 @@ export function DbTruncateScreen({ params: _params }: ScreenProps): ReactElement
 
         }
 
-        // Prevent duplicate loads (React strict mode, fast remounts)
-        if (loadingRef.current) return;
-        loadingRef.current = true;
+        if (connError) {
 
-        let cancelled = false;
+            setError(connError);
+            setPhase('error');
 
-        const load = async () => {
+            return;
 
-            const [conn, connErr] = await attempt(() =>
-                createConnection(activeConfig.connection, activeConfigName),
-            );
+        }
 
-            if (connErr || !conn) {
+        if (!db || !dialect || connLoading) return;
 
-                if (!cancelled) {
+        const [tableList, tableListErr] = await attempt(
+            () => fetchList(db as Kysely<unknown>, dialect, 'tables'),
+        );
 
-                    setError(`Connection failed: ${connErr?.message ?? 'Unknown error'}`);
-                    setPhase('error');
+        if (!isCancelled() && tableListErr) {
 
-                }
+            setError(tableListErr instanceof Error ? tableListErr.message : String(tableListErr));
+            setPhase('error');
 
-                loadingRef.current = false;
+        }
 
-                return;
+        if (!isCancelled() && tableList) {
 
-            }
+            setTables(tableList);
+            setPhase('preview');
 
-            const db = conn.db;
-            const [tableList, tableListErr] = await attempt(
-                () => fetchList(
-                    db,
-                    activeConfig.connection.dialect,
-                    'tables',
-                ),
-            );
+        }
 
-            if (!cancelled && tableListErr) {
-
-                setError(tableListErr instanceof Error ? tableListErr.message : String(tableListErr));
-                setPhase('error');
-
-            }
-
-            if (!cancelled && tableList) {
-
-                setTables(tableList);
-                setPhase('preview');
-
-            }
-
-            await conn.destroy();
-            loadingRef.current = false;
-
-        };
-
-        load();
-
-        return () => {
-
-            cancelled = true;
-
-        };
-
-    }, [activeConfig, activeConfigName]);
+    }, [activeConfig, activeConfigName, db, dialect, connLoading, connError]);
 
     // Execute truncate
     const executeTruncate = useCallback(async () => {
@@ -166,7 +135,7 @@ export function DbTruncateScreen({ params: _params }: ScreenProps): ReactElement
         }
         catch (err) {
 
-            setError(err instanceof Error ? err.message : String(err));
+            setError(getErrorMessage(err));
             setPhase('error');
 
         }

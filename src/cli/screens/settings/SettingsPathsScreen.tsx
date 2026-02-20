@@ -8,9 +8,8 @@
  * noorm settings paths    # Edit path settings
  * ```
  */
-import { useState, useCallback, useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { Box, Text } from 'ink';
-import { attempt } from '@logosdx/utils';
 
 import type { ReactElement } from 'react';
 import type { ScreenProps } from '../../types.js';
@@ -18,7 +17,8 @@ import type { FormValues, FormField } from '../../components/index.js';
 
 import { useRouter } from '../../router.js';
 import { useAppContext } from '../../app-context.js';
-import { Panel, Form, useToast } from '../../components/index.js';
+import { Panel, Form } from '../../components/index.js';
+import { useSettingsOperation } from '../../hooks/index.js';
 
 /**
  * SettingsPathsScreen component.
@@ -26,11 +26,12 @@ import { Panel, Form, useToast } from '../../components/index.js';
 export function SettingsPathsScreen({ params: _params }: ScreenProps): ReactElement {
 
     const { back } = useRouter();
-    const { settingsManager, refresh } = useAppContext();
-    const { showToast } = useToast();
+    const { settingsManager } = useAppContext();
 
-    const [busy, setBusy] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+    const { execute, busy, error } = useSettingsOperation(
+        async (mgr, data: { sql: string; changes: string }) => mgr.setPaths(data),
+        'Path settings saved',
+    );
 
     // Get current paths config
     const paths = useMemo(() => {
@@ -66,46 +67,13 @@ export function SettingsPathsScreen({ params: _params }: ScreenProps): ReactElem
     const handleSubmit = useCallback(
         async (values: FormValues) => {
 
-            if (!settingsManager) {
-
-                setError('Settings manager not available');
-
-                return;
-
-            }
-
-            setBusy(true);
-            setError(null);
-
-            const newPaths = {
+            await execute({
                 sql: String(values['sql'] || './sql'),
                 changes: String(values['changes'] || './changes'),
-            };
-
-            const [_, err] = await attempt(async () => {
-
-                await settingsManager.setPaths(newPaths);
-                await refresh();
-
             });
-
-            if (err) {
-
-                setError(err instanceof Error ? err.message : String(err));
-                setBusy(false);
-
-                return;
-
-            }
-
-            showToast({
-                message: 'Path settings saved',
-                variant: 'success',
-            });
-            back();
 
         },
-        [settingsManager, refresh, showToast, back],
+        [execute],
     );
 
     // Handle cancel

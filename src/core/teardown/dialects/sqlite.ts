@@ -4,15 +4,13 @@
  * SQLite-specific SQL generation for teardown operations.
  */
 import type { TeardownDialectOperations } from '../types.js';
+import { createDialectQuoting } from '../../shared/index.js';
 
-/**
- * Quote a SQLite identifier with double quotes.
- */
-function quote(name: string): string {
-
-    return `"${name.replace(/"/g, '""')}"`;
-
-}
+const { quote } = createDialectQuoting({
+    open: '"',
+    close: '"',
+    escape: '""',
+});
 
 /**
  * SQLite teardown operations.

@@ -1,9 +1,9 @@
 /**
  * Lock manager tests.
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { Kysely, SqliteDialect } from 'kysely';
-import Database from 'better-sqlite3';
+import { BunSqliteDatabase } from '../../../src/core/connection/dialects/sqlite-bun.js';
 import {
     getLockManager,
     resetLockManager,
@@ -26,7 +26,7 @@ async function createTestDb(): Promise<Kysely<NoormDatabase>> {
 
     const db = new Kysely<NoormDatabase>({
         dialect: new SqliteDialect({
-            database: new Database(':memory:'),
+            database: new BunSqliteDatabase(':memory:') as never,
         }),
     });
 

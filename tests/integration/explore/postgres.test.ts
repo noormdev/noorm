@@ -4,7 +4,7 @@
  * Tests fetchOverview, fetchList, and fetchDetail against a real PostgreSQL database.
  * Requires docker-compose.test.yml containers to be running.
  */
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'bun:test';
 import type { Kysely } from 'kysely';
 
 import { fetchOverview, fetchList, fetchDetail } from '../../../src/core/explore/index.js';

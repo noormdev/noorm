@@ -66,7 +66,7 @@ class BunSqliteStatement {
 /**
  * Database wrapper matching Kysely's expected SqliteDatabase interface.
  */
-class BunSqliteDatabase {
+export class BunSqliteDatabase {
 
     #db: Database;
 

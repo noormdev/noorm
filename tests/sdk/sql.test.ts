@@ -5,7 +5,7 @@
  * buildFuncCall by compiling RawBuilder output against each dialect's
  * query compiler.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import {
     Kysely,
     DummyDriver,

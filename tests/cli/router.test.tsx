@@ -3,7 +3,7 @@
  *
  * Tests RouterProvider, useRouter, and navigation functions.
  */
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi } from 'bun:test';
 import { render } from 'ink-testing-library';
 import React, { useEffect } from 'react';
 import { Text } from 'ink';

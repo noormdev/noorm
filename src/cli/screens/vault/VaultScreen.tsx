@@ -12,21 +12,19 @@
  * - i: Initialize vault (if not initialized)
  * - Esc: Go back
  */
-import { useCallback, useMemo, useEffect, useState, useRef } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import type { Kysely } from 'kysely';
-import { attempt } from '@logosdx/utils';
 
 import type { ReactElement } from 'react';
 import type { ScreenProps } from '../../types.js';
 import type { NoormDatabase } from '../../../core/shared/index.js';
-import type { ConnectionResult } from '../../../core/connection/types.js';
 
 import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
 import { Panel, SelectList, Spinner, useToast, type SelectListItem } from '../../components/index.js';
-import { createConnection } from '../../../core/connection/index.js';
+import { useVaultConnection } from '../../hooks/index.js';
 import { loadPrivateKey } from '../../../core/identity/storage.js';
 import {
     getVaultStatus,
@@ -36,10 +34,9 @@ import {
     type VaultStatus,
     type VaultSecret,
 } from '../../../core/vault/index.js';
-import { ensureSchemaVersion } from '../../../core/version/index.js';
 
 
-type Phase = 'loading' | 'ready' | 'error';
+type Phase = 'connecting' | 'ready' | 'error';
 
 /**
  * VaultScreen component.
@@ -48,103 +45,33 @@ export function VaultScreen({ params: _params }: ScreenProps): ReactElement {
 
     const { navigate, back } = useRouter();
     const { isFocused } = useFocusScope('Vault');
-    const { activeConfig, activeConfigName, identity, settings } = useAppContext();
+    const { activeConfigName, identity, settings } = useAppContext();
     const { showToast } = useToast();
 
-    const [phase, setPhase] = useState<Phase>('loading');
-    const [error, setError] = useState<string | null>(null);
     const [status, setStatus] = useState<VaultStatus | null>(null);
     const [secrets, setSecrets] = useState<VaultSecret[]>([]);
     const [propagating, setPropagating] = useState(false);
 
-    // Connection ref for cleanup
-    const connRef = useRef<ConnectionResult | null>(null);
-    const loadingRef = useRef(false);
+    const { phase, error, connRef } = useVaultConnection({
+        onReady: async (db, isCancelled) => {
 
-    // Load vault data
-    useEffect(() => {
+            if (!identity) return;
 
-        if (!activeConfig || !activeConfigName || !identity) {
-
-            if (!activeConfig) setError('No active configuration');
-            else if (!identity) setError('Identity not set up');
-            setPhase('error');
-
-            return;
-
-        }
-
-        if (loadingRef.current) return;
-        loadingRef.current = true;
-
-        let cancelled = false;
-
-        const load = async (): Promise<void> => {
-
-            // Create connection
-            const [conn, connErr] = await attempt(() =>
-                createConnection(activeConfig.connection, activeConfigName),
-            );
-
-            if (connErr || !conn) {
-
-                if (!cancelled) {
-
-                    setError(`Connection failed: ${connErr?.message ?? 'Unknown error'}`);
-                    setPhase('error');
-
-                }
-
-                return;
-
-            }
-
-            connRef.current = conn;
-
-            if (cancelled) {
-
-                await conn.destroy();
-
-                return;
-
-            }
-
-            const db = conn.db;
-
-            // Ensure schema and identity are registered
-            await ensureSchemaVersion(db as Kysely<NoormDatabase>, conn.dialect);
-
-            if (cancelled) {
-
-                await conn.destroy();
-
-                return;
-
-            }
-
-            // Get vault status
             const vaultStatus = await getVaultStatus(db as Kysely<NoormDatabase>, identity.identityHash);
 
-            if (cancelled) {
-
-                await conn.destroy();
-
-                return;
-
-            }
+            if (isCancelled()) return;
 
             setStatus(vaultStatus);
 
-            // Load secrets if we have access
             if (vaultStatus.hasAccess) {
 
                 const [privateKey] = await Promise.all([loadPrivateKey()]);
 
-                if (privateKey && !cancelled) {
+                if (privateKey && !isCancelled()) {
 
                     const vaultKey = await getVaultKey(db as Kysely<NoormDatabase>, identity.identityHash, privateKey);
 
-                    if (vaultKey && !cancelled) {
+                    if (vaultKey && !isCancelled()) {
 
                         const allSecrets = await getAllVaultSecrets(db as Kysely<NoormDatabase>, vaultKey);
                         setSecrets(Object.values(allSecrets));
@@ -155,30 +82,8 @@ export function VaultScreen({ params: _params }: ScreenProps): ReactElement {
 
             }
 
-            if (!cancelled) {
-
-                setPhase('ready');
-
-            }
-
-        };
-
-        load();
-
-        return () => {
-
-            cancelled = true;
-
-            if (connRef.current) {
-
-                connRef.current.destroy();
-                connRef.current = null;
-
-            }
-
-        };
-
-    }, [activeConfig, activeConfigName, identity]);
+        },
+    });
 
     // Get defined secret keys that aren't in the vault
     const unsetDefinedSecrets = useMemo(() => {
@@ -333,7 +238,7 @@ export function VaultScreen({ params: _params }: ScreenProps): ReactElement {
     });
 
     // No active config
-    if (!activeConfigName || !activeConfig) {
+    if (!activeConfigName) {
 
         return (
             <Box flexDirection="column" gap={1}>
@@ -351,8 +256,8 @@ export function VaultScreen({ params: _params }: ScreenProps): ReactElement {
 
     }
 
-    // Loading
-    if (phase === 'loading') {
+    // Connecting
+    if (phase === 'connecting') {
 
         return (
             <Box flexDirection="column" gap={1}>

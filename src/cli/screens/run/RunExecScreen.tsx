@@ -15,8 +15,8 @@
  * noorm run exec     # Opens this screen
  * ```
  */
-import { useState, useEffect, useCallback } from 'react';
-import { Box, Text, useInput } from 'ink';
+import { useState, useCallback } from 'react';
+import { Box, Text } from 'ink';
 import { ProgressBar } from '@inkjs/ui';
 import { join, relative } from 'path';
 
@@ -24,72 +24,18 @@ import type { ReactElement } from 'react';
 import type { ScreenProps } from '../../types.js';
 
 import { useRouter } from '../../router.js';
-import { useFocusScope } from '../../focus.js';
 import { useSettings, useGlobalModes, useAppContext } from '../../app-context.js';
-import { Panel, Spinner, SelectList, type SelectListItem, Confirm, useToast } from '../../components/index.js';
-import { useRunProgress } from '../../hooks/index.js';
+import { Panel, Spinner, SelectList, type SelectListItem, Confirm, KeyHandler, useToast } from '../../components/index.js';
+import { useRunProgress, useAsyncEffect } from '../../hooks/index.js';
 import { discoverFiles, runFiles } from '../../../core/runner/index.js';
 import { createConnection, testConnection } from '../../../core/connection/index.js';
-import { resolveIdentity } from '../../../core/identity/index.js';
+import { getErrorMessage, resolveScreenIdentity, buildRunContext } from '../../utils/index.js';
 import { attempt } from '@logosdx/utils';
 
 import type { NoormDatabase } from '../../../core/shared/index.js';
 import type { Kysely } from 'kysely';
-import type { RunContext } from '../../../core/runner/index.js';
 
 type Phase = 'loading' | 'picker' | 'confirm' | 'running' | 'complete' | 'error';
-
-/**
- * Component that handles Escape and optional Retry keys.
- */
-function KeyHandler({
-    focusLabel,
-    onEscape,
-    onRetry,
-    toastMessage,
-    showToast,
-}: {
-    focusLabel: string;
-    onEscape?: () => void;
-    onRetry?: () => void;
-    toastMessage?: string;
-    showToast?: (opts: { message: string; variant: 'warning' }) => void;
-}): null {
-
-    const { isFocused } = useFocusScope(focusLabel);
-
-    useInput((input, key) => {
-
-        if (!isFocused) return;
-
-        if (key.escape) {
-
-            if (toastMessage && showToast) {
-
-                showToast({ message: toastMessage, variant: 'warning' });
-
-            }
-            else if (onEscape) {
-
-                onEscape();
-
-            }
-
-            return;
-
-        }
-
-        if (input === 'r' && onRetry) {
-
-            onRetry();
-
-        }
-
-    });
-
-    return null;
-
-}
 
 /**
  * RunExecScreen component.
@@ -111,44 +57,30 @@ export function RunExecScreen({ params: _params }: ScreenProps): ReactElement {
     const projectRoot = process.cwd();
 
     // Load files
-    useEffect(() => {
+    useAsyncEffect(async (isCancelled) => {
 
         if (!activeConfig || !settings) return;
 
-        let cancelled = false;
+        setPhase('loading');
 
-        const load = async () => {
+        const sqlPath = settings.paths?.sql ?? 'sql';
+        const sqlFullPath = join(projectRoot, sqlPath);
 
-            setPhase('loading');
+        const [files, err] = await attempt(() => discoverFiles(sqlFullPath));
 
-            const sqlPath = settings.paths?.sql ?? 'sql';
-            const sqlFullPath = join(projectRoot, sqlPath);
+        if (isCancelled()) return;
 
-            const [files, err] = await attempt(() => discoverFiles(sqlFullPath));
+        if (err) {
 
-            if (cancelled) return;
+            setError(`Failed to discover files: ${err.message}`);
+            setPhase('error');
 
-            if (err) {
+            return;
 
-                setError(`Failed to discover files: ${err.message}`);
-                setPhase('error');
+        }
 
-                return;
-
-            }
-
-            setAllFiles(files ?? []);
-            setPhase('picker');
-
-        };
-
-        load();
-
-        return () => {
-
-            cancelled = true;
-
-        };
+        setAllFiles(files ?? []);
+        setPhase('picker');
 
     }, [activeConfig, settings, projectRoot]);
 
@@ -187,9 +119,7 @@ export function RunExecScreen({ params: _params }: ScreenProps): ReactElement {
         resetProgress(filesToRun.length);
 
         // Resolve identity
-        const identity = resolveIdentity({
-            cryptoIdentity: cryptoIdentity ?? null,
-        });
+        const identity = resolveScreenIdentity(cryptoIdentity);
 
         // Test connection
         const testResult = await testConnection(activeConfig.connection);
@@ -221,15 +151,11 @@ export function RunExecScreen({ params: _params }: ScreenProps): ReactElement {
 
             const db = conn.db as Kysely<NoormDatabase>;
 
-            const context: RunContext = {
-                db,
-                configName: activeConfigName,
-                identity,
-                projectRoot,
-                config: activeConfig as unknown as Record<string, unknown>,
-                secrets: stateManager.getAllSecrets(activeConfigName),
-                globalSecrets: stateManager.getAllGlobalSecrets(),
-            };
+            const context = buildRunContext({
+                db, configName: activeConfigName, identity,
+                projectRoot, activeConfig: activeConfig as unknown as Record<string, unknown>,
+                stateManager,
+            });
 
             const options = {
                 force: globalModes.force,
@@ -244,7 +170,7 @@ export function RunExecScreen({ params: _params }: ScreenProps): ReactElement {
         }
         catch (err) {
 
-            setError(err instanceof Error ? err.message : String(err));
+            setError(getErrorMessage(err));
             setPhase('error');
 
         }
@@ -423,8 +349,7 @@ export function RunExecScreen({ params: _params }: ScreenProps): ReactElement {
             <Box flexDirection="column" gap={1}>
                 <KeyHandler
                     focusLabel="RunExecRunning"
-                    toastMessage="Cannot cancel running files"
-                    showToast={showToast}
+                    onEscape={() => showToast({ message: 'Cannot cancel running files', variant: 'warning' })}
                 />
                 <Panel title="Running Files" paddingX={1} paddingY={1}>
                     <Box flexDirection="column" gap={1}>

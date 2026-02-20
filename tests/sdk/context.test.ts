@@ -4,7 +4,7 @@
  * Covers type-level constraints (compile-time) and runtime behavior
  * for the proc() and func() methods on the Context class.
  */
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi } from 'bun:test';
 import {
     Kysely,
     DummyDriver,
@@ -277,7 +277,7 @@ describe('sdk: Context proc/func runtime', () => {
             const mockRows = [{ id: 1, name: 'Alice' }];
             const { db } = createMockKysely(mockRows);
 
-            vi.spyOn(ctx, 'kysely', 'get').mockReturnValue(db);
+            Object.defineProperty(ctx, 'kysely', { value: db, configurable: true });
 
             const result = await ctx.proc<{ id: number; name: string }>('get_users', { department_id: 1, active: true });
 
@@ -290,7 +290,7 @@ describe('sdk: Context proc/func runtime', () => {
             const ctx = createContext<TestProcs>('postgres');
             const { db } = createMockKysely([]);
 
-            vi.spyOn(ctx, 'kysely', 'get').mockReturnValue(db);
+            Object.defineProperty(ctx, 'kysely', { value: db, configurable: true });
 
             const result = await ctx.proc('refresh_cache');
 
@@ -317,7 +317,7 @@ describe('sdk: Context proc/func runtime', () => {
             const ctx = createContext<object, TestFuncs>('postgres');
             const { db } = createMockKysely([{ total: 99 }]);
 
-            vi.spyOn(ctx, 'kysely', 'get').mockReturnValue(db);
+            Object.defineProperty(ctx, 'kysely', { value: db, configurable: true });
 
             const result = await ctx.func<{ total: number }>('calc_total', { order_id: 42 }, 'total');
 
@@ -330,7 +330,7 @@ describe('sdk: Context proc/func runtime', () => {
             const ctx = createContext<object, TestFuncs>('postgres');
             const { db } = createMockKysely([]);
 
-            vi.spyOn(ctx, 'kysely', 'get').mockReturnValue(db);
+            Object.defineProperty(ctx, 'kysely', { value: db, configurable: true });
 
             const result = await ctx.func('get_version', 'v');
 

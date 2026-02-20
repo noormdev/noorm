@@ -9,9 +9,8 @@
  * noorm settings build    # Edit build settings
  * ```
  */
-import { useState, useCallback, useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { Box, Text } from 'ink';
-import { attempt } from '@logosdx/utils';
 
 import type { ReactElement } from 'react';
 import type { ScreenProps } from '../../types.js';
@@ -19,7 +18,8 @@ import type { FormValues, FormField } from '../../components/index.js';
 
 import { useRouter } from '../../router.js';
 import { useAppContext } from '../../app-context.js';
-import { Panel, Form, useToast } from '../../components/index.js';
+import { Panel, Form } from '../../components/index.js';
+import { useSettingsOperation } from '../../hooks/index.js';
 import { DEFAULT_PATH_CONFIG } from '../../../core/settings/defaults.js';
 
 /**
@@ -53,11 +53,12 @@ function formatPathList(paths: string[] | undefined): string {
 export function SettingsBuildScreen({ params: _params }: ScreenProps): ReactElement {
 
     const { back } = useRouter();
-    const { settingsManager, refresh } = useAppContext();
-    const { showToast } = useToast();
+    const { settingsManager } = useAppContext();
 
-    const [busy, setBusy] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+    const { execute, busy, error } = useSettingsOperation(
+        async (mgr, data: { include: string[]; exclude: string[] }) => mgr.setBuild(data),
+        'Build settings saved',
+    );
 
     // Get current build config
     const build = useMemo(() => {
@@ -104,46 +105,13 @@ export function SettingsBuildScreen({ params: _params }: ScreenProps): ReactElem
     const handleSubmit = useCallback(
         async (values: FormValues) => {
 
-            if (!settingsManager) {
-
-                setError('Settings manager not available');
-
-                return;
-
-            }
-
-            setBusy(true);
-            setError(null);
-
-            const newBuild = {
+            await execute({
                 include: parsePathList(values['include']),
                 exclude: parsePathList(values['exclude']),
-            };
-
-            const [_, err] = await attempt(async () => {
-
-                await settingsManager.setBuild(newBuild);
-                await refresh();
-
             });
-
-            if (err) {
-
-                setError(err instanceof Error ? err.message : String(err));
-                setBusy(false);
-
-                return;
-
-            }
-
-            showToast({
-                message: 'Build settings saved',
-                variant: 'success',
-            });
-            back();
 
         },
-        [settingsManager, refresh, showToast, back],
+        [execute],
     );
 
     // Handle cancel

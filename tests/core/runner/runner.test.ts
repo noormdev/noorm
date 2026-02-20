@@ -4,7 +4,7 @@
  * Uses permanent fixture files in ./fixtures/ for testing.
  * Note: Tests requiring database are integration tests.
  */
-import { describe, it, expect, afterAll } from 'vitest';
+import { describe, it, expect, afterAll } from 'bun:test';
 import path from 'node:path';
 import { rm } from 'node:fs/promises';
 import { preview } from '../../../src/core/runner/runner.js';

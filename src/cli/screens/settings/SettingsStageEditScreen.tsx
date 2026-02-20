@@ -9,9 +9,8 @@
  * noorm settings stages edit dev # Edit 'dev' stage
  * ```
  */
-import { useState, useCallback, useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { Text } from 'ink';
-import { attempt } from '@logosdx/utils';
 
 import type { ReactElement } from 'react';
 import type { ScreenProps } from '../../types.js';
@@ -20,7 +19,8 @@ import type { Stage } from '../../../core/settings/types.js';
 
 import { useRouter } from '../../router.js';
 import { useAppContext } from '../../app-context.js';
-import { Panel, Form, useToast } from '../../components/index.js';
+import { Panel, Form } from '../../components/index.js';
+import { useSettingsOperation } from '../../hooks/index.js';
 
 /**
  * SettingsStageEditScreen component.
@@ -28,14 +28,25 @@ import { Panel, Form, useToast } from '../../components/index.js';
 export function SettingsStageEditScreen({ params }: ScreenProps): ReactElement {
 
     const { back } = useRouter();
-    const { settingsManager, refresh } = useAppContext();
-    const { showToast } = useToast();
+    const { settingsManager } = useAppContext();
 
     const stageName = params.name;
     const isAddMode = !stageName;
 
-    const [busy, setBusy] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+    const { execute, busy, error } = useSettingsOperation(
+        async (mgr, data: { name: string; stage: Stage }) => {
+
+            if (stageName && stageName !== data.name) {
+
+                await mgr.removeStage(stageName);
+
+            }
+
+            await mgr.setStage(data.name, data.stage);
+
+        },
+        (data) => isAddMode ? `Stage "${data.name}" created` : `Stage "${data.name}" updated`,
+    );
 
     // Get existing stage if editing
     const existingStage = useMemo(() => {
@@ -178,26 +189,9 @@ export function SettingsStageEditScreen({ params }: ScreenProps): ReactElement {
     const handleSubmit = useCallback(
         async (values: FormValues) => {
 
-            if (!settingsManager) {
-
-                setError('Settings manager not available');
-
-                return;
-
-            }
-
             const name = String(values['name']);
 
-            if (!name) {
-
-                setError('Stage name is required');
-
-                return;
-
-            }
-
-            setBusy(true);
-            setError(null);
+            if (!name) return;
 
             // Build defaults object (only include non-empty values)
             const defaults: Stage['defaults'] = {};
@@ -220,41 +214,13 @@ export function SettingsStageEditScreen({ params }: ScreenProps): ReactElement {
                 description: values['description'] ? String(values['description']) : undefined,
                 locked: Boolean(values['locked']),
                 defaults: Object.keys(defaults).length > 0 ? defaults : undefined,
-                // Preserve existing secrets
                 secrets: existingStage?.secrets,
             };
 
-            const [_, err] = await attempt(async () => {
-
-                // If name changed during edit, remove old stage
-                if (stageName && stageName !== name) {
-
-                    await settingsManager.removeStage(stageName);
-
-                }
-
-                await settingsManager.setStage(name, stage);
-                await refresh();
-
-            });
-
-            if (err) {
-
-                setError(err instanceof Error ? err.message : String(err));
-                setBusy(false);
-
-                return;
-
-            }
-
-            showToast({
-                message: isAddMode ? `Stage "${name}" created` : `Stage "${name}" updated`,
-                variant: 'success',
-            });
-            back();
+            await execute({ name, stage });
 
         },
-        [settingsManager, stageName, existingStage, isAddMode, refresh, showToast, back],
+        [existingStage, execute],
     );
 
     // Handle cancel

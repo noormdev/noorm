@@ -4,7 +4,7 @@
  * Covers convertBatch(), shouldFlush(), and cross-dialect type conversions
  * for json, vector, array, bool, and custom types.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import { DtStreamer } from '../../../src/core/dt/streamer.js';
 import type { DtColumn, DatabaseVersion } from '../../../src/core/dt/types.js';
 

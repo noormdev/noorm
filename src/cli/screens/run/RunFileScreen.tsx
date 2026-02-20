@@ -10,85 +10,28 @@
  * ```
  */
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { Box, Text, useInput } from 'ink';
+import { Box, Text } from 'ink';
 import { join, relative } from 'path';
 
 import type { ReactElement } from 'react';
 import type { ScreenProps } from '../../types.js';
 
 import { useRouter } from '../../router.js';
-import { useFocusScope } from '../../focus.js';
 import { useSettings, useGlobalModes, useAppContext } from '../../app-context.js';
-import { Panel, Spinner, Confirm, SearchableList, useToast } from '../../components/index.js';
-import { useRunProgress } from '../../hooks/index.js';
+import { Panel, Spinner, Confirm, SearchableList, KeyHandler, useToast } from '../../components/index.js';
+import { useRunProgress, useAsyncEffect } from '../../hooks/index.js';
 import { discoverFiles, runFile, checkFilesStatus } from '../../../core/runner/index.js';
 import type { FilesStatusResult } from '../../../core/runner/index.js';
 import { createConnection, testConnection } from '../../../core/connection/index.js';
-import { resolveIdentity } from '../../../core/identity/index.js';
+import { getErrorMessage, resolveScreenIdentity, buildRunContext } from '../../utils/index.js';
+import { useConnection } from '../../hooks/index.js';
 import { attempt } from '@logosdx/utils';
 
 import type { NoormDatabase } from '../../../core/shared/index.js';
 import type { Kysely } from 'kysely';
-import type { RunContext } from '../../../core/runner/index.js';
 import type { SelectListItem } from '../../components/index.js';
 
 type Phase = 'loading' | 'picker' | 'confirm' | 'checking' | 'rerun-confirm' | 'running' | 'complete' | 'error';
-
-/**
- * Component that handles Escape, Cancel (c), and Retry (r) keys.
- */
-function KeyHandler({
-    focusLabel,
-    onEscape,
-    onRetry,
-    onCancel,
-}: {
-    focusLabel: string;
-    onEscape?: () => void;
-    onRetry?: () => void;
-    onCancel?: () => void;
-}): null {
-
-    const { isFocused } = useFocusScope(focusLabel);
-
-    useInput((input, key) => {
-
-        if (!isFocused) return;
-
-        if (key.escape) {
-
-            if (onCancel) {
-
-                onCancel();
-
-            }
-            else if (onEscape) {
-
-                onEscape();
-
-            }
-
-            return;
-
-        }
-
-        if (input === 'r' && onRetry) {
-
-            onRetry();
-
-        }
-
-        if (input === 'c' && onCancel) {
-
-            onCancel();
-
-        }
-
-    });
-
-    return null;
-
-}
 
 /**
  * RunFileScreen component.
@@ -101,6 +44,9 @@ export function RunFileScreen({ params }: ScreenProps): ReactElement {
     const globalModes = useGlobalModes();
     const { showToast } = useToast();
     const { state: progress, reset: resetProgress } = useRunProgress();
+
+    // Shared connection for status checks
+    const { db: sharedDb, loading: connLoading, error: connError } = useConnection();
 
     const [phase, setPhase] = useState<Phase>('loading');
     const [allFiles, setAllFiles] = useState<string[]>([]);
@@ -116,62 +62,48 @@ export function RunFileScreen({ params }: ScreenProps): ReactElement {
     const projectRoot = process.cwd();
 
     // Load files on mount
-    useEffect(() => {
+    useAsyncEffect(async (isCancelled) => {
 
         if (!activeConfig || !settings) return;
 
-        let cancelled = false;
+        setPhase('loading');
 
-        const load = async () => {
+        const sqlPath = settings.paths?.sql ?? 'sql';
+        const sqlFullPath = join(projectRoot, sqlPath);
 
-            setPhase('loading');
+        const [files, err] = await attempt(() => discoverFiles(sqlFullPath));
 
-            const sqlPath = settings.paths?.sql ?? 'sql';
-            const sqlFullPath = join(projectRoot, sqlPath);
+        if (isCancelled()) return;
 
-            const [files, err] = await attempt(() => discoverFiles(sqlFullPath));
+        if (err) {
 
-            if (cancelled) return;
+            setError(`Failed to discover files: ${err.message}`);
+            setPhase('error');
 
-            if (err) {
+            return;
 
-                setError(`Failed to discover files: ${err.message}`);
-                setPhase('error');
+        }
+
+        setAllFiles(files ?? []);
+
+        // If pre-filled path provided, validate and go to confirm
+        if (params.path) {
+
+            const fullPath = join(projectRoot, params.path);
+            const found = files?.find((f) => f === fullPath || relative(projectRoot, f) === params.path);
+
+            if (found) {
+
+                setSelectedFile(found);
+                setPhase('confirm');
 
                 return;
 
             }
 
-            setAllFiles(files ?? []);
+        }
 
-            // If pre-filled path provided, validate and go to confirm
-            if (params.path) {
-
-                const fullPath = join(projectRoot, params.path);
-                const found = files?.find((f) => f === fullPath || relative(projectRoot, f) === params.path);
-
-                if (found) {
-
-                    setSelectedFile(found);
-                    setPhase('confirm');
-
-                    return;
-
-                }
-
-            }
-
-            setPhase('picker');
-
-        };
-
-        load();
-
-        return () => {
-
-            cancelled = true;
-
-        };
+        setPhase('picker');
 
     }, [activeConfig, settings, projectRoot, params.path]);
 
@@ -208,83 +140,52 @@ export function RunFileScreen({ params }: ScreenProps): ReactElement {
 
         }
 
+        if (!sharedDb) {
+
+            setError(connError ?? 'No database connection');
+            setPhase('error');
+
+            return;
+
+        }
+
         setPhase('checking');
 
-        // Resolve identity
-        const identity = resolveIdentity({
-            cryptoIdentity: cryptoIdentity ?? null,
+        const identity = resolveScreenIdentity(cryptoIdentity);
+
+        const context = buildRunContext({
+            db: sharedDb, configName: activeConfigName, identity,
+            projectRoot, activeConfig: activeConfig as unknown as Record<string, unknown>,
+            stateManager,
         });
 
-        // Test connection
-        const testResult = await testConnection(activeConfig.connection);
+        const [status, statusErr] = await attempt(() => checkFilesStatus(context, [selectedFile]));
 
-        if (!testResult.ok) {
+        if (statusErr || !status) {
 
-            setError(`Connection failed: ${testResult.error}`);
+            setError(statusErr?.message ?? 'Unknown error');
             setPhase('error');
 
             return;
 
         }
 
-        // Create connection
-        const [conn, connErr] = await attempt(() =>
-            createConnection(activeConfig.connection, activeConfigName),
-        );
+        setFileStatus(status);
 
-        if (connErr || !conn) {
+        // If file was previously run (would be skipped), show rerun confirmation
+        if (status.previouslyRunFiles.length > 0) {
 
-            setError(`Connection failed: ${connErr?.message ?? 'Unknown error'}`);
-            setPhase('error');
+            setPhase('rerun-confirm');
 
-            return;
+        }
+        else {
+
+            // File is new or changed, proceed to execution
+            setProceedToExecute(true);
 
         }
 
-        try {
-
-            const db = conn.db as Kysely<NoormDatabase>;
-
-            const context: RunContext = {
-                db,
-                configName: activeConfigName,
-                identity,
-                projectRoot,
-                config: activeConfig as unknown as Record<string, unknown>,
-                secrets: stateManager.getAllSecrets(activeConfigName),
-                globalSecrets: stateManager.getAllGlobalSecrets(),
-            };
-
-            const status = await checkFilesStatus(context, [selectedFile]);
-            setFileStatus(status);
-
-            // If file was previously run (would be skipped), show rerun confirmation
-            if (status.previouslyRunFiles.length > 0) {
-
-                setPhase('rerun-confirm');
-
-            }
-            else {
-
-                // File is new or changed, proceed to execution
-                setProceedToExecute(true);
-
-            }
-
-        }
-        catch (err) {
-
-            setError(err instanceof Error ? err.message : String(err));
-            setPhase('error');
-
-        }
-        finally {
-
-            await conn.destroy();
-
-        }
-
-    }, [activeConfig, activeConfigName, stateManager, selectedFile, globalModes.force, cryptoIdentity, projectRoot]);
+    }, [activeConfig, activeConfigName, stateManager, selectedFile, globalModes.force, cryptoIdentity, projectRoot, sharedDb, connError]);
 
     // Execute file (actual execution)
     const executeFile = useCallback(async (force: boolean = false) => {
@@ -298,9 +199,7 @@ export function RunFileScreen({ params }: ScreenProps): ReactElement {
         resetProgress(1);
 
         // Resolve identity
-        const identity = resolveIdentity({
-            cryptoIdentity: cryptoIdentity ?? null,
-        });
+        const identity = resolveScreenIdentity(cryptoIdentity);
 
         // Test connection
         const testResult = await testConnection(activeConfig.connection);
@@ -355,15 +254,11 @@ export function RunFileScreen({ params }: ScreenProps): ReactElement {
 
             const db = conn.db as Kysely<NoormDatabase>;
 
-            const context: RunContext = {
-                db,
-                configName: activeConfigName,
-                identity,
-                projectRoot,
-                config: activeConfig as unknown as Record<string, unknown>,
-                secrets: stateManager.getAllSecrets(activeConfigName),
-                globalSecrets: stateManager.getAllGlobalSecrets(),
-            };
+            const context = buildRunContext({
+                db, configName: activeConfigName, identity,
+                projectRoot, activeConfig: activeConfig as unknown as Record<string, unknown>,
+                stateManager,
+            });
 
             const options = {
                 force: force || forceRerun || globalModes.force,
@@ -395,7 +290,7 @@ export function RunFileScreen({ params }: ScreenProps): ReactElement {
             }
             else {
 
-                setError(err instanceof Error ? err.message : String(err));
+                setError(getErrorMessage(err));
 
             }
 

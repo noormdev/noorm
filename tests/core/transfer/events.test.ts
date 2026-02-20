@@ -4,7 +4,7 @@
  * Tests that transfer operations emit correct observer events
  * for CLI progress tracking and UI feedback.
  */
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'bun:test';
 import { sql } from 'kysely';
 
 import type { Kysely } from 'kysely';

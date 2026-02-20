@@ -3,8 +3,7 @@
  *
  * Sets a vault secret.
  */
-import { type HeadlessCommand, withVaultContext } from './_helpers.js';
-import { formatHelp } from '../../core/help-formatter.js';
+import { type HeadlessCommand, handleVaultResult, requireParams, withVaultContext } from './_helpers.js';
 import { getVaultKey, setVaultSecret } from '../../core/vault/index.js';
 
 export const help = `
@@ -43,29 +42,10 @@ Requires vault access (run 'noorm vault init' first, or wait for propagation).
 
 export const run: HeadlessCommand = async (params, flags, logger) => {
 
-    const key = params.name;
-    const value = params.path; // Using path param for value
+    const key = params.name as string;
+    const value = params.path as string; // Using path param for value
 
-    if (!key || !value) {
-
-        if (flags.json) {
-
-            logger.result({
-                success: false,
-                error: 'Usage: noorm vault set <key> <value>',
-            });
-
-        }
-        else {
-
-            const output = formatHelp(help);
-            process.stdout.write(output + '\n');
-
-        }
-
-        return 1;
-
-    }
+    if (!requireParams({ key, value }, flags, logger, help)) return 1;
 
     const [result, err] = await withVaultContext({
         flags,
@@ -106,43 +86,10 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
         },
     });
 
-    if (err) {
+    return handleVaultResult(result, err, flags, logger, () => {
 
-        if (flags.json) {
+        logger.info(`Vault secret "${key}" set successfully`);
 
-            logger.result({ success: false, error: err.message });
-
-        }
-        else {
-
-            logger.error(err.message);
-
-        }
-
-        return 1;
-
-    }
-
-    if (flags.json) {
-
-        logger.result(result);
-
-    }
-    else {
-
-        if (result?.success) {
-
-            logger.info(`Vault secret "${key}" set successfully`);
-
-        }
-        else {
-
-            logger.error(result?.error ?? 'Unknown error');
-
-        }
-
-    }
-
-    return result?.success ? 0 : 1;
+    });
 
 };

@@ -10,8 +10,7 @@
  * noorm change next      # Same as next 1
  * ```
  */
-import { useState, useEffect, useCallback, useMemo } from 'react';
-import { join } from 'path';
+import { useState, useCallback, useMemo } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { TextInput, ProgressBar } from '@inkjs/ui';
 
@@ -29,17 +28,12 @@ import {
     Panel,
     Spinner,
     StatusMessage,
-    Confirm,
-    ProtectedConfirm,
+    SmartConfirm,
     StatusList,
-    type StatusListItem,
 } from '../../components/index.js';
-import { discoverChanges } from '../../../core/change/parser.js';
-import { ChangeHistory } from '../../../core/change/history.js';
-import { ChangeManager } from '../../../core/change/manager.js';
+import { useChangeProgress, useAsyncEffect } from '../../hooks/index.js';
+import { getErrorMessage, loadChangesWithStatus, buildPendingChangeList, createChangeManager } from '../../utils/index.js';
 import { createConnection } from '../../../core/connection/factory.js';
-import { resolveIdentity } from '../../../core/identity/resolver.js';
-import { observer } from '../../../core/observer.js';
 
 /**
  * Next steps.
@@ -64,162 +58,63 @@ export function ChangeNextScreen({ params }: ScreenProps): ReactElement {
     // Pre-fill count from params
     const initialCount = params.count ? parseInt(String(params.count), 10) : 1;
 
+    const { results, currentChange, progress, reset: resetProgress } = useChangeProgress();
+
     const [step, setStep] = useState<NextStep>('loading');
     const [pendingChanges, setPendingChanges] = useState<ChangeListItem[]>([]);
     const [count, setCount] = useState(initialCount);
     const [countInput, setCountInput] = useState(String(initialCount));
-    const [results, setResults] = useState<StatusListItem[]>([]);
-    const [currentChange, setCurrentChange] = useState('');
-    const [progress, setProgress] = useState({ current: 0, total: 0 });
     const [error, setError] = useState<string | null>(null);
-    const [isProtected, setIsProtected] = useState(false);
+
 
     // Load pending changes
-    useEffect(() => {
+    useAsyncEffect(async (isCancelled) => {
 
         if (!activeConfig) return;
 
-        let cancelled = false;
+        const [_, err] = await attempt(async () => {
 
-        const loadPending = async () => {
+            const { changes, statuses } = await loadChangesWithStatus(
+                activeConfig, activeConfigName ?? '', settings, projectRoot,
+            );
 
-            const [_, err] = await attempt(async () => {
+            if (isCancelled()) return;
 
-                // Discover changes
-                const changesDir = settings?.paths?.changes ?? 'changes';
-                const sqlDir = settings?.paths?.sql ?? 'sql';
-                const changes = await discoverChanges(
-                    join(projectRoot, changesDir),
-                    join(projectRoot, sqlDir),
-                );
+            const pending = buildPendingChangeList(changes, statuses);
 
-                // Get statuses from database
-                const conn = await createConnection(
-                    activeConfig.connection,
-                    activeConfigName ?? '__next__',
-                );
-                const db = conn.db as Kysely<NoormDatabase>;
+            setPendingChanges(pending);
 
-                const history = new ChangeHistory(db, activeConfigName ?? '');
-                const statuses = await history.getAllStatuses();
+            if (pending.length === 0) {
 
-                await conn.destroy();
+                setError('No pending changes');
+                setStep('error');
 
-                if (cancelled) return;
+            }
+            else if (initialCount > 0) {
 
-                // Find pending changes
-                const pending: ChangeListItem[] = changes
-                    .filter((cs) => {
+                setStep('confirm');
 
-                        const status = statuses.get(cs.name);
+            }
+            else {
 
-                        return (
-                            !status || status.status === 'pending' || status.status === 'reverted'
-                        );
-
-                    })
-                    .map((cs) => ({
-                        name: cs.name,
-                        path: cs.path,
-                        date: cs.date,
-                        description: cs.description,
-                        status: 'pending' as const,
-                        appliedAt: null,
-                        appliedBy: null,
-                        revertedAt: null,
-                        errorMessage: null,
-                        isNew: true,
-                        orphaned: false,
-                        changeFiles: cs.changeFiles,
-                        revertFiles: cs.revertFiles,
-                    }))
-                    .sort((a, b) => {
-
-                        const dateA = a.date?.getTime() ?? 0;
-                        const dateB = b.date?.getTime() ?? 0;
-
-                        return dateA - dateB; // Oldest first
-
-                    });
-
-                setPendingChanges(pending);
-                setIsProtected(activeConfig.protected ?? false);
-
-                if (pending.length === 0) {
-
-                    setError('No pending changes');
-                    setStep('error');
-
-                }
-                else if (initialCount > 0) {
-
-                    setStep('confirm');
-
-                }
-                else {
-
-                    setStep('input');
-
-                }
-
-            });
-
-            if (err) {
-
-                if (!cancelled) {
-
-                    setError(err instanceof Error ? err.message : String(err));
-                    setStep('error');
-
-                }
+                setStep('input');
 
             }
 
-        };
+        });
 
-        loadPending();
+        if (err) {
 
-        return () => {
+            if (!isCancelled()) {
 
-            cancelled = true;
+                setError(getErrorMessage(err));
+                setStep('error');
 
-        };
+            }
+
+        }
 
     }, [activeConfig, activeConfigName, initialCount]);
-
-    // Subscribe to progress events
-    useEffect(() => {
-
-        const unsubStart = observer.on('change:start', (data) => {
-
-            setCurrentChange(data.name);
-
-        });
-
-        const unsubComplete = observer.on('change:complete', (data) => {
-
-            setResults((prev) => [
-                ...prev,
-                {
-                    key: data.name,
-                    label: data.name,
-                    status: data.status === 'success' ? 'success' : 'error',
-                    detail: `${data.durationMs}ms`,
-                },
-            ]);
-
-            setProgress((prev) => ({ ...prev, current: prev.current + 1 }));
-
-        });
-
-        return () => {
-
-            unsubStart();
-            unsubComplete();
-
-        };
-
-    }, []);
 
     // Changes to apply
     const changesToApply = useMemo(() => {
@@ -250,8 +145,7 @@ export function ChangeNextScreen({ params }: ScreenProps): ReactElement {
         if (!activeConfig || !stateManager || changesToApply.length === 0) return;
 
         setStep('running');
-        setProgress({ current: 0, total: changesToApply.length });
-        setResults([]);
+        resetProgress(changesToApply.length);
 
         const [_, err] = await attempt(async () => {
 
@@ -261,21 +155,13 @@ export function ChangeNextScreen({ params }: ScreenProps): ReactElement {
             );
             const db = conn.db as Kysely<NoormDatabase>;
 
-            // Resolve identity
-            const identity = resolveIdentity({
-                cryptoIdentity: cryptoIdentity ?? null,
-            });
-
             // Create manager and run next N
-            const changesPath = settings?.paths?.changes ?? 'changes';
-            const sqlPath = settings?.paths?.sql ?? 'sql';
-            const manager = new ChangeManager({
+            const manager = createChangeManager({
                 db,
                 configName: activeConfigName ?? '',
-                identity,
                 projectRoot,
-                changesDir: join(projectRoot, changesPath),
-                sqlDir: join(projectRoot, sqlPath),
+                settings,
+                cryptoIdentity,
             });
 
             const result = await manager.next(count);
@@ -298,7 +184,7 @@ export function ChangeNextScreen({ params }: ScreenProps): ReactElement {
 
         if (err) {
 
-            setError(err instanceof Error ? err.message : String(err));
+            setError(getErrorMessage(err));
             setStep('error');
 
         }
@@ -419,30 +305,14 @@ export function ChangeNextScreen({ params }: ScreenProps): ReactElement {
             </Box>
         );
 
-        if (isProtected) {
-
-            return (
-                <Panel title="Apply Next Changes" paddingX={2} paddingY={1} borderColor="yellow">
-                    <Box flexDirection="column" gap={1}>
-                        {confirmContent}
-                        <ProtectedConfirm
-                            configName={activeConfigName ?? 'config'}
-                            action="apply these changes"
-                            onConfirm={handleRun}
-                            onCancel={handleCancel}
-                            isFocused={isFocused}
-                        />
-                    </Box>
-                </Panel>
-            );
-
-        }
-
         return (
-            <Panel title="Apply Next Changes" paddingX={2} paddingY={1}>
+            <Panel title="Apply Next Changes" paddingX={2} paddingY={1} borderColor={activeConfig.protected ? 'yellow' : undefined}>
                 <Box flexDirection="column" gap={1}>
                     {confirmContent}
-                    <Confirm
+                    <SmartConfirm
+                        protected={activeConfig.protected ?? false}
+                        configName={activeConfigName ?? 'config'}
+                        action="apply these changes"
                         message="Apply these changes?"
                         onConfirm={handleRun}
                         onCancel={handleCancel}

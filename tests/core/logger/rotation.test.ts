@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, setSystemTime } from 'bun:test';
 import { writeFile, mkdir, rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -83,14 +83,13 @@ describe('logger: rotation', () => {
 
         beforeEach(() => {
 
-            vi.useFakeTimers();
-            vi.setSystemTime(new Date('2024-01-15T10:30:45.000Z'));
+            setSystemTime(new Date('2024-01-15T10:30:45.000Z'));
 
         });
 
         afterEach(() => {
 
-            vi.useRealTimers();
+            setSystemTime();
 
         });
 
@@ -173,14 +172,13 @@ describe('logger: rotation', () => {
 
         beforeEach(() => {
 
-            vi.useFakeTimers();
-            vi.setSystemTime(new Date('2024-01-15T10:30:45.000Z'));
+            setSystemTime(new Date('2024-01-15T10:30:45.000Z'));
 
         });
 
         afterEach(() => {
 
-            vi.useRealTimers();
+            setSystemTime();
 
         });
 
@@ -304,14 +302,13 @@ describe('logger: rotation', () => {
 
         beforeEach(() => {
 
-            vi.useFakeTimers();
-            vi.setSystemTime(new Date('2024-01-15T10:30:45.000Z'));
+            setSystemTime(new Date('2024-01-15T10:30:45.000Z'));
 
         });
 
         afterEach(() => {
 
-            vi.useRealTimers();
+            setSystemTime();
 
         });
 

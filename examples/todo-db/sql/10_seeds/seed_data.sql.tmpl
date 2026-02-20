@@ -1,0 +1,23 @@
+-- Seed Data for Todo Application
+-- Config: {%~ $.config?.name ?? 'unknown' %}
+-- Generated at: {%~ $.now() %}
+
+-- ============================================================================
+-- USERS
+-- ============================================================================
+
+{% for (const user of $.users) { %}
+INSERT INTO "user" (username, email)
+VALUES (
+    {%~ $.quote(user.username) %},
+    {%~ $.quote(user.email) %}
+)
+ON CONFLICT (email) DO UPDATE SET
+    username = EXCLUDED.username;
+
+{% } %}
+
+-- ============================================================================
+-- SUMMARY
+-- ============================================================================
+-- Inserted {%~ $.users.length %} users

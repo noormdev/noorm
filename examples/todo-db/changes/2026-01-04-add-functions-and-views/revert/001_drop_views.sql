@@ -1,0 +1,10 @@
+DROP VIEW IF EXISTS v_tag_usage_summary;
+DROP VIEW IF EXISTS v_users_with_stats;
+DROP VIEW IF EXISTS v_users_by_tag;
+DROP VIEW IF EXISTS v_items_with_details;
+DROP VIEW IF EXISTS v_items_by_tag;
+DROP VIEW IF EXISTS v_todos_with_details;
+DROP VIEW IF EXISTS v_todos_by_user;
+DROP VIEW IF EXISTS v_todos_by_tag;
+DROP VIEW IF EXISTS v_todos_by_category;
+DROP VIEW IF EXISTS v_tags_by_entity;

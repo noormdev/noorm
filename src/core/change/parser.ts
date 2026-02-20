@@ -275,9 +275,9 @@ export async function resolveManifest(manifestPath: string, sqlDir: string): Pro
         const absolutePath = path.join(sqlDir, relativePath);
 
         // Validate file exists
-        const [exists] = await attempt(() => access(absolutePath, fsConstants.R_OK));
+        const [, accessErr] = await attempt(() => access(absolutePath, fsConstants.R_OK));
 
-        if (exists === undefined) {
+        if (!accessErr) {
 
             resolvedPaths.push(absolutePath);
 

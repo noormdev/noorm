@@ -1,7 +1,7 @@
 /**
  * Help Formatter Tests
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 
 import { formatHelp, stripColors } from '../../src/core/help-formatter.js';
 

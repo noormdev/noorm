@@ -1,4 +1,4 @@
-import { withContext, type HeadlessCommand } from './_helpers.js';
+import { withContext, outputResult, type HeadlessCommand } from './_helpers.js';
 
 export const help = `
 # DB EXPLORE TABLES
@@ -42,18 +42,9 @@ export const run: HeadlessCommand = async (_params, flags, logger) => {
 
     if (error) return 1;
 
-    if (flags.json) {
-
-        logger.result(tables);
-
-    }
-    else {
-
-        logger.info(`Tables: ${tables.length}`, {
-            tables: tables.map((t) => `${t.name} (${t.columnCount} cols)`),
-        });
-
-    }
+    outputResult(flags, logger, tables, `Tables: ${tables.length}`, {
+        tables: tables.map((t) => `${t.name} (${t.columnCount} cols)`),
+    });
 
     return 0;
 

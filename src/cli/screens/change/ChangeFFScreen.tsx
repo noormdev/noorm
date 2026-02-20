@@ -9,15 +9,13 @@
  * noorm change ff    # Same thing
  * ```
  */
-import { useState, useEffect, useCallback } from 'react';
-import { readFile } from 'fs/promises';
-import { join } from 'path';
+import { useState, useCallback } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { ProgressBar } from '@inkjs/ui';
 
 import type { ReactElement } from 'react';
 import type { ScreenProps } from '../../types.js';
-import type { Change, ChangeListItem } from '../../../core/change/types.js';
+import type { ChangeListItem } from '../../../core/change/types.js';
 import type { NoormDatabase } from '../../../core/shared/index.js';
 import type { Kysely } from 'kysely';
 
@@ -29,76 +27,13 @@ import {
     Panel,
     Spinner,
     StatusMessage,
-    Confirm,
-    ProtectedConfirm,
+    SmartConfirm,
     StatusList,
-    type StatusListItem,
 } from '../../components/index.js';
-import { discoverChanges } from '../../../core/change/parser.js';
-import { ChangeHistory } from '../../../core/change/history.js';
-import { ChangeManager } from '../../../core/change/manager.js';
+import { useChangeProgress, useAsyncEffect } from '../../hooks/index.js';
+import { getErrorMessage, loadChangesWithStatus, buildPendingChangeList, createChangeManager } from '../../utils/index.js';
+import { validateChangeContent } from '../../../core/change/validation.js';
 import { createConnection } from '../../../core/connection/factory.js';
-import { resolveIdentity } from '../../../core/identity/resolver.js';
-import { observer } from '../../../core/observer.js';
-
-/** Default SQL template - files with only this content are considered empty */
-const SQL_TEMPLATE = '-- TODO: Add SQL statements here\n';
-
-/**
- * Check if a change has meaningful content in its files.
- * Returns null if valid, or an error message if files are empty/template-only.
- */
-async function validateChangeContent(change: Change): Promise<string | null> {
-
-    if (change.changeFiles.length === 0) {
-
-        return `"${change.name}" has no files to execute`;
-
-    }
-
-    let hasContent = false;
-
-    for (const file of change.changeFiles) {
-
-        // Skip .txt manifest files - they reference other files
-        if (file.type === 'txt') {
-
-            hasContent = true;
-
-            continue;
-
-        }
-
-        const [content, err] = await attempt(() => readFile(file.path, 'utf-8'));
-
-        if (err) {
-
-            continue; // Skip files we can't read
-
-        }
-
-        const trimmed = content?.trim() ?? '';
-
-        // Check if file has actual content (not empty, not just the template)
-        if (trimmed && trimmed !== SQL_TEMPLATE.trim()) {
-
-            hasContent = true;
-
-            break;
-
-        }
-
-    }
-
-    if (!hasContent) {
-
-        return `"${change.name}" has empty or template-only files`;
-
-    }
-
-    return null;
-
-}
 
 /**
  * FF steps.
@@ -119,181 +54,82 @@ export function ChangeFFScreen({ params: _params }: ScreenProps): ReactElement {
     const { isFocused } = useFocusScope('ChangeFF');
     const { activeConfig, activeConfigName, projectRoot, settings, stateManager, identity: cryptoIdentity } = useAppContext();
 
+    const { results, currentChange, progress, reset: resetProgress } = useChangeProgress();
+
     const [step, setStep] = useState<FFStep>('loading');
     const [pendingChanges, setPendingChanges] = useState<ChangeListItem[]>([]);
-    const [results, setResults] = useState<StatusListItem[]>([]);
-    const [currentChange, setCurrentChange] = useState('');
-    const [progress, setProgress] = useState({ current: 0, total: 0 });
     const [error, setError] = useState<string | null>(null);
-    const [isProtected, setIsProtected] = useState(false);
+
 
     // Load pending changes
-    useEffect(() => {
+    useAsyncEffect(async (isCancelled) => {
 
         if (!activeConfig) return;
 
-        let cancelled = false;
+        const [_, err] = await attempt(async () => {
 
-        const loadPending = async () => {
+            const { changes, statuses } = await loadChangesWithStatus(
+                activeConfig, activeConfigName ?? '', settings, projectRoot,
+            );
 
-            const [_, err] = await attempt(async () => {
+            if (isCancelled()) return;
 
-                // Discover changes
-                const changesDir = settings?.paths?.changes ?? 'changes';
-                const sqlDir = settings?.paths?.sql ?? 'sql';
-                const changes = await discoverChanges(
-                    join(projectRoot, changesDir),
-                    join(projectRoot, sqlDir),
-                );
+            const pending = buildPendingChangeList(changes, statuses);
 
-                // Get statuses from database
-                const conn = await createConnection(
-                    activeConfig.connection,
-                    activeConfigName ?? '__ff__',
-                );
-                const db = conn.db as Kysely<NoormDatabase>;
+            // Validate all pending changes have actual content
+            const emptyChanges: string[] = [];
 
-                const history = new ChangeHistory(db, activeConfigName ?? '');
-                const statuses = await history.getAllStatuses();
+            for (const cs of changes.filter((c) => pending.some((p) => p.name === c.name))) {
 
-                await conn.destroy();
+                const contentError = await validateChangeContent(cs);
 
-                if (cancelled) return;
+                if (contentError) {
 
-                // Find pending changes
-                const pending: ChangeListItem[] = changes
-                    .filter((cs) => {
-
-                        const status = statuses.get(cs.name);
-
-                        return (
-                            !status || status.status === 'pending' || status.status === 'reverted'
-                        );
-
-                    })
-                    .map((cs) => ({
-                        name: cs.name,
-                        path: cs.path,
-                        date: cs.date,
-                        description: cs.description,
-                        status: 'pending' as const,
-                        appliedAt: null,
-                        appliedBy: null,
-                        revertedAt: null,
-                        errorMessage: null,
-                        isNew: true,
-                        orphaned: false,
-                        changeFiles: cs.changeFiles,
-                        revertFiles: cs.revertFiles,
-                    }))
-                    .sort((a, b) => {
-
-                        const dateA = a.date?.getTime() ?? 0;
-                        const dateB = b.date?.getTime() ?? 0;
-
-                        return dateA - dateB; // Oldest first
-
-                    });
-
-                // Validate all pending changes have actual content
-                const emptyChanges: string[] = [];
-
-                for (const cs of changes.filter((c) => pending.some((p) => p.name === c.name))) {
-
-                    const contentError = await validateChangeContent(cs);
-
-                    if (contentError) {
-
-                        emptyChanges.push(cs.name);
-
-                    }
-
-                }
-
-                if (emptyChanges.length > 0) {
-
-                    const names = emptyChanges.slice(0, 3).join(', ');
-                    const more = emptyChanges.length > 3 ? ` and ${emptyChanges.length - 3} more` : '';
-
-                    throw new Error(
-                        `Cannot fast-forward: ${names}${more} have empty or template-only files. Edit the SQL files before running.`,
-                    );
-
-                }
-
-                setPendingChanges(pending);
-                setIsProtected(activeConfig.protected ?? false);
-
-                if (pending.length === 0) {
-
-                    setError('No pending changes');
-                    setStep('error');
-
-                }
-                else {
-
-                    setStep('confirm');
-
-                }
-
-            });
-
-            if (err) {
-
-                if (!cancelled) {
-
-                    setError(err instanceof Error ? err.message : String(err));
-                    setStep('error');
+                    emptyChanges.push(cs.name);
 
                 }
 
             }
 
-        };
+            if (emptyChanges.length > 0) {
 
-        loadPending();
+                const names = emptyChanges.slice(0, 3).join(', ');
+                const more = emptyChanges.length > 3 ? ` and ${emptyChanges.length - 3} more` : '';
 
-        return () => {
+                throw new Error(
+                    `Cannot fast-forward: ${names}${more} have empty or template-only files. Edit the SQL files before running.`,
+                );
 
-            cancelled = true;
+            }
 
-        };
+            setPendingChanges(pending);
+
+            if (pending.length === 0) {
+
+                setError('No pending changes');
+                setStep('error');
+
+            }
+            else {
+
+                setStep('confirm');
+
+            }
+
+        });
+
+        if (err) {
+
+            if (!isCancelled()) {
+
+                setError(getErrorMessage(err));
+                setStep('error');
+
+            }
+
+        }
 
     }, [activeConfig, activeConfigName]);
-
-    // Subscribe to progress events
-    useEffect(() => {
-
-        const unsubStart = observer.on('change:start', (data) => {
-
-            setCurrentChange(data.name);
-
-        });
-
-        const unsubComplete = observer.on('change:complete', (data) => {
-
-            setResults((prev) => [
-                ...prev,
-                {
-                    key: data.name,
-                    label: data.name,
-                    status: data.status === 'success' ? 'success' : 'error',
-                    detail: `${data.durationMs}ms`,
-                },
-            ]);
-
-            setProgress((prev) => ({ ...prev, current: prev.current + 1 }));
-
-        });
-
-        return () => {
-
-            unsubStart();
-            unsubComplete();
-
-        };
-
-    }, []);
 
     // Handle run
     const handleRun = useCallback(async () => {
@@ -301,8 +137,7 @@ export function ChangeFFScreen({ params: _params }: ScreenProps): ReactElement {
         if (!activeConfig || !stateManager || pendingChanges.length === 0) return;
 
         setStep('running');
-        setProgress({ current: 0, total: pendingChanges.length });
-        setResults([]);
+        resetProgress(pendingChanges.length);
 
         const [_, err] = await attempt(async () => {
 
@@ -312,21 +147,12 @@ export function ChangeFFScreen({ params: _params }: ScreenProps): ReactElement {
             );
             const db = conn.db as Kysely<NoormDatabase>;
 
-            // Resolve identity
-            const identity = resolveIdentity({
-                cryptoIdentity: cryptoIdentity ?? null,
-            });
-
-            // Create manager and fast-forward
-            const changesPath = settings?.paths?.changes ?? 'changes';
-            const sqlPath = settings?.paths?.sql ?? 'sql';
-            const manager = new ChangeManager({
+            const manager = createChangeManager({
                 db,
                 configName: activeConfigName ?? '',
-                identity,
                 projectRoot,
-                changesDir: join(projectRoot, changesPath),
-                sqlDir: join(projectRoot, sqlPath),
+                settings,
+                cryptoIdentity,
             });
 
             const result = await manager.ff();
@@ -349,7 +175,7 @@ export function ChangeFFScreen({ params: _params }: ScreenProps): ReactElement {
 
         if (err) {
 
-            setError(err instanceof Error ? err.message : String(err));
+            setError(getErrorMessage(err));
             setStep('error');
 
         }
@@ -425,30 +251,14 @@ export function ChangeFFScreen({ params: _params }: ScreenProps): ReactElement {
             </Box>
         );
 
-        if (isProtected) {
-
-            return (
-                <Panel title="Fast-Forward" paddingX={2} paddingY={1} borderColor="yellow">
-                    <Box flexDirection="column" gap={1}>
-                        {confirmContent}
-                        <ProtectedConfirm
-                            configName={activeConfigName ?? 'config'}
-                            action="apply all pending changes"
-                            onConfirm={handleRun}
-                            onCancel={handleCancel}
-                            isFocused={isFocused}
-                        />
-                    </Box>
-                </Panel>
-            );
-
-        }
-
         return (
-            <Panel title="Fast-Forward" paddingX={2} paddingY={1}>
+            <Panel title="Fast-Forward" paddingX={2} paddingY={1} borderColor={activeConfig.protected ? 'yellow' : undefined}>
                 <Box flexDirection="column" gap={1}>
                     {confirmContent}
-                    <Confirm
+                    <SmartConfirm
+                        protected={activeConfig.protected ?? false}
+                        configName={activeConfigName ?? 'config'}
+                        action="apply all pending changes"
                         message="Apply all pending changes?"
                         onConfirm={handleRun}
                         onCancel={handleCancel}

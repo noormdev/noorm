@@ -6,7 +6,7 @@
 import { attempt } from '@logosdx/utils';
 
 import type { Logger } from '../../core/logger/index.js';
-import { withContext, type HeadlessCommand } from './_helpers.js';
+import { withContext, outputError, type HeadlessCommand } from './_helpers.js';
 import { formatHelp } from '../../core/help-formatter.js';
 import { resolveExportExtension, resolveExportPath, ensureExportDirectory } from '../../core/dt/index.js';
 import { getStateManager } from '../../core/state/index.js';
@@ -135,20 +135,7 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
     // Validate --compress only valid with --export
     if (compress && !exportPath) {
 
-        const msg = '--compress is only valid with --export';
-
-        if (flags.json) {
-
-            logger.result({ success: false, error: msg });
-
-        }
-        else {
-
-            logger.error(msg);
-
-        }
-
-        return 1;
+        return outputError(flags, logger, '--compress is only valid with --export');
 
     }
 
@@ -157,20 +144,7 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
 
     if (modeCount > 1) {
 
-        const msg = 'Flags --to, --export, and --import are mutually exclusive';
-
-        if (flags.json) {
-
-            logger.result({ success: false, error: msg });
-
-        }
-        else {
-
-            logger.error(msg);
-
-        }
-
-        return 1;
+        return outputError(flags, logger, 'Flags --to, --export, and --import are mutually exclusive');
 
     }
 
@@ -198,39 +172,13 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
     // Validate .dtzx requires passphrase
     if (exportPath?.endsWith('.dtzx') && !passphrase) {
 
-        const msg = '--passphrase required for .dtzx encrypted export';
-
-        if (flags.json) {
-
-            logger.result({ success: false, error: msg });
-
-        }
-        else {
-
-            logger.error(msg);
-
-        }
-
-        return 1;
+        return outputError(flags, logger, '--passphrase required for .dtzx encrypted export');
 
     }
 
     if (importPath?.endsWith('.dtzx') && !passphrase) {
 
-        const msg = '--passphrase required for .dtzx encrypted import';
-
-        if (flags.json) {
-
-            logger.result({ success: false, error: msg });
-
-        }
-        else {
-
-            logger.error(msg);
-
-        }
-
-        return 1;
+        return outputError(flags, logger, '--passphrase required for .dtzx encrypted import');
 
     }
 
@@ -284,18 +232,7 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
 
     if (loadErr) {
 
-        if (flags.json) {
-
-            logger.result({ success: false, error: loadErr.message });
-
-        }
-        else {
-
-            logger.error(loadErr.message);
-
-        }
-
-        return 1;
+        return outputError(flags, logger, loadErr.message);
 
     }
 
@@ -303,20 +240,7 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
 
     if (!destConfig) {
 
-        const msg = `Destination config not found: ${destConfigName}`;
-
-        if (flags.json) {
-
-            logger.result({ success: false, error: msg });
-
-        }
-        else {
-
-            logger.error(msg);
-
-        }
-
-        return 1;
+        return outputError(flags, logger, `Destination config not found: ${destConfigName}`);
 
     }
 
@@ -352,18 +276,7 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
 
         if (planErr) {
 
-            if (flags.json) {
-
-                logger.result({ success: false, error: planErr.message });
-
-            }
-            else {
-
-                logger.error(planErr.message);
-
-            }
-
-            return 1;
+            return outputError(flags, logger, planErr.message);
 
         }
 
@@ -436,18 +349,7 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
 
     if (transferErr) {
 
-        if (flags.json) {
-
-            logger.result({ success: false, error: transferErr.message });
-
-        }
-        else {
-
-            logger.error(transferErr.message);
-
-        }
-
-        return 1;
+        return outputError(flags, logger, transferErr.message);
 
     }
 

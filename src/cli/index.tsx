@@ -22,12 +22,13 @@ import { Writable } from 'node:stream';
 import meow from 'meow';
 import { render } from 'ink';
 
-import type { Route, RouteParams, CliFlags, ParsedCli } from './types.js';
+import { isNumericString, type Route, type RouteParams, type CliFlags, type ParsedCli } from './types.js';
 import { App } from './app.js';
 import { shouldRunHeadless, runHeadless } from './headless/index.js';
 import { enableAutoLoggerInit } from '../core/logger/init.js';
 import { hasKeyFiles } from '../core/identity/storage.js';
 import { initProjectContext } from '../core/project.js';
+import { observer } from '../core/observer.js';
 
 /**
  * No-op stream that discards all writes.
@@ -140,6 +141,9 @@ function parseCli(): ParsedCli {
                 type: 'boolean',
                 default: false,
             },
+            file: {
+                type: 'string',
+            },
             version: {
                 type: 'boolean',
                 shortFlag: 'v',
@@ -156,6 +160,7 @@ function parseCli(): ParsedCli {
         config: cli.flags.config,
         force: cli.flags.force,
         dryRun: cli.flags.dryRun,
+        file: cli.flags.file,
     };
 
     // Handle --version/-v flag - route to version command
@@ -198,6 +203,7 @@ const TERMINAL_ACTIONS = new Set([
     'file',     // run file <path>
     'dir',      // run dir <path>
     'detail',   // db explore tables detail <name>
+    'sql',      // sql <query> - everything after is the query
 ]);
 
 /**
@@ -232,7 +238,7 @@ function isTerminalAction(token: string, routeSegments: string[]): boolean {
 function isRouteSegment(token: string): boolean {
 
     // Numbers are params (counts)
-    if (/^\d+$/.test(token)) return false;
+    if (isNumericString(token)) return false;
 
     // Paths are params (contain / or end with .sql/.eta)
     if (token.includes('/') || token.endsWith('.sql') || token.endsWith('.eta')) return false;
@@ -321,7 +327,16 @@ function parseRouteFromInput(input: string[]): { route: Route; params: RoutePara
     }
 
     const route = routeSegments.join('/') || 'home';
-    const params = extractParams(input.slice(paramStartIndex));
+    const remainingArgs = input.slice(paramStartIndex);
+
+    // For 'sql' route, join all remaining args as the query string
+    if (route === 'sql' && remainingArgs.length > 0) {
+
+        return { route: route as Route, params: { query: remainingArgs.join(' ') } };
+
+    }
+
+    const params = extractParams(remainingArgs);
 
     return { route: route as Route, params };
 
@@ -350,11 +365,9 @@ function extractParams(args: string[]): RouteParams {
     for (const arg of args) {
 
         // Check if it's a number (for count parameter)
-        const num = parseInt(arg, 10);
+        if (isNumericString(arg)) {
 
-        if (!isNaN(num)) {
-
-            params.count = num;
+            params.count = parseInt(arg, 10);
             continue;
 
         }
@@ -456,9 +469,21 @@ async function main(): Promise<void> {
     };
 
     // Start TUI mode
-    const { waitUntilExit } = render(<App initialRoute={effectiveRoute} initialParams={mergedParams} />, {
-        exitOnCtrlC: true,
+    // exitOnCtrlC: false — we handle Ctrl+C ourselves via GlobalKeyboard → gracefulExit()
+    // This ensures the shutdown screen is shown and resources are cleaned up before exiting.
+    const { waitUntilExit, clear, unmount } = render(<App initialRoute={effectiveRoute} initialParams={mergedParams} />, {
+        exitOnCtrlC: false,
         patchConsole: true,
+    });
+
+    // Listen for the shutdown provider's exit signal.
+    // clear() must be called before unmount() so Ink erases its output
+    // before flushing the final frame to the terminal.
+    observer.on('app:exit', () => {
+
+        clear();
+        unmount();
+
     });
 
     await waitUntilExit();

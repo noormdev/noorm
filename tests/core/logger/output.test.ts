@@ -3,7 +3,7 @@
  *
  * Tests for JSON and inline output modes.
  */
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, setSystemTime } from 'bun:test';
 import { Writable } from 'node:stream';
 import { mkdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -50,14 +50,13 @@ describe('logger: output formats', () => {
         await mkdir(join(testDir, '.noorm'), { recursive: true });
 
         // Use fake timers for consistent timestamps
-        vi.useFakeTimers();
-        vi.setSystemTime(new Date('2024-01-15T10:30:00.123-05:00'));
+        setSystemTime(new Date('2024-01-15T10:30:00.123-05:00'));
 
     });
 
     afterEach(async () => {
 
-        vi.useRealTimers();
+        setSystemTime();
         await resetLogger();
         await rm(testDir, { recursive: true, force: true });
 

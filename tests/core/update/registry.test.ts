@@ -3,7 +3,7 @@
  *
  * Tests fetching package info and version utilities.
  */
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'bun:test';
 
 import {
     fetchPackageInfo,
@@ -14,15 +14,17 @@ import {
 
 describe('update: registry', () => {
 
+    const originalFetch = globalThis.fetch;
+
     beforeEach(() => {
 
-        vi.stubGlobal('fetch', vi.fn());
+        globalThis.fetch = vi.fn() as any;
 
     });
 
     afterEach(() => {
 
-        vi.unstubAllGlobals();
+        globalThis.fetch = originalFetch;
 
     });
 
@@ -36,7 +38,7 @@ describe('update: registry', () => {
                 time: {},
             };
 
-            vi.mocked(fetch).mockResolvedValue({
+            (fetch as any).mockResolvedValue({
                 ok: true,
                 json: () => Promise.resolve(mockPackageInfo),
             } as Response);
@@ -50,7 +52,7 @@ describe('update: registry', () => {
 
         it('should return null on network error', async () => {
 
-            vi.mocked(fetch).mockRejectedValue(new Error('Network error'));
+            (fetch as any).mockRejectedValue(new Error('Network error'));
 
             const info = await fetchPackageInfo();
 
@@ -60,7 +62,7 @@ describe('update: registry', () => {
 
         it('should return null on HTTP error', async () => {
 
-            vi.mocked(fetch).mockResolvedValue({
+            (fetch as any).mockResolvedValue({
                 ok: false,
                 status: 404,
             } as Response);
@@ -73,7 +75,7 @@ describe('update: registry', () => {
 
         it('should return null on invalid JSON', async () => {
 
-            vi.mocked(fetch).mockResolvedValue({
+            (fetch as any).mockResolvedValue({
                 ok: true,
                 json: () => Promise.reject(new SyntaxError('Invalid JSON')),
             } as Response);
@@ -88,7 +90,7 @@ describe('update: registry', () => {
 
             let capturedSignal: AbortSignal | null | undefined;
 
-            vi.mocked(fetch).mockImplementation(async (_url, options) => {
+            (fetch as any).mockImplementation(async (_url, options) => {
 
                 capturedSignal = options?.signal;
 

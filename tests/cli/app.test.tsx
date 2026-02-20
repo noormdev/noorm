@@ -3,7 +3,7 @@
  *
  * Tests full app rendering and integration.
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { render } from 'ink-testing-library';
 import React from 'react';
 

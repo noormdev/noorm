@@ -11,13 +11,12 @@
  * noorm change rewind                      # Interactive mode
  * ```
  */
-import { useState, useEffect, useCallback } from 'react';
-import { join } from 'path';
+import { useState, useCallback } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { TextInput, ProgressBar } from '@inkjs/ui';
 
 import type { ReactElement } from 'react';
-import type { ScreenProps } from '../../types.js';
+import { isNumericString, type ScreenProps } from '../../types.js';
 import type { ChangeListItem } from '../../../core/change/types.js';
 import type { NoormDatabase } from '../../../core/shared/index.js';
 import type { Kysely } from 'kysely';
@@ -30,17 +29,12 @@ import {
     Panel,
     Spinner,
     StatusMessage,
-    Confirm,
-    ProtectedConfirm,
+    SmartConfirm,
     StatusList,
-    type StatusListItem,
 } from '../../components/index.js';
-import { discoverChanges } from '../../../core/change/parser.js';
-import { ChangeHistory } from '../../../core/change/history.js';
-import { ChangeManager } from '../../../core/change/manager.js';
+import { useChangeProgress, useAsyncEffect } from '../../hooks/index.js';
+import { getErrorMessage, loadChangesWithStatus, buildAppliedChangeList, createChangeManager } from '../../utils/index.js';
 import { createConnection } from '../../../core/connection/factory.js';
-import { resolveIdentity } from '../../../core/identity/resolver.js';
-import { observer } from '../../../core/observer.js';
 
 /**
  * Rewind steps.
@@ -65,181 +59,77 @@ export function ChangeRewindScreen({ params }: ScreenProps): ReactElement {
     // Pre-fill from params - can be count or change name
     const target = params.count ? String(params.count) : (params.name ?? '');
 
+    const { results, currentChange, progress, reset: resetProgress } = useChangeProgress();
+
     const [step, setStep] = useState<RewindStep>('loading');
     const [appliedChanges, setAppliedChanges] = useState<ChangeListItem[]>([]);
     const [changesToRevert, setChangesToRevert] = useState<ChangeListItem[]>([]);
     const [targetInput, setTargetInput] = useState(target);
-    const [results, setResults] = useState<StatusListItem[]>([]);
-    const [currentChange, setCurrentChange] = useState('');
-    const [progress, setProgress] = useState({ current: 0, total: 0 });
     const [error, setError] = useState<string | null>(null);
-    const [isProtected, setIsProtected] = useState(false);
+
 
     // Load applied changes
-    useEffect(() => {
+    useAsyncEffect(async (isCancelled) => {
 
         if (!activeConfig) return;
 
-        let cancelled = false;
+        const [_, err] = await attempt(async () => {
 
-        const loadApplied = async () => {
+            const { changes, statuses } = await loadChangesWithStatus(
+                activeConfig, activeConfigName ?? '', settings, projectRoot,
+            );
 
-            const [_, err] = await attempt(async () => {
+            if (isCancelled()) return;
 
-                // Discover changes
-                const changesDir = settings?.paths?.changes ?? 'changes';
-                const sqlDir = settings?.paths?.sql ?? 'sql';
-                const changes = await discoverChanges(
-                    join(projectRoot, changesDir),
-                    join(projectRoot, sqlDir),
-                );
+            const applied = buildAppliedChangeList(changes, statuses);
 
-                // Get statuses from database
-                const conn = await createConnection(
-                    activeConfig.connection,
-                    activeConfigName ?? '__rewind__',
-                );
-                const db = conn.db as Kysely<NoormDatabase>;
+            setAppliedChanges(applied);
 
-                const history = new ChangeHistory(db, activeConfigName ?? '');
-                const statuses = await history.getAllStatuses();
+            if (applied.length === 0) {
 
-                await conn.destroy();
+                setError('No applied changes to revert');
+                setStep('error');
 
-                if (cancelled) return;
+            }
+            else if (target) {
 
-                // Find applied changes (newest first for rewind order)
-                const applied: ChangeListItem[] = changes
-                    .filter((cs) => {
+                // Parse target and determine changes to revert
+                const parsed = parseTarget(target, applied);
 
-                        const status = statuses.get(cs.name);
+                if (parsed.error) {
 
-                        return status?.status === 'success';
-
-                    })
-                    .map((cs) => {
-
-                        const status = statuses.get(cs.name)!;
-
-                        return {
-                            name: cs.name,
-                            path: cs.path,
-                            date: cs.date,
-                            description: cs.description,
-                            status: 'success' as const,
-                            appliedAt: status.appliedAt,
-                            appliedBy: status.appliedBy,
-                            revertedAt: null,
-                            errorMessage: null,
-                            isNew: false,
-                            orphaned: false,
-                            changeFiles: cs.changeFiles,
-                            revertFiles: cs.revertFiles,
-                        };
-
-                    })
-                    .sort((a, b) => {
-
-                        // Newest first (by applied date)
-                        const dateA = a.appliedAt?.getTime() ?? 0;
-                        const dateB = b.appliedAt?.getTime() ?? 0;
-
-                        return dateB - dateA;
-
-                    });
-
-                setAppliedChanges(applied);
-                setIsProtected(activeConfig.protected ?? false);
-
-                if (applied.length === 0) {
-
-                    setError('No applied changes to revert');
+                    setError(parsed.error);
                     setStep('error');
-
-                }
-                else if (target) {
-
-                    // Parse target and determine changes to revert
-                    const parsed = parseTarget(target, applied);
-
-                    if (parsed.error) {
-
-                        setError(parsed.error);
-                        setStep('error');
-
-                    }
-                    else {
-
-                        setChangesToRevert(parsed.changes);
-                        setStep('confirm');
-
-                    }
 
                 }
                 else {
 
-                    setStep('input');
-
-                }
-
-            });
-
-            if (err) {
-
-                if (!cancelled) {
-
-                    setError(err instanceof Error ? err.message : String(err));
-                    setStep('error');
+                    setChangesToRevert(parsed.changes);
+                    setStep('confirm');
 
                 }
 
             }
+            else {
 
-        };
+                setStep('input');
 
-        loadApplied();
+            }
 
-        return () => {
+        });
 
-            cancelled = true;
+        if (err) {
 
-        };
+            if (!isCancelled()) {
+
+                setError(getErrorMessage(err));
+                setStep('error');
+
+            }
+
+        }
 
     }, [activeConfig, activeConfigName, target]);
-
-    // Subscribe to progress events
-    useEffect(() => {
-
-        const unsubStart = observer.on('change:start', (data) => {
-
-            setCurrentChange(data.name);
-
-        });
-
-        const unsubComplete = observer.on('change:complete', (data) => {
-
-            setResults((prev) => [
-                ...prev,
-                {
-                    key: data.name,
-                    label: data.name,
-                    status: data.status === 'success' ? 'success' : 'error',
-                    detail: `${data.durationMs}ms`,
-                },
-            ]);
-
-            setProgress((prev) => ({ ...prev, current: prev.current + 1 }));
-
-        });
-
-        return () => {
-
-            unsubStart();
-            unsubComplete();
-
-        };
-
-    }, []);
 
     // Parse target (count or change name)
     const parseTarget = (
@@ -247,10 +137,10 @@ export function ChangeRewindScreen({ params }: ScreenProps): ReactElement {
         applied: ChangeListItem[],
     ): { changes: ChangeListItem[]; error?: string } => {
 
-        // Try as number
-        const count = parseInt(input, 10);
+        // Try as number (only if entire input is digits)
+        if (isNumericString(input)) {
 
-        if (!isNaN(count) && count > 0) {
+            const count = parseInt(input, 10);
 
             if (count > applied.length) {
 
@@ -311,8 +201,7 @@ export function ChangeRewindScreen({ params }: ScreenProps): ReactElement {
         if (!activeConfig || !stateManager || changesToRevert.length === 0) return;
 
         setStep('running');
-        setProgress({ current: 0, total: changesToRevert.length });
-        setResults([]);
+        resetProgress(changesToRevert.length);
 
         const [_, err] = await attempt(async () => {
 
@@ -322,21 +211,13 @@ export function ChangeRewindScreen({ params }: ScreenProps): ReactElement {
             );
             const db = conn.db as Kysely<NoormDatabase>;
 
-            // Resolve identity
-            const identity = resolveIdentity({
-                cryptoIdentity: cryptoIdentity ?? null,
-            });
-
             // Create manager and rewind
-            const changesPath = settings?.paths?.changes ?? 'changes';
-            const sqlPath = settings?.paths?.sql ?? 'sql';
-            const manager = new ChangeManager({
+            const manager = createChangeManager({
                 db,
                 configName: activeConfigName ?? '',
-                identity,
                 projectRoot,
-                changesDir: join(projectRoot, changesPath),
-                sqlDir: join(projectRoot, sqlPath),
+                settings,
+                cryptoIdentity,
             });
 
             const result = await manager.rewind(changesToRevert.length);
@@ -359,7 +240,7 @@ export function ChangeRewindScreen({ params }: ScreenProps): ReactElement {
 
         if (err) {
 
-            setError(err instanceof Error ? err.message : String(err));
+            setError(getErrorMessage(err));
             setStep('error');
 
         }
@@ -492,30 +373,14 @@ export function ChangeRewindScreen({ params }: ScreenProps): ReactElement {
             </Box>
         );
 
-        if (isProtected) {
-
-            return (
-                <Panel title="Rewind Changes" paddingX={2} paddingY={1} borderColor="yellow">
-                    <Box flexDirection="column" gap={1}>
-                        {confirmContent}
-                        <ProtectedConfirm
-                            configName={activeConfigName ?? 'config'}
-                            action="revert these changes"
-                            onConfirm={handleRewind}
-                            onCancel={handleCancel}
-                            isFocused={isFocused}
-                        />
-                    </Box>
-                </Panel>
-            );
-
-        }
-
         return (
-            <Panel title="Rewind Changes" paddingX={2} paddingY={1}>
+            <Panel title="Rewind Changes" paddingX={2} paddingY={1} borderColor={activeConfig.protected ? 'yellow' : undefined}>
                 <Box flexDirection="column" gap={1}>
                     {confirmContent}
-                    <Confirm
+                    <SmartConfirm
+                        protected={activeConfig.protected ?? false}
+                        configName={activeConfigName ?? 'config'}
+                        action="revert these changes"
                         message="Revert these changes?"
                         onConfirm={handleRewind}
                         onCancel={handleCancel}

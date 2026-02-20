@@ -1,12 +1,16 @@
 /**
- * SettingsSecretRemoveScreen - delete a universal secret definition.
+ * SettingsSecretRemoveScreen - delete a secret definition.
+ *
+ * Handles both universal secrets (all stages) and stage-specific secrets
+ * based on the presence of `params.stage`.
  *
  * @example
  * ```bash
- * noorm settings secrets rm DB_PASSWORD
+ * noorm settings secrets rm DB_PASSWORD                   # Remove universal secret
+ * noorm settings stages prod secrets rm DB_PASSWORD       # Remove from stage
  * ```
  */
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { attempt } from '@logosdx/utils';
 
@@ -17,28 +21,24 @@ import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
 import { Panel, Confirm, Spinner, useToast } from '../../components/index.js';
+import { getErrorMessage } from '../../utils/index.js';
+import { useSecretSource } from '../../hooks/index.js';
 
 /**
  * SettingsSecretRemoveScreen component.
+ *
+ * When `params.stage` is present, operates on stage-specific secrets.
+ * Otherwise operates on universal secrets.
  */
 export function SettingsSecretRemoveScreen({ params }: ScreenProps): ReactElement {
 
     const { back } = useRouter();
     const { isFocused } = useFocusScope('SettingsSecretRemove');
-    const { settingsManager, settings, refresh } = useAppContext();
+    const { settingsManager, refresh } = useAppContext();
     const { showToast } = useToast();
 
-    const secretKey = params.name;
+    const { stageName, secretKey, existingSecret: secret, stage } = useSecretSource(params);
     const [deleting, setDeleting] = useState(false);
-
-    // Find the secret
-    const secret = useMemo(() => {
-
-        if (!settings?.secrets || !secretKey) return null;
-
-        return settings.secrets.find((s) => s.key === secretKey);
-
-    }, [settings, secretKey]);
 
     // Handle confirm
     const handleConfirm = useCallback(async () => {
@@ -49,7 +49,17 @@ export function SettingsSecretRemoveScreen({ params }: ScreenProps): ReactElemen
 
         const [_, err] = await attempt(async () => {
 
-            await settingsManager.removeUniversalSecret(secretKey);
+            if (stageName) {
+
+                await settingsManager.removeStageSecret(stageName, secretKey);
+
+            }
+            else {
+
+                await settingsManager.removeUniversalSecret(secretKey);
+
+            }
+
             await refresh();
 
         });
@@ -57,7 +67,7 @@ export function SettingsSecretRemoveScreen({ params }: ScreenProps): ReactElemen
         if (err) {
 
             showToast({
-                message: err instanceof Error ? err.message : String(err),
+                message: getErrorMessage(err),
                 variant: 'error',
             });
             setDeleting(false);
@@ -66,13 +76,15 @@ export function SettingsSecretRemoveScreen({ params }: ScreenProps): ReactElemen
 
         }
 
+        const scopeLabel = stageName ? ` from stage "${stageName}"` : '';
+
         showToast({
-            message: `Secret definition "${secretKey}" removed`,
+            message: `Secret definition "${secretKey}" removed${scopeLabel}`,
             variant: 'success',
         });
         back();
 
-    }, [settingsManager, secretKey, refresh, showToast, back]);
+    }, [settingsManager, stageName, secretKey, refresh, showToast, back]);
 
     // Handle cancel
     const handleCancel = useCallback(() => back(), [back]);
@@ -82,7 +94,7 @@ export function SettingsSecretRemoveScreen({ params }: ScreenProps): ReactElemen
 
         if (!isFocused) return;
 
-        if (!secretKey || !secret) {
+        if (!secretKey || !secret || (stageName && !stage)) {
 
             if (key.escape || key.return) {
 
@@ -99,8 +111,25 @@ export function SettingsSecretRemoveScreen({ params }: ScreenProps): ReactElemen
 
         return (
             <Panel title={`Delete: ${secretKey}`} paddingX={2} paddingY={1}>
-                <Spinner label="Deleting secret definition..." />
+                <Spinner label={stageName ? 'Deleting secret from stage...' : 'Deleting secret definition...'} />
             </Panel>
+        );
+
+    }
+
+    // Stage not found (stage mode only)
+    if (stageName && !stage) {
+
+        return (
+            <Box flexDirection="column" gap={1}>
+                <Panel title="Remove Stage Secret" paddingX={2} paddingY={1} borderColor="red">
+                    <Text color="red">Stage "{stageName}" not found.</Text>
+                </Panel>
+
+                <Box flexWrap="wrap" columnGap={2}>
+                    <Text dimColor>[Enter/Esc] Back</Text>
+                </Box>
+            </Box>
         );
 
     }
@@ -111,7 +140,7 @@ export function SettingsSecretRemoveScreen({ params }: ScreenProps): ReactElemen
         return (
             <Box flexDirection="column" gap={1}>
                 <Panel
-                    title="Remove Secret Definition"
+                    title={stageName ? 'Remove Stage Secret' : 'Remove Secret Definition'}
                     paddingX={2}
                     paddingY={1}
                     borderColor="yellow"
@@ -130,10 +159,19 @@ export function SettingsSecretRemoveScreen({ params }: ScreenProps): ReactElemen
     // Not found
     if (!secret) {
 
+        const notFoundMsg = stageName
+            ? `Secret "${secretKey}" not found in stage "${stageName}".`
+            : `Secret "${secretKey}" not found.`;
+
         return (
             <Box flexDirection="column" gap={1}>
-                <Panel title="Remove Secret Definition" paddingX={2} paddingY={1} borderColor="red">
-                    <Text color="red">Secret "{secretKey}" not found.</Text>
+                <Panel
+                    title={stageName ? 'Remove Stage Secret' : 'Remove Secret Definition'}
+                    paddingX={2}
+                    paddingY={1}
+                    borderColor="red"
+                >
+                    <Text color="red">{notFoundMsg}</Text>
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
@@ -144,20 +182,31 @@ export function SettingsSecretRemoveScreen({ params }: ScreenProps): ReactElemen
 
     }
 
+    // Build confirm message and title
+    const confirmMsg = stageName
+        ? `Delete "${secretKey}" from stage "${stageName}"?`
+        : `Delete secret definition "${secretKey}"?`;
+
+    const title = `Remove: ${secretKey}`;
+
     return (
-        <Panel title={`Remove: ${secretKey}`} paddingX={2} paddingY={1} borderColor="yellow">
+        <Panel title={title} paddingX={2} paddingY={1} borderColor="yellow">
             <Box flexDirection="column" gap={1}>
+                {stageName && <Text dimColor>Stage: {stageName}</Text>}
+
                 {/* Show description if available */}
                 {secret.description && <Text dimColor>{secret.description}</Text>}
 
                 <Text dimColor>Type: {secret.type}</Text>
 
-                <Text color="yellow">
-                    Warning: This will remove the secret requirement from all stages.
-                </Text>
+                {!stageName && (
+                    <Text color="yellow">
+                        Warning: This will remove the secret requirement from all stages.
+                    </Text>
+                )}
 
                 <Confirm
-                    message={`Delete secret definition "${secretKey}"?`}
+                    message={confirmMsg}
                     onConfirm={handleConfirm}
                     onCancel={handleCancel}
                     variant="warning"

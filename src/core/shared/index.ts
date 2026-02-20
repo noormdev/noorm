@@ -8,6 +8,9 @@
 // Files
 export { filterFilesByPaths, matchesPathPrefix } from './files.js';
 
+// Dialect quoting
+export { createDialectQuoting, type DialectQuoting } from './dialect-quoting.js';
+
 // Tables
 export { NOORM_TABLES } from './tables.js';
 

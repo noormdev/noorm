@@ -1,4 +1,4 @@
-import { withContext, type HeadlessCommand } from './_helpers.js';
+import { withContext, outputResult, type HeadlessCommand } from './_helpers.js';
 
 export const help = `
 # LOCK RELEASE
@@ -43,16 +43,7 @@ export const run: HeadlessCommand = async (_params, flags, logger) => {
 
     if (error) return 1;
 
-    if (flags.json) {
-
-        logger.result({ released: true });
-
-    }
-    else {
-
-        logger.info('Lock released');
-
-    }
+    outputResult(flags, logger, { released: true }, 'Lock released');
 
     return 0;
 

@@ -3,6 +3,8 @@
  *
  * Provides a `gracefulExit` function that ensures all resources (database
  * connections, observers, etc.) are properly cleaned up before the app exits.
+ * Shows a full-screen shutdown modal with phase progress while resources
+ * are being released.
  *
  * @example
  * ```tsx
@@ -15,11 +17,22 @@
  */
 import { createContext, useContext, useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactNode, ReactElement } from 'react';
-import { useApp, Box } from 'ink';
+import { useApp, Box, Text } from 'ink';
 import { Spinner } from '@inkjs/ui';
 
 import { getLifecycleManager } from '../core/lifecycle/manager.js';
 import type { LifecycleManager } from '../core/lifecycle/manager.js';
+import { observer } from '../core/observer.js';
+
+/**
+ * Phase labels shown during shutdown.
+ */
+const PHASE_LABELS: Record<string, string> = {
+    stopping: 'Stopping operations',
+    completing: 'Completing tasks',
+    releasing: 'Releasing connections',
+    flushing: 'Flushing logs',
+};
 
 /**
  * Shutdown context value.
@@ -44,16 +57,59 @@ const ShutdownContext = createContext<ShutdownContextValue | null>(null);
 /**
  * Shutdown screen component.
  *
- * Displays a clean, minimal screen during graceful shutdown.
- * This replaces the full TUI to prevent terminal corruption.
+ * Full-screen modal showing shutdown progress with phase indicators.
+ * Replaces the entire TUI during graceful shutdown.
  */
 function ShutdownScreen(): ReactElement {
 
+    const [currentPhase, setCurrentPhase] = useState<string>('stopping');
+    const [completedPhases, setCompletedPhases] = useState<Set<string>>(new Set());
+
+    useEffect(() => {
+
+        const cleanup = observer.on('app:shutdown:phase', (data) => {
+
+            if (data.status === 'running') {
+
+                setCurrentPhase(data.phase);
+
+            }
+            else if (data.status === 'completed' || data.status === 'timeout') {
+
+                setCompletedPhases((prev) => new Set([...prev, data.phase]));
+
+            }
+
+        });
+
+        return cleanup;
+
+    }, []);
+
+    const phases = Object.entries(PHASE_LABELS);
+
     return (
-        <Box flexDirection="column" padding={1}>
-            <Box>
-                <Spinner label="Gracefully shutting down..." />
+        <Box flexDirection="column" paddingX={2} paddingY={1}>
+            <Box marginBottom={1}>
+                <Text bold>Shutting down</Text>
             </Box>
+            {phases.map(([key, label]) => {
+
+                const isDone = completedPhases.has(key);
+                const isActive = currentPhase === key && !isDone;
+
+                return (
+                    <Box key={key} gap={1}>
+                        {isDone && <Text color="green">✓</Text>}
+                        {isActive && <Spinner />}
+                        {!isDone && !isActive && <Text dimColor> </Text>}
+                        <Text dimColor={!isActive && !isDone} color={isDone ? 'green' : undefined}>
+                            {label}
+                        </Text>
+                    </Box>
+                );
+
+            })}
         </Box>
     );
 
@@ -75,6 +131,9 @@ export interface ShutdownProviderProps {
  *
  * Must wrap the app to enable graceful exit. Initializes the
  * LifecycleManager and provides the `gracefulExit` function.
+ * With exitOnCtrlC: false, Ctrl+C is handled by GlobalKeyboard
+ * which calls gracefulExit(), showing the shutdown screen while
+ * resources are released.
  *
  * @example
  * ```tsx
@@ -104,15 +163,6 @@ export function ShutdownProvider({ children, projectRoot }: ShutdownProviderProp
 
                 isReadyRef.current = true;
 
-                if (process.env['NOORM_DEBUG']) {
-
-                    console.error(
-                        '[ShutdownProvider] LifecycleManager started, state:',
-                        lifecycle.state,
-                    );
-
-                }
-
             })
             .catch((err) => {
 
@@ -140,7 +190,9 @@ export function ShutdownProvider({ children, projectRoot }: ShutdownProviderProp
 
         if (isShuttingDownRef.current) {
 
-            // Already shutting down
+            // Already shutting down — force exit on second attempt
+            exit();
+
             return;
 
         }
@@ -150,20 +202,8 @@ export function ShutdownProvider({ children, projectRoot }: ShutdownProviderProp
         // Show shutdown screen immediately before any cleanup
         setIsShuttingDown(true);
 
-        // Wait a tick for React to re-render the shutdown screen
-        // This ensures the TUI shows "shutting down" before any console output
+        // Wait a tick for React to render the shutdown screen
         await new Promise((resolve) => setTimeout(resolve, 50));
-
-        if (process.env['NOORM_DEBUG']) {
-
-            console.error(
-                '[ShutdownProvider] gracefulExit called, lifecycle state:',
-                lifecycleRef.current?.state,
-                'ready:',
-                isReadyRef.current,
-            );
-
-        }
 
         // Wait for lifecycle to be ready (should be almost instant)
         let waitAttempts = 0;
@@ -179,16 +219,13 @@ export function ShutdownProvider({ children, projectRoot }: ShutdownProviderProp
 
             await lifecycleRef.current.shutdown('user');
 
-            if (process.env['NOORM_DEBUG']) {
-
-                console.error('[ShutdownProvider] shutdown complete, calling exit()');
-
-            }
-
         }
 
-        // Then tell Ink to exit
-        exit();
+        // Signal index.tsx to clear output and unmount Ink.
+        // We emit an event instead of calling exit() directly so the
+        // render instance can call clear() before unmount(), preventing
+        // the shutdown screen from lingering in the terminal.
+        observer.emit('app:exit', { code: 0 });
 
     }, [exit]);
 

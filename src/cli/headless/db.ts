@@ -1,5 +1,4 @@
-import { type HeadlessCommand } from './_helpers.js';
-import { formatHelp } from '../../core/help-formatter.js';
+import { type HeadlessCommand, createHelpOnlyCommand } from './_helpers.js';
 
 export const help = `
 # DB
@@ -39,11 +38,4 @@ for complete cleanup.
 See \`noorm help db explore\`, \`noorm help db truncate\`, or \`noorm help db teardown\`.
 `;
 
-export const run: HeadlessCommand = async (_params, flags, _logger) => {
-
-    const output = flags.json ? help : formatHelp(help);
-    process.stdout.write(output + '\\n');
-
-    return 0;
-
-};
+export const run = createHelpOnlyCommand(help);

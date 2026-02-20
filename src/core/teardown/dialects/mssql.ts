@@ -4,30 +4,14 @@
  * Microsoft SQL Server-specific SQL generation for teardown operations.
  */
 import type { TeardownDialectOperations } from '../types.js';
+import { createDialectQuoting } from '../../shared/index.js';
 
-/**
- * Quote a MSSQL identifier.
- */
-function quote(name: string): string {
-
-    return `[${name.replace(/\]/g, ']]')}]`;
-
-}
-
-/**
- * Build fully qualified name with optional schema.
- */
-function qualifiedName(name: string, schema?: string): string {
-
-    if (schema && schema !== 'dbo') {
-
-        return `${quote(schema)}.${quote(name)}`;
-
-    }
-
-    return quote(name);
-
-}
+const { quote, qualifiedName } = createDialectQuoting({
+    open: '[',
+    close: ']',
+    escape: ']]',
+    defaultSchema: 'dbo',
+});
 
 /**
  * MSSQL teardown operations.

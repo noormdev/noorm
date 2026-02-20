@@ -33,6 +33,7 @@ import {
 import { decryptWithPrivateKey } from '../../../core/identity/crypto.js';
 import { loadPrivateKey } from '../../../core/identity/storage.js';
 import type { SharedConfigPayload } from '../../../core/identity/types.js';
+import { getErrorMessage } from '../../utils/index.js';
 
 /**
  * Import steps.
@@ -237,7 +238,7 @@ export function ConfigImportScreen({ params }: ScreenProps): ReactElement {
 
             if (err) {
 
-                setError(err instanceof Error ? err.message : String(err));
+                setError(getErrorMessage(err));
                 setStep('error');
 
                 return;

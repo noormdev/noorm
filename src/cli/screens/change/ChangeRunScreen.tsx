@@ -10,9 +10,7 @@
  * noorm change run add-user-roles    # Same thing
  * ```
  */
-import { useState, useEffect, useCallback } from 'react';
-import { readFile } from 'fs/promises';
-import { join } from 'path';
+import { useState, useCallback } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { ProgressBar } from '@inkjs/ui';
 
@@ -30,74 +28,19 @@ import {
     Panel,
     Spinner,
     StatusMessage,
-    Confirm,
-    ProtectedConfirm,
+    SmartConfirm,
+    MissingParamPanel,
 } from '../../components/index.js';
-import { discoverChanges } from '../../../core/change/parser.js';
-import { ChangeHistory } from '../../../core/change/history.js';
+import { useChangeProgress, useAsyncEffect } from '../../hooks/index.js';
+import { getErrorMessage,
+    loadChangesWithStatus,
+    resolveScreenIdentity,
+    resolveChangesDir,
+    resolveSqlDir,
+} from '../../utils/index.js';
 import { executeChange } from '../../../core/change/executor.js';
+import { validateChangeContent } from '../../../core/change/validation.js';
 import { createConnection } from '../../../core/connection/factory.js';
-import { resolveIdentity } from '../../../core/identity/resolver.js';
-import { observer } from '../../../core/observer.js';
-
-/** Default SQL template - files with only this content are considered empty */
-const SQL_TEMPLATE = '-- TODO: Add SQL statements here\n';
-
-/**
- * Check if a change has meaningful content in its files.
- * Returns null if valid, or an error message if files are empty/template-only.
- */
-async function validateChangeContent(change: Change): Promise<string | null> {
-
-    if (change.changeFiles.length === 0) {
-
-        return 'Change has no files to execute';
-
-    }
-
-    let hasContent = false;
-
-    for (const file of change.changeFiles) {
-
-        // Skip .txt manifest files - they reference other files
-        if (file.type === 'txt') {
-
-            hasContent = true;
-
-            continue;
-
-        }
-
-        const [content, err] = await attempt(() => readFile(file.path, 'utf-8'));
-
-        if (err) {
-
-            continue; // Skip files we can't read
-
-        }
-
-        const trimmed = content?.trim() ?? '';
-
-        // Check if file has actual content (not empty, not just the template)
-        if (trimmed && trimmed !== SQL_TEMPLATE.trim()) {
-
-            hasContent = true;
-
-            break;
-
-        }
-
-    }
-
-    if (!hasContent) {
-
-        return 'Change files are empty or contain only template placeholders. Edit the SQL files before running.';
-
-    }
-
-    return null;
-
-}
 
 /**
  * Run steps.
@@ -120,16 +63,16 @@ export function ChangeRunScreen({ params }: ScreenProps): ReactElement {
 
     const changeName = params.name;
 
+    const { currentFile, fileProgress } = useChangeProgress();
+
     const [step, setStep] = useState<RunStep>('loading');
     const [change, setChange] = useState<Change | null>(null);
     const [result, setResult] = useState<ChangeResult | null>(null);
-    const [progress, setProgress] = useState({ current: 0, total: 0 });
-    const [currentFile, setCurrentFile] = useState('');
     const [error, setError] = useState<string | null>(null);
-    const [isProtected, setIsProtected] = useState(false);
+
 
     // Load change info
-    useEffect(() => {
+    useAsyncEffect(async (isCancelled) => {
 
         if (!activeConfig || !changeName) {
 
@@ -137,108 +80,56 @@ export function ChangeRunScreen({ params }: ScreenProps): ReactElement {
 
         }
 
-        let cancelled = false;
+        const [_, err] = await attempt(async () => {
 
-        const loadChange = async () => {
+            const { changes, statuses } = await loadChangesWithStatus(
+                activeConfig, activeConfigName ?? '', settings, projectRoot,
+            );
 
-            const [_, err] = await attempt(async () => {
+            const found = changes.find((cs) => cs.name === changeName);
 
-                // Find the change on disk
-                const changesDir = settings?.paths?.changes ?? 'changes';
-                const sqlDir = settings?.paths?.sql ?? 'sql';
-                const changes = await discoverChanges(
-                    join(projectRoot, changesDir),
-                    join(projectRoot, sqlDir),
-                );
+            if (!found) {
 
-                const found = changes.find((cs) => cs.name === changeName);
-
-                if (!found) {
-
-                    throw new Error(`Change not found: ${changeName}`);
-
-                }
-
-                // Check if already applied
-                const conn = await createConnection(
-                    activeConfig.connection,
-                    activeConfigName ?? '__run__',
-                );
-                const db = conn.db as Kysely<NoormDatabase>;
-
-                const history = new ChangeHistory(db, activeConfigName ?? '');
-                const statuses = await history.getAllStatuses();
-                const status = statuses.get(changeName);
-
-                await conn.destroy();
-
-                if (cancelled) return;
-
-                if (status?.status === 'success') {
-
-                    throw new Error(`Change "${changeName}" is already applied`);
-
-                }
-
-                // Validate change has actual content
-                const contentError = await validateChangeContent(found);
-
-                if (contentError) {
-
-                    throw new Error(contentError);
-
-                }
-
-                setChange(found);
-                setIsProtected(activeConfig.protected ?? false);
-                setStep('confirm');
-
-            });
-
-            if (err) {
-
-                if (!cancelled) {
-
-                    setError(err instanceof Error ? err.message : String(err));
-                    setStep('error');
-
-                }
+                throw new Error(`Change not found: ${changeName}`);
 
             }
 
-        };
+            if (isCancelled()) return;
 
-        loadChange();
+            const status = statuses.get(changeName);
 
-        return () => {
+            if (status?.status === 'success') {
 
-            cancelled = true;
-
-        };
-
-    }, [activeConfig, activeConfigName, changeName]);
-
-    // Subscribe to progress events
-    useEffect(() => {
-
-        const unsubFile = observer.on('change:file', (data) => {
-
-            if (data.change === changeName) {
-
-                setProgress({ current: data.index, total: data.total });
-                setCurrentFile(data.filepath);
+                throw new Error(`Change "${changeName}" is already applied`);
 
             }
+
+            // Validate change has actual content
+            const contentError = await validateChangeContent(found);
+
+            if (contentError) {
+
+                throw new Error(contentError);
+
+            }
+
+            setChange(found);
+            setStep('confirm');
 
         });
 
-        return () => {
+        if (err) {
 
-            unsubFile();
+            if (!isCancelled()) {
 
-        };
+                setError(getErrorMessage(err));
+                setStep('error');
 
-    }, [changeName]);
+            }
+
+        }
+
+    }, [activeConfig, activeConfigName, changeName]);
 
     // Handle run
     const handleRun = useCallback(async () => {
@@ -246,7 +137,6 @@ export function ChangeRunScreen({ params }: ScreenProps): ReactElement {
         if (!activeConfig || !change || !stateManager) return;
 
         setStep('running');
-        setProgress({ current: 0, total: change.changeFiles.length });
 
         const [_, err] = await attempt(async () => {
 
@@ -256,21 +146,14 @@ export function ChangeRunScreen({ params }: ScreenProps): ReactElement {
             );
             const db = conn.db as Kysely<NoormDatabase>;
 
-            // Resolve identity
-            const identity = resolveIdentity({
-                cryptoIdentity: cryptoIdentity ?? null,
-            });
-
             // Build context
-            const changesPath = settings?.paths?.changes ?? 'changes';
-            const sqlPath = settings?.paths?.sql ?? 'sql';
             const context = {
                 db,
                 configName: activeConfigName ?? '',
-                identity,
+                identity: resolveScreenIdentity(cryptoIdentity),
                 projectRoot,
-                changesDir: join(projectRoot, changesPath),
-                sqlDir: join(projectRoot, sqlPath),
+                changesDir: resolveChangesDir(projectRoot, settings),
+                sqlDir: resolveSqlDir(projectRoot, settings),
             };
 
             // Execute change
@@ -291,7 +174,7 @@ export function ChangeRunScreen({ params }: ScreenProps): ReactElement {
 
         if (err) {
 
-            setError(err instanceof Error ? err.message : String(err));
+            setError(getErrorMessage(err));
             setStep('error');
 
         }
@@ -321,11 +204,7 @@ export function ChangeRunScreen({ params }: ScreenProps): ReactElement {
     // No change name provided
     if (!changeName) {
 
-        return (
-            <Panel title="Run Change" paddingX={2} paddingY={1} borderColor="yellow">
-                <Text color="yellow">No change name provided.</Text>
-            </Panel>
-        );
+        return <MissingParamPanel title="Run Change" param="change name" />;
 
     }
 
@@ -369,30 +248,14 @@ export function ChangeRunScreen({ params }: ScreenProps): ReactElement {
             </Box>
         );
 
-        if (isProtected) {
-
-            return (
-                <Panel title="Run Change" paddingX={2} paddingY={1} borderColor="yellow">
-                    <Box flexDirection="column" gap={1}>
-                        {confirmContent}
-                        <ProtectedConfirm
-                            configName={activeConfigName ?? 'config'}
-                            action="apply this change"
-                            onConfirm={handleRun}
-                            onCancel={handleCancel}
-                            isFocused={isFocused}
-                        />
-                    </Box>
-                </Panel>
-            );
-
-        }
-
         return (
-            <Panel title="Run Change" paddingX={2} paddingY={1}>
+            <Panel title="Run Change" paddingX={2} paddingY={1} borderColor={activeConfig.protected ? 'yellow' : undefined}>
                 <Box flexDirection="column" gap={1}>
                     {confirmContent}
-                    <Confirm
+                    <SmartConfirm
+                        protected={activeConfig.protected ?? false}
+                        configName={activeConfigName ?? 'config'}
+                        action="apply this change"
                         message="Apply this change?"
                         onConfirm={handleRun}
                         onCancel={handleCancel}
@@ -407,7 +270,7 @@ export function ChangeRunScreen({ params }: ScreenProps): ReactElement {
     // Running
     if (step === 'running') {
 
-        const progressValue = progress.total > 0 ? progress.current / progress.total : 0;
+        const progressValue = fileProgress.total > 0 ? fileProgress.current / fileProgress.total : 0;
 
         return (
             <Panel title="Run Change" paddingX={2} paddingY={1}>
@@ -424,7 +287,7 @@ export function ChangeRunScreen({ params }: ScreenProps): ReactElement {
                     </Box>
 
                     <Text dimColor>
-                        {progress.current}/{progress.total} files
+                        {fileProgress.current}/{fileProgress.total} files
                         {currentFile && ` - ${currentFile.split('/').pop()}`}
                     </Text>
                 </Box>

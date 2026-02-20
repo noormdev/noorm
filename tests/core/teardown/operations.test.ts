@@ -3,7 +3,7 @@
  *
  * Tests pure functions that don't require database connections.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 
 import { isNoormTable } from '../../../src/core/teardown/index.js';
 

@@ -4,7 +4,7 @@
  * Covers .dt raw output, .dtz gzip, .dtzx encrypted, JSON5 format.
  * Writer/reader tests write to tmp/ per project rules.
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { existsSync, readFileSync, mkdirSync, rmSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import path from 'node:path';

@@ -1,4 +1,4 @@
-import { withContext, type HeadlessCommand } from './_helpers.js';
+import { withContext, outputResult, type HeadlessCommand } from './_helpers.js';
 
 export const help = `
 # DB EXPLORE
@@ -63,16 +63,7 @@ export const run: HeadlessCommand = async (_params, flags, logger) => {
 
     if (error) return 1;
 
-    if (flags.json) {
-
-        logger.result(overview);
-
-    }
-    else {
-
-        logger.info('Database Overview', overview);
-
-    }
+    outputResult(flags, logger, overview, 'Database Overview', overview as unknown as Record<string, unknown>);
 
     return 0;
 

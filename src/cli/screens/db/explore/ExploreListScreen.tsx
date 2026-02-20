@@ -15,18 +15,19 @@
  * noorm db         # Then press 'x' to explore, then '1' for tables
  * ```
  */
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { attempt } from '@logosdx/utils';
 
 import type { ReactElement } from 'react';
+import type { Kysely } from 'kysely';
 import type { ScreenProps, Route } from '../../../types.js';
 
 import { useRouter } from '../../../router.js';
 import { useFocusScope } from '../../../focus.js';
 import { useAppContext, useExploreFilters, useSettings } from '../../../app-context.js';
 import { Panel, Spinner, SearchableList } from '../../../components/index.js';
-import { createConnection } from '../../../../core/connection/index.js';
+import { useConnection, useAsyncEffect } from '../../../hooks/index.js';
 import { fetchList, formatSummaryDescription } from '../../../../core/explore/index.js';
 
 import type { SelectListItem, SearchableListFilterState } from '../../../components/index.js';
@@ -140,65 +141,45 @@ export function ExploreListScreen({ params: _params }: ScreenProps): ReactElemen
     // Get persisted filter state for this category
     const filterState = meta ? getFilter(meta.category) : undefined;
 
-    // Load items
-    useEffect(() => {
+    // Shared connection
+    const { db, dialect, loading: connLoading, error: connError } = useConnection();
 
-        if (!activeConfig || !meta) {
+    // Load items when connection is ready
+    useAsyncEffect(async (isCancelled) => {
 
-            setIsLoading(false);
+        if (!db || !dialect || !meta) {
+
+            if (!connLoading && !connError) setIsLoading(false);
 
             return;
 
         }
 
-        let cancelled = false;
+        setIsLoading(true);
+        setError(null);
 
-        const load = async () => {
+        const [result, err] = await attempt(async () => {
 
-            setIsLoading(true);
-            setError(null);
+            return await fetchList(db as Kysely<unknown>, dialect, meta.category, exploreOptions);
 
-            const [result, err] = await attempt(async () => {
+        });
 
-                const conn = await createConnection(
-                    activeConfig.connection,
-                    activeConfigName ?? '__explore__',
-                );
+        if (isCancelled()) return;
 
-                const data = await fetchList(conn.db, activeConfig.connection.dialect, meta.category, exploreOptions);
+        if (err) {
 
-                await conn.destroy();
+            setError(err.message);
 
-                return data;
+        }
+        else {
 
-            });
+            setItems(result as AnySummary[]);
 
-            if (cancelled) return;
+        }
 
-            if (err) {
+        setIsLoading(false);
 
-                setError(err.message);
-
-            }
-            else {
-
-                setItems(result as AnySummary[]);
-
-            }
-
-            setIsLoading(false);
-
-        };
-
-        load();
-
-        return () => {
-
-            cancelled = true;
-
-        };
-
-    }, [activeConfig, activeConfigName, meta, settings?.logging?.level]);
+    }, [db, dialect, meta, settings?.logging?.level]);
 
     // Convert items to SelectListItem format
     const listItems = useMemo((): SelectListItem<AnySummary>[] => {
@@ -298,7 +279,7 @@ export function ExploreListScreen({ params: _params }: ScreenProps): ReactElemen
     }
 
     // Loading state
-    if (isLoading) {
+    if (isLoading || connLoading) {
 
         return (
             <Box flexDirection="column" gap={1}>
@@ -311,14 +292,14 @@ export function ExploreListScreen({ params: _params }: ScreenProps): ReactElemen
     }
 
     // Error state
-    if (error) {
+    if (error || connError) {
 
         return (
             <Box flexDirection="column" gap={1}>
                 <Panel title={meta.title} borderColor="red" paddingX={1} paddingY={1}>
                     <Box flexDirection="column" gap={1}>
                         <Text color="red">Error loading {meta.title.toLowerCase()}</Text>
-                        <Text dimColor>{error}</Text>
+                        <Text dimColor>{error ?? connError}</Text>
                     </Box>
                 </Panel>
 

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 
 import { isSameServer, getDefaultPort } from '../../../src/core/transfer/same-server.js';
 import type { ConnectionConfig } from '../../../src/core/connection/types.js';

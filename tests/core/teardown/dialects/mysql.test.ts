@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 
 import { mysqlTeardownOperations } from '../../../../src/core/teardown/dialects/mysql.js';
 

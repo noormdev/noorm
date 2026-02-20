@@ -102,6 +102,13 @@ Core SDK is implemented and packaged (`@noormdev/sdk`). Remaining:
 **Runner:**
 - [ ] `run files <path...>` - Run multiple specific files
 
+## Manual QA
+
+- [ ] **Full headless command QA** - Run every headless command end-to-end and verify they work correctly. Cover all 40+ implemented handlers.
+- [ ] **Change rewind blocks reapply (bug)** - After rewinding a change, it cannot be reapplied. This breaks the test-fix-reapply workflow. Rewound changes should be eligible for reapplication.
+- [ ] **Absolute paths stored in database (bug)** - Change file paths are being stored as absolute paths instead of relative to the project root. This leaks the user's local directory structure. Paths should be stripped of the project root prefix before insertion.
+
+
 ## Bugs
 
 - [x] **Config Import focus broken** - Fixed: guarded `useInput` with `isActive` so it only fires during complete/error steps.
@@ -109,6 +116,34 @@ Core SDK is implemented and packaged (`@noormdev/sdk`). Remaining:
 - [x] **Shift+Tab navigation broken** - Fixed: added `key.shift && key.tab` check before `key.tab` in Form.tsx.
 - [x] **Transfer progress inaccurate** - Fixed: aggregate `rowsTransferred` now updates in real-time via delta tracking in `transfer:table:progress`, `dt:import:progress`, and `dt:import:complete` handlers. Same-server transfers show spinner instead of misleading 0% bar.
 - [x] **Change add ignores changes folder setting** - Fixed: all 6 change screens now resolve paths with `path.join(projectRoot, config.paths.changes)`, matching the SDK pattern.
+
+
+## Investigations
+
+- [ ] **Transfer slowness** - Profile and identify bottlenecks in data transfer operations
+- [ ] **Migrate to OpenTUI** - Replace Ink/React TUI with OpenTUI framework. **Note:** consider doing this before the AI/OpenCode integration — if the AI chat becomes a TUI screen rather than a separate mode, the rendering layer matters. Migrating after means porting AI features twice.
+
+
+## Data Transfer & Export
+
+- [ ] **Export query folder** - Dedicated folder (e.g., `export/` or `sql/export/`) for reusable SQL files that define dt exports. Each file contains a SELECT query whose results get serialized to dt format. Front matter (YAML block at top) provides metadata for the TUI: name, description, target filename, schedule hints. Run one or many from the TUI or CLI (`noorm export run <name>`). Supports the template engine for dynamic filters.
+- [ ] **SQL query view to dt export** - Allow exporting a SQL query result view to a `.dt` file (e.g., export a subset of a table from prod to dev)
+- [ ] **Dedicated transfers folder** - Explore a `transfers/` folder structure similar to changes but without up/down — just a dated folder with SQL and data files (like seeds)
+- [ ] **Seed command** - `noorm seed apply --config dev` — runs SQL templates and imports dt files from the transfers/seeds folder in order. Closes the loop between "exported subset from prod" and "hydrate dev database." Leverages existing template engine and dt format.
+- [ ] **AI-assisted dt export** - With the AI integration's read-only DB access, the AI can propose and generate dt exports based on user criteria (e.g., "export users matching X to a dt file for dev"). Non-destructive, fits within existing guard rails.
+
+
+## Database Security & Multi-Tenancy
+
+- [ ] **Authorization via DB roles** - Create authorization mechanisms per database using built-in DB roles for access to sensitive noorm tables. Use stored procedures to get sensitive data; unprivileged roles can never modify directly. Only admin can rotate keys and create tables.
+- [ ] **Separate noorm tables to dedicated connection** - Scope noorm internal tables to a separate connection/database. If no central DB is configured, fall back to the current connection. Enables shared encryption keys across environments, shared secrets, secret migration, and permissions — so that the app database doesn't hold sensitive information or historical data. **Sequence: do this before roles/users — it defines the permission surface.**
+- [ ] **Service users** - Create service user support for automated/CI connections
+- [ ] **Dev users (nonadmin)** - Create noorm dev users with restricted privileges (no admin operations)
+
+
+## Diagnostics
+
+- [ ] **`noorm doctor` command** - Comprehensive diagnostic that verifies the full setup: connection health, role permissions, noorm table accessibility, encryption key validity, version compatibility. Becomes essential as the security model grows (roles, separate connections, service users).
 
 
 ## Pre-Release Checklist
@@ -168,11 +203,30 @@ noorm change ff --configs dev,staging,prod --confirm-each
 - Automatic compression (gzip)
 - Snapshot before destructive operations (optional)
 
-**AI Database Chat** - Interactive chat against schema and data with tool-based exploration. Model configured in `noorm.config.ts`.
+**AI Integration via OpenCode** - Build on [OpenCode](https://github.com/sst/opencode) SDK to give users an AI-powered database assistant within their own CLI. User must opt in to enable AI features.
+
+Capabilities:
+
+- **Read-only database exploration** - AI can generate and execute its own SQL to inspect the active database (schema, data, relationships). All AI-generated SQL is validated through [`sql-parser-cst`](https://github.com/nene/sql-parser-cst) to ensure only CTEs and SELECT statements are allowed — no DDL or DML passes the guard.
+- **Safe SDK tool access** - AI can invoke non-destructive noorm SDK operations: migrations, build, run, change apply, explore, etc. Destructive operations (destroy, teardown, drop) are excluded from the AI toolset entirely.
+- **Schema-aware SQL generation** - AI uses live schema introspection to generate accurate, contextual SQL queries and migration scripts.
+
+Architecture (OpenTUI + OpenCode):
+
+- **Embedded AI screen** - With OpenTUI as the rendering layer, the AI chat is just another TUI screen/route — not a separate process or modal. It lives alongside every other screen in the app.
+- **Background agent** - The AI agent runs in the background of the TUI. While you're browsing schemas, reviewing changes, or running queries, the agent can be working: writing SQL files, generating migrations, preparing exports, scaffolding changes. Its activity flows through the same observer event system, so progress shows up in the log viewer overlay like any other operation.
+- **File and SQL operations** - The agent can write SQL files to disk (new queries, migration scripts, export definitions), execute read-only SQL against the active database, run builds and migrations through the SDK, and propose changes for your review — all within the TUI.
+- **Conversational workflow** - Ask the agent to "create a migration that adds an index on users.email" and it inspects the schema, writes the SQL file, and optionally applies it. Or "export all orders from last month to dt" and it generates the query and runs the export. The TUI stays interactive throughout.
+
+Guard rails:
+
+- SQL validation via `sql-parser-cst` — parse tree must contain only `select_stmt` and `common_table_expression` nodes; reject everything else
+- SDK tool allowlist — only expose safe operations; no `destroy`, `teardown`, `drop`, `truncate`
+- Opt-in activation — AI features are disabled by default, user explicitly enables in settings
+
+**skills.sh Skill** - Publish a [skills.sh](https://skills.sh) skill for noorm so AI coding agents (Claude Code, etc.) can install it and work with noorm projects out of the box — schema management, migrations, SQL generation, and safe database exploration.
 
 **llms.txt for Context7** - Publish noorm documentation in llms.txt format for LLM context providers (context7, etc.). Enables AI assistants to understand noorm commands, workflows, and patterns.
-
-**MCP Server for Database Access** - TUI spawns an MCP server giving LLMs read-only access to the connected database. Schema introspection, sample queries, data exploration - all through the MCP protocol.
 
 **User Project LLM Files** - Generate helper files (`CLAUDE.md`, `.cursorrules`) for user projects describing their noorm setup, SQL structure, and available template variables. Command: `noorm init llm`.
 

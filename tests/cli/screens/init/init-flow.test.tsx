@@ -3,7 +3,7 @@
  *
  * Tests the complete initialization flow from identity setup through project creation.
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, mock, beforeEach, afterEach } from 'bun:test';
 import { render } from 'ink-testing-library';
 import { act } from 'react';
 import React from 'react';
@@ -25,82 +25,54 @@ let mockHasMetadata = false;
 let createdDirs: string[] = [];
 let writtenFiles: string[] = [];
 
+// Pre-import actual modules to avoid circular await inside mock.module
+const actualFs = await import('fs');
+
 // Mock fs
-vi.mock('fs', async () => {
+mock.module('fs', () => ({
+    ...actualFs,
+    existsSync: vi.fn((path) => {
 
-    const actual = await vi.importActual('fs');
+        if (typeof path === 'string') {
 
-    return {
-        ...actual,
-        existsSync: vi.fn((path) => {
+            if (path.includes('.noorm')) {
 
-            if (typeof path === 'string') {
-
-                if (path.includes('.noorm')) {
-
-                    return mockNoormExists;
-
-                }
-
-                if (path.includes('.gitignore')) {
-
-                    return false;
-
-                }
+                return mockNoormExists;
 
             }
 
-            return false;
+            if (path.includes('.gitignore')) {
 
-        }),
-        mkdirSync: vi.fn((path) => {
+                return false;
 
-            createdDirs.push(path as string);
+            }
 
-        }),
-        writeFileSync: vi.fn((path) => {
+        }
 
-            writtenFiles.push(path as string);
+        return false;
 
-        }),
-        readFileSync: vi.fn(() => ''),
-        appendFileSync: vi.fn(),
-    };
+    }),
+    mkdirSync: vi.fn((path) => {
 
-});
+        createdDirs.push(path as string);
+
+    }),
+    writeFileSync: vi.fn((path) => {
+
+        writtenFiles.push(path as string);
+
+    }),
+    readFileSync: vi.fn(() => ''),
+    appendFileSync: vi.fn(),
+}));
 
 // Mock identity module
-vi.mock('../../../../src/core/identity/index.js', async () => {
-
-    const actual = await vi.importActual('../../../../src/core/identity/index.js');
-
-    return {
-        ...actual,
-        hasKeyFiles: vi.fn(() => Promise.resolve(mockHasKeyFiles)),
-        loadIdentityMetadata: vi.fn(() =>
-            Promise.resolve(
-                mockHasMetadata
-                    ? {
-                        identityHash: 'abc123',
-                        name: 'Test User',
-                        email: 'test@example.com',
-                        publicKey: 'pubkey123',
-                        machine: 'test-machine',
-                        os: 'darwin 24.5.0',
-                        createdAt: new Date().toISOString(),
-                    }
-                    : null,
-            ),
-        ),
-        detectIdentityDefaults: vi.fn(() => ({
-            name: 'Test User',
-            email: 'test@example.com',
-            machine: 'test-machine',
-            os: 'darwin 24.5.0',
-        })),
-        createCryptoIdentity: vi.fn(() =>
-            Promise.resolve({
-                identity: {
+mock.module('../../../../src/core/identity/index.js', () => ({
+    hasKeyFiles: vi.fn(() => Promise.resolve(mockHasKeyFiles)),
+    loadIdentityMetadata: vi.fn(() =>
+        Promise.resolve(
+            mockHasMetadata
+                ? {
                     identityHash: 'abc123',
                     name: 'Test User',
                     email: 'test@example.com',
@@ -108,19 +80,38 @@ vi.mock('../../../../src/core/identity/index.js', async () => {
                     machine: 'test-machine',
                     os: 'darwin 24.5.0',
                     createdAt: new Date().toISOString(),
-                },
-                keypair: {
-                    publicKey: 'pubkey123',
-                    privateKey: 'privkey123',
-                },
-            }),
+                }
+                : null,
         ),
-    };
-
-});
+    ),
+    detectIdentityDefaults: vi.fn(() => ({
+        name: 'Test User',
+        email: 'test@example.com',
+        machine: 'test-machine',
+        os: 'darwin 24.5.0',
+    })),
+    createCryptoIdentity: vi.fn(() =>
+        Promise.resolve({
+            identity: {
+                identityHash: 'abc123',
+                name: 'Test User',
+                email: 'test@example.com',
+                publicKey: 'pubkey123',
+                machine: 'test-machine',
+                os: 'darwin 24.5.0',
+                createdAt: new Date().toISOString(),
+            },
+            keypair: {
+                publicKey: 'pubkey123',
+                privateKey: 'privkey123',
+            },
+        }),
+    ),
+    loadExistingIdentity: vi.fn().mockResolvedValue(null),
+}));
 
 // Mock state manager singleton - the code uses getStateManager from index.js
-vi.mock('../../../../src/core/state/index.js', () => {
+mock.module('../../../../src/core/state/index.js', () => {
 
     const mockStateManager = {
         load: vi.fn(() => Promise.resolve()),
@@ -146,7 +137,7 @@ vi.mock('../../../../src/core/state/index.js', () => {
 });
 
 // Mock settings manager - must be a proper class
-vi.mock('../../../../src/core/settings/manager.js', () => {
+mock.module('../../../../src/core/settings/manager.js', () => {
 
     return {
         SettingsManager: class MockSettingsManager {

@@ -4,7 +4,7 @@
  * Uses permanent fixture files in ./fixtures/helpers/ for testing.
  * See fixtures/helpers/ for example helper structures.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import path from 'node:path';
 import { findHelperFiles, loadHelpers } from '../../../src/core/template/helpers.js';
 

@@ -9,7 +9,7 @@
  * noorm change history     # View execution history
  * ```
  */
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { Box, Text, useInput } from 'ink';
 
 import type { ReactElement } from 'react';
@@ -24,9 +24,10 @@ import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
 import { Panel, Spinner } from '../../components/index.js';
+import { useConnection, useAsyncEffect } from '../../hooks/index.js';
 import { ChangeHistory } from '../../../core/change/history.js';
-import { createConnection } from '../../../core/connection/factory.js';
 import { relativeTimeAgo } from '../../utils/date.js';
+import { getErrorMessage } from '../../utils/index.js';
 
 /**
  * Get type indicator for display.
@@ -63,66 +64,47 @@ export function ChangeHistoryScreen({ params: _params }: ScreenProps): ReactElem
     const [error, setError] = useState<string | null>(null);
     const [selectedIndex, setSelectedIndex] = useState(0);
 
-    // Load history
-    useEffect(() => {
+    // Shared connection
+    const { db, loading: connLoading, error: connError } = useConnection();
 
-        if (!activeConfig || loadingStatus !== 'ready') {
+    // Load history when connection is ready
+    useAsyncEffect(async (isCancelled) => {
 
-            setIsLoading(false);
+        if (!db || loadingStatus !== 'ready') {
+
+            if (!connLoading && !connError) setIsLoading(false);
 
             return;
 
         }
 
-        let cancelled = false;
+        setIsLoading(true);
+        setError(null);
 
-        const loadHistory = async () => {
+        const [_, err] = await attempt(async () => {
 
-            setIsLoading(true);
-            setError(null);
+            const changeHistory = new ChangeHistory(db, activeConfigName ?? '');
+            const records = await changeHistory.getUnifiedHistory(undefined, 50);
 
-            const [_, err] = await attempt(async () => {
+            if (isCancelled()) return;
 
-                const conn = await createConnection(
-                    activeConfig.connection,
-                    activeConfigName ?? '__history__',
-                );
-                const db = conn.db as Kysely<NoormDatabase>;
+            setHistory(records);
 
-                const changeHistory = new ChangeHistory(db, activeConfigName ?? '');
-                const records = await changeHistory.getUnifiedHistory(undefined, 50);
+        });
 
-                await conn.destroy();
+        if (err) {
 
-                if (cancelled) return;
+            if (!isCancelled()) {
 
-                setHistory(records);
-
-            });
-
-            if (err) {
-
-                if (!cancelled) {
-
-                    setError(err instanceof Error ? err.message : String(err));
-
-                }
+                setError(getErrorMessage(err));
 
             }
 
-            setIsLoading(false);
+        }
 
-        };
+        setIsLoading(false);
 
-        loadHistory();
-
-        return () => {
-
-            cancelled = true;
-
-        };
-
-    }, [activeConfig, activeConfigName, loadingStatus]);
+    }, [db, activeConfigName, loadingStatus]);
 
     // Get selected record
     const selectedRecord = useMemo(() => {
@@ -187,7 +169,7 @@ export function ChangeHistoryScreen({ params: _params }: ScreenProps): ReactElem
     }
 
     // Loading
-    if (isLoading) {
+    if (isLoading || connLoading) {
 
         return (
             <Panel title="Execution History" paddingX={2} paddingY={1}>
@@ -198,12 +180,12 @@ export function ChangeHistoryScreen({ params: _params }: ScreenProps): ReactElem
     }
 
     // Error
-    if (error) {
+    if (error || connError) {
 
         return (
             <Panel title="Execution History" paddingX={2} paddingY={1} borderColor="red">
                 <Box flexDirection="column" gap={1}>
-                    <Text color="red">Failed to load history: {error}</Text>
+                    <Text color="red">Failed to load history: {error ?? connError}</Text>
                     <Text dimColor>Press Esc to go back</Text>
                 </Box>
             </Panel>

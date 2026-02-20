@@ -4,7 +4,7 @@
  * Tests fetchOverview, fetchList, and fetchDetail against a real MSSQL instance.
  * Requires docker-compose.test.yml to be running.
  */
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'bun:test';
 import type { Kysely } from 'kysely';
 
 import {

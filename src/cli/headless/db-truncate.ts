@@ -1,4 +1,4 @@
-import { withContext, type HeadlessCommand } from './_helpers.js';
+import { withContext, outputResult, type HeadlessCommand } from './_helpers.js';
 
 export const help = `
 # DB TRUNCATE
@@ -45,21 +45,12 @@ export const run: HeadlessCommand = async (_params, flags, logger) => {
 
     if (error) return 1;
 
-    if (flags.json) {
-
-        logger.result({
-            truncated: result.truncated,
-            count: result.truncated.length,
-        });
-
-    }
-    else {
-
-        logger.info(`Truncated ${result.truncated.length} tables`, {
-            tables: result.truncated,
-        });
-
-    }
+    outputResult(flags, logger, {
+        truncated: result.truncated,
+        count: result.truncated.length,
+    }, `Truncated ${result.truncated.length} tables`, {
+        tables: result.truncated,
+    });
 
     return 0;
 

@@ -428,11 +428,11 @@ async function executeFiles(
 
     }
 
-    // Create pending file records
+    // Create pending file records (use relative paths to avoid leaking absolute paths)
     const createRecordsErr = await history.createFileRecords(
         operationId,
         expandedFiles.map((f) => ({
-            filepath: f.path,
+            filepath: path.relative(context.projectRoot, f.path),
             fileType: f.type,
             checksum: fileChecksums.get(f.path) ?? '',
         })),
@@ -506,10 +506,11 @@ async function executeFiles(
                     durationMs,
                 });
 
-                // Update DB record
+                // Update DB record (use relative path to match createFileRecords)
+                const relPath = path.relative(context.projectRoot, file.path);
                 const updateErr = await history.updateFileExecution(
                     operationId,
-                    file.path,
+                    relPath,
                     'failed',
                     durationMs,
                     loadErr.message,
@@ -521,7 +522,7 @@ async function executeFiles(
                     observer.emit('error', {
                         source: 'change',
                         error: new Error(updateErr),
-                        context: { filepath: file.path, operation: 'update-failed-record' },
+                        context: { filepath: relPath, operation: 'update-failed-record' },
                     });
 
                 }
@@ -550,22 +551,23 @@ async function executeFiles(
                     durationMs,
                 });
 
-                // Update DB record
-                const updateErr = await history.updateFileExecution(
+                // Update DB record (use relative path to match createFileRecords)
+                const execRelPath = path.relative(context.projectRoot, file.path);
+                const updateErr2 = await history.updateFileExecution(
                     operationId,
-                    file.path,
+                    execRelPath,
                     'failed',
                     durationMs,
                     execErr.message,
                 );
 
-                if (updateErr) {
+                if (updateErr2) {
 
                     // Log but don't fail - we already have the error captured
                     observer.emit('error', {
                         source: 'change',
-                        error: new Error(updateErr),
-                        context: { filepath: file.path, operation: 'update-failed-record' },
+                        error: new Error(updateErr2),
+                        context: { filepath: execRelPath, operation: 'update-failed-record' },
                     });
 
                 }
@@ -582,10 +584,11 @@ async function executeFiles(
                 durationMs,
             });
 
-            // Update DB record
+            // Update DB record (use relative path to match createFileRecords)
+            const successRelPath = path.relative(context.projectRoot, file.path);
             const updateErr = await history.updateFileExecution(
                 operationId,
-                file.path,
+                successRelPath,
                 'success',
                 durationMs,
             );
@@ -596,7 +599,7 @@ async function executeFiles(
                 observer.emit('error', {
                     source: 'change',
                     error: new Error(updateErr),
-                    context: { filepath: file.path, operation: 'update-success-record' },
+                    context: { filepath: successRelPath, operation: 'update-success-record' },
                 });
 
             }

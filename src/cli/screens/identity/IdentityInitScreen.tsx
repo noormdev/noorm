@@ -32,6 +32,7 @@ import { Panel, Spinner, useToast } from '../../components/index.js';
 import { IdentitySetup, type IdentitySetupValues } from '../init/IdentitySetup.js';
 import { createCryptoIdentity } from '../../../core/identity/index.js';
 import { attempt } from '@logosdx/utils';
+import { getErrorMessage } from '../../utils/index.js';
 
 
 /**
@@ -81,7 +82,7 @@ export function IdentityInitScreen({ params: _params }: ScreenProps): ReactEleme
 
             if (err) {
 
-                setError(err instanceof Error ? err.message : String(err));
+                setError(getErrorMessage(err));
                 setStep('form');
                 showToast({
                     message: 'Failed to create identity',

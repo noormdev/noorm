@@ -11,7 +11,7 @@
  * noorm db:destroy --yes        # Skip confirmation
  * ```
  */
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { Box, Text, useInput } from 'ink';
 
 import type { ReactElement } from 'react';
@@ -22,6 +22,7 @@ import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
 import { useToast, Panel, Spinner, ProtectedConfirm } from '../../components/index.js';
+import { useAsyncEffect } from '../../hooks/index.js';
 import { checkDbStatus, destroyDb } from '../../../core/db/index.js';
 
 /**
@@ -49,7 +50,7 @@ export function DbDestroyScreen({ params: _params }: ScreenProps): ReactElement 
     const [status, setStatus] = useState<DbStatus | null>(null);
 
     // Check current state
-    useEffect(() => {
+    useAsyncEffect(async (isCancelled) => {
 
         if (!activeConfig || !activeConfigName) {
 
@@ -69,35 +70,21 @@ export function DbDestroyScreen({ params: _params }: ScreenProps): ReactElement 
 
         }
 
-        let cancelled = false;
+        const result = await checkDbStatus(activeConfig.connection);
 
-        const check = async () => {
+        if (isCancelled()) return;
 
-            const result = await checkDbStatus(activeConfig.connection);
+        if (!result.serverOk) {
 
-            if (cancelled) return;
+            setError(`Cannot connect to server: ${result.error}`);
+            setPhase('error');
 
-            if (!result.serverOk) {
+            return;
 
-                setError(`Cannot connect to server: ${result.error}`);
-                setPhase('error');
+        }
 
-                return;
-
-            }
-
-            setStatus(result);
-            setPhase('confirm');
-
-        };
-
-        check();
-
-        return () => {
-
-            cancelled = true;
-
-        };
+        setStatus(result);
+        setPhase('confirm');
 
     }, [activeConfig, activeConfigName]);
 

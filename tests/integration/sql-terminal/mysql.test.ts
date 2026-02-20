@@ -4,7 +4,7 @@
  * Tests SQL execution against a real MySQL database.
  * Requires MySQL container running on port 13306.
  */
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'bun:test';
 import type { Kysely } from 'kysely';
 
 import { executeRawSql } from '../../../src/core/sql-terminal/executor.js';

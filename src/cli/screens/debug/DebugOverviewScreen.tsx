@@ -11,7 +11,7 @@
  * WARNING: This is a debug feature for inspecting/modifying internal state.
  * Modifications may corrupt noorm state.
  */
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { attempt } from '@logosdx/utils';
 
@@ -23,9 +23,9 @@ import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
 import { Panel, Spinner } from '../../components/index.js';
+import { useConnection, useAsyncEffect } from '../../hooks/index.js';
 import type { Kysely } from 'kysely';
 
-import { createConnection, testConnection } from '../../../core/connection/index.js';
 import { type NoormDatabase } from '../../../core/index.js';
 import {
     createDebugOperations,
@@ -48,83 +48,47 @@ export function DebugOverviewScreen({ params: _params }: ScreenProps): ReactElem
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
-    // Load table counts
-    useEffect(() => {
+    // Shared connection
+    const { db, loading: connLoading, error: connError } = useConnection();
 
-        if (!activeConfig) {
+    // Load table counts when connection is ready
+    useAsyncEffect(async (isCancelled) => {
 
-            setIsLoading(false);
+        if (!db) {
+
+            if (!connLoading && !connError) setIsLoading(false);
 
             return;
 
         }
 
-        let cancelled = false;
+        setIsLoading(true);
+        setError(null);
 
-        const load = async () => {
+        const [result, err] = await attempt(async () => {
 
-            setIsLoading(true);
-            setError(null);
+            const ops = createDebugOperations(db as Kysely<NoormDatabase>);
 
-            // Test connection first
-            const testResult = await testConnection(activeConfig.connection);
+            return await ops.getTableCounts();
 
-            if (!testResult.ok) {
+        });
 
-                if (!cancelled) {
+        if (isCancelled()) return;
 
-                    setError(testResult.error ?? 'Connection failed');
-                    setIsLoading(false);
+        if (err) {
 
-                }
+            setError(err.message);
 
-                return;
+        }
+        else {
 
-            }
+            setCounts(result);
 
-            // Fetch counts
-            const [result, err] = await attempt(async () => {
+        }
 
-                const conn = await createConnection(
-                    activeConfig.connection,
-                    activeConfigName ?? '__debug__',
-                );
+        setIsLoading(false);
 
-                const ops = createDebugOperations(conn.db as Kysely<NoormDatabase>);
-                const data = await ops.getTableCounts();
-
-                await conn.destroy();
-
-                return data;
-
-            });
-
-            if (cancelled) return;
-
-            if (err) {
-
-                setError(err.message);
-
-            }
-            else {
-
-                setCounts(result);
-
-            }
-
-            setIsLoading(false);
-
-        };
-
-        load();
-
-        return () => {
-
-            cancelled = true;
-
-        };
-
-    }, [activeConfig, activeConfigName]);
+    }, [db]);
 
     // Keyboard navigation
     useInput((input, key) => {
@@ -177,7 +141,7 @@ export function DebugOverviewScreen({ params: _params }: ScreenProps): ReactElem
     }
 
     // Loading state
-    if (isLoading) {
+    if (isLoading || connLoading) {
 
         return (
             <Box flexDirection="column" gap={1}>
@@ -190,14 +154,14 @@ export function DebugOverviewScreen({ params: _params }: ScreenProps): ReactElem
     }
 
     // Error state
-    if (error) {
+    if (error || connError) {
 
         return (
             <Box flexDirection="column" gap={1}>
                 <Panel title="DEBUG MODE" borderColor="red" paddingX={1} paddingY={1}>
                     <Box flexDirection="column" gap={1}>
                         <Text color="red">Connection Error</Text>
-                        <Text dimColor>{error}</Text>
+                        <Text dimColor>{error ?? connError}</Text>
                     </Box>
                 </Panel>
 

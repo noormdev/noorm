@@ -14,7 +14,7 @@
  * - 1-9: Quick select row
  * - Esc: Go back
  */
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { attempt } from '@logosdx/utils';
 
@@ -25,10 +25,10 @@ import type { NoormTableName, NoormTableRow, SortDirection } from '../../../core
 import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
+import { useConnection, useAsyncEffect } from '../../hooks/index.js';
 import type { Kysely } from 'kysely';
 
 import { Panel, Spinner, Confirm, SearchableList, useToast } from '../../components/index.js';
-import { createConnection, testConnection } from '../../../core/connection/index.js';
 import { type NoormDatabase } from '../../../core/index.js';
 import {
     createDebugOperations,
@@ -76,94 +76,62 @@ export function DebugListScreen({ params }: ScreenProps): ReactElement {
 
     // Operations ref for delete actions
     const [operations, setOperations] = useState<DebugOperations | null>(null);
-    const [, setConnectionLabel] = useState<string>('');
 
     // Highlighted row for delete
     const [highlightedRowId, setHighlightedRowId] = useState<number | null>(null);
 
-    // Load table data
-    useEffect(() => {
+    // Shared connection
+    const { db, loading: connLoading, error: connError } = useConnection();
 
-        if (!activeConfig || !tableName) {
+    // Load table data when connection is ready
+    useAsyncEffect(async (isCancelled) => {
 
-            setIsLoading(false);
+        if (!db || !tableName) {
+
+            if (!connLoading && !connError) setIsLoading(false);
 
             return;
 
         }
 
-        let cancelled = false;
+        setIsLoading(true);
+        setError(null);
 
-        const load = async () => {
+        const [result, err] = await attempt(async () => {
 
-            setIsLoading(true);
-            setError(null);
+            const ops = createDebugOperations(db as Kysely<NoormDatabase>);
 
-            // Test connection first
-            const testResult = await testConnection(activeConfig.connection);
-
-            if (!testResult.ok) {
-
-                if (!cancelled) {
-
-                    setError(testResult.error ?? 'Connection failed');
-                    setIsLoading(false);
-
-                }
-
-                return;
-
-            }
-
-            // Fetch rows
-            const [result, err] = await attempt(async () => {
-
-                const label = activeConfigName ?? '__debug__';
-                const conn = await createConnection(activeConfig.connection, label);
-                const ops = createDebugOperations(conn.db as Kysely<NoormDatabase>);
-
-                const cols = ops.getTableColumns(tableName);
-                const data = await ops.getTableRows(tableName, {
-                    sortColumn,
-                    sortDirection,
-                    limit: 500,
-                });
-
-                // Store operations for delete actions (connection stays open)
-                setOperations(ops);
-                setConnectionLabel(label);
-
-                return { cols, data };
-
+            const cols = ops.getTableColumns(tableName);
+            const data = await ops.getTableRows(tableName, {
+                sortColumn,
+                sortDirection,
+                limit: 500,
             });
 
-            if (cancelled) return;
+            // Store operations for delete actions (shared connection stays open)
+            setOperations(ops);
 
-            if (err) {
+            return { cols, data };
 
-                setError(err.message);
+        });
 
-            }
-            else if (result) {
+        if (isCancelled()) return;
 
-                setColumns(result.cols);
-                setRows(result.data);
+        if (err) {
 
-            }
+            setError(err.message);
 
-            setIsLoading(false);
+        }
+        else if (result) {
 
-        };
+            setColumns(result.cols);
+            setRows(result.data);
 
-        load();
+        }
 
-        return () => {
+        setIsLoading(false);
 
-            cancelled = true;
-
-        };
-
-    }, [activeConfig, activeConfigName, tableName, sortColumn, sortDirection]);
+    }, [db, tableName, sortColumn, sortDirection]);
 
     // Sort rows locally (already sorted from DB, but this handles re-sort)
     const sortedRows = useMemo(() => {
@@ -428,7 +396,7 @@ export function DebugListScreen({ params }: ScreenProps): ReactElement {
     }
 
     // Loading state
-    if (isLoading) {
+    if (isLoading || connLoading) {
 
         return (
             <Box flexDirection="column" gap={1}>
@@ -441,14 +409,14 @@ export function DebugListScreen({ params }: ScreenProps): ReactElement {
     }
 
     // Error state
-    if (error) {
+    if (error || connError) {
 
         return (
             <Box flexDirection="column" gap={1}>
                 <Panel title={`DEBUG: ${tableInfo.displayName}`} borderColor="red" paddingX={1} paddingY={1}>
                     <Box flexDirection="column" gap={1}>
                         <Text color="red">Error</Text>
-                        <Text dimColor>{error}</Text>
+                        <Text dimColor>{error ?? connError}</Text>
                     </Box>
                 </Panel>
 

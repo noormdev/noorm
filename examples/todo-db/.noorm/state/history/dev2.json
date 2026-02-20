@@ -1,0 +1,55 @@
+{
+  "version": "1.0.0",
+  "entries": [
+    {
+      "id": "f17b2741-04d3-4e8c-a97e-f605cabf2dba",
+      "query": "select * from \"user\";",
+      "executedAt": "2026-02-04T01:57:06.067Z",
+      "durationMs": 7.610332999960519,
+      "success": true,
+      "rowCount": 5,
+      "resultsFile": "f17b2741-04d3-4e8c-a97e-f605cabf2dba.results.gz"
+    },
+    {
+      "id": "87a4283c-1d3c-497a-a0b9-afc1b8a01220",
+      "query": "select * from \"user\";",
+      "executedAt": "2026-02-04T01:56:09.020Z",
+      "durationMs": 7.3781249999883585,
+      "success": true,
+      "rowCount": 0
+    },
+    {
+      "id": "fe6e853f-dc89-4abb-a22e-d60edaf2b372",
+      "query": "select * from \"user\";",
+      "executedAt": "2026-02-04T01:55:44.440Z",
+      "durationMs": 7.199708000000101,
+      "success": true,
+      "rowCount": 5,
+      "resultsFile": "fe6e853f-dc89-4abb-a22e-d60edaf2b372.results.gz"
+    },
+    {
+      "id": "52f248f6-700a-46ee-8867-4d4c58d520cc",
+      "query": "select * from \"User\";",
+      "executedAt": "2026-02-04T01:55:26.458Z",
+      "durationMs": 8.366041000001132,
+      "success": false,
+      "errorMessage": "relation \"User\" does not exist"
+    },
+    {
+      "id": "b94373af-ce6e-4c6e-ac94-90abb60be33b",
+      "query": "select * from \"Users\";",
+      "executedAt": "2026-02-04T01:55:24.892Z",
+      "durationMs": 9.004499999980908,
+      "success": false,
+      "errorMessage": "relation \"Users\" does not exist"
+    },
+    {
+      "id": "1949e8a1-2dcf-4479-8f77-5b4d2ea299fb",
+      "query": "select * from users;",
+      "executedAt": "2026-02-04T01:55:19.658Z",
+      "durationMs": 6.453999999968801,
+      "success": false,
+      "errorMessage": "relation \"users\" does not exist"
+    }
+  ]
+}

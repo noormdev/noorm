@@ -5,7 +5,7 @@
  * with realistic scenarios that validate the text encoded type,
  * cross-dialect transfers, and MSSQL nvarchar(max) classification.
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { existsSync, mkdirSync, rmSync, readFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import path from 'node:path';

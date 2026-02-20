@@ -3,7 +3,7 @@
  *
  * Tests for db/explore, db/truncate, and db/teardown commands.
  */
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
 
 import {
     noorm,

@@ -4,31 +4,13 @@
  * MySQL-specific SQL generation for teardown operations.
  */
 import type { TeardownDialectOperations } from '../types.js';
+import { createDialectQuoting } from '../../shared/index.js';
 
-/**
- * Quote a MySQL identifier.
- */
-function quote(name: string): string {
-
-    return `\`${name.replace(/`/g, '``')}\``;
-
-}
-
-/**
- * Build fully qualified name with optional schema.
- * MySQL uses database instead of schema.
- */
-function qualifiedName(name: string, schema?: string): string {
-
-    if (schema) {
-
-        return `${quote(schema)}.${quote(name)}`;
-
-    }
-
-    return quote(name);
-
-}
+const { quote, qualifiedName } = createDialectQuoting({
+    open: '`',
+    close: '`',
+    escape: '``',
+});
 
 /**
  * MySQL teardown operations.

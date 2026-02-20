@@ -9,7 +9,7 @@
  * - `{%~ expr %}` for raw output
  * - `$` as the context variable
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import path from 'node:path';
 import {
     processFile,

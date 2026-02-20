@@ -1,5 +1,4 @@
-import { type HeadlessCommand } from './_helpers.js';
-import { formatHelp } from '../../core/help-formatter.js';
+import { type HeadlessCommand, createHelpOnlyCommand } from './_helpers.js';
 
 export const help = `
 # SECRET
@@ -27,11 +26,4 @@ Common secrets:
 See \`noorm help config\`.
 `;
 
-export const run: HeadlessCommand = async (_params, flags, _logger) => {
-
-    const output = flags.json ? help : formatHelp(help);
-    process.stdout.write(output + '\\n');
-
-    return 0;
-
-};
+export const run = createHelpOnlyCommand(help);

@@ -3,7 +3,7 @@
  *
  * Lists all vault secrets.
  */
-import { type HeadlessCommand, withVaultContext } from './_helpers.js';
+import { type HeadlessCommand, handleVaultResult, withVaultContext } from './_helpers.js';
 import { getVaultKey, getAllVaultSecrets, getVaultStatus } from '../../core/vault/index.js';
 
 export const help = `
@@ -95,66 +95,33 @@ export const run: HeadlessCommand = async (_params, flags, logger) => {
         },
     });
 
-    if (err) {
+    return handleVaultResult(result, err, flags, logger, (r) => {
 
-        if (flags.json) {
+        const secrets = r.secrets ?? [];
 
-            logger.result({ success: false, error: err.message });
+        if (secrets.length === 0) {
 
-        }
-        else {
-
-            logger.error(err.message);
-
-        }
-
-        return 1;
-
-    }
-
-    if (flags.json) {
-
-        logger.result(result);
-
-    }
-    else {
-
-        if (result?.success) {
-
-            const secrets = result.secrets ?? [];
-
-            if (secrets.length === 0) {
-
-                logger.info('Vault is empty. Use "noorm vault set <key> <value>" to add secrets.');
-
-            }
-            else {
-
-                logger.info(`Vault secrets (${secrets.length}):`);
-
-                for (const secret of secrets) {
-
-                    logger.info(`  ${secret.key} (set by ${secret.setBy})`);
-
-                }
-
-            }
-
-            if (result.status && result.status.usersWithoutAccess > 0) {
-
-                logger.warn(`${result.status.usersWithoutAccess} users pending vault access. Run "noorm vault propagate" to grant.`);
-
-            }
+            logger.info('Vault is empty. Use "noorm vault set <key> <value>" to add secrets.');
 
         }
         else {
 
-            logger.error(result?.error ?? 'Unknown error');
+            logger.info(`Vault secrets (${secrets.length}):`);
+
+            for (const secret of secrets) {
+
+                logger.info(`  ${secret.key} (set by ${secret.setBy})`);
+
+            }
 
         }
 
-    }
+        if (r.status && r.status.usersWithoutAccess > 0) {
 
-    return result?.success ? 0 : 1;
+            logger.warn(`${r.status.usersWithoutAccess} users pending vault access. Run "noorm vault propagate" to grant.`);
+
+        }
+
+    });
 
 };

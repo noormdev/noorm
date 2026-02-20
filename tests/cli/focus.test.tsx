@@ -3,7 +3,7 @@
  *
  * Tests FocusProvider and focus management hooks.
  */
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi } from 'bun:test';
 import { render } from 'ink-testing-library';
 import React, { useEffect, useState } from 'react';
 import { Text } from 'ink';

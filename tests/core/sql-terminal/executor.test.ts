@@ -4,7 +4,7 @@
  * Tests executeRawSql with mocked database interactions.
  * Verifies observer events, result structure, and error handling.
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'bun:test';
 import type { Kysely, RawBuilder } from 'kysely';
 
 import { executeRawSql } from '../../../src/core/sql-terminal/executor.js';

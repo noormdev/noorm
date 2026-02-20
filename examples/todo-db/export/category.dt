@@ -1,0 +1,1 @@
+{v:1,d:'postgresql',dv:'17.7',t:'category',columns:[{name:'id',type:'int',sourceType:'integer',nullable:false},{name:'name',type:'string',sourceType:'character varying',nullable:false},{name:'description',type:'string',sourceType:'text'},{name:'created_at',type:'timestamp',sourceType:'timestamp with time zone'}]}

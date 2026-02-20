@@ -1,7 +1,7 @@
 /**
  * Key storage tests.
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { join } from 'path';
 import { mkdtemp, rm, readFile, stat, chmod, writeFile } from 'fs/promises';
 import { tmpdir, homedir } from 'os';

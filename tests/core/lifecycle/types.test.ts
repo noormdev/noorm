@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 
 import { DEFAULT_TIMEOUTS, createDefaultConfig } from '../../../src/core/lifecycle/types.js';
 

@@ -4,7 +4,7 @@
  * Covers serializeRow(), serializeValue(), encodeValue() for simple types,
  * encoded types, null handling, and compression thresholds.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import {
     serializeRow,
     serializeValue,

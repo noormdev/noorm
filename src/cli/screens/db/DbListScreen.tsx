@@ -16,7 +16,7 @@
  * noorm db           # Opens this screen
  * ```
  */
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 
 import type { ReactElement } from 'react';
@@ -26,12 +26,9 @@ import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
 import { Panel, Spinner, ConnectionStatus, useToast } from '../../components/index.js';
-import { createConnection, testConnection } from '../../../core/connection/index.js';
+import { useConnection, useAsyncEffect } from '../../hooks/index.js';
 import { tablesExist } from '../../../core/version/index.js';
 import { attempt } from '@logosdx/utils';
-
-import type { NoormDatabase } from '../../../core/shared/index.js';
-import type { Kysely } from 'kysely';
 
 /**
  * Database status information.
@@ -66,112 +63,85 @@ export function DbListScreen({ params: _params }: ScreenProps): ReactElement {
     const [isLoading, setIsLoading] = useState(true);
     const [_error, setError] = useState<string | null>(null);
 
-    // Load database status
-    useEffect(() => {
+    // Shared connection
+    const { db, loading: connLoading, error: connError } = useConnection();
 
-        if (!activeConfig) {
+    // Load database status when connection is ready
+    useAsyncEffect(async (isCancelled) => {
 
+        if (connError) {
+
+            setStatus({
+                connected: false,
+                connectionError: connError,
+                tablesExist: false,
+                trackedCount: 0,
+            });
             setIsLoading(false);
 
             return;
 
         }
 
-        let cancelled = false;
+        if (!db) {
 
-        const loadStatus = async () => {
+            if (!connLoading) setIsLoading(false);
 
-            setIsLoading(true);
-            setError(null);
+            return;
 
-            // Test connection first
-            const testResult = await testConnection(activeConfig.connection);
+        }
 
-            if (!testResult.ok) {
+        setIsLoading(true);
+        setError(null);
 
-                if (!cancelled) {
+        const [result, err] = await attempt(async () => {
 
-                    setStatus({
-                        connected: false,
-                        connectionError: testResult.error,
-                        tablesExist: false,
-                        trackedCount: 0,
-                    });
-                    setIsLoading(false);
+            // Check if tables exist
+            const hasNoormTables = await tablesExist(db);
 
-                }
+            let count = 0;
 
-                return;
+            if (hasNoormTables) {
+
+                // Count tracked objects (executions with unique file paths)
+                const executions = await db
+                    .selectFrom('__noorm_executions__')
+                    .select(db.fn.countAll<number>().as('count'))
+                    .executeTakeFirst();
+
+                count = Number(executions?.count ?? 0);
 
             }
 
-            // Connect and get details
-            const [result, err] = await attempt(async () => {
+            return {
+                connected: true,
+                tablesExist: hasNoormTables,
+                trackedCount: count,
+            };
 
-                const conn = await createConnection(
-                    activeConfig.connection,
-                    activeConfigName ?? undefined,
-                );
-                const db = conn.db as Kysely<NoormDatabase>;
+        });
 
-                // Check if tables exist
-                const hasNoormTables = await tablesExist(db);
+        if (isCancelled()) return;
 
-                let count = 0;
+        if (err) {
 
-                if (hasNoormTables) {
-
-                    // Count tracked objects (executions with unique file paths)
-                    const executions = await db
-                        .selectFrom('__noorm_executions__')
-                        .select(db.fn.countAll<number>().as('count'))
-                        .executeTakeFirst();
-
-                    count = Number(executions?.count ?? 0);
-
-                }
-
-                await conn.destroy();
-
-                return {
-                    connected: true,
-                    tablesExist: hasNoormTables,
-                    trackedCount: count,
-                };
-
+            setStatus({
+                connected: false,
+                connectionError: err.message,
+                tablesExist: false,
+                trackedCount: 0,
             });
 
-            if (cancelled) return;
+        }
+        else if (result) {
 
-            if (err) {
+            setStatus(result);
 
-                setStatus({
-                    connected: false,
-                    connectionError: err.message,
-                    tablesExist: false,
-                    trackedCount: 0,
-                });
+        }
 
-            }
-            else if (result) {
+        setIsLoading(false);
 
-                setStatus(result);
-
-            }
-
-            setIsLoading(false);
-
-        };
-
-        loadStatus();
-
-        return () => {
-
-            cancelled = true;
-
-        };
-
-    }, [activeConfig, activeConfigName]);
+    }, [db, connLoading, connError]);
 
     // Keyboard shortcuts
     useInput((input, key) => {
@@ -284,7 +254,7 @@ export function DbListScreen({ params: _params }: ScreenProps): ReactElement {
     }
 
     // Loading state
-    if (isLoading) {
+    if (isLoading || connLoading) {
 
         return (
             <Box flexDirection="column" gap={1}>

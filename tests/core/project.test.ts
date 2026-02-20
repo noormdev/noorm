@@ -3,7 +3,7 @@
  *
  * Tests the directory walking logic that finds the nearest .noorm project.
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { join } from 'path';
 import { mkdtemp, rm, mkdir, realpath } from 'fs/promises';
 import { realpathSync } from 'fs';

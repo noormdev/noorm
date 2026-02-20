@@ -1,0 +1,6 @@
+{v:1,d:'postgresql',dv:'17.7',t:'user',columns:[{name:'id',type:'int',sourceType:'integer',nullable:false},{name:'username',type:'string',sourceType:'character varying',nullable:false},{name:'email',type:'string',sourceType:'character varying',nullable:false},{name:'created_at',type:'timestamp',sourceType:'timestamp with time zone'},{name:'updated_at',type:'timestamp',sourceType:'timestamp with time zone'}]}
+[1,'alice_chen','alice@example.com','2026-02-03T07:23:41.916Z','2026-02-03T07:23:41.916Z']
+[2,'bob_martinez','bob@example.com','2026-02-03T07:23:41.916Z','2026-02-03T07:23:41.916Z']
+[3,'carol_williams','carol@example.com','2026-02-03T07:23:41.916Z','2026-02-03T07:23:41.916Z']
+[4,'david_kim','david@example.com','2026-02-03T07:23:41.916Z','2026-02-03T07:23:41.916Z']
+[5,'eva_singh','eva@example.com','2026-02-03T07:23:41.916Z','2026-02-03T07:23:41.916Z']

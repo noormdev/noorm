@@ -4,7 +4,7 @@
  * Verifies the ctx.noorm namespace: lazy singleton behavior,
  * shared state reading, and not-connected errors.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 
 import { Context } from '../../src/sdk/context.js';
 import { NoormOps } from '../../src/sdk/noorm-ops.js';

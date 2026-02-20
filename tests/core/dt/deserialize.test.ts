@@ -4,7 +4,7 @@
  * Covers deserializeRow(), deserializeValue() with dialect-specific
  * conversions for json, vector, array, and simple types.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import { gzipSync } from 'node:zlib';
 
 import {

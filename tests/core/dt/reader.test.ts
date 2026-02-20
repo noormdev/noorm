@@ -4,7 +4,7 @@
  * Covers reading .dt/.dtz/.dtzx files, schema parsing, and row iteration.
  * Depends on DtWriter for fixture generation.
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import path from 'node:path';

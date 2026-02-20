@@ -16,19 +16,16 @@
  * noorm secret           # Opens this screen
  * ```
  */
-import { useCallback, useMemo, useState, useEffect, useRef } from 'react';
+import { useCallback, useMemo } from 'react';
 import { Box, Text, useInput } from 'ink';
-import type { Kysely } from 'kysely';
-import { attempt } from '@logosdx/utils';
 
 import type { ReactElement } from 'react';
 import type { ScreenProps } from '../../types.js';
-import type { NoormDatabase } from '../../../core/shared/index.js';
-import type { ConnectionResult } from '../../../core/connection/types.js';
 
 import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
+import { useVaultSecretKeys } from '../../hooks/index.js';
 import {
     Panel,
     SecretValueList,
@@ -37,9 +34,6 @@ import {
     type SecretValueItem,
 } from '../../components/index.js';
 import { maskValue } from '../../../core/logger/redact.js';
-import { createConnection } from '../../../core/connection/index.js';
-import { getVaultStatus, getVaultKey, getAllVaultSecrets } from '../../../core/vault/index.js';
-import { loadPrivateKey } from '../../../core/identity/storage.js';
 
 /**
  * SecretListScreen component.
@@ -50,88 +44,9 @@ export function SecretListScreen({ params: _params }: ScreenProps): ReactElement
 
     const { navigate, back } = useRouter();
     const { isFocused } = useFocusScope('SecretList');
-    const { activeConfig, activeConfigName, stateManager, settingsManager, identity } = useAppContext();
+    const { activeConfig, activeConfigName, stateManager, settingsManager } = useAppContext();
     const { showToast } = useToast();
-
-    // Vault secret keys (loaded async)
-    const [vaultSecretKeys, setVaultSecretKeys] = useState<string[]>([]);
-    const connRef = useRef<ConnectionResult | null>(null);
-    const loadingRef = useRef(false);
-
-    // Load vault secrets on mount
-    useEffect(() => {
-
-        if (!activeConfig || !activeConfigName || !identity) return;
-        if (loadingRef.current) return;
-        loadingRef.current = true;
-
-        let cancelled = false;
-
-        const loadVaultSecrets = async (): Promise<void> => {
-
-            const [conn, connErr] = await attempt(() =>
-                createConnection(activeConfig.connection, activeConfigName),
-            );
-
-            if (connErr || !conn || cancelled) return;
-
-            connRef.current = conn;
-            const db = conn.db as Kysely<NoormDatabase>;
-
-            const vaultStatus = await getVaultStatus(db, identity.identityHash);
-
-            if (vaultStatus.hasAccess && !cancelled) {
-
-                const privateKey = await loadPrivateKey();
-
-                if (privateKey && !cancelled) {
-
-                    const vaultKey = await getVaultKey(db, identity.identityHash, privateKey);
-
-                    if (vaultKey && !cancelled) {
-
-                        const allSecrets = await getAllVaultSecrets(db, vaultKey);
-                        setVaultSecretKeys(Object.keys(allSecrets));
-
-                    }
-
-                }
-
-            }
-
-            await conn.destroy();
-            connRef.current = null;
-
-        };
-
-        loadVaultSecrets();
-
-        return () => {
-
-            cancelled = true;
-
-            if (connRef.current) {
-
-                connRef.current.destroy();
-                connRef.current = null;
-
-            }
-
-        };
-
-    }, [activeConfig, activeConfigName, identity]);
-
-    // Try to match config name to a stage (common pattern: config "prod" -> stage "prod")
-    const stageName = activeConfigName;
-
-    // Get required secrets (universal + stage-specific merged)
-    const requiredSecrets = useMemo(() => {
-
-        if (!stageName || !settingsManager) return [];
-
-        return settingsManager.getRequiredSecrets(stageName);
-
-    }, [stageName, settingsManager]);
+    const { vaultSecretKeys, requiredSecrets } = useVaultSecretKeys();
 
     // Get stored secrets for active config
     const storedSecretKeys = useMemo<string[]>(() => {
@@ -319,7 +234,7 @@ export function SecretListScreen({ params: _params }: ScreenProps): ReactElement
             <Panel title={`Secrets for "${activeConfigName}"`} paddingX={1} paddingY={1}>
                 <Box flexDirection="column" gap={1}>
                     {/* Stage info */}
-                    {stageName && <Text dimColor>Stage: {stageName}</Text>}
+                    {activeConfigName && <Text dimColor>Stage: {activeConfigName}</Text>}
 
                     <SecretValueList
                         secrets={allSecrets}

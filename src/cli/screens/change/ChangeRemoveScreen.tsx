@@ -10,8 +10,7 @@
  * noorm change rm add-user-roles    # Same thing
  * ```
  */
-import { useState, useEffect, useCallback } from 'react';
-import { join } from 'path';
+import { useState, useCallback } from 'react';
 import { Box, Text, useInput } from 'ink';
 
 import type { ReactElement } from 'react';
@@ -24,8 +23,9 @@ import { attempt } from '@logosdx/utils';
 import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
-import { Panel, Spinner, StatusMessage, Confirm } from '../../components/index.js';
-import { discoverChanges } from '../../../core/change/parser.js';
+import { Panel, Spinner, StatusMessage, Confirm, MissingParamPanel } from '../../components/index.js';
+import { useAsyncEffect } from '../../hooks/index.js';
+import { getErrorMessage, loadChangesWithStatus } from '../../utils/index.js';
 import { deleteChange } from '../../../core/change/scaffold.js';
 import { ChangeHistory } from '../../../core/change/history.js';
 import { createConnection } from '../../../core/connection/factory.js';
@@ -58,7 +58,7 @@ export function ChangeRemoveScreen({ params }: ScreenProps): ReactElement {
     const [error, setError] = useState<string | null>(null);
 
     // Load change info
-    useEffect(() => {
+    useAsyncEffect(async (isCancelled) => {
 
         if (!activeConfig || !changeName) {
 
@@ -66,79 +66,49 @@ export function ChangeRemoveScreen({ params }: ScreenProps): ReactElement {
 
         }
 
-        let cancelled = false;
+        const [_, err] = await attempt(async () => {
 
-        const loadChange = async () => {
+            const { changes, statuses } = await loadChangesWithStatus(
+                activeConfig, activeConfigName ?? '', settings, projectRoot,
+            );
 
-            const [_, err] = await attempt(async () => {
+            const found = changes.find((cs) => cs.name === changeName);
+            const dbStatus = statuses.get(changeName);
 
-                // Find the change on disk
-                const changesDir = settings?.paths?.changes ?? 'changes';
-                const sqlDir = settings?.paths?.sql ?? 'sql';
-                const changes = await discoverChanges(
-                    join(projectRoot, changesDir),
-                    join(projectRoot, sqlDir),
-                );
+            if (isCancelled()) return;
 
-                const found = changes.find((cs) => cs.name === changeName);
+            if (found) {
 
-                // Get status from database
-                const conn = await createConnection(
-                    activeConfig.connection,
-                    activeConfigName ?? '__rm__',
-                );
-                const db = conn.db as Kysely<NoormDatabase>;
+                setChange(found);
+                setIsOrphaned(false);
 
-                const history = new ChangeHistory(db, activeConfigName ?? '');
-                const statuses = await history.getAllStatuses();
-                const dbStatus = statuses.get(changeName);
+            }
+            else if (dbStatus) {
 
-                await conn.destroy();
+                setIsOrphaned(true);
 
-                if (cancelled) return;
+            }
+            else {
 
-                if (found) {
-
-                    setChange(found);
-                    setIsOrphaned(false);
-
-                }
-                else if (dbStatus) {
-
-                    setIsOrphaned(true);
-
-                }
-                else {
-
-                    throw new Error(`Change not found: ${changeName}`);
-
-                }
-
-                setStatus(dbStatus ?? null);
-                setStep('confirm');
-
-            });
-
-            if (err) {
-
-                if (!cancelled) {
-
-                    setError(err instanceof Error ? err.message : String(err));
-                    setStep('error');
-
-                }
+                throw new Error(`Change not found: ${changeName}`);
 
             }
 
-        };
+            setStatus(dbStatus ?? null);
+            setStep('confirm');
 
-        loadChange();
+        });
 
-        return () => {
+        if (err) {
 
-            cancelled = true;
+            if (!isCancelled()) {
 
-        };
+                setError(getErrorMessage(err));
+                setStep('error');
+
+            }
+
+        }
 
     }, [activeConfig, activeConfigName, changeName]);
 
@@ -180,7 +150,7 @@ export function ChangeRemoveScreen({ params }: ScreenProps): ReactElement {
 
         if (err) {
 
-            setError(err instanceof Error ? err.message : String(err));
+            setError(getErrorMessage(err));
             setStep('error');
 
         }
@@ -210,11 +180,7 @@ export function ChangeRemoveScreen({ params }: ScreenProps): ReactElement {
     // No change name provided
     if (!changeName) {
 
-        return (
-            <Panel title="Delete Change" paddingX={2} paddingY={1} borderColor="yellow">
-                <Text color="yellow">No change name provided.</Text>
-            </Panel>
-        );
+        return <MissingParamPanel title="Delete Change" param="change name" />;
 
     }
 

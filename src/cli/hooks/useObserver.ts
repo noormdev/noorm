@@ -1,8 +1,9 @@
 /**
  * React hooks for observer event subscriptions.
  *
- * Wraps @logosdx/observer in React patterns with automatic cleanup.
- * Eliminates boilerplate useEffect/cleanup for event subscriptions.
+ * Thin wrappers around @logosdx/react's observer context that preserve
+ * the existing consumer API (callbackRef pattern — no useCallback needed
+ * by consumers).
  *
  * @example
  * ```typescript
@@ -17,12 +18,13 @@
  * emitStart({ sqlPath, fileCount })
  *
  * // Promise-based subscription
- * const [result, error, pending, cancel] = useEventPromise('build:complete')
+ * const [waiting, result, cancel] = useEventPromise('build:complete')
  * ```
  */
-import { useEffect, useCallback, useState, useRef, useMemo, type DependencyList } from 'react';
+import { useCallback, useRef, useMemo, type DependencyList } from 'react';
 
-import { observer, type NoormEvents, type NoormEventNames } from '../../core/observer.js';
+import { useNoormObserver } from '../observer-context.js';
+import type { NoormEvents, NoormEventNames } from '../../core/observer.js';
 
 /**
  * Subscribe to an observer event with automatic cleanup.
@@ -35,11 +37,6 @@ import { observer, type NoormEvents, type NoormEventNames } from '../../core/obs
  * useOnEvent('change:complete', (data) => {
  *     setResults(prev => [...prev, data])
  * }, [])
- *
- * // With dependencies
- * useOnEvent('file:after', (data) => {
- *     if (data.filepath === targetFile) handleComplete(data)
- * }, [targetFile])
  * ```
  */
 export function useOnEvent<E extends NoormEventNames>(
@@ -48,21 +45,13 @@ export function useOnEvent<E extends NoormEventNames>(
     deps: DependencyList,
 ): void {
 
-    // Store callback in ref to avoid re-subscribing on callback changes
     const callbackRef = useRef(callback);
     callbackRef.current = callback;
 
-    useEffect(() => {
+    const { on } = useNoormObserver();
+    const handler = useCallback((data: NoormEvents[E]) => callbackRef.current(data), []);
 
-        const cleanup = observer.on(event, (data) => {
-
-            callbackRef.current(data);
-
-        });
-
-        return cleanup;
-
-    }, [event, ...deps]);
+    on(event, handler);
 
 }
 
@@ -88,17 +77,10 @@ export function useOnceEvent<E extends NoormEventNames>(
     const callbackRef = useRef(callback);
     callbackRef.current = callback;
 
-    useEffect(() => {
+    const { once } = useNoormObserver();
+    const handler = useCallback((data: NoormEvents[E]) => callbackRef.current(data), []);
 
-        const cleanup = observer.once(event, (data) => {
-
-            callbackRef.current(data);
-
-        });
-
-        return cleanup;
-
-    }, [event, ...deps]);
+    once(event, handler);
 
 }
 
@@ -106,19 +88,11 @@ export function useOnceEvent<E extends NoormEventNames>(
  * Get a memoized function to emit an observer event.
  *
  * Returns a stable callback reference that emits the specified event.
- * The callback only changes when dependencies change.
  *
  * @example
  * ```typescript
  * const emitStart = useEmit('build:start')
- *
- * const handleStart = () => {
- *     emitStart({ sqlPath: '/sql', fileCount: 10 })
- * }
- *
- * // With dependencies for dynamic event data
- * const emitProgress = useEmit('change:file')
- * emitProgress({ change: name, filepath, index, total })
+ * emitStart({ sqlPath: '/sql', fileCount: 10 })
  * ```
  */
 export function useEmit<E extends NoormEventNames>(
@@ -126,15 +100,9 @@ export function useEmit<E extends NoormEventNames>(
     deps: DependencyList = [],
 ): (data: NoormEvents[E]) => void {
 
-    return useCallback(
-        (data: NoormEvents[E]) => {
+    const { emitFactory } = useNoormObserver();
 
-            // Cast needed due to observer.emit's conditional type signature
-            (observer.emit as (e: E, d: NoormEvents[E]) => void)(event, data);
-
-        },
-        [event, ...deps],
-    );
+    return emitFactory(event);
 
 }
 
@@ -160,77 +128,20 @@ export interface EventPromiseState<T> {
  *
  * @example
  * ```typescript
- * const [result, error, pending, cancel] = useEventPromise('build:complete')
+ * const [waiting, result, cancel] = useEventPromise('build:complete')
  *
- * if (pending) return <Spinner label="Building..." />
- * if (error) return <Text color="red">{error.message}</Text>
+ * if (waiting) return <Spinner label="Building..." />
  * if (result) return <Text>Built {result.filesRun} files</Text>
- *
- * // Cancel on user action
- * useInput((input) => {
- *     if (input === 'q') cancel()
- * })
  * ```
  */
 export function useEventPromise<E extends NoormEventNames>(
     event: E,
 ): [value: NoormEvents[E] | null, error: Error | null, pending: boolean, cancel: () => void] {
 
-    const [state, setState] = useState<EventPromiseState<NoormEvents[E]>>({
-        value: null,
-        error: null,
-        pending: true,
-    });
+    const { oncePromise } = useNoormObserver();
+    const [waiting, data, cancel] = oncePromise(event);
 
-    const cancelRef = useRef<(() => void) | null>(null);
-
-    useEffect(() => {
-
-        // Reset state on new subscription
-        setState({ value: null, error: null, pending: true });
-
-        const promise = observer.once(event);
-
-        // Store cancel function using cleanup from EventPromise
-        cancelRef.current = () => {
-
-            promise.cleanup?.();
-            setState((prev) => ({ ...prev, pending: false }));
-
-        };
-
-        promise
-            .then((data) => {
-
-                setState({ value: data, error: null, pending: false });
-
-            })
-            .catch((err) => {
-
-                // Only set error if not cancelled
-                if (err?.message !== 'Cancelled') {
-
-                    setState({ value: null, error: err, pending: false });
-
-                }
-
-            });
-
-        return () => {
-
-            promise.cleanup?.();
-
-        };
-
-    }, [event]);
-
-    const cancel = useCallback(() => {
-
-        cancelRef.current?.();
-
-    }, []);
-
-    return [state.value, state.error, state.pending, cancel];
+    return [data, null, waiting, cancel];
 
 }
 

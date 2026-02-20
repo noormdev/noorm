@@ -9,8 +9,7 @@
  * noorm change edit add-user-roles    # Same thing
  * ```
  */
-import { useState, useEffect } from 'react';
-import { join } from 'path';
+import { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { spawn } from 'child_process';
 
@@ -21,7 +20,9 @@ import { attempt } from '@logosdx/utils';
 import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
-import { Panel, Spinner, StatusMessage } from '../../components/index.js';
+import { Panel, Spinner, StatusMessage, MissingParamPanel } from '../../components/index.js';
+import { useAsyncEffect } from '../../hooks/index.js';
+import { getErrorMessage, resolveChangesDir, resolveSqlDir } from '../../utils/index.js';
 import { discoverChanges } from '../../../core/change/parser.js';
 
 /**
@@ -49,7 +50,7 @@ export function ChangeEditScreen({ params }: ScreenProps): ReactElement {
     const [error, setError] = useState<string | null>(null);
 
     // Find and open change
-    useEffect(() => {
+    useAsyncEffect(async (isCancelled) => {
 
         if (!activeConfig || !changeName) {
 
@@ -59,68 +60,52 @@ export function ChangeEditScreen({ params }: ScreenProps): ReactElement {
 
         }
 
-        let cancelled = false;
+        const [_, err] = await attempt(async () => {
 
-        const openChange = async () => {
+            // Find the change
+            const changes = await discoverChanges(
+                resolveChangesDir(projectRoot, settings),
+                resolveSqlDir(projectRoot, settings),
+            );
 
-            const [_, err] = await attempt(async () => {
+            const change = changes.find((cs) => cs.name === changeName);
 
-                // Find the change
-                const changesDir = settings?.paths?.changes ?? 'changes';
-                const sqlDir = settings?.paths?.sql ?? 'sql';
-                const changes = await discoverChanges(
-                    join(projectRoot, changesDir),
-                    join(projectRoot, sqlDir),
-                );
+            if (!change) {
 
-                const change = changes.find((cs) => cs.name === changeName);
-
-                if (!change) {
-
-                    throw new Error(`Change not found: ${changeName}`);
-
-                }
-
-                if (cancelled) return;
-
-                setChangePath(change.path);
-                setStep('opening');
-
-                // Get editor from environment
-                const editor = process.env['EDITOR'] || process.env['VISUAL'] || 'code';
-
-                // Open in editor
-                const child = spawn(editor, [change.path], {
-                    detached: true,
-                    stdio: 'ignore',
-                });
-
-                child.unref();
-
-                setStep('complete');
-
-            });
-
-            if (err) {
-
-                if (!cancelled) {
-
-                    setError(err instanceof Error ? err.message : String(err));
-                    setStep('error');
-
-                }
+                throw new Error(`Change not found: ${changeName}`);
 
             }
 
-        };
+            if (isCancelled()) return;
 
-        openChange();
+            setChangePath(change.path);
+            setStep('opening');
 
-        return () => {
+            // Get editor from environment
+            const editor = process.env['EDITOR'] || process.env['VISUAL'] || 'code';
 
-            cancelled = true;
+            // Open in editor
+            const child = spawn(editor, [change.path], {
+                detached: true,
+                stdio: 'ignore',
+            });
 
-        };
+            child.unref();
+
+            setStep('complete');
+
+        });
+
+        if (err) {
+
+            if (!isCancelled()) {
+
+                setError(getErrorMessage(err));
+                setStep('error');
+
+            }
+
+        }
 
     }, [activeConfig, changeName]);
 
@@ -140,11 +125,7 @@ export function ChangeEditScreen({ params }: ScreenProps): ReactElement {
     // No change name provided
     if (!changeName) {
 
-        return (
-            <Panel title="Edit Change" paddingX={2} paddingY={1} borderColor="yellow">
-                <Text color="yellow">No change name provided.</Text>
-            </Panel>
-        );
+        return <MissingParamPanel title="Edit Change" param="change name" />;
 
     }
 

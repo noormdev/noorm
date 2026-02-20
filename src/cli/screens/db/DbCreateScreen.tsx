@@ -10,7 +10,7 @@
  * noorm db:create --yes        # Skip confirmation
  * ```
  */
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { Box, Text, useInput } from 'ink';
 
 import type { ReactElement } from 'react';
@@ -20,7 +20,8 @@ import type { DbStatus } from '../../../core/db/index.js';
 import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
-import { useToast, Panel, Spinner, Confirm, ProtectedConfirm } from '../../components/index.js';
+import { useToast, Panel, Spinner, SmartConfirm } from '../../components/index.js';
+import { useAsyncEffect } from '../../hooks/index.js';
 import { checkDbStatus, createDb } from '../../../core/db/index.js';
 
 /**
@@ -48,7 +49,7 @@ export function DbCreateScreen({ params: _params }: ScreenProps): ReactElement {
     const [status, setStatus] = useState<DbStatus | null>(null);
 
     // Check database status
-    useEffect(() => {
+    useAsyncEffect(async (isCancelled) => {
 
         if (!activeConfig || !activeConfigName) {
 
@@ -59,48 +60,34 @@ export function DbCreateScreen({ params: _params }: ScreenProps): ReactElement {
 
         }
 
-        let cancelled = false;
+        const result = await checkDbStatus(activeConfig.connection);
 
-        const check = async () => {
+        if (isCancelled()) return;
 
-            const result = await checkDbStatus(activeConfig.connection);
+        if (!result.serverOk) {
 
-            if (cancelled) return;
+            setError(`Cannot connect to server: ${result.error}`);
+            setPhase('error');
 
-            if (!result.serverOk) {
+            return;
 
-                setError(`Cannot connect to server: ${result.error}`);
-                setPhase('error');
+        }
 
-                return;
+        // Already fully initialized - show toast and go back
+        if (result.exists && result.trackingInitialized) {
 
-            }
+            showToast({
+                message: `Database "${activeConfig.connection.database}" already initialized`,
+                variant: 'info',
+            });
+            back();
 
-            // Already fully initialized - show toast and go back
-            if (result.exists && result.trackingInitialized) {
+            return;
 
-                showToast({
-                    message: `Database "${activeConfig.connection.database}" already initialized`,
-                    variant: 'info',
-                });
-                back();
+        }
 
-                return;
-
-            }
-
-            setStatus(result);
-            setPhase('confirm');
-
-        };
-
-        check();
-
-        return () => {
-
-            cancelled = true;
-
-        };
+        setStatus(result);
+        setPhase('confirm');
 
     }, [activeConfig, activeConfigName, showToast, back]);
 
@@ -213,26 +200,13 @@ export function DbCreateScreen({ params: _params }: ScreenProps): ReactElement {
             ? `Create database "${dbName}" and initialize tracking tables?`
             : `Initialize tracking tables in "${dbName}"?`;
 
-        // Protected config requires type-to-confirm
-        if (activeConfig.protected) {
-
-            return (
-                <ProtectedConfirm
-                    configName={activeConfigName ?? 'unknown'}
-                    action={willCreateDb ? 'create database for' : 'initialize tracking for'}
-                    onConfirm={handleConfirm}
-                    onCancel={handleCancel}
-                    focusLabel="DbCreateConfirm"
-                />
-            );
-
-        }
-
-        // Regular confirmation
         return (
-            <Confirm
-                title="Create Database"
+            <SmartConfirm
+                protected={activeConfig.protected ?? false}
+                configName={activeConfigName ?? 'unknown'}
+                action={willCreateDb ? 'create database for' : 'initialize tracking for'}
                 message={actionText}
+                title="Create Database"
                 onConfirm={handleConfirm}
                 onCancel={handleCancel}
                 focusLabel="DbCreateConfirm"

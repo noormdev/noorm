@@ -16,7 +16,6 @@ import { Box, Text, useInput } from 'ink';
 
 import type { ReactElement } from 'react';
 import type { ScreenProps } from '../../types.js';
-import type { LockStatus as LockStatusType } from '../../../core/lock/index.js';
 import type { NoormDatabase } from '../../../core/shared/index.js';
 import type { Kysely } from 'kysely';
 
@@ -25,9 +24,9 @@ import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
 import { Panel, Spinner, Form, useToast } from '../../components/index.js';
-import { createConnection, testConnection } from '../../../core/connection/index.js';
+import { useLockStatus } from '../../hooks/index.js';
+import { createConnection } from '../../../core/connection/index.js';
 import { getLockManager, LockAcquireError } from '../../../core/lock/index.js';
-import { resolveIdentity, formatIdentity } from '../../../core/identity/index.js';
 
 /**
  * Screen phase state.
@@ -48,11 +47,18 @@ export function LockAcquireScreen({ params: _params }: ScreenProps): ReactElemen
 
     const [phase, setPhase] = useState<Phase>('loading');
     const [error, setError] = useState<string | null>(null);
-    const [lockStatus, setLockStatus] = useState<LockStatusType | null>(null);
-    const [identityStr, setIdentityStr] = useState<string>('');
 
-    // Check current lock status
+    const {
+        status: lockStatus,
+        identityStr,
+        loading: lockLoading,
+        error: lockError,
+    } = useLockStatus(activeConfig, activeConfigName, cryptoIdentity);
+
+    // Derive phase from lock status loading state
     useEffect(() => {
+
+        if (lockLoading) return;
 
         if (!activeConfig || !activeConfigName) {
 
@@ -63,91 +69,27 @@ export function LockAcquireScreen({ params: _params }: ScreenProps): ReactElemen
 
         }
 
-        let cancelled = false;
+        if (lockError) {
 
-        const checkStatus = async () => {
+            setError(lockError);
+            setPhase('error');
 
-            // Resolve identity
-            const identity = resolveIdentity({
-                cryptoIdentity: cryptoIdentity ?? null,
-            });
-            const formattedIdentity = formatIdentity(identity);
+            return;
 
-            if (!cancelled) {
+        }
 
-                setIdentityStr(formattedIdentity);
+        // If locked by someone else, show blocked state
+        if (lockStatus?.isLocked && lockStatus.lock?.lockedBy !== identityStr) {
 
-            }
+            setPhase('blocked');
 
-            // Test connection
-            const testResult = await testConnection(activeConfig.connection);
+            return;
 
-            if (!testResult.ok) {
+        }
 
-                if (!cancelled) {
+        setPhase('form');
 
-                    setError(`Cannot connect to database: ${testResult.error}`);
-                    setPhase('error');
-
-                }
-
-                return;
-
-            }
-
-            // Check lock status
-            const [result, err] = await attempt(async () => {
-
-                const conn = await createConnection(
-                    activeConfig.connection,
-                    activeConfigName ?? undefined,
-                );
-                const db = conn.db as Kysely<NoormDatabase>;
-                const lockManager = getLockManager();
-
-                const status = await lockManager.status(db, activeConfigName ?? '');
-
-                await conn.destroy();
-
-                return status;
-
-            });
-
-            if (cancelled) return;
-
-            if (err) {
-
-                setError(err.message);
-                setPhase('error');
-
-                return;
-
-            }
-
-            setLockStatus(result);
-
-            // If locked by someone else, show blocked state
-            if (result?.isLocked && result.lock?.lockedBy !== formattedIdentity) {
-
-                setPhase('blocked');
-
-                return;
-
-            }
-
-            setPhase('form');
-
-        };
-
-        checkStatus();
-
-        return () => {
-
-            cancelled = true;
-
-        };
-
-    }, [activeConfig, activeConfigName, cryptoIdentity]);
+    }, [lockLoading, lockError, lockStatus, identityStr, activeConfig, activeConfigName]);
 
     // Execute lock acquisition
     const handleSubmit = useCallback(

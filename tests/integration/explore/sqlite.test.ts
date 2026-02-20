@@ -4,7 +4,7 @@
  * Tests the explore module against a real SQLite in-memory database.
  * Verifies fetchOverview, fetchList, and fetchDetail operations.
  */
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
 import type { Kysely } from 'kysely';
 
 import {

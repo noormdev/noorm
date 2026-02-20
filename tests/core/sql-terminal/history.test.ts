@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterAll } from 'vitest';
+import { describe, it, expect, beforeEach, afterAll } from 'bun:test';
 import { readFile, writeFile, mkdir, readdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { gzip } from 'node:zlib';

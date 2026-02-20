@@ -14,7 +14,7 @@
  * noorm run build     # Opens this screen
  * ```
  */
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { ProgressBar } from '@inkjs/ui';
 import { join } from 'path';
@@ -25,18 +25,17 @@ import type { ScreenProps } from '../../types.js';
 import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useSettings, useGlobalModes, useAppContext } from '../../app-context.js';
-import { Panel, Spinner, Confirm, ProtectedConfirm, useToast } from '../../components/index.js';
-import { useRunProgress } from '../../hooks/index.js';
+import { Panel, Spinner, SmartConfirm, useToast } from '../../components/index.js';
+import { useRunProgress, useAsyncEffect } from '../../hooks/index.js';
 import { getEffectiveBuildPaths } from '../../../core/settings/rules.js';
 import { discoverFiles, runBuild } from '../../../core/runner/index.js';
 import { filterFilesByPaths } from '../../../core/shared/index.js';
 import { createConnection, testConnection } from '../../../core/connection/index.js';
-import { resolveIdentity } from '../../../core/identity/index.js';
+import { getErrorMessage, resolveScreenIdentity, buildRunContext } from '../../utils/index.js';
 import { attempt } from '@logosdx/utils';
 
 import type { NoormDatabase } from '../../../core/shared/index.js';
 import type { Kysely } from 'kysely';
-import type { RunContext } from '../../../core/runner/index.js';
 
 type Phase = 'loading' | 'confirm' | 'running' | 'complete' | 'error';
 
@@ -59,80 +58,62 @@ export function RunBuildScreen({ params: _params }: ScreenProps): ReactElement {
     const [error, setError] = useState<string | null>(null);
 
     // Load settings and discover files
-    useEffect(() => {
+    useAsyncEffect(async (isCancelled) => {
 
-        if (!activeConfig || !activeConfigName || !settings) {
+        if (!activeConfig || !activeConfigName || !settings) return;
+
+        setPhase('loading');
+        setError(null);
+
+        // Get project root
+        const projectRoot = process.cwd();
+        const schema = settings.paths?.sql ?? 'sql';
+        setSqlPath(schema);
+
+        // Get effective build paths
+        const buildInclude = settings.build?.include ?? [];
+        const buildExclude = settings.build?.exclude ?? [];
+        const rules = settings.rules ?? [];
+
+        const configForMatch = {
+            name: activeConfigName,
+            protected: activeConfig.protected ?? false,
+            isTest: activeConfig.isTest ?? false,
+            type: activeConfig.type,
+        };
+
+        const effectivePaths = getEffectiveBuildPaths(
+            buildInclude,
+            buildExclude,
+            rules,
+            configForMatch,
+        );
+
+        // Discover all SQL files in schema path
+        const schemaFullPath = join(projectRoot, schema);
+        const [allFiles, discoverErr] = await attempt(() => discoverFiles(schemaFullPath));
+
+        if (isCancelled()) return;
+
+        if (discoverErr) {
+
+            setError(`Failed to discover files: ${discoverErr.message}`);
+            setPhase('error');
 
             return;
 
         }
 
-        let cancelled = false;
+        // Filter by effective paths (patterns are relative to SQL directory)
+        const filteredFiles = filterFilesByPaths(
+            allFiles ?? [],
+            schemaFullPath,
+            effectivePaths.include,
+            effectivePaths.exclude,
+        );
 
-        const load = async () => {
-
-            setPhase('loading');
-            setError(null);
-
-            // Get project root
-            const projectRoot = process.cwd();
-            const schema = settings.paths?.sql ?? 'sql';
-            setSqlPath(schema);
-
-            // Get effective build paths
-            const buildInclude = settings.build?.include ?? [];
-            const buildExclude = settings.build?.exclude ?? [];
-            const rules = settings.rules ?? [];
-
-            const configForMatch = {
-                name: activeConfigName,
-                protected: activeConfig.protected ?? false,
-                isTest: activeConfig.isTest ?? false,
-                type: activeConfig.type,
-            };
-
-            const effectivePaths = getEffectiveBuildPaths(
-                buildInclude,
-                buildExclude,
-                rules,
-                configForMatch,
-            );
-
-            // Discover all SQL files in schema path
-            const schemaFullPath = join(projectRoot, schema);
-            const [allFiles, discoverErr] = await attempt(() => discoverFiles(schemaFullPath));
-
-            if (cancelled) return;
-
-            if (discoverErr) {
-
-                setError(`Failed to discover files: ${discoverErr.message}`);
-                setPhase('error');
-
-                return;
-
-            }
-
-            // Filter by effective paths (patterns are relative to SQL directory)
-            const filteredFiles = filterFilesByPaths(
-                allFiles ?? [],
-                schemaFullPath,
-                effectivePaths.include,
-                effectivePaths.exclude,
-            );
-
-            setFiles(filteredFiles);
-            setPhase('confirm');
-
-        };
-
-        load();
-
-        return () => {
-
-            cancelled = true;
-
-        };
+        setFiles(filteredFiles);
+        setPhase('confirm');
 
     }, [activeConfig, activeConfigName, settings]);
 
@@ -147,9 +128,7 @@ export function RunBuildScreen({ params: _params }: ScreenProps): ReactElement {
         const projectRoot = process.cwd();
 
         // Resolve identity
-        const identity = resolveIdentity({
-            cryptoIdentity: cryptoIdentity ?? null,
-        });
+        const identity = resolveScreenIdentity(cryptoIdentity);
 
         // Test connection
         const testResult = await testConnection(activeConfig.connection);
@@ -181,16 +160,11 @@ export function RunBuildScreen({ params: _params }: ScreenProps): ReactElement {
 
             const db = conn.db as Kysely<NoormDatabase>;
 
-            // Build run context
-            const context: RunContext = {
-                db,
-                configName: activeConfigName,
-                identity,
-                projectRoot,
-                config: activeConfig as unknown as Record<string, unknown>,
-                secrets: stateManager.getAllSecrets(activeConfigName),
-                globalSecrets: stateManager.getAllGlobalSecrets(),
-            };
+            const context = buildRunContext({
+                db, configName: activeConfigName, identity,
+                projectRoot, activeConfig: activeConfig as unknown as Record<string, unknown>,
+                stateManager,
+            });
 
             // Run options from global modes
             const options = {
@@ -207,7 +181,7 @@ export function RunBuildScreen({ params: _params }: ScreenProps): ReactElement {
         }
         catch (err) {
 
-            setError(err instanceof Error ? err.message : String(err));
+            setError(getErrorMessage(err));
             setPhase('error');
 
         }
@@ -355,22 +329,15 @@ export function RunBuildScreen({ params: _params }: ScreenProps): ReactElement {
                     </Box>
                 </Panel>
 
-                {activeConfig.protected ? (
-                    <ProtectedConfirm
-                        focusLabel="RunBuildConfirm"
-                        configName={activeConfigName ?? ''}
-                        action="run build"
-                        onConfirm={executeBuild}
-                        onCancel={back}
-                    />
-                ) : (
-                    <Confirm
-                        focusLabel="RunBuildConfirm"
-                        message={`Run ${files.length} SQL files on ${activeConfigName}?`}
-                        onConfirm={executeBuild}
-                        onCancel={back}
-                    />
-                )}
+                <SmartConfirm
+                    protected={activeConfig.protected ?? false}
+                    configName={activeConfigName ?? ''}
+                    action="run build"
+                    message={`Run ${files.length} SQL files on ${activeConfigName}?`}
+                    onConfirm={executeBuild}
+                    onCancel={back}
+                    focusLabel="RunBuildConfirm"
+                />
             </Box>
         );
 

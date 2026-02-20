@@ -9,9 +9,8 @@
  * noorm settings rules edit 0 # Edit first rule
  * ```
  */
-import { useState, useCallback, useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { Text } from 'ink';
-import { attempt } from '@logosdx/utils';
 
 import type { ReactElement } from 'react';
 import type { ScreenProps } from '../../types.js';
@@ -20,7 +19,8 @@ import type { Rule } from '../../../core/settings/types.js';
 
 import { useRouter } from '../../router.js';
 import { useAppContext } from '../../app-context.js';
-import { Panel, Form, useToast } from '../../components/index.js';
+import { Panel, Form } from '../../components/index.js';
+import { useSettingsOperation } from '../../hooks/index.js';
 
 /**
  * Parse comma-separated string to array.
@@ -53,16 +53,31 @@ function formatPathList(paths: string[] | undefined): string {
 export function SettingsRuleEditScreen({ params }: ScreenProps): ReactElement {
 
     const { back } = useRouter();
-    const { settingsManager, refresh } = useAppContext();
-    const { showToast } = useToast();
+    const { settingsManager } = useAppContext();
 
     // Parse rule index from params.name
     const ruleIndexStr = params.name;
     const ruleIndex = ruleIndexStr !== undefined ? parseInt(ruleIndexStr, 10) : NaN;
     const isAddMode = isNaN(ruleIndex);
 
-    const [busy, setBusy] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+    const { execute, busy, error } = useSettingsOperation(
+        async (mgr, rule: Rule) => {
+
+            if (isAddMode) {
+
+                await mgr.addRule(rule);
+
+            }
+            else {
+
+                await mgr.removeRule(ruleIndex);
+                await mgr.addRule(rule);
+
+            }
+
+        },
+        isAddMode ? 'Rule created' : 'Rule updated',
+    );
 
     // Get all rules
     const rules = useMemo(() => {
@@ -157,17 +172,6 @@ export function SettingsRuleEditScreen({ params }: ScreenProps): ReactElement {
     const handleSubmit = useCallback(
         async (values: FormValues) => {
 
-            if (!settingsManager) {
-
-                setError('Settings manager not available');
-
-                return;
-
-            }
-
-            setBusy(true);
-            setError(null);
-
             // Build match object (only include non-empty values)
             const match: Rule['match'] = {};
 
@@ -182,19 +186,6 @@ export function SettingsRuleEditScreen({ params }: ScreenProps): ReactElement {
             const include = parsePathList(values['include']);
             const exclude = parsePathList(values['exclude']);
 
-            // Validate that rule has some effect
-            if (include.length === 0 && exclude.length === 0) {
-
-                setError('Rule must have at least one include or exclude path');
-                setBusy(false);
-
-                return;
-
-            }
-
-            // Warn if no match conditions (but allow it - matches all configs)
-            // Empty match = applies to all configs
-
             const description = values['description'] ? String(values['description']) : undefined;
 
             const rule: Rule = {
@@ -204,49 +195,10 @@ export function SettingsRuleEditScreen({ params }: ScreenProps): ReactElement {
                 exclude: exclude.length > 0 ? exclude : undefined,
             };
 
-            const [_, err] = await attempt(async () => {
-
-                if (isAddMode) {
-
-                    // Add new rule
-                    await settingsManager.addRule(rule);
-
-                }
-                else {
-
-                    // Update existing rule: remove old, add new at same position
-                    // (SettingsManager doesn't have updateRule, so we remove and re-add)
-                    await settingsManager.removeRule(ruleIndex);
-
-                    // Add the rule (will be at end)
-                    await settingsManager.addRule(rule);
-
-                    // Note: This changes rule order. For proper in-place update,
-                    // SettingsManager would need an updateRule method.
-
-                }
-
-                await refresh();
-
-            });
-
-            if (err) {
-
-                setError(err instanceof Error ? err.message : String(err));
-                setBusy(false);
-
-                return;
-
-            }
-
-            showToast({
-                message: isAddMode ? 'Rule created' : 'Rule updated',
-                variant: 'success',
-            });
-            back();
+            await execute(rule);
 
         },
-        [settingsManager, isAddMode, ruleIndex, refresh, showToast, back],
+        [execute],
     );
 
     // Handle cancel

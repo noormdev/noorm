@@ -7,7 +7,7 @@
  * The include() helper uses path.resolve() to normalize paths and then
  * checks that the resolved path starts with the project root.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import path from 'node:path';
 import { buildContext } from '../../../src/core/template/context.js';
 

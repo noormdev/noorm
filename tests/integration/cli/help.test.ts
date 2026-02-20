@@ -3,7 +3,7 @@
  *
  * Tests for the help command output.
  */
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
 
 import {
     noorm,

@@ -20,7 +20,8 @@ import type { ScreenProps } from '../../types.js';
 import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
-import { Panel, Spinner, useToast } from '../../components/index.js';
+import { Panel, Spinner, useToast, MissingParamPanel, NotFoundPanel } from '../../components/index.js';
+import { getErrorMessage, validateConfigName } from '../../utils/index.js';
 
 /**
  * ConfigCopyScreen component.
@@ -47,34 +48,6 @@ export function ConfigCopyScreen({ params }: ScreenProps): ReactElement {
 
     }, [stateManager, configName]);
 
-    // Validate name
-    const validateName = useCallback(
-        (name: string): string | null => {
-
-            if (!name) {
-
-                return 'Name is required';
-
-            }
-
-            if (!/^[a-z0-9_-]+$/i.test(name)) {
-
-                return 'Only letters, numbers, hyphens, underscores';
-
-            }
-
-            if (configs.some((c) => c.name === name)) {
-
-                return 'Config name already exists';
-
-            }
-
-            return null;
-
-        },
-        [configs],
-    );
-
     // Handle name change
     const handleNameChange = useCallback((value: string) => {
 
@@ -95,7 +68,7 @@ export function ConfigCopyScreen({ params }: ScreenProps): ReactElement {
 
         }
 
-        const validationErr = validateName(newName);
+        const validationErr = validateConfigName(newName, configs.map((c) => c.name));
 
         if (validationErr) {
 
@@ -123,7 +96,7 @@ export function ConfigCopyScreen({ params }: ScreenProps): ReactElement {
         if (err) {
 
             showToast({
-                message: err instanceof Error ? err.message : String(err),
+                message: getErrorMessage(err),
                 variant: 'error',
             });
             setCopying(false);
@@ -139,7 +112,7 @@ export function ConfigCopyScreen({ params }: ScreenProps): ReactElement {
         });
         back();
 
-    }, [stateManager, config, configName, newName, validateName, refresh, showToast, back]);
+    }, [stateManager, config, configName, newName, configs, refresh, showToast, back]);
 
     // Handle cancel
     const handleCancel = useCallback(() => {
@@ -181,24 +154,14 @@ export function ConfigCopyScreen({ params }: ScreenProps): ReactElement {
     // No config name provided
     if (!configName) {
 
-        return (
-            <Panel title="Copy Configuration" paddingX={2} paddingY={1} borderColor="yellow">
-                <Text color="yellow">
-                    No config name provided. Use: noorm config:cp &lt;name&gt;
-                </Text>
-            </Panel>
-        );
+        return <MissingParamPanel title="Copy Configuration" param="config name" usage="noorm config:cp <name>" />;
 
     }
 
     // Config not found
     if (!config) {
 
-        return (
-            <Panel title="Copy Configuration" paddingX={2} paddingY={1} borderColor="red">
-                <Text color="red">Config "{configName}" not found.</Text>
-            </Panel>
-        );
+        return <NotFoundPanel title="Copy Configuration" type="Config" name={configName} />;
 
     }
 

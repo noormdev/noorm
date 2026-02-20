@@ -4,7 +4,7 @@
  * serialize → write → read → deserialize end-to-end for all types.
  * Verifies data fidelity across the full .dt pipeline.
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import path from 'node:path';

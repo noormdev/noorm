@@ -60,6 +60,9 @@ export type Route =
     | 'db/explore/views'
     | 'db/explore/views/detail'
 
+    // SQL (headless raw query)
+    | 'sql'
+
     // SQL Terminal
     | 'db/sql'
     | 'db/sql/clear'
@@ -182,6 +185,9 @@ export interface RouteParams {
 
     /** Operation ID (for history detail view) */
     operationId?: number;
+
+    /** Raw SQL query (for headless sql command) */
+    query?: string;
 
     /** Help topic (multi-part, e.g., "db/explore/tables") */
     topic?: string;
@@ -478,5 +484,25 @@ export function getParentRoute(route: Route): Route | null {
     }
 
     return parts.slice(0, -1).join('/') as Route;
+
+}
+
+/**
+ * Check if a string is purely numeric (digits only).
+ *
+ * Used to disambiguate count parameters from change names.
+ * `parseInt('2026-01-04-...', 10)` returns `2026`, which is wrong —
+ * this function correctly rejects strings that aren't entirely digits.
+ *
+ * @example
+ * ```typescript
+ * isNumericString('5')                              // true
+ * isNumericString('2026-01-04-add-functions')        // false
+ * isNumericString('abc')                             // false
+ * ```
+ */
+export function isNumericString(value: string): boolean {
+
+    return /^\d+$/.test(value);
 
 }

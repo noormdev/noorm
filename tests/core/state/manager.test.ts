@@ -4,7 +4,7 @@
  * Uses a local tmp/ folder with custom state paths to avoid
  * polluting the project directory.
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { mkdtempSync, rmSync, existsSync } from 'fs';
 import { join } from 'path';
 import { StateManager, resetStateManager } from '../../../src/core/state/index.js';

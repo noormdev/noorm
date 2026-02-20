@@ -1,7 +1,7 @@
 /**
  * Tests for state version manager.
  */
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'bun:test';
 
 import { observer } from '../../../src/core/observer.js';
 import { CURRENT_VERSIONS, VersionMismatchError } from '../../../src/core/version/types.js';
