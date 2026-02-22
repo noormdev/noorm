@@ -82,7 +82,7 @@ export function ChangeRunScreen({ params }: ScreenProps): ReactElement {
 
         const [_, err] = await attempt(async () => {
 
-            const { changes, statuses } = await loadChangesWithStatus(
+            const { changes } = await loadChangesWithStatus(
                 activeConfig, activeConfigName ?? '', settings, projectRoot,
             );
 
@@ -95,14 +95,6 @@ export function ChangeRunScreen({ params }: ScreenProps): ReactElement {
             }
 
             if (isCancelled()) return;
-
-            const status = statuses.get(changeName);
-
-            if (status?.status === 'success') {
-
-                throw new Error(`Change "${changeName}" is already applied`);
-
-            }
 
             // Validate change has actual content
             const contentError = await validateChangeContent(found);

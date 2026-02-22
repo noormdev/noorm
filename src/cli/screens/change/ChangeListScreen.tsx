@@ -174,7 +174,7 @@ export function ChangeListScreen({ params: _params }: ScreenProps): ReactElement
 
         }
 
-        if (input === 'r' && selectedChange && (selectedChange.status === 'pending' || selectedChange.status === 'failed')) {
+        if (input === 'r' && selectedChange && (selectedChange.status === 'pending' || selectedChange.status === 'failed' || selectedChange.status === 'reverted')) {
 
             navigate('change/run', { name: selectedChange.name });
 
@@ -225,7 +225,7 @@ export function ChangeListScreen({ params: _params }: ScreenProps): ReactElement
         // Enter - smart action based on status
         if (key.return && selectedChange) {
 
-            if (selectedChange.status === 'pending' || selectedChange.status === 'failed') {
+            if (selectedChange.status === 'pending' || selectedChange.status === 'failed' || selectedChange.status === 'reverted') {
 
                 navigate('change/run', { name: selectedChange.name });
 
