@@ -39,6 +39,7 @@ await $`npx tsup src/sdk/index.ts \
   --out-dir packages/sdk/dist \
   --external kysely \
   --external better-sqlite3 \
+  --external bun:sqlite \
   --external pg \
   --external mysql2 \
   --external tedious \
