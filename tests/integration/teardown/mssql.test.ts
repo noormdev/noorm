@@ -35,7 +35,7 @@ describe('integration: mssql teardown', () => {
         db = conn.db;
         destroy = conn.destroy;
 
-    });
+    }, 30_000);
 
     afterAll(async () => {
 

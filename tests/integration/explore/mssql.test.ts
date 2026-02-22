@@ -52,7 +52,7 @@ describe('integration: mssql explore', () => {
         await deployTestSchema(db, 'mssql');
         await seedTestData(db, 'mssql');
 
-    });
+    }, 30_000);
 
     afterAll(async () => {
 

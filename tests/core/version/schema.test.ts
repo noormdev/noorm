@@ -18,6 +18,7 @@ import {
     updateVersionRecord,
     getLatestVersionRecord,
 } from '../../../src/core/version/schema/index.js';
+import { getCurrentVersion } from '../../../src/core/update/checker.js';
 
 describe('version: schema', () => {
 
@@ -132,7 +133,7 @@ describe('version: schema', () => {
             const version = await db.selectFrom('__noorm_version__').selectAll().execute();
 
             expect(version).toHaveLength(1);
-            expect(version[0]!['cli_version']).toBe('0.0.0-dev');
+            expect(version[0]!['cli_version']).toBe(getCurrentVersion());
             expect(version[0]!['noorm_version']).toBe(CURRENT_VERSIONS.schema);
             expect(version[0]!['state_version']).toBe(CURRENT_VERSIONS.state);
             expect(version[0]!['settings_version']).toBe(CURRENT_VERSIONS.settings);
@@ -349,7 +350,7 @@ describe('version: schema', () => {
                 .execute();
 
             expect(versions).toHaveLength(2);
-            expect(versions[1]!['cli_version']).toBe('0.0.0-dev');
+            expect(versions[1]!['cli_version']).toBe(getCurrentVersion());
             expect(versions[1]!['state_version']).toBe(2);
             expect(versions[1]!['settings_version']).toBe(3);
 

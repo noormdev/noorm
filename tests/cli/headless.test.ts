@@ -31,29 +31,51 @@ describe('cli: headless', () => {
 
     describe('shouldRunHeadless', () => {
 
-        const originalEnv = { ...process.env };
         const originalIsTTY = process.stdout.isTTY;
+        const envBackup: Record<string, string | undefined> = {};
+
+        const CI_VARS = [
+            'CI',
+            'CONTINUOUS_INTEGRATION',
+            'GITHUB_ACTIONS',
+            'GITLAB_CI',
+            'CIRCLECI',
+            'TRAVIS',
+            'JENKINS_URL',
+            'BUILDKITE',
+            'NOORM_HEADLESS',
+        ];
 
         beforeEach(() => {
 
-            // Reset environment
-            process.env = { ...originalEnv };
-            // Clear CI variables
-            delete process.env['CI'];
-            delete process.env['CONTINUOUS_INTEGRATION'];
-            delete process.env['GITHUB_ACTIONS'];
-            delete process.env['GITLAB_CI'];
-            delete process.env['CIRCLECI'];
-            delete process.env['TRAVIS'];
-            delete process.env['JENKINS_URL'];
-            delete process.env['BUILDKITE'];
-            delete process.env['NOORM_HEADLESS'];
+            // Backup and clear CI variables
+            for (const key of CI_VARS) {
+
+                envBackup[key] = process.env[key];
+                delete process.env[key];
+
+            }
 
         });
 
         afterEach(() => {
 
-            process.env = originalEnv;
+            // Restore env vars
+            for (const [key, value] of Object.entries(envBackup)) {
+
+                if (value === undefined) {
+
+                    delete process.env[key];
+
+                }
+                else {
+
+                    process.env[key] = value;
+
+                }
+
+            }
+
             Object.defineProperty(process.stdout, 'isTTY', {
                 value: originalIsTTY,
                 writable: true,

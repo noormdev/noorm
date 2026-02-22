@@ -94,7 +94,7 @@ describe('integration: mssql transfer', () => {
         await teardownTestSchema(destDb, 'mssql');
         await deployTestSchema(destDb, 'mssql');
 
-    });
+    }, 30_000);
 
     afterAll(async () => {
 
