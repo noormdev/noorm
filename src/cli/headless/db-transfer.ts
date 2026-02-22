@@ -186,7 +186,7 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
     const batchSize = flags['batch-size'] ? parseInt(String(flags['batch-size']), 10) : undefined;
 
     // -----------------------------------------------------------------------
-    // Export mode — uses ctx.noorm.exportTable
+    // Export mode — uses ctx.noorm.dt.exportTable
     // -----------------------------------------------------------------------
 
     if (exportPath) {
@@ -204,7 +204,7 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
     }
 
     // -----------------------------------------------------------------------
-    // Import mode — uses ctx.noorm.importFile
+    // Import mode — uses ctx.noorm.dt.importFile
     // -----------------------------------------------------------------------
 
     if (importPath) {
@@ -223,7 +223,7 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
     }
 
     // -----------------------------------------------------------------------
-    // DB-to-DB transfer mode — uses ctx.noorm.transferTo / transferPlan
+    // DB-to-DB transfer mode — uses ctx.noorm.transfer.to / transfer.plan
     // -----------------------------------------------------------------------
 
     // Load state to resolve dest config
@@ -267,7 +267,7 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
         const [plan, planError] = await withContext({
             flags,
             logger,
-            fn: (ctx) => ctx.noorm.transferPlan(destConfig, options),
+            fn: (ctx) => ctx.noorm.transfer.plan(destConfig, options),
         });
 
         if (planError) return 1;
@@ -340,7 +340,7 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
     const [transferResult, transferError] = await withContext({
         flags,
         logger,
-        fn: (ctx) => ctx.noorm.transferTo(destConfig, options),
+        fn: (ctx) => ctx.noorm.transfer.to(destConfig, options),
     });
 
     if (transferError) return 1;
@@ -390,7 +390,7 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
 };
 
 // ---------------------------------------------------------------------------
-// Export handler — uses ctx.noorm.exportTable
+// Export handler — uses ctx.noorm.dt.exportTable
 // ---------------------------------------------------------------------------
 
 /**
@@ -444,7 +444,7 @@ async function handleExport(opts: {
                     ext,
                 });
 
-                const [result, err] = await ctx.noorm.exportTable(tableName, filepath, {
+                const [result, err] = await ctx.noorm.dt.exportTable(tableName, filepath, {
                     passphrase,
                     batchSize,
                 });
@@ -532,7 +532,7 @@ async function handleExport(opts: {
 }
 
 // ---------------------------------------------------------------------------
-// Import handler — uses ctx.noorm.importFile
+// Import handler — uses ctx.noorm.dt.importFile
 // ---------------------------------------------------------------------------
 
 /**
@@ -562,7 +562,7 @@ async function handleImport(opts: {
         logger,
         fn: async (ctx) => {
 
-            const [result, err] = await ctx.noorm.importFile(importPath, {
+            const [result, err] = await ctx.noorm.dt.importFile(importPath, {
                 passphrase,
                 batchSize,
                 onConflict,

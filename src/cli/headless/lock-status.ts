@@ -50,7 +50,7 @@ export const run: HeadlessCommand = async (_params, flags, logger) => {
     const [status, error] = await withContext({
         flags,
         logger,
-        fn: (ctx) => ctx.noorm.getLockStatus(),
+        fn: (ctx) => ctx.noorm.lock.status(),
     });
 
     if (error) return 1;

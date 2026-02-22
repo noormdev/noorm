@@ -45,7 +45,7 @@ export const run: HeadlessCommand = async (_params, flags, logger) => {
     const [result, error] = await withContext({
         flags,
         logger,
-        fn: (ctx) => ctx.noorm.teardown(),
+        fn: (ctx) => ctx.noorm.db.teardown(),
     });
 
     if (error) return 1;

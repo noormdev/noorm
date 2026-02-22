@@ -2,12 +2,22 @@
  * NoormOps tests.
  *
  * Verifies the ctx.noorm namespace: lazy singleton behavior,
- * shared state reading, and not-connected errors.
+ * namespace getters, shared state reading, and not-connected errors.
  */
 import { describe, it, expect } from 'bun:test';
 
 import { Context } from '../../src/sdk/context.js';
 import { NoormOps } from '../../src/sdk/noorm-ops.js';
+import { ChangesNamespace } from '../../src/sdk/namespaces/changes.js';
+import { RunNamespace } from '../../src/sdk/namespaces/run.js';
+import { DbNamespace } from '../../src/sdk/namespaces/db.js';
+import { LockNamespace } from '../../src/sdk/namespaces/lock.js';
+import { VaultNamespace } from '../../src/sdk/namespaces/vault.js';
+import { SecretsNamespace } from '../../src/sdk/namespaces/secrets.js';
+import { TemplatesNamespace } from '../../src/sdk/namespaces/templates.js';
+import { TransferNamespace } from '../../src/sdk/namespaces/transfer.js';
+import { DtNamespace } from '../../src/sdk/namespaces/dt.js';
+import { UtilsNamespace } from '../../src/sdk/namespaces/utils.js';
 
 import type { Config } from '../../src/core/config/types.js';
 import type { Settings } from '../../src/core/settings/types.js';
@@ -49,7 +59,7 @@ function createContext(dialect: Config['connection']['dialect'] = 'postgres') {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Lazy Singleton
+// Tests
 // ─────────────────────────────────────────────────────────────
 
 describe('sdk: NoormOps', () => {
@@ -59,19 +69,110 @@ describe('sdk: NoormOps', () => {
         it('should return a NoormOps instance', () => {
 
             const ctx = createContext();
-            const noorm = ctx.noorm;
 
-            expect(noorm).toBeInstanceOf(NoormOps);
+            expect(ctx.noorm).toBeInstanceOf(NoormOps);
 
         });
 
         it('should return the same instance on repeated access', () => {
 
             const ctx = createContext();
-            const first = ctx.noorm;
-            const second = ctx.noorm;
 
-            expect(first).toBe(second);
+            expect(ctx.noorm).toBe(ctx.noorm);
+
+        });
+
+    });
+
+    describe('lazy singleton namespaces', () => {
+
+        it('should lazily create ChangesNamespace', () => {
+
+            const ctx = createContext();
+
+            expect(ctx.noorm.changes).toBeInstanceOf(ChangesNamespace);
+            expect(ctx.noorm.changes).toBe(ctx.noorm.changes);
+
+        });
+
+        it('should lazily create RunNamespace', () => {
+
+            const ctx = createContext();
+
+            expect(ctx.noorm.run).toBeInstanceOf(RunNamespace);
+            expect(ctx.noorm.run).toBe(ctx.noorm.run);
+
+        });
+
+        it('should lazily create DbNamespace', () => {
+
+            const ctx = createContext();
+
+            expect(ctx.noorm.db).toBeInstanceOf(DbNamespace);
+            expect(ctx.noorm.db).toBe(ctx.noorm.db);
+
+        });
+
+        it('should lazily create LockNamespace', () => {
+
+            const ctx = createContext();
+
+            expect(ctx.noorm.lock).toBeInstanceOf(LockNamespace);
+            expect(ctx.noorm.lock).toBe(ctx.noorm.lock);
+
+        });
+
+        it('should lazily create VaultNamespace', () => {
+
+            const ctx = createContext();
+
+            expect(ctx.noorm.vault).toBeInstanceOf(VaultNamespace);
+            expect(ctx.noorm.vault).toBe(ctx.noorm.vault);
+
+        });
+
+        it('should lazily create SecretsNamespace', () => {
+
+            const ctx = createContext();
+
+            expect(ctx.noorm.secrets).toBeInstanceOf(SecretsNamespace);
+            expect(ctx.noorm.secrets).toBe(ctx.noorm.secrets);
+
+        });
+
+        it('should lazily create TemplatesNamespace', () => {
+
+            const ctx = createContext();
+
+            expect(ctx.noorm.templates).toBeInstanceOf(TemplatesNamespace);
+            expect(ctx.noorm.templates).toBe(ctx.noorm.templates);
+
+        });
+
+        it('should lazily create TransferNamespace', () => {
+
+            const ctx = createContext();
+
+            expect(ctx.noorm.transfer).toBeInstanceOf(TransferNamespace);
+            expect(ctx.noorm.transfer).toBe(ctx.noorm.transfer);
+
+        });
+
+        it('should lazily create DtNamespace', () => {
+
+            const ctx = createContext();
+
+            expect(ctx.noorm.dt).toBeInstanceOf(DtNamespace);
+            expect(ctx.noorm.dt).toBe(ctx.noorm.dt);
+
+        });
+
+        it('should lazily create UtilsNamespace', () => {
+
+            const ctx = createContext();
+
+            expect(ctx.noorm.utils).toBeInstanceOf(UtilsNamespace);
+            expect(ctx.noorm.utils).toBe(ctx.noorm.utils);
 
         });
 
@@ -127,59 +228,59 @@ describe('sdk: NoormOps', () => {
 
     describe('not connected errors', () => {
 
-        it('should throw on listTables when not connected', async () => {
+        it('should throw on db.listTables when not connected', async () => {
 
             const ctx = createContext();
 
-            await expect(ctx.noorm.listTables()).rejects.toThrow('Not connected');
+            await expect(ctx.noorm.db.listTables()).rejects.toThrow('Not connected');
 
         });
 
-        it('should throw on describeTable when not connected', async () => {
+        it('should throw on db.describeTable when not connected', async () => {
 
             const ctx = createContext();
 
-            await expect(ctx.noorm.describeTable('users')).rejects.toThrow('Not connected');
+            await expect(ctx.noorm.db.describeTable('users')).rejects.toThrow('Not connected');
 
         });
 
-        it('should throw on overview when not connected', async () => {
+        it('should throw on db.overview when not connected', async () => {
 
             const ctx = createContext();
 
-            await expect(ctx.noorm.overview()).rejects.toThrow('Not connected');
+            await expect(ctx.noorm.db.overview()).rejects.toThrow('Not connected');
 
         });
 
-        it('should throw on truncate when not connected', async () => {
+        it('should throw on db.truncate when not connected', async () => {
 
             const ctx = createContext();
 
-            await expect(ctx.noorm.truncate()).rejects.toThrow('Not connected');
+            await expect(ctx.noorm.db.truncate()).rejects.toThrow('Not connected');
 
         });
 
-        it('should throw on teardown when not connected', async () => {
+        it('should throw on db.teardown when not connected', async () => {
 
             const ctx = createContext();
 
-            await expect(ctx.noorm.teardown()).rejects.toThrow('Not connected');
+            await expect(ctx.noorm.db.teardown()).rejects.toThrow('Not connected');
 
         });
 
-        it('should throw on acquireLock when not connected', async () => {
+        it('should throw on lock.acquire when not connected', async () => {
 
             const ctx = createContext();
 
-            await expect(ctx.noorm.acquireLock()).rejects.toThrow('Not connected');
+            await expect(ctx.noorm.lock.acquire()).rejects.toThrow('Not connected');
 
         });
 
-        it('should throw on getLockStatus when not connected', async () => {
+        it('should throw on lock.status when not connected', async () => {
 
             const ctx = createContext();
 
-            await expect(ctx.noorm.getLockStatus()).rejects.toThrow('Not connected');
+            await expect(ctx.noorm.lock.status()).rejects.toThrow('Not connected');
 
         });
 

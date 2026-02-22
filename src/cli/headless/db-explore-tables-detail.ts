@@ -55,7 +55,7 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
     const [detail, error] = await withContext({
         flags,
         logger,
-        fn: (ctx) => ctx.noorm.describeTable(params.name!, params.schema),
+        fn: (ctx) => ctx.noorm.db.describeTable(params.name!, params.schema),
     });
 
     if (error) return 1;

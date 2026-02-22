@@ -35,7 +35,7 @@ const users = await ctx.kysely
     .execute();
 
 // Noorm operations — under namespace
-await ctx.noorm.fastForward();
+await ctx.noorm.changes.ff();
 
 await ctx.disconnect();
 ```
@@ -216,153 +216,306 @@ const ver = await ctx.func<{ v: string }>('get_version', 'v');
 | `observer` | `ObserverEngine` | Event observer for subscriptions        |
 
 
-### Schema Operations
+### ctx.noorm.run — Run Operations
 
 
-#### build(options?)
+#### run.build(options?)
 
 Execute all SQL files in the schema directory.
 
 ```typescript
-const result = await ctx.noorm.build({ force: true });
+const result = await ctx.noorm.run.build({ force: true });
 console.log(`Ran ${result.filesRun} files`);
 ```
 
 
-#### truncate()
-
-Wipe all data, keeping the schema intact.
-
-```typescript
-const result = await ctx.noorm.truncate();
-console.log(`Truncated ${result.truncated.length} tables`);
-```
-
-
-#### teardown()
-
-Drop all database objects except noorm tracking tables.
-
-```typescript
-const result = await ctx.noorm.teardown();
-```
-
-
-#### reset()
-
-Full rebuild: teardown + build.
-
-```typescript
-await ctx.noorm.reset();
-```
-
-
-### File Runner
-
-
-#### runFile(filepath, options?)
+#### run.file(filepath, options?)
 
 Execute a single SQL file.
 
 ```typescript
-await ctx.noorm.runFile('seeds/test-data.sql');
+await ctx.noorm.run.file('seeds/test-data.sql');
 ```
 
 
-#### runFiles(filepaths, options?)
+#### run.files(filepaths, options?)
 
 Execute multiple SQL files sequentially.
 
 ```typescript
-await ctx.noorm.runFiles([
+await ctx.noorm.run.files([
     'functions/utils.sql',
     'triggers/audit.sql',
 ]);
 ```
 
 
-#### runDir(dirpath, options?)
+#### run.dir(dirpath, options?)
 
 Execute all SQL files in a directory.
 
 ```typescript
-await ctx.noorm.runDir('seeds/');
+await ctx.noorm.run.dir('seeds/');
 ```
 
 
-### Changes
+#### run.discover(dirpath?)
+
+Discover SQL files in a directory without executing. Works offline — no connection required. Defaults to the project's configured SQL path.
+
+```typescript
+const files = await ctx.noorm.run.discover('sql/');
+console.log(`Found ${files.length} SQL files`);
+```
+
+**Returns:** `Promise<string[]>` — absolute paths to discovered SQL files.
 
 
-#### applyChange(name, options?)
+#### run.preview(filepaths, output?)
+
+Render SQL files (including templates) without executing. Useful for reviewing what would run before committing.
+
+```typescript
+const results = await ctx.noorm.run.preview(['sql/001.sql', 'sql/002.sql']);
+for (const r of results) {
+    console.log(`${r.filepath}:\n${r.sql}`);
+}
+```
+
+**Returns:** `Promise<FileResult[]>` — rendered SQL for each file.
+
+
+### ctx.noorm.db — Database Operations
+
+
+#### db.truncate()
+
+Wipe all data, keeping the schema intact.
+
+```typescript
+const result = await ctx.noorm.db.truncate();
+console.log(`Truncated ${result.truncated.length} tables`);
+```
+
+
+#### db.teardown()
+
+Drop all database objects except noorm tracking tables.
+
+```typescript
+const result = await ctx.noorm.db.teardown();
+```
+
+
+#### db.previewTeardown()
+
+Preview what teardown would drop without executing. Useful for confirming destructive operations before running them.
+
+```typescript
+const preview = await ctx.noorm.db.previewTeardown();
+for (const obj of preview.objects) {
+    console.log(`Would drop ${obj.type}: ${obj.name}`);
+}
+```
+
+**Returns:** `Promise<TeardownPreview>` — list of objects that would be dropped.
+
+
+#### db.reset()
+
+Full rebuild: teardown + build.
+
+```typescript
+await ctx.noorm.db.reset();
+```
+
+
+### ctx.noorm.changes — Change Management
+
+
+#### Scaffold Operations (offline)
+
+These operations work without a database connection — they manage change directories on disk.
+
+
+#### changes.create(options)
+
+Create a new change directory with `change/` and `revert/` folders.
+
+```typescript
+const change = await ctx.noorm.changes.create({ description: 'add-user-roles' });
+console.log(change.name); // e.g. '2024-01-15-add-user-roles'
+```
+
+**Returns:** `Promise<Change>` — the parsed change object.
+
+
+#### changes.addFile(change, folder, options)
+
+Add a file to a change's `change/` or `revert/` folder.
+
+```typescript
+const updated = await ctx.noorm.changes.addFile(change, 'change', {
+    name: 'create-table',
+    type: 'sql',
+});
+```
+
+**Returns:** `Promise<Change>` — the updated change object.
+
+
+#### changes.removeFile(change, folder, filename)
+
+Remove a file from a change.
+
+```typescript
+await ctx.noorm.changes.removeFile(change, 'change', '001_create-table.sql');
+```
+
+**Returns:** `Promise<Change>` — the updated change object.
+
+
+#### changes.renameFile(change, folder, oldFilename, newDescription)
+
+Rename a file in a change folder. Preserves the numeric prefix.
+
+```typescript
+await ctx.noorm.changes.renameFile(change, 'change', '001_old.sql', 'new-name');
+```
+
+**Returns:** `Promise<Change>` — the updated change object.
+
+
+#### changes.reorderFiles(change, folder, newOrder)
+
+Reorder files in a change folder. Pass filenames in the desired order — numeric prefixes are reassigned.
+
+```typescript
+await ctx.noorm.changes.reorderFiles(change, 'change', [
+    '002_b.sql',
+    '001_a.sql',
+]);
+```
+
+**Returns:** `Promise<Change>` — the updated change object.
+
+
+#### changes.delete(change)
+
+Delete a change directory from disk entirely.
+
+```typescript
+await ctx.noorm.changes.delete(change);
+```
+
+
+#### changes.discover()
+
+Discover all changes on disk. Works offline — scans the configured changes directory.
+
+```typescript
+const changes = await ctx.noorm.changes.discover();
+console.log(`Found ${changes.length} changes`);
+```
+
+**Returns:** `Promise<Change[]>` — all parsed change objects.
+
+
+#### changes.parse(name)
+
+Parse a single change from disk by name.
+
+```typescript
+const change = await ctx.noorm.changes.parse('2024-01-15-add-users');
+```
+
+**Returns:** `Promise<Change>` — the parsed change object.
+
+
+#### changes.validate(change)
+
+Validate a change's structure. Throws `ChangeValidationError` if the change is malformed.
+
+```typescript
+ctx.noorm.changes.validate(change);
+```
+
+**Returns:** `void` — throws on invalid structure.
+
+
+#### Execution Operations (connected)
+
+
+#### changes.apply(name, options?)
 
 Apply a specific change.
 
 ```typescript
-const result = await ctx.noorm.applyChange('2024-01-15-add-users');
+const result = await ctx.noorm.changes.apply('2024-01-15-add-users');
 ```
 
 
-#### revertChange(name, options?)
+#### changes.revert(name, options?)
 
 Revert a specific change.
 
 ```typescript
-const result = await ctx.noorm.revertChange('2024-01-15-add-users');
+const result = await ctx.noorm.changes.revert('2024-01-15-add-users');
 ```
 
 
-#### fastForward()
+#### changes.ff()
 
 Apply all pending changes.
 
 ```typescript
-const result = await ctx.noorm.fastForward();
+const result = await ctx.noorm.changes.ff();
 console.log(`Applied ${result.executed} changes`);
 ```
 
 
-#### getChangeStatus()
+#### changes.status()
 
 Get status of all changes.
 
 ```typescript
-const changes = await ctx.noorm.getChangeStatus();
+const changes = await ctx.noorm.changes.status();
 for (const cs of changes) {
     console.log(`${cs.name}: ${cs.status}`);
 }
 ```
 
 
-#### getPendingChanges()
+#### changes.pending()
 
 Get only pending changes.
 
 ```typescript
-const pending = await ctx.noorm.getPendingChanges();
+const pending = await ctx.noorm.changes.pending();
 ```
 
 
-### Explore
+### ctx.noorm.db — Explore
 
 
-#### listTables()
+#### db.listTables()
 
 List all tables in the database.
 
 ```typescript
-const tables = await ctx.noorm.listTables();
+const tables = await ctx.noorm.db.listTables();
 for (const table of tables) {
     console.log(`${table.name}: ${table.columnCount} columns`);
 }
 ```
 
 
-#### describeTable(name, schema?)
+#### db.describeTable(name, schema?)
 
 Get detailed information about a table.
 
 ```typescript
-const detail = await ctx.noorm.describeTable('users');
+const detail = await ctx.noorm.db.describeTable('users');
 if (detail) {
     for (const col of detail.columns) {
         console.log(`${col.name}: ${col.dataType}`);
@@ -371,78 +524,92 @@ if (detail) {
 ```
 
 
-#### overview()
+#### db.overview()
 
 Get database overview with counts of all object types.
 
 ```typescript
-const overview = await ctx.noorm.overview();
+const overview = await ctx.noorm.db.overview();
 console.log(`Tables: ${overview.tables}, Views: ${overview.views}`);
 ```
 
 
-### Locks
+### ctx.noorm.lock — Lock Management
 
 
-#### acquireLock(options?)
+#### lock.acquire(options?)
 
 Acquire a database lock.
 
 ```typescript
-const lock = await ctx.noorm.acquireLock({ timeout: 60000 });
+const lock = await ctx.noorm.lock.acquire({ timeout: 60000 });
 ```
 
 
-#### releaseLock()
+#### lock.release()
 
 Release the current lock.
 
 ```typescript
-await ctx.noorm.releaseLock();
+await ctx.noorm.lock.release();
 ```
 
 
-#### getLockStatus()
+#### lock.status()
 
 Get current lock status.
 
 ```typescript
-const status = await ctx.noorm.getLockStatus();
+const status = await ctx.noorm.lock.status();
 if (status.isLocked) {
     console.log(`Locked by ${status.lock.lockedBy}`);
 }
 ```
 
 
-#### withLock(fn, options?)
+#### lock.withLock(fn, options?)
 
 Execute an operation with automatic lock acquisition and release.
 
 ```typescript
-await ctx.noorm.withLock(async () => {
-    await ctx.noorm.build();
-    await ctx.noorm.fastForward();
+await ctx.noorm.lock.withLock(async () => {
+    await ctx.noorm.run.build();
+    await ctx.noorm.changes.ff();
 });
 ```
 
 
-### Templates
+#### lock.forceRelease()
+
+Force release any database lock regardless of ownership. Use when a lock is stuck due to a crashed process or stale session.
+
+```typescript
+const released = await ctx.noorm.lock.forceRelease();
+if (released) {
+    console.log('Stale lock cleared');
+}
+```
+
+**Returns:** `Promise<boolean>` — `true` if a lock was released, `false` if none existed.
 
 
-#### renderTemplate(filepath)
+### ctx.noorm.templates — Template Operations
+
+
+#### templates.render(filepath)
 
 Render a template file without executing.
 
 ```typescript
-const result = await ctx.noorm.renderTemplate('sql/001_users.sql.tmpl');
+const result = await ctx.noorm.templates.render('sql/001_users.sql.tmpl');
 console.log(result.sql);
 ```
 
 
-### Transfer
+### ctx.noorm.transfer — Transfer Operations
 
 
-#### transferTo(destConfig, options?)
+#### transfer.to(destConfig, options?)
 
 Transfer data from this context's database to a destination config. Both contexts must be connected.
 
@@ -452,7 +619,7 @@ const dest = await createContext({ config: 'dev' });
 await source.connect();
 await dest.connect();
 
-const [result, err] = await source.noorm.transferTo(dest.noorm.config, {
+const [result, err] = await source.noorm.transfer.to(dest.noorm.config, {
     tables: ['users', 'posts'],
     onConflict: 'skip',
     batchSize: 5000,
@@ -481,12 +648,12 @@ await dest.disconnect();
 | `passphrase`         | `string`           | —        | Passphrase for .dtzx export encryption.      |
 
 
-#### transferPlan(destConfig, options?)
+#### transfer.plan(destConfig, options?)
 
 Generate a transfer plan without executing. Inspects both databases and returns table ordering, row estimates, and warnings.
 
 ```typescript
-const [plan, err] = await source.noorm.transferPlan(dest.noorm.config);
+const [plan, err] = await source.noorm.transfer.plan(dest.noorm.config);
 if (plan) {
     console.log(`${plan.estimatedRows} rows across ${plan.tables.length} tables`);
     for (const warning of plan.warnings) {
@@ -496,21 +663,21 @@ if (plan) {
 ```
 
 
-### DT File Operations
+### ctx.noorm.dt — DT File Operations
 
 
-#### exportTable(tableName, filepath, options?)
+#### dt.exportTable(tableName, filepath, options?)
 
 Export a table to a .dt file. The file extension determines the format: `.dt` (plain), `.dtz` (gzipped), `.dtzx` (encrypted).
 
 ```typescript
-const [result, err] = await ctx.noorm.exportTable('users', './exports/users.dtz');
+const [result, err] = await ctx.noorm.dt.exportTable('users', './exports/users.dtz');
 if (result) {
     console.log(`Exported ${result.rowsWritten} rows (${result.bytesWritten} bytes)`);
 }
 
 // Encrypted export
-const [encrypted, encErr] = await ctx.noorm.exportTable('users', './exports/users.dtzx', {
+const [encrypted, encErr] = await ctx.noorm.dt.exportTable('users', './exports/users.dtzx', {
     passphrase: 'my-secret',
 });
 ```
@@ -524,12 +691,12 @@ const [encrypted, encErr] = await ctx.noorm.exportTable('users', './exports/user
 | `batchSize`  | `number` | Rows per batch. Default: 1000.                    |
 
 
-#### importFile(filepath, options?)
+#### dt.importFile(filepath, options?)
 
 Import a .dt file into the connected database.
 
 ```typescript
-const [result, err] = await ctx.noorm.importFile('./exports/users.dtz', {
+const [result, err] = await ctx.noorm.dt.importFile('./exports/users.dtz', {
     onConflict: 'skip',
 });
 if (result) {
@@ -547,54 +714,191 @@ if (result) {
 | `truncate`   | `boolean`          | `false`  | Truncate target table before import. |
 
 
-### History
+### ctx.noorm.changes — History
 
 
-#### getHistory(limit?)
+#### changes.history(limit?)
 
 Get execution history.
 
 ```typescript
-const history = await ctx.noorm.getHistory(10);
+const history = await ctx.noorm.changes.history(10);
 for (const record of history) {
     console.log(`${record.name}: ${record.status} at ${record.executedAt}`);
 }
 ```
 
 
-### Secrets
+### ctx.noorm.secrets — Secrets
 
 
-#### getSecret(key)
+#### secrets.get(key)
 
 Get a config-scoped secret.
 
 ```typescript
-const apiKey = ctx.noorm.getSecret('API_KEY');
+const apiKey = ctx.noorm.secrets.get('API_KEY');
 ```
 
 
-### Utilities
+### ctx.noorm.vault — Vault (Encrypted Team Secrets)
+
+Database-stored encrypted secrets shared across team members. Unlike config-scoped secrets, vault secrets live in the database and are encrypted with identity keypairs.
 
 
-#### testConnection()
+#### vault.init()
+
+Initialize the vault for this database. Creates the vault key and stores it encrypted for the current identity.
+
+```typescript
+const [vaultKey, err] = await ctx.noorm.vault.init();
+if (err) {
+    console.error('Vault init failed:', err.message);
+}
+```
+
+**Returns:** `Promise<[Buffer | null, Error | null]>` — the vault key buffer or an error.
+
+
+#### vault.status()
+
+Get vault status for the current identity.
+
+```typescript
+const status = await ctx.noorm.vault.status();
+console.log(`Initialized: ${status.initialized}, Has access: ${status.hasAccess}`);
+```
+
+**Returns:** `Promise<VaultStatus>`
+
+
+#### vault.set(key, value, privateKey)
+
+Set a vault secret. Requires the caller's private key for vault key decryption.
+
+```typescript
+const [, err] = await ctx.noorm.vault.set('API_KEY', 'sk-live-...', privateKey);
+if (err) {
+    console.error('Failed to set secret:', err.message);
+}
+```
+
+**Returns:** `Promise<[void, Error | null]>`
+
+
+#### vault.get(key, privateKey)
+
+Get a single vault secret by key.
+
+```typescript
+const value = await ctx.noorm.vault.get('API_KEY', privateKey);
+```
+
+**Returns:** `Promise<string | null>` — the decrypted value, or `null` if not found or no access.
+
+
+#### vault.getAll(privateKey)
+
+Get all vault secrets as a key-value map with metadata.
+
+```typescript
+const all = await ctx.noorm.vault.getAll(privateKey);
+for (const [key, secret] of Object.entries(all)) {
+    console.log(`${key}: set by ${secret.setBy}`);
+}
+```
+
+**Returns:** `Promise<Record<string, VaultSecret>>`
+
+
+#### vault.list()
+
+List all vault secret keys without decrypting values. Does not require a private key.
+
+```typescript
+const keys = await ctx.noorm.vault.list();
+console.log('Available secrets:', keys.join(', '));
+```
+
+**Returns:** `Promise<string[]>`
+
+
+#### vault.delete(key)
+
+Delete a vault secret.
+
+```typescript
+const [deleted, err] = await ctx.noorm.vault.delete('OLD_KEY');
+if (deleted) {
+    console.log('Secret removed');
+}
+```
+
+**Returns:** `Promise<[boolean, Error | null]>`
+
+
+#### vault.exists(key)
+
+Check if a vault secret exists without decrypting.
+
+```typescript
+const exists = await ctx.noorm.vault.exists('API_KEY');
+```
+
+**Returns:** `Promise<boolean>`
+
+
+#### vault.propagate(privateKey)
+
+Propagate vault key to all team identities that don't yet have access. Run after adding new team members.
+
+```typescript
+const result = await ctx.noorm.vault.propagate(privateKey);
+console.log(`Propagated to ${result.propagatedTo.length} new users`);
+```
+
+**Returns:** `Promise<VaultPropagationResult>`
+
+
+#### vault.copy(destConfig, keys, privateKey, options?)
+
+Copy vault secrets to another config's database. Useful for seeding a new environment with secrets from an existing one.
+
+```typescript
+const [result, err] = await ctx.noorm.vault.copy(
+    destConfig,
+    ['API_KEY', 'DB_TOKEN'],
+    privateKey,
+);
+if (result) {
+    console.log(`Copied ${result.copied} secrets`);
+}
+```
+
+**Returns:** `Promise<[VaultCopyResult | null, Error | null]>`
+
+
+### ctx.noorm.utils — Utilities
+
+
+#### utils.testConnection()
 
 Tests if the connection can be established without actually connecting.
 
 ```typescript
-const result = await ctx.noorm.testConnection();
+const result = await ctx.noorm.utils.testConnection();
 if (!result.ok) {
     console.error('Connection failed:', result.error);
 }
 ```
 
 
-#### computeChecksum(filepath)
+#### utils.checksum(filepath)
 
 Compute SHA-256 checksum for a file.
 
 ```typescript
-const checksum = await ctx.noorm.computeChecksum('sql/001_users.sql');
+const checksum = await ctx.noorm.utils.checksum('sql/001_users.sql');
 ```
 
 
@@ -669,7 +973,7 @@ try {
 }
 
 try {
-    await ctx.noorm.truncate();
+    await ctx.noorm.db.truncate();
 } catch (err) {
     if (err instanceof ProtectedConfigError) {
         console.error('Cannot truncate protected database');
@@ -677,7 +981,7 @@ try {
 }
 
 try {
-    await ctx.noorm.acquireLock();
+    await ctx.noorm.lock.acquire();
 } catch (err) {
     if (err instanceof LockAcquireError) {
         console.error(`Lock held by ${err.holder}`);
@@ -736,6 +1040,9 @@ import type {
     BuildOptions,
 
     // Changes
+    Change,
+    CreateChangeOptions,
+    AddFileOptions,
     ChangeResult,
     BatchChangeResult,
     ChangeListItem,
@@ -750,6 +1057,7 @@ import type {
     // Operations
     TruncateResult,
     TeardownResult,
+    TeardownPreview,
 
     // Locks
     Lock,
@@ -758,6 +1066,13 @@ import type {
 
     // Templates
     TemplateResult,
+
+    // Vault
+    VaultSecret,
+    VaultStatus,
+    VaultCopyResult,
+    VaultCopyOptions,
+    VaultPropagationResult,
 
     // Transfer
     TransferOptions,

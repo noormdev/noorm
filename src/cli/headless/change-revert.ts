@@ -40,7 +40,7 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
     const [result, error] = await withContext({
         flags,
         logger,
-        fn: (ctx) => ctx.noorm.revertChange(params.name!),
+        fn: (ctx) => ctx.noorm.changes.revert(params.name!),
     });
 
     if (error) return 1;

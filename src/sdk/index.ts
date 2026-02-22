@@ -17,10 +17,10 @@
  *     .execute()
  *
  * // Run SQL files
- * await ctx.runFile('./seeds/users.sql')
+ * await ctx.noorm.run.file('./seeds/users.sql')
  *
  * // Apply changes
- * await ctx.fastForward()
+ * await ctx.noorm.changes.ff()
  *
  * await ctx.disconnect()
  * ```
@@ -143,6 +143,20 @@ export async function createContext<DB = unknown, Procs = object, Funcs = object
 export { Context } from './context.js';
 export { NoormOps } from './noorm-ops.js';
 
+// Namespace classes (for instanceof checks)
+export {
+    ChangesNamespace,
+    RunNamespace,
+    DbNamespace,
+    LockNamespace,
+    VaultNamespace,
+    SecretsNamespace,
+    TemplatesNamespace,
+    TransferNamespace,
+    DtNamespace,
+    UtilsNamespace,
+} from './namespaces/index.js';
+
 // Types
 export type {
     CreateContextOptions,
@@ -167,7 +181,7 @@ export type {
     TableDetail,
     ExploreOverview,
 } from '../core/explore/index.js';
-export type { TruncateResult, TeardownResult } from '../core/teardown/index.js';
+export type { TruncateResult, TeardownResult, TeardownPreview } from '../core/teardown/index.js';
 export type { BatchResult, FileResult, RunOptions } from '../core/runner/index.js';
 export type {
     ChangeResult,
@@ -176,6 +190,25 @@ export type {
     ChangeOptions,
     ChangeHistoryRecord,
 } from '../core/change/index.js';
+
+// Change scaffold types
+export type {
+    Change,
+    ChangeFile,
+    ChangeFileType,
+    CreateChangeOptions,
+    AddFileOptions,
+} from '../core/change/types.js';
+
+// Change errors (for catching)
+export {
+    ChangeValidationError,
+    ChangeNotFoundError,
+    ChangeAlreadyAppliedError,
+    ChangeNotAppliedError,
+    ChangeOrphanedError,
+    ManifestReferenceError,
+} from '../core/change/types.js';
 
 // Lock types
 export type { Lock, LockStatus, LockOptions } from '../core/lock/index.js';
@@ -193,3 +226,12 @@ export type {
     TransferTableResult,
     ConflictStrategy,
 } from '../core/transfer/index.js';
+
+// Vault types
+export type {
+    VaultSecret,
+    VaultStatus,
+    VaultCopyOptions,
+    VaultCopyResult,
+    VaultPropagationResult,
+} from '../core/vault/index.js';

@@ -48,7 +48,7 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
     const [result, error] = await withContext({
         flags,
         logger,
-        fn: (ctx) => ctx.noorm.build({ force: params.force ?? flags.force }),
+        fn: (ctx) => ctx.noorm.run.build({ force: params.force ?? flags.force }),
     });
 
     if (error) return 1;

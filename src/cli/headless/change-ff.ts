@@ -61,7 +61,7 @@ export const run: HeadlessCommand = async (_params, flags, logger) => {
     const [result, error] = await withContext({
         flags,
         logger,
-        fn: (ctx) => ctx.noorm.fastForward(),
+        fn: (ctx) => ctx.noorm.changes.ff(),
     });
 
     if (error) return 1;

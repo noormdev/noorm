@@ -40,7 +40,7 @@ export const run: HeadlessCommand = async (_params, flags, logger) => {
     const [result, error] = await withContext({
         flags,
         logger,
-        fn: (ctx) => ctx.noorm.truncate(),
+        fn: (ctx) => ctx.noorm.db.truncate(),
     });
 
     if (error) return 1;

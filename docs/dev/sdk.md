@@ -40,7 +40,7 @@ const users = await ctx.kysely
     .execute()
 
 // Noorm operations via namespace
-await ctx.noorm.fastForward()
+await ctx.noorm.changes.ff()
 
 // Disconnect when done
 await ctx.disconnect()
@@ -57,18 +57,17 @@ The Context API is split into two levels:
 - `transaction()`, `proc()`, `func()` — SQL execution
 - `noorm` — namespace for management operations
 
-**ctx.noorm** — noorm management operations for schema, changes, and tooling:
-- Schema: `build()`, `truncate()`, `teardown()`, `reset()`
-- Changes: `applyChange()`, `revertChange()`, `fastForward()`, `getChangeStatus()`, `getPendingChanges()`
-- Explore: `listTables()`, `describeTable()`, `overview()`
-- Runner: `runFile()`, `runFiles()`, `runDir()`
-- Locks: `acquireLock()`, `releaseLock()`, `getLockStatus()`, `withLock()`, `forceReleaseLock()`
-- Transfer: `transferTo()`, `transferPlan()`
-- DT: `exportTable()`, `importFile()`
-- Templates: `renderTemplate()`
-- History: `getHistory()`
-- Secrets: `getSecret()`
-- Utilities: `computeChecksum()`, `testConnection()`
+**ctx.noorm** — noorm management operations, organized by namespace:
+- `run`: `build()`, `file()`, `files()`, `dir()`, `discover()`, `preview()`
+- `db`: `truncate()`, `teardown()`, `previewTeardown()`, `reset()`, `listTables()`, `describeTable()`, `overview()`
+- `changes`: `apply()`, `revert()`, `ff()`, `status()`, `pending()`, `history()`, `create()`, `addFile()`, `removeFile()`, `renameFile()`, `reorderFiles()`, `delete()`, `discover()`, `parse()`, `validate()`
+- `lock`: `acquire()`, `release()`, `status()`, `withLock()`, `forceRelease()`
+- `dt`: `exportTable()`, `importFile()`
+- `transfer`: `to()`, `plan()`
+- `templates`: `render()`
+- `secrets`: `get()`
+- `vault`: `init()`, `status()`, `set()`, `get()`, `getAll()`, `list()`, `delete()`, `exists()`, `propagate()`, `copy()`
+- `utils`: `checksum()`, `testConnection()`
 - Properties: `config`, `settings`, `identity`, `observer`
 
 
@@ -82,7 +81,7 @@ The Context API is split into two levels:
 Creates an SDK context for programmatic database access.
 
 ```typescript
-interface CreateContextOptions<DB = unknown> {
+interface CreateContextOptions {
     config?: string          // Config name (or use NOORM_CONFIG env var)
     projectRoot?: string     // Project root path (see note below)
     requireTest?: boolean    // Refuse if config.isTest !== true
@@ -161,7 +160,7 @@ steps:
 // deploy.js - no config name needed
 const ctx = await createContext()
 await ctx.connect()
-await ctx.noorm.fastForward()
+await ctx.noorm.changes.ff()
 await ctx.disconnect()
 ```
 
@@ -279,138 +278,252 @@ Both methods throw on SQLite, which has no stored procedure or function call sup
 
 #### Schema Operations
 
-##### `build(options?)`
+##### `run.build(options?)`
 
 Execute all SQL files in the schema directory.
 
 ```typescript
-const result = await ctx.noorm.build({ force: true })
+const result = await ctx.noorm.run.build({ force: true })
 console.log(`Ran ${result.filesRun} files`)
 ```
 
-##### `truncate()`
+##### `db.truncate()`
 
 Wipe all data, keeping the schema intact.
 
 ```typescript
-const result = await ctx.noorm.truncate()
+const result = await ctx.noorm.db.truncate()
 console.log(`Truncated ${result.truncated.length} tables`)
 ```
 
-##### `teardown()`
+##### `db.teardown()`
 
 Drop all database objects except noorm tracking tables.
 
 ```typescript
-const result = await ctx.noorm.teardown()
+const result = await ctx.noorm.db.teardown()
 ```
 
-##### `reset()`
+##### `db.previewTeardown()`
+
+Preview what teardown would drop without executing.
+
+```typescript
+const preview = await ctx.noorm.db.previewTeardown()
+```
+
+##### `db.reset()`
 
 Full rebuild: teardown + build.
 
 ```typescript
-await ctx.noorm.reset()
+await ctx.noorm.db.reset()
 ```
 
 
 #### File Runner
 
-##### `runFile(filepath, options?)`
+##### `run.file(filepath, options?)`
 
 Execute a single SQL file.
 
 ```typescript
-await ctx.noorm.runFile('seeds/test-data.sql')
-await ctx.noorm.runFile('/absolute/path/to/seed.sql')
+await ctx.noorm.run.file('seeds/test-data.sql')
+await ctx.noorm.run.file('/absolute/path/to/seed.sql')
 ```
 
-##### `runFiles(filepaths, options?)`
+##### `run.files(filepaths, options?)`
 
 Execute multiple SQL files sequentially.
 
 ```typescript
-await ctx.noorm.runFiles([
+await ctx.noorm.run.files([
     'functions/utils.sql',
     'triggers/audit.sql',
 ])
 ```
 
-##### `runDir(dirpath, options?)`
+##### `run.dir(dirpath, options?)`
 
 Execute all SQL files in a directory.
 
 ```typescript
-await ctx.noorm.runDir('seeds/')
+await ctx.noorm.run.dir('seeds/')
+```
+
+##### `run.discover(dirpath?)`
+
+Discover SQL files in a directory. Defaults to the configured SQL directory.
+
+```typescript
+const files = await ctx.noorm.run.discover('sql/')
+```
+
+##### `run.preview(filepaths, output?)`
+
+Preview SQL files — render templates without executing.
+
+```typescript
+const results = await ctx.noorm.run.preview(['sql/001.sql', 'sql/002.sql'])
 ```
 
 
 #### Changes
 
-##### `applyChange(name, options?)`
+##### `changes.apply(name, options?)`
 
 Apply a specific change.
 
 ```typescript
-const result = await ctx.noorm.applyChange('2024-01-15-add-users')
+const result = await ctx.noorm.changes.apply('2024-01-15-add-users')
 ```
 
-##### `revertChange(name, options?)`
+##### `changes.revert(name, options?)`
 
 Revert a specific change.
 
 ```typescript
-const result = await ctx.noorm.revertChange('2024-01-15-add-users')
+const result = await ctx.noorm.changes.revert('2024-01-15-add-users')
 ```
 
-##### `fastForward()`
+##### `changes.ff()`
 
 Apply all pending changes.
 
 ```typescript
-const result = await ctx.noorm.fastForward()
+const result = await ctx.noorm.changes.ff()
 console.log(`Applied ${result.executed} changes`)
 ```
 
-##### `getChangeStatus()`
+##### `changes.status()`
 
 Get status of all changes.
 
 ```typescript
-const changes = await ctx.noorm.getChangeStatus()
+const changes = await ctx.noorm.changes.status()
 for (const cs of changes) {
     console.log(`${cs.name}: ${cs.status}`)
 }
 ```
 
-##### `getPendingChanges()`
+##### `changes.pending()`
 
 Get only pending changes.
 
 ```typescript
-const pending = await ctx.noorm.getPendingChanges()
+const pending = await ctx.noorm.changes.pending()
+```
+
+##### `changes.history(limit?)`
+
+Get execution history.
+
+```typescript
+const history = await ctx.noorm.changes.history(10)
+for (const record of history) {
+    console.log(`${record.name}: ${record.status} at ${record.executedAt}`)
+}
+```
+
+##### Scaffold Methods
+
+These methods work offline (no database connection required) and manage change directories on disk.
+
+##### `changes.create(options)`
+
+Create a new change directory with change/ and revert/ folders.
+
+```typescript
+const change = await ctx.noorm.changes.create({ description: 'add-user-roles' })
+```
+
+##### `changes.addFile(change, folder, options)`
+
+Add a file to a change.
+
+```typescript
+const updated = await ctx.noorm.changes.addFile(change, 'change', {
+    name: 'create-table',
+    type: 'sql',
+})
+```
+
+##### `changes.removeFile(change, folder, filename)`
+
+Remove a file from a change.
+
+```typescript
+await ctx.noorm.changes.removeFile(change, 'change', '001_create-table.sql')
+```
+
+##### `changes.renameFile(change, folder, oldFilename, newDescription)`
+
+Rename a file in a change.
+
+```typescript
+await ctx.noorm.changes.renameFile(change, 'change', '001_old.sql', 'new-name')
+```
+
+##### `changes.reorderFiles(change, folder, newOrder)`
+
+Reorder files in a change folder.
+
+```typescript
+await ctx.noorm.changes.reorderFiles(change, 'change', ['002_b.sql', '001_a.sql'])
+```
+
+##### `changes.delete(change)`
+
+Delete a change directory from disk.
+
+```typescript
+await ctx.noorm.changes.delete(change)
+```
+
+##### `changes.discover()`
+
+Discover all changes on disk.
+
+```typescript
+const changes = await ctx.noorm.changes.discover()
+```
+
+##### `changes.parse(name)`
+
+Parse a single change from disk by name.
+
+```typescript
+const change = await ctx.noorm.changes.parse('2024-01-15-add-users')
+```
+
+##### `changes.validate(change)`
+
+Validate a change's structure. Throws `ChangeValidationError` if invalid.
+
+```typescript
+ctx.noorm.changes.validate(change)
 ```
 
 
 #### Explore
 
-##### `listTables()`
+##### `db.listTables()`
 
 List all tables in the database.
 
 ```typescript
-const tables = await ctx.noorm.listTables()
+const tables = await ctx.noorm.db.listTables()
 for (const table of tables) {
     console.log(`${table.name}: ${table.columnCount} columns`)
 }
 ```
 
-##### `describeTable(name, schema?)`
+##### `db.describeTable(name, schema?)`
 
 Get detailed information about a table.
 
 ```typescript
-const detail = await ctx.noorm.describeTable('users')
+const detail = await ctx.noorm.db.describeTable('users')
 if (detail) {
     for (const col of detail.columns) {
         console.log(`${col.name}: ${col.dataType}`)
@@ -418,110 +531,189 @@ if (detail) {
 }
 ```
 
-##### `overview()`
+##### `db.overview()`
 
 Get database overview with counts of all object types.
 
 ```typescript
-const overview = await ctx.noorm.overview()
+const overview = await ctx.noorm.db.overview()
 console.log(`Tables: ${overview.tables}, Views: ${overview.views}`)
 ```
 
 
 #### Locks
 
-##### `acquireLock(options?)`
+##### `lock.acquire(options?)`
 
 Acquire a database lock.
 
 ```typescript
-const lock = await ctx.noorm.acquireLock({ timeout: 60000 })
+const lock = await ctx.noorm.lock.acquire({ timeout: 60000 })
 ```
 
-##### `releaseLock()`
+##### `lock.release()`
 
 Release the current lock.
 
 ```typescript
-await ctx.noorm.releaseLock()
+await ctx.noorm.lock.release()
 ```
 
-##### `getLockStatus()`
+##### `lock.status()`
 
 Get current lock status.
 
 ```typescript
-const status = await ctx.noorm.getLockStatus()
+const status = await ctx.noorm.lock.status()
 if (status.isLocked) {
     console.log(`Locked by ${status.lock.lockedBy}`)
 }
 ```
 
-##### `withLock(fn, options?)`
+##### `lock.withLock(fn, options?)`
 
 Execute an operation with automatic lock acquisition and release.
 
 ```typescript
-await ctx.noorm.withLock(async () => {
-    await ctx.noorm.build()
-    await ctx.noorm.fastForward()
+await ctx.noorm.lock.withLock(async () => {
+    await ctx.noorm.run.build()
+    await ctx.noorm.changes.ff()
 })
+```
+
+##### `lock.forceRelease()`
+
+Force release any database lock regardless of ownership. Returns `true` if a lock was released.
+
+```typescript
+await ctx.noorm.lock.forceRelease()
 ```
 
 
 #### Templates
 
-##### `renderTemplate(filepath)`
+##### `templates.render(filepath)`
 
 Render a template file without executing.
 
 ```typescript
-const result = await ctx.noorm.renderTemplate('sql/001_users.sql.tmpl')
+const result = await ctx.noorm.templates.render('sql/001_users.sql.tmpl')
 console.log(result.sql)
-```
-
-
-#### History
-
-##### `getHistory(limit?)`
-
-Get execution history.
-
-```typescript
-const history = await ctx.noorm.getHistory(10)
-for (const record of history) {
-    console.log(`${record.name}: ${record.status} at ${record.executedAt}`)
-}
 ```
 
 
 #### Secrets
 
-##### `getSecret(key)`
+##### `secrets.get(key)`
 
 Get a config-scoped secret.
 
 ```typescript
-const apiKey = ctx.noorm.getSecret('API_KEY')
+const apiKey = ctx.noorm.secrets.get('API_KEY')
+```
+
+
+#### Vault
+
+Encrypted team secrets stored in the database. All operations require a connection. Operations that decrypt secrets require the user's private key.
+
+##### `vault.init()`
+
+Initialize the vault for this database.
+
+```typescript
+const [vaultKey, err] = await ctx.noorm.vault.init()
+```
+
+##### `vault.status()`
+
+Get vault status.
+
+```typescript
+const status = await ctx.noorm.vault.status()
+```
+
+##### `vault.set(key, value, privateKey)`
+
+Set a vault secret.
+
+```typescript
+const [, err] = await ctx.noorm.vault.set('API_KEY', 'sk-live-...', privateKey)
+```
+
+##### `vault.get(key, privateKey)`
+
+Get a vault secret by key. Returns `null` if not found or no vault access.
+
+```typescript
+const value = await ctx.noorm.vault.get('API_KEY', privateKey)
+```
+
+##### `vault.getAll(privateKey)`
+
+Get all vault secrets.
+
+```typescript
+const all = await ctx.noorm.vault.getAll(privateKey)
+```
+
+##### `vault.list()`
+
+List all vault secret keys without decrypting values.
+
+```typescript
+const keys = await ctx.noorm.vault.list()
+```
+
+##### `vault.delete(key)`
+
+Delete a vault secret.
+
+```typescript
+const [deleted, err] = await ctx.noorm.vault.delete('OLD_KEY')
+```
+
+##### `vault.exists(key)`
+
+Check if a vault secret exists.
+
+```typescript
+const exists = await ctx.noorm.vault.exists('API_KEY')
+```
+
+##### `vault.propagate(privateKey)`
+
+Propagate vault key to all users without access.
+
+```typescript
+const result = await ctx.noorm.vault.propagate(privateKey)
+```
+
+##### `vault.copy(destConfig, keys, privateKey, options?)`
+
+Copy vault secrets to another config's database.
+
+```typescript
+const [result, err] = await ctx.noorm.vault.copy(destConfig, ['API_KEY'], privateKey)
 ```
 
 
 #### Utilities
 
-##### `computeChecksum(filepath)`
+##### `utils.checksum(filepath)`
 
 Compute SHA-256 checksum for a file.
 
 ```typescript
-const checksum = await ctx.noorm.computeChecksum('sql/001_users.sql')
+const checksum = await ctx.noorm.utils.checksum('sql/001_users.sql')
 ```
 
-##### `testConnection()`
+##### `utils.testConnection()`
 
 Tests if the connection can be established without actually connecting.
 
 ```typescript
-const result = await ctx.noorm.testConnection()
+const result = await ctx.noorm.utils.testConnection()
 if (!result.ok) {
     console.error('Connection failed:', result.error)
 }
@@ -530,9 +722,9 @@ if (!result.ok) {
 
 #### Transfer
 
-##### `transferTo(destConfig, options?)`
+##### `transfer.to(destConfig, options?)`
 
-Transfer data from this context's database to a destination. Both must be connected.
+Transfer data from this context's database to a destination.
 
 ```typescript
 const source = await createContext({ config: 'staging' })
@@ -540,7 +732,7 @@ const dest = await createContext({ config: 'dev' })
 await source.connect()
 await dest.connect()
 
-const [result, err] = await source.noorm.transferTo(dest.noorm.config, {
+const [result, err] = await source.noorm.transfer.to(dest.noorm.config, {
     tables: ['users', 'posts'],
     onConflict: 'skip',
 })
@@ -549,12 +741,12 @@ await source.disconnect()
 await dest.disconnect()
 ```
 
-##### `transferPlan(destConfig, options?)`
+##### `transfer.plan(destConfig, options?)`
 
 Generate a transfer plan without executing.
 
 ```typescript
-const [plan, err] = await source.noorm.transferPlan(dest.noorm.config)
+const [plan, err] = await source.noorm.transfer.plan(dest.noorm.config)
 if (plan) {
     console.log(`${plan.estimatedRows} rows across ${plan.tables.length} tables`)
 }
@@ -563,20 +755,20 @@ if (plan) {
 
 #### DT File Operations
 
-##### `exportTable(tableName, filepath, options?)`
+##### `dt.exportTable(tableName, filepath, options?)`
 
 Export a table to a .dt file. Extension determines format: `.dt`, `.dtz` (gzipped), `.dtzx` (encrypted).
 
 ```typescript
-const [result, err] = await ctx.noorm.exportTable('users', './exports/users.dtz')
+const [result, err] = await ctx.noorm.dt.exportTable('users', './exports/users.dtz')
 ```
 
-##### `importFile(filepath, options?)`
+##### `dt.importFile(filepath, options?)`
 
 Import a .dt file into the connected database.
 
 ```typescript
-const [result, err] = await ctx.noorm.importFile('./exports/users.dtz', {
+const [result, err] = await ctx.noorm.dt.importFile('./exports/users.dtz', {
     onConflict: 'skip',
 })
 ```
@@ -611,7 +803,7 @@ describe('User API', () => {
     beforeAll(async () => {
         ctx = await createContext({ config: 'test', requireTest: true })
         await ctx.connect()
-        await ctx.noorm.reset()  // Clean slate
+        await ctx.noorm.db.reset()  // Clean slate
     })
 
     afterAll(async () => {
@@ -619,7 +811,7 @@ describe('User API', () => {
     })
 
     beforeEach(async () => {
-        await ctx.noorm.truncate()  // Wipe between tests
+        await ctx.noorm.db.truncate()  // Wipe between tests
     })
 
     it('creates a user', async () => {
@@ -665,9 +857,9 @@ import { createContext } from 'noorm/sdk'
 const ctx = await createContext({ config: 'dev' })
 await ctx.connect()
 
-const tables = await ctx.noorm.listTables()
+const tables = await ctx.noorm.db.listTables()
 for (const table of tables) {
-    const detail = await ctx.noorm.describeTable(table.name)
+    const detail = await ctx.noorm.db.describeTable(table.name)
     generateTypeDefinition(detail)
 }
 
@@ -684,15 +876,15 @@ const ctx = await createContext({ config: process.env.DB_CONFIG })
 await ctx.connect()
 
 // Test connection
-const test = await ctx.noorm.testConnection()
+const test = await ctx.noorm.utils.testConnection()
 if (!test.ok) {
     console.error('Database not available:', test.error)
     process.exit(1)
 }
 
 // Apply changes with lock
-await ctx.noorm.withLock(async () => {
-    await ctx.noorm.fastForward()
+await ctx.noorm.lock.withLock(async () => {
+    await ctx.noorm.changes.ff()
 })
 
 await ctx.disconnect()
@@ -718,7 +910,7 @@ try {
 }
 
 try {
-    await ctx.noorm.truncate()
+    await ctx.noorm.db.truncate()
 } catch (err) {
     if (err instanceof ProtectedConfigError) {
         console.error('Cannot truncate protected database')
@@ -726,7 +918,7 @@ try {
 }
 
 try {
-    await ctx.noorm.acquireLock()
+    await ctx.noorm.lock.acquire()
 } catch (err) {
     if (err instanceof LockAcquireError) {
         console.error(`Lock held by ${err.holder}`)

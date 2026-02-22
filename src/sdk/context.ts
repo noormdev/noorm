@@ -40,8 +40,8 @@ import type { CreateContextOptions } from './types.js';
  *     .execute()
  *
  * // Noorm operations — under namespace
- * await ctx.noorm.build()
- * await ctx.noorm.fastForward()
+ * await ctx.noorm.run.build()
+ * await ctx.noorm.changes.ff()
  *
  * await ctx.disconnect()
  * ```
@@ -111,9 +111,9 @@ export class Context<DB = unknown, Procs = object, Funcs = object> {
      *
      * @example
      * ```typescript
-     * await ctx.noorm.build()
-     * await ctx.noorm.fastForward()
-     * const tables = await ctx.noorm.listTables()
+     * await ctx.noorm.run.build()
+     * await ctx.noorm.changes.ff()
+     * const tables = await ctx.noorm.db.listTables()
      * ```
      */
     get noorm(): NoormOps {
