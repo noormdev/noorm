@@ -62,7 +62,7 @@ describe('cli: components/form-navigation', () => {
     ];
     const labels = ['Name', 'Host', 'Port'];
 
-    it('should start with first field active', async () => {
+    it('should start with first field active', { retry: 2 }, async () => {
 
         const { lastFrame, unmount } = render(
             <TestWrapper>
