@@ -70,7 +70,7 @@ describe('cli: components/form-navigation', () => {
             </TestWrapper>,
         );
 
-        await new Promise((r) => setTimeout(r, 50));
+        await new Promise((r) => setTimeout(r, 150));
 
         expect(getActiveField(lastFrame() ?? '', labels)).toBe('Name');
         unmount();
@@ -85,10 +85,10 @@ describe('cli: components/form-navigation', () => {
             </TestWrapper>,
         );
 
-        await new Promise((r) => setTimeout(r, 50));
+        await new Promise((r) => setTimeout(r, 150));
 
         stdin.write(KEYS.TAB);
-        await new Promise((r) => setTimeout(r, 50));
+        await new Promise((r) => setTimeout(r, 150));
 
         expect(getActiveField(lastFrame() ?? '', labels)).toBe('Host');
         unmount();
@@ -103,16 +103,16 @@ describe('cli: components/form-navigation', () => {
             </TestWrapper>,
         );
 
-        await new Promise((r) => setTimeout(r, 50));
+        await new Promise((r) => setTimeout(r, 150));
 
         // Move to second field
         stdin.write(KEYS.TAB);
-        await new Promise((r) => setTimeout(r, 50));
+        await new Promise((r) => setTimeout(r, 150));
         expect(getActiveField(lastFrame() ?? '', labels)).toBe('Host');
 
         // Shift+Tab back to first
         stdin.write(KEYS.SHIFT_TAB);
-        await new Promise((r) => setTimeout(r, 50));
+        await new Promise((r) => setTimeout(r, 150));
 
         expect(getActiveField(lastFrame() ?? '', labels)).toBe('Name');
         unmount();
@@ -127,15 +127,15 @@ describe('cli: components/form-navigation', () => {
             </TestWrapper>,
         );
 
-        await new Promise((r) => setTimeout(r, 50));
+        await new Promise((r) => setTimeout(r, 150));
         expect(getActiveField(lastFrame() ?? '', labels)).toBe('Name');
 
         stdin.write(KEYS.TAB);
-        await new Promise((r) => setTimeout(r, 50));
+        await new Promise((r) => setTimeout(r, 150));
         expect(getActiveField(lastFrame() ?? '', labels)).toBe('Host');
 
         stdin.write(KEYS.TAB);
-        await new Promise((r) => setTimeout(r, 50));
+        await new Promise((r) => setTimeout(r, 150));
         expect(getActiveField(lastFrame() ?? '', labels)).toBe('Port');
 
         unmount();
@@ -150,22 +150,22 @@ describe('cli: components/form-navigation', () => {
             </TestWrapper>,
         );
 
-        await new Promise((r) => setTimeout(r, 50));
+        await new Promise((r) => setTimeout(r, 150));
 
         // Navigate to last field
         stdin.write(KEYS.TAB);
-        await new Promise((r) => setTimeout(r, 50));
+        await new Promise((r) => setTimeout(r, 150));
         stdin.write(KEYS.TAB);
-        await new Promise((r) => setTimeout(r, 50));
+        await new Promise((r) => setTimeout(r, 150));
         expect(getActiveField(lastFrame() ?? '', labels)).toBe('Port');
 
         // Navigate backward
         stdin.write(KEYS.SHIFT_TAB);
-        await new Promise((r) => setTimeout(r, 50));
+        await new Promise((r) => setTimeout(r, 150));
         expect(getActiveField(lastFrame() ?? '', labels)).toBe('Host');
 
         stdin.write(KEYS.SHIFT_TAB);
-        await new Promise((r) => setTimeout(r, 50));
+        await new Promise((r) => setTimeout(r, 150));
         expect(getActiveField(lastFrame() ?? '', labels)).toBe('Name');
 
         unmount();

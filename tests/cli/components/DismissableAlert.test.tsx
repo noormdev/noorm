@@ -71,8 +71,8 @@ describe('cli: DismissableAlert', () => {
             </TestWrapper>,
         );
 
-        // Wait for preference check and render
-        await new Promise((r) => setTimeout(r, 200));
+        // Wait for preference check and render (CI needs extra time)
+        await new Promise((r) => setTimeout(r, 500));
 
         const frame = lastFrame();
         expect(frame).toContain('Test Alert');
