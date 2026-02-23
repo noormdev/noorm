@@ -7,7 +7,8 @@
 import { readFile, writeFile, mkdir, access } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
-import { attempt } from '@logosdx/utils';
+import { attempt, merge } from '@logosdx/utils';
+import { allConfigs } from '../config/index.js';
 
 import { observer } from '../observer.js';
 import { parseSettings } from './schema.js';
@@ -130,64 +131,58 @@ export class SettingsManager {
     async load(): Promise<Settings> {
 
         const fileExists = await this.exists();
+        let fromFile = false;
 
         if (!fileExists) {
 
             this.#settings = createDefaultSettings();
-            this.#loaded = true;
 
-            observer.emit('settings:loaded', {
-                path: this.settingsFilePath,
-                settings: this.#settings,
-                fromFile: false,
-            });
+        }
+        else {
 
-            return this.#settings;
+            // Read file
+            const [content, readErr] = await attempt(() => readFile(this.settingsFilePath, 'utf-8'));
+
+            if (readErr) {
+
+                throw new Error(`Failed to read settings file: ${readErr.message}`);
+
+            }
+
+            // Parse YAML
+            const [parsed, yamlErr] = await attempt(() => parseYaml(content));
+
+            if (yamlErr) {
+
+                throw new Error(`Invalid YAML in settings file: ${yamlErr.message}`);
+
+            }
+
+            // Handle empty file or valid content
+            if (parsed === null || parsed === undefined) {
+
+                this.#settings = createDefaultSettings();
+
+            }
+            else {
+
+                this.#settings = parseSettings(parsed);
+
+            }
+
+            fromFile = true;
 
         }
 
-        // Read file
-        const [content, readErr] = await attempt(() => readFile(this.settingsFilePath, 'utf-8'));
+        // Apply environment variable overrides (NOORM_* -> nested settings)
+        this.#settings = merge(this.#settings, allConfigs()) as Settings;
 
-        if (readErr) {
-
-            throw new Error(`Failed to read settings file: ${readErr.message}`);
-
-        }
-
-        // Parse YAML
-        const [parsed, yamlErr] = await attempt(() => parseYaml(content));
-
-        if (yamlErr) {
-
-            throw new Error(`Invalid YAML in settings file: ${yamlErr.message}`);
-
-        }
-
-        // Handle empty file
-        if (parsed === null || parsed === undefined) {
-
-            this.#settings = createDefaultSettings();
-            this.#loaded = true;
-
-            observer.emit('settings:loaded', {
-                path: this.settingsFilePath,
-                settings: this.#settings,
-                fromFile: true,
-            });
-
-            return this.#settings;
-
-        }
-
-        // Validate and parse with defaults
-        this.#settings = parseSettings(parsed);
         this.#loaded = true;
 
         observer.emit('settings:loaded', {
             path: this.settingsFilePath,
             settings: this.#settings,
-            fromFile: true,
+            fromFile,
         });
 
         return this.#settings;
