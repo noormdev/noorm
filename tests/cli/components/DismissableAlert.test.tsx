@@ -58,7 +58,7 @@ describe('cli: DismissableAlert', () => {
 
     it('should render title and message', async () => {
 
-        const { lastFrame } = render(
+        const { lastFrame, unmount } = render(
             <TestWrapper>
                 <DismissableAlert
                     alertKey="test"
@@ -71,18 +71,20 @@ describe('cli: DismissableAlert', () => {
             </TestWrapper>,
         );
 
-        // Wait for preference check
-        await new Promise((r) => setTimeout(r, 100));
+        // Wait for preference check and render
+        await new Promise((r) => setTimeout(r, 200));
 
         const frame = lastFrame();
         expect(frame).toContain('Test Alert');
         expect(frame).toContain('This is a test message.');
 
+        unmount();
+
     });
 
     it('should render button labels', async () => {
 
-        const { lastFrame } = render(
+        const { lastFrame, unmount } = render(
             <TestWrapper>
                 <DismissableAlert
                     alertKey="test"
@@ -98,12 +100,14 @@ describe('cli: DismissableAlert', () => {
             </TestWrapper>,
         );
 
-        await new Promise((r) => setTimeout(r, 100));
+        await new Promise((r) => setTimeout(r, 200));
 
         const frame = lastFrame();
         expect(frame).toContain('Yes');
         expect(frame).toContain('No');
         expect(frame).toContain('Maybe');
+
+        unmount();
 
     });
 
@@ -124,7 +128,7 @@ describe('cli: DismissableAlert', () => {
             </TestWrapper>,
         );
 
-        await new Promise((r) => setTimeout(r, 100));
+        await new Promise((r) => setTimeout(r, 200));
 
         // Press Enter (Confirm is selected by default)
         stdin.write('\r');

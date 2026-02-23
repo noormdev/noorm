@@ -89,13 +89,18 @@ jobs:
             - run: bun run lint
             - run: bun run typecheck
             - run: bun run build
-            # Run unit and component tests first, then integration tests
-            # Split avoids cross-contamination from mock.module and DB connections
-            - name: Run unit tests
+            # Split test runs to prevent cross-contamination from mock.module
+            # Tests using mock.module run separately from those that don't
+            - name: Run core tests
               env:
                   CI: 'false'
                   FORCE_COLOR: 'true'
-              run: bun test --serial tests/utils tests/core tests/sdk tests/cli
+              run: bun test --serial tests/utils tests/core tests/sdk
+            - name: Run CLI tests
+              env:
+                  CI: 'false'
+                  FORCE_COLOR: 'true'
+              run: bun test --serial tests/cli
             - name: Run integration tests
               env:
                   CI: 'false'
