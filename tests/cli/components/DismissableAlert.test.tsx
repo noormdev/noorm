@@ -4,11 +4,14 @@
  * Tests rendering, keyboard navigation, and preference persistence.
  */
 import React from 'react';
-import { describe, it, expect, beforeEach, afterEach, vi, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach, afterAll, vi, mock } from 'bun:test';
 import { render } from 'ink-testing-library';
 
 import { FocusProvider } from '../../../src/cli/focus.js';
 import { DismissableAlert } from '../../../src/cli/components/feedback/DismissableAlert.js';
+
+// Pre-import actual module for restoration
+const actualGlobalSettings = await import('../../../src/core/update/global-settings.js');
 
 // Mock the global settings module
 mock.module('../../../src/core/update/global-settings.js', () => ({
@@ -43,6 +46,13 @@ describe('cli: DismissableAlert', () => {
     afterEach(() => {
 
         vi.restoreAllMocks();
+
+    });
+
+    // Restore mocked module to prevent pollution of subsequent test files
+    afterAll(() => {
+
+        mock.module('../../../src/core/update/global-settings.js', () => actualGlobalSettings);
 
     });
 

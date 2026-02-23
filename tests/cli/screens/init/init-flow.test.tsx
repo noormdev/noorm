@@ -3,7 +3,7 @@
  *
  * Tests the complete initialization flow from identity setup through project creation.
  */
-import { describe, it, expect, vi, mock, beforeEach, afterEach } from 'bun:test';
+import { describe, it, expect, vi, mock, beforeEach, afterEach, afterAll } from 'bun:test';
 import { render } from 'ink-testing-library';
 import { act } from 'react';
 import React from 'react';
@@ -27,6 +27,9 @@ let writtenFiles: string[] = [];
 
 // Pre-import actual modules to avoid circular await inside mock.module
 const actualFs = await import('fs');
+const actualIdentity = await import('../../../../src/core/identity/index.js');
+const actualState = await import('../../../../src/core/state/index.js');
+const actualSettings = await import('../../../../src/core/settings/manager.js');
 
 // Mock fs
 mock.module('fs', () => ({
@@ -197,6 +200,16 @@ describe('cli: screens/init - flow integration', () => {
     afterEach(() => {
 
         vi.restoreAllMocks();
+
+    });
+
+    // Restore mocked modules to prevent pollution of subsequent test files
+    afterAll(() => {
+
+        mock.module('fs', () => actualFs);
+        mock.module('../../../../src/core/identity/index.js', () => actualIdentity);
+        mock.module('../../../../src/core/state/index.js', () => actualState);
+        mock.module('../../../../src/core/settings/manager.js', () => actualSettings);
 
     });
 

@@ -3,13 +3,16 @@
  *
  * Tests the identity setup form for first-time initialization.
  */
-import { describe, it, expect, vi, mock, beforeEach } from 'bun:test';
+import { describe, it, expect, vi, mock, beforeEach, afterAll } from 'bun:test';
 import { render } from 'ink-testing-library';
 import { act } from 'react';
 import React from 'react';
 
 import { FocusProvider } from '../../../../src/cli/focus.js';
 import { IdentitySetup } from '../../../../src/cli/screens/init/IdentitySetup.js';
+
+// Pre-import actual module for restoration
+const actualIdentity = await import('../../../../src/core/identity/index.js');
 
 // Mock the identity module
 mock.module('../../../../src/core/identity/index.js', () => ({
@@ -44,6 +47,13 @@ function TestWrapper({ children }: { children: React.ReactNode }) {
 }
 
 describe('cli: screens/init/IdentitySetup', () => {
+
+    // Restore mocked module to prevent pollution of subsequent test files
+    afterAll(() => {
+
+        mock.module('../../../../src/core/identity/index.js', () => actualIdentity);
+
+    });
 
     beforeEach(() => {
 

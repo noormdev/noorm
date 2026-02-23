@@ -5,12 +5,17 @@
  * Uses ink-testing-library with a wrapper component.
  */
 import React, { useEffect } from 'react';
-import { describe, it, expect, beforeEach, afterEach, vi, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach, afterAll, vi, mock } from 'bun:test';
 import { render } from 'ink-testing-library';
 import { Text } from 'ink';
 
 import { useUpdateChecker, type UseUpdateCheckerResult } from '../../../src/cli/hooks/useUpdateChecker.js';
 import type { UpdateCheckResult, GlobalSettings } from '../../../src/core/update/types.js';
+
+// Pre-import actual modules for restoration
+const actualChecker = await import('../../../src/core/update/checker.js');
+const actualUpdater = await import('../../../src/core/update/updater.js');
+const actualGlobalSettings = await import('../../../src/core/update/global-settings.js');
 
 // Mock the core modules
 mock.module('../../../src/core/update/checker.js', () => ({
@@ -81,6 +86,15 @@ describe('cli: useUpdateChecker', () => {
     afterEach(() => {
 
         vi.restoreAllMocks();
+
+    });
+
+    // Restore mocked modules to prevent pollution of subsequent test files
+    afterAll(() => {
+
+        mock.module('../../../src/core/update/checker.js', () => actualChecker);
+        mock.module('../../../src/core/update/updater.js', () => actualUpdater);
+        mock.module('../../../src/core/update/global-settings.js', () => actualGlobalSettings);
 
     });
 

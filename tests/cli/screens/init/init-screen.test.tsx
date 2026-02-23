@@ -4,7 +4,7 @@
  * Tests the main initialization flow screen.
  * Uses simplified mocks for file system and identity checks.
  */
-import { describe, it, expect, vi, mock, beforeEach, afterEach } from 'bun:test';
+import { describe, it, expect, vi, mock, beforeEach, afterEach, afterAll } from 'bun:test';
 import { render } from 'ink-testing-library';
 import { act } from 'react';
 import React from 'react';
@@ -21,6 +21,9 @@ let mockHasMetadata = false;
 
 // Pre-import actual modules to avoid circular await inside mock.module
 const actualFs = await import('fs');
+const actualIdentity = await import('../../../../src/core/identity/index.js');
+const actualStateManager = await import('../../../../src/core/state/manager.js');
+const actualSettingsManager = await import('../../../../src/core/settings/manager.js');
 
 // Mock fs - needs to be before imports
 mock.module('fs', () => ({
@@ -148,6 +151,16 @@ describe('cli: screens/init/InitScreen', () => {
     afterEach(() => {
 
         vi.restoreAllMocks();
+
+    });
+
+    // Restore mocked modules to prevent pollution of subsequent test files
+    afterAll(() => {
+
+        mock.module('fs', () => actualFs);
+        mock.module('../../../../src/core/identity/index.js', () => actualIdentity);
+        mock.module('../../../../src/core/state/manager.js', () => actualStateManager);
+        mock.module('../../../../src/core/settings/manager.js', () => actualSettingsManager);
 
     });
 

@@ -3,7 +3,7 @@
  *
  * Tests the AppContextProvider, hooks, and guard components.
  */
-import { describe, it, expect, vi, mock, beforeEach, afterEach } from 'bun:test';
+import { describe, it, expect, vi, mock, beforeEach, afterEach, afterAll } from 'bun:test';
 import { render } from 'ink-testing-library';
 import React from 'react';
 import { Text } from 'ink';
@@ -22,6 +22,10 @@ import {
     IdentityGuard,
 } from '../../src/cli/app-context.js';
 import { observer } from '../../src/core/index.js';
+
+// Pre-import actual modules for restoration
+const actualCore = await import('../../src/core/index.js');
+const actualIdentity = await import('../../src/core/identity/index.js');
 
 // Create mock managers for testing
 const createMockStateManager = () => ({
@@ -176,6 +180,14 @@ describe('cli: app-context', () => {
     afterEach(() => {
 
         observer.clear();
+
+    });
+
+    // Restore mocked modules to prevent pollution of subsequent test files
+    afterAll(() => {
+
+        mock.module('../../src/core/index.js', () => actualCore);
+        mock.module('../../src/core/identity/index.js', () => actualIdentity);
 
     });
 

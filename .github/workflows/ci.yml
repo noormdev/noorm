@@ -79,6 +79,12 @@ jobs:
 
             - uses: oven-sh/setup-bun@v2
 
+            - name: Create MSSQL test databases
+              run: |
+                  docker exec $(docker ps -q --filter "ancestor=mcr.microsoft.com/mssql/server:2022-latest") \
+                    /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'NoOrm_Test123!' -C \
+                    -Q "IF NOT EXISTS (SELECT name FROM sys.databases WHERE name = 'noorm_test') CREATE DATABASE [noorm_test]; IF NOT EXISTS (SELECT name FROM sys.databases WHERE name = 'noorm_test_dest') CREATE DATABASE [noorm_test_dest];"
+
             - run: bun install --frozen-lockfile
             - run: bun run lint
             - run: bun run typecheck
