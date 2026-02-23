@@ -89,12 +89,18 @@ jobs:
             - run: bun run lint
             - run: bun run typecheck
             - run: bun run build
-            # Run tests with CI=false to match ink-testing-library behavior
-            - name: Run tests
+            # Run unit and component tests first, then integration tests
+            # Split avoids cross-contamination from mock.module and DB connections
+            - name: Run unit tests
               env:
                   CI: 'false'
                   FORCE_COLOR: 'true'
-              run: bun run test
+              run: bun test --serial tests/utils tests/core tests/sdk tests/cli
+            - name: Run integration tests
+              env:
+                  CI: 'false'
+                  FORCE_COLOR: 'true'
+              run: bun test --serial tests/integration
 
     cli-e2e:
         runs-on: ubuntu-latest
