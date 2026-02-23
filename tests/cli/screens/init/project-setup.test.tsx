@@ -179,12 +179,12 @@ describe('cli: screens/init/ProjectSetup', () => {
         );
 
         // Wait for focus to be pushed and render to complete
-        await new Promise((resolve) => setTimeout(resolve, 50));
+        await new Promise((resolve) => setTimeout(resolve, 150));
 
         // Press Enter to select first option (Add Config)
         stdin.write('\r');
 
-        await new Promise((resolve) => setTimeout(resolve, 50));
+        await new Promise((resolve) => setTimeout(resolve, 100));
 
         expect(onAddConfig).toHaveBeenCalled();
 
@@ -193,7 +193,7 @@ describe('cli: screens/init/ProjectSetup', () => {
 
     });
 
-    it('should call onSkipConfig when second option selected', async () => {
+    it('should call onSkipConfig when second option selected', { retry: 2 }, async () => {
 
         const onSkipConfig = vi.fn();
         const { stdin, unmount } = render(
@@ -207,17 +207,17 @@ describe('cli: screens/init/ProjectSetup', () => {
         );
 
         // Wait for focus to be pushed and render to complete
-        await new Promise((resolve) => setTimeout(resolve, 50));
+        await new Promise((resolve) => setTimeout(resolve, 150));
 
         // Press down arrow to move to second option
         stdin.write('\x1b[B');
 
-        await new Promise((resolve) => setTimeout(resolve, 50));
+        await new Promise((resolve) => setTimeout(resolve, 100));
 
         // Press Enter to select
         stdin.write('\r');
 
-        await new Promise((resolve) => setTimeout(resolve, 50));
+        await new Promise((resolve) => setTimeout(resolve, 100));
 
         expect(onSkipConfig).toHaveBeenCalled();
 

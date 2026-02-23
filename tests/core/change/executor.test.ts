@@ -182,10 +182,10 @@ describe('change: executor', () => {
 
         it('should mark remaining files as skipped when one fails', async () => {
 
-            // Create a test change where file 2 will fail
+            // Create a test change where file 2 will fail (duplicate table)
             const change = await createTestChange('test-with-failure', [
                 { name: '001_valid.sql', content: 'CREATE TABLE test_table1 (id INTEGER PRIMARY KEY)' },
-                { name: '002_invalid.sql', content: 'INVALID SQL SYNTAX HERE' },
+                { name: '002_duplicate.sql', content: 'CREATE TABLE test_table1 (id INTEGER PRIMARY KEY)' },
                 { name: '003_never_runs.sql', content: 'CREATE TABLE test_table2 (id INTEGER PRIMARY KEY)' },
             ]);
 
@@ -255,9 +255,10 @@ describe('change: executor', () => {
 
         it('should record error message in database when change fails', async () => {
 
-            // Create a change that will fail with a specific error
+            // Create a change that will fail with a duplicate table error
             const change = await createTestChange('test-error-recording', [
-                { name: '001_fail.sql', content: 'SELECT * FROM nonexistent_table_xyz' },
+                { name: '001_setup.sql', content: 'CREATE TABLE err_test (id INTEGER PRIMARY KEY)' },
+                { name: '002_fail.sql', content: 'CREATE TABLE err_test (id INTEGER PRIMARY KEY)' },
             ]);
 
             const context = buildContext();
@@ -273,7 +274,7 @@ describe('change: executor', () => {
             const status = statuses.get('test-error-recording');
 
             expect(status?.status).toBe('failed');
-            expect(status?.errorMessage).toContain('001_fail.sql');
+            expect(status?.errorMessage).toContain('002_fail.sql');
 
         });
 

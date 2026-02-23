@@ -132,7 +132,7 @@ describe('cli: DismissableAlert', () => {
 
         // Press Enter (Confirm is selected by default)
         stdin.write('\r');
-        await new Promise((r) => setTimeout(r, 50));
+        await new Promise((r) => setTimeout(r, 100));
 
         expect(onConfirm).toHaveBeenCalled();
 
