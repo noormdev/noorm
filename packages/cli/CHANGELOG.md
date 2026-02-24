@@ -1,5 +1,12 @@
 # @noormdev/cli
 
+## 1.0.0-alpha.14
+
+### Patch Changes
+
+- eb95caf: ## Added
+  - `feat(ci):` Automated binary builds on release with install script
+
 ## 1.0.0-alpha.13
 
 ### Major Changes

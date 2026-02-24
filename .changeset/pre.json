@@ -6,6 +6,7 @@
     "@noormdev/sdk": "0.0.1"
   },
   "changesets": [
+    "binary-release-automation",
     "brave-wolves-rest",
     "bright-foxes-glow",
     "bundle-fix",

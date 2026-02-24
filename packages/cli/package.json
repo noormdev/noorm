@@ -1,6 +1,6 @@
 {
   "name": "@noormdev/cli",
-  "version": "1.0.0-alpha.13",
+  "version": "1.0.0-alpha.14",
   "description": "Database schema & changeset manager CLI",
   "type": "module",
   "bin": {
