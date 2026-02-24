@@ -6,6 +6,8 @@
  * by leveraging Bun's built-in SQLite driver.
  */
 import { Kysely, SqliteDialect } from 'kysely';
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore — bun:sqlite resolution fails in dts-bundle-generator (Node-based tooling)
 import { Database } from 'bun:sqlite';
 import type { ConnectionConfig, ConnectionResult } from '../types.js';
 
