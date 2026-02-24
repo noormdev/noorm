@@ -1,5 +1,52 @@
 # @noormdev/cli
 
+## 1.0.0-alpha.13
+
+### Major Changes
+
+- 6753ebd: **BREAKING:** Reorganize flat `NoormOps` into domain-aligned sub-namespaces
+
+  The flat `ctx.noorm.*` API has been replaced with sub-namespaces that mirror the TUI home screen:
+
+  - `ctx.noorm.changes.*` — scaffold, discover, validate, apply, revert, ff, status, pending, history
+  - `ctx.noorm.run.*` — discover, preview, file, files, dir, build
+  - `ctx.noorm.db.*` — listTables, describeTable, overview, previewTeardown, truncate, teardown, reset
+  - `ctx.noorm.lock.*` — acquire, release, status, withLock, forceRelease
+  - `ctx.noorm.vault.*` — init, status, set, get, getAll, list, delete, exists, propagate, copy
+  - `ctx.noorm.secrets.*` — get
+  - `ctx.noorm.templates.*` — render
+  - `ctx.noorm.transfer.*` — to, plan
+  - `ctx.noorm.dt.*` — exportTable, importFile
+  - `ctx.noorm.utils.*` — checksum, testConnection
+
+  **Migration examples:**
+
+  | Before                        | After                           |
+  | ----------------------------- | ------------------------------- |
+  | `ctx.noorm.build()`           | `ctx.noorm.run.build()`         |
+  | `ctx.noorm.fastForward()`     | `ctx.noorm.changes.ff()`        |
+  | `ctx.noorm.applyChange(name)` | `ctx.noorm.changes.apply(name)` |
+  | `ctx.noorm.listTables()`      | `ctx.noorm.db.listTables()`     |
+  | `ctx.noorm.acquireLock()`     | `ctx.noorm.lock.acquire()`      |
+  | `ctx.noorm.truncate()`        | `ctx.noorm.db.truncate()`       |
+  | `ctx.noorm.runFile(f)`        | `ctx.noorm.run.file(f)`         |
+  | `ctx.noorm.transferTo(c)`     | `ctx.noorm.transfer.to(c)`      |
+
+  **New capabilities:** change authoring/scaffolding, dry-run previews, file discovery, vault operations, teardown preview
+
+### Minor Changes
+
+- 6753ebd: Add graceful shutdown screen with phase progress display on exit. Migrate test runner from vitest to bun test. Extract shared CLI hooks and utilities to reduce duplication across screens.
+- 6753ebd: Add curl|sh installer and npm binary wrapper for streamlined installation. The published npm package now acts as a thin shim that downloads and executes the platform-specific compiled binary.
+
+### Patch Changes
+
+- 8797eb4: ### Fixed
+
+  - `fix(settings):` NOORM\_\* environment variables now override any settings.yml field (e.g. `NOORM_PATHS_SQL` overrides `paths.sql`)
+
+- 6753ebd: Fix display of created-at timestamps and file sizes in the change list and change run screens.
+
 ## 1.0.0-alpha.12
 
 ### Patch Changes
