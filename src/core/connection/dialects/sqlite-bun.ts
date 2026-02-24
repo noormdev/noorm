@@ -6,6 +6,7 @@
  * by leveraging Bun's built-in SQLite driver.
  */
 import { Kysely, SqliteDialect } from 'kysely';
+// @ts-ignore — bun:sqlite is a Bun runtime module, types provided by bun-types or local .d.ts
 import { Database } from 'bun:sqlite';
 import type { ConnectionConfig, ConnectionResult } from '../types.js';
 
@@ -17,9 +18,9 @@ import type { ConnectionConfig, ConnectionResult } from '../types.js';
  */
 class BunSqliteStatement {
 
-    #stmt: InstanceType<typeof import('bun:sqlite').Statement>;
+    #stmt: ReturnType<Database['prepare']>;
 
-    constructor(stmt: InstanceType<typeof import('bun:sqlite').Statement>) {
+    constructor(stmt: ReturnType<Database['prepare']>) {
 
         this.#stmt = stmt;
 
@@ -33,12 +34,14 @@ class BunSqliteStatement {
 
     all(params: ReadonlyArray<unknown>): unknown[] {
 
+        // @ts-ignore — Kysely passes unknown[], bun:sqlite expects SQLQueryBindings[]
         return this.#stmt.all(...params);
 
     }
 
     run(params: ReadonlyArray<unknown>): { changes: number | bigint; lastInsertRowid: number | bigint } {
 
+        // @ts-ignore — Kysely passes unknown[], bun:sqlite expects SQLQueryBindings[]
         const result = this.#stmt.run(...params);
 
         return {
@@ -50,7 +53,7 @@ class BunSqliteStatement {
 
     *iterate(params: ReadonlyArray<unknown>): IterableIterator<unknown> {
 
-        // bun:sqlite doesn't expose iterate, use all() as fallback
+        // @ts-ignore — Kysely passes unknown[], bun:sqlite expects SQLQueryBindings[]
         const rows = this.#stmt.all(...params);
 
         for (const row of rows) {

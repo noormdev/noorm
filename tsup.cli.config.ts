@@ -9,6 +9,8 @@ const CLI_VERSION = cliPkg.version;
 const EXTERNAL_PACKAGES = [
     // Native C++ bindings - cannot be bundled
     'better-sqlite3',
+    // Bun-specific runtime module
+    'bun:sqlite',
     // Optional native pg driver (pure JS pg is bundled)
     'pg-native',
     // Optional devtools (not needed at runtime)

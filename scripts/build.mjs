@@ -47,7 +47,7 @@ await $`npx tsup src/sdk/index.ts \
 
 // Generate bundled types
 console.log(chalk.yellow('\nGenerating bundled types...'));
-await $`npx dts-bundle-generator src/sdk/index.ts -o packages/sdk/dist/index.d.ts --no-check --external-inlines @logosdx/observer --external-inlines @logosdx/utils`;
+await $`npx dts-bundle-generator src/sdk/index.ts -o packages/sdk/dist/index.d.ts --no-check --external-inlines @logosdx/observer --external-inlines @logosdx/utils --project tsconfig.sdk-types.json`;
 
 console.log(chalk.green('\nBuild complete!'));
 console.log(chalk.gray('  packages/cli/dist/ - CLI bundle'));

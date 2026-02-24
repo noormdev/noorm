@@ -1,0 +1,13 @@
+{
+    "extends": "./tsconfig.json",
+    "compilerOptions": {
+        "types": [],
+        "skipLibCheck": true
+    },
+    "exclude": [
+        "node_modules",
+        "dist",
+        "src/core/connection/dialects/sqlite-bun.ts",
+        "src/core/connection/dialects/bun-sqlite.d.ts"
+    ]
+}
