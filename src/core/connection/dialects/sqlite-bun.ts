@@ -6,7 +6,7 @@
  * by leveraging Bun's built-in SQLite driver.
  */
 import { Kysely, SqliteDialect } from 'kysely';
-// @ts-ignore — bun:sqlite is a Bun runtime module, types provided by bun-types or local .d.ts
+// @ts-expect-error — bun:sqlite is a Bun runtime module, types provided by bun-types or local .d.ts
 import { Database } from 'bun:sqlite';
 import type { ConnectionConfig, ConnectionResult } from '../types.js';
 
@@ -34,14 +34,14 @@ class BunSqliteStatement {
 
     all(params: ReadonlyArray<unknown>): unknown[] {
 
-        // @ts-ignore — Kysely passes unknown[], bun:sqlite expects SQLQueryBindings[]
+        // @ts-expect-error — Kysely passes unknown[], bun:sqlite expects SQLQueryBindings[]
         return this.#stmt.all(...params);
 
     }
 
     run(params: ReadonlyArray<unknown>): { changes: number | bigint; lastInsertRowid: number | bigint } {
 
-        // @ts-ignore — Kysely passes unknown[], bun:sqlite expects SQLQueryBindings[]
+        // @ts-expect-error — Kysely passes unknown[], bun:sqlite expects SQLQueryBindings[]
         const result = this.#stmt.run(...params);
 
         return {
@@ -53,7 +53,7 @@ class BunSqliteStatement {
 
     *iterate(params: ReadonlyArray<unknown>): IterableIterator<unknown> {
 
-        // @ts-ignore — Kysely passes unknown[], bun:sqlite expects SQLQueryBindings[]
+        // @ts-expect-error — Kysely passes unknown[], bun:sqlite expects SQLQueryBindings[]
         const rows = this.#stmt.all(...params);
 
         for (const row of rows) {
