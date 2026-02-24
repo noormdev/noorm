@@ -17,10 +17,23 @@ The CLI provides both an interactive terminal UI and headless mode for CI/CD.
 ### macOS / Linux
 
 ```bash
-curl -fsSL https://noorm.dev/install.sh | bash
+curl -fsSL https://noorm.dev/install.sh | sh
 ```
 
-This downloads a self-contained binary for your platform and installs it to `/usr/local/bin`. No runtime dependencies needed.
+This downloads a self-contained binary for your platform. The installer looks for a user-writable bin directory already in your PATH (`~/.local/bin`, `~/bin`, etc.) so you don't need sudo. No runtime dependencies needed.
+
+::: tip Corporate network?
+If `noorm.dev` is blocked, use the GitHub mirror:
+```bash
+curl -fsSL https://raw.githubusercontent.com/noormdev/noorm/master/install.sh | sh
+```
+:::
+
+You can also override the install location:
+
+```bash
+NOORM_INSTALL_DIR=~/my-tools curl -fsSL https://noorm.dev/install.sh | sh
+```
 
 ### Windows
 

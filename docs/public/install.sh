@@ -1,72 +1,116 @@
 #!/bin/sh
-# noorm installer — downloads the latest CLI binary for your platform.
-# Usage: curl -fsSL https://noorm.dev/install.sh | bash
 set -e
 
+# noorm installer
+# Usage: curl -fsSL https://noorm.dev/install.sh | sh
+#    or: curl -fsSL https://raw.githubusercontent.com/noormdev/noorm/master/install.sh | sh
+
 REPO="noormdev/noorm"
-INSTALL_DIR="/usr/local/bin"
 BINARY_NAME="noorm"
 
-# Detect platform
-OS="$(uname -s)"
-ARCH="$(uname -m)"
+main() {
+    os=$(detect_os)
+    arch=$(detect_arch)
+    suffix="${os}-${arch}"
 
-case "$OS" in
-    Darwin)  PLATFORM="darwin" ;;
-    Linux)   PLATFORM="linux" ;;
-    MINGW*|MSYS*|CYGWIN*) PLATFORM="windows" ;;
-    *) echo "Error: Unsupported OS: $OS" >&2; exit 1 ;;
-esac
+    if [ "$os" = "windows" ]; then
+        suffix="${suffix}.exe"
+        BINARY_NAME="noorm.exe"
+    fi
 
-case "$ARCH" in
-    arm64|aarch64) ARCH_SUFFIX="arm64" ;;
-    x86_64|amd64)  ARCH_SUFFIX="x64" ;;
-    *) echo "Error: Unsupported architecture: $ARCH" >&2; exit 1 ;;
-esac
+    tag=$(latest_cli_tag)
+    version=$(echo "$tag" | sed 's/@noormdev\/cli@//')
+    install_dir=$(find_install_dir)
 
-if [ "$PLATFORM" = "windows" ]; then
-    SUFFIX="${PLATFORM}-${ARCH_SUFFIX}.exe"
-else
-    SUFFIX="${PLATFORM}-${ARCH_SUFFIX}"
-fi
+    echo "Installing noorm v${version} (${os}-${arch}) to ${install_dir}..."
 
-ASSET_NAME="noorm-${SUFFIX}"
+    url="https://github.com/${REPO}/releases/download/${tag}/noorm-${suffix}"
+    tmpfile=$(mktemp)
 
-echo "Detecting platform... ${PLATFORM}/${ARCH_SUFFIX}"
+    if ! curl -fsSL -o "$tmpfile" "$url"; then
+        echo "Error: Failed to download binary from ${url}" >&2
+        echo "No binary available for ${os}-${arch}." >&2
+        rm -f "$tmpfile"
+        exit 1
+    fi
 
-# Find the latest CLI release tag via GitHub API
-echo "Finding latest release..."
-RELEASE_JSON="$(curl -fsSL "https://api.github.com/repos/${REPO}/releases" \
-    -H "Accept: application/vnd.github+json")"
+    chmod +x "$tmpfile"
+    mkdir -p "$install_dir"
+    mv "$tmpfile" "${install_dir}/${BINARY_NAME}"
 
-TAG="$(echo "$RELEASE_JSON" | grep -o '"tag_name": *"@noormdev/cli@[^"]*"' | head -1 | sed 's/"tag_name": *"//;s/"$//')"
+    echo "Installed noorm v${version} to ${install_dir}/${BINARY_NAME}"
 
-if [ -z "$TAG" ]; then
-    echo "Error: Could not find a @noormdev/cli release." >&2
-    exit 1
-fi
+    # Check if install dir is in PATH
+    case ":$PATH:" in
+        *":${install_dir}:"*) ;;
+        *)
+            echo ""
+            echo "Add this to your shell profile to use noorm:"
+            echo "  export PATH=\"${install_dir}:\$PATH\""
+            ;;
+    esac
+}
 
-VERSION="$(echo "$TAG" | sed 's/@noormdev\/cli@//')"
-echo "Latest version: ${VERSION}"
+detect_os() {
+    case "$(uname -s)" in
+        Darwin)  echo "darwin" ;;
+        Linux)   echo "linux" ;;
+        MINGW*|MSYS*|CYGWIN*) echo "windows" ;;
+        *) echo "Unsupported OS: $(uname -s)" >&2; exit 1 ;;
+    esac
+}
 
-# URL-encode the tag (@ → %40, / → %2F)
-ENCODED_TAG="$(echo "$TAG" | sed 's/@/%40/g;s/\//%2F/g')"
-DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${ENCODED_TAG}/${ASSET_NAME}"
+detect_arch() {
+    case "$(uname -m)" in
+        x86_64|amd64)  echo "x64" ;;
+        arm64|aarch64) echo "arm64" ;;
+        *) echo "Unsupported architecture: $(uname -m)" >&2; exit 1 ;;
+    esac
+}
 
-# Download
-TMPFILE="$(mktemp)"
-echo "Downloading ${ASSET_NAME}..."
-curl -fsSL "$DOWNLOAD_URL" -o "$TMPFILE"
-chmod +x "$TMPFILE"
+# Find a user-writable bin directory already in PATH, or fall back to ~/.local/bin
+find_install_dir() {
+    # Allow override
+    if [ -n "$NOORM_INSTALL_DIR" ]; then
+        echo "$NOORM_INSTALL_DIR"
+        return
+    fi
 
-# Install
-if [ -w "$INSTALL_DIR" ]; then
-    mv "$TMPFILE" "${INSTALL_DIR}/${BINARY_NAME}"
-else
-    echo "Installing to ${INSTALL_DIR} (requires sudo)..."
-    sudo mv "$TMPFILE" "${INSTALL_DIR}/${BINARY_NAME}"
-fi
+    # Check common user-level bin dirs that are already in PATH
+    for dir in \
+        "$HOME/.local/bin" \
+        "$HOME/bin" \
+        "$HOME/.bin" \
+        "$HOME/.cargo/bin" \
+        "$HOME/go/bin" \
+        "$HOME/.bun/bin"; do
 
-echo ""
-echo "noorm ${VERSION} installed to ${INSTALL_DIR}/${BINARY_NAME}"
-echo "Run 'noorm --version' to verify."
+        case ":$PATH:" in
+            *":${dir}:"*)
+                if [ -w "$dir" ] || [ -w "$(dirname "$dir")" ]; then
+                    echo "$dir"
+                    return
+                fi
+                ;;
+        esac
+    done
+
+    # Default to ~/.local/bin (XDG standard)
+    echo "$HOME/.local/bin"
+}
+
+latest_cli_tag() {
+    tag=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases" \
+        | grep -o '"tag_name": *"@noormdev/cli@[^"]*"' \
+        | head -1 \
+        | sed 's/"tag_name": *"//;s/"//')
+
+    if [ -z "$tag" ]; then
+        echo "Error: Could not find a CLI release." >&2
+        exit 1
+    fi
+
+    echo "$tag"
+}
+
+main

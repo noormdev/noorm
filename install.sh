@@ -2,10 +2,10 @@
 set -e
 
 # noorm installer
-# Usage: curl -fsSL https://raw.githubusercontent.com/noormdev/noorm/master/install.sh | sh
+# Usage: curl -fsSL https://noorm.dev/install.sh | sh
+#    or: curl -fsSL https://raw.githubusercontent.com/noormdev/noorm/master/install.sh | sh
 
 REPO="noormdev/noorm"
-INSTALL_DIR="${NOORM_INSTALL_DIR:-/usr/local/bin}"
 BINARY_NAME="noorm"
 
 main() {
@@ -20,8 +20,9 @@ main() {
 
     tag=$(latest_cli_tag)
     version=$(echo "$tag" | sed 's/@noormdev\/cli@//')
+    install_dir=$(find_install_dir)
 
-    echo "Installing noorm v${version} (${os}-${arch})..."
+    echo "Installing noorm v${version} (${os}-${arch}) to ${install_dir}..."
 
     url="https://github.com/${REPO}/releases/download/${tag}/noorm-${suffix}"
     tmpfile=$(mktemp)
@@ -34,15 +35,20 @@ main() {
     fi
 
     chmod +x "$tmpfile"
+    mkdir -p "$install_dir"
+    mv "$tmpfile" "${install_dir}/${BINARY_NAME}"
 
-    if [ -w "$INSTALL_DIR" ]; then
-        mv "$tmpfile" "${INSTALL_DIR}/${BINARY_NAME}"
-    else
-        echo "Installing to ${INSTALL_DIR} (requires sudo)..."
-        sudo mv "$tmpfile" "${INSTALL_DIR}/${BINARY_NAME}"
-    fi
+    echo "Installed noorm v${version} to ${install_dir}/${BINARY_NAME}"
 
-    echo "Installed noorm v${version} to ${INSTALL_DIR}/${BINARY_NAME}"
+    # Check if install dir is in PATH
+    case ":$PATH:" in
+        *":${install_dir}:"*) ;;
+        *)
+            echo ""
+            echo "Add this to your shell profile to use noorm:"
+            echo "  export PATH=\"${install_dir}:\$PATH\""
+            ;;
+    esac
 }
 
 detect_os() {
@@ -60,6 +66,37 @@ detect_arch() {
         arm64|aarch64) echo "arm64" ;;
         *) echo "Unsupported architecture: $(uname -m)" >&2; exit 1 ;;
     esac
+}
+
+# Find a user-writable bin directory already in PATH, or fall back to ~/.local/bin
+find_install_dir() {
+    # Allow override
+    if [ -n "$NOORM_INSTALL_DIR" ]; then
+        echo "$NOORM_INSTALL_DIR"
+        return
+    fi
+
+    # Check common user-level bin dirs that are already in PATH
+    for dir in \
+        "$HOME/.local/bin" \
+        "$HOME/bin" \
+        "$HOME/.bin" \
+        "$HOME/.cargo/bin" \
+        "$HOME/go/bin" \
+        "$HOME/.bun/bin"; do
+
+        case ":$PATH:" in
+            *":${dir}:"*)
+                if [ -w "$dir" ] || [ -w "$(dirname "$dir")" ]; then
+                    echo "$dir"
+                    return
+                fi
+                ;;
+        esac
+    done
+
+    # Default to ~/.local/bin (XDG standard)
+    echo "$HOME/.local/bin"
 }
 
 latest_cli_tag() {

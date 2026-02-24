@@ -98,12 +98,20 @@ You pay for bad relational design later in complexity and bugs.
 ## Quick Start
 
 ```bash
-# Install
+# Install (no sudo needed)
+curl -fsSL https://noorm.dev/install.sh | sh
+
+# Or via npm
 npm install -g @noormdev/cli
 
 # Launch the TUI
 noorm
 ```
+
+> **Corporate network?** If `noorm.dev` is blocked, use the GitHub mirror:
+> ```bash
+> curl -fsSL https://raw.githubusercontent.com/noormdev/noorm/master/install.sh | sh
+> ```
 
 From the terminal interface, set up your project:
 
