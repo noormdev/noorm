@@ -15,6 +15,7 @@
     "crisp-taxis-pick",
     "dry-run-error-display",
     "fix-bundle-version",
+    "fix-mssql-connection-hang",
     "fix-mssql-mysql-schema-migration",
     "gold-items-feel",
     "hip-pigs-knock",
