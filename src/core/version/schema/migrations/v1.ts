@@ -14,7 +14,7 @@ import type { Dialect } from '../../../connection/types.js';
 /**
  * Add an auto-incrementing ID column based on dialect.
  *
- * PostgreSQL uses 'serial' type, others use 'integer' with autoIncrement().
+ * PostgreSQL uses 'serial' type, MSSQL uses 'identity', others use autoIncrement().
  */
 function addIdColumn<TB extends string, C extends string>(
     builder: CreateTableBuilder<TB, C>,
@@ -27,7 +27,25 @@ function addIdColumn<TB extends string, C extends string>(
 
     }
 
+    if (dialect === 'mssql') {
+
+        return builder.addColumn('id', sql`int identity(1,1)`, (col) => col.primaryKey());
+
+    }
+
     return builder.addColumn('id', 'integer', (col) => col.primaryKey().autoIncrement());
+
+}
+
+/**
+ * Get the appropriate datetime column type for each dialect.
+ *
+ * MSSQL's 'timestamp' is a binary rowversion counter, not a datetime.
+ * Use 'datetime2' for MSSQL via raw SQL, 'timestamp' for all others.
+ */
+function timestampType(dialect: Dialect) {
+
+    return dialect === 'mssql' ? sql`datetime2` : 'timestamp';
 
 }
 
@@ -53,10 +71,10 @@ export const v1: SchemaMigration = {
             .addColumn('noorm_version', 'integer', (col) => col.notNull())
             .addColumn('state_version', 'integer', (col) => col.notNull())
             .addColumn('settings_version', 'integer', (col) => col.notNull())
-            .addColumn('installed_at', 'timestamp', (col) =>
+            .addColumn('installed_at', timestampType(dialect), (col) =>
                 col.notNull().defaultTo(sql`CURRENT_TIMESTAMP`),
             )
-            .addColumn('upgraded_at', 'timestamp', (col) =>
+            .addColumn('upgraded_at', timestampType(dialect), (col) =>
                 col.notNull().defaultTo(sql`CURRENT_TIMESTAMP`),
             )
             .execute();
@@ -67,14 +85,14 @@ export const v1: SchemaMigration = {
             .addColumn('change_type', 'varchar(50)', (col) => col.notNull())
             .addColumn('direction', 'varchar(50)', (col) => col.notNull())
             .addColumn('checksum', 'varchar(64)', (col) => col.notNull().defaultTo(''))
-            .addColumn('executed_at', 'timestamp', (col) =>
+            .addColumn('executed_at', timestampType(dialect), (col) =>
                 col.notNull().defaultTo(sql`CURRENT_TIMESTAMP`),
             )
             .addColumn('executed_by', 'varchar(255)', (col) => col.notNull().defaultTo(''))
             .addColumn('config_name', 'varchar(255)', (col) => col.notNull().defaultTo(''))
             .addColumn('cli_version', 'varchar(50)', (col) => col.notNull().defaultTo(''))
             .addColumn('status', 'varchar(50)', (col) => col.notNull())
-            .addColumn('error_message', 'text', (col) => col.notNull().defaultTo(''))
+            .addColumn('error_message', 'varchar(2000)', (col) => col.notNull().defaultTo(''))
             .addColumn('duration_ms', 'integer', (col) => col.notNull().defaultTo(0))
             .execute();
 
@@ -88,7 +106,7 @@ export const v1: SchemaMigration = {
             .addColumn('checksum', 'varchar(64)', (col) => col.notNull().defaultTo(''))
             .addColumn('cli_version', 'varchar(50)', (col) => col.notNull().defaultTo(''))
             .addColumn('status', 'varchar(50)', (col) => col.notNull())
-            .addColumn('error_message', 'text', (col) => col.notNull().defaultTo(''))
+            .addColumn('error_message', 'varchar(2000)', (col) => col.notNull().defaultTo(''))
             .addColumn('skip_reason', 'varchar(100)', (col) => col.notNull().defaultTo(''))
             .addColumn('duration_ms', 'integer', (col) => col.notNull().defaultTo(0))
             .execute();
@@ -97,10 +115,10 @@ export const v1: SchemaMigration = {
         await addIdColumn(db.schema.createTable('__noorm_lock__'), dialect)
             .addColumn('config_name', 'varchar(255)', (col) => col.notNull().unique())
             .addColumn('locked_by', 'varchar(255)', (col) => col.notNull())
-            .addColumn('locked_at', 'timestamp', (col) =>
+            .addColumn('locked_at', timestampType(dialect), (col) =>
                 col.notNull().defaultTo(sql`CURRENT_TIMESTAMP`),
             )
-            .addColumn('expires_at', 'timestamp', (col) => col.notNull())
+            .addColumn('expires_at', timestampType(dialect), (col) => col.notNull())
             .addColumn('reason', 'varchar(255)', (col) => col.notNull().defaultTo(''))
             .execute();
 
@@ -113,10 +131,10 @@ export const v1: SchemaMigration = {
             .addColumn('os', 'varchar(255)', (col) => col.notNull())
             .addColumn('public_key', 'text', (col) => col.notNull())
             .addColumn('encrypted_vault_key', 'text')
-            .addColumn('registered_at', 'timestamp', (col) =>
+            .addColumn('registered_at', timestampType(dialect), (col) =>
                 col.notNull().defaultTo(sql`CURRENT_TIMESTAMP`),
             )
-            .addColumn('last_seen_at', 'timestamp', (col) =>
+            .addColumn('last_seen_at', timestampType(dialect), (col) =>
                 col.notNull().defaultTo(sql`CURRENT_TIMESTAMP`),
             )
             .execute();
@@ -126,10 +144,10 @@ export const v1: SchemaMigration = {
             .addColumn('secret_key', 'varchar(255)', (col) => col.notNull().unique())
             .addColumn('encrypted_value', 'text', (col) => col.notNull())
             .addColumn('set_by', 'varchar(255)', (col) => col.notNull())
-            .addColumn('created_at', 'timestamp', (col) =>
+            .addColumn('created_at', timestampType(dialect), (col) =>
                 col.notNull().defaultTo(sql`CURRENT_TIMESTAMP`),
             )
-            .addColumn('updated_at', 'timestamp', (col) =>
+            .addColumn('updated_at', timestampType(dialect), (col) =>
                 col.notNull().defaultTo(sql`CURRENT_TIMESTAMP`),
             )
             .execute();
@@ -157,12 +175,20 @@ export const v1: SchemaMigration = {
 
     },
 
-    async down(db: Kysely<unknown>, _dialect: Dialect): Promise<void> {
+    async down(db: Kysely<unknown>, dialect: Dialect): Promise<void> {
+
+        // MySQL and MSSQL require ON table_name for DROP INDEX
+        const needsTable = dialect === 'mysql' || dialect === 'mssql';
 
         // Drop indexes first
-        await db.schema.dropIndex('idx_change_name_config').execute();
-        await db.schema.dropIndex('idx_executions_change_id').execute();
-        await db.schema.dropIndex('idx_vault_secret_key').execute();
+        const dropIdx = (name: string, table: string) =>
+            needsTable
+                ? db.schema.dropIndex(name).on(table).execute()
+                : db.schema.dropIndex(name).execute();
+
+        await dropIdx('idx_change_name_config', '__noorm_change__');
+        await dropIdx('idx_executions_change_id', '__noorm_executions__');
+        await dropIdx('idx_vault_secret_key', '__noorm_vault__');
 
         // Drop tables in reverse order (child tables first due to FK constraints)
         await db.schema.dropTable('__noorm_vault__').execute();
