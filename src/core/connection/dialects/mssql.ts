@@ -3,12 +3,104 @@
  *
  * Uses 'tedious' and 'tarn' packages for MSSQL connections.
  * Install with: npm install tedious tarn
+ *
+ * Verifies database existence via sys.databases before connecting
+ * to the target database, avoiding cryptic ECONNRESET errors when
+ * the database doesn't exist.
  */
-import { Kysely, MssqlDialect } from 'kysely';
+import { Kysely, MssqlDialect, sql } from 'kysely';
 import type { ConnectionConfig, ConnectionResult } from '../types.js';
 
 /**
+ * Build tedious connection options from noorm config.
+ *
+ * Centralizes the tedious config so both the preflight check
+ * and the real pool use the same settings.
+ */
+function buildTediousConfig(
+    Tedious: typeof import('tedious'),
+    config: ConnectionConfig,
+    database?: string,
+) {
+
+    return new Tedious.Connection({
+        server: config.host ?? 'localhost',
+        authentication: {
+            type: 'default',
+            options: {
+                userName: config.user,
+                password: config.password,
+            },
+        },
+        options: {
+            port: config.port ?? 1433,
+            database: database ?? config.database,
+            trustServerCertificate: !config.ssl,
+            encrypt: true,
+        },
+    });
+
+}
+
+/**
+ * Verify the target database exists by querying sys.databases on master.
+ *
+ * Connects to 'master' first and checks sys.databases. Throws a clear
+ * error if the database is missing, instead of letting tedious hang
+ * with a cryptic ECONNRESET.
+ */
+async function verifyDatabaseExists(
+    Tedious: typeof import('tedious'),
+    Tarn: typeof import('tarn'),
+    config: ConnectionConfig,
+): Promise<void> {
+
+    const masterDb = new Kysely<unknown>({
+        dialect: new MssqlDialect({
+            tarn: {
+                ...Tarn,
+                options: {
+                    min: 0,
+                    max: 1,
+                    propagateCreateError: true,
+                },
+            },
+            tedious: {
+                ...Tedious,
+                connectionFactory: () => buildTediousConfig(Tedious, config, 'master'),
+            },
+        }),
+    });
+
+    try {
+
+        const { rows } = await sql<{ name: string }>`
+            SELECT name FROM sys.databases WHERE name = ${config.database}
+        `.execute(masterDb);
+
+        if (rows.length === 0) {
+
+            throw new Error(
+                `Database '${config.database}' does not exist on ${config.host ?? 'localhost'}:${config.port ?? 1433}`,
+            );
+
+        }
+
+    }
+    finally {
+
+        await masterDb.destroy();
+
+    }
+
+}
+
+/**
  * Create a SQL Server connection.
+ *
+ * Verifies the target database exists via master before opening
+ * the connection pool. This avoids the tedious/tarn hang that
+ * occurs when MSSQL rejects login for a non-existent database.
  *
  * @example
  * ```typescript
@@ -28,6 +120,9 @@ export async function createMssqlConnection(config: ConnectionConfig): Promise<C
     const Tedious = await import('tedious');
     const Tarn = await import('tarn');
 
+    // Preflight: verify database exists via master
+    await verifyDatabaseExists(Tedious, Tarn, config);
+
     const db = new Kysely<unknown>({
         dialect: new MssqlDialect({
             tarn: {
@@ -35,27 +130,12 @@ export async function createMssqlConnection(config: ConnectionConfig): Promise<C
                 options: {
                     min: config.pool?.min ?? 0,
                     max: config.pool?.max ?? 10,
+                    propagateCreateError: true,
                 },
             },
             tedious: {
                 ...Tedious,
-                connectionFactory: () =>
-                    new Tedious.Connection({
-                        server: config.host ?? 'localhost',
-                        authentication: {
-                            type: 'default',
-                            options: {
-                                userName: config.user,
-                                password: config.password,
-                            },
-                        },
-                        options: {
-                            port: config.port ?? 1433,
-                            database: config.database,
-                            trustServerCertificate: !config.ssl,
-                            encrypt: !!config.ssl,
-                        },
-                    }),
+                connectionFactory: () => buildTediousConfig(Tedious, config),
             },
         }),
     });

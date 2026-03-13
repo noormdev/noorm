@@ -130,12 +130,17 @@ export async function createConnection(
 
                     const msg = err.message.toLowerCase();
 
-                    // Don't retry auth failures
+                    // Don't retry auth/config failures
                     if (msg.includes('authentication')) return false;
                     if (msg.includes('password')) return false;
                     if (msg.includes('missing driver')) return false;
+                    if (msg.includes('login failed')) return false;
+                    if (msg.includes('failed to open')) return false;
+                    if (msg.includes('does not exist')) return false;
+                    if (msg.includes('unknown database')) return false;
+                    if (msg.includes('access denied')) return false;
 
-                    // Retry connection issues
+                    // Retry transient connection issues
                     return (
                         msg.includes('econnrefused') ||
                         msg.includes('etimedout') ||
