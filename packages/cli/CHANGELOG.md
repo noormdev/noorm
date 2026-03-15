@@ -1,5 +1,13 @@
 # @noormdev/cli
 
+## 1.0.0-alpha.17
+
+### Minor Changes
+
+- 2174274: ## Added
+  - `feat(cli):` Add `info` command for project and database status display (`noorm -H info`, `noorm -H --json info`)
+  - `feat(cli):` Show CLI version, schema/state/settings versions, install/upgrade dates, and DB object stats on Home screen
+
 ## 1.0.0-alpha.16
 
 ### Patch Changes
