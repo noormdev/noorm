@@ -51,7 +51,7 @@ describe('cli: hooks/useTransferProgress', () => {
 
             const { lastFrame, unmount } = render(<WithProvider><TransferProgressView /></WithProvider>);
 
-            await new Promise((r) => setTimeout(r, 10));
+            await new Promise((r) => setTimeout(r, 50));
 
             // Start an import
             observer.emit('dt:import:start', {
@@ -60,7 +60,7 @@ describe('cli: hooks/useTransferProgress', () => {
                 sourceDialect: 'postgres',
                 sourceVersion: '16',
             });
-            await new Promise((r) => setTimeout(r, 10));
+            await new Promise((r) => setTimeout(r, 50));
 
             expect(lastFrame()).toContain('currentTable:users');
             expect(lastFrame()).toContain('phase:running');
@@ -70,7 +70,7 @@ describe('cli: hooks/useTransferProgress', () => {
                 rowsImported: 500,
                 rowsSkipped: 10,
             });
-            await new Promise((r) => setTimeout(r, 10));
+            await new Promise((r) => setTimeout(r, 50));
 
             expect(lastFrame()).toContain('currentRowsTransferred:500');
             expect(lastFrame()).toContain('rowsTransferred:500');
@@ -80,7 +80,7 @@ describe('cli: hooks/useTransferProgress', () => {
                 rowsImported: 1000,
                 rowsSkipped: 20,
             });
-            await new Promise((r) => setTimeout(r, 10));
+            await new Promise((r) => setTimeout(r, 50));
 
             expect(lastFrame()).toContain('currentRowsTransferred:1000');
             expect(lastFrame()).toContain('rowsTransferred:1000');
@@ -93,7 +93,7 @@ describe('cli: hooks/useTransferProgress', () => {
 
             const { lastFrame, unmount } = render(<WithProvider><TransferProgressView /></WithProvider>);
 
-            await new Promise((r) => setTimeout(r, 10));
+            await new Promise((r) => setTimeout(r, 50));
 
             // Start an import
             observer.emit('dt:import:start', {
@@ -102,7 +102,7 @@ describe('cli: hooks/useTransferProgress', () => {
                 sourceDialect: 'postgres',
                 sourceVersion: '16',
             });
-            await new Promise((r) => setTimeout(r, 10));
+            await new Promise((r) => setTimeout(r, 50));
 
             // Complete the import
             observer.emit('dt:import:complete', {
@@ -110,7 +110,7 @@ describe('cli: hooks/useTransferProgress', () => {
                 rowsSkipped: 5,
                 durationMs: 500,
             });
-            await new Promise((r) => setTimeout(r, 10));
+            await new Promise((r) => setTimeout(r, 50));
 
             // Phase should remain 'running', not 'complete'
             expect(lastFrame()).toContain('phase:running');
@@ -126,7 +126,7 @@ describe('cli: hooks/useTransferProgress', () => {
 
             const { lastFrame, unmount } = render(<WithProvider><TransferProgressView /></WithProvider>);
 
-            await new Promise((r) => setTimeout(r, 10));
+            await new Promise((r) => setTimeout(r, 50));
 
             // First file
             observer.emit('dt:import:start', {
@@ -135,20 +135,20 @@ describe('cli: hooks/useTransferProgress', () => {
                 sourceDialect: 'postgres',
                 sourceVersion: '16',
             });
-            await new Promise((r) => setTimeout(r, 10));
+            await new Promise((r) => setTimeout(r, 50));
 
             observer.emit('dt:import:progress', {
                 rowsImported: 500,
                 rowsSkipped: 0,
             });
-            await new Promise((r) => setTimeout(r, 10));
+            await new Promise((r) => setTimeout(r, 50));
 
             observer.emit('dt:import:complete', {
                 rowsImported: 500,
                 rowsSkipped: 0,
                 durationMs: 200,
             });
-            await new Promise((r) => setTimeout(r, 10));
+            await new Promise((r) => setTimeout(r, 50));
 
             // Still running — not complete
             expect(lastFrame()).toContain('phase:running');
@@ -162,13 +162,13 @@ describe('cli: hooks/useTransferProgress', () => {
                 sourceDialect: 'postgres',
                 sourceVersion: '16',
             });
-            await new Promise((r) => setTimeout(r, 10));
+            await new Promise((r) => setTimeout(r, 50));
 
             observer.emit('dt:import:progress', {
                 rowsImported: 300,
                 rowsSkipped: 0,
             });
-            await new Promise((r) => setTimeout(r, 10));
+            await new Promise((r) => setTimeout(r, 50));
 
             // Aggregate should include both tables
             expect(lastFrame()).toContain('rowsTransferred:800');
@@ -179,7 +179,7 @@ describe('cli: hooks/useTransferProgress', () => {
                 rowsSkipped: 0,
                 durationMs: 150,
             });
-            await new Promise((r) => setTimeout(r, 10));
+            await new Promise((r) => setTimeout(r, 50));
 
             expect(lastFrame()).toContain('rowsTransferred:800');
             expect(lastFrame()).toContain('tablesCompleted:2');
@@ -196,14 +196,14 @@ describe('cli: hooks/useTransferProgress', () => {
 
             const { lastFrame, unmount } = render(<WithProvider><TransferProgressView /></WithProvider>);
 
-            await new Promise((r) => setTimeout(r, 10));
+            await new Promise((r) => setTimeout(r, 50));
 
             // Start transfer
             observer.emit('transfer:starting', {
                 tableCount: 2,
                 sameServer: false,
             });
-            await new Promise((r) => setTimeout(r, 10));
+            await new Promise((r) => setTimeout(r, 50));
 
             // Begin table
             observer.emit('transfer:table:before', {
@@ -211,7 +211,7 @@ describe('cli: hooks/useTransferProgress', () => {
                 index: 0,
                 rowCount: 1000,
             });
-            await new Promise((r) => setTimeout(r, 10));
+            await new Promise((r) => setTimeout(r, 50));
 
             // Progress
             observer.emit('transfer:table:progress', {
@@ -219,7 +219,7 @@ describe('cli: hooks/useTransferProgress', () => {
                 rowsTransferred: 500,
                 rowsSkipped: 0,
             });
-            await new Promise((r) => setTimeout(r, 10));
+            await new Promise((r) => setTimeout(r, 50));
 
             expect(lastFrame()).toContain('currentRowsTransferred:500');
             expect(lastFrame()).toContain('rowsTransferred:500');
@@ -230,7 +230,7 @@ describe('cli: hooks/useTransferProgress', () => {
                 rowsTransferred: 800,
                 rowsSkipped: 0,
             });
-            await new Promise((r) => setTimeout(r, 10));
+            await new Promise((r) => setTimeout(r, 50));
 
             expect(lastFrame()).toContain('currentRowsTransferred:800');
             expect(lastFrame()).toContain('rowsTransferred:800');
@@ -243,14 +243,14 @@ describe('cli: hooks/useTransferProgress', () => {
 
             const { lastFrame, unmount } = render(<WithProvider><TransferProgressView /></WithProvider>);
 
-            await new Promise((r) => setTimeout(r, 10));
+            await new Promise((r) => setTimeout(r, 50));
 
             // Start
             observer.emit('transfer:starting', {
                 tableCount: 2,
                 sameServer: false,
             });
-            await new Promise((r) => setTimeout(r, 10));
+            await new Promise((r) => setTimeout(r, 50));
 
             // First table
             observer.emit('transfer:table:before', {
@@ -258,14 +258,14 @@ describe('cli: hooks/useTransferProgress', () => {
                 index: 0,
                 rowCount: 1000,
             });
-            await new Promise((r) => setTimeout(r, 10));
+            await new Promise((r) => setTimeout(r, 50));
 
             observer.emit('transfer:table:progress', {
                 table: 'users',
                 rowsTransferred: 1000,
                 rowsSkipped: 5,
             });
-            await new Promise((r) => setTimeout(r, 10));
+            await new Promise((r) => setTimeout(r, 50));
 
             expect(lastFrame()).toContain('rowsTransferred:1000');
 
@@ -277,7 +277,7 @@ describe('cli: hooks/useTransferProgress', () => {
                 rowsSkipped: 5,
                 durationMs: 300,
             });
-            await new Promise((r) => setTimeout(r, 10));
+            await new Promise((r) => setTimeout(r, 50));
 
             // Should still be 1000, not 2000
             expect(lastFrame()).toContain('rowsTransferred:1000');
@@ -290,14 +290,14 @@ describe('cli: hooks/useTransferProgress', () => {
                 index: 1,
                 rowCount: 500,
             });
-            await new Promise((r) => setTimeout(r, 10));
+            await new Promise((r) => setTimeout(r, 50));
 
             observer.emit('transfer:table:progress', {
                 table: 'orders',
                 rowsTransferred: 500,
                 rowsSkipped: 0,
             });
-            await new Promise((r) => setTimeout(r, 10));
+            await new Promise((r) => setTimeout(r, 50));
 
             expect(lastFrame()).toContain('rowsTransferred:1500');
 
@@ -308,7 +308,7 @@ describe('cli: hooks/useTransferProgress', () => {
                 rowsSkipped: 0,
                 durationMs: 200,
             });
-            await new Promise((r) => setTimeout(r, 10));
+            await new Promise((r) => setTimeout(r, 50));
 
             expect(lastFrame()).toContain('rowsTransferred:1500');
             expect(lastFrame()).toContain('tablesCompleted:2');

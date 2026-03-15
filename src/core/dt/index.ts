@@ -35,20 +35,70 @@
  * });
  * ```
  */
+import { availableParallelism } from 'os';
+
 import { sql } from 'kysely';
 import { attempt } from '@logosdx/utils';
 
 import type { Kysely } from 'kysely';
 import type { NoormDatabase } from '../shared/tables.js';
-import type { ExportTableOptions, ImportFileOptions, DtStreamerOptions } from './types.js';
+import type { ExportTableOptions, ImportFileOptions, DtStreamerOptions, DtSchema, DtValue, DatabaseVersion } from './types.js';
+import type { Dialect } from '../connection/types.js';
+import type { ConnectionEvents, ComputeEvents } from '../worker-bridge/types.js';
 
 import { observer } from '../observer.js';
+import { WorkerBridge } from '../worker-bridge/bridge.js';
+import { WorkerPool } from '../worker-bridge/pool.js';
+import { OrderBuffer } from '../worker-bridge/order-buffer.js';
+import { resolveWorker } from '../worker-bridge/paths.js';
 import { DtWriter } from './writer.js';
 import { DtReader } from './reader.js';
 import { DtStreamer } from './streamer.js';
 import { buildDtSchema, validateSchema } from './schema.js';
-import { serializeRow } from './serialize.js';
-import { deserializeRow } from './deserialize.js';
+
+const CONNECTION_WORKER = resolveWorker('connection');
+const COMPUTE_WORKER = resolveWorker('compute');
+
+/**
+ * Create a compute pool sized to the available CPU cores.
+ *
+ * Reserves two cores for the main thread and connection worker.
+ */
+function createDefaultComputePool(): WorkerPool<ComputeEvents> {
+
+    return WorkerBridge.pool<ComputeEvents>(COMPUTE_WORKER, {
+        size: Math.max(1, availableParallelism() - 2),
+    });
+
+}
+
+/**
+ * Create and connect a connection worker bridge.
+ *
+ * Spawns a new worker thread and connects it to the given database.
+ */
+async function createDefaultConnectionBridge(
+    dialect: Dialect,
+    connectionString: string,
+): Promise<[WorkerBridge<ConnectionEvents> | null, Error | null]> {
+
+    const bridge = new WorkerBridge<ConnectionEvents>(CONNECTION_WORKER);
+
+    const [, connectErr] = await attempt(() =>
+        bridge.request('connect', { dialect, connectionString }),
+    );
+
+    if (connectErr) {
+
+        await attempt(() => bridge.shutdown());
+
+        return [null, connectErr];
+
+    }
+
+    return [bridge, null];
+
+}
 
 /**
  * Export a database table to a .dt/.dtz/.dtzx file.
@@ -110,61 +160,306 @@ export async function exportTable(
 
     }
 
-    // Fetch and write in batches
-    let offset = 0;
-    const columns = dtSchema.columns.map((c) => c.name);
-    const quoteIdent = dialect === 'mssql'
-        ? (c: string) => `[${c}]`
-        : dialect === 'mysql'
-            ? (c: string) => `\`${c}\``
-            : (c: string) => `"${c}"`;
+    // Resolve workers — use provided overrides or create our own
+    let ownedConnectionBridge: WorkerBridge<ConnectionEvents> | null = null;
+    let ownedComputePool: WorkerPool<ComputeEvents> | null = null;
 
+    let connectionBridge = options.connectionBridge;
+    let computePool = options.computePool;
+
+    // Create connection worker when connection string is available but no bridge provided
+    if (!connectionBridge && options.connectionString) {
+
+        const [bridge, bridgeErr] = await createDefaultConnectionBridge(dialect, options.connectionString);
+
+        if (bridgeErr) {
+
+            return [null, bridgeErr];
+
+        }
+
+        connectionBridge = bridge!;
+        ownedConnectionBridge = bridge!;
+
+    }
+
+    // Always create compute pool when not provided
+    if (!computePool) {
+
+        computePool = createDefaultComputePool();
+        ownedComputePool = computePool;
+
+    }
+
+    // Worker pipeline: offload fetching and serialization to worker threads
+    const [result, workerErr] = await exportTableWithWorkers({
+        writer,
+        dtSchema,
+        tableName,
+        filepath,
+        dialect,
+        batchSize,
+        connectionBridge,
+        computePool,
+        kyselyDb,
+    });
+
+    // Shut down owned workers
+    if (ownedComputePool) {
+
+        await attempt(() => ownedComputePool!.shutdown());
+
+    }
+
+    if (ownedConnectionBridge) {
+
+        await attempt(() => ownedConnectionBridge!.shutdown());
+
+    }
+
+    if (workerErr) {
+
+        return [null, workerErr];
+
+    }
+
+    const durationMs = Date.now() - startTime;
+
+    observer.emit('dt:export:complete', {
+        filepath,
+        table: tableName,
+        rowsWritten: result!.rowsWritten,
+        bytesWritten: result!.bytesWritten,
+        durationMs,
+    });
+
+    return [result, null];
+
+}
+
+/**
+ * Build a dialect-appropriate SQL identifier quoting function.
+ */
+function getQuoteIdent(dialect: string): (c: string) => string {
+
+    if (dialect === 'mssql') return (c: string) => `[${c}]`;
+    if (dialect === 'mysql') return (c: string) => `\`${c}\``;
+
+    return (c: string) => `"${c}"`;
+
+}
+
+/**
+ * Build a raw SQL string for a paginated SELECT query.
+ */
+function buildBatchSql(
+    dialect: string,
+    tableName: string,
+    columnList: string,
+    orderCol: string,
+    batchSize: number,
+    offset: number,
+): string {
+
+    if (dialect === 'mssql') {
+
+        return `SELECT ${columnList} FROM [${tableName}] ORDER BY ${orderCol} OFFSET ${offset} ROWS FETCH NEXT ${batchSize} ROWS ONLY`;
+
+    }
+
+    return `SELECT ${columnList} FROM "${tableName}" LIMIT ${batchSize} OFFSET ${offset}`;
+
+}
+
+/**
+ * Worker-based export pipeline — offload fetching and serialization to worker threads.
+ *
+ * Uses a three-stage pipeline:
+ * 1. Connection worker fetches batches via paginated SQL queries
+ * 2. Compute pool serializes individual rows in parallel
+ * 3. OrderBuffer reassembles rows in order and writes to DtWriter
+ *
+ * Backpressure: pauses fetching when pending items exceed batchSize * 3.
+ */
+async function exportTableWithWorkers(ctx: {
+    writer: DtWriter;
+    dtSchema: DtSchema;
+    tableName: string;
+    filepath: string;
+    dialect: string;
+    batchSize: number;
+    connectionBridge?: WorkerBridge<ConnectionEvents>;
+    computePool: WorkerPool<ComputeEvents>;
+    kyselyDb: Kysely<NoormDatabase>;
+}): Promise<[{ rowsWritten: number; bytesWritten: number } | null, Error | null]> {
+
+    const { writer, dtSchema, tableName, filepath, dialect, batchSize } = ctx;
+    const { connectionBridge, computePool, kyselyDb } = ctx;
+    const backpressureLimit = batchSize * 3;
+
+    // --- Stage 0: Get total row count ---
+    let totalRows = 0;
+
+    if (connectionBridge) {
+
+        const countSql = dialect === 'mssql'
+            ? `SELECT COUNT(*) AS cnt FROM [${tableName}]`
+            : `SELECT COUNT(*) AS cnt FROM "${tableName}"`;
+
+        const [countResult, countErr] = await attempt(() =>
+            connectionBridge.request('query', { sql: countSql }),
+        );
+
+        if (countErr) {
+
+            return [null, countErr];
+
+        }
+
+        const firstRow = countResult!.rows[0] as Record<string, unknown> | undefined;
+        totalRows = Number(firstRow?.['cnt'] ?? 0);
+
+    }
+
+    // --- Stage 1-3: Fetch → Serialize → Write ---
+    const columns = dtSchema.columns.map((c) => c.name);
+    const quoteIdent = getQuoteIdent(dialect);
     const columnList = columns.map(quoteIdent).join(', ');
+    const orderCol = quoteIdent(columns[0]!);
+
+    let globalIndex = 0;
+    let loaded = 0;
+    let processed = 0;
+    let saved = 0;
+    let inFlight = 0;
+    let pipelineError: Error | null = null;
+
+    // OrderBuffer: flush in-order to writer
+    const orderBuffer = new OrderBuffer<DtValue[]>((values) => {
+
+        writer.writeRow(values);
+        saved++;
+        inFlight--;
+
+        observer.emit('dt:export:saved', { table: tableName, saved, totalRows });
+
+    });
+
+    // Fetch loop
+    let offset = 0;
 
     while (true) {
 
-        const [rows, fetchErr] = await attempt(() => {
+        // Backpressure: wait until in-flight drops below limit
+        while (inFlight >= backpressureLimit) {
 
-            if (dialect === 'mssql') {
+            await new Promise((resolve) => setTimeout(resolve, 1));
 
-                const orderCol = quoteIdent(columns[0]!);
+        }
+
+        // Fetch a batch
+        let batchRows: Record<string, unknown>[];
+
+        if (connectionBridge) {
+
+            const batchSql = buildBatchSql(dialect, tableName, columnList, orderCol, batchSize, offset);
+
+            const [queryResult, queryErr] = await attempt(() =>
+                connectionBridge.request('query', { sql: batchSql }),
+            );
+
+            if (queryErr) {
+
+                pipelineError = queryErr;
+                break;
+
+            }
+
+            if (queryResult!.error) {
+
+                pipelineError = new Error(queryResult!.error);
+                break;
+
+            }
+
+            batchRows = queryResult!.rows as Record<string, unknown>[];
+
+        }
+        else {
+
+            // Direct Kysely fetch when no connection worker is available
+            const [rows, fetchErr] = await attempt(() => {
+
+                if (dialect === 'mssql') {
+
+                    return sql<Record<string, unknown>>`
+                        SELECT ${sql.raw(columnList)}
+                        FROM ${sql.table(tableName)}
+                        ORDER BY ${sql.raw(orderCol)}
+                        OFFSET ${offset} ROWS
+                        FETCH NEXT ${batchSize} ROWS ONLY
+                    `.execute(kyselyDb);
+
+                }
 
                 return sql<Record<string, unknown>>`
                     SELECT ${sql.raw(columnList)}
                     FROM ${sql.table(tableName)}
-                    ORDER BY ${sql.raw(orderCol)}
-                    OFFSET ${offset} ROWS
-                    FETCH NEXT ${batchSize} ROWS ONLY
+                    LIMIT ${batchSize}
+                    OFFSET ${offset}
                 `.execute(kyselyDb);
+
+            });
+
+            if (fetchErr) {
+
+                pipelineError = fetchErr;
+                break;
 
             }
 
-            return sql<Record<string, unknown>>`
-                SELECT ${sql.raw(columnList)}
-                FROM ${sql.table(tableName)}
-                LIMIT ${batchSize}
-                OFFSET ${offset}
-            `.execute(kyselyDb);
-
-        });
-
-        if (fetchErr) {
-
-            return [null, fetchErr];
+            batchRows = rows.rows;
 
         }
 
-        if (rows.rows.length === 0) break;
+        if (batchRows.length === 0) break;
 
-        // Serialize and write each row
-        for (const row of rows.rows) {
+        loaded += batchRows.length;
 
-            const values = serializeRow({ row, columns: dtSchema.columns });
-            writer.writeRow(values);
+        observer.emit('dt:export:loaded', { table: tableName, loaded, totalRows });
+
+        // Dispatch rows to compute pool for serialization
+        for (const row of batchRows) {
+
+            const rowIndex = globalIndex++;
+            inFlight++;
+
+            // Fire-and-forget — result handled asynchronously
+            computePool.request('serialize', {
+                row,
+                columns: dtSchema.columns,
+                index: rowIndex,
+            }).then((result) => {
+
+                processed++;
+
+                observer.emit('dt:export:processed', { table: tableName, processed, totalRows });
+
+                if (result.error) {
+
+                    pipelineError = pipelineError ?? new Error(result.error);
+
+                    return;
+
+                }
+
+                orderBuffer.add(result.index, result.values);
+
+            });
 
         }
 
-        offset += rows.rows.length;
+        offset += batchRows.length;
 
         observer.emit('dt:export:progress', {
             filepath,
@@ -173,7 +468,20 @@ export async function exportTable(
             bytesWritten: writer.bytesWritten,
         });
 
-        if (rows.rows.length < batchSize) break;
+        if (batchRows.length < batchSize) break;
+
+    }
+
+    // Wait for all in-flight compute to drain
+    while (inFlight > 0) {
+
+        await new Promise((resolve) => setTimeout(resolve, 1));
+
+    }
+
+    if (pipelineError) {
+
+        return [null, pipelineError];
 
     }
 
@@ -185,16 +493,6 @@ export async function exportTable(
         return [null, closeErr];
 
     }
-
-    const durationMs = Date.now() - startTime;
-
-    observer.emit('dt:export:complete', {
-        filepath,
-        table: tableName,
-        rowsWritten: writer.rowsWritten,
-        bytesWritten: writer.bytesWritten,
-        durationMs,
-    });
 
     return [{ rowsWritten: writer.rowsWritten, bytesWritten: writer.bytesWritten }, null];
 
@@ -317,82 +615,44 @@ export async function importDtFile(
 
     }
 
-    // Import rows in batches
-    let rowsImported = 0;
-    let rowsSkipped = 0;
-    let batch: Record<string, unknown>[] = [];
+    // Resolve compute pool — use provided override or create our own
+    let ownedComputePool: WorkerPool<ComputeEvents> | null = null;
+    let computePool = options.computePool;
 
-    for await (const values of reader.rows()) {
+    if (!computePool) {
 
-        const row = deserializeRow({
-            values,
-            columns: dtSchema.columns,
-            targetDialect: dialect,
-            targetVersion: version,
-        });
-
-        batch.push(row);
-
-        if (batch.length >= batchSize) {
-
-            const columnNames = dtSchema.columns.map((c) => c.name);
-            const [batchResult, insertErr] = await insertImportBatch(
-                kyselyDb,
-                tableName,
-                batch,
-                options.onConflict ?? 'fail',
-                dialect,
-                columnNames,
-            );
-
-            if (insertErr) {
-
-                reader.close();
-                observer.emit('error', { source: 'dt:import', error: insertErr, context: { filepath, table: tableName } });
-
-                return [null, insertErr];
-
-            }
-
-            rowsImported += batchResult.inserted + batchResult.updated;
-            rowsSkipped += batchResult.skipped;
-            batch = [];
-
-            observer.emit('dt:import:progress', {
-                filepath,
-                table: tableName,
-                rowsImported,
-                rowsSkipped,
-            });
-
-        }
+        computePool = createDefaultComputePool();
+        ownedComputePool = computePool;
 
     }
 
-    // Insert remaining rows
-    if (batch.length > 0) {
+    // Worker pipeline: offload deserialization to compute pool
+    const [result, workerErr] = await importFileWithWorkers({
+        reader,
+        dtSchema,
+        tableName,
+        filepath,
+        dialect,
+        version,
+        batchSize,
+        onConflict: options.onConflict ?? 'fail',
+        computePool,
+        kyselyDb,
+    });
 
-        const columnNames = dtSchema.columns.map((c) => c.name);
-        const [batchResult, insertErr] = await insertImportBatch(
-            kyselyDb,
-            tableName,
-            batch,
-            options.onConflict ?? 'fail',
-            dialect,
-            columnNames,
-        );
+    // Shut down owned compute pool
+    if (ownedComputePool) {
 
-        if (insertErr) {
+        await attempt(() => ownedComputePool!.shutdown());
 
-            reader.close();
-            observer.emit('error', { source: 'dt:import', error: insertErr, context: { filepath, table: tableName } });
+    }
 
-            return [null, insertErr];
+    if (workerErr) {
 
-        }
+        reader.close();
+        observer.emit('error', { source: 'dt:import', error: workerErr, context: { filepath, table: tableName } });
 
-        rowsImported += batchResult.inserted + batchResult.updated;
-        rowsSkipped += batchResult.skipped;
+        return [null, workerErr];
 
     }
 
@@ -403,12 +663,12 @@ export async function importDtFile(
     observer.emit('dt:import:complete', {
         filepath,
         table: tableName,
-        rowsImported,
-        rowsSkipped,
+        rowsImported: result!.rowsImported,
+        rowsSkipped: result!.rowsSkipped,
         durationMs,
     });
 
-    return [{ rowsImported, rowsSkipped }, null];
+    return [result, null];
 
 }
 
@@ -423,6 +683,234 @@ export async function importDtFile(
 export function createStreamer(options: DtStreamerOptions): DtStreamer {
 
     return new DtStreamer(options);
+
+}
+
+/**
+ * Worker-based import pipeline — offload deserialization to compute pool.
+ *
+ * Uses a three-stage pipeline:
+ * 1. DtReader reads rows in batches from the .dt file
+ * 2. Compute pool deserializes individual rows in parallel
+ * 3. OrderBuffer reassembles in order, accumulates batch, inserts via Kysely
+ *
+ * Pull-based: reads a batch, waits for drain, then reads the next batch.
+ */
+async function importFileWithWorkers(ctx: {
+    reader: DtReader;
+    dtSchema: DtSchema;
+    tableName: string;
+    filepath: string;
+    dialect: Dialect;
+    version?: DatabaseVersion;
+    batchSize: number;
+    onConflict: string;
+    computePool: WorkerPool<ComputeEvents>;
+    kyselyDb: Kysely<NoormDatabase>;
+}): Promise<[{ rowsImported: number; rowsSkipped: number } | null, Error | null]> {
+
+    const { reader, dtSchema, tableName, filepath, dialect, version, batchSize } = ctx;
+    const { onConflict, computePool, kyselyDb } = ctx;
+
+    let rowsImported = 0;
+    let rowsSkipped = 0;
+    let loaded = 0;
+    let processed = 0;
+    let saved = 0;
+    let globalIndex = 0;
+    let inFlight = 0;
+    let pipelineError: Error | null = null;
+
+    // Count total rows by iterating (we'll re-read). For .dt files,
+    // totalRows is estimated from file — for now use 0 as unknown.
+    let totalRows = 0;
+
+    // Accumulate ordered deserialized rows for batch insert
+    let insertBatch: Record<string, unknown>[] = [];
+    const columnNames = dtSchema.columns.map((c) => c.name);
+
+    /**
+     * Flush accumulated insert batch to the database.
+     */
+    const flushInsertBatch = async (): Promise<Error | null> => {
+
+        if (insertBatch.length === 0) return null;
+
+        const [batchResult, insertErr] = await insertImportBatch(
+            kyselyDb,
+            tableName,
+            insertBatch,
+            onConflict,
+            dialect,
+            columnNames,
+        );
+
+        if (insertErr) {
+
+            return insertErr;
+
+        }
+
+        rowsImported += batchResult.inserted + batchResult.updated;
+        rowsSkipped += batchResult.skipped;
+        insertBatch = [];
+
+        observer.emit('dt:import:progress', {
+            filepath,
+            table: tableName,
+            rowsImported,
+            rowsSkipped,
+        });
+
+        return null;
+
+    };
+
+    // OrderBuffer: reassemble deserialized rows in order
+    const orderBuffer = new OrderBuffer<Record<string, unknown>>((record) => {
+
+        insertBatch.push(record);
+        saved++;
+        inFlight--;
+
+        observer.emit('dt:import:saved', { table: tableName, saved, totalRows });
+
+    });
+
+    // Read rows in batches from DtReader
+    let readBatch: DtValue[][] = [];
+
+    for await (const values of reader.rows()) {
+
+        readBatch.push(values);
+        loaded++;
+        totalRows = Math.max(totalRows, loaded);
+
+        if (readBatch.length >= batchSize) {
+
+            observer.emit('dt:import:loaded', { table: tableName, loaded, totalRows });
+
+            // Dispatch batch to compute pool
+            for (const rowValues of readBatch) {
+
+                const rowIndex = globalIndex++;
+                inFlight++;
+
+                computePool.request('deserialize', {
+                    values: rowValues,
+                    columns: dtSchema.columns,
+                    targetDialect: dialect,
+                    targetVersion: version ? `${version.major}.${version.minor}` : undefined,
+                    index: rowIndex,
+                }).then((result) => {
+
+                    processed++;
+
+                    observer.emit('dt:import:processed', { table: tableName, processed, totalRows });
+
+                    if (result.error) {
+
+                        pipelineError = pipelineError ?? new Error(result.error);
+
+                        return;
+
+                    }
+
+                    orderBuffer.add(result.index, result.record);
+
+                });
+
+            }
+
+            readBatch = [];
+
+            // Wait for all in-flight to drain before reading next batch
+            while (inFlight > 0) {
+
+                await new Promise((resolve) => setTimeout(resolve, 1));
+
+            }
+
+            if (pipelineError) {
+
+                return [null, pipelineError];
+
+            }
+
+            // Flush accumulated insert batch
+            const flushErr = await flushInsertBatch();
+
+            if (flushErr) {
+
+                return [null, flushErr];
+
+            }
+
+        }
+
+    }
+
+    // Process remaining rows
+    if (readBatch.length > 0) {
+
+        observer.emit('dt:import:loaded', { table: tableName, loaded, totalRows });
+
+        for (const rowValues of readBatch) {
+
+            const rowIndex = globalIndex++;
+            inFlight++;
+
+            computePool.request('deserialize', {
+                values: rowValues,
+                columns: dtSchema.columns,
+                targetDialect: dialect,
+                targetVersion: version ? `${version.major}.${version.minor}` : undefined,
+                index: rowIndex,
+            }).then((result) => {
+
+                processed++;
+
+                observer.emit('dt:import:processed', { table: tableName, processed, totalRows });
+
+                if (result.error) {
+
+                    pipelineError = pipelineError ?? new Error(result.error);
+
+                    return;
+
+                }
+
+                orderBuffer.add(result.index, result.record);
+
+            });
+
+        }
+
+        // Wait for drain
+        while (inFlight > 0) {
+
+            await new Promise((resolve) => setTimeout(resolve, 1));
+
+        }
+
+        if (pipelineError) {
+
+            return [null, pipelineError];
+
+        }
+
+        // Flush remaining
+        const flushErr = await flushInsertBatch();
+
+        if (flushErr) {
+
+            return [null, flushErr];
+
+        }
+
+    }
+
+    return [{ rowsImported, rowsSkipped }, null];
 
 }
 

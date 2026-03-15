@@ -71,6 +71,8 @@ import * as CmdVaultSet from './vault-set.js';
 
 import * as CmdSql from './sql.js';
 
+import * as CmdDevTestWorkers from './dev-test-workers.js';
+
 import * as CmdHelp from './help.js';
 import * as CmdInfo from './info.js';
 import * as CmdUpdate from './update.js';
@@ -130,6 +132,8 @@ const HANDLERS: Partial<Record<Route, RouteHandler>> = {
     'vault/propagate': CmdVaultPropagate,
     'vault/rm': CmdVaultRm,
     'vault/set': CmdVaultSet,
+
+    'dev/test-workers': CmdDevTestWorkers,
 
     'info': CmdInfo,
     'update': CmdUpdate,

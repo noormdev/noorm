@@ -156,6 +156,10 @@ export type Route =
 
     // Version info
     | 'version'
+
+    // Dev (internal testing / diagnostics)
+    | 'dev'
+    | 'dev/test-workers'
 /**
  * Route parameters that can be passed during navigation.
  *

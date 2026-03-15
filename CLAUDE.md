@@ -37,17 +37,28 @@ src/
 ├── core/                       # Business logic (no UI)
 │   ├── observer.ts             # Central event system
 │   ├── config/                 # Config management
-│   ├── change/              # Change parsing, execution
+│   ├── change/                 # Change parsing, execution
 │   ├── runner/                 # SQL file execution
 │   ├── lock/                   # Concurrent operation locking
 │   ├── template/               # Eta templating
-│   └── encryption/             # AES-256-GCM
+│   ├── encryption/             # AES-256-GCM
+│   ├── worker-bridge/          # Worker thread infrastructure
+│   │   ├── bridge.ts           # WorkerBridge (ObserverRelay subclass)
+│   │   ├── pool.ts             # WorkerPool (round-robin dispatch)
+│   │   ├── order-buffer.ts     # Index-ordered reassembly buffer
+│   │   ├── paths.ts            # Cross-context worker path resolution
+│   │   └── types.ts            # Event contracts, WireMessage, Correlated
+│   └── dt/                     # Data transfer (.dt files)
+│
+├── workers/                    # Worker thread entry points (standalone programs)
+│   ├── connection.ts           # Persistent DB worker (Kysely)
+│   └── compute.ts              # Stateless serialize/deserialize
 │
 ├── cli/                        # Ink/React TUI
 │   ├── screens/                # Screen components by feature
 │   ├── components/             # Shared UI components
 │   ├── hooks/                  # React hooks
-│   ├── headless.ts             # CI/CD JSON output
+│   ├── headless/               # CI/CD JSON output
 │   └── help.ts                 # Help file registry
 │
 help/                           # CLI help files (plain text)
@@ -164,6 +175,34 @@ SEE ALSO
 3. File naming: `config/use` → `config-use.txt`, `db/explore/tables` → `db-explore-tables.txt`
 
 Only add registry entries for routes with dedicated content. Parent routes automatically cover children via fallback.
+
+
+## Worker Threads
+
+CPU-bound operations (DT export/import serialization) run in worker threads via `WorkerBridge`, an `ObserverRelay` subclass from `@logosdx/observer`. Hub-and-spoke architecture:
+
+- **Connection Worker** (`src/workers/connection.ts`) — persistent, owns Kysely, handles all DB ops
+- **Compute Pool** (`src/workers/compute.ts`) — ephemeral N workers for serialize/deserialize
+- **Main Thread** — orchestrates pipeline, writes files, emits progress events to TUI
+
+Worker scripts live at `src/workers/` (not inside `core/`) because they're standalone entry points for `bun build --compile`.
+
+Use `resolveWorker(name)` from `src/core/worker-bridge/paths.ts` to get worker paths. Never hardcode worker paths — the resolver handles dev mode (absolute path to `dist/workers/*.js`) and compiled binary (URL against `import.meta.url`).
+
+
+### Bun Single Binary Worker Gotcha
+
+When `bun build --compile` bundles worker entry points, three transformations happen silently:
+
+1. **`src/` is stripped** — Bun auto-detects `src/` as `--root` and removes it from paths
+2. **`.ts` → `.js`** — TypeScript files are compiled to JavaScript in the embedded graph
+3. **Paths resolve against CWD** — bare string paths like `'src/workers/compute.ts'` resolve relative to the process's current working directory, not the binary
+
+So `src/workers/compute.ts` in the build command becomes `/$bunfs/root/workers/compute.js` in the binary. To resolve correctly regardless of CWD, use `new URL('./workers/compute.js', import.meta.url)` — this resolves against the binary's own `$bunfs` URL.
+
+The `resolveWorker()` function in `src/core/worker-bridge/paths.ts` handles this. Always use it.
+
+Diagnostic command: `noorm -H dev/test-workers` — runs 5 worker thread tests in any execution context.
 
 
 ## Principles

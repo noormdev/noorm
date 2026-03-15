@@ -240,7 +240,7 @@ export function InitScreen({ params }: ScreenProps): ReactElement {
             updateItem(0, { status: 'success' });
 
             // Step 2: Generate keypair (if needed)
-            let keypairIndex = 1;
+            const keypairIndex = 1;
             let privateKey: string | undefined;
 
             if (!hasExistingKeys && identityValues) {
@@ -266,12 +266,6 @@ export function InitScreen({ params }: ScreenProps): ReactElement {
                 privateKey = result!.keypair.privateKey;
 
                 updateItem(keypairIndex, { status: 'success' });
-                keypairIndex++;
-
-            }
-            else {
-
-                keypairIndex = 1;
 
             }
 

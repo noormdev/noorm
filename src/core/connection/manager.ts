@@ -7,6 +7,8 @@
 import { attempt } from '@logosdx/utils';
 import type { Config } from '../config/types.js';
 import type { ConnectionResult } from './types.js';
+import type { WorkerBridge } from '../worker-bridge/bridge.js';
+import type { ConnectionEvents } from '../worker-bridge/types.js';
 import { observer } from '../observer.js';
 
 /**
@@ -45,6 +47,7 @@ class ConnectionManager {
 
     #cached = new Map<string, ConnectionResult>();
     #tracked = new Map<number, TrackedConnection>();
+    #bridges = new Map<string, WorkerBridge<ConnectionEvents>>();
     #nextId = 1;
     #shuttingDown = false;
     #unsubscribe: (() => void) | null = null;
@@ -197,6 +200,40 @@ class ConnectionManager {
 
         }
 
+        // Close all worker bridges
+        const bridgeNames = Array.from(this.#bridges.keys());
+        for (const name of bridgeNames) {
+
+            await this.closeBridge(name);
+
+        }
+
+    }
+
+    /**
+     * Track a WorkerBridge connection for a config.
+     *
+     * The bridge is shut down alongside regular connections on app:shutdown.
+     */
+    trackBridge(configName: string, bridge: WorkerBridge<ConnectionEvents>): void {
+
+        this.#bridges.set(configName, bridge);
+
+    }
+
+    /**
+     * Close a specific bridge by config name.
+     */
+    async closeBridge(configName: string): Promise<void> {
+
+        const bridge = this.#bridges.get(configName);
+        if (bridge) {
+
+            await bridge.shutdown();
+            this.#bridges.delete(configName);
+
+        }
+
     }
 
     /**
@@ -213,7 +250,7 @@ class ConnectionManager {
      */
     get size(): number {
 
-        return this.#cached.size + this.#tracked.size;
+        return this.#cached.size + this.#tracked.size + this.#bridges.size;
 
     }
 

@@ -102,7 +102,7 @@ export async function copyVaultSecrets(
 
             // Check destination vault status
             const destStatus = await getVaultStatus(ctx.destination.db, identityHash, ctx.destination.dialect);
-            let destVaultKey: Buffer | null = null;
+            let destVaultKey: Buffer | null;
 
             if (!destStatus.isInitialized) {
 

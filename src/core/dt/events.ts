@@ -98,4 +98,24 @@ export interface DtEvents {
         warnings: string[];
     };
 
+    // --- Three-tier worker pipeline progress ---
+
+    /** A batch of rows arrived from the Connection Worker. */
+    'dt:export:loaded': { table: string; loaded: number; totalRows: number };
+
+    /** A compute worker finished serializing a row. */
+    'dt:export:processed': { table: string; processed: number; totalRows: number };
+
+    /** Order buffer flushed consecutive rows to DtWriter. */
+    'dt:export:saved': { table: string; saved: number; totalRows: number };
+
+    /** A batch of lines read from file by DtReader. */
+    'dt:import:loaded': { table: string; loaded: number; totalRows: number };
+
+    /** A compute worker finished deserializing a row. */
+    'dt:import:processed': { table: string; processed: number; totalRows: number };
+
+    /** Deserialized rows inserted into the database. */
+    'dt:import:saved': { table: string; saved: number; totalRows: number };
+
 }

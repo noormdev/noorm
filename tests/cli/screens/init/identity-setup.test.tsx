@@ -5,7 +5,6 @@
  */
 import { describe, it, expect, vi, mock, beforeEach, afterAll } from 'bun:test';
 import { render } from 'ink-testing-library';
-import { act } from 'react';
 import React from 'react';
 
 import { FocusProvider } from '../../../../src/cli/focus.js';
@@ -29,11 +28,7 @@ mock.module('../../../../src/core/identity/index.js', () => ({
  */
 async function waitForEffects(): Promise<void> {
 
-    await act(async () => {
-
-        await new Promise((r) => setTimeout(r, 10));
-
-    });
+    await new Promise((r) => setTimeout(r, 50));
 
 }
 

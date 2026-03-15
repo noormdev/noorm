@@ -147,18 +147,9 @@ export function DebugListScreen({ params }: ScreenProps): ReactElement {
             if (bVal == null) return sortDirection === 'asc' ? 1 : -1;
 
             // Compare
-            let cmp = 0;
-
-            if (typeof aVal === 'number' && typeof bVal === 'number') {
-
-                cmp = aVal - bVal;
-
-            }
-            else {
-
-                cmp = String(aVal).localeCompare(String(bVal));
-
-            }
+            const cmp = (typeof aVal === 'number' && typeof bVal === 'number')
+                ? aVal - bVal
+                : String(aVal).localeCompare(String(bVal));
 
             return sortDirection === 'asc' ? cmp : -cmp;
 

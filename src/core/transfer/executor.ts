@@ -103,8 +103,8 @@ export async function executeTransfer(
         const useSameServer = plan.sameServer && strategy === 'fail' && !plan.crossDialect;
         const useCrossDialect = plan.crossDialect && tablePlan.columnTypes;
 
-        let tableResult: TransferTableResult | null = null;
-        let tableErr: Error | null = null;
+        let tableResult: TransferTableResult | null;
+        let tableErr: Error | null;
 
         if (useSameServer) {
 

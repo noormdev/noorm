@@ -6,7 +6,14 @@ export default tseslint.config(
     eslint.configs.recommended,
     ...tseslint.configs.recommended,
     {
-        ignores: ['dist/**', 'node_modules/**', 'coverage/**', 'packages/**/dist/**', 'scripts/**'],
+        ignores: ['dist/**', 'node_modules/**', 'coverage/**', 'packages/**/dist/**', 'scripts/**', 'tmp/**'],
+    },
+    {
+        languageOptions: {
+            parserOptions: {
+                tsconfigRootDir: import.meta.dirname,
+            },
+        },
     },
     {
         plugins: {

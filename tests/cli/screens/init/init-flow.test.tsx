@@ -5,7 +5,6 @@
  */
 import { describe, it, expect, vi, mock, beforeEach, afterEach, afterAll } from 'bun:test';
 import { render } from 'ink-testing-library';
-import { act } from 'react';
 import React from 'react';
 import { join } from 'path';
 import { tmpdir } from 'os';
@@ -161,11 +160,7 @@ mock.module('../../../../src/core/settings/manager.js', () => {
  */
 async function waitForEffects(ms = 50): Promise<void> {
 
-    await act(async () => {
-
-        await new Promise((r) => setTimeout(r, ms));
-
-    });
+    await new Promise((r) => setTimeout(r, ms));
 
 }
 
