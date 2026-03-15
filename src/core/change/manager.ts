@@ -86,7 +86,7 @@ export class ChangeManager {
     constructor(context: ChangeContext) {
 
         this.#context = context;
-        this.#history = new ChangeHistory(context.db, context.configName);
+        this.#history = new ChangeHistory(context.db, context.configName, context.dialect ?? 'postgres');
 
     }
 

@@ -10,6 +10,8 @@ import type { Kysely } from 'kysely';
 import { attempt } from '@logosdx/utils';
 
 import type { NoormDatabase } from '../shared/index.js';
+import { getNoormTables, noormDb } from '../shared/tables.js';
+import type { Dialect } from '../connection/types.js';
 import type { Config } from '../config/types.js';
 import type { CryptoIdentity, KnownUser } from './types.js';
 import { createConnection } from '../connection/factory.js';
@@ -42,23 +44,29 @@ export interface IdentitySyncResult {
  * Register the current user's identity in the database.
  *
  * Upserts the identity - inserts if new, updates last_seen_at if existing.
+ * Uses dialect-aware table names to support both legacy prefixed and
+ * schema-qualified table locations.
  *
  * @example
  * ```typescript
  * const identity = await loadExistingIdentity()
  * if (identity) {
- *     await registerIdentity(db, identity)
+ *     await registerIdentity(db, identity, 'postgres')
  * }
  * ```
  */
 export async function registerIdentity(
     db: Kysely<NoormDatabase>,
     identity: CryptoIdentity,
+    dialect: Dialect,
 ): Promise<{ ok: boolean; registered: boolean; error?: string }> {
 
+    const ndb = noormDb(db, dialect);
+    const tables = getNoormTables(dialect);
+
     const [existing, selectErr] = await attempt(() =>
-        db
-            .selectFrom('__noorm_identities__')
+        ndb
+            .selectFrom(tables.identities as keyof NoormDatabase)
             .select(['id'])
             .where('identity_hash', '=', identity.identityHash)
             .executeTakeFirst(),
@@ -84,8 +92,8 @@ export async function registerIdentity(
 
         // Update last_seen_at
         const [, updateErr] = await attempt(() =>
-            db
-                .updateTable('__noorm_identities__')
+            ndb
+                .updateTable(tables.identities as keyof NoormDatabase)
                 .set({ last_seen_at: new Date() })
                 .where('identity_hash', '=', identity.identityHash)
                 .execute(),
@@ -113,8 +121,8 @@ export async function registerIdentity(
 
     // Insert new identity
     const [, insertErr] = await attempt(() =>
-        db
-            .insertInto('__noorm_identities__')
+        ndb
+            .insertInto(tables.identities as keyof NoormDatabase)
             .values({
                 identity_hash: identity.identityHash,
                 email: identity.email,
@@ -122,7 +130,7 @@ export async function registerIdentity(
                 machine: identity.machine,
                 os: identity.os,
                 public_key: identity.publicKey,
-            })
+            } as never)
             .execute(),
     );
 
@@ -156,21 +164,27 @@ export async function registerIdentity(
  * Fetch all known users from the database.
  *
  * Converts database rows to KnownUser objects for local caching.
+ * Uses dialect-aware table names to support both legacy prefixed and
+ * schema-qualified table locations.
  *
  * @example
  * ```typescript
- * const { users } = await fetchKnownUsers(db, 'my-config')
+ * const { users } = await fetchKnownUsers(db, 'my-config', 'postgres')
  * await stateManager.addKnownUsers(users)
  * ```
  */
 export async function fetchKnownUsers(
     db: Kysely<NoormDatabase>,
     configName: string,
+    dialect: Dialect,
 ): Promise<{ ok: boolean; users: KnownUser[]; error?: string }> {
 
+    const ndb = noormDb(db, dialect);
+    const tables = getNoormTables(dialect);
+
     const [rows, err] = await attempt(() =>
-        db
-            .selectFrom('__noorm_identities__')
+        ndb
+            .selectFrom(tables.identities as keyof NoormDatabase)
             .selectAll()
             .execute(),
     );
@@ -209,15 +223,18 @@ export async function fetchKnownUsers(
  * - No identity is provided
  * - Database doesn't have noorm tracking tables
  *
+ * Uses dialect-aware table names to support both legacy prefixed and
+ * schema-qualified table locations.
+ *
  * @example
  * ```typescript
  * const conn = await createConnection(config.connection, config.name)
  * const identity = await loadExistingIdentity()
  *
- * const result = await syncIdentity(conn.db, identity, config.name)
+ * const result = await syncIdentity(conn.db, identity, config.name, 'postgres')
  * if (result.ok && result.knownUsersCount) {
  *     // Fetch known users from database
- *     const { users } = await fetchKnownUsers(conn.db, config.name)
+ *     const { users } = await fetchKnownUsers(conn.db, config.name, 'postgres')
  *     // Store in local state for caching
  *     await stateManager.addKnownUsers(users)
  * }
@@ -227,10 +244,14 @@ export async function syncIdentity(
     db: Kysely<NoormDatabase>,
     identity: CryptoIdentity | null,
     configName: string,
+    dialect: Dialect,
 ): Promise<IdentitySyncResult> {
 
+    const ndb = noormDb(db, dialect);
+    const tables = getNoormTables(dialect);
+
     // Check if tracking tables exist
-    const [hasTracking, checkErr] = await attempt(() => tablesExist(db));
+    const [hasTracking, checkErr] = await attempt(() => tablesExist(db, dialect));
 
     if (checkErr) {
 
@@ -250,7 +271,7 @@ export async function syncIdentity(
 
     if (identity) {
 
-        const regResult = await registerIdentity(db, identity);
+        const regResult = await registerIdentity(db, identity, dialect);
 
         if (!regResult.ok) {
 
@@ -264,9 +285,9 @@ export async function syncIdentity(
 
     // Fetch known users count
     const [count, countErr] = await attempt(() =>
-        db
-            .selectFrom('__noorm_identities__')
-            .select(db.fn.count<number>('id').as('count'))
+        ndb
+            .selectFrom(tables.identities as keyof NoormDatabase)
+            .select(ndb.fn.count<number>('id').as('count'))
             .executeTakeFirst(),
     );
 
@@ -298,6 +319,9 @@ export async function syncIdentity(
  * 4. Returns known users for caller to store
  * 5. Closes the connection
  *
+ * Derives dialect from `config.connection.dialect` so callers don't
+ * need to pass it explicitly.
+ *
  * Silently skips if:
  * - No identity is set up
  * - Database doesn't have noorm tables
@@ -315,6 +339,8 @@ export async function syncIdentity(
 export async function syncIdentityWithConfig(
     config: Config,
 ): Promise<IdentitySyncResult> {
+
+    const dialect = config.connection.dialect;
 
     // Load identity from global ~/.noorm/identity.json
     const [identity] = await attempt(() => loadExistingIdentity());
@@ -352,7 +378,7 @@ export async function syncIdentityWithConfig(
     const db = conn!.db as Kysely<NoormDatabase>;
 
     // Sync identity
-    const syncResult = await syncIdentity(db, identity, config.name);
+    const syncResult = await syncIdentity(db, identity, config.name, dialect);
 
     if (!syncResult.ok) {
 
@@ -363,7 +389,7 @@ export async function syncIdentityWithConfig(
     // Fetch known users if there are any
     if (syncResult.knownUsersCount && syncResult.knownUsersCount > 0) {
 
-        const [res, err] = await attempt(() => fetchKnownUsers(db, config.name));
+        const [res, err] = await attempt(() => fetchKnownUsers(db, config.name, dialect));
 
         if (err) {
 

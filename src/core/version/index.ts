@@ -16,7 +16,7 @@
  * const version = new VersionManager({ projectRoot: process.cwd() })
  *
  * // Check all versions
- * const status = await version.check(db, state, settings)
+ * const status = await version.check(db, 'postgres', state, settings)
  *
  * // Migrate as needed
  * await version.ensureCompatible(db, state, settings, cliVersion)
@@ -58,10 +58,10 @@ export interface VersionManagerOptions {
  * const manager = new VersionManager({ projectRoot: process.cwd() })
  *
  * // Check status
- * const status = await manager.check(db, state, settings)
+ * const status = await manager.check(db, 'postgres', state, settings)
  *
  * // Migrate everything
- * const migrated = await manager.ensureCompatible(db, state, settings, '1.0.0')
+ * const migrated = await manager.ensureCompatible(db, 'postgres', state, settings)
  * ```
  */
 export class VersionManager {
@@ -81,11 +81,12 @@ export class VersionManager {
      */
     async check(
         db: Kysely<NoormDatabase>,
+        dialect: Dialect,
         state: Record<string, unknown>,
         settings: Record<string, unknown>,
     ): Promise<VersionStatus> {
 
-        const schemaStatus = await checkSchemaVersion(db);
+        const schemaStatus = await checkSchemaVersion(db, dialect);
         const stateStatus = checkStateVersion(state);
         const settingsStatus = checkSettingsVersion(settings);
 
@@ -142,11 +143,12 @@ export class VersionManager {
      */
     async needsMigration(
         db: Kysely<NoormDatabase>,
+        dialect: Dialect,
         state: Record<string, unknown>,
         settings: Record<string, unknown>,
     ): Promise<boolean> {
 
-        const status = await this.check(db, state, settings);
+        const status = await this.check(db, dialect, state, settings);
 
         return (
             status.schema.needsMigration ||
@@ -161,11 +163,12 @@ export class VersionManager {
      */
     async hasNewerVersion(
         db: Kysely<NoormDatabase>,
+        dialect: Dialect,
         state: Record<string, unknown>,
         settings: Record<string, unknown>,
     ): Promise<boolean> {
 
-        const status = await this.check(db, state, settings);
+        const status = await this.check(db, dialect, state, settings);
 
         return status.schema.isNewer || status.state.isNewer || status.settings.isNewer;
 
@@ -191,7 +194,7 @@ let instance: VersionManager | null = null;
  * @example
  * ```typescript
  * const manager = getVersionManager('/path/to/project')
- * const status = await manager.check(db, state, settings)
+ * const status = await manager.check(db, 'postgres', state, settings)
  * ```
  */
 export function getVersionManager(projectRoot?: string): VersionManager {

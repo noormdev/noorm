@@ -137,7 +137,7 @@ export function ChangeRemoveScreen({ params }: ScreenProps): ReactElement {
                 );
                 const db = conn.db as Kysely<NoormDatabase>;
 
-                const history = new ChangeHistory(db, activeConfigName ?? '');
+                const history = new ChangeHistory(db, activeConfigName ?? '', activeConfig.connection.dialect);
                 await history.deleteRecords(changeName!);
 
                 await conn.destroy();

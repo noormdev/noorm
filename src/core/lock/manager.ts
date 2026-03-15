@@ -1,7 +1,7 @@
 /**
  * Lock manager for preventing concurrent database operations.
  *
- * Uses table-based locking via `__noorm_lock__` to prevent race conditions
+ * Uses table-based locking via the noorm lock table to prevent race conditions
  * when multiple processes try to modify the same database.
  *
  * @example
@@ -19,7 +19,7 @@
  *     await runMigrations()
  * }
  * finally {
- *     await manager.release(db, 'dev', 'alice@example.com')
+ *     await manager.release(db, 'dev', 'alice@example.com', 'postgres')
  * }
  * ```
  */
@@ -27,7 +27,7 @@ import { attempt } from '@logosdx/utils';
 import type { Kysely } from 'kysely';
 
 import { observer } from '../observer.js';
-import { NOORM_TABLES, type NoormDatabase } from '../shared/index.js';
+import { getNoormTables, noormDb, type NoormDatabase } from '../shared/index.js';
 import type { Dialect } from '../connection/types.js';
 import type { Lock, LockOptions, LockStatus } from './types.js';
 import { DEFAULT_LOCK_OPTIONS } from './types.js';
@@ -99,7 +99,7 @@ class LockManager {
             await this.cleanupExpired(db, configName, opts.dialect);
 
             // Try to get existing lock
-            const existing = await this.getLock(db, configName);
+            const existing = await this.getLock(db, configName, opts.dialect);
 
             if (!existing) {
 
@@ -177,13 +177,22 @@ class LockManager {
      * @param db - Kysely database instance
      * @param configName - Config/database scope
      * @param identity - Identity of the lock holder
+     * @param dialect - Database dialect for schema-aware table resolution
      * @throws LockNotFoundError if no lock exists
      * @throws LockOwnershipError if lock is held by someone else
      */
-    async release(db: Kysely<NoormDatabase>, configName: string, identity: string): Promise<void> {
+    async release(
+        db: Kysely<NoormDatabase>,
+        configName: string,
+        identity: string,
+        dialect: Dialect,
+    ): Promise<void> {
+
+        const ndb = noormDb(db, dialect);
+        const tables = getNoormTables(dialect);
 
         // Check existing lock
-        const existing = await this.getLock(db, configName);
+        const existing = await this.getLock(db, configName, dialect);
 
         if (!existing) {
 
@@ -198,8 +207,8 @@ class LockManager {
         }
 
         // Delete the lock
-        await db
-            .deleteFrom(NOORM_TABLES.lock)
+        await ndb
+            .deleteFrom(tables.lock)
             .where('config_name', '=', configName)
             .where('locked_by', '=', identity)
             .execute();
@@ -216,18 +225,25 @@ class LockManager {
      *
      * @param db - Kysely database instance
      * @param configName - Config/database scope
+     * @param dialect - Database dialect for schema-aware table resolution
      * @returns true if a lock was released, false if none existed
      */
-    async forceRelease(db: Kysely<NoormDatabase>, configName: string): Promise<boolean> {
+    async forceRelease(
+        db: Kysely<NoormDatabase>,
+        configName: string,
+        dialect: Dialect,
+    ): Promise<boolean> {
 
-        const existing = await this.getLock(db, configName);
+        const ndb = noormDb(db, dialect);
+        const tables = getNoormTables(dialect);
+        const existing = await this.getLock(db, configName, dialect);
         if (!existing) {
 
             return false;
 
         }
 
-        await db.deleteFrom(NOORM_TABLES.lock).where('config_name', '=', configName).execute();
+        await ndb.deleteFrom(tables.lock).where('config_name', '=', configName).execute();
 
         observer.emit('lock:released', {
             configName,
@@ -259,6 +275,8 @@ class LockManager {
         options: LockOptions = {},
     ): Promise<T> {
 
+        const opts = { ...DEFAULT_LOCK_OPTIONS, ...options };
+
         await this.acquire(db, configName, identity, options);
 
         try {
@@ -268,7 +286,7 @@ class LockManager {
         }
         finally {
 
-            const [, err] = await attempt(() => this.release(db, configName, identity));
+            const [, err] = await attempt(() => this.release(db, configName, identity, opts.dialect));
 
             if (err) {
 
@@ -293,6 +311,7 @@ class LockManager {
      * @param db - Kysely database instance
      * @param configName - Config/database scope
      * @param identity - Expected lock holder
+     * @param dialect - Database dialect for schema-aware table resolution
      * @throws LockExpiredError if lock has expired
      * @throws LockOwnershipError if lock is held by someone else
      * @throws LockNotFoundError if no lock exists
@@ -304,7 +323,7 @@ class LockManager {
         dialect: Dialect = 'postgres',
     ): Promise<void> {
 
-        const existing = await this.getLock(db, configName);
+        const existing = await this.getLock(db, configName, dialect);
 
         if (!existing) {
 
@@ -345,8 +364,10 @@ class LockManager {
         options: LockOptions = {},
     ): Promise<Lock> {
 
+        const opts = { ...DEFAULT_LOCK_OPTIONS, ...options };
+
         // Validate first
-        await this.validate(db, configName, identity);
+        await this.validate(db, configName, identity, opts.dialect);
 
         return this.extendLock(db, configName, identity, options);
 
@@ -369,7 +390,7 @@ class LockManager {
         // Clean up expired first
         await this.cleanupExpired(db, configName, dialect);
 
-        const lock = await this.getLock(db, configName);
+        const lock = await this.getLock(db, configName, dialect);
 
         return {
             isLocked: lock !== null,
@@ -385,10 +406,17 @@ class LockManager {
     /**
      * Get lock from database, or null if none exists.
      */
-    private async getLock(db: Kysely<NoormDatabase>, configName: string): Promise<Lock | null> {
+    private async getLock(
+        db: Kysely<NoormDatabase>,
+        configName: string,
+        dialect: Dialect,
+    ): Promise<Lock | null> {
 
-        const row = await db
-            .selectFrom(NOORM_TABLES.lock)
+        const ndb = noormDb(db, dialect);
+        const tables = getNoormTables(dialect);
+
+        const row = await ndb
+            .selectFrom(tables.lock)
             .selectAll()
             .where('config_name', '=', configName)
             .executeTakeFirst();
@@ -418,11 +446,13 @@ class LockManager {
         opts: Required<Omit<LockOptions, 'reason'>> & { reason?: string },
     ): Promise<Lock> {
 
+        const ndb = noormDb(db, opts.dialect);
+        const tables = getNoormTables(opts.dialect);
         const now = new Date();
         const expiresAt = new Date(now.getTime() + opts.timeout);
 
-        await db
-            .insertInto(NOORM_TABLES.lock)
+        await ndb
+            .insertInto(tables.lock)
             .values({
                 config_name: configName,
                 locked_by: identity,
@@ -453,6 +483,8 @@ class LockManager {
 
         const dialect = opts.dialect ?? DEFAULT_LOCK_OPTIONS.dialect;
         const timeout = opts.timeout ?? DEFAULT_LOCK_OPTIONS.timeout;
+        const ndb = noormDb(db, dialect);
+        const tables = getNoormTables(dialect);
         const now = new Date();
         const expiresAt = new Date(now.getTime() + timeout);
 
@@ -466,15 +498,15 @@ class LockManager {
 
         }
 
-        await db
-            .updateTable(NOORM_TABLES.lock)
+        await ndb
+            .updateTable(tables.lock)
             .set(updateValues as Record<string, string>)
             .where('config_name', '=', configName)
             .where('locked_by', '=', identity)
             .execute();
 
         // Fetch the updated lock
-        const lock = await this.getLock(db, configName);
+        const lock = await this.getLock(db, configName, dialect);
 
         return lock!;
 
@@ -489,12 +521,14 @@ class LockManager {
         dialect: Dialect = 'postgres',
     ): Promise<void> {
 
+        const ndb = noormDb(db, dialect);
+        const tables = getNoormTables(dialect);
         const now = new Date();
         const nowForDb = formatDateForDialect(now, dialect);
 
         // Get expired lock info for event
-        const expired = await db
-            .selectFrom(NOORM_TABLES.lock)
+        const expired = await ndb
+            .selectFrom(tables.lock)
             .select(['locked_by'])
             .where('config_name', '=', configName)
             .where('expires_at', '<', nowForDb as Date)
@@ -502,8 +536,8 @@ class LockManager {
 
         if (expired) {
 
-            await db
-                .deleteFrom(NOORM_TABLES.lock)
+            await ndb
+                .deleteFrom(tables.lock)
                 .where('config_name', '=', configName)
                 .where('expires_at', '<', nowForDb as Date)
                 .execute();

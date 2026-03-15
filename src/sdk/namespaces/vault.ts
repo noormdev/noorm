@@ -7,6 +7,7 @@
 import type { Kysely } from 'kysely';
 
 import type { NoormDatabase } from '../../core/shared/index.js';
+import type { Dialect } from '../../core/connection/types.js';
 import type { Config } from '../../core/config/types.js';
 import type {
     VaultSecret,
@@ -63,6 +64,7 @@ export class VaultNamespace {
             this.#kysely as unknown as Kysely<NoormDatabase>,
             this.#identityHash,
             this.#publicKey,
+            this.#dialect,
         );
 
     }
@@ -80,6 +82,7 @@ export class VaultNamespace {
         return getVaultStatus(
             this.#kysely as unknown as Kysely<NoormDatabase>,
             this.#identityHash,
+            this.#dialect,
         );
 
     }
@@ -112,6 +115,7 @@ export class VaultNamespace {
             key,
             value,
             formatIdentity(this.#state.identity),
+            this.#dialect,
         );
 
     }
@@ -134,6 +138,7 @@ export class VaultNamespace {
             this.#kysely as unknown as Kysely<NoormDatabase>,
             vaultKey,
             key,
+            this.#dialect,
         );
 
     }
@@ -155,6 +160,7 @@ export class VaultNamespace {
         return getAllVaultSecrets(
             this.#kysely as unknown as Kysely<NoormDatabase>,
             vaultKey,
+            this.#dialect,
         );
 
     }
@@ -171,6 +177,7 @@ export class VaultNamespace {
 
         return listVaultSecretKeys(
             this.#kysely as unknown as Kysely<NoormDatabase>,
+            this.#dialect,
         );
 
     }
@@ -188,6 +195,7 @@ export class VaultNamespace {
         return deleteVaultSecret(
             this.#kysely as unknown as Kysely<NoormDatabase>,
             key,
+            this.#dialect,
         );
 
     }
@@ -205,6 +213,7 @@ export class VaultNamespace {
         return vaultSecretExists(
             this.#kysely as unknown as Kysely<NoormDatabase>,
             key,
+            this.#dialect,
         );
 
     }
@@ -234,6 +243,7 @@ export class VaultNamespace {
         return propagateVaultKey(
             this.#kysely as unknown as Kysely<NoormDatabase>,
             vaultKey,
+            this.#dialect,
         );
 
     }
@@ -297,12 +307,19 @@ export class VaultNamespace {
 
     }
 
+    get #dialect(): Dialect {
+
+        return this.#state.config.connection.dialect;
+
+    }
+
     async #getVaultKey(privateKey: string): Promise<Buffer | null> {
 
         return getVaultKey(
             this.#kysely as unknown as Kysely<NoormDatabase>,
             this.#identityHash,
             privateKey,
+            this.#dialect,
         );
 
     }

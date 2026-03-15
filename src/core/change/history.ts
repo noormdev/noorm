@@ -29,7 +29,7 @@ import { sql } from 'kysely';
 import { attempt } from '@logosdx/utils';
 
 import { observer } from '../observer.js';
-import { NOORM_TABLES } from '../shared/index.js';
+import { getNoormTables, noormDb } from '../shared/index.js';
 import type {
     NoormDatabase,
     OperationStatus,
@@ -37,6 +37,7 @@ import type {
     ExecutionStatus,
     FileType,
 } from '../shared/index.js';
+import type { Dialect } from '../connection/types.js';
 import type {
     ChangeStatus,
     ChangeHistoryRecord,
@@ -81,11 +82,15 @@ import type { ChangeType } from '../shared/index.js';
 export class ChangeHistory {
 
     readonly #db: Kysely<NoormDatabase>;
+    readonly #ndb: Kysely<NoormDatabase>;
+    readonly #tables: ReturnType<typeof getNoormTables>;
     readonly #configName: string;
 
-    constructor(db: Kysely<NoormDatabase>, configName: string) {
+    constructor(db: Kysely<NoormDatabase>, configName: string, dialect: Dialect = 'sqlite') {
 
         this.#db = db;
+        this.#ndb = noormDb(db, dialect);
+        this.#tables = getNoormTables(dialect);
         this.#configName = configName;
 
     }
@@ -106,8 +111,8 @@ export class ChangeHistory {
     async getStatus(name: string): Promise<ChangeStatus | null> {
 
         const [record, err] = await attempt(() =>
-            this.#db
-                .selectFrom(NOORM_TABLES.change)
+            this.#ndb
+                .selectFrom(this.#tables.change)
                 .select([
                     'name',
                     'status',
@@ -145,8 +150,8 @@ export class ChangeHistory {
 
         // Check for revert (to get revertedAt)
         const [revertRecord] = await attempt(() =>
-            this.#db
-                .selectFrom(NOORM_TABLES.change)
+            this.#ndb
+                .selectFrom(this.#tables.change)
                 .select(['executed_at'])
                 .where('name', '=', name)
                 .where('change_type', '=', 'change')
@@ -182,8 +187,8 @@ export class ChangeHistory {
 
         // Get all unique change names
         const [records, err] = await attempt(() =>
-            this.#db
-                .selectFrom(NOORM_TABLES.change)
+            this.#ndb
+                .selectFrom(this.#tables.change)
                 .select(['id', 'name', 'status', 'executed_at', 'executed_by', 'error_message'])
                 .where('change_type', '=', 'change')
                 .where('direction', '=', 'change')
@@ -224,8 +229,8 @@ export class ChangeHistory {
 
         // Get revert info for each
         const [reverts] = await attempt(() =>
-            this.#db
-                .selectFrom(NOORM_TABLES.change)
+            this.#ndb
+                .selectFrom(this.#tables.change)
                 .select(['name', 'executed_at'])
                 .where('change_type', '=', 'change')
                 .where('direction', '=', 'revert')
@@ -281,8 +286,8 @@ export class ChangeHistory {
 
         // Get most recent change record
         const [record, err] = await attempt(() =>
-            this.#db
-                .selectFrom(NOORM_TABLES.change)
+            this.#ndb
+                .selectFrom(this.#tables.change)
                 .select(['status', 'checksum'])
                 .where('name', '=', name)
                 .where('change_type', '=', 'change')
@@ -390,8 +395,8 @@ export class ChangeHistory {
     }): Promise<number> {
 
         const [result, err] = await attempt(() =>
-            this.#db
-                .insertInto(NOORM_TABLES.change)
+            this.#ndb
+                .insertInto(this.#tables.change)
                 .values({
                     name: data.name,
                     change_type: 'change',
@@ -468,7 +473,7 @@ export class ChangeHistory {
         }));
 
         const [, err] = await attempt(() =>
-            this.#db.insertInto(NOORM_TABLES.executions).values(values).execute(),
+            this.#ndb.insertInto(this.#tables.executions).values(values).execute(),
         );
 
         if (err) {
@@ -508,8 +513,8 @@ export class ChangeHistory {
     ): Promise<string | null> {
 
         const [result, err] = await attempt(() =>
-            this.#db
-                .updateTable(NOORM_TABLES.executions)
+            this.#ndb
+                .updateTable(this.#tables.executions)
                 .set({
                     status,
                     duration_ms: Math.round(durationMs),
@@ -564,8 +569,8 @@ export class ChangeHistory {
     async skipRemainingFiles(operationId: number, reason: string): Promise<string | null> {
 
         const [, err] = await attempt(() =>
-            this.#db
-                .updateTable(NOORM_TABLES.executions)
+            this.#ndb
+                .updateTable(this.#tables.executions)
                 .set({
                     status: 'skipped',
                     skip_reason: reason,
@@ -608,8 +613,8 @@ export class ChangeHistory {
         const truncatedError = errorMessage ? errorMessage.slice(0, 2000) : '';
 
         const [result, err] = await attempt(() =>
-            this.#db
-                .updateTable(NOORM_TABLES.change)
+            this.#ndb
+                .updateTable(this.#tables.change)
                 .set({
                     status,
                     checksum,
@@ -671,8 +676,8 @@ export class ChangeHistory {
     async recordReset(executedBy: string, reason?: string): Promise<number> {
 
         const [result, err] = await attempt(() =>
-            this.#db
-                .insertInto(NOORM_TABLES.change)
+            this.#ndb
+                .insertInto(this.#tables.change)
                 .values({
                     name: '__reset__',
                     change_type: 'change',
@@ -715,8 +720,8 @@ export class ChangeHistory {
 
         // First get all operation IDs for this change
         const [operations, queryErr] = await attempt(() =>
-            this.#db
-                .selectFrom(NOORM_TABLES.change)
+            this.#ndb
+                .selectFrom(this.#tables.change)
                 .select(['id'])
                 .where('name', '=', name)
                 .where('change_type', '=', 'change')
@@ -734,8 +739,8 @@ export class ChangeHistory {
 
         // Delete execution records
         const [, execErr] = await attempt(() =>
-            this.#db
-                .deleteFrom(NOORM_TABLES.executions)
+            this.#ndb
+                .deleteFrom(this.#tables.executions)
                 .where('change_id', 'in', operationIds)
                 .execute(),
         );
@@ -752,7 +757,7 @@ export class ChangeHistory {
 
         // Delete change records
         const [, changeErr] = await attempt(() =>
-            this.#db.deleteFrom(NOORM_TABLES.change).where('id', 'in', operationIds).execute(),
+            this.#ndb.deleteFrom(this.#tables.change).where('id', 'in', operationIds).execute(),
         );
 
         if (changeErr) {
@@ -779,8 +784,8 @@ export class ChangeHistory {
      */
     async getHistory(name?: string, limit?: number): Promise<ChangeHistoryRecord[]> {
 
-        let query = this.#db
-            .selectFrom(NOORM_TABLES.change)
+        let query = this.#ndb
+            .selectFrom(this.#tables.change)
             .select([
                 'id',
                 'name',
@@ -850,8 +855,8 @@ export class ChangeHistory {
         limit?: number,
     ): Promise<UnifiedHistoryRecord[]> {
 
-        let query = this.#db
-            .selectFrom(NOORM_TABLES.change)
+        let query = this.#ndb
+            .selectFrom(this.#tables.change)
             .select([
                 'id',
                 'name',
@@ -929,8 +934,8 @@ export class ChangeHistory {
     async getFileHistory(operationId: number): Promise<FileHistoryRecord[]> {
 
         const [records, err] = await attempt(() =>
-            this.#db
-                .selectFrom(NOORM_TABLES.executions)
+            this.#ndb
+                .selectFrom(this.#tables.executions)
                 .select([
                     'id',
                     'change_id',

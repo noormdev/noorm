@@ -28,9 +28,10 @@ import { attempt } from '@logosdx/utils';
 
 import { Tracker } from '../runner/tracker.js';
 import { observer } from '../observer.js';
-import { NOORM_TABLES } from '../shared/index.js';
+import { getNoormTables, noormDb } from '../shared/index.js';
 import type { NoormDatabase, OperationStatus } from '../shared/index.js';
 import type { Kysely } from 'kysely';
+import type { Dialect } from '../connection/types.js';
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -82,13 +83,15 @@ export class ChangeTracker extends Tracker {
 
     // Store db and configName for change-specific queries
     // (Tracker uses private fields, so we need our own references)
-    readonly #db: Kysely<NoormDatabase>;
+    readonly #ndb: Kysely<NoormDatabase>;
+    readonly #tables: ReturnType<typeof getNoormTables>;
     readonly #configName: string;
 
-    constructor(db: Kysely<NoormDatabase>, configName: string) {
+    constructor(db: Kysely<NoormDatabase>, configName: string, dialect: Dialect = 'sqlite') {
 
-        super(db, configName);
-        this.#db = db;
+        super(db, configName, dialect);
+        this.#ndb = noormDb(db, dialect);
+        this.#tables = getNoormTables(dialect);
         this.#configName = configName;
 
     }
@@ -104,8 +107,8 @@ export class ChangeTracker extends Tracker {
 
         // Get most recent change record
         const [record, err] = await attempt(() =>
-            this.#db
-                .selectFrom(NOORM_TABLES.change)
+            this.#ndb
+                .selectFrom(this.#tables.change)
                 .select(['status'])
                 .where('name', '=', name)
                 .where('change_type', '=', 'change')
@@ -175,8 +178,8 @@ export class ChangeTracker extends Tracker {
 
         // Find the most recent 'change' record
         const [record] = await attempt(() =>
-            this.#db
-                .selectFrom(NOORM_TABLES.change)
+            this.#ndb
+                .selectFrom(this.#tables.change)
                 .select(['id'])
                 .where('name', '=', name)
                 .where('change_type', '=', 'change')
@@ -190,8 +193,8 @@ export class ChangeTracker extends Tracker {
         if (record) {
 
             await attempt(() =>
-                this.#db
-                    .updateTable(NOORM_TABLES.change)
+                this.#ndb
+                    .updateTable(this.#tables.change)
                     .set({ status: 'reverted' })
                     .where('id', '=', record.id)
                     .execute(),
@@ -214,8 +217,8 @@ export class ChangeTracker extends Tracker {
     async markAllAsStale(): Promise<number> {
 
         const [result, err] = await attempt(() =>
-            this.#db
-                .updateTable(NOORM_TABLES.change)
+            this.#ndb
+                .updateTable(this.#tables.change)
                 .set({ status: 'stale' })
                 .where('direction', '=', 'change') // Only forward operations
                 .where('status', 'in', ['success', 'failed', 'pending'])

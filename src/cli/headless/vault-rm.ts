@@ -52,7 +52,7 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
             const db = ctx.kysely;
 
             // Get vault key
-            const vaultKey = await getVaultKey(db, cryptoIdentity.identityHash, privateKey);
+            const vaultKey = await getVaultKey(db, cryptoIdentity.identityHash, privateKey, ctx.dialect);
 
             if (!vaultKey) {
 
@@ -64,7 +64,7 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
             }
 
             // Check if exists
-            const exists = await vaultSecretExists(db, key);
+            const exists = await vaultSecretExists(db, key, ctx.dialect);
 
             if (!exists) {
 
@@ -73,7 +73,7 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
             }
 
             // Delete the secret
-            const [deleted, deleteErr] = await deleteVaultSecret(db, key);
+            const [deleted, deleteErr] = await deleteVaultSecret(db, key, ctx.dialect);
 
             if (deleteErr) {
 

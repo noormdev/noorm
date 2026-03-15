@@ -92,6 +92,9 @@ export interface RunContext {
     /** Project root for template resolution */
     projectRoot: string;
 
+    /** Database dialect for schema-aware operations. Default: 'postgres' */
+    dialect?: 'postgres' | 'mysql' | 'sqlite' | 'mssql';
+
     /** Config object for template context */
     config?: Record<string, unknown>;
 

@@ -63,7 +63,7 @@ export async function loadChangesWithStatus(
     );
     const db = conn.db as Kysely<NoormDatabase>;
 
-    const history = new ChangeHistory(db, activeConfigName);
+    const history = new ChangeHistory(db, activeConfigName, activeConfig.connection.dialect);
     const statuses = await history.getAllStatuses();
 
     await conn.destroy();

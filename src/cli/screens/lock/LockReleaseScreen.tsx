@@ -118,7 +118,7 @@ export function LockReleaseScreen({ params: _params }: ScreenProps): ReactElemen
             const db = conn.db as Kysely<NoormDatabase>;
             const lockManager = getLockManager();
 
-            await lockManager.release(db, activeConfigName ?? '', identityStr);
+            await lockManager.release(db, activeConfigName ?? '', identityStr, activeConfig.connection.dialect);
 
             await conn.destroy();
 

@@ -91,6 +91,7 @@ export async function copyVaultSecrets(
                 ctx.source.db,
                 identityHash,
                 privateKey,
+                ctx.source.dialect,
             );
 
             if (!sourceVaultKey) {
@@ -100,7 +101,7 @@ export async function copyVaultSecrets(
             }
 
             // Check destination vault status
-            const destStatus = await getVaultStatus(ctx.destination.db, identityHash);
+            const destStatus = await getVaultStatus(ctx.destination.db, identityHash, ctx.destination.dialect);
             let destVaultKey: Buffer | null = null;
 
             if (!destStatus.isInitialized) {
@@ -110,6 +111,7 @@ export async function copyVaultSecrets(
                     ctx.destination.db,
                     identityHash,
                     publicKey,
+                    ctx.destination.dialect,
                 );
 
                 if (initErr) {
@@ -132,6 +134,7 @@ export async function copyVaultSecrets(
                     ctx.destination.db,
                     identityHash,
                     privateKey,
+                    ctx.destination.dialect,
                 );
 
             }
@@ -143,7 +146,7 @@ export async function copyVaultSecrets(
             }
 
             // Fetch secrets from source
-            const allSourceSecrets = await getAllVaultSecrets(ctx.source.db, sourceVaultKey);
+            const allSourceSecrets = await getAllVaultSecrets(ctx.source.db, sourceVaultKey, ctx.source.dialect);
             const secretsToCopy = keys === 'all'
                 ? Object.entries(allSourceSecrets)
                 : Object.entries(allSourceSecrets).filter(([key]) => keys.includes(key));
@@ -175,7 +178,7 @@ export async function copyVaultSecrets(
             // Copy each secret to destination
             for (const [key, secret] of secretsToCopy) {
 
-                const exists = await vaultSecretExists(ctx.destination.db, key);
+                const exists = await vaultSecretExists(ctx.destination.db, key, ctx.destination.dialect);
 
                 if (exists && !force) {
 
@@ -191,6 +194,7 @@ export async function copyVaultSecrets(
                     key,
                     secret.value,
                     setBy,
+                    ctx.destination.dialect,
                 );
 
                 if (setErr) {

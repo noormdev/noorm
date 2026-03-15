@@ -176,6 +176,7 @@ export const withVaultContext = async <T>(opts: {
         registerIdentity(
             ctx.kysely as unknown as Kysely<NoormDatabase>,
             cryptoIdentity,
+            ctx.dialect,
         ),
     );
 

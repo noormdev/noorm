@@ -24,7 +24,7 @@ import type { Dialect } from '../connection/types.js';
  */
 export const CURRENT_VERSIONS = Object.freeze({
     /** Database tracking tables schema version */
-    schema: 1,
+    schema: 2,
 
     /** State file (state.enc) schema version */
     state: 1,

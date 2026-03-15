@@ -10,7 +10,8 @@ import type { Kysely } from 'kysely';
 import { attempt } from '@logosdx/utils';
 
 import type { NoormDatabase } from '../shared/tables.js';
-import { NOORM_TABLES } from '../shared/tables.js';
+import { getNoormTables, noormDb } from '../shared/tables.js';
+import type { Dialect } from '../connection/types.js';
 import { observer } from '../observer.js';
 
 import type { VaultPropagationResult } from './types.js';
@@ -29,23 +30,31 @@ interface UserForPropagation {
 /**
  * Get users who don't have vault access yet.
  *
+ * Uses dialect-aware table names to support both legacy prefixed and
+ * schema-qualified table locations.
+ *
  * @param db - Kysely database instance
+ * @param dialect - Database dialect for table name resolution
  * @returns Array of users without vault access
  *
  * @example
  * ```typescript
- * const users = await getUsersWithoutVaultAccess(db);
+ * const users = await getUsersWithoutVaultAccess(db, 'postgres');
  * console.log('Users awaiting access:', users.length);
  * ```
  */
 export async function getUsersWithoutVaultAccess(
     db: Kysely<NoormDatabase>,
+    dialect: Dialect,
 ): Promise<UserForPropagation[]> {
+
+    const ndb = noormDb(db, dialect);
+    const tables = getNoormTables(dialect);
 
     const [rows, err] = await attempt(async () => {
 
-        return db
-            .selectFrom(NOORM_TABLES.identities)
+        return ndb
+            .selectFrom(tables.identities as keyof NoormDatabase)
             .select([
                 'identity_hash',
                 'public_key',
@@ -72,14 +81,17 @@ export async function getUsersWithoutVaultAccess(
  * Propagate vault key to all users without access.
  *
  * Encrypts the vault key for each user's public key and updates their row.
+ * Uses dialect-aware table names to support both legacy prefixed and
+ * schema-qualified table locations.
  *
  * @param db - Kysely database instance
  * @param vaultKey - The decrypted vault key
+ * @param dialect - Database dialect for table name resolution
  * @returns Result with counts of propagated users
  *
  * @example
  * ```typescript
- * const result = await propagateVaultKey(db, vaultKey);
+ * const result = await propagateVaultKey(db, vaultKey, 'postgres');
  * if (result.propagatedTo.length > 0) {
  *     console.log('Granted access to:', result.propagatedTo.join(', '));
  * }
@@ -88,18 +100,22 @@ export async function getUsersWithoutVaultAccess(
 export async function propagateVaultKey(
     db: Kysely<NoormDatabase>,
     vaultKey: Buffer,
+    dialect: Dialect,
 ): Promise<VaultPropagationResult> {
 
-    const users = await getUsersWithoutVaultAccess(db);
+    const ndb = noormDb(db, dialect);
+    const tables = getNoormTables(dialect);
+
+    const users = await getUsersWithoutVaultAccess(db, dialect);
 
     if (users.length === 0) {
 
         // Count users who already have access
         const [countResult] = await attempt(async () => {
 
-            return db
-                .selectFrom(NOORM_TABLES.identities)
-                .select(db.fn.count('id').as('count'))
+            return ndb
+                .selectFrom(tables.identities as keyof NoormDatabase)
+                .select(ndb.fn.count('id').as('count'))
                 .where('encrypted_vault_key', 'is not', null)
                 .executeTakeFirst();
 
@@ -123,8 +139,8 @@ export async function propagateVaultKey(
         // Update user's row
         const [, err] = await attempt(async () => {
 
-            return db
-                .updateTable(NOORM_TABLES.identities)
+            return ndb
+                .updateTable(tables.identities as keyof NoormDatabase)
                 .set({ encrypted_vault_key: encryptedJson })
                 .where('identity_hash', '=', user.identityHash)
                 .execute();
@@ -147,9 +163,9 @@ export async function propagateVaultKey(
     // Count users who already had access
     const [countResult] = await attempt(async () => {
 
-        return db
-            .selectFrom(NOORM_TABLES.identities)
-            .select(db.fn.count('id').as('count'))
+        return ndb
+            .selectFrom(tables.identities as keyof NoormDatabase)
+            .select(ndb.fn.count('id').as('count'))
             .where('encrypted_vault_key', 'is not', null)
             .executeTakeFirst();
 
@@ -168,27 +184,35 @@ export async function propagateVaultKey(
 /**
  * Propagate vault key to a specific user.
  *
+ * Uses dialect-aware table names to support both legacy prefixed and
+ * schema-qualified table locations.
+ *
  * @param db - Kysely database instance
  * @param vaultKey - The decrypted vault key
  * @param targetIdentityHash - Identity hash of user to propagate to
+ * @param dialect - Database dialect for table name resolution
  * @returns True if propagated successfully
  *
  * @example
  * ```typescript
- * const success = await propagateVaultKeyTo(db, vaultKey, 'abc123...');
+ * const success = await propagateVaultKeyTo(db, vaultKey, 'abc123...', 'postgres');
  * ```
  */
 export async function propagateVaultKeyTo(
     db: Kysely<NoormDatabase>,
     vaultKey: Buffer,
     targetIdentityHash: string,
+    dialect: Dialect,
 ): Promise<boolean> {
+
+    const ndb = noormDb(db, dialect);
+    const tables = getNoormTables(dialect);
 
     // Get target user's public key
     const [row, err] = await attempt(async () => {
 
-        return db
-            .selectFrom(NOORM_TABLES.identities)
+        return ndb
+            .selectFrom(tables.identities as keyof NoormDatabase)
             .select(['public_key', 'email', 'encrypted_vault_key'])
             .where('identity_hash', '=', targetIdentityHash)
             .executeTakeFirst();
@@ -207,8 +231,8 @@ export async function propagateVaultKeyTo(
     // Update user's row
     const [, updateErr] = await attempt(async () => {
 
-        return db
-            .updateTable(NOORM_TABLES.identities)
+        return ndb
+            .updateTable(tables.identities as keyof NoormDatabase)
             .set({ encrypted_vault_key: encryptedJson })
             .where('identity_hash', '=', targetIdentityHash)
             .execute();

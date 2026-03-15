@@ -44,9 +44,10 @@ export function VaultInitScreen({ params: _params }: ScreenProps): ReactElement 
         setError(null);
 
         const db = connRef.current.db;
+        const connDialect = connRef.current.dialect;
 
         // Check if already initialized
-        const status = await getVaultStatus(db as Kysely<NoormDatabase>, identity.identityHash);
+        const status = await getVaultStatus(db as Kysely<NoormDatabase>, identity.identityHash, connDialect);
 
         if (status.isInitialized) {
 
@@ -75,6 +76,7 @@ export function VaultInitScreen({ params: _params }: ScreenProps): ReactElement 
             db as Kysely<NoormDatabase>,
             identity.identityHash,
             identity.publicKey,
+            connDialect,
         );
 
         if (initErr) {

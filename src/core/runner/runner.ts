@@ -179,7 +179,7 @@ export async function runFile(
     });
 
     // For single file, we still create an operation record for tracking
-    const tracker = new Tracker(context.db, context.configName);
+    const tracker = new Tracker(context.db, context.configName, context.dialect ?? 'postgres');
     const operationName = `run:${new Date().toISOString()}`;
 
     const [operationId, createErr] = await attempt(() =>
@@ -414,7 +414,7 @@ export async function checkFilesStatus(
     files: string[],
 ): Promise<FilesStatusResult> {
 
-    const tracker = new Tracker(context.db, context.configName);
+    const tracker = new Tracker(context.db, context.configName, context.dialect ?? 'postgres');
     const results: FileStatusResult[] = [];
 
     for (const filepath of files) {
@@ -588,7 +588,7 @@ export async function executeFiles(
     }
 
     // Use provided tracker or create new one
-    const tracker = (execOptions.tracker as Tracker) ?? new Tracker(context.db, context.configName);
+    const tracker = (execOptions.tracker as Tracker) ?? new Tracker(context.db, context.configName, context.dialect ?? 'postgres');
 
     // Create operation record
     const [operationId, createErr] = await attempt(() =>

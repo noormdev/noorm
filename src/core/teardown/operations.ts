@@ -19,16 +19,11 @@ import type {
     TeardownResult,
     TeardownPreview,
 } from './types.js';
-import { NOORM_TABLES, type NoormDatabase } from '../shared/tables.js';
+import type { NoormDatabase } from '../shared/tables.js';
 import { fetchList } from '../explore/operations.js';
 import { getTeardownOperations } from './dialects/index.js';
 import { observer } from '../observer.js';
 import { ChangeHistory, ChangeTracker } from '../change/index.js';
-
-/**
- * Names of all noorm internal tables as strings.
- */
-const NOORM_TABLE_NAMES = new Set<string>(Object.values(NOORM_TABLES));
 
 /**
  * Check if a table name is a noorm internal table.
@@ -38,7 +33,10 @@ export function isNoormTable(name: string | undefined | null): boolean {
 
     if (!name) return false;
 
-    return name.startsWith('__noorm_') || NOORM_TABLE_NAMES.has(name);
+    // Prefixed names (sqlite/mysql) — always safe to match
+    if (name.startsWith('__noorm_')) return true;
+
+    return false;
 
 }
 
@@ -400,11 +398,13 @@ export async function teardownSchema(
         const tracker = new ChangeTracker(
             db as Kysely<NoormDatabase>,
             options.configName,
+            dialect,
         );
 
         const history = new ChangeHistory(
             db as Kysely<NoormDatabase>,
             options.configName,
+            dialect,
         );
 
         // Mark all successful changes as stale

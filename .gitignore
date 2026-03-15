@@ -35,3 +35,7 @@ tmp/
 packages/cli/bin/
 docs/.vitepress/cache/
 examples/todo-db/.noorm/state/state.enc
+
+worktrees/
+
+.worktrees/

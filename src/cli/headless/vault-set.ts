@@ -55,7 +55,7 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
             const db = ctx.kysely;
 
             // Get vault key
-            const vaultKey = await getVaultKey(db, cryptoIdentity.identityHash, privateKey);
+            const vaultKey = await getVaultKey(db, cryptoIdentity.identityHash, privateKey, ctx.dialect);
 
             if (!vaultKey) {
 
@@ -73,6 +73,7 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
                 key,
                 value,
                 cryptoIdentity.email,
+                ctx.dialect,
             );
 
             if (setErr) {

@@ -8,6 +8,7 @@ import type { Kysely } from 'kysely';
 
 import type { ConnectionConfig } from '../connection/types.js';
 import type { NoormDatabase } from '../shared/index.js';
+import { getNoormTables, noormDb } from '../shared/index.js';
 import type { DbStatus, DbOperationResult, CreateDbOptions, DestroyDbOptions } from './types.js';
 
 import { createConnection, testConnection } from '../connection/factory.js';
@@ -75,7 +76,7 @@ export async function checkDbStatus(config: ConnectionConfig): Promise<DbStatus>
 
         const conn = await createConnection(config, '__check__');
         const db = conn.db as Kysely<NoormDatabase>;
-        const hasNoormTables = await tablesExist(db);
+        const hasNoormTables = await tablesExist(db, config.dialect);
         await conn.destroy();
 
         return hasNoormTables;
@@ -172,9 +173,11 @@ export async function createDb(
             const conn = await createConnection(config, configName);
             const db = conn.db as Kysely<NoormDatabase>;
 
+            const tables = getNoormTables(config.dialect);
+
             observer.emit('db:bootstrap', {
                 configName,
-                tables: ['__noorm_version__', '__noorm_executions__', '__noorm_lock__'],
+                tables: [tables.version, tables.executions, tables.lock],
             });
 
             await bootstrapSchema(db, config.dialect);
@@ -236,22 +239,25 @@ export async function destroyDb(
 
             const conn = await createConnection(config, configName);
             const db = conn.db as Kysely<NoormDatabase>;
+            const ndb = noormDb(db, config.dialect);
+            const tables = getNoormTables(config.dialect);
 
             // Clear tracking tables
-            const hasNoormTables = await tablesExist(db);
+            const hasNoormTables = await tablesExist(db, config.dialect);
 
             if (hasNoormTables) {
 
-                await db.deleteFrom('__noorm_executions__').execute();
+                await ndb.deleteFrom(tables.executions as keyof NoormDatabase).execute();
 
                 // Try to clear change table (might not exist)
-                try {
+                const [, changeErr] = await attempt(async () => {
 
-                    await db.deleteFrom('__noorm_change__').execute();
+                    await ndb.deleteFrom(tables.change as keyof NoormDatabase).execute();
 
-                }
-                catch {
-                    // Table might not exist
+                });
+
+                if (changeErr) {
+                    // Table might not exist — safe to ignore
                 }
 
             }

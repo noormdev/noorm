@@ -173,8 +173,8 @@ function parseCli(): ParsedCli {
     // Parse route from input
     const { route, params } = parseRouteFromInput(cli.input);
 
-    // Version command always runs headless (no TUI screen for it)
-    if (route === 'version') {
+    // Version and info commands always run headless (no TUI screen for them)
+    if (route === 'version' || route === 'info') {
 
         return { mode: 'headless', route, params, flags };
 
@@ -422,7 +422,7 @@ async function main(): Promise<void> {
     if (mode === 'headless') {
 
         // In headless mode, require identity (except for init/version commands)
-        if (!hasIdentity && route !== 'init' && route !== 'identity/init' && route !== 'version') {
+        if (!hasIdentity && route !== 'init' && route !== 'identity/init' && route !== 'version' && route !== 'info') {
 
             console.error('No identity configured. Run: noorm init');
             process.exit(1);

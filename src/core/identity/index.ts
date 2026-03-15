@@ -12,6 +12,7 @@ import { attempt } from '@logosdx/utils';
 import type { Kysely } from 'kysely';
 
 import type { NoormDatabase } from '../shared/tables.js';
+import type { Dialect } from '../connection/types.js';
 import { observer } from '../observer.js';
 
 import type { CryptoIdentity, Identity, IdentityOptions } from './types.js';
@@ -177,7 +178,18 @@ export function getIdentityWithCrypto(
 
 }
 
-export async function waitForIdentityToLoad(db: Kysely<NoormDatabase>) {
+/**
+ * Load identity from disk and register it in the database.
+ *
+ * Ensures the current user's identity is present in the tracking tables
+ * after schema bootstrap or migration.
+ *
+ * @example
+ * ```typescript
+ * await waitForIdentityToLoad(db, 'postgres')
+ * ```
+ */
+export async function waitForIdentityToLoad(db: Kysely<NoormDatabase>, dialect: Dialect) {
 
     // Load identity from ~/.noorm/
     const identity = await loadExistingIdentity();
@@ -185,7 +197,7 @@ export async function waitForIdentityToLoad(db: Kysely<NoormDatabase>) {
     if (!identity) observer.emit('identity:not-found');
     if (!identity) return;
 
-    const [, err] = await attempt(() => registerIdentity(db, identity));
+    const [, err] = await attempt(() => registerIdentity(db, identity, dialect));
 
     if (err) observer.emit('error', {
         error: err,

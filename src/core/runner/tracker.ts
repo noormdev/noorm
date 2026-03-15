@@ -29,8 +29,9 @@ import { sql } from 'kysely';
 import { attempt } from '@logosdx/utils';
 
 import { observer } from '../observer.js';
-import { NOORM_TABLES } from '../shared/index.js';
+import { getNoormTables, noormDb } from '../shared/index.js';
 import type { NoormDatabase, ChangeType, ExecutionStatus, FileType } from '../shared/index.js';
+import type { Dialect } from '../connection/types.js';
 import type { NeedsRunResult, CreateOperationData, RecordExecutionData, Direction } from './types.js';
 
 /**
@@ -64,11 +65,15 @@ import type { NeedsRunResult, CreateOperationData, RecordExecutionData, Directio
 export class Tracker {
 
     readonly #db: Kysely<NoormDatabase>;
+    readonly #ndb: Kysely<NoormDatabase>;
+    readonly #tables: ReturnType<typeof getNoormTables>;
     readonly #configName: string;
 
-    constructor(db: Kysely<NoormDatabase>, configName: string) {
+    constructor(db: Kysely<NoormDatabase>, configName: string, dialect: Dialect = 'sqlite') {
 
         this.#db = db;
+        this.#ndb = noormDb(db, dialect);
+        this.#tables = getNoormTables(dialect);
         this.#configName = configName;
 
     }
@@ -100,21 +105,23 @@ export class Tracker {
         // Find most recent execution for this file and config
         // Also fetch the parent change status to check for stale
         const [record, err] = await attempt(() =>
-            this.#db
-                .selectFrom(NOORM_TABLES.executions)
+            (this.#ndb
+                .selectFrom(this.#tables.executions)
                 .innerJoin(
-                    NOORM_TABLES.change,
-                    `${NOORM_TABLES.change}.id`,
-                    `${NOORM_TABLES.executions}.change_id`,
-                )
-                .select((eb) => [
-                    eb.ref(`${NOORM_TABLES.executions}.checksum`).as('checksum'),
-                    eb.ref(`${NOORM_TABLES.executions}.status`).as('exec_status'),
-                    eb.ref(`${NOORM_TABLES.change}.status`).as('change_status'),
+                    this.#tables.change,
+                    `${this.#tables.change}.id`,
+                    `${this.#tables.executions}.change_id`,
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                ) as any)
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                .select((eb: any) => [
+                    eb.ref(`${this.#tables.executions}.checksum`).as('checksum'),
+                    eb.ref(`${this.#tables.executions}.status`).as('exec_status'),
+                    eb.ref(`${this.#tables.change}.status`).as('change_status'),
                 ])
-                .where(`${NOORM_TABLES.executions}.filepath`, '=', filepath)
-                .where(`${NOORM_TABLES.change}.config_name`, '=', this.#configName)
-                .orderBy(`${NOORM_TABLES.executions}.id`, 'desc')
+                .where(`${this.#tables.executions}.filepath`, '=', filepath)
+                .where(`${this.#tables.change}.config_name`, '=', this.#configName)
+                .orderBy(`${this.#tables.executions}.id`, 'desc')
                 .limit(1)
                 .executeTakeFirst(),
         );
@@ -208,8 +215,8 @@ export class Tracker {
         const dbDirection = direction === 'commit' ? 'change' : 'revert';
 
         const [result, err] = await attempt(() =>
-            this.#db
-                .insertInto(NOORM_TABLES.change)
+            this.#ndb
+                .insertInto(this.#tables.change)
                 .values({
                     name: data.name,
                     change_type: data.changeType as ChangeType,
@@ -270,8 +277,8 @@ export class Tracker {
     async recordExecution(data: RecordExecutionData): Promise<void> {
 
         const [, err] = await attempt(() =>
-            this.#db
-                .insertInto(NOORM_TABLES.executions)
+            this.#ndb
+                .insertInto(this.#tables.executions)
                 .values({
                     change_id: data.changeId,
                     filepath: data.filepath,
@@ -321,8 +328,8 @@ export class Tracker {
         const truncatedError = errorMessage ? errorMessage.slice(0, 2000) : '';
 
         const [result, err] = await attempt(() =>
-            this.#db
-                .updateTable(NOORM_TABLES.change)
+            this.#ndb
+                .updateTable(this.#tables.change)
                 .set({
                     status,
                     duration_ms: Math.round(durationMs),
@@ -402,7 +409,7 @@ export class Tracker {
         }));
 
         const [, err] = await attempt(() =>
-            this.#db.insertInto(NOORM_TABLES.executions).values(values).execute(),
+            this.#ndb.insertInto(this.#tables.executions).values(values).execute(),
         );
 
         if (err) {
@@ -446,8 +453,8 @@ export class Tracker {
     ): Promise<string | null> {
 
         const [result, err] = await attempt(() =>
-            this.#db
-                .updateTable(NOORM_TABLES.executions)
+            this.#ndb
+                .updateTable(this.#tables.executions)
                 .set({
                     status,
                     duration_ms: Math.round(durationMs),
@@ -507,8 +514,8 @@ export class Tracker {
     async skipRemainingFiles(operationId: number, reason: string): Promise<string | null> {
 
         const [, err] = await attempt(() =>
-            this.#db
-                .updateTable(NOORM_TABLES.executions)
+            this.#ndb
+                .updateTable(this.#tables.executions)
                 .set({
                     status: 'skipped',
                     skip_reason: reason,
@@ -557,8 +564,8 @@ export class Tracker {
         // Get most recent change record for this name
         // Note: Database stores 'change' for forward direction (legacy naming)
         const [record, err] = await attempt(() =>
-            this.#db
-                .selectFrom(NOORM_TABLES.change)
+            this.#ndb
+                .selectFrom(this.#tables.change)
                 .select(['status', 'checksum'])
                 .where('name', '=', name)
                 .where('direction', '=', 'change') // 'change' = forward/commit in DB

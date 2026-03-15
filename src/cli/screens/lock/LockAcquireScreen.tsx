@@ -116,6 +116,7 @@ export function LockAcquireScreen({ params: _params }: ScreenProps): ReactElemen
                     await lockManager.acquire(db, activeConfigName ?? '', identityStr, {
                         timeout,
                         reason,
+                        dialect: activeConfig.connection.dialect,
                     });
 
                     await conn.destroy();

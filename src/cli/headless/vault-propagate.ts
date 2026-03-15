@@ -52,7 +52,7 @@ export const run: HeadlessCommand = async (_params, flags, logger) => {
             const db = ctx.kysely;
 
             // Get vault key
-            const vaultKey = await getVaultKey(db, cryptoIdentity.identityHash, privateKey);
+            const vaultKey = await getVaultKey(db, cryptoIdentity.identityHash, privateKey, ctx.dialect);
 
             if (!vaultKey) {
 
@@ -64,7 +64,7 @@ export const run: HeadlessCommand = async (_params, flags, logger) => {
             }
 
             // Get users without access for reporting
-            const usersWithout = await getUsersWithoutVaultAccess(db);
+            const usersWithout = await getUsersWithoutVaultAccess(db, ctx.dialect);
 
             if (usersWithout.length === 0) {
 
@@ -77,7 +77,7 @@ export const run: HeadlessCommand = async (_params, flags, logger) => {
             }
 
             // Propagate to all
-            const propagateResult = await propagateVaultKey(db, vaultKey);
+            const propagateResult = await propagateVaultKey(db, vaultKey, ctx.dialect);
 
             return {
                 success: true,

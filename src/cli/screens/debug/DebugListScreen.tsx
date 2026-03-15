@@ -81,7 +81,7 @@ export function DebugListScreen({ params }: ScreenProps): ReactElement {
     const [highlightedRowId, setHighlightedRowId] = useState<number | null>(null);
 
     // Shared connection
-    const { db, loading: connLoading, error: connError } = useConnection();
+    const { db, dialect, loading: connLoading, error: connError } = useConnection();
 
     // Load table data when connection is ready
     useAsyncEffect(async (isCancelled) => {
@@ -99,7 +99,7 @@ export function DebugListScreen({ params }: ScreenProps): ReactElement {
 
         const [result, err] = await attempt(async () => {
 
-            const ops = createDebugOperations(db as Kysely<NoormDatabase>);
+            const ops = createDebugOperations(db as Kysely<NoormDatabase>, dialect ?? 'postgres');
 
             const cols = ops.getTableColumns(tableName);
             const data = await ops.getTableRows(tableName, {

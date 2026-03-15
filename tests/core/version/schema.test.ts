@@ -17,6 +17,7 @@ import {
     ensureSchemaVersion,
     updateVersionRecord,
     getLatestVersionRecord,
+    getFullVersionRecord,
 } from '../../../src/core/version/schema/index.js';
 import { getCurrentVersion } from '../../../src/core/update/checker.js';
 
@@ -47,7 +48,7 @@ describe('version: schema', () => {
 
         it('should return false when tables do not exist', async () => {
 
-            const exists = await tablesExist(db);
+            const exists = await tablesExist(db, 'sqlite');
 
             expect(exists).toBe(false);
 
@@ -56,7 +57,18 @@ describe('version: schema', () => {
         it('should return true when tables exist', async () => {
 
             await bootstrapSchema(db, 'sqlite');
-            const exists = await tablesExist(db);
+            const exists = await tablesExist(db, 'sqlite');
+
+            expect(exists).toBe(true);
+
+        });
+
+        it('should detect legacy tables even when dialect is postgres', async () => {
+
+            // Tables in legacy location (prefixed), but dialect is postgres
+            // Step 1 (legacy fallback) should find them before Step 2
+            await bootstrapSchema(db, 'sqlite');
+            const exists = await tablesExist(db, 'postgres');
 
             expect(exists).toBe(true);
 
@@ -68,7 +80,7 @@ describe('version: schema', () => {
 
         it('should return 0 when tables do not exist', async () => {
 
-            const version = await getSchemaVersion(db);
+            const version = await getSchemaVersion(db, 'sqlite');
 
             expect(version).toBe(0);
 
@@ -77,7 +89,7 @@ describe('version: schema', () => {
         it('should return version from database', async () => {
 
             await bootstrapSchema(db, 'sqlite');
-            const version = await getSchemaVersion(db);
+            const version = await getSchemaVersion(db, 'sqlite');
 
             expect(version).toBe(CURRENT_VERSIONS.schema);
 
@@ -89,7 +101,7 @@ describe('version: schema', () => {
 
         it('should detect no tables as needing migration', async () => {
 
-            const status = await checkSchemaVersion(db);
+            const status = await checkSchemaVersion(db, 'sqlite');
 
             expect(status.current).toBe(0);
             expect(status.expected).toBe(CURRENT_VERSIONS.schema);
@@ -101,7 +113,7 @@ describe('version: schema', () => {
         it('should detect current version as not needing migration', async () => {
 
             await bootstrapSchema(db, 'sqlite');
-            const status = await checkSchemaVersion(db);
+            const status = await checkSchemaVersion(db, 'sqlite');
 
             expect(status.current).toBe(CURRENT_VERSIONS.schema);
             expect(status.needsMigration).toBe(false);
@@ -114,7 +126,7 @@ describe('version: schema', () => {
             const events: unknown[] = [];
             observer.on('version:schema:checking', (data) => events.push(data));
 
-            await checkSchemaVersion(db);
+            await checkSchemaVersion(db, 'sqlite');
 
             expect(events).toHaveLength(1);
             expect(events[0]).toEqual({ current: 0 });
@@ -230,7 +242,7 @@ describe('version: schema', () => {
 
             await migrateSchema(db, 'sqlite');
 
-            const exists = await tablesExist(db);
+            const exists = await tablesExist(db, 'sqlite');
             expect(exists).toBe(true);
 
         });
@@ -275,7 +287,7 @@ describe('version: schema', () => {
 
             await ensureSchemaVersion(db, 'sqlite');
 
-            const exists = await tablesExist(db);
+            const exists = await tablesExist(db, 'sqlite');
             expect(exists).toBe(true);
 
         });
@@ -295,7 +307,7 @@ describe('version: schema', () => {
 
         it('should return null when tables do not exist', async () => {
 
-            const record = await getLatestVersionRecord(db);
+            const record = await getLatestVersionRecord(db, 'sqlite');
 
             expect(record).toBeNull();
 
@@ -305,7 +317,7 @@ describe('version: schema', () => {
 
             await bootstrapSchema(db, 'sqlite', { stateVersion: 2, settingsVersion: 3 });
 
-            const record = await getLatestVersionRecord(db);
+            const record = await getLatestVersionRecord(db, 'sqlite');
 
             expect(record).toEqual({
                 stateVersion: 2,
@@ -317,12 +329,12 @@ describe('version: schema', () => {
         it('should return latest record when multiple exist', async () => {
 
             await bootstrapSchema(db, 'sqlite', { stateVersion: 1, settingsVersion: 1 });
-            await updateVersionRecord(db, {
+            await updateVersionRecord(db, 'sqlite', {
                 stateVersion: 2,
                 settingsVersion: 3,
             });
 
-            const record = await getLatestVersionRecord(db);
+            const record = await getLatestVersionRecord(db, 'sqlite');
 
             expect(record).toEqual({
                 stateVersion: 2,
@@ -338,7 +350,7 @@ describe('version: schema', () => {
         it('should insert a new version record', async () => {
 
             await bootstrapSchema(db, 'sqlite');
-            await updateVersionRecord(db, {
+            await updateVersionRecord(db, 'sqlite', {
                 stateVersion: 2,
                 settingsVersion: 3,
             });
@@ -359,7 +371,7 @@ describe('version: schema', () => {
         it('should use defaults when versions not provided', async () => {
 
             await bootstrapSchema(db, 'sqlite');
-            await updateVersionRecord(db);
+            await updateVersionRecord(db, 'sqlite');
 
             const versions = await db
                 .selectFrom('__noorm_version__')
@@ -369,6 +381,21 @@ describe('version: schema', () => {
 
             expect(versions?.['state_version']).toBe(CURRENT_VERSIONS.state);
             expect(versions?.['settings_version']).toBe(CURRENT_VERSIONS.settings);
+
+        });
+
+    });
+
+    describe('migration v2', () => {
+
+        it('should be a no-op for sqlite', async () => {
+
+            await bootstrapSchema(db, 'sqlite');
+            const exists = await tablesExist(db, 'sqlite');
+            expect(exists).toBe(true);
+            // Version should be 2 (CURRENT_VERSIONS.schema was bumped)
+            const version = await getSchemaVersion(db, 'sqlite');
+            expect(version).toBe(2);
 
         });
 
@@ -563,6 +590,66 @@ describe('version: schema', () => {
 
             expect(execution?.['filepath']).toBe('/test.sql');
             expect(execution?.['change_id']).toBeDefined();
+
+        });
+
+    });
+
+    describe('getFullVersionRecord', () => {
+
+        it('should return null when tables do not exist', async () => {
+
+            const record = await getFullVersionRecord(db);
+
+            expect(record).toBeNull();
+
+        });
+
+        it('should return all fields after bootstrap', async () => {
+
+            await bootstrapSchema(db, 'sqlite');
+
+            const record = await getFullVersionRecord(db);
+
+            expect(record).not.toBeNull();
+            expect(record!.cliVersion).toBe(getCurrentVersion());
+            expect(record!.noormVersion).toBe(CURRENT_VERSIONS.schema);
+            expect(record!.stateVersion).toBe(CURRENT_VERSIONS.state);
+            expect(record!.settingsVersion).toBe(CURRENT_VERSIONS.settings);
+            expect(record!.installedAt).toBeDefined();
+            expect(record!.upgradedAt).toBeDefined();
+
+        });
+
+        it('should return installedAt from first row and upgradedAt from latest row', async () => {
+
+            await bootstrapSchema(db, 'sqlite');
+
+            // Insert a second version record (simulates upgrade)
+            const laterDate = new Date(Date.now() + 86400000).toISOString();
+            await db
+                .insertInto('__noorm_version__')
+                .values({
+                    cli_version: '99.0.0',
+                    noorm_version: CURRENT_VERSIONS.schema,
+                    state_version: 2,
+                    settings_version: 2,
+                    upgraded_at: laterDate as unknown as Date,
+                })
+                .execute();
+
+            const record = await getFullVersionRecord(db);
+
+            expect(record).not.toBeNull();
+            // Latest row's data
+            expect(record!.cliVersion).toBe('99.0.0');
+            expect(record!.stateVersion).toBe(2);
+            expect(record!.settingsVersion).toBe(2);
+            // installedAt should be from the FIRST row (earlier)
+            // upgradedAt should be from the LATEST row (later)
+            const installedTime = new Date(record!.installedAt).getTime();
+            const upgradedTime = new Date(record!.upgradedAt).getTime();
+            expect(upgradedTime).toBeGreaterThan(installedTime);
 
         });
 

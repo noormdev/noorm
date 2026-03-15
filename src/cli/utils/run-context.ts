@@ -13,6 +13,7 @@
 import type { Kysely } from 'kysely';
 
 import type { RunContext } from '../../core/runner/types.js';
+import type { Dialect } from '../../core/connection/types.js';
 import type { NoormDatabase } from '../../core/shared/index.js';
 import type { Identity } from '../../core/identity/types.js';
 import type { StateManager } from '../../core/state/index.js';
@@ -27,6 +28,7 @@ export interface BuildRunContextOptions {
     projectRoot: string;
     activeConfig: Record<string, unknown>;
     stateManager: StateManager;
+    dialect?: Dialect;
 }
 
 /**
@@ -45,13 +47,14 @@ export interface BuildRunContextOptions {
  */
 export function buildRunContext(options: BuildRunContextOptions): RunContext {
 
-    const { db, configName, identity, projectRoot, activeConfig, stateManager } = options;
+    const { db, configName, identity, projectRoot, activeConfig, stateManager, dialect } = options;
 
     return {
         db,
         configName,
         identity,
         projectRoot,
+        dialect,
         config: activeConfig,
         secrets: stateManager.getAllSecrets(configName),
         globalSecrets: stateManager.getAllGlobalSecrets(),

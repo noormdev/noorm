@@ -47,13 +47,13 @@ export function useVaultSecretKeys(): VaultSecretKeysResult {
     const [vaultSecretKeys, setVaultSecretKeys] = useState<string[]>([]);
 
     // Shared connection with schema ensured (vault needs __noorm_* tables)
-    const { db, loading: connLoading, error: connError } = useConnection({ ensureSchema: true });
+    const { db, dialect, loading: connLoading, error: connError } = useConnection({ ensureSchema: true });
 
     // Load vault secrets when connection is ready
     useEffect(() => {
 
         if (!activeConfig || !activeConfigName || !identity) return;
-        if (!db || connLoading || connError) return;
+        if (!db || !dialect || connLoading || connError) return;
 
         let cancelled = false;
 
@@ -62,7 +62,7 @@ export function useVaultSecretKeys(): VaultSecretKeysResult {
             const typedDb = db as Kysely<NoormDatabase>;
 
             const [vaultStatus, statusErr] = await attempt(() =>
-                getVaultStatus(typedDb, identity.identityHash),
+                getVaultStatus(typedDb, identity.identityHash, dialect),
             );
 
             if (statusErr || !vaultStatus?.hasAccess || cancelled) return;
@@ -72,13 +72,13 @@ export function useVaultSecretKeys(): VaultSecretKeysResult {
             if (pkErr || !privateKey || cancelled) return;
 
             const [vaultKey, vkErr] = await attempt(() =>
-                getVaultKey(typedDb, identity.identityHash, privateKey),
+                getVaultKey(typedDb, identity.identityHash, privateKey, dialect),
             );
 
             if (vkErr || !vaultKey || cancelled) return;
 
             const [allSecrets, secretsErr] = await attempt(() =>
-                getAllVaultSecrets(typedDb, vaultKey),
+                getAllVaultSecrets(typedDb, vaultKey, dialect),
             );
 
             if (!secretsErr && allSecrets && !cancelled) {

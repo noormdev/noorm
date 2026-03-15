@@ -12,7 +12,8 @@ import type { Kysely } from 'kysely';
 import { attempt } from '@logosdx/utils';
 
 import { observer } from '../observer.js';
-import { NOORM_TABLES, type NoormDatabase, type NoormTableName } from '../shared/index.js';
+import { NOORM_TABLES, getNoormTables, noormDb, type NoormDatabase, type NoormTableName } from '../shared/index.js';
+import type { Dialect } from '../connection/types.js';
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -215,16 +216,39 @@ const TABLE_COLUMNS: Record<NoormTableName, string[]> = {
 /**
  * Creates debug operations for a database connection.
  *
+ * Uses dialect-aware schema scoping via `noormDb()` so queries target
+ * the correct schema on pg/mssql while remaining compatible with
+ * sqlite/mysql. The table names passed as parameters (`NoormTableName`)
+ * are already the correct names from the caller.
+ *
+ * @param db - Kysely database instance
+ * @param dialect - Database dialect for schema scoping
+ *
  * @example
  * ```typescript
  * const conn = await createConnection(config, '__debug__');
- * const ops = createDebugOperations(conn.db);
+ * const ops = createDebugOperations(conn.db, 'postgres');
  *
  * const counts = await ops.getTableCounts();
  * const rows = await ops.getTableRows(NOORM_TABLES.change, { limit: 50 });
  * ```
  */
-export function createDebugOperations(db: Kysely<NoormDatabase>): DebugOperations {
+export function createDebugOperations(db: Kysely<NoormDatabase>, dialect: Dialect): DebugOperations {
+
+    const ndb = noormDb(db, dialect);
+    const tables = getNoormTables(dialect);
+
+    // Map prefixed names → dialect-aware names for query use.
+    // Callers pass NoormTableName (prefixed) but on pg/mssql ndb expects clean names.
+    const nameMap: Record<string, string> = {};
+
+    for (const info of NOORM_TABLE_INFO) {
+
+        nameMap[info.name] = tables[info.key];
+
+    }
+
+    const resolveTable = (table: NoormTableName): string => nameMap[table] ?? table;
 
     return {
 
@@ -234,10 +258,13 @@ export function createDebugOperations(db: Kysely<NoormDatabase>): DebugOperation
 
             for (const info of NOORM_TABLE_INFO) {
 
+                // Use dialect-aware table name for the query, not the static prefixed name
+                const tableName = tables[info.key];
+
                 const [result, err] = await attempt(() =>
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    db.selectFrom(info.name as any)
-                        .select(db.fn.count('id').as('count'))
+                    ndb.selectFrom(tableName as any)
+                        .select(ndb.fn.count('id').as('count'))
                         .executeTakeFirst(),
                 );
 
@@ -274,9 +301,11 @@ export function createDebugOperations(db: Kysely<NoormDatabase>): DebugOperation
 
             const { limit = 100, sortColumn = 'id', sortDirection = 'desc' } = options;
 
+            const queryTable = resolveTable(table);
+
             const [rows, err] = await attempt(() =>
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                db.selectFrom(table as any)
+                ndb.selectFrom(queryTable as any)
                     .selectAll()
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
                     .orderBy(sortColumn as any, sortDirection)
@@ -302,9 +331,11 @@ export function createDebugOperations(db: Kysely<NoormDatabase>): DebugOperation
 
         async getRowById(table: NoormTableName, id: number): Promise<NoormTableRow | null> {
 
+            const queryTable = resolveTable(table);
+
             const [row, err] = await attempt(() =>
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                db.selectFrom(table as any)
+                ndb.selectFrom(queryTable as any)
                     .selectAll()
                     .where('id', '=', id)
                     .executeTakeFirst(),
@@ -328,9 +359,11 @@ export function createDebugOperations(db: Kysely<NoormDatabase>): DebugOperation
 
         async deleteRowById(table: NoormTableName, id: number): Promise<boolean> {
 
+            const queryTable = resolveTable(table);
+
             const [result, err] = await attempt(() =>
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                db.deleteFrom(table as any)
+                ndb.deleteFrom(queryTable as any)
                     .where('id', '=', id)
                     .executeTakeFirst(),
             );
@@ -359,9 +392,11 @@ export function createDebugOperations(db: Kysely<NoormDatabase>): DebugOperation
 
             }
 
+            const queryTable = resolveTable(table);
+
             const [result, err] = await attempt(() =>
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                db.deleteFrom(table as any)
+                ndb.deleteFrom(queryTable as any)
                     .where('id', 'in', ids)
                     .execute(),
             );

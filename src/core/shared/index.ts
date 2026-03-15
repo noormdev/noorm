@@ -12,11 +12,15 @@ export { filterFilesByPaths, matchesPathPrefix } from './files.js';
 export { createDialectQuoting, type DialectQuoting } from './dialect-quoting.js';
 
 // Tables
-export { NOORM_TABLES } from './tables.js';
+export { NOORM_TABLES, getNoormTables, noormDb } from './tables.js';
 
 export type {
+    NoormTableNames,
     NoormTableName,
+    NoormSchemaTableName,
     NoormDatabase,
+    NoormSchemaDb,
+    NoormPrefixDb,
     // Version
     NoormVersionTable,
     NoormVersion,
@@ -47,4 +51,9 @@ export type {
     NoormIdentity,
     NewNoormIdentity,
     NoormIdentityUpdate,
+    // Vault
+    NoormVaultTable,
+    NoormVault,
+    NewNoormVault,
+    NoormVaultUpdate,
 } from './tables.js';

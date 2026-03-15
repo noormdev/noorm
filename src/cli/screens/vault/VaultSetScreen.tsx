@@ -88,7 +88,8 @@ export function VaultSetScreen({ params }: ScreenProps): ReactElement {
         }
 
         const db = connRef.current.db;
-        const vaultKey = await getVaultKey(db as Kysely<NoormDatabase>, identity.identityHash, privateKey);
+        const connDialect = connRef.current.dialect;
+        const vaultKey = await getVaultKey(db as Kysely<NoormDatabase>, identity.identityHash, privateKey, connDialect);
 
         if (!vaultKey) {
 
@@ -107,6 +108,7 @@ export function VaultSetScreen({ params }: ScreenProps): ReactElement {
                 keyValue.trim(),
                 secretValue,
                 identity.email,
+                connDialect,
             );
 
             if (setErr) throw setErr;

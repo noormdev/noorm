@@ -65,6 +65,7 @@ export class LockNamespace {
             this.#kysely as unknown as Kysely<NoormDatabase>,
             this.#state.config.name,
             identityStr,
+            this.#state.config.connection.dialect,
         );
 
     }
@@ -129,6 +130,7 @@ export class LockNamespace {
         return lockManager.forceRelease(
             this.#kysely as unknown as Kysely<NoormDatabase>,
             this.#state.config.name,
+            this.#state.config.connection.dialect,
         );
 
     }

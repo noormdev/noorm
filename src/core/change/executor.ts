@@ -145,7 +145,7 @@ export async function executeChange(
     const changeChecksum = computeCombinedChecksum(checksums);
 
     // Create history tracker
-    const history = new ChangeHistory(context.db, context.configName);
+    const history = new ChangeHistory(context.db, context.configName, context.dialect ?? 'postgres');
 
     // Check if needs to run (unless dry run or preview)
     if (!opts.dryRun && !opts.preview) {
@@ -221,7 +221,7 @@ export async function executeChange(
     );
 
     // Always release lock
-    await attempt(() => lockManager.release(context.db, context.configName, identity));
+    await attempt(() => lockManager.release(context.db, context.configName, identity, context.dialect ?? 'postgres'));
 
     if (execErr) {
 
@@ -280,8 +280,8 @@ export async function revertChange(
     const revertChecksum = computeCombinedChecksum(checksums);
 
     // Create trackers
-    const history = new ChangeHistory(context.db, context.configName);
-    const tracker = new ChangeTracker(context.db, context.configName);
+    const history = new ChangeHistory(context.db, context.configName, context.dialect ?? 'postgres');
+    const tracker = new ChangeTracker(context.db, context.configName, context.dialect ?? 'postgres');
 
     // Check if can revert (unless dry run or preview)
     if (!opts.dryRun && !opts.preview) {
@@ -358,7 +358,7 @@ export async function revertChange(
     );
 
     // Always release lock
-    await attempt(() => lockManager.release(context.db, context.configName, identity));
+    await attempt(() => lockManager.release(context.db, context.configName, identity, context.dialect ?? 'postgres'));
 
     if (execErr) {
 

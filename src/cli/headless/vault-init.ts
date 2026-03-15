@@ -61,6 +61,7 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
             const status = await getVaultStatus(
                 db as Kysely<NoormDatabase>,
                 cryptoIdentity.identityHash,
+                ctx.dialect,
             );
 
             if (status.isInitialized) {
@@ -83,6 +84,7 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
                 db as Kysely<NoormDatabase>,
                 cryptoIdentity.identityHash,
                 cryptoIdentity.publicKey,
+                ctx.dialect,
             );
 
             if (initErr) {

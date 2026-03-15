@@ -9,7 +9,8 @@ import type { Kysely } from 'kysely';
 import { attempt, attemptSync } from '@logosdx/utils';
 
 import type { NoormDatabase } from '../shared/tables.js';
-import { NOORM_TABLES } from '../shared/tables.js';
+import { getNoormTables, noormDb } from '../shared/tables.js';
+import type { Dialect } from '../connection/types.js';
 import { observer } from '../observer.js';
 
 import type { EncryptedVaultKey, VaultSecret, VaultStatus } from './types.js';
@@ -26,14 +27,17 @@ import {
  *
  * Generates a new vault key and stores it encrypted for the current user.
  * Only the first user to initialize gets the vault key.
+ * Uses dialect-aware table names to support both legacy prefixed and
+ * schema-qualified table locations.
  *
  * @param db - Kysely database instance
  * @param identityHash - Current user's identity hash
  * @param publicKey - Current user's public key (hex)
+ * @param dialect - Database dialect for table name resolution
  *
  * @example
  * ```typescript
- * const [, err] = await initializeVault(db, identity.identityHash, identity.publicKey);
+ * const [, err] = await initializeVault(db, identity.identityHash, identity.publicKey, 'postgres');
  * if (err) console.error('Failed to initialize vault');
  * ```
  */
@@ -41,13 +45,17 @@ export async function initializeVault(
     db: Kysely<NoormDatabase>,
     identityHash: string,
     publicKey: string,
+    dialect: Dialect,
 ): Promise<[Buffer | null, Error | null]> {
+
+    const ndb = noormDb(db, dialect);
+    const tables = getNoormTables(dialect);
 
     // Check if vault is already initialized (any user has a vault key)
     const [existing, checkErr] = await attempt(async () => {
 
-        return db
-            .selectFrom(NOORM_TABLES.identities)
+        return ndb
+            .selectFrom(tables.identities as keyof NoormDatabase)
             .select('encrypted_vault_key')
             .where('encrypted_vault_key', 'is not', null)
             .limit(1)
@@ -73,8 +81,8 @@ export async function initializeVault(
     // Update user's identity row
     const [, updateErr] = await attempt(async () => {
 
-        return db
-            .updateTable(NOORM_TABLES.identities)
+        return ndb
+            .updateTable(tables.identities as keyof NoormDatabase)
             .set({ encrypted_vault_key: encryptedJson })
             .where('identity_hash', '=', identityHash)
             .execute();
@@ -93,15 +101,18 @@ export async function initializeVault(
  * Get the vault key for the current user.
  *
  * Fetches and decrypts the vault key from the user's identity row.
+ * Uses dialect-aware table names to support both legacy prefixed and
+ * schema-qualified table locations.
  *
  * @param db - Kysely database instance
  * @param identityHash - Current user's identity hash
  * @param privateKey - Current user's private key (hex)
+ * @param dialect - Database dialect for table name resolution
  * @returns The decrypted vault key, or null if not found/accessible
  *
  * @example
  * ```typescript
- * const vaultKey = await getVaultKey(db, identity.identityHash, privateKey);
+ * const vaultKey = await getVaultKey(db, identity.identityHash, privateKey, 'postgres');
  * if (!vaultKey) {
  *     console.log('No vault access - vault not initialized or not propagated');
  * }
@@ -111,12 +122,16 @@ export async function getVaultKey(
     db: Kysely<NoormDatabase>,
     identityHash: string,
     privateKey: string,
+    dialect: Dialect,
 ): Promise<Buffer | null> {
+
+    const ndb = noormDb(db, dialect);
+    const tables = getNoormTables(dialect);
 
     const [row, err] = await attempt(async () => {
 
-        return db
-            .selectFrom(NOORM_TABLES.identities)
+        return ndb
+            .selectFrom(tables.identities as keyof NoormDatabase)
             .select('encrypted_vault_key')
             .where('identity_hash', '=', identityHash)
             .executeTakeFirst();
@@ -142,16 +157,19 @@ export async function getVaultKey(
  *
  * Encrypts and stores a secret in the vault table.
  * Upserts - creates if new, updates if exists.
+ * Uses dialect-aware table names to support both legacy prefixed and
+ * schema-qualified table locations.
  *
  * @param db - Kysely database instance
  * @param vaultKey - The decrypted vault key
  * @param secretKey - The secret's key name
  * @param value - The plaintext secret value
  * @param setBy - Identity string of who set this secret
+ * @param dialect - Database dialect for table name resolution
  *
  * @example
  * ```typescript
- * await setVaultSecret(db, vaultKey, 'API_KEY', 'sk-live-...', 'alice@example.com');
+ * await setVaultSecret(db, vaultKey, 'API_KEY', 'sk-live-...', 'alice@example.com', 'postgres');
  * ```
  */
 export async function setVaultSecret(
@@ -160,7 +178,11 @@ export async function setVaultSecret(
     secretKey: string,
     value: string,
     setBy: string,
+    dialect: Dialect,
 ): Promise<[void, Error | null]> {
+
+    const ndb = noormDb(db, dialect);
+    const tables = getNoormTables(dialect);
 
     // Encrypt the value
     const encrypted = encryptSecret(value, vaultKey);
@@ -170,8 +192,8 @@ export async function setVaultSecret(
     // Check if exists
     const [existing, checkErr] = await attempt(async () => {
 
-        return db
-            .selectFrom(NOORM_TABLES.vault)
+        return ndb
+            .selectFrom(tables.vault as keyof NoormDatabase)
             .select('id')
             .where('secret_key', '=', secretKey)
             .executeTakeFirst();
@@ -185,8 +207,8 @@ export async function setVaultSecret(
         // Update existing
         const [, updateErr] = await attempt(async () => {
 
-            return db
-                .updateTable(NOORM_TABLES.vault)
+            return ndb
+                .updateTable(tables.vault as keyof NoormDatabase)
                 .set({
                     encrypted_value: encryptedJson,
                     set_by: setBy,
@@ -207,13 +229,13 @@ export async function setVaultSecret(
         // Insert new
         const [, insertErr] = await attempt(async () => {
 
-            return db
-                .insertInto(NOORM_TABLES.vault)
+            return ndb
+                .insertInto(tables.vault as keyof NoormDatabase)
                 .values({
                     secret_key: secretKey,
                     encrypted_value: encryptedJson,
                     set_by: setBy,
-                })
+                } as never)
                 .execute();
 
         });
@@ -231,14 +253,18 @@ export async function setVaultSecret(
 /**
  * Get a vault secret by key.
  *
+ * Uses dialect-aware table names to support both legacy prefixed and
+ * schema-qualified table locations.
+ *
  * @param db - Kysely database instance
  * @param vaultKey - The decrypted vault key
  * @param secretKey - The secret's key name
+ * @param dialect - Database dialect for table name resolution
  * @returns The decrypted secret value, or null if not found
  *
  * @example
  * ```typescript
- * const value = await getVaultSecret(db, vaultKey, 'API_KEY');
+ * const value = await getVaultSecret(db, vaultKey, 'API_KEY', 'postgres');
  * if (value) {
  *     console.log('Secret found:', value);
  * }
@@ -248,12 +274,16 @@ export async function getVaultSecret(
     db: Kysely<NoormDatabase>,
     vaultKey: Buffer,
     secretKey: string,
+    dialect: Dialect,
 ): Promise<string | null> {
+
+    const ndb = noormDb(db, dialect);
+    const tables = getNoormTables(dialect);
 
     const [row, err] = await attempt(async () => {
 
-        return db
-            .selectFrom(NOORM_TABLES.vault)
+        return ndb
+            .selectFrom(tables.vault as keyof NoormDatabase)
             .select('encrypted_value')
             .where('secret_key', '=', secretKey)
             .executeTakeFirst();
@@ -275,13 +305,17 @@ export async function getVaultSecret(
 /**
  * Get all vault secrets.
  *
+ * Uses dialect-aware table names to support both legacy prefixed and
+ * schema-qualified table locations.
+ *
  * @param db - Kysely database instance
  * @param vaultKey - The decrypted vault key
+ * @param dialect - Database dialect for table name resolution
  * @returns Map of secret key to VaultSecret
  *
  * @example
  * ```typescript
- * const secrets = await getAllVaultSecrets(db, vaultKey);
+ * const secrets = await getAllVaultSecrets(db, vaultKey, 'postgres');
  * for (const [key, secret] of Object.entries(secrets)) {
  *     console.log(key, secret.value);
  * }
@@ -290,12 +324,16 @@ export async function getVaultSecret(
 export async function getAllVaultSecrets(
     db: Kysely<NoormDatabase>,
     vaultKey: Buffer,
+    dialect: Dialect,
 ): Promise<Record<string, VaultSecret>> {
+
+    const ndb = noormDb(db, dialect);
+    const tables = getNoormTables(dialect);
 
     const [rows, err] = await attempt(async () => {
 
-        return db
-            .selectFrom(NOORM_TABLES.vault)
+        return ndb
+            .selectFrom(tables.vault as keyof NoormDatabase)
             .selectAll()
             .execute();
 
@@ -333,23 +371,31 @@ export async function getAllVaultSecrets(
 /**
  * List all vault secret keys (without decrypting values).
  *
+ * Uses dialect-aware table names to support both legacy prefixed and
+ * schema-qualified table locations.
+ *
  * @param db - Kysely database instance
+ * @param dialect - Database dialect for table name resolution
  * @returns Array of secret key names
  *
  * @example
  * ```typescript
- * const keys = await listVaultSecretKeys(db);
+ * const keys = await listVaultSecretKeys(db, 'postgres');
  * console.log('Vault contains:', keys);
  * ```
  */
 export async function listVaultSecretKeys(
     db: Kysely<NoormDatabase>,
+    dialect: Dialect,
 ): Promise<string[]> {
+
+    const ndb = noormDb(db, dialect);
+    const tables = getNoormTables(dialect);
 
     const [rows, err] = await attempt(async () => {
 
-        return db
-            .selectFrom(NOORM_TABLES.vault)
+        return ndb
+            .selectFrom(tables.vault as keyof NoormDatabase)
             .select('secret_key')
             .orderBy('secret_key', 'asc')
             .execute();
@@ -365,23 +411,31 @@ export async function listVaultSecretKeys(
 /**
  * Delete a vault secret.
  *
+ * Uses dialect-aware table names to support both legacy prefixed and
+ * schema-qualified table locations.
+ *
  * @param db - Kysely database instance
  * @param secretKey - The secret's key name
+ * @param dialect - Database dialect for table name resolution
  *
  * @example
  * ```typescript
- * await deleteVaultSecret(db, 'OLD_API_KEY');
+ * await deleteVaultSecret(db, 'OLD_API_KEY', 'postgres');
  * ```
  */
 export async function deleteVaultSecret(
     db: Kysely<NoormDatabase>,
     secretKey: string,
+    dialect: Dialect,
 ): Promise<[boolean, Error | null]> {
+
+    const ndb = noormDb(db, dialect);
+    const tables = getNoormTables(dialect);
 
     const [result, err] = await attempt(async () => {
 
-        return db
-            .deleteFrom(NOORM_TABLES.vault)
+        return ndb
+            .deleteFrom(tables.vault as keyof NoormDatabase)
             .where('secret_key', '=', secretKey)
             .execute();
 
@@ -405,19 +459,27 @@ export async function deleteVaultSecret(
 /**
  * Check if a vault secret exists.
  *
+ * Uses dialect-aware table names to support both legacy prefixed and
+ * schema-qualified table locations.
+ *
  * @param db - Kysely database instance
  * @param secretKey - The secret's key name
+ * @param dialect - Database dialect for table name resolution
  * @returns True if the secret exists
  */
 export async function vaultSecretExists(
     db: Kysely<NoormDatabase>,
     secretKey: string,
+    dialect: Dialect,
 ): Promise<boolean> {
+
+    const ndb = noormDb(db, dialect);
+    const tables = getNoormTables(dialect);
 
     const [row, err] = await attempt(async () => {
 
-        return db
-            .selectFrom(NOORM_TABLES.vault)
+        return ndb
+            .selectFrom(tables.vault as keyof NoormDatabase)
             .select('id')
             .where('secret_key', '=', secretKey)
             .executeTakeFirst();
@@ -433,12 +495,16 @@ export async function vaultSecretExists(
 /**
  * Get vault status.
  *
+ * Uses dialect-aware table names to support both legacy prefixed and
+ * schema-qualified table locations.
+ *
  * @param db - Kysely database instance
  * @param identityHash - Current user's identity hash
+ * @param dialect - Database dialect for table name resolution
  *
  * @example
  * ```typescript
- * const status = await getVaultStatus(db, identity.identityHash);
+ * const status = await getVaultStatus(db, identity.identityHash, 'postgres');
  * console.log('Vault initialized:', status.isInitialized);
  * console.log('Has access:', status.hasAccess);
  * ```
@@ -446,14 +512,18 @@ export async function vaultSecretExists(
 export async function getVaultStatus(
     db: Kysely<NoormDatabase>,
     identityHash: string,
+    dialect: Dialect,
 ): Promise<VaultStatus> {
+
+    const ndb = noormDb(db, dialect);
+    const tables = getNoormTables(dialect);
 
     // Count secrets
     const [secretRows] = await attempt(async () => {
 
-        return db
-            .selectFrom(NOORM_TABLES.vault)
-            .select(db.fn.count('id').as('count'))
+        return ndb
+            .selectFrom(tables.vault as keyof NoormDatabase)
+            .select(ndb.fn.count('id').as('count'))
             .executeTakeFirst();
 
     });
@@ -463,8 +533,8 @@ export async function getVaultStatus(
     // Count users with/without access
     const [identityRows] = await attempt(async () => {
 
-        return db
-            .selectFrom(NOORM_TABLES.identities)
+        return ndb
+            .selectFrom(tables.identities as keyof NoormDatabase)
             .select([
                 'identity_hash',
                 'encrypted_vault_key',

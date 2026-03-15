@@ -14,7 +14,7 @@ import { useState, useRef, useEffect } from 'react';
 
 import type { Kysely } from 'kysely';
 import type { MutableRefObject } from 'react';
-import type { ConnectionResult } from '../../core/connection/types.js';
+import type { ConnectionResult, Dialect } from '../../core/connection/types.js';
 import type { NoormDatabase } from '../../core/shared/index.js';
 
 import { useAppContext } from '../app-context.js';
@@ -60,7 +60,7 @@ export interface UseVaultConnectionOptions {
      *
      * Receives the database instance and a cancellation check function.
      */
-    onReady?: (db: Kysely<NoormDatabase>, isCancelled: () => boolean) => Promise<void>;
+    onReady?: (db: Kysely<NoormDatabase>, isCancelled: () => boolean, dialect: Dialect) => Promise<void>;
 
     /** Extra dependencies for the useEffect (beyond activeConfig/activeConfigName/identity). */
     extraDeps?: unknown[];

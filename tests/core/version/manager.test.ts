@@ -56,7 +56,7 @@ describe('version: manager', () => {
                 const state = { schemaVersion: CURRENT_VERSIONS.state };
                 const settings = { schemaVersion: CURRENT_VERSIONS.settings };
 
-                const status = await manager.check(db, state, settings);
+                const status = await manager.check(db, 'sqlite', state, settings);
 
                 expect(status).toHaveProperty('schema');
                 expect(status).toHaveProperty('state');
@@ -70,7 +70,7 @@ describe('version: manager', () => {
                 const state = { schemaVersion: CURRENT_VERSIONS.state };
                 const settings = { schemaVersion: CURRENT_VERSIONS.settings };
 
-                const status = await manager.check(db, state, settings);
+                const status = await manager.check(db, 'sqlite', state, settings);
 
                 expect(status.schema.needsMigration).toBe(true);
                 expect(status.schema.current).toBe(0);
@@ -84,7 +84,7 @@ describe('version: manager', () => {
                 const state = {};
                 const settings = { schemaVersion: CURRENT_VERSIONS.settings };
 
-                const status = await manager.check(db, state, settings);
+                const status = await manager.check(db, 'sqlite', state, settings);
 
                 expect(status.state.needsMigration).toBe(true);
                 expect(status.state.current).toBe(0);
@@ -98,7 +98,7 @@ describe('version: manager', () => {
                 const state = { schemaVersion: CURRENT_VERSIONS.state };
                 const settings = {};
 
-                const status = await manager.check(db, state, settings);
+                const status = await manager.check(db, 'sqlite', state, settings);
 
                 expect(status.settings.needsMigration).toBe(true);
                 expect(status.settings.current).toBe(0);
@@ -112,7 +112,7 @@ describe('version: manager', () => {
                 const state = { schemaVersion: CURRENT_VERSIONS.state };
                 const settings = { schemaVersion: CURRENT_VERSIONS.settings };
 
-                const status = await manager.check(db, state, settings);
+                const status = await manager.check(db, 'sqlite', state, settings);
 
                 expect(status.schema.needsMigration).toBe(false);
                 expect(status.state.needsMigration).toBe(false);
@@ -217,7 +217,7 @@ describe('version: manager', () => {
                 const settings = { schemaVersion: CURRENT_VERSIONS.settings };
 
                 // Schema needs migration (no tables)
-                const needs = await manager.needsMigration(db, state, settings);
+                const needs = await manager.needsMigration(db, 'sqlite', state, settings);
 
                 expect(needs).toBe(true);
 
@@ -230,7 +230,7 @@ describe('version: manager', () => {
                 const state = { schemaVersion: CURRENT_VERSIONS.state };
                 const settings = { schemaVersion: CURRENT_VERSIONS.settings };
 
-                const needs = await manager.needsMigration(db, state, settings);
+                const needs = await manager.needsMigration(db, 'sqlite', state, settings);
 
                 expect(needs).toBe(false);
 
@@ -249,7 +249,7 @@ describe('version: manager', () => {
                 const state = { schemaVersion: CURRENT_VERSIONS.state };
                 const settings = { schemaVersion: CURRENT_VERSIONS.settings };
 
-                const hasNewer = await manager.hasNewerVersion(db, state, settings);
+                const hasNewer = await manager.hasNewerVersion(db, 'sqlite', state, settings);
 
                 expect(hasNewer).toBe(true);
 
@@ -262,7 +262,7 @@ describe('version: manager', () => {
                 const state = { schemaVersion: CURRENT_VERSIONS.state };
                 const settings = { schemaVersion: CURRENT_VERSIONS.settings };
 
-                const hasNewer = await manager.hasNewerVersion(db, state, settings);
+                const hasNewer = await manager.hasNewerVersion(db, 'sqlite', state, settings);
 
                 expect(hasNewer).toBe(false);
 

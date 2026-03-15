@@ -76,7 +76,7 @@ export function ChangeHistoryDetailScreen({ params }: ScreenProps): ReactElement
     const [selectedIndex, setSelectedIndex] = useState(0);
 
     // Shared connection
-    const { db, loading: connLoading, error: connError } = useConnection();
+    const { db, dialect, loading: connLoading, error: connError } = useConnection();
 
     // Load file history when connection is ready
     useAsyncEffect(async (isCancelled) => {
@@ -94,7 +94,7 @@ export function ChangeHistoryDetailScreen({ params }: ScreenProps): ReactElement
 
         const [_, err] = await attempt(async () => {
 
-            const changeHistory = new ChangeHistory(db, activeConfigName ?? '');
+            const changeHistory = new ChangeHistory(db, activeConfigName ?? '', dialect ?? 'postgres');
             const records = await changeHistory.getFileHistory(operationId);
 
             if (isCancelled()) return;

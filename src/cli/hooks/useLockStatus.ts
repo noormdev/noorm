@@ -67,7 +67,7 @@ export function useLockStatus(
     }, []);
 
     // Shared connection with schema ensured (lock tables need __noorm_* schema)
-    const { db, loading: connLoading, error: connError } = useConnection({ ensureSchema: true });
+    const { db, dialect, loading: connLoading, error: connError } = useConnection({ ensureSchema: true });
 
     useEffect(() => {
 
@@ -108,7 +108,7 @@ export function useLockStatus(
 
             const lockManager = getLockManager();
 
-            const [result, err] = await attempt(() => lockManager.status(db, activeConfigName));
+            const [result, err] = await attempt(() => lockManager.status(db, activeConfigName, dialect ?? 'postgres'));
 
             if (!cancelled && err) {
 

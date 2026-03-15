@@ -9,7 +9,9 @@
  * WHY: Kysely uses these types to provide type-safe queries.
  * They match the database schema created by migrations.
  */
-import type { Generated, Insertable, Selectable, Updateable } from 'kysely';
+import type { Generated, Insertable, Kysely, Selectable, Updateable } from 'kysely';
+
+import type { Dialect } from '../connection/types.js';
 
 // ─────────────────────────────────────────────────────────────
 // Table Names
@@ -19,6 +21,9 @@ import type { Generated, Insertable, Selectable, Updateable } from 'kysely';
  * Noorm tracking table names.
  *
  * Use these constants instead of hardcoding table names.
+ *
+ * @deprecated Use `getNoormTables(dialect)` instead. This constant maps to prefixed
+ * names and will produce incorrect SQL when used with `noormDb()` on pg/mssql.
  *
  * @example
  * ```typescript
@@ -48,9 +53,104 @@ export const NOORM_TABLES = Object.freeze({
 });
 
 /**
- * Type for table names.
+ * Shape returned by getNoormTables().
+ */
+export type NoormTableNames = {
+
+    version: string;
+    change: string;
+    executions: string;
+    lock: string;
+    identities: string;
+    vault: string;
+
+};
+
+/**
+ * Schema-qualified table names for pg/mssql.
+ *
+ * Used with withSchema('noorm') — table names have no prefix.
+ */
+const SCHEMA_TABLES = Object.freeze({
+    version: 'version' as const,
+    change: 'change' as const,
+    executions: 'executions' as const,
+    lock: 'lock' as const,
+    identities: 'identities' as const,
+    vault: 'vault' as const,
+});
+
+/**
+ * Get dialect-appropriate noorm table names.
+ *
+ * pg/mssql: clean names used with withSchema('noorm').
+ * sqlite/mysql: prefixed names used directly.
+ *
+ * Returns the concrete const type so Kysely can narrow table names
+ * for type-safe selectFrom() calls.
+ *
+ * @example
+ * ```typescript
+ * const tables = getNoormTables('postgres');
+ * const ndb = noormDb(db, 'postgres');
+ * await ndb.selectFrom(tables.change).selectAll().execute();
+ * ```
+ */
+export function getNoormTables(dialect: Dialect): typeof SCHEMA_TABLES | typeof NOORM_TABLES {
+
+    if (dialect === 'postgres' || dialect === 'mssql') {
+
+        return SCHEMA_TABLES;
+
+    }
+
+    return NOORM_TABLES;
+
+}
+
+/**
+ * Get a Kysely instance scoped to the noorm schema.
+ *
+ * pg/mssql: wraps with withSchema('noorm') so all table references
+ * are prefixed with the noorm schema.
+ * sqlite/mysql: returns the db as-is.
+ *
+ * @example
+ * ```typescript
+ * const ndb = noormDb(db, 'postgres');
+ * await ndb.selectFrom('change').selectAll().execute();
+ * // SQL: SELECT * FROM "noorm"."change"
+ * ```
+ */
+export function noormDb(
+    db: Kysely<NoormDatabase>,
+    dialect: Dialect,
+): Kysely<NoormDatabase> {
+
+    if (dialect === 'postgres' || dialect === 'mssql') {
+
+        return db.withSchema('noorm') as Kysely<NoormDatabase>;
+
+    }
+
+    return db;
+
+}
+
+/**
+ * Type for prefixed noorm table names (sqlite/mysql).
+ *
+ * Only includes the `__noorm_*__` prefixed names from NOORM_TABLES.
+ * For pg/mssql schema-qualified names, use NoormSchemaTableName.
  */
 export type NoormTableName = (typeof NOORM_TABLES)[keyof typeof NOORM_TABLES];
+
+/**
+ * Type for schema-qualified noorm table names (pg/mssql).
+ *
+ * Clean names used with withSchema('noorm').
+ */
+export type NoormSchemaTableName = (typeof SCHEMA_TABLES)[keyof typeof SCHEMA_TABLES];
 
 // ─────────────────────────────────────────────────────────────
 // __noorm_version__
@@ -339,29 +439,49 @@ export type NoormVaultUpdate = Updateable<NoormVaultTable>;
 // ─────────────────────────────────────────────────────────────
 
 /**
- * Combined database interface for all noorm tracking tables.
+ * Schema-qualified database interface for pg/mssql.
  *
- * Use this with Kysely<NoormDatabase> for type-safe queries.
- *
- * @example
- * ```typescript
- * import { NoormDatabase, NOORM_TABLES } from './shared'
- *
- * const db = new Kysely<NoormDatabase>({ dialect })
- *
- * const version = await db
- *     .selectFrom(NOORM_TABLES.version)
- *     .selectAll()
- *     .orderBy('id', 'desc')
- *     .limit(1)
- *     .executeTakeFirst()
- * ```
+ * Used with db.withSchema('noorm') — table names have no prefix.
  */
-export interface NoormDatabase {
+export interface NoormSchemaDb {
+
+    version: NoormVersionTable;
+    change: NoormChangeTable;
+    executions: NoormExecutionsTable;
+    lock: NoormLockTable;
+    identities: NoormIdentitiesTable;
+    vault: NoormVaultTable;
+
+}
+
+/**
+ * Prefixed database interface for sqlite/mysql.
+ *
+ * Used directly — table names have __noorm_ prefix.
+ */
+export interface NoormPrefixDb {
+
     __noorm_version__: NoormVersionTable;
     __noorm_change__: NoormChangeTable;
     __noorm_executions__: NoormExecutionsTable;
     __noorm_lock__: NoormLockTable;
     __noorm_identities__: NoormIdentitiesTable;
     __noorm_vault__: NoormVaultTable;
+
 }
+
+/**
+ * Combined database interface for all noorm tracking tables.
+ *
+ * Intersection of schema-qualified (pg/mssql) and prefixed (sqlite/mysql)
+ * interfaces. Both key sets are valid — use getNoormTables(dialect) to get
+ * the correct keys for your dialect.
+ *
+ * @example
+ * ```typescript
+ * const tables = getNoormTables(dialect);
+ * const ndb = noormDb(db, dialect);
+ * await ndb.selectFrom(tables.change).selectAll().execute();
+ * ```
+ */
+export type NoormDatabase = NoormSchemaDb & NoormPrefixDb;

@@ -182,7 +182,7 @@ export async function createConnection(
 
     observer.emit('connection:open', { configName, dialect: config.dialect });
 
-    await waitForIdentityToLoad(trackedConn.db as never);
+    await waitForIdentityToLoad(trackedConn.db as never, config.dialect);
 
     return trackedConn;
 

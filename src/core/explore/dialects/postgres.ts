@@ -33,7 +33,7 @@ import type {
 /**
  * Schemas to exclude from exploration (system schemas).
  */
-const EXCLUDED_SCHEMAS = ['pg_catalog', 'information_schema', 'pg_toast'];
+const EXCLUDED_SCHEMAS = ['pg_catalog', 'information_schema', 'pg_toast', 'noorm'];
 
 /**
  * PostgreSQL explore operations.

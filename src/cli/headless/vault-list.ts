@@ -46,7 +46,7 @@ export const run: HeadlessCommand = async (_params, flags, logger) => {
             const db = ctx.kysely;
 
             // Check status
-            const status = await getVaultStatus(db, cryptoIdentity.identityHash);
+            const status = await getVaultStatus(db, cryptoIdentity.identityHash, ctx.dialect);
 
             if (!status.isInitialized) {
 
@@ -67,7 +67,7 @@ export const run: HeadlessCommand = async (_params, flags, logger) => {
             }
 
             // Get vault key
-            const vaultKey = await getVaultKey(db, cryptoIdentity.identityHash, privateKey);
+            const vaultKey = await getVaultKey(db, cryptoIdentity.identityHash, privateKey, ctx.dialect);
 
             if (!vaultKey) {
 
@@ -76,7 +76,7 @@ export const run: HeadlessCommand = async (_params, flags, logger) => {
             }
 
             // Get all secrets
-            const secrets = await getAllVaultSecrets(db, vaultKey);
+            const secrets = await getAllVaultSecrets(db, vaultKey, ctx.dialect);
             const secretList = Object.values(secrets).map((s) => ({
                 key: s.key,
                 setBy: s.setBy,

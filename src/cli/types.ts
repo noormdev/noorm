@@ -76,6 +76,7 @@ export type Route =
     // Home & Help
     | 'help'
     | 'home'
+    | 'info'
     | 'more'
 
     // Identity

@@ -86,7 +86,7 @@ export function LockForceScreen({ params: _params }: ScreenProps): ReactElement 
             const db = conn.db as Kysely<NoormDatabase>;
             const lockManager = getLockManager();
 
-            const status = await lockManager.status(db, activeConfigName ?? '');
+            const status = await lockManager.status(db, activeConfigName ?? '', activeConfig.connection.dialect);
 
             await conn.destroy();
 
@@ -136,7 +136,7 @@ export function LockForceScreen({ params: _params }: ScreenProps): ReactElement 
             const db = conn.db as Kysely<NoormDatabase>;
             const lockManager = getLockManager();
 
-            await lockManager.forceRelease(db, activeConfigName ?? '');
+            await lockManager.forceRelease(db, activeConfigName ?? '', activeConfig.connection.dialect);
 
             await conn.destroy();
 

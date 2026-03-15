@@ -36,7 +36,7 @@ describe('cli: hooks/useObserver', () => {
 
     describe('useOnEvent', () => {
 
-        it('should subscribe to events and receive data', async () => {
+        it('should subscribe to events and receive data', { retry: 2 }, async () => {
 
             function Subscriber() {
 

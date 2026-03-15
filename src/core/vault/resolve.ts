@@ -11,6 +11,7 @@
 import type { Kysely } from 'kysely';
 
 import type { NoormDatabase } from '../shared/tables.js';
+import type { Dialect } from '../connection/types.js';
 import type { StateManager } from '../state/manager.js';
 
 import { getVaultSecret } from './storage.js';
@@ -47,6 +48,7 @@ export async function resolveSecret(
     secretKey: string,
     db?: Kysely<NoormDatabase> | null,
     vaultKey?: Buffer | null,
+    dialect?: Dialect,
 ): Promise<string | null> {
 
     // 1. Config-specific local secret (highest priority)
@@ -62,7 +64,7 @@ export async function resolveSecret(
     // 3. Vault secret (lowest priority - team-shared)
     if (db && vaultKey) {
 
-        const vaultValue = await getVaultSecret(db, vaultKey, secretKey);
+        const vaultValue = await getVaultSecret(db, vaultKey, secretKey, dialect ?? 'postgres');
 
         if (vaultValue) return vaultValue;
 
@@ -149,6 +151,7 @@ export async function buildSecretsContext(
     configName: string,
     db?: Kysely<NoormDatabase> | null,
     vaultKey?: Buffer | null,
+    dialect?: Dialect,
 ): Promise<Record<string, string>> {
 
     const secrets: Record<string, string> = {};
@@ -157,7 +160,7 @@ export async function buildSecretsContext(
     if (db && vaultKey) {
 
         const { getAllVaultSecrets } = await import('./storage.js');
-        const vaultSecrets = await getAllVaultSecrets(db, vaultKey);
+        const vaultSecrets = await getAllVaultSecrets(db, vaultKey, dialect ?? 'postgres');
 
         for (const [key, secret] of Object.entries(vaultSecrets)) {
 

@@ -196,6 +196,7 @@ export class RunNamespace {
             configName: this.#state.config.name,
             identity: this.#state.identity,
             projectRoot: this.#state.projectRoot,
+            dialect: this.#state.config.connection.dialect,
             config: this.#state.config as unknown as Record<string, unknown>,
             secrets: state.getAllSecrets(this.#state.config.name),
             globalSecrets: state.getAllGlobalSecrets(),

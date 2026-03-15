@@ -32,7 +32,7 @@ import type {
 /**
  * Schemas to exclude from exploration (system schemas).
  */
-const EXCLUDED_SCHEMAS = ['sys', 'INFORMATION_SCHEMA', 'guest'];
+const EXCLUDED_SCHEMAS = ['sys', 'INFORMATION_SCHEMA', 'guest', 'noorm'];
 
 /**
  * MSSQL explore operations.

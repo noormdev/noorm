@@ -9,6 +9,7 @@ import React from 'react';
 import { Text, Box } from 'ink';
 
 import { observer } from '../../../src/core/observer.js';
+import { NoormObserver } from '../../../src/cli/observer-context.js';
 import { useTransferProgress } from '../../../src/cli/hooks/useTransferProgress.js';
 
 /**
@@ -33,13 +34,22 @@ function TransferProgressView() {
 
 }
 
+/**
+ * Wrap component with NoormObserver provider for testing.
+ */
+function WithProvider({ children }: { children: React.ReactNode }) {
+
+    return <NoormObserver>{children}</NoormObserver>;
+
+}
+
 describe('cli: hooks/useTransferProgress', () => {
 
     describe('dt:import events', () => {
 
         it('should update aggregate rowsTransferred on dt:import:progress', async () => {
 
-            const { lastFrame, unmount } = render(<TransferProgressView />);
+            const { lastFrame, unmount } = render(<WithProvider><TransferProgressView /></WithProvider>);
 
             await new Promise((r) => setTimeout(r, 10));
 
@@ -81,7 +91,7 @@ describe('cli: hooks/useTransferProgress', () => {
 
         it('should not set phase to complete on dt:import:complete', async () => {
 
-            const { lastFrame, unmount } = render(<TransferProgressView />);
+            const { lastFrame, unmount } = render(<WithProvider><TransferProgressView /></WithProvider>);
 
             await new Promise((r) => setTimeout(r, 10));
 
@@ -114,7 +124,7 @@ describe('cli: hooks/useTransferProgress', () => {
 
         it('should track multi-file imports without premature completion', async () => {
 
-            const { lastFrame, unmount } = render(<TransferProgressView />);
+            const { lastFrame, unmount } = render(<WithProvider><TransferProgressView /></WithProvider>);
 
             await new Promise((r) => setTimeout(r, 10));
 
@@ -184,7 +194,7 @@ describe('cli: hooks/useTransferProgress', () => {
 
         it('should update aggregate rowsTransferred on transfer:table:progress', async () => {
 
-            const { lastFrame, unmount } = render(<TransferProgressView />);
+            const { lastFrame, unmount } = render(<WithProvider><TransferProgressView /></WithProvider>);
 
             await new Promise((r) => setTimeout(r, 10));
 
@@ -231,7 +241,7 @@ describe('cli: hooks/useTransferProgress', () => {
 
         it('should not double-count rows on transfer:table:after', async () => {
 
-            const { lastFrame, unmount } = render(<TransferProgressView />);
+            const { lastFrame, unmount } = render(<WithProvider><TransferProgressView /></WithProvider>);
 
             await new Promise((r) => setTimeout(r, 10));
 

@@ -267,7 +267,7 @@ describe('lock: manager', () => {
             const manager = getLockManager();
 
             await manager.acquire(db, 'dev', 'alice@example.com', sqliteOpts);
-            await manager.release(db, 'dev', 'alice@example.com');
+            await manager.release(db, 'dev', 'alice@example.com', 'sqlite');
 
             const row = await db
                 .selectFrom(NOORM_TABLES.lock)
@@ -283,7 +283,7 @@ describe('lock: manager', () => {
 
             const manager = getLockManager();
 
-            await expect(manager.release(db, 'dev', 'alice@example.com')).rejects.toThrow(
+            await expect(manager.release(db, 'dev', 'alice@example.com', 'sqlite')).rejects.toThrow(
                 LockNotFoundError,
             );
 
@@ -295,7 +295,7 @@ describe('lock: manager', () => {
 
             await manager.acquire(db, 'dev', 'alice@example.com', sqliteOpts);
 
-            await expect(manager.release(db, 'dev', 'bob@example.com')).rejects.toThrow(
+            await expect(manager.release(db, 'dev', 'bob@example.com', 'sqlite')).rejects.toThrow(
                 LockOwnershipError,
             );
 
@@ -311,7 +311,7 @@ describe('lock: manager', () => {
 
             await manager.acquire(db, 'dev', 'alice@example.com', sqliteOpts);
 
-            const released = await manager.forceRelease(db, 'dev');
+            const released = await manager.forceRelease(db, 'dev', 'sqlite');
 
             expect(released).toBe(true);
 
@@ -329,7 +329,7 @@ describe('lock: manager', () => {
 
             const manager = getLockManager();
 
-            const released = await manager.forceRelease(db, 'dev');
+            const released = await manager.forceRelease(db, 'dev', 'sqlite');
 
             expect(released).toBe(false);
 
@@ -436,7 +436,7 @@ describe('lock: manager', () => {
 
             const manager = getLockManager();
 
-            await expect(manager.validate(db, 'dev', 'alice@example.com')).rejects.toThrow(
+            await expect(manager.validate(db, 'dev', 'alice@example.com', 'sqlite')).rejects.toThrow(
                 LockNotFoundError,
             );
 

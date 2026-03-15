@@ -17,6 +17,7 @@ import { useState, useCallback, useMemo } from 'react';
 import type { ReactElement } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { attempt } from '@logosdx/utils';
+import type { Kysely } from 'kysely';
 
 import type { ScreenProps } from '../types.js';
 import { useRouter } from '../router.js';
@@ -26,6 +27,10 @@ import { useShutdown } from '../shutdown.js';
 import { Panel, Spinner } from '../components/index.js';
 import { useConnection, useAsyncEffect } from '../hooks/index.js';
 import { getErrorMessage, resolveChangesDir, resolveSqlDir } from '../utils/index.js';
+import { getCurrentVersion } from '../../core/update/checker.js';
+import { CURRENT_VERSIONS } from '../../core/version/types.js';
+import { getFullVersionRecord, type FullVersionRecord } from '../../core/version/schema/index.js';
+import { fetchOverview, type ExploreOverview } from '../../core/explore/index.js';
 import { ChangeHistory } from '../../core/change/history.js';
 import { discoverChanges } from '../../core/change/parser.js';
 import { getLockManager } from '../../core/lock/manager.js';
@@ -93,9 +98,11 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
     });
     const [recentActivity, setRecentActivity] = useState<UnifiedHistoryRecord[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [versionRecord, setVersionRecord] = useState<FullVersionRecord | null>(null);
+    const [objectStats, setObjectStats] = useState<ExploreOverview | null>(null);
 
     // Shared connection
-    const { db, loading: connLoading, error: connError } = useConnection();
+    const { db, dialect, loading: connLoading, error: connError } = useConnection({ ensureSchema: true });
 
     // Compute setup status for all configs (configs linked to stages)
     const setupStatus = useMemo<ConfigSetupStatus[]>(() => {
@@ -165,10 +172,11 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
 
             // Get lock status
             const lockManager = getLockManager();
-            const lockStatus = await lockManager.status(db, activeConfigName ?? '');
+            const connDialect = dialect ?? 'postgres';
+            const lockStatus = await lockManager.status(db, activeConfigName ?? '', connDialect);
 
             // Get change info - use ChangeHistory directly for read-only operations
-            const changeHistory = new ChangeHistory(db, activeConfigName ?? '');
+            const changeHistory = new ChangeHistory(db, activeConfigName ?? '', connDialect);
 
             // Discover changes from disk
             const diskChanges = await discoverChanges(
@@ -195,7 +203,13 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
             // Get recent activity (all operation types)
             const history = await changeHistory.getUnifiedHistory(undefined, 5);
 
-            return { lockStatus, pendingCount, history };
+            // Get metadata (version record + object counts) in parallel
+            const [[versionRec], [overview]] = await Promise.all([
+                attempt(() => getFullVersionRecord(db, activeConfig!.connection.dialect)),
+                attempt(() => fetchOverview(db as Kysely<unknown>, activeConfig!.connection.dialect)),
+            ]);
+
+            return { lockStatus, pendingCount, history, versionRec, overview };
 
         });
 
@@ -221,6 +235,8 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
                 lockStatus: result.lockStatus,
             });
             setRecentActivity(result.history);
+            setVersionRecord(result.versionRec ?? null);
+            setObjectStats(result.overview ?? null);
 
         }
 
@@ -358,6 +374,19 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
 
     }, [status.pendingCount]);
 
+    /**
+     * Format a date value for display. Handles the Date-typed-but-actually-string SQLite quirk.
+     */
+    function formatMetaDate(date: Date | null | undefined): string {
+
+        if (!date) return '--';
+
+        const d = date instanceof Date ? date : new Date(date as unknown as string);
+
+        return d.toISOString().split('T')[0]!;
+
+    }
+
     // No configs prompt
     if (loadingStatus === 'ready' && configs.length === 0) {
 
@@ -365,7 +394,7 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
             <Box flexDirection="column" padding={1}>
                 <Box marginBottom={1}>
                     <Text bold>noorm</Text>
-                    <Text dimColor> - Database Schema & Change Manager</Text>
+                    <Text dimColor> v{getCurrentVersion()} - Database Schema & Change Manager</Text>
                 </Box>
 
                 <Panel title="Welcome" paddingX={2} paddingY={1} borderColor="cyan">
@@ -397,7 +426,7 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
             <Box flexDirection="column" padding={1}>
                 <Box marginBottom={1}>
                     <Text bold>noorm</Text>
-                    <Text dimColor> - Database Schema & Change Manager</Text>
+                    <Text dimColor> v{getCurrentVersion()} - Database Schema & Change Manager</Text>
                 </Box>
 
                 <Panel title="Select Config" paddingX={2} paddingY={1} borderColor="yellow">
@@ -427,9 +456,20 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
     return (
         <Box flexDirection="column" padding={1}>
             {/* Header */}
-            <Box marginBottom={1}>
-                <Text bold>noorm</Text>
-                <Text dimColor> - Database Schema & Change Manager</Text>
+            <Box flexDirection="column" marginBottom={1}>
+                <Box>
+                    <Text bold>noorm</Text>
+                    <Text dimColor> v{getCurrentVersion()} - Database Schema & Change Manager</Text>
+                </Box>
+                <Box>
+                    <Text dimColor>
+                        schema: v{versionRecord?.noormVersion ?? CURRENT_VERSIONS.schema}
+                        {'  |  '}state: v{CURRENT_VERSIONS.state}
+                        {'  |  '}settings: v{CURRENT_VERSIONS.settings}
+                        {'  |  '}installed: {formatMetaDate(versionRecord?.installedAt)}
+                        {'  |  '}upgraded: {formatMetaDate(versionRecord?.upgradedAt)}
+                    </Text>
+                </Box>
             </Box>
 
             {/* Welcome / Config Summary */}
@@ -447,6 +487,21 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
                     </>
                 )}
             </Box>
+
+            {/* DB Object Stats */}
+            {status.connection === 'connected' && objectStats && (
+                <Box marginBottom={1}>
+                    <Text dimColor>
+                        {[
+                            objectStats.tables > 0 ? `${objectStats.tables} tbls` : '',
+                            objectStats.views > 0 ? `${objectStats.views} vws` : '',
+                            objectStats.functions > 0 ? `${objectStats.functions} fns` : '',
+                            objectStats.procedures > 0 ? `${objectStats.procedures} procs` : '',
+                            objectStats.types > 0 ? `${objectStats.types} types` : '',
+                        ].filter(Boolean).join('  ') || 'empty database'}
+                    </Text>
+                </Box>
+            )}
 
             {/* Two-column layout for Status and Quick Actions */}
             <Box gap={2} marginBottom={1}>

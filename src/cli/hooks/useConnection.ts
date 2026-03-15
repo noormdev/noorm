@@ -69,10 +69,10 @@ export interface UseConnectionOptions {
 
     /**
      * Callback after connection is ready (and schema ensured if requested).
-     * Runs once per connection. Receives the database instance and a
-     * cancellation check function.
+     * Runs once per connection. Receives the database instance, dialect,
+     * and a cancellation check function.
      */
-    onReady?: (db: Kysely<NoormDatabase>, isCancelled: () => boolean) => Promise<void>;
+    onReady?: (db: Kysely<NoormDatabase>, isCancelled: () => boolean, dialect: Dialect) => Promise<void>;
 
 }
 
@@ -171,7 +171,7 @@ export function useConnection(options?: UseConnectionOptions): ConnectionState {
             if (options?.onReady) {
 
                 const [, readyErr] = await attempt(() =>
-                    options.onReady!(db, () => cancelledRef.current),
+                    options.onReady!(db, () => cancelledRef.current, dialect),
                 );
 
                 if (cancelledRef.current) return;

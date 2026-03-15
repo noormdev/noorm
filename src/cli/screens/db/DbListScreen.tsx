@@ -28,6 +28,7 @@ import { useAppContext } from '../../app-context.js';
 import { Panel, Spinner, ConnectionStatus, useToast } from '../../components/index.js';
 import { useConnection, useAsyncEffect } from '../../hooks/index.js';
 import { tablesExist } from '../../../core/version/index.js';
+import { getNoormTables, noormDb } from '../../../core/shared/index.js';
 import { attempt } from '@logosdx/utils';
 
 /**
@@ -64,7 +65,7 @@ export function DbListScreen({ params: _params }: ScreenProps): ReactElement {
     const [_error, setError] = useState<string | null>(null);
 
     // Shared connection
-    const { db, loading: connLoading, error: connError } = useConnection();
+    const { db, dialect, loading: connLoading, error: connError } = useConnection();
 
     // Load database status when connection is ready
     useAsyncEffect(async (isCancelled) => {
@@ -97,16 +98,19 @@ export function DbListScreen({ params: _params }: ScreenProps): ReactElement {
         const [result, err] = await attempt(async () => {
 
             // Check if tables exist
-            const hasNoormTables = await tablesExist(db);
+            const connDialect = dialect ?? 'postgres';
+            const hasNoormTables = await tablesExist(db, connDialect);
 
             let count = 0;
 
             if (hasNoormTables) {
 
                 // Count tracked objects (executions with unique file paths)
-                const executions = await db
-                    .selectFrom('__noorm_executions__')
-                    .select(db.fn.countAll<number>().as('count'))
+                const tables = getNoormTables(connDialect);
+                const ndb = noormDb(db, connDialect);
+                const executions = await ndb
+                    .selectFrom(tables.executions as never)
+                    .select(ndb.fn.countAll<number>().as('count'))
                     .executeTakeFirst();
 
                 count = Number(executions?.count ?? 0);

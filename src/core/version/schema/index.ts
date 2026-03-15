@@ -10,11 +10,11 @@
  * - No SQL injection risks
  */
 import type { Kysely } from 'kysely';
-import { sql } from 'kysely';
 import { attempt } from '@logosdx/utils';
 
 import { observer } from '../../observer.js';
 import type { NoormDatabase } from '../../shared/tables.js';
+import { getNoormTables, noormDb } from '../../shared/tables.js';
 import type { Dialect } from '../../connection/types.js';
 
 import {
@@ -27,6 +27,7 @@ import {
 
 // Import migrations
 import { v1 } from './migrations/v1.js';
+import { v2 } from './migrations/v2.js';
 
 import { waitForIdentityToLoad } from '../../identity/index.js';
 import { getCurrentVersion } from '../../update/checker.js';
@@ -35,32 +36,62 @@ import { getCurrentVersion } from '../../update/checker.js';
  * All schema migrations in order.
  * Add new migrations here as they're created.
  */
-const MIGRATIONS: SchemaMigration[] = [v1];
+const MIGRATIONS: SchemaMigration[] = [v1, v2];
 
 /**
  * Check if tracking tables exist.
  *
+ * Two-step detection: checks legacy prefixed location first,
+ * then for pg/mssql checks schema-qualified location (noorm.version).
+ *
  * @example
  * ```typescript
- * const exists = await tablesExist(db)
+ * const exists = await tablesExist(db, 'postgres')
  * if (!exists) {
- *     await bootstrap(db)
+ *     await bootstrap(db, 'postgres')
  * }
  * ```
  */
-export async function tablesExist(db: Kysely<NoormDatabase>): Promise<boolean> {
+export async function tablesExist(db: Kysely<NoormDatabase>, dialect: Dialect): Promise<boolean> {
 
-    const [result, err] = await attempt(async () => {
+    // Step 1: Check legacy prefixed location
+    const [legacyResult] = await attempt(async () => {
 
-        await sql`SELECT 1 FROM __noorm_version__ LIMIT 1`.execute(db);
+        await db
+            .selectFrom('__noorm_version__')
+            .select('id')
+            .limit(1)
+            .executeTakeFirst();
 
         return true;
 
     });
 
-    if (err) return false;
+    if (legacyResult) return true;
 
-    return result;
+    // Step 2: For pg/mssql, check schema-qualified location
+    if (dialect === 'postgres' || dialect === 'mssql') {
+
+        const ndb = noormDb(db, dialect);
+        const tables = getNoormTables(dialect);
+
+        const [schemaResult] = await attempt(async () => {
+
+            await ndb
+                .selectFrom(tables.version as keyof NoormDatabase)
+                .select('id')
+                .limit(1)
+                .executeTakeFirst();
+
+            return true;
+
+        });
+
+        if (schemaResult) return true;
+
+    }
+
+    return false;
 
 }
 
@@ -68,18 +99,21 @@ export async function tablesExist(db: Kysely<NoormDatabase>): Promise<boolean> {
  * Get current schema version from database.
  * Returns 0 if tables don't exist.
  *
+ * Two-step: tries legacy location first, then schema location for pg/mssql.
+ *
  * @example
  * ```typescript
- * const version = await getSchemaVersion(db)
+ * const version = await getSchemaVersion(db, 'postgres')
  * // version = 3 (or 0 if not initialized)
  * ```
  */
-export async function getSchemaVersion(db: Kysely<NoormDatabase>): Promise<number> {
+export async function getSchemaVersion(db: Kysely<NoormDatabase>, dialect: Dialect): Promise<number> {
 
-    const exists = await tablesExist(db);
+    const exists = await tablesExist(db, dialect);
     if (!exists) return 0;
 
-    const [result, err] = await attempt(async () => {
+    // Step 1: Try legacy prefixed location
+    const [legacyResult] = await attempt(async () => {
 
         return db
             .selectFrom('__noorm_version__')
@@ -90,9 +124,30 @@ export async function getSchemaVersion(db: Kysely<NoormDatabase>): Promise<numbe
 
     });
 
-    if (err) return 0;
+    if (legacyResult) return legacyResult.noorm_version ?? 0;
 
-    return result?.noorm_version ?? 0;
+    // Step 2: For pg/mssql, try schema-qualified location
+    if (dialect === 'postgres' || dialect === 'mssql') {
+
+        const ndb = noormDb(db, dialect);
+        const tables = getNoormTables(dialect);
+
+        const [schemaResult] = await attempt(async () => {
+
+            return ndb
+                .selectFrom(tables.version as keyof NoormDatabase)
+                .select('noorm_version')
+                .orderBy('id', 'desc')
+                .limit(1)
+                .executeTakeFirst();
+
+        });
+
+        if (schemaResult) return schemaResult.noorm_version ?? 0;
+
+    }
+
+    return 0;
 
 }
 
@@ -101,15 +156,18 @@ export async function getSchemaVersion(db: Kysely<NoormDatabase>): Promise<numbe
  *
  * @example
  * ```typescript
- * const status = await checkSchemaVersion(db)
+ * const status = await checkSchemaVersion(db, 'postgres')
  * if (status.needsMigration) {
- *     await migrateSchema(db)
+ *     await migrateSchema(db, 'postgres')
  * }
  * ```
  */
-export async function checkSchemaVersion(db: Kysely<NoormDatabase>): Promise<LayerVersionStatus> {
+export async function checkSchemaVersion(
+    db: Kysely<NoormDatabase>,
+    dialect: Dialect,
+): Promise<LayerVersionStatus> {
 
-    const current = await getSchemaVersion(db);
+    const current = await getSchemaVersion(db, dialect);
     const expected = CURRENT_VERSIONS.schema;
 
     observer.emit('version:schema:checking', { current });
@@ -167,14 +225,17 @@ export async function bootstrapSchema(
     }
 
     // Insert initial version record with all versions
-    await db
-        .insertInto('__noorm_version__')
+    const ndb = noormDb(db, dialect);
+    const tables = getNoormTables(dialect);
+
+    await ndb
+        .insertInto(tables.version as keyof NoormDatabase)
         .values({
             cli_version: getCurrentVersion(),
             noorm_version: CURRENT_VERSIONS.schema,
             state_version: options?.stateVersion ?? CURRENT_VERSIONS.state,
             settings_version: options?.settingsVersion ?? CURRENT_VERSIONS.settings,
-        })
+        } as never)
         .execute();
 
     const durationMs = performance.now() - start;
@@ -186,7 +247,7 @@ export async function bootstrapSchema(
     });
 
     // Ensure identity is registered in the new schema
-    await waitForIdentityToLoad(db);
+    await waitForIdentityToLoad(db, dialect);
 
 }
 
@@ -199,7 +260,7 @@ export async function bootstrapSchema(
  * @example
  * ```typescript
  * // After migrating state and settings
- * await updateVersionRecord(db, {
+ * await updateVersionRecord(db, 'postgres', {
  *     stateVersion: CURRENT_VERSIONS.state,
  *     settingsVersion: CURRENT_VERSIONS.settings,
  * })
@@ -207,20 +268,23 @@ export async function bootstrapSchema(
  */
 export async function updateVersionRecord(
     db: Kysely<NoormDatabase>,
+    dialect: Dialect,
     options?: VersionRecordOptions,
 ): Promise<void> {
 
     const now = new Date().toISOString();
+    const ndb = noormDb(db, dialect);
+    const tables = getNoormTables(dialect);
 
-    await db
-        .insertInto('__noorm_version__')
+    await ndb
+        .insertInto(tables.version as keyof NoormDatabase)
         .values({
             cli_version: getCurrentVersion(),
             noorm_version: CURRENT_VERSIONS.schema,
             state_version: options?.stateVersion ?? CURRENT_VERSIONS.state,
             settings_version: options?.settingsVersion ?? CURRENT_VERSIONS.settings,
             upgraded_at: now as unknown as Date,
-        })
+        } as never)
         .execute();
 
 }
@@ -228,16 +292,19 @@ export async function updateVersionRecord(
 /**
  * Get the latest version record.
  *
+ * Two-step lookup: tries legacy location first, then schema location for pg/mssql.
  * Returns the most recent version record, or null if no tables exist.
  */
 export async function getLatestVersionRecord(
     db: Kysely<NoormDatabase>,
+    dialect: Dialect,
 ): Promise<{ stateVersion: number; settingsVersion: number } | null> {
 
-    const exists = await tablesExist(db);
+    const exists = await tablesExist(db, dialect);
     if (!exists) return null;
 
-    const [result, err] = await attempt(async () => {
+    // Step 1: Try legacy prefixed location
+    const [legacyResult] = await attempt(async () => {
 
         return db
             .selectFrom('__noorm_version__')
@@ -248,11 +315,139 @@ export async function getLatestVersionRecord(
 
     });
 
-    if (err || !result) return null;
+    if (legacyResult) {
+
+        return {
+            stateVersion: legacyResult.state_version,
+            settingsVersion: legacyResult.settings_version,
+        };
+
+    }
+
+    // Step 2: For pg/mssql, try schema-qualified location
+    if (dialect === 'postgres' || dialect === 'mssql') {
+
+        const ndb = noormDb(db, dialect);
+        const tables = getNoormTables(dialect);
+
+        const [schemaResult] = await attempt(async () => {
+
+            return ndb
+                .selectFrom(tables.version as keyof NoormDatabase)
+                .select(['state_version', 'settings_version'])
+                .orderBy('id', 'desc')
+                .limit(1)
+                .executeTakeFirst();
+
+        });
+
+        if (schemaResult) {
+
+            return {
+                stateVersion: schemaResult.state_version,
+                settingsVersion: schemaResult.settings_version,
+            };
+
+        }
+
+    }
+
+    return null;
+
+}
+
+/**
+ * Full version record for metadata display.
+ *
+ * Combines data from the first and latest version rows:
+ * - installedAt from the first row (initial bootstrap)
+ * - All other fields from the latest row (most recent state)
+ */
+export interface FullVersionRecord {
+    /** CLI semver from latest row */
+    cliVersion: string;
+
+    /** Database tracking tables version */
+    noormVersion: number;
+
+    /** State file schema version */
+    stateVersion: number;
+
+    /** Settings file schema version */
+    settingsVersion: number;
+
+    /** When noorm was first installed (from first row) */
+    installedAt: Date;
+
+    /** When noorm was last upgraded (from latest row) */
+    upgradedAt: Date;
+}
+
+/**
+ * Get full version record for metadata display.
+ *
+ * Combines the first row's installed_at with the latest row's
+ * remaining fields. Returns null if no tracking tables exist.
+ *
+ * @example
+ * ```typescript
+ * const record = await getFullVersionRecord(db);
+ * if (record) {
+ *     console.log(`noorm v${record.cliVersion}, schema v${record.noormVersion}`);
+ *     console.log(`installed: ${record.installedAt}`);
+ * }
+ * ```
+ */
+export async function getFullVersionRecord(
+    db: Kysely<NoormDatabase>,
+    dialect: Dialect,
+): Promise<FullVersionRecord | null> {
+
+    const exists = await tablesExist(db, dialect);
+    if (!exists) return null;
+
+    const ndb = noormDb(db, dialect);
+    const tables = getNoormTables(dialect);
+
+    const [results, err] = await attempt(() =>
+        Promise.all([
+            // Latest row: all fields + upgraded_at
+            ndb
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                .selectFrom(tables.version as any)
+                .select([
+                    'cli_version',
+                    'noorm_version',
+                    'state_version',
+                    'settings_version',
+                    'upgraded_at',
+                ])
+                .orderBy('id', 'desc')
+                .limit(1)
+                .executeTakeFirst(),
+            // First row: installed_at only
+            ndb
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                .selectFrom(tables.version as any)
+                .select('installed_at')
+                .orderBy('id', 'asc')
+                .limit(1)
+                .executeTakeFirst(),
+        ]),
+    );
+
+    if (err) return null;
+
+    const [latest, first] = results;
+    if (!latest || !first) return null;
 
     return {
-        stateVersion: result.state_version,
-        settingsVersion: result.settings_version,
+        cliVersion: latest.cli_version,
+        noormVersion: latest.noorm_version,
+        stateVersion: latest.state_version,
+        settingsVersion: latest.settings_version,
+        installedAt: first.installed_at,
+        upgradedAt: latest.upgraded_at,
     };
 
 }
@@ -277,7 +472,7 @@ export async function migrateSchema(
     options?: VersionRecordOptions,
 ): Promise<void> {
 
-    const status = await checkSchemaVersion(db);
+    const status = await checkSchemaVersion(db, dialect);
 
     // Schema is newer than CLI supports
     if (status.isNewer) {
@@ -312,7 +507,7 @@ export async function migrateSchema(
     });
 
     // Get existing versions to carry forward
-    const existing = await getLatestVersionRecord(db);
+    const existing = await getLatestVersionRecord(db, dialect);
 
     // Run pending migrations
     const pendingMigrations = MIGRATIONS.filter((m) => m.version > status.current);
@@ -330,8 +525,11 @@ export async function migrateSchema(
     }
 
     // Update version record (carry forward existing versions or use provided)
-    await db
-        .insertInto('__noorm_version__')
+    const ndb = noormDb(db, dialect);
+    const tables = getNoormTables(dialect);
+
+    await ndb
+        .insertInto(tables.version as keyof NoormDatabase)
         .values({
             cli_version: getCurrentVersion(),
             noorm_version: CURRENT_VERSIONS.schema,
@@ -339,7 +537,7 @@ export async function migrateSchema(
                 options?.stateVersion ?? existing?.stateVersion ?? CURRENT_VERSIONS.state,
             settings_version:
                 options?.settingsVersion ?? existing?.settingsVersion ?? CURRENT_VERSIONS.settings,
-        })
+        } as never)
         .execute();
 
     const durationMs = performance.now() - start;
@@ -350,7 +548,7 @@ export async function migrateSchema(
         durationMs,
     });
 
-    await waitForIdentityToLoad(db);
+    await waitForIdentityToLoad(db, dialect);
 
 }
 

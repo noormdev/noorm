@@ -53,11 +53,11 @@ export function VaultScreen({ params: _params }: ScreenProps): ReactElement {
     const [propagating, setPropagating] = useState(false);
 
     const { phase, error, connRef } = useVaultConnection({
-        onReady: async (db, isCancelled) => {
+        onReady: async (db, isCancelled, dialect) => {
 
             if (!identity) return;
 
-            const vaultStatus = await getVaultStatus(db as Kysely<NoormDatabase>, identity.identityHash);
+            const vaultStatus = await getVaultStatus(db as Kysely<NoormDatabase>, identity.identityHash, dialect);
 
             if (isCancelled()) return;
 
@@ -69,11 +69,11 @@ export function VaultScreen({ params: _params }: ScreenProps): ReactElement {
 
                 if (privateKey && !isCancelled()) {
 
-                    const vaultKey = await getVaultKey(db as Kysely<NoormDatabase>, identity.identityHash, privateKey);
+                    const vaultKey = await getVaultKey(db as Kysely<NoormDatabase>, identity.identityHash, privateKey, dialect);
 
                     if (vaultKey && !isCancelled()) {
 
-                        const allSecrets = await getAllVaultSecrets(db as Kysely<NoormDatabase>, vaultKey);
+                        const allSecrets = await getAllVaultSecrets(db as Kysely<NoormDatabase>, vaultKey, dialect);
                         setSecrets(Object.values(allSecrets));
 
                     }
@@ -164,7 +164,8 @@ export function VaultScreen({ params: _params }: ScreenProps): ReactElement {
         }
 
         const db = connRef.current.db;
-        const vaultKey = await getVaultKey(db as Kysely<NoormDatabase>, identity.identityHash, privateKey);
+        const connDialect = connRef.current.dialect;
+        const vaultKey = await getVaultKey(db as Kysely<NoormDatabase>, identity.identityHash, privateKey, connDialect);
 
         if (!vaultKey) {
 
@@ -175,7 +176,7 @@ export function VaultScreen({ params: _params }: ScreenProps): ReactElement {
 
         }
 
-        const result = await propagateVaultKey(db as Kysely<NoormDatabase>, vaultKey);
+        const result = await propagateVaultKey(db as Kysely<NoormDatabase>, vaultKey, connDialect);
 
         if (result.propagatedTo.length > 0) {
 
@@ -192,7 +193,7 @@ export function VaultScreen({ params: _params }: ScreenProps): ReactElement {
         }
 
         // Refresh status
-        const newStatus = await getVaultStatus(db as Kysely<NoormDatabase>, identity.identityHash);
+        const newStatus = await getVaultStatus(db as Kysely<NoormDatabase>, identity.identityHash, connDialect);
         setStatus(newStatus);
         setPropagating(false);
 

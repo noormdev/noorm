@@ -49,7 +49,7 @@ export function DebugOverviewScreen({ params: _params }: ScreenProps): ReactElem
     const [error, setError] = useState<string | null>(null);
 
     // Shared connection
-    const { db, loading: connLoading, error: connError } = useConnection();
+    const { db, dialect, loading: connLoading, error: connError } = useConnection();
 
     // Load table counts when connection is ready
     useAsyncEffect(async (isCancelled) => {
@@ -67,7 +67,7 @@ export function DebugOverviewScreen({ params: _params }: ScreenProps): ReactElem
 
         const [result, err] = await attempt(async () => {
 
-            const ops = createDebugOperations(db as Kysely<NoormDatabase>);
+            const ops = createDebugOperations(db as Kysely<NoormDatabase>, dialect ?? 'postgres');
 
             return await ops.getTableCounts();
 
