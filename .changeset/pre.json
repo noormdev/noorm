@@ -29,6 +29,7 @@
     "tiny-dogs-yawn",
     "version-command",
     "version-debug",
-    "warm-apples-march"
+    "warm-apples-march",
+    "worker-bridge"
   ]
 }
