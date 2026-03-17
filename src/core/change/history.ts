@@ -85,6 +85,7 @@ export class ChangeHistory {
     readonly #ndb: Kysely<NoormDatabase>;
     readonly #tables: ReturnType<typeof getNoormTables>;
     readonly #configName: string;
+    readonly #dialect: Dialect;
 
     constructor(db: Kysely<NoormDatabase>, configName: string, dialect: Dialect = 'sqlite') {
 
@@ -92,6 +93,7 @@ export class ChangeHistory {
         this.#ndb = noormDb(db, dialect);
         this.#tables = getNoormTables(dialect);
         this.#configName = configName;
+        this.#dialect = dialect;
 
     }
 
@@ -394,45 +396,65 @@ export class ChangeHistory {
         executedBy: string;
     }): Promise<number> {
 
-        const [result, err] = await attempt(() =>
-            this.#ndb
-                .insertInto(this.#tables.change)
-                .values({
-                    name: data.name,
-                    change_type: 'change',
-                    direction: data.direction,
-                    status: 'pending',
-                    config_name: this.#configName,
-                    executed_by: data.executedBy,
-                })
-                .returning('id')
-                .executeTakeFirstOrThrow(),
-        );
+        const insertQuery = this.#ndb
+            .insertInto(this.#tables.change)
+            .values({
+                name: data.name,
+                change_type: 'change',
+                direction: data.direction,
+                status: 'pending',
+                config_name: this.#configName,
+                executed_by: data.executedBy,
+            });
 
-        if (err) {
+        // MSSQL uses OUTPUT inserted.id (not RETURNING)
+        let id: number | undefined;
 
-            throw new Error('Failed to create change operation record', { cause: err });
+        if (this.#dialect === 'mssql') {
 
-        }
-
-        // Validate the returned ID
-        // Note: SQLite with better-sqlite3 may return null for RETURNING clause
-        // In that case, fall back to last_insert_rowid()
-        let id = result?.id;
-
-        if (id === null || id === undefined) {
-
-            const [lastIdResult, lastIdErr] = await attempt(() =>
-                sql<{ id: number }>`SELECT last_insert_rowid() as id`.execute(this.#db),
+            const [result, insertErr] = await attempt(() =>
+                insertQuery
+                    .output('inserted.id as id')
+                    .executeTakeFirstOrThrow(),
             );
 
-            if (lastIdErr || !lastIdResult?.rows?.[0]?.id) {
+            if (insertErr) {
 
-                throw new Error('Failed to retrieve last insert row id');
+                throw new Error('Failed to create change operation record', { cause: insertErr });
 
             }
 
-            id = lastIdResult.rows[0].id;
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            id = (result as any)?.id;
+
+        }
+        else {
+
+            const [result, err] = await attempt(() =>
+                insertQuery.returning('id').executeTakeFirstOrThrow(),
+            );
+
+            if (err) {
+
+                throw new Error('Failed to create change operation record', { cause: err });
+
+            }
+
+            id = result?.id ?? undefined;
+
+            // SQLite with better-sqlite3 may return null for RETURNING
+            if (id === null || id === undefined) {
+
+                const lastIdQuery = this.#lastInsertIdQuery();
+
+                if (lastIdQuery) {
+
+                    const [lastIdResult] = await attempt(() => lastIdQuery.execute(this.#db));
+                    id = lastIdResult?.rows?.[0]?.id;
+
+                }
+
+            }
 
         }
 
@@ -443,6 +465,34 @@ export class ChangeHistory {
         }
 
         return id;
+
+    }
+
+    /**
+     * Get dialect-specific last-insert-id query.
+     *
+     * Returns null if the dialect should always use RETURNING/OUTPUT.
+     */
+    #lastInsertIdQuery(): ReturnType<typeof sql<{ id: number }>> | null {
+
+        switch (this.#dialect) {
+
+            case 'sqlite':
+                return sql<{ id: number }>`SELECT last_insert_rowid() as id`;
+
+            case 'mysql':
+                return sql<{ id: number }>`SELECT LAST_INSERT_ID() as id`;
+
+            case 'mssql':
+                return sql<{ id: number }>`SELECT SCOPE_IDENTITY() as id`;
+
+            case 'postgres':
+                return sql<{ id: number }>`SELECT lastval() as id`;
+
+            default:
+                return null;
+
+        }
 
     }
 
@@ -573,7 +623,7 @@ export class ChangeHistory {
                 .updateTable(this.#tables.executions)
                 .set({
                     status: 'skipped',
-                    skip_reason: reason,
+                    skip_reason: reason.slice(0, 100),
                 })
                 .where('change_id', '=', operationId)
                 .where('status', '=', 'pending')
@@ -675,22 +725,45 @@ export class ChangeHistory {
      */
     async recordReset(executedBy: string, reason?: string): Promise<number> {
 
+        const insertQuery = this.#ndb
+            .insertInto(this.#tables.change)
+            .values({
+                name: '__reset__',
+                change_type: 'change',
+                direction: 'change',
+                status: 'success',
+                config_name: this.#configName,
+                executed_by: executedBy,
+                error_message: reason ?? '',
+                duration_ms: 0,
+                checksum: '',
+            });
+
+        if (this.#dialect === 'mssql') {
+
+            const [result, insertErr] = await attempt(() =>
+                insertQuery.output('inserted.id as id').executeTakeFirstOrThrow(),
+            );
+
+            if (insertErr) {
+
+                observer.emit('error', {
+                    source: 'change',
+                    error: insertErr,
+                    context: { operation: 'record-reset' },
+                });
+
+                return 0;
+
+            }
+
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            return (result as any)?.id ?? 0;
+
+        }
+
         const [result, err] = await attempt(() =>
-            this.#ndb
-                .insertInto(this.#tables.change)
-                .values({
-                    name: '__reset__',
-                    change_type: 'change',
-                    direction: 'change',
-                    status: 'success',
-                    config_name: this.#configName,
-                    executed_by: executedBy,
-                    error_message: reason ?? '',
-                    duration_ms: 0,
-                    checksum: '',
-                })
-                .returning('id')
-                .executeTakeFirstOrThrow(),
+            insertQuery.returning('id').executeTakeFirstOrThrow(),
         );
 
         if (err) {

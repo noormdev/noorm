@@ -10,6 +10,7 @@
  */
 import { Kysely, MssqlDialect, sql } from 'kysely';
 import type { ConnectionConfig, ConnectionResult } from '../types.js';
+import { MssqlLimitPlugin } from './mssql-limit-plugin.js';
 
 /**
  * Build tedious connection options from noorm config.
@@ -70,6 +71,7 @@ async function verifyDatabaseExists(
                 connectionFactory: () => buildTediousConfig(Tedious, config, 'master'),
             },
         }),
+        plugins: [new MssqlLimitPlugin()],
     });
 
     try {
@@ -138,6 +140,7 @@ export async function createMssqlConnection(config: ConnectionConfig): Promise<C
                 connectionFactory: () => buildTediousConfig(Tedious, config),
             },
         }),
+        plugins: [new MssqlLimitPlugin()],
     });
 
     return {

@@ -46,7 +46,7 @@ export function RunFileScreen({ params }: ScreenProps): ReactElement {
     const { state: progress, reset: resetProgress } = useRunProgress();
 
     // Shared connection for status checks
-    const { db: sharedDb, loading: _connLoading, error: connError } = useConnection();
+    const { db: sharedDb, dialect: sharedDialect, loading: _connLoading, error: connError } = useConnection();
 
     const [phase, setPhase] = useState<Phase>('loading');
     const [allFiles, setAllFiles] = useState<string[]>([]);
@@ -156,7 +156,7 @@ export function RunFileScreen({ params }: ScreenProps): ReactElement {
         const context = buildRunContext({
             db: sharedDb, configName: activeConfigName, identity,
             projectRoot, activeConfig: activeConfig as unknown as Record<string, unknown>,
-            stateManager,
+            stateManager, dialect: sharedDialect ?? undefined,
         });
 
         const [status, statusErr] = await attempt(() => checkFilesStatus(context, [selectedFile]));
@@ -257,7 +257,7 @@ export function RunFileScreen({ params }: ScreenProps): ReactElement {
             const context = buildRunContext({
                 db, configName: activeConfigName, identity,
                 projectRoot, activeConfig: activeConfig as unknown as Record<string, unknown>,
-                stateManager,
+                stateManager, dialect: conn.dialect,
             });
 
             const options = {

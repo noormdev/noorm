@@ -17,7 +17,7 @@
 import { useState, useCallback } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { ProgressBar } from '@inkjs/ui';
-import { join } from 'path';
+import { join, relative } from 'path';
 
 import type { ReactElement } from 'react';
 import type { ScreenProps } from '../../types.js';
@@ -163,7 +163,7 @@ export function RunBuildScreen({ params: _params }: ScreenProps): ReactElement {
             const context = buildRunContext({
                 db, configName: activeConfigName, identity,
                 projectRoot, activeConfig: activeConfig as unknown as Record<string, unknown>,
-                stateManager,
+                stateManager, dialect: conn.dialect,
             });
 
             // Run options from global modes
@@ -466,6 +466,15 @@ export function RunBuildScreen({ params: _params }: ScreenProps): ReactElement {
                             )}
                         </Box>
 
+                        {progress.error && (
+                            <Box flexDirection="column" marginTop={1}>
+                                <Text bold color="red">
+                                    Error:
+                                </Text>
+                                <Text color="red">{progress.error}</Text>
+                            </Box>
+                        )}
+
                         {progress.filesFailed > 0 && (
                             <Box flexDirection="column" marginTop={1}>
                                 <Text bold color="red">
@@ -476,7 +485,7 @@ export function RunBuildScreen({ params: _params }: ScreenProps): ReactElement {
                                     .slice(0, 5)
                                     .map((r, i) => (
                                         <Text key={i} dimColor>
-                                            {r.filepath.split('/').pop()}: {r.error}
+                                            {relative(process.cwd(), r.filepath)}: {r.error}
                                         </Text>
                                     ))}
                                 {progress.results.filter((r) => r.status === 'failed').length >

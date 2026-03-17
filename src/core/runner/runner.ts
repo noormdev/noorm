@@ -116,7 +116,10 @@ export async function runBuild(
                 context: { sqlPath, operation: 'discover-files' },
             });
 
-            return createFailedBatchResult(discoverErr.message, performance.now() - start);
+            return createFailedBatchResult(
+                `${discoverErr.message} (${sqlPath})`,
+                performance.now() - start,
+            );
 
         }
 
@@ -130,7 +133,7 @@ export async function runBuild(
     });
 
     // Execute files
-    const result = await executeFilesInternal(context, files, opts, 'build');
+    const result = await executeFilesInternal(context, files, opts, 'build', sqlPath);
 
     observer.emit('build:complete', {
         status: result.status,
@@ -138,6 +141,7 @@ export async function runBuild(
         filesSkipped: result.filesSkipped,
         filesFailed: result.filesFailed,
         durationMs: result.durationMs,
+        error: result.error,
     });
 
     return result;
@@ -262,7 +266,10 @@ export async function runDir(
             context: { dirpath, operation: 'discover-files' },
         });
 
-        return createFailedBatchResult(discoverErr.message, performance.now() - start);
+        return createFailedBatchResult(
+            `${discoverErr.message} (${dirpath})`,
+            performance.now() - start,
+        );
 
     }
 
@@ -273,7 +280,7 @@ export async function runDir(
     });
 
     // Execute files
-    return executeFilesInternal(context, files, opts, 'run');
+    return executeFilesInternal(context, files, opts, 'run', dirpath);
 
 }
 
@@ -606,10 +613,13 @@ export async function executeFiles(
         observer.emit('error', {
             source: 'runner:create-operation',
             error: createErr,
-            context: { operationName: execOptions.operationName },
+            context: { operationName: execOptions.operationName, sqlPath: execOptions.sqlPath },
         });
 
-        return createFailedBatchResult(createErr.message, performance.now() - start);
+        return createFailedBatchResult(
+            formatErrorChain(createErr),
+            performance.now() - start,
+        );
 
     }
 
@@ -649,7 +659,10 @@ export async function executeFiles(
 
         await tracker.finalizeOperation(operationId!, 'failed', 0, '', createRecordsErr);
 
-        return createFailedBatchResult(createRecordsErr, performance.now() - start);
+        return createFailedBatchResult(
+            createRecordsErr,
+            performance.now() - start,
+        );
 
     }
 
@@ -682,7 +695,7 @@ export async function executeFiles(
             // Mark remaining files as skipped
             const skipErr = await tracker.skipRemainingFiles(
                 operationId!,
-                `Skipped due to failure in ${file.path}`,
+                `Skipped: failure in ${path.basename(file.path)}`.slice(0, 100),
             );
 
             if (skipErr) {
@@ -764,6 +777,7 @@ async function executeFilesInternal(
     files: string[],
     options: Required<Omit<RunOptions, 'output'>> & { output: string | null },
     changeType: 'build' | 'run',
+    sqlPath?: string,
 ): Promise<BatchResult> {
 
     // Convert string[] to FileInput[]
@@ -777,6 +791,7 @@ async function executeFilesInternal(
         changeType,
         direction: 'commit',
         operationName: `${changeType}:${new Date().toISOString()}`,
+        sqlPath,
     };
 
     return executeFiles(context, fileInputs, options, execOptions);
@@ -901,7 +916,7 @@ async function executeSingleFileWithUpdate(
             filepath,
             checksum: finalChecksum,
             status: 'failed',
-            error: execErr.message,
+            error: getErrorMessage(execErr),
             durationMs,
         };
 
@@ -910,14 +925,14 @@ async function executeSingleFileWithUpdate(
             relFilepath,
             'failed',
             Math.round(durationMs),
-            execErr.message,
+            getErrorMessage(execErr),
         );
 
         observer.emit('file:after', {
             filepath,
             status: 'failed',
             durationMs,
-            error: execErr.message,
+            error: getErrorMessage(execErr),
         });
 
         return result;
@@ -1081,7 +1096,7 @@ async function executeSingleFile(
             filepath,
             checksum,
             status: 'failed',
-            error: execErr.message,
+            error: getErrorMessage(execErr),
             durationMs,
         };
 
@@ -1090,7 +1105,7 @@ async function executeSingleFile(
             filepath: relFilepath,
             checksum,
             status: 'failed',
-            errorMessage: execErr.message,
+            errorMessage: getErrorMessage(execErr),
             durationMs: Math.round(durationMs),
         });
 
@@ -1098,7 +1113,7 @@ async function executeSingleFile(
             filepath,
             status: 'failed',
             durationMs,
-            error: execErr.message,
+            error: getErrorMessage(execErr),
         });
 
         return result;
@@ -1371,6 +1386,80 @@ function createFailedBatchResult(error: string, durationMs: number): BatchResult
         filesSkipped: 0,
         filesFailed: 0,
         durationMs,
+        error,
     };
 
 }
+
+/**
+ * Format an error with its cause chain into a single string.
+ */
+function formatErrorChain(err: Error): string {
+
+    const parts = [err.message];
+
+    let current = err.cause;
+
+    while (current instanceof Error) {
+
+        parts.push(current.message);
+        current = current.cause;
+
+    }
+
+    return parts.join(': ');
+
+}
+
+/**
+ * Extract a message from an error that may not be a standard Error instance.
+ *
+ * Database drivers (tedious, pg, mysql2) sometimes throw objects that are
+ * not proper Error instances or have message on a different property.
+ * Tedious specifically can throw AggregateError with .errors[].
+ */
+function getErrorMessage(err: unknown): string {
+
+    // AggregateError (tedious throws these) — join all inner messages
+    if (err instanceof AggregateError && err.errors?.length > 0) {
+
+        return err.errors.map((e) => getErrorMessage(e)).join('; ');
+
+    }
+
+    if (err instanceof Error && err.message) return err.message;
+
+    if (typeof err === 'string') return err;
+
+    if (typeof err === 'object' && err !== null) {
+
+        const e = err as Record<string, unknown>;
+
+        // Standard message property
+        if (typeof e['message'] === 'string' && e['message']) return e['message'];
+
+        // Tedious: errors[] array on non-AggregateError objects
+        if (Array.isArray(e['errors']) && e['errors'].length > 0) {
+
+            return (e['errors'] as unknown[]).map((inner) => getErrorMessage(inner)).join('; ');
+
+        }
+
+        // MSSQL tedious: originalError.message
+        if (typeof e['originalError'] === 'object' && e['originalError'] !== null) {
+
+            const orig = e['originalError'] as Record<string, unknown>;
+            if (typeof orig['message'] === 'string' && orig['message']) return orig['message'];
+
+        }
+
+        // Fallback: try toString
+        const str = String(err);
+        if (str !== '[object Object]') return str;
+
+    }
+
+    return 'Unknown error';
+
+}
+

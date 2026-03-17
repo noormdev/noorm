@@ -94,6 +94,9 @@ export interface RunProgressState {
 
     /** Final status (set on complete) */
     status: 'success' | 'failed' | 'partial' | null;
+
+    /** Error message when operation fails before file execution */
+    error: string | null;
 }
 
 /**
@@ -110,6 +113,7 @@ const INITIAL_STATE: RunProgressState = {
     results: [],
     durationMs: 0,
     status: null,
+    error: null,
 };
 
 type UseRunProgressReturn = {
@@ -263,6 +267,7 @@ export function useRunProgress(): UseRunProgressReturn {
                 status: data.status,
                 durationMs: data.durationMs,
                 currentFile: null,
+                error: data.error ?? null,
             }));
 
         },

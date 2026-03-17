@@ -7,6 +7,9 @@
  *
  * Steps: create schema → drop FK → drop indexes → move tables →
  * rename tables → recreate FK → recreate indexes.
+ *
+ * Fully idempotent: handles partial migration state from previous
+ * interrupted runs by checking each table's location before acting.
  */
 import type { Kysely } from 'kysely';
 import { sql } from 'kysely';
@@ -42,10 +45,29 @@ const INDEXES = [
 ] as const;
 
 /**
+ * Prefixed-to-clean table name lookup for indexes.
+ *
+ * Maps the clean index table name to the prefixed table name
+ * used in the default schema.
+ */
+const PREFIXED_TABLES: Record<string, string> = {
+    executions: '__noorm_executions__',
+    change: '__noorm_change__',
+    vault: '__noorm_vault__',
+};
+
+/**
  * Migration v2: Move tracking tables to noorm schema.
  *
  * PostgreSQL and MSSQL get a dedicated `noorm` schema with clean table names.
  * SQLite and MySQL skip this migration entirely since they lack schema support.
+ *
+ * Handles all partial-migration states:
+ * - Tables already in noorm with clean names (fully migrated)
+ * - Tables in noorm with prefixed names (transferred but not renamed)
+ * - Tables still in dbo/public (not yet transferred)
+ * - Mixed state (some tables migrated, others not)
+ * - Orphaned dbo tables alongside migrated noorm tables
  *
  * @example
  * ```typescript
@@ -63,7 +85,99 @@ export const v2: SchemaMigration = {
 
         await db.transaction().execute(async (trx) => {
 
-            // Create noorm schema
+            const src = dialect === 'postgres' ? 'public' : 'dbo';
+
+            // ── Helpers ──────────────────────────────────────
+
+            /**
+             * Check if a table exists in a specific schema.
+             */
+            async function tableExistsIn(schema: string, table: string): Promise<boolean> {
+
+                if (dialect === 'postgres') {
+
+                    const { rows } = await sql<{ n: number }>`
+                        SELECT 1 AS n FROM information_schema.tables
+                        WHERE table_schema = ${schema} AND table_name = ${table}
+                    `.execute(trx);
+
+                    return rows.length > 0;
+
+                }
+
+                const { rows } = await sql<{ n: number }>`
+                    SELECT 1 AS n FROM sys.tables t
+                    JOIN sys.schemas s ON t.schema_id = s.schema_id
+                    WHERE t.name = ${table} AND s.name = ${schema}
+                `.execute(trx);
+
+                return rows.length > 0;
+
+            }
+
+            /**
+             * Get foreign key constraint names on a table in a schema.
+             * Returns empty array if table doesn't exist.
+             */
+            async function getForeignKeys(schema: string, table: string): Promise<string[]> {
+
+                if (!(await tableExistsIn(schema, table))) return [];
+
+                if (dialect === 'postgres') {
+
+                    const { rows } = await sql<{ name: string }>`
+                        SELECT tc.constraint_name AS name
+                        FROM information_schema.table_constraints tc
+                        WHERE tc.table_schema = ${schema}
+                        AND tc.table_name = ${table}
+                        AND tc.constraint_type = 'FOREIGN KEY'
+                    `.execute(trx);
+
+                    return rows.map((r) => r.name);
+
+                }
+
+                const { rows } = await sql<{ name: string }>`
+                    SELECT fk.name
+                    FROM sys.foreign_keys fk
+                    JOIN sys.tables t ON fk.parent_object_id = t.object_id
+                    JOIN sys.schemas s ON t.schema_id = s.schema_id
+                    WHERE t.name = ${table} AND s.name = ${schema}
+                `.execute(trx);
+
+                return rows.map((r) => r.name);
+
+            }
+
+            /**
+             * Check if an index exists in a specific schema.
+             */
+            async function indexExistsIn(schema: string, idxName: string): Promise<boolean> {
+
+                if (dialect === 'postgres') {
+
+                    const { rows } = await sql<{ n: number }>`
+                        SELECT 1 AS n FROM pg_indexes
+                        WHERE schemaname = ${schema} AND indexname = ${idxName}
+                    `.execute(trx);
+
+                    return rows.length > 0;
+
+                }
+
+                const { rows } = await sql<{ n: number }>`
+                    SELECT 1 AS n FROM sys.indexes i
+                    JOIN sys.tables t ON i.object_id = t.object_id
+                    JOIN sys.schemas s ON t.schema_id = s.schema_id
+                    WHERE i.name = ${idxName} AND s.name = ${schema}
+                `.execute(trx);
+
+                return rows.length > 0;
+
+            }
+
+            // ── Step 1: Create noorm schema (idempotent) ─────
+
             if (dialect === 'postgres') {
 
                 await sql`CREATE SCHEMA IF NOT EXISTS noorm`.execute(trx);
@@ -75,90 +189,143 @@ export const v2: SchemaMigration = {
 
             }
 
-            // Drop FK constraint from __noorm_executions__ referencing __noorm_change__
-            if (dialect === 'postgres') {
+            // ── Step 2: Drop FK constraints from all locations ──
+            // The executions table may exist in dbo, noorm (old name), or noorm (new name).
+            // Drop FKs from wherever they are before moving tables.
 
-                const { rows } = await sql<{ constraint_name: string }>`
-                    SELECT constraint_name
-                    FROM information_schema.table_constraints
-                    WHERE table_name = '__noorm_executions__'
-                    AND constraint_type = 'FOREIGN KEY'
-                `.execute(trx);
+            const fkLocations = [
+                { schema: src, table: '__noorm_executions__' },
+                { schema: 'noorm', table: '__noorm_executions__' },
+                { schema: 'noorm', table: 'executions' },
+            ];
 
-                for (const row of rows) {
+            for (const loc of fkLocations) {
 
-                    await sql`ALTER TABLE __noorm_executions__ DROP CONSTRAINT ${sql.ref(row.constraint_name)}`.execute(trx);
+                const fks = await getForeignKeys(loc.schema, loc.table);
 
-                }
+                for (const fkName of fks) {
 
-            }
-            else {
-
-                const { rows } = await sql<{ fk_name: string }>`
-                    SELECT fk.name AS fk_name
-                    FROM sys.foreign_keys fk
-                    JOIN sys.tables t ON fk.parent_object_id = t.object_id
-                    WHERE t.name = '__noorm_executions__'
-                `.execute(trx);
-
-                for (const row of rows) {
-
-                    await sql`ALTER TABLE __noorm_executions__ DROP CONSTRAINT ${sql.ref(row.fk_name)}`.execute(trx);
+                    await sql`ALTER TABLE ${sql.table(`${loc.schema}.${loc.table}`)} DROP CONSTRAINT ${sql.ref(fkName)}`.execute(trx);
 
                 }
 
             }
 
-            // Drop old indexes
-            if (dialect === 'postgres') {
+            // ── Step 3: Drop old indexes from all locations ──
 
-                for (const idx of INDEXES) {
+            for (const idx of INDEXES) {
 
-                    await sql`DROP INDEX IF EXISTS ${sql.ref(idx.name)}`.execute(trx);
+                // Drop from default schema (dbo/public)
+                if (await indexExistsIn(src, idx.name)) {
+
+                    if (dialect === 'postgres') {
+
+                        await sql`DROP INDEX IF EXISTS ${sql.ref(idx.name)}`.execute(trx);
+
+                    }
+                    else {
+
+                        const tableName = PREFIXED_TABLES[idx.table]!;
+                        await sql`
+                            IF EXISTS (SELECT 1 FROM sys.indexes WHERE name = ${idx.name})
+                            DROP INDEX ${sql.ref(idx.name)} ON ${sql.table(tableName)}
+                        `.execute(trx);
+
+                    }
+
+                }
+
+                // Drop from noorm schema (may be on old-named or new-named table)
+                if (await indexExistsIn('noorm', idx.name)) {
+
+                    if (dialect === 'postgres') {
+
+                        await sql`DROP INDEX IF EXISTS ${sql.ref(`noorm.${idx.name}`)}`.execute(trx);
+
+                    }
+                    else {
+
+                        const oldName = PREFIXED_TABLES[idx.table]!;
+                        const onOldName = await tableExistsIn('noorm', oldName);
+                        const tbl = onOldName ? `noorm.${oldName}` : `noorm.${idx.table}`;
+
+                        await sql`
+                            IF EXISTS (SELECT 1 FROM sys.indexes WHERE name = ${idx.name})
+                            DROP INDEX ${sql.ref(idx.name)} ON ${sql.table(tbl)}
+                        `.execute(trx);
+
+                    }
 
                 }
 
             }
-            else {
 
-                // MSSQL does NOT support DROP INDEX IF EXISTS
-                const prefixedTables: Record<string, string> = {
-                    executions: '__noorm_executions__',
-                    change: '__noorm_change__',
-                    vault: '__noorm_vault__',
-                };
+            // ── Step 4: Move and rename tables ──────────────
 
-                for (const idx of INDEXES) {
-
-                    const tableName = prefixedTables[idx.table]!;
-                    await sql`
-                        IF EXISTS (SELECT 1 FROM sys.indexes WHERE name = ${idx.name})
-                        DROP INDEX ${sql.ref(idx.name)} ON ${sql.table(tableName)}
-                    `.execute(trx);
-
-                }
-
-            }
-
-            // Move tables to noorm schema
             for (const t of TABLE_MAP) {
 
-                if (dialect === 'postgres') {
+                const inNoormNew = await tableExistsIn('noorm', t.new);
+                const inNoormOld = await tableExistsIn('noorm', t.old);
+                const inSrc = await tableExistsIn(src, t.old);
 
-                    await sql`ALTER TABLE ${sql.table(t.old)} SET SCHEMA noorm`.execute(trx);
+                // Already fully migrated — just clean up dbo/public leftover
+                if (inNoormNew) {
+
+                    if (inSrc) {
+
+                        if (dialect === 'postgres') {
+
+                            await sql`DROP TABLE ${sql.table(`${src}.${t.old}`)} CASCADE`.execute(trx);
+
+                        }
+                        else {
+
+                            await sql`DROP TABLE ${sql.table(`${src}.${t.old}`)}`.execute(trx);
+
+                        }
+
+                    }
+
+                    // Also drop noorm old-named leftover if present
+                    if (inNoormOld) {
+
+                        if (dialect === 'postgres') {
+
+                            await sql`DROP TABLE ${sql.table(`noorm.${t.old}`)} CASCADE`.execute(trx);
+
+                        }
+                        else {
+
+                            await sql`DROP TABLE ${sql.table(`noorm.${t.old}`)}`.execute(trx);
+
+                        }
+
+                    }
+
+                    continue;
 
                 }
-                else {
 
-                    await sql`ALTER SCHEMA noorm TRANSFER ${sql.ref(`dbo.${t.old}`)}`.execute(trx);
+                // Table doesn't exist anywhere — nothing to do
+                if (!inNoormOld && !inSrc) continue;
+
+                // Ensure table is in noorm schema (with old name)
+                if (!inNoormOld && inSrc) {
+
+                    if (dialect === 'postgres') {
+
+                        await sql`ALTER TABLE ${sql.table(t.old)} SET SCHEMA noorm`.execute(trx);
+
+                    }
+                    else {
+
+                        await sql`ALTER SCHEMA noorm TRANSFER ${sql.ref(`dbo.${t.old}`)}`.execute(trx);
+
+                    }
 
                 }
 
-            }
-
-            // Rename tables to drop prefix
-            for (const t of TABLE_MAP) {
-
+                // Rename from prefixed to clean name
                 if (dialect === 'postgres') {
 
                     await sql`ALTER TABLE ${sql.table(`noorm.${t.old}`)} RENAME TO ${sql.ref(t.new)}`.execute(trx);
@@ -170,21 +337,53 @@ export const v2: SchemaMigration = {
 
                 }
 
+                // Clean up dbo/public leftover if both copies existed
+                if (inSrc && inNoormOld) {
+
+                    if (await tableExistsIn(src, t.old)) {
+
+                        if (dialect === 'postgres') {
+
+                            await sql`DROP TABLE ${sql.table(`${src}.${t.old}`)} CASCADE`.execute(trx);
+
+                        }
+                        else {
+
+                            await sql`DROP TABLE ${sql.table(`${src}.${t.old}`)}`.execute(trx);
+
+                        }
+
+                    }
+
+                }
+
             }
 
-            // Recreate FK constraint: noorm.executions.change_id → noorm.change.id
-            await sql`
-                ALTER TABLE ${sql.table('noorm.executions')}
-                ADD CONSTRAINT fk_executions_change_id
-                FOREIGN KEY (change_id) REFERENCES ${sql.table('noorm.change')}(id)
-                ON DELETE CASCADE
-            `.execute(trx);
+            // ── Step 5: Recreate FK constraint (if missing) ──
 
-            // Recreate indexes in noorm schema
+            const fksOnExec = await getForeignKeys('noorm', 'executions');
+
+            if (fksOnExec.length === 0) {
+
+                await sql`
+                    ALTER TABLE ${sql.table('noorm.executions')}
+                    ADD CONSTRAINT fk_executions_change_id
+                    FOREIGN KEY (change_id) REFERENCES ${sql.table('noorm.change')}(id)
+                    ON DELETE CASCADE
+                `.execute(trx);
+
+            }
+
+            // ── Step 6: Recreate indexes (if missing) ────────
+
             for (const idx of INDEXES) {
 
-                const cols = idx.columns.join(', ');
-                await sql`CREATE INDEX ${sql.ref(idx.name)} ON ${sql.table(`noorm.${idx.table}`)} (${sql.raw(cols)})`.execute(trx);
+                if (!(await indexExistsIn('noorm', idx.name))) {
+
+                    const cols = idx.columns.join(', ');
+                    await sql`CREATE INDEX ${sql.ref(idx.name)} ON ${sql.table(`noorm.${idx.table}`)} (${sql.raw(cols)})`.execute(trx);
+
+                }
 
             }
 
@@ -301,13 +500,7 @@ export const v2: SchemaMigration = {
             // Recreate indexes with prefixed table names
             for (const idx of INDEXES) {
 
-                const prefixedTables: Record<string, string> = {
-                    executions: '__noorm_executions__',
-                    change: '__noorm_change__',
-                    vault: '__noorm_vault__',
-                };
-
-                const tableName = prefixedTables[idx.table]!;
+                const tableName = PREFIXED_TABLES[idx.table]!;
                 const cols = idx.columns.join(', ');
                 await sql`CREATE INDEX ${sql.ref(idx.name)} ON ${sql.table(tableName)} (${sql.raw(cols)})`.execute(trx);
 

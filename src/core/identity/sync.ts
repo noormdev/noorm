@@ -16,7 +16,7 @@ import type { Config } from '../config/types.js';
 import type { CryptoIdentity, KnownUser } from './types.js';
 import { createConnection } from '../connection/factory.js';
 import { observer } from '../observer.js';
-import { tablesExist } from '../version/index.js';
+import { tablesExist, ensureSchemaVersion } from '../version/index.js';
 import { loadExistingIdentity } from './factory.js';
 import { getInitializedLogger } from '../logger/init.js';
 
@@ -376,6 +376,19 @@ export async function syncIdentityWithConfig(
 
 
     const db = conn!.db as Kysely<NoormDatabase>;
+
+    // Ensure schema tables are in the expected location before syncing.
+    // Without this, databases still at v1 (legacy prefixed tables) would
+    // fail when identity code queries schema-qualified tables (noorm.identities).
+    const [, schemaErr] = await attempt(() => ensureSchemaVersion(db, dialect));
+
+    if (schemaErr) {
+
+        await conn!.destroy();
+
+        return { ok: true, knownUsersCount: 0 };
+
+    }
 
     // Sync identity
     const syncResult = await syncIdentity(db, identity, config.name, dialect);

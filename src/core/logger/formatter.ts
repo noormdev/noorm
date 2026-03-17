@@ -133,8 +133,14 @@ function formatErrorValue(err: unknown): string {
 
     }
 
-    // Standard Error objects
+    // Standard Error objects — include cause chain for wrapped errors
     if (err instanceof Error) {
+
+        if (err.cause instanceof Error) {
+
+            return `${err.message}: ${err.cause.message}`;
+
+        }
 
         return err.message;
 

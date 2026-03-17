@@ -84,6 +84,7 @@ export interface NoormEvents extends SettingsEvents, UpdateEvents, VaultEvents, 
         filesSkipped: number;
         filesFailed: number;
         durationMs: number;
+        error?: string;
     };
     'run:file': { filepath: string; configName: string };
     'run:dir': { dirpath: string; fileCount: number; configName: string };

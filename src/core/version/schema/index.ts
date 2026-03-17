@@ -490,19 +490,33 @@ export async function migrateSchema(
     // No migration needed
     if (!status.needsMigration) return;
 
-    // Bootstrap if no tables exist
-    if (status.current === 0) {
+    // Determine starting version
+    let currentVersion = status.current;
 
-        await bootstrapSchema(db, dialect, options);
+    if (currentVersion === 0) {
 
-        return;
+        const tableFound = await tablesExist(db, dialect);
+
+        if (!tableFound) {
+
+            // Fresh install — no tables at all, bootstrap from scratch
+            await bootstrapSchema(db, dialect, options);
+
+            return;
+
+        }
+
+        // Tables exist but version record is missing (interrupted migration).
+        // v1 tables were created but version record was never written.
+        // Skip v1, run v2+ as pending migrations (v2 is idempotent).
+        currentVersion = 1;
 
     }
 
     const start = performance.now();
 
     observer.emit('version:schema:migrating', {
-        from: status.current,
+        from: currentVersion,
         to: CURRENT_VERSIONS.schema,
     });
 
@@ -510,7 +524,7 @@ export async function migrateSchema(
     const existing = await getLatestVersionRecord(db, dialect);
 
     // Run pending migrations
-    const pendingMigrations = MIGRATIONS.filter((m) => m.version > status.current);
+    const pendingMigrations = MIGRATIONS.filter((m) => m.version > currentVersion);
 
     for (const migration of pendingMigrations) {
 
@@ -543,7 +557,7 @@ export async function migrateSchema(
     const durationMs = performance.now() - start;
 
     observer.emit('version:schema:migrated', {
-        from: status.current,
+        from: currentVersion,
         to: CURRENT_VERSIONS.schema,
         durationMs,
     });

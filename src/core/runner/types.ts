@@ -195,6 +195,9 @@ export interface BatchResult {
 
     /** Change ID in tracking table */
     changeId?: number;
+
+    /** Error message when batch fails before file execution (e.g. tracking setup failure) */
+    error?: string;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -281,6 +284,9 @@ export interface ExecuteFilesOptions {
 
     /** External tracker instance (optional, created internally if not provided) */
     tracker?: unknown; // Tracker type - using unknown to avoid circular import
+
+    /** SQL path or file context for error messages */
+    sqlPath?: string;
 }
 
 // ─────────────────────────────────────────────────────────────

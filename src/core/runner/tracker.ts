@@ -68,6 +68,7 @@ export class Tracker {
     readonly #ndb: Kysely<NoormDatabase>;
     readonly #tables: ReturnType<typeof getNoormTables>;
     readonly #configName: string;
+    readonly #dialect: Dialect;
 
     constructor(db: Kysely<NoormDatabase>, configName: string, dialect: Dialect = 'sqlite') {
 
@@ -75,6 +76,7 @@ export class Tracker {
         this.#ndb = noormDb(db, dialect);
         this.#tables = getNoormTables(dialect);
         this.#configName = configName;
+        this.#dialect = dialect;
 
     }
 
@@ -214,45 +216,66 @@ export class Tracker {
         // 'commit' is stored as 'change' for historical compatibility
         const dbDirection = direction === 'commit' ? 'change' : 'revert';
 
-        const [result, err] = await attempt(() =>
-            this.#ndb
-                .insertInto(this.#tables.change)
-                .values({
-                    name: data.name,
-                    change_type: data.changeType as ChangeType,
-                    direction: dbDirection,
-                    status: 'pending',
-                    config_name: data.configName,
-                    executed_by: data.executedBy,
-                })
-                .returning('id')
-                .executeTakeFirstOrThrow(),
-        );
+        const insertQuery = this.#ndb
+            .insertInto(this.#tables.change)
+            .values({
+                name: data.name,
+                change_type: data.changeType as ChangeType,
+                direction: dbDirection,
+                status: 'pending',
+                config_name: data.configName,
+                executed_by: data.executedBy,
+            });
 
-        if (err) {
+        // MSSQL uses OUTPUT inserted.id (not RETURNING)
+        // Other dialects use RETURNING for atomic insert+get-id
+        let id: number | undefined;
 
-            throw new Error('Failed to create operation record', { cause: err });
+        if (this.#dialect === 'mssql') {
 
-        }
-
-        // Validate the returned ID
-        // Note: SQLite with better-sqlite3 may return null for RETURNING clause
-        // In that case, fall back to last_insert_rowid()
-        let id = result?.id;
-
-        if (id === null || id === undefined) {
-
-            const [lastIdResult, lastIdErr] = await attempt(() =>
-                sql<{ id: number }>`SELECT last_insert_rowid() as id`.execute(this.#db),
+            const [result, insertErr] = await attempt(() =>
+                insertQuery
+                    .output('inserted.id as id')
+                    .executeTakeFirstOrThrow(),
             );
 
-            if (lastIdErr || !lastIdResult?.rows?.[0]?.id) {
+            if (insertErr) {
 
-                throw new Error('Failed to retrieve last insert row id');
+                throw new Error('Failed to create operation record', { cause: insertErr });
 
             }
 
-            id = lastIdResult.rows[0].id;
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            id = (result as any)?.id;
+
+        }
+        else {
+
+            const [result, err] = await attempt(() =>
+                insertQuery.returning('id').executeTakeFirstOrThrow(),
+            );
+
+            if (err) {
+
+                throw new Error('Failed to create operation record', { cause: err });
+
+            }
+
+            id = result?.id ?? undefined;
+
+            // SQLite with better-sqlite3 may return null for RETURNING
+            if (id === null || id === undefined) {
+
+                const lastIdQuery = this.#lastInsertIdQuery();
+
+                if (lastIdQuery) {
+
+                    const [lastIdResult] = await attempt(() => lastIdQuery.execute(this.#db));
+                    id = lastIdResult?.rows?.[0]?.id;
+
+                }
+
+            }
 
         }
 
@@ -263,6 +286,34 @@ export class Tracker {
         }
 
         return id;
+
+    }
+
+    /**
+     * Get dialect-specific last-insert-id query.
+     *
+     * Returns null if the dialect should always use RETURNING/OUTPUT.
+     */
+    #lastInsertIdQuery(): ReturnType<typeof sql<{ id: number }>> | null {
+
+        switch (this.#dialect) {
+
+            case 'sqlite':
+                return sql<{ id: number }>`SELECT last_insert_rowid() as id`;
+
+            case 'mysql':
+                return sql<{ id: number }>`SELECT LAST_INSERT_ID() as id`;
+
+            case 'mssql':
+                return sql<{ id: number }>`SELECT SCOPE_IDENTITY() as id`;
+
+            case 'postgres':
+                return sql<{ id: number }>`SELECT lastval() as id`;
+
+            default:
+                return null;
+
+        }
 
     }
 
@@ -513,12 +564,14 @@ export class Tracker {
      */
     async skipRemainingFiles(operationId: number, reason: string): Promise<string | null> {
 
+        const truncatedReason = reason.slice(0, 100);
+
         const [, err] = await attempt(() =>
             this.#ndb
                 .updateTable(this.#tables.executions)
                 .set({
                     status: 'skipped',
-                    skip_reason: reason,
+                    skip_reason: truncatedReason,
                 })
                 .where('change_id', '=', operationId)
                 .where('status', '=', 'pending')

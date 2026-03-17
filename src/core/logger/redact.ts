@@ -335,6 +335,13 @@ export function filterData(
 
     }
 
+    // Skip Error objects (non-enumerable properties like message/stack would be lost by spread)
+    if (entry instanceof Error) {
+
+        return entry;
+
+    }
+
     // Handle arrays
     if (Array.isArray(entry)) {
 
