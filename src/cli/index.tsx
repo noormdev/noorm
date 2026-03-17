@@ -479,7 +479,12 @@ async function main(): Promise<void> {
     // Listen for the shutdown provider's exit signal.
     // clear() must be called before unmount() so Ink erases its output
     // before flushing the final frame to the terminal.
-    observer.on('app:exit', () => {
+    let unmounted = false;
+
+    observer.on('app:exit', ({ code }) => {
+
+        if (unmounted) return;
+        unmounted = true;
 
         clear();
         unmount();
@@ -487,6 +492,11 @@ async function main(): Promise<void> {
     });
 
     await waitUntilExit();
+
+    // Force exit after graceful shutdown completes.
+    // Database connection pools (tarn), observer queues, and other async
+    // handles can keep the Node.js event loop alive indefinitely.
+    process.exit(0);
 
 }
 

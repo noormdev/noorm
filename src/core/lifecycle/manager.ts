@@ -316,8 +316,6 @@ export class LifecycleManager {
 
         this.#state = 'stopped';
 
-        observer.emit('app:exit', { code: this.#exitCode });
-
     }
 
     /**

@@ -179,12 +179,14 @@ class ConnectionManager {
         const trackedEntries = Array.from(this.#tracked.entries());
         for (const [id, entry] of trackedEntries) {
 
+            let timer: ReturnType<typeof setTimeout>;
             const destroyWithTimeout = Promise.race([
-                entry.conn.destroy(),
-                new Promise<void>((resolve) => setTimeout(resolve, CLOSE_TIMEOUT)),
+                entry.conn.destroy().then(() => { clearTimeout(timer); }),
+                new Promise<void>((resolve) => { timer = setTimeout(resolve, CLOSE_TIMEOUT); }),
             ]);
 
             const [, err] = await attempt(() => destroyWithTimeout);
+            clearTimeout(timer!);
             this.#tracked.delete(id);
 
             if (err) {
