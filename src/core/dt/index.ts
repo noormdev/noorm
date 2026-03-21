@@ -743,6 +743,7 @@ async function importFileWithWorkers(ctx: {
             onConflict,
             dialect,
             columnNames,
+            rowsImported + rowsSkipped,
         );
 
         if (insertErr) {
@@ -924,13 +925,28 @@ async function insertImportBatch(
     onConflict: string,
     dialect: string,
     columns: string[],
+    startRowIndex = 0,
 ): Promise<[{ inserted: number; skipped: number; updated: number }, Error | null]> {
 
     let inserted = 0;
     let skipped = 0;
     let updated = 0;
 
-    for (const row of rows) {
+    for (let i = 0; i < rows.length; i++) {
+
+        const row = rows[i]!;
+        const globalRowNum = startRowIndex + i + 1;
+
+        /** Summarize first 5 columns as `col=value, col=value`, truncated to 100 chars. */
+        const rowSummary = (): string => {
+
+            const entries = Object.entries(row).slice(0, 5);
+            const parts = entries.map(([k, v]) => `${k}=${v === null ? 'NULL' : String(v)}`);
+            const full = parts.join(', ');
+
+            return full.length > 100 ? full.slice(0, 97) + '...' : full;
+
+        };
 
         const [, err] = await attempt(() =>
             db.insertInto(table as never).values(row as never).execute(),
@@ -954,7 +970,7 @@ async function insertImportBatch(
                 // Non-duplicate error
                 if (onConflict === 'fail') {
 
-                    return [{ inserted, skipped, updated }, err];
+                    return [{ inserted, skipped, updated }, new Error(`Row ${globalRowNum} (${rowSummary()}): ${err.message}`)];
 
                 }
 
@@ -976,7 +992,7 @@ async function insertImportBatch(
 
                 if (updateErr) {
 
-                    return [{ inserted, skipped, updated }, updateErr];
+                    return [{ inserted, skipped, updated }, new Error(`Row ${globalRowNum} (${rowSummary()}): ${updateErr.message}`)];
 
                 }
 
@@ -994,7 +1010,7 @@ async function insertImportBatch(
             }
             else if (onConflict === 'fail') {
 
-                return [{ inserted, skipped, updated }, err];
+                return [{ inserted, skipped, updated }, new Error(`Row ${globalRowNum}: ${err.message}`)];
 
             }
             else {
