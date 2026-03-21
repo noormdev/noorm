@@ -82,7 +82,7 @@ type Phase =
  */
 export function DbTransferScreen({ params: _params }: ScreenProps): ReactElement {
 
-    const { back } = useRouter();
+    const { back, navigate } = useRouter();
     const { activeConfig, activeConfigName, stateManager } = useAppContext();
     const { showToast } = useToast();
     const { state: progress, reset: resetProgress } = useTransferProgress();
@@ -146,6 +146,12 @@ export function DbTransferScreen({ params: _params }: ScreenProps): ReactElement
                 label: 'Import from .dt file',
                 value: '__import__',
                 description: 'Import data from a .dt/.dtz/.dtzx file',
+            },
+            {
+                key: '__modify__',
+                label: 'Modify .dt file',
+                value: '__modify__',
+                description: 'Drop, add, or rename columns; filter rows',
             },
         );
 
@@ -346,6 +352,14 @@ export function DbTransferScreen({ params: _params }: ScreenProps): ReactElement
 
             setTransferMode('import');
             setPhase('import-file');
+
+            return;
+
+        }
+
+        if (item.value === '__modify__') {
+
+            navigate('db/dt-modify');
 
             return;
 

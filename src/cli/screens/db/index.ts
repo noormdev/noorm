@@ -29,6 +29,8 @@ export {
     ExploreDetailScreen,
 } from './explore/index.js';
 
+export { DtModifyScreen } from './DtModifyScreen.js';
+
 // SQL Terminal
 export { SqlTerminalScreen } from './SqlTerminalScreen.js';
 export { SqlHistoryScreen } from './SqlHistoryScreen.js';

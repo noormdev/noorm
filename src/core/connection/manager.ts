@@ -181,8 +181,16 @@ class ConnectionManager {
 
             let timer: ReturnType<typeof setTimeout>;
             const destroyWithTimeout = Promise.race([
-                entry.conn.destroy().then(() => { clearTimeout(timer); }),
-                new Promise<void>((resolve) => { timer = setTimeout(resolve, CLOSE_TIMEOUT); }),
+                entry.conn.destroy().then(() => {
+
+                    clearTimeout(timer);
+
+                }),
+                new Promise<void>((resolve) => {
+
+                    timer = setTimeout(resolve, CLOSE_TIMEOUT);
+
+                }),
             ]);
 
             const [, err] = await attempt(() => destroyWithTimeout);

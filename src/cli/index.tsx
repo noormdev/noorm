@@ -481,7 +481,7 @@ async function main(): Promise<void> {
     // before flushing the final frame to the terminal.
     let unmounted = false;
 
-    observer.on('app:exit', ({ code }) => {
+    observer.on('app:exit', () => {
 
         if (unmounted) return;
         unmounted = true;

@@ -940,6 +940,17 @@ async function insertImportBatch(
 
             if (!isDuplicateError(err.message)) {
 
+                // Non-duplicate error — log first occurrence for diagnostics
+                if (skipped === 0 && inserted === 0) {
+
+                    observer.emit('error', {
+                        source: 'dt:import',
+                        error: err,
+                        context: { table, operation: 'insert-row', onConflict, row: Object.keys(row).slice(0, 5).join(', ') },
+                    });
+
+                }
+
                 // Non-duplicate error
                 if (onConflict === 'fail') {
 
@@ -1124,3 +1135,19 @@ export { deserializeRow, deserializeValue } from './deserialize.js';
 export { encryptWithPassphrase, decryptWithPassphrase } from './crypto.js';
 export { FORMAT_VERSION, GZIP_THRESHOLD, GZIP_RATIO_THRESHOLD, SIMPLE_TYPES, ENCODED_TYPES } from './constants.js';
 export { resolveExportExtension, resolveExportPath, ensureExportDirectory } from './paths.js';
+
+export { modifyDtFile, transformSchema, validateRecipe, buildRowProxy } from './modify.js';
+export type {
+    Recipe,
+    Modification,
+    DropColumn,
+    AddColumn,
+    RenameColumn,
+    AlterColumn,
+    FilterRows,
+    DefaultValue,
+    LiteralDefault,
+    ExpressionDefault,
+    ModifyResult,
+    ModifyOptions,
+} from './modify.js';

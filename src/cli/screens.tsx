@@ -62,6 +62,7 @@ import {
     DbCreateScreen,
     DbDestroyScreen,
     DbTransferScreen,
+    DtModifyScreen,
     DbTruncateScreen,
     DbTeardownScreen,
     ExploreOverviewScreen,
@@ -267,6 +268,10 @@ const SCREENS: ScreenRegistry = {
     'db/transfer': {
         component: DbTransferScreen,
         label: 'Data Transfer',
+    },
+    'db/dt-modify': {
+        component: DtModifyScreen,
+        label: 'Modify DT File',
     },
 
     // Database Exploration

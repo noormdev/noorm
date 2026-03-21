@@ -43,6 +43,7 @@ export type Route =
     | 'db/destroy'
     | 'db/teardown'
     | 'db/transfer'
+    | 'db/dt-modify'
     | 'db/truncate'
 
     // Database exploration

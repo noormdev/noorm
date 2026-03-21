@@ -298,20 +298,20 @@ export class Tracker {
 
         switch (this.#dialect) {
 
-            case 'sqlite':
-                return sql<{ id: number }>`SELECT last_insert_rowid() as id`;
+        case 'sqlite':
+            return sql<{ id: number }>`SELECT last_insert_rowid() as id`;
 
-            case 'mysql':
-                return sql<{ id: number }>`SELECT LAST_INSERT_ID() as id`;
+        case 'mysql':
+            return sql<{ id: number }>`SELECT LAST_INSERT_ID() as id`;
 
-            case 'mssql':
-                return sql<{ id: number }>`SELECT SCOPE_IDENTITY() as id`;
+        case 'mssql':
+            return sql<{ id: number }>`SELECT SCOPE_IDENTITY() as id`;
 
-            case 'postgres':
-                return sql<{ id: number }>`SELECT lastval() as id`;
+        case 'postgres':
+            return sql<{ id: number }>`SELECT lastval() as id`;
 
-            default:
-                return null;
+        default:
+            return null;
 
         }
 

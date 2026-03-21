@@ -118,4 +118,34 @@ export interface DtEvents {
     /** Deserialized rows inserted into the database. */
     'dt:import:saved': { table: string; saved: number; totalRows: number };
 
+    // --- Modify pipeline ---
+
+    /** Modify operation begins. */
+    'dt:modify:start': {
+        inputPath: string;
+        outputPath: string;
+        recipeLength: number;
+    };
+
+    /** After each row processed during modify. */
+    'dt:modify:progress': {
+        rowsRead: number;
+        rowsWritten: number;
+        rowsFiltered: number;
+    };
+
+    /** Modify operation finished. */
+    'dt:modify:complete': {
+        result: {
+            rowsRead: number;
+            rowsWritten: number;
+            rowsFiltered: number;
+            columnsDropped: number;
+            columnsAdded: number;
+            columnsRenamed: number;
+            outputPath: string;
+            durationMs: number;
+        };
+    };
+
 }
