@@ -4,6 +4,10 @@
  * Maps file extensions to their respective loader functions.
  * Provides a unified interface for loading any supported data format.
  *
+ * Loaders with external dependencies (json5, yaml, csv-parse) are
+ * lazy-loaded on first use to avoid pulling heavy parsers into the
+ * bundle when they aren't needed.
+ *
  * @example
  * ```typescript
  * import { loadDataFile, getLoader, hasLoader } from './loaders'
@@ -16,22 +20,69 @@
 import path from 'node:path';
 
 import type { Loader, LoaderRegistry } from '../types.js';
-import { loadJson5 } from './json5.js';
-import { loadYaml } from './yaml.js';
-import { loadCsv } from './csv.js';
 import { loadJs } from './js.js';
 import { loadSql } from './sql.js';
 import { loadDt } from './dt.js';
 
+// ─────────────────────────────────────────────────────────────
+// Lazy Loaders
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Lazy wrapper for JSON5 loader.
+ *
+ * Defers `import('json5')` until a .json or .json5 file is loaded.
+ */
+async function lazyLoadJson5(filepath: string): Promise<unknown> {
+
+    const { loadJson5 } = await import('./json5.js');
+
+    return loadJson5(filepath);
+
+}
+
+/**
+ * Lazy wrapper for YAML loader.
+ *
+ * Defers `import('yaml')` until a .yaml or .yml file is loaded.
+ */
+async function lazyLoadYaml(filepath: string): Promise<unknown> {
+
+    const { loadYaml } = await import('./yaml.js');
+
+    return loadYaml(filepath);
+
+}
+
+/**
+ * Lazy wrapper for CSV loader.
+ *
+ * Defers `import('csv-parse/sync')` until a .csv file is loaded.
+ */
+async function lazyLoadCsv(filepath: string): Promise<unknown> {
+
+    const { loadCsv } = await import('./csv.js');
+
+    return loadCsv(filepath);
+
+}
+
+// ─────────────────────────────────────────────────────────────
+// Registry
+// ─────────────────────────────────────────────────────────────
+
 /**
  * Registry of loaders by file extension.
+ *
+ * json5, yaml, and csv loaders are lazy — their parser libraries
+ * are only imported when a file of that type is first loaded.
  */
 const loaders: LoaderRegistry = {
-    '.json': loadJson5,
-    '.json5': loadJson5,
-    '.yaml': loadYaml,
-    '.yml': loadYaml,
-    '.csv': loadCsv,
+    '.json': lazyLoadJson5,
+    '.json5': lazyLoadJson5,
+    '.yaml': lazyLoadYaml,
+    '.yml': lazyLoadYaml,
+    '.csv': lazyLoadCsv,
     '.js': loadJs,
     '.mjs': loadJs,
     '.ts': loadJs,

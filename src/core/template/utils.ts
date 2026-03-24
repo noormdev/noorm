@@ -13,8 +13,33 @@
  * toContextKey('API_KEYS.json')     // → 'apiKeys'
  * ```
  */
-import v from 'voca';
 import path from 'node:path';
+
+/**
+ * Convert a string to camelCase.
+ *
+ * Splits on hyphens, underscores, and case boundaries,
+ * then joins with first word lowercased and rest capitalized.
+ *
+ * @param str - Input string in any casing
+ * @returns camelCase string
+ */
+function camelCase(str: string): string {
+
+    const words = str
+        .replace(/([a-z])([A-Z])/g, '$1 $2')
+        .split(/[-_\s]+/)
+        .filter(Boolean);
+
+    if (words.length === 0) return '';
+
+    return words
+        .map((w, i) => i === 0
+            ? w.toLowerCase()
+            : w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+        .join('');
+
+}
 
 /**
  * Convert a filename to a camelCase context key.
@@ -40,7 +65,7 @@ export function toContextKey(filename: string): string {
     const base = path.basename(filename, ext);
 
     // Convert to camelCase
-    return v.camelCase(base);
+    return camelCase(base);
 
 }
 

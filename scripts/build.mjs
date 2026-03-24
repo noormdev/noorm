@@ -29,21 +29,7 @@ if (!cliContent.startsWith('#!')) {
 
 // Build SDK
 console.log(chalk.yellow('\nBuilding @noormdev/sdk...'));
-await $`npx tsup src/sdk/index.ts \
-  --format esm \
-  --target node22 \
-  --platform node \
-  --sourcemap \
-  --clean \
-  --treeshake \
-  --out-dir packages/sdk/dist \
-  --external kysely \
-  --external better-sqlite3 \
-  --external bun:sqlite \
-  --external pg \
-  --external mysql2 \
-  --external tedious \
-  --external tarn`;
+await $`npx tsup --config tsup.sdk.config.ts`;
 
 // Generate bundled types
 console.log(chalk.yellow('\nGenerating bundled types...'));
