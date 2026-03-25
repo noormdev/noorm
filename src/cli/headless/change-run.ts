@@ -1,4 +1,4 @@
-import { withContext, type HeadlessCommand } from './_helpers.js';
+import { withContext, outputError, type HeadlessCommand } from './_helpers.js';
 
 export const help = `
 # CHANGE RUN
@@ -31,9 +31,7 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
 
     if (!params.name) {
 
-        logger.error('Change name required. Use --name <change>');
-
-        return 1;
+        return outputError(flags, logger, 'Change name required. Use --name <change>');
 
     }
 

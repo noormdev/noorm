@@ -183,7 +183,7 @@ In headless mode, secret values come from arguments or stdin (for piping).
 Secrets inject into SQL templates via the `$` context:
 
 ```sql
--- sql/users/create-readonly.sql.eta
+-- sql/users/create-readonly.sql.tmpl
 CREATE USER <%= $.secrets.READONLY_USER %>
 WITH PASSWORD '<%= $.secrets.READONLY_PASSWORD %>';
 

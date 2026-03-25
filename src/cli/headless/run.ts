@@ -18,7 +18,8 @@ Execute SQL files
 ## Description
 
 Run SQL files directly against the database. Unlike changes,
-these are not tracked for migration history.
+these are not tracked for migration history. Supports both
+\`.sql\` and \`.sql.tmpl\` (templated) files.
 
 Build mode executes files in the \`sql/\` directory in order,
 tracking checksums to skip unchanged files on subsequent runs.

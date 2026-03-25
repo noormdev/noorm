@@ -14,6 +14,7 @@ Database Schema & Change Manager
     config      Manage database configurations
     change      Manage and apply changes
     run         Execute SQL files
+    sql         Execute raw SQL queries
     db          Database operations and exploration
     lock        Distributed lock management
     settings    View/edit project settings

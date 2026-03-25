@@ -4,6 +4,7 @@ import { attempt } from '@logosdx/utils';
 import type { Logger } from '../../core/logger/index.js';
 import type { Context } from '../../sdk/context.js';
 import type { CryptoIdentity } from '../../core/identity/types.js';
+import { getSqlErrorMessage } from '../../core/shared/index.js';
 import { createContext } from '../../sdk/index.js';
 import { ensureSchemaVersion, type NoormDatabase } from '../../core/version/index.js';
 import { loadPrivateKey, loadIdentityMetadata } from '../../core/identity/storage.js';
@@ -46,7 +47,7 @@ export const withContext = async <T>(opts: {
 
     if (ctxError) {
 
-        logger.error('Failed to create context', ctxError);
+        outputError(flags, logger, `Failed to create context: ${ctxError.message}`);
 
         return [null, ctxError];
 
@@ -56,7 +57,7 @@ export const withContext = async <T>(opts: {
 
     if (connectError) {
 
-        logger.error('Failed to connect', connectError);
+        outputError(flags, logger, `Failed to connect: ${connectError.message}`);
 
         return [null, connectError];
 
@@ -72,7 +73,7 @@ export const withContext = async <T>(opts: {
 
     if (schemaError) {
 
-        logger.error('Failed to initialize database schema', schemaError);
+        outputError(flags, logger, `Failed to initialize database schema: ${schemaError.message}`);
         await attempt(() => ctx.disconnect());
 
         return [null, schemaError];
@@ -86,7 +87,7 @@ export const withContext = async <T>(opts: {
 
     if (opError) {
 
-        logger.error(opError.message);
+        outputError(flags, logger, getSqlErrorMessage(opError));
 
         return [null, opError];
 
@@ -115,7 +116,7 @@ export const withVaultContext = async <T>(opts: {
     if (identityErr || !cryptoIdentity) {
 
         const msg = 'Identity not set up. Run: noorm identity init';
-        logger.error(msg);
+        outputError(flags, logger, msg);
 
         return [null, new Error(msg)];
 
@@ -127,7 +128,7 @@ export const withVaultContext = async <T>(opts: {
     if (keyErr || !privateKey) {
 
         const msg = 'Private key not found. Run: noorm identity init';
-        logger.error(msg);
+        outputError(flags, logger, msg);
 
         return [null, new Error(msg)];
 
@@ -138,7 +139,7 @@ export const withVaultContext = async <T>(opts: {
 
     if (ctxError) {
 
-        logger.error('Failed to create context', ctxError);
+        outputError(flags, logger, `Failed to create context: ${ctxError.message}`);
 
         return [null, ctxError];
 
@@ -148,7 +149,7 @@ export const withVaultContext = async <T>(opts: {
 
     if (connectError) {
 
-        logger.error('Failed to connect', connectError);
+        outputError(flags, logger, `Failed to connect: ${connectError.message}`);
 
         return [null, connectError];
 
@@ -164,7 +165,7 @@ export const withVaultContext = async <T>(opts: {
 
     if (schemaError) {
 
-        logger.error('Failed to initialize database schema', schemaError);
+        outputError(flags, logger, `Failed to initialize database schema: ${schemaError.message}`);
         await attempt(() => ctx.disconnect());
 
         return [null, schemaError];
@@ -192,7 +193,7 @@ export const withVaultContext = async <T>(opts: {
 
     if (opError) {
 
-        logger.error(opError.message);
+        outputError(flags, logger, getSqlErrorMessage(opError));
 
         return [null, opError];
 

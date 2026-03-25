@@ -17,7 +17,7 @@ import { attempt } from '@logosdx/utils';
 
 import { executeRawSql } from '../../core/sql-terminal/executor.js';
 
-import { withContext, type HeadlessCommand } from './_helpers.js';
+import { withContext, outputError, type HeadlessCommand } from './_helpers.js';
 
 export const help = `
 # SQL
@@ -86,9 +86,7 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
 
         if (readErr) {
 
-            logger.error(`Failed to read SQL file: ${flags['file']}`, readErr);
-
-            return 1;
+            return outputError(flags, logger, `Failed to read SQL file: ${flags['file']}: ${readErr.message}`);
 
         }
 
@@ -98,9 +96,7 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
 
     if (!query) {
 
-        logger.error('No query provided. Usage: noorm -H sql "SELECT ..."');
-
-        return 1;
+        return outputError(flags, logger, 'No query provided. Usage: noorm -H sql "SELECT ..."');
 
     }
 
@@ -118,9 +114,7 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
 
     if (!result.success) {
 
-        logger.error(`Query failed: ${result.errorMessage}`);
-
-        return 1;
+        return outputError(flags, logger, `Query failed: ${result.errorMessage}`);
 
     }
 

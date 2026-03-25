@@ -1,4 +1,4 @@
-import { type HeadlessCommand, type RouteHandler } from './_helpers.js';
+import { type HeadlessCommand, outputError, type RouteHandler } from './_helpers.js';
 import { formatHelp } from '../../core/help-formatter.js';
 
 let handlers: Partial<Record<string, RouteHandler>>;
@@ -132,9 +132,7 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
 
     if (!handler) {
 
-        logger.error(`Unknown command: ${route.replace('/', ' ')}`);
-
-        return 1;
+        return outputError(flags, logger, `Unknown command: ${route.replace('/', ' ')}`);
 
     }
 

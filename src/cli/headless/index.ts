@@ -30,7 +30,7 @@ import { getSettingsManager } from '../../core/settings/index.js';
 import type { Route, RouteParams, CliFlags } from '../types.js';
 import { isCi, isDev } from '../../core/environment.js';
 
-import { type RouteHandler } from './_helpers.js';
+import { type RouteHandler, outputError } from './_helpers.js';
 
 import * as CmdChangeFf from './change-ff.js';
 import * as CmdChangeHistory from './change-history.js';
@@ -250,7 +250,7 @@ export async function runHeadless(
 
     if (!handler) {
 
-        logger.error(`Unknown command: ${routeSpaced}`);
+        outputError(flags, logger, `Unknown command: ${routeSpaced}`);
         await logger.stop();
 
         return 1;
@@ -261,7 +261,7 @@ export async function runHeadless(
 
     if (!run) {
 
-        logger.error(`Command not implemented in headless mode: ${routeSpaced}`);
+        outputError(flags, logger, `Command not implemented in headless mode: ${routeSpaced}`);
         await logger.stop();
 
         return 1;
@@ -276,7 +276,7 @@ export async function runHeadless(
     if (err) {
 
         const error = err instanceof Error ? err : new Error(String(err));
-        logger.error(error.message);
+        outputError(flags, logger, error.message);
         await logger.stop();
 
         return 1;

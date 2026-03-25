@@ -1,4 +1,4 @@
-import { withContext, outputResult, type HeadlessCommand } from './_helpers.js';
+import { withContext, outputResult, outputError, type HeadlessCommand } from './_helpers.js';
 
 export const help = `
 # DB EXPLORE TABLES DETAIL
@@ -46,9 +46,7 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
 
     if (!params.name) {
 
-        logger.error('Table name required. Use --name <table>');
-
-        return 1;
+        return outputError(flags, logger, 'Table name required. Use --name <table>');
 
     }
 
@@ -62,9 +60,7 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
 
     if (!detail) {
 
-        logger.error(`Table not found: ${params.name}`);
-
-        return 1;
+        return outputError(flags, logger, `Table not found: ${params.name}`);
 
     }
 

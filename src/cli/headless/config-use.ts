@@ -2,7 +2,7 @@ import { attempt } from '@logosdx/utils';
 
 import { initState, getStateManager } from '../../core/state/index.js';
 import { syncIdentityWithConfig } from '../../core/identity/index.js';
-import { type HeadlessCommand } from './_helpers.js';
+import { outputError, type HeadlessCommand } from './_helpers.js';
 
 export const help = `
 # CONFIG USE
@@ -48,15 +48,13 @@ After setting active config, these are equivalent:
 See \`noorm help config\`.
 `;
 
-export const run: HeadlessCommand = async (params, _flags, logger) => {
+export const run: HeadlessCommand = async (params, flags, logger) => {
 
     const configName = params.name;
 
     if (!configName) {
 
-        logger.error('Config name required. Usage: noorm -H config use <name>');
-
-        return 1;
+        return outputError(flags, logger, 'Config name required. Usage: noorm -H config use <name>');
 
     }
 
@@ -66,9 +64,7 @@ export const run: HeadlessCommand = async (params, _flags, logger) => {
 
     if (initErr) {
 
-        logger.error(`Failed to load state: ${initErr.message}`);
-
-        return 1;
+        return outputError(flags, logger, `Failed to load state: ${initErr.message}`);
 
     }
 
@@ -78,9 +74,7 @@ export const run: HeadlessCommand = async (params, _flags, logger) => {
 
     if (setErr) {
 
-        logger.error(setErr.message);
-
-        return 1;
+        return outputError(flags, logger, setErr.message);
 
     }
 

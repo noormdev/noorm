@@ -1,4 +1,4 @@
-import { withContext, type HeadlessCommand } from './_helpers.js';
+import { withContext, outputError, type HeadlessCommand } from './_helpers.js';
 
 export const help = `
 # RUN FILE
@@ -17,7 +17,7 @@ Execute a single SQL file
 ## Description
 
 Executes a single SQL file against the database.
-Supports \`.sql\` and \`.sql.eta\` (templated) files.
+Supports \`.sql\` and \`.sql.tmpl\` (templated) files.
 
 ## Examples
 
@@ -41,9 +41,7 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
 
     if (!params.path) {
 
-        logger.error('File path required. Use --path <file.sql>');
-
-        return 1;
+        return outputError(flags, logger, 'File path required. Use --path <file.sql>');
 
     }
 

@@ -1,4 +1,4 @@
-import { withContext, type HeadlessCommand } from './_helpers.js';
+import { withContext, outputError, type HeadlessCommand } from './_helpers.js';
 
 export const help = `
 # RUN DIR
@@ -17,7 +17,7 @@ Execute all SQL files in a directory
 ## Description
 
 Executes all SQL files in the specified directory in alphabetical order.
-Supports \`.sql\` and \`.sql.eta\` (templated) files.
+Supports \`.sql\` and \`.sql.tmpl\` (templated) files.
 
 ## Examples
 
@@ -31,9 +31,7 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
 
     if (!params.path) {
 
-        logger.error('Directory path required. Use --path <dir>');
-
-        return 1;
+        return outputError(flags, logger, 'Directory path required. Use --path <dir>');
 
     }
 

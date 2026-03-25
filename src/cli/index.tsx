@@ -240,8 +240,8 @@ function isRouteSegment(token: string): boolean {
     // Numbers are params (counts)
     if (isNumericString(token)) return false;
 
-    // Paths are params (contain / or end with .sql/.eta)
-    if (token.includes('/') || token.endsWith('.sql') || token.endsWith('.eta')) return false;
+    // Paths are params (contain / or end with .sql/.sql.tmpl)
+    if (token.includes('/') || token.endsWith('.sql') || token.endsWith('.sql.tmpl')) return false;
 
     // Route segments are lowercase letters only
     return /^[a-z]+$/.test(token);
@@ -373,7 +373,7 @@ function extractParams(args: string[]): RouteParams {
         }
 
         // Check if it's a path (contains / or ends with .sql)
-        if (arg.includes('/') || arg.endsWith('.sql') || arg.endsWith('.sql.eta')) {
+        if (arg.includes('/') || arg.endsWith('.sql') || arg.endsWith('.sql.tmpl')) {
 
             params.path = arg;
             continue;
