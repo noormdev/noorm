@@ -34,6 +34,7 @@ import { attempt, attemptSync } from '@logosdx/utils';
 import { observer } from '../observer.js';
 import { formatIdentity } from '../identity/resolver.js';
 import { processFile, isTemplate } from '../template/index.js';
+import { getSqlErrorMessage } from '../shared/index.js';
 import { computeChecksum, computeChecksumFromContent, computeCombinedChecksum } from './checksum.js';
 import { Tracker } from './tracker.js';
 import type {
@@ -916,7 +917,7 @@ async function executeSingleFileWithUpdate(
             filepath,
             checksum: finalChecksum,
             status: 'failed',
-            error: getErrorMessage(execErr),
+            error: getSqlErrorMessage(execErr),
             durationMs,
         };
 
@@ -925,14 +926,14 @@ async function executeSingleFileWithUpdate(
             relFilepath,
             'failed',
             Math.round(durationMs),
-            getErrorMessage(execErr),
+            getSqlErrorMessage(execErr),
         );
 
         observer.emit('file:after', {
             filepath,
             status: 'failed',
             durationMs,
-            error: getErrorMessage(execErr),
+            error: getSqlErrorMessage(execErr),
         });
 
         return result;
@@ -1096,7 +1097,7 @@ async function executeSingleFile(
             filepath,
             checksum,
             status: 'failed',
-            error: getErrorMessage(execErr),
+            error: getSqlErrorMessage(execErr),
             durationMs,
         };
 
@@ -1105,7 +1106,7 @@ async function executeSingleFile(
             filepath: relFilepath,
             checksum,
             status: 'failed',
-            errorMessage: getErrorMessage(execErr),
+            errorMessage: getSqlErrorMessage(execErr),
             durationMs: Math.round(durationMs),
         });
 
@@ -1113,7 +1114,7 @@ async function executeSingleFile(
             filepath,
             status: 'failed',
             durationMs,
-            error: getErrorMessage(execErr),
+            error: getSqlErrorMessage(execErr),
         });
 
         return result;
@@ -1411,55 +1412,4 @@ function formatErrorChain(err: Error): string {
 
 }
 
-/**
- * Extract a message from an error that may not be a standard Error instance.
- *
- * Database drivers (tedious, pg, mysql2) sometimes throw objects that are
- * not proper Error instances or have message on a different property.
- * Tedious specifically can throw AggregateError with .errors[].
- */
-function getErrorMessage(err: unknown): string {
-
-    // AggregateError (tedious throws these) — join all inner messages
-    if (err instanceof AggregateError && err.errors?.length > 0) {
-
-        return err.errors.map((e) => getErrorMessage(e)).join('; ');
-
-    }
-
-    if (err instanceof Error && err.message) return err.message;
-
-    if (typeof err === 'string') return err;
-
-    if (typeof err === 'object' && err !== null) {
-
-        const e = err as Record<string, unknown>;
-
-        // Standard message property
-        if (typeof e['message'] === 'string' && e['message']) return e['message'];
-
-        // Tedious: errors[] array on non-AggregateError objects
-        if (Array.isArray(e['errors']) && e['errors'].length > 0) {
-
-            return (e['errors'] as unknown[]).map((inner) => getErrorMessage(inner)).join('; ');
-
-        }
-
-        // MSSQL tedious: originalError.message
-        if (typeof e['originalError'] === 'object' && e['originalError'] !== null) {
-
-            const orig = e['originalError'] as Record<string, unknown>;
-            if (typeof orig['message'] === 'string' && orig['message']) return orig['message'];
-
-        }
-
-        // Fallback: try toString
-        const str = String(err);
-        if (str !== '[object Object]') return str;
-
-    }
-
-    return 'Unknown error';
-
-}
 

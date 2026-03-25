@@ -196,6 +196,162 @@ describe('template: engine', () => {
 
     });
 
+    describe('SQL comment prefix convention (-- {% %})', () => {
+
+        it('should strip -- prefix from directive lines', async () => {
+
+            const template = `-- {% if (true) { %}
+SELECT 1;
+-- {% } %}`;
+            const context = {} as unknown as TemplateContext;
+
+            const result = await renderTemplate(template, context);
+
+            expect(result).toBe('SELECT 1;');
+
+        });
+
+        it('should not produce END-- when END precedes a closing tag', async () => {
+
+            const template = `-- {% for (const x of $.items) { %}
+BEGIN
+    SELECT 1;
+END
+-- {% } %}`;
+            const context = { items: ['a'] } as unknown as TemplateContext;
+
+            const result = await renderTemplate(template, context);
+
+            expect(result).not.toContain('END--');
+            expect(result).toContain('END');
+
+        });
+
+        it('should preserve newlines between interpolation and next line', async () => {
+
+            const template = `-- {% for (const item of $.items) { %}
+CREATE PROCEDURE p_{%= item %}
+AS
+BEGIN
+    SELECT 1;
+END
+-- {% } %}`;
+            const context = { items: ['foo'] } as unknown as TemplateContext;
+
+            const result = await renderTemplate(template, context);
+
+            // Lines should NOT be joined (the old bug: p_fooAS)
+            expect(result).not.toContain('p_fooAS');
+            expect(result).toContain('p_foo\nAS');
+
+        });
+
+        it('should render multiple loop iterations cleanly', async () => {
+
+            const template = `-- {% for (const item of $.items) { %}
+CREATE PROCEDURE p_{%= item %}
+AS
+BEGIN
+    SELECT 1;
+END
+-- {% } %}`;
+            const context = { items: ['foo', 'bar'] } as unknown as TemplateContext;
+
+            const result = await renderTemplate(template, context);
+
+            // Both procedures should be present
+            expect(result).toContain('p_foo');
+            expect(result).toContain('p_bar');
+            // No -- prefix from directive lines in output
+            expect(result).not.toMatch(/-- CREATE/);
+            // Clean END between iterations (not END--)
+            expect(result).not.toContain('END--');
+
+        });
+
+        it('should handle conditionals with -- prefix', async () => {
+
+            const templateTrue = `-- {% if ($.flag) { %}
+ALTER TABLE users ADD email VARCHAR(255);
+-- {% } else { %}
+ALTER TABLE users ADD username VARCHAR(100);
+-- {% } %}`;
+
+            const resultTrue = await renderTemplate(
+                templateTrue,
+                { flag: true } as unknown as TemplateContext,
+            );
+
+            expect(resultTrue).toContain('email');
+            expect(resultTrue).not.toContain('username');
+            expect(resultTrue).not.toMatch(/^-- /m);
+
+            const resultFalse = await renderTemplate(
+                templateTrue,
+                { flag: false } as unknown as TemplateContext,
+            );
+
+            expect(resultFalse).toContain('username');
+            expect(resultFalse).not.toContain('email');
+
+        });
+
+        it('should not strip -- that is not before a tag', async () => {
+
+            const template = `SELECT 1; -- this is a comment`;
+            const context = {} as unknown as TemplateContext;
+
+            const result = await renderTemplate(template, context);
+
+            expect(result).toContain('-- this is a comment');
+
+        });
+
+        it('should handle indented -- {% %} directives', async () => {
+
+            const template = `    -- {% if (true) { %}
+SELECT 1;
+    -- {% } %}`;
+            const context = {} as unknown as TemplateContext;
+
+            const result = await renderTemplate(template, context);
+
+            expect(result).toContain('SELECT 1;');
+
+        });
+
+        it('should process file with -- prefix convention', async () => {
+
+            const filepath = path.join(FIXTURES_DIR, 'comment-for-loop.sql.tmpl');
+
+            const result = await processFile(filepath, {
+                projectRoot: FIXTURES_DIR,
+                config: { items: ['alpha', 'beta'] },
+            });
+
+            expect(result.sql).toContain('p_alpha');
+            expect(result.sql).toContain('p_beta');
+            expect(result.sql).not.toContain('END--');
+            expect(result.sql).not.toMatch(/-- CREATE/);
+
+        });
+
+        it('should process file with conditional -- prefix', async () => {
+
+            const filepath = path.join(FIXTURES_DIR, 'comment-conditional.sql.tmpl');
+
+            const result = await processFile(filepath, {
+                projectRoot: FIXTURES_DIR,
+                config: { addEmail: true },
+            });
+
+            expect(result.sql).toContain('email');
+            expect(result.sql).not.toContain('username');
+
+        });
+
+    });
+
     describe('processFiles', () => {
 
         it('should process multiple files', async () => {

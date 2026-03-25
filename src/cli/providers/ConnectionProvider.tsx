@@ -53,6 +53,9 @@ interface ConnectionContextValue {
     /** Request the shared connection. Triggers lazy creation if needed. */
     requestConnection: () => void;
 
+    /** Destroy the current connection. Used before DROP DATABASE etc. */
+    destroyConnection: () => Promise<void>;
+
     /** Current connection state. */
     state: ConnectionState;
 
@@ -198,7 +201,7 @@ export function ConnectionProvider({ children }: ConnectionProviderProps): React
 
     }, [activeConfig, activeConfigName]);
 
-    const value: ConnectionContextValue = { requestConnection, state };
+    const value: ConnectionContextValue = { requestConnection, destroyConnection, state };
 
     return (
         <ConnectionContext.Provider value={value}>

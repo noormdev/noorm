@@ -21,7 +21,7 @@ import type { ReactElement } from 'react';
 /**
  * Connection status types.
  */
-export type ConnectionStatusType = 'disconnected' | 'connecting' | 'connected' | 'error';
+export type ConnectionStatusType = 'disconnected' | 'connecting' | 'connected' | 'no-database' | 'error';
 
 /**
  * Props for ConnectionStatus component.
@@ -51,8 +51,27 @@ const statusConfig: Record<
     disconnected: { label: 'DISCONNECTED', color: 'yellow' },
     connecting: { label: 'CONNECTING', color: 'blue' },
     connected: { label: 'CONNECTED', color: 'green' },
+    'no-database': { label: 'NOT CREATED', color: 'yellow' },
     error: { label: 'ERROR', color: 'red' },
 };
+
+/**
+ * Check if a connection error indicates the database doesn't exist.
+ *
+ * Detects dialect-specific error messages for missing databases:
+ * - MSSQL: "Database 'x' does not exist"
+ * - PostgreSQL: 'database "x" does not exist'
+ * - MySQL: "Unknown database 'x'"
+ */
+export function isDatabaseNotFoundError(error: string | null | undefined): boolean {
+
+    if (!error) return false;
+
+    const lower = error.toLowerCase();
+
+    return lower.includes('does not exist') || lower.includes('unknown database');
+
+}
 
 /**
  * ConnectionStatus component.
@@ -97,6 +116,12 @@ export function ConnectionStatus({
                 <Box gap={1}>
                     <Text dimColor>Dialect:</Text>
                     <Text>{dialect}</Text>
+                </Box>
+            )}
+
+            {status === 'no-database' && (
+                <Box gap={1}>
+                    <Text dimColor>Database does not exist yet. Press [c] to create.</Text>
                 </Box>
             )}
 

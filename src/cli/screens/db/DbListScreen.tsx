@@ -25,7 +25,7 @@ import type { ScreenProps } from '../../types.js';
 import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
-import { Panel, Spinner, ConnectionStatus, useToast } from '../../components/index.js';
+import { Panel, Spinner, ConnectionStatus, isDatabaseNotFoundError, useToast } from '../../components/index.js';
 import { useConnection, useAsyncEffect } from '../../hooks/index.js';
 import { tablesExist } from '../../../core/version/index.js';
 import { getNoormTables, noormDb } from '../../../core/shared/index.js';
@@ -285,6 +285,8 @@ export function DbListScreen({ params: _params }: ScreenProps): ReactElement {
                         <Text>Connection:</Text>
                         {status?.connected ? (
                             <ConnectionStatus status="connected" />
+                        ) : isDatabaseNotFoundError(status?.connectionError) ? (
+                            <ConnectionStatus status="no-database" />
                         ) : (
                             <Box flexDirection="column">
                                 <ConnectionStatus status="error" />

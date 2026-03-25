@@ -5,6 +5,9 @@
  * Table types and constants live here to avoid circular dependencies.
  */
 
+// Errors
+export { getSqlErrorMessage } from './errors.js';
+
 // Files
 export { filterFilesByPaths, matchesPathPrefix } from './files.js';
 

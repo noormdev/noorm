@@ -471,7 +471,13 @@ export function RunBuildScreen({ params: _params }: ScreenProps): ReactElement {
                                 <Text bold color="red">
                                     Error:
                                 </Text>
-                                <Text color="red">{progress.error}</Text>
+                                <Box marginLeft={2} flexDirection="column">
+                                    {progress.error.split('\n').map((line, i) => (
+                                        <Text key={i} color="red">
+                                            {line}
+                                        </Text>
+                                    ))}
+                                </Box>
                             </Box>
                         )}
 
@@ -484,9 +490,20 @@ export function RunBuildScreen({ params: _params }: ScreenProps): ReactElement {
                                     .filter((r) => r.status === 'failed')
                                     .slice(0, 5)
                                     .map((r, i) => (
-                                        <Text key={i} dimColor>
-                                            {relative(process.cwd(), r.filepath)}: {r.error}
-                                        </Text>
+                                        <Box key={i} flexDirection="column">
+                                            <Text dimColor>
+                                                {relative(process.cwd(), r.filepath)}:
+                                            </Text>
+                                            {r.error && (
+                                                <Box marginLeft={2} flexDirection="column">
+                                                    {r.error.split('\n').map((line, j) => (
+                                                        <Text key={j} color="red" dimColor>
+                                                            {line}
+                                                        </Text>
+                                                    ))}
+                                                </Box>
+                                            )}
+                                        </Box>
                                     ))}
                                 {progress.results.filter((r) => r.status === 'failed').length >
                                     5 && (

@@ -1,0 +1,7 @@
+-- {% for (const item of $.config.items) { %}
+CREATE PROCEDURE p_{%= item %}
+AS
+BEGIN
+    SELECT 1;
+END
+-- {% } %}

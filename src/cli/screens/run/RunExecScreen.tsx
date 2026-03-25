@@ -258,7 +258,13 @@ export function RunExecScreen({ params: _params }: ScreenProps): ReactElement {
                 <Panel title="Execute Files" borderColor="red" paddingX={1} paddingY={1}>
                     <Box flexDirection="column" gap={1}>
                         <Text color="red">Error</Text>
-                        <Text dimColor>{error}</Text>
+                        <Box marginLeft={2} flexDirection="column">
+                            {error?.split('\n').map((line, i) => (
+                                <Text key={i} dimColor>
+                                    {line}
+                                </Text>
+                            ))}
+                        </Box>
                     </Box>
                 </Panel>
                 <Box flexWrap="wrap" columnGap={2}>

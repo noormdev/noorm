@@ -30,6 +30,7 @@ import { observer } from '../observer.js';
 import { formatIdentity } from '../identity/resolver.js';
 import { processFile, isTemplate } from '../template/index.js';
 import { computeChecksum, computeCombinedChecksum } from '../runner/checksum.js';
+import { getSqlErrorMessage } from '../shared/index.js';
 import { getLockManager } from '../lock/index.js';
 import { ChangeHistory } from './history.js';
 import { ChangeTracker } from './tracker.js';
@@ -538,16 +539,18 @@ async function executeFiles(
 
             if (execErr) {
 
-                // Capture error info FIRST
+                // Capture error info FIRST — use getSqlErrorMessage to preserve
+                // TDS diagnostics (line numbers, error codes, procedure names)
+                const errorMessage = getSqlErrorMessage(execErr);
                 failed = true;
                 failedFile = file.path;
-                failureError = execErr.message;
+                failureError = errorMessage;
 
                 results.push({
                     filepath: file.path,
                     checksum: fileChecksums.get(file.path) ?? '',
                     status: 'failed',
-                    error: execErr.message,
+                    error: errorMessage,
                     durationMs,
                 });
 
@@ -558,7 +561,7 @@ async function executeFiles(
                     execRelPath,
                     'failed',
                     durationMs,
-                    execErr.message,
+                    errorMessage,
                 );
 
                 if (updateErr2) {

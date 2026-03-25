@@ -58,6 +58,8 @@ import * as CmdLock from './lock.js';
 import * as CmdRunBuild from './run-build.js';
 import * as CmdRunDir from './run-dir.js';
 import * as CmdRunFile from './run-file.js';
+import * as CmdRunInspect from './run-inspect.js';
+import * as CmdRunPreview from './run-preview.js';
 import * as CmdRun from './run.js';
 import * as CmdSecret from './secret.js';
 import * as CmdSettings from './settings.js';
@@ -120,6 +122,8 @@ const HANDLERS: Partial<Record<Route, RouteHandler>> = {
     'run/build': CmdRunBuild,
     'run/dir': CmdRunDir,
     'run/file': CmdRunFile,
+    'run/inspect': CmdRunInspect,
+    'run/preview': CmdRunPreview,
 
     'secret': CmdSecret,
     'settings': CmdSettings,

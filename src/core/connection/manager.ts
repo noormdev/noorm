@@ -158,6 +158,39 @@ class ConnectionManager {
     }
 
     /**
+     * Close all connections for a specific config name.
+     *
+     * Closes cached, tracked, and bridge connections matching the name.
+     * Used before destructive operations like DROP DATABASE.
+     */
+    async closeByConfig(configName: string): Promise<void> {
+
+        // Close bridge
+        await this.closeBridge(configName);
+
+        // Close cached
+        await this.closeCached(configName);
+
+        // Close tracked connections matching this config name
+        const toClose = Array.from(this.#tracked.entries())
+            .filter(([, entry]) => entry.configName === configName);
+
+        for (const [id, entry] of toClose) {
+
+            const [, err] = await attempt(() => entry.conn.destroy());
+            this.#tracked.delete(id);
+
+            if (!err) {
+
+                observer.emit('connection:close', { configName: entry.configName });
+
+            }
+
+        }
+
+    }
+
+    /**
      * Close all connections (cached and tracked).
      *
      * Called automatically on app:shutdown event.

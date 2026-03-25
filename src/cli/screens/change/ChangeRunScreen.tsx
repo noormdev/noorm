@@ -350,12 +350,20 @@ export function ChangeRunScreen({ params }: ScreenProps): ReactElement {
                             const color = f.status === 'success' ? 'green' : f.status === 'failed' ? 'red' : 'yellow';
 
                             return (
-                                <Text key={i} color={color}>
-                                    {icon} {filename}
+                                <Box key={i} flexDirection="column">
+                                    <Text color={color}>
+                                        {icon} {filename}
+                                    </Text>
                                     {f.status === 'failed' && f.error && (
-                                        <Text dimColor> - {f.error.slice(0, 60)}{f.error.length > 60 ? '...' : ''}</Text>
+                                        <Box marginLeft={2} flexDirection="column">
+                                            {f.error.split('\n').map((line, j) => (
+                                                <Text key={j} color="red" dimColor>
+                                                    {line}
+                                                </Text>
+                                            ))}
+                                        </Box>
                                     )}
-                                </Text>
+                                </Box>
                             );
 
                         })}

@@ -506,7 +506,13 @@ export function RunDirScreen({ params }: ScreenProps): ReactElement {
                 <Panel title="Run Directory" borderColor="red" paddingX={1} paddingY={1}>
                     <Box flexDirection="column" gap={1}>
                         <Text color="red">Error</Text>
-                        <Text dimColor>{error}</Text>
+                        <Box marginLeft={2} flexDirection="column">
+                            {error?.split('\n').map((line, i) => (
+                                <Text key={i} dimColor>
+                                    {line}
+                                </Text>
+                            ))}
+                        </Box>
                     </Box>
                 </Panel>
                 <Box flexWrap="wrap" columnGap={2}>
@@ -805,9 +811,20 @@ export function RunDirScreen({ params }: ScreenProps): ReactElement {
                                     .filter((r) => r.status === 'failed')
                                     .slice(0, 5)
                                     .map((r, i) => (
-                                        <Text key={i} dimColor>
-                                            {r.filepath.split('/').pop()}: {r.error}
-                                        </Text>
+                                        <Box key={i} flexDirection="column">
+                                            <Text dimColor>
+                                                {r.filepath.split('/').pop()}:
+                                            </Text>
+                                            {r.error && (
+                                                <Box marginLeft={2} flexDirection="column">
+                                                    {r.error.split('\n').map((line, j) => (
+                                                        <Text key={j} color="red" dimColor>
+                                                            {line}
+                                                        </Text>
+                                                    ))}
+                                                </Box>
+                                            )}
+                                        </Box>
                                     ))}
                             </Box>
                         )}

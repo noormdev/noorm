@@ -31,12 +31,35 @@ import { TEMPLATE_EXTENSION } from './types.js';
 import { buildContext } from './context.js';
 
 /**
+ * Strips entire `-- {% ... %}` directive lines from templates.
+ *
+ * The `-- {% %}` convention keeps .sql.tmpl files valid SQL (directives
+ * look like comments to SQL parsers). Before Eta processes the template,
+ * this regex strips the `-- ` prefix, trailing whitespace, and the line's
+ * newline from directive-only lines so they produce no output.
+ *
+ * Only matches lines where `-- {% ... %}` is the ONLY content (plus whitespace).
+ * Regular SQL comments and inline tags are not affected.
+ *
+ * `  -- {% for (const x of $.items) { %}\n` → `{% for (const x of $.items) { %}`
+ * `SELECT 1; -- comment` → unchanged (no `{%`)
+ * `-- {% if (x) { %} SELECT 1` → unchanged (content after tag)
+ */
+const DIRECTIVE_LINE_RE = /^[ \t]*-- (\{%.*?%\})[ \t]*$(?:\r?\n)?/gm;
+
+/**
  * Eta instance configured with noorm's custom syntax.
  *
  * Custom delimiters:
  * - `{% %}` for JavaScript code (instead of `<% %>`)
  * - `{%~ %}` for raw output (instead of `<%~ %>`)
  * - `$` as the context variable (instead of `it`)
+ *
+ * autoTrim is disabled. Instead, the `-- {% %}` directive-line convention
+ * is handled by DIRECTIVE_LINE_RE which strips entire directive lines
+ * (including their newline) before Eta parses. This avoids Eta's autoTrim
+ * gotchas where leftTrim eats content newlines after interpolation tags
+ * (e.g. `{%= item %}\nAS` becoming `itemAS`).
  */
 const eta = new Eta({
     // Custom tags for code blocks
@@ -47,6 +70,9 @@ const eta = new Eta({
 
     // Don't auto-escape (SQL doesn't need HTML escaping)
     autoEscape: false,
+
+    // Disabled — directive-line stripping handles whitespace instead
+    autoTrim: [false, false],
 
     // Allow async functions in templates
     useWith: false,
@@ -84,7 +110,16 @@ export function isTemplate(filepath: string): boolean {
  */
 export async function renderTemplate(template: string, context: TemplateContext): Promise<string> {
 
-    return eta.renderStringAsync(template, context);
+    // Strip entire -- {% %} directive lines so they produce no output.
+    // The -- prefix keeps .tmpl files valid SQL; the regex removes the
+    // prefix, trailing whitespace, and the line's newline.
+    const prepared = template.replace(DIRECTIVE_LINE_RE, '$1');
+
+    const result = await eta.renderStringAsync(prepared, context);
+
+    // Strip leading/trailing blank lines — directive lines at template
+    // boundaries and file-trailing newlines can leave empty lines
+    return result.replace(/^\n+|\n+$/g, '');
 
 }
 

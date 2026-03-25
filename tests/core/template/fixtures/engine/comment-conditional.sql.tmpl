@@ -1,0 +1,5 @@
+-- {% if ($.config.addEmail) { %}
+ALTER TABLE users ADD email VARCHAR(255);
+-- {% } else { %}
+ALTER TABLE users ADD username VARCHAR(100);
+-- {% } %}

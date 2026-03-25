@@ -298,11 +298,9 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
                 <Box flexDirection="column">
                     <Box gap={1}>
                         <Text color="yellow">●</Text>
-                        <Text color="yellow">Success</Text>
+                        <Text color="yellow">Not Created</Text>
                     </Box>
-                    {status.connectionError && (
-                        <Text dimColor wrap="truncate">  {status.connectionError}</Text>
-                    )}
+                    <Text dimColor wrap="truncate">  Database does not exist. Use [d] DB to create.</Text>
                 </Box>
             );
 

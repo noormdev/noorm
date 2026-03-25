@@ -295,7 +295,16 @@ export function ChangeHistoryDetailScreen({ params }: ScreenProps): ReactElement
                             <Text color="yellow">Skip Reason: {selectedFile.skipReason}</Text>
                         )}
                         {selectedFile.status === 'failed' && selectedFile.errorMessage && (
-                            <Text color="red">Error: {selectedFile.errorMessage}</Text>
+                            <Box flexDirection="column">
+                                <Text color="red">Error:</Text>
+                                <Box marginLeft={2} flexDirection="column">
+                                    {selectedFile.errorMessage.split('\n').map((line, i) => (
+                                        <Text key={i} color="red" dimColor>
+                                            {line}
+                                        </Text>
+                                    ))}
+                                </Box>
+                            </Box>
                         )}
                     </Box>
                 )}

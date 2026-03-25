@@ -24,11 +24,12 @@ import { useAppContext } from '../../app-context.js';
 import { useToast, Panel, Spinner, ProtectedConfirm } from '../../components/index.js';
 import { useAsyncEffect } from '../../hooks/index.js';
 import { checkDbStatus, destroyDb } from '../../../core/db/index.js';
+import { useConnectionContext } from '../../providers/ConnectionProvider.js';
 
 /**
  * Screen phase state.
  */
-type Phase = 'loading' | 'confirm' | 'running' | 'done' | 'error' | 'blocked';
+type Phase = 'loading' | 'confirm' | 'disconnecting' | 'running' | 'done' | 'error' | 'blocked';
 
 /**
  * DbDestroyScreen component.
@@ -40,6 +41,7 @@ export function DbDestroyScreen({ params: _params }: ScreenProps): ReactElement 
     const { back } = useRouter();
     const { isFocused } = useFocusScope('DbDestroy');
     const { activeConfig, activeConfigName } = useAppContext();
+    const { destroyConnection } = useConnectionContext();
     const { showToast } = useToast();
 
     // Phase state
@@ -93,8 +95,12 @@ export function DbDestroyScreen({ params: _params }: ScreenProps): ReactElement 
 
         if (!activeConfig || !activeConfigName) return;
 
-        setPhase('running');
+        // Disconnect the shared TUI connection before dropping — otherwise
+        // the server kills the socket and the connection worker emits ECONNRESET
+        setPhase('disconnecting');
+        await destroyConnection();
 
+        setPhase('running');
         const result = await destroyDb(activeConfig.connection, activeConfigName);
 
         if (!result.ok) {
@@ -274,6 +280,17 @@ export function DbDestroyScreen({ params: _params }: ScreenProps): ReactElement 
                     focusLabel="DbDestroyConfirm"
                 />
             </Box>
+        );
+
+    }
+
+    // Disconnecting phase
+    if (phase === 'disconnecting') {
+
+        return (
+            <Panel title="Destroy Database" paddingX={1} paddingY={1}>
+                <Spinner label="Closing active connection..." />
+            </Panel>
         );
 
     }

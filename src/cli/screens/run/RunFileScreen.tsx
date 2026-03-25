@@ -641,7 +641,13 @@ export function RunFileScreen({ params }: ScreenProps): ReactElement {
                         {result?.error && (
                             <Box flexDirection="column" marginTop={1}>
                                 <Text color="red">Error:</Text>
-                                <Text dimColor>{result.error}</Text>
+                                <Box marginLeft={2} flexDirection="column">
+                                    {result.error.split('\n').map((line, i) => (
+                                        <Text key={i} dimColor>
+                                            {line}
+                                        </Text>
+                                    ))}
+                                </Box>
                             </Box>
                         )}
                     </Box>

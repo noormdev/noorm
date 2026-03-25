@@ -182,7 +182,8 @@ describe('template: security', () => {
             const result = await ctx.include('recursive.sql.tmpl');
 
             // The recursive template includes safe.sql (with its own comment)
-            expect(result).toBe('-- Template that includes another template\n-- Safe file within project\nSELECT 1;\n');
+            // Trailing newlines are stripped by renderTemplate
+            expect(result).toBe('-- Template that includes another template\n-- Safe file within project\nSELECT 1;');
 
         });
 
