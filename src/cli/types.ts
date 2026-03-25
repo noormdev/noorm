@@ -161,6 +161,7 @@ export type Route =
     // Dev (internal testing / diagnostics)
     | 'dev'
     | 'dev/test-workers'
+    | 'dev/test-helpers'
 /**
  * Route parameters that can be passed during navigation.
  *

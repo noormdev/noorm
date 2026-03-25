@@ -32,6 +32,7 @@ export { buildContext } from './context.js';
 
 // Helper loader
 export { loadHelpers, findHelperFiles } from './helpers.js';
+export type { HelperLoadError, LoadHelpersResult } from './helpers.js';
 
 // Data loaders
 export {

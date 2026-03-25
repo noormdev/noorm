@@ -47,7 +47,7 @@ export async function buildContext(
     const projectRoot = options.projectRoot ?? process.cwd();
 
     // 1. Load inherited helpers
-    const helpers = await loadHelpers(templateDir, projectRoot);
+    const { helpers } = await loadHelpers(templateDir, projectRoot);
 
     // 2. Auto-load data files from template directory
     const dataFiles = await loadDataFilesInDir(templateDir);
@@ -122,8 +122,8 @@ async function loadDataFilesInDir(dir: string): Promise<Record<string, unknown>>
 
         }
 
-        // Skip helper files
-        if (entry.name.startsWith(HELPER_FILENAME)) {
+        // Skip dotfiles (includes helper files and temp files)
+        if (entry.name.startsWith('.') || entry.name.startsWith(HELPER_FILENAME)) {
 
             continue;
 

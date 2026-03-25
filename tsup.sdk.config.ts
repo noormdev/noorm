@@ -27,6 +27,10 @@ export default defineConfig({
 
         // Override: mark peer dependencies as external
         options.external = EXTERNAL_PACKAGES;
+        // Shim require() for CJS packages that use require('process') etc
+        options.banner = {
+            js: `import { createRequire } from 'module'; const require = createRequire(import.meta.url);`,
+        };
         // Stub ansis — SDK doesn't need terminal colors
         options.alias = {
             'ansis': resolve('src/sdk/stubs/ansis.ts'),

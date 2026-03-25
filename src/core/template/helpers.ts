@@ -118,19 +118,38 @@ async function findHelperInDir(dir: string): Promise<string | null> {
  * // helpers.formatDate() from sql/$helpers.ts
  * ```
  */
+/**
+ * Error encountered while loading a $helpers file.
+ */
+export interface HelperLoadError {
+    filepath: string;
+    error: Error;
+}
+
+/**
+ * Result from loading helpers, including any load errors.
+ */
+export interface LoadHelpersResult {
+    helpers: Record<string, unknown>;
+    errors: HelperLoadError[];
+}
+
 export async function loadHelpers(
     fromDir: string,
     projectRoot: string,
-): Promise<Record<string, unknown>> {
+): Promise<LoadHelpersResult> {
 
     const helperPaths = await findHelperFiles(fromDir, projectRoot);
     const merged: Record<string, unknown> = {};
+    const errors: HelperLoadError[] = [];
 
     for (const filepath of helperPaths) {
 
         const [mod, err] = await attempt(() => loadJs(filepath));
 
         if (err) {
+
+            errors.push({ filepath, error: err });
 
             observer.emit('error', {
                 source: 'template',
@@ -158,6 +177,6 @@ export async function loadHelpers(
 
     }
 
-    return merged;
+    return { helpers: merged, errors };
 
 }

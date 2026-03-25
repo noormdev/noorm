@@ -92,8 +92,9 @@ describe('template: helpers', () => {
             const rootDir = path.join(FIXTURES_DIR, 'load-merge');
             const childDir = path.join(rootDir, 'child');
 
-            const helpers = await loadHelpers(childDir, rootDir);
+            const { helpers, errors } = await loadHelpers(childDir, rootDir);
 
+            expect(errors).toEqual([]);
             expect(helpers['rootHelper']).toBeDefined();
             expect(helpers['childHelper']).toBeDefined();
             // Child should override root
@@ -105,9 +106,10 @@ describe('template: helpers', () => {
 
             const testDir = path.join(FIXTURES_DIR, 'load-empty');
 
-            const helpers = await loadHelpers(testDir, testDir);
+            const { helpers, errors } = await loadHelpers(testDir, testDir);
 
             expect(helpers).toEqual({});
+            expect(errors).toEqual([]);
 
         });
 
@@ -115,8 +117,9 @@ describe('template: helpers', () => {
 
             const testDir = path.join(FIXTURES_DIR, 'load-single');
 
-            const helpers = await loadHelpers(testDir, testDir);
+            const { helpers, errors } = await loadHelpers(testDir, testDir);
 
+            expect(errors).toEqual([]);
             expect(helpers['NAME']).toBe('test');
             expect(typeof helpers['greet']).toBe('function');
 

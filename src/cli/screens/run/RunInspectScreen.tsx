@@ -25,6 +25,7 @@ import { useAsyncEffect } from '../../hooks/index.js';
 import { discoverFiles } from '../../../core/runner/index.js';
 import { buildContext } from '../../../core/template/context.js';
 import { processFile } from '../../../core/template/engine.js';
+import { loadHelpers, type HelperLoadError } from '../../../core/template/helpers.js';
 import { attempt } from '@logosdx/utils';
 
 import type { SelectListItem } from '../../components/index.js';
@@ -39,6 +40,7 @@ const STANDARD_KEYS = new Set(['config', 'secrets', 'globalSecrets', 'env']);
 interface CategorizedContext {
     dataFiles: Array<{ key: string; value: unknown }>;
     helpers: Array<{ key: string; value: unknown }>;
+    helperErrors: HelperLoadError[];
     builtins: Array<{ key: string; value: unknown }>;
     config: unknown;
     secrets: Record<string, string>;
@@ -187,8 +189,12 @@ function describeTypeExpanded(value: unknown, indent = 0): string[] {
 
 /**
  * Categorize context properties into groups.
+ *
+ * Uses helperKeys (from loadHelpers) to categorize by source
+ * rather than guessing by type. This ensures non-function helper
+ * exports (constants, arrays, objects) show under Helpers.
  */
-function categorizeContext(ctx: TemplateContext): CategorizedContext {
+function categorizeContext(ctx: TemplateContext, helperKeys: Set<string>, helperErrors: HelperLoadError[]): CategorizedContext {
 
     const dataFiles: Array<{ key: string; value: unknown }> = [];
     const helpers: Array<{ key: string; value: unknown }> = [];
@@ -205,7 +211,7 @@ function categorizeContext(ctx: TemplateContext): CategorizedContext {
 
         }
 
-        if (typeof value === 'function') {
+        if (helperKeys.has(key)) {
 
             helpers.push({ key, value });
 
@@ -221,6 +227,7 @@ function categorizeContext(ctx: TemplateContext): CategorizedContext {
     return {
         dataFiles: dataFiles.sort((a, b) => a.key.localeCompare(b.key)),
         helpers: helpers.sort((a, b) => a.key.localeCompare(b.key)),
+        helperErrors,
         builtins: builtins.sort((a, b) => a.key.localeCompare(b.key)),
         config: ctx.config,
         secrets: ctx.secrets,
@@ -344,12 +351,27 @@ export function RunInspectScreen({ params }: ScreenProps): ReactElement {
         setPhase('loading');
         setError(null);
 
-        const [ctx, err] = await attempt(() => buildContext(selectedFile, {
-            projectRoot,
-            config: activeConfig as unknown as Record<string, unknown>,
-            secrets: stateManager.getAllSecrets(activeConfigName ?? ''),
-            globalSecrets: stateManager.getAllGlobalSecrets(),
-        }));
+        const templateDir = selectedFile.substring(0, selectedFile.lastIndexOf('/'));
+
+        const [results, err] = await attempt(async () => {
+
+            const [ctx, helperResult] = await Promise.all([
+                buildContext(selectedFile, {
+                    projectRoot,
+                    config: activeConfig as unknown as Record<string, unknown>,
+                    secrets: stateManager.getAllSecrets(activeConfigName ?? ''),
+                    globalSecrets: stateManager.getAllGlobalSecrets(),
+                }),
+                loadHelpers(templateDir, projectRoot),
+            ]);
+
+            return {
+                ctx,
+                helperKeys: new Set(Object.keys(helperResult.helpers)),
+                helperErrors: helperResult.errors,
+            };
+
+        });
 
         if (err) {
 
@@ -360,9 +382,9 @@ export function RunInspectScreen({ params }: ScreenProps): ReactElement {
 
         }
 
-        if (ctx) {
+        if (results) {
 
-            setContext(categorizeContext(ctx));
+            setContext(categorizeContext(results.ctx, results.helperKeys, results.helperErrors));
             setPhase('inspecting');
 
         }
@@ -601,15 +623,21 @@ export function RunInspectScreen({ params }: ScreenProps): ReactElement {
                             </Box>
                         )}
 
-                        {context.helpers.length > 0 && (
+                        {(context.helpers.length > 0 || context.helperErrors.length > 0) && (
                             <Box flexDirection="column" marginTop={1}>
-                                <Text bold>Helpers</Text>
-                                {context.helpers.map(({ key }) => (
+                                <Text bold>Helpers ($helpers)</Text>
+                                {context.helpers.map(({ key, value }) => (
                                     <Box key={key} marginLeft={2} gap={1}>
                                         <Box width={24}>
                                             <Text color="magenta">$.{key}</Text>
                                         </Box>
-                                        <Text dimColor>Function</Text>
+                                        <Text dimColor>{describeType(value)}</Text>
+                                    </Box>
+                                ))}
+                                {context.helperErrors.map(({ filepath, error: helperErr }) => (
+                                    <Box key={filepath} flexDirection="column" marginLeft={2}>
+                                        <Text color="red">Failed to load: {relative(projectRoot, filepath)}</Text>
+                                        <Text color="red" dimColor>  {helperErr.message}</Text>
                                     </Box>
                                 ))}
                             </Box>
