@@ -23,6 +23,21 @@ out of order or to retry a failed change.
 
     noorm -H change run 001_init
     noorm -H change run 002_users
+    noorm -H --json change run 2024-02-01-notifications
+
+## JSON Output
+
+\`\`\`json
+{
+    "name": "001_init",
+    "direction": "change",
+    "status": "success",
+    "files": [
+        { "filepath": "change/001_create-table.sql", "checksum": "a1b2c3", "status": "executed", "durationMs": 23 }
+    ],
+    "durationMs": 45
+}
+\`\`\`
 
 See \`noorm help change\`, \`noorm help change ff\`, or \`noorm help change revert\`.
 `;

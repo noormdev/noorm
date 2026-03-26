@@ -16,20 +16,20 @@ Initialize the vault for the current database
 
 ## Usage
 
-    noorm vault init
+    noorm -H vault init
 
 ## Description
 
 Generates a new vault encryption key and stores it encrypted for your identity.
-Only the first user to initialize gets the vault key - others receive it via propagation.
+Only the first user to initialize gets the vault key — others receive it via
+\`noorm vault propagate\`.
 
-Requires:
-- Active config set
-- Identity initialized
+Requires an active config and initialized identity.
 
 ## Examples
 
-    noorm vault init
+    noorm -H vault init                    Initialize vault
+    noorm -H --json vault init             Initialize and return JSON
 
 ## JSON Output
 
@@ -37,6 +37,17 @@ Requires:
         "success": true,
         "message": "Vault initialized successfully"
     }
+
+If already initialized:
+
+    {
+        "success": true,
+        "message": "Vault already initialized and you have access"
+    }
+
+## See Also
+
+See \`noorm help vault propagate\`, \`noorm help vault set\`.
 `;
 
 export const run: HeadlessCommand = async (params, flags, logger) => {

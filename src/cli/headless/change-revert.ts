@@ -23,6 +23,21 @@ The change must have been previously applied.
 
     noorm -H change revert 002_users
     noorm -H change revert 001_init
+    noorm -H --json change revert 002_users
+
+## JSON Output
+
+\`\`\`json
+{
+    "name": "002_users",
+    "direction": "revert",
+    "status": "success",
+    "files": [
+        { "filepath": "revert/001_drop-table.sql", "checksum": "d4e5f6", "status": "executed", "durationMs": 12 }
+    ],
+    "durationMs": 30
+}
+\`\`\`
 
 See \`noorm help change\` or \`noorm help change run\`.
 `;

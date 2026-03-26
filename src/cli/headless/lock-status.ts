@@ -38,9 +38,15 @@ When not locked:
 
 \`\`\`json
 {
-    "isLocked": false
+    "isLocked": false,
+    "lock": null
 }
 \`\`\`
+
+## Exit Codes
+
+    0   Status retrieved successfully
+    1   Failed to connect or query lock status
 
 See \`noorm help lock\` or \`noorm help lock acquire\`.
 `;

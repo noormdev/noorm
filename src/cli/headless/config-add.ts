@@ -12,9 +12,15 @@ Create a new configuration
 ## Description
 
 Opens an interactive wizard to create a new database configuration.
-Guides you through connection details, paths, and settings.
+Guides you through name, dialect, connection details (host, port, database,
+user, password), and options (protected, test). Tests the connection before
+saving.
 
-> TUI only - not available in headless mode.
+> Interactive only — launches the TUI wizard.
+
+## Examples
+
+    noorm config add
 
 See \`noorm help config\` or \`noorm help config edit\`.
 `;

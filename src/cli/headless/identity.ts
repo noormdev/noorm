@@ -21,7 +21,12 @@ Identity can be derived from:
 - Environment variables
 - Manual configuration
 
-> TUI only - not available in headless mode.
+> Interactive only — launches the TUI wizard. In CI/CD, identity is
+> derived automatically from git config or environment variables.
+
+## Examples
+
+    noorm identity
 
 See \`noorm help lock\`.
 `;

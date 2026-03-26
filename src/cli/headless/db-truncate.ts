@@ -7,21 +7,32 @@ Wipe all data, keep schema
 
 ## Usage
 
-    noorm db truncate
-    noorm -H db truncate
+    noorm -H db truncate [options]
+
+## Flags
+
+    -y, --yes      Skip confirmation prompt
+    -f, --force    Override protection on protected configs
 
 ## Description
 
 Truncates all tables in the database, removing all data while
-keeping the schema intact. Useful for resetting test databases.
+keeping the schema intact. Tables are truncated in foreign key
+dependency order. Useful for resetting test databases between runs.
 
 > **WARNING:** This is a destructive operation. Protected configs
 > require \`--force\` or confirmation.
 
 ## Examples
 
-    noorm -H db truncate
+    # Truncate with confirmation skip
     noorm -H -y db truncate
+
+    # Force truncate on protected config
+    noorm -H --force db truncate
+
+    # JSON output for scripting
+    noorm -H --json -y db truncate
 
 ## JSON Output
 

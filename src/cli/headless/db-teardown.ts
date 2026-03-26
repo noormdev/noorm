@@ -7,21 +7,33 @@ Drop all database objects
 
 ## Usage
 
-    noorm db teardown
-    noorm -H db teardown
+    noorm -H db teardown [options]
+
+## Flags
+
+    -y, --yes      Skip confirmation prompt
+    -f, --force    Override protection on protected configs
 
 ## Description
 
 Drops all database objects including tables, views, functions,
-and types. Keeps noorm tracking tables.
+and types. Objects are dropped in dependency order to avoid
+foreign key violations. Keeps noorm tracking tables so the project
+can be rebuilt from scratch.
 
 > **WARNING:** This is a destructive operation. Protected configs
 > require \`--force\` or confirmation.
 
 ## Examples
 
-    noorm -H db teardown
+    # Teardown with confirmation skip
     noorm -H -y db teardown
+
+    # Force teardown on protected config
+    noorm -H --force db teardown
+
+    # JSON output for scripting
+    noorm -H --json -y db teardown
 
 ## JSON Output
 

@@ -27,6 +27,16 @@ CI/CD pattern with cleanup:
     trap "noorm -H lock release" EXIT
     noorm -H change ff
 
+## JSON Output
+
+\`\`\`json
+{
+    "acquired": true,
+    "lockedBy": "deploy@ci-runner",
+    "expiresAt": "2024-01-15T10:35:00Z"
+}
+\`\`\`
+
 ## Exit Codes
 
     0   Lock acquired successfully

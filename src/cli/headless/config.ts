@@ -15,7 +15,6 @@ Manage database configurations
     edit NAME       Edit an existing configuration
     rm NAME         Remove a configuration
     use NAME        Set the active configuration
-    validate        Validate configuration settings
 
 ## Description
 

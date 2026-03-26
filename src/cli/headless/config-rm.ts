@@ -16,9 +16,15 @@ Remove a configuration
 ## Description
 
 Permanently deletes the named configuration and its secrets.
-Locked stage configs cannot be deleted.
+Cannot delete the active configuration. Protected configs
+require typed confirmation before deletion.
 
-> TUI only - not available in headless mode.
+> Interactive only — launches the TUI wizard.
+
+## Examples
+
+    noorm config rm staging
+    noorm config rm old-dev
 
 See \`noorm help config\`.
 `;

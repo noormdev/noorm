@@ -1,4 +1,4 @@
-import { withContext, type HeadlessCommand } from './_helpers.js';
+import { withContext, outputResult, type HeadlessCommand } from './_helpers.js';
 
 export const help = `
 # LOCK FORCE
@@ -21,6 +21,15 @@ Use this when a lock holder crashed or when emergency intervention is needed.
 ## Examples
 
     noorm -H lock force
+
+## JSON Output
+
+\`\`\`json
+{
+    "released": true,
+    "forced": true
+}
+\`\`\`
 
 ## Exit Codes
 
@@ -46,7 +55,7 @@ export const run: HeadlessCommand = async (_params, flags, logger) => {
 
     if (error) return 1;
 
-    logger.info('Lock force-released');
+    outputResult(flags, logger, { released: true, forced: true }, 'Lock force-released');
 
     return 0;
 

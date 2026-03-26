@@ -34,6 +34,11 @@ Check for and install noorm updates.
 Checks for the latest version and downloads the update if available.
 The binary is replaced in-place — restart to use the new version.
 
+## Examples
+
+    noorm -H update
+    noorm -H --json update
+
 ## JSON Output
 
 {

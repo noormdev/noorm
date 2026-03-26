@@ -18,8 +18,8 @@ Copy vault secrets between configs
 
 ## Usage
 
-    noorm vault cp [--all] [--force] <key> <source> <destination>
-    noorm vault cp --all [--force] <source> <destination>
+    noorm -H vault cp [--all] [--force] <key> <source> <destination>
+    noorm -H vault cp --all [--force] <source> <destination>
 
 ## Arguments
 
@@ -29,22 +29,25 @@ Copy vault secrets between configs
 
 ## Flags
 
-    --all          Copy all secrets
+    --all          Copy all secrets from source
     --force        Overwrite existing secrets in destination
-    --dry-run      Preview without executing
+    --dry-run      Preview what would be copied without executing
 
 ## Description
 
 Copies secrets from one vault to another. Requires vault access on both
-source and destination. If destination vault is not initialized, it will
-be initialized automatically.
+source and destination. If the destination vault is not initialized, it
+will be initialized automatically.
+
+Without \`--force\`, existing secrets in the destination are skipped.
 
 ## Examples
 
-    noorm vault cp API_KEY staging production
-    noorm vault cp --all staging production
-    noorm vault cp --all --force staging production
-    noorm vault cp --all --dry-run staging production
+    noorm -H vault cp API_KEY staging production                Copy one secret
+    noorm -H vault cp --all staging production                  Copy all secrets
+    noorm -H vault cp --all --force staging production          Overwrite existing
+    noorm -H vault cp --all --dry-run staging production        Preview only
+    noorm -H --json vault cp --all staging production           JSON output
 
 ## JSON Output
 
@@ -54,6 +57,21 @@ be initialized automatically.
         "skipped": ["EXISTING_KEY"],
         "errors": []
     }
+
+With \`--dry-run\`:
+
+    {
+        "success": true,
+        "dryRun": true,
+        "source": "staging",
+        "destination": "production",
+        "keys": "all",
+        "force": false
+    }
+
+## See Also
+
+See \`noorm help vault list\`, \`noorm help vault set\`.
 `;
 
 export const run: HeadlessCommand = async (params, flags, logger) => {

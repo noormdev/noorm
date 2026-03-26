@@ -13,7 +13,7 @@ Remove a vault secret
 
 ## Usage
 
-    noorm vault rm <key>
+    noorm -H vault rm <key>
 
 ## Arguments
 
@@ -21,13 +21,14 @@ Remove a vault secret
 
 ## Description
 
-Permanently deletes a secret from the vault.
+Permanently deletes a secret from the vault. Fails if the key does not exist.
 
 Requires vault access.
 
 ## Examples
 
-    noorm vault rm OLD_API_KEY
+    noorm -H vault rm OLD_API_KEY                Remove a secret
+    noorm -H --json vault rm OLD_API_KEY         Remove with JSON output
 
 ## JSON Output
 
@@ -36,6 +37,10 @@ Requires vault access.
         "key": "OLD_API_KEY",
         "deleted": true
     }
+
+## See Also
+
+See \`noorm help vault list\`, \`noorm help vault set\`.
 `;
 
 export const run: HeadlessCommand = async (params, flags, logger) => {

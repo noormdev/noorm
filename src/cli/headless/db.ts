@@ -17,12 +17,13 @@ Database operations and exploration
                     Describe a specific table
     truncate        Wipe all data, keep schema
     teardown        Drop all database objects
+    transfer        Transfer data between configs or export/import .dt files
 
 ## Description
 
 Database commands for exploration and management. Use explore to
-understand your schema, truncate for test resets, and teardown
-for complete cleanup.
+understand your schema, truncate for test resets, teardown for
+complete cleanup, and transfer for data migration between environments.
 
 > **WARNING:** truncate and teardown are destructive operations.
 > Protected configs require \`--force\` or confirmation.
@@ -34,8 +35,12 @@ for complete cleanup.
     noorm -H db explore tables detail users
     noorm -H db truncate
     noorm -H db teardown
+    noorm -H db transfer --to backup
+    noorm -H db transfer --export ./backup/ --compress
 
-See \`noorm help db explore\`, \`noorm help db truncate\`, or \`noorm help db teardown\`.
+## See Also
+
+See \`noorm help db explore\`, \`noorm help db truncate\`, \`noorm help db teardown\`, or \`noorm help db transfer\`.
 `;
 
 export const run = createHelpOnlyCommand(help);

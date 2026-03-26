@@ -13,17 +13,19 @@ List all vault secrets
 
 ## Usage
 
-    noorm vault list
+    noorm -H vault list
 
 ## Description
 
-Lists all secrets stored in the vault. Values are shown masked for security.
+Lists all secrets stored in the vault with metadata (who set each secret and when).
+Values are never exposed — only keys and metadata are returned.
 
 Requires vault access.
 
 ## Examples
 
-    noorm vault list
+    noorm -H vault list                    List secrets
+    noorm -H --json vault list             List as JSON
 
 ## JSON Output
 
@@ -32,8 +34,16 @@ Requires vault access.
         "secrets": [
             { "key": "API_KEY", "setBy": "alice@example.com", "updatedAt": "2024-01-15T10:30:00Z" },
             { "key": "DB_PASSWORD", "setBy": "bob@example.com", "updatedAt": "2024-01-14T09:00:00Z" }
-        ]
+        ],
+        "status": {
+            "usersWithAccess": 3,
+            "usersWithoutAccess": 1
+        }
     }
+
+## See Also
+
+See \`noorm help vault set\`, \`noorm help vault propagate\`.
 `;
 
 export const run: HeadlessCommand = async (_params, flags, logger) => {

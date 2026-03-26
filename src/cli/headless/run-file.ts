@@ -23,6 +23,7 @@ Supports \`.sql\` and \`.sql.tmpl\` (templated) files.
 
     noorm -H run file seed.sql
     noorm -H run file migrations/001_init.sql
+    noorm -H --json run file sql/init.sql.tmpl
 
 ## JSON Output
 
@@ -33,6 +34,8 @@ Supports \`.sql\` and \`.sql.tmpl\` (templated) files.
     "durationMs": 45
 }
 \`\`\`
+
+Status is \`"success"\` or \`"skipped"\` (unchanged checksum).
 
 See \`noorm help run\` or \`noorm help run dir\`.
 `;

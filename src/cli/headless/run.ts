@@ -14,6 +14,8 @@ Execute SQL files
     build           Execute all SQL files in schema directory
     file PATH       Execute a single SQL file
     dir PATH        Execute all SQL files in a directory
+    inspect PATH    Inspect template context for a .sql.tmpl file
+    preview PATH    Render a .sql.tmpl file and output the SQL
 
 ## Description
 

@@ -265,6 +265,11 @@ Displays:
 
 Useful for debugging installation issues.
 
+## Examples
+
+    noorm -H version
+    noorm -H --json version
+
 ## JSON Output
 
 {

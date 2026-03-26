@@ -21,9 +21,14 @@ Common secrets:
 
 > Secrets are stored encrypted in \`.noorm/state/state.enc\`.
 
-> TUI only - not available in headless mode.
+> Interactive only — launches the TUI wizard. For headless secret
+> management, use the \`noorm -H vault\` commands.
 
-See \`noorm help config\`.
+## Examples
+
+    noorm secret
+
+See \`noorm help config\`, \`noorm help vault\`.
 `;
 
 export const run = createHelpOnlyCommand(help);

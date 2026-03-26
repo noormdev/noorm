@@ -25,6 +25,21 @@ Without arguments, lists all available commands.
     noorm help config use
     noorm -H help change ff
 
+## JSON Output
+
+Without a topic:
+
+{
+    "topics": ["change", "change/ff", "config", "config/use", "..."]
+}
+
+With a topic:
+
+{
+    "topic": "config/use",
+    "content": "# CONFIG USE\\n\\nSet the active configuration.\\n..."
+}
+
 See \`noorm help config\`, \`noorm help change\`, or \`noorm help run\` for more.
 `;
 

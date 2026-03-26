@@ -17,21 +17,23 @@ Propagate vault access to new users
 
 ## Usage
 
-    noorm vault propagate
+    noorm -H vault propagate
 
 ## Description
 
 Grants vault access to all registered users who don't have it yet.
-Encrypts the vault key with each user's public key.
+Encrypts the vault key with each user's public key so they can
+decrypt vault secrets.
 
-This is typically done automatically on connect, but can be run
-manually to grant access immediately.
+This happens automatically on connect, but can be run manually to
+grant access immediately after new team members register.
 
 Requires vault access.
 
 ## Examples
 
-    noorm vault propagate
+    noorm -H vault propagate                   Propagate access
+    noorm -H --json vault propagate            Propagate with JSON output
 
 ## JSON Output
 
@@ -40,6 +42,18 @@ Requires vault access.
         "propagatedTo": ["alice@example.com", "bob@example.com"],
         "alreadyHadAccess": 3
     }
+
+When all users already have access:
+
+    {
+        "success": true,
+        "propagatedTo": [],
+        "message": "All users already have vault access"
+    }
+
+## See Also
+
+See \`noorm help vault init\`, \`noorm help vault list\`.
 `;
 
 export const run: HeadlessCommand = async (_params, flags, logger) => {

@@ -13,7 +13,7 @@ Set a vault secret
 
 ## Usage
 
-    noorm vault set <key> <value>
+    noorm -H vault set <key> <value>
 
 ## Arguments
 
@@ -22,22 +22,27 @@ Set a vault secret
 
 ## Description
 
-Stores an encrypted secret in the vault. Upserts - creates if new, updates if exists.
+Stores an encrypted secret in the vault. Upserts — creates if new, updates if exists.
 
-Requires vault access (run 'noorm vault init' first, or wait for propagation).
+Requires vault access (run \`noorm vault init\` first, or wait for propagation).
 
 ## Examples
 
-    noorm vault set API_KEY "sk-live-..."
-    noorm vault set DB_PASSWORD "secret123"
+    noorm -H vault set API_KEY "sk-live-..."         Set a secret
+    noorm -H vault set DB_PASSWORD "secret123"       Set another
+    noorm -H --json vault set API_KEY "sk-live-..."  JSON output
 
 ## JSON Output
 
     {
         "success": true,
         "key": "API_KEY",
-        "action": "created"
+        "action": "set"
     }
+
+## See Also
+
+See \`noorm help vault list\`, \`noorm help vault rm\`.
 `;
 
 export const run: HeadlessCommand = async (params, flags, logger) => {

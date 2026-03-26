@@ -19,6 +19,14 @@ Use \`lock force\` to override ownership.
 
     noorm -H lock release
 
+## JSON Output
+
+\`\`\`json
+{
+    "released": true
+}
+\`\`\`
+
 ## Exit Codes
 
     0   Lock released successfully

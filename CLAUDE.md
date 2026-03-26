@@ -58,10 +58,8 @@ src/
 │   ├── screens/                # Screen components by feature
 │   ├── components/             # Shared UI components
 │   ├── hooks/                  # React hooks
-│   ├── headless/               # CI/CD JSON output
-│   └── help.ts                 # Help file registry
+│   └── headless/               # CI/CD JSON output
 │
-help/                           # CLI help files (plain text)
 tests/                          # Test suite
 docs/                           # Documentation
 ```
@@ -79,102 +77,13 @@ Path-specific rules are in `.claude/rules/`:
 | `documentation.md` | `docs/**/*.md` | Three-pillar structure, style, tone |
 
 
-## Help Files
+## Help System
 
-CLI help is stored in `help/*.txt` files. Plain text, terminal-friendly (not markdown).
+Help text lives as `export const help` markdown strings in each headless module (`src/cli/headless/*.ts`). The `formatHelp()` function in `src/core/help-formatter.ts` renders markdown syntax (headings, code blocks, inline code, bold, etc.) with terminal colors.
 
+`noorm help <topic>` resolves the route to a handler in the HANDLERS registry (`src/cli/headless/index.ts`) and displays its `.help` property. `home.ts` provides the root help text shown when no topic is specified.
 
-### Architecture
-
-```
-help/                           # Help files directory
-├── home.txt                    # Top-level commands
-├── config.txt
-├── config-add.txt              # Subcommands use dashes
-├── config-edit.txt
-├── db-explore-tables.txt       # Nested routes flatten to dashes
-└── ...
-
-src/cli/help.ts                 # Registry and lookup functions
-```
-
-**Registry:** Maps route paths to filenames. Not all routes need entries—hierarchical fallback finds parent help.
-
-```typescript
-const HELP_REGISTRY: Record<string, string> = {
-    'home': 'home.txt',
-    'config': 'config.txt',
-    'config/add': 'config-add.txt',
-    'db/explore/tables': 'db-explore-tables.txt',
-    // ...
-};
-```
-
-
-### Hierarchical Fallback
-
-When help is requested, the system tries progressively shorter prefixes:
-
-```
-noorm help db explore tables detail users
-  → tries: db/explore/tables/detail/users  (not found)
-  → tries: db/explore/tables/detail        (not found)
-  → tries: db/explore/tables               ✓ found → db-explore-tables.txt
-```
-
-This means parent help covers undocumented children automatically.
-
-
-### API Functions
-
-```typescript
-import { getHelp, getHelpMatch, listHelpTopics } from './help.js';
-
-// Load help content (async, returns null if not found)
-const content = await getHelp('db/explore/tables');
-
-// Get the matched route (useful for showing which help loaded)
-const match = getHelpMatch('db/explore/tables/detail');  // → 'db/explore/tables'
-
-// List all available topics
-const topics = listHelpTopics();  // → ['change', 'change/ff', 'config', ...]
-```
-
-
-### File Format
-
-```
-COMMAND NAME - Brief description
-
-USAGE
-    noorm command [subcommand] [options]
-
-SUBCOMMANDS
-    sub1    Description
-    sub2    Description
-
-DESCRIPTION
-    Detailed explanation of what the command does.
-
-EXAMPLES
-    noorm -H command sub1            Comment
-    noorm -H --json command sub2     Comment
-
-JSON OUTPUT (--json)
-    { "example": "output" }
-
-SEE ALSO
-    noorm help related-command
-```
-
-
-### Adding New Help
-
-1. Create `help/<route-with-dashes>.txt` following the format above
-2. Add entry to `HELP_REGISTRY` in `src/cli/help.ts`
-3. File naming: `config/use` → `config-use.txt`, `db/explore/tables` → `db-explore-tables.txt`
-
-Only add registry entries for routes with dedicated content. Parent routes automatically cover children via fallback.
+To add or update help for a command, edit the `export const help` template literal in that command's headless module. The help formatter supports `#`/`##`/`###` headings, code blocks, `> blockquotes`, `**bold**`, `*italic*`, `` `inline code` ``, `[optional]` args, `<required>` args, and `NAME` placeholders.
 
 
 ## Worker Threads

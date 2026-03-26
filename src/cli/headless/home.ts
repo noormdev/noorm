@@ -9,6 +9,11 @@ Database Schema & Change Manager
 
     noorm [command] [subcommand] [options]
 
+## Description
+
+Manage database schemas, execute SQL changes, run templated SQL files,
+and transfer data. Launches a TUI by default, or runs headless with -H.
+
 ## Commands
 
     config      Manage database configurations
@@ -19,7 +24,12 @@ Database Schema & Change Manager
     lock        Distributed lock management
     settings    View/edit project settings
     secret      Manage secrets
+    vault       Encrypted vault management
     identity    Manage identity
+    info        Project and database status
+    version     Show version and diagnostics
+    update      Check for and install updates
+    help        Show help for commands
 
 ## Options
 

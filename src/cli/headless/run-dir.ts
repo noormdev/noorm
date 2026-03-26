@@ -23,6 +23,18 @@ Supports \`.sql\` and \`.sql.tmpl\` (templated) files.
 
     noorm -H run dir migrations/
     noorm -H run dir seeds/
+    noorm -H --json run dir sql/01_tables/
+
+## JSON Output
+
+\`\`\`json
+{
+    "status": "success",
+    "filesRun": 3,
+    "filesSkipped": 1,
+    "filesFailed": 0
+}
+\`\`\`
 
 See \`noorm help run\` or \`noorm help run file\`.
 `;

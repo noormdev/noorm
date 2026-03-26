@@ -2,7 +2,7 @@ import { attempt } from '@logosdx/utils';
 
 import { initState, getStateManager } from '../../core/state/index.js';
 import { syncIdentityWithConfig } from '../../core/identity/index.js';
-import { outputError, type HeadlessCommand } from './_helpers.js';
+import { outputError, outputResult, type HeadlessCommand } from './_helpers.js';
 
 export const help = `
 # CONFIG USE
@@ -93,7 +93,7 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
 
     }
 
-    logger.info(`Active config set to: ${configName}`);
+    outputResult(flags, logger, { activeConfig: configName }, `Active config set to: ${configName}`);
 
     return 0;
 

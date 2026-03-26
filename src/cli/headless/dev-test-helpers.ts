@@ -29,9 +29,29 @@ Internal diagnostic — tests $helpers loading for a template file.
 
     noorm -H dev/test-helpers <template-path>
 
-## Example
+## Description
+
+Verifies that loadHelpers and buildContext correctly resolve and load
+$helpers files from a template's directory tree. Reports found files,
+loaded exports, errors, and full context composition.
+
+Useful for diagnosing helper resolution issues in compiled binaries.
+
+## Examples
 
     noorm -H dev/test-helpers sql/core/05_Cron/Crons.sql.tmpl
+    noorm -H --json dev/test-helpers sql/seed.sql.tmpl
+
+## JSON Output
+
+{
+    "templatePath": "sql/core/05_Cron/Crons.sql.tmpl",
+    "helperFiles": ["sql/core/$helpers.ts"],
+    "helpers": [{"key": "padId", "type": "function"}],
+    "errors": [],
+    "dataKeys": ["roles"],
+    "totalContextKeys": 12
+}
 `;
 
 export async function run(

@@ -20,7 +20,13 @@ Settings include:
 - Logging configuration
 - Identity defaults
 
-> TUI only - not available in headless mode.
+> Interactive only — launches the TUI wizard. For headless configuration,
+> use \`NOORM_*\` environment variables to override settings at runtime
+> (e.g., \`NOORM_CONNECTION_HOST\`, \`NOORM_CONNECTION_DIALECT\`).
+
+## Examples
+
+    noorm settings
 
 See \`noorm help config\`.
 `;

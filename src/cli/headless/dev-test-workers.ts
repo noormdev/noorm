@@ -30,13 +30,31 @@ Internal diagnostic — tests worker thread infrastructure.
 
     noorm -H dev test-workers
 
-## Tests
+## Description
 
-    1. Path resolution    Verifies resolveWorker() returns valid paths
-    2. Compute spawn      Spawns a compute worker and sends a serialize request
-    3. Pool dispatch      Creates a 2-worker pool and dispatches concurrent requests
-    4. OrderBuffer        Feeds out-of-order results, verifies ordered flush
-    5. Connection spawn   Spawns a connection worker and connects to SQLite :memory:
+Runs 5 diagnostics to verify WorkerBridge, WorkerPool, and worker
+scripts function correctly in the current execution context (dev mode,
+dist/, or compiled binary).
+
+Tests: path resolution, compute spawn, pool dispatch, OrderBuffer
+ordering, and connection spawn with SQLite :memory:.
+
+## Examples
+
+    noorm -H dev test-workers
+    noorm -H --json dev test-workers
+
+## JSON Output
+
+{
+    "tests": [
+        {"name": "Path resolution", "status": "PASS", "detail": "...", "durationMs": 1},
+        {"name": "Compute spawn", "status": "PASS", "detail": "...", "durationMs": 50}
+    ],
+    "passed": 5,
+    "failed": 0,
+    "total": 5
+}
 `;
 
 interface TestResult {
