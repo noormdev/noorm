@@ -1,5 +1,29 @@
 # @noormdev/sdk
 
+## 1.0.0-alpha.20
+
+### Minor Changes
+
+- 1dc22b3: ## Added
+
+  - `feat(sdk):` Per-request user impersonation via `ctx.impersonate()` — borrow a dedicated pool connection, switch database identity, and run queries as a specific principal with guaranteed revert
+  - `feat(sdk):` Callback mode (auto-reverts on completion or throw) and explicit mode (caller-managed lifecycle for cross-boundary use cases like Hapi request hooks)
+  - `feat(sdk):` MSSQL (`EXECUTE AS USER` / `REVERT`) and PostgreSQL (`SET ROLE` / `RESET ROLE`) dialect support with SQL injection prevention via username validation and dialect-specific quoting
+
+### Patch Changes
+
+- 8b20702: ### Fixed
+
+  - `fix(sdk):` Bundle all runtime dependencies — resolves `Cannot find package 'json5'` and similar errors when importing the SDK
+  - `fix(sdk):` Add `createRequire` banner for CJS packages that use `require('process')` in ESM bundles
+  - `fix(template):` Resolve `$helpers` loading in compiled binaries via `Bun.build()` bundling
+
+  ### Changed
+
+  - `perf(sdk):` Lazy-load template data parsers (JSON5, YAML, CSV) — heavy parser libraries are now deferred until first use, reducing SDK startup time
+  - `perf(sdk):` Replace `voca` dependency with inline `camelCase` implementation (~1500 lines removed from bundle)
+  - `perf(sdk):` Stub `ansis` terminal color library — SDK consumers don't need ANSI output
+
 ## 1.0.0-alpha.19
 
 ### Patch Changes
