@@ -1,5 +1,52 @@
 # @noormdev/cli
 
+## 1.0.0-alpha.20
+
+### Minor Changes
+
+- 88b33ce: ## Added
+
+  - `feat(dt):` DT file modifier — drop, add, or rename columns and filter rows from exported `.dt`/`.dtz`/`.dtzx` files without re-exporting from the source database
+  - `feat(cli):` "Modify .dt file" option in the Data Transfer screen with interactive recipe builder, schema preview, and streaming output
+
+- 2955758: ### Added
+
+  - `feat(headless):` Add `run inspect` command — inspect template context (data files, helpers, builtins, config, secrets) without executing, with `--json` support
+  - `feat(headless):` Add `run preview` command — render .sql.tmpl files and output raw SQL to stdout, pipeable to files or other tools
+
+  ### Fixed
+
+  - `fix(errors):` Propagate SQL Server TDS diagnostic info (line numbers, error codes, procedure names, severity) through to TUI — errors now show e.g. `[Line 42, Err 207] Invalid column name` instead of just the message text
+  - `fix(errors):` Propagate PostgreSQL and MySQL diagnostic info (error codes, SQLSTATE, severity) through to TUI
+  - `fix(errors):` Handle Kysely-unpacked `AggregateError` arrays from TDS with multi-line display
+  - `fix(template):` Eta `autoTrim` left-trim was eating newlines after interpolation tags, joining SQL lines (e.g. `ENDAS`, `ENDIF NOT EXISTS`) — disabled autoTrim and implemented directive-line stripping for `-- {% %}` convention
+  - `fix(db):` Disconnect shared TUI connection before `DROP DATABASE` to prevent ECONNRESET errors
+  - `fix(db):` Show friendly "Not Created" notice instead of aggressive ERROR badge when database does not exist
+  - `fix(tui):` Show full multi-line SQL errors in all run/change screens instead of truncating to 60 characters
+
+### Patch Changes
+
+- 2328fa2: ### Fixed
+
+  - `fix(headless):` Produce structured JSON error output (`{ success, error }`) when `--json` is set — previously errors were only logged as text, leaving CI pipelines with no parseable output on failure
+  - `fix(headless):` Enrich SQL error messages with dialect-aware diagnostics (line numbers, error codes, procedure names, severity) via `getSqlErrorMessage` in all headless command error paths
+  - `fix(headless):` Standardize `run build` exit code from `2` to `1` to match the `0`/`1` convention used by all other headless commands
+  - `fix(headless):` Replace stale `.sql.eta` file extension references with `.sql.tmpl` across CLI argument parsing, help text, and documentation
+
+  ### Added
+
+  - `feat(headless):` Add `sql` command to the home help commands list
+  - `feat(headless):` Document `.sql.tmpl` template file support in `run` help text
+
+- 3ab86b8: ### Fixed
+
+  - `fix(template):` Resolve `$helpers` loading in compiled binaries — bare specifier resolution now uses `Bun.build()` to bundle helper files with all dependencies, fixing `Cannot find package` errors in pnpm projects
+  - `fix(inspect):` Show `$helpers` exports in Inspect Template screen — categorization now uses source-based tracking instead of type-guessing, and load errors are surfaced instead of silently swallowed
+
+  ### Added
+
+  - `feat(cli):` Add `dev/test-helpers` diagnostic command for verifying `$helpers` loading from any execution context
+
 ## 1.0.0-alpha.19
 
 ### Patch Changes
