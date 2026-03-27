@@ -101,7 +101,7 @@ describe('integration: mssql error diagnostics', () => {
         `).execute(db);
 
         const [, err] = await attempt(() =>
-            sql.raw(`EXEC __noorm_test_err_proc__`).execute(db),
+            sql.raw('EXEC __noorm_test_err_proc__').execute(db),
         );
 
         expect(err).toBeTruthy();
@@ -141,7 +141,7 @@ describe('integration: mssql error diagnostics', () => {
     it('should format error with bracketed diagnostic prefix', async () => {
 
         const [, err] = await attempt(() =>
-            sql.raw(`SELECT 1/0 AS oops`).execute(db),
+            sql.raw('SELECT 1/0 AS oops').execute(db),
         );
 
         expect(err).toBeTruthy();
@@ -160,7 +160,7 @@ describe('integration: mssql error diagnostics', () => {
     it('should produce richer output than raw .message', async () => {
 
         const [, err] = await attempt(() =>
-            sql.raw(`SELECT * FROM nonexistent_table_for_comparison`).execute(db),
+            sql.raw('SELECT * FROM nonexistent_table_for_comparison').execute(db),
         );
 
         expect(err).toBeTruthy();

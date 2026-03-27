@@ -178,13 +178,13 @@ describe('cli: screens/init/ProjectSetup', () => {
             </TestWrapper>,
         );
 
-        // Wait for focus to be pushed and render to complete
-        await new Promise((resolve) => setTimeout(resolve, 150));
+        // Wait for focus to be pushed and render to complete — CI may need more time
+        await new Promise((resolve) => setTimeout(resolve, 300));
 
         // Press Enter to select first option (Add Config)
         stdin.write('\r');
 
-        await new Promise((resolve) => setTimeout(resolve, 100));
+        await new Promise((resolve) => setTimeout(resolve, 200));
 
         expect(onAddConfig).toHaveBeenCalled();
 

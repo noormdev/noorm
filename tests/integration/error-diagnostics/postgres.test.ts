@@ -36,7 +36,7 @@ describe('integration: postgres error diagnostics', () => {
     it('should include PG error code and severity for undefined table', async () => {
 
         const [, err] = await attempt(() =>
-            sql.raw(`SELECT * FROM this_table_does_not_exist_xyz_12345`).execute(db),
+            sql.raw('SELECT * FROM this_table_does_not_exist_xyz_12345').execute(db),
         );
 
         expect(err).toBeTruthy();
@@ -53,7 +53,7 @@ describe('integration: postgres error diagnostics', () => {
     it('should include PG error code for undefined column', async () => {
 
         const [, err] = await attempt(() =>
-            sql.raw(`SELECT nonexistent_col FROM pg_catalog.pg_tables`).execute(db),
+            sql.raw('SELECT nonexistent_col FROM pg_catalog.pg_tables').execute(db),
         );
 
         expect(err).toBeTruthy();
@@ -69,7 +69,7 @@ describe('integration: postgres error diagnostics', () => {
     it('should format error with bracketed diagnostic prefix', async () => {
 
         const [, err] = await attempt(() =>
-            sql.raw(`SELECT 1/0`).execute(db),
+            sql.raw('SELECT 1/0').execute(db),
         );
 
         expect(err).toBeTruthy();
@@ -85,7 +85,7 @@ describe('integration: postgres error diagnostics', () => {
     it('should produce richer output than raw .message', async () => {
 
         const [, err] = await attempt(() =>
-            sql.raw(`SELECT * FROM nonexistent_table_for_comparison`).execute(db),
+            sql.raw('SELECT * FROM nonexistent_table_for_comparison').execute(db),
         );
 
         expect(err).toBeTruthy();

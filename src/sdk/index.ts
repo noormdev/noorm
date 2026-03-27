@@ -168,6 +168,10 @@ export type {
 // Guards (errors for catching)
 export { RequireTestError, ProtectedConfigError } from './guards.js';
 
+// Impersonation
+export { ImpersonationError } from './impersonate/index.js';
+export type { ImpersonatedScope } from './impersonate/index.js';
+
 // Re-export observer types for event subscriptions
 export type { NoormEvents, NoormEventNames } from '../core/observer.js';
 

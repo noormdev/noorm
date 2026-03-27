@@ -298,7 +298,7 @@ ALTER TABLE users ADD username VARCHAR(100);
 
         it('should not strip -- that is not before a tag', async () => {
 
-            const template = `SELECT 1; -- this is a comment`;
+            const template = 'SELECT 1; -- this is a comment';
             const context = {} as unknown as TemplateContext;
 
             const result = await renderTemplate(template, context);

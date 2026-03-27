@@ -229,8 +229,8 @@ describe('cli: app-context', () => {
                 </AppContextProvider>,
             );
 
-            // Wait for load to complete
-            await new Promise((resolve) => setTimeout(resolve, 50));
+            // Wait for load to complete — CI may need more time
+            await new Promise((resolve) => setTimeout(resolve, 200));
 
             expect(lastFrame()).toContain('loading:ready');
 

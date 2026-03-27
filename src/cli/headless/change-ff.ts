@@ -78,6 +78,6 @@ export const run: HeadlessCommand = async (_params, flags, logger) => {
 
     }
 
-    return result.status === 'success' ? 0 : 1;
+    return result.status === 'success' ? 0 : 2;
 
 };

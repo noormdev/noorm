@@ -282,7 +282,7 @@ describe('lifecycle: LifecycleManager', () => {
 
         });
 
-        it('should emit app:exit event', async () => {
+        it('should emit app:shutdown event', async () => {
 
             const manager = new LifecycleManager({
                 projectRoot: '/project',
@@ -292,12 +292,12 @@ describe('lifecycle: LifecycleManager', () => {
             await manager.start();
 
             const events: unknown[] = [];
-            const cleanup = observer.on('app:exit', (data) => events.push(data));
+            const cleanup = observer.on('app:shutdown', (data) => events.push(data));
 
             await manager.shutdown();
 
             expect(events).toHaveLength(1);
-            expect(events[0]).toEqual({ code: 0 });
+            expect(events[0]).toEqual({ reason: 'programmatic', exitCode: 0 });
 
             cleanup();
 

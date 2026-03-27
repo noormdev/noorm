@@ -8,7 +8,7 @@
 import { Kysely, SqliteDialect } from 'kysely';
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore — bun:sqlite resolution fails in dts-bundle-generator (Node-based tooling)
-import { Database } from 'bun:sqlite';
+import { Database, type SQLQueryBindings } from 'bun:sqlite';
 import type { ConnectionConfig, ConnectionResult } from '../types.js';
 
 /**
@@ -35,13 +35,13 @@ class BunSqliteStatement {
 
     all(params: ReadonlyArray<unknown>): unknown[] {
 
-        return this.#stmt.all(...params);
+        return this.#stmt.all(...params as SQLQueryBindings[]);
 
     }
 
     run(params: ReadonlyArray<unknown>): { changes: number | bigint; lastInsertRowid: number | bigint } {
 
-        const result = this.#stmt.run(...params);
+        const result = this.#stmt.run(...params as SQLQueryBindings[]);
 
         return {
             changes: result.changes,
@@ -52,7 +52,7 @@ class BunSqliteStatement {
 
     *iterate(params: ReadonlyArray<unknown>): IterableIterator<unknown> {
 
-        const rows = this.#stmt.all(...params);
+        const rows = this.#stmt.all(...params as SQLQueryBindings[]);
 
         for (const row of rows) {
 

@@ -60,6 +60,6 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
 
     logger.info(`${result.name} reverted (${result.status})`);
 
-    return result.status === 'success' ? 0 : 1;
+    return result.status === 'success' ? 0 : 2;
 
 };

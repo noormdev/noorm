@@ -6,6 +6,7 @@
  * live behind the ctx.noorm namespace via NoormOps.
  */
 import type { Kysely, Transaction } from 'kysely';
+import { sql } from 'kysely';
 
 import type { Dialect } from '../core/connection/index.js';
 import type { Config } from '../core/config/types.js';
@@ -17,6 +18,10 @@ import { buildProcCall, buildFuncCall } from './sql.js';
 import { NoormOps } from './noorm-ops.js';
 import type { ContextState } from './state.js';
 import type { CreateContextOptions } from './types.js';
+import { dialectStrategy, validateUsername } from './impersonate/dialect-strategy.js';
+import { buildScope } from './impersonate/scope.js';
+import { ImpersonationError } from './impersonate/types.js';
+import type { ImpersonatedScope } from './impersonate/types.js';
 
 // ─────────────────────────────────────────────────────────────
 // Context Class
@@ -265,6 +270,147 @@ export class Context<DB = unknown, Procs = object, Funcs = object> {
         const result = await query.execute(this.kysely);
 
         return (result.rows?.[0] ?? null) as T;
+
+    }
+
+    // ─────────────────────────────────────────────────────────
+    // Impersonation
+    // ─────────────────────────────────────────────────────────
+
+    /**
+     * Execute queries as a specific database principal.
+     *
+     * Borrows a dedicated connection from the pool, switches identity
+     * via dialect-specific SQL, and provides a scoped query interface.
+     * Two modes: callback (auto-reverts) and explicit (caller reverts).
+     *
+     * @example
+     * ```typescript
+     * // Callback mode — auto-reverts, even on throw
+     * const result = await ctx.impersonate('username', async (scope) => {
+     *     return scope.kysely.selectFrom('users').selectAll().execute();
+     * });
+     *
+     * // Explicit mode — caller owns lifecycle
+     * const scope = await ctx.impersonate('username');
+     * const users = await scope.kysely.selectFrom('users').selectAll().execute();
+     * await scope.revert();
+     * ```
+     */
+    async impersonate<T>(
+        username: string,
+        fn: (scope: ImpersonatedScope<DB, Procs, Funcs>) => Promise<T>,
+    ): Promise<T>;
+    async impersonate(
+        username: string,
+    ): Promise<ImpersonatedScope<DB, Procs, Funcs>>;
+    async impersonate<T>(
+        username: string,
+        fn?: (scope: ImpersonatedScope<DB, Procs, Funcs>) => Promise<T>,
+    ): Promise<T | ImpersonatedScope<DB, Procs, Funcs>> {
+
+        // === Validation block ===
+        const strategy = dialectStrategy[this.dialect];
+
+        if (!strategy) {
+
+            throw new ImpersonationError(
+                `Impersonation is not supported for the ${this.dialect} dialect.`,
+            );
+
+        }
+
+        validateUsername(username);
+
+        // === Business logic block ===
+        const impersonateSql = strategy.impersonate(username);
+        const revertSql = strategy.revert();
+
+        if (fn) {
+
+            return this.#impersonateCallback(impersonateSql, revertSql, fn);
+
+        }
+
+        return this.#impersonateExplicit(impersonateSql, revertSql);
+
+    }
+
+    async #impersonateCallback<T>(
+        impersonateSql: string,
+        revertSql: string,
+        fn: (scope: ImpersonatedScope<DB, Procs, Funcs>) => Promise<T>,
+    ): Promise<T> {
+
+        return this.kysely.connection().execute(async (db) => {
+
+            await sql.raw(impersonateSql).execute(db);
+
+            const scope = buildScope<DB, Procs, Funcs>(db, async () => {
+
+                await sql.raw(revertSql).execute(db);
+
+            }, this.dialect);
+
+            try {
+
+                return await fn(scope);
+
+            }
+            finally {
+
+                await sql.raw(revertSql).execute(db);
+
+            }
+
+        });
+
+    }
+
+    async #impersonateExplicit(
+        impersonateSql: string,
+        revertSql: string,
+    ): Promise<ImpersonatedScope<DB, Procs, Funcs>> {
+
+        // === Declaration block ===
+        let resolveHolder!: () => void;
+        const connectionHeld = new Promise<void>(resolve => {
+
+            resolveHolder = resolve;
+
+        });
+
+        let resolveReady!: (scope: ImpersonatedScope<DB, Procs, Funcs>) => void;
+        let rejectReady!: (err: unknown) => void;
+        const ready = new Promise<ImpersonatedScope<DB, Procs, Funcs>>((resolve, reject) => {
+
+            resolveReady = resolve;
+            rejectReady = reject;
+
+        });
+
+        // === Business logic block ===
+        const connectionDone = this.kysely.connection().execute(async (db) => {
+
+            await sql.raw(impersonateSql).execute(db);
+
+            const scope = buildScope<DB, Procs, Funcs>(db, async () => {
+
+                await sql.raw(revertSql).execute(db);
+                resolveHolder();
+
+            }, this.dialect);
+
+            resolveReady(scope);
+
+            await connectionHeld;
+
+        });
+
+        connectionDone.catch(err => rejectReady(err));
+
+        // === Commit block ===
+        return ready;
 
     }
 

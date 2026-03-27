@@ -9,21 +9,29 @@
  * - Missing bundled dependencies (e.g. json5, yaml, zod)
  * - Broken re-exports or missing symbols
  * - Runtime initialization errors from module-level side effects
+ *
+ * Requires `scripts/build.mjs` to have been run first (tsup bundle).
+ * Skipped when dist does not exist (e.g. CI runs `tsc` only).
  */
 import { describe, it, expect } from 'bun:test';
+import { existsSync } from 'node:fs';
 
 // ─────────────────────────────────────────────────────────────
 // Bundle Import
 // ─────────────────────────────────────────────────────────────
 
+const BUNDLE_PATH = '../../packages/sdk/dist/index.js';
+const bundleExists = existsSync(new URL(BUNDLE_PATH, import.meta.url));
+
 // Import from built bundle — NOT from source
-const bundle = await import('../../packages/sdk/dist/index.js');
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const bundle: any = bundleExists ? await import(BUNDLE_PATH) : {};
 
 // ─────────────────────────────────────────────────────────────
 // Module Loading
 // ─────────────────────────────────────────────────────────────
 
-describe('sdk bundle: module loading', () => {
+describe.skipIf(!bundleExists)('sdk bundle: module loading', () => {
 
     it('should import the bundle without errors', () => {
 
@@ -47,7 +55,7 @@ describe('sdk bundle: module loading', () => {
 // Factory Function
 // ─────────────────────────────────────────────────────────────
 
-describe('sdk bundle: createContext', () => {
+describe.skipIf(!bundleExists)('sdk bundle: createContext', () => {
 
     it('should export createContext as a function', () => {
 
@@ -61,7 +69,7 @@ describe('sdk bundle: createContext', () => {
 // Core Classes
 // ─────────────────────────────────────────────────────────────
 
-describe('sdk bundle: core classes', () => {
+describe.skipIf(!bundleExists)('sdk bundle: core classes', () => {
 
     it('should export Context class', () => {
 
@@ -81,7 +89,7 @@ describe('sdk bundle: core classes', () => {
 // Namespace Classes
 // ─────────────────────────────────────────────────────────────
 
-describe('sdk bundle: namespace classes', () => {
+describe.skipIf(!bundleExists)('sdk bundle: namespace classes', () => {
 
     const namespaces = [
         'ChangesNamespace',
@@ -112,7 +120,7 @@ describe('sdk bundle: namespace classes', () => {
 // Error Classes
 // ─────────────────────────────────────────────────────────────
 
-describe('sdk bundle: error classes', () => {
+describe.skipIf(!bundleExists)('sdk bundle: error classes', () => {
 
     it('should export RequireTestError', () => {
 
@@ -171,7 +179,7 @@ describe('sdk bundle: error classes', () => {
 // Context Instantiation (no DB required)
 // ─────────────────────────────────────────────────────────────
 
-describe('sdk bundle: Context instantiation', () => {
+describe.skipIf(!bundleExists)('sdk bundle: Context instantiation', () => {
 
     function createBundleContext() {
 
@@ -280,7 +288,7 @@ describe('sdk bundle: Context instantiation', () => {
 // Dynamic Dialect Chunks
 // ─────────────────────────────────────────────────────────────
 
-describe('sdk bundle: dialect chunks', () => {
+describe.skipIf(!bundleExists)('sdk bundle: dialect chunks', () => {
 
     const dialects = ['postgres', 'mysql', 'mssql', 'sqlite'] as const;
 
