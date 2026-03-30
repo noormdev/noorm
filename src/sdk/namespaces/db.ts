@@ -13,7 +13,7 @@ import type {
     ExploreOverview,
 } from '../../core/explore/index.js';
 import { fetchOverview, fetchList, fetchDetail } from '../../core/explore/index.js';
-import type { TruncateResult, TeardownResult, TeardownPreview } from '../../core/teardown/index.js';
+import type { TruncateOptions, TruncateResult, TeardownResult, TeardownPreview } from '../../core/teardown/index.js';
 import { truncateData, teardownSchema, previewTeardown } from '../../core/teardown/index.js';
 import { formatIdentity } from '../../core/identity/index.js';
 
@@ -107,16 +107,32 @@ export class DbNamespace {
     /**
      * Wipe all data, keeping the schema intact.
      *
+     * User-provided preserve/only options take priority.
+     * Falls back to settings.teardown.preserveTables from settings.yml.
+     *
      * @example
      * ```typescript
+     * // Uses preserve list from settings.yml automatically
      * const result = await ctx.noorm.db.truncate()
+     *
+     * // Override with explicit preserve list
+     * const result = await ctx.noorm.db.truncate({ preserve: ['seeds'] })
+     *
+     * // Truncate only specific tables
+     * const result = await ctx.noorm.db.truncate({ only: ['users', 'posts'] })
      * ```
      */
-    async truncate(): Promise<TruncateResult> {
+    async truncate(options?: TruncateOptions): Promise<TruncateResult> {
 
         checkProtectedConfig(this.#state.config, 'truncate', this.#state.options);
 
-        return truncateData(this.#kysely, this.#dialect);
+        const preserve = options?.preserve
+            ?? this.#state.settings.teardown?.preserveTables;
+
+        return truncateData(this.#kysely, this.#dialect, {
+            ...options,
+            preserve,
+        });
 
     }
 
@@ -135,6 +151,8 @@ export class DbNamespace {
         return teardownSchema(this.#kysely, this.#dialect, {
             configName: this.#state.config.name,
             executedBy: formatIdentity(this.#state.identity),
+            preserveTables: this.#state.settings.teardown?.preserveTables,
+            postScript: this.#state.settings.teardown?.postScript,
         });
 
     }

@@ -21,6 +21,16 @@ bun run typecheck               # Type check
 ```
 
 
+## Changesets
+
+This is a pnpm monorepo with two publishable packages. Changeset frontmatter must reference the correct workspace package name:
+
+- **`@noormdev/cli`** — `packages/cli` (CLI/TUI)
+- **`@noormdev/sdk`** — `packages/sdk` (programmatic SDK)
+
+Never use `noorm` or `@noormdev/main` — those are not workspace packages and will fail the Release workflow.
+
+
 ## Tech Stack
 
 - **Kysely** - SQL query builder & executor
