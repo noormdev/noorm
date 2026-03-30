@@ -39,3 +39,7 @@ examples/todo-db/.noorm/state/state.enc
 worktrees/
 
 .worktrees/
+
+# Skill evals
+skills/*/workspace/
+skills/*/evals/
