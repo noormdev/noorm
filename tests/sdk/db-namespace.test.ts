@@ -3,48 +3,11 @@
  *
  * Verifies that user-provided options take priority over
  * settings.yml fallbacks for preserve lists.
+ *
+ * Uses Kysely DummyDriver with mocked executor — no mock.module
+ * to avoid polluting the module cache for other test files.
  */
-import { describe, it, expect, vi, mock, beforeEach } from 'bun:test';
-
-import type { TruncateOptions } from '../../src/core/teardown/types.js';
-import type { TeardownOptions } from '../../src/core/teardown/types.js';
-
-// ─────────────────────────────────────────────────────────────
-// Module Mocks
-// ─────────────────────────────────────────────────────────────
-
-const truncateDataMock = vi.fn().mockResolvedValue({
-    truncated: [],
-    preserved: [],
-    statements: [],
-    durationMs: 0,
-});
-
-const teardownSchemaMock = vi.fn().mockResolvedValue({
-    dropped: { tables: [], views: [], functions: [], procedures: [], types: [], foreignKeys: [] },
-    preserved: [],
-    statements: [],
-    durationMs: 0,
-});
-
-const previewTeardownMock = vi.fn().mockResolvedValue({
-    toDrop: { tables: [], views: [], functions: [], procedures: [], types: [], foreignKeys: [] },
-    toPreserve: [],
-    statements: [],
-});
-
-mock.module('../../src/core/teardown/index.js', () => ({
-    truncateData: truncateDataMock,
-    teardownSchema: teardownSchemaMock,
-    previewTeardown: previewTeardownMock,
-}));
-
-mock.module('../../src/core/explore/index.js', () => ({
-    fetchOverview: vi.fn(),
-    fetchList: vi.fn(),
-    fetchDetail: vi.fn(),
-}));
-
+import { describe, it, expect, vi } from 'bun:test';
 
 import {
     Kysely,
@@ -65,9 +28,20 @@ import type { Identity } from '../../src/core/identity/types.js';
 // Test Fixtures
 // ─────────────────────────────────────────────────────────────
 
-function createMockKysely() {
+function tableRow(name: string, schema = 'public') {
 
-    return new Kysely<unknown>({
+    return {
+        table_name: name,
+        table_schema: schema,
+        column_count: '3',
+        row_estimate: '100',
+    };
+
+}
+
+function createMockKysely(tableRows: Record<string, unknown>[]) {
+
+    const db = new Kysely<unknown>({
         dialect: {
             createAdapter: () => new PostgresAdapter(),
             createDriver: () => new DummyDriver(),
@@ -75,6 +49,32 @@ function createMockKysely() {
             createQueryCompiler: () => new PostgresQueryCompiler(),
         },
     });
+
+    let queryCount = 0;
+    const originalExecutor = db.getExecutor();
+
+    vi.spyOn(originalExecutor, 'provideConnection').mockImplementation(async (consumer) => {
+
+        return consumer({
+            executeQuery: vi.fn().mockImplementation(() => {
+
+                queryCount++;
+
+                // First query is listTables (or includeNoormTables),
+                // subsequent queries (views, functions, FKs etc.) return empty
+                return Promise.resolve({ rows: queryCount === 1 ? tableRows : [] });
+
+            }),
+            streamQuery: () => {
+
+                throw new Error('not implemented');
+
+            },
+        });
+
+    });
+
+    return db;
 
 }
 
@@ -95,10 +95,13 @@ const mockIdentity: Identity = {
     source: 'system',
 };
 
-function createState(settings: Settings = {}): ContextState {
+function createState(
+    settings: Settings = {},
+    tableRows: Record<string, unknown>[] = [],
+): ContextState {
 
     return {
-        connection: { db: createMockKysely(), dialect: 'postgres' },
+        connection: { db: createMockKysely(tableRows), dialect: 'postgres' },
         config: createMockConfig(),
         settings,
         identity: mockIdentity,
@@ -115,13 +118,6 @@ function createState(settings: Settings = {}): ContextState {
 
 describe('sdk: DbNamespace', () => {
 
-    beforeEach(() => {
-
-        truncateDataMock.mockClear();
-        teardownSchemaMock.mockClear();
-
-    });
-
     // ─────────────────────────────────────────────────────
     // truncate — settings fallback
     // ─────────────────────────────────────────────────────
@@ -130,69 +126,78 @@ describe('sdk: DbNamespace', () => {
 
         it('should fall back to settings.teardown.preserveTables when no options given', async () => {
 
-            const state = createState({
-                teardown: { preserveTables: ['seeds', 'lookups'] },
-            });
+            const state = createState(
+                { teardown: { preserveTables: ['seeds', 'lookups'] } },
+                [tableRow('users'), tableRow('seeds'), tableRow('lookups')],
+            );
             const db = new DbNamespace(state);
 
-            await db.truncate();
+            const result = await db.truncate({ dryRun: true });
 
-            const passedOptions = truncateDataMock.mock.calls[0][2] as TruncateOptions;
-            expect(passedOptions.preserve).toEqual(['seeds', 'lookups']);
+            expect(result.truncated).toEqual(['users']);
+            expect(result.preserved).toEqual(['seeds', 'lookups']);
 
         });
 
         it('should use user-provided preserve over settings', async () => {
 
-            const state = createState({
-                teardown: { preserveTables: ['seeds', 'lookups'] },
-            });
+            const state = createState(
+                { teardown: { preserveTables: ['seeds', 'lookups'] } },
+                [tableRow('users'), tableRow('posts'), tableRow('seeds'), tableRow('lookups')],
+            );
             const db = new DbNamespace(state);
 
-            await db.truncate({ preserve: ['users'] });
+            // User explicitly preserves only 'users' — settings ignored
+            const result = await db.truncate({ preserve: ['users'], dryRun: true });
 
-            const passedOptions = truncateDataMock.mock.calls[0][2] as TruncateOptions;
-            expect(passedOptions.preserve).toEqual(['users']);
+            expect(result.truncated).toEqual(['posts', 'seeds', 'lookups']);
+            expect(result.preserved).toEqual(['users']);
 
         });
 
-        it('should pass undefined preserve when neither options nor settings provide one', async () => {
+        it('should truncate all tables when neither options nor settings provide preserve', async () => {
 
-            const state = createState({});
+            const state = createState(
+                {},
+                [tableRow('users'), tableRow('posts')],
+            );
             const db = new DbNamespace(state);
 
-            await db.truncate();
+            const result = await db.truncate({ dryRun: true });
 
-            const passedOptions = truncateDataMock.mock.calls[0][2] as TruncateOptions;
-            expect(passedOptions.preserve).toBeUndefined();
+            expect(result.truncated).toEqual(['users', 'posts']);
+            expect(result.preserved).toEqual([]);
 
         });
 
         it('should forward only option alongside settings preserve', async () => {
 
-            const state = createState({
-                teardown: { preserveTables: ['seeds'] },
-            });
+            const state = createState(
+                { teardown: { preserveTables: ['seeds'] } },
+                [tableRow('users'), tableRow('posts'), tableRow('seeds'), tableRow('comments')],
+            );
             const db = new DbNamespace(state);
 
-            await db.truncate({ only: ['users', 'posts'] });
+            const result = await db.truncate({ only: ['users', 'posts'], dryRun: true });
 
-            const passedOptions = truncateDataMock.mock.calls[0][2] as TruncateOptions;
-            expect(passedOptions.only).toEqual(['users', 'posts']);
-            expect(passedOptions.preserve).toEqual(['seeds']);
+            // only + preserve: truncate users/posts, preserve seeds, comments not in only list
+            expect(result.truncated).toEqual(['users', 'posts']);
+            expect(result.preserved).toEqual(['seeds', 'comments']);
 
         });
 
-        it('should forward dryRun and restartIdentity options', async () => {
+        it('should always preserve __noorm_ tables', async () => {
 
-            const state = createState({});
+            const state = createState(
+                {},
+                [tableRow('users'), tableRow('__noorm_changes')],
+            );
             const db = new DbNamespace(state);
 
-            await db.truncate({ dryRun: true, restartIdentity: false });
+            const result = await db.truncate({ dryRun: true });
 
-            const passedOptions = truncateDataMock.mock.calls[0][2] as TruncateOptions;
-            expect(passedOptions.dryRun).toBe(true);
-            expect(passedOptions.restartIdentity).toBe(false);
+            expect(result.truncated).toEqual(['users']);
+            expect(result.preserved).toEqual(['__noorm_changes']);
 
         });
 
@@ -204,57 +209,48 @@ describe('sdk: DbNamespace', () => {
 
     describe('teardown settings fallback', () => {
 
-        it('should pass preserveTables from settings', async () => {
+        it('should preserve tables from settings.teardown.preserveTables', async () => {
 
-            const state = createState({
-                teardown: { preserveTables: ['audit_log', 'app_config'] },
-            });
+            const state = createState(
+                { teardown: { preserveTables: ['audit_log'] } },
+                [tableRow('users'), tableRow('posts'), tableRow('audit_log')],
+            );
             const db = new DbNamespace(state);
 
-            await db.teardown();
+            const result = await db.teardown();
 
-            const passedOptions = teardownSchemaMock.mock.calls[0][2] as TeardownOptions;
-            expect(passedOptions.preserveTables).toEqual(['audit_log', 'app_config']);
+            expect(result.dropped.tables).toEqual(['users', 'posts']);
+            expect(result.preserved).toEqual(['audit_log']);
 
         });
 
-        it('should pass postScript from settings', async () => {
+        it('should always preserve __noorm_ tables', async () => {
 
-            const state = createState({
-                teardown: { postScript: 'sql/teardown/cleanup.sql' },
-            });
+            const state = createState(
+                {},
+                [tableRow('users'), tableRow('__noorm_changes')],
+            );
             const db = new DbNamespace(state);
 
-            await db.teardown();
+            const result = await db.teardown();
 
-            const passedOptions = teardownSchemaMock.mock.calls[0][2] as TeardownOptions;
-            expect(passedOptions.postScript).toBe('sql/teardown/cleanup.sql');
+            expect(result.dropped.tables).toEqual(['users']);
+            expect(result.preserved).toEqual(['__noorm_changes']);
 
         });
 
-        it('should pass undefined preserveTables when settings has no teardown', async () => {
+        it('should drop all non-noorm tables when settings has no teardown', async () => {
 
-            const state = createState({});
+            const state = createState(
+                {},
+                [tableRow('users'), tableRow('posts')],
+            );
             const db = new DbNamespace(state);
 
-            await db.teardown();
+            const result = await db.teardown();
 
-            const passedOptions = teardownSchemaMock.mock.calls[0][2] as TeardownOptions;
-            expect(passedOptions.preserveTables).toBeUndefined();
-            expect(passedOptions.postScript).toBeUndefined();
-
-        });
-
-        it('should always pass configName and executedBy', async () => {
-
-            const state = createState({});
-            const db = new DbNamespace(state);
-
-            await db.teardown();
-
-            const passedOptions = teardownSchemaMock.mock.calls[0][2] as TeardownOptions;
-            expect(passedOptions.configName).toBe('test');
-            expect(passedOptions.executedBy).toBe('tester');
+            expect(result.dropped.tables).toEqual(['users', 'posts']);
+            expect(result.preserved).toEqual([]);
 
         });
 
