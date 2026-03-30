@@ -1,5 +1,16 @@
 # @noormdev/sdk
 
+## 1.0.0-alpha.21
+
+### Minor Changes
+
+- 4f4967c: ## API/Services
+
+  ### Fixed
+
+  - `fix(sdk):` `db.truncate()` and `db.teardown()` now respect `settings.teardown.preserveTables` and `postScript` from settings.yml
+  - `fix(sdk):` `db.truncate()` accepts optional `TruncateOptions` — user-provided `preserve`/`only` take priority over settings fallback
+
 ## 1.0.0-alpha.20
 
 ### Minor Changes
