@@ -1,5 +1,12 @@
 # @noormdev/sdk
 
+## 1.0.0-alpha.22
+
+### Patch Changes
+
+- fff443a: ### Fixed
+  - `fix(sdk):` Add integration and unit tests verifying `db.truncate()` and `db.teardown()` respect `settings.teardown.preserveTables`
+
 ## 1.0.0-alpha.21
 
 ### Minor Changes
