@@ -70,11 +70,11 @@ describe('teardown: postgres dialect', () => {
 
         });
 
-        it('should omit public schema', () => {
+        it('should include public schema for unambiguous resolution', () => {
 
             const sql = postgresTeardownOperations.truncateTable('users', 'public');
 
-            expect(sql).toBe('TRUNCATE TABLE "users" RESTART IDENTITY CASCADE');
+            expect(sql).toBe('TRUNCATE TABLE "public"."users" RESTART IDENTITY CASCADE');
 
         });
 
@@ -106,11 +106,11 @@ describe('teardown: postgres dialect', () => {
 
         });
 
-        it('should omit public schema', () => {
+        it('should include public schema for unambiguous resolution', () => {
 
             const sql = postgresTeardownOperations.dropTable('users', 'public');
 
-            expect(sql).toBe('DROP TABLE IF EXISTS "users" CASCADE');
+            expect(sql).toBe('DROP TABLE IF EXISTS "public"."users" CASCADE');
 
         });
 
@@ -142,11 +142,11 @@ describe('teardown: postgres dialect', () => {
 
         });
 
-        it('should omit public schema', () => {
+        it('should include public schema for unambiguous resolution', () => {
 
             const sql = postgresTeardownOperations.dropView('user_summary', 'public');
 
-            expect(sql).toBe('DROP VIEW IF EXISTS "user_summary" CASCADE');
+            expect(sql).toBe('DROP VIEW IF EXISTS "public"."user_summary" CASCADE');
 
         });
 
@@ -178,11 +178,11 @@ describe('teardown: postgres dialect', () => {
 
         });
 
-        it('should omit public schema', () => {
+        it('should include public schema for unambiguous resolution', () => {
 
             const sql = postgresTeardownOperations.dropFunction('calculate_total', 'public');
 
-            expect(sql).toBe('DROP FUNCTION IF EXISTS "calculate_total" CASCADE');
+            expect(sql).toBe('DROP FUNCTION IF EXISTS "public"."calculate_total" CASCADE');
 
         });
 
@@ -214,11 +214,11 @@ describe('teardown: postgres dialect', () => {
 
         });
 
-        it('should omit public schema', () => {
+        it('should include public schema for unambiguous resolution', () => {
 
             const sql = postgresTeardownOperations.dropProcedure('process_orders', 'public');
 
-            expect(sql).toBe('DROP PROCEDURE IF EXISTS "process_orders" CASCADE');
+            expect(sql).toBe('DROP PROCEDURE IF EXISTS "public"."process_orders" CASCADE');
 
         });
 
@@ -250,11 +250,11 @@ describe('teardown: postgres dialect', () => {
 
         });
 
-        it('should omit public schema', () => {
+        it('should include public schema for unambiguous resolution', () => {
 
             const sql = postgresTeardownOperations.dropType('user_status', 'public');
 
-            expect(sql).toBe('DROP TYPE IF EXISTS "user_status" CASCADE');
+            expect(sql).toBe('DROP TYPE IF EXISTS "public"."user_status" CASCADE');
 
         });
 
@@ -286,11 +286,11 @@ describe('teardown: postgres dialect', () => {
 
         });
 
-        it('should omit public schema', () => {
+        it('should include public schema for unambiguous resolution', () => {
 
             const sql = postgresTeardownOperations.dropForeignKey('fk_user_id', 'orders', 'public');
 
-            expect(sql).toBe('ALTER TABLE "orders" DROP CONSTRAINT IF EXISTS "fk_user_id"');
+            expect(sql).toBe('ALTER TABLE "public"."orders" DROP CONSTRAINT IF EXISTS "fk_user_id"');
 
         });
 

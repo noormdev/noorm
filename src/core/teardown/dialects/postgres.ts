@@ -10,7 +10,6 @@ const { quote, qualifiedName } = createDialectQuoting({
     open: '"',
     close: '"',
     escape: '""',
-    defaultSchema: 'public',
 });
 
 /**

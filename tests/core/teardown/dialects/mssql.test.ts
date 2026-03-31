@@ -72,12 +72,11 @@ describe('teardown: mssql dialect', () => {
 
         });
 
-        it('should omit dbo schema', () => {
+        it('should include dbo schema for unambiguous resolution', () => {
 
             const sql = mssqlTeardownOperations.truncateTable('users', 'dbo');
 
-            expect(sql).toContain('DELETE FROM [users]');
-            expect(sql).not.toContain('[dbo]');
+            expect(sql).toContain('DELETE FROM [dbo].[users]');
 
         });
 
@@ -109,11 +108,11 @@ describe('teardown: mssql dialect', () => {
 
         });
 
-        it('should omit dbo schema', () => {
+        it('should include dbo schema for unambiguous resolution', () => {
 
             const sql = mssqlTeardownOperations.dropTable('users', 'dbo');
 
-            expect(sql).toBe('DROP TABLE IF EXISTS [users]');
+            expect(sql).toBe('DROP TABLE IF EXISTS [dbo].[users]');
 
         });
 
@@ -145,11 +144,11 @@ describe('teardown: mssql dialect', () => {
 
         });
 
-        it('should omit dbo schema', () => {
+        it('should include dbo schema for unambiguous resolution', () => {
 
             const sql = mssqlTeardownOperations.dropView('user_summary', 'dbo');
 
-            expect(sql).toBe('DROP VIEW IF EXISTS [user_summary]');
+            expect(sql).toBe('DROP VIEW IF EXISTS [dbo].[user_summary]');
 
         });
 
@@ -181,11 +180,11 @@ describe('teardown: mssql dialect', () => {
 
         });
 
-        it('should omit dbo schema', () => {
+        it('should include dbo schema for unambiguous resolution', () => {
 
             const sql = mssqlTeardownOperations.dropFunction('calculate_total', 'dbo');
 
-            expect(sql).toBe('DROP FUNCTION IF EXISTS [calculate_total]');
+            expect(sql).toBe('DROP FUNCTION IF EXISTS [dbo].[calculate_total]');
 
         });
 
@@ -217,11 +216,11 @@ describe('teardown: mssql dialect', () => {
 
         });
 
-        it('should omit dbo schema', () => {
+        it('should include dbo schema for unambiguous resolution', () => {
 
             const sql = mssqlTeardownOperations.dropProcedure('process_orders', 'dbo');
 
-            expect(sql).toBe('DROP PROCEDURE IF EXISTS [process_orders]');
+            expect(sql).toBe('DROP PROCEDURE IF EXISTS [dbo].[process_orders]');
 
         });
 
@@ -253,11 +252,11 @@ describe('teardown: mssql dialect', () => {
 
         });
 
-        it('should omit dbo schema', () => {
+        it('should include dbo schema for unambiguous resolution', () => {
 
             const sql = mssqlTeardownOperations.dropType('user_status', 'dbo');
 
-            expect(sql).toBe('DROP TYPE IF EXISTS [user_status]');
+            expect(sql).toBe('DROP TYPE IF EXISTS [dbo].[user_status]');
 
         });
 
@@ -289,11 +288,11 @@ describe('teardown: mssql dialect', () => {
 
         });
 
-        it('should omit dbo schema', () => {
+        it('should include dbo schema for unambiguous resolution', () => {
 
             const sql = mssqlTeardownOperations.dropForeignKey('fk_user_id', 'orders', 'dbo');
 
-            expect(sql).toBe('ALTER TABLE [orders] DROP CONSTRAINT [fk_user_id]');
+            expect(sql).toBe('ALTER TABLE [dbo].[orders] DROP CONSTRAINT [fk_user_id]');
 
         });
 
