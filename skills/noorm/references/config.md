@@ -180,6 +180,25 @@ All conditions within a rule are AND'd — every specified field must match.
 | `maxSize` | `string` | `'10mb'` | Max size before rotation |
 | `maxFiles` | `number` | `5` | Rotated files to keep |
 
+### `teardown`
+
+Controls behavior of `db.truncate()` and `db.teardown()` operations.
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `preserveTables` | `string[]` | `[]` | Tables always preserved during truncate/teardown (in addition to noorm's internal tables) |
+| `postScript` | `string` | — | SQL script to run after schema teardown |
+
+```yaml
+teardown:
+    preserveTables:
+        - audit_log
+        - system_config
+    postScript: ./scripts/post-teardown.sql
+```
+
+The SDK's `db.truncate()` and `db.teardown()` fall back to `settings.teardown.preserveTables` when not given explicit options. This is useful for protecting reference data tables or audit logs from being wiped during test resets.
+
 ## Config Object (Stored)
 
 Configs are stored encrypted in `.noorm/state/state.enc`. Each config has:

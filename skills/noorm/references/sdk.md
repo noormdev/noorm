@@ -290,14 +290,14 @@ const status = await ctx.noorm.vault.status();
 
 // CRUD (requires private key for encryption/decryption)
 const [, err] = await ctx.noorm.vault.set('API_KEY', 'sk-live-...', privateKey);
-const [value, err] = await ctx.noorm.vault.get('API_KEY', privateKey);
-const [all, err] = await ctx.noorm.vault.getAll(privateKey);
-const keys = await ctx.noorm.vault.listKeys();
-const [, err] = await ctx.noorm.vault.delete('API_KEY', privateKey);
+const value = await ctx.noorm.vault.get('API_KEY', privateKey);     // string | null
+const all = await ctx.noorm.vault.getAll(privateKey);               // Record<string, VaultSecret>
+const keys = await ctx.noorm.vault.list();                          // string[]
+const [deleted, err] = await ctx.noorm.vault.delete('API_KEY');     // [boolean, Error | null]
 const exists = await ctx.noorm.vault.exists('API_KEY');
 
 // Team access management
-await ctx.noorm.vault.propagateKey(targetUser, privateKey);
+await ctx.noorm.vault.propagate(privateKey);
 
 // Copy between configs
 const [result, err] = await ctx.noorm.vault.copy(destConfig, keys, privateKey, {

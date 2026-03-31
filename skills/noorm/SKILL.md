@@ -41,8 +41,9 @@ Priority chain (highest wins):
 
 1. CLI flags (`--config`, `--force`)
 2. Environment variables (`NOORM_*`)
-3. Settings file (`.noorm/settings.yml`)
-4. Stored config defaults
+3. Stored config (named config from encrypted state)
+4. Stage defaults (from `.noorm/settings.yml`)
+5. Hard-coded defaults
 
 Env-only mode (no stored config needed): set `NOORM_CONNECTION_DIALECT` + `NOORM_CONNECTION_DATABASE` as environment variables. This is the standard approach for CI/CD pipelines.
 

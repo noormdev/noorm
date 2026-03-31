@@ -25,7 +25,7 @@ Headless mode activates automatically when any of these conditions are met:
 | No TTY (piped output) | Yes |
 | `-T` or `--tui` flag | No (forces interactive TUI) |
 
-Detected CI environments: GitHub Actions (`GITHUB_ACTIONS`), GitLab CI (`GITLAB_CI`), CircleCI, Travis CI, Jenkins, Buildkite, generic (`CI` env var).
+Detected CI environments: GitHub Actions (`GITHUB_ACTIONS`), GitLab CI (`GITLAB_CI`), CircleCI (`CIRCLECI`), Travis CI (`TRAVIS`), Jenkins (`JENKINS_URL`), Buildkite (`BUILDKITE`), TeamCity (`TEAMCITY_VERSION`), Azure Pipelines (`TF_BUILD`), Bitbucket Pipelines (`BITBUCKET_BUILD_NUMBER`), generic (`CI` env var).
 
 ## Global Flags
 
@@ -71,7 +71,7 @@ NOORM_DEBUG                  # Enable debug logging
 
 **Nesting convention:** underscores map to object depth after stripping the `NOORM_` prefix. `NOORM_CONNECTION_HOST` becomes `connection.host`. Numbers and booleans are auto-converted; password fields stay as strings.
 
-**Priority:** CLI flags > env vars > settings file > config defaults.
+**Priority:** CLI flags > env vars > stored config > stage defaults (settings.yml) > hard-coded defaults.
 
 ## Commands
 
@@ -200,7 +200,7 @@ noorm -H --force change ff     # Skip checksum checks
 ```json
 {
     "status": "success",
-    "applied": 2,
+    "executed": 2,
     "skipped": 0,
     "failed": 0,
     "changes": [

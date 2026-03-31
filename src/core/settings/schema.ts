@@ -157,6 +157,20 @@ const LoggingConfigSchema = z.object({
 });
 
 // ─────────────────────────────────────────────────────────────
+// Teardown Config Schema
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Controls database reset and teardown behavior.
+ *
+ * Tables in `preserveTables` are always skipped during truncate/teardown
+ * operations (in addition to noorm's internal tables).
+ */
+export const TeardownConfigSchema = z.object({
+    preserveTables: z.array(z.string()).optional(),
+    postScript: z.string().optional(),
+});
+
 // Main Settings Schema
 // ─────────────────────────────────────────────────────────────
 
@@ -171,6 +185,7 @@ export const SettingsSchema = z.object({
     strict: StrictConfigSchema.optional(),
     logging: LoggingConfigSchema.optional(),
     secrets: z.array(StageSecretSchema).optional(),
+    teardown: TeardownConfigSchema.optional(),
 });
 
 // ─────────────────────────────────────────────────────────────

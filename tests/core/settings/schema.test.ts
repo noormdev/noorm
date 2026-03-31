@@ -377,6 +377,108 @@ describe('settings: schema validation', () => {
 
     });
 
+    describe('teardown', () => {
+
+        it('should accept valid teardown with preserveTables', () => {
+
+            const settings = {
+                teardown: {
+                    preserveTables: ['audit_log', 'system_config'],
+                },
+            };
+
+            expect(() => validateSettings(settings)).not.toThrow();
+
+        });
+
+        it('should accept valid teardown with postScript', () => {
+
+            const settings = {
+                teardown: {
+                    postScript: 'sql/teardown/cleanup.sql',
+                },
+            };
+
+            expect(() => validateSettings(settings)).not.toThrow();
+
+        });
+
+        it('should accept valid teardown with both fields', () => {
+
+            const settings = {
+                teardown: {
+                    preserveTables: ['AppSettings', 'UserRoles'],
+                    postScript: 'sql/teardown/cleanup.sql',
+                },
+            };
+
+            expect(() => validateSettings(settings)).not.toThrow();
+
+        });
+
+        it('should accept empty teardown object', () => {
+
+            const settings = {
+                teardown: {},
+            };
+
+            expect(() => validateSettings(settings)).not.toThrow();
+
+        });
+
+        it('should reject non-string values in preserveTables', () => {
+
+            const settings = {
+                teardown: {
+                    preserveTables: [123],
+                },
+            };
+
+            expect(() => validateSettings(settings)).toThrow(SettingsValidationError);
+
+        });
+
+        it('should reject non-string postScript', () => {
+
+            const settings = {
+                teardown: {
+                    postScript: 42,
+                },
+            };
+
+            expect(() => validateSettings(settings)).toThrow(SettingsValidationError);
+
+        });
+
+        it('should preserve teardown through parseSettings', () => {
+
+            const result = parseSettings({
+                teardown: {
+                    preserveTables: ['audit_log'],
+                    postScript: 'cleanup.sql',
+                },
+            });
+
+            expect(result.teardown?.preserveTables).toEqual(['audit_log']);
+            expect(result.teardown?.postScript).toBe('cleanup.sql');
+
+        });
+
+        it('should not strip teardown from settings', () => {
+
+            const result = parseSettings({
+                teardown: {
+                    preserveTables: ['users', 'roles'],
+                },
+            });
+
+            expect(result.teardown).toBeDefined();
+            expect(result.teardown?.preserveTables).toHaveLength(2);
+
+        });
+
+    });
+
     describe('SettingsValidationError', () => {
 
         it('should include field and issues in error', () => {
