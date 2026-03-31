@@ -24,6 +24,8 @@
     "fix-mssql-mysql-schema-migration",
     "fix-sdk-bundle-deps",
     "fix-shutdown-hang",
+    "fix-teardown-schema-qualify-cli",
+    "fix-teardown-schema-qualify",
     "gentle-birds-impersonate",
     "gold-items-feel",
     "hip-pigs-knock",
