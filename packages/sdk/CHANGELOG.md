@@ -1,5 +1,13 @@
 # @noormdev/sdk
 
+## 1.0.0-alpha.23
+
+### Patch Changes
+
+- 715cddc: ### Fixed
+
+  - `fix(teardown):` Schema-qualify all DROP statements in `db.teardown()` to prevent failures when the connection user's default schema differs from `dbo` (MSSQL) or `public` (PostgreSQL)
+
 ## 1.0.0-alpha.22
 
 ### Patch Changes
