@@ -17,7 +17,7 @@ import type { Kysely, Transaction } from 'kysely';
  * the impersonated principal. Mirrors Context's query surface without
  * lifecycle or noorm ops.
  */
-export interface ImpersonatedScope<DB = unknown, Procs = object, Funcs = object> {
+export interface ImpersonatedScope<DB = unknown, Procs = object, Funcs = object, Tvfs = object> {
     kysely: Kysely<DB>;
     proc: <T = unknown, N extends keyof Procs & string = keyof Procs & string>(
         name: N,
@@ -27,6 +27,10 @@ export interface ImpersonatedScope<DB = unknown, Procs = object, Funcs = object>
         name: N,
         ...args: Funcs[N] extends void ? [column: string] : [params: Funcs[N], column: string]
     ) => Promise<T>;
+    tvf: <T = unknown, N extends keyof Tvfs & string = keyof Tvfs & string>(
+        name: N,
+        ...args: Tvfs[N] extends void ? [] : [params: Tvfs[N]]
+    ) => Promise<T[]>;
     transaction: <T>(fn: (trx: Transaction<DB>) => Promise<T>) => Promise<T>;
     revert: () => Promise<void>;
 }

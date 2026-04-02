@@ -79,10 +79,10 @@ describe('integration: mssql explore', () => {
 
             const overview = await fetchOverview(db, 'mssql');
 
-            // From fixtures: 3 tables, 3 views, 3 functions, 16 procedures, 5 types
+            // From fixtures: 3 tables, 3 views, 6 functions (3 scalar + 3 TVFs), 16 procedures, 5 types
             expect(overview.tables).toBe(3);
             expect(overview.views).toBe(3);
-            expect(overview.functions).toBe(3);
+            expect(overview.functions).toBe(6);
             expect(overview.procedures).toBe(16);
             expect(overview.types).toBe(5);
 
@@ -191,16 +191,19 @@ describe('integration: mssql explore', () => {
 
     describe('fetchList: functions', () => {
 
-        it('should return all 3 scalar functions', async () => {
+        it('should return all 6 functions (3 scalar + 3 TVFs)', async () => {
 
             const functions = await fetchList(db, 'mssql', 'functions');
 
-            expect(functions).toHaveLength(3);
+            expect(functions).toHaveLength(6);
 
             const fnNames = functions.map((f: FunctionSummary) => f.name);
             expect(fnNames).toContain('fn_IsValidEmail');
             expect(fnNames).toContain('fn_IsValidHexColor');
             expect(fnNames).toContain('fn_GetPriorityLabel');
+            expect(fnNames).toContain('fn_GetTodoItemsByList');
+            expect(fnNames).toContain('fn_GetTodoListsByUser');
+            expect(fnNames).toContain('fn_GetActiveUsers');
 
         });
 

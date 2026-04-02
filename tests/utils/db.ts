@@ -469,8 +469,9 @@ export async function deployTestSchema(db: Kysely<unknown>, dialect: Dialect): P
     if (dialect === 'postgres') {
 
         files.push('003_functions.sql');
+        files.push('004_tvfs.sql');
         // TODO: Triggers disabled - SQL splitter can't handle BEGIN...END blocks with internal semicolons
-        // files.push('004_triggers.sql');
+        // files.push('005_triggers.sql');
 
     }
     else if (dialect === 'mysql') {
@@ -489,8 +490,9 @@ export async function deployTestSchema(db: Kysely<unknown>, dialect: Dialect): P
         files.push('003_views.sql');
         files.push('004_functions.sql');
         files.push('005_procedures.sql');
+        files.push('006_tvfs.sql');
         // TODO: Triggers disabled - SQL splitter can't handle BEGIN...END blocks with internal semicolons
-        // files.push('006_triggers.sql');
+        // files.push('007_triggers.sql');
 
     }
     else if (dialect === 'sqlite') {
@@ -693,6 +695,7 @@ export async function teardownTestSchema(db: Kysely<unknown>, dialect: Dialect):
             'create_user', 'get_user_by_id', 'get_user_by_email', 'update_user', 'delete_user',
             'create_todo_list', 'get_todo_list_by_id', 'get_todo_lists_by_user', 'update_todo_list', 'delete_todo_list',
             'create_todo_item', 'get_todo_item_by_id', 'get_todo_items_by_list', 'update_todo_item', 'toggle_todo_item', 'delete_todo_item',
+            'fn_get_todo_items_by_list', 'fn_get_todo_lists_by_user', 'fn_get_active_users',
         ];
 
         for (const fn of functions) {
@@ -733,7 +736,10 @@ export async function teardownTestSchema(db: Kysely<unknown>, dialect: Dialect):
 
         }
 
-        const functions = ['fn_IsValidEmail', 'fn_IsValidHexColor', 'fn_GetPriorityLabel'];
+        const functions = [
+            'fn_IsValidEmail', 'fn_IsValidHexColor', 'fn_GetPriorityLabel',
+            'fn_GetTodoItemsByList', 'fn_GetTodoListsByUser', 'fn_GetActiveUsers',
+        ];
 
         for (const fn of functions) {
 

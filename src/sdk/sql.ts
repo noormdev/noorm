@@ -160,6 +160,74 @@ export function buildFuncCall<T = unknown>(
 }
 
 // ─────────────────────────────────────────────────────────────
+// Table-Valued Function Builder
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Build a dialect-specific table-valued function call.
+ *
+ * Generates SELECT * FROM name(...) with proper parameter syntax.
+ * TVFs return result sets (multiple rows), unlike scalar functions.
+ * Only supported on MSSQL and PostgreSQL — MySQL and SQLite throw.
+ *
+ * @example
+ * ```typescript
+ * // PG named → SELECT * FROM validate_session(session_key => $1)
+ * buildTvfCall('postgres', 'validate_session', { session_key: 'abc' });
+ *
+ * // MSSQL named → SELECT * FROM validate_session(@1)
+ * buildTvfCall('mssql', 'validate_session', { session_key: 'abc' });
+ *
+ * // Positional → SELECT * FROM validate_session($1)
+ * buildTvfCall('postgres', 'validate_session', ['abc']);
+ * ```
+ */
+export function buildTvfCall<T = unknown>(
+    dialect: Dialect,
+    name: string,
+    params?: Record<string, unknown> | unknown[],
+): RawBuilder<T> {
+
+    if (dialect === 'sqlite') {
+
+        throw new Error('SQLite does not support table-valued functions.');
+
+    }
+
+    if (dialect === 'mysql') {
+
+        throw new Error('MySQL does not support table-valued functions.');
+
+    }
+
+    const rawName = sql.raw(name);
+
+    if (!params || (Array.isArray(params) && params.length === 0) || (!Array.isArray(params) && Object.keys(params).length === 0)) {
+
+        return sql<T>`SELECT * FROM ${rawName}()`;
+
+    }
+
+    // PG supports named params in FROM clause
+    if (dialect === 'postgres' && !Array.isArray(params)) {
+
+        const parts = Object.entries(params).map(([key, val]) =>
+            sql`${sql.raw(key)} => ${val}`,
+        );
+
+        return sql<T>`SELECT * FROM ${rawName}(${sql.join(parts)})`;
+
+    }
+
+    // MSSQL + positional — FROM clause only takes positional values
+    const values = Array.isArray(params) ? params : Object.values(params);
+    const joined = sql.join(values.map((v) => sql`${v}`));
+
+    return sql<T>`SELECT * FROM ${rawName}(${joined})`;
+
+}
+
+// ─────────────────────────────────────────────────────────────
 // Dialect-Specific Proc Builders
 // ─────────────────────────────────────────────────────────────
 

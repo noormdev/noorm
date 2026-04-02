@@ -10,7 +10,7 @@ import { sql } from 'kysely';
 import type { Kysely, Transaction } from 'kysely';
 import type { Dialect } from '../../core/connection/types.js';
 
-import { buildProcCall, buildFuncCall } from '../sql.js';
+import { buildProcCall, buildFuncCall, buildTvfCall } from '../sql.js';
 import type { ImpersonatedScope } from './types.js';
 
 // ─────────────────────────────────────────────────────────────
@@ -36,11 +36,11 @@ import type { ImpersonatedScope } from './types.js';
  * }, 'mssql');
  * ```
  */
-export function buildScope<DB = unknown, Procs = object, Funcs = object>(
+export function buildScope<DB = unknown, Procs = object, Funcs = object, Tvfs = object>(
     db: Kysely<DB>,
     revertFn: () => Promise<void>,
     dialect: Dialect,
-): ImpersonatedScope<DB, Procs, Funcs> {
+): ImpersonatedScope<DB, Procs, Funcs, Tvfs> {
 
     // === Declaration block ===
     let reverted = false;
@@ -50,28 +50,36 @@ export function buildScope<DB = unknown, Procs = object, Funcs = object>(
 
         kysely: db,
 
-        async proc(name, ...args) {
+        async proc<T = unknown>(name: string, ...args: unknown[]): Promise<T[]> {
 
             const params = args[0] as Record<string, unknown> | unknown[] | undefined;
-            const query = buildProcCall(dialect, name as string, params);
+            const query = buildProcCall<T>(dialect, name, params);
             const result = await query.execute(db);
 
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- generic return type erasure
-            return (result.rows ?? []) as any;
+            return result.rows ?? [];
 
         },
 
-        async func(name, ...args) {
+        async func<T = unknown>(name: string, ...args: unknown[]): Promise<T> {
 
             const hasParams = !(args.length === 1 && typeof args[0] === 'string');
             const params = hasParams ? args[0] as Record<string, unknown> | unknown[] : undefined;
             const column = (hasParams ? args[1] : args[0]) as string;
 
-            const query = buildFuncCall(dialect, name as string, column, params);
+            const query = buildFuncCall<T>(dialect, name, column, params);
             const result = await query.execute(db);
 
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- generic return type erasure
-            return (result.rows?.[0] ?? null) as any;
+            return (result.rows?.[0] ?? null) as T;
+
+        },
+
+        async tvf<T = unknown>(name: string, ...args: unknown[]): Promise<T[]> {
+
+            const params = args[0] as Record<string, unknown> | unknown[] | undefined;
+            const query = buildTvfCall<T>(dialect, name, params);
+            const result = await query.execute(db);
+
+            return result.rows ?? [];
 
         },
 

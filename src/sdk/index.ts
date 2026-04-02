@@ -89,9 +89,9 @@ function toSettingsProvider(manager: SettingsManager): SettingsProvider {
  * const ctx = await createContext()
  * ```
  */
-export async function createContext<DB = unknown, Procs = object, Funcs = object>(
+export async function createContext<DB = unknown, Procs = object, Funcs = object, Tvfs = object>(
     options: CreateContextOptions = {},
-): Promise<Context<DB, Procs, Funcs>> {
+): Promise<Context<DB, Procs, Funcs, Tvfs>> {
 
     // Resolve project root
     const projectRoot = options.projectRoot ?? process.cwd();
@@ -132,7 +132,7 @@ export async function createContext<DB = unknown, Procs = object, Funcs = object
     // Resolve identity (respecting config override if set)
     const identity = getIdentityForConfig(config);
 
-    return new Context<DB, Procs, Funcs>(config, settings, identity, options, projectRoot);
+    return new Context<DB, Procs, Funcs, Tvfs>(config, settings, identity, options, projectRoot);
 
 }
 

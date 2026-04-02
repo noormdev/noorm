@@ -20,7 +20,7 @@ import {
     MysqlQueryCompiler,
 } from 'kysely';
 
-import { buildProcCall, buildFuncCall } from '../../src/sdk/sql.js';
+import { buildProcCall, buildFuncCall, buildTvfCall } from '../../src/sdk/sql.js';
 
 // ─────────────────────────────────────────────────────────────
 // Helpers
@@ -293,6 +293,106 @@ describe('sdk: buildFuncCall', () => {
 
             expect(() => buildFuncCall('sqlite', 'any_func', 'col')).toThrow(
                 'SQLite does not support database function calls.',
+            );
+
+        });
+
+    });
+
+});
+
+// ─────────────────────────────────────────────────────────────
+// buildTvfCall
+// ─────────────────────────────────────────────────────────────
+
+describe('sdk: buildTvfCall', () => {
+
+    describe('mssql', () => {
+
+        it('should generate SELECT * FROM with named params (flattened to positional)', () => {
+
+            const q = buildTvfCall('mssql', 'validate_session', { session_key: 'abc' });
+            const { sql, params } = compile(mssqlDb, q);
+
+            expect(sql).toBe('SELECT * FROM validate_session(@1)');
+            expect(params).toEqual(['abc']);
+
+        });
+
+        it('should generate SELECT * FROM with positional params', () => {
+
+            const q = buildTvfCall('mssql', 'search_products', ['widget', 100]);
+            const { sql, params } = compile(mssqlDb, q);
+
+            expect(sql).toBe('SELECT * FROM search_products(@1, @2)');
+            expect(params).toEqual(['widget', 100]);
+
+        });
+
+        it('should generate SELECT * FROM with no params', () => {
+
+            const q = buildTvfCall('mssql', 'get_active_items');
+            const { sql, params } = compile(mssqlDb, q);
+
+            expect(sql).toBe('SELECT * FROM get_active_items()');
+            expect(params).toEqual([]);
+
+        });
+
+    });
+
+    describe('postgres', () => {
+
+        it('should generate SELECT * FROM with named params', () => {
+
+            const q = buildTvfCall('postgres', 'validate_session', { session_key: 'abc' });
+            const { sql, params } = compile(pgDb, q);
+
+            expect(sql).toBe('SELECT * FROM validate_session(session_key => $1)');
+            expect(params).toEqual(['abc']);
+
+        });
+
+        it('should generate SELECT * FROM with positional params', () => {
+
+            const q = buildTvfCall('postgres', 'search_products', ['widget', 100]);
+            const { sql, params } = compile(pgDb, q);
+
+            expect(sql).toBe('SELECT * FROM search_products($1, $2)');
+            expect(params).toEqual(['widget', 100]);
+
+        });
+
+        it('should generate SELECT * FROM with no params', () => {
+
+            const q = buildTvfCall('postgres', 'get_active_items');
+            const { sql, params } = compile(pgDb, q);
+
+            expect(sql).toBe('SELECT * FROM get_active_items()');
+            expect(params).toEqual([]);
+
+        });
+
+    });
+
+    describe('mysql', () => {
+
+        it('should throw for table-valued functions', () => {
+
+            expect(() => buildTvfCall('mysql', 'any_tvf')).toThrow(
+                'MySQL does not support table-valued functions.',
+            );
+
+        });
+
+    });
+
+    describe('sqlite', () => {
+
+        it('should throw for table-valued functions', () => {
+
+            expect(() => buildTvfCall('sqlite', 'any_tvf')).toThrow(
+                'SQLite does not support table-valued functions.',
             );
 
         });

@@ -289,9 +289,9 @@ describe('integration: mssql teardown', () => {
             // Functions should NOT be in dropped list
             expect(result.dropped.functions).toHaveLength(0);
 
-            // Functions should still exist
+            // Functions should still exist (3 scalar + 3 TVFs)
             const functions = await fetchList(db, 'mssql', 'functions');
-            expect(functions.length).toBe(3);
+            expect(functions.length).toBe(6);
 
         });
 

@@ -14,7 +14,7 @@ import type { Settings } from '../core/settings/index.js';
 import type { Identity } from '../core/identity/index.js';
 import { createConnection } from '../core/connection/index.js';
 
-import { buildProcCall, buildFuncCall } from './sql.js';
+import { buildProcCall, buildFuncCall, buildTvfCall } from './sql.js';
 import { NoormOps } from './noorm-ops.js';
 import type { ContextState } from './state.js';
 import type { CreateContextOptions } from './types.js';
@@ -51,7 +51,7 @@ import type { ImpersonatedScope } from './impersonate/types.js';
  * await ctx.disconnect()
  * ```
  */
-export class Context<DB = unknown, Procs = object, Funcs = object> {
+export class Context<DB = unknown, Procs = object, Funcs = object, Tvfs = object> {
 
     #state: ContextState;
     #noorm: NoormOps | null = null;
@@ -274,6 +274,54 @@ export class Context<DB = unknown, Procs = object, Funcs = object> {
     }
 
     // ─────────────────────────────────────────────────────────
+    // Table-Valued Functions
+    // ─────────────────────────────────────────────────────────
+
+    /**
+     * Call a table-valued function and return the result set.
+     *
+     * Generates SELECT * FROM name(...) with dialect-specific parameter
+     * syntax. Returns multiple rows, unlike func() which returns a scalar.
+     * Only supported on MSSQL and PostgreSQL — MySQL and SQLite throw.
+     *
+     * @example
+     * ```typescript
+     * // Named params
+     * const sessions = await ctx.tvf<Session>('validate_session', { session_key: key });
+     *
+     * // Positional params
+     * const results = await ctx.tvf<Result>('search_products', ['widget', 100]);
+     *
+     * // No params
+     * const items = await ctx.tvf<Item>('get_active_items');
+     * ```
+     */
+    async tvf<T = unknown, N extends keyof Tvfs & string = keyof Tvfs & string>(
+        name: N,
+        ...args: Tvfs[N] extends void ? [] : [params: Tvfs[N]]
+    ): Promise<T[]> {
+
+        if (this.dialect === 'sqlite') {
+
+            throw new Error('SQLite does not support table-valued functions.');
+
+        }
+
+        if (this.dialect === 'mysql') {
+
+            throw new Error('MySQL does not support table-valued functions.');
+
+        }
+
+        const params = args[0] as Record<string, unknown> | unknown[] | undefined;
+        const query = buildTvfCall<T>(this.dialect, name, params);
+        const result = await query.execute(this.kysely);
+
+        return (result.rows ?? []) as T[];
+
+    }
+
+    // ─────────────────────────────────────────────────────────
     // Impersonation
     // ─────────────────────────────────────────────────────────
 
@@ -299,15 +347,15 @@ export class Context<DB = unknown, Procs = object, Funcs = object> {
      */
     async impersonate<T>(
         username: string,
-        fn: (scope: ImpersonatedScope<DB, Procs, Funcs>) => Promise<T>,
+        fn: (scope: ImpersonatedScope<DB, Procs, Funcs, Tvfs>) => Promise<T>,
     ): Promise<T>;
     async impersonate(
         username: string,
-    ): Promise<ImpersonatedScope<DB, Procs, Funcs>>;
+    ): Promise<ImpersonatedScope<DB, Procs, Funcs, Tvfs>>;
     async impersonate<T>(
         username: string,
-        fn?: (scope: ImpersonatedScope<DB, Procs, Funcs>) => Promise<T>,
-    ): Promise<T | ImpersonatedScope<DB, Procs, Funcs>> {
+        fn?: (scope: ImpersonatedScope<DB, Procs, Funcs, Tvfs>) => Promise<T>,
+    ): Promise<T | ImpersonatedScope<DB, Procs, Funcs, Tvfs>> {
 
         // === Validation block ===
         const strategy = dialectStrategy[this.dialect];
@@ -339,14 +387,14 @@ export class Context<DB = unknown, Procs = object, Funcs = object> {
     async #impersonateCallback<T>(
         impersonateSql: string,
         revertSql: string,
-        fn: (scope: ImpersonatedScope<DB, Procs, Funcs>) => Promise<T>,
+        fn: (scope: ImpersonatedScope<DB, Procs, Funcs, Tvfs>) => Promise<T>,
     ): Promise<T> {
 
         return this.kysely.connection().execute(async (db) => {
 
             await sql.raw(impersonateSql).execute(db);
 
-            const scope = buildScope<DB, Procs, Funcs>(db, async () => {
+            const scope = buildScope<DB, Procs, Funcs, Tvfs>(db, async () => {
 
                 await sql.raw(revertSql).execute(db);
 
@@ -370,7 +418,7 @@ export class Context<DB = unknown, Procs = object, Funcs = object> {
     async #impersonateExplicit(
         impersonateSql: string,
         revertSql: string,
-    ): Promise<ImpersonatedScope<DB, Procs, Funcs>> {
+    ): Promise<ImpersonatedScope<DB, Procs, Funcs, Tvfs>> {
 
         // === Declaration block ===
         let resolveHolder!: () => void;
@@ -380,9 +428,9 @@ export class Context<DB = unknown, Procs = object, Funcs = object> {
 
         });
 
-        let resolveReady!: (scope: ImpersonatedScope<DB, Procs, Funcs>) => void;
+        let resolveReady!: (scope: ImpersonatedScope<DB, Procs, Funcs, Tvfs>) => void;
         let rejectReady!: (err: unknown) => void;
-        const ready = new Promise<ImpersonatedScope<DB, Procs, Funcs>>((resolve, reject) => {
+        const ready = new Promise<ImpersonatedScope<DB, Procs, Funcs, Tvfs>>((resolve, reject) => {
 
             resolveReady = resolve;
             rejectReady = reject;
@@ -394,7 +442,7 @@ export class Context<DB = unknown, Procs = object, Funcs = object> {
 
             await sql.raw(impersonateSql).execute(db);
 
-            const scope = buildScope<DB, Procs, Funcs>(db, async () => {
+            const scope = buildScope<DB, Procs, Funcs, Tvfs>(db, async () => {
 
                 await sql.raw(revertSql).execute(db);
                 resolveHolder();

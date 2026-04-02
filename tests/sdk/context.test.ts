@@ -54,14 +54,21 @@ interface TestFuncs {
     'get_version': void;
 }
 
+interface TestTvfs {
+    'validate_session': { session_key: string };
+    'search_products': [string, number];
+    'get_active_items': void;
+}
+
 type TestDB = unknown;
 
 function createContext<
     Procs = object,
     Funcs = object,
+    Tvfs = object,
 >(dialect: Config['connection']['dialect'] = 'postgres') {
 
-    return new Context<TestDB, Procs, Funcs>(
+    return new Context<TestDB, Procs, Funcs, Tvfs>(
         createMockConfig(dialect),
         mockSettings,
         mockIdentity,
@@ -212,6 +219,77 @@ describe('sdk: Context types', () => {
 
     });
 
+    describe('tvf() type constraints', () => {
+
+        it('should accept named params matching the interface', () => {
+
+            const ctx = createContext<object, object, TestTvfs>('postgres');
+
+            const _call: () => Promise<unknown[]> = () => ctx.tvf('validate_session', { session_key: 'abc' });
+            expect(_call).toBeDefined();
+
+        });
+
+        it('should accept positional params matching the interface', () => {
+
+            const ctx = createContext<object, object, TestTvfs>('postgres');
+
+            const _call: () => Promise<unknown[]> = () => ctx.tvf('search_products', ['widget', 100]);
+            expect(_call).toBeDefined();
+
+        });
+
+        it('should accept void tvfs with no args', () => {
+
+            const ctx = createContext<object, object, TestTvfs>('postgres');
+
+            const _call: () => Promise<unknown[]> = () => ctx.tvf('get_active_items');
+            expect(_call).toBeDefined();
+
+        });
+
+        it('should reject invalid tvf names', () => {
+
+            const ctx = createContext<object, object, TestTvfs>('postgres');
+
+            // @ts-expect-error 'nonexistent' is not a key of TestTvfs
+            const _call = () => ctx.tvf('nonexistent');
+            expect(_call).toBeDefined();
+
+        });
+
+        it('should reject wrong param types', () => {
+
+            const ctx = createContext<object, object, TestTvfs>('postgres');
+
+            // @ts-expect-error number is not assignable to { session_key: string }
+            const _call = () => ctx.tvf('validate_session', 999);
+            expect(_call).toBeDefined();
+
+        });
+
+        it('should reject params on void tvfs', () => {
+
+            const ctx = createContext<object, object, TestTvfs>('postgres');
+
+            // @ts-expect-error get_active_items is void — no params allowed
+            const _call = () => ctx.tvf('get_active_items', { extra: true });
+            expect(_call).toBeDefined();
+
+        });
+
+        it('should prevent calling tvf() when Tvfs is empty', () => {
+
+            const ctx = createContext('postgres');
+
+            // @ts-expect-error keyof {} = never — no valid tvf names exist
+            const _call = () => ctx.tvf('anything');
+            expect(_call).toBeDefined();
+
+        });
+
+    });
+
 });
 
 // ─────────────────────────────────────────────────────────────
@@ -335,6 +413,60 @@ describe('sdk: Context proc/func runtime', () => {
             const result = await ctx.func('get_version', 'v');
 
             expect(result).toBeNull();
+
+        });
+
+    });
+
+    describe('tvf()', () => {
+
+        it('should throw sqlite error before accessing kysely', async () => {
+
+            const ctx = createContext<object, object, TestTvfs>('sqlite');
+
+            await expect(ctx.tvf('get_active_items')).rejects.toThrow(
+                'SQLite does not support table-valued functions.',
+            );
+
+        });
+
+        it('should throw mysql error before accessing kysely', async () => {
+
+            const ctx = createContext<object, object, TestTvfs>('mysql');
+
+            await expect(ctx.tvf('get_active_items')).rejects.toThrow(
+                'MySQL does not support table-valued functions.',
+            );
+
+        });
+
+        it('should execute and return all rows', async () => {
+
+            const ctx = createContext<object, object, TestTvfs>('postgres');
+            const mockRows = [
+                { session_key: 'abc', expires_at: '2026-12-31' },
+                { session_key: 'def', expires_at: '2026-06-15' },
+            ];
+            const { db } = createMockKysely(mockRows);
+
+            Object.defineProperty(ctx, 'kysely', { value: db, configurable: true });
+
+            const result = await ctx.tvf<{ session_key: string; expires_at: string }>('validate_session', { session_key: 'abc' });
+
+            expect(result).toEqual(mockRows);
+
+        });
+
+        it('should return empty array when no rows', async () => {
+
+            const ctx = createContext<object, object, TestTvfs>('postgres');
+            const { db } = createMockKysely([]);
+
+            Object.defineProperty(ctx, 'kysely', { value: db, configurable: true });
+
+            const result = await ctx.tvf('get_active_items');
+
+            expect(result).toEqual([]);
 
         });
 
