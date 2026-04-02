@@ -7,6 +7,7 @@
   },
   "changesets": [
     "binary-release-automation",
+    "bold-wolves-call",
     "brave-foxes-modify",
     "brave-wolves-rest",
     "bright-foxes-glow",

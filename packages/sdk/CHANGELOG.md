@@ -1,5 +1,18 @@
 # @noormdev/sdk
 
+## 1.0.0-alpha.24
+
+### Minor Changes
+
+- 8749127: ### Added
+
+  - `feat(sdk):` Add `ctx.tvf()` method for calling table-valued functions on MSSQL and PostgreSQL
+  - `feat(sdk):` Add `Tvfs` generic parameter to `createContext()`, `Context`, and `ImpersonatedScope` for type-safe TVF signatures
+
+  ### Changed
+
+  - `refactor(sdk):` Replace `as any` casts in impersonation scope with proper generic flow through `buildProcCall<T>`, `buildFuncCall<T>`, and `buildTvfCall<T>`
+
 ## 1.0.0-alpha.23
 
 ### Patch Changes
