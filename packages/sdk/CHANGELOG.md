@@ -1,5 +1,12 @@
 # @noormdev/sdk
 
+## 1.0.0-alpha.25
+
+### Minor Changes
+
+- df24197: ## Added
+  - `feat(sdk):` Support `[Args, ReturnType]` tuple definitions for procs, functions, and TVFs — return types are inferred automatically, with explicit override still available
+
 ## 1.0.0-alpha.24
 
 ### Minor Changes
