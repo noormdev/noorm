@@ -54,7 +54,7 @@ The Context API is split into two levels:
 **Top-level** — SQL-focused operations you use in application code:
 - `kysely`, `dialect`, `connected` — properties
 - `connect()`, `disconnect()` — lifecycle
-- `transaction()`, `proc()`, `func()` — SQL execution
+- `transaction()`, `proc()`, `func()`, `tvf()` — SQL execution
 - `noorm` — namespace for management operations
 
 **ctx.noorm** — noorm management operations, organized by namespace:
@@ -225,33 +225,47 @@ const result = await ctx.transaction(async (trx) => {
 ```
 
 
-### Stored Procedures & Functions
+### Stored Procedures, Functions & TVFs
 
-Stored procedures and database functions get their own type-safe methods. Define your signatures as interfaces and pass them as extra generics:
+Stored procedures, database functions, and table-valued functions get their own type-safe methods. Define your signatures as interfaces using `[Args, ReturnType]` tuples and pass them as extra generics:
 
 ```typescript
 interface MyProcs {
-    'get_users': { department_id: number; active: boolean }
-    'refresh_cache': void
+    'get_users': [{ department_id: number; active: boolean }, User]
+    'refresh_cache': void   // shorthand for [void, void]
 }
 
 interface MyFuncs {
-    'calc_total': { order_id: number }
+    'calc_total': [{ order_id: number }, { total: number }]
     'get_version': void
 }
 
-const ctx = await createContext<MyDB, MyProcs, MyFuncs>({ config: 'dev' })
+interface MyTvfs {
+    'get_department_users': [{ dept_id: number }, DeptUser]
+    'split_string': [{ input: string; delimiter: string }, { value: string }]
+}
+
+const ctx = await createContext<MyDB, MyProcs, MyFuncs, MyTvfs>({ config: 'dev' })
 await ctx.connect()
 
-// Stored procedure — returns result set rows
-const users = await ctx.proc<User>('get_users', { department_id: 1, active: true })
+// Stored procedure — return type inferred from tuple
+const users = await ctx.proc('get_users', { department_id: 1, active: true })
 
-// Database function — returns scalar as { column: value }
-const result = await ctx.func<{ total: number }>('calc_total', { order_id: 42 }, 'total')
+// Override return type when needed
+const custom = await ctx.proc<'get_users', CustomUser>('get_users', { department_id: 1, active: true })
+
+// Database function — return type inferred from tuple
+const result = await ctx.func('calc_total', { order_id: 42 }, 'total')
+
+// Override return type when needed
+const custom2 = await ctx.func<'calc_total', { total: bigint }>('calc_total', { order_id: 42 }, 'total')
+
+// Table-valued function — returns multiple rows like proc()
+const deptUsers = await ctx.tvf('get_department_users', { dept_id: 5 })
 
 // No-param variants
 await ctx.proc('refresh_cache')
-const ver = await ctx.func<{ v: string }>('get_version', 'v')
+const ver = await ctx.func('get_version', 'v')
 ```
 
 Parameter types control the call signature:
@@ -260,7 +274,7 @@ Parameter types control the call signature:
 - **Tuple** → always positional
 - **void** → no params required
 
-Both methods throw on SQLite, which has no stored procedure or function call support.
+`proc()` and `func()` throw on SQLite, which has no stored procedure or function call support. `tvf()` is only available on MSSQL and PostgreSQL.
 
 
 ### ctx.noorm — Noorm Operations

@@ -128,27 +128,34 @@ const result = await ctx.transaction(async (trx) => {
 ```
 
 
-## Stored Procedures & Functions
+## Stored Procedures, Functions & TVFs
 
-Type-safe helpers for calling stored procedures and database functions. Define your procedure and function signatures as interfaces, then pass them as generics to `createContext`:
+Type-safe helpers for calling stored procedures, database functions, and table-valued functions. Define your signatures as interfaces, then pass them as generics to `createContext`:
 
 ```typescript
 interface MyProcs {
-    'get_users': { department_id: number; active: boolean };
-    'simple_proc': [number, string];
+    'get_users': [{ department_id: number; active: boolean }, User];
+    'simple_proc': [[number, string], void];
     'refresh_cache': void;
 }
 
 interface MyFuncs {
-    'calc_total': { order_id: number };
-    'add_numbers': [number, number];
+    'calc_total': [{ order_id: number }, { total: number }];
+    'add_numbers': [[number, number], { result: number }];
     'get_version': void;
 }
 
-const ctx = await createContext<MyDB, MyProcs, MyFuncs>({ config: 'dev' });
+interface MyTvfs {
+    'get_team_members': [{ team_id: number }, TeamMember];
+    'generate_series': [[number, number], { value: number }];
+}
+
+const ctx = await createContext<MyDB, MyProcs, MyFuncs, MyTvfs>({ config: 'dev' });
 ```
 
-When `Procs` or `Funcs` are not provided, `proc()` and `func()` cannot be called — the type system enforces that you define signatures first.
+Each entry maps a name to an `[Args, ReturnType]` tuple. For positional params, wrap in a nested tuple: `[[number, string], ReturnType]`. Plain `void` is shorthand for `[void, void]`.
+
+When `Procs`, `Funcs`, or `Tvfs` are not provided, the corresponding method (`proc()`, `func()`, `tvf()`) cannot be called — the type system enforces that you define signatures first.
 
 
 ### proc(name, params?)
@@ -162,17 +169,22 @@ Call a stored procedure and return the result set rows. Generates dialect-specif
 | MySQL      | `CALL name($1)` (positional fallback) | `CALL name($1)` | `CALL name()` |
 
 ```typescript
-// Named params
-const users = await ctx.proc<User>('get_users', { department_id: 1, active: true });
+// Named params — return type inferred from tuple
+const users = await ctx.proc('get_users', { department_id: 1, active: true });
+// users: User[]
 
 // Positional params
 await ctx.proc('simple_proc', [42, 'hello']);
 
 // No params
 await ctx.proc('refresh_cache');
+
+// Override return type explicitly
+const custom = await ctx.proc<'get_users', CustomUser>('get_users', { department_id: 1, active: true });
+// custom: CustomUser[]
 ```
 
-**Returns:** `Promise<T[]>` — the result set rows.
+**Returns:** `Promise<T[]>` — the result set rows. `T` is inferred from the `[Args, ReturnType]` tuple, or overridden via the second generic.
 
 **Throws** on SQLite (no stored procedure support).
 
@@ -188,19 +200,53 @@ Call a database function and return the scalar result. Generates `SELECT name(..
 | MySQL      | `SELECT name($1) AS col` (positional fallback) | `SELECT name($1) AS col` | `SELECT name() AS col` |
 
 ```typescript
-// Named params + column alias
-const result = await ctx.func<{ total: number }>('calc_total', { order_id: 42 }, 'total');
+// Named params + column alias — return type inferred from tuple
+const result = await ctx.func('calc_total', { order_id: 42 }, 'total');
+// result: { total: number }
 
 // Positional params + column alias
-const sum = await ctx.func<{ result: number }>('add_numbers', [1, 2], 'result');
+const sum = await ctx.func('add_numbers', [1, 2], 'result');
+// sum: { result: number }
 
 // No params — just column alias
-const ver = await ctx.func<{ v: string }>('get_version', 'v');
+const ver = await ctx.func('get_version', 'v');
+
+// Override return type explicitly
+const custom = await ctx.func<'calc_total', { amount: number }>('calc_total', { order_id: 42 }, 'amount');
+// custom: { amount: number }
 ```
 
-**Returns:** `Promise<T>` — the first row (scalar value as `{ column: value }`).
+**Returns:** `Promise<T>` — the first row (scalar value as `{ column: value }`). `T` is inferred from the `[Args, ReturnType]` tuple, or overridden via the second generic.
 
 **Throws** on SQLite (no database function call support).
+
+
+### tvf(name, params?)
+
+Call a table-valued function and return the result set rows. Supported on MSSQL and PostgreSQL only.
+
+| Dialect    | Named Params                         | Positional                | No Params               |
+| ---------- | ------------------------------------ | ------------------------- | ----------------------- |
+| MSSQL      | `SELECT * FROM name(@k = $1)`       | `SELECT * FROM name($1)` | `SELECT * FROM name()`  |
+| PostgreSQL | `SELECT * FROM name(k => $1)`       | `SELECT * FROM name($1)` | `SELECT * FROM name()`  |
+
+```typescript
+// Named params — return type inferred from tuple
+const members = await ctx.tvf('get_team_members', { team_id: 5 });
+// members: TeamMember[]
+
+// Positional params
+const series = await ctx.tvf('generate_series', [1, 10]);
+// series: { value: number }[]
+
+// Override return type explicitly
+const custom = await ctx.tvf<'get_team_members', CustomMember>('get_team_members', { team_id: 5 });
+// custom: CustomMember[]
+```
+
+**Returns:** `Promise<T[]>` — the result set rows. `T` is inferred from the `[Args, ReturnType]` tuple, or overridden via the second generic.
+
+**Throws** on SQLite and MySQL (no table-valued function support).
 
 
 ## ctx.noorm — Noorm Operations

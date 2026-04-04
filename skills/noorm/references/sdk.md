@@ -4,9 +4,9 @@
 
 1. [Quick Start](#quick-start)
 2. [createContext](#createcontext)
-3. [Context API](#context-api)
+3. [Context API](#context-api) — Lifecycle, Kysely, Transactions, Procs, Funcs, TVFs, Impersonation
 4. [NoormOps Namespaces](#noormops-namespaces)
-5. [Type Generics](#type-generics)
+5. [Type Generics](#type-generics) — `[Args, ReturnType]` tuples, 4 generics
 6. [Testing Patterns](#testing-patterns)
 7. [Observer Events](#observer-events)
 
@@ -35,7 +35,7 @@ Peer dependency: `kysely` (plus your dialect driver — `pg`, `mysql2`, `better-
 ```typescript
 import { createContext } from '@noormdev/sdk';
 
-const ctx = await createContext<DB, Procs, Funcs>(options);
+const ctx = await createContext<DB, Procs, Funcs, Tvfs>(options);
 ```
 
 ### Options
@@ -84,34 +84,16 @@ await ctx.disconnect();   // Must call when done — releases connection pool
 
 ### Kysely Queries
 
+`ctx.kysely` is a standard Kysely instance — use its full query builder API. Type-safe when `DB` generic is provided.
+
 ```typescript
-// SELECT
 const users = await ctx.kysely
     .selectFrom('users')
     .select(['id', 'name', 'email'])
     .where('active', '=', true)
     .execute();
 
-// INSERT
-await ctx.kysely
-    .insertInto('users')
-    .values({ name: 'Alice', email: 'alice@co.com' })
-    .execute();
-
-// UPDATE
-await ctx.kysely
-    .updateTable('users')
-    .set({ active: false })
-    .where('id', '=', userId)
-    .execute();
-
-// DELETE
-await ctx.kysely
-    .deleteFrom('sessions')
-    .where('expired_at', '<', new Date())
-    .execute();
-
-// Raw SQL
+// Raw SQL via Kysely's sql tag
 import { sql } from 'kysely';
 const result = await sql<{ count: number }>`
     SELECT COUNT(*) as count FROM users WHERE active = ${true}
@@ -138,11 +120,14 @@ await ctx.transaction(async (trx) => {
 
 ### Stored Procedures
 
-Type-safe when `Procs` generic is provided. Dialect-specific SQL is generated automatically.
+Type-safe when `Procs` generic is provided. Return type is inferred from the `[Args, Return]` tuple. Dialect-specific SQL is generated automatically.
 
 ```typescript
-// Named params (PostgreSQL, MSSQL)
-const users = await ctx.proc<User>('get_active_users', { department_id: 5 });
+// Return type inferred from Procs tuple — no generic needed
+const users = await ctx.proc('get_active_users', { department_id: 5 }); // → User[]
+
+// Explicit return type override
+const users = await ctx.proc<'get_active_users', SpecialUser>('get_active_users', { department_id: 5 });
 
 // Positional params (all dialects except SQLite)
 await ctx.proc('update_stats', [42, 'monthly']);
@@ -159,18 +144,37 @@ Generated SQL by dialect:
 
 ### Database Functions
 
-```typescript
-// Named params + column alias
-const total = await ctx.func<{ total: number }>('calc_total', { order_id: 42 }, 'total');
+Return type inferred from tuple. Always requires a column alias as the last argument.
 
-// Positional params + column alias
-const sum = await ctx.func<{ result: number }>('add_numbers', [1, 2], 'result');
+```typescript
+// Return type inferred from Funcs tuple
+const total = await ctx.func('calc_total', { order_id: 42 }, 'total'); // → CalcResult
+
+// Explicit return type override
+const total = await ctx.func<'calc_total', { total: number }>('calc_total', { order_id: 42 }, 'total');
 
 // No params — just column alias
-const ver = await ctx.func<{ v: string }>('get_version', 'v');
+const ver = await ctx.func('get_version', 'v');
 ```
 
 Generates `SELECT calc_total(order_id => $1) AS total`. Not supported on SQLite.
+
+### Table-Valued Functions
+
+Return multiple rows. Same tuple-based typing as procs. Supported on **MSSQL and PostgreSQL only** — MySQL and SQLite throw.
+
+```typescript
+// Return type inferred from Tvfs tuple
+const sessions = await ctx.tvf('validate_session', { session_key: key }); // → Session[]
+
+// Explicit return type override
+const sessions = await ctx.tvf<'validate_session', ExtendedSession>('validate_session', { session_key: key });
+
+// No params
+const items = await ctx.tvf('get_active_items');
+```
+
+Generates `SELECT * FROM validate_session(session_key => $1)`.
 
 ### Impersonation
 
@@ -188,7 +192,7 @@ const data = await scope.kysely.selectFrom('restricted_data').selectAll().execut
 await scope.revert(); // Must call — releases the dedicated connection
 ```
 
-The `ImpersonatedScope` provides: `kysely`, `proc()`, `func()`, `transaction()`, `revert()`.
+The `ImpersonatedScope` provides: `kysely`, `proc()`, `func()`, `tvf()`, `transaction()`, `revert()`. All with the same tuple-based type inference as the Context methods.
 
 ## NoormOps Namespaces
 
@@ -371,39 +375,69 @@ const { ok, error } = await ctx.noorm.utils.testConnection();
 
 ## Type Generics
 
-The SDK uses three type parameters for compile-time safety:
+The SDK uses four type parameters for compile-time safety:
 
 ```typescript
-// Define your database schema
-interface MyDB {
-    users: { id: number; name: string; email: string; active: boolean };
-    posts: { id: number; author_id: number; title: string; body: string };
-}
-
-// Define stored procedure signatures
-interface MyProcs {
-    'get_active_users': { department_id: number };
-    'update_stats': [number, string];     // Positional params
-    'refresh_cache': void;                 // No params
-}
-
-// Define database function signatures
-interface MyFuncs {
-    'calc_total': { order_id: number };
-    'add_numbers': [number, number];
-    'get_version': void;
-}
-
-const ctx = await createContext<MyDB, MyProcs, MyFuncs>({ config: 'dev' });
-await ctx.connect();
-
-// Now everything is type-checked:
-await ctx.kysely.selectFrom('users').select(['id', 'name']).execute(); // ✓
-await ctx.proc('get_active_users', { department_id: 5 });              // ✓
-await ctx.func<{ total: number }>('calc_total', { order_id: 1 }, 'total'); // ✓
+const ctx = await createContext<DB, Procs, Funcs, Tvfs>(options);
 ```
 
-All three parameters default to `unknown`/`object` when omitted — queries still work, but without type checking.
+| Generic | Purpose | Default |
+|---|---|---|
+| `DB` | Kysely database schema | `unknown` |
+| `Procs` | Stored procedure signatures | `object` |
+| `Funcs` | Database function signatures | `object` |
+| `Tvfs` | Table-valued function signatures | `object` |
+
+### Tuple Format: `[Args, ReturnType]`
+
+Procs, Funcs, and Tvfs use `[Args, ReturnType]` tuples. The return type is **inferred automatically** at the call site — no generic needed. You can still override with an explicit generic.
+
+```typescript
+interface User { id: number; name: string; email: string }
+interface CalcResult { total: number }
+interface Session { session_key: string; expires_at: string }
+
+// Stored procedure signatures
+interface MyProcs {
+    'get_active_users': [{ department_id: number }, User];   // Named args → User[]
+    'update_stats': [[number, string], void];                // Positional args → void[]
+    'refresh_cache': void;                                    // No args, no return
+}
+
+// Database function signatures
+interface MyFuncs {
+    'calc_total': [{ order_id: number }, CalcResult];        // → CalcResult
+    'get_version': void;                                      // → unknown
+}
+
+// Table-valued function signatures
+interface MyTvfs {
+    'validate_session': [{ session_key: string }, Session];  // → Session[]
+    'get_active_items': void;                                 // → unknown[]
+}
+
+const ctx = await createContext<MyDB, MyProcs, MyFuncs, MyTvfs>({ config: 'dev' });
+await ctx.connect();
+
+// Return types are inferred from the tuple:
+const users = await ctx.proc('get_active_users', { department_id: 5 });   // User[]
+const total = await ctx.func('calc_total', { order_id: 1 }, 'total');     // CalcResult
+const sessions = await ctx.tvf('validate_session', { session_key: key }); // Session[]
+
+// Override when you need a different return type:
+const special = await ctx.proc<'get_active_users', SpecialUser>('get_active_users', { department_id: 5 });
+```
+
+### Tuple Rules
+
+| Entry | Args | Return |
+|---|---|---|
+| `[ArgsType, ReturnType]` | `ArgsType` | `ReturnType` |
+| `[void, ReturnType]` | none (no params) | `ReturnType` |
+| `[ArgsType, void]` | `ArgsType` | `void` |
+| `void` | none (no params) | `unknown` |
+
+All four generics default to `unknown`/`object` when omitted — queries still work, but without type checking.
 
 ## Testing Patterns
 

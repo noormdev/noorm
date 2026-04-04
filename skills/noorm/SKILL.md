@@ -16,13 +16,14 @@ Database schema and change manager with two interfaces:
 |---|---|
 | Writing code that imports `@noormdev/sdk` | `references/sdk.md` |
 | Writing or bootstrapping database tests | `references/sdk.md` (especially **Testing Patterns**) |
-| Calling stored procedures or database functions | `references/sdk.md` |
+| Calling stored procedures, functions, or TVFs | `references/sdk.md` |
 | Using Kysely queries within a noorm context | `references/sdk.md` |
 | Setting up CI/CD pipelines with noorm | `references/cli.md` |
 | Running noorm commands in the terminal | `references/cli.md` |
 | Managing noorm locks (tool-level coordination, not DB engine locks), vault secrets, or data transfers via CLI | `references/cli.md` |
 | Configuring `.noorm/settings.yml` or defining stages | `references/config.md` |
 | Setting up a new noorm project or understanding config structure | `references/config.md` |
+| Writing `.sql.tmpl` template files | `references/templates.md` |
 | Combining SDK code with CLI operations | Read SDK + CLI references |
 
 ## Shared Conventions
@@ -33,7 +34,7 @@ These apply to both SDK and CLI usage.
 
 Supported: `postgres`, `mysql`, `mssql`, `sqlite`
 
-SQLite is limited — no stored procedures, no database functions, no impersonation.
+SQLite is limited — no stored procedures, no database functions, no TVFs, no impersonation.
 
 ### Configuration Resolution
 
@@ -47,54 +48,18 @@ Priority chain (highest wins):
 
 Env-only mode (no stored config needed): set `NOORM_CONNECTION_DIALECT` + `NOORM_CONNECTION_DATABASE` as environment variables. This is the standard approach for CI/CD pipelines.
 
-### Error Handling
-
-NoORM uses Go-style error tuples. **Never use try-catch.**
-
-```typescript
-import { attempt, attemptSync } from '@logosdx/utils';
-
-const [result, err] = await attempt(() => riskyAsyncOp());
-if (err) { /* handle */ return; }
-
-const [parsed, parseErr] = attemptSync(() => JSON.parse(str));
-```
-
-Many SDK methods return error tuples directly — check the second element before using the first:
-
-```typescript
-const [data, err] = await ctx.noorm.dt.exportTable('users', './users.dtz');
-if (err) { console.error('Export failed:', err.message); return; }
-```
-
-### Changes (Migrations)
-
-Directory-based with forward and rollback SQL:
-
-```
-changes/
-└── 2024-01-15-add-users/
-    ├── change/                    # Forward SQL (applied in filename order)
-    │   └── 001_create-table.sql
-    └── revert/                    # Rollback SQL
-        └── 001_drop-table.sql
-```
-
-### Template Files
-
-`.sql.tmpl` files use Eta syntax with access to config, secrets, data files, and helper functions. Preview rendered SQL without executing via `noorm -H run preview` (CLI) or `ctx.noorm.templates.render()` (SDK).
-
 ## Common Mistakes
 
 These are the patterns LLMs get wrong most often with noorm:
 
 | Wrong | Right | Why |
 |---|---|---|
-| `try { } catch (e) { }` | `const [r, err] = await attempt(...)` | NoORM never uses try-catch |
 | Query before `connect()` | Call `ctx.connect()` first | Context starts disconnected |
 | Forget `disconnect()` | Always call `ctx.disconnect()` | Leaks connection pool |
 | `config: 'production'` in tests | Use `requireTest: true` | Safety guard prevents test code from touching production |
 | Hardcode connection details | Use `NOORM_*` env vars | Required for CI/CD portability |
-| `ctx.proc()` on SQLite | Check `ctx.dialect` first | SQLite has no stored procedures |
+| `ctx.proc()` on SQLite | Check `ctx.dialect` first | SQLite has no stored procedures, functions, or TVFs |
+| `ctx.tvf()` on MySQL | Check `ctx.dialect` first | MySQL doesn't support TVFs either |
+| `Procs = { name: ArgsType }` | `Procs = { name: [ArgsType, ReturnType] }` | Tuple format enables return type inference |
 | Forget to check error tuples | Always check `err` before using `result` | Silent failures otherwise |
 | Use raw Kysely without noorm | Use `ctx.kysely` from a noorm Context | Misses config resolution, checksums, change tracking |

@@ -72,6 +72,7 @@ src/
 │
 tests/                          # Test suite
 docs/                           # Documentation
+skills/                         # Claude Code skill source files
 ```
 
 
