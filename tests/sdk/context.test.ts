@@ -42,21 +42,25 @@ const mockIdentity: Identity = {
     source: 'system',
 };
 
+interface User { id: number; name: string }
+interface CalcResult { total: number }
+interface Session { session_key: string; expires_at: string }
+
 interface TestProcs {
-    'get_users': { department_id: number; active: boolean };
-    'simple_proc': [number, string];
+    'get_users': [{ department_id: number; active: boolean }, User];
+    'simple_proc': [[number, string], void];
     'refresh_cache': void;
 }
 
 interface TestFuncs {
-    'calc_total': { order_id: number };
-    'add_numbers': [number, number];
+    'calc_total': [{ order_id: number }, CalcResult];
+    'add_numbers': [[number, number], CalcResult];
     'get_version': void;
 }
 
 interface TestTvfs {
-    'validate_session': { session_key: string };
-    'search_products': [string, number];
+    'validate_session': [{ session_key: string }, Session];
+    'search_products': [[string, number], Session];
     'get_active_items': void;
 }
 
@@ -86,22 +90,21 @@ describe('sdk: Context types', () => {
 
     describe('proc() type constraints', () => {
 
-        it('should accept named params matching the interface', () => {
+        it('should accept named params matching the tuple args', () => {
 
             const ctx = createContext<TestProcs>('postgres');
 
-            // Valid — named params match TestProcs['get_users']
-            // This line just needs to compile, not execute
-            const _call: () => Promise<unknown[]> = () => ctx.proc('get_users', { department_id: 1, active: true });
+            // Valid — named params match ExtractArgs<TestProcs['get_users']>
+            const _call: () => Promise<User[]> = () => ctx.proc('get_users', { department_id: 1, active: true });
             expect(_call).toBeDefined();
 
         });
 
-        it('should accept positional params matching the interface', () => {
+        it('should accept positional params matching the tuple args', () => {
 
             const ctx = createContext<TestProcs>('postgres');
 
-            const _call: () => Promise<unknown[]> = () => ctx.proc('simple_proc', [42, 'hello']);
+            const _call: () => Promise<void[]> = () => ctx.proc('simple_proc', [42, 'hello']);
             expect(_call).toBeDefined();
 
         });
@@ -111,6 +114,27 @@ describe('sdk: Context types', () => {
             const ctx = createContext<TestProcs>('postgres');
 
             const _call: () => Promise<unknown[]> = () => ctx.proc('refresh_cache');
+            expect(_call).toBeDefined();
+
+        });
+
+        it('should infer return type from tuple', () => {
+
+            const ctx = createContext<TestProcs>('postgres');
+
+            // Return type is User[] inferred from [Args, User]
+            const _call: () => Promise<User[]> = () => ctx.proc('get_users', { department_id: 1, active: true });
+            expect(_call).toBeDefined();
+
+        });
+
+        it('should allow explicit return type override', () => {
+
+            const ctx = createContext<TestProcs>('postgres');
+
+            // Override inferred User with a different type
+            interface SpecialUser { id: number; name: string; extra: boolean }
+            const _call: () => Promise<SpecialUser[]> = () => ctx.proc<'get_users', SpecialUser>('get_users', { department_id: 1, active: true });
             expect(_call).toBeDefined();
 
         });
@@ -163,7 +187,7 @@ describe('sdk: Context types', () => {
 
             const ctx = createContext<object, TestFuncs>('postgres');
 
-            const _call = () => ctx.func('calc_total', { order_id: 42 }, 'total');
+            const _call: () => Promise<CalcResult> = () => ctx.func('calc_total', { order_id: 42 }, 'total');
             expect(_call).toBeDefined();
 
         });
@@ -172,7 +196,7 @@ describe('sdk: Context types', () => {
 
             const ctx = createContext<object, TestFuncs>('postgres');
 
-            const _call = () => ctx.func('add_numbers', [1, 2], 'result');
+            const _call: () => Promise<CalcResult> = () => ctx.func('add_numbers', [1, 2], 'result');
             expect(_call).toBeDefined();
 
         });
@@ -182,6 +206,26 @@ describe('sdk: Context types', () => {
             const ctx = createContext<object, TestFuncs>('postgres');
 
             const _call = () => ctx.func('get_version', 'v');
+            expect(_call).toBeDefined();
+
+        });
+
+        it('should infer return type from tuple', () => {
+
+            const ctx = createContext<object, TestFuncs>('postgres');
+
+            // Return type is CalcResult inferred from [Args, CalcResult]
+            const _call: () => Promise<CalcResult> = () => ctx.func('calc_total', { order_id: 42 }, 'total');
+            expect(_call).toBeDefined();
+
+        });
+
+        it('should allow explicit return type override', () => {
+
+            const ctx = createContext<object, TestFuncs>('postgres');
+
+            interface DetailedResult { total: number; tax: number }
+            const _call: () => Promise<DetailedResult> = () => ctx.func<'calc_total', DetailedResult>('calc_total', { order_id: 42 }, 'total');
             expect(_call).toBeDefined();
 
         });
@@ -221,20 +265,20 @@ describe('sdk: Context types', () => {
 
     describe('tvf() type constraints', () => {
 
-        it('should accept named params matching the interface', () => {
+        it('should accept named params matching the tuple args', () => {
 
             const ctx = createContext<object, object, TestTvfs>('postgres');
 
-            const _call: () => Promise<unknown[]> = () => ctx.tvf('validate_session', { session_key: 'abc' });
+            const _call: () => Promise<Session[]> = () => ctx.tvf('validate_session', { session_key: 'abc' });
             expect(_call).toBeDefined();
 
         });
 
-        it('should accept positional params matching the interface', () => {
+        it('should accept positional params matching the tuple args', () => {
 
             const ctx = createContext<object, object, TestTvfs>('postgres');
 
-            const _call: () => Promise<unknown[]> = () => ctx.tvf('search_products', ['widget', 100]);
+            const _call: () => Promise<Session[]> = () => ctx.tvf('search_products', ['widget', 100]);
             expect(_call).toBeDefined();
 
         });
@@ -244,6 +288,26 @@ describe('sdk: Context types', () => {
             const ctx = createContext<object, object, TestTvfs>('postgres');
 
             const _call: () => Promise<unknown[]> = () => ctx.tvf('get_active_items');
+            expect(_call).toBeDefined();
+
+        });
+
+        it('should infer return type from tuple', () => {
+
+            const ctx = createContext<object, object, TestTvfs>('postgres');
+
+            // Return type is Session[] inferred from [Args, Session]
+            const _call: () => Promise<Session[]> = () => ctx.tvf('validate_session', { session_key: 'abc' });
+            expect(_call).toBeDefined();
+
+        });
+
+        it('should allow explicit return type override', () => {
+
+            const ctx = createContext<object, object, TestTvfs>('postgres');
+
+            interface ExtendedSession { session_key: string; expires_at: string; user_id: number }
+            const _call: () => Promise<ExtendedSession[]> = () => ctx.tvf<'validate_session', ExtendedSession>('validate_session', { session_key: 'abc' });
             expect(_call).toBeDefined();
 
         });
@@ -357,7 +421,7 @@ describe('sdk: Context proc/func runtime', () => {
 
             Object.defineProperty(ctx, 'kysely', { value: db, configurable: true });
 
-            const result = await ctx.proc<{ id: number; name: string }>('get_users', { department_id: 1, active: true });
+            const result = await ctx.proc('get_users', { department_id: 1, active: true });
 
             expect(result).toEqual(mockRows);
 
@@ -397,7 +461,7 @@ describe('sdk: Context proc/func runtime', () => {
 
             Object.defineProperty(ctx, 'kysely', { value: db, configurable: true });
 
-            const result = await ctx.func<{ total: number }>('calc_total', { order_id: 42 }, 'total');
+            const result = await ctx.func('calc_total', { order_id: 42 }, 'total');
 
             expect(result).toEqual({ total: 99 });
 
@@ -451,7 +515,7 @@ describe('sdk: Context proc/func runtime', () => {
 
             Object.defineProperty(ctx, 'kysely', { value: db, configurable: true });
 
-            const result = await ctx.tvf<{ session_key: string; expires_at: string }>('validate_session', { session_key: 'abc' });
+            const result = await ctx.tvf('validate_session', { session_key: 'abc' });
 
             expect(result).toEqual(mockRows);
 

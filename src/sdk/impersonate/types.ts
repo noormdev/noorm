@@ -6,6 +6,8 @@
  */
 import type { Kysely, Transaction } from 'kysely';
 
+import type { ExtractArgs, ExtractReturn } from '../types.js';
+
 // ─────────────────────────────────────────────────────────────
 // ImpersonatedScope
 // ─────────────────────────────────────────────────────────────
@@ -19,17 +21,26 @@ import type { Kysely, Transaction } from 'kysely';
  */
 export interface ImpersonatedScope<DB = unknown, Procs = object, Funcs = object, Tvfs = object> {
     kysely: Kysely<DB>;
-    proc: <T = unknown, N extends keyof Procs & string = keyof Procs & string>(
+    proc: <
+        N extends keyof Procs & string = keyof Procs & string,
+        T = ExtractReturn<Procs[N]>,
+    >(
         name: N,
-        ...args: Procs[N] extends void ? [] : [params: Procs[N]]
+        ...args: ExtractArgs<Procs[N]> extends void ? [] : [params: ExtractArgs<Procs[N]>]
     ) => Promise<T[]>;
-    func: <T = unknown, N extends keyof Funcs & string = keyof Funcs & string>(
+    func: <
+        N extends keyof Funcs & string = keyof Funcs & string,
+        T = ExtractReturn<Funcs[N]>,
+    >(
         name: N,
-        ...args: Funcs[N] extends void ? [column: string] : [params: Funcs[N], column: string]
+        ...args: ExtractArgs<Funcs[N]> extends void ? [column: string] : [params: ExtractArgs<Funcs[N]>, column: string]
     ) => Promise<T>;
-    tvf: <T = unknown, N extends keyof Tvfs & string = keyof Tvfs & string>(
+    tvf: <
+        N extends keyof Tvfs & string = keyof Tvfs & string,
+        T = ExtractReturn<Tvfs[N]>,
+    >(
         name: N,
-        ...args: Tvfs[N] extends void ? [] : [params: Tvfs[N]]
+        ...args: ExtractArgs<Tvfs[N]> extends void ? [] : [params: ExtractArgs<Tvfs[N]>]
     ) => Promise<T[]>;
     transaction: <T>(fn: (trx: Transaction<DB>) => Promise<T>) => Promise<T>;
     revert: () => Promise<void>;

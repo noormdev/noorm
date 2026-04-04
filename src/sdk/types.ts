@@ -136,3 +136,35 @@ export interface ImportOptions {
     truncate?: boolean;
 
 }
+
+// ─────────────────────────────────────────────────────────────
+// Proc / Func / TVF Tuple Helpers
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Extract the args type from a proc/func/tvf entry.
+ *
+ * Supports tuple form `[Args, Return]` and plain `void`.
+ * Non-tuple entries pass through as-is for backward compat.
+ *
+ * @example
+ * ```typescript
+ * ExtractArgs<[{ id: number }, User]>  // { id: number }
+ * ExtractArgs<void>                    // void
+ * ```
+ */
+export type ExtractArgs<E> = E extends [infer A, any] ? A : E;
+
+/**
+ * Extract the return type from a proc/func/tvf entry.
+ *
+ * Returns the second element of a `[Args, Return]` tuple.
+ * Falls back to `unknown` for `void` or non-tuple entries.
+ *
+ * @example
+ * ```typescript
+ * ExtractReturn<[{ id: number }, User]>  // User
+ * ExtractReturn<void>                    // unknown
+ * ```
+ */
+export type ExtractReturn<E> = E extends [any, infer R] ? R : unknown;

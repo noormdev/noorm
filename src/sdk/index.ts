@@ -163,6 +163,8 @@ export type {
     BuildOptions,
     ExportOptions,
     ImportOptions,
+    ExtractArgs,
+    ExtractReturn,
 } from './types.js';
 
 // Guards (errors for catching)

@@ -17,7 +17,7 @@ import { createConnection } from '../core/connection/index.js';
 import { buildProcCall, buildFuncCall, buildTvfCall } from './sql.js';
 import { NoormOps } from './noorm-ops.js';
 import type { ContextState } from './state.js';
-import type { CreateContextOptions } from './types.js';
+import type { CreateContextOptions, ExtractArgs, ExtractReturn } from './types.js';
 import { dialectStrategy, validateUsername } from './impersonate/dialect-strategy.js';
 import { buildScope } from './impersonate/scope.js';
 import { ImpersonationError } from './impersonate/types.js';
@@ -203,8 +203,11 @@ export class Context<DB = unknown, Procs = object, Funcs = object, Tvfs = object
      *
      * @example
      * ```typescript
-     * // Named params
-     * const users = await ctx.proc<User>('get_users', { department_id: 1 });
+     * // Return type inferred from tuple definition
+     * const users = await ctx.proc('get_users', { department_id: 1 });
+     *
+     * // Explicit return type override
+     * const users = await ctx.proc<'get_users', SpecialUser>('get_users', { department_id: 1 });
      *
      * // Positional params
      * await ctx.proc('simple_proc', [42, 'hello']);
@@ -213,9 +216,12 @@ export class Context<DB = unknown, Procs = object, Funcs = object, Tvfs = object
      * await ctx.proc('refresh_cache');
      * ```
      */
-    async proc<T = unknown, N extends keyof Procs & string = keyof Procs & string>(
+    async proc<
+        N extends keyof Procs & string = keyof Procs & string,
+        T = ExtractReturn<Procs[N]>,
+    >(
         name: N,
-        ...args: Procs[N] extends void ? [] : [params: Procs[N]]
+        ...args: ExtractArgs<Procs[N]> extends void ? [] : [params: ExtractArgs<Procs[N]>]
     ): Promise<T[]> {
 
         if (this.dialect === 'sqlite') {
@@ -240,19 +246,22 @@ export class Context<DB = unknown, Procs = object, Funcs = object, Tvfs = object
      *
      * @example
      * ```typescript
-     * // Named params + column alias
-     * const result = await ctx.func<{ total: number }>('calc_total', { order_id: 42 }, 'total');
+     * // Return type inferred from tuple definition
+     * const result = await ctx.func('calc_total', { order_id: 42 }, 'total');
      *
-     * // Positional params + column alias
-     * const sum = await ctx.func<{ result: number }>('add_numbers', [1, 2], 'result');
+     * // Explicit return type override
+     * const result = await ctx.func<'calc_total', { total: number }>('calc_total', { order_id: 42 }, 'total');
      *
      * // No params — just column alias
-     * const ver = await ctx.func<{ v: string }>('get_version', 'v');
+     * const ver = await ctx.func('get_version', 'v');
      * ```
      */
-    async func<T = unknown, N extends keyof Funcs & string = keyof Funcs & string>(
+    async func<
+        N extends keyof Funcs & string = keyof Funcs & string,
+        T = ExtractReturn<Funcs[N]>,
+    >(
         name: N,
-        ...args: Funcs[N] extends void ? [column: string] : [params: Funcs[N], column: string]
+        ...args: ExtractArgs<Funcs[N]> extends void ? [column: string] : [params: ExtractArgs<Funcs[N]>, column: string]
     ): Promise<T> {
 
         if (this.dialect === 'sqlite') {
@@ -286,19 +295,22 @@ export class Context<DB = unknown, Procs = object, Funcs = object, Tvfs = object
      *
      * @example
      * ```typescript
-     * // Named params
-     * const sessions = await ctx.tvf<Session>('validate_session', { session_key: key });
+     * // Return type inferred from tuple definition
+     * const sessions = await ctx.tvf('validate_session', { session_key: key });
      *
-     * // Positional params
-     * const results = await ctx.tvf<Result>('search_products', ['widget', 100]);
+     * // Explicit return type override
+     * const sessions = await ctx.tvf<'validate_session', SpecialSession>('validate_session', { session_key: key });
      *
      * // No params
-     * const items = await ctx.tvf<Item>('get_active_items');
+     * const items = await ctx.tvf('get_active_items');
      * ```
      */
-    async tvf<T = unknown, N extends keyof Tvfs & string = keyof Tvfs & string>(
+    async tvf<
+        N extends keyof Tvfs & string = keyof Tvfs & string,
+        T = ExtractReturn<Tvfs[N]>,
+    >(
         name: N,
-        ...args: Tvfs[N] extends void ? [] : [params: Tvfs[N]]
+        ...args: ExtractArgs<Tvfs[N]> extends void ? [] : [params: ExtractArgs<Tvfs[N]>]
     ): Promise<T[]> {
 
         if (this.dialect === 'sqlite') {
