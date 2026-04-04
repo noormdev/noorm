@@ -153,7 +153,7 @@ export interface ImportOptions {
  * ExtractArgs<void>                    // void
  * ```
  */
-export type ExtractArgs<E> = E extends [infer A, any] ? A : E;
+export type ExtractArgs<E> = E extends [infer A, unknown] ? A : E;
 
 /**
  * Extract the return type from a proc/func/tvf entry.
@@ -167,4 +167,4 @@ export type ExtractArgs<E> = E extends [infer A, any] ? A : E;
  * ExtractReturn<void>                    // unknown
  * ```
  */
-export type ExtractReturn<E> = E extends [any, infer R] ? R : unknown;
+export type ExtractReturn<E> = E extends [unknown, infer R] ? R : unknown;
