@@ -1,5 +1,12 @@
 # @noormdev/sdk
 
+## 1.0.0-alpha.27
+
+### Minor Changes
+
+- a4d7308: ## Added
+  - `feat(tvp):` Make `TvpValue` and `tvp()` generic — `TvpValue<T>` preserves row types through proc, func, and tvf signatures so the compiler catches column mismatches at call sites
+
 ## 1.0.0-alpha.26
 
 ### Minor Changes

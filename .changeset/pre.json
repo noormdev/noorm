@@ -29,6 +29,7 @@
     "fix-teardown-schema-qualify",
     "fix-teardown-tvp-ordering-cli",
     "fix-teardown-tvp-ordering",
+    "generic-tvp-value",
     "gentle-birds-impersonate",
     "gold-items-feel",
     "hip-pigs-knock",
