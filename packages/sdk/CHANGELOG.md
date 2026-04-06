@@ -1,5 +1,20 @@
 # @noormdev/sdk
 
+## 1.0.0-alpha.26
+
+### Minor Changes
+
+- 66e6fb8: ### Added
+
+  - `feat(sdk):` Add TVP (table-valued parameter) support for MSSQL via `tvp()` helper — pass structured tabular data to `ctx.proc()`, `ctx.func()`, and `ctx.tvf()` calls
+  - `feat(sdk):` Validate TVP row key consistency and enforce MSSQL's 2,100 parameter limit with clear error messages
+
+### Patch Changes
+
+- 66e6fb8: ### Fixed
+
+  - `fix(teardown):` Sort composite types (TVPs) before domain types during teardown to prevent dependency failures on MSSQL, which lacks `DROP TYPE ... CASCADE`
+
 ## 1.0.0-alpha.25
 
 ### Minor Changes
