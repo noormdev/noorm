@@ -448,3 +448,152 @@ describe('integration: tvp() validation', () => {
     });
 
 });
+
+// ─────────────────────────────────────────────────────────────
+// tvp() type-level tests (compile-time only)
+// ─────────────────────────────────────────────────────────────
+
+describe('integration: tvp() type safety', () => {
+
+    it('should accept concrete interfaces without widening', () => {
+
+        interface CheckoutItem { Type: string; ReferenceNo: number; Qty: number }
+
+        const items: CheckoutItem[] = [
+            { Type: 'A', ReferenceNo: 100, Qty: 5 },
+            { Type: 'B', ReferenceNo: 200, Qty: 3 },
+        ];
+
+        // This must compile — the original bug was that concrete interfaces
+        // were not assignable to Record<string, unknown>
+        const result = tvp('CheckoutItems', items);
+
+        expect(result.__noorm_tvp).toBe(true);
+
+    });
+
+    it('should preserve row type through TvpValue<T>', () => {
+
+        interface CheckoutItem { Type: string; ReferenceNo: number; Qty: number }
+
+        const result = tvp('CheckoutItems', [
+            { Type: 'A', ReferenceNo: 100, Qty: 5 },
+        ]);
+
+        // rows should carry the concrete type, not Record<string, unknown>
+        const row = result.rows[0]!;
+        const _type: string = row.Type;
+        const _ref: number = row.ReferenceNo;
+        const _qty: number = row.Qty;
+
+        // @ts-expect-error 'NonExistent' does not exist on CheckoutItem
+        row.NonExistent;
+
+        expect(_type).toBe('A');
+        expect(_ref).toBe(100);
+        expect(_qty).toBe(5);
+
+    });
+
+    it('should accept inline object literals', () => {
+
+        const result = tvp('MyType', [
+            { name: 'Alice', age: 30 },
+            { name: 'Bob', age: 25 },
+        ]);
+
+        expect(result.rows.length).toBe(2);
+
+    });
+
+    it('should accept typed arrays from type aliases', () => {
+
+        type OrderLine = { sku: string; qty: number; price: number };
+
+        const lines: OrderLine[] = [
+            { sku: 'ABC', qty: 1, price: 9.99 },
+        ];
+
+        const result = tvp('OrderLines', lines);
+
+        expect(result.typeName).toBe('OrderLines');
+
+    });
+
+    it('should accept readonly arrays', () => {
+
+        interface Item { id: number; value: string }
+
+        const items: readonly Item[] = [
+            { id: 1, value: 'x' },
+        ];
+
+        // readonly T[] should be accepted — mutable T[] extends readonly T[]
+        // but the reverse isn't true, so we pass a mutable copy
+        const result = tvp('Items', [...items]);
+
+        expect(result.rows.length).toBe(1);
+
+    });
+
+    it('should reject non-object row types', () => {
+
+        // @ts-expect-error string[] is not assignable to Record<string, unknown>[]
+        tvp('Bad', ['a', 'b']);
+
+        // @ts-expect-error number[] is not assignable to Record<string, unknown>[]
+        tvp('Bad', [1, 2, 3]);
+
+        // @ts-expect-error null[] is not assignable to Record<string, unknown>[]
+        tvp('Bad', [null]);
+
+    });
+
+    it('should allow TvpValue<T> where unparameterized TvpValue is expected', () => {
+
+        interface Custom { x: number; y: number }
+
+        // TvpValue<Custom> must be assignable to TvpValue (default param)
+        // This is critical for backward-compat with existing proc definitions
+        const typed: TvpValue<Custom> = tvp('Custom', [{ x: 1, y: 2 }]);
+        const untyped: TvpValue = typed;
+
+        expect(untyped.__noorm_tvp).toBe(true);
+
+    });
+
+    it('should support typed TvpValue<T> in proc definitions', () => {
+
+        interface LineItem { sku: string; qty: number }
+
+        // Simulates a proc definition that uses TvpValue<T> for type safety
+        type TypedProc = { items: TvpValue<LineItem>; warehouse_id: number };
+
+        const params: TypedProc = {
+            items: tvp('LineItems', [{ sku: 'ABC', qty: 5 }]),
+            warehouse_id: 1,
+        };
+
+        // Row type is preserved through the proc definition
+        const row = params.items.rows[0]!;
+        const _sku: string = row.sku;
+        const _qty: number = row.qty;
+
+        // @ts-expect-error 'price' does not exist on LineItem
+        row.price;
+
+        expect(_sku).toBe('ABC');
+        expect(_qty).toBe(5);
+
+    });
+
+    it('should reject mismatched row types with TvpValue<T>', () => {
+
+        interface Expected { a: number; b: string }
+
+        // @ts-expect-error { x: number } is not assignable to Expected
+        const _bad: TvpValue<Expected> = tvp('T', [{ x: 1 }]);
+
+    });
+
+});

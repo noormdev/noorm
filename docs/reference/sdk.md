@@ -199,36 +199,40 @@ Instead of binding TVP objects through Kysely's driver (which lacks native TVP t
 import { tvp, type TvpValue } from '@noormdev/sdk';
 ```
 
-Use `TvpValue` in your proc, func, or tvf signatures:
+`TvpValue` is generic — `TvpValue<T>` preserves the row type through your proc, func, and tvf signatures so the compiler catches mismatched columns at call sites. The default `TvpValue` (without a type parameter) is equivalent to `TvpValue<Record<string, unknown>>`, so existing unparameterized signatures continue to work.
 
 ```typescript
+interface BatchItem { title: string; priority: number; list_id: string }
+
 interface MyProcs {
-    'batch_insert': [{ user_id: string; items: TvpValue }, { count: number }];
-    'bulk_process': [[number, TvpValue], void];
+    'batch_insert': [{ user_id: string; items: TvpValue<BatchItem> }, { count: number }];
+    'bulk_process': [[number, TvpValue<BatchItem>], void];
 }
 
 interface MyFuncs {
-    'score_items': [{ multiplier: number; items: TvpValue }, { total: number }];
+    'score_items': [{ multiplier: number; items: TvpValue<BatchItem> }, { total: number }];
 }
 
 interface MyTvfs {
-    'match_items': [{ user_id: string; items: TvpValue }, MatchedItem];
+    'match_items': [{ user_id: string; items: TvpValue<BatchItem> }, MatchedItem];
 }
 
 const ctx = await createContext<MyDB, MyProcs, MyFuncs, MyTvfs>({ config: 'dev' });
 await ctx.connect();
 ```
 
-Call with `tvp(typeName, rows)` — the type name is the SQL Server table type, and rows is an array of objects whose keys match the type's columns:
+Call with `tvp(typeName, rows)` — the type name is the SQL Server table type, and rows is an array of objects whose keys match the type's columns. The generic parameter is inferred from the row objects, so `tvp('ItemBatch', items)` returns `TvpValue<BatchItem>` when `items` is `BatchItem[]`:
 
 ```typescript
-// proc — named params
+const items: BatchItem[] = [
+    { title: 'Task A', priority: 1, list_id: '...' },
+    { title: 'Task B', priority: 2, list_id: '...' },
+];
+
+// proc — named params (items type-checked against TvpValue<BatchItem>)
 await ctx.proc('batch_insert', {
     user_id: '123',
-    items: tvp('ItemBatch', [
-        { title: 'Task A', priority: 1 },
-        { title: 'Task B', priority: 2 },
-    ]),
+    items: tvp('ItemBatch', items),
 });
 
 // proc — positional params

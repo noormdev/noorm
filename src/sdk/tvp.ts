@@ -10,9 +10,17 @@
  *
  * @example
  * ```typescript
- * import { createContext, tvp } from '@noormdev/sdk';
+ * import { createContext, tvp, type TvpValue } from '@noormdev/sdk';
  *
- * const items = [
+ * interface CheckoutItem { Type: number; ReferenceNo: number; Qty: number }
+ *
+ * interface MyProcs {
+ *     'Checkout_trx': [{ Party: number; PaymentMethod: number; Items: TvpValue<CheckoutItem> }, void];
+ * }
+ *
+ * const ctx = await createContext<MyDB, MyProcs>({ config: 'dev' });
+ *
+ * const items: CheckoutItem[] = [
  *     { Type: 1, ReferenceNo: 100, Qty: 5 },
  *     { Type: 2, ReferenceNo: 200, Qty: 3 },
  * ];
@@ -45,15 +53,17 @@ export const MSSQL_PARAM_LIMIT = 2100;
  *
  * @example
  * ```typescript
+ * interface CheckoutItem { Type: string; ReferenceNo: number; Qty: number }
+ *
  * interface MyProcs {
- *     'Checkout_trx': [{ Party: number; PaymentMethod: number; Items: TvpValue }, void];
+ *     'Checkout_trx': [{ Party: number; Items: TvpValue<CheckoutItem> }, void];
  * }
  * ```
  */
-export interface TvpValue {
+export interface TvpValue<T extends Record<string, unknown> = Record<string, unknown>> {
     readonly __noorm_tvp: true;
     readonly typeName: string;
-    readonly rows: ReadonlyArray<Record<string, unknown>>;
+    readonly rows: ReadonlyArray<T>;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -71,21 +81,26 @@ export interface TvpValue {
  *
  * @example
  * ```typescript
- * // Named params
+ * interface CheckoutItem { Type: number; ReferenceNo: number; Qty: number }
+ *
+ * // Row type is inferred — returns TvpValue<CheckoutItem>
+ * const items: CheckoutItem[] = [
+ *     { Type: 1, ReferenceNo: 100, Qty: 5 },
+ *     { Type: 2, ReferenceNo: 200, Qty: 3 },
+ * ];
+ *
+ * // Named params — type-checked against TvpValue<CheckoutItem>
  * await ctx.proc('Checkout_trx', {
  *     Party: 1,
  *     PaymentMethod: 2,
- *     Items: tvp('CheckoutItems', [
- *         { Type: 1, ReferenceNo: 100, Qty: 5 },
- *         { Type: 2, ReferenceNo: 200, Qty: 3 },
- *     ]),
+ *     Items: tvp('CheckoutItems', items),
  * });
  *
  * // Positional params
  * await ctx.proc('Checkout_trx', [1, 2, tvp('CheckoutItems', items)]);
  * ```
  */
-export function tvp(typeName: string, rows: Record<string, unknown>[]): TvpValue {
+export function tvp<T extends Record<string, unknown>>(typeName: string, rows: T[]): TvpValue<T> {
 
     // === Validation block ===
     if (!typeName) {
