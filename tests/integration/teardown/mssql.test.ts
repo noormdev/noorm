@@ -297,9 +297,13 @@ describe('integration: mssql teardown', () => {
             // Functions should NOT be in dropped list
             expect(result.dropped.functions).toHaveLength(0);
 
-            // Functions should still exist (3 scalar + 3 TVFs)
+            // Functions should still exist (4 scalar + 4 TVFs)
             const functions = await fetchList(db, 'mssql', 'functions');
-            expect(functions.length).toBe(6);
+            expect(functions.length).toBe(8);
+
+            // MSSQL: types are also kept — functions → TVPs → scalar types
+            // dependency chain can't be broken without CASCADE
+            expect(result.dropped.types).toHaveLength(0);
 
         });
 

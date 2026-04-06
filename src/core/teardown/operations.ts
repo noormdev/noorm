@@ -339,7 +339,13 @@ export async function teardownSchema(
     // 6. Drop types (unless keepTypes)
     // Table types (TVPs) first — they can reference domain types,
     // and MSSQL DROP TYPE has no CASCADE.
-    if (!options.keepTypes) {
+    // MSSQL: skip all types when functions or procedures are kept —
+    // the dependency chain (functions → TVPs → domain types) means
+    // types can't be safely dropped without CASCADE.
+    const skipTypesDueToKeptRoutines = dialect === 'mssql'
+        && (options.keepFunctions || options.keepProcedures);
+
+    if (!options.keepTypes && !skipTypesDueToKeptRoutines) {
 
         const sortedTypes = [...types].sort((a, b) => {
 
