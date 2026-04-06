@@ -1,5 +1,13 @@
 # @noormdev/cli
 
+## 1.0.0-alpha.26
+
+### Patch Changes
+
+- 66e6fb8: ### Fixed
+
+  - `fix(teardown):` Sort composite types (TVPs) before domain types during teardown to prevent dependency failures on MSSQL, which lacks `DROP TYPE ... CASCADE`
+
 ## 1.0.0-alpha.25
 
 ## 1.0.0-alpha.24
