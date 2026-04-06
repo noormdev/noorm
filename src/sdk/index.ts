@@ -167,6 +167,10 @@ export type {
     ExtractReturn,
 } from './types.js';
 
+// TVP (Table-Valued Parameters)
+export { tvp } from './tvp.js';
+export type { TvpValue } from './tvp.js';
+
 // Guards (errors for catching)
 export { RequireTestError, ProtectedConfigError } from './guards.js';
 

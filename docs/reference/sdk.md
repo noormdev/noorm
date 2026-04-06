@@ -189,6 +189,107 @@ const custom = await ctx.proc<'get_users', CustomUser>('get_users', { department
 **Throws** on SQLite (no stored procedure support).
 
 
+### Table-Valued Parameters (TVP)
+
+Pass structured table data to MSSQL stored procedures, scalar functions, and table-valued functions using the `tvp()` helper. TVPs are an MSSQL-only feature — calling with TVP params on other dialects throws.
+
+Instead of binding TVP objects through Kysely's driver (which lacks native TVP type detection), the SDK generates a DECLARE/INSERT batch. All user values remain parameterized — no SQL injection risk.
+
+```typescript
+import { tvp, type TvpValue } from '@noormdev/sdk';
+```
+
+Use `TvpValue` in your proc, func, or tvf signatures:
+
+```typescript
+interface MyProcs {
+    'batch_insert': [{ user_id: string; items: TvpValue }, { count: number }];
+    'bulk_process': [[number, TvpValue], void];
+}
+
+interface MyFuncs {
+    'score_items': [{ multiplier: number; items: TvpValue }, { total: number }];
+}
+
+interface MyTvfs {
+    'match_items': [{ user_id: string; items: TvpValue }, MatchedItem];
+}
+
+const ctx = await createContext<MyDB, MyProcs, MyFuncs, MyTvfs>({ config: 'dev' });
+await ctx.connect();
+```
+
+Call with `tvp(typeName, rows)` — the type name is the SQL Server table type, and rows is an array of objects whose keys match the type's columns:
+
+```typescript
+// proc — named params
+await ctx.proc('batch_insert', {
+    user_id: '123',
+    items: tvp('ItemBatch', [
+        { title: 'Task A', priority: 1 },
+        { title: 'Task B', priority: 2 },
+    ]),
+});
+
+// proc — positional params
+await ctx.proc('bulk_process', [42, tvp('ItemBatch', items)]);
+
+// func — scalar result from TVP (uses EXEC @result = func pattern)
+const result = await ctx.func('score_items', {
+    multiplier: 2,
+    items: tvp('ItemBatch', items),
+}, 'total');
+
+// tvf — row set from TVP (uses SELECT * FROM tvf(...))
+const rows = await ctx.tvf('match_items', {
+    user_id: '123',
+    items: tvp('ItemBatch', items),
+});
+```
+
+**Generated SQL by method:**
+
+```sql
+-- proc (named)
+DECLARE @__tvp_items ItemBatch;
+INSERT INTO @__tvp_items ([title], [priority]) VALUES (@1, @2), (@3, @4);
+EXEC batch_insert @user_id = @5, @items = @__tvp_items
+
+-- func (EXEC @result pattern)
+DECLARE @__tvp_items ItemBatch;
+INSERT INTO @__tvp_items ([title], [priority]) VALUES (@1, @2), (@3, @4);
+DECLARE @__result sql_variant; EXEC @__result = score_items @multiplier = @5, @items = @__tvp_items; SELECT @__result AS total
+
+-- tvf (SELECT * FROM)
+DECLARE @__tvp_items ItemBatch;
+INSERT INTO @__tvp_items ([title], [priority]) VALUES (@1, @2), (@3, @4);
+SELECT * FROM match_items(@5, @__tvp_items)
+```
+
+**Features:**
+
+| Feature | Example |
+| --- | --- |
+| Works with proc, func, tvf | `ctx.proc(...)`, `ctx.func(...)`, `ctx.tvf(...)` |
+| Schema-qualified type | `tvp('dbo.ItemBatch', rows)` |
+| Empty TVP (zero rows) | `tvp('ItemBatch', [])` — passes empty table |
+| Multiple TVPs per call | Both `Orders: tvp(...)` and `Items: tvp(...)` in one call |
+| Impersonated scopes | `scope.proc('...', { items: tvp(...) })` |
+| Many rows | Tested with 50+ rows per TVP |
+
+**Validation:**
+
+The `tvp()` helper validates inputs at creation time:
+
+- **Row key consistency** — all rows must have the same keys as the first row. Throws with a clear message identifying the mismatched row.
+- **Empty type name** — throws `TVP type name is required.`
+
+The SQL builders validate before generating SQL:
+
+- **Parameter count limit** — MSSQL supports at most 2,100 bound parameters per batch. The SDK counts `(TVP rows × columns) + scalar params` and throws early: `TVP parameter count (2401) exceeds MSSQL limit of 2100. Split your TVP rows into smaller batches and call the procedure multiple times.`
+- **Dialect guard** — throws `Table-valued parameters (TVP) are only supported on MSSQL.` on non-MSSQL dialects.
+
+
 ### func(name, params?, column)
 
 Call a database function and return the scalar result. Generates `SELECT name(...) AS column`. Named params are only supported on PostgreSQL; other dialects fall back to positional.
@@ -1005,6 +1106,7 @@ const ctx = await createContext();
 ```typescript
 import {
     createContext,
+    tvp,
     RequireTestError,
     ProtectedConfigError,
     LockAcquireError,
@@ -1131,6 +1233,9 @@ import type {
     // DT
     ExportOptions,
     ImportOptions,
+
+    // TVP
+    TvpValue,
 
     // Events
     NoormEvents,

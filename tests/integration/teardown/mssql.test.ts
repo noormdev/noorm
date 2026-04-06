@@ -225,36 +225,42 @@ describe('integration: mssql teardown', () => {
 
         });
 
-        it('should drop all functions', async () => {
+        it('should drop all functions including TVFs', async () => {
 
             const result = await teardownSchema(db, 'mssql');
 
-            // All 3 functions should be dropped
+            // All 3 scalar functions should be dropped
             expect(result.dropped.functions).toContain('fn_IsValidEmail');
             expect(result.dropped.functions).toContain('fn_IsValidHexColor');
             expect(result.dropped.functions).toContain('fn_GetPriorityLabel');
 
-            // Verify functions are gone
+            // All 3 TVFs should be dropped
+            expect(result.dropped.functions).toContain('fn_GetTodoItemsByList');
+            expect(result.dropped.functions).toContain('fn_GetTodoListsByUser');
+            expect(result.dropped.functions).toContain('fn_GetActiveUsers');
+
+            // Verify all functions are gone
             const functions = await fetchList(db, 'mssql', 'functions');
-            const fnNames = functions.map((f) => f.name);
-            expect(fnNames).not.toContain('fn_IsValidEmail');
-            expect(fnNames).not.toContain('fn_IsValidHexColor');
-            expect(fnNames).not.toContain('fn_GetPriorityLabel');
+            expect(functions).toHaveLength(0);
 
         });
 
-        it('should drop all types', async () => {
+        it('should drop all types including TVPs that reference scalar types', async () => {
 
             const result = await teardownSchema(db, 'mssql');
 
-            // All 5 types should be dropped
+            // All 5 scalar types should be dropped
             expect(result.dropped.types).toContain('EmailAddress');
             expect(result.dropped.types).toContain('Username');
             expect(result.dropped.types).toContain('HexColor');
             expect(result.dropped.types).toContain('Priority');
             expect(result.dropped.types).toContain('SoftDeleteDate');
 
-            // Verify types are gone
+            // TVPs (table types) should also be dropped
+            expect(result.dropped.types).toContain('UserBatchInsert');
+            expect(result.dropped.types).toContain('TodoItemBatch');
+
+            // Verify all types are gone
             const types = await fetchList(db, 'mssql', 'types');
             const typeNames = types.map((t) => t.name);
             expect(typeNames).not.toContain('EmailAddress');
@@ -262,6 +268,8 @@ describe('integration: mssql teardown', () => {
             expect(typeNames).not.toContain('HexColor');
             expect(typeNames).not.toContain('Priority');
             expect(typeNames).not.toContain('SoftDeleteDate');
+            expect(typeNames).not.toContain('UserBatchInsert');
+            expect(typeNames).not.toContain('TodoItemBatch');
 
         });
 
@@ -304,9 +312,9 @@ describe('integration: mssql teardown', () => {
             // Types should NOT be in dropped list
             expect(result.dropped.types).toHaveLength(0);
 
-            // Types should still exist
+            // Types should still exist (5 scalar + 2 TVPs)
             const types = await fetchList(db, 'mssql', 'types');
-            expect(types.length).toBe(5);
+            expect(types.length).toBe(7);
 
         });
 
@@ -370,6 +378,8 @@ describe('integration: mssql teardown', () => {
             expect(preview.toDrop.types).toContain('HexColor');
             expect(preview.toDrop.types).toContain('Priority');
             expect(preview.toDrop.types).toContain('SoftDeleteDate');
+            expect(preview.toDrop.types).toContain('UserBatchInsert');
+            expect(preview.toDrop.types).toContain('TodoItemBatch');
 
         });
 

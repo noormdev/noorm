@@ -337,9 +337,20 @@ export async function teardownSchema(
     }
 
     // 6. Drop types (unless keepTypes)
+    // Table types (TVPs) first — they can reference domain types,
+    // and MSSQL DROP TYPE has no CASCADE.
     if (!options.keepTypes) {
 
-        for (const type of types) {
+        const sortedTypes = [...types].sort((a, b) => {
+
+            if (a.kind === 'composite' && b.kind !== 'composite') return -1;
+            if (a.kind !== 'composite' && b.kind === 'composite') return 1;
+
+            return 0;
+
+        });
+
+        for (const type of sortedTypes) {
 
             dropped.types.push(type.name);
             statements.push(ops.dropType(type.name, type.schema));

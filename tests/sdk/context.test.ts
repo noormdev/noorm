@@ -14,6 +14,8 @@ import {
 } from 'kysely';
 
 import { Context } from '../../src/sdk/context.js';
+import { tvp } from '../../src/sdk/tvp.js';
+import type { TvpValue } from '../../src/sdk/tvp.js';
 
 import type { Config } from '../../src/core/config/types.js';
 import type { Settings } from '../../src/core/settings/types.js';
@@ -50,6 +52,8 @@ interface TestProcs {
     'get_users': [{ department_id: number; active: boolean }, User];
     'simple_proc': [[number, string], void];
     'refresh_cache': void;
+    'checkout_trx': [{ Party: number; PaymentMethod: number; Items: TvpValue }, void];
+    'checkout_positional': [[number, number, TvpValue], void];
 }
 
 interface TestFuncs {
@@ -175,6 +179,34 @@ describe('sdk: Context types', () => {
 
             // @ts-expect-error keyof {} = never — no valid procedure names exist
             const _call = () => ctx.proc('anything');
+            expect(_call).toBeDefined();
+
+        });
+
+        it('should accept TVP in named params', () => {
+
+            const ctx = createContext<TestProcs>('mssql');
+
+            const _call: () => Promise<void[]> = () => ctx.proc('checkout_trx', {
+                Party: 1,
+                PaymentMethod: 2,
+                Items: tvp('CheckoutItems', [
+                    { Type: 1, ReferenceNo: 100, Qty: 5 },
+                ]),
+            });
+            expect(_call).toBeDefined();
+
+        });
+
+        it('should accept TVP in positional params', () => {
+
+            const ctx = createContext<TestProcs>('mssql');
+
+            const _call: () => Promise<void[]> = () => ctx.proc('checkout_positional', [
+                1,
+                2,
+                tvp('CheckoutItems', [{ Type: 1, ReferenceNo: 100, Qty: 5 }]),
+            ]);
             expect(_call).toBeDefined();
 
         });
@@ -437,6 +469,32 @@ describe('sdk: Context proc/func runtime', () => {
             const result = await ctx.proc('refresh_cache');
 
             expect(result).toEqual([]);
+
+        });
+
+        it('should execute TVP proc with named params', async () => {
+
+            const ctx = createContext<TestProcs>('mssql');
+            const { db, executeQueryMock } = createMockKysely([]);
+
+            Object.defineProperty(ctx, 'kysely', { value: db, configurable: true });
+            Object.defineProperty(ctx, 'dialect', { value: 'mssql', configurable: true });
+
+            await ctx.proc('checkout_trx', {
+                Party: 1,
+                PaymentMethod: 2,
+                Items: tvp('CheckoutItems', [
+                    { Type: 1, ReferenceNo: 100, Qty: 5 },
+                ]),
+            });
+
+            expect(executeQueryMock).toHaveBeenCalledTimes(1);
+
+            const query = executeQueryMock.mock.calls[0][0];
+
+            expect(query.sql).toContain('DECLARE @__tvp_Items CheckoutItems');
+            expect(query.sql).toContain('INSERT INTO @__tvp_Items');
+            expect(query.sql).toContain('EXEC checkout_trx');
 
         });
 

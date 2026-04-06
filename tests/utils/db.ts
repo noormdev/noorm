@@ -493,6 +493,8 @@ export async function deployTestSchema(db: Kysely<unknown>, dialect: Dialect): P
         files.push('006_tvfs.sql');
         // TODO: Triggers disabled - SQL splitter can't handle BEGIN...END blocks with internal semicolons
         // files.push('007_triggers.sql');
+        files.push('008_tvps.sql');
+        files.push('009_tvp_procedures.sql');
 
     }
     else if (dialect === 'sqlite') {
@@ -725,6 +727,7 @@ export async function teardownTestSchema(db: Kysely<unknown>, dialect: Dialect):
 
         // Drop procedures and functions
         const procedures = [
+            'batch_create_todo_items',
             'create_user', 'get_user_by_id', 'get_user_by_email', 'update_user', 'delete_user',
             'create_todo_list', 'get_todo_list_by_id', 'get_todo_lists_by_user', 'update_todo_list', 'delete_todo_list',
             'create_todo_item', 'get_todo_item_by_id', 'get_todo_items_by_list', 'update_todo_item', 'toggle_todo_item', 'delete_todo_item',
@@ -739,6 +742,7 @@ export async function teardownTestSchema(db: Kysely<unknown>, dialect: Dialect):
         const functions = [
             'fn_IsValidEmail', 'fn_IsValidHexColor', 'fn_GetPriorityLabel',
             'fn_GetTodoItemsByList', 'fn_GetTodoListsByUser', 'fn_GetActiveUsers',
+            'fn_SumBatchPriorities', 'fn_MatchBatchItems',
         ];
 
         for (const fn of functions) {
@@ -782,7 +786,16 @@ export async function teardownTestSchema(db: Kysely<unknown>, dialect: Dialect):
     }
 
     // Drop MSSQL custom types (after tables that use them)
+    // TVPs first — they reference scalar types
     if (dialect === 'mssql') {
+
+        const tvps = ['UserBatchInsert', 'TodoItemBatch'];
+
+        for (const tvp of tvps) {
+
+            await sql.raw(`DROP TYPE IF EXISTS ${tvp}`).execute(db);
+
+        }
 
         const types = ['EmailAddress', 'Username', 'HexColor', 'Priority', 'SoftDeleteDate'];
 

@@ -142,6 +142,86 @@ Generated SQL by dialect:
 - **MySQL**: `CALL get_active_users($1)` (positional only)
 - **SQLite**: throws — no procedure support
 
+### Table-Valued Parameters (TVP)
+
+Pass structured table data to MSSQL stored procedures, functions, and TVFs using the `tvp()` helper. Other dialects throw — TVPs are an MSSQL-only feature.
+
+The SDK generates a DECLARE/INSERT batch where all user values remain parameterized (no SQL injection). This bypasses Kysely's parameter binding, which lacks native TVP type detection.
+
+```typescript
+import { tvp, type TvpValue } from '@noormdev/sdk';
+
+// Use TvpValue in proc, func, or tvf signatures
+interface MyProcs {
+    'Checkout_trx': [{ Party: number; PaymentMethod: number; Items: TvpValue }, void];
+}
+interface MyFuncs {
+    'score_items': [{ multiplier: number; Items: TvpValue }, { total: number }];
+}
+interface MyTvfs {
+    'match_items': [{ user_id: string; Items: TvpValue }, MatchedItem];
+}
+
+// proc — named params
+await ctx.proc('Checkout_trx', {
+    Party: 1,
+    PaymentMethod: 2,
+    Items: tvp('CheckoutItems', [
+        { Type: 1, ReferenceNo: 100, Qty: 5 },
+        { Type: 2, ReferenceNo: 200, Qty: 3 },
+    ]),
+});
+
+// proc — positional params
+await ctx.proc('Checkout_trx', [1, 2, tvp('CheckoutItems', items)]);
+
+// func — scalar result from TVP
+const result = await ctx.func('score_items', {
+    multiplier: 2,
+    Items: tvp('ItemType', items),
+}, 'total');
+
+// tvf — row set from TVP
+const rows = await ctx.tvf('match_items', {
+    user_id: '123',
+    Items: tvp('ItemType', items),
+});
+```
+
+`tvp(typeName, rows)` takes the SQL Server table type name and an array of row objects. Column names are inferred from the first row's keys.
+
+**Features:**
+
+- Works with `proc()`, `func()`, and `tvf()`
+- Schema-qualified names: `tvp('dbo.CheckoutItems', rows)`
+- Empty TVP (zero rows): `tvp('CheckoutItems', [])` — passes empty table
+- Multiple TVPs per call
+- Works with impersonated scopes (`scope.proc()`)
+
+**Validation:**
+
+- Row key consistency — all rows must have the same keys as the first row, or `tvp()` throws
+- Parameter count — MSSQL has a 2,100 parameter limit per batch. The SDK counts `(TVP rows × columns) + scalar params` and throws early with a suggestion to split into batches
+
+Generated SQL varies by method:
+
+```sql
+-- proc (named)
+DECLARE @__tvp_Items CheckoutItems;
+INSERT INTO @__tvp_Items ([Type], [ReferenceNo], [Qty]) VALUES (@1, @2, @3), (@4, @5, @6);
+EXEC Checkout_trx @Party = @7, @PaymentMethod = @8, @Items = @__tvp_Items
+
+-- func (uses EXEC @result = func pattern)
+DECLARE @__tvp_Items ItemType;
+INSERT INTO @__tvp_Items ([val]) VALUES (@1), (@2);
+DECLARE @__result sql_variant; EXEC @__result = score_items @multiplier = @3, @Items = @__tvp_Items; SELECT @__result AS total
+
+-- tvf (uses SELECT * FROM tvf(...))
+DECLARE @__tvp_Items ItemType;
+INSERT INTO @__tvp_Items ([val]) VALUES (@1), (@2);
+SELECT * FROM match_items(@3, @__tvp_Items)
+```
+
 ### Database Functions
 
 Return type inferred from tuple. Always requires a column alias as the last argument.
