@@ -79,12 +79,12 @@ describe('integration: mssql explore', () => {
 
             const overview = await fetchOverview(db, 'mssql');
 
-            // From fixtures: 3 tables, 3 views, 6 functions (3 scalar + 3 TVFs), 16 procedures, 5 types
+            // From fixtures: 3 tables, 3 views, 8 functions (4 scalar + 4 TVFs), 17 procedures, 7 types (5 scalar + 2 TVPs)
             expect(overview.tables).toBe(3);
             expect(overview.views).toBe(3);
-            expect(overview.functions).toBe(6);
-            expect(overview.procedures).toBe(16);
-            expect(overview.types).toBe(5);
+            expect(overview.functions).toBe(8);
+            expect(overview.procedures).toBe(17);
+            expect(overview.types).toBe(7);
 
             // Indexes and FKs are present from table definitions
             expect(overview.indexes).toBeGreaterThanOrEqual(0);
@@ -191,11 +191,11 @@ describe('integration: mssql explore', () => {
 
     describe('fetchList: functions', () => {
 
-        it('should return all 6 functions (3 scalar + 3 TVFs)', async () => {
+        it('should return all 8 functions (4 scalar + 4 TVFs)', async () => {
 
             const functions = await fetchList(db, 'mssql', 'functions');
 
-            expect(functions).toHaveLength(6);
+            expect(functions).toHaveLength(8);
 
             const fnNames = functions.map((f: FunctionSummary) => f.name);
             expect(fnNames).toContain('fn_IsValidEmail');
@@ -204,6 +204,8 @@ describe('integration: mssql explore', () => {
             expect(fnNames).toContain('fn_GetTodoItemsByList');
             expect(fnNames).toContain('fn_GetTodoListsByUser');
             expect(fnNames).toContain('fn_GetActiveUsers');
+            expect(fnNames).toContain('fn_SumBatchPriorities');
+            expect(fnNames).toContain('fn_MatchBatchItems');
 
         });
 
@@ -278,11 +280,11 @@ describe('integration: mssql explore', () => {
 
     describe('fetchList: types', () => {
 
-        it('should return all 5 custom types', async () => {
+        it('should return all 7 custom types (5 scalar + 2 TVPs)', async () => {
 
             const types = await fetchList(db, 'mssql', 'types');
 
-            expect(types).toHaveLength(5);
+            expect(types).toHaveLength(7);
 
             const typeNames = types.map((t: TypeSummary) => t.name);
             expect(typeNames).toContain('EmailAddress');
@@ -290,6 +292,8 @@ describe('integration: mssql explore', () => {
             expect(typeNames).toContain('HexColor');
             expect(typeNames).toContain('Priority');
             expect(typeNames).toContain('SoftDeleteDate');
+            expect(typeNames).toContain('UserBatchInsert');
+            expect(typeNames).toContain('TodoItemBatch');
 
         });
 
@@ -297,11 +301,10 @@ describe('integration: mssql explore', () => {
 
             const types = await fetchList(db, 'mssql', 'types');
 
-            // All MSSQL user types from fixtures are alias types (domain)
             for (const type of types) {
 
-                // MSSQL alias types are typically classified as 'domain' or 'other'
-                expect(['domain', 'other']).toContain(type.kind);
+                // Scalar alias types are 'domain' or 'other', TVPs are 'composite'
+                expect(['domain', 'other', 'composite']).toContain(type.kind);
 
             }
 
