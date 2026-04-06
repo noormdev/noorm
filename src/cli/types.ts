@@ -163,6 +163,11 @@ export type Route =
     | 'dev'
     | 'dev/test-workers'
     | 'dev/test-helpers'
+
+    // MCP
+    | 'mcp'
+    | 'mcp/serve'
+    | 'mcp/init'
 /**
  * Route parameters that can be passed during navigation.
  *

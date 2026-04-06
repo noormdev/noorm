@@ -76,6 +76,10 @@ import * as CmdSql from './sql.js';
 import * as CmdDevTestWorkers from './dev-test-workers.js';
 import * as CmdDevTestHelpers from './dev-test-helpers.js';
 
+import * as CmdMcp from './mcp.js';
+import * as CmdMcpServe from './mcp-serve.js';
+import * as CmdMcpInit from './mcp-init.js';
+
 import * as CmdHelp from './help.js';
 import * as CmdInfo from './info.js';
 import * as CmdUpdate from './update.js';
@@ -140,6 +144,10 @@ const HANDLERS: Partial<Record<Route, RouteHandler>> = {
 
     'dev/test-workers': CmdDevTestWorkers,
     'dev/test-helpers': CmdDevTestHelpers,
+
+    'mcp': CmdMcp,
+    'mcp/serve': CmdMcpServe,
+    'mcp/init': CmdMcpInit,
 
     'info': CmdInfo,
     'update': CmdUpdate,

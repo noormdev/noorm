@@ -51,6 +51,7 @@
         "@logosdx/observer": "^2.5.0",
         "@logosdx/react": "^3.0.0",
         "@logosdx/utils": "^6.1.0",
+        "@modelcontextprotocol/sdk": "^1.29.0",
         "ansis": "^4.2.0",
         "better-sqlite3": "^12.8.0",
         "csv-parse": "^6.1.0",
@@ -65,6 +66,7 @@
         "meow": "^14.1.0",
         "node-machine-id": "^1.1.12",
         "react": "^19.2.4",
+        "sql-parser-cst": "^0.39.0",
         "voca": "^1.4.1",
         "yaml": "^2.8.2",
         "zod": "^4.3.6"

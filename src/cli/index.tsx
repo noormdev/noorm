@@ -29,6 +29,7 @@ import { enableAutoLoggerInit } from '../core/logger/init.js';
 import { hasKeyFiles } from '../core/identity/storage.js';
 import { initProjectContext } from '../core/project.js';
 import { observer } from '../core/observer.js';
+import { startServer } from '../mcp/index.js';
 
 /**
  * No-op stream that discards all writes.
@@ -174,7 +175,7 @@ function parseCli(): ParsedCli {
     const { route, params } = parseRouteFromInput(cli.input);
 
     // Version and info commands always run headless (no TUI screen for them)
-    if (route === 'version' || route === 'info') {
+    if (route === 'version' || route === 'info' || route === 'mcp/serve' || route === 'mcp/init') {
 
         return { mode: 'headless', route, params, flags };
 
@@ -426,6 +427,15 @@ async function main(): Promise<void> {
 
             console.error('No identity configured. Run: noorm init');
             process.exit(1);
+
+        }
+
+        // MCP serve: short-circuit before runHeadless to keep stdout clean for JSON-RPC
+        if (route === 'mcp/serve') {
+
+            await startServer();
+
+            return; // event loop stays alive via stdin — do NOT process.exit()
 
         }
 

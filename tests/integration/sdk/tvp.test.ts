@@ -474,7 +474,7 @@ describe('integration: tvp() type safety', () => {
 
     it('should preserve row type through TvpValue<T>', () => {
 
-        interface CheckoutItem { Type: string; ReferenceNo: number; Qty: number }
+        interface _CheckoutItem { Type: string; ReferenceNo: number; Qty: number }
 
         const result = tvp('CheckoutItems', [
             { Type: 'A', ReferenceNo: 100, Qty: 5 },
@@ -487,7 +487,7 @@ describe('integration: tvp() type safety', () => {
         const _qty: number = row.Qty;
 
         // @ts-expect-error 'NonExistent' does not exist on CheckoutItem
-        row.NonExistent;
+        void row.NonExistent;
 
         expect(_type).toBe('A');
         expect(_ref).toBe(100);
@@ -580,7 +580,7 @@ describe('integration: tvp() type safety', () => {
         const _qty: number = row.qty;
 
         // @ts-expect-error 'price' does not exist on LineItem
-        row.price;
+        void row.price;
 
         expect(_sku).toBe('ABC');
         expect(_qty).toBe(5);
