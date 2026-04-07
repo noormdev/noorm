@@ -1,83 +1,64 @@
-import { withContext, type HeadlessCommand } from './_helpers.js';
+/**
+ * noorm change ff — fast-forward apply all pending changes.
+ */
+import { defineCommand } from 'citty';
 
-export const help = `
-# CHANGE FF
+import { withContext, outputResult, sharedArgs } from '../_utils.js';
 
-Fast-forward: apply all pending changes
+const ffCommand = defineCommand({
+    meta: {
+        name: 'ff',
+        description: 'Fast-forward: apply all pending changes',
+    },
+    args: {
+        config: sharedArgs.config,
+        force: sharedArgs.force,
+        dryRun: sharedArgs.dryRun,
+        json: sharedArgs.json,
+    },
+    async run({ args }) {
 
-## Usage
+        const [result, error] = await withContext({
+            args,
+            fn: (ctx, logger) => {
 
-    noorm change ff [options]
-    noorm -H change ff
+                return ctx.noorm.changes.ff().then((res) => {
 
-## Options
+                    logger.info(`Fast-forward ${res.status}`, {
+                        executed: res.executed,
+                        skipped: res.skipped,
+                        failed: res.failed,
+                    });
+                    for (const cs of res.changes) {
 
-    -c, --config NAME   Use specific configuration
-    -f, --force         Skip checksum validation
-    --dry-run           Preview without executing
+                        logger.info(`  ${cs.name} (${cs.status})`);
 
-## Description
+                    }
+                    return res;
 
-Applies all pending changes in order. This is the primary command
-for running migrations in CI/CD pipelines.
+                });
 
-Changes are applied in alphabetical order by name. Each change
-is executed within a transaction when supported by the database.
+            },
+        });
 
-> If a change fails, execution stops and subsequent changes are
-> not applied. The failed change is marked as 'failed' in the history.
+        if (error) process.exit(1);
 
-## Examples
+        if (args.json) {
 
-    noorm -H change ff
-    noorm -H -c prod change ff
-    noorm -H --dry-run change ff
-    noorm -H --force change ff
+            outputResult(args, result, '');
 
-## Exit Codes
+        }
 
-    0   All changes applied successfully
-    1   One or more changes failed
+        process.exit(result.status === 'success' ? 0 : 2);
 
-## JSON Output
+    },
+});
 
-\`\`\`json
-{
-    "status": "success",
-    "executed": 3,
-    "skipped": 0,
-    "failed": 0,
-    "changes": [
-        { "name": "001_init", "status": "success", "durationMs": 45 }
-    ]
-}
-\`\`\`
+(ffCommand as typeof ffCommand & { examples: string[] }).examples = [
+    'noorm change ff',
+    'noorm change ff -c prod',
+    'noorm change ff --dry-run',
+    'noorm change ff --force',
+];
 
-See \`noorm help change\` or \`noorm help change run\`.
-`;
-
-export const run: HeadlessCommand = async (_params, flags, logger) => {
-
-    const [result, error] = await withContext({
-        flags,
-        logger,
-        fn: (ctx) => ctx.noorm.changes.ff(),
-    });
-
-    if (error) return 1;
-
-    logger.info(`Fast-forward ${result.status}`, {
-        executed: result.executed,
-        skipped: result.skipped,
-        failed: result.failed,
-    });
-
-    for (const cs of result.changes) {
-
-        logger.info(`  ${cs.name} (${cs.status})`);
-
-    }
-
-    return result.status === 'success' ? 0 : 2;
-
-};
+export default ffCommand;
