@@ -1,65 +1,53 @@
-import { withContext, outputError, type HeadlessCommand } from './_helpers.js';
+/**
+ * noorm change revert <name> — revert a single applied change.
+ */
+import { defineCommand } from 'citty';
 
-export const help = `
-# CHANGE REVERT
+import { withContext, sharedArgs } from '../_utils.js';
 
-Revert a specific change
+const revertCommand = defineCommand({
+    meta: {
+        name: 'revert',
+        description: 'Revert a specific change by name',
+    },
+    args: {
+        name: {
+            type: 'positional',
+            description: 'Change name to revert',
+            required: true,
+        },
+        config: sharedArgs.config,
+        force: sharedArgs.force,
+        dryRun: sharedArgs.dryRun,
+        json: sharedArgs.json,
+    },
+    async run({ args }) {
 
-## Usage
+        const [result, error] = await withContext({
+            args,
+            fn: (ctx, logger) => {
 
-    noorm change revert NAME
-    noorm -H change revert NAME
+                return ctx.noorm.changes.revert(args.name).then((res) => {
 
-## Arguments
+                    logger.info(`${res.name} reverted (${res.status})`);
+                    return res;
 
-    NAME    Name of the change to revert
+                });
 
-## Description
+            },
+        });
 
-Reverts a single applied change by running its backward SQL.
-The change must have been previously applied.
+        if (error) process.exit(1);
 
-## Examples
+        process.exit(result.status === 'success' ? 0 : 2);
 
-    noorm -H change revert 002_users
-    noorm -H change revert 001_init
-    noorm -H --json change revert 002_users
+    },
+});
 
-## JSON Output
+(revertCommand as typeof revertCommand & { examples: string[] }).examples = [
+    'noorm change revert 001_init',
+    'noorm change revert 002_users -c prod',
+    'noorm change revert 002_users --json',
+];
 
-\`\`\`json
-{
-    "name": "002_users",
-    "direction": "revert",
-    "status": "success",
-    "files": [
-        { "filepath": "revert/001_drop-table.sql", "checksum": "d4e5f6", "status": "executed", "durationMs": 12 }
-    ],
-    "durationMs": 30
-}
-\`\`\`
-
-See \`noorm help change\` or \`noorm help change run\`.
-`;
-
-export const run: HeadlessCommand = async (params, flags, logger) => {
-
-    if (!params.name) {
-
-        return outputError(flags, logger, 'Change name required. Use --name <change>');
-
-    }
-
-    const [result, error] = await withContext({
-        flags,
-        logger,
-        fn: (ctx) => ctx.noorm.changes.revert(params.name!),
-    });
-
-    if (error) return 1;
-
-    logger.info(`${result.name} reverted (${result.status})`);
-
-    return result.status === 'success' ? 0 : 2;
-
-};
+export default revertCommand;

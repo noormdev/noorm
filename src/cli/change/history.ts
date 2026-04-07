@@ -1,65 +1,68 @@
-import { withContext, type HeadlessCommand } from './_helpers.js';
+/**
+ * noorm change history — show change execution history.
+ */
+import { defineCommand } from 'citty';
 
-export const help = `
-# CHANGE HISTORY
+import { withContext, sharedArgs } from '../_utils.js';
 
-Show change execution history
+const historyCommand = defineCommand({
+    meta: {
+        name: 'history',
+        description: 'Show change execution history',
+    },
+    args: {
+        count: {
+            type: 'string',
+            description: 'Show last N records (default: 20)',
+            default: '20',
+        },
+        config: sharedArgs.config,
+        json: sharedArgs.json,
+    },
+    async run({ args }) {
 
-## Usage
+        const count = parseInt(args.count ?? '20', 10);
 
-    noorm change history [options]
-    noorm -H change history
+        const [history, error] = await withContext({
+            args,
+            fn: (ctx, logger) => {
 
-## Options
+                return ctx.noorm.changes.history(count).then((records) => {
 
-    --count N    Show last N records (default: 20)
+                    logger.info(`Execution History: ${records.length} records`);
 
-## Description
+                    for (const record of records) {
 
-Displays the history of change executions including timestamps,
-status, and duration. Useful for auditing and debugging.
+                        const date = new Date(record.executedAt).toLocaleString();
+                        logger.info(`  ${record.name} - ${record.status} (${date})`);
 
-## Examples
+                    }
 
-    noorm -H change history
-    noorm -H --count 50 change history
+                    return records;
 
-## JSON Output
+                });
 
-\`\`\`json
-[
-    {
-        "name": "001_init",
-        "status": "success",
-        "direction": "forward",
-        "executedAt": "2024-01-15T10:30:00Z",
-        "durationMs": 45
-    }
-]
-\`\`\`
+            },
+        });
 
-See \`noorm help change\`.
-`;
+        if (error) process.exit(1);
 
-export const run: HeadlessCommand = async (params, flags, logger) => {
+        if (args.json) {
 
-    const [history, error] = await withContext({
-        flags,
-        logger,
-        fn: (ctx) => ctx.noorm.changes.history(params.count ?? 20),
-    });
+            process.stdout.write(JSON.stringify(history) + '\n');
 
-    if (error) return 1;
+        }
 
-    logger.info(`Execution History: ${history.length} records`);
+        process.exit(0);
 
-    for (const record of history) {
+    },
+});
 
-        const date = new Date(record.executedAt).toLocaleString();
-        logger.info(`  ${record.name} - ${record.status} (${date})`);
+(historyCommand as typeof historyCommand & { examples: string[] }).examples = [
+    'noorm change history',
+    'noorm change history --json',
+    'noorm change history -c prod',
+    'noorm change history --count 50',
+];
 
-    }
-
-    return 0;
-
-};
+export default historyCommand;
