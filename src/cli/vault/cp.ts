@@ -24,6 +24,7 @@ const cpCommand = defineCommand({
         destination: { type: 'positional', description: 'Destination config name', required: true },
         config: sharedArgs.config,
         force: sharedArgs.force,
+        dryRun: sharedArgs.dryRun,
         json: sharedArgs.json,
     },
     async run({ args }) {
@@ -74,6 +75,35 @@ const cpCommand = defineCommand({
 
             process.stderr.write(`Error: Destination config not found: ${destConfigName}\n`);
             process.exit(1);
+
+        }
+
+        if (args.dryRun) {
+
+            if (args.json) {
+
+                process.stdout.write(JSON.stringify({
+                    success: true,
+                    dryRun: true,
+                    source: sourceConfigName,
+                    destination: destConfigName,
+                    keys,
+                    force: !!args.force,
+                }) + '\n');
+
+            }
+            else {
+
+                process.stdout.write(`Dry run: would copy ${keys.join(', ')} from "${sourceConfigName}" to "${destConfigName}"\n`);
+                if (args.force) {
+
+                    process.stdout.write('With --force: would overwrite existing secrets\n');
+
+                }
+
+            }
+
+            process.exit(0);
 
         }
 
