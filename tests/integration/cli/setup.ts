@@ -109,7 +109,7 @@ export async function noorm(project: TestProject, ...args: string[]) {
     await new Promise((r) => setTimeout(r, 100));
 
     // zx handles arrays by joining with spaces, which is correct for CLI args
-    const cmdArgs = ['-H', ...args];
+    const cmdArgs = [...args];
 
     return cli({ cwd: project.dir, env: { ...process.env, ...project.env } })`node ${CLI} ${cmdArgs}`;
 
@@ -138,7 +138,7 @@ export async function noormJson<T>(project: TestProject, ...args: string[]): Pro
 }> {
 
     // zx handles arrays by joining with spaces, which is correct for CLI args
-    const cmdArgs = ['-H', '--json', ...args];
+    const cmdArgs = ['--json', ...args];
 
     const result = await cli({ cwd: project.dir, env: { ...process.env, ...project.env } })`node ${CLI} ${cmdArgs}`;
 
