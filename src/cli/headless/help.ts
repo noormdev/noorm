@@ -141,7 +141,7 @@ export const run: HeadlessCommand = async (params, flags, logger) => {
 
     }
 
-    const route = params.name.replace(' ', '/');
+    const route = params.topic ?? params.name!.replace(' ', '/');
 
     const handler = handlers[route];
 
