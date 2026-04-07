@@ -7,7 +7,7 @@ import { describe, it, expect } from 'bun:test';
 import { render } from 'ink-testing-library';
 import React from 'react';
 
-import { LockStatus, ConnectionStatus } from '../../../src/cli/components/status/index.js';
+import { LockStatus, ConnectionStatus } from '../../../src/tui/components/status/index.js';
 
 describe('cli: components/status', () => {
 

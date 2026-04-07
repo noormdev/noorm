@@ -9,10 +9,10 @@ import React from 'react';
 import { join } from 'path';
 import { tmpdir } from 'os';
 
-import { FocusProvider } from '../../../../src/cli/focus.js';
-import { RouterProvider } from '../../../../src/cli/router.js';
-import { AppContextProvider } from '../../../../src/cli/app-context.js';
-import { InitScreen } from '../../../../src/cli/screens/init/InitScreen.js';
+import { FocusProvider } from '../../../../src/tui/focus.js';
+import { RouterProvider } from '../../../../src/tui/router.js';
+import { AppContextProvider } from '../../../../src/tui/app-context.js';
+import { InitScreen } from '../../../../src/tui/screens/init/InitScreen.js';
 
 // Create a unique test directory for each test run
 const _TEST_PROJECT_ROOT = join(tmpdir(), `noorm-test-${Date.now()}`);

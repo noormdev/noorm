@@ -1,5 +1,5 @@
 ---
-paths: src/cli/**/*.{ts,tsx}, tests/cli/**/*.{ts,tsx}
+paths: src/tui/**/*.{ts,tsx}, tests/tui/**/*.{ts,tsx}
 ---
 
 # TUI Development Rules
@@ -7,7 +7,7 @@ paths: src/cli/**/*.{ts,tsx}, tests/cli/**/*.{ts,tsx}
 
 ## Focus System
 
-Use `useFocusScope` from `src/cli/focus.tsx` for keyboard input. @inkjs/ui's focus system (`useFocus`, `useFocusManager`) does not communicate with ours - mixing them causes lost input.
+Use `useFocusScope` from `src/tui/focus.tsx` for keyboard input. @inkjs/ui's focus system (`useFocus`, `useFocusManager`) does not communicate with ours - mixing them causes lost input.
 
 ```tsx
 const { isFocused } = useFocusScope('my-component');
@@ -125,7 +125,7 @@ For fixed-position elements (like toast), use fixed width to reserve space and p
 
 ## Observer Hooks
 
-Use hooks from `src/cli/hooks/useObserver.ts` for event subscriptions. These handle cleanup automatically.
+Use hooks from `src/tui/hooks/useObserver.ts` for event subscriptions. These handle cleanup automatically.
 
 ```tsx
 import { useOnEvent, useOnceEvent, useEmit, useEventPromise } from '../hooks/index.js';

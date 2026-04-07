@@ -9,8 +9,8 @@ import React from 'react';
 import { Text, Box } from 'ink';
 
 import { observer } from '../../../src/core/observer.js';
-import { NoormObserver } from '../../../src/cli/observer-context.js';
-import { useTransferProgress } from '../../../src/cli/hooks/useTransferProgress.js';
+import { NoormObserver } from '../../../src/tui/observer-context.js';
+import { useTransferProgress } from '../../../src/tui/hooks/useTransferProgress.js';
 
 /**
  * Test component that renders transfer progress state.

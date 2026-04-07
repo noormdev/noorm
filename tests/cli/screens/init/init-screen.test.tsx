@@ -8,10 +8,10 @@ import { describe, it, expect, vi, mock, beforeEach, afterEach, afterAll } from 
 import { render } from 'ink-testing-library';
 import React from 'react';
 
-import { FocusProvider } from '../../../../src/cli/focus.js';
-import { RouterProvider } from '../../../../src/cli/router.js';
-import { AppContextProvider } from '../../../../src/cli/app-context.js';
-import { InitScreen } from '../../../../src/cli/screens/init/InitScreen.js';
+import { FocusProvider } from '../../../../src/tui/focus.js';
+import { RouterProvider } from '../../../../src/tui/router.js';
+import { AppContextProvider } from '../../../../src/tui/app-context.js';
+import { InitScreen } from '../../../../src/tui/screens/init/InitScreen.js';
 
 // Track mock state
 let mockNoormExists = false;

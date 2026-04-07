@@ -7,8 +7,8 @@ import { describe, it, expect } from 'bun:test';
 import { render } from 'ink-testing-library';
 import React from 'react';
 
-import { FocusProvider } from '../../../src/cli/focus.js';
-import { SelectList, ActionList, StatusList } from '../../../src/cli/components/lists/index.js';
+import { FocusProvider } from '../../../src/tui/focus.js';
+import { SelectList, ActionList, StatusList } from '../../../src/tui/components/lists/index.js';
 
 /**
  * Wrapper with focus provider for components that need focus.

@@ -9,7 +9,7 @@ import { describe, it, expect, beforeEach, afterEach, afterAll, vi, mock } from 
 import { render } from 'ink-testing-library';
 import { Text } from 'ink';
 
-import { useUpdateChecker, type UseUpdateCheckerResult } from '../../../src/cli/hooks/useUpdateChecker.js';
+import { useUpdateChecker, type UseUpdateCheckerResult } from '../../../src/tui/hooks/useUpdateChecker.js';
 import type { UpdateCheckResult, GlobalSettings } from '../../../src/core/update/types.js';
 
 // Pre-import actual modules for restoration

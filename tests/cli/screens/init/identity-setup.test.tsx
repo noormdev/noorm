@@ -7,8 +7,8 @@ import { describe, it, expect, vi, mock, beforeEach, afterAll } from 'bun:test';
 import { render } from 'ink-testing-library';
 import React from 'react';
 
-import { FocusProvider } from '../../../../src/cli/focus.js';
-import { IdentitySetup } from '../../../../src/cli/screens/init/IdentitySetup.js';
+import { FocusProvider } from '../../../../src/tui/focus.js';
+import { IdentitySetup } from '../../../../src/tui/screens/init/IdentitySetup.js';
 
 // Pre-import actual module for restoration
 const actualIdentity = await import('../../../../src/core/identity/index.js');

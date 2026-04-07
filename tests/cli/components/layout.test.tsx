@@ -8,7 +8,7 @@ import { render } from 'ink-testing-library';
 import React from 'react';
 import { Text } from 'ink';
 
-import { Panel, Divider } from '../../../src/cli/components/layout/index.js';
+import { Panel, Divider } from '../../../src/tui/components/layout/index.js';
 
 describe('cli: components/layout', () => {
 

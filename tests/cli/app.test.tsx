@@ -7,9 +7,9 @@ import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { render } from 'ink-testing-library';
 import React from 'react';
 
-import { App } from '../../src/cli/app.js';
+import { App } from '../../src/tui/app.js';
 import { resetLifecycleManager } from '../../src/core/lifecycle/manager.js';
-import type { Route } from '../../src/cli/types.js';
+import type { Route } from '../../src/tui/types.js';
 
 // ANSI escape sequences
 const KEYS = {

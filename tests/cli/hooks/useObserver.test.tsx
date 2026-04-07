@@ -9,13 +9,13 @@ import React, { useEffect, useState } from 'react';
 import { Text } from 'ink';
 
 import { observer } from '../../../src/core/observer.js';
-import { NoormObserver } from '../../../src/cli/observer-context.js';
+import { NoormObserver } from '../../../src/tui/observer-context.js';
 import {
     useOnEvent,
     useOnceEvent,
     useEmit,
     useEventPromise,
-} from '../../../src/cli/hooks/useObserver.js';
+} from '../../../src/tui/hooks/useObserver.js';
 
 /**
  * Wrap component with NoormObserver provider for testing.
