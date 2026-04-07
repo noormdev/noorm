@@ -28,8 +28,6 @@ const rmCommand = defineCommand({
 });
 
 (rmCommand as typeof rmCommand & { examples: string[] }).examples = [
-    'noorm config rm old_prod',
-    'noorm config rm old_prod --yes',
     'noorm ui  # then navigate to config > rm',
 ];
 
