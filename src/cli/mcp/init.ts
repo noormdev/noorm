@@ -1,65 +1,57 @@
+/**
+ * noorm mcp init — generate MCP configuration for a coding agent.
+ *
+ * Creates or extends a .mcp.json (or .cursor/mcp.json) file so the
+ * agent can discover and connect to the noorm MCP server automatically.
+ */
+import { defineCommand } from 'citty';
 import { attempt } from '@logosdx/utils';
 
 import { generateMcpConfig } from '../../mcp/init.js';
-import { outputResult, outputError, type HeadlessCommand } from './_helpers.js';
+import { outputResult, outputError } from '../_utils.js';
 
-export const help = `
-# MCP INIT
+const initCommand = defineCommand({
+    meta: {
+        name: 'init',
+        description: 'Generate MCP configuration for a coding agent',
+    },
+    args: {
+        agent: {
+            type: 'string',
+            description: 'Agent type: claude (default), cursor',
+        },
+        json: {
+            type: 'boolean',
+            description: 'Output JSON',
+        },
+    },
+    async run({ args }) {
 
-Generate MCP configuration for your coding agent.
+        const projectRoot = process.cwd();
+        const agent = args.agent ?? undefined;
 
-## Usage
+        const [result, err] = await attempt(() => generateMcpConfig(projectRoot, { agent }));
 
-    noorm mcp init [options]
+        if (err) {
 
-## Options
+            outputError(args, `Failed to generate MCP config: ${err.message}`);
+            process.exit(1);
 
-    --agent NAME    Agent type: claude (default), cursor
+        }
 
-## Description
+        const action = result.created ? 'Created' : 'Extended';
 
-Creates or extends a \`.mcp.json\` file in your project root so coding
-agents can discover and connect to the noorm MCP server.
+        outputResult(args, result, `${action} ${result.path}`);
 
-If the file already exists, adds the noorm entry without overwriting
-other MCP server configurations.
+        process.exit(0);
 
-## Examples
+    },
+});
 
-    noorm -H mcp init                  Generate .mcp.json (Claude Code)
-    noorm -H mcp init --agent cursor   Generate .cursor/mcp.json
+(initCommand as typeof initCommand & { examples: string[] }).examples = [
+    'noorm mcp init',
+    'noorm mcp init --agent cursor',
+    'noorm mcp init --json',
+];
 
-## JSON Output
-
-\`\`\`json
-{
-    "path": "/project/.mcp.json",
-    "created": true,
-    "extended": false
-}
-\`\`\`
-`;
-
-export const run: HeadlessCommand = async (_params, flags, logger) => {
-
-    const agent = typeof flags['agent'] === 'string' ? flags['agent'] : undefined;
-    const projectRoot = process.cwd();
-
-    const [result, err] = await attempt(() => generateMcpConfig(projectRoot, { agent }));
-
-    if (err) {
-
-        const message = err instanceof Error ? err.message : String(err);
-        outputError(flags, logger, `Failed to generate MCP config: ${message}`);
-
-        return 1;
-
-    }
-
-    const action = result.created ? 'Created' : 'Extended';
-
-    outputResult(flags, logger, result, `${action} ${result.path}`);
-
-    return 0;
-
-};
+export default initCommand;
