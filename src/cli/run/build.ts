@@ -1,66 +1,61 @@
-import { withContext, type HeadlessCommand } from './_helpers.js';
+/**
+ * noorm run build — execute all SQL files in the schema directory.
+ */
+import { defineCommand } from 'citty';
 
-export const help = `
-# RUN BUILD
+import { withContext, outputResult, sharedArgs } from '../_utils.js';
 
-Execute all SQL files in schema directory
+const buildCommand = defineCommand({
+    meta: {
+        name: 'build',
+        description: 'Execute all SQL files in schema directory',
+    },
+    args: {
+        config: sharedArgs.config,
+        force: sharedArgs.force,
+        dryRun: sharedArgs.dryRun,
+        json: sharedArgs.json,
+    },
+    async run({ args }) {
 
-## Usage
+        const [result, error] = await withContext({
+            args,
+            fn: (ctx, logger) => {
 
-    noorm run build [options]
-    noorm -H run build
+                return ctx.noorm.run.build({ force: args.force }).then((res) => {
 
-## Options
+                    logger.info('Build completed successfully', {
+                        status: res.status,
+                        filesRun: res.filesRun,
+                        filesSkipped: res.filesSkipped,
+                        filesFailed: res.filesFailed,
+                        durationMs: res.durationMs,
+                    });
+                    return res;
 
-    -f, --force     Force execution (skip checksum validation)
-    --dry-run       Preview without executing
+                });
 
-## Description
+            },
+        });
 
-Executes all SQL files in the \`sql/\` directory in alphabetical order.
-Tracks checksums to skip unchanged files on subsequent runs.
+        if (error) process.exit(1);
 
-Use \`--force\` to rebuild everything regardless of checksums.
+        if (args.json) {
 
-## Examples
+            outputResult(args, result, '');
 
-    noorm -H run build
-    noorm -H --force run build
-    noorm -H --dry-run run build
+        }
 
-## JSON Output
+        process.exit(result.status === 'success' ? 0 : 2);
 
-\`\`\`json
-{
-    "status": "success",
-    "filesRun": 5,
-    "filesSkipped": 2,
-    "filesFailed": 0,
-    "durationMs": 1234
-}
-\`\`\`
+    },
+});
 
-See \`noorm help run\` or \`noorm help run file\`.
-`;
+(buildCommand as typeof buildCommand & { examples: string[] }).examples = [
+    'noorm run build',
+    'noorm run build --force',
+    'noorm run build --dry-run',
+    'noorm run build --json',
+];
 
-export const run: HeadlessCommand = async (params, flags, logger) => {
-
-    const [result, error] = await withContext({
-        flags,
-        logger,
-        fn: (ctx) => ctx.noorm.run.build({ force: params.force ?? flags.force }),
-    });
-
-    if (error) return 1;
-
-    logger.info('Build completed successfully', {
-        status: result.status,
-        filesRun: result.filesRun,
-        filesSkipped: result.filesSkipped,
-        filesFailed: result.filesFailed,
-        durationMs: result.durationMs,
-    });
-
-    return result.status === 'success' ? 0 : 2;
-
-};
+export default buildCommand;

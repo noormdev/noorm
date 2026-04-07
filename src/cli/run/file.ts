@@ -1,65 +1,59 @@
-import { withContext, outputError, type HeadlessCommand } from './_helpers.js';
+/**
+ * noorm run file <path> — execute a single SQL file.
+ */
+import { defineCommand } from 'citty';
 
-export const help = `
-# RUN FILE
+import { withContext, outputResult, sharedArgs } from '../_utils.js';
 
-Execute a single SQL file
+const fileCommand = defineCommand({
+    meta: {
+        name: 'file',
+        description: 'Execute a single SQL file',
+    },
+    args: {
+        path: {
+            type: 'positional',
+            description: 'Path to the SQL file to execute',
+            required: true,
+        },
+        config: sharedArgs.config,
+        dryRun: sharedArgs.dryRun,
+        force: sharedArgs.force,
+        json: sharedArgs.json,
+    },
+    async run({ args }) {
 
-## Usage
+        const [result, error] = await withContext({
+            args,
+            fn: (ctx, logger) => {
 
-    noorm run file PATH
-    noorm -H run file PATH
+                return ctx.noorm.run.file(args.path).then((res) => {
 
-## Arguments
+                    logger.info(`${res.filepath} (${res.status})`);
+                    return res;
 
-    PATH    Path to the SQL file to execute
+                });
 
-## Description
+            },
+        });
 
-Executes a single SQL file against the database.
-Supports \`.sql\` and \`.sql.tmpl\` (templated) files.
+        if (error) process.exit(1);
 
-## Examples
+        if (args.json) {
 
-    noorm -H run file seed.sql
-    noorm -H run file migrations/001_init.sql
-    noorm -H --json run file sql/init.sql.tmpl
+            outputResult(args, result, '');
 
-## JSON Output
+        }
 
-\`\`\`json
-{
-    "filepath": "seed.sql",
-    "status": "success",
-    "durationMs": 45
-}
-\`\`\`
+        process.exit(result.status === 'success' || result.status === 'skipped' ? 0 : 1);
 
-Status is \`"success"\` or \`"skipped"\` (unchanged checksum).
+    },
+});
 
-See \`noorm help run\` or \`noorm help run dir\`.
-`;
+(fileCommand as typeof fileCommand & { examples: string[] }).examples = [
+    'noorm run file seed.sql',
+    'noorm run file migrations/001_init.sql',
+    'noorm run file sql/init.sql.tmpl --json',
+];
 
-export const run: HeadlessCommand = async (params, flags, logger) => {
-
-    if (!params.path) {
-
-        return outputError(flags, logger, 'File path required. Use --path <file.sql>');
-
-    }
-
-    const [result, error] = await withContext({
-        flags,
-        logger,
-        fn: (ctx) => ctx.noorm.run.file(params.path!),
-    });
-
-    if (error) return 1;
-
-    const isSkipped = result.status === 'skipped';
-
-    logger.info(`${result.filepath} (${result.status})`);
-
-    return result.status === 'success' || isSkipped ? 0 : 1;
-
-};
+export default fileCommand;

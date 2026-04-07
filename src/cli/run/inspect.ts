@@ -1,20 +1,21 @@
 /**
- * Headless: inspect template context.
+ * noorm run inspect <path> — inspect template context for a .sql.tmpl file.
  *
  * Shows what data files, helpers, config, secrets, and built-in
  * functions are available for a .sql.tmpl file without executing it.
  *
  * @example
  * ```bash
- * noorm -H run inspect sql/users/001_create.sql.tmpl
- * noorm -H --json run inspect sql/core/05_Cron/Crons.sql.tmpl
+ * noorm run inspect sql/users/001_create.sql.tmpl
+ * noorm run inspect sql/core/05_Cron/Crons.sql.tmpl --json
  * ```
  */
 import { dirname, join, relative } from 'node:path';
 
 import { attempt } from '@logosdx/utils';
+import { defineCommand } from 'citty';
 
-import { outputError, outputResult, type HeadlessCommand } from './_helpers.js';
+import { outputError, outputResult, sharedArgs } from '../_utils.js';
 import { buildContext } from '../../core/template/context.js';
 import { loadHelpers } from '../../core/template/helpers.js';
 import { getStateManager } from '../../core/state/index.js';
@@ -22,53 +23,6 @@ import { getStateManager } from '../../core/state/index.js';
 // Built-in helper names (always present in context)
 const BUILTIN_HELPERS = new Set(['quote', 'escape', 'uuid', 'now', 'json', 'include']);
 const STANDARD_KEYS = new Set(['config', 'secrets', 'globalSecrets', 'env']);
-
-export const help = `
-# RUN INSPECT
-
-Inspect template context for a .sql.tmpl file
-
-## Usage
-
-    noorm run inspect PATH
-    noorm -H run inspect PATH
-
-## Arguments
-
-    PATH    Path to the .sql.tmpl file
-
-## Description
-
-Shows what data files, helpers, config, secrets, and built-in
-functions are available in the template context (\`$\`).
-
-Does not execute or render the template — just loads and
-categorizes the context that would be available at render time.
-
-## Examples
-
-    noorm -H run inspect sql/users/001_create.sql.tmpl
-    noorm -H --json run inspect sql/core/05_Cron/Crons.sql.tmpl
-
-## JSON Output
-
-\`\`\`json
-{
-    "filepath": "sql/users/001_create.sql.tmpl",
-    "context": {
-        "dataFiles": [{ "key": "roles", "type": "Array [3]" }],
-        "helpers": [{ "key": "padId", "type": "Function" }],
-        "helperErrors": [],
-        "builtins": ["quote", "escape", "uuid", "now", "json", "include"],
-        "configKeys": ["name", "connection"],
-        "secretCount": 2,
-        "globalSecretCount": 0
-    }
-}
-\`\`\`
-
-See \`noorm help run\` or \`noorm help run preview\`.
-`;
 
 /**
  * Describe a value's type for display.
@@ -102,165 +56,181 @@ function describeType(value: unknown): string {
 
 }
 
-export const run: HeadlessCommand = async (params, flags, logger) => {
-
-    if (!params.path) {
-
-        return outputError(flags, logger, 'File path required. Usage: noorm -H run inspect <file.sql.tmpl>');
-
-    }
-
-    const projectRoot = process.cwd();
-    const fullPath = join(projectRoot, params.path);
-    const templateDir = dirname(fullPath);
-
-    // Load state for config + secrets
-    const stateManager = getStateManager(projectRoot);
-    const [, loadErr] = await attempt(() => stateManager.load());
-
-    if (loadErr) {
-
-        return outputError(flags, logger, `Failed to load state: ${loadErr.message}`);
-
-    }
-
-    const activeConfigName = flags.config ?? stateManager.getActiveConfigName();
-    const activeConfig = activeConfigName ? stateManager.getConfig(activeConfigName) : undefined;
-
-    // Load context and helpers in parallel
-    const [results, err] = await attempt(async () => {
-
-        const [ctx, helperResult] = await Promise.all([
-            buildContext(fullPath, {
-                projectRoot,
-                config: activeConfig as unknown as Record<string, unknown>,
-                secrets: activeConfigName ? stateManager.getAllSecrets(activeConfigName) : {},
-                globalSecrets: stateManager.getAllGlobalSecrets(),
-            }),
-            loadHelpers(templateDir, projectRoot),
-        ]);
-
-        return { ctx, helperResult };
-
-    });
-
-    if (err) {
-
-        return outputError(flags, logger, `Failed to load context: ${err.message}`);
-
-    }
-
-    // Categorize context entries
-    const helperKeys = new Set(Object.keys(results.helperResult.helpers));
-    const dataFiles: Array<{ key: string; type: string }> = [];
-    const helpers: Array<{ key: string; type: string }> = [];
-    const builtins: string[] = [];
-
-    for (const [key, value] of Object.entries(results.ctx)) {
-
-        if (STANDARD_KEYS.has(key)) continue;
-
-        if (BUILTIN_HELPERS.has(key)) {
-
-            builtins.push(key);
-            continue;
-
-        }
-
-        const entry = { key, type: describeType(value) };
-
-        if (helperKeys.has(key)) {
-
-            helpers.push(entry);
-
-        }
-        else {
-
-            dataFiles.push(entry);
-
-        }
-
-    }
-
-    dataFiles.sort((a, b) => a.key.localeCompare(b.key));
-    helpers.sort((a, b) => a.key.localeCompare(b.key));
-
-    const jsonOutput = {
-        filepath: params.path,
-        context: {
-            dataFiles,
-            helpers,
-            helperErrors: results.helperResult.errors.map(e => ({
-                filepath: relative(projectRoot, e.filepath),
-                error: e.error.message,
-            })),
-            builtins,
-            configKeys: activeConfig ? Object.keys(activeConfig) : [],
-            secretCount: activeConfigName ? Object.keys(stateManager.getAllSecrets(activeConfigName)).length : 0,
-            globalSecretCount: Object.keys(stateManager.getAllGlobalSecrets()).length,
+const inspectCommand = defineCommand({
+    meta: {
+        name: 'inspect',
+        description: 'Inspect template context for a .sql.tmpl file',
+    },
+    args: {
+        path: {
+            type: 'positional',
+            description: 'Path to the .sql.tmpl file',
+            required: true,
         },
-    };
+        config: sharedArgs.config,
+        json: sharedArgs.json,
+    },
+    async run({ args }) {
 
-    const textLines = [
-        `Template: ${params.path}`,
-        `Config:   ${activeConfigName ?? '(none)'}`,
-        '',
-    ];
+        const projectRoot = process.cwd();
+        const fullPath = join(projectRoot, args.path);
+        const templateDir = dirname(fullPath);
 
-    if (dataFiles.length > 0) {
+        // Load state for config + secrets
+        const stateManager = getStateManager(projectRoot);
+        const [, loadErr] = await attempt(() => stateManager.load());
 
-        textLines.push('Data Files:');
+        if (loadErr) {
 
-        for (const f of dataFiles) {
-
-            textLines.push(`  $.${f.key}  ${f.type}`);
-
-        }
-
-        textLines.push('');
-
-    }
-
-    if (helpers.length > 0) {
-
-        textLines.push('Helpers ($helpers):');
-
-        for (const h of helpers) {
-
-            textLines.push(`  $.${h.key}  ${h.type}`);
+            outputError(args, `Failed to load state: ${loadErr.message}`);
+            process.exit(1);
 
         }
 
-        textLines.push('');
+        const activeConfigName = args.config ?? stateManager.getActiveConfigName();
+        const activeConfig = activeConfigName ? stateManager.getConfig(activeConfigName) : undefined;
 
-    }
+        // Load context and helpers in parallel
+        const [results, err] = await attempt(async () => {
 
-    if (results.helperResult.errors.length > 0) {
+            const [ctx, helperResult] = await Promise.all([
+                buildContext(fullPath, {
+                    projectRoot,
+                    config: activeConfig as unknown as Record<string, unknown>,
+                    secrets: activeConfigName ? stateManager.getAllSecrets(activeConfigName) : {},
+                    globalSecrets: stateManager.getAllGlobalSecrets(),
+                }),
+                loadHelpers(templateDir, projectRoot),
+            ]);
 
-        textLines.push('Helper Errors:');
+            return { ctx, helperResult };
 
-        for (const e of results.helperResult.errors) {
+        });
 
-            textLines.push(`  ${relative(projectRoot, e.filepath)}: ${e.error.message}`);
+        if (err) {
+
+            outputError(args, `Failed to load context: ${err.message}`);
+            process.exit(1);
 
         }
 
-        textLines.push('');
+        // Categorize context entries
+        const helperKeys = new Set(Object.keys(results.helperResult.helpers));
+        const dataFiles: Array<{ key: string; type: string }> = [];
+        const helpers: Array<{ key: string; type: string }> = [];
+        const builtins: string[] = [];
 
-    }
+        for (const [key, value] of Object.entries(results.ctx)) {
 
-    textLines.push(`Built-ins: ${builtins.join(', ')}`);
+            if (STANDARD_KEYS.has(key)) continue;
 
-    if (activeConfigName) {
+            if (BUILTIN_HELPERS.has(key)) {
 
-        const secretCount = Object.keys(stateManager.getAllSecrets(activeConfigName)).length;
-        const globalCount = Object.keys(stateManager.getAllGlobalSecrets()).length;
-        textLines.push(`Secrets: ${secretCount} config, ${globalCount} global`);
+                builtins.push(key);
+                continue;
 
-    }
+            }
 
-    outputResult(flags, logger, jsonOutput, textLines.join('\n'));
+            const entry = { key, type: describeType(value) };
 
-    return 0;
+            if (helperKeys.has(key)) {
 
-};
+                helpers.push(entry);
+
+            }
+            else {
+
+                dataFiles.push(entry);
+
+            }
+
+        }
+
+        dataFiles.sort((a, b) => a.key.localeCompare(b.key));
+        helpers.sort((a, b) => a.key.localeCompare(b.key));
+
+        const jsonOutput = {
+            filepath: args.path,
+            context: {
+                dataFiles,
+                helpers,
+                helperErrors: results.helperResult.errors.map(e => ({
+                    filepath: relative(projectRoot, e.filepath),
+                    error: e.error.message,
+                })),
+                builtins,
+                configKeys: activeConfig ? Object.keys(activeConfig) : [],
+                secretCount: activeConfigName ? Object.keys(stateManager.getAllSecrets(activeConfigName)).length : 0,
+                globalSecretCount: Object.keys(stateManager.getAllGlobalSecrets()).length,
+            },
+        };
+
+        const textLines = [
+            `Template: ${args.path}`,
+            `Config:   ${activeConfigName ?? '(none)'}`,
+            '',
+        ];
+
+        if (dataFiles.length > 0) {
+
+            textLines.push('Data Files:');
+
+            for (const f of dataFiles) {
+
+                textLines.push(`  $.${f.key}  ${f.type}`);
+
+            }
+
+            textLines.push('');
+
+        }
+
+        if (helpers.length > 0) {
+
+            textLines.push('Helpers ($helpers):');
+
+            for (const h of helpers) {
+
+                textLines.push(`  $.${h.key}  ${h.type}`);
+
+            }
+
+            textLines.push('');
+
+        }
+
+        if (results.helperResult.errors.length > 0) {
+
+            textLines.push('Helper Errors:');
+
+            for (const e of results.helperResult.errors) {
+
+                textLines.push(`  ${relative(projectRoot, e.filepath)}: ${e.error.message}`);
+
+            }
+
+            textLines.push('');
+
+        }
+
+        textLines.push(`Built-ins: ${builtins.join(', ')}`);
+
+        if (activeConfigName) {
+
+            const secretCount = Object.keys(stateManager.getAllSecrets(activeConfigName)).length;
+            const globalCount = Object.keys(stateManager.getAllGlobalSecrets()).length;
+            textLines.push(`Secrets: ${secretCount} config, ${globalCount} global`);
+
+        }
+
+        outputResult(args, jsonOutput, textLines.join('\n'));
+
+    },
+});
+
+(inspectCommand as typeof inspectCommand & { examples: string[] }).examples = [
+    'noorm run inspect sql/users/001_create.sql.tmpl',
+    'noorm run inspect sql/core/05_Cron/Crons.sql.tmpl --json',
+];
+
+export default inspectCommand;
