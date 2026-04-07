@@ -354,57 +354,6 @@ export interface KeyEvent {
 export type KeyHandler = (input: string, key: KeyEvent) => void | boolean;
 
 /**
- * CLI execution mode.
- */
-export type CliMode = 'tui' | 'headless';
-
-/**
- * CLI flags parsed from command line.
- */
-export interface CliFlags {
-    /** Force headless mode */
-    headless: boolean;
-
-    /** Force TUI mode (overrides headless detection) */
-    tui: boolean;
-
-    /** Output JSON in headless mode */
-    json: boolean;
-
-    /** Skip confirmations */
-    yes: boolean;
-
-    /** Use specific config */
-    config?: string;
-
-    /** Force operation */
-    force: boolean;
-
-    /** Preview without executing */
-    dryRun: boolean;
-
-    /** Allow additional arbitrary flags for commands */
-    [key: string]: boolean | string | number | undefined;
-}
-
-/**
- * Parsed CLI input ready for routing.
- */
-export interface ParsedCli {
-    /** Determined execution mode */
-    mode: CliMode;
-
-    /** Initial route to navigate to */
-    route: Route;
-
-    /** Route parameters from CLI args */
-    params: RouteParams;
-
-    /** Parsed flags */
-    flags: CliFlags;
-}
-
-/**
  * Screen component props.
  *
  * All screen components receive route params and can use
