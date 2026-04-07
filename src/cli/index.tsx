@@ -175,7 +175,7 @@ function parseCli(): ParsedCli {
     const { route, params } = parseRouteFromInput(cli.input);
 
     // Version and info commands always run headless (no TUI screen for them)
-    if (route === 'version' || route === 'info' || route === 'mcp/serve' || route === 'mcp/init') {
+    if (route === 'version' || route === 'info' || route === 'mcp' || route === 'mcp/serve' || route === 'mcp/init') {
 
         return { mode: 'headless', route, params, flags };
 
