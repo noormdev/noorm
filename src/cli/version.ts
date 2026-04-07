@@ -1,29 +1,25 @@
 /**
- * Version command for diagnostic output.
+ * noorm version — show version and diagnostic information.
  *
  * Displays CLI version, identity paths, and project status.
  * Useful for debugging installation and configuration issues.
- *
- * @example
- * ```bash
- * noorm version
- * noorm -H --json version
- * ```
  */
 import { existsSync } from 'fs';
+
+import { defineCommand } from 'citty';
 import { attempt } from '@logosdx/utils';
 
-import type { HeadlessCommand, RouteHandler } from './_helpers.js';
 import {
     getNoormHomePath,
     getPrivateKeyPath,
     getPublicKeyPath,
     hasKeyFiles,
     loadIdentityMetadata,
-} from '../../core/identity/storage.js';
-import { findProjectRoot } from '../../core/project.js';
-import { getStateManager } from '../../core/state/index.js';
-import { getCurrentVersion } from '../../core/update/checker.js';
+} from '../core/identity/storage.js';
+import { findProjectRoot } from '../core/project.js';
+import { getStateManager } from '../core/state/index.js';
+import { getCurrentVersion } from '../core/update/checker.js';
+import { outputResult, sharedArgs } from './_utils.js';
 
 // =============================================================================
 // Types
@@ -62,6 +58,9 @@ interface VersionInfo {
 
 /**
  * Gather all diagnostic version info.
+ *
+ * Collects identity paths, project detection results, and config counts
+ * without requiring a live database connection.
  */
 async function gatherVersionInfo(): Promise<VersionInfo> {
 
@@ -75,17 +74,13 @@ async function gatherVersionInfo(): Promise<VersionInfo> {
     const envVarSet = !!process.env['NOORM_IDENTITY'];
 
     // === Business logic block ===
-    // Load identity metadata if available
     const [identityMeta] = await attempt(() => loadIdentityMetadata());
 
-    // Check if key files exist individually
     const privateKeyExists = existsSync(privateKeyPath);
     const publicKeyExists = existsSync(publicKeyPath);
 
-    // Find project without changing directory
     const projectResult = findProjectRoot();
 
-    // Try to load state for config info
     let configCount = 0;
     let activeConfig: string | null = null;
     let stateError: string | null = null;
@@ -154,12 +149,10 @@ function formatVersionOutput(info: VersionInfo): string {
 
     const lines: string[] = [];
 
-    // Version header
     lines.push(`noorm ${info.version}`);
     lines.push(`Node ${info.node} (${info.platform}-${info.arch})`);
     lines.push('');
 
-    // Identity section
     lines.push('Identity:');
 
     if (info.identity.envVarSet) {
@@ -200,8 +193,6 @@ function formatVersionOutput(info: VersionInfo): string {
     }
 
     lines.push('');
-
-    // Project section
     lines.push('Project:');
 
     if (info.project.found) {
@@ -246,76 +237,37 @@ function formatVersionOutput(info: VersionInfo): string {
 // Command
 // =============================================================================
 
-export const help = `
-# VERSION
-
-Show noorm version and diagnostic information.
-
-## Usage
-
-    noorm version
-    noorm -H --json version
-
-## Description
-
-Displays:
-- CLI version and Node.js environment
-- Identity configuration paths and status
-- Project detection and configuration count
-
-Useful for debugging installation issues.
-
-## Examples
-
-    noorm -H version
-    noorm -H --json version
-
-## JSON Output
-
-{
-    "version": "1.0.0-alpha.3",
-    "node": "v22.14.0",
-    "platform": "darwin",
-    "arch": "arm64",
-    "identity": {
-        "exists": true,
-        "homePath": "~/.noorm",
-        "privateKeyPath": "~/.noorm/identity.key",
-        "publicKeyPath": "~/.noorm/identity.pub",
-        "name": "Your Name",
-        "email": "you@example.com"
+const versionCommand = defineCommand({
+    meta: {
+        name: 'version',
+        description: 'Show version and diagnostic information',
     },
-    "project": {
-        "found": true,
-        "path": "/path/to/project",
-        "configCount": 2,
-        "activeConfig": "dev"
-    }
-}
-`;
+    args: {
+        json: sharedArgs.json,
+    },
+    async run({ args }) {
 
-export const run: HeadlessCommand = async (_params, flags, logger) => {
+        const info = await gatherVersionInfo();
 
-    const info = await gatherVersionInfo();
+        if (args.json) {
 
-    if (flags.json) {
+            outputResult(args, info, '');
 
-        logger.result(info);
+        }
+        else {
 
-    }
-    else {
+            process.stdout.write(formatVersionOutput(info) + '\n');
 
-        process.stdout.write(formatVersionOutput(info) + '\n');
+        }
 
-    }
+        process.exit(0);
 
-    return 0;
+    },
+});
 
-};
+(versionCommand as typeof versionCommand & { examples: string[] }).examples = [
+    'noorm version',
+    'noorm version --json',
+];
 
-const handler: RouteHandler = {
-    run,
-    help,
-};
-
-export default handler;
+export default versionCommand;

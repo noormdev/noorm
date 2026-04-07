@@ -1,33 +1,27 @@
 /**
- * Info command for project/database status.
+ * noorm info — show project and database status.
  *
  * Surfaces noorm metadata: schema versions, install/upgrade dates,
  * connection details, identity info, and DB object counts.
- * Complements the `version` command which focuses on low-level
- * diagnostics (Node, platform, key paths).
- *
- * @example
- * ```bash
- * noorm -H info
- * noorm -H --json info
- * ```
+ * Complements `version` which focuses on low-level diagnostics
+ * (Node, platform, key paths).
  */
 import { attempt } from '@logosdx/utils';
+import { defineCommand } from 'citty';
 import type { Kysely } from 'kysely';
 
-import type { HeadlessCommand } from './_helpers.js';
-import { outputError } from './_helpers.js';
-import { getCurrentVersion } from '../../core/update/checker.js';
-import { CURRENT_VERSIONS } from '../../core/version/types.js';
-import { getFullVersionRecord } from '../../core/version/schema/index.js';
-import { fetchOverview } from '../../core/explore/index.js';
-import { loadIdentityMetadata } from '../../core/identity/storage.js';
-import { getStateManager } from '../../core/state/index.js';
-import { findProjectRoot } from '../../core/project.js';
-import { createConnection } from '../../core/connection/index.js';
-import type { NoormDatabase } from '../../core/shared/tables.js';
-import type { ExploreOverview } from '../../core/explore/index.js';
-import type { FullVersionRecord } from '../../core/version/schema/index.js';
+import { getCurrentVersion } from '../core/update/checker.js';
+import { CURRENT_VERSIONS } from '../core/version/types.js';
+import { getFullVersionRecord } from '../core/version/schema/index.js';
+import type { FullVersionRecord } from '../core/version/schema/index.js';
+import { fetchOverview } from '../core/explore/index.js';
+import type { ExploreOverview } from '../core/explore/index.js';
+import { loadIdentityMetadata } from '../core/identity/storage.js';
+import { getStateManager } from '../core/state/index.js';
+import { findProjectRoot } from '../core/project.js';
+import { createConnection } from '../core/connection/index.js';
+import type { NoormDatabase } from '../core/shared/tables.js';
+import { outputError, outputResult, sharedArgs } from './_utils.js';
 
 // =============================================================================
 // Types
@@ -103,6 +97,10 @@ function formatObjectStats(objects: InfoResult['objects']): string {
 
 /**
  * Gather all info data.
+ *
+ * Attempts project detection, state loading, and an optional DB connection
+ * in sequence. Failures are captured gracefully — a missing project or
+ * offline DB still returns a partial result rather than crashing.
  */
 async function gatherInfo(): Promise<InfoResult> {
 
@@ -117,12 +115,11 @@ async function gatherInfo(): Promise<InfoResult> {
     let identityDbInfo: { registeredAt: string | null; lastSeenAt: string | null } | null = null;
 
     // === Validation block ===
-    // Load identity metadata (local — no DB needed)
     const [identityMeta] = await attempt(() => loadIdentityMetadata());
 
-    // Find project and load state
     const projectResult = findProjectRoot();
 
+    // === Business logic block ===
     if (projectResult.hasProject && projectResult.projectRoot) {
 
         const [manager] = await attempt(async () => {
@@ -141,8 +138,6 @@ async function gatherInfo(): Promise<InfoResult> {
             const active = manager.getActiveConfig();
             activeConfigName = active?.name ?? null;
 
-            // === Business logic block ===
-            // Try connecting to the active config's database
             if (active) {
 
                 connectionInfo = {
@@ -165,7 +160,6 @@ async function gatherInfo(): Promise<InfoResult> {
 
                     const db = conn.db as Kysely<NoormDatabase>;
 
-                    // Fetch version record and overview in parallel
                     const [results] = await attempt(() =>
                         Promise.all([
                             getFullVersionRecord(db, active.connection.dialect),
@@ -180,7 +174,6 @@ async function gatherInfo(): Promise<InfoResult> {
 
                     }
 
-                    // Fetch identity DB info if we have a local identity
                     if (identityMeta?.identityHash) {
 
                         const [row] = await attempt(async () =>
@@ -194,8 +187,12 @@ async function gatherInfo(): Promise<InfoResult> {
                         if (row) {
 
                             identityDbInfo = {
-                                registeredAt: row.registered_at ? new Date(row.registered_at as unknown as string).toISOString() : null,
-                                lastSeenAt: row.last_seen_at ? new Date(row.last_seen_at as unknown as string).toISOString() : null,
+                                registeredAt: row.registered_at
+                                    ? new Date(row.registered_at as unknown as string).toISOString()
+                                    : null,
+                                lastSeenAt: row.last_seen_at
+                                    ? new Date(row.last_seen_at as unknown as string).toISOString()
+                                    : null,
                             };
 
                         }
@@ -218,8 +215,12 @@ async function gatherInfo(): Promise<InfoResult> {
         schema_version: versionRecord?.noormVersion ?? CURRENT_VERSIONS.schema,
         state_version: CURRENT_VERSIONS.state,
         settings_version: CURRENT_VERSIONS.settings,
-        installed_at: versionRecord?.installedAt ? new Date(versionRecord.installedAt as unknown as string).toISOString() : null,
-        upgraded_at: versionRecord?.upgradedAt ? new Date(versionRecord.upgradedAt as unknown as string).toISOString() : null,
+        installed_at: versionRecord?.installedAt
+            ? new Date(versionRecord.installedAt as unknown as string).toISOString()
+            : null,
+        upgraded_at: versionRecord?.upgradedAt
+            ? new Date(versionRecord.upgradedAt as unknown as string).toISOString()
+            : null,
         active_config: activeConfigName,
         config_count: configCount,
         connection: connectionError ? null : connectionInfo,
@@ -249,13 +250,11 @@ function formatInfoOutput(info: InfoResult): string {
 
     const lines: string[] = [];
 
-    // Version header
     lines.push(`noorm v${info.cli_version}`);
     lines.push(`schema: v${info.schema_version}  |  state: v${info.state_version}  |  settings: v${info.settings_version}`);
     lines.push(`installed: ${formatDate(info.installed_at)}  |  upgraded: ${formatDate(info.upgraded_at)}`);
     lines.push('');
 
-    // Config
     if (info.active_config) {
 
         lines.push(`Config:     ${info.active_config} (${info.config_count} configs)`);
@@ -267,7 +266,6 @@ function formatInfoOutput(info: InfoResult): string {
 
     }
 
-    // Connection
     if (info.connection) {
 
         const { host, port, database, dialect } = info.connection;
@@ -286,7 +284,6 @@ function formatInfoOutput(info: InfoResult): string {
 
     }
 
-    // Identity
     if (info.identity) {
 
         lines.push(`Identity:   ${info.identity.name} <${info.identity.email}>`);
@@ -299,8 +296,6 @@ function formatInfoOutput(info: InfoResult): string {
     }
 
     lines.push('');
-
-    // Objects
     lines.push(`Objects:    ${formatObjectStats(info.objects)}`);
 
     return lines.join('\n');
@@ -311,87 +306,46 @@ function formatInfoOutput(info: InfoResult): string {
 // Command
 // =============================================================================
 
-export const help = `
-# INFO
-
-Show noorm project and database status.
-
-## Usage
-
-    noorm info
-    noorm -H --json info
-
-## Description
-
-Displays project metadata including:
-- CLI version and internal schema versions
-- Installation and upgrade timestamps
-- Active configuration and connection details
-- Identity information
-- Database object counts (tables, views, functions, procedures, types)
-
-For low-level diagnostics (Node.js, platform, key paths), use \`noorm version\`.
-
-## Examples
-
-    noorm -H info
-    noorm -H --json info | jq '.objects'
-
-## JSON Output
-
-{
-    "cli_version": "0.4.2",
-    "schema_version": 1,
-    "state_version": 1,
-    "settings_version": 1,
-    "installed_at": "2026-01-15T08:30:00.000Z",
-    "upgraded_at": "2026-03-10T14:22:00.000Z",
-    "active_config": "dev",
-    "config_count": 2,
-    "connection": {
-        "host": "localhost",
-        "port": 5432,
-        "database": "mydb",
-        "dialect": "postgresql"
+const infoCommand = defineCommand({
+    meta: {
+        name: 'info',
+        description: 'Show project and database status',
     },
-    "identity": {
-        "name": "Your Name",
-        "email": "you@example.com",
-        "machine": "hostname",
-        "registered_at": "2026-01-15T08:30:00.000Z",
-        "last_seen_at": "2026-03-13T22:00:00.000Z"
+    args: {
+        config: sharedArgs.config,
+        json: sharedArgs.json,
     },
-    "objects": {
-        "tables": 5,
-        "views": 12,
-        "functions": 8,
-        "procedures": 9,
-        "types": 13
-    }
-}
-`;
+    async run({ args }) {
 
-export const run: HeadlessCommand = async (_params, flags, logger) => {
+        const [info, err] = await attempt(() => gatherInfo());
 
-    const [info, err] = await attempt(() => gatherInfo());
+        if (err) {
 
-    if (err) {
+            outputError(args, err.message);
+            process.exit(1);
 
-        return outputError(flags, logger, err.message);
+        }
 
-    }
+        if (args.json) {
 
-    if (flags.json) {
+            outputResult(args, info, '');
 
-        logger.result(info);
+        }
+        else {
 
-    }
-    else {
+            process.stdout.write(formatInfoOutput(info) + '\n');
 
-        process.stdout.write(formatInfoOutput(info) + '\n');
+        }
 
-    }
+        process.exit(0);
 
-    return 0;
+    },
+});
 
-};
+(infoCommand as typeof infoCommand & { examples: string[] }).examples = [
+    'noorm info',
+    'noorm info --json',
+    'noorm info --json | jq \'.objects\'',
+];
+
+export default infoCommand;

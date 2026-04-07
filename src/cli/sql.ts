@@ -1,160 +1,111 @@
 /**
- * Headless SQL command.
- *
- * Executes raw SQL queries from the CLI and outputs results.
- * Supports inline queries and file-based queries.
- *
- * @example
- * ```bash
- * noorm -H sql "SELECT * FROM users LIMIT 10"
- * noorm -H --json sql "SELECT 1"
- * noorm -H sql -f query.sql
- * ```
+ * noorm sql <query> — execute a raw SQL query.
  */
 import { readFile } from 'node:fs/promises';
 
+import { defineCommand } from 'citty';
 import { attempt } from '@logosdx/utils';
+import type { Kysely } from 'kysely';
 
-import { executeRawSql } from '../../core/sql-terminal/executor.js';
+import { executeRawSql } from '../core/sql-terminal/executor.js';
+import { withContext, outputError, outputResult, sharedArgs } from './_utils.js';
 
-import { withContext, outputError, type HeadlessCommand } from './_helpers.js';
+const sqlCommand = defineCommand({
+    meta: {
+        name: 'sql',
+        description: 'Execute a raw SQL query',
+    },
+    args: {
+        query: { type: 'positional', description: 'SQL query to execute', required: false },
+        file: { type: 'string', description: 'Read SQL from a file', alias: 'f' },
+        config: sharedArgs.config,
+        json: sharedArgs.json,
+    },
+    async run({ args }) {
 
-export const help = `
-# SQL
+        let query = args.query;
 
-Execute raw SQL queries from the command line.
+        if (args.file) {
 
-## Usage
+            const [content, readErr] = await attempt(() => readFile(args.file!, 'utf-8'));
 
-    noorm sql <query>
-    noorm -H sql "SELECT * FROM users"
-    noorm -H sql -f <file>
+            if (readErr) {
 
-## Options
+                outputError(args, `Failed to read SQL file: ${args.file}: ${readErr.message}`);
+                process.exit(1);
 
-    -c, --config NAME   Use specific configuration
-    -f, --file PATH     Read SQL from a file instead of inline
-    --json              Output results as JSON
+            }
 
-## Description
-
-Runs a raw SQL query against the active (or specified) database
-configuration and outputs the results.
-
-Queries can be passed inline as a positional argument or read
-from a file with the -f/--file flag.
-
-## Examples
-
-    noorm -H sql "SELECT 1"
-    noorm -H sql "SELECT * FROM users LIMIT 10"
-    noorm -H -c prod sql "SELECT count(*) FROM orders"
-    noorm -H --json sql "SELECT id, name FROM users"
-    noorm -H sql -f reports/monthly.sql
-
-## Exit Codes
-
-    0   Query executed successfully
-    1   Query failed or no query provided
-
-## JSON Output
-
-\`\`\`json
-{
-    "success": true,
-    "columns": ["id", "name"],
-    "rows": [
-        { "id": 1, "name": "Alice" },
-        { "id": 2, "name": "Bob" }
-    ],
-    "rowsAffected": null,
-    "durationMs": 12.5
-}
-\`\`\`
-
-See \`noorm help db\`.
-`;
-
-export const run: HeadlessCommand = async (params, flags, logger) => {
-
-    // Determine query source: inline query or file
-    let query = params.query ?? params.name;
-
-    if (flags['file'] && typeof flags['file'] === 'string') {
-
-        const [content, readErr] = await attempt(() => readFile(flags['file'] as string, 'utf-8'));
-
-        if (readErr) {
-
-            return outputError(flags, logger, `Failed to read SQL file: ${flags['file']}: ${readErr.message}`);
+            query = content.trim();
 
         }
 
-        query = content.trim();
+        if (!query) {
 
-    }
+            outputError(args, 'No query provided. Usage: noorm sql "SELECT ..."');
+            process.exit(1);
 
-    if (!query) {
+        }
 
-        return outputError(flags, logger, 'No query provided. Usage: noorm -H sql "SELECT ..."');
+        const [result, error] = await withContext({
+            args,
+            fn: async (ctx) => executeRawSql(ctx.kysely as unknown as Kysely<unknown>, query!, args.config ?? 'default'),
+        });
 
-    }
+        if (error) process.exit(1);
 
-    const [result, error] = await withContext({
-        flags,
-        logger,
-        fn: async (ctx) => {
+        if (!result.success) {
 
-            return executeRawSql(ctx.kysely, query, flags.config ?? 'default');
+            outputError(args, `Query failed: ${result.errorMessage}`);
+            process.exit(1);
 
-        },
-    });
+        }
 
-    if (error) return 1;
+        if (args.json) {
 
-    if (!result.success) {
+            outputResult(args, result, '');
 
-        return outputError(flags, logger, `Query failed: ${result.errorMessage}`);
+        }
+        else {
 
-    }
+            const rowCount = result.rows?.length ?? 0;
 
-    // Output results
-    if (flags.json) {
+            if (result.rows && result.rows.length > 0) {
 
-        logger.info('', result);
+                process.stdout.write(`Columns: ${result.columns?.join(', ')}\n`);
 
-    }
-    else {
+                for (const row of result.rows) {
 
-        const rowCount = result.rows?.length ?? 0;
-        const affected = result.rowsAffected;
+                    process.stdout.write(JSON.stringify(row) + '\n');
 
-        if (result.rows && result.rows.length > 0) {
+                }
 
-            // Log column headers and rows as table
-            logger.info(`Columns: ${result.columns?.join(', ')}`);
+            }
 
-            for (const row of result.rows) {
+            if (result.rowsAffected !== undefined) {
 
-                logger.info(JSON.stringify(row));
+                process.stdout.write(`Rows affected: ${result.rowsAffected}\n`);
+
+            }
+            else {
+
+                process.stdout.write(`${rowCount} row${rowCount !== 1 ? 's' : ''} returned (${Math.round(result.durationMs)}ms)\n`);
 
             }
 
         }
 
-        if (affected !== undefined) {
+        process.exit(0);
 
-            logger.info(`Rows affected: ${affected}`);
+    },
+});
 
-        }
-        else {
+(sqlCommand as typeof sqlCommand & { examples: string[] }).examples = [
+    'noorm sql "SELECT 1"',
+    'noorm sql "SELECT * FROM users LIMIT 10"',
+    'noorm sql -c prod "SELECT count(*) FROM orders"',
+    'noorm sql --json "SELECT id, name FROM users"',
+    'noorm sql -f reports/monthly.sql',
+];
 
-            logger.info(`${rowCount} row${rowCount !== 1 ? 's' : ''} returned (${Math.round(result.durationMs)}ms)`);
-
-        }
-
-    }
-
-    return 0;
-
-};
+export default sqlCommand;

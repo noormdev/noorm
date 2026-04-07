@@ -1,138 +1,110 @@
 /**
- * Self-update command for binary distribution.
+ * noorm update — check for and install updates.
  *
- * Checks for updates and installs the latest version.
- * Downloads the platform-appropriate binary from GitHub releases.
- *
- * @example
- * ```bash
- * noorm -H update
- * noorm -H --json update
- * ```
+ * Downloads the platform-appropriate binary from GitHub releases
+ * and replaces the running binary in-place.
  */
+import { defineCommand } from 'citty';
 import { attempt } from '@logosdx/utils';
 
-import type { HeadlessCommand, RouteHandler } from './_helpers.js';
-import { checkForUpdate, getCurrentVersion } from '../../core/update/checker.js';
-import { installUpdate } from '../../core/update/updater.js';
+import { checkForUpdate, getCurrentVersion } from '../core/update/checker.js';
+import { installUpdate } from '../core/update/updater.js';
+import { outputError, outputResult, sharedArgs } from './_utils.js';
 
-// =============================================================================
-// Command
-// =============================================================================
+const updateCommand = defineCommand({
+    meta: {
+        name: 'update',
+        description: 'Check for and install noorm updates',
+    },
+    args: {
+        json: sharedArgs.json,
+    },
+    async run({ args }) {
 
-export const help = `
-# UPDATE
+        const currentVersion = getCurrentVersion();
 
-Check for and install noorm updates.
+        process.stdout.write(`Current version: ${currentVersion}\n`);
+        process.stdout.write('Checking for updates...\n');
 
-## Usage
+        const [checkResult, checkErr] = await attempt(() => checkForUpdate());
 
-    noorm -H update
+        if (checkErr || !checkResult) {
 
-## Description
+            const errorMsg = checkErr?.message ?? 'Failed to check for updates (offline?)';
 
-Checks for the latest version and downloads the update if available.
-The binary is replaced in-place — restart to use the new version.
+            outputError(args, errorMsg);
 
-## Examples
+            if (args.json) {
 
-    noorm -H update
-    noorm -H --json update
+                outputResult(args, {
+                    currentVersion,
+                    latestVersion: null,
+                    updateAvailable: false,
+                    installed: false,
+                    error: errorMsg,
+                }, '');
 
-## JSON Output
+            }
 
-{
-    "currentVersion": "1.0.0-alpha.11",
-    "latestVersion": "1.0.0-alpha.12",
-    "updateAvailable": true,
-    "installed": true
-}
-`;
-
-export const run: HeadlessCommand = async (_params, flags, logger) => {
-
-    const currentVersion = getCurrentVersion();
-
-    logger.info(`Current version: ${currentVersion}`);
-    logger.info('Checking for updates...');
-
-    const [checkResult, checkErr] = await attempt(() => checkForUpdate());
-
-    if (checkErr || !checkResult) {
-
-        const errorMsg = checkErr?.message ?? 'Failed to check for updates (offline?)';
-        logger.error(errorMsg);
-
-        if (flags.json) {
-
-            logger.result({
-                currentVersion,
-                latestVersion: null,
-                updateAvailable: false,
-                installed: false,
-                error: errorMsg,
-            });
+            process.exit(1);
 
         }
 
-        return 1;
+        if (!checkResult.updateAvailable) {
 
-    }
+            process.stdout.write(`Already on the latest version (${currentVersion})\n`);
 
-    if (!checkResult.updateAvailable) {
+            if (args.json) {
 
-        logger.info(`Already on the latest version (${currentVersion})`);
+                outputResult(args, {
+                    currentVersion,
+                    latestVersion: checkResult.latestVersion,
+                    updateAvailable: false,
+                    installed: false,
+                }, '');
 
-        if (flags.json) {
+            }
 
-            logger.result({
+            process.exit(0);
+
+        }
+
+        process.stdout.write(`Update available: ${currentVersion} → ${checkResult.latestVersion}\n`);
+        process.stdout.write('Installing...\n');
+
+        const result = await installUpdate(checkResult.latestVersion);
+
+        if (result.success) {
+
+            process.stdout.write(`Updated to ${result.newVersion}. Restart noorm to use the new version.\n`);
+
+        }
+        else {
+
+            process.stderr.write(`Update failed: ${result.error}\n`);
+
+        }
+
+        if (args.json) {
+
+            outputResult(args, {
                 currentVersion,
                 latestVersion: checkResult.latestVersion,
-                updateAvailable: false,
-                installed: false,
-            });
+                updateAvailable: true,
+                installed: result.success,
+                error: result.error ?? undefined,
+            }, '');
 
         }
 
-        return 0;
+        process.exit(result.success ? 0 : 1);
 
-    }
+    },
+});
 
-    logger.info(`Update available: ${currentVersion} → ${checkResult.latestVersion}`);
-    logger.info('Installing...');
+(updateCommand as typeof updateCommand & { examples: string[] }).examples = [
+    'noorm update',
+    'noorm update --json',
+];
 
-    const result = await installUpdate(checkResult.latestVersion);
-
-    if (result.success) {
-
-        logger.info(`Updated to ${result.newVersion}. Restart noorm to use the new version.`);
-
-    }
-    else {
-
-        logger.error(`Update failed: ${result.error}`);
-
-    }
-
-    if (flags.json) {
-
-        logger.result({
-            currentVersion,
-            latestVersion: checkResult.latestVersion,
-            updateAvailable: true,
-            installed: result.success,
-            error: result.error ?? undefined,
-        });
-
-    }
-
-    return result.success ? 0 : 1;
-
-};
-
-const handler: RouteHandler = {
-    run,
-    help,
-};
-
-export default handler;
+export default updateCommand;
