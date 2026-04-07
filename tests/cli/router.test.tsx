@@ -8,8 +8,8 @@ import { render } from 'ink-testing-library';
 import React, { useEffect } from 'react';
 import { Text } from 'ink';
 
-import { RouterProvider, useRouter, useRoute, useNavigation } from '../../src/cli/router.js';
-import type { Route } from '../../src/cli/types.js';
+import { RouterProvider, useRouter, useRoute, useNavigation } from '../../src/tui/router.js';
+import type { Route } from '../../src/tui/types.js';
 
 /**
  * Test component that displays current route state.

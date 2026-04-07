@@ -7,8 +7,8 @@ import React from 'react';
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi, mock } from 'bun:test';
 import { render } from 'ink-testing-library';
 
-import { FocusProvider } from '../../../src/cli/focus.js';
-import { DismissableAlert } from '../../../src/cli/components/feedback/DismissableAlert.js';
+import { FocusProvider } from '../../../src/tui/focus.js';
+import { DismissableAlert } from '../../../src/tui/components/feedback/DismissableAlert.js';
 
 // Pre-import actual module for restoration
 const actualGlobalSettings = await import('../../../src/core/update/global-settings.js');

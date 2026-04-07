@@ -14,7 +14,7 @@ import {
     useFocusScope,
     useIsFocused,
     useActiveFocus,
-} from '../../src/cli/focus.js';
+} from '../../src/tui/focus.js';
 
 /**
  * Test component that displays focus stack state.

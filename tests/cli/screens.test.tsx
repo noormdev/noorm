@@ -8,8 +8,8 @@ import { render } from 'ink-testing-library';
 import React from 'react';
 import { Text } from 'ink';
 
-import { RouterProvider } from '../../src/cli/router.js';
-import { FocusProvider } from '../../src/cli/focus.js';
+import { RouterProvider } from '../../src/tui/router.js';
+import { FocusProvider } from '../../src/tui/focus.js';
 import {
     getScreen,
     getRouteLabel,
@@ -17,8 +17,8 @@ import {
     isRouteRegistered,
     registerScreen,
     ScreenRenderer,
-} from '../../src/cli/screens.js';
-import type { ScreenProps, Route } from '../../src/cli/types.js';
+} from '../../src/tui/screens.js';
+import type { ScreenProps, Route } from '../../src/tui/types.js';
 
 /**
  * Helper to create a fake route string for testing unregistered route behavior.

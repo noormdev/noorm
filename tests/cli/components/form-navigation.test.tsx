@@ -7,9 +7,9 @@ import { describe, it, expect } from 'bun:test';
 import { render } from 'ink-testing-library';
 import React from 'react';
 
-import { FocusProvider } from '../../../src/cli/focus.js';
-import { Form } from '../../../src/cli/components/forms/index.js';
-import type { FormField } from '../../../src/cli/components/forms/index.js';
+import { FocusProvider } from '../../../src/tui/focus.js';
+import { Form } from '../../../src/tui/components/forms/index.js';
+import type { FormField } from '../../../src/tui/components/forms/index.js';
 
 const KEYS = {
     TAB: '\t',

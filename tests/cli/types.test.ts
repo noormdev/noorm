@@ -5,8 +5,8 @@
  */
 import { describe, it, expect } from 'bun:test';
 
-import { getSection, getParentRoute } from '../../src/cli/types.js';
-import type { Route, Section } from '../../src/cli/types.js';
+import { getSection, getParentRoute } from '../../src/tui/types.js';
+import type { Route, Section } from '../../src/tui/types.js';
 
 describe('cli: types', () => {
 

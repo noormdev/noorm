@@ -20,7 +20,7 @@ import {
     LoadingGuard,
     ConfigGuard,
     IdentityGuard,
-} from '../../src/cli/app-context.js';
+} from '../../src/tui/app-context.js';
 import { observer } from '../../src/core/index.js';
 
 // Pre-import actual modules for restoration

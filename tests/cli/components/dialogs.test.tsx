@@ -7,12 +7,12 @@ import { describe, it, expect } from 'bun:test';
 import { render } from 'ink-testing-library';
 import React from 'react';
 
-import { FocusProvider } from '../../../src/cli/focus.js';
+import { FocusProvider } from '../../../src/tui/focus.js';
 import {
     Confirm,
     ProtectedConfirm,
     FilePicker,
-} from '../../../src/cli/components/dialogs/index.js';
+} from '../../../src/tui/components/dialogs/index.js';
 
 /**
  * Wrapper with focus provider for components that need focus.

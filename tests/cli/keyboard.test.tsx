@@ -8,10 +8,10 @@ import { render } from 'ink-testing-library';
 import React, { useState, useCallback } from 'react';
 import { Text } from 'ink';
 
-import { RouterProvider } from '../../src/cli/router.js';
-import { FocusProvider, useFocusScope } from '../../src/cli/focus.js';
-import { ShutdownProvider } from '../../src/cli/shutdown.js';
-import { useFocusedInput, useListKeys, useQuitHandler } from '../../src/cli/keyboard.js';
+import { RouterProvider } from '../../src/tui/router.js';
+import { FocusProvider, useFocusScope } from '../../src/tui/focus.js';
+import { ShutdownProvider } from '../../src/tui/shutdown.js';
+import { useFocusedInput, useListKeys, useQuitHandler } from '../../src/tui/keyboard.js';
 import { resetLifecycleManager } from '../../src/core/lifecycle/manager.js';
 
 // ANSI escape sequences for arrow keys
