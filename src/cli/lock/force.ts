@@ -1,62 +1,49 @@
-import { withContext, outputResult, type HeadlessCommand } from './_helpers.js';
+/**
+ * noorm lock force — force release any database lock regardless of ownership.
+ */
+import { defineCommand } from 'citty';
 
-export const help = `
-# LOCK FORCE
+import { withContext, outputResult, sharedArgs } from '../_utils.js';
 
-Force release any database lock
+const forceCommand = defineCommand({
+    meta: {
+        name: 'force',
+        description: 'Force release the database lock regardless of ownership',
+    },
+    args: {
+        config: sharedArgs.config,
+        json: sharedArgs.json,
+    },
+    async run({ args }) {
 
-## Usage
+        const [, error] = await withContext({
+            args,
+            fn: async (ctx, logger) => {
 
-    noorm lock force
-    noorm -H lock force
+                await ctx.noorm.lock.forceRelease();
+                logger.info('Lock force-released');
+                return true;
 
-## Description
+            },
+        });
 
-Force releases the database lock regardless of ownership.
-Use this when a lock holder crashed or when emergency intervention is needed.
+        if (error) process.exit(1);
 
-> Warning: Force releasing a lock can cause data corruption if the original
-> holder is still running operations.
+        if (args.json) {
 
-## Examples
+            outputResult(args, { released: true, forced: true }, '');
 
-    noorm -H lock force
+        }
 
-## JSON Output
+        process.exit(0);
 
-\`\`\`json
-{
-    "released": true,
-    "forced": true
-}
-\`\`\`
+    },
+});
 
-## Exit Codes
+(forceCommand as typeof forceCommand & { examples: string[] }).examples = [
+    'noorm lock force',
+    'noorm lock force -c prod',
+    'noorm lock force --json',
+];
 
-    0   Lock force-released successfully
-    1   No lock to release or operation failed
-
-See \`noorm help lock\` or \`noorm help lock acquire\`.
-`;
-
-export const run: HeadlessCommand = async (_params, flags, logger) => {
-
-    const [, error] = await withContext({
-        flags,
-        logger,
-        fn: async (ctx) => {
-
-            await ctx.noorm.lock.forceRelease();
-
-            return true;
-
-        },
-    });
-
-    if (error) return 1;
-
-    outputResult(flags, logger, { released: true, forced: true }, 'Lock force-released');
-
-    return 0;
-
-};
+export default forceCommand;

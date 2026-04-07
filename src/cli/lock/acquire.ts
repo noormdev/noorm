@@ -1,69 +1,59 @@
-import { withContext, outputResult, type HeadlessCommand } from './_helpers.js';
+/**
+ * noorm lock acquire — acquire an exclusive database lock.
+ */
+import { defineCommand } from 'citty';
 
-export const help = `
-# LOCK ACQUIRE
+import { withContext, outputResult, sharedArgs } from '../_utils.js';
 
-Acquire the database lock
+const acquireCommand = defineCommand({
+    meta: {
+        name: 'acquire',
+        description: 'Acquire the database lock',
+    },
+    args: {
+        config: sharedArgs.config,
+        json: sharedArgs.json,
+    },
+    async run({ args }) {
 
-## Usage
+        const [lock, error] = await withContext({
+            args,
+            fn: (ctx, logger) => {
 
-    noorm lock acquire
-    noorm -H lock acquire
+                return ctx.noorm.lock.acquire().then((res) => {
 
-## Description
+                    logger.info('Lock acquired', {
+                        lockedBy: res.lockedBy,
+                        expiresAt: res.expiresAt.toISOString(),
+                    });
+                    return res;
 
-Acquires an exclusive lock on the database. Fails if already locked.
-Use this to prevent concurrent migrations in multi-instance deployments.
+                });
 
-> Locks expire automatically after a timeout period.
+            },
+        });
 
-## Examples
+        if (error) process.exit(1);
 
-    noorm -H lock acquire
+        if (args.json) {
 
-CI/CD pattern with cleanup:
+            outputResult(args, {
+                acquired: true,
+                lockedBy: lock.lockedBy,
+                expiresAt: lock.expiresAt.toISOString(),
+            }, '');
 
-    noorm -H lock acquire
-    trap "noorm -H lock release" EXIT
-    noorm -H change ff
+        }
 
-## JSON Output
+        process.exit(0);
 
-\`\`\`json
-{
-    "acquired": true,
-    "lockedBy": "deploy@ci-runner",
-    "expiresAt": "2024-01-15T10:35:00Z"
-}
-\`\`\`
+    },
+});
 
-## Exit Codes
+(acquireCommand as typeof acquireCommand & { examples: string[] }).examples = [
+    'noorm lock acquire',
+    'noorm lock acquire -c prod',
+    'noorm lock acquire --json',
+];
 
-    0   Lock acquired successfully
-    1   Lock acquisition failed (already locked)
-
-See \`noorm help lock\` or \`noorm help lock release\`.
-`;
-
-export const run: HeadlessCommand = async (_params, flags, logger) => {
-
-    const [lock, error] = await withContext({
-        flags,
-        logger,
-        fn: (ctx) => ctx.noorm.lock.acquire(),
-    });
-
-    if (error) return 1;
-
-    outputResult(flags, logger, {
-        acquired: true,
-        lockedBy: lock.lockedBy,
-        expiresAt: lock.expiresAt.toISOString(),
-    }, 'Lock acquired', {
-        lockedBy: lock.lockedBy,
-        expiresAt: lock.expiresAt.toISOString(),
-    });
-
-    return 0;
-
-};
+export default acquireCommand;

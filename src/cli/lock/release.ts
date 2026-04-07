@@ -1,58 +1,49 @@
-import { withContext, outputResult, type HeadlessCommand } from './_helpers.js';
+/**
+ * noorm lock release — release the current database lock.
+ */
+import { defineCommand } from 'citty';
 
-export const help = `
-# LOCK RELEASE
+import { withContext, outputResult, sharedArgs } from '../_utils.js';
 
-Release the current lock
+const releaseCommand = defineCommand({
+    meta: {
+        name: 'release',
+        description: 'Release the current database lock',
+    },
+    args: {
+        config: sharedArgs.config,
+        json: sharedArgs.json,
+    },
+    async run({ args }) {
 
-## Usage
+        const [, error] = await withContext({
+            args,
+            fn: async (ctx, logger) => {
 
-    noorm lock release
-    noorm -H lock release
+                await ctx.noorm.lock.release();
+                logger.info('Lock released');
+                return true;
 
-## Description
+            },
+        });
 
-Releases the current database lock. Only the lock holder can release.
-Use \`lock force\` to override ownership.
+        if (error) process.exit(1);
 
-## Examples
+        if (args.json) {
 
-    noorm -H lock release
+            outputResult(args, { released: true }, '');
 
-## JSON Output
+        }
 
-\`\`\`json
-{
-    "released": true
-}
-\`\`\`
+        process.exit(0);
 
-## Exit Codes
+    },
+});
 
-    0   Lock released successfully
-    1   No lock to release or not owner
+(releaseCommand as typeof releaseCommand & { examples: string[] }).examples = [
+    'noorm lock release',
+    'noorm lock release -c prod',
+    'noorm lock release --json',
+];
 
-See \`noorm help lock\` or \`noorm help lock acquire\`.
-`;
-
-export const run: HeadlessCommand = async (_params, flags, logger) => {
-
-    const [, error] = await withContext({
-        flags,
-        logger,
-        fn: async (ctx) => {
-
-            await ctx.noorm.lock.release();
-
-            return true;
-
-        },
-    });
-
-    if (error) return 1;
-
-    outputResult(flags, logger, { released: true }, 'Lock released');
-
-    return 0;
-
-};
+export default releaseCommand;

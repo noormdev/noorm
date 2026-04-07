@@ -1,95 +1,80 @@
-import { withContext, type HeadlessCommand } from './_helpers.js';
+/**
+ * noorm lock status — check current database lock status.
+ */
+import { defineCommand } from 'citty';
 
-export const help = `
-# LOCK STATUS
+import { withContext, outputResult, sharedArgs } from '../_utils.js';
 
-Check current lock status
+const statusCommand = defineCommand({
+    meta: {
+        name: 'status',
+        description: 'Check current lock status',
+    },
+    args: {
+        config: sharedArgs.config,
+        json: sharedArgs.json,
+    },
+    async run({ args }) {
 
-## Usage
+        const [status, error] = await withContext({
+            args,
+            fn: (ctx, logger) => {
 
-    noorm lock status
-    noorm -H lock status
+                return ctx.noorm.lock.status().then((res) => {
 
-## Description
+                    if (!args.json) {
 
-Shows whether the database is currently locked and by whom.
-Use this to check before running migrations in a shared environment.
+                        if (res.isLocked && res.lock) {
 
-## Examples
+                            logger.info(`Locked by ${res.lock.lockedBy}`, {
+                                since: res.lock.lockedAt.toISOString(),
+                                expires: res.lock.expiresAt.toISOString(),
+                            });
 
-    noorm -H lock status
+                        }
+                        else {
 
-## JSON Output
+                            logger.info('No active lock');
 
-When locked:
+                        }
 
-\`\`\`json
-{
-    "isLocked": true,
-    "lock": {
-        "lockedBy": "deploy@ci-runner",
-        "lockedAt": "2024-01-15T10:30:00Z",
-        "expiresAt": "2024-01-15T10:35:00Z"
-    }
-}
-\`\`\`
+                    }
 
-When not locked:
+                    return res;
 
-\`\`\`json
-{
-    "isLocked": false,
-    "lock": null
-}
-\`\`\`
+                });
 
-## Exit Codes
-
-    0   Status retrieved successfully
-    1   Failed to connect or query lock status
-
-See \`noorm help lock\` or \`noorm help lock acquire\`.
-`;
-
-export const run: HeadlessCommand = async (_params, flags, logger) => {
-
-    const [status, error] = await withContext({
-        flags,
-        logger,
-        fn: (ctx) => ctx.noorm.lock.status(),
-    });
-
-    if (error) return 1;
-
-    if (flags.json) {
-
-        const output = status.isLocked && status.lock
-            ? {
-                isLocked: true,
-                lock: {
-                    lockedBy: status.lock.lockedBy,
-                    lockedAt: status.lock.lockedAt.toISOString(),
-                    expiresAt: status.lock.expiresAt.toISOString(),
-                },
-            }
-            : { isLocked: false, lock: null };
-        logger.result(output);
-
-    }
-    else if (status.isLocked && status.lock) {
-
-        logger.info(`Locked by ${status.lock.lockedBy}`, {
-            since: status.lock.lockedAt.toISOString(),
-            expires: status.lock.expiresAt.toISOString(),
+            },
         });
 
-    }
-    else {
+        if (error) process.exit(1);
 
-        logger.info('No active lock');
+        if (args.json) {
 
-    }
+            const output = status.isLocked && status.lock
+                ? {
+                    isLocked: true,
+                    lock: {
+                        lockedBy: status.lock.lockedBy,
+                        lockedAt: status.lock.lockedAt.toISOString(),
+                        expiresAt: status.lock.expiresAt.toISOString(),
+                    },
+                }
+                : { isLocked: false, lock: null };
 
-    return 0;
+            outputResult(args, output, '');
 
-};
+        }
+
+        process.exit(0);
+
+    },
+});
+
+(statusCommand as typeof statusCommand & { examples: string[] }).examples = [
+    'noorm lock status',
+    'noorm lock status -c prod',
+    'noorm lock status --json',
+];
+
+export default statusCommand;
