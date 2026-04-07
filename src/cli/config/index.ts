@@ -1,52 +1,17 @@
-import { createHelpOnlyCommand } from './_helpers.js';
+/**
+ * noorm config — manage database configurations.
+ */
+import { defineCommand } from 'citty';
 
-export const help = `
-# CONFIG
+import add from './add.js';
+import edit from './edit.js';
+import rm from './rm.js';
+import use from './use.js';
 
-Manage database configurations
-
-## Usage
-
-    noorm config [subcommand] [options]
-
-## Subcommands
-
-    add             Create a new configuration
-    edit NAME       Edit an existing configuration
-    rm NAME         Remove a configuration
-    use NAME        Set the active configuration
-
-## Description
-
-Configurations store database connection details, paths, and settings.
-Each config has a name and can be set as **active** for default use.
-
-> Configs are stored encrypted in \`.noorm/state/state.enc\`
-
-Config resolution order:
-1. \`--config\` flag
-2. \`NOORM_CONFIG\` env var
-3. Active config from state
-
-## Examples
-
-    noorm config                        List all configurations (TUI)
-    noorm -H config use dev             Set 'dev' as active config
-    noorm -H --config prod change ff    Use 'prod' for this command
-
-## Environment Variables
-
-    NOORM_CONFIG                  Default config name
-    NOORM_CONNECTION_HOST         Override connection host
-    NOORM_CONNECTION_PORT         Override connection port
-    NOORM_CONNECTION_DATABASE     Override database name
-    NOORM_CONNECTION_USER         Override username
-    NOORM_CONNECTION_PASSWORD     Override password
-    NOORM_CONNECTION_DIALECT      Override dialect (postgres|mysql|sqlite|mssql)
-
-> Environment variables override config file values
-
-See \`noorm help config use\` for setting the active config.
-`;
-
-export const run = createHelpOnlyCommand(help);
+export default defineCommand({
+    meta: {
+        name: 'config',
+        description: 'Manage database configurations',
+    },
+    subCommands: { add, edit, rm, use },
+});

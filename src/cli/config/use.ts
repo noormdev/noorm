@@ -1,100 +1,79 @@
+/**
+ * noorm config use — set the active configuration.
+ *
+ * Persists the active config name to encrypted state, then syncs identity
+ * with the database so the current user is registered if not already known.
+ * No DB connection is required — operates on local state files only.
+ */
 import { attempt } from '@logosdx/utils';
+import { defineCommand } from 'citty';
 
 import { initState, getStateManager } from '../../core/state/index.js';
 import { syncIdentityWithConfig } from '../../core/identity/index.js';
-import { outputError, outputResult, type HeadlessCommand } from './_helpers.js';
+import { outputResult, outputError, sharedArgs } from '../_utils.js';
 
-export const help = `
-# CONFIG USE
+const useCommand = defineCommand({
+    meta: {
+        name: 'use',
+        description: 'Set the active configuration',
+    },
+    args: {
+        name: {
+            type: 'positional',
+            description: 'Configuration name to activate',
+            required: true,
+        },
+        json: sharedArgs.json,
+    },
+    async run({ args }) {
 
-Set the active configuration
+        const projectRoot = process.cwd();
 
-## Usage
+        const [, initErr] = await attempt(() => initState(projectRoot));
 
-    noorm config use NAME
-    noorm -H config use NAME
+        if (initErr) {
 
-## Arguments
-
-    NAME    Name of the configuration to activate
-
-## Description
-
-Sets the specified configuration as the active default.
-Once set, commands will use this config unless overridden with \`--config\`.
-
-> The active config is stored in \`.noorm/state/state.enc\` and persists across
-> sessions. Headless mode respects the active config, allowing you to
-> set it once and run CI commands without specifying \`--config\`.
-
-## Examples
-
-    noorm config use dev
-    noorm -H config use production
-
-After setting active config, these are equivalent:
-
-    noorm -H change ff
-    noorm -H --config production change ff
-
-## JSON Output
-
-\`\`\`json
-{
-    "activeConfig": "production"
-}
-\`\`\`
-
-See \`noorm help config\`.
-`;
-
-export const run: HeadlessCommand = async (params, flags, logger) => {
-
-    const configName = params.name;
-
-    if (!configName) {
-
-        return outputError(flags, logger, 'Config name required. Usage: noorm -H config use <name>');
-
-    }
-
-    const projectRoot = process.cwd();
-
-    const [, initErr] = await attempt(() => initState(projectRoot));
-
-    if (initErr) {
-
-        return outputError(flags, logger, `Failed to load state: ${initErr.message}`);
-
-    }
-
-    const stateManager = getStateManager(projectRoot);
-
-    const [, setErr] = await attempt(() => stateManager.setActiveConfig(configName));
-
-    if (setErr) {
-
-        return outputError(flags, logger, setErr.message);
-
-    }
-
-    // Sync identity with the database (non-blocking)
-    const config = stateManager.getConfig(configName);
-
-    if (config) {
-
-        const syncResult = await syncIdentityWithConfig(config);
-
-        if (syncResult.ok && syncResult.knownUsers?.length) {
-
-            await stateManager.addKnownUsers(syncResult.knownUsers);
+            outputError(args, `Failed to load state: ${initErr.message}`);
+            process.exit(1);
 
         }
 
-    }
+        const stateManager = getStateManager(projectRoot);
 
-    outputResult(flags, logger, { activeConfig: configName }, `Active config set to: ${configName}`);
+        const [, setErr] = await attempt(() => stateManager.setActiveConfig(args.name));
 
-    return 0;
+        if (setErr) {
 
-};
+            outputError(args, setErr.message);
+            process.exit(1);
+
+        }
+
+        // Sync identity with the database (non-blocking)
+        const config = stateManager.getConfig(args.name);
+
+        if (config) {
+
+            const syncResult = await syncIdentityWithConfig(config);
+
+            if (syncResult.ok && syncResult.knownUsers?.length) {
+
+                await stateManager.addKnownUsers(syncResult.knownUsers);
+
+            }
+
+        }
+
+        outputResult(args, { activeConfig: args.name }, `Active config set to: ${args.name}`);
+        process.exit(0);
+
+    },
+});
+
+(useCommand as typeof useCommand & { examples: string[] }).examples = [
+    'noorm config use dev',
+    'noorm config use production',
+    'noorm config use production --json',
+];
+
+export default useCommand;

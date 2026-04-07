@@ -1,28 +1,27 @@
-import { createHelpOnlyCommand } from './_helpers.js';
+/**
+ * noorm config add — directs the user to the TUI.
+ *
+ * Adding a config requires interactive prompts (connection details, password,
+ * test connection). The CLI directs the user to the TUI for now; this may
+ * be wired to @clack/prompts in a future change.
+ */
+import { defineCommand } from 'citty';
 
-export const help = `
-# CONFIG ADD
+const addCommand = defineCommand({
+    meta: {
+        name: 'add',
+        description: 'Create a new configuration (interactive, via TUI)',
+    },
+    async run() {
 
-Create a new configuration
+        process.stdout.write('Interactive only — run: noorm ui\n');
+        process.exit(0);
 
-## Usage
+    },
+});
 
-    noorm config add
+(addCommand as typeof addCommand & { examples: string[] }).examples = [
+    'noorm ui  # then navigate to config > add',
+];
 
-## Description
-
-Opens an interactive wizard to create a new database configuration.
-Guides you through name, dialect, connection details (host, port, database,
-user, password), and options (protected, test). Tests the connection before
-saving.
-
-> Interactive only — launches the TUI wizard.
-
-## Examples
-
-    noorm config add
-
-See \`noorm help config\` or \`noorm help config edit\`.
-`;
-
-export const run = createHelpOnlyCommand(help);
+export default addCommand;

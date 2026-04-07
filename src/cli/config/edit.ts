@@ -1,32 +1,34 @@
-import { createHelpOnlyCommand } from './_helpers.js';
+/**
+ * noorm config edit — directs the user to the TUI.
+ *
+ * Editing a config requires interactive prompts (connection details, password,
+ * test connection). The CLI directs the user to the TUI for now; this may
+ * be wired to @clack/prompts in a future change.
+ */
+import { defineCommand } from 'citty';
 
-export const help = `
-# CONFIG EDIT
+const editCommand = defineCommand({
+    meta: {
+        name: 'edit',
+        description: 'Edit a configuration (interactive, via TUI)',
+    },
+    args: {
+        name: {
+            type: 'positional',
+            description: 'Configuration name',
+            required: false,
+        },
+    },
+    async run() {
 
-Edit an existing configuration
+        process.stdout.write('Interactive only — run: noorm ui\n');
+        process.exit(0);
 
-## Usage
+    },
+});
 
-    noorm config edit NAME
+(editCommand as typeof editCommand & { examples: string[] }).examples = [
+    'noorm ui  # then navigate to config > edit',
+];
 
-## Arguments
-
-    NAME    Name of the configuration to edit
-
-## Description
-
-Opens the configuration editor for the named config.
-Allows modifying connection details, paths, and settings.
-Dialect cannot be changed — recreate the config instead.
-
-> Interactive only — launches the TUI wizard.
-
-## Examples
-
-    noorm config edit dev
-    noorm config edit production
-
-See \`noorm help config\` or \`noorm help config add\`.
-`;
-
-export const run = createHelpOnlyCommand(help);
+export default editCommand;

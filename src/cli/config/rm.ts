@@ -1,32 +1,36 @@
-import { createHelpOnlyCommand } from './_helpers.js';
+/**
+ * noorm config rm — directs the user to the TUI.
+ *
+ * Removing a config requires confirmation and interactive state management.
+ * The CLI directs the user to the TUI for now; this may be wired to
+ * @clack/prompts in a future change.
+ */
+import { defineCommand } from 'citty';
 
-export const help = `
-# CONFIG RM
+const rmCommand = defineCommand({
+    meta: {
+        name: 'rm',
+        description: 'Remove a configuration (interactive, via TUI)',
+    },
+    args: {
+        name: {
+            type: 'positional',
+            description: 'Configuration name to remove',
+            required: false,
+        },
+    },
+    async run() {
 
-Remove a configuration
+        process.stdout.write('Interactive only — run: noorm ui\n');
+        process.exit(0);
 
-## Usage
+    },
+});
 
-    noorm config rm NAME
+(rmCommand as typeof rmCommand & { examples: string[] }).examples = [
+    'noorm config rm old_prod',
+    'noorm config rm old_prod --yes',
+    'noorm ui  # then navigate to config > rm',
+];
 
-## Arguments
-
-    NAME    Name of the configuration to remove
-
-## Description
-
-Permanently deletes the named configuration and its secrets.
-Cannot delete the active configuration. Protected configs
-require typed confirmation before deletion.
-
-> Interactive only — launches the TUI wizard.
-
-## Examples
-
-    noorm config rm staging
-    noorm config rm old-dev
-
-See \`noorm help config\`.
-`;
-
-export const run = createHelpOnlyCommand(help);
+export default rmCommand;
