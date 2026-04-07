@@ -18,7 +18,7 @@ const EXTERNAL_PACKAGES = [
 ];
 
 export default defineConfig({
-    entry: ['src/cli/index.tsx'],
+    entry: ['src/cli/index.ts'],
     format: ['esm'],
     target: 'node22',
     platform: 'node',
