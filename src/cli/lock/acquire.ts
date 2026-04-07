@@ -26,6 +26,7 @@ const acquireCommand = defineCommand({
                         lockedBy: res.lockedBy,
                         expiresAt: res.expiresAt.toISOString(),
                     });
+
                     return res;
 
                 });

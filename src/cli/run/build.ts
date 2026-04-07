@@ -30,6 +30,7 @@ const buildCommand = defineCommand({
                         filesFailed: res.filesFailed,
                         durationMs: res.durationMs,
                     });
+
                     return res;
 
                 });

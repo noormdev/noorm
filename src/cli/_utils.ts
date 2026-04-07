@@ -9,7 +9,6 @@ import { createWriteStream } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
-import type { Kysely } from 'kysely';
 import { attempt } from '@logosdx/utils';
 
 import type { Context } from '../sdk/context.js';
@@ -141,6 +140,7 @@ export async function withContext<T>(opts: {
 
         outputError(args, `Failed to create context: ${ctxError.message}`, logger);
         await logger.stop();
+
         return [null, ctxError];
 
     }
@@ -150,13 +150,14 @@ export async function withContext<T>(opts: {
 
         outputError(args, `Failed to connect: ${connectError.message}`, logger);
         await logger.stop();
+
         return [null, connectError];
 
     }
 
     const [, schemaError] = await attempt(() =>
         ensureSchemaVersion(
-            ctx.kysely as unknown as Kysely<NoormDatabase>,
+            ctx.kysely,
             ctx.dialect,
         ),
     );
@@ -165,11 +166,12 @@ export async function withContext<T>(opts: {
         outputError(args, `Failed to initialize database schema: ${schemaError.message}`, logger);
         await attempt(() => ctx.disconnect());
         await logger.stop();
+
         return [null, schemaError];
 
     }
 
-    const [result, opError] = await attempt(() => fn(ctx as never, logger));
+    const [result, opError] = await attempt(() => fn(ctx, logger));
 
     await attempt(() => ctx.disconnect());
 
@@ -177,11 +179,13 @@ export async function withContext<T>(opts: {
 
         outputError(args, getSqlErrorMessage(opError), logger);
         await logger.stop();
+
         return [null, opError];
 
     }
 
     await logger.stop();
+
     return [result, null];
 
 }
@@ -206,6 +210,7 @@ export async function withVaultContext<T>(opts: {
         const msg = 'Identity not set up. Run: noorm identity init';
         outputError(args, msg, logger);
         await logger.stop();
+
         return [null, new Error(msg)];
 
     }
@@ -216,6 +221,7 @@ export async function withVaultContext<T>(opts: {
         const msg = 'Private key not found. Run: noorm identity init';
         outputError(args, msg, logger);
         await logger.stop();
+
         return [null, new Error(msg)];
 
     }
@@ -225,6 +231,7 @@ export async function withVaultContext<T>(opts: {
 
         outputError(args, `Failed to create context: ${ctxError.message}`, logger);
         await logger.stop();
+
         return [null, ctxError];
 
     }
@@ -234,13 +241,14 @@ export async function withVaultContext<T>(opts: {
 
         outputError(args, `Failed to connect: ${connectError.message}`, logger);
         await logger.stop();
+
         return [null, connectError];
 
     }
 
     const [, schemaError] = await attempt(() =>
         ensureSchemaVersion(
-            ctx.kysely as unknown as Kysely<NoormDatabase>,
+            ctx.kysely,
             ctx.dialect,
         ),
     );
@@ -249,20 +257,21 @@ export async function withVaultContext<T>(opts: {
         outputError(args, `Failed to initialize database schema: ${schemaError.message}`, logger);
         await attempt(() => ctx.disconnect());
         await logger.stop();
+
         return [null, schemaError];
 
     }
 
     await attempt(() =>
         registerIdentity(
-            ctx.kysely as unknown as Kysely<NoormDatabase>,
+            ctx.kysely,
             cryptoIdentity,
             ctx.dialect,
         ),
     );
 
     const [result, opError] = await attempt(() => fn({
-        ctx: ctx as never,
+        ctx,
         cryptoIdentity,
         privateKey,
     }, logger));
@@ -273,11 +282,13 @@ export async function withVaultContext<T>(opts: {
 
         outputError(args, getSqlErrorMessage(opError), logger);
         await logger.stop();
+
         return [null, opError];
 
     }
 
     await logger.stop();
+
     return [result, null];
 
 }
@@ -379,6 +390,7 @@ export function handleVaultResult<T extends { success: boolean; error?: string; 
     if (err) {
 
         outputError(args, err.message, logger);
+
         return 1;
 
     }

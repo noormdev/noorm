@@ -34,6 +34,7 @@ const ffCommand = defineCommand({
                         logger.info(`  ${cs.name} (${cs.status})`);
 
                     }
+
                     return res;
 
                 });

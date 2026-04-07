@@ -30,6 +30,7 @@ const runCommand = defineCommand({
                 return ctx.noorm.changes.apply(args.name).then((res) => {
 
                     logger.info(`${res.name} (${res.status})`);
+
                     return res;
 
                 });

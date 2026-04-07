@@ -269,14 +269,14 @@ const transferCommand = defineCommand({
             else {
 
                 // Human-readable dry-run plan summary
-                process.stdout.write(`Dry run - transfer plan:\n`);
+                process.stdout.write('Dry run - transfer plan:\n');
                 process.stdout.write(`  Same server: ${planResult?.sameServer ? 'yes' : 'no'}\n`);
                 process.stdout.write(`  Tables: ${planResult?.tables.length ?? 0}\n`);
                 process.stdout.write(`  Estimated rows: ${planResult?.estimatedRows ?? 0}\n`);
 
                 if (planResult?.tables.length) {
 
-                    process.stdout.write(`\n  Transfer order:\n`);
+                    process.stdout.write('\n  Transfer order:\n');
 
                     for (const t of planResult.tables) {
 
@@ -289,7 +289,7 @@ const transferCommand = defineCommand({
 
                 if (planResult?.warnings.length) {
 
-                    process.stdout.write(`\n  Warnings:\n`);
+                    process.stdout.write('\n  Warnings:\n');
 
                     for (const w of planResult.warnings) {
 

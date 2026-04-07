@@ -22,6 +22,7 @@ const forceCommand = defineCommand({
 
                 await ctx.noorm.lock.forceRelease();
                 logger.info('Lock force-released');
+
                 return true;
 
             },

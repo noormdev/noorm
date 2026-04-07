@@ -34,6 +34,7 @@ const dirCommand = defineCommand({
                         filesSkipped: res.filesSkipped,
                         filesFailed: res.filesFailed,
                     });
+
                     return res;
 
                 });

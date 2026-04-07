@@ -361,9 +361,6 @@ export {
 // Re-export ansis for direct color usage
 export { default as ansis } from 'ansis';
 
-// Help formatter (markdown-to-colored-terminal)
-export { formatHelp, stripColors } from './help-formatter.js';
-
 // Debug (internal table inspection)
 export {
     createDebugOperations,

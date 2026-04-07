@@ -30,6 +30,7 @@ const revertCommand = defineCommand({
                 return ctx.noorm.changes.revert(args.name).then((res) => {
 
                     logger.info(`${res.name} reverted (${res.status})`);
+
                     return res;
 
                 });

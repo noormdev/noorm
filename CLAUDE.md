@@ -64,11 +64,8 @@ src/
 │   ├── connection.ts           # Persistent DB worker (Kysely)
 │   └── compute.ts              # Stateless serialize/deserialize
 │
-├── cli/                        # Ink/React TUI
-│   ├── screens/                # Screen components by feature
-│   ├── components/             # Shared UI components
-│   ├── hooks/                  # React hooks
-│   └── headless/               # CI/CD JSON output
+├── cli/                        # Citty CLI commands (per-domain subdirectories)
+├── tui/                        # Ink/React TUI (launched via `noorm ui`)
 │
 tests/                          # Test suite
 docs/                           # Documentation
@@ -83,18 +80,14 @@ Path-specific rules are in `.claude/rules/`:
 | File | Applies To | Covers |
 |------|------------|--------|
 | `typescript.md` | `**/*.{js,jsx,ts,tsx}` | 4-block function structure, error handling (no try-catch), imports, code style |
-| `tui-development.md` | `src/cli/**`, `tests/cli/**` | Focus system, UI patterns, Ink layout, observer hooks |
+| `tui-development.md` | `src/tui/**`, `tests/tui/**` | Focus system, UI patterns, Ink layout, observer hooks |
 | `testing.md` | `tests/**/*.{ts,tsx}` | Test naming, coverage, error assertions |
 | `documentation.md` | `docs/**/*.md` | Three-pillar structure, style, tone |
 
 
 ## Help System
 
-Help text lives as `export const help` markdown strings in each headless module (`src/cli/headless/*.ts`). The `formatHelp()` function in `src/core/help-formatter.ts` renders markdown syntax (headings, code blocks, inline code, bold, etc.) with terminal colors.
-
-`noorm help <topic>` resolves the route to a handler in the HANDLERS registry (`src/cli/headless/index.ts`) and displays its `.help` property. `home.ts` provides the root help text shown when no topic is specified.
-
-To add or update help for a command, edit the `export const help` template literal in that command's headless module. The help formatter supports `#`/`##`/`###` headings, code blocks, `> blockquotes`, `**bold**`, `*italic*`, `` `inline code` ``, `[optional]` args, `<required>` args, and `NAME` placeholders.
+Help text is rendered by citty natively via `--help`. Each command file may attach an `examples: string[]` array to its `defineCommand` result; the `src/cli/index.ts` help interceptor appends an EXAMPLES block after citty's auto-generated usage.
 
 
 ## Worker Threads
@@ -122,7 +115,7 @@ So `src/workers/compute.ts` in the build command becomes `/$bunfs/root/workers/c
 
 The `resolveWorker()` function in `src/core/worker-bridge/paths.ts` handles this. Always use it.
 
-Diagnostic command: `noorm -H dev/test-workers` — runs 5 worker thread tests in any execution context.
+Diagnostic command: `noorm dev test-workers` — runs 5 worker thread tests in any execution context.
 
 
 ## Principles
