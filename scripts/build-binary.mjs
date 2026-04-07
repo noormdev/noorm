@@ -28,7 +28,7 @@ for (const { bun: target, suffix } of targets) {
     const outfile = `packages/cli/bin/noorm-${suffix}`;
     console.log(`  Building ${outfile} (${target})...`);
 
-    await $`bun build --compile --target=${target} --minify src/cli/index.tsx src/workers/connection.ts src/workers/compute.ts --outfile ${outfile} --define __CLI_VERSION__=\"${version}\"`.quiet();
+    await $`bun build --compile --target=${target} --minify src/cli/index.ts src/workers/connection.ts src/workers/compute.ts --outfile ${outfile} --define __CLI_VERSION__=\"${version}\"`.quiet();
 
     console.log(`  ✓ ${outfile}`);
 
