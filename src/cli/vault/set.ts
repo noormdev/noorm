@@ -1,101 +1,91 @@
 /**
- * Vault set headless command.
- *
- * Sets a vault secret.
+ * noorm vault set <key> <value> — set a vault secret.
  */
-import { type HeadlessCommand, handleVaultResult, requireParams, withVaultContext } from './_helpers.js';
+import { defineCommand } from 'citty';
+
+import { withVaultContext, sharedArgs } from '../_utils.js';
 import { getVaultKey, setVaultSecret } from '../../core/vault/index.js';
 
-export const help = `
-# VAULT SET
+const setCommand = defineCommand({
+    meta: {
+        name: 'set',
+        description: 'Set a vault secret',
+    },
+    args: {
+        key: { type: 'positional', description: 'Secret key name', required: true },
+        value: { type: 'positional', description: 'Secret value', required: true },
+        config: sharedArgs.config,
+        json: sharedArgs.json,
+    },
+    async run({ args }) {
 
-Set a vault secret
+        const [result, err] = await withVaultContext({
+            args,
+            fn: async ({ ctx, cryptoIdentity, privateKey }) => {
 
-## Usage
+                const db = ctx.kysely;
+                const vaultKey = await getVaultKey(db, cryptoIdentity.identityHash, privateKey, ctx.dialect);
 
-    noorm -H vault set <key> <value>
+                if (!vaultKey) {
 
-## Arguments
+                    return {
+                        success: false,
+                        error: 'No vault access. Run "noorm vault init" or wait for propagation.',
+                    };
 
-    key      Secret key name (e.g., API_KEY)
-    value    Secret value
+                }
 
-## Description
+                const [, setErr] = await setVaultSecret(
+                    db,
+                    vaultKey,
+                    args.key,
+                    args.value,
+                    cryptoIdentity.email,
+                    ctx.dialect,
+                );
 
-Stores an encrypted secret in the vault. Upserts — creates if new, updates if exists.
+                if (setErr) {
 
-Requires vault access (run \`noorm vault init\` first, or wait for propagation).
+                    return { success: false, error: setErr.message };
 
-## Examples
+                }
 
-    noorm -H vault set API_KEY "sk-live-..."         Set a secret
-    noorm -H vault set DB_PASSWORD "secret123"       Set another
-    noorm -H --json vault set API_KEY "sk-live-..."  JSON output
+                return { success: true, key: args.key, action: 'set' };
 
-## JSON Output
+            },
+        });
 
-    {
-        "success": true,
-        "key": "API_KEY",
-        "action": "set"
-    }
+        if (err) {
 
-## See Also
+            process.exit(1);
 
-See \`noorm help vault list\`, \`noorm help vault rm\`.
-`;
+        }
 
-export const run: HeadlessCommand = async (params, flags, logger) => {
+        if (args.json) {
 
-    const key = params.name as string;
-    const value = params.path as string; // Using path param for value
+            process.stdout.write(JSON.stringify(result) + '\n');
 
-    if (!requireParams({ key, value }, flags, logger, help)) return 1;
+        }
+        else if (result?.success) {
 
-    const [result, err] = await withVaultContext({
-        flags,
-        logger,
-        fn: async ({ ctx, cryptoIdentity, privateKey }) => {
+            process.stdout.write(`Vault secret "${args.key}" set successfully\n`);
 
-            const db = ctx.kysely;
+        }
+        else {
 
-            // Get vault key
-            const vaultKey = await getVaultKey(db, cryptoIdentity.identityHash, privateKey, ctx.dialect);
+            process.stderr.write(`Error: ${result?.error ?? 'Unknown error'}\n`);
 
-            if (!vaultKey) {
+        }
 
-                return {
-                    success: false,
-                    error: 'No vault access. Run "noorm vault init" or wait for propagation.',
-                };
+        process.exit(result?.success ? 0 : 1);
 
-            }
+    },
+});
 
-            // Set the secret
-            const [, setErr] = await setVaultSecret(
-                db,
-                vaultKey,
-                key,
-                value,
-                cryptoIdentity.email,
-                ctx.dialect,
-            );
+(setCommand as typeof setCommand & { examples: string[] }).examples = [
+    'noorm vault set API_KEY "sk-live-..."',
+    'noorm vault set DB_PASSWORD "secret123"',
+    'noorm vault set API_KEY "sk-live-..." --json',
+];
 
-            if (setErr) {
-
-                return { success: false, error: setErr.message };
-
-            }
-
-            return { success: true, key, action: 'set' };
-
-        },
-    });
-
-    return handleVaultResult(result, err, flags, logger, () => {
-
-        logger.info(`Vault secret "${key}" set successfully`);
-
-    });
-
-};
+export default setCommand;

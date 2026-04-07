@@ -1,275 +1,201 @@
 /**
- * Vault cp headless command.
+ * noorm vault cp — copy vault secrets between configs.
  *
- * Copies vault secrets between configs.
+ * With --all: vault cp --all <source> <dest>
+ * Without --all: vault cp <key> <source> <dest>
  */
+import { defineCommand } from 'citty';
 import { attempt } from '@logosdx/utils';
 
-import { outputError, type HeadlessCommand } from './_helpers.js';
-import { formatHelp } from '../../core/help-formatter.js';
+import { sharedArgs } from '../_utils.js';
 import { copyVaultSecrets } from '../../core/vault/index.js';
 import { loadPrivateKey, loadIdentityMetadata } from '../../core/identity/storage.js';
 import { getStateManager } from '../../core/state/index.js';
 
-export const help = `
-# VAULT CP
+const cpCommand = defineCommand({
+    meta: {
+        name: 'cp',
+        description: 'Copy vault secrets between configs',
+    },
+    args: {
+        source: { type: 'positional', description: 'Source config name', required: true },
+        destination: { type: 'positional', description: 'Destination config name', required: true },
+        key: { type: 'string', description: 'Secret key to copy (omit to copy all)' },
+        config: sharedArgs.config,
+        force: sharedArgs.force,
+        dryRun: sharedArgs.dryRun,
+        json: sharedArgs.json,
+    },
+    async run({ args }) {
 
-Copy vault secrets between configs
+        const keys: string[] | 'all' = args.key ? [args.key] : 'all';
+        const sourceConfigName = args.source;
+        const destConfigName = args.destination;
 
-## Usage
+        const [cryptoIdentity, identityErr] = await attempt(() => loadIdentityMetadata());
 
-    noorm -H vault cp [--all] [--force] <key> <source> <destination>
-    noorm -H vault cp --all [--force] <source> <destination>
+        if (identityErr || !cryptoIdentity) {
 
-## Arguments
-
-    key            Secret key to copy (omit with --all)
-    source         Source config name
-    destination    Destination config name
-
-## Flags
-
-    --all          Copy all secrets from source
-    --force        Overwrite existing secrets in destination
-    --dry-run      Preview what would be copied without executing
-
-## Description
-
-Copies secrets from one vault to another. Requires vault access on both
-source and destination. If the destination vault is not initialized, it
-will be initialized automatically.
-
-Without \`--force\`, existing secrets in the destination are skipped.
-
-## Examples
-
-    noorm -H vault cp API_KEY staging production                Copy one secret
-    noorm -H vault cp --all staging production                  Copy all secrets
-    noorm -H vault cp --all --force staging production          Overwrite existing
-    noorm -H vault cp --all --dry-run staging production        Preview only
-    noorm -H --json vault cp --all staging production           JSON output
-
-## JSON Output
-
-    {
-        "success": true,
-        "copied": ["API_KEY", "DB_PASSWORD"],
-        "skipped": ["EXISTING_KEY"],
-        "errors": []
-    }
-
-With \`--dry-run\`:
-
-    {
-        "success": true,
-        "dryRun": true,
-        "source": "staging",
-        "destination": "production",
-        "keys": "all",
-        "force": false
-    }
-
-## See Also
-
-See \`noorm help vault list\`, \`noorm help vault set\`.
-`;
-
-export const run: HeadlessCommand = async (params, flags, logger) => {
-
-    // Parse arguments based on --all flag
-    // With --all: vault cp --all <source> <dest>
-    // Without: vault cp <key> <source> <dest>
-    let keys: string[] | 'all' = 'all';
-    let sourceConfigName: string | undefined;
-    let destConfigName: string | undefined;
-
-    if (flags.force && !params.name) {
-
-        // --all mode: vault cp --all <source> <dest>
-        // params.name = source, params.path = dest
-        // But this needs custom parsing...
-        // For now, we'll use a simpler approach: vault cp <source> <dest> --all
-        sourceConfigName = params.name;
-        destConfigName = params.path;
-
-    }
-    else if (params.name && params.path && params.stage) {
-
-        // vault cp <key> <source> <dest>
-        keys = [params.name];
-        sourceConfigName = params.path;
-        destConfigName = params.stage;
-
-    }
-    else if (params.name && params.path) {
-
-        // Check if --all is implied (params.name is source, params.path is dest)
-        // This is tricky - we need to know if --all is set
-        // For simplicity, if only two args, assume --all mode
-        keys = 'all';
-        sourceConfigName = params.name;
-        destConfigName = params.path;
-
-    }
-
-    if (!sourceConfigName || !destConfigName) {
-
-        if (flags.json) {
-
-            logger.result({
-                success: false,
-                error: 'Usage: noorm vault cp [--all] <key> <source> <destination>',
-            });
-
-        }
-        else {
-
-            const output = formatHelp(help);
-            process.stdout.write(output + '\n');
+            process.stderr.write('Error: Identity not set up. Run: noorm identity init\n');
+            process.exit(1);
 
         }
 
-        return 1;
+        const [privateKey, keyErr] = await attempt(() => loadPrivateKey());
 
-    }
+        if (keyErr || !privateKey) {
 
-    // Load crypto identity
-    const [cryptoIdentity, identityErr] = await attempt(() => loadIdentityMetadata());
+            process.stderr.write('Error: Private key not found. Run: noorm identity init\n');
+            process.exit(1);
 
-    if (identityErr || !cryptoIdentity) {
+        }
 
-        return outputError(flags, logger, 'Identity not set up. Run: noorm identity init');
+        const stateManager = getStateManager(process.cwd());
+        const [, loadErr] = await attempt(() => stateManager.load());
 
-    }
+        if (loadErr) {
 
-    // Load private key
-    const [privateKey, keyErr] = await attempt(() => loadPrivateKey());
+            process.stderr.write(`Error: ${loadErr.message}\n`);
+            process.exit(1);
 
-    if (keyErr || !privateKey) {
+        }
 
-        return outputError(flags, logger, 'Private key not found. Run: noorm identity init');
+        const sourceConfig = stateManager.getConfig(sourceConfigName);
+        const destConfig = stateManager.getConfig(destConfigName);
 
-    }
+        if (!sourceConfig) {
 
-    // Load state to get configs
-    const stateManager = getStateManager(process.cwd());
-    const [, loadErr] = await attempt(() => stateManager.load());
+            process.stderr.write(`Error: Source config not found: ${sourceConfigName}\n`);
+            process.exit(1);
 
-    if (loadErr) {
+        }
 
-        return outputError(flags, logger, loadErr.message);
+        if (!destConfig) {
 
-    }
+            process.stderr.write(`Error: Destination config not found: ${destConfigName}\n`);
+            process.exit(1);
 
-    const sourceConfig = stateManager.getConfig(sourceConfigName);
-    const destConfig = stateManager.getConfig(destConfigName);
+        }
 
-    if (!sourceConfig) {
+        if (args.dryRun) {
 
-        return outputError(flags, logger, `Source config not found: ${sourceConfigName}`);
-
-    }
-
-    if (!destConfig) {
-
-        return outputError(flags, logger, `Destination config not found: ${destConfigName}`);
-
-    }
-
-    if (flags.dryRun) {
-
-        if (flags.json) {
-
-            logger.result({
+            const dryRunResult = {
                 success: true,
                 dryRun: true,
                 source: sourceConfigName,
                 destination: destConfigName,
                 keys: keys === 'all' ? 'all' : keys,
-                force: flags.force,
-            });
+                force: args.force ?? false,
+            };
+
+            if (args.json) {
+
+                process.stdout.write(JSON.stringify(dryRunResult) + '\n');
+
+            }
+            else {
+
+                process.stdout.write(
+                    `Dry run: would copy ${keys === 'all' ? 'all secrets' : keys.join(', ')} from "${sourceConfigName}" to "${destConfigName}"\n`,
+                );
+
+                if (args.force) {
+
+                    process.stdout.write('With --force: would overwrite existing secrets\n');
+
+                }
+
+            }
+
+            process.exit(0);
+
+        }
+
+        const [result, copyErr] = await copyVaultSecrets(
+            sourceConfig,
+            destConfig,
+            keys,
+            cryptoIdentity.identityHash,
+            privateKey,
+            cryptoIdentity.publicKey,
+            { force: args.force },
+        );
+
+        if (copyErr) {
+
+            if (args.json) {
+
+                process.stdout.write(JSON.stringify({ success: false, error: copyErr.message }) + '\n');
+
+            }
+            else {
+
+                process.stderr.write(`Error: ${copyErr.message}\n`);
+
+            }
+
+            process.exit(1);
+
+        }
+
+        if (args.json) {
+
+            process.stdout.write(JSON.stringify({
+                success: true,
+                copied: result?.copied ?? [],
+                skipped: result?.skipped ?? [],
+                errors: result?.errors ?? [],
+            }) + '\n');
 
         }
         else {
 
-            logger.info(`Dry run: would copy ${keys === 'all' ? 'all secrets' : keys.join(', ')} from "${sourceConfigName}" to "${destConfigName}"`);
+            const copied = result?.copied ?? [];
+            const skipped = result?.skipped ?? [];
+            const errors = result?.errors ?? [];
 
-            if (flags.force) {
+            if (copied.length > 0) {
 
-                logger.info('With --force: would overwrite existing secrets');
+                process.stdout.write(`Copied ${copied.length} secrets: ${copied.join(', ')}\n`);
+
+            }
+
+            if (skipped.length > 0) {
+
+                process.stdout.write(`Skipped ${skipped.length} existing secrets: ${skipped.join(', ')}\n`);
+                process.stdout.write('Use --force to overwrite\n');
+
+            }
+
+            if (errors.length > 0) {
+
+                for (const e of errors) {
+
+                    process.stderr.write(`Failed to copy "${e.key}": ${e.error}\n`);
+
+                }
+
+            }
+
+            if (copied.length === 0 && skipped.length === 0 && errors.length === 0) {
+
+                process.stdout.write('No secrets to copy\n');
 
             }
 
         }
 
-        return 0;
+        process.exit(result?.errors?.length ? 1 : 0);
 
-    }
+    },
+});
 
-    // Execute copy
-    const [result, copyErr] = await copyVaultSecrets(
-        sourceConfig,
-        destConfig,
-        keys,
-        cryptoIdentity.identityHash,
-        privateKey,
-        cryptoIdentity.publicKey,
-        { force: flags.force },
-    );
+(cpCommand as typeof cpCommand & { examples: string[] }).examples = [
+    'noorm vault cp staging production --key API_KEY',
+    'noorm vault cp staging production',
+    'noorm vault cp staging production --force',
+    'noorm vault cp staging production --dry-run',
+    'noorm vault cp staging production --json',
+];
 
-    if (copyErr) {
-
-        return outputError(flags, logger, copyErr.message);
-
-    }
-
-    if (flags.json) {
-
-        logger.result({
-            success: true,
-            copied: result?.copied ?? [],
-            skipped: result?.skipped ?? [],
-            errors: result?.errors ?? [],
-        });
-
-    }
-    else {
-
-        const copied = result?.copied ?? [];
-        const skipped = result?.skipped ?? [];
-        const errors = result?.errors ?? [];
-
-        if (copied.length > 0) {
-
-            logger.info(`Copied ${copied.length} secrets: ${copied.join(', ')}`);
-
-        }
-
-        if (skipped.length > 0) {
-
-            logger.info(`Skipped ${skipped.length} existing secrets: ${skipped.join(', ')}`);
-            logger.info('Use --force to overwrite');
-
-        }
-
-        if (errors.length > 0) {
-
-            for (const e of errors) {
-
-                logger.error(`Failed to copy "${e.key}": ${e.error}`);
-
-            }
-
-        }
-
-        if (copied.length === 0 && skipped.length === 0 && errors.length === 0) {
-
-            logger.info('No secrets to copy');
-
-        }
-
-    }
-
-    return result?.errors?.length ? 1 : 0;
-
-};
+export default cpCommand;

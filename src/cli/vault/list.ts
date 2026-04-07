@@ -1,137 +1,128 @@
 /**
- * Vault list headless command.
- *
- * Lists all vault secrets.
+ * noorm vault list — list all vault secrets.
  */
-import { type HeadlessCommand, handleVaultResult, withVaultContext } from './_helpers.js';
+import { defineCommand } from 'citty';
+
+import { withVaultContext, sharedArgs } from '../_utils.js';
 import { getVaultKey, getAllVaultSecrets, getVaultStatus } from '../../core/vault/index.js';
 
-export const help = `
-# VAULT LIST
+const listCommand = defineCommand({
+    meta: {
+        name: 'list',
+        description: 'List all vault secrets',
+    },
+    args: {
+        config: sharedArgs.config,
+        json: sharedArgs.json,
+    },
+    async run({ args }) {
 
-List all vault secrets
+        const [result, err] = await withVaultContext({
+            args,
+            fn: async ({ ctx, cryptoIdentity, privateKey }) => {
 
-## Usage
+                const db = ctx.kysely;
+                const status = await getVaultStatus(db, cryptoIdentity.identityHash, ctx.dialect);
 
-    noorm -H vault list
+                if (!status.isInitialized) {
 
-## Description
+                    return {
+                        success: false,
+                        error: 'Vault not initialized. Run "noorm vault init" first.',
+                    };
 
-Lists all secrets stored in the vault with metadata (who set each secret and when).
-Values are never exposed — only keys and metadata are returned.
+                }
 
-Requires vault access.
+                if (!status.hasAccess) {
 
-## Examples
+                    return {
+                        success: false,
+                        error: 'No vault access. Wait for a team member to propagate access.',
+                    };
 
-    noorm -H vault list                    List secrets
-    noorm -H --json vault list             List as JSON
+                }
 
-## JSON Output
+                const vaultKey = await getVaultKey(db, cryptoIdentity.identityHash, privateKey, ctx.dialect);
 
-    {
-        "success": true,
-        "secrets": [
-            { "key": "API_KEY", "setBy": "alice@example.com", "updatedAt": "2024-01-15T10:30:00Z" },
-            { "key": "DB_PASSWORD", "setBy": "bob@example.com", "updatedAt": "2024-01-14T09:00:00Z" }
-        ],
-        "status": {
-            "usersWithAccess": 3,
-            "usersWithoutAccess": 1
+                if (!vaultKey) {
+
+                    return { success: false, error: 'Failed to decrypt vault key' };
+
+                }
+
+                const secrets = await getAllVaultSecrets(db, vaultKey, ctx.dialect);
+                const secretList = Object.values(secrets).map((s) => ({
+                    key: s.key,
+                    setBy: s.setBy,
+                    updatedAt: s.updatedAt.toISOString(),
+                }));
+
+                return {
+                    success: true,
+                    secrets: secretList,
+                    status: {
+                        usersWithAccess: status.usersWithAccess,
+                        usersWithoutAccess: status.usersWithoutAccess,
+                    },
+                };
+
+            },
+        });
+
+        if (err) {
+
+            process.exit(1);
+
         }
-    }
 
-## See Also
+        if (args.json) {
 
-See \`noorm help vault set\`, \`noorm help vault propagate\`.
-`;
+            process.stdout.write(JSON.stringify(result) + '\n');
 
-export const run: HeadlessCommand = async (_params, flags, logger) => {
+        }
+        else if (result?.success) {
 
-    const [result, err] = await withVaultContext({
-        flags,
-        logger,
-        fn: async ({ ctx, cryptoIdentity, privateKey }) => {
+            const secrets = result.secrets ?? [];
 
-            const db = ctx.kysely;
+            if (secrets.length === 0) {
 
-            // Check status
-            const status = await getVaultStatus(db, cryptoIdentity.identityHash, ctx.dialect);
+                process.stdout.write('Vault is empty. Use "noorm vault set <key> <value>" to add secrets.\n');
 
-            if (!status.isInitialized) {
+            }
+            else {
 
-                return {
-                    success: false,
-                    error: 'Vault not initialized. Run "noorm vault init" first.',
-                };
+                process.stdout.write(`Vault secrets (${secrets.length}):\n`);
+
+                for (const secret of secrets) {
+
+                    process.stdout.write(`  ${secret.key} (set by ${secret.setBy})\n`);
+
+                }
 
             }
 
-            if (!status.hasAccess) {
+            if (result.status && result.status.usersWithoutAccess > 0) {
 
-                return {
-                    success: false,
-                    error: 'No vault access. Wait for a team member to propagate access.',
-                };
+                process.stderr.write(`${result.status.usersWithoutAccess} users pending vault access. Run "noorm vault propagate" to grant.\n`);
 
             }
-
-            // Get vault key
-            const vaultKey = await getVaultKey(db, cryptoIdentity.identityHash, privateKey, ctx.dialect);
-
-            if (!vaultKey) {
-
-                return { success: false, error: 'Failed to decrypt vault key' };
-
-            }
-
-            // Get all secrets
-            const secrets = await getAllVaultSecrets(db, vaultKey, ctx.dialect);
-            const secretList = Object.values(secrets).map((s) => ({
-                key: s.key,
-                setBy: s.setBy,
-                updatedAt: s.updatedAt.toISOString(),
-            }));
-
-            return {
-                success: true,
-                secrets: secretList,
-                status: {
-                    usersWithAccess: status.usersWithAccess,
-                    usersWithoutAccess: status.usersWithoutAccess,
-                },
-            };
-
-        },
-    });
-
-    return handleVaultResult(result, err, flags, logger, (r) => {
-
-        const secrets = r.secrets ?? [];
-
-        if (secrets.length === 0) {
-
-            logger.info('Vault is empty. Use "noorm vault set <key> <value>" to add secrets.');
 
         }
         else {
 
-            logger.info(`Vault secrets (${secrets.length}):`);
-
-            for (const secret of secrets) {
-
-                logger.info(`  ${secret.key} (set by ${secret.setBy})`);
-
-            }
+            process.stderr.write(`Error: ${result?.error ?? 'Unknown error'}\n`);
 
         }
 
-        if (r.status && r.status.usersWithoutAccess > 0) {
+        process.exit(result?.success ? 0 : 1);
 
-            logger.warn(`${r.status.usersWithoutAccess} users pending vault access. Run "noorm vault propagate" to grant.`);
+    },
+});
 
-        }
+(listCommand as typeof listCommand & { examples: string[] }).examples = [
+    'noorm vault list',
+    'noorm vault list --json',
+    'noorm vault list -c prod',
+];
 
-    });
-
-};
+export default listCommand;

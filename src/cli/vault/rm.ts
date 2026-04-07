@@ -1,100 +1,91 @@
 /**
- * Vault rm headless command.
- *
- * Removes a vault secret.
+ * noorm vault rm <key> — remove a vault secret.
  */
-import { type HeadlessCommand, handleVaultResult, requireParams, withVaultContext } from './_helpers.js';
+import { defineCommand } from 'citty';
+
+import { withVaultContext, sharedArgs } from '../_utils.js';
 import { getVaultKey, deleteVaultSecret, vaultSecretExists } from '../../core/vault/index.js';
 
-export const help = `
-# VAULT RM
+const rmCommand = defineCommand({
+    meta: {
+        name: 'rm',
+        description: 'Remove a vault secret',
+    },
+    args: {
+        key: { type: 'positional', description: 'Secret key name to remove', required: true },
+        config: sharedArgs.config,
+        json: sharedArgs.json,
+    },
+    async run({ args }) {
 
-Remove a vault secret
+        const [result, err] = await withVaultContext({
+            args,
+            fn: async ({ ctx, cryptoIdentity, privateKey }) => {
 
-## Usage
+                const db = ctx.kysely;
+                const vaultKey = await getVaultKey(db, cryptoIdentity.identityHash, privateKey, ctx.dialect);
 
-    noorm -H vault rm <key>
+                if (!vaultKey) {
 
-## Arguments
+                    return {
+                        success: false,
+                        error: 'No vault access. Run "noorm vault init" or wait for propagation.',
+                    };
 
-    key      Secret key name to remove
+                }
 
-## Description
+                const exists = await vaultSecretExists(db, args.key, ctx.dialect);
 
-Permanently deletes a secret from the vault. Fails if the key does not exist.
+                if (!exists) {
 
-Requires vault access.
+                    return { success: false, error: `Secret "${args.key}" not found in vault` };
 
-## Examples
+                }
 
-    noorm -H vault rm OLD_API_KEY                Remove a secret
-    noorm -H --json vault rm OLD_API_KEY         Remove with JSON output
+                const [deleted, deleteErr] = await deleteVaultSecret(db, args.key, ctx.dialect);
 
-## JSON Output
+                if (deleteErr) {
 
-    {
-        "success": true,
-        "key": "OLD_API_KEY",
-        "deleted": true
-    }
+                    return { success: false, error: deleteErr.message };
 
-## See Also
+                }
 
-See \`noorm help vault list\`, \`noorm help vault set\`.
-`;
+                return { success: true, key: args.key, deleted };
 
-export const run: HeadlessCommand = async (params, flags, logger) => {
+            },
+        });
 
-    const key = params.name as string;
+        if (err) {
 
-    if (!requireParams({ key }, flags, logger, help)) return 1;
+            process.exit(1);
 
-    const [result, err] = await withVaultContext({
-        flags,
-        logger,
-        fn: async ({ ctx, cryptoIdentity, privateKey }) => {
+        }
 
-            const db = ctx.kysely;
+        if (args.json) {
 
-            // Get vault key
-            const vaultKey = await getVaultKey(db, cryptoIdentity.identityHash, privateKey, ctx.dialect);
+            process.stdout.write(JSON.stringify(result) + '\n');
 
-            if (!vaultKey) {
+        }
+        else if (result?.success) {
 
-                return {
-                    success: false,
-                    error: 'No vault access. Run "noorm vault init" or wait for propagation.',
-                };
+            process.stdout.write(`Vault secret "${args.key}" deleted\n`);
 
-            }
+        }
+        else {
 
-            // Check if exists
-            const exists = await vaultSecretExists(db, key, ctx.dialect);
+            process.stderr.write(`Error: ${result?.error ?? 'Unknown error'}\n`);
 
-            if (!exists) {
+        }
 
-                return { success: false, error: `Secret "${key}" not found in vault` };
+        process.exit(result?.success ? 0 : 1);
 
-            }
+    },
+});
 
-            // Delete the secret
-            const [deleted, deleteErr] = await deleteVaultSecret(db, key, ctx.dialect);
+(rmCommand as typeof rmCommand & { examples: string[] }).examples = [
+    'noorm vault rm OLD_API_KEY',
+    'noorm vault rm OLD_API_KEY --json',
+    'noorm vault rm OLD_API_KEY -c prod',
+];
 
-            if (deleteErr) {
-
-                return { success: false, error: deleteErr.message };
-
-            }
-
-            return { success: true, key, deleted };
-
-        },
-    });
-
-    return handleVaultResult(result, err, flags, logger, () => {
-
-        logger.info(`Vault secret "${key}" deleted`);
-
-    });
-
-};
+export default rmCommand;
