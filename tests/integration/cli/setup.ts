@@ -137,8 +137,10 @@ export async function noormJson<T>(project: TestProject, ...args: string[]): Pro
     _raw?: { stdout: string; stderr: string };
 }> {
 
-    // zx handles arrays by joining with spaces, which is correct for CLI args
-    const cmdArgs = ['--json', ...args];
+    // zx handles arrays by joining with spaces, which is correct for CLI args.
+    // citty parses flags per-subcommand, so --json must come AFTER the command
+    // path (e.g., `noorm db explore --json`, not `noorm --json db explore`).
+    const cmdArgs = [...args, '--json'];
 
     const result = await cli({ cwd: project.dir, env: { ...process.env, ...project.env } })`node ${CLI} ${cmdArgs}`;
 
