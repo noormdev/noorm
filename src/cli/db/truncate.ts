@@ -24,7 +24,11 @@ const truncateCommand = defineCommand({
 
                 return ctx.noorm.db.truncate().then((res) => {
 
-                    logger.info(`Truncated ${res.truncated.length} tables`);
+                    if (!args.json) {
+
+                        logger.info(`Truncated ${res.truncated.length} tables`);
+
+                    }
 
                     return res;
 

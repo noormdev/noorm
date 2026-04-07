@@ -29,7 +29,11 @@ const fileCommand = defineCommand({
 
                 return ctx.noorm.run.file(args.path, { force: args.force, dryRun: args.dryRun }).then((res) => {
 
-                    logger.info(`${res.filepath} (${res.status})`);
+                    if (!args.json) {
+
+                        logger.info(`${res.filepath} (${res.status})`);
+
+                    }
 
                     return res;
 

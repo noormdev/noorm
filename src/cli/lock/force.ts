@@ -21,7 +21,12 @@ const forceCommand = defineCommand({
             fn: async (ctx, logger) => {
 
                 await ctx.noorm.lock.forceRelease();
-                logger.info('Lock force-released');
+
+                if (!args.json) {
+
+                    logger.info('Lock force-released');
+
+                }
 
                 return true;
 

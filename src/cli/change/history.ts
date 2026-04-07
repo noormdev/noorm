@@ -29,12 +29,16 @@ const historyCommand = defineCommand({
 
                 return ctx.noorm.changes.history(count).then((records) => {
 
-                    logger.info(`Execution History: ${records.length} records`);
+                    if (!args.json) {
 
-                    for (const record of records) {
+                        logger.info(`Execution History: ${records.length} records`);
 
-                        const date = new Date(record.executedAt).toLocaleString();
-                        logger.info(`  ${record.name} - ${record.status} (${date})`);
+                        for (const record of records) {
+
+                            const date = new Date(record.executedAt).toLocaleString();
+                            logger.info(`  ${record.name} - ${record.status} (${date})`);
+
+                        }
 
                     }
 

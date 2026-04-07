@@ -22,10 +22,14 @@ const acquireCommand = defineCommand({
 
                 return ctx.noorm.lock.acquire().then((res) => {
 
-                    logger.info('Lock acquired', {
-                        lockedBy: res.lockedBy,
-                        expiresAt: res.expiresAt.toISOString(),
-                    });
+                    if (!args.json) {
+
+                        logger.info('Lock acquired', {
+                            lockedBy: res.lockedBy,
+                            expiresAt: res.expiresAt.toISOString(),
+                        });
+
+                    }
 
                     return res;
 

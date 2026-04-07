@@ -23,13 +23,17 @@ const buildCommand = defineCommand({
 
                 return ctx.noorm.run.build({ force: args.force }).then((res) => {
 
-                    logger.info('Build completed successfully', {
-                        status: res.status,
-                        filesRun: res.filesRun,
-                        filesSkipped: res.filesSkipped,
-                        filesFailed: res.filesFailed,
-                        durationMs: res.durationMs,
-                    });
+                    if (!args.json) {
+
+                        logger.info('Build completed successfully', {
+                            status: res.status,
+                            filesRun: res.filesRun,
+                            filesSkipped: res.filesSkipped,
+                            filesFailed: res.filesFailed,
+                            durationMs: res.durationMs,
+                        });
+
+                    }
 
                     return res;
 

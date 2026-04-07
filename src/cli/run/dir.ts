@@ -29,11 +29,15 @@ const dirCommand = defineCommand({
 
                 return ctx.noorm.run.dir(args.path, { force: args.force, dryRun: args.dryRun }).then((res) => {
 
-                    logger.info(`Run directory ${res.status}`, {
-                        filesRun: res.filesRun,
-                        filesSkipped: res.filesSkipped,
-                        filesFailed: res.filesFailed,
-                    });
+                    if (!args.json) {
+
+                        logger.info(`Run directory ${res.status}`, {
+                            filesRun: res.filesRun,
+                            filesSkipped: res.filesSkipped,
+                            filesFailed: res.filesFailed,
+                        });
+
+                    }
 
                     return res;
 

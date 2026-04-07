@@ -24,14 +24,19 @@ const ffCommand = defineCommand({
 
                 return ctx.noorm.changes.ff().then((res) => {
 
-                    logger.info(`Fast-forward ${res.status}`, {
-                        executed: res.executed,
-                        skipped: res.skipped,
-                        failed: res.failed,
-                    });
-                    for (const cs of res.changes) {
+                    if (!args.json) {
 
-                        logger.info(`  ${cs.name} (${cs.status})`);
+                        logger.info(`Fast-forward ${res.status}`, {
+                            executed: res.executed,
+                            skipped: res.skipped,
+                            failed: res.failed,
+                        });
+
+                        for (const cs of res.changes) {
+
+                            logger.info(`  ${cs.name} (${cs.status})`);
+
+                        }
 
                     }
 
