@@ -1,302 +1,140 @@
+#!/usr/bin/env node
 /**
- * Headless mode for CI/CD and non-interactive execution.
+ * CLI entry point for noorm.
  *
- * When running without a TTY or with --headless flag, noorm executes
- * commands directly and outputs results as text or JSON.
- *
- * Uses the Logger for event output with optional colors.
- *
- * @example
- * ```bash
- * # Explicit headless mode
- * noorm -H run:build
- *
- * # JSON output for scripting
- * noorm -H --json change:ff | jq '.event'
- *
- * # Auto-detected in CI
- * CI=1 noorm change:ff
- * ```
+ * Parses argv with citty, routes to the appropriate subcommand, and
+ * intercepts --help to append per-command examples after citty's
+ * auto-generated usage.
  */
-import { createWriteStream } from 'node:fs';
-import { mkdir } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { defineCommand, runMain, renderUsage, type CommandDef } from 'citty';
 
-import { attempt } from '@logosdx/utils';
+import change from './change/index.js';
+import config from './config/index.js';
+import db from './db/index.js';
+import dev from './dev/index.js';
+import info from './info.js';
+import lock from './lock/index.js';
+import mcp from './mcp/index.js';
+import run from './run/index.js';
+import sql from './sql.js';
+import ui from './ui.js';
+import update from './update.js';
+import vault from './vault/index.js';
+import version from './version.js';
 
-import { Logger, type LoggerOptions, type LogLevel } from '../../core/logger/index.js';
-import { getSettingsManager } from '../../core/settings/index.js';
-
-import type { Route, RouteParams, CliFlags } from '../types.js';
-import { isCi, isDev } from '../../core/environment.js';
-
-import { type RouteHandler, outputError } from './_helpers.js';
-
-import * as CmdChangeFf from './change-ff.js';
-import * as CmdChangeHistory from './change-history.js';
-import * as CmdChangeRevert from './change-revert.js';
-import * as CmdChangeRun from './change-run.js';
-import * as CmdChange from './change.js';
-import * as CmdConfigAdd from './config-add.js';
-import * as CmdConfigEdit from './config-edit.js';
-import * as CmdConfigRm from './config-rm.js';
-import * as CmdConfigUser from './config-use.js';
-import * as CmdConfig from './config.js';
-import * as CmdDbExploreTablesDetail from './db-explore-tables-detail.js';
-import * as CmdDbExploreTables from './db-explore-tables.js';
-import * as CmdDbExplore from './db-explore.js';
-import * as CmdDbTeardown from './db-teardown.js';
-import * as CmdDbTransfer from './db-transfer.js';
-import * as CmdDbTruncate from './db-truncate.js';
-import * as CmdDb from './db.js';
-import * as CmdIdentity from './identity.js';
-import * as CmdLockAcquire from './lock-acquire.js';
-import * as CmdLockForce from './lock-force.js';
-import * as CmdLockRelease from './lock-release.js';
-import * as CmdLockStatus from './lock-status.js';
-import * as CmdLock from './lock.js';
-import * as CmdRunBuild from './run-build.js';
-import * as CmdRunDir from './run-dir.js';
-import * as CmdRunFile from './run-file.js';
-import * as CmdRunInspect from './run-inspect.js';
-import * as CmdRunPreview from './run-preview.js';
-import * as CmdRun from './run.js';
-import * as CmdSecret from './secret.js';
-import * as CmdSettings from './settings.js';
-import * as CmdVault from './vault.js';
-import * as CmdVaultCp from './vault-cp.js';
-import * as CmdVaultInit from './vault-init.js';
-import * as CmdVaultList from './vault-list.js';
-import * as CmdVaultPropagate from './vault-propagate.js';
-import * as CmdVaultRm from './vault-rm.js';
-import * as CmdVaultSet from './vault-set.js';
-
-import * as CmdSql from './sql.js';
-
-import * as CmdDevTestWorkers from './dev-test-workers.js';
-import * as CmdDevTestHelpers from './dev-test-helpers.js';
-
-import * as CmdMcp from './mcp.js';
-import * as CmdMcpServe from './mcp-serve.js';
-import * as CmdMcpInit from './mcp-init.js';
-
-import * as CmdHelp from './help.js';
-import * as CmdInfo from './info.js';
-import * as CmdUpdate from './update.js';
-import * as CmdVersion from './version.js';
-import { getConfig } from '../../core/config/index.js';
+import { initProjectContext } from '../core/project.js';
 
 /**
- * Registry of headless command handlers.
- *
- * Maps routes to their headless implementations.
- * Routes without handlers will print an error.
+ * Commands opt into examples by attaching a top-level `examples: string[]`
+ * property to their defineCommand result. The help interceptor reads it.
  */
-const HANDLERS: Partial<Record<Route, RouteHandler>> = {
+export type CommandWithExamples = CommandDef & { examples?: string[] };
 
-    'change': CmdChange,
-    'change/ff': CmdChangeFf,
-    'change/history': CmdChangeHistory,
-    'change/revert': CmdChangeRevert,
-    'change/run': CmdChangeRun,
-
-    'config': CmdConfig,
-    'config/add': CmdConfigAdd,
-    'config/edit': CmdConfigEdit,
-    'config/rm': CmdConfigRm,
-    'config/use': CmdConfigUser,
-
-    'db': CmdDb,
-    'db/explore': CmdDbExplore,
-    'db/explore/tables/detail': CmdDbExploreTablesDetail,
-    'db/explore/tables': CmdDbExploreTables,
-    'db/teardown': CmdDbTeardown,
-    'db/transfer': CmdDbTransfer,
-    'db/truncate': CmdDbTruncate,
-
-    'identity': CmdIdentity,
-
-    'lock': CmdLock,
-    'lock/acquire': CmdLockAcquire,
-    'lock/force': CmdLockForce,
-    'lock/release': CmdLockRelease,
-    'lock/status': CmdLockStatus,
-
-    'run': CmdRun,
-    'run/build': CmdRunBuild,
-    'run/dir': CmdRunDir,
-    'run/file': CmdRunFile,
-    'run/inspect': CmdRunInspect,
-    'run/preview': CmdRunPreview,
-
-    'secret': CmdSecret,
-    'settings': CmdSettings,
-
-    'sql': CmdSql,
-
-    'vault': CmdVault,
-    'vault/cp': CmdVaultCp,
-    'vault/init': CmdVaultInit,
-    'vault/list': CmdVaultList,
-    'vault/propagate': CmdVaultPropagate,
-    'vault/rm': CmdVaultRm,
-    'vault/set': CmdVaultSet,
-
-    'dev/test-workers': CmdDevTestWorkers,
-    'dev/test-helpers': CmdDevTestHelpers,
-
-    'mcp': CmdMcp,
-    'mcp/serve': CmdMcpServe,
-    'mcp/init': CmdMcpInit,
-
-    'info': CmdInfo,
-    'update': CmdUpdate,
-    'version': CmdVersion,
-};
-
-HANDLERS['help'] = CmdHelp.factory!(HANDLERS);
+const main = defineCommand({
+    meta: {
+        name: 'noorm',
+        version: '0.0.0', // replaced at bundle time via --define __CLI_VERSION__
+        description: 'Database schema & changeset manager',
+    },
+    subCommands: {
+        change,
+        config,
+        db,
+        dev,
+        info,
+        lock,
+        mcp,
+        run,
+        sql,
+        ui,
+        update,
+        vault,
+        version,
+    },
+});
 
 /**
- * Detect if we should run in headless mode.
+ * Walk argv one positional at a time to find the target command.
  *
- * Headless mode is activated when:
- * - `--headless` or `-H` flag is passed
- * - `NOORM_HEADLESS=true` environment variable
- * - `CI=true` or common CI environment variables detected
- * - No TTY available (`!process.stdout.isTTY`)
- *
- * The `--tui` flag overrides all of the above and forces TUI mode.
+ * Stops at the first flag (token starting with `-`) or unknown subcommand.
+ * Returns the resolved command definition object.
  */
-export function shouldRunHeadless(flags: CliFlags): boolean {
+async function resolveCommand(rootDef: CommandDef, argv: string[]): Promise<CommandDef> {
 
-    // --tui flag overrides everything
-    if (flags.tui) {
+    let current: unknown = rootDef;
 
-        return false;
+    for (const arg of argv) {
+
+        if (arg.startsWith('-')) break;
+
+        const resolved = typeof current === 'function' ? await (current as () => Promise<CommandDef>)() : current as CommandDef;
+        const subs = resolved.subCommands as Record<string, unknown> | undefined;
+        const sub = subs?.[arg];
+        if (!sub) {
+
+            current = resolved;
+            break;
+
+        }
+        current = sub;
 
     }
 
-    // Explicit headless flag
-    if (flags.headless) {
-
-        return true;
-
-    }
-
-    return isCi();
+    return typeof current === 'function' ? await (current as () => Promise<CommandDef>)() : current as CommandDef;
 
 }
 
 /**
- * Create a logger for headless mode.
- *
- * Always returns a Logger. Uses colored console output unless JSON mode.
- * File logging attempted but not required.
+ * Print citty's usage followed by a custom EXAMPLES block from
+ * the command's top-level `examples` property (if present).
  */
-async function createHeadlessLogger(
-    projectRoot: string,
-    json: boolean,
-): Promise<Logger> {
+async function printHelpWithExamples(cmd: CommandWithExamples, rootDef: CommandDef): Promise<void> {
 
-    const settingsManager = getSettingsManager(projectRoot);
-    const [, settingsErr] = await attempt(() => settingsManager.load());
+    const usage = await renderUsage(cmd, rootDef);
+    process.stdout.write(usage + '\n');
 
-    // Use loaded settings or empty defaults
-    const settings = settingsErr ? {} : settingsManager.settings;
+    if (cmd.examples && cmd.examples.length > 0) {
 
-    // Attempt file logging (optional — directory may not exist)
-    const logPath = join(projectRoot, '.noorm', 'state', 'noorm.log');
-    const [, mkdirErr] = await attempt(() => mkdir(dirname(logPath), { recursive: true }));
+        process.stdout.write('\nEXAMPLES\n\n');
+        for (const ex of cmd.examples) {
 
-    let fileStream: ReturnType<typeof createWriteStream> | undefined;
+            process.stdout.write('  ' + ex + '\n');
 
-    if (!mkdirErr) {
-
-        fileStream = createWriteStream(logPath, { flags: 'a' });
-        fileStream.on('error', () => {}); // File logging is best-effort
+        }
+        process.stdout.write('\n');
 
     }
-
-    let defaultLevel: LogLevel = 'info';
-
-    if (isDev()) {
-
-        defaultLevel = 'verbose';
-
-    }
-
-    const options: LoggerOptions = {
-        projectRoot,
-        settings,
-        config: {
-            enabled: true,
-            level: getConfig('log.level', defaultLevel)!,
-        },
-        console: process.stdout,
-        file: fileStream ?? undefined,
-        json,
-        color: !json,
-    };
-
-    return new Logger(options);
 
 }
 
 /**
- * Run a command in headless mode.
+ * Entry point.
  *
- * @returns Exit code (0 for success, non-zero for errors)
+ * 1. Discover project root and chdir into it
+ * 2. Intercept --help before handing off to citty
+ * 3. Delegate to runMain
  */
-export async function runHeadless(
-    route: Route,
-    params: RouteParams,
-    flags: CliFlags,
-): Promise<number> {
+async function entry(): Promise<void> {
 
-    const projectRoot = process.cwd();
-    const logger = await createHeadlessLogger(projectRoot, flags.json);
-    await logger.start();
+    initProjectContext();
 
-    const handler = HANDLERS[route];
-    const routeSpaced = route.replace('/', ' ');
+    const rawArgs = process.argv.slice(2);
 
-    if (!handler) {
+    if (rawArgs.includes('--help') || rawArgs.includes('-h')) {
 
-        outputError(flags, logger, `Unknown command: ${routeSpaced}`);
-        await logger.stop();
-
-        return 1;
+        const cmd = await resolveCommand(main as CommandDef, rawArgs);
+        await printHelpWithExamples(cmd as CommandWithExamples, main as CommandDef);
+        process.exit(0);
 
     }
 
-    const { run } = handler;
-
-    if (!run) {
-
-        outputError(flags, logger, `Command not implemented in headless mode: ${routeSpaced}`);
-        await logger.stop();
-
-        return 1;
-
-    }
-
-    // Run the handler
-    const [exitCode, err] = await attempt(
-        () => run(params, flags, logger),
-    );
-
-    if (err) {
-
-        const error = err instanceof Error ? err : new Error(String(err));
-        outputError(flags, logger, error.message);
-        await logger.stop();
-
-        return 1;
-
-    }
-
-    await logger.stop();
-
-    return exitCode;
+    await runMain(main);
 
 }
+
+entry().catch((error) => {
+
+    process.stderr.write(`Fatal error: ${error instanceof Error ? error.message : String(error)}\n`);
+    process.exit(1);
+
+});
