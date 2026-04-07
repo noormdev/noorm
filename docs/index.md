@@ -104,8 +104,8 @@ curl -fsSL https://noorm.dev/install.sh | sh
 # Or via npm
 npm install -g @noormdev/cli
 
-# Launch the TUI
-noorm
+# Launch the interactive TUI
+noorm ui
 ```
 
 > **Corporate network?** If `noorm.dev` is blocked, use the GitHub mirror:
@@ -113,20 +113,22 @@ noorm
 > curl -fsSL https://raw.githubusercontent.com/noormdev/noorm/master/install.sh | sh
 > ```
 
-From the terminal interface, set up your project:
+From the interactive TUI (`noorm ui`), set up your project:
 
 1. **[i] Identity** — Set your name (for team tracking)
 2. **[c] Config → [a] Add** — Create a database config
 3. **[r] Run → Build** — Execute your SQL files
 
-Or use headless mode for scripting:
+Or drive the same flow from the non-interactive CLI — every command runs headlessly by default and emits structured output you can pipe into scripts:
 
 ```bash
-noorm -H init
-noorm -H identity set "Your Name"
-noorm -H config add
-noorm -H run build
+noorm run build             # Build the schema from SQL files
+noorm change ff             # Apply all pending changes
+noorm --json db explore     # Inspect the database as JSON
+noorm vault set API_KEY ... # Push a team secret to the encrypted vault
 ```
+
+Wizard-only operations (`config add`, `config edit`, secret management) launch the TUI when invoked from the CLI — set them up once via `noorm ui`, then drive everything else from scripts.
 
 Create your SQL files:
 
@@ -138,7 +140,7 @@ echo "CREATE TABLE users (id SERIAL PRIMARY KEY, name TEXT);" > sql/01_tables/00
 Build your schema:
 
 ```bash
-noorm -H run build
+noorm run build
 ```
 
 ```
@@ -151,14 +153,15 @@ Now your schema needs to evolve. Update your SQL file AND create a change:
 # Update sql/01_tables/001_users.sql (add email column)
 # Create changes/2024-01-add-email/forward.sql
 
-noorm -H change ff     # Fast-forward: apply pending changes
+noorm change ff     # Fast-forward: apply pending changes
 ```
 
-Need a fresh test database? Create another config and build—no changes needed:
+Need a fresh test database? Add another config and build—no changes needed:
 
 ```bash
-noorm -H config add    # Create test config
-noorm -H run build     # Fresh DB gets current schema directly
+noorm ui            # Use the wizard to add a `test` config
+noorm config use test
+noorm run build     # Fresh DB gets current schema directly
 ```
 
 **SQL files = current schema. Changes = how to get existing databases there.**

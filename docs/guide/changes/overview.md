@@ -90,15 +90,7 @@ The three-digit prefix guarantees execution order. Names after the underscore ar
 
 ## Creating a Change
 
-From the TUI, navigate to changes (press `g` from home) and select add (`a`). noorm creates the folder structure for you.
-
-In headless mode:
-
-```bash
-noorm -H change add add-email-verification
-```
-
-This creates:
+Change creation is wizard-driven. Run `noorm ui`, press `g` from home to enter the changes screen, then `a` to add a new one and enter a name like `add-email-verification`. noorm scaffolds the folder structure for you:
 
 ```
 changes/2025-01-15-add-email-verification/
@@ -107,7 +99,7 @@ changes/2025-01-15-add-email-verification/
 └── changelog.md
 ```
 
-Now add your SQL files to `change/`. If you want rollback support, add corresponding scripts to `revert/`.
+Now add your SQL files to `change/`. If you want rollback support, add corresponding scripts to `revert/`. Once the directory exists you can apply, revert, and inspect the change from the headless CLI (`noorm change ff`, `noorm change run`, `noorm change revert`, `noorm change history`).
 
 
 ## Write Idempotent DDL
@@ -212,19 +204,18 @@ Each change has a status:
 | `failed` | Last execution failed |
 | `reverted` | Was applied, then rolled back |
 
-In headless mode:
+From the headless CLI, the bare `change` command lists every known change with its status:
 
 ```bash
-noorm -H change list
+noorm change             # Human-friendly table
+noorm --json change      # Same data as JSON
 ```
 
 ```json
-{
-    "changes": [
-        { "name": "2025-01-15-add-email-verification", "status": "success" },
-        { "name": "2025-02-01-migrate-user-roles", "status": "pending" }
-    ]
-}
+[
+    { "name": "2025-01-15-add-email-verification", "status": "applied" },
+    { "name": "2025-02-01-migrate-user-roles", "status": "pending" }
+]
 ```
 
 
@@ -236,7 +227,7 @@ noorm -H change list
 Run a specific change by name:
 
 ```bash
-noorm -H change run 2025-02-01-migrate-user-roles
+noorm change run 2025-02-01-migrate-user-roles
 ```
 
 From the TUI, select the change and press enter.
@@ -247,7 +238,7 @@ From the TUI, select the change and press enter.
 Fast-forward applies all pending changes in order:
 
 ```bash
-noorm -H change ff
+noorm change ff
 ```
 
 This is what you typically run in CI/CD after deployment.
@@ -258,7 +249,7 @@ This is what you typically run in CI/CD after deployment.
 Run just the next change in sequence:
 
 ```bash
-noorm -H change next
+noorm change next
 ```
 
 Useful when you want to apply changes one at a time and verify each.
@@ -269,7 +260,7 @@ Useful when you want to apply changes one at a time and verify each.
 Roll back a previously applied change:
 
 ```bash
-noorm -H change revert 2025-02-01-migrate-user-roles
+noorm change revert 2025-02-01-migrate-user-roles
 ```
 
 This runs the scripts in `revert/` in sequence order. The change status becomes `reverted`, which means it will run again on the next fast-forward.
@@ -280,7 +271,7 @@ This runs the scripts in `revert/` in sequence order. The change status becomes 
 Revert the last N applied changes:
 
 ```bash
-noorm -H change rewind 3
+noorm change rewind 3
 ```
 
 This reverts the three most recently applied changes, starting with the newest.
@@ -291,7 +282,7 @@ This reverts the three most recently applied changes, starting with the newest.
 See what SQL will execute without running it:
 
 ```bash
-noorm -H change run 2025-02-01-migrate-user-roles --preview
+noorm change run 2025-02-01-migrate-user-roles --preview
 ```
 
 For templates, this shows the rendered SQL. Use this before running against production.
@@ -302,7 +293,7 @@ For templates, this shows the rendered SQL. Use this before running against prod
 Render files to a temporary directory without executing:
 
 ```bash
-noorm -H change run 2025-02-01-migrate-user-roles --dry-run
+noorm change run 2025-02-01-migrate-user-roles --dry-run
 ```
 
 Files are written to `tmp/` so you can inspect them.
@@ -327,7 +318,7 @@ After a successful run, the change won't run again unless something changes. Thi
 ::: tip Force Re-Run
 Need to re-apply a change? Use `--force`:
 ```bash
-noorm -H change run my-change --force
+noorm change run my-change --force
 ```
 :::
 

@@ -49,38 +49,23 @@ The setup wizard walks you through each field:
 After completing the wizard, noorm validates the connection. If it succeeds, your config is saved.
 
 
-## Creating a Config (Headless)
+## Creating a Config Non-Interactively
 
-For CI/CD or scripting, use the headless mode:
-
-```bash
-noorm -H config add \
-    --name staging \
-    --type remote \
-    --dialect postgres \
-    --host db.staging.example.com \
-    --port 5432 \
-    --database myapp_staging \
-    --user deploy \
-    --password "$DB_PASSWORD"
-```
-
-Add `--json` for machine-readable output:
+`noorm config add`, `edit`, and `rm` all launch the TUI wizard — they exist to guide credential entry interactively. For CI/CD pipelines and scripts that need to skip the wizard entirely, build the config from **environment variables** instead:
 
 ```bash
-noorm -H --json config add --name dev --dialect sqlite --database ./data/dev.db
+export NOORM_CONNECTION_DIALECT=postgres
+export NOORM_CONNECTION_HOST=db.staging.example.com
+export NOORM_CONNECTION_PORT=5432
+export NOORM_CONNECTION_DATABASE=myapp_staging
+export NOORM_CONNECTION_USER=deploy
+export NOORM_CONNECTION_PASSWORD="$DB_PASSWORD"
+
+noorm run build       # Uses the env-only config
+noorm change ff       # Same — no stored config required
 ```
 
-```json
-{
-    "success": true,
-    "config": {
-        "name": "dev",
-        "dialect": "sqlite",
-        "database": "./data/dev.db"
-    }
-}
-```
+When at least `NOORM_CONNECTION_DIALECT` and `NOORM_CONNECTION_DATABASE` are set, noorm runs without ever touching `.noorm/state/state.enc`. See the [CLI Reference](/headless#environment-only-mode) for the full list of supported variables.
 
 
 ## Switching Configs
@@ -143,11 +128,7 @@ Every config has these fields:
 
 ## Protected Configs
 
-Production databases need safeguards. Mark a config as protected to prevent accidental damage:
-
-```bash
-noorm -H config edit prod --protected true
-```
+Production databases need safeguards. Mark a config as protected to prevent accidental damage by toggling the **Protected** flag in `noorm ui` → Config → Edit.
 
 Protected configs change how dangerous operations behave:
 
@@ -232,42 +213,22 @@ noorm run build  # Uses env-only config
 
 ## Validating Connections
 
-Before running changes, verify your config connects successfully.
-
-**In the TUI:** Select a config and press `v` to validate.
-
-**From the command line:**
-
-```bash
-noorm -H config validate dev
-```
-
-Validation tests:
+Before running changes, verify your config connects successfully. In the TUI, select a config and press `v` to run a full validation:
 
 1. Can noorm connect with the provided credentials?
 2. Does the target database exist?
 3. Are the sql/changes paths accessible?
 
-**Test server without database:**
+The TUI also offers a **server-only** mode that skips the database existence check by connecting to the dialect's system database (PostgreSQL uses `postgres`, MSSQL uses `master`). Use it during initial setup, before the target database is created.
 
-Sometimes you want to verify credentials before the database exists (during initial setup):
-
-```bash
-noorm -H config validate dev --server-only
-```
-
-This connects to the dialect's system database (PostgreSQL uses `postgres`, MSSQL uses `master`) to verify credentials work.
+For headless smoke checks, run any command that opens a connection — e.g. `noorm info` or `noorm db explore` — and inspect the exit code or `--json` output.
 
 
 ## Exporting and Importing Configs
 
-Share config templates across team members or machines. Export strips sensitive data like passwords.
+Share config templates across team members or machines through the TUI: `noorm ui` → Config → press `x` to export the highlighted config or `i` to import one. Exports strip sensitive data like passwords.
 
-**Export a config:**
-
-```bash
-noorm -H config export dev > dev-config.json
-```
+The exported JSON looks like this:
 
 ```json
 {
@@ -282,15 +243,7 @@ noorm -H config export dev > dev-config.json
 }
 ```
 
-**Import a config:**
-
-```bash
-noorm -H config import < dev-config.json
-```
-
-After importing, you'll need to set any passwords or secrets separately.
-
-**In the TUI:** Press `c` for configs, then `x` to export or `i` to import.
+After importing, you'll need to set any passwords or secrets separately — either through the TUI's edit screen or via `NOORM_CONNECTION_PASSWORD` at command time.
 
 
 ## Common Workflows
@@ -299,9 +252,9 @@ After importing, you'll need to set any passwords or secrets separately.
 ### Setting Up a New Developer
 
 1. Clone the repository
-2. Import the shared config template: `noorm -H config import < configs/dev-template.json`
-3. Set the password: `noorm -H config edit dev --password "$MY_PASSWORD"`
-4. Validate: `noorm -H config validate dev`
+2. Run `noorm ui` and import the shared config template under Config → `i`
+3. Edit the imported config and set the password (Config → highlight → `e`)
+4. Press `v` on the same screen to validate the connection
 
 
 ### CI/CD Pipeline
@@ -347,4 +300,4 @@ noorm -c staging change run
 
 - [Stages](/guide/environments/stages) - Config templates for teams
 - [Secrets](/guide/environments/secrets) - Managing sensitive values
-- [Headless Mode](/headless) - Environment variables for CI/CD
+- [CLI Reference](/headless) - Environment variables and command surface for CI/CD

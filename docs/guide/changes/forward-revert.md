@@ -17,8 +17,8 @@ Apply every pending change in chronological order:
 
 **Headless:**
 ```bash
-noorm -H change ff
-noorm -H --json change ff
+noorm change ff
+noorm --json change ff
 ```
 
 Fast-forward is the workhorse for deployments. It finds all unapplied changes, sorts them by date, and executes each one in sequence. If any change fails, execution stops immediately.
@@ -46,7 +46,7 @@ Run one change by name:
 
 **Headless:**
 ```bash
-noorm -H change run 2024-02-01-add-notifications
+noorm change run 2024-02-01-add-notifications
 ```
 
 This is useful when you need to apply changes out of order during development, or re-run a failed change after fixing the underlying issue.
@@ -60,7 +60,7 @@ Apply only the next change in sequence:
 
 **Headless:**
 ```bash
-noorm -H change next
+noorm change next
 ```
 
 Useful for stepping through changes one at a time, perhaps while monitoring system behavior between each.
@@ -79,7 +79,7 @@ Undo one change:
 
 **Headless:**
 ```bash
-noorm -H change revert 2024-02-01-add-notifications
+noorm change revert 2024-02-01-add-notifications
 ```
 
 Revert scripts execute in forward sequence order, just like change scripts. You design them to undo in reverse—if your change had `001_create-table.sql` and `002_add-indexes.sql`, your revert should have `001_drop-indexes.sql` (undoes the last thing) and `002_drop-table.sql` (undoes the first thing).
@@ -93,7 +93,7 @@ Revert the last N applied changes:
 
 **Headless:**
 ```bash
-noorm -H change rewind 3
+noorm change rewind 3
 ```
 
 Rewind walks through your applied changes starting with the newest, reverting each one before moving to the next oldest.
@@ -143,8 +143,8 @@ Preview what would happen without touching the database:
 
 **Headless:**
 ```bash
-noorm -H --dry-run change ff
-noorm -H --dry-run change run 2024-02-01-add-notifications
+noorm --dry-run change ff
+noorm --dry-run change run 2024-02-01-add-notifications
 ```
 
 Dry run writes rendered SQL to a `tmp/` folder so you can inspect exactly what would execute. Templates are processed, manifests are resolved, but no SQL hits the database.
@@ -171,7 +171,7 @@ When a change fails:
 
 **Headless:**
 ```bash
-noorm -H change history
+noorm change history
 ```
 
 The history shows which specific file failed and includes the error message from the database. See [History](/guide/changes/history) for detailed debugging workflows.
@@ -187,7 +187,7 @@ Option 2: **Manual cleanup**
 - If partial SQL executed, you may need to manually clean up
 - Then run with `--force` to skip the checksum check:
   ```bash
-  noorm -H --force change run 2024-02-01-add-notifications
+  noorm --force change run 2024-02-01-add-notifications
   ```
 
 
@@ -198,11 +198,11 @@ Option 2: **Manual cleanup**
 
 ```bash
 # Preview what will run
-noorm -H --dry-run change ff
+noorm --dry-run change ff
 
 # Review the rendered SQL in tmp/
 # Then apply for real
-noorm -H change ff
+noorm change ff
 ```
 
 
@@ -210,10 +210,10 @@ noorm -H change ff
 
 ```bash
 # See current state
-noorm -H change
+noorm change
 
 # Revert the problematic change
-noorm -H change revert 2024-02-15-broken-change
+noorm change revert 2024-02-15-broken-change
 ```
 
 
@@ -222,9 +222,9 @@ noorm -H change revert 2024-02-15-broken-change
 After running `db teardown`, all changes are marked as `stale`. The next fast-forward re-applies everything:
 
 ```bash
-noorm -H -y db teardown
-noorm -H run build      # Rebuild base schema
-noorm -H change ff      # Re-apply all changes
+noorm -y db teardown
+noorm run build      # Rebuild base schema
+noorm change ff      # Re-apply all changes
 ```
 
 
@@ -234,13 +234,13 @@ During development, verify your revert logic works:
 
 ```bash
 # Apply the change
-noorm -H change run 2024-02-01-add-notifications
+noorm change run 2024-02-01-add-notifications
 
 # Revert it
-noorm -H change revert 2024-02-01-add-notifications
+noorm change revert 2024-02-01-add-notifications
 
 # Apply again to confirm round-trip works
-noorm -H change run 2024-02-01-add-notifications
+noorm change run 2024-02-01-add-notifications
 ```
 
 This apply-revert-apply cycle catches revert scripts that are missing steps or have incorrect SQL.
@@ -255,13 +255,13 @@ A typical deployment script:
 set -e
 
 # Build base schema (idempotent)
-noorm -H run build
+noorm run build
 
 # Apply pending changes
-noorm -H change ff
+noorm change ff
 
 # Verify the result
-noorm -H --json db explore
+noorm --json db explore
 ```
 
 The build step handles the initial schema. The fast-forward applies any changes that have been merged since the last deploy.

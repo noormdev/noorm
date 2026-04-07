@@ -554,40 +554,40 @@ Access via: Home → `d` (database) → select config → transfer option
 
 ```bash
 # Transfer all tables to another config
-noorm -H db transfer --to backup
+noorm db transfer --to backup
 
 # Transfer specific tables with upsert
-noorm -H db transfer --to backup --tables users,posts --on-conflict update
+noorm db transfer --to backup --tables users,posts --on-conflict update
 
 # Cross-dialect transfer (postgres to mysql)
-noorm -H db transfer --to mysql-staging --tables users
+noorm db transfer --to mysql-staging --tables users
 
 # Dry run to preview plan
-noorm -H db transfer --to backup --dry-run
+noorm db transfer --to backup --dry-run
 
 # Truncate destination first
-noorm -H db transfer --to backup --truncate
+noorm db transfer --to backup --truncate
 
 # JSON output for scripting
-noorm -H --json db transfer --to backup
+noorm --json db transfer --to backup
 
 # Export single table to .dt file
-noorm -H db transfer --export ./backup/users.dt --tables users
+noorm db transfer --export ./backup/users.dt --tables users
 
 # Export multiple tables to directory (compressed)
-noorm -H db transfer --export ./backup/ --tables users,posts --compress
+noorm db transfer --export ./backup/ --tables users,posts --compress
 
 # Export with encryption
-noorm -H db transfer --export ./backup/ --tables users,posts --passphrase "my-secret"
+noorm db transfer --export ./backup/ --tables users,posts --passphrase "my-secret"
 
 # Import from .dt file
-noorm -H db transfer --import ./backup/users.dt
+noorm db transfer --import ./backup/users.dt
 
 # Import encrypted file with upsert
-noorm -H db transfer --import ./backup.dtzx --passphrase "my-secret" --on-conflict update
+noorm db transfer --import ./backup.dtzx --passphrase "my-secret" --on-conflict update
 
 # Validate import schema without executing
-noorm -H db transfer --import ./backup.dt --dry-run
+noorm db transfer --import ./backup.dt --dry-run
 ```
 
 ### Export Path Rules

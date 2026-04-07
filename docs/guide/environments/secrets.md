@@ -20,23 +20,15 @@ Secrets integrate directly with SQL templates, so you can reference them without
 
 ## Setting a Secret
 
-Set secrets for the active config:
+Local secret values are managed through the TUI so that passwords never touch shell history or `ps` listings:
 
 ```bash
-# Interactive prompt (masks input)
-noorm secret:set
-
-# Set a specific secret
-noorm secret:set DB_PASSWORD
+noorm ui
 ```
 
-The CLI masks password input and validates connection strings as URIs. Once set, secrets appear in your secret list:
+From there, press `s` for Settings → Secrets. The secret form masks password input, validates connection strings as URIs, and stores the result encrypted in `.noorm/state/state.enc`. The same screen lists the secrets for the active config — showing which are set, which are missing, and their declared types. Values stay hidden.
 
-```bash
-noorm secret              # List secrets for active config
-```
-
-The list shows which secrets are set, which are missing, and their types. Values stay hidden.
+For CI/CD pipelines that need to push secrets non-interactively, use the [vault](/guide/environments/vault) — it stores encrypted team secrets directly in the database and is fully scriptable (`noorm vault set KEY "value"`).
 
 
 ## Config-Scoped vs Global Secrets
@@ -142,26 +134,23 @@ Types are hints for the CLI. All secrets are stored identically (encrypted strin
 
 ## Secrets in CI/CD
 
-For non-interactive environments, pass secret values as arguments:
+The local secret store exists for per-developer overrides — it's deliberately TUI-only so that raw values never leak into shell history. For non-interactive environments, push values to the [vault](/guide/environments/vault) instead, which is scriptable end-to-end:
 
 ```bash
-# Set secret in headless mode
-noorm -H secret:set DB_PASSWORD "mypassword"
+# Write a secret to the vault
+noorm vault set DB_PASSWORD "$DB_PASSWORD"
 
-# List secrets with JSON output
-noorm --json secret
+# Pipe a secret to avoid process listings
+echo "$DB_PASSWORD" | noorm vault set DB_PASSWORD
 
-# Delete without confirmation
-noorm -H -y secret:rm MY_API_KEY
+# List vault secrets as JSON
+noorm --json vault list
+
+# Remove a vault secret
+noorm vault rm OLD_API_KEY
 ```
 
-Alternatively, pipe values from your CI environment:
-
-```bash
-echo "$DB_PASSWORD" | noorm -H secret:set DB_PASSWORD
-```
-
-This keeps secrets out of command history while still automating setup.
+Vault secrets sit below local secrets in the [resolution hierarchy](/guide/environments/vault#secret-resolution-hierarchy), so a developer can still override a vault value locally through `noorm ui` without affecting anyone else.
 
 
 ## Security Notes
@@ -182,13 +171,9 @@ Add `.noorm/state/state.enc` to your `.gitignore`. The file is encrypted with ma
 
 ## Deleting Secrets
 
-Remove optional secrets when no longer needed:
+Remove optional local secrets through the TUI: `noorm ui` → Settings → Secrets → highlight the entry and press `d`. For team-shared values stored in the vault, use `noorm vault rm <KEY>`.
 
-```bash
-noorm secret:rm MY_API_KEY
-```
-
-Required secrets (defined in settings) cannot be deleted, only updated. The CLI tells you whether a secret is universal or stage-specific when you try to delete a required one.
+Required secrets (those declared in `settings.yml`) cannot be deleted, only updated. The TUI tells you whether a secret is universal or stage-specific when you try to delete a required one.
 
 
 ## What's Next?

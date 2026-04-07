@@ -30,7 +30,7 @@ For user-facing documentation, see the [main docs](/).
 ## Integration
 
 - [SDK](./sdk.md) - Programmatic API
-- [Headless Mode](./headless.md) - CLI automation
+- [CLI Architecture](./headless.md) - citty command tree and how to add commands
 - [CI/CD](./ci.md) - Pipeline patterns
 - [Identity](./identity.md) - Audit and cryptographic identity
 

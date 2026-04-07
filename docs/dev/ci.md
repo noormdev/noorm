@@ -3,14 +3,14 @@
 
 ## Quick Start
 
-noorm validates your database schema in CI using headless mode. Set environment variables and run the build command:
+Every `noorm` command runs headlessly by default — there is no mode flag or interactive TTY check. Set the connection via environment variables and invoke the build command straight from your pipeline:
 
 ```bash
 export NOORM_CONNECTION_DIALECT=sqlite
 export NOORM_CONNECTION_DATABASE=./tmp/test.db
 export NOORM_PATHS_SQL=./sql
 
-noorm -H run build
+noorm run build
 ```
 
 If the schema has SQL errors, the command exits with code 2. Valid schemas exit with code 0.
@@ -70,7 +70,7 @@ jobs:
                   NOORM_PATHS_SQL: ./sql
               run: |
                   mkdir -p ./tmp
-                  npx noorm -H run build
+                  npx noorm run build
 
     deploy:
         runs-on: ubuntu-latest
@@ -92,7 +92,7 @@ jobs:
                   NOORM_CONNECTION_DATABASE: ${{ secrets.DB_NAME }}
                   NOORM_CONNECTION_USER: ${{ secrets.DB_USER }}
                   NOORM_CONNECTION_PASSWORD: ${{ secrets.DB_PASSWORD }}
-              run: npx noorm -H change ff
+              run: npx noorm change ff
 ```
 
 
@@ -100,9 +100,9 @@ jobs:
 
 | Command | Description |
 |---------|-------------|
-| `noorm -H run build` | Execute all SQL in schema directory |
-| `noorm -H change ff` | Apply all pending changes |
-| `noorm -H db teardown` | Drop all database objects |
+| `noorm run build` | Execute all SQL in schema directory |
+| `noorm change ff` | Apply all pending changes |
+| `noorm db teardown` | Drop all database objects |
 
 
 ## JSON Output
@@ -110,12 +110,12 @@ jobs:
 Use `--json` for structured output:
 
 ```bash
-noorm -H --json run build | jq '.status'
+noorm --json run build | jq '.status'
 ```
 
 
 ## See Also
 
-- [Headless Mode](./headless.md) - Complete CLI reference for automation
+- [CLI Architecture](./headless.md) - How the citty-based command tree is wired together
 - [Runner](./runner.md) - Schema execution details
 - [Change](./change.md) - Change management

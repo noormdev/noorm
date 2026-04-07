@@ -1,47 +1,42 @@
-# Headless Mode
+# CLI Reference
 
 
-Run noorm without the TUI. Perfect for CI/CD pipelines, scripts, and automation.
+Every `noorm` command runs as a non-interactive CLI by default — perfect for CI/CD pipelines, scripts, and automation. The Ink/React TUI lives behind a separate subcommand:
 
 ```bash
-noorm -H run build
-noorm -H --json change ff
+noorm run build              # CLI: build schema headlessly
+noorm --json change ff       # CLI: fast-forward with JSON output
+noorm ui                     # TUI: launch the interactive terminal UI
 ```
 
-
-## When It Activates
-
-noorm automatically runs headless when:
-
-| Condition | Headless? |
-|-----------|-----------|
-| `-H` or `--headless` flag | Yes |
-| `NOORM_HEADLESS=true` | Yes |
-| CI environment detected | Yes |
-| No TTY (piped output) | Yes |
-| `-T` or `--tui` flag | No (forces TUI) |
-
-**Detected CI environments:**
-- GitHub Actions (`GITHUB_ACTIONS`)
-- GitLab CI (`GITLAB_CI`)
-- CircleCI (`CIRCLECI`)
-- Travis CI (`TRAVIS`)
-- Jenkins (`JENKINS_URL`)
-- Buildkite (`BUILDKITE`)
-- Generic (`CI` or `CONTINUOUS_INTEGRATION`)
+There is no mode detection, no `--headless` or `--tui` flag, no CI heuristic. If you want the wizard, run `noorm ui` explicitly.
 
 
-## Flags
+## Discovering Commands
+
+Every command exposes native `--help` rendered by [citty](https://github.com/unjs/citty). The root help lists every subcommand; per-command help shows arguments, options, and examples.
+
+```bash
+noorm --help                 # Top-level command list
+noorm change --help          # Subcommands of `change`
+noorm change ff --help       # Args, options, and examples for `change ff`
+```
+
+For shell completion, run `noorm complete` and follow the printed instructions for your shell.
+
+
+## Common Flags
+
+These options are reused across most commands. Run `<command> --help` to see exactly which apply.
 
 | Flag | Short | Description |
 |------|-------|-------------|
-| `--headless` | `-H` | Force headless mode |
-| `--tui` | `-T` | Force TUI mode |
-| `--json` | — | Output JSON |
-| `--config` | `-c` | Config name to use |
-| `--force` | `-f` | Skip checksum checks |
-| `--yes` | `-y` | Skip confirmations |
+| `--json` | — | Emit machine-readable JSON instead of human-friendly text |
+| `--config` | `-c` | Use a specific stored configuration (overrides the active one) |
+| `--force` | `-f` | Skip checksum / safety checks |
+| `--yes` | `-y` | Skip confirmation prompts |
 | `--dry-run` | — | Preview without executing |
+| `--help` | `-h` | Show command help (citty native) |
 
 
 ## Configuration
@@ -51,14 +46,14 @@ noorm automatically runs headless when:
 
 ```bash
 # Use active config
-noorm -H run build
+noorm run build
 
 # Use specific config
-noorm -H --config staging run build
+noorm --config staging run build
 
 # Or via environment
 export NOORM_CONFIG=staging
-noorm -H run build
+noorm run build
 ```
 
 
@@ -73,7 +68,7 @@ export NOORM_CONNECTION_DATABASE=myapp
 export NOORM_CONNECTION_USER=deploy
 export NOORM_CONNECTION_PASSWORD=$DB_PASSWORD
 
-noorm -H run build
+noorm run build
 ```
 
 **Minimum required:**
@@ -104,7 +99,6 @@ NOORM_PATHS_CHANGES         # Changes directory (default: ./changes)
 NOORM_CONFIG                # Config name to use
 NOORM_YES                   # Skip confirmations (1 or true)
 NOORM_JSON                  # Output JSON (1 or true)
-NOORM_HEADLESS              # Force headless mode
 NOORM_DEBUG                 # Enable debug logging
 ```
 
@@ -154,7 +148,7 @@ NOORM_PATHS_CHANGES         → paths.changes
 List subcommands and show config overview.
 
 ```bash
-noorm -H config
+noorm config
 ```
 
 Displays help text with available subcommands. Parent route only -- no JSON output.
@@ -164,7 +158,7 @@ Displays help text with available subcommands. Parent route only -- no JSON outp
 
 Create a new configuration.
 
-> Interactive only -- launches the TUI wizard. Not available in headless mode.
+> Wizard-only — running this command launches the TUI wizard via `noorm ui`. There is no fully headless equivalent because the wizard exists to guide credential entry interactively. To configure non-interactively, use `NOORM_*` environment variables instead.
 
 ```bash
 noorm config add
@@ -175,7 +169,7 @@ noorm config add
 
 Edit an existing configuration.
 
-> Interactive only -- launches the TUI wizard. Not available in headless mode.
+> Wizard-only — launches the TUI wizard. Use `NOORM_*` env vars or stored config files to override values non-interactively.
 
 ```bash
 noorm config edit dev
@@ -186,7 +180,7 @@ noorm config edit dev
 
 Remove a configuration.
 
-> Interactive only -- launches the TUI wizard. Not available in headless mode.
+> Wizard-only — launches the TUI wizard so you can confirm the removal interactively.
 
 ```bash
 noorm config rm staging
@@ -198,8 +192,8 @@ noorm config rm staging
 Set the active configuration.
 
 ```bash
-noorm -H config use dev
-noorm -H --json config use production
+noorm config use dev
+noorm --json config use production
 ```
 
 **JSON output:**
@@ -213,7 +207,7 @@ noorm -H --json config use production
 ```json
 {
     "success": false,
-    "error": "Config name required. Usage: noorm -H config use <name>"
+    "error": "Config name required. Usage: noorm config use <name>"
 }
 ```
 
@@ -225,9 +219,9 @@ noorm -H --json config use production
 Execute all SQL files in the schema directory.
 
 ```bash
-noorm -H run build
-noorm -H --force run build    # Skip checksums, run everything
-noorm -H --dry-run run build  # Preview without executing
+noorm run build
+noorm --force run build    # Skip checksums, run everything
+noorm --dry-run run build  # Preview without executing
 ```
 
 **Text output:**
@@ -258,9 +252,9 @@ Skipped: 1
 Execute a single SQL file. Supports `.sql` and `.sql.tmpl` (templated) files.
 
 ```bash
-noorm -H run file sql/01_tables/001_users.sql
-noorm -H run file seed.sql.tmpl
-noorm -H --json run file sql/init.sql
+noorm run file sql/01_tables/001_users.sql
+noorm run file seed.sql.tmpl
+noorm --json run file sql/init.sql
 ```
 
 **JSON output:**
@@ -280,9 +274,9 @@ Status is `"success"` or `"skipped"` (unchanged checksum).
 Execute all SQL files in a directory in alphabetical order. Supports `.sql` and `.sql.tmpl` files.
 
 ```bash
-noorm -H run dir sql/01_tables/
-noorm -H run dir seeds/
-noorm -H --json run dir migrations/
+noorm run dir sql/01_tables/
+noorm run dir seeds/
+noorm --json run dir migrations/
 ```
 
 **JSON output:**
@@ -303,8 +297,8 @@ Inspect the template context for a `.sql.tmpl` file without executing or renderi
 Useful for debugging templates -- see what variables are accessible before rendering.
 
 ```bash
-noorm -H run inspect sql/users/001_create.sql.tmpl
-noorm -H --json run inspect sql/core/05_Cron/Crons.sql.tmpl
+noorm run inspect sql/users/001_create.sql.tmpl
+noorm --json run inspect sql/core/05_Cron/Crons.sql.tmpl
 ```
 
 **Text output:**
@@ -341,7 +335,7 @@ Secrets: 2 config, 0 global
 
 **Scripting pattern -- check available data files before rendering:**
 ```bash
-files=$(noorm -H --json run inspect sql/seed.sql.tmpl | jq '.context.dataFiles | length')
+files=$(noorm --json run inspect sql/seed.sql.tmpl | jq '.context.dataFiles | length')
 echo "Template has $files data files available"
 ```
 
@@ -354,16 +348,16 @@ By default outputs raw SQL to stdout -- pipe-friendly. With `--json`, wraps the 
 
 ```bash
 # Output raw SQL
-noorm -H run preview sql/users/001_create.sql.tmpl
+noorm run preview sql/users/001_create.sql.tmpl
 
 # Pipe rendered SQL to a file
-noorm -H run preview sql/schema.sql.tmpl > rendered.sql
+noorm run preview sql/schema.sql.tmpl > rendered.sql
 
 # Extract SQL from JSON envelope
-noorm -H --json run preview sql/seed.sql.tmpl | jq -r .sql
+noorm --json run preview sql/seed.sql.tmpl | jq -r .sql
 
 # Preview with a specific config
-noorm -H --config staging run preview sql/migrations/002.sql.tmpl
+noorm --config staging run preview sql/migrations/002.sql.tmpl
 ```
 
 **JSON output:**
@@ -377,7 +371,7 @@ noorm -H --config staging run preview sql/migrations/002.sql.tmpl
 
 **Scripting pattern -- render and apply in one pipeline:**
 ```bash
-noorm -H run preview sql/hotfix.sql.tmpl | psql -h localhost -d myapp
+noorm run preview sql/hotfix.sql.tmpl | psql -h localhost -d myapp
 ```
 
 
@@ -388,7 +382,7 @@ noorm -H run preview sql/hotfix.sql.tmpl | psql -h localhost -d myapp
 List all changes with status.
 
 ```bash
-noorm -H change
+noorm change
 ```
 
 **Text output:**
@@ -414,8 +408,8 @@ Changes:
 Fast-forward: apply all pending changes.
 
 ```bash
-noorm -H change ff
-noorm -H --dry-run change ff  # Preview only
+noorm change ff
+noorm --dry-run change ff  # Preview only
 ```
 
 **JSON output:**
@@ -437,9 +431,9 @@ noorm -H --dry-run change ff  # Preview only
 Apply a specific change by name. Use this to apply changes out of order or to retry a failed change.
 
 ```bash
-noorm -H change run 2024-02-01-notifications
-noorm -H --json change run 2024-02-01-notifications
-noorm -H -c staging change run 001_init
+noorm change run 2024-02-01-notifications
+noorm --json change run 2024-02-01-notifications
+noorm -c staging change run 001_init
 ```
 
 **Text output:**
@@ -468,9 +462,9 @@ Status is `"success"` or `"failed"`. On failure, the top-level `error` field con
 Revert a previously applied change by running its backward SQL.
 
 ```bash
-noorm -H change revert 2024-02-01-notifications
-noorm -H --json change revert 2024-02-01-notifications
-noorm -H -c staging change revert 002_users
+noorm change revert 2024-02-01-notifications
+noorm --json change revert 2024-02-01-notifications
+noorm -c staging change revert 002_users
 ```
 
 **Text output:**
@@ -499,9 +493,9 @@ Status is `"success"` or `"failed"`. The change must have been previously applie
 View execution history of changes including timestamps, direction, and duration.
 
 ```bash
-noorm -H change history
-noorm -H --json change history
-noorm -H --count 50 change history
+noorm change history
+noorm --json change history
+noorm --count 50 change history
 ```
 
 **Text output:**
@@ -531,7 +525,7 @@ Execution History: 3 records
 
 **Scripting pattern -- check for recent failures:**
 ```bash
-failures=$(noorm -H --json change history | jq '[.[] | select(.status == "failed")] | length')
+failures=$(noorm --json change history | jq '[.[] | select(.status == "failed")] | length')
 if [ "$failures" -gt 0 ]; then
     echo "WARNING: $failures failed changes in history"
 fi
@@ -545,7 +539,7 @@ fi
 Get schema overview.
 
 ```bash
-noorm -H db explore
+noorm db explore
 ```
 
 **JSON output:**
@@ -565,7 +559,7 @@ noorm -H db explore
 List all tables.
 
 ```bash
-noorm -H db explore tables
+noorm db explore tables
 ```
 
 
@@ -574,7 +568,7 @@ noorm -H db explore tables
 Describe a specific table.
 
 ```bash
-noorm -H db explore tables detail users
+noorm db explore tables detail users
 ```
 
 **JSON output:**
@@ -594,7 +588,7 @@ noorm -H db explore tables detail users
 Wipe all data, keep schema.
 
 ```bash
-noorm -H -y db truncate
+noorm -y db truncate
 ```
 
 
@@ -603,7 +597,7 @@ noorm -H -y db truncate
 Drop all database objects.
 
 ```bash
-noorm -H -y db teardown
+noorm -y db teardown
 ```
 
 ::: warning Protected Configs
@@ -621,22 +615,22 @@ Transfer all or selected tables from the active config to another config. Both m
 
 ```bash
 # Transfer all tables from active config to backup
-noorm -H db transfer --to backup
+noorm db transfer --to backup
 
 # Transfer specific tables
-noorm -H db transfer --to backup --tables users,posts,comments
+noorm db transfer --to backup --tables users,posts,comments
 
 # Upsert behavior (update existing rows)
-noorm -H db transfer --to backup --on-conflict update
+noorm db transfer --to backup --on-conflict update
 
 # Clear destination before transfer
-noorm -H db transfer --to backup --truncate
+noorm db transfer --to backup --truncate
 
 # Preview transfer plan without executing
-noorm -H db transfer --to backup --dry-run
+noorm db transfer --to backup --dry-run
 
 # Transfer from named source to destination
-noorm -H db transfer staging --to production --tables users
+noorm db transfer staging --to production --tables users
 ```
 
 **JSON output (transfer):**
@@ -690,19 +684,19 @@ Write tables to `.dt` (plain), `.dtz` (compressed), or `.dtzx` (encrypted) files
 
 ```bash
 # Export single table (plain .dt)
-noorm -H db transfer --export ./backup/users.dt --tables users
+noorm db transfer --export ./backup/users.dt --tables users
 
 # Export single table compressed
-noorm -H db transfer --export ./backup/users --tables users --compress
+noorm db transfer --export ./backup/users --tables users --compress
 
 # Export all tables to directory
-noorm -H db transfer --export ./backup/
+noorm db transfer --export ./backup/
 
 # Export all tables compressed
-noorm -H db transfer --export ./backup/ --compress
+noorm db transfer --export ./backup/ --compress
 
 # Export with encryption (implies compression)
-noorm -H db transfer --export ./backup/ --passphrase mySecret
+noorm db transfer --export ./backup/ --passphrase mySecret
 ```
 
 **JSON output (export):**
@@ -730,10 +724,10 @@ Load `.dt`, `.dtz`, or `.dtzx` files into the active database.
 
 ```bash
 # Import from .dt file
-noorm -H db transfer --import ./backup/users.dt
+noorm db transfer --import ./backup/users.dt
 
 # Import encrypted file with conflict skipping
-noorm -H db transfer --import ./backup/users.dtzx --passphrase mySecret --on-conflict skip
+noorm db transfer --import ./backup/users.dtzx --passphrase mySecret --on-conflict skip
 ```
 
 **JSON output (import):**
@@ -781,8 +775,8 @@ noorm -H db transfer --import ./backup/users.dtzx --passphrase mySecret --on-con
 Check if database is locked.
 
 ```bash
-noorm -H lock status
-noorm -H --json lock status
+noorm lock status
+noorm --json lock status
 ```
 
 **JSON output (locked):**
@@ -811,16 +805,16 @@ noorm -H --json lock status
 Acquire an exclusive lock on the database.
 
 ```bash
-noorm -H lock acquire
-noorm -H --json lock acquire
+noorm lock acquire
+noorm --json lock acquire
 ```
 
 CI/CD pattern with cleanup:
 
 ```bash
-noorm -H lock acquire
-trap "noorm -H lock release" EXIT
-noorm -H change ff
+noorm lock acquire
+trap "noorm lock release" EXIT
+noorm change ff
 ```
 
 **JSON output:**
@@ -838,8 +832,8 @@ noorm -H change ff
 Release the current database lock. Only the lock holder can release.
 
 ```bash
-noorm -H lock release
-noorm -H --json lock release
+noorm lock release
+noorm --json lock release
 ```
 
 **JSON output:**
@@ -857,8 +851,8 @@ Force release any database lock regardless of ownership. Use when a lock holder 
 > **Warning:** Force releasing a lock can cause data corruption if the original holder is still running operations.
 
 ```bash
-noorm -H lock force
-noorm -H --json lock force
+noorm lock force
+noorm --json lock force
 ```
 
 **JSON output:**
@@ -887,7 +881,7 @@ All vault commands require an active config and initialized identity.
 Show vault help and subcommand list.
 
 ```bash
-noorm -H vault
+noorm vault
 ```
 
 
@@ -896,8 +890,8 @@ noorm -H vault
 Initialize the vault for the current database.
 
 ```bash
-noorm -H vault init
-noorm -H --json vault init
+noorm vault init
+noorm --json vault init
 ```
 
 The first user to initialize creates the vault encryption key. Other team members receive access via `vault propagate`.
@@ -924,9 +918,9 @@ If already initialized:
 Store an encrypted secret in the vault.
 
 ```bash
-noorm -H vault set API_KEY "sk-live-abc123"
-noorm -H vault set DB_PASSWORD "secret"
-noorm -H --json vault set API_KEY "sk-live-abc123"
+noorm vault set API_KEY "sk-live-abc123"
+noorm vault set DB_PASSWORD "secret"
+noorm --json vault set API_KEY "sk-live-abc123"
 ```
 
 Upserts -- creates the secret if new, updates if it already exists.
@@ -946,8 +940,8 @@ Upserts -- creates the secret if new, updates if it already exists.
 List all secrets in the vault with metadata.
 
 ```bash
-noorm -H vault list
-noorm -H --json vault list
+noorm vault list
+noorm --json vault list
 ```
 
 Values are never exposed -- only keys and metadata (who set each secret and when) are returned.
@@ -976,9 +970,9 @@ Vault secrets (2):
 
 **Scripting pattern -- check for pending access:**
 ```bash
-pending=$(noorm -H --json vault list | jq '.status.usersWithoutAccess')
+pending=$(noorm --json vault list | jq '.status.usersWithoutAccess')
 if [ "$pending" -gt 0 ]; then
-    noorm -H vault propagate
+    noorm vault propagate
 fi
 ```
 
@@ -988,8 +982,8 @@ fi
 Remove a secret from the vault.
 
 ```bash
-noorm -H vault rm OLD_API_KEY
-noorm -H --json vault rm OLD_API_KEY
+noorm vault rm OLD_API_KEY
+noorm --json vault rm OLD_API_KEY
 ```
 
 Permanently deletes the secret. Fails if the key does not exist.
@@ -1010,19 +1004,19 @@ Copy secrets between config vaults.
 
 ```bash
 # Copy a single secret
-noorm -H vault cp API_KEY staging production
+noorm vault cp API_KEY staging production
 
 # Copy all secrets
-noorm -H vault cp --all staging production
+noorm vault cp --all staging production
 
 # Overwrite existing secrets in destination
-noorm -H vault cp --all --force staging production
+noorm vault cp --all --force staging production
 
 # Preview without executing
-noorm -H vault cp --all --dry-run staging production
+noorm vault cp --all --dry-run staging production
 
 # JSON output
-noorm -H --json vault cp --all staging production
+noorm --json vault cp --all staging production
 ```
 
 | Flag | Description |
@@ -1060,10 +1054,10 @@ Without `--force`, existing secrets in the destination are skipped.
 **Scripting pattern -- mirror secrets across environments:**
 ```bash
 # Copy all secrets from staging to production, overwriting stale values
-noorm -H --config staging vault cp --all --force staging production
+noorm --config staging vault cp --all --force staging production
 
 # Verify
-noorm -H --config production --json vault list | jq '.secrets | length'
+noorm --config production --json vault list | jq '.secrets | length'
 ```
 
 
@@ -1072,8 +1066,8 @@ noorm -H --config production --json vault list | jq '.secrets | length'
 Grant vault access to team members who don't have it yet.
 
 ```bash
-noorm -H vault propagate
-noorm -H --json vault propagate
+noorm vault propagate
+noorm --json vault propagate
 ```
 
 Encrypts the vault key with each pending user's public key so they can decrypt vault secrets. This happens automatically on connect, but can be run manually after new team members register.
@@ -1098,7 +1092,7 @@ When all users already have access:
 
 **Scripting pattern -- ensure all team members have access:**
 ```bash
-result=$(noorm -H --json vault propagate)
+result=$(noorm --json vault propagate)
 count=$(echo "$result" | jq '.propagatedTo | length')
 echo "Granted access to $count new users"
 ```
@@ -1111,8 +1105,8 @@ echo "Granted access to $count new users"
 Project and database status overview.
 
 ```bash
-noorm -H info
-noorm -H --json info
+noorm info
+noorm --json info
 ```
 
 Surfaces noorm metadata: CLI version, schema versions, install/upgrade dates, active configuration, connection details, identity info, and database object counts.
@@ -1153,7 +1147,7 @@ Surfaces noorm metadata: CLI version, schema versions, install/upgrade dates, ac
 
 **Scripting pattern -- extract object counts:**
 ```bash
-noorm -H --json info | jq '.objects'
+noorm --json info | jq '.objects'
 ```
 
 
@@ -1162,8 +1156,8 @@ noorm -H --json info | jq '.objects'
 Show CLI version and diagnostic information.
 
 ```bash
-noorm -H version
-noorm -H --json version
+noorm version
+noorm --json version
 ```
 
 Displays the installed noorm version, Node.js environment, identity configuration paths/status, and project detection info. Useful for debugging installation and configuration issues.
@@ -1198,10 +1192,10 @@ Displays the installed noorm version, Node.js environment, identity configuratio
 Execute raw SQL queries from the command line.
 
 ```bash
-noorm -H sql "SELECT * FROM users LIMIT 10"
-noorm -H --json sql "SELECT 1"
-noorm -H sql -f query.sql
-noorm -H -c prod sql "SELECT count(*) FROM orders"
+noorm sql "SELECT * FROM users LIMIT 10"
+noorm --json sql "SELECT 1"
+noorm sql -f query.sql
+noorm -c prod sql "SELECT count(*) FROM orders"
 ```
 
 Runs a raw SQL query against the active (or specified) database configuration. Queries can be passed inline as a positional argument or read from a file with `-f`.
@@ -1232,8 +1226,8 @@ Runs a raw SQL query against the active (or specified) database configuration. Q
 Check for and install noorm updates.
 
 ```bash
-noorm -H update
-noorm -H --json update
+noorm update
+noorm --json update
 ```
 
 Checks GitHub releases for the latest version and downloads the platform-appropriate binary if an update is available. The binary is replaced in-place -- restart to use the new version.
@@ -1260,54 +1254,41 @@ Checks GitHub releases for the latest version and downloads the platform-appropr
 ```
 
 
-#### `help`
+#### `--help`
 
-Show help for commands.
+Help is rendered natively by [citty](https://github.com/unjs/citty). Append `--help` (or `-h`) to any command to see its description, arguments, options, and curated examples.
 
 ```bash
-noorm help
-noorm help config
-noorm help config use
-noorm -H help change ff
+noorm --help                 # Top-level command list
+noorm change --help          # Subcommands of `change`
+noorm change ff --help       # Args, options, and examples for `change ff`
+noorm vault cp --help        # Same idea — drill in to any leaf command
 ```
 
-Displays help information for noorm commands. Without arguments, lists all available commands grouped by top-level route with their subcommands.
+Each command file ships an optional `examples: string[]` array; the root entry point intercepts `--help` and appends an `EXAMPLES` block beneath citty's auto-generated usage so the same examples shown in this guide are reachable from the terminal.
 
-**JSON output (no topic):**
-```json
-{
-    "topics": ["change", "change/ff", "config", "config/use", "db", "..."]
-}
-```
-
-**JSON output (specific topic):**
-```json
-{
-    "topic": "config/use",
-    "content": "# CONFIG USE\n\nSet the active configuration.\n..."
-}
-```
+There is no JSON help format. Use `noorm <command> --help` for human-readable output and lean on this reference page for machine-discoverable structure.
 
 
 #### `secret`
 
-> Interactive only -- launches the TUI wizard.
+There is no `noorm secret` CLI command. Local (per-user) secret overrides are managed through the TUI:
 
-For headless secret management, use the `vault` commands (`vault set`, `vault rm`, `vault list`, `vault init`, `vault propagate`).
+```bash
+noorm ui          # Then navigate to Settings → Secrets
+```
+
+For team-shared secrets stored in the database, use the [`vault` commands](#vault-operations) (`vault set`, `vault rm`, `vault list`, `vault init`, `vault propagate`). The vault is fully scriptable from CI.
 
 
 #### `identity`
 
-> Interactive only -- launches the TUI wizard.
-
-In CI/CD pipelines, identity is derived automatically from git config (`user.name`, `user.email`) or environment variables. No headless command is needed; the identity subsystem resolves on its own when changes or locks require attribution.
+There is no `noorm identity` CLI command. In CI/CD, identity resolves automatically from `git config` (`user.name`, `user.email`) or `NOORM_IDENTITY` environment variables — the identity subsystem registers itself transparently when changes or locks need attribution. Use `noorm ui` to inspect or rotate identity locally.
 
 
 #### `settings`
 
-> Interactive only -- launches the TUI wizard.
-
-Use `NOORM_*` environment variables for headless configuration overrides. See [Environment Variable Overrides](#environment-variable-overrides) above.
+There is no `noorm settings` CLI command. Use `NOORM_*` environment variables for non-interactive configuration overrides (see [Environment Variable Overrides](#environment-variable-overrides) above) or run `noorm ui` to edit them in the wizard.
 
 
 ## Exit Codes
@@ -1351,8 +1332,8 @@ jobs:
           NOORM_CONNECTION_USER: ${{ secrets.DB_USER }}
           NOORM_CONNECTION_PASSWORD: ${{ secrets.DB_PASSWORD }}
         run: |
-          noorm -H run build
-          noorm -H change ff
+          noorm run build
+          noorm change ff
 ```
 
 
@@ -1364,8 +1345,8 @@ migrate:
   image: node:20
   script:
     - npm install -g @noormdev/cli
-    - noorm -H run build
-    - noorm -H change ff
+    - noorm run build
+    - noorm change ff
   variables:
     NOORM_CONNECTION_DIALECT: postgres
     NOORM_CONNECTION_HOST: $DB_HOST
@@ -1392,13 +1373,13 @@ export NOORM_CONNECTION_USER=$DB_USER
 export NOORM_CONNECTION_PASSWORD=$DB_PASSWORD
 
 # Build schema
-noorm -H run build
+noorm run build
 
 # Apply changes
-noorm -H change ff
+noorm change ff
 
 # Verify
-noorm -H --json db explore
+noorm --json db explore
 ```
 
 
@@ -1433,8 +1414,8 @@ test:
         NOORM_CONNECTION_USER: postgres
         NOORM_CONNECTION_PASSWORD: test
       run: |
-        noorm -H run build
-        noorm -H change ff
+        noorm run build
+        noorm change ff
 
     - run: npm test
 ```
@@ -1446,16 +1427,16 @@ Parse JSON output for programmatic use:
 
 ```bash
 # Check if there are pending changes
-pending=$(noorm -H --json change | jq '[.[] | select(.status == "pending")] | length')
+pending=$(noorm --json change | jq '[.[] | select(.status == "pending")] | length')
 
 if [ "$pending" -gt 0 ]; then
     echo "Found $pending pending changes"
-    noorm -H change ff
+    noorm change ff
 fi
 ```
 
 ```bash
 # Get table count
-tables=$(noorm -H --json db explore | jq '.tables')
+tables=$(noorm --json db explore | jq '.tables')
 echo "Database has $tables tables"
 ```

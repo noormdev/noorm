@@ -1,57 +1,37 @@
-# Headless CLI Mode
+# CLI Architecture
 
 
 ## Overview
 
-Headless mode runs noorm without the interactive TUI. Use it for:
+Every `noorm` command runs as a non-interactive CLI. Use it for:
 
-- **CI/CD pipelines** - Automated deployments with GitHub Actions, GitLab CI, Jenkins
-- **Scripts** - Batch operations and tooling
-- **Automation** - Scheduled jobs and cron tasks
-- **Ephemeral environments** - No stored state needed with env-only mode
+- **CI/CD pipelines** — automated deployments with GitHub Actions, GitLab CI, Jenkins
+- **Scripts** — batch operations and tooling
+- **Automation** — scheduled jobs and cron tasks
+- **Ephemeral environments** — no stored state needed with env-only mode
 
-In headless mode, noorm executes commands directly, outputs results to stdout, and exits with appropriate codes for scripting.
+The interactive Ink/React TUI lives behind a dedicated subcommand — `noorm ui` — and is fully decoupled from the headless CLI. There is no `--headless`/`--tui` flag and no mode detection: every other command streams structured output straight to stdout and exits with a conventional code.
 
-
-## Mode Detection
-
-noorm automatically detects when to run headless:
-
-| Condition | Headless? |
-|-----------|-----------|
-| `--headless` or `-H` flag | Yes |
-| `NOORM_HEADLESS=true` env var | Yes |
-| CI environment detected | Yes |
-| No TTY available | Yes |
-| `--tui` or `-T` flag | No (forces TUI) |
-
-**CI environments detected:**
-- `CI` or `CONTINUOUS_INTEGRATION`
-- `GITHUB_ACTIONS`
-- `GITLAB_CI`
-- `CIRCLECI`
-- `TRAVIS`
-- `JENKINS_URL`
-- `BUILDKITE`
-
-To force TUI mode in a CI environment (for debugging), use `--tui` or `-T`.
+Internally, the CLI is built on [citty](https://github.com/unjs/citty). Each command is a `defineCommand({ meta, args, run })` module under `src/cli/<domain>/`; the root entry point (`src/cli/index.ts`) composes them into a tree of subcommands and intercepts `--help` to append per-command `EXAMPLES` blocks.
 
 
-## Command-Line Flags
+## Common Flags
 
 | Flag | Short | Type | Default | Description |
 |------|-------|------|---------|-------------|
-| `--headless` | `-H` | boolean | false | Force headless mode |
-| `--tui` | `-T` | boolean | false | Force TUI mode |
-| `--json` | - | boolean | false | Output as JSON |
-| `--config` | `-c` | string | - | Config name to use (defaults to active config) |
+| `--json` | — | boolean | false | Emit machine-readable JSON instead of human text |
+| `--config` | `-c` | string | — | Config name to use (defaults to the active config) |
 | `--force` | `-f` | boolean | false | Force operation (skip checksums) |
 | `--yes` | `-y` | boolean | false | Skip confirmations |
-| `--dry-run` | - | boolean | false | Preview without executing |
+| `--dry-run` | — | boolean | false | Preview without executing |
+| `--help` | `-h` | boolean | false | Show citty-rendered help and exit |
+
+Not every command accepts every flag — append `--help` to any command to see the exact surface.
 
 **Example:**
 ```bash
-noorm -H --json --config prod change ff
+noorm --json --config prod change ff
+noorm change ff --help       # Per-command help, rendered by citty
 ```
 
 
@@ -66,12 +46,12 @@ noorm resolves which config to use in this order:
 2. `NOORM_CONFIG` env var
 3. Active config from state (set via `noorm config use <name>`)
 
-If you've already set an active config in the TUI, headless mode will use it automatically:
+If you've already set an active config (via `noorm config use <name>` or through `noorm ui`), every subsequent command picks it up automatically:
 
 ```bash
 # These are equivalent if 'dev' is the active config
-noorm -H change ff
-noorm -H --config dev change ff
+noorm change ff
+noorm --config dev change ff
 ```
 
 
@@ -81,11 +61,11 @@ Specify a config by name using `--config` or the `NOORM_CONFIG` env var:
 
 ```bash
 # Via flag
-noorm -H --config production change ff
+noorm --config production change ff
 
 # Via env var
 export NOORM_CONFIG=production
-noorm -H change ff
+noorm change ff
 ```
 
 
@@ -98,7 +78,7 @@ Override any config property via `NOORM_*` environment variables:
 export NOORM_CONNECTION_HOST=db.ci.internal
 export NOORM_CONFIG=staging
 
-noorm -H change ff  # Uses staging config with overridden host
+noorm change ff  # Uses staging config with overridden host
 ```
 
 **Priority** (highest to lowest):
@@ -119,7 +99,7 @@ export NOORM_CONNECTION_DATABASE=myapp_ci
 export NOORM_CONNECTION_USER=ci_user
 export NOORM_CONNECTION_PASSWORD=$DB_PASSWORD
 
-noorm -H run build  # No --config needed
+noorm run build  # No --config needed
 ```
 
 **Minimum required for env-only mode:**
@@ -139,8 +119,8 @@ See [Configuration](./config.md) for the full list of supported environment vari
 Execute all SQL files in the schema directory.
 
 ```bash
-noorm -H run build
-noorm -H --force run build  # Skip checksums
+noorm run build
+noorm --force run build  # Skip checksums
 ```
 
 **JSON output:**
@@ -159,8 +139,8 @@ noorm -H --force run build  # Skip checksums
 Execute a single SQL file.
 
 ```bash
-noorm -H run file sql/01_tables/001_users.sql
-noorm -H --path sql/01_tables/001_users.sql run file
+noorm run file sql/01_tables/001_users.sql
+noorm --path sql/01_tables/001_users.sql run file
 ```
 
 **JSON output:**
@@ -177,7 +157,7 @@ noorm -H --path sql/01_tables/001_users.sql run file
 Execute all SQL files in a directory.
 
 ```bash
-noorm -H run dir sql/01_tables/
+noorm run dir sql/01_tables/
 ```
 
 
@@ -188,7 +168,7 @@ noorm -H run dir sql/01_tables/
 List change status.
 
 ```bash
-noorm -H change
+noorm change
 ```
 
 **JSON output:**
@@ -204,7 +184,7 @@ noorm -H change
 Fast-forward: apply all pending changes.
 
 ```bash
-noorm -H change ff
+noorm change ff
 ```
 
 **JSON output:**
@@ -226,8 +206,8 @@ noorm -H change ff
 Apply a specific change.
 
 ```bash
-noorm -H change run 001_init
-noorm -H --name 001_init change run
+noorm change run 001_init
+noorm --name 001_init change run
 ```
 
 #### `change revert`
@@ -235,7 +215,7 @@ noorm -H --name 001_init change run
 Revert a specific change.
 
 ```bash
-noorm -H change revert 001_init
+noorm change revert 001_init
 ```
 
 #### `change history`
@@ -243,8 +223,8 @@ noorm -H change revert 001_init
 Get execution history.
 
 ```bash
-noorm -H change history
-noorm -H --count 50 change history  # Last 50 records
+noorm change history
+noorm --count 50 change history  # Last 50 records
 ```
 
 
@@ -255,7 +235,7 @@ noorm -H --count 50 change history  # Last 50 records
 Wipe all data, keeping the schema intact.
 
 ```bash
-noorm -H db truncate
+noorm db truncate
 ```
 
 **JSON output:**
@@ -271,7 +251,7 @@ noorm -H db truncate
 Drop all database objects (except noorm tracking tables).
 
 ```bash
-noorm -H db teardown
+noorm db teardown
 ```
 
 **JSON output:**
@@ -295,7 +275,7 @@ noorm -H db teardown
 Get database overview with object counts.
 
 ```bash
-noorm -H db explore
+noorm db explore
 ```
 
 **JSON output:**
@@ -314,7 +294,7 @@ noorm -H db explore
 List all tables.
 
 ```bash
-noorm -H db explore tables
+noorm db explore tables
 ```
 
 **JSON output:**
@@ -330,7 +310,7 @@ noorm -H db explore tables
 Describe a specific table.
 
 ```bash
-noorm -H --name users db explore tables detail
+noorm --name users db explore tables detail
 ```
 
 **JSON output:**
@@ -353,7 +333,7 @@ noorm -H --name users db explore tables detail
 Check current lock status.
 
 ```bash
-noorm -H lock status
+noorm lock status
 ```
 
 **JSON output:**
@@ -373,7 +353,7 @@ noorm -H lock status
 Acquire a database lock.
 
 ```bash
-noorm -H lock acquire
+noorm lock acquire
 ```
 
 #### `lock release`
@@ -381,7 +361,7 @@ noorm -H lock acquire
 Release the current lock.
 
 ```bash
-noorm -H lock release
+noorm lock release
 ```
 
 
@@ -406,7 +386,7 @@ Colored console output with status icons:
 Use `--json` for machine-readable output:
 
 ```bash
-noorm -H --json change ff | jq '.executed'
+noorm --json change ff | jq '.executed'
 ```
 
 JSON mode disables colors and outputs structured data.
@@ -422,7 +402,7 @@ JSON mode disables colors and outputs structured data.
 Always check the exit code in scripts:
 
 ```bash
-noorm -H change ff || exit 1
+noorm change ff || exit 1
 ```
 
 
@@ -453,10 +433,10 @@ jobs:
                   NOORM_CONFIG: production
                   NOORM_CONNECTION_HOST: ${{ secrets.DB_HOST }}
                   NOORM_CONNECTION_PASSWORD: ${{ secrets.DB_PASSWORD }}
-              run: noorm -H change ff
+              run: noorm change ff
 
             - name: Export schema (optional)
-              run: noorm -H --json -c prod db explore > schema.json
+              run: noorm --json -c prod db explore > schema.json
 ```
 
 
@@ -472,7 +452,7 @@ For ephemeral environments without stored configs:
       NOORM_CONNECTION_DATABASE: ${{ secrets.DB_NAME }}
       NOORM_CONNECTION_USER: ${{ secrets.DB_USER }}
       NOORM_CONNECTION_PASSWORD: ${{ secrets.DB_PASSWORD }}
-  run: noorm -H change ff
+  run: noorm change ff
 ```
 
 
@@ -483,7 +463,7 @@ migrate:
     stage: deploy
     script:
         - npm ci
-        - noorm -H --config production change ff
+        - noorm --config production change ff
     only:
         - main
     environment:
@@ -500,11 +480,11 @@ set -e
 CONFIG="${1:-}"  # Optional, falls back to active config
 
 echo "Checking for pending changes..."
-PENDING=$(noorm -H --json ${CONFIG:+-c "$CONFIG"} change | jq '[.[] | select(.status=="pending")] | length')
+PENDING=$(noorm --json ${CONFIG:+-c "$CONFIG"} change | jq '[.[] | select(.status=="pending")] | length')
 
 if [ "$PENDING" -gt 0 ]; then
     echo "Applying $PENDING pending changes..."
-    noorm -H ${CONFIG:+-c "$CONFIG"} change ff
+    noorm ${CONFIG:+-c "$CONFIG"} change ff
 else
     echo "Database is up to date"
 fi
@@ -520,13 +500,13 @@ For concurrent deployments, use locks:
 set -e
 
 # Acquire lock (fails if already locked)
-noorm -H lock acquire
+noorm lock acquire
 
 # Ensure lock is released on exit
-trap "noorm -H lock release" EXIT
+trap "noorm lock release" EXIT
 
 # Safe to apply changes
-noorm -H change ff
+noorm change ff
 ```
 
 
@@ -536,12 +516,12 @@ noorm -H change ff
 
 2. **Use `--json` for scripting** - Easier to parse than text output
    ```bash
-   noorm -H --json change | jq '.[] | select(.status=="pending")'
+   noorm --json change | jq '.[] | select(.status=="pending")'
    ```
 
 3. **Check exit codes** - Non-zero means failure
    ```bash
-   noorm -H change ff || { echo "Change failed"; exit 1; }
+   noorm change ff || { echo "Change failed"; exit 1; }
    ```
 
 4. **Use locks for concurrent operations** - Prevent race conditions in parallel deployments
@@ -553,7 +533,7 @@ noorm -H change ff
 
 6. **Test with `--dry-run`** - Preview operations before executing
    ```bash
-   noorm -H --dry-run change ff
+   noorm --dry-run change ff
    ```
 
 7. **Capture logs** - noorm appends to `.noorm/state/noorm.log` for debugging
@@ -577,331 +557,203 @@ Common errors and their meanings:
 Commands use space-separated subcommands:
 
 ```bash
-# Primary syntax (space notation)
-noorm -H change ff
-noorm -H db explore tables detail
+noorm change ff
+noorm db explore tables detail users
 
-# Parameters via flags
-noorm -H --name users db explore tables detail
-
-# Parameters as arguments
-noorm -H db explore tables detail users
-
-# Alternative: colon notation
-noorm -H change:ff
-noorm -H db:explore
-
-# Alternative: slash notation (internal representation)
-noorm -H change/ff
+# Positional arguments come last; flags can appear anywhere after
+# the leaf command (citty parses options per-subcommand).
+noorm change ff --dry-run
+noorm vault cp --all staging production
+noorm db transfer --to backup --tables users,posts
 ```
+
+There is no colon or slash syntax — the old `change:ff` / `change/ff` notation was a meow-era artifact and is gone.
 
 
 ## Adding New Commands
 
-The headless CLI uses a modular architecture where each command is self-contained in its own file. This makes adding, testing, and maintaining commands straightforward.
+Each command is a self-contained citty `defineCommand` module. Domains map to directories, leaves map to files, and the root `index.ts` registers them as `subCommands`.
 
 
 ### File Structure
 
 ```
-src/cli/headless/
-├── _helpers.ts           # Shared utilities (withContext, types)
-├── index.ts              # Router and handler registry
-├── help.ts               # Special: help command with factory
-├── change.ts             # Parent command (shows help)
-├── change-ff.ts          # Subcommand with SDK handler
-├── change-run.ts         # Subcommand with SDK handler
-├── config.ts             # Parent command (shows help)
-├── config-use.ts         # Subcommand with SDK handler
-└── ...
+src/cli/
+├── _utils.ts             # withContext, withVaultContext, sharedArgs, output helpers
+├── index.ts              # Root command + --help interceptor
+├── ui.ts                 # Lazy-imports the TUI
+├── change/
+│   ├── index.ts          # `noorm change` parent (subCommands + run handler)
+│   ├── ff.ts             # `noorm change ff`
+│   ├── run.ts            # `noorm change run`
+│   └── ...
+├── config/
+├── db/
+├── lock/
+├── run/
+├── vault/
+└── mcp/
 ```
 
 
 ### Command Module Pattern
 
-Each command file exports two things:
+Each leaf command exports a citty `defineCommand` and (optionally) an `examples: string[]` array used by the `--help` interceptor:
 
 ```typescript
-// src/cli/headless/my-command.ts
-import { withContext, type HeadlessCommand } from './_helpers.js';
+// src/cli/change/ff.ts
+import { defineCommand } from 'citty';
+import { attempt } from '@logosdx/utils';
 
-// 1. Help text (shown by `noorm help my-command`)
-export const help = `
-# MY COMMAND
+import { sharedArgs, withContext, outputResult } from '../_utils.js';
 
-Brief description of what this command does.
+const command = defineCommand({
+    meta: {
+        name: 'ff',
+        description: 'Fast-forward: apply all pending changes',
+    },
+    args: {
+        ...sharedArgs,                           // config, json, force, dryRun, yes
+        // Add per-command args here:
+        // limit: { type: 'string', description: 'Stop after N changes' },
+    },
+    async run({ args }) {
 
-## Usage
+        const [result, err] = await withContext({
+            args,
+            fn: async (ctx, logger) => {
 
-    noorm my-command [options]
-    noorm -H my-command
+                if (!args.json) logger.info('Applying pending changes...');
 
-## Options
+                return ctx.noorm.changes.ff({ dryRun: args.dryRun });
 
-    --name NAME    Some option
+            },
+        });
 
-## Description
+        if (err) process.exit(1);
 
-What this command does and when to use it.
+        outputResult(args, result, `Applied ${result.applied} changes`);
 
-> Important notes go in blockquotes
+    },
+});
 
-## Examples
+// Examples consumed by the --help interceptor in src/cli/index.ts
+(command as { examples?: string[] }).examples = [
+    'noorm change ff',
+    'noorm change ff --dry-run',
+    'noorm change ff --json',
+];
 
-    noorm -H my-command
-    noorm -H --json my-command
-
-## JSON Output
-
-\\\`\\\`\\\`json
-{ "result": "example" }
-\\\`\\\`\\\`
-
-See \\\`noorm help related-command\\\` for more information.
-`;
-
-// 2. Handler function
-export const run: HeadlessCommand = async (params, flags, logger) => {
-
-    // SDK commands use withContext for connection lifecycle
-    const [result, error] = await withContext({
-        flags,
-        logger,
-        fn: (ctx) => ctx.someMethod(),
-    });
-
-    if (error) return 1;
-
-    logger.info('Success', result);
-
-    return 0;  // Exit code
-
-};
+export default command;
 ```
 
+Key details:
 
-### Two Command Types
+- **`sharedArgs`** lives in `src/cli/_utils.ts` and supplies the conventional `--config`, `--json`, `--force`, `--dry-run`, `--yes` set. Spread it first, then add your own.
+- **`withContext`** owns the SDK lifecycle (`createContext` → `connect` → `ensureSchemaVersion` → run → `disconnect`) and returns an `[result, error]` tuple. It also creates a logger configured for JSON or text output.
+- **Logger guards** — when `args.json` is true, only structured JSON should reach stdout. Wrap any human progress output in `if (!args.json) { ... }` so callers piping JSON downstream get clean output.
+- **`outputResult`** routes its first arg to `logger.result(json)` in `--json` mode and to `logger.info(text)` in human mode.
+- **`examples`** is post-assigned via a typed cast because citty's `CommandDef` type does not include the field. The root `--help` interceptor reads it and renders an `EXAMPLES` block.
 
 
-#### SDK Commands (with database connection)
+### Parent Commands
 
-For commands that need database access, use `withContext`:
+Domain parents (e.g., `noorm change`) live at `src/cli/<domain>/index.ts`. They register their leaves under `subCommands` and may optionally provide a `run` handler that executes when called bare (e.g., `noorm change` shows status):
 
 ```typescript
-export const run: HeadlessCommand = async (params, flags, logger) => {
+// src/cli/change/index.ts
+import { defineCommand } from 'citty';
 
-    const [result, error] = await withContext({
-        flags,
-        logger,
-        fn: (ctx) => ctx.fastForward(),
-    });
+import ff from './ff.js';
+import history from './history.js';
+import revert from './revert.js';
+import run from './run.js';
 
-    if (error) return 1;
+import { withContext, outputResult, sharedArgs } from '../_utils.js';
 
-    logger.info(`Applied ${result.executed} changes`);
+export default defineCommand({
+    meta: {
+        name: 'change',
+        description: 'Manage schema changes',
+    },
+    args: { ...sharedArgs },
+    subCommands: { ff, history, revert, run },
+    async run({ args }) {
 
-    return result.status === 'success' ? 0 : 1;
+        // Bare `noorm change` — show status
+        const [result, err] = await withContext({
+            args,
+            fn: (ctx) => ctx.noorm.changes.status(),
+        });
+        if (err) process.exit(1);
+        outputResult(args, result, formatStatus(result));
 
-};
+    },
+});
 ```
 
-`withContext` handles:
-- Config resolution (flag → env var → active config)
-- Connection lifecycle (connect, execute, disconnect)
-- Error handling and logging
+
+### TUI-Only Wizards
+
+Some commands (`config add`, `config edit`, `config rm`) don't have a sensible headless equivalent — they exist to walk users through credential entry interactively. These commands `import { app } from '../../tui/app.js'` and route the user into the appropriate TUI screen, then exit. See `src/cli/config/add.ts` for the canonical pattern.
 
 
-#### Help-Only Commands (parent menus, TUI-only features)
+### Registering Commands at the Root
 
-For commands that just display information:
+Add the new domain (or leaf) to `src/cli/index.ts`:
 
 ```typescript
-export const run: HeadlessCommand = async (_params, _flags, _logger) => {
+// src/cli/index.ts
+import change from './change/index.js';
+import config from './config/index.js';
+// ...new domain
+import myDomain from './my-domain/index.js';
 
-    process.stdout.write(help);
-    return 0;
-
-};
+const main = defineCommand({
+    meta: { name: 'noorm', description: '...' },
+    subCommands: {
+        change,
+        config,
+        // ...
+        'my-domain': myDomain,
+    },
+});
 ```
 
-Use this for:
-- Parent commands that list subcommands (`config`, `db`, `lock`)
-- TUI-only features that can't run headless (`config add`, `settings`)
-
-
-### Registering Commands
-
-Add new commands to the handler registry in `index.ts`:
-
-```typescript
-// src/cli/headless/index.ts
-import * as CmdMyCommand from './my-command.js';
-
-const HANDLERS: Partial<Record<Route, RouteHandler>> = {
-    // ...existing commands...
-    'my/command': CmdMyCommand,
-};
-```
-
-The route key (`'my/command'`) maps to CLI syntax (`noorm my command` or `noorm my:command`).
-
-
-### Parameter Access
-
-Parameters are passed via the `params` object:
-
-```typescript
-export const run: HeadlessCommand = async (params, flags, logger) => {
-
-    // From --name flag or positional argument
-    if (!params.name) {
-
-        logger.error('Name required. Use --name <value>');
-        return 1;
-
-    }
-
-    // Use the parameter
-    const [result, error] = await withContext({
-        flags,
-        logger,
-        fn: (ctx) => ctx.describeTable(params.name!),
-    });
-
-    // ...
-
-};
-```
-
-Common params: `name`, `path`, `count`, `schema`, `force`, `topic`.
-
-
-### Help Text Format
-
-Help text uses markdown syntax with terminal color formatting. The `formatHelp()` function from `src/core/help-formatter.ts` parses markdown and applies the Modern Slate color theme.
-
-
-#### Markdown Elements
-
-| Syntax | Rendering |
-|--------|-----------|
-| `# Title` | Bold primary (blue) - command name |
-| `## Section` | Bold text (white) - main sections |
-| `### Subsection` | Bold muted (gray) - subsections |
-| `> note` | Dimmed italic - callouts and tips |
-| `` `code` `` | Info color (purple) - inline code |
-| `**bold**` | Bold text |
-| `*italic*` | Italic text |
-| ` ``` ` code blocks | Muted delimiters, code colored |
-| 4-space indent | Command/example highlighting |
-
-
-#### Command Syntax Highlighting
-
-Indented lines containing `noorm` get automatic syntax highlighting:
-
-| Element | Color | Example |
-|---------|-------|---------|
-| `noorm` | Primary (blue) | Command name |
-| First word after noorm | Info (purple) | Subcommand |
-| `-H`, `--flag` | Warning (amber) | Flags |
-| `[optional]` | Muted (gray) | Optional placeholders |
-| `<required>` | Warning (amber) | Required placeholders |
-| `NAME` (all caps) | Italic dim | Argument placeholders |
-
-
-#### Template
-
-```markdown
-# COMMAND NAME
-
-Brief description of what this command does.
-
-## Usage
-
-    noorm command [subcommand] [options]
-    noorm -H command
-
-## Arguments
-
-    NAME    Description of positional argument
-
-## Options
-
-    --flag          Boolean flag
-    -f, --force     Short and long form
-    --name NAME     Flag with value
-
-## Description
-
-Multi-paragraph explanation of what the command does,
-when to use it, and any important caveats.
-
-> Important notes go in blockquotes
-
-## Examples
-
-    noorm -H command
-    noorm -H --json command
-
-## JSON Output
-
-\`\`\`json
-{ "example": "output" }
-\`\`\`
-
-## See Also
-
-See \`noorm help related-command\` for more information.
-```
-
-
-#### Implementation
-
-```typescript
-import { formatHelp } from '../../core/help-formatter.js';
-
-export const help = `
-# CONFIG
-
-Manage database configurations
-
-## Usage
-
-    noorm config [subcommand] [options]
-
-> Configs are stored encrypted in \`.noorm/state/state.enc\`
-`;
-
-export const run: HeadlessCommand = async (_params, flags, _logger) => {
-
-    // Apply colors unless --json mode
-    const output = flags.json ? help : formatHelp(help);
-
-    process.stdout.write(output + '\n');
-
-    return 0;
-
-};
-```
+Citty handles routing automatically — there is no central `HANDLERS` registry or route string to maintain.
 
 
 ### Testing Commands
 
-Test headless commands via integration tests:
+Test commands end-to-end through the built CLI binary using `tests/integration/cli/setup.ts`:
 
 ```typescript
-import { runHeadless } from '../src/cli/headless/index.js';
+import { setupTestProject, cleanupTestProject, noorm, noormJson } from './setup.js';
 
-it('should execute my-command', async () => {
+describe('cli: change ff', () => {
 
-    const exitCode = await runHeadless(
-        'my/command',
-        { name: 'test' },
-        { json: true },
-    );
+    let project;
 
-    expect(exitCode).toBe(0);
+    beforeAll(async () => { project = await setupTestProject(); });
+    afterAll(async () => { await cleanupTestProject(project); });
+
+    it('applies pending changes', async () => {
+
+        const result = await noorm(project, 'change', 'ff');
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toContain('Applied');
+
+    });
+
+    it('emits structured JSON with --json', async () => {
+
+        const result = await noormJson<{ applied: number }>(project, 'change', 'ff');
+        expect(result.ok).toBe(true);
+        expect(result.data?.applied).toBeGreaterThanOrEqual(0);
+
+    });
 
 });
 ```
+
+The setup helper builds an isolated SQLite project and runs the compiled CLI via `node packages/cli/dist/index.js`. `noormJson` automatically appends `--json` after the command path (citty parses flags per-subcommand, so it must come last).

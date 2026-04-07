@@ -1,13 +1,15 @@
 # Terminal UI
 
 
-Launch the terminal interface with:
+Launch the interactive terminal interface with:
 
 ```bash
-noorm
+noorm ui
 ```
 
 Everything in noorm is accessible through keyboard shortcuts. No mouse needed.
+
+The TUI is a dedicated subcommand — every other `noorm` command runs as a non-interactive CLI. Running `noorm` on its own prints the command list (citty's `--help`) instead of opening the wizard, so the entry into the TUI is always explicit. See the [CLI Reference](/headless) for the headless surface.
 
 
 ## Home Screen

@@ -44,15 +44,15 @@ Or navigate directly through the menu:
 ```
 
 
-### Headless Mode
+### Scripted Usage
 
-For scripts and CI/CD pipelines, use headless mode with the `-H` flag:
+The same subcommands run non-interactively — add `--json` to get machine-readable output:
 
 ```bash
-noorm -H db explore                          # Overview
-noorm -H db explore tables                   # List tables
-noorm -H db explore tables detail users      # Table detail
-noorm -H --json db explore > schema.json     # JSON output
+noorm db explore                          # Overview
+noorm db explore tables                   # List tables
+noorm db explore tables detail users      # Table detail
+noorm --json db explore > schema.json     # JSON output
 ```
 
 
@@ -342,7 +342,7 @@ Use `--json` flag for machine-readable output.
 ### Overview
 
 ```bash
-noorm -H --json db explore
+noorm --json db explore
 ```
 
 ```json
@@ -361,7 +361,7 @@ noorm -H --json db explore
 ### Table List
 
 ```bash
-noorm -H --json db explore tables
+noorm --json db explore tables
 ```
 
 ```json
@@ -376,7 +376,7 @@ noorm -H --json db explore tables
 ### Table Detail
 
 ```bash
-noorm -H --json db explore tables detail users
+noorm --json db explore tables detail users
 ```
 
 ```json
@@ -402,7 +402,7 @@ noorm -H --json db explore tables detail users
 ### View Detail
 
 ```bash
-noorm -H --json db explore views detail active_users
+noorm --json db explore views detail active_users
 ```
 
 ```json
@@ -422,7 +422,7 @@ noorm -H --json db explore views detail active_users
 ### Function Detail
 
 ```bash
-noorm -H --json db explore functions detail calculate_total
+noorm --json db explore functions detail calculate_total
 ```
 
 ```json

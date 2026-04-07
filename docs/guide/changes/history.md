@@ -108,7 +108,7 @@ This is invaluable for debugging. You can see exactly which file failed, what th
 For CI/CD pipelines and scripts, use the headless command:
 
 ```bash
-noorm -H change history
+noorm change history
 ```
 
 Output:
@@ -123,7 +123,7 @@ Execution History: 20 records
 With JSON output for parsing:
 
 ```bash
-noorm -H --json change history
+noorm --json change history
 ```
 
 ```json
@@ -150,7 +150,7 @@ noorm -H --json change history
 Limit the number of records:
 
 ```bash
-noorm -H change history --count 50
+noorm change history --count 50
 ```
 
 
@@ -286,7 +286,7 @@ Now you know the issue---there's duplicate data that needs cleaning before the c
 Compare with successful runs of the same change on other environments. Did something change between runs? Did the data differ?
 
 ```bash
-noorm -H --json change history --count 100 | jq '.[] | select(.name == "2025-01-16-add-payments")'
+noorm --json change history --count 100 | jq '.[] | select(.name == "2025-01-16-add-payments")'
 ```
 
 

@@ -28,7 +28,7 @@ Both operations permanently destroy data. `truncate` wipes all rows. `teardown` 
 Truncate removes all data while preserving table structure. Fast reset for test cycles.
 
 ```bash
-noorm -H -y db truncate
+noorm -y db truncate
 ```
 
 ### What Gets Truncated
@@ -49,7 +49,7 @@ noorm -H -y db truncate
 Teardown removes all database objects. Clean slate for full rebuilds.
 
 ```bash
-noorm -H -y db teardown
+noorm -y db teardown
 ```
 
 ::: warning Protected Configs
@@ -102,7 +102,7 @@ Cannot teardown on protected config "prod"
 **CLI**: Use `--force` flag (with `--yes` to skip confirmation)
 
 ```bash
-noorm -H -y --force db teardown --config prod
+noorm -y --force db teardown --config prod
 ```
 
 **SDK**: Pass `allowProtected: true`
@@ -237,27 +237,27 @@ beforeAll(async () => {
 The `reset()` method combines `teardown()` and `build({ force: true })` for complete schema reconstruction.
 
 
-## Headless Usage
+## Scripted Usage
 
-For CI/CD pipelines, use headless mode with explicit confirmation flags.
+For CI/CD pipelines, drive the same teardown commands non-interactively. Always pair them with `-y` to skip the confirmation prompt — the CLI refuses to wipe data otherwise.
 
 ### Basic Commands
 
 ```bash
 # Truncate all data
-noorm -H -y db truncate
+noorm -y db truncate
 
 # Full teardown
-noorm -H -y db teardown
+noorm -y db teardown
 
 # Preview what would be dropped
-noorm -H --dry-run db teardown
+noorm --dry-run db teardown
 ```
 
 ### JSON Output
 
 ```bash
-noorm -H --json db teardown
+noorm --json db teardown
 ```
 
 ```json
@@ -301,8 +301,8 @@ test:
         NOORM_CONNECTION_USER: postgres
         NOORM_CONNECTION_PASSWORD: test
       run: |
-        npx noorm -H run build
-        npx noorm -H change ff
+        npx noorm run build
+        npx noorm change ff
 
     - name: Run tests
       run: npm test
@@ -315,9 +315,9 @@ test:
 set -e
 
 # Reset to clean state before test run
-noorm -H -y db teardown --config test
-noorm -H run build --config test
-noorm -H change ff --config test
+noorm -y db teardown --config test
+noorm run build --config test
+noorm change ff --config test
 
 echo "Test database ready"
 ```
@@ -351,8 +351,8 @@ SQLite uses DELETE instead of TRUNCATE because SQLite does not support TRUNCATE.
 
 ```bash
 # Safe teardown pattern
-noorm -H --dry-run db teardown  # Preview first
-noorm -H -y db teardown         # Execute after review
+noorm --dry-run db teardown  # Preview first
+noorm -y db teardown         # Execute after review
 ```
 
 

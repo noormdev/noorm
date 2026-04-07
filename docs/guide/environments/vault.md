@@ -35,11 +35,7 @@ Your team stores the production Stripe key in the vault:
 Vault:  STRIPE_KEY = "sk_live_abc123..."
 ```
 
-For local development, you want to use Stripe's test mode. Set a local override:
-
-```bash
-noorm secret:set STRIPE_KEY "sk_test_xyz789..."
-```
+For local development, you want to use Stripe's test mode. Set a local override through the TUI — `noorm ui` → Settings → Secrets → `a`, with key `STRIPE_KEY` and value `sk_test_xyz789...`. Local secrets are stored encrypted in your `.noorm/state/state.enc` and never leave your machine.
 
 Now when templates reference `secrets.STRIPE_KEY`:
 
@@ -190,26 +186,26 @@ The resolution order means you can:
 
 ## CI/CD Integration
 
-In headless mode, manage vault secrets programmatically:
+Vault commands run non-interactively, so you can manage secrets straight from a pipeline:
 
 ```bash
 # Initialize vault
-noorm -H vault init
+noorm vault init
 
 # Set secret (value as argument)
-noorm -H vault set API_KEY "$API_KEY"
+noorm vault set API_KEY "$API_KEY"
 
 # List with JSON output
 noorm --json vault list
 
 # Copy secrets between environments
-noorm -H vault cp --all staging production
+noorm vault cp --all staging production
 ```
 
 Pipe values to avoid command history:
 
 ```bash
-echo "$SECRET_VALUE" | noorm -H vault set MY_SECRET
+echo "$SECRET_VALUE" | noorm vault set MY_SECRET
 ```
 
 

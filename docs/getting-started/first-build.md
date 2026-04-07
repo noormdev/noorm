@@ -23,10 +23,10 @@ This tutorial takes about 5 minutes. By the end, you'll understand how noorm sep
 ```bash
 mkdir noorm-tutorial
 cd noorm-tutorial
-noorm init
+noorm ui
 ```
 
-This creates the project structure:
+Launching `noorm ui` in an empty directory kicks off the init wizard — it sets up your identity, creates the project scaffolding, and optionally walks you through adding a first config. When it finishes, you'll have this layout:
 
 ```
 noorm-tutorial/
@@ -44,7 +44,7 @@ noorm-tutorial/
 Launch the TUI:
 
 ```bash
-noorm
+noorm ui
 ```
 
 Press `c` for config, then `a` to add a new config. Fill out the form:
@@ -146,7 +146,7 @@ CREATE TABLE IF NOT EXISTS users (
 ## Step 6: Run Build
 
 ```bash
-noorm -H run build
+noorm run build
 ```
 
 Output:
@@ -223,7 +223,7 @@ Your SQL files now represent the complete, ideal schema. But the dev database st
 Use the TUI to create a change:
 
 ```bash
-noorm
+noorm ui
 ```
 
 Press `g` for changes, then `a` to add a new change. Enter a name like `add-posts-and-bio`.
@@ -260,7 +260,7 @@ The `.txt` file references your SQL files. When the change runs, it executes tho
 ## Step 9: Apply the Change
 
 ```bash
-noorm -H change ff
+noorm change ff
 ```
 
 Output:
@@ -286,11 +286,11 @@ Now create a test database to see the other path. In the TUI:
 3. Press `d` for Database, then `c` to create the database
 4. Press `r` for Run SQL, then `b` for Build
 
-If you already have a test config and database set up, you can do this in headless mode:
+If you already have a test config and database set up, the same flow runs from the non-interactive CLI:
 
 ```bash
-noorm -H config use test
-noorm -H run build
+noorm config use test
+noorm run build
 ```
 
 Output:

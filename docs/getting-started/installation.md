@@ -12,7 +12,7 @@
 
 ## Install the CLI
 
-The CLI provides both an interactive terminal UI and headless mode for CI/CD.
+`noorm` is a non-interactive CLI by default. Every command emits structured output suitable for scripting or piping into CI/CD. Running `noorm ui` launches the optional Ink/React terminal wizard for when you'd rather point-and-click.
 
 ### macOS / Linux
 
@@ -50,10 +50,9 @@ noorm --version
 noorm can update itself:
 
 ```bash
-# Headless
-noorm -H update
+noorm update
 
-# Or from the TUI home screen, press [u]
+# Or launch the TUI (`noorm ui`) and press [u] from the home screen
 ```
 
 
@@ -81,14 +80,14 @@ The CLI bundles all drivers — no extra installation needed. These are only req
 
 ## Initialize a Project
 
-After installation, initialize noorm in your project:
+After installation, launch the TUI in your project root — it detects the missing `.noorm/` directory and walks you through identity setup, project structure, and the first config:
 
 ```bash
 cd your-project
-noorm init
+noorm ui
 ```
 
-This creates:
+The init wizard creates:
 
 ```
 your-project/

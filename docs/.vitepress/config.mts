@@ -35,8 +35,8 @@ gtag('config', 'G-Y69K95866J');`],
                 { text: 'Home', link: '/' },
                 { text: 'Getting Started', link: '/getting-started/installation' },
                 { text: 'Guide', link: '/guide/sql-files/organization' },
+                { text: 'CLI', link: '/headless' },
                 { text: 'TUI', link: '/tui' },
-                { text: 'Headless', link: '/headless' },
                 {
                     text: 'Dev Docs',
                     link: '/dev/',
@@ -74,7 +74,7 @@ gtag('config', 'G-Y69K95866J');`],
                         text: 'Integration',
                         items: [
                             { text: 'SDK', link: '/dev/sdk' },
-                            { text: 'Headless Mode', link: '/dev/headless' },
+                            { text: 'CLI Architecture', link: '/dev/headless' },
                             { text: 'CI/CD', link: '/dev/ci' },
                             { text: 'Identity', link: '/dev/identity' },
                         ],
@@ -103,8 +103,8 @@ gtag('config', 'G-Y69K95866J');`],
                     {
                         text: 'Features',
                         items: [
+                            { text: 'CLI Reference', link: '/headless' },
                             { text: 'Terminal UI', link: '/tui' },
-                            { text: 'Headless Mode', link: '/headless' },
                         ],
                     },
                     {

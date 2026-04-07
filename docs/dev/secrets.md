@@ -102,26 +102,20 @@ Masked previews show the secret length and first few characters (in verbose mode
 
 ### Setting Secrets
 
-```bash
-noorm secret:set                    # Interactive prompt
-noorm secret:set DB_PASSWORD        # Set specific secret
-```
+Local secret values are managed through the TUI (`noorm ui` → Settings → Secrets → `a`). The set screen:
 
-The set screen:
 1. Shows missing required secrets as suggestions
 2. Accepts any key name (UPPER_SNAKE_CASE recommended)
 3. Uses masked input for password/api_key types
 4. Validates connection_string as URI
 5. Warns before overwriting existing values
 
+There is no `noorm secret set` headless command — values flow through the interactive form on purpose, so they never leak into shell history or process listings.
+
 
 ### Deleting Secrets
 
-```bash
-noorm secret:rm MY_API_KEY          # Delete specific secret
-```
-
-Required secrets cannot be deleted—only updated. When you try to delete a required secret, the CLI shows a warning toast indicating whether it's a **universal** or **stage-specific** secret:
+From the same Settings → Secrets screen, highlight the entry and press `d`. Required secrets cannot be deleted—only updated. When you try to delete a required secret, the TUI shows a warning toast indicating whether it's a **universal** or **stage-specific** secret:
 
 - `"DB_PASSWORD" is a universal secret and cannot be deleted`
 - `"API_KEY" is a stage secret and cannot be deleted`
@@ -146,36 +140,26 @@ To manage secret definitions, use the settings screens (see below).
 
 ### Managing Secret Definitions
 
-Secret definitions (what secrets are required) are managed through settings screens:
+Secret definitions (the *requirements* declared in `settings.yml`, not the values) are managed through the TUI's settings screens:
+
+- `noorm ui` → Settings → Secrets — universal definitions required across every config
+- `noorm ui` → Settings → Stages → `<stage>` → Secrets — definitions scoped to a specific stage
+
+These screens edit `settings.yml` directly. The actual secret values are set on the Secrets screen for the active config.
+
+
+## CI/CD Pipelines
+
+The local secret store is intentionally TUI-only — there is no headless `noorm secret` command, and values must never be passed as raw arguments. For non-interactive pipelines, push secrets through the [vault](../guide/environments/vault.md) instead, which is fully scriptable:
 
 ```bash
-noorm settings secrets              # List universal secret definitions
-noorm settings secrets add          # Add new universal secret definition
-noorm settings secrets edit API_KEY # Edit a secret definition
-
-noorm settings stages prod secrets        # List stage-specific secrets
-noorm settings stages prod secrets add    # Add stage secret definition
+noorm vault set DB_PASSWORD "$DB_PASSWORD"
+echo "$API_KEY" | noorm vault set API_KEY      # Pipe to avoid process listings
+noorm --json vault list                        # Inspect what's stored
+noorm vault rm OLD_API_KEY
 ```
 
-These commands manage which secrets are **required**, not their values. To set actual secret values, use `noorm secret:set`.
-
-
-## Headless Mode
-
-For CI/CD pipelines:
-
-```bash
-# Set secret non-interactively
-noorm -H secret:set DB_PASSWORD "mypassword"
-
-# List secrets (JSON output)
-noorm --json secret
-
-# Delete with confirmation skip
-noorm -H -y secret:rm MY_API_KEY
-```
-
-In headless mode, secret values come from arguments or stdin (for piping).
+The vault sits below local secrets in the resolution hierarchy (`$.secrets.KEY` checks local-config → global-local → vault), so individual developers can still override a vault value through the TUI without affecting the team.
 
 
 ## Using Secrets in Templates
@@ -290,7 +274,7 @@ const globalKeys = state.listGlobalSecrets()     // ['API_KEY']
 await state.deleteGlobalSecret('API_KEY')
 ```
 
-> **Note:** Global secret values (stored in state) are API-only. The CLI manages config-scoped secret values via `noorm secret`, and universal secret definitions via `noorm settings secrets`.
+> **Note:** Global secret values (stored in state) are managed only via the StateManager API or the TUI's Settings → Secrets screen. There is no headless `noorm secret` command — values flow through the interactive form on purpose so they never reach shell history. Universal and per-stage secret *definitions* live in `settings.yml` and are edited from `noorm ui` → Settings → Secrets / Stages.
 
 See [State Management](./state.md) for complete StateManager documentation.
 

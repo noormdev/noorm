@@ -52,13 +52,13 @@ The `--to` flag is required. Source defaults to the active config.
 
 ```bash
 # Transfer all tables from active config to backup
-noorm -H db transfer --to backup
+noorm db transfer --to backup
 
 # Specify source explicitly
-noorm -H db transfer staging --to production
+noorm db transfer staging --to production
 
 # Transfer specific tables only
-noorm -H db transfer --to backup --tables users,posts,comments
+noorm db transfer --to backup --tables users,posts,comments
 ```
 
 ### Dry Run
@@ -66,7 +66,7 @@ noorm -H db transfer --to backup --tables users,posts,comments
 Preview what will happen without transferring anything:
 
 ```bash
-noorm -H db transfer --to backup --dry-run
+noorm db transfer --to backup --dry-run
 ```
 
 Output shows:
@@ -81,16 +81,16 @@ When destination tables already contain data with matching primary keys:
 
 ```bash
 # Abort on first conflict (default)
-noorm -H db transfer --to backup --on-conflict fail
+noorm db transfer --to backup --on-conflict fail
 
 # Skip rows that already exist
-noorm -H db transfer --to backup --on-conflict skip
+noorm db transfer --to backup --on-conflict skip
 
 # Update existing rows with source data
-noorm -H db transfer --to backup --on-conflict update
+noorm db transfer --to backup --on-conflict update
 
 # Delete and re-insert conflicting rows
-noorm -H db transfer --to backup --on-conflict replace
+noorm db transfer --to backup --on-conflict replace
 ```
 
 | Strategy | What happens |
@@ -104,22 +104,22 @@ noorm -H db transfer --to backup --on-conflict replace
 
 ```bash
 # Set batch size for cross-server transfers (default: 1000)
-noorm -H db transfer --to backup --batch-size 5000
+noorm db transfer --to backup --batch-size 5000
 
 # Clear destination tables before transfer
-noorm -H db transfer --to backup --truncate
+noorm db transfer --to backup --truncate
 
 # Don't disable foreign key checks (risky for dependent tables)
-noorm -H db transfer --to backup --no-fk
+noorm db transfer --to backup --no-fk
 
 # Don't preserve identity/auto-increment values
-noorm -H db transfer --to backup --no-identity
+noorm db transfer --to backup --no-identity
 ```
 
 ### JSON Output
 
 ```bash
-noorm -H --json db transfer --to backup
+noorm --json db transfer --to backup
 ```
 
 Transfer result:
@@ -191,7 +191,7 @@ Dry run result:
 ### Seed a dev database from staging
 
 ```bash
-noorm -H db transfer staging --to local --truncate
+noorm db transfer staging --to local --truncate
 ```
 
 Clears the local database first, then copies everything from staging.
@@ -199,7 +199,7 @@ Clears the local database first, then copies everything from staging.
 ### Incremental sync with skip
 
 ```bash
-noorm -H db transfer --to backup --on-conflict skip
+noorm db transfer --to backup --on-conflict skip
 ```
 
 Only inserts rows that don't already exist in backup. Existing rows are left untouched.
@@ -207,7 +207,7 @@ Only inserts rows that don't already exist in backup. Existing rows are left unt
 ### Upsert from source of truth
 
 ```bash
-noorm -H db transfer --to target --on-conflict update
+noorm db transfer --to target --on-conflict update
 ```
 
 Updates all existing rows with the latest data from source, inserts new rows.
@@ -215,7 +215,7 @@ Updates all existing rows with the latest data from source, inserts new rows.
 ### Transfer specific tables
 
 ```bash
-noorm -H db transfer --to backup --tables users,user_preferences
+noorm db transfer --to backup --tables users,user_preferences
 ```
 
 Only transfers the specified tables. FK dependencies between selected tables are still respected.
@@ -223,7 +223,7 @@ Only transfers the specified tables. FK dependencies between selected tables are
 ### CI/CD test data setup
 
 ```bash
-noorm -H --json db transfer staging --to ci-test --truncate --on-conflict fail
+noorm --json db transfer staging --to ci-test --truncate --on-conflict fail
 ```
 
 Clean transfer for test environments. JSON output for pipeline integration. Fails fast if anything goes wrong.
@@ -231,8 +231,8 @@ Clean transfer for test environments. JSON output for pipeline integration. Fail
 ### Cross-dialect migration
 
 ```bash
-noorm -H db transfer postgres-legacy --to mysql-new --dry-run
-noorm -H db transfer postgres-legacy --to mysql-new
+noorm db transfer postgres-legacy --to mysql-new --dry-run
+noorm db transfer postgres-legacy --to mysql-new
 ```
 
 Migrate from PostgreSQL to MySQL. Run `--dry-run` first to check for type conversion warnings.
@@ -256,16 +256,16 @@ The `--tables` flag is required for export.
 
 ```bash
 # Export single table
-noorm -H db transfer --export ./backup/users.dt --tables users
+noorm db transfer --export ./backup/users.dt --tables users
 
 # Export multiple tables to a directory
-noorm -H db transfer --export ./backup/ --tables users,posts,comments
+noorm db transfer --export ./backup/ --tables users,posts,comments
 
 # Export compressed
-noorm -H db transfer --export ./backup/ --tables users,posts --compress
+noorm db transfer --export ./backup/ --tables users,posts --compress
 
 # Export encrypted (implies compression)
-noorm -H db transfer --export ./backup/ --tables users --passphrase "my-secret"
+noorm db transfer --export ./backup/ --tables users --passphrase "my-secret"
 ```
 
 **Path rules:**
@@ -276,16 +276,16 @@ noorm -H db transfer --export ./backup/ --tables users --passphrase "my-secret"
 
 ```bash
 # Import from .dt file
-noorm -H db transfer --import ./backup/users.dt
+noorm db transfer --import ./backup/users.dt
 
 # Import with upsert
-noorm -H db transfer --import ./backup/users.dtz --on-conflict update
+noorm db transfer --import ./backup/users.dtz --on-conflict update
 
 # Import encrypted file
-noorm -H db transfer --import ./backup.dtzx --passphrase "my-secret"
+noorm db transfer --import ./backup.dtzx --passphrase "my-secret"
 
 # Validate schema compatibility only
-noorm -H db transfer --import ./backup/users.dt --dry-run
+noorm db transfer --import ./backup/users.dt --dry-run
 ```
 
 ### Export/Import JSON Output
@@ -338,21 +338,21 @@ Import result:
 **Backup specific tables before risky operation:**
 
 ```bash
-noorm -H db transfer --export ./pre-migration-backup/ --tables users,orders --compress
+noorm db transfer --export ./pre-migration-backup/ --tables users,orders --compress
 # ... run migration ...
 # If something goes wrong:
-noorm -H db transfer --import ./pre-migration-backup/users.dt --truncate
-noorm -H db transfer --import ./pre-migration-backup/orders.dt --truncate
+noorm db transfer --import ./pre-migration-backup/users.dt --truncate
+noorm db transfer --import ./pre-migration-backup/orders.dt --truncate
 ```
 
 **Share test data with team:**
 
 ```bash
 # Export encrypted for sharing
-noorm -H db transfer --export ./fixtures.dtzx --passphrase "team-secret" --tables users,posts
+noorm db transfer --export ./fixtures.dtzx --passphrase "team-secret" --tables users,posts
 
 # Teammate imports
-noorm -H db transfer --import ./fixtures.dtzx --passphrase "team-secret"
+noorm db transfer --import ./fixtures.dtzx --passphrase "team-secret"
 ```
 
 **Cross-dialect migration via file:**
@@ -360,10 +360,10 @@ noorm -H db transfer --import ./fixtures.dtzx --passphrase "team-secret"
 ```bash
 # Export from PostgreSQL
 noorm use postgres-source
-noorm -H db transfer --export ./migration-data/ --tables users,posts
+noorm db transfer --export ./migration-data/ --tables users,posts
 
 # Import into MySQL
 noorm use mysql-target
-noorm -H db transfer --import ./migration-data/users.dt
-noorm -H db transfer --import ./migration-data/posts.dt
+noorm db transfer --import ./migration-data/users.dt
+noorm db transfer --import ./migration-data/posts.dt
 ```

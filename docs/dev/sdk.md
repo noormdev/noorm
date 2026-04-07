@@ -944,59 +944,57 @@ try {
 ## Headless/CI Mode
 
 
-### CLI Headless Commands
+### CLI Commands
 
-noorm supports headless mode for CI/CD pipelines. Use `-H` or `--headless` flag:
+Every `noorm` subcommand runs as a non-interactive CLI by default — there is no `--headless` flag, no mode detection, no CI heuristic. The interactive Ink/React TUI lives behind a dedicated `noorm ui` subcommand. Subcommands are space-separated (the old `change/ff` slash notation is gone):
 
 ```bash
 # Build schema
-noorm -H --config dev run/build
+noorm --config dev run build
 
 # Fast-forward changes
-noorm -H --config dev change/ff
+noorm --config dev change ff
 
 # Apply single change
-noorm -H --config dev change/run --name 2024-01-15-add-users
+noorm --config dev change run 2024-01-15-add-users
 
 # Truncate database
-noorm -H --config test db/truncate
+noorm --config test db truncate
 
-# Get JSON output for scripting
-noorm -H --json --config dev change/ff | jq '.status'
+# JSON output for scripting
+noorm --json --config dev change ff | jq '.status'
 ```
 
 
-### Available Headless Commands
+### Common CLI Routes
 
-| Route | Description |
-|-------|-------------|
-| `run/build` | Build schema from SQL files |
-| `run/file` | Run single SQL file |
-| `run/dir` | Run all files in directory |
-| `db/truncate` | Truncate all tables |
-| `db/teardown` | Drop all objects |
-| `db/explore` | Database overview |
-| `db/explore/tables` | List tables |
-| `db/explore/tables/detail` | Describe a table |
+| Command | Description |
+|---------|-------------|
+| `run build` | Build schema from SQL files |
+| `run file <path>` | Run single SQL file |
+| `run dir <path>` | Run all files in directory |
+| `run preview <path>` | Render a `.sql.tmpl` without executing |
+| `run inspect <path>` | Inspect template context |
+| `db truncate` | Truncate all tables |
+| `db teardown` | Drop all objects |
+| `db explore` | Database overview |
+| `db explore tables` | List tables |
+| `db explore tables detail <name>` | Describe a table |
+| `db transfer` | DB-to-DB / export / import (`--to`, `--export`, `--import`) |
 | `change` | List change status |
-| `change/ff` | Apply pending changes |
-| `change/run` | Apply single change |
-| `change/revert` | Revert single change |
-| `change/history` | Execution history |
-| `lock/status` | Lock status |
-| `lock/acquire` | Acquire lock |
-| `lock/release` | Release lock |
+| `change ff` | Apply pending changes |
+| `change run <name>` | Apply single change |
+| `change revert <name>` | Revert single change |
+| `change history` | Execution history |
+| `lock status` | Lock status |
+| `lock acquire` | Acquire lock |
+| `lock release` | Release lock |
+| `lock force` | Force-release a lock |
+| `vault init` / `set` / `list` / `rm` / `cp` / `propagate` | Encrypted team-secret store |
+| `info` | Project, schema, identity, and connection summary |
+| `sql "<query>"` | Execute a raw SQL query |
 
-
-### Headless Detection
-
-Headless mode is auto-detected when:
-- `--headless` or `-H` flag is passed
-- `NOORM_HEADLESS=true` environment variable
-- CI environment variables (`CI`, `GITHUB_ACTIONS`, `GITLAB_CI`, etc.)
-- No TTY available
-
-Use `--tui` to force TUI mode in CI environments.
+Append `--help` to any command to see its arguments, options, and curated examples — citty renders help natively.
 
 
 ### GitHub Actions Example
@@ -1018,7 +1016,7 @@ jobs:
       - run: npm ci
       - name: Apply changes
         run: |
-          npx noorm -H --config ${{ vars.DB_CONFIG }} change/ff
+          npx noorm --config ${{ vars.DB_CONFIG }} change ff
         env:
           DB_HOST: ${{ secrets.DB_HOST }}
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
