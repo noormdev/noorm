@@ -1,8 +1,9 @@
 /**
- * noorm vault cp — copy vault secrets between configs.
+ * noorm vault cp <key> <source> <destination> — copy a vault secret between configs.
  *
- * With --all: vault cp --all <source> <dest>
- * Without --all: vault cp <key> <source> <dest>
+ * Loads the identity locally and calls copyVaultSecrets with both source and
+ * destination configs. Does not use withVaultContext because the SDK function
+ * manages dual connections internally.
  */
 import { defineCommand } from 'citty';
 import { attempt } from '@logosdx/utils';
@@ -18,17 +19,16 @@ const cpCommand = defineCommand({
         description: 'Copy vault secrets between configs',
     },
     args: {
+        key: { type: 'positional', description: 'Secret key to copy', required: true },
         source: { type: 'positional', description: 'Source config name', required: true },
         destination: { type: 'positional', description: 'Destination config name', required: true },
-        key: { type: 'string', description: 'Secret key to copy (omit to copy all)' },
         config: sharedArgs.config,
         force: sharedArgs.force,
-        dryRun: sharedArgs.dryRun,
         json: sharedArgs.json,
     },
     async run({ args }) {
 
-        const keys: string[] | 'all' = args.key ? [args.key] : 'all';
+        const keys = [args.key];
         const sourceConfigName = args.source;
         const destConfigName = args.destination;
 
@@ -74,40 +74,6 @@ const cpCommand = defineCommand({
 
             process.stderr.write(`Error: Destination config not found: ${destConfigName}\n`);
             process.exit(1);
-
-        }
-
-        if (args.dryRun) {
-
-            const dryRunResult = {
-                success: true,
-                dryRun: true,
-                source: sourceConfigName,
-                destination: destConfigName,
-                keys: keys === 'all' ? 'all' : keys,
-                force: args.force ?? false,
-            };
-
-            if (args.json) {
-
-                process.stdout.write(JSON.stringify(dryRunResult) + '\n');
-
-            }
-            else {
-
-                process.stdout.write(
-                    `Dry run: would copy ${keys === 'all' ? 'all secrets' : keys.join(', ')} from "${sourceConfigName}" to "${destConfigName}"\n`,
-                );
-
-                if (args.force) {
-
-                    process.stdout.write('With --force: would overwrite existing secrets\n');
-
-                }
-
-            }
-
-            process.exit(0);
 
         }
 
@@ -191,11 +157,9 @@ const cpCommand = defineCommand({
 });
 
 (cpCommand as typeof cpCommand & { examples: string[] }).examples = [
-    'noorm vault cp staging production --key API_KEY',
-    'noorm vault cp staging production',
-    'noorm vault cp staging production --force',
-    'noorm vault cp staging production --dry-run',
-    'noorm vault cp staging production --json',
+    'noorm vault cp API_KEY staging production',
+    'noorm vault cp DB_PASSWORD dev staging --force',
+    'noorm vault cp API_KEY staging production --json',
 ];
 
 export default cpCommand;
