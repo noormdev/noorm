@@ -29,12 +29,16 @@ const teardownCommand = defineCommand({
                         res.dropped.functions.length +
                         res.dropped.types.length;
 
-                    logger.info(`Dropped ${droppedCount} objects`, {
-                        tables: res.dropped.tables.length,
-                        views: res.dropped.views.length,
-                        functions: res.dropped.functions.length,
-                        types: res.dropped.types.length,
-                    });
+                    if (!args.json) {
+
+                        logger.info(`Dropped ${droppedCount} objects`);
+                        logger.info(`  Tables: ${res.dropped.tables.length}`);
+                        logger.info(`  Views: ${res.dropped.views.length}`);
+                        logger.info(`  Functions: ${res.dropped.functions.length}`);
+                        logger.info(`  Types: ${res.dropped.types.length}`);
+
+                    }
+
                     return res;
 
                 });

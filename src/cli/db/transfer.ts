@@ -11,6 +11,39 @@ import { getStateManager } from '../../core/state/index.js';
 import type { TransferOptions, ConflictStrategy } from '../../core/transfer/index.js';
 import { withContext, outputResult, outputError, sharedArgs, type CliArgs } from '../_utils.js';
 
+// ---------------------------------------------------------------------------
+// Shared args type for this command
+// ---------------------------------------------------------------------------
+
+type TransferArgs = CliArgs & {
+    to?: string;
+    export?: string;
+    import?: string;
+    compress?: boolean;
+    passphrase?: string;
+    tables?: string;
+    'on-conflict'?: string;
+    'batch-size'?: string;
+    truncate?: boolean;
+    'no-fk'?: boolean;
+    'no-identity'?: boolean;
+    dryRun?: boolean;
+};
+
+// ---------------------------------------------------------------------------
+// ConflictStrategy validation
+// ---------------------------------------------------------------------------
+
+const VALID_CONFLICT_STRATEGIES = { fail: true, skip: true, update: true, replace: true } as const;
+
+type ValidStrategy = keyof typeof VALID_CONFLICT_STRATEGIES;
+
+function isConflictStrategy(value: unknown): value is ValidStrategy {
+
+    return typeof value === 'string' && value in VALID_CONFLICT_STRATEGIES;
+
+}
+
 const transferCommand = defineCommand({
     meta: {
         name: 'transfer',
@@ -111,6 +144,18 @@ const transferCommand = defineCommand({
 
         }
 
+        // Validate --on-conflict once before mode dispatch
+        const rawConflict = args['on-conflict'] ?? 'fail';
+
+        if (!isConflictStrategy(rawConflict)) {
+
+            outputError(args, `Invalid --on-conflict value: "${rawConflict}". Must be one of: fail, skip, update, replace`);
+            process.exit(1);
+
+        }
+
+        const onConflict: ConflictStrategy = rawConflict;
+
         const tableList = args.tables ? String(args.tables).split(',').map((t) => t.trim()) : undefined;
         const batchSize = args['batch-size'] ? parseInt(String(args['batch-size']), 10) : undefined;
 
@@ -135,7 +180,7 @@ const transferCommand = defineCommand({
                 passphrase,
                 tables: tableList,
                 batchSize,
-                onConflict: ((args['on-conflict'] as string | undefined) ?? 'fail') as ConflictStrategy,
+                onConflict,
                 truncate: args.truncate === true,
                 args,
             });
@@ -165,7 +210,7 @@ const transferCommand = defineCommand({
 
         const options: TransferOptions = {
             tables: tableList,
-            onConflict: ((args['on-conflict'] as string | undefined) ?? 'fail') as ConflictStrategy,
+            onConflict,
             batchSize,
             disableForeignKeys: args['no-fk'] !== true,
             preserveIdentity: args['no-identity'] !== true,
@@ -177,7 +222,7 @@ const transferCommand = defineCommand({
 
             const [plan, planError] = await withContext({
                 args,
-                fn: (ctx, logger) => {
+                fn: async (ctx, logger) => {
 
                     if (!args.json) {
 
@@ -185,7 +230,9 @@ const transferCommand = defineCommand({
 
                     }
 
-                    return ctx.noorm.transfer.plan(destConfig, options);
+                    const result = await ctx.noorm.transfer.plan(destConfig, options);
+
+                    return result;
 
                 },
             });
@@ -217,6 +264,40 @@ const transferCommand = defineCommand({
                     })),
                     warnings: planResult?.warnings ?? [],
                 }, '');
+
+            }
+            else {
+
+                // Human-readable dry-run plan summary
+                process.stdout.write(`Dry run - transfer plan:\n`);
+                process.stdout.write(`  Same server: ${planResult?.sameServer ? 'yes' : 'no'}\n`);
+                process.stdout.write(`  Tables: ${planResult?.tables.length ?? 0}\n`);
+                process.stdout.write(`  Estimated rows: ${planResult?.estimatedRows ?? 0}\n`);
+
+                if (planResult?.tables.length) {
+
+                    process.stdout.write(`\n  Transfer order:\n`);
+
+                    for (const t of planResult.tables) {
+
+                        const deps = t.dependsOn.length > 0 ? ` (after: ${t.dependsOn.join(', ')})` : '';
+                        process.stdout.write(`    ${t.name} - ${t.rowCount} rows${deps}\n`);
+
+                    }
+
+                }
+
+                if (planResult?.warnings.length) {
+
+                    process.stdout.write(`\n  Warnings:\n`);
+
+                    for (const w of planResult.warnings) {
+
+                        process.stdout.write(`    - ${w}\n`);
+
+                    }
+
+                }
 
             }
 
@@ -261,6 +342,25 @@ const transferCommand = defineCommand({
             }, '');
 
         }
+        else {
+
+            const successCount = result?.tables.filter((t) => t.status === 'success').length ?? 0;
+            const failedCount = result?.tables.filter((t) => t.status === 'failed').length ?? 0;
+
+            process.stdout.write(`Transfer complete: ${result?.status}\n`);
+            process.stdout.write(`  Total rows: ${result?.totalRows}\n`);
+            process.stdout.write(`  Tables: ${successCount} success, ${failedCount} failed\n`);
+            process.stdout.write(`  Duration: ${((result?.durationMs ?? 0) / 1000).toFixed(2)}s\n`);
+
+            const failures = result?.tables.filter((t) => t.status === 'failed') ?? [];
+
+            for (const f of failures) {
+
+                process.stderr.write(`  ${f.table}: ${f.error}\n`);
+
+            }
+
+        }
 
         process.exit(result?.status === 'success' ? 0 : 2);
 
@@ -293,19 +393,7 @@ async function handleExport(opts: {
     compress: boolean;
     tables?: string[];
     batchSize?: number;
-    args: CliArgs & {
-        export?: string;
-        import?: string;
-        to?: string;
-        compress?: boolean;
-        passphrase?: string;
-        tables?: string;
-        'on-conflict'?: string;
-        'batch-size'?: string;
-        truncate?: boolean;
-        'no-fk'?: boolean;
-        'no-identity'?: boolean;
-    };
+    args: TransferArgs;
 }): Promise<number> {
 
     const { exportPath, passphrase, compress, tables, batchSize, args } = opts;
@@ -409,6 +497,17 @@ async function handleExport(opts: {
         outputResult(args, output, '');
 
     }
+    else {
+
+        process.stdout.write(`Export complete: ${totalRows} rows, ${totalBytes} bytes\n`);
+
+        for (const t of tableResults) {
+
+            process.stdout.write(`  ${t.table}: ${t.rows} rows → ${t.filepath}\n`);
+
+        }
+
+    }
 
     return 0;
 
@@ -428,19 +527,7 @@ async function handleImport(opts: {
     batchSize?: number;
     onConflict: ConflictStrategy;
     truncate: boolean;
-    args: CliArgs & {
-        export?: string;
-        import?: string;
-        to?: string;
-        compress?: boolean;
-        passphrase?: string;
-        tables?: string;
-        'on-conflict'?: string;
-        'batch-size'?: string;
-        truncate?: boolean;
-        'no-fk'?: boolean;
-        'no-identity'?: boolean;
-    };
+    args: TransferArgs;
 }): Promise<number> {
 
     const { importPath, passphrase, batchSize, onConflict, truncate, args } = opts;
@@ -496,9 +583,12 @@ async function handleImport(opts: {
         }, '');
 
     }
+    else {
+
+        process.stdout.write(`Import complete: ${importResult?.rowsImported ?? 0} rows imported, ${importResult?.rowsSkipped ?? 0} skipped\n`);
+
+    }
 
     return 0;
 
 }
-
-

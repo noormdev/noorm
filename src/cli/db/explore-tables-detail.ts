@@ -31,9 +31,17 @@ const detailCommand = defineCommand({
 
                 return ctx.noorm.db.describeTable(args.name, args.schema).then((res) => {
 
-                    if (res) {
+                    if (res && !args.json) {
 
                         logger.info(`Table: ${res.name}`);
+
+                        for (const col of res.columns) {
+
+                            const nullable = col.isNullable ? 'nullable' : 'not null';
+                            const pk = col.isPrimaryKey ? ' [PK]' : '';
+                            logger.info(`  ${col.name}: ${col.dataType} (${nullable})${pk}`);
+
+                        }
 
                     }
 

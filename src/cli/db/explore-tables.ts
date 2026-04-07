@@ -25,7 +25,18 @@ const tablesCommand = defineCommand({
 
                 return ctx.noorm.db.listTables().then((res) => {
 
-                    logger.info(`Tables: ${res.length}`);
+                    if (!args.json) {
+
+                        logger.info(`Tables: ${res.length}`);
+
+                        for (const t of res) {
+
+                            logger.info(`  ${t.name} (${t.columnCount} cols)`);
+
+                        }
+
+                    }
+
                     return res;
 
                 });
