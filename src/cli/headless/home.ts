@@ -22,6 +22,7 @@ and transfer data. Launches a TUI by default, or runs headless with -H.
     sql         Execute raw SQL queries
     db          Database operations and exploration
     lock        Distributed lock management
+    mcp         MCP server for coding agents
     settings    View/edit project settings
     secret      Manage secrets
     vault       Encrypted vault management
