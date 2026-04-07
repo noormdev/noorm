@@ -1,82 +1,73 @@
-import { withContext, outputResult, type HeadlessCommand } from './_helpers.js';
+/**
+ * noorm db teardown — drop all database objects.
+ */
+import { defineCommand } from 'citty';
 
-export const help = `
-# DB TEARDOWN
+import { withContext, outputResult, sharedArgs } from '../_utils.js';
 
-Drop all database objects
-
-## Usage
-
-    noorm -H db teardown [options]
-
-## Flags
-
-    -y, --yes      Skip confirmation prompt
-    -f, --force    Override protection on protected configs
-
-## Description
-
-Drops all database objects including tables, views, functions,
-and types. Objects are dropped in dependency order to avoid
-foreign key violations. Keeps noorm tracking tables so the project
-can be rebuilt from scratch.
-
-> **WARNING:** This is a destructive operation. Protected configs
-> require \`--force\` or confirmation.
-
-## Examples
-
-    # Teardown with confirmation skip
-    noorm -H -y db teardown
-
-    # Force teardown on protected config
-    noorm -H --force db teardown
-
-    # JSON output for scripting
-    noorm -H --json -y db teardown
-
-## JSON Output
-
-\`\`\`json
-{
-    "dropped": {
-        "tables": 5,
-        "views": 2,
-        "functions": 3,
-        "types": 1
+const teardownCommand = defineCommand({
+    meta: {
+        name: 'teardown',
+        description: 'Drop all database objects',
     },
-    "count": 11
-}
-\`\`\`
+    args: {
+        config: sharedArgs.config,
+        force: sharedArgs.force,
+        yes: sharedArgs.yes,
+        json: sharedArgs.json,
+    },
+    async run({ args }) {
 
-See \`noorm help db\` or \`noorm help db truncate\`.
-`;
+        const [result, error] = await withContext({
+            args,
+            fn: (ctx, logger) => {
 
-export const run: HeadlessCommand = async (_params, flags, logger) => {
+                return ctx.noorm.db.teardown().then((res) => {
 
-    const [result, error] = await withContext({
-        flags,
-        logger,
-        fn: (ctx) => ctx.noorm.db.teardown(),
-    });
+                    const droppedCount = res.dropped.tables.length +
+                        res.dropped.views.length +
+                        res.dropped.functions.length +
+                        res.dropped.types.length;
 
-    if (error) return 1;
+                    logger.info(`Dropped ${droppedCount} objects`, {
+                        tables: res.dropped.tables.length,
+                        views: res.dropped.views.length,
+                        functions: res.dropped.functions.length,
+                        types: res.dropped.types.length,
+                    });
+                    return res;
 
-    const droppedCount = result.dropped.tables.length +
-        result.dropped.views.length +
-        result.dropped.functions.length +
-        result.dropped.types.length;
+                });
 
-    outputResult(flags, logger, {
-        dropped: result.dropped,
-        count: droppedCount,
-    }, `Dropped ${droppedCount} objects`, {
-        tables: result.dropped.tables.length,
-        views: result.dropped.views.length,
-        functions: result.dropped.functions.length,
-        types: result.dropped.types.length,
-    });
+            },
+        });
 
-    return 0;
+        if (error) process.exit(1);
 
-};
+        const droppedCount = result.dropped.tables.length +
+            result.dropped.views.length +
+            result.dropped.functions.length +
+            result.dropped.types.length;
+
+        if (args.json) {
+
+            outputResult(args, {
+                dropped: result.dropped,
+                count: droppedCount,
+            }, '');
+
+        }
+
+        process.exit(0);
+
+    },
+});
+
+(teardownCommand as typeof teardownCommand & { examples: string[] }).examples = [
+    'noorm db teardown',
+    'noorm db teardown --yes',
+    'noorm db teardown --force --yes',
+    'noorm db teardown --json --yes',
+];
+
+export default teardownCommand;

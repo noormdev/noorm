@@ -1,51 +1,55 @@
-import { withContext, outputResult, type HeadlessCommand } from './_helpers.js';
+/**
+ * noorm db explore tables — list all tables, with detail subcommand.
+ */
+import { defineCommand } from 'citty';
 
-export const help = `
-# DB EXPLORE TABLES
+import { withContext, outputResult, sharedArgs } from '../_utils.js';
 
-List all tables
+import detail from './explore-tables-detail.js';
 
-## Usage
+const tablesCommand = defineCommand({
+    meta: {
+        name: 'tables',
+        description: 'List tables in the database',
+    },
+    args: {
+        config: sharedArgs.config,
+        json: sharedArgs.json,
+    },
+    subCommands: { detail },
+    async run({ args }) {
 
-    noorm db explore tables
-    noorm -H db explore tables
+        const [tables, error] = await withContext({
+            args,
+            fn: (ctx, logger) => {
 
-## Description
+                return ctx.noorm.db.listTables().then((res) => {
 
-Lists all tables in the database with their column counts.
+                    logger.info(`Tables: ${res.length}`);
+                    return res;
 
-## Examples
+                });
 
-    noorm -H db explore tables
-    noorm -H --json db explore tables
+            },
+        });
 
-## JSON Output
+        if (error) process.exit(1);
 
-\`\`\`json
-[
-    { "name": "users", "columnCount": 8 },
-    { "name": "posts", "columnCount": 5 },
-    { "name": "comments", "columnCount": 4 }
-]
-\`\`\`
+        if (args.json) {
 
-See \`noorm help db explore\` or \`noorm help db explore tables detail\`.
-`;
+            outputResult(args, tables, '');
 
-export const run: HeadlessCommand = async (_params, flags, logger) => {
+        }
 
-    const [tables, error] = await withContext({
-        flags,
-        logger,
-        fn: (ctx) => ctx.noorm.db.listTables(),
-    });
+        process.exit(0);
 
-    if (error) return 1;
+    },
+});
 
-    outputResult(flags, logger, tables, `Tables: ${tables.length}`, {
-        tables: tables.map((t) => `${t.name} (${t.columnCount} cols)`),
-    });
+(tablesCommand as typeof tablesCommand & { examples: string[] }).examples = [
+    'noorm db explore tables',
+    'noorm db explore tables --json',
+    'noorm db explore tables detail users',
+];
 
-    return 0;
-
-};
+export default tablesCommand;

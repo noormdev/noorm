@@ -1,404 +1,291 @@
 /**
- * Database transfer headless command.
+ * noorm db transfer — transfer data between database configurations.
  *
- * Transfers data between database configurations using ctx.noorm methods.
+ * Transfers data to another DB config, or exports/imports .dt files.
  */
 import { attempt } from '@logosdx/utils';
+import { defineCommand } from 'citty';
 
-import type { Logger } from '../../core/logger/index.js';
-import { withContext, outputError, type HeadlessCommand } from './_helpers.js';
-import { formatHelp } from '../../core/help-formatter.js';
 import { resolveExportExtension, resolveExportPath, ensureExportDirectory } from '../../core/dt/index.js';
 import { getStateManager } from '../../core/state/index.js';
 import type { TransferOptions, ConflictStrategy } from '../../core/transfer/index.js';
+import { withContext, outputResult, outputError, sharedArgs, type CliArgs } from '../_utils.js';
 
-export const help = `
-# DB TRANSFER
+const transferCommand = defineCommand({
+    meta: {
+        name: 'transfer',
+        description: 'Transfer data between database configurations',
+    },
+    args: {
+        config: sharedArgs.config,
+        force: sharedArgs.force,
+        dryRun: sharedArgs.dryRun,
+        json: sharedArgs.json,
+        to: {
+            type: 'string',
+            description: 'Destination config name (required for db-to-db)',
+        },
+        export: {
+            type: 'string',
+            description: 'Export path: file (single table) or directory (multi-table)',
+        },
+        import: {
+            type: 'string',
+            description: 'Import from .dt/.dtz/.dtzx file path',
+        },
+        compress: {
+            type: 'boolean',
+            description: 'Compress export as .dtz (default: plain .dt)',
+        },
+        passphrase: {
+            type: 'string',
+            description: 'Passphrase for .dtzx encryption/decryption (implies compression)',
+        },
+        tables: {
+            type: 'string',
+            description: 'Comma-separated list of tables (default: all)',
+        },
+        'on-conflict': {
+            type: 'string',
+            description: 'Conflict strategy: fail, skip, update, replace (default: fail)',
+        },
+        'batch-size': {
+            type: 'string',
+            description: 'Rows per batch for cross-server transfers (default: 1000)',
+        },
+        truncate: {
+            type: 'boolean',
+            description: 'Truncate destination tables before transfer',
+        },
+        'no-fk': {
+            type: 'boolean',
+            description: 'Do not disable foreign key checks',
+        },
+        'no-identity': {
+            type: 'boolean',
+            description: 'Do not preserve identity/auto-increment values',
+        },
+    },
+    async run({ args }) {
 
-Transfer data between database configurations
+        const destConfigName = args.to;
+        const exportPath = args.export;
+        const importPath = args.import;
+        const passphrase = args.passphrase;
+        const compress = args.compress === true;
 
-## Usage
+        if (compress && !exportPath) {
 
-    noorm db transfer --to <config> [options]
-    noorm db transfer <source> --to <destination> [options]
-    noorm db transfer --export <path> [options]
-    noorm db transfer --import <path> [options]
+            outputError(args, '--compress is only valid with --export');
+            process.exit(1);
 
-## Arguments
+        }
 
-    source         Source config name (defaults to active config)
+        const modeCount = [destConfigName, exportPath, importPath].filter(Boolean).length;
 
-## Flags
+        if (modeCount > 1) {
 
-    --to           Destination config name (required for db-to-db)
-    --export       Export path: file (single table) or directory (multi-table)
-    --import       Import from .dt/.dtz/.dtzx file path
-    --compress     Compress export as .dtz (default: plain .dt)
-    --passphrase   Passphrase for .dtzx encryption/decryption (implies compression)
-    --tables       Comma-separated list of tables (default: all)
-    --on-conflict  Conflict strategy: fail, skip, update, replace (default: fail)
-    --batch-size   Rows per batch for cross-server transfers (default: 1000)
-    --truncate     Truncate destination tables before transfer
-    --no-fk        Do not disable foreign key checks
-    --no-identity  Do not preserve identity/auto-increment values
-    --dry-run      Show transfer plan without executing
+            outputError(args, 'Flags --to, --export, and --import are mutually exclusive');
+            process.exit(1);
 
-## Description
+        }
 
-Transfers data from source to destination database. Both must use the same
-dialect (PostgreSQL, MySQL, or MSSQL). Tables are transferred in foreign key
-dependency order.
+        if (modeCount === 0) {
 
-Same-server transfers use efficient direct INSERT...SELECT. Cross-server
-transfers use batched reads/writes.
+            outputError(args, 'One of --to, --export, or --import is required. Usage: noorm db transfer --to <config>');
+            process.exit(1);
 
-Use --export to write tables to .dt files instead of transferring to a
-database. For single-table export, --export is the file path. For multi-table
-export, --export is a directory and noorm generates <table>.<ext> per table.
-Output is plain .dt by default; use --compress for .dtz or --passphrase for
-encrypted .dtzx. Use --import to load .dt files into the active database.
+        }
 
-Flags --to, --export, and --import are mutually exclusive.
+        if (exportPath?.endsWith('.dtzx') && !passphrase) {
 
-## Conflict Strategies
+            outputError(args, '--passphrase required for .dtzx encrypted export');
+            process.exit(1);
 
-    fail     Abort on first primary key conflict (default)
-    skip     Skip conflicting rows, continue transfer
-    update   Update existing rows with source data
-    replace  Delete and re-insert conflicting rows
+        }
 
-## Examples
+        if (importPath?.endsWith('.dtzx') && !passphrase) {
 
-    # Transfer all tables from active config to backup
-    noorm -H db transfer --to backup
+            outputError(args, '--passphrase required for .dtzx encrypted import');
+            process.exit(1);
 
-    # Transfer specific tables
-    noorm -H db transfer --to backup --tables users,posts,comments
+        }
 
-    # Transfer with upsert behavior
-    noorm -H db transfer --to backup --on-conflict update
+        const tableList = args.tables ? String(args.tables).split(',').map((t) => t.trim()) : undefined;
+        const batchSize = args['batch-size'] ? parseInt(String(args['batch-size']), 10) : undefined;
 
-    # Preview transfer plan
-    noorm -H db transfer --to backup --dry-run
+        if (exportPath) {
 
-    # Clear destination tables before transfer
-    noorm -H db transfer --to backup --truncate
+            const code = await handleExport({
+                exportPath,
+                passphrase,
+                compress,
+                tables: tableList,
+                batchSize,
+                args,
+            });
+            process.exit(code);
 
-    # Export single table (plain .dt)
-    noorm -H db transfer --export ./backup/users.dt --tables users
+        }
 
-    # Export single table compressed
-    noorm -H db transfer --export ./backup/users --tables users --compress
+        if (importPath) {
 
-    # Export all tables to directory (plain .dt per table)
-    noorm -H db transfer --export ./backup/
+            const code = await handleImport({
+                importPath,
+                passphrase,
+                tables: tableList,
+                batchSize,
+                onConflict: ((args['on-conflict'] as string | undefined) ?? 'fail') as ConflictStrategy,
+                truncate: args.truncate === true,
+                args,
+            });
+            process.exit(code);
 
-    # Export all tables compressed
-    noorm -H db transfer --export ./backup/ --compress
+        }
 
-    # Export with encryption (implies compression)
-    noorm -H db transfer --export ./backup/ --passphrase mySecret
+        // DB-to-DB transfer
+        const stateManager = getStateManager(process.cwd());
+        const [, loadErr] = await attempt(() => stateManager.load());
 
-    # Import from .dt file
-    noorm -H db transfer --import ./backup/users.dt
+        if (loadErr) {
 
-    # Import encrypted file with conflict skipping
-    noorm -H db transfer --import ./backup/users.dtzx --passphrase mySecret --on-conflict skip
+            outputError(args, loadErr.message);
+            process.exit(1);
 
-## JSON Output
+        }
 
-    {
-        "success": true,
-        "status": "success",
-        "tables": [
-            {
-                "table": "users",
-                "status": "success",
-                "rowsTransferred": 1500,
-                "rowsSkipped": 0,
-                "durationMs": 234
+        const destConfig = stateManager.getConfig(destConfigName!);
+
+        if (!destConfig) {
+
+            outputError(args, `Destination config not found: ${destConfigName}`);
+            process.exit(1);
+
+        }
+
+        const options: TransferOptions = {
+            tables: tableList,
+            onConflict: ((args['on-conflict'] as string | undefined) ?? 'fail') as ConflictStrategy,
+            batchSize,
+            disableForeignKeys: args['no-fk'] !== true,
+            preserveIdentity: args['no-identity'] !== true,
+            truncateFirst: args.truncate === true,
+            dryRun: args.dryRun === true,
+        };
+
+        if (options.dryRun) {
+
+            const [plan, planError] = await withContext({
+                args,
+                fn: (ctx, logger) => {
+
+                    if (!args.json) {
+
+                        logger.info(`Planning transfer to "${destConfigName}"...`);
+
+                    }
+
+                    return ctx.noorm.transfer.plan(destConfig, options);
+
+                },
+            });
+
+            if (planError) process.exit(1);
+
+            const [planResult, planErr] = plan;
+
+            if (planErr) {
+
+                outputError(args, planErr.message);
+                process.exit(1);
+
             }
-        ],
-        "totalRows": 1500,
-        "durationMs": 1234
-    }
-`;
 
-export const run: HeadlessCommand = async (params, flags, logger) => {
+            if (args.json) {
 
-    const destConfigName = flags['to'] as string | undefined;
-    const exportPath = flags['export'] as string | undefined;
-    const importPath = flags['import'] as string | undefined;
-    const passphrase = flags['passphrase'] as string | undefined;
-    const compress = flags['compress'] === true;
+                outputResult(args, {
+                    success: true,
+                    dryRun: true,
+                    sameServer: planResult?.sameServer,
+                    tableCount: planResult?.tables.length ?? 0,
+                    estimatedRows: planResult?.estimatedRows ?? 0,
+                    tables: planResult?.tables.map((t) => ({
+                        name: t.name,
+                        rowCount: t.rowCount,
+                        hasIdentity: t.hasIdentity,
+                        dependsOn: t.dependsOn,
+                    })),
+                    warnings: planResult?.warnings ?? [],
+                }, '');
 
-    // Validate --compress only valid with --export
-    if (compress && !exportPath) {
+            }
 
-        return outputError(flags, logger, '--compress is only valid with --export');
-
-    }
-
-    // Validate mutually exclusive modes
-    const modeCount = [destConfigName, exportPath, importPath].filter(Boolean).length;
-
-    if (modeCount > 1) {
-
-        return outputError(flags, logger, 'Flags --to, --export, and --import are mutually exclusive');
-
-    }
-
-    if (modeCount === 0) {
-
-        if (flags.json) {
-
-            logger.result({
-                success: false,
-                error: 'One of --to, --export, or --import is required. Usage: noorm db transfer --to <config>',
-            });
-
-        }
-        else {
-
-            const output = formatHelp(help);
-            process.stdout.write(output + '\n');
+            process.exit(0);
 
         }
 
-        return 1;
+        const [transferResult, transferError] = await withContext({
+            args,
+            fn: (ctx, logger) => {
 
-    }
+                if (!args.json) {
 
-    // Validate .dtzx requires passphrase
-    if (exportPath?.endsWith('.dtzx') && !passphrase) {
-
-        return outputError(flags, logger, '--passphrase required for .dtzx encrypted export');
-
-    }
-
-    if (importPath?.endsWith('.dtzx') && !passphrase) {
-
-        return outputError(flags, logger, '--passphrase required for .dtzx encrypted import');
-
-    }
-
-    const tables = flags['tables'] ? String(flags['tables']).split(',').map((t: string) => t.trim()) : undefined;
-    const batchSize = flags['batch-size'] ? parseInt(String(flags['batch-size']), 10) : undefined;
-
-    // -----------------------------------------------------------------------
-    // Export mode — uses ctx.noorm.dt.exportTable
-    // -----------------------------------------------------------------------
-
-    if (exportPath) {
-
-        return handleExport({
-            exportPath,
-            passphrase,
-            compress,
-            tables,
-            batchSize,
-            flags,
-            logger,
-        });
-
-    }
-
-    // -----------------------------------------------------------------------
-    // Import mode — uses ctx.noorm.dt.importFile
-    // -----------------------------------------------------------------------
-
-    if (importPath) {
-
-        return handleImport({
-            importPath,
-            passphrase,
-            tables,
-            batchSize,
-            onConflict: (flags['on-conflict'] ?? 'fail') as ConflictStrategy,
-            truncate: flags['truncate'] === true,
-            flags,
-            logger,
-        });
-
-    }
-
-    // -----------------------------------------------------------------------
-    // DB-to-DB transfer mode — uses ctx.noorm.transfer.to / transfer.plan
-    // -----------------------------------------------------------------------
-
-    // Load state to resolve dest config
-    const stateManager = getStateManager(process.cwd());
-    const [, loadErr] = await attempt(() => stateManager.load());
-
-    if (loadErr) {
-
-        return outputError(flags, logger, loadErr.message);
-
-    }
-
-    const destConfig = stateManager.getConfig(destConfigName!);
-
-    if (!destConfig) {
-
-        return outputError(flags, logger, `Destination config not found: ${destConfigName}`);
-
-    }
-
-    // Build options
-    const options: TransferOptions = {
-        tables,
-        onConflict: (flags['on-conflict'] ?? 'fail') as ConflictStrategy,
-        batchSize,
-        disableForeignKeys: flags['no-fk'] !== true,
-        preserveIdentity: flags['no-identity'] !== true,
-        truncateFirst: flags['truncate'] === true,
-        dryRun: flags.dryRun === true,
-    };
-
-    if (!flags.json) {
-
-        logger.info(`Transferring to "${destConfigName}"...`);
-
-    }
-
-    // Dry run - just show plan
-    if (options.dryRun) {
-
-        const [plan, planError] = await withContext({
-            flags,
-            logger,
-            fn: (ctx) => ctx.noorm.transfer.plan(destConfig, options),
-        });
-
-        if (planError) return 1;
-
-        const [planResult, planErr] = plan;
-
-        if (planErr) {
-
-            return outputError(flags, logger, planErr.message);
-
-        }
-
-        if (flags.json) {
-
-            logger.result({
-                success: true,
-                dryRun: true,
-                sameServer: planResult?.sameServer,
-                tableCount: planResult?.tables.length ?? 0,
-                estimatedRows: planResult?.estimatedRows ?? 0,
-                tables: planResult?.tables.map((t) => ({
-                    name: t.name,
-                    rowCount: t.rowCount,
-                    hasIdentity: t.hasIdentity,
-                    dependsOn: t.dependsOn,
-                })),
-                warnings: planResult?.warnings ?? [],
-            });
-
-        }
-        else {
-
-            logger.info('Dry run - transfer plan:');
-            logger.info(`  Same server: ${planResult?.sameServer ? 'yes' : 'no'}`);
-            logger.info(`  Tables: ${planResult?.tables.length ?? 0}`);
-            logger.info(`  Estimated rows: ${planResult?.estimatedRows ?? 0}`);
-
-            if (planResult?.tables.length) {
-
-                logger.info('\n  Transfer order:');
-
-                for (const t of planResult.tables) {
-
-                    const deps = t.dependsOn.length > 0 ? ` (after: ${t.dependsOn.join(', ')})` : '';
-                    logger.info(`    ${t.name} - ${t.rowCount} rows${deps}`);
+                    logger.info(`Transferring to "${destConfigName}"...`);
 
                 }
 
-            }
+                return ctx.noorm.transfer.to(destConfig, options);
 
-            if (planResult?.warnings.length) {
-
-                logger.info('\n  Warnings:');
-
-                for (const w of planResult.warnings) {
-
-                    logger.info(`    - ${w}`);
-
-                }
-
-            }
-
-        }
-
-        return 0;
-
-    }
-
-    // Execute transfer
-    const [transferResult, transferError] = await withContext({
-        flags,
-        logger,
-        fn: (ctx) => ctx.noorm.transfer.to(destConfig, options),
-    });
-
-    if (transferError) return 1;
-
-    const [result, transferErr] = transferResult;
-
-    if (transferErr) {
-
-        return outputError(flags, logger, transferErr.message);
-
-    }
-
-    if (flags.json) {
-
-        logger.result({
-            success: result?.status === 'success',
-            status: result?.status,
-            tables: result?.tables,
-            totalRows: result?.totalRows,
-            durationMs: result?.durationMs,
+            },
         });
 
-    }
-    else {
+        if (transferError) process.exit(1);
 
-        const successCount = result?.tables.filter((t) => t.status === 'success').length ?? 0;
-        const failedCount = result?.tables.filter((t) => t.status === 'failed').length ?? 0;
+        const [result, transferErr] = transferResult;
 
-        logger.info(`Transfer complete: ${result?.status}`);
-        logger.info(`  Total rows: ${result?.totalRows}`);
-        logger.info(`  Tables: ${successCount} success, ${failedCount} failed`);
-        logger.info(`  Duration: ${((result?.durationMs ?? 0) / 1000).toFixed(2)}s`);
+        if (transferErr) {
 
-        // Show failures
-        const failures = result?.tables.filter((t) => t.status === 'failed') ?? [];
-
-        for (const f of failures) {
-
-            logger.error(`  ${f.table}: ${f.error}`);
+            outputError(args, transferErr.message);
+            process.exit(1);
 
         }
 
-    }
+        if (args.json) {
 
-    return result?.status === 'success' ? 0 : 2;
+            outputResult(args, {
+                success: result?.status === 'success',
+                status: result?.status,
+                tables: result?.tables,
+                totalRows: result?.totalRows,
+                durationMs: result?.durationMs,
+            }, '');
 
-};
+        }
+
+        process.exit(result?.status === 'success' ? 0 : 2);
+
+    },
+});
+
+(transferCommand as typeof transferCommand & { examples: string[] }).examples = [
+    'noorm db transfer --to backup',
+    'noorm db transfer --to prod --tables users,posts',
+    'noorm db transfer --to backup --on-conflict update',
+    'noorm db transfer --to backup --dry-run',
+    'noorm db transfer --export ./backup/ --compress',
+    'noorm db transfer --export ./backup/users.dt --tables users',
+    'noorm db transfer --import ./backup/users.dt',
+    'noorm db transfer --import ./backup/users.dtzx --passphrase mySecret',
+];
+
+export default transferCommand;
 
 // ---------------------------------------------------------------------------
-// Export handler — uses ctx.noorm.dt.exportTable
+// Export handler
 // ---------------------------------------------------------------------------
 
 /**
  * Handle --export flag: export tables to .dt/.dtz/.dtzx file.
- *
- * Path resolution:
- * - Single table: use exportPath as file path, append extension if missing
- * - Multiple tables: treat exportPath as directory, generate <table>.<ext> per table
  */
 async function handleExport(opts: {
     exportPath: string;
@@ -406,30 +293,38 @@ async function handleExport(opts: {
     compress: boolean;
     tables?: string[];
     batchSize?: number;
-    flags: Record<string, unknown>;
-    logger: Logger;
+    args: CliArgs & {
+        export?: string;
+        import?: string;
+        to?: string;
+        compress?: boolean;
+        passphrase?: string;
+        tables?: string;
+        'on-conflict'?: string;
+        'batch-size'?: string;
+        truncate?: boolean;
+        'no-fk'?: boolean;
+        'no-identity'?: boolean;
+    };
 }): Promise<number> {
 
-    const { exportPath, passphrase, compress, tables, batchSize, flags, logger } = opts;
+    const { exportPath, passphrase, compress, tables, batchSize, args } = opts;
 
-    // Determine export extension
     const ext = resolveExportExtension(compress, passphrase);
     const tableList = tables ?? [];
     const tableCount = tableList.length;
 
-    // Ensure export directory exists
     ensureExportDirectory(exportPath, tableCount);
 
-    if (!flags['json']) {
-
-        logger.info(`Exporting to ${exportPath}...`);
-
-    }
-
     const [exportResults, error] = await withContext({
-        flags: flags as never,
-        logger,
-        fn: async (ctx) => {
+        args,
+        fn: async (ctx, logger) => {
+
+            if (!args.json) {
+
+                logger.info(`Exporting to ${exportPath}...`);
+
+            }
 
             let totalRows = 0;
             let totalBytes = 0;
@@ -473,9 +368,9 @@ async function handleExport(opts: {
 
     if (error) {
 
-        if (flags['json']) {
+        if (args.json) {
 
-            logger.result({ success: false, error: error.message });
+            outputResult(args, { success: false, error: error.message }, '');
 
         }
 
@@ -485,7 +380,7 @@ async function handleExport(opts: {
 
     const { totalRows, totalBytes, tableResults } = exportResults;
 
-    if (flags['json']) {
+    if (args.json) {
 
         const output: Record<string, unknown> = {
             success: true,
@@ -500,7 +395,6 @@ async function handleExport(opts: {
             totalBytes,
         };
 
-        // Include directory for multi-table, filepath for single-table
         if (tableCount === 1 && tableResults[0]) {
 
             output['filepath'] = tableResults[0].filepath;
@@ -512,18 +406,7 @@ async function handleExport(opts: {
 
         }
 
-        logger.result(output);
-
-    }
-    else {
-
-        logger.info(`Export complete: ${totalRows} rows, ${totalBytes} bytes`);
-
-        for (const t of tableResults) {
-
-            logger.info(`  ${t.table}: ${t.rows} rows → ${t.filepath}`);
-
-        }
+        outputResult(args, output, '');
 
     }
 
@@ -532,7 +415,7 @@ async function handleExport(opts: {
 }
 
 // ---------------------------------------------------------------------------
-// Import handler — uses ctx.noorm.dt.importFile
+// Import handler
 // ---------------------------------------------------------------------------
 
 /**
@@ -545,22 +428,32 @@ async function handleImport(opts: {
     batchSize?: number;
     onConflict: ConflictStrategy;
     truncate: boolean;
-    flags: Record<string, unknown>;
-    logger: Logger;
+    args: CliArgs & {
+        export?: string;
+        import?: string;
+        to?: string;
+        compress?: boolean;
+        passphrase?: string;
+        tables?: string;
+        'on-conflict'?: string;
+        'batch-size'?: string;
+        truncate?: boolean;
+        'no-fk'?: boolean;
+        'no-identity'?: boolean;
+    };
 }): Promise<number> {
 
-    const { importPath, passphrase, batchSize, onConflict, truncate, flags, logger } = opts;
-
-    if (!flags['json']) {
-
-        logger.info(`Importing ${importPath}...`);
-
-    }
+    const { importPath, passphrase, batchSize, onConflict, truncate, args } = opts;
 
     const [importResult, error] = await withContext({
-        flags: flags as never,
-        logger,
-        fn: async (ctx) => {
+        args,
+        fn: async (ctx, logger) => {
+
+            if (!args.json) {
+
+                logger.info(`Importing ${importPath}...`);
+
+            }
 
             const [result, err] = await ctx.noorm.dt.importFile(importPath, {
                 passphrase,
@@ -582,9 +475,9 @@ async function handleImport(opts: {
 
     if (error) {
 
-        if (flags['json']) {
+        if (args.json) {
 
-            logger.result({ success: false, error: error.message });
+            outputResult(args, { success: false, error: error.message }, '');
 
         }
 
@@ -592,23 +485,20 @@ async function handleImport(opts: {
 
     }
 
-    if (flags['json']) {
+    if (args.json) {
 
-        logger.result({
+        outputResult(args, {
             success: true,
             mode: 'import',
             filepath: importPath,
             rowsImported: importResult?.rowsImported ?? 0,
             rowsSkipped: importResult?.rowsSkipped ?? 0,
-        });
-
-    }
-    else {
-
-        logger.info(`Import complete: ${importResult?.rowsImported ?? 0} rows imported, ${importResult?.rowsSkipped ?? 0} skipped`);
+        }, '');
 
     }
 
     return 0;
 
 }
+
+

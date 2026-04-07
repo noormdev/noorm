@@ -1,73 +1,73 @@
-import { withContext, outputResult, outputError, type HeadlessCommand } from './_helpers.js';
+/**
+ * noorm db explore tables detail — describe a specific table.
+ */
+import { defineCommand } from 'citty';
 
-export const help = `
-# DB EXPLORE TABLES DETAIL
+import { withContext, outputResult, outputError, sharedArgs } from '../_utils.js';
 
-Describe a specific table
+const detailCommand = defineCommand({
+    meta: {
+        name: 'detail',
+        description: 'Describe a specific table',
+    },
+    args: {
+        name: {
+            type: 'positional',
+            description: 'Name of the table to describe',
+            required: true,
+        },
+        schema: {
+            type: 'string',
+            description: 'Schema name',
+        },
+        config: sharedArgs.config,
+        json: sharedArgs.json,
+    },
+    async run({ args }) {
 
-## Usage
+        const [detail, error] = await withContext({
+            args,
+            fn: (ctx, logger) => {
 
-    noorm db explore tables detail NAME
-    noorm -H db explore tables detail NAME
-    noorm -H --name NAME db explore tables detail
+                return ctx.noorm.db.describeTable(args.name, args.schema).then((res) => {
 
-## Arguments
+                    if (res) {
 
-    NAME    Name of the table to describe
+                        logger.info(`Table: ${res.name}`);
 
-## Description
+                    }
 
-Shows detailed schema information for a table including columns,
-data types, nullability, and primary key status.
+                    return res;
 
-## Examples
+                });
 
-    noorm -H db explore tables detail users
-    noorm -H --json db explore tables detail posts
+            },
+        });
 
-## JSON Output
+        if (error) process.exit(1);
 
-\`\`\`json
-{
-    "name": "users",
-    "schema": "public",
-    "columns": [
-        { "name": "id", "dataType": "integer", "nullable": false, "isPrimaryKey": true },
-        { "name": "email", "dataType": "varchar(255)", "nullable": false },
-        { "name": "created_at", "dataType": "timestamp", "nullable": false }
-    ]
-}
-\`\`\`
+        if (!detail) {
 
-See \`noorm help db explore tables\`.
-`;
+            outputError(args, `Table not found: ${args.name}`);
+            process.exit(1);
 
-export const run: HeadlessCommand = async (params, flags, logger) => {
+        }
 
-    if (!params.name) {
+        if (args.json) {
 
-        return outputError(flags, logger, 'Table name required. Use --name <table>');
+            outputResult(args, detail, '');
 
-    }
+        }
 
-    const [detail, error] = await withContext({
-        flags,
-        logger,
-        fn: (ctx) => ctx.noorm.db.describeTable(params.name!, params.schema),
-    });
+        process.exit(0);
 
-    if (error) return 1;
+    },
+});
 
-    if (!detail) {
+(detailCommand as typeof detailCommand & { examples: string[] }).examples = [
+    'noorm db explore tables detail users',
+    'noorm db explore tables detail posts --json',
+    'noorm db explore tables detail orders --schema myschema',
+];
 
-        return outputError(flags, logger, `Table not found: ${params.name}`);
-
-    }
-
-    outputResult(flags, logger, detail, `Table: ${detail.name}`, {
-        columns: detail.columns.map((c) => `${c.name}: ${c.dataType}`),
-    });
-
-    return 0;
-
-};
+export default detailCommand;

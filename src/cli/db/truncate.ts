@@ -1,68 +1,58 @@
-import { withContext, outputResult, type HeadlessCommand } from './_helpers.js';
+/**
+ * noorm db truncate — wipe all data, keep schema.
+ */
+import { defineCommand } from 'citty';
 
-export const help = `
-# DB TRUNCATE
+import { withContext, outputResult, sharedArgs } from '../_utils.js';
 
-Wipe all data, keep schema
+const truncateCommand = defineCommand({
+    meta: {
+        name: 'truncate',
+        description: 'Wipe all data, keep schema',
+    },
+    args: {
+        config: sharedArgs.config,
+        force: sharedArgs.force,
+        yes: sharedArgs.yes,
+        json: sharedArgs.json,
+    },
+    async run({ args }) {
 
-## Usage
+        const [result, error] = await withContext({
+            args,
+            fn: (ctx, logger) => {
 
-    noorm -H db truncate [options]
+                return ctx.noorm.db.truncate().then((res) => {
 
-## Flags
+                    logger.info(`Truncated ${res.truncated.length} tables`);
+                    return res;
 
-    -y, --yes      Skip confirmation prompt
-    -f, --force    Override protection on protected configs
+                });
 
-## Description
+            },
+        });
 
-Truncates all tables in the database, removing all data while
-keeping the schema intact. Tables are truncated in foreign key
-dependency order. Useful for resetting test databases between runs.
+        if (error) process.exit(1);
 
-> **WARNING:** This is a destructive operation. Protected configs
-> require \`--force\` or confirmation.
+        if (args.json) {
 
-## Examples
+            outputResult(args, {
+                truncated: result.truncated,
+                count: result.truncated.length,
+            }, '');
 
-    # Truncate with confirmation skip
-    noorm -H -y db truncate
+        }
 
-    # Force truncate on protected config
-    noorm -H --force db truncate
+        process.exit(0);
 
-    # JSON output for scripting
-    noorm -H --json -y db truncate
+    },
+});
 
-## JSON Output
+(truncateCommand as typeof truncateCommand & { examples: string[] }).examples = [
+    'noorm db truncate',
+    'noorm db truncate --yes',
+    'noorm db truncate --force --yes',
+    'noorm db truncate --json --yes',
+];
 
-\`\`\`json
-{
-    "truncated": ["users", "posts", "comments"],
-    "count": 3
-}
-\`\`\`
-
-See \`noorm help db\` or \`noorm help db teardown\`.
-`;
-
-export const run: HeadlessCommand = async (_params, flags, logger) => {
-
-    const [result, error] = await withContext({
-        flags,
-        logger,
-        fn: (ctx) => ctx.noorm.db.truncate(),
-    });
-
-    if (error) return 1;
-
-    outputResult(flags, logger, {
-        truncated: result.truncated,
-        count: result.truncated.length,
-    }, `Truncated ${result.truncated.length} tables`, {
-        tables: result.truncated,
-    });
-
-    return 0;
-
-};
+export default truncateCommand;
