@@ -6,6 +6,7 @@
  * intercepts --help to append per-command examples after citty's
  * auto-generated usage.
  */
+import tab from '@bomb.sh/tab/citty';
 import { defineCommand, runMain, renderUsage, type CommandDef } from 'citty';
 
 import change from './change/index.js';
@@ -117,6 +118,10 @@ async function printHelpWithExamples(cmd: CommandWithExamples, rootDef: CommandD
 async function entry(): Promise<void> {
 
     initProjectContext();
+
+    // Register shell completion as the `complete` subcommand on main.
+    // The adapter walks main.subCommands to generate completions.
+    await tab(main);
 
     const rawArgs = process.argv.slice(2);
 
