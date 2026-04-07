@@ -1,5 +1,5 @@
 /**
- * Dev command: test $helpers loading for a template file.
+ * noorm dev test-helpers — test $helpers loading for a template file.
  *
  * Verifies that loadHelpers and buildContext correctly load
  * $helpers files from a template's directory tree. Useful for
@@ -7,178 +7,156 @@
  *
  * @example
  * ```bash
- * noorm -H dev/test-helpers sql/core/05_Cron/Crons.sql.tmpl
+ * noorm dev test-helpers sql/core/05_Cron/Crons.sql.tmpl
+ * noorm dev test-helpers --json sql/seed.sql.tmpl
  * ```
  */
 import { dirname, join, relative } from 'node:path';
 
+import { defineCommand } from 'citty';
+
 import { attempt } from '@logosdx/utils';
 
-import { loadHelpers } from '../../core/template/helpers.js';
-import { findHelperFiles } from '../../core/template/helpers.js';
+import { loadHelpers, findHelperFiles } from '../../core/template/helpers.js';
 import { buildContext } from '../../core/template/context.js';
-import type { Logger } from '../../core/logger/index.js';
-import type { RouteParams, CliFlags } from '../types.js';
+import { outputResult } from '../_utils.js';
 
-export const help = `
-# dev test-helpers
+const testHelpersCommand = defineCommand({
+    meta: {
+        name: 'test-helpers',
+        description: 'Test $helpers loading for a template file',
+    },
+    args: {
+        json: { type: 'boolean', description: 'Output JSON' },
+        template: {
+            type: 'positional',
+            description: 'Path to the template file (relative to project root)',
+            required: true,
+        },
+    },
+    async run({ args }) {
 
-Internal diagnostic — tests $helpers loading for a template file.
+        const projectRoot = process.cwd();
+        const templatePath = args.template;
+        const fullPath = join(projectRoot, templatePath);
+        const templateDir = dirname(fullPath);
 
-## Usage
+        process.stdout.write('\n');
+        process.stdout.write('$helpers Diagnostics\n');
+        process.stdout.write('─'.repeat(60) + '\n');
+        process.stdout.write(`  Template: ${templatePath}\n`);
+        process.stdout.write(`  Dir:      ${relative(projectRoot, templateDir)}\n`);
+        process.stdout.write('\n');
 
-    noorm -H dev/test-helpers <template-path>
+        // Step 1: Find helper files
+        const [helperFiles, findErr] = await attempt(() => findHelperFiles(templateDir, projectRoot));
 
-## Description
+        if (findErr) {
 
-Verifies that loadHelpers and buildContext correctly resolve and load
-$helpers files from a template's directory tree. Reports found files,
-loaded exports, errors, and full context composition.
-
-Useful for diagnosing helper resolution issues in compiled binaries.
-
-## Examples
-
-    noorm -H dev/test-helpers sql/core/05_Cron/Crons.sql.tmpl
-    noorm -H --json dev/test-helpers sql/seed.sql.tmpl
-
-## JSON Output
-
-{
-    "templatePath": "sql/core/05_Cron/Crons.sql.tmpl",
-    "helperFiles": ["sql/core/$helpers.ts"],
-    "helpers": [{"key": "padId", "type": "function"}],
-    "errors": [],
-    "dataKeys": ["roles"],
-    "totalContextKeys": 12
-}
-`;
-
-export async function run(
-    params: RouteParams,
-    flags: CliFlags,
-    logger: Logger,
-): Promise<number> {
-
-    const projectRoot = process.cwd();
-    const templatePath = params.path;
-
-    if (!templatePath) {
-
-        logger.error('Usage: noorm -H dev/test-helpers <template-path>');
-
-        return 1;
-
-    }
-
-    const fullPath = join(projectRoot, templatePath);
-    const templateDir = dirname(fullPath);
-
-    logger.info('');
-    logger.info('$helpers Diagnostics');
-    logger.info('─'.repeat(60));
-    logger.info(`  Template: ${templatePath}`);
-    logger.info(`  Dir:      ${relative(projectRoot, templateDir)}`);
-    logger.info('');
-
-    // Step 1: Find helper files
-    const [helperFiles, findErr] = await attempt(() => findHelperFiles(templateDir, projectRoot));
-
-    if (findErr) {
-
-        logger.error(`  findHelperFiles failed: ${findErr.message}`);
-
-        return 1;
-
-    }
-
-    logger.info(`  Found ${helperFiles!.length} $helpers file(s):`);
-
-    for (const f of helperFiles!) {
-
-        logger.info(`    ${relative(projectRoot, f)}`);
-
-    }
-
-    logger.info('');
-
-    // Step 2: Load helpers
-    const [helperResult, loadErr] = await attempt(() => loadHelpers(templateDir, projectRoot));
-
-    if (loadErr) {
-
-        logger.error(`  loadHelpers failed: ${loadErr.message}`);
-
-        return 1;
-
-    }
-
-    const { helpers, errors } = helperResult!;
-    const keys = Object.keys(helpers);
-
-    logger.info(`  Loaded ${keys.length} export(s):`);
-
-    for (const key of keys) {
-
-        logger.info(`    $.${key} : ${typeof helpers[key]}`);
-
-    }
-
-    if (errors.length > 0) {
-
-        logger.info('');
-        logger.error(`  ${errors.length} error(s):`);
-
-        for (const { filepath, error } of errors) {
-
-            logger.error(`    ${relative(projectRoot, filepath)}: ${error.message}`);
+            process.stderr.write(`  findHelperFiles failed: ${findErr.message}\n`);
+            process.exit(1);
 
         }
 
-    }
+        process.stdout.write(`  Found ${helperFiles!.length} $helpers file(s):\n`);
 
-    logger.info('');
+        for (const f of helperFiles!) {
 
-    // Step 3: Build full context
-    const [ctx, ctxErr] = await attempt(() => buildContext(fullPath, { projectRoot }));
+            process.stdout.write(`    ${relative(projectRoot, f)}\n`);
 
-    if (ctxErr) {
+        }
 
-        logger.error(`  buildContext failed: ${ctxErr.message}`);
+        process.stdout.write('\n');
 
-        return 1;
+        // Step 2: Load helpers
+        const [helperResult, loadErr] = await attempt(() => loadHelpers(templateDir, projectRoot));
 
-    }
+        if (loadErr) {
 
-    const ctxKeys = Object.keys(ctx!);
-    const helperKeySet = new Set(keys);
-    const builtins = new Set(['quote', 'escape', 'uuid', 'now', 'json', 'include', 'config', 'secrets', 'globalSecrets', 'env']);
-    const dataKeys = ctxKeys.filter(k => !builtins.has(k) && !helperKeySet.has(k));
+            process.stderr.write(`  loadHelpers failed: ${loadErr.message}\n`);
+            process.exit(1);
 
-    logger.info(`  Context: ${ctxKeys.length} total keys`);
-    logger.info(`    Helpers:  ${keys.length}`);
-    logger.info(`    Data:     ${dataKeys.length} (${dataKeys.join(', ') || 'none'})`);
-    logger.info(`    Builtins: ${ctxKeys.filter(k => builtins.has(k)).length}`);
-    logger.info('');
-    logger.info('─'.repeat(60));
+        }
 
-    const status = errors.length === 0 ? 'OK' : `${errors.length} error(s)`;
-    logger.info(`  ${status}`);
-    logger.info('');
+        const { helpers, errors } = helperResult!;
+        const keys = Object.keys(helpers);
 
-    if (flags.json) {
+        process.stdout.write(`  Loaded ${keys.length} export(s):\n`);
 
-        logger.result({
-            templatePath,
-            helperFiles: helperFiles!.map(f => relative(projectRoot, f)),
-            helpers: keys.map(k => ({ key: k, type: typeof helpers[k] })),
-            errors: errors.map(e => ({ filepath: relative(projectRoot, e.filepath), message: e.error.message })),
-            dataKeys,
-            totalContextKeys: ctxKeys.length,
-        });
+        for (const key of keys) {
 
-    }
+            process.stdout.write(`    $.${key} : ${typeof helpers[key]}\n`);
 
-    return errors.length > 0 ? 1 : 0;
+        }
 
-}
+        if (errors.length > 0) {
+
+            process.stdout.write('\n');
+            process.stderr.write(`  ${errors.length} error(s):\n`);
+
+            for (const { filepath, error } of errors) {
+
+                process.stderr.write(`    ${relative(projectRoot, filepath)}: ${error.message}\n`);
+
+            }
+
+        }
+
+        process.stdout.write('\n');
+
+        // Step 3: Build full context
+        const [ctx, ctxErr] = await attempt(() => buildContext(fullPath, { projectRoot }));
+
+        if (ctxErr) {
+
+            process.stderr.write(`  buildContext failed: ${ctxErr.message}\n`);
+            process.exit(1);
+
+        }
+
+        const ctxKeys = Object.keys(ctx!);
+        const helperKeySet: Record<string, true> = {};
+        for (const k of keys) helperKeySet[k] = true;
+
+        const builtins: Record<string, true> = {
+            quote: true, escape: true, uuid: true, now: true, json: true,
+            include: true, config: true, secrets: true, globalSecrets: true, env: true,
+        };
+
+        const dataKeys = ctxKeys.filter(k => !builtins[k] && !helperKeySet[k]);
+
+        process.stdout.write(`  Context: ${ctxKeys.length} total keys\n`);
+        process.stdout.write(`    Helpers:  ${keys.length}\n`);
+        process.stdout.write(`    Data:     ${dataKeys.length} (${dataKeys.join(', ') || 'none'})\n`);
+        process.stdout.write(`    Builtins: ${ctxKeys.filter(k => builtins[k]).length}\n`);
+        process.stdout.write('\n');
+        process.stdout.write('─'.repeat(60) + '\n');
+
+        const status = errors.length === 0 ? 'OK' : `${errors.length} error(s)`;
+        process.stdout.write(`  ${status}\n`);
+        process.stdout.write('\n');
+
+        if (args.json) {
+
+            outputResult(args, {
+                templatePath,
+                helperFiles: helperFiles!.map(f => relative(projectRoot, f)),
+                helpers: keys.map(k => ({ key: k, type: typeof helpers[k] })),
+                errors: errors.map(e => ({ filepath: relative(projectRoot, e.filepath), message: e.error.message })),
+                dataKeys,
+                totalContextKeys: ctxKeys.length,
+            }, '');
+
+        }
+
+        process.exit(errors.length > 0 ? 1 : 0);
+
+    },
+});
+
+(testHelpersCommand as typeof testHelpersCommand & { examples: string[] }).examples = [
+    'noorm dev test-helpers sql/core/05_Cron/Crons.sql.tmpl',
+    'noorm dev test-helpers --json sql/seed.sql.tmpl',
+];
+
+export default testHelpersCommand;
