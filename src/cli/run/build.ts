@@ -13,7 +13,6 @@ const buildCommand = defineCommand({
     args: {
         config: sharedArgs.config,
         force: sharedArgs.force,
-        dryRun: sharedArgs.dryRun,
         json: sharedArgs.json,
     },
     async run({ args }) {
@@ -54,7 +53,6 @@ const buildCommand = defineCommand({
 (buildCommand as typeof buildCommand & { examples: string[] }).examples = [
     'noorm run build',
     'noorm run build --force',
-    'noorm run build --dry-run',
     'noorm run build --json',
 ];
 

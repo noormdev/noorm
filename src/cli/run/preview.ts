@@ -13,10 +13,10 @@
  */
 import { join } from 'node:path';
 
-import { attempt } from '@logosdx/utils';
 import { defineCommand } from 'citty';
+import { attempt } from '@logosdx/utils';
 
-import { outputError, sharedArgs } from '../_utils.js';
+import { outputError, outputResult, sharedArgs } from '../_utils.js';
 import { processFile } from '../../core/template/engine.js';
 import { getStateManager } from '../../core/state/index.js';
 
@@ -70,11 +70,11 @@ const previewCommand = defineCommand({
 
         if (args.json) {
 
-            process.stdout.write(JSON.stringify({
+            outputResult(args, {
                 filepath: args.path,
                 sql: result.sql,
                 durationMs: result.durationMs,
-            }) + '\n');
+            }, '');
 
         }
         else {
@@ -90,6 +90,8 @@ const previewCommand = defineCommand({
             }
 
         }
+
+        process.exit(0);
 
     },
 });

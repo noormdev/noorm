@@ -12,8 +12,8 @@
  */
 import { dirname, join, relative } from 'node:path';
 
-import { attempt } from '@logosdx/utils';
 import { defineCommand } from 'citty';
+import { attempt } from '@logosdx/utils';
 
 import { outputError, outputResult, sharedArgs } from '../_utils.js';
 import { buildContext } from '../../core/template/context.js';
@@ -224,6 +224,8 @@ const inspectCommand = defineCommand({
         }
 
         outputResult(args, jsonOutput, textLines.join('\n'));
+
+        process.exit(0);
 
     },
 });
