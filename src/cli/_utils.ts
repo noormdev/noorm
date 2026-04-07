@@ -1,16 +1,57 @@
+/**
+ * CLI utilities for citty commands.
+ *
+ * Wraps createContext/Logger lifecycle for headless command execution.
+ * Commands receive a plain `args` object from citty and call withContext
+ * or withVaultContext to run work against a connected database context.
+ */
+import { createWriteStream } from 'node:fs';
+import { mkdir } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
+
 import type { Kysely } from 'kysely';
 import { attempt } from '@logosdx/utils';
 
-import type { Logger } from '../../core/logger/index.js';
-import type { Context } from '../../sdk/context.js';
-import type { CryptoIdentity } from '../../core/identity/types.js';
-import { getSqlErrorMessage } from '../../core/shared/index.js';
-import { createContext } from '../../sdk/index.js';
-import { ensureSchemaVersion, type NoormDatabase } from '../../core/version/index.js';
-import { loadPrivateKey, loadIdentityMetadata } from '../../core/identity/storage.js';
-import { registerIdentity } from '../../core/identity/sync.js';
-import { formatHelp } from '../../core/help-formatter.js';
-import type { RouteParams, CliFlags } from '../types.js';
+import type { Context } from '../sdk/context.js';
+import type { CryptoIdentity } from '../core/identity/types.js';
+import { Logger, type LoggerOptions, type LogLevel } from '../core/logger/index.js';
+import { getSettingsManager } from '../core/settings/index.js';
+import { getSqlErrorMessage } from '../core/shared/index.js';
+import { createContext } from '../sdk/index.js';
+import { ensureSchemaVersion, type NoormDatabase } from '../core/version/index.js';
+import { loadPrivateKey, loadIdentityMetadata } from '../core/identity/storage.js';
+import { registerIdentity } from '../core/identity/sync.js';
+import { isDev } from '../core/environment.js';
+import { getConfig } from '../core/config/index.js';
+
+/**
+ * Minimal args shape expected by the helpers.
+ * Commands declare these args natively on their citty defineCommand.
+ */
+export interface CliArgs {
+    config?: string;
+    json?: boolean;
+    force?: boolean;
+    dryRun?: boolean;
+    yes?: boolean;
+    [key: string]: unknown;
+}
+
+/**
+ * Shared arg definitions for spreading into citty commands.
+ *
+ * @example
+ * ```ts
+ * args: { ...sharedArgs, customArg: { ... } }
+ * ```
+ */
+export const sharedArgs = {
+    config: { type: 'string', alias: 'c', description: 'Use specific configuration' },
+    json: { type: 'boolean', description: 'Output JSON' },
+    force: { type: 'boolean', alias: 'f', description: 'Force operation' },
+    dryRun: { type: 'boolean', description: 'Preview without executing' },
+    yes: { type: 'boolean', alias: 'y', description: 'Skip confirmations' },
+} as const;
 
 /**
  * Extended context with crypto identity for vault operations.
@@ -21,158 +62,197 @@ export interface VaultContext {
     privateKey: string;
 }
 
-export interface HeadlessCommand {
-    (
-        params: RouteParams,
-        flags: CliFlags,
-        logger: Logger
-    ): Promise<number>;
+/**
+ * Create a Logger configured for CLI execution.
+ *
+ * The Logger subscribes to observer events so core module progress
+ * reaches stdout automatically. Commands only need to call logger.info
+ * or logger.result for explicit output not tied to events.
+ */
+async function createCliLogger(projectRoot: string, json: boolean): Promise<Logger> {
+
+    const settingsManager = getSettingsManager(projectRoot);
+    const [, settingsErr] = await attempt(() => settingsManager.load());
+    const settings = settingsErr ? {} : settingsManager.settings;
+
+    const logPath = join(projectRoot, '.noorm', 'state', 'noorm.log');
+    const [, mkdirErr] = await attempt(() => mkdir(dirname(logPath), { recursive: true }));
+
+    let fileStream: ReturnType<typeof createWriteStream> | undefined;
+    if (!mkdirErr) {
+
+        fileStream = createWriteStream(logPath, { flags: 'a' });
+        fileStream.on('error', () => {}); // best-effort file logging
+
+    }
+
+    let defaultLevel: LogLevel = 'info';
+    if (isDev()) {
+
+        defaultLevel = 'verbose';
+
+    }
+
+    const options: LoggerOptions = {
+        projectRoot,
+        settings,
+        config: {
+            enabled: true,
+            level: getConfig('log.level', defaultLevel)!,
+        },
+        console: process.stdout,
+        file: fileStream ?? undefined,
+        json,
+        color: !json,
+    };
+
+    return new Logger(options);
+
 }
 
-export type RouteHandler = {
-    run: HeadlessCommand;
-    help: string;
-    factory?: (...args: unknown[]) => RouteHandler;
-}
+/**
+ * Run a function against a connected SDK context.
+ *
+ * Handles context creation, connection, schema bootstrap, Logger lifecycle,
+ * and cleanup. Returns [result, null] on success or [null, error] on failure.
+ * Errors are written to output before the tuple is returned.
+ *
+ * @example
+ * ```ts
+ * const [result, err] = await withContext({
+ *     args,
+ *     fn: (ctx) => ctx.noorm.changes.ff(),
+ * });
+ * if (err) process.exit(1);
+ * ```
+ */
+export async function withContext<T>(opts: {
+    args: CliArgs;
+    fn: (ctx: Context<NoormDatabase>, logger: Logger) => Promise<T>;
+}): Promise<[T, null] | [null, Error]> {
 
-export const withContext = async <T>(opts: {
-    flags: CliFlags;
-    logger: Logger;
-    fn: (ctx: Context) => Promise<T>;
-}): Promise<[T, null] | [null, Error]> => {
+    const { args, fn } = opts;
+    const projectRoot = process.cwd();
+    const logger = await createCliLogger(projectRoot, !!args.json);
+    await logger.start();
 
-    const { flags, logger, fn } = opts;
-
-    const [ctx, ctxError] = await attempt(() => createContext<NoormDatabase>({ config: flags.config }));
-
+    const [ctx, ctxError] = await attempt(() => createContext<NoormDatabase>({ config: args.config }));
     if (ctxError) {
 
-        outputError(flags, logger, `Failed to create context: ${ctxError.message}`);
-
+        outputError(args, `Failed to create context: ${ctxError.message}`, logger);
+        await logger.stop();
         return [null, ctxError];
 
     }
 
     const [, connectError] = await attempt(() => ctx.connect());
-
     if (connectError) {
 
-        outputError(flags, logger, `Failed to connect: ${connectError.message}`);
-
+        outputError(args, `Failed to connect: ${connectError.message}`, logger);
+        await logger.stop();
         return [null, connectError];
 
     }
 
-    // Bootstrap internal tables if they don't exist (for fresh databases in CI)
     const [, schemaError] = await attempt(() =>
         ensureSchemaVersion(
             ctx.kysely as unknown as Kysely<NoormDatabase>,
             ctx.dialect,
         ),
     );
-
     if (schemaError) {
 
-        outputError(flags, logger, `Failed to initialize database schema: ${schemaError.message}`);
+        outputError(args, `Failed to initialize database schema: ${schemaError.message}`, logger);
         await attempt(() => ctx.disconnect());
-
+        await logger.stop();
         return [null, schemaError];
 
     }
 
-    const [result, opError] = await attempt(() => fn(ctx as never));
+    const [result, opError] = await attempt(() => fn(ctx as never, logger));
 
-    // Always disconnect
     await attempt(() => ctx.disconnect());
 
     if (opError) {
 
-        outputError(flags, logger, getSqlErrorMessage(opError));
-
+        outputError(args, getSqlErrorMessage(opError), logger);
+        await logger.stop();
         return [null, opError];
 
     }
 
+    await logger.stop();
     return [result, null];
 
-};
+}
 
 /**
- * Helper for vault commands that need crypto identity.
- *
- * Extends withContext to also load the crypto identity and private key.
+ * Same as withContext but also loads the crypto identity and private key
+ * for vault operations.
  */
-export const withVaultContext = async <T>(opts: {
-    flags: CliFlags;
-    logger: Logger;
-    fn: (vault: VaultContext) => Promise<T>;
-}): Promise<[T, null] | [null, Error]> => {
+export async function withVaultContext<T>(opts: {
+    args: CliArgs;
+    fn: (vault: VaultContext, logger: Logger) => Promise<T>;
+}): Promise<[T, null] | [null, Error]> {
 
-    const { flags, logger, fn } = opts;
+    const { args, fn } = opts;
+    const projectRoot = process.cwd();
+    const logger = await createCliLogger(projectRoot, !!args.json);
+    await logger.start();
 
-    // Load crypto identity
     const [cryptoIdentity, identityErr] = await attempt(() => loadIdentityMetadata());
-
     if (identityErr || !cryptoIdentity) {
 
         const msg = 'Identity not set up. Run: noorm identity init';
-        outputError(flags, logger, msg);
-
+        outputError(args, msg, logger);
+        await logger.stop();
         return [null, new Error(msg)];
 
     }
 
-    // Load private key
     const [privateKey, keyErr] = await attempt(() => loadPrivateKey());
-
     if (keyErr || !privateKey) {
 
         const msg = 'Private key not found. Run: noorm identity init';
-        outputError(flags, logger, msg);
-
+        outputError(args, msg, logger);
+        await logger.stop();
         return [null, new Error(msg)];
 
     }
 
-    // Create context and connect
-    const [ctx, ctxError] = await attempt(() => createContext<NoormDatabase>({ config: flags.config }));
-
+    const [ctx, ctxError] = await attempt(() => createContext<NoormDatabase>({ config: args.config }));
     if (ctxError) {
 
-        outputError(flags, logger, `Failed to create context: ${ctxError.message}`);
-
+        outputError(args, `Failed to create context: ${ctxError.message}`, logger);
+        await logger.stop();
         return [null, ctxError];
 
     }
 
     const [, connectError] = await attempt(() => ctx.connect());
-
     if (connectError) {
 
-        outputError(flags, logger, `Failed to connect: ${connectError.message}`);
-
+        outputError(args, `Failed to connect: ${connectError.message}`, logger);
+        await logger.stop();
         return [null, connectError];
 
     }
 
-    // Bootstrap internal tables
     const [, schemaError] = await attempt(() =>
         ensureSchemaVersion(
             ctx.kysely as unknown as Kysely<NoormDatabase>,
             ctx.dialect,
         ),
     );
-
     if (schemaError) {
 
-        outputError(flags, logger, `Failed to initialize database schema: ${schemaError.message}`);
+        outputError(args, `Failed to initialize database schema: ${schemaError.message}`, logger);
         await attempt(() => ctx.disconnect());
-
+        await logger.stop();
         return [null, schemaError];
 
     }
 
-    // Ensure identity is registered in database
     await attempt(() =>
         registerIdentity(
             ctx.kysely as unknown as Kysely<NoormDatabase>,
@@ -182,90 +262,128 @@ export const withVaultContext = async <T>(opts: {
     );
 
     const [result, opError] = await attempt(() => fn({
-        // Type assertion for generic Context bc it comes from SDK and we allow users to specify DB type
         ctx: ctx as never,
         cryptoIdentity,
         privateKey,
-    }));
+    }, logger));
 
-    // Always disconnect
     await attempt(() => ctx.disconnect());
 
     if (opError) {
 
-        outputError(flags, logger, getSqlErrorMessage(opError));
-
+        outputError(args, getSqlErrorMessage(opError), logger);
+        await logger.stop();
         return [null, opError];
 
     }
 
+    await logger.stop();
     return [result, null];
-
-};
-
-/**
- * Create a headless command that outputs help text.
- *
- * Many headless route handlers only display help when invoked
- * without a subcommand. This factory eliminates the repeated pattern.
- *
- * @example
- * ```typescript
- * export const run = createHelpOnlyCommand(help);
- * ```
- */
-export function createHelpOnlyCommand(helpText: string): HeadlessCommand {
-
-    return async (_params, flags, _logger) => {
-
-        const output = flags.json ? helpText : formatHelp(helpText);
-        process.stdout.write(output + '\n');
-
-        return 0;
-
-    };
 
 }
 
 /**
- * Handles the result/error output for vault headless commands.
+ * Output a success result as either JSON or text.
  *
- * Replaces the identical 30-line output pattern in vault-set, vault-rm,
- * vault-list, vault-init, and vault-propagate.
- *
- * @example
- * ```typescript
- * return handleVaultResult(result, err, flags, logger, (r) => {
- *     logger.info(`Secret "${key}" set`);
- * });
- * ```
+ * When logger is provided and args.json is false, the text message is
+ * routed through logger.info so it appears in the same stream as event
+ * output. Otherwise it writes directly to stdout.
+ */
+export function outputResult(
+    args: CliArgs,
+    json: unknown,
+    text: string,
+    logger?: Logger,
+): void {
+
+    if (args.json) {
+
+        if (logger) {
+
+            logger.result(json);
+
+        }
+        else {
+
+            process.stdout.write(JSON.stringify(json) + '\n');
+
+        }
+
+    }
+    else {
+
+        if (logger) {
+
+            logger.info(text);
+
+        }
+        else {
+
+            process.stdout.write(text + '\n');
+
+        }
+
+    }
+
+}
+
+/**
+ * Output an error as either JSON or text.
+ */
+export function outputError(args: CliArgs, error: string, logger?: Logger): void {
+
+    if (args.json) {
+
+        if (logger) {
+
+            logger.result({ success: false, error });
+
+        }
+        else {
+
+            process.stdout.write(JSON.stringify({ success: false, error }) + '\n');
+
+        }
+
+    }
+    else {
+
+        if (logger) {
+
+            logger.error(error);
+
+        }
+        else {
+
+            process.stderr.write('Error: ' + error + '\n');
+
+        }
+
+    }
+
+}
+
+/**
+ * Helper for vault commands: standardizes success/error output
+ * based on the { success, error?, message? } shape returned by
+ * most vault operations.
  */
 export function handleVaultResult<T extends { success: boolean; error?: string; message?: string }>(
     result: T | null,
     err: Error | null,
-    flags: CliFlags,
+    args: CliArgs,
     logger: Logger,
     onSuccess: (result: T) => void,
 ): number {
 
     if (err) {
 
-        if (flags.json) {
-
-            logger.result({ success: false, error: err.message });
-
-        }
-        else {
-
-            logger.error(err.message);
-
-        }
-
+        outputError(args, err.message, logger);
         return 1;
 
     }
 
-    if (flags.json) {
+    if (args.json) {
 
         logger.result(result);
 
@@ -286,109 +404,5 @@ export function handleVaultResult<T extends { success: boolean; error?: string; 
     }
 
     return result?.success ? 0 : 1;
-
-}
-
-/**
- * Outputs a success result in JSON or text format.
- *
- * Replaces the repeated `if (flags.json) { logger.result(data) } else { logger.info(msg) }` pattern.
- *
- * @example
- * ```typescript
- * outputResult(flags, logger, { released: true }, 'Lock released');
- * outputResult(flags, logger, overview, 'Database Overview', overview);
- * ```
- */
-export function outputResult(
-    flags: CliFlags,
-    logger: Logger,
-    json: unknown,
-    text: string,
-    textData?: Record<string, unknown>,
-): void {
-
-    if (flags.json) {
-
-        logger.result(json);
-
-    }
-    else {
-
-        logger.info(text, textData);
-
-    }
-
-}
-
-/**
- * Outputs an error in JSON or text format and returns exit code 1.
- *
- * Replaces the repeated `if (flags.json) { logger.result({ success: false, error }) } else { logger.error(msg) }` pattern.
- *
- * @example
- * ```typescript
- * if (!sourceConfig) return outputError(flags, logger, `Config not found: ${name}`);
- * ```
- */
-export function outputError(
-    flags: CliFlags,
-    logger: Logger,
-    error: string,
-): 1 {
-
-    if (flags.json) {
-
-        logger.result({ success: false, error });
-
-    }
-    else {
-
-        logger.error(error);
-
-    }
-
-    return 1;
-
-}
-
-/**
- * Validates required params and shows help if missing.
- *
- * Returns true if all params are present, false if missing
- * (and output has already been written).
- *
- * @example
- * ```typescript
- * if (!requireParams({ key, value }, flags, logger, help)) return 1;
- * ```
- */
-export function requireParams(
-    params: Record<string, string | undefined>,
-    flags: CliFlags,
-    logger: Logger,
-    helpText: string,
-): boolean {
-
-    const missing = Object.entries(params).some(([, v]) => !v);
-
-    if (!missing) return true;
-
-    if (flags.json) {
-
-        logger.result({
-            success: false,
-            error: `Missing required parameters: ${Object.entries(params).filter(([, v]) => !v).map(([k]) => k).join(', ')}`,
-        });
-
-    }
-    else {
-
-        const output = formatHelp(helpText);
-        process.stdout.write(output + '\n');
-
-    }
-
-    return false;
 
 }
