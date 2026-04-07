@@ -3,7 +3,7 @@
  */
 import { defineCommand } from 'citty';
 
-import { withContext, sharedArgs } from '../_utils.js';
+import { withContext, outputResult, sharedArgs } from '../_utils.js';
 
 const historyCommand = defineCommand({
     meta: {
@@ -21,7 +21,7 @@ const historyCommand = defineCommand({
     },
     async run({ args }) {
 
-        const count = parseInt(args.count ?? '20', 10);
+        const count = parseInt(args.count, 10);
 
         const [history, error] = await withContext({
             args,
@@ -49,7 +49,7 @@ const historyCommand = defineCommand({
 
         if (args.json) {
 
-            process.stdout.write(JSON.stringify(history) + '\n');
+            outputResult(args, history, '');
 
         }
 

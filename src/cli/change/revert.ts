@@ -3,7 +3,7 @@
  */
 import { defineCommand } from 'citty';
 
-import { withContext, sharedArgs } from '../_utils.js';
+import { withContext, outputResult, sharedArgs } from '../_utils.js';
 
 const revertCommand = defineCommand({
     meta: {
@@ -38,6 +38,12 @@ const revertCommand = defineCommand({
         });
 
         if (error) process.exit(1);
+
+        if (args.json) {
+
+            outputResult(args, result, '');
+
+        }
 
         process.exit(result.status === 'success' ? 0 : 2);
 
