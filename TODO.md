@@ -32,12 +32,12 @@ Core SDK is implemented and packaged (`@noormdev/sdk`). Remaining:
 
 **SQL Execution:**
 
-- [ ] `sql <query>` - Execute raw SQL
-- [ ] `sql -f <file>` - Execute SQL from file
+- [x] `sql <query>` - Execute raw SQL
+- [x] `sql -f <file>` - Execute SQL from file
 
 **Changes:**
 
-- [ ] `change next` - Apply next pending change
+- [x] `change next` - Apply next pending change
 
 **Runner:**
 

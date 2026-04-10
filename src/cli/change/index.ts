@@ -9,6 +9,7 @@ import { defineCommand } from 'citty';
 import { withContext, outputResult, sharedArgs } from '../_utils.js';
 
 import ff from './ff.js';
+import next from './next.js';
 import run from './run.js';
 import revert from './revert.js';
 import history from './history.js';
@@ -24,6 +25,7 @@ const changeCommand = defineCommand({
     },
     subCommands: {
         ff,
+        next,
         run,
         revert,
         history,

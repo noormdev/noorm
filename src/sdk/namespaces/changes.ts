@@ -255,6 +255,21 @@ export class ChangesNamespace {
 
     }
 
+    /**
+     * Apply the next N pending changes (default 1).
+     *
+     * @example
+     * ```typescript
+     * const result = await ctx.noorm.changes.next()
+     * const result = await ctx.noorm.changes.next(3)
+     * ```
+     */
+    async next(count: number = 1): Promise<BatchChangeResult> {
+
+        return this.#getManager().next(count);
+
+    }
+
     // ─────────────────────────────────────────────────────
     // Status & history (connected)
     // ─────────────────────────────────────────────────────
