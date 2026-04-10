@@ -41,7 +41,7 @@ Core SDK is implemented and packaged (`@noormdev/sdk`). Remaining:
 
 **Runner:**
 
-- [ ] `run files <path...>` - Run multiple specific files
+- [x] `run files <path...>` - Run multiple specific files
 - [ ] `run exec` - Batch-execute selected SQL files (currently TUI-only `RunExecScreen`)
 
 
@@ -52,10 +52,10 @@ Surfaces that exist in the TUI but have no headless CLI equivalent. Discovered a
 **Identity:** (entire domain TUI-only — no `noorm identity` command)
 
 - [ ] **`identity ci`** - Create/load an identity for CI use via ENV variables (e.g. `NOORM_IDENTITY_PRIVATE_KEY`, `NOORM_IDENTITY_NAME`, `NOORM_IDENTITY_EMAIL`). Requires **core support** to bootstrap an identity from env vars instead of `~/.noorm/identity` on disk, so CI runners can decrypt vault/state without writing secrets to the filesystem.
-- [ ] `identity init` - Generate or regenerate an identity headlessly
+- [x] `identity init` - Generate or regenerate an identity headlessly
 - [ ] `identity edit` - Edit identity metadata (name, email)
-- [ ] `identity export` - Export public key
-- [ ] `identity list` - List known users
+- [x] `identity export` - Export public key
+- [x] `identity list` - List known users
 
 **Init:**
 
@@ -82,9 +82,9 @@ Surfaces that exist in the TUI but have no headless CLI equivalent. Discovered a
 
 **Changes (additional):**
 
-- [ ] `change add <name>` - Create a new change
+- [x] `change add <name>` - Create a new change
 - [ ] `change edit <name>` - Edit an existing change
-- [ ] `change rm <name>` - Delete a change
+- [x] `change rm <name>` - Delete a change
 - [ ] `change rewind <name>` - Rewind to a specific change
 - [ ] `change history detail <name>` - Show per-file execution history
 
@@ -92,14 +92,14 @@ Surfaces that exist in the TUI but have no headless CLI equivalent. Discovered a
 
 - [ ] `db dt-modify <path>` - Modify a `.dt` file (currently only TUI `DtModifyScreen`)
 
-**Database Exploration:** (CLI only wires `tables`)
+**Database Exploration:**
 
-- [ ] `db explore views` + `db explore views <name>` - List and inspect views
-- [ ] `db explore procedures` + `db explore procedures <name>` - List and inspect stored procedures
-- [ ] `db explore functions` + `db explore functions <name>` - List and inspect functions
-- [ ] `db explore types` + `db explore types <name>` - List and inspect custom types
-- [ ] `db explore indexes` - List indexes
-- [ ] `db explore fks` - List foreign keys
+- [x] `db explore views` + `db explore views <name>` - List and inspect views
+- [x] `db explore procedures` + `db explore procedures <name>` - List and inspect stored procedures
+- [x] `db explore functions` + `db explore functions <name>` - List and inspect functions
+- [x] `db explore types` + `db explore types <name>` - List and inspect custom types
+- [x] `db explore indexes` - List indexes
+- [x] `db explore fks` - List foreign keys
 
 **SQL Terminal:** (CLI `sql` is one-shot only)
 

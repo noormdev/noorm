@@ -8,8 +8,10 @@ import { defineCommand } from 'citty';
 
 import { withContext, outputResult, sharedArgs } from '../_utils.js';
 
+import add from './add.js';
 import ff from './ff.js';
 import next from './next.js';
+import rm from './rm.js';
 import run from './run.js';
 import revert from './revert.js';
 import history from './history.js';
@@ -24,8 +26,10 @@ const changeCommand = defineCommand({
         json: sharedArgs.json,
     },
     subCommands: {
+        add,
         ff,
         next,
+        rm,
         run,
         revert,
         history,

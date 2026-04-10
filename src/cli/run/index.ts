@@ -6,6 +6,7 @@ import { defineCommand } from 'citty';
 import build from './build.js';
 import dir from './dir.js';
 import file from './file.js';
+import files from './files.js';
 import inspect from './inspect.js';
 import preview from './preview.js';
 
@@ -18,6 +19,7 @@ export default defineCommand({
         build,
         dir,
         file,
+        files,
         inspect,
         preview,
     },

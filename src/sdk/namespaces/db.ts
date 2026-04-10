@@ -10,6 +10,16 @@ import type { Dialect } from '../../core/connection/index.js';
 import type {
     TableSummary,
     TableDetail,
+    ViewSummary,
+    ViewDetail,
+    ProcedureSummary,
+    ProcedureDetail,
+    FunctionSummary,
+    FunctionDetail,
+    TypeSummary,
+    TypeDetail,
+    IndexSummary,
+    ForeignKeySummary,
     ExploreOverview,
 } from '../../core/explore/index.js';
 import { fetchOverview, fetchList, fetchDetail } from '../../core/explore/index.js';
@@ -65,6 +75,146 @@ export class DbNamespace {
     async describeTable(name: string, schema?: string): Promise<TableDetail | null> {
 
         return fetchDetail(this.#kysely, this.#dialect, 'tables', name, schema);
+
+    }
+
+    /**
+     * List all views in the database.
+     *
+     * @example
+     * ```typescript
+     * const views = await ctx.noorm.db.listViews()
+     * ```
+     */
+    async listViews(): Promise<ViewSummary[]> {
+
+        return fetchList(this.#kysely, this.#dialect, 'views');
+
+    }
+
+    /**
+     * Get detailed information about a view.
+     *
+     * @example
+     * ```typescript
+     * const detail = await ctx.noorm.db.describeView('active_users')
+     * ```
+     */
+    async describeView(name: string, schema?: string): Promise<ViewDetail | null> {
+
+        return fetchDetail(this.#kysely, this.#dialect, 'views', name, schema);
+
+    }
+
+    /**
+     * List all stored procedures in the database.
+     *
+     * @example
+     * ```typescript
+     * const procs = await ctx.noorm.db.listProcedures()
+     * ```
+     */
+    async listProcedures(): Promise<ProcedureSummary[]> {
+
+        return fetchList(this.#kysely, this.#dialect, 'procedures');
+
+    }
+
+    /**
+     * Get detailed information about a stored procedure.
+     *
+     * @example
+     * ```typescript
+     * const detail = await ctx.noorm.db.describeProcedure('sp_update_user')
+     * ```
+     */
+    async describeProcedure(name: string, schema?: string): Promise<ProcedureDetail | null> {
+
+        return fetchDetail(this.#kysely, this.#dialect, 'procedures', name, schema);
+
+    }
+
+    /**
+     * List all functions in the database.
+     *
+     * @example
+     * ```typescript
+     * const fns = await ctx.noorm.db.listFunctions()
+     * ```
+     */
+    async listFunctions(): Promise<FunctionSummary[]> {
+
+        return fetchList(this.#kysely, this.#dialect, 'functions');
+
+    }
+
+    /**
+     * Get detailed information about a function.
+     *
+     * @example
+     * ```typescript
+     * const detail = await ctx.noorm.db.describeFunction('fn_get_user')
+     * ```
+     */
+    async describeFunction(name: string, schema?: string): Promise<FunctionDetail | null> {
+
+        return fetchDetail(this.#kysely, this.#dialect, 'functions', name, schema);
+
+    }
+
+    /**
+     * List all custom types in the database.
+     *
+     * @example
+     * ```typescript
+     * const types = await ctx.noorm.db.listTypes()
+     * ```
+     */
+    async listTypes(): Promise<TypeSummary[]> {
+
+        return fetchList(this.#kysely, this.#dialect, 'types');
+
+    }
+
+    /**
+     * Get detailed information about a custom type.
+     *
+     * @example
+     * ```typescript
+     * const detail = await ctx.noorm.db.describeType('user_status')
+     * ```
+     */
+    async describeType(name: string, schema?: string): Promise<TypeDetail | null> {
+
+        return fetchDetail(this.#kysely, this.#dialect, 'types', name, schema);
+
+    }
+
+    /**
+     * List all indexes in the database.
+     *
+     * @example
+     * ```typescript
+     * const indexes = await ctx.noorm.db.listIndexes()
+     * ```
+     */
+    async listIndexes(): Promise<IndexSummary[]> {
+
+        return fetchList(this.#kysely, this.#dialect, 'indexes');
+
+    }
+
+    /**
+     * List all foreign keys in the database.
+     *
+     * @example
+     * ```typescript
+     * const fks = await ctx.noorm.db.listForeignKeys()
+     * ```
+     */
+    async listForeignKeys(): Promise<ForeignKeySummary[]> {
+
+        return fetchList(this.#kysely, this.#dialect, 'foreignKeys');
 
     }
 

@@ -12,6 +12,7 @@ import { defineCommand, runMain, renderUsage, type CommandDef } from 'citty';
 import change from './change/index.js';
 import config from './config/index.js';
 import db from './db/index.js';
+import identity from './identity/index.js';
 import dev from './dev/index.js';
 import info from './info.js';
 import lock from './lock/index.js';
@@ -42,6 +43,7 @@ const main = defineCommand({
         config,
         db,
         dev,
+        identity,
         info,
         lock,
         mcp,

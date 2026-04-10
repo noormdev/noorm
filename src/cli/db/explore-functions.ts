@@ -1,0 +1,132 @@
+/**
+ * noorm db explore functions — list all functions, with detail view.
+ */
+import { defineCommand } from 'citty';
+
+import { withContext, outputResult, outputError, sharedArgs } from '../_utils.js';
+
+const functionsCommand = defineCommand({
+    meta: {
+        name: 'functions',
+        description: 'List functions in the database',
+    },
+    args: {
+        name: {
+            type: 'positional',
+            description: 'Name of the function to describe',
+            required: false,
+        },
+        schema: {
+            type: 'string',
+            description: 'Schema name',
+        },
+        config: sharedArgs.config,
+        json: sharedArgs.json,
+    },
+    async run({ args }) {
+
+        if (args.name) {
+
+            const [detail, error] = await withContext({
+                args,
+                fn: (ctx, logger) => {
+
+                    return ctx.noorm.db.describeFunction(args.name as string, args.schema).then((res) => {
+
+                        if (res && !args.json) {
+
+                            logger.info(`Function: ${res.name}`);
+                            logger.info(`  Returns: ${res.returnType}`);
+
+                            if (res.language) {
+
+                                logger.info(`  Language: ${res.language}`);
+
+                            }
+
+                            for (const param of res.parameters) {
+
+                                logger.info(`  ${param.name}: ${param.dataType} (${param.mode})`);
+
+                            }
+
+                            if (res.definition) {
+
+                                logger.info(`  Definition:\n${res.definition}`);
+
+                            }
+
+                        }
+
+                        return res;
+
+                    });
+
+                },
+            });
+
+            if (error) process.exit(1);
+
+            if (!detail) {
+
+                outputError(args, `Function not found: ${args.name}`);
+                process.exit(1);
+
+            }
+
+            if (args.json) {
+
+                outputResult(args, detail, '');
+
+            }
+
+            process.exit(0);
+
+        }
+
+        const [functions, error] = await withContext({
+            args,
+            fn: (ctx, logger) => {
+
+                return ctx.noorm.db.listFunctions().then((res) => {
+
+                    if (!args.json) {
+
+                        logger.info(`Functions: ${res.length}`);
+
+                        for (const f of res) {
+
+                            logger.info(`  ${f.name} (${f.parameterCount} params) → ${f.returnType}`);
+
+                        }
+
+                    }
+
+                    return res;
+
+                });
+
+            },
+        });
+
+        if (error) process.exit(1);
+
+        if (args.json) {
+
+            outputResult(args, functions, '');
+
+        }
+
+        process.exit(0);
+
+    },
+});
+
+(functionsCommand as typeof functionsCommand & { examples: string[] }).examples = [
+    'noorm db explore functions',
+    'noorm db explore functions --json',
+    'noorm db explore functions fn_get_user',
+    'noorm db explore functions fn_get_user --schema public',
+];
+
+export default functionsCommand;
