@@ -21,9 +21,9 @@ Core SDK is implemented and packaged (`@noormdev/sdk`). Remaining:
 
 **Database:**
 
-- [ ] `db reset` - Teardown + build (idempotent rebuild)
-- [ ] `db drop` - Drop entire database
-- [ ] `db create` - Create database if not exists
+- [x] `db reset` - Teardown + build (idempotent rebuild)
+- [x] `db drop` - Drop entire database
+- [x] `db create` - Create database if not exists
 
 **Configuration:**
 
