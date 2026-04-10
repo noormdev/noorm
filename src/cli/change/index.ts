@@ -15,6 +15,8 @@ import rm from './rm.js';
 import run from './run.js';
 import revert from './revert.js';
 import history from './history.js';
+import rewind from './rewind.js';
+import historyDetail from './history-detail.js';
 
 const changeCommand = defineCommand({
     meta: {
@@ -33,6 +35,8 @@ const changeCommand = defineCommand({
         run,
         revert,
         history,
+        rewind,
+        'history-detail': historyDetail,
     },
     async run({ args }) {
 

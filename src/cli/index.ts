@@ -20,7 +20,7 @@ import mcp from './mcp/index.js';
 import run from './run/index.js';
 import secret from './secret/index.js';
 import settings from './settings/index.js';
-import sql from './sql.js';
+import sql from './sql/index.js';
 import ui from './ui.js';
 import update from './update.js';
 import vault from './vault/index.js';

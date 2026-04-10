@@ -16,6 +16,7 @@ import type {
     BatchChangeResult,
     ChangeListItem,
     ChangeHistoryRecord,
+    FileHistoryRecord,
     ChangeContext,
     CreateChangeOptions,
     AddFileOptions,
@@ -317,6 +318,58 @@ export class ChangesNamespace {
     async history(limit?: number): Promise<ChangeHistoryRecord[]> {
 
         return this.#getManager().getHistory(undefined, limit);
+
+    }
+
+    /**
+     * Get execution history for a specific change by name.
+     *
+     * Returns all operation records for the given change, most recent first.
+     *
+     * @example
+     * ```typescript
+     * const records = await ctx.noorm.changes.historyForChange('2024-01-15-add-users')
+     * ```
+     */
+    async historyForChange(name: string, limit?: number): Promise<ChangeHistoryRecord[]> {
+
+        return this.#getManager().getHistory(name, limit);
+
+    }
+
+    /**
+     * Rewind applied changes in reverse order back to (and including) the named change.
+     *
+     * When a string is passed, reverts until and including that change.
+     * When a number is passed, reverts that many recent changes.
+     *
+     * @example
+     * ```typescript
+     * const result = await ctx.noorm.changes.rewind('2024-01-15-add-users')
+     * const result = await ctx.noorm.changes.rewind(3)
+     * ```
+     */
+    async rewind(target: number | string): Promise<BatchChangeResult> {
+
+        return this.#getManager().rewind(target);
+
+    }
+
+    /**
+     * Get per-file execution records for a specific operation ID.
+     *
+     * Use the `id` from a `ChangeHistoryRecord` to drill into individual
+     * file-level results for that operation.
+     *
+     * @example
+     * ```typescript
+     * const records = await ctx.noorm.changes.historyForChange('2024-01-15-add-users')
+     * const files = await ctx.noorm.changes.getFileHistory(records[0].id)
+     * ```
+     */
+    async getFileHistory(operationId: number): Promise<FileHistoryRecord[]> {
+
+        return this.#getManager().getFileHistory(operationId);
 
     }
 

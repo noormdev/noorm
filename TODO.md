@@ -42,7 +42,7 @@ Core SDK is implemented and packaged (`@noormdev/sdk`). Remaining:
 **Runner:**
 
 - [x] `run files <path...>` - Run multiple specific files
-- [ ] `run exec` - Batch-execute selected SQL files (currently TUI-only `RunExecScreen`)
+- [x] `run exec` - Batch-execute selected SQL files (currently TUI-only `RunExecScreen`)
 
 
 ### TUI Parity Gaps
@@ -53,7 +53,7 @@ Surfaces that exist in the TUI but have no headless CLI equivalent. Discovered a
 
 - [ ] **`identity ci`** - Create/load an identity for CI use via ENV variables (e.g. `NOORM_IDENTITY_PRIVATE_KEY`, `NOORM_IDENTITY_NAME`, `NOORM_IDENTITY_EMAIL`). Requires **core support** to bootstrap an identity from env vars instead of `~/.noorm/identity` on disk, so CI runners can decrypt vault/state without writing secrets to the filesystem.
 - [x] `identity init` - Generate or regenerate an identity headlessly
-- [ ] `identity edit` - Edit identity metadata (name, email)
+- [x] `identity edit` - Edit identity metadata (name, email)
 - [x] `identity export` - Export public key
 - [x] `identity list` - List known users
 
@@ -85,8 +85,8 @@ Surfaces that exist in the TUI but have no headless CLI equivalent. Discovered a
 - [x] `change add <name>` - Create a new change
 - [ ] `change edit <name>` - Edit an existing change
 - [x] `change rm <name>` - Delete a change
-- [ ] `change rewind <name>` - Rewind to a specific change
-- [ ] `change history detail <name>` - Show per-file execution history
+- [x] `change rewind <name>` - Rewind to a specific change
+- [x] `change history detail <name>` - Show per-file execution history
 
 **Database (additional):**
 
@@ -104,8 +104,8 @@ Surfaces that exist in the TUI but have no headless CLI equivalent. Discovered a
 **SQL Terminal:** (CLI `sql` is one-shot only)
 
 - [ ] `sql repl` - Interactive SQL REPL (currently TUI-only `SqlTerminalScreen`)
-- [ ] `sql history` - Show SQL execution history
-- [ ] `sql clear` - Clear SQL execution history
+- [x] `sql history` - Show SQL execution history
+- [x] `sql clear` - Clear SQL execution history
 
 
 ### CI/CD Integration
@@ -127,7 +127,7 @@ Surfaces that exist in the TUI but have no headless CLI equivalent. Discovered a
 ### Release Checklist
 
 - [x] **Change table CLI version** - Ensure change rows include CLI version (currently null)
-- [ ] **Events audit** - Revisit all observer events, ensure uniform naming, verify all typed in `NoormEvents`
+- [x] **Events audit** - Revisit all observer events, ensure uniform naming, verify all typed in `NoormEvents`
 - [ ] **Test coverage** - Write tests for core modules (see `TODO-tests.md`)
 - [x] **Cleanup plans** - Remove or archive `plan/` directory contents
 - [ ] **Public documentation** - Create user-facing docs:

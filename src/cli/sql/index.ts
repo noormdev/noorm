@@ -1,5 +1,8 @@
 /**
- * noorm sql <query> — execute a raw SQL query.
+ * noorm sql — SQL execution and history management.
+ *
+ * Bare `noorm sql "SELECT 1"` delegates to the query subcommand.
+ * Explicit subcommands: query, history, clear.
  */
 import { readFile } from 'node:fs/promises';
 
@@ -7,13 +10,17 @@ import { defineCommand } from 'citty';
 import { attempt } from '@logosdx/utils';
 import type { Kysely } from 'kysely';
 
-import { executeRawSql } from '../core/sql-terminal/executor.js';
-import { withContext, outputError, outputResult, sharedArgs } from './_utils.js';
+import { executeRawSql } from '../../core/sql-terminal/executor.js';
+import { withContext, outputError, outputResult, sharedArgs } from '../_utils.js';
 
-const sqlCommand = defineCommand({
+import query from './query.js';
+import history from './history.js';
+import clear from './clear.js';
+
+export default defineCommand({
     meta: {
         name: 'sql',
-        description: 'Execute a raw SQL query',
+        description: 'Execute SQL and manage query history',
     },
     args: {
         query: { type: 'positional', description: 'SQL query to execute', required: false },
@@ -21,9 +28,10 @@ const sqlCommand = defineCommand({
         config: sharedArgs.config,
         json: sharedArgs.json,
     },
+    subCommands: { query: query, history, clear },
     async run({ args }) {
 
-        let query = args.query;
+        let sql = args.query;
 
         if (args.file) {
 
@@ -36,20 +44,20 @@ const sqlCommand = defineCommand({
 
             }
 
-            query = content.trim();
+            sql = content.trim();
 
         }
 
-        if (!query) {
+        if (!sql) {
 
-            outputError(args, 'No query provided. Usage: noorm sql "SELECT ..."');
+            outputError(args, 'No query provided. Usage: noorm sql "SELECT ..." or noorm sql query "SELECT ..."');
             process.exit(1);
 
         }
 
         const [result, error] = await withContext({
             args,
-            fn: async (ctx) => executeRawSql(ctx.kysely as unknown as Kysely<unknown>, query!, args.config ?? 'default'),
+            fn: async (ctx) => executeRawSql(ctx.kysely as unknown as Kysely<unknown>, sql!, args.config ?? 'default'),
         });
 
         if (error) process.exit(1);
@@ -99,13 +107,3 @@ const sqlCommand = defineCommand({
 
     },
 });
-
-(sqlCommand as typeof sqlCommand & { examples: string[] }).examples = [
-    'noorm sql "SELECT 1"',
-    'noorm sql "SELECT * FROM users LIMIT 10"',
-    'noorm sql -c prod "SELECT count(*) FROM orders"',
-    'noorm sql --json "SELECT id, name FROM users"',
-    'noorm sql -f reports/monthly.sql',
-];
-
-export default sqlCommand;

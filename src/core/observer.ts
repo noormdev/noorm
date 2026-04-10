@@ -20,10 +20,13 @@ import { ObserverEngine, type Events } from '@logosdx/observer';
 
 import type { SettingsEvents } from './settings/index.js';
 import type { AppMode, ShutdownReason, ShutdownPhase, PhaseStatus } from './lifecycle/types.js';
+import type { Signal } from './lifecycle/handlers.js';
 import type { UpdateEvents } from './update/types.js';
 import type { VaultEvents } from './vault/events.js';
 import type { TransferEvents } from './transfer/events.js';
 import type { DtEvents } from './dt/events.js';
+import type { LogLevel } from './logger/types.js';
+import type { TruncateResult, TeardownResult } from './teardown/types.js';
 
 /**
  * All events emitted by noorm core modules.
@@ -45,6 +48,11 @@ import type { DtEvents } from './dt/events.js';
  * - `vault:*` - Vault operations
  * - `transfer:*` - Data transfer operations
  * - `dt:*` - .dt format export/import/stream operations
+ * - `version:*` - Version checking and migration
+ * - `logger:*` - Logger lifecycle
+ * - `teardown:*` - Database teardown/truncate operations
+ * - `sql-terminal:*` - SQL terminal query execution
+ * - `init:*` - Project initialization
  * - `error` - Catch-all errors
  */
 export interface NoormEvents extends SettingsEvents, UpdateEvents, VaultEvents, TransferEvents, DtEvents {
@@ -88,6 +96,7 @@ export interface NoormEvents extends SettingsEvents, UpdateEvents, VaultEvents, 
     };
     'run:file': { filepath: string; configName: string };
     'run:dir': { dirpath: string; fileCount: number; configName: string };
+    'run:files': { fileCount: number; configName: string };
 
     // Lock
     'lock:acquiring': { configName: string; identity: string };
@@ -125,6 +134,13 @@ export interface NoormEvents extends SettingsEvents, UpdateEvents, VaultEvents, 
     'db:destroyed': { configName: string; database: string };
     'db:bootstrap': { configName: string; tables: string[] };
 
+    // Dual connection (source + destination for transfer operations)
+    'db:dual:connecting': { source: string; destination: string };
+    'db:dual:connected': { source: string; destination: string };
+    'db:dual:disconnecting': { source: string; destination: string };
+    'db:dual:disconnected': { source: string; destination: string };
+    'db:dual:cleanup-warning': { errors: string[] };
+
     // Template
     'template:render': { filepath: string; durationMs: number };
     'template:load': { filepath: string; format: string };
@@ -160,10 +176,41 @@ export interface NoormEvents extends SettingsEvents, UpdateEvents, VaultEvents, 
     };
     'app:exit': { code: number };
     'app:fatal': { error: Error; type?: 'exception' | 'rejection' };
+    'app:signal': { signal: Signal };
+    'app:exception': { error: Error; type: 'exception' | 'rejection' };
 
     // Router
     'router:navigated': { from: string; to: string; params: Record<string, string | number | boolean | undefined> };
     'router:popped': { popped: string; to: string };
+
+    // Init
+    'init:complete': { projectRoot: string; hasIdentity: boolean };
+
+    // Version checking and migration
+    'version:schema:checking': { current: number };
+    'version:schema:migrating': { from: number; to: number };
+    'version:schema:migrated': { from: number; to: number; durationMs: number };
+    'version:state:migrating': { from: number; to: number };
+    'version:state:migrated': { from: number; to: number };
+    'version:settings:migrating': { from: number; to: number };
+    'version:settings:migrated': { from: number; to: number };
+    'version:mismatch': { layer: 'schema' | 'state' | 'settings'; current: number; expected: number };
+
+    // Logger lifecycle
+    'logger:started': { file: string; level: LogLevel };
+    'logger:rotated': { oldFile: string; newFile: string };
+
+    // Teardown / database reset
+    'teardown:start': { type: 'truncate' | 'schema' };
+    'teardown:progress': { category: string; object: string | null; action: string };
+    'teardown:error': { error: Error; object: string | null };
+    'teardown:complete': { result: TruncateResult | TeardownResult };
+
+    // SQL terminal
+    'sql-terminal:execute:before': { query: string; configName: string };
+    'sql-terminal:execute:after':
+        | { query: string; configName: string; success: true; durationMs: number; rowCount: number; rowsAffected: number | undefined }
+        | { query: string; configName: string; success: false; durationMs: number; error: string };
 
     // Errors
     error: { source: string; error: Error; context?: Record<string, unknown> };
