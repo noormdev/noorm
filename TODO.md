@@ -27,8 +27,8 @@ Core SDK is implemented and packaged (`@noormdev/sdk`). Remaining:
 
 **Configuration:**
 
-- [ ] `config validate` - Validate config can connect
-- [ ] `config list` - List available configs
+- [x] `config validate` - Validate config can connect
+- [x] `config list` - List available configs
 
 **SQL Execution:**
 
