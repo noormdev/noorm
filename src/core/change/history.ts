@@ -30,6 +30,7 @@ import { attempt } from '@logosdx/utils';
 
 import { observer } from '../observer.js';
 import { getNoormTables, noormDb } from '../shared/index.js';
+import { getCurrentVersion } from '../update/checker.js';
 import type {
     NoormDatabase,
     OperationStatus,
@@ -405,6 +406,7 @@ export class ChangeHistory {
                 status: 'pending',
                 config_name: this.#configName,
                 executed_by: data.executedBy,
+                cli_version: getCurrentVersion(),
             });
 
         // MSSQL uses OUTPUT inserted.id (not RETURNING)
@@ -734,6 +736,7 @@ export class ChangeHistory {
                 status: 'success',
                 config_name: this.#configName,
                 executed_by: executedBy,
+                cli_version: getCurrentVersion(),
                 error_message: reason ?? '',
                 duration_ms: 0,
                 checksum: '',

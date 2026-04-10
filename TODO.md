@@ -1,7 +1,142 @@
 # noorm TODO
 
 
-## Priority 2: Documentation Media
+## Pre-Release
+
+Critical work before public release.
+
+
+### SDK Finish Line
+
+Core SDK is implemented and packaged (`@noormdev/sdk`). Remaining:
+
+- [ ] **SDK test coverage** - Dedicated tests for SDK surface (`createContext`, lifecycle, operations)
+- [ ] **Test mode enforcement** - When `requireTest: true`, SDK must refuse to connect if `config.isTest !== true`
+- [ ] **Protected config hard block** - Destructive operations (destroy, truncate, teardown) on protected configs are denied with no override. User must perform manually. Remove `allowProtected` option entirely.
+
+
+### Headless CLI Gaps
+
+40 handlers implemented. Missing commands:
+
+**Database:**
+
+- [ ] `db reset` - Teardown + build (idempotent rebuild)
+- [ ] `db drop` - Drop entire database
+- [ ] `db create` - Create database if not exists
+
+**Configuration:**
+
+- [ ] `config validate` - Validate config can connect
+- [ ] `config list` - List available configs
+
+**SQL Execution:**
+
+- [ ] `sql <query>` - Execute raw SQL
+- [ ] `sql -f <file>` - Execute SQL from file
+
+**Changes:**
+
+- [ ] `change next` - Apply next pending change
+
+**Runner:**
+
+- [ ] `run files <path...>` - Run multiple specific files
+- [ ] `run exec` - Batch-execute selected SQL files (currently TUI-only `RunExecScreen`)
+
+
+### TUI Parity Gaps
+
+Surfaces that exist in the TUI but have no headless CLI equivalent. Discovered after the citty migration audit. Blocks CI/CD adoption for anything beyond `change`/`run`/`vault` workflows.
+
+**Identity:** (entire domain TUI-only — no `noorm identity` command)
+
+- [ ] **`identity ci`** - Create/load an identity for CI use via ENV variables (e.g. `NOORM_IDENTITY_PRIVATE_KEY`, `NOORM_IDENTITY_NAME`, `NOORM_IDENTITY_EMAIL`). Requires **core support** to bootstrap an identity from env vars instead of `~/.noorm/identity` on disk, so CI runners can decrypt vault/state without writing secrets to the filesystem.
+- [ ] `identity init` - Generate or regenerate an identity headlessly
+- [ ] `identity edit` - Edit identity metadata (name, email)
+- [ ] `identity export` - Export public key
+- [ ] `identity list` - List known users
+
+**Init:**
+
+- [ ] `noorm init` - Bootstrap a project (identity setup + project setup) from CLI
+
+**Settings:** (entire domain TUI-only — no `noorm settings` command)
+
+- [ ] `settings init` - Initialize `settings.yml`
+- [ ] `settings build` - Build/regenerate settings
+- [ ] `settings edit` - Interactive editor. Prompts for a field to edit (paths, strict, logging, stages, rules), applies the change, then loops back to the field picker. Exits on "Done" selection or `Esc`. One command covers everything.
+- [ ] `settings secret` - Interactive secret **requirement** declaration (config enforcement, not value storage). Declares that a given secret must be set for a particular stage (or all stages). Loop pattern: pick action (add/edit/rm requirement), pick scope (universal or a stage), apply, loop. Exits on "Done" or `Esc`. Actual secret values live in `secret/*` / vault.
+
+**Secrets:** (entire `secret/*` domain TUI-only — distinct from `vault`)
+
+- [ ] `secret list` - List secrets
+- [ ] `secret set <key> <value>` - Set a secret
+- [ ] `secret rm <key>` - Remove a secret
+
+**Configuration (additional):**
+
+- [ ] `config cp <src> <dest>` - Copy a config
+- [ ] `config export <name>` - Export a config to file
+- [ ] `config import <path>` - Import a config from file
+
+**Changes (additional):**
+
+- [ ] `change add <name>` - Create a new change
+- [ ] `change edit <name>` - Edit an existing change
+- [ ] `change rm <name>` - Delete a change
+- [ ] `change rewind <name>` - Rewind to a specific change
+- [ ] `change history detail <name>` - Show per-file execution history
+
+**Database (additional):**
+
+- [ ] `db dt-modify <path>` - Modify a `.dt` file (currently only TUI `DtModifyScreen`)
+
+**Database Exploration:** (CLI only wires `tables`)
+
+- [ ] `db explore views` + `db explore views <name>` - List and inspect views
+- [ ] `db explore procedures` + `db explore procedures <name>` - List and inspect stored procedures
+- [ ] `db explore functions` + `db explore functions <name>` - List and inspect functions
+- [ ] `db explore types` + `db explore types <name>` - List and inspect custom types
+- [ ] `db explore indexes` - List indexes
+- [ ] `db explore fks` - List foreign keys
+
+**SQL Terminal:** (CLI `sql` is one-shot only)
+
+- [ ] `sql repl` - Interactive SQL REPL (currently TUI-only `SqlTerminalScreen`)
+- [ ] `sql history` - Show SQL execution history
+- [ ] `sql clear` - Clear SQL execution history
+
+
+### CI/CD Integration
+
+- [ ] **Slack notifications on command failure** - Add ENV variables (e.g. `NOORM_SLACK_WEBHOOK_URL`, `NOORM_SLACK_CHANNEL`) to publish failure messages to Slack when a command fails in CI (e.g. `noorm change ff`). Should include command name, exit code, error summary, and config name.
+
+
+### Open Bugs
+
+- [ ] **Change rewind blocks reapply** - After rewinding a change, it cannot be reapplied. This breaks the test-fix-reapply workflow. Rewound changes should be eligible for reapplication.
+- [x] **Absolute paths stored in database** - Change file paths are being stored as absolute paths instead of relative to the project root. This leaks the user's local directory structure. Paths should be stripped of the project root prefix before insertion.
+
+
+### Manual QA
+
+- [ ] **Full headless command QA** - Run every headless command end-to-end and verify they work correctly. Cover all 40+ implemented handlers.
+
+
+### Release Checklist
+
+- [x] **Change table CLI version** - Ensure change rows include CLI version (currently null)
+- [ ] **Events audit** - Revisit all observer events, ensure uniform naming, verify all typed in `NoormEvents`
+- [ ] **Test coverage** - Write tests for core modules (see `TODO-tests.md`)
+- [x] **Cleanup plans** - Remove or archive `plan/` directory contents
+- [ ] **Public documentation** - Create user-facing docs:
+  - TUI usage (getting started, screens, workflows)
+  - CLI commands (headless mode reference)
+  - SDK API (programmatic usage, testing patterns)
+
+
+## Documentation Media
 
 Replace ASCII terminal UI representations with screenshots and videos throughout documentation.
 
@@ -18,7 +153,7 @@ Replace ASCII terminal UI representations with screenshots and videos throughout
 - Store in `docs/assets/` or similar
 
 
-## Priority 3: Dialect Boilerplates
+## Dialect Boilerplates
 
 Starter templates demonstrating the SDK-on-SDK pattern: build your SQL schema and TypeScript client together, deploy as RPC-style database access.
 
@@ -57,6 +192,7 @@ boilerplate-postgres/
 - [ ] MSSQL boilerplate
 
 Each includes:
+
 - Working SDK with type generation
 - Hono API with CRUD routes
 - CLI with common operations
@@ -65,66 +201,16 @@ Each includes:
 - README with setup instructions
 
 
-## ✓ Priority 1: Data Transfer (Complete)
-
-Data transfer functionality implemented with full conflict handling and cross-server support.
-
-
-## SDK Finish Line
-
-Core SDK is implemented and packaged (`@noormdev/sdk`). Remaining:
-
-- [ ] **SDK test coverage** - Dedicated tests for SDK surface (`createContext`, lifecycle, operations)
-- [ ] **Test mode enforcement** - When `requireTest: true`, SDK must refuse to connect if `config.isTest !== true`
-- [ ] **Protected config hard block** - Destructive operations (destroy, truncate, teardown) on protected configs are denied with no override. User must perform manually. Remove `allowProtected` option entirely.
-
-
-## Headless CLI Gaps
-
-40 handlers implemented. Missing commands:
-
-**Database:**
-- [ ] `db reset` - Teardown + build (idempotent rebuild)
-- [ ] `db drop` - Drop entire database
-- [ ] `db create` - Create database if not exists
-
-**Configuration:**
-- [ ] `config validate` - Validate config can connect
-- [ ] `config list` - List available configs
-
-**SQL Execution:**
-- [ ] `sql <query>` - Execute raw SQL
-- [ ] `sql -f <file>` - Execute SQL from file
-
-**Changes:**
-- [ ] `change next` - Apply next pending change
-
-**Runner:**
-- [ ] `run files <path...>` - Run multiple specific files
-
-## Manual QA
-
-- [ ] **Full headless command QA** - Run every headless command end-to-end and verify they work correctly. Cover all 40+ implemented handlers.
-- [ ] **Change rewind blocks reapply (bug)** - After rewinding a change, it cannot be reapplied. This breaks the test-fix-reapply workflow. Rewound changes should be eligible for reapplication.
-- [ ] **Absolute paths stored in database (bug)** - Change file paths are being stored as absolute paths instead of relative to the project root. This leaks the user's local directory structure. Paths should be stripped of the project root prefix before insertion.
-
-
-## Bugs
-
-- [x] **Config Import focus broken** - Fixed: guarded `useInput` with `isActive` so it only fires during complete/error steps.
-- [x] **Config edit screen too large** - Fixed: added terminal-height-aware `overflowY="hidden"` constraint to the form wrapper.
-- [x] **Shift+Tab navigation broken** - Fixed: added `key.shift && key.tab` check before `key.tab` in Form.tsx.
-- [x] **Transfer progress inaccurate** - Fixed: aggregate `rowsTransferred` now updates in real-time via delta tracking in `transfer:table:progress`, `dt:import:progress`, and `dt:import:complete` handlers. Same-server transfers show spinner instead of misleading 0% bar.
-- [x] **Change add ignores changes folder setting** - Fixed: all 6 change screens now resolve paths with `path.join(projectRoot, config.paths.changes)`, matching the SDK pattern.
-
-
 ## Investigations
 
 - [ ] **Transfer slowness** - Profile and identify bottlenecks in data transfer operations
 - [ ] **Migrate to OpenTUI** - Replace Ink/React TUI with OpenTUI framework. **Note:** consider doing this before the AI/OpenCode integration — if the AI chat becomes a TUI screen rather than a separate mode, the rendering layer matters. Migrating after means porting AI features twice.
 
 
-## Data Transfer & Export
+## Post-Release Features
+
+
+### Data Transfer & Export
 
 - [ ] **Export query folder** - Dedicated folder (e.g., `export/` or `sql/export/`) for reusable SQL files that define dt exports. Each file contains a SELECT query whose results get serialized to dt format. Front matter (YAML block at top) provides metadata for the TUI: name, description, target filename, schedule hints. Run one or many from the TUI or CLI (`noorm export run <name>`). Supports the template engine for dynamic filters.
 - [ ] **SQL query view to dt export** - Allow exporting a SQL query result view to a `.dt` file (e.g., export a subset of a table from prod to dev)
@@ -133,7 +219,7 @@ Core SDK is implemented and packaged (`@noormdev/sdk`). Remaining:
 - [ ] **AI-assisted dt export** - With the AI integration's read-only DB access, the AI can propose and generate dt exports based on user criteria (e.g., "export users matching X to a dt file for dev"). Non-destructive, fits within existing guard rails.
 
 
-## Database Security & Multi-Tenancy
+### Database Security & Multi-Tenancy
 
 - [ ] **Authorization via DB roles** - Create authorization mechanisms per database using built-in DB roles for access to sensitive noorm tables. Use stored procedures to get sensitive data; unprivileged roles can never modify directly. Only admin can rotate keys and create tables.
 - [ ] **Separate noorm tables to dedicated connection** - Scope noorm internal tables to a separate connection/database. If no central DB is configured, fall back to the current connection. Enables shared encryption keys across environments, shared secrets, secret migration, and permissions — so that the app database doesn't hold sensitive information or historical data. **Sequence: do this before roles/users — it defines the permission surface.**
@@ -141,21 +227,9 @@ Core SDK is implemented and packaged (`@noormdev/sdk`). Remaining:
 - [ ] **Dev users (nonadmin)** - Create noorm dev users with restricted privileges (no admin operations)
 
 
-## Diagnostics
+### Diagnostics
 
 - [ ] **`noorm doctor` command** - Comprehensive diagnostic that verifies the full setup: connection health, role permissions, noorm table accessibility, encryption key validity, version compatibility. Becomes essential as the security model grows (roles, separate connections, service users).
-
-
-## Pre-Release Checklist
-
-- [ ] **Change table CLI version** - Ensure change rows include CLI version (currently null)
-- [ ] **Events audit** - Revisit all observer events, ensure uniform naming, verify all typed in `NoormEvents`
-- [ ] **Test coverage** - Write tests for core modules (see `TODO-tests.md`)
-- [ ] **Cleanup plans** - Remove or archive `plan/` directory contents
-- [ ] **Public documentation** - Create user-facing docs:
-  - TUI usage (getting started, screens, workflows)
-  - CLI commands (headless mode reference)
-  - SDK API (programmatic usage, testing patterns)
 
 
 ## Future Roadmap
@@ -229,30 +303,3 @@ Guard rails:
 **llms.txt for Context7** - Publish noorm documentation in llms.txt format for LLM context providers (context7, etc.). Enables AI assistants to understand noorm commands, workflows, and patterns.
 
 **User Project LLM Files** - Generate helper files (`CLAUDE.md`, `.cursorrules`) for user projects describing their noorm setup, SQL structure, and available template variables. Command: `noorm init llm`.
-
-
----
-
-
-## Completed Features
-
-| Feature | Core | UI | Docs |
-|---------|------|----|------|
-| Config management | ✓ | ✓ 9 screens | ✓ |
-| Change management | ✓ | ✓ 11 screens | ✓ |
-| Secret management | ✓ | ✓ 3 screens | ✓ |
-| Settings/stages/rules | ✓ | ✓ 13 screens | ✓ |
-| Lock management | ✓ | ✓ 5 screens | ✓ |
-| Identity management | ✓ | ✓ 6 screens | ✓ |
-| Database management | ✓ | ✓ 10 screens | ✓ |
-| Runner/execution | ✓ | ✓ 5 screens | ✓ |
-| Explore (schema browser) | ✓ | ✓ 3 screens | ✓ |
-| Teardown (reset/truncate) | ✓ | ✓ 2 screens | ✓ |
-| SQL Terminal | ✓ | ✓ 3 screens | ✓ |
-| State encryption | ✓ | N/A | ✓ |
-| Template engine | ✓ | N/A | ✓ |
-| Logger | ✓ | ✓ Log viewer overlay | ✓ |
-| **Secrets Vault** | ✓ | ✓ 4 screens | Pending |
-| **Auto-Update** | ✓ | ✓ Notification | Pending |
-| **TypeScript SDK** | ✓ | N/A | Pending |
-| **Headless CLI** | ✓ (80%) | N/A | Pending |
