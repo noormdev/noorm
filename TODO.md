@@ -63,22 +63,22 @@ Surfaces that exist in the TUI but have no headless CLI equivalent. Discovered a
 
 **Settings:** (entire domain TUI-only — no `noorm settings` command)
 
-- [ ] `settings init` - Initialize `settings.yml`
-- [ ] `settings build` - Build/regenerate settings
+- [x] `settings init` - Initialize `settings.yml`
+- [x] `settings build` - Build/regenerate settings
 - [ ] `settings edit` - Interactive editor. Prompts for a field to edit (paths, strict, logging, stages, rules), applies the change, then loops back to the field picker. Exits on "Done" selection or `Esc`. One command covers everything.
 - [ ] `settings secret` - Interactive secret **requirement** declaration (config enforcement, not value storage). Declares that a given secret must be set for a particular stage (or all stages). Loop pattern: pick action (add/edit/rm requirement), pick scope (universal or a stage), apply, loop. Exits on "Done" or `Esc`. Actual secret values live in `secret/*` / vault.
 
 **Secrets:** (entire `secret/*` domain TUI-only — distinct from `vault`)
 
-- [ ] `secret list` - List secrets
-- [ ] `secret set <key> <value>` - Set a secret
-- [ ] `secret rm <key>` - Remove a secret
+- [x] `secret list` - List secrets
+- [x] `secret set <key> <value>` - Set a secret
+- [x] `secret rm <key>` - Remove a secret
 
 **Configuration (additional):**
 
-- [ ] `config cp <src> <dest>` - Copy a config
-- [ ] `config export <name>` - Export a config to file
-- [ ] `config import <path>` - Import a config from file
+- [x] `config cp <src> <dest>` - Copy a config
+- [x] `config export <name>` - Export a config to file
+- [x] `config import <path>` - Import a config from file
 
 **Changes (additional):**
 
@@ -221,6 +221,7 @@ Each includes:
 
 ### Database Security & Multi-Tenancy
 
+- [ ] **SQL permission model via [`node-sql-parser`](https://github.com/taozhi8833998/node-sql-parser)** - Parse and classify SQL statements before execution to enforce permission boundaries. Supports MySQL, PostgreSQL, MSSQL, SQLite dialects. Use cases: block DDL/DML for read-only roles, restrict which tables a user/service can touch, validate AI-generated SQL before execution, enforce query-only mode in CI. Replaces or complements `sql-parser-cst` for guard rails since it covers all four noorm dialects and provides AST-level table/column extraction.
 - [ ] **Authorization via DB roles** - Create authorization mechanisms per database using built-in DB roles for access to sensitive noorm tables. Use stored procedures to get sensitive data; unprivileged roles can never modify directly. Only admin can rotate keys and create tables.
 - [ ] **Separate noorm tables to dedicated connection** - Scope noorm internal tables to a separate connection/database. If no central DB is configured, fall back to the current connection. Enables shared encryption keys across environments, shared secrets, secret migration, and permissions — so that the app database doesn't hold sensitive information or historical data. **Sequence: do this before roles/users — it defines the permission surface.**
 - [ ] **Service users** - Create service user support for automated/CI connections
@@ -281,7 +282,7 @@ noorm change ff --configs dev,staging,prod --confirm-each
 
 Capabilities:
 
-- **Read-only database exploration** - AI can generate and execute its own SQL to inspect the active database (schema, data, relationships). All AI-generated SQL is validated through [`sql-parser-cst`](https://github.com/nene/sql-parser-cst) to ensure only CTEs and SELECT statements are allowed — no DDL or DML passes the guard.
+- **Read-only database exploration** - AI can generate and execute its own SQL to inspect the active database (schema, data, relationships). All AI-generated SQL is validated through [`node-sql-parser`](https://github.com/taozhi8833998/node-sql-parser) to ensure only CTEs and SELECT statements are allowed — no DDL or DML passes the guard.
 - **Safe SDK tool access** - AI can invoke non-destructive noorm SDK operations: migrations, build, run, change apply, explore, etc. Destructive operations (destroy, teardown, drop) are excluded from the AI toolset entirely.
 - **Schema-aware SQL generation** - AI uses live schema introspection to generate accurate, contextual SQL queries and migration scripts.
 
@@ -294,7 +295,7 @@ Architecture (OpenTUI + OpenCode):
 
 Guard rails:
 
-- SQL validation via `sql-parser-cst` — parse tree must contain only `select_stmt` and `common_table_expression` nodes; reject everything else
+- SQL validation via [`node-sql-parser`](https://github.com/taozhi8833998/node-sql-parser) — parse SQL, inspect AST type and table references, reject anything beyond SELECT/CTE. Covers all four dialects (replaces `sql-parser-cst` which only handles a subset).
 - SDK tool allowlist — only expose safe operations; no `destroy`, `teardown`, `drop`, `truncate`
 - Opt-in activation — AI features are disabled by default, user explicitly enables in settings
 
