@@ -23,7 +23,7 @@ on:
 
 jobs:
     build:
-        runs-on: ubuntu-latest
+        runs-on: ubuntu-24.04
 
         services:
             postgres:
@@ -107,16 +107,17 @@ jobs:
             - run: bun run build
             # Split test runs to prevent cross-contamination from mock.module
             # Tests using mock.module run separately from those that don't
-            - name: Debug transfer test
+            - name: Run core tests (non-transfer)
               env:
                   CI: 'false'
                   FORCE_COLOR: 'true'
-              run: bun test --serial --bail tests/core/transfer/executor.test.ts 2>&1 || true
-            - name: Run core tests
+              run: |
+                  bun test --serial $(find tests/utils tests/core tests/sdk -name '*.test.ts' | grep -v tests/core/transfer | sort | tr '\n' ' ')
+            - name: Run transfer tests (isolated — runner 20260406+ causes cross-test PG corruption)
               env:
                   CI: 'false'
                   FORCE_COLOR: 'true'
-              run: bun test --serial tests/utils tests/core tests/sdk
+              run: bun test --serial tests/core/transfer
             - name: Run CLI tests
               env:
                   CI: 'false'
@@ -129,7 +130,7 @@ jobs:
               run: bun test --serial tests/integration
 
     cli-e2e:
-        runs-on: ubuntu-latest
+        runs-on: ubuntu-24.04
         needs: build
         steps:
             - uses: actions/checkout@v4
