@@ -107,6 +107,11 @@ jobs:
             - run: bun run build
             # Split test runs to prevent cross-contamination from mock.module
             # Tests using mock.module run separately from those that don't
+            - name: Debug transfer test
+              env:
+                  CI: 'false'
+                  FORCE_COLOR: 'true'
+              run: bun test --serial --bail tests/core/transfer/executor.test.ts 2>&1 || true
             - name: Run core tests
               env:
                   CI: 'false'
