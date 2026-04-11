@@ -79,6 +79,20 @@ jobs:
 
             - uses: oven-sh/setup-bun@v2
 
+            - name: Create PostgreSQL dest database
+              run: |
+                  docker exec $(docker ps -q --filter "ancestor=postgres:17-alpine") \
+                    psql -U noorm_test -c "SELECT 1 FROM pg_database WHERE datname = 'noorm_test_dest'" | grep -q 1 || \
+                    docker exec $(docker ps -q --filter "ancestor=postgres:17-alpine") \
+                    psql -U noorm_test -c "CREATE DATABASE noorm_test_dest;"
+
+            - name: Create MySQL dest database
+              run: |
+                  docker exec $(docker ps -q --filter "ancestor=mysql:8.0") \
+                    mysql -uroot -pnoorm_test -e "CREATE DATABASE IF NOT EXISTS noorm_test_dest;"
+                  docker exec $(docker ps -q --filter "ancestor=mysql:8.0") \
+                    mysql -uroot -pnoorm_test -e "GRANT ALL ON noorm_test_dest.* TO 'noorm_test'@'%';"
+
             - name: Create MSSQL test databases
               run: |
                   docker exec $(docker ps -q --filter "ancestor=mcr.microsoft.com/mssql/server:2022-latest") \
