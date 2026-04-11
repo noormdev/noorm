@@ -43,3 +43,4 @@ worktrees/
 # Skill evals
 skills/*/workspace/
 skills/*/evals/
+graphify-out/
