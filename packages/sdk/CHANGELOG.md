@@ -1,5 +1,13 @@
 # @noormdev/sdk
 
+## 1.0.0-alpha.29
+
+### Minor Changes
+
+- 850b2d3: ## Added
+
+  - `feat(change):` Expose `change next` on the SDK for programmatic access to the next pending change
+
 ## 1.0.0-alpha.28
 
 ## 1.0.0-alpha.27
