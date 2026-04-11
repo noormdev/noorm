@@ -59,9 +59,12 @@ const rmCommand = defineCommand({
 
         }
 
-        const [, deleteErr] = await attempt(() =>
-            deleteChange({ name: args.name, path: changePath, date: new Date(), description: args.name, changeFiles: [], revertFiles: [], hasChangelog: false }),
-        );
+        const changeStub = {
+            name: args.name, path: changePath, date: new Date(),
+            description: args.name, changeFiles: [], revertFiles: [], hasChangelog: false,
+        };
+
+        const [, deleteErr] = await attempt(() => deleteChange(changeStub));
 
         if (deleteErr) {
 

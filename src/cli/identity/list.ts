@@ -39,9 +39,13 @@ const listCommand = defineCommand({
 
         }
 
-        const lines = users.map((u) =>
-            `  ${u.name} <${u.email}>\n    Fingerprint: ${u.identityHash}\n    Machine:     ${u.machine}\n    Source:      ${u.source}\n    Last seen:   ${u.lastSeen}`,
-        );
+        const lines = users.map((u) => [
+            `  ${u.name} <${u.email}>`,
+            `    Fingerprint: ${u.identityHash}`,
+            `    Machine:     ${u.machine}`,
+            `    Source:      ${u.source}`,
+            `    Last seen:   ${u.lastSeen}`,
+        ].join('\n'));
 
         outputResult(
             args,
