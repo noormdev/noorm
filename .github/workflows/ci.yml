@@ -107,13 +107,21 @@ jobs:
             - run: bun run build
             # Split test runs to prevent cross-contamination from mock.module
             # Tests using mock.module run separately from those that don't
+            #
+            # TODO: Remove this split once the runner image regression is resolved.
+            # GitHub Actions runner ubuntu24/20260406.80 introduced PG connection
+            # state corruption when transfer tests run in the same bun process as
+            # the full core suite. Transfer tests pass in isolation. Investigate
+            # root cause (likely bun test beforeAll error handling or PG pool
+            # lifecycle change) and reunify into a single "Run core tests" step.
+            # See: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20260406.80
             - name: Run core tests (non-transfer)
               env:
                   CI: 'false'
                   FORCE_COLOR: 'true'
               run: |
                   bun test --serial $(find tests/utils tests/core tests/sdk -name '*.test.ts' | grep -v tests/core/transfer | sort | tr '\n' ' ')
-            - name: Run transfer tests (isolated — runner 20260406+ causes cross-test PG corruption)
+            - name: Run transfer tests (isolated)
               env:
                   CI: 'false'
                   FORCE_COLOR: 'true'
