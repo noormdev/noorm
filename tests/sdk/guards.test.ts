@@ -17,7 +17,7 @@ function makeConfig(overrides: Partial<Config> = {}): Config {
         protected: false,
         connection: { dialect: 'postgres', database: 'testdb' },
         ...overrides,
-    } as Config;
+    };
 
 }
 
@@ -54,6 +54,8 @@ describe('checkRequireTest', () => {
 
         const config = makeConfig({ isTest: false, name: 'prod' });
         const options: CreateContextOptions = { requireTest: true };
+
+        expect.assertions(2);
 
         try {
 
@@ -109,6 +111,8 @@ describe('checkProtectedConfig', () => {
         const config = makeConfig({ protected: true, name: 'prod' });
         const operation = 'truncate';
 
+        expect.assertions(1);
+
         try {
 
             checkProtectedConfig(config, operation);
@@ -130,6 +134,8 @@ describe('checkProtectedConfig', () => {
 
         const config = makeConfig({ protected: true, name: 'prod' });
         const operation = 'truncate';
+
+        expect.assertions(2);
 
         try {
 
