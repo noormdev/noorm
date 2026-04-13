@@ -41,8 +41,11 @@ function makeState(isProtected: boolean): ContextState {
     return {
         connection: null,
         config: makeConfig(isProtected),
-        settings: {} as Settings,
-        identity: {} as Identity,
+        settings: {},
+        identity: {
+            name: 'tester',
+            source: 'system',
+        },
         options: {},
         projectRoot: '/tmp',
         changeManager: null,

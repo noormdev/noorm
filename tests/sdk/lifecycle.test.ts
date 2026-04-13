@@ -52,7 +52,12 @@ describe('sdk: createContext factory', () => {
         const [, err] = await attempt(() => createContext({ config: '__nonexistent__' }));
 
         expect(err).toBeInstanceOf(Error);
-        expect((err as Error).message).toContain('not found');
+        expect.assertions(2);
+        if (err instanceof Error) {
+
+            expect(err.message).toContain('not found');
+
+        }
 
     });
 
