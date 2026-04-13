@@ -135,7 +135,7 @@ describe('cli: focus', () => {
                 </FocusProvider>,
             );
 
-            await new Promise((resolve) => setTimeout(resolve, 50));
+            await new Promise((resolve) => setTimeout(resolve, 10));
 
             expect(lastFrame()).toContain('activeId:test-1');
             expect(lastFrame()).toContain('stackLen:1');
@@ -176,7 +176,7 @@ describe('cli: focus', () => {
                 </FocusProvider>,
             );
 
-            await new Promise((resolve) => setTimeout(resolve, 50));
+            await new Promise((resolve) => setTimeout(resolve, 10));
 
             expect(lastFrame()).toContain('activeId:second');
             expect(lastFrame()).toContain('stackLen:2');
@@ -218,7 +218,7 @@ describe('cli: focus', () => {
                 </FocusProvider>,
             );
 
-            await new Promise((resolve) => setTimeout(resolve, 50));
+            await new Promise((resolve) => setTimeout(resolve, 10));
 
             expect(lastFrame()).toContain('stackLen:1');
 
@@ -254,7 +254,7 @@ describe('cli: focus', () => {
                 </FocusProvider>,
             );
 
-            await new Promise((resolve) => setTimeout(resolve, 50));
+            await new Promise((resolve) => setTimeout(resolve, 10));
 
             expect(lastFrame()).toContain('labels:My Label');
 
@@ -272,7 +272,7 @@ describe('cli: focus', () => {
                 </FocusProvider>,
             );
 
-            await new Promise((resolve) => setTimeout(resolve, 50));
+            await new Promise((resolve) => setTimeout(resolve, 10));
 
             expect(lastFrame()).toContain('activeId:null');
             expect(lastFrame()).toContain('stackLen:0');
@@ -313,7 +313,7 @@ describe('cli: focus', () => {
                 </FocusProvider>,
             );
 
-            await new Promise((resolve) => setTimeout(resolve, 50));
+            await new Promise((resolve) => setTimeout(resolve, 10));
 
             expect(lastFrame()).toContain('stackLen:1');
             expect(lastFrame()).toContain('activeId:existing');
@@ -402,7 +402,7 @@ describe('cli: focus', () => {
                 </FocusProvider>,
             );
 
-            await new Promise((resolve) => setTimeout(resolve, 50));
+            await new Promise((resolve) => setTimeout(resolve, 10));
 
             expect(lastFrame()).toContain('isActive:true');
 
@@ -433,7 +433,7 @@ describe('cli: focus', () => {
                 </FocusProvider>,
             );
 
-            await new Promise((resolve) => setTimeout(resolve, 50));
+            await new Promise((resolve) => setTimeout(resolve, 10));
 
             expect(lastFrame()).toContain('isActive:false');
 
@@ -507,7 +507,7 @@ describe('cli: focus', () => {
             );
 
             // Initially mounted - wait for focus stack to initialize
-            await new Promise((resolve) => setTimeout(resolve, 50));
+            await new Promise((resolve) => setTimeout(resolve, 10));
             expect(lastFrame()).toContain('focused:true');
             expect(lastFrame()).toContain('stackLen:1');
 
@@ -540,7 +540,7 @@ describe('cli: focus', () => {
                 </FocusProvider>,
             );
 
-            await new Promise((resolve) => setTimeout(resolve, 50));
+            await new Promise((resolve) => setTimeout(resolve, 10));
 
             // Rerender should keep same ID
             rerender(
@@ -549,7 +549,7 @@ describe('cli: focus', () => {
                 </FocusProvider>,
             );
 
-            await new Promise((resolve) => setTimeout(resolve, 50));
+            await new Promise((resolve) => setTimeout(resolve, 10));
 
             // All collected IDs should be the same
             expect(ids.length).toBeGreaterThan(0);
@@ -584,7 +584,7 @@ describe('cli: focus', () => {
                 </FocusProvider>,
             );
 
-            await new Promise((resolve) => setTimeout(resolve, 50));
+            await new Promise((resolve) => setTimeout(resolve, 10));
 
             expect(lastFrame()).toContain('focused:true');
 
@@ -637,7 +637,7 @@ describe('cli: focus', () => {
                 </FocusProvider>,
             );
 
-            await new Promise((resolve) => setTimeout(resolve, 50));
+            await new Promise((resolve) => setTimeout(resolve, 10));
 
             expect(lastFrame()).toContain('active:my-active');
 
