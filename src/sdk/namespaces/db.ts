@@ -274,7 +274,7 @@ export class DbNamespace {
      */
     async truncate(options?: TruncateOptions): Promise<TruncateResult> {
 
-        checkProtectedConfig(this.#state.config, 'truncate', this.#state.options);
+        checkProtectedConfig(this.#state.config, 'truncate');
 
         const preserve = options?.preserve
             ?? this.#state.settings.teardown?.preserveTables;
@@ -296,7 +296,7 @@ export class DbNamespace {
      */
     async teardown(): Promise<TeardownResult> {
 
-        checkProtectedConfig(this.#state.config, 'teardown', this.#state.options);
+        checkProtectedConfig(this.#state.config, 'teardown');
 
         return teardownSchema(this.#kysely, this.#dialect, {
             configName: this.#state.config.name,
@@ -317,7 +317,7 @@ export class DbNamespace {
      */
     async reset(): Promise<void> {
 
-        checkProtectedConfig(this.#state.config, 'reset', this.#state.options);
+        checkProtectedConfig(this.#state.config, 'reset');
 
         await this.teardown();
 
