@@ -2,7 +2,7 @@
  * Db namespace — database exploration and schema operations.
  *
  * Mirrors [d] db in the TUI. All operations require a connection.
- * Destructive operations respect the allowProtected guard.
+ * Destructive operations are unconditionally blocked on protected configs.
  */
 import type { Kysely } from 'kysely';
 
