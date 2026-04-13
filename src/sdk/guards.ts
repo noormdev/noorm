@@ -39,8 +39,8 @@ export class RequireTestError extends Error {
  *
  * @example
  * ```typescript
- * // If config.protected is true and allowProtected is false
- * await ctx.truncate()  // Throws ProtectedConfigError
+ * // config.protected is true — all destructive ops are blocked
+ * await ctx.noorm.db.truncate()  // Throws ProtectedConfigError
  * ```
  */
 export class ProtectedConfigError extends Error {
@@ -83,15 +83,14 @@ export function checkRequireTest(
 /**
  * Check if operation is allowed on protected config.
  *
- * @throws ProtectedConfigError if config is protected and allowProtected is false
+ * @throws ProtectedConfigError if config is protected
  */
 export function checkProtectedConfig(
     config: Config,
     operation: string,
-    options: CreateContextOptions,
 ): void {
 
-    if (config.protected && !options.allowProtected) {
+    if (config.protected) {
 
         throw new ProtectedConfigError(config.name, operation);
 
