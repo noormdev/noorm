@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'bun:test';
+import { attemptSync } from '@logosdx/utils';
 import {
     checkRequireTest,
     checkProtectedConfig,
@@ -57,19 +58,12 @@ describe('checkRequireTest', () => {
 
         expect.assertions(2);
 
-        try {
+        const [, err] = attemptSync(() => checkRequireTest(config, options));
 
-            checkRequireTest(config, options);
+        if (err instanceof RequireTestError) {
 
-        }
-        catch (err) {
-
-            if (err instanceof RequireTestError) {
-
-                expect(err.configName).toBe('prod');
-                expect(err.message).toContain('prod');
-
-            }
+            expect(err.configName).toBe('prod');
+            expect(err.message).toContain('prod');
 
         }
 
@@ -113,18 +107,11 @@ describe('checkProtectedConfig', () => {
 
         expect.assertions(1);
 
-        try {
+        const [, err] = attemptSync(() => checkProtectedConfig(config, operation));
 
-            checkProtectedConfig(config, operation);
+        if (err instanceof ProtectedConfigError) {
 
-        }
-        catch (err) {
-
-            if (err instanceof ProtectedConfigError) {
-
-                expect(err.configName).toBe('prod');
-
-            }
+            expect(err.configName).toBe('prod');
 
         }
 
@@ -137,19 +124,12 @@ describe('checkProtectedConfig', () => {
 
         expect.assertions(2);
 
-        try {
+        const [, err] = attemptSync(() => checkProtectedConfig(config, operation));
 
-            checkProtectedConfig(config, operation);
+        if (err instanceof ProtectedConfigError) {
 
-        }
-        catch (err) {
-
-            if (err instanceof ProtectedConfigError) {
-
-                expect(err.operation).toBe('truncate');
-                expect(err.message).toContain('truncate');
-
-            }
+            expect(err.operation).toBe('truncate');
+            expect(err.message).toContain('truncate');
 
         }
 
