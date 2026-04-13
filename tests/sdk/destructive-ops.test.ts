@@ -17,8 +17,6 @@ import { ProtectedConfigError } from '../../src/sdk/guards.js';
 
 import type { ContextState } from '../../src/sdk/state.js';
 import type { Config } from '../../src/core/config/types.js';
-import type { Settings } from '../../src/core/settings/types.js';
-import type { Identity } from '../../src/core/identity/types.js';
 
 // ─────────────────────────────────────────────────────────────
 // Fixtures
