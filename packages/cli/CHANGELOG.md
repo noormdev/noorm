@@ -1,5 +1,12 @@
 # @noormdev/cli
 
+## 1.0.0-alpha.30
+
+### Patch Changes
+
+- 0951b7e: ## Fixed
+  - `fix(ci):` Pin bun to 1.3.11 in release binary workflow — bun 1.3.12 produces binaries that crash on startup (OOM kill, exit 137)
+
 ## 1.0.0-alpha.29
 
 ### Minor Changes
