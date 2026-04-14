@@ -10,9 +10,9 @@ Critical work before public release.
 
 Core SDK is implemented and packaged (`@noormdev/sdk`). Remaining:
 
-- [ ] **SDK test coverage** - Dedicated tests for SDK surface (`createContext`, lifecycle, operations)
-- [ ] **Test mode enforcement** - When `requireTest: true`, SDK must refuse to connect if `config.isTest !== true`
-- [ ] **Protected config hard block** - Destructive operations (destroy, truncate, teardown) on protected configs are denied with no override. User must perform manually. Remove `allowProtected` option entirely.
+- [x] **SDK test coverage** - Dedicated tests for SDK surface (`createContext`, lifecycle, operations)
+- [x] **Test mode enforcement** - When `requireTest: true`, SDK must refuse to connect if `config.isTest !== true`
+- [x] **Protected config hard block** - Destructive operations (destroy, truncate, teardown) on protected configs are denied with no override. User must perform manually. Remove `allowProtected` option entirely.
 
 
 ### Headless CLI Gaps

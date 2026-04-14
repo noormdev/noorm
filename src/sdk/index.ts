@@ -78,12 +78,6 @@ function toSettingsProvider(manager: SettingsManager): SettingsProvider {
  *     requireTest: true,
  * })
  *
- * // Allow destructive ops on protected config
- * const ctx = await createContext({
- *     config: 'staging',
- *     allowProtected: true,
- * })
- *
  * // Env-only mode (CI/CD) - no stored config needed
  * // Requires NOORM_CONNECTION_DIALECT and NOORM_CONNECTION_DATABASE
  * const ctx = await createContext()

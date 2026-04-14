@@ -34,6 +34,7 @@ import {
     ChangeManager,
 } from '../../core/change/index.js';
 import { getStateManager } from '../../core/state/index.js';
+import { checkProtectedConfig } from '../guards.js';
 
 import type { ContextState } from '../state.js';
 
@@ -238,6 +239,8 @@ export class ChangesNamespace {
      */
     async revert(name: string, options?: ChangeOptions): Promise<ChangeResult> {
 
+        checkProtectedConfig(this.#state.config, 'changes.revert');
+
         return this.#getManager().revert(name, options);
 
     }
@@ -350,6 +353,8 @@ export class ChangesNamespace {
      * ```
      */
     async rewind(target: number | string): Promise<BatchChangeResult> {
+
+        checkProtectedConfig(this.#state.config, 'changes.revert');
 
         return this.#getManager().rewind(target);
 

@@ -10,6 +10,7 @@ import { exportTable as coreExportTable, importDtFile } from '../../core/dt/inde
 
 import type { ContextState } from '../state.js';
 import type { ExportOptions, ImportOptions } from '../types.js';
+import { checkProtectedConfig } from '../guards.js';
 
 // ─────────────────────────────────────────────────────────────
 // DtNamespace
@@ -65,6 +66,8 @@ export class DtNamespace {
         filepath: string,
         options?: ImportOptions,
     ): Promise<[{ rowsImported: number; rowsSkipped: number } | null, Error | null]> {
+
+        checkProtectedConfig(this.#state.config, 'dt.import');
 
         return importDtFile({
             filepath,

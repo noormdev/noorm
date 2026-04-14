@@ -23,12 +23,6 @@
  *     requireTest: true,
  * })
  *
- * // Allow destructive ops on protected config
- * const ctx = await createContext({
- *     config: 'staging',
- *     allowProtected: true,
- * })
- *
  * // Env-only mode (CI/CD) - no stored config needed
  * // Requires NOORM_CONNECTION_DIALECT and NOORM_CONNECTION_DATABASE
  * const ctx = await createContext()
@@ -55,9 +49,6 @@ export interface CreateContextOptions {
 
     /** Refuse if config.isTest !== true. Default: false */
     requireTest?: boolean;
-
-    /** Allow destructive ops on protected configs. Default: false */
-    allowProtected?: boolean;
 
     /** Stage name for stage defaults (from settings.yml) */
     stage?: string;
