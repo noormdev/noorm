@@ -7,7 +7,18 @@ paths: "**/*.{js,jsx,ts,tsx}"
 
 ## Function Structure (MANDATORY)
 
-Every function must have exactly 4 blocks in this order:
+Every function body should be organized into up to four logical sections, in this order:
+
+1. **Declaration** — local variables, destructuring, constants
+2. **Validation** — input guards, early throws
+3. **Business logic** — the actual work
+4. **Commit** — final side effects and the return value
+
+Use `attempt(...)` only when this function does something with the error — translate it, recover, emit, etc. If you'd just re-throw or re-return it unchanged, don't wrap — let it propagate naturally.
+
+### The mental model (for thinking about your code)
+
+The block markers below are **authoring aids only**. They show the four sections so you can reason about where code belongs. **Do NOT copy these `// === ... ===` comments into actual source files.** They are not a code artifact — they are a guide you read, then delete.
 
 ```typescript
 /**
@@ -16,44 +27,101 @@ Every function must have exactly 4 blocks in this order:
  * Prevents invalid emails and ensures user exists before update.
  *
  * @example
- * const [user, err] = await modifyUserEmail(userID, newEmail);
+ * const user = await modifyUserEmail(userID, newEmail);
  */
-function modifyUserEmail(userID: UUID, newEmail: EmailAddress) {
+async function modifyUserEmail(userID: UUID, newEmail: EmailAddress) {
 
     // === Declaration block ===
-    let retryCount = 0;
-    const maxRetries = 3;
+    const now = new Date();
 
     // === Validation block ===
     if (!isValidEmail(newEmail)) {
 
-        // Guards against malformed input from external systems
-        return [null, new InvalidEmailError()];
+        throw new InvalidEmailError(newEmail);
     }
 
     // === Business logic block ===
+    // attempt() here because we translate both "fetch failed" and "user missing"
+    // into a single UserNotFoundError for the caller.
     const [user, err] = await attempt(() => fetchUser(userID));
 
     if (err || !user) {
 
-        return [null, new UserNotFoundError()];
+        throw new UserNotFoundError(userID);
     }
 
     user.email = newEmail;
+    user.updatedAt = now;
 
     // === Commit block ===
-    const [saved, saveErr] = await attempt(() => saveUser(user));
-
-    if (saveErr) {
-
-        return [null, saveErr];
-    }
-
-    return [saved, null];
+    // No attempt() — saveUser's error is already meaningful; let it propagate.
+    return saveUser(user);
 }
 ```
 
-> Block comments (`// ===`) are for documentation only, not required in code.
+### What the code should actually look like
+
+Separate sections with a blank line. No banner comments. Errors propagate unless the function does something with them.
+
+```typescript
+/**
+ * Updates user email address after validation.
+ *
+ * Prevents invalid emails and ensures user exists before update.
+ *
+ * @example
+ * const user = await modifyUserEmail(userID, newEmail);
+ */
+async function modifyUserEmail(userID: UUID, newEmail: EmailAddress) {
+
+    const now = new Date();
+
+    if (!isValidEmail(newEmail)) {
+
+        throw new InvalidEmailError(newEmail);
+    }
+
+    const [user, err] = await attempt(() => fetchUser(userID));
+
+    if (err || !user) {
+
+        throw new UserNotFoundError(userID);
+    }
+
+    user.email = newEmail;
+    user.updatedAt = now;
+
+    return saveUser(user);
+}
+```
+
+If a section needs a banner comment to be understandable, the function is probably too long — split it.
+
+### When to use `attempt`
+
+Use `attempt` whenever you need to *inspect* the error before deciding what to do. Common cases:
+
+- **Ignore it** — a non-critical cleanup step fails, you don't care.
+- **Ignore only specific kinds** — swallow a network timeout, re-throw everything else.
+- **Translate it** — collapse several underlying failures into one domain error.
+- **Recover** — fall back to a default, retry, read from cache.
+- **Observe it** — emit an event, log context, then either continue or re-throw.
+
+```typescript
+// Ignore a specific error class, re-throw the rest.
+const [res, err] = await attempt(() => fetchRemote(url));
+if (err && !(err instanceof NetworkError)) throw err;
+
+// Translate + observe.
+const [user, err] = await attempt(() => modifyUserEmail(userID, newEmail));
+if (err) {
+
+    observer.emit('user:update-failed', { userID, error: err });
+    return;
+}
+```
+
+If you're going to re-throw the error unchanged in every case, skip `attempt` and let it propagate directly.
 
 
 ## Error Handling (ZERO TOLERANCE)

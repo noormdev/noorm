@@ -59,7 +59,7 @@ Surfaces that exist in the TUI but have no headless CLI equivalent. Discovered a
 
 **Init:**
 
-- [ ] `noorm init` - Bootstrap a project (identity setup + project setup) from CLI
+- [x] `noorm init` - Bootstrap a project (identity setup + project setup) from CLI
 
 **Settings:** (entire domain TUI-only — no `noorm settings` command)
 
@@ -103,7 +103,7 @@ Surfaces that exist in the TUI but have no headless CLI equivalent. Discovered a
 
 **SQL Terminal:** (CLI `sql` is one-shot only)
 
-- [ ] `sql repl` - Interactive SQL REPL (currently TUI-only `SqlTerminalScreen`)
+- [x] `sql repl` - Interactive SQL REPL (currently TUI-only `SqlTerminalScreen`)
 - [x] `sql history` - Show SQL execution history
 - [x] `sql clear` - Clear SQL execution history
 

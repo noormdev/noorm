@@ -16,8 +16,9 @@ import { withContext, outputError, outputResult, sharedArgs } from '../_utils.js
 import query from './query.js';
 import history from './history.js';
 import clear from './clear.js';
+import repl from './repl.js';
 
-export default defineCommand({
+const sqlCommand = defineCommand({
     meta: {
         name: 'sql',
         description: 'Execute SQL and manage query history',
@@ -28,7 +29,7 @@ export default defineCommand({
         config: sharedArgs.config,
         json: sharedArgs.json,
     },
-    subCommands: { query: query, history, clear },
+    subCommands: { query: query, history, clear, repl },
     async run({ args }) {
 
         let sql = args.query;
@@ -107,3 +108,13 @@ export default defineCommand({
 
     },
 });
+
+(sqlCommand as typeof sqlCommand & { examples: string[] }).examples = [
+    'noorm sql "SELECT 1"',
+    'noorm sql -f query.sql',
+    'noorm sql history',
+    'noorm sql repl',
+    'noorm sql repl --config dev',
+];
+
+export default sqlCommand;
