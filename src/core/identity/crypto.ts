@@ -60,6 +60,43 @@ export function generateKeyPair(): KeyPair {
 
 }
 
+/**
+ * Derive the X25519 public key from a private key.
+ *
+ * The private key is hex-encoded PKCS8 DER. The output is hex-encoded
+ * SPKI DER, matching the format `generateKeyPair()` returns. Used by
+ * the env-based CI identity loader so the public key (and therefore
+ * the identity hash) is deterministic across CI runners that share
+ * the same private key.
+ *
+ * @param privateKeyHex - Hex-encoded X25519 private key (PKCS8 DER, 96 hex chars)
+ * @returns Hex-encoded public key (SPKI DER)
+ *
+ * @example
+ * ```typescript
+ * const { privateKey } = generateKeyPair();
+ * const publicKey = derivePublicKeyFromPrivate(privateKey);
+ * ```
+ */
+export function derivePublicKeyFromPrivate(privateKeyHex: string): string {
+
+    const privateKeyObj = createPrivateKey({
+        key: Buffer.from(privateKeyHex, 'hex'),
+        format: 'der',
+        type: 'pkcs8',
+    });
+
+    const publicKeyObj = createPublicKey(privateKeyObj);
+
+    const publicKeyDer = publicKeyObj.export({
+        type: 'spki',
+        format: 'der',
+    });
+
+    return publicKeyDer.toString('hex');
+
+}
+
 // =============================================================================
 // Key Derivation
 // =============================================================================

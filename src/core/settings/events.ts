@@ -11,6 +11,7 @@ import type {
     PathConfig,
     StrictConfig,
     LoggingConfig,
+    TeardownConfig,
     StageSecret,
 } from './types.js';
 
@@ -76,6 +77,11 @@ export interface SettingsEvents {
     /** Logging config updated */
     'settings:logging-updated': {
         logging: LoggingConfig;
+    };
+
+    /** Teardown config updated */
+    'settings:teardown-updated': {
+        teardown: TeardownConfig;
     };
 
     /** Secret added (universal or stage-scoped) */

@@ -33,6 +33,7 @@ export { formatIdentity, identityToString } from './resolver.js';
 // Cryptographic operations
 export {
     generateKeyPair,
+    derivePublicKeyFromPrivate,
     encryptForRecipient,
     decryptWithPrivateKey,
     deriveStateKey,
@@ -54,10 +55,20 @@ export {
     getNoormHomePath,
     saveIdentityMetadata,
     loadIdentityMetadata,
+    setKeyOverride,
+    clearKeyOverride,
+    getKeyOverride,
+    setIdentityOverride,
+    clearIdentityOverride,
+    getIdentityOverride,
 } from './storage.js';
 
 // Hash utilities
 export { computeIdentityHash, isValidIdentityHash, truncateHash } from './hash.js';
+
+// CI environment loader
+export { loadIdentityFromEnv, CI_ENV_VARS } from './env.js';
+export type { EnvIdentityResult } from './env.js';
 
 // Factory
 export {

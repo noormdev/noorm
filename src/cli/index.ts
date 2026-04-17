@@ -28,6 +28,8 @@ import vault from './vault/index.js';
 import version from './version.js';
 
 import { initProjectContext } from '../core/project.js';
+import { loadIdentityFromEnv } from '../core/identity/env.js';
+import { setKeyOverride, setIdentityOverride } from '../core/identity/storage.js';
 
 /**
  * Commands opt into examples by attaching a top-level `examples: string[]`
@@ -126,6 +128,19 @@ async function printHelpWithExamples(cmd: CommandWithExamples, rootDef: CommandD
 async function entry(): Promise<void> {
 
     initProjectContext();
+
+    // Install env-based identity overrides at process startup so that
+    // every downstream loadPrivateKey() / loadIdentityMetadata() call
+    // returns the env values without touching ~/.noorm/. Validated by
+    // tests/cli/env-bootstrap.test.ts.
+    const envIdentity = loadIdentityFromEnv();
+
+    if (envIdentity) {
+
+        setKeyOverride(envIdentity.privateKey);
+        setIdentityOverride(envIdentity.identity);
+
+    }
 
     // Register shell completion as the `complete` subcommand on main.
     // The adapter walks main.subCommands to generate completions.

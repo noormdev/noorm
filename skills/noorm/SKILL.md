@@ -1,6 +1,6 @@
 ---
 name: noorm
-description: Guide for building applications and tests with the NoORM database SDK (@noormdev/sdk) and composing CLI headless commands for CI/CD pipelines. Use this skill whenever the user imports @noormdev/sdk, calls createContext(), writes Kysely queries in a noorm-managed project, writes database integration tests, sets up CI/CD with noorm -H commands, manages database schemas or migrations, runs SQL files through noorm, transfers data between databases, manages vault secrets, or discusses noorm in any development context. Also trigger when you see noorm environment variables (NOORM_*), .sql.tmpl template files, or change/revert directory structures. Trigger for any database task in a noorm-managed project — the SDK conventions (error tuples, no try-catch, test safety guards, Kysely patterns) and CLI flags are non-obvious and critical to get right.
+description: Guide for building applications and tests with the NoORM database SDK (@noormdev/sdk) and composing CLI headless commands for CI/CD pipelines. Use this skill whenever the user imports @noormdev/sdk, calls createContext(), writes Kysely queries in a noorm-managed project, writes database integration tests, sets up CI/CD with noorm commands, manages database schemas or migrations, runs SQL files through noorm, transfers data between databases, manages vault secrets, or discusses noorm in any development context. Also trigger when you see noorm environment variables (NOORM_*), .sql.tmpl template files, or change/revert directory structures. Trigger for any database task in a noorm-managed project — the SDK conventions (error tuples, no try-catch, test safety guards, Kysely patterns) and CLI flags are non-obvious and critical to get right.
 ---
 
 # NoORM
@@ -8,7 +8,7 @@ description: Guide for building applications and tests with the NoORM database S
 Database schema and change manager with two interfaces:
 
 - **SDK** (`@noormdev/sdk`) — Programmatic access for application code and tests
-- **CLI** (`noorm -H`) — Headless commands for CI/CD, scripting, and database operations
+- **CLI** (`noorm`) — Headless commands for CI/CD, scripting, and database operations (the TUI is launched separately via `noorm ui`)
 
 ## Which Reference to Read
 

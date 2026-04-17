@@ -90,7 +90,7 @@ INSERT INTO app_config (key, value) VALUES
 
 **Resolution hierarchy** (highest wins):
 
-1. **Config-specific local secrets** — set per-config via TUI or `noorm -H vault set KEY val`
+1. **Config-specific local secrets** — set per-config via TUI or `noorm vault set KEY val`
 2. **Global local secrets** — universal secrets in `settings.yml`
 3. **Vault (team-shared)** — encrypted in database, shared across team
 
@@ -373,9 +373,9 @@ Before executing, preview or inspect templates:
 **CLI:**
 
 ```bash
-noorm -H run preview sql/schema.sql.tmpl              # Rendered SQL to stdout
-noorm -H run preview sql/schema.sql.tmpl > rendered.sql
-noorm -H run inspect sql/seed.sql.tmpl                 # Show available context
+noorm run preview sql/schema.sql.tmpl              # Rendered SQL to stdout
+noorm run preview sql/schema.sql.tmpl > rendered.sql
+noorm run inspect sql/seed.sql.tmpl                 # Show available context
 ```
 
 **SDK:**

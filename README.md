@@ -42,12 +42,12 @@ Supports **PostgreSQL**, **MySQL**, **SQLite**, and **SQL Server**.
 noorm init
 
 # Launch the interactive TUI
-noorm
+noorm ui
 
-# Or use headless mode
-noorm -H config add
-noorm -H run build
-noorm -H change ff
+# Or run commands headlessly
+noorm config add
+noorm run build
+noorm change ff
 ```
 
 From the TUI:

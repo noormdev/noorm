@@ -51,7 +51,7 @@ Surfaces that exist in the TUI but have no headless CLI equivalent. Discovered a
 
 **Identity:** (entire domain TUI-only — no `noorm identity` command)
 
-- [ ] **`identity ci`** - Create/load an identity for CI use via ENV variables (e.g. `NOORM_IDENTITY_PRIVATE_KEY`, `NOORM_IDENTITY_NAME`, `NOORM_IDENTITY_EMAIL`). Requires **core support** to bootstrap an identity from env vars instead of `~/.noorm/identity` on disk, so CI runners can decrypt vault/state without writing secrets to the filesystem.
+- [x] **`identity ci`** - Create/load an identity for CI use via ENV variables (e.g. `NOORM_IDENTITY_PRIVATE_KEY`, `NOORM_IDENTITY_NAME`, `NOORM_IDENTITY_EMAIL`). Requires **core support** to bootstrap an identity from env vars instead of `~/.noorm/identity` on disk, so CI runners can decrypt vault/state without writing secrets to the filesystem.
 - [x] `identity init` - Generate or regenerate an identity headlessly
 - [x] `identity edit` - Edit identity metadata (name, email)
 - [x] `identity export` - Export public key
@@ -65,8 +65,8 @@ Surfaces that exist in the TUI but have no headless CLI equivalent. Discovered a
 
 - [x] `settings init` - Initialize `settings.yml`
 - [x] `settings build` - Build/regenerate settings
-- [ ] `settings edit` - Interactive editor. Prompts for a field to edit (paths, strict, logging, stages, rules), applies the change, then loops back to the field picker. Exits on "Done" selection or `Esc`. One command covers everything.
-- [ ] `settings secret` - Interactive secret **requirement** declaration (config enforcement, not value storage). Declares that a given secret must be set for a particular stage (or all stages). Loop pattern: pick action (add/edit/rm requirement), pick scope (universal or a stage), apply, loop. Exits on "Done" or `Esc`. Actual secret values live in `secret/*` / vault.
+- [x] `settings edit` - Interactive editor. Prompts for a field to edit (paths, strict, logging, stages, rules), applies the change, then loops back to the field picker. Exits on "Done" selection or `Esc`. One command covers everything.
+- [x] `settings secret` - Interactive secret **requirement** declaration (config enforcement, not value storage). Declares that a given secret must be set for a particular stage (or all stages). Loop pattern: pick action (add/edit/rm requirement), pick scope (universal or a stage), apply, loop. Exits on "Done" or `Esc`. Actual secret values live in `secret/*` / vault.
 
 **Secrets:** (entire `secret/*` domain TUI-only — distinct from `vault`)
 

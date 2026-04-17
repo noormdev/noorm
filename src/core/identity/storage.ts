@@ -162,6 +162,8 @@ export async function saveIdentityMetadata(identity: CryptoIdentity): Promise<vo
 /**
  * Load identity metadata from disk.
  *
+ * Returns the in-memory override if set, otherwise reads from disk.
+ *
  * @returns Identity metadata or null if not found
  *
  * @example
@@ -173,6 +175,12 @@ export async function saveIdentityMetadata(identity: CryptoIdentity): Promise<vo
  * ```
  */
 export async function loadIdentityMetadata(): Promise<CryptoIdentity | null> {
+
+    if (identityOverride) {
+
+        return identityOverride;
+
+    }
 
     const [content, err] = await attempt(() =>
         readFile(IDENTITY_METADATA_PATH, { encoding: 'utf8' }),
@@ -206,6 +214,8 @@ export async function loadIdentityMetadata(): Promise<CryptoIdentity | null> {
 /**
  * Load private key from disk.
  *
+ * Returns the in-memory override if set, otherwise reads from disk.
+ *
  * @returns Private key as hex string, or null if not found
  *
  * @example
@@ -217,6 +227,12 @@ export async function loadIdentityMetadata(): Promise<CryptoIdentity | null> {
  * ```
  */
 export async function loadPrivateKey(): Promise<string | null> {
+
+    if (keyOverride) {
+
+        return keyOverride;
+
+    }
 
     const [content, err] = await attempt(() => readFile(PRIVATE_KEY_PATH, { encoding: 'utf8' }));
 
@@ -391,5 +407,94 @@ export function getPublicKeyPath(): string {
 export function getNoormHomePath(): string {
 
     return NOORM_HOME;
+
+}
+
+// =============================================================================
+// In-Memory Private Key Override (CI)
+// =============================================================================
+
+/**
+ * In-memory private key override for CI environments.
+ *
+ * When set, loadPrivateKey() returns this value instead of reading
+ * from ~/.noorm/identity.key. Used by the env-based identity bootstrap
+ * so CI runners can provide credentials without disk files.
+ */
+let keyOverride: string | null = null;
+
+/**
+ * Set an in-memory private key override.
+ *
+ * Called once at process startup (in `cli/index.ts entry()`) when CI
+ * env vars are detected. After this, `loadPrivateKey()` returns
+ * the env key for the lifetime of the process.
+ */
+export function setKeyOverride(key: string): void {
+
+    keyOverride = key;
+
+}
+
+/**
+ * Clear the in-memory private key override.
+ */
+export function clearKeyOverride(): void {
+
+    keyOverride = null;
+
+}
+
+/**
+ * Get the current private key override, if any.
+ */
+export function getKeyOverride(): string | null {
+
+    return keyOverride;
+
+}
+
+// =============================================================================
+// In-Memory Identity Metadata Override (CI)
+// =============================================================================
+
+/**
+ * In-memory identity metadata override for CI environments.
+ *
+ * When set, loadIdentityMetadata() returns this value instead of reading
+ * `~/.noorm/identity.json`. Symmetric to the private key override:
+ * together they let env-based identities satisfy every code path that
+ * looks up identity from disk.
+ */
+let identityOverride: CryptoIdentity | null = null;
+
+/**
+ * Set an in-memory identity metadata override.
+ *
+ * Called once at process startup (in `cli/index.ts entry()`) when CI
+ * env vars are detected. After this, `loadIdentityMetadata()` returns
+ * the env identity for the lifetime of the process.
+ */
+export function setIdentityOverride(identity: CryptoIdentity): void {
+
+    identityOverride = identity;
+
+}
+
+/**
+ * Clear the in-memory identity metadata override.
+ */
+export function clearIdentityOverride(): void {
+
+    identityOverride = null;
+
+}
+
+/**
+ * Get the current identity metadata override, if any.
+ */
+export function getIdentityOverride(): CryptoIdentity | null {
+
+    return identityOverride;
 
 }

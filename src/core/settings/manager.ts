@@ -28,6 +28,7 @@ import type {
     PathConfig,
     StrictConfig,
     LoggingConfig,
+    TeardownConfig,
     RulesEvaluationResult,
     ConfigForRuleMatch,
 } from './types.js';
@@ -720,6 +721,21 @@ export class SettingsManager {
         await this.save();
 
         observer.emit('settings:logging-updated', { logging });
+
+    }
+
+    /**
+     * Update teardown configuration.
+     */
+    async setTeardown(teardown: TeardownConfig): Promise<void> {
+
+        this.#assertLoaded();
+
+        this.#settings!.teardown = teardown;
+
+        await this.save();
+
+        observer.emit('settings:teardown-updated', { teardown });
 
     }
 
