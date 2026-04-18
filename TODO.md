@@ -83,7 +83,7 @@ Surfaces that exist in the TUI but have no headless CLI equivalent. Discovered a
 **Changes (additional):**
 
 - [x] `change add <name>` - Create a new change
-- [ ] `change edit <name>` - Edit an existing change
+- [x] `change edit <name>` - Edit an existing change
 - [x] `change rm <name>` - Delete a change
 - [x] `change rewind <name>` - Rewind to a specific change
 - [x] `change history detail <name>` - Show per-file execution history

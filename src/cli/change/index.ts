@@ -1,15 +1,20 @@
 /**
  * noorm change — manage schema changes.
  *
- * Bare invocation lists all changes and their current status.
- * Subcommands allow applying, reverting, and inspecting changes.
+ * Bare invocation renders help (citty default) — subcommands handle
+ * status (`change list`), application (`change ff`, `change run`,
+ * `change next`), rollback (`change revert`, `change rewind`),
+ * inspection (`change history`, `change history-detail`), and
+ * scaffolding (`change add`, `change edit`, `change rm`).
  */
 import { defineCommand } from 'citty';
 
-import { withContext, outputResult, sharedArgs } from '../_utils.js';
+import { sharedArgs } from '../_utils.js';
 
 import add from './add.js';
+import edit from './edit.js';
 import ff from './ff.js';
+import list from './list.js';
 import next from './next.js';
 import rm from './rm.js';
 import run from './run.js';
@@ -29,7 +34,9 @@ const changeCommand = defineCommand({
     },
     subCommands: {
         add,
+        edit,
         ff,
+        list,
         next,
         rm,
         run,
@@ -38,58 +45,14 @@ const changeCommand = defineCommand({
         rewind,
         'history-detail': historyDetail,
     },
-    async run({ args }) {
-
-        const [changes, error] = await withContext({
-            args,
-            fn: (ctx, logger) => {
-
-                return ctx.noorm.changes.status().then((res) => {
-
-                    if (!args.json) {
-
-                        for (const cs of res) {
-
-                            logger.info(`${cs.name} (${cs.status})`);
-
-                        }
-
-                        const pending = res.filter((c) => c.status === 'pending').length;
-
-                        if (pending > 0) {
-
-                            logger.info(`${pending} pending change(s)`);
-
-                        }
-
-                    }
-
-                    return res;
-
-                });
-
-            },
-        });
-
-        if (error) process.exit(1);
-
-        if (args.json) {
-
-            outputResult(args, changes, '');
-
-        }
-
-        process.exit(0);
-
-    },
 });
 
 (changeCommand as typeof changeCommand & { examples: string[] }).examples = [
-    'noorm change',
-    'noorm change --json',
+    'noorm change list',
     'noorm change ff',
     'noorm change run 001_users',
     'noorm change revert 001_users',
+    'noorm change edit 2024-04-17-add-users-table',
 ];
 
 export default changeCommand;

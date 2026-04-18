@@ -79,6 +79,7 @@ async function editPaths(manager: Manager): Promise<void> {
         validate: (v) => {
 
             if (v && v.trim()) return undefined;
+
             return 'Path is required';
 
         },
@@ -92,6 +93,7 @@ async function editPaths(manager: Manager): Promise<void> {
         validate: (v) => {
 
             if (v && v.trim()) return undefined;
+
             return 'Path is required';
 
         },
@@ -229,6 +231,7 @@ async function editLogging(manager: Manager): Promise<void> {
         validate: (v) => {
 
             if (v && /^\d+$/.test(v.trim())) return undefined;
+
             return 'Must be a number';
 
         },

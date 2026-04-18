@@ -204,19 +204,21 @@ Each change has a status:
 | `failed` | Last execution failed |
 | `reverted` | Was applied, then rolled back |
 
-From the headless CLI, the bare `change` command lists every known change with its status:
+From the headless CLI, `noorm change list` prints every known change with its status. Bare `noorm change` renders help -- it does not connect to the database.
 
 ```bash
-noorm change             # Human-friendly table
-noorm --json change      # Same data as JSON
+noorm change list             # Human-friendly table
+noorm --json change list      # Same data as JSON
 ```
 
 ```json
 [
-    { "name": "2025-01-15-add-email-verification", "status": "applied" },
+    { "name": "2025-01-15-add-email-verification", "status": "success" },
     { "name": "2025-02-01-migrate-user-roles", "status": "pending" }
 ]
 ```
+
+When you omit the change name on a TTY, the `run`, `revert`, `rewind`, `edit`, `rm`, and `history-detail` subcommands open an interactive picker filtered to the relevant subset (pending for `run`, applied for `revert`/`rewind`, etc.). Non-TTY callers must supply the name.
 
 
 ## Common Workflows

@@ -377,27 +377,45 @@ noorm run preview sql/hotfix.sql.tmpl | psql -h localhost -d myapp
 
 ### Change Operations
 
-#### `change`
+Bare `noorm change` renders citty's help output and does not connect to the database. Use `noorm change list` for the status table.
 
-List all changes with status.
+**Interactive prompts (TTY only).** When you omit the change name on a TTY, `run`, `revert`, `rewind`, `edit`, `rm`, and `history-detail` open a clack picker filtered to the relevant subset:
+
+| Command | Picker includes |
+|---------|-----------------|
+| `change run` | pending + reverted (not orphaned) |
+| `change revert` | success |
+| `change rewind` | success |
+| `change edit` | every directory under `changes/` (filesystem) |
+| `change rm` | every directory under `changes/` (filesystem) |
+| `change history-detail` | anything with an execution record (non-pending) |
+
+Non-TTY callers (CI, scripts) must pass the name or the command errors out -- there is no interactive fallback.
+
+
+#### `change list`
+
+List every known change with its status. This used to be the behavior of bare `noorm change`; it now lives on an explicit subcommand so the parent command can render help without connecting to the database.
 
 ```bash
-noorm change
+noorm change list
+noorm change list --json
+noorm change list -c staging
 ```
 
 **Text output:**
 ```
-Changes:
-✓ 2024-01-15-init-schema       Applied
-✓ 2024-01-20-add-roles         Applied
-○ 2024-02-01-notifications     Pending
+2024-01-15-init-schema (success)
+2024-01-20-add-roles (success)
+2024-02-01-notifications (pending)
+1 pending change(s)
 ```
 
 **JSON output:**
 ```json
 [
-    {"name": "2024-01-15-init-schema", "status": "applied"},
-    {"name": "2024-01-20-add-roles", "status": "applied"},
+    {"name": "2024-01-15-init-schema", "status": "success"},
+    {"name": "2024-01-20-add-roles", "status": "success"},
     {"name": "2024-02-01-notifications", "status": "pending"}
 ]
 ```
@@ -426,11 +444,25 @@ noorm --dry-run change ff  # Preview only
 ```
 
 
-#### `change run <name>`
+#### `change next`
 
-Apply a specific change by name. Use this to apply changes out of order or to retry a failed change.
+Apply the next pending change in order (whichever comes first in the sorted list of pending changes). Useful in CI for one-step-at-a-time rollouts.
 
 ```bash
+noorm change next
+noorm --json change next
+noorm --dry-run change next
+```
+
+Output shape matches `change run` (single-change result).
+
+
+#### `change run <name>`
+
+Apply a specific change by name. Use this to apply changes out of order or to retry a failed change. On a TTY, omit the name to pick from pending + reverted changes interactively.
+
+```bash
+noorm change run                               # interactive picker (TTY)
 noorm change run 2024-02-01-notifications
 noorm --json change run 2024-02-01-notifications
 noorm -c staging change run 001_init
@@ -459,9 +491,10 @@ Status is `"success"` or `"failed"`. On failure, the top-level `error` field con
 
 #### `change revert <name>`
 
-Revert a previously applied change by running its backward SQL.
+Revert a previously applied change by running its backward SQL. On a TTY, omit the name to pick from previously-applied changes.
 
 ```bash
+noorm change revert                              # interactive picker (TTY)
 noorm change revert 2024-02-01-notifications
 noorm --json change revert 2024-02-01-notifications
 noorm -c staging change revert 002_users
@@ -486,6 +519,56 @@ noorm -c staging change revert 002_users
 ```
 
 Status is `"success"` or `"failed"`. The change must have been previously applied.
+
+
+#### `change rewind <name>`
+
+Revert the given change **and every change applied after it**, in reverse chronological order. Use this to rewind to a specific point. On a TTY, omit the name to pick the anchor change interactively.
+
+```bash
+noorm change rewind                              # interactive picker (TTY)
+noorm change rewind 2024-02-01-notifications
+noorm --json change rewind 2024-02-01-notifications
+```
+
+JSON output mirrors `change ff` (rollup of per-change results).
+
+
+#### `change add [description]`
+
+Scaffold a new change directory under `changes/` with `change.sql` and `revert.sql` stubs. On a TTY, omit the description to be prompted for one.
+
+```bash
+noorm change add                                # prompts for description (TTY)
+noorm change add add-users-table
+noorm change add "notification queue"
+```
+
+Creates `changes/<YYYY-MM-DD>-<slug>/` with empty template files.
+
+
+#### `change edit [name]`
+
+Open a change's `change.sql` and `revert.sql` in `$EDITOR` (or `$VISUAL`). On a TTY, omit the name to pick from all changes on disk.
+
+```bash
+noorm change edit                               # interactive picker (TTY)
+noorm change edit 2024-02-01-notifications
+EDITOR=vim noorm change edit 001_init
+```
+
+Exits with the editor's exit code if non-zero. No JSON output -- this command is purely a spawn wrapper.
+
+
+#### `change rm [name]`
+
+Remove a change directory from disk. **Does not** touch database state -- use `change revert` or `change rewind` first if the change was applied. On a TTY, omit the name to pick interactively and confirm via prompt; `--yes` is only required on non-TTY callers.
+
+```bash
+noorm change rm                                 # picker + confirm (TTY)
+noorm change rm 2024-02-01-notifications        # confirm prompt (TTY)
+noorm change rm 2024-02-01-notifications --yes  # non-TTY / CI
+```
 
 
 #### `change history`
@@ -530,6 +613,19 @@ if [ "$failures" -gt 0 ]; then
     echo "WARNING: $failures failed changes in history"
 fi
 ```
+
+
+#### `change history-detail <name>`
+
+Show per-file execution detail for a single change (all historical runs, forward and revert). On a TTY, omit the name to pick from changes with execution history.
+
+```bash
+noorm change history-detail                     # interactive picker (TTY)
+noorm change history-detail 2024-02-01-notifications
+noorm --json change history-detail 001_init
+```
+
+JSON output is an array of per-execution records with their file checksums, statuses, and durations.
 
 
 ### Database Operations

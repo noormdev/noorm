@@ -210,7 +210,7 @@ noorm change ff
 
 ```bash
 # See current state
-noorm change
+noorm change list
 
 # Revert the problematic change
 noorm change revert 2024-02-15-broken-change

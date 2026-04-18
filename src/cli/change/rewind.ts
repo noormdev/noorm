@@ -3,10 +3,16 @@
  *
  * Reverts changes in reverse order of application until and including
  * the named change. This is the inverse of `change ff`.
+ *
+ * If the name is omitted and stdin is a TTY, connects, fetches change
+ * status, and prompts the user to pick from successfully applied
+ * changes. Non-TTY callers must pass the name or the command errors out.
  */
+import * as p from '@clack/prompts';
 import { defineCommand } from 'citty';
 
-import { withContext, outputResult, sharedArgs } from '../_utils.js';
+import { withContext, outputResult, outputError, sharedArgs } from '../_utils.js';
+import { selectChangeFromStatus, requireTty } from './_prompt.js';
 
 const rewindCommand = defineCommand({
     meta: {
@@ -16,8 +22,8 @@ const rewindCommand = defineCommand({
     args: {
         name: {
             type: 'positional',
-            description: 'Change name to revert to',
-            required: true,
+            description: 'Change name to revert to (omit to pick interactively on a TTY)',
+            required: false,
         },
         config: sharedArgs.config,
         force: sharedArgs.force,
@@ -26,32 +32,62 @@ const rewindCommand = defineCommand({
     },
     async run({ args }) {
 
+        if (!args.name && !requireTty('Change name')) process.exit(1);
+
         const [result, error] = await withContext({
             args,
-            fn: (ctx, logger) => {
+            fn: async (ctx, logger) => {
 
-                return ctx.noorm.changes.rewind(args.name).then((res) => {
+                let changeName = args.name;
 
-                    if (!args.json) {
+                if (!changeName) {
 
-                        logger.info(`Rewind: ${res.status} (${res.executed} reverted, ${res.failed} failed)`);
+                    const status = await ctx.noorm.changes.status();
 
-                        for (const change of res.changes) {
+                    const picked = await selectChangeFromStatus(status, {
+                        message: 'Rewind back to which change?',
+                        emptyMessage: 'No applied changes to rewind through.',
+                        filter: (c) => c.status === 'success',
+                    });
 
-                            logger.info(`  ${change.name} — ${change.status}`);
+                    if (!picked) {
 
-                        }
+                        p.cancel('No change selected.');
+                        throw new Error('aborted');
 
                     }
 
-                    return res;
+                    changeName = picked;
 
-                });
+                }
+
+                const res = await ctx.noorm.changes.rewind(changeName);
+
+                if (!args.json) {
+
+                    logger.info(`Rewind: ${res.status} (${res.executed} reverted, ${res.failed} failed)`);
+
+                    for (const change of res.changes) {
+
+                        logger.info(`  ${change.name} — ${change.status}`);
+
+                    }
+
+                }
+
+                return res;
 
             },
         });
 
         if (error) process.exit(1);
+
+        if (!result) {
+
+            outputError(args, 'No result returned');
+            process.exit(1);
+
+        }
 
         if (args.json) {
 
@@ -65,6 +101,7 @@ const rewindCommand = defineCommand({
 });
 
 (rewindCommand as typeof rewindCommand & { examples: string[] }).examples = [
+    'noorm change rewind',
     'noorm change rewind 001_init',
     'noorm change rewind 2024-02-01-notifications -c prod',
     'noorm change rewind 002_users --json',

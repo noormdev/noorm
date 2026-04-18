@@ -276,14 +276,33 @@ noorm --config staging run preview sql/migrations/002.sql.tmpl
 
 ### change
 
-List all changes with their status (pending, applied, failed).
+Bare `noorm change` renders help — it no longer connects to the database. Use `noorm change list` for the status table.
+
+**Interactive prompts:** every `change <subcommand> <name>` command makes the positional `<name>` optional on a TTY. When omitted, an interactive picker lists candidate changes and you select one. On a non-TTY (CI, piped stdin) the name is required and the command exits 1 with `Change name required…`. User cancellation exits 1 with `Cancelled.`.
+
+Pickers filter their list to whatever the command can act on:
+
+| Command | TTY picker lists |
+|---------|------------------|
+| `change edit` | every folder in `changes/` |
+| `change add` | — (prompts for free-form description via `p.text`) |
+| `change rm` | every folder in `changes/` |
+| `change run` | pending / reverted changes |
+| `change revert` | successfully applied changes |
+| `change rewind` | successfully applied changes |
+| `change history-detail` | changes with execution history (`status !== 'pending'`) |
+
+### change list
+
+List every known change with its status (pending, success, failed, reverted, stale).
 
 ```bash
-noorm change
-noorm --json change
+noorm change list
+noorm --json change list
+noorm -c staging change list
 ```
 
-**JSON:** `[{ "name": "2024-01-15-init", "status": "applied" }, ...]`
+**JSON:** `[{ "name": "2024-01-15-init", "status": "success" }, ...]`
 
 ### change ff
 
@@ -309,11 +328,23 @@ noorm --force change ff     # Skip checksum checks
 }
 ```
 
-### change run
+### change next
 
-Apply a specific change by name.
+Apply the next pending change only (rather than all of them).
 
 ```bash
+noorm change next
+noorm --json change next
+```
+
+Useful when you want to apply changes one at a time and verify each before continuing.
+
+### change run
+
+Apply a specific change by name. Omit the name on a TTY to pick from pending / reverted changes.
+
+```bash
+noorm change run                             # Interactive picker
 noorm change run 2024-02-01-notifications
 noorm --json change run 001_init
 noorm -c staging change run 001_init
@@ -335,12 +366,58 @@ noorm -c staging change run 001_init
 
 ### change revert
 
-Revert a previously applied change by running its rollback SQL.
+Revert a previously applied change by running its rollback SQL. Omit the name on a TTY to pick from successfully applied changes.
 
 ```bash
+noorm change revert                          # Interactive picker
 noorm change revert 2024-02-01-notifications
 noorm --json change revert 002_users
 ```
+
+### change rewind
+
+Revert applied changes back to (and including) a named change — the inverse of `change ff`. Omit the name on a TTY to pick from successfully applied changes.
+
+```bash
+noorm change rewind                          # Interactive picker
+noorm change rewind 001_init
+noorm change rewind 002_users --dry-run
+noorm --json change rewind 003_roles
+```
+
+### change add
+
+Scaffold a new change folder. Omit the description on a TTY to prompt for it. Offline — no DB connection required.
+
+```bash
+noorm change add                             # Prompts for description
+noorm change add add-users-table
+noorm change add create-audit-log --json
+```
+
+**JSON:** `{ "name": "2024-04-17-add-users-table", "path": "/project/changes/2024-04-17-add-users-table" }`
+
+### change edit
+
+Open a change folder in `$EDITOR` (falling back to `$VISUAL`, then `code`). stdio is inherited so terminal editors (vim, nano, emacs -nw) take over the terminal in-place; exits with the editor's own exit code. Offline — no DB connection required.
+
+```bash
+noorm change edit                            # Pick from all changes
+noorm change edit 2024-04-17-add-users-table
+EDITOR=vim noorm change edit 2024-04-17-add-users-table
+```
+
+### change rm
+
+Delete a change folder. Omit the name on a TTY to pick from the list; a `p.confirm` prompt replaces `--yes` in interactive mode. On a non-TTY both the name **and** `--yes` are required so CI never deletes silently.
+
+```bash
+noorm change rm                              # Pick + confirm interactively
+noorm change rm 2024-01-15-add-users-table   # Confirm interactively
+noorm change rm 2024-01-15-add-users-table --yes   # CI-safe, no prompt
+```
+
+**JSON:** `{ "name": "2024-01-15-add-users-table", "deleted": true }`
 
 ### change history
 
@@ -368,6 +445,17 @@ noorm --json change history
         "checksum": "abc123def456"
     }
 ]
+```
+
+### change history-detail
+
+Per-file execution history for a specific change — every operation record plus each SQL file's status, duration, and error/skip reason. Omit the name on a TTY to pick from changes that have a history record.
+
+```bash
+noorm change history-detail                  # Interactive picker
+noorm change history-detail 001_init
+noorm change history-detail 003_roles --count 5
+noorm --json change history-detail 002_users
 ```
 
 ---

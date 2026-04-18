@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
-import { generateKeyPair, derivePublicKeyFromPrivate } from '../../src/core/identity/crypto.js';
+import { generateKeyPair } from '../../src/core/identity/crypto.js';
 
 const CLI = join(process.cwd(), 'dist/cli/index.js');
 

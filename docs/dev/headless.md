@@ -163,19 +163,19 @@ noorm run dir sql/01_tables/
 
 ### Change Operations
 
-#### `change` (or `change list`)
+#### `change list`
 
-List change status.
+List change status. Bare `noorm change` renders help -- it does not connect to the database.
 
 ```bash
-noorm change
+noorm change list
 ```
 
 **JSON output:**
 ```json
 [
-    { "name": "001_init", "status": "applied", "direction": "forward" },
-    { "name": "002_users", "status": "pending", "direction": "forward" }
+    { "name": "001_init", "status": "success" },
+    { "name": "002_users", "status": "pending" }
 ]
 ```
 
@@ -658,39 +658,36 @@ Key details:
 
 ### Parent Commands
 
-Domain parents (e.g., `noorm change`) live at `src/cli/<domain>/index.ts`. They register their leaves under `subCommands` and may optionally provide a `run` handler that executes when called bare (e.g., `noorm change` shows status):
+Domain parents (e.g., `noorm change`) live at `src/cli/<domain>/index.ts`. They register their leaves under `subCommands` and **do not** provide a `run` handler -- citty renders help automatically when the parent is called bare. Operations that need the database (status listing, apply, revert) live in explicit leaves (`change list`, `change ff`, `change run`, ...) so bare invocation stays cheap and predictable:
 
 ```typescript
 // src/cli/change/index.ts
 import { defineCommand } from 'citty';
 
-import ff from './ff.js';
-import history from './history.js';
-import revert from './revert.js';
-import run from './run.js';
+import { sharedArgs } from '../_utils.js';
 
-import { withContext, outputResult, sharedArgs } from '../_utils.js';
+import add from './add.js';
+import edit from './edit.js';
+import ff from './ff.js';
+import list from './list.js';
+import run from './run.js';
+import revert from './revert.js';
+// ...
 
 export default defineCommand({
     meta: {
         name: 'change',
         description: 'Manage schema changes',
     },
-    args: { ...sharedArgs },
-    subCommands: { ff, history, revert, run },
-    async run({ args }) {
-
-        // Bare `noorm change` — show status
-        const [result, err] = await withContext({
-            args,
-            fn: (ctx) => ctx.noorm.changes.status(),
-        });
-        if (err) process.exit(1);
-        outputResult(args, result, formatStatus(result));
-
+    args: {
+        config: sharedArgs.config,
+        json: sharedArgs.json,
     },
+    subCommands: { add, edit, ff, list, run, revert /* ... */ },
 });
 ```
+
+Status listing previously lived on the bare `change` handler -- it was moved to `change list` so the parent command behaves like every other root (`config`, `settings`, `identity`, `db`, `vault`, `secret`, `run`) and does not open a database connection just to render help.
 
 
 ### TUI-Only Wizards

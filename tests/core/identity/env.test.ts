@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach } from 'bun:test';
 
 import { loadIdentityFromEnv, CI_ENV_VARS } from '../../../src/core/identity/env.js';
-import { generateKeyPair, derivePublicKeyFromPrivate } from '../../../src/core/identity/crypto.js';
+import { generateKeyPair } from '../../../src/core/identity/crypto.js';
 import { computeIdentityHash } from '../../../src/core/identity/hash.js';
 
 describe('core: identity env loader', () => {
