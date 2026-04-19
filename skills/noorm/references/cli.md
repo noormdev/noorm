@@ -48,6 +48,17 @@ NOORM_CONNECTION_USER        # Username
 NOORM_CONNECTION_PASSWORD    # Password
 ```
 
+### Identity (CI)
+
+```bash
+NOORM_IDENTITY_PRIVATE_KEY   # X25519 private key, hex PKCS8 DER (96 hex chars)
+NOORM_IDENTITY_NAME          # Display name (e.g. "CI Bot")
+NOORM_IDENTITY_EMAIL         # Email (e.g. "ci@example.com")
+NOORM_CI_CONFIG_NAME         # Default config name for `ci init` (override: --name)
+```
+
+When all three identity vars are set at process startup, every `noorm` command in that process inherits the identity without reading `~/.noorm/`. Same key → same identityHash across runners.
+
 ### Paths
 
 ```bash
@@ -136,20 +147,105 @@ noorm identity list
 noorm --json identity list
 ```
 
-### identity ci
+---
 
-Validate a CI-loaded identity from environment variables. Diagnostic only — the real bootstrap happens automatically at process startup when `NOORM_IDENTITY_PRIVATE_KEY`, `NOORM_IDENTITY_NAME`, and `NOORM_IDENTITY_EMAIL` are set. Exits 1 if any var is missing or malformed.
+### ci identity new
+
+Generate a test-CI identity keypair locally. No database contact, no state written — prints an env block the developer copies into their CI secrets store. Designed for stateless/ephemeral CI (`isTest` configs, temporary databases). The computed identityHash uses `os='env'` + `machine=publicKey`, matching what `loadIdentityFromEnv()` computes when the runner reads the same private key from env.
 
 ```bash
-NOORM_IDENTITY_PRIVATE_KEY=abc... \
-NOORM_IDENTITY_NAME="CI Bot" \
-NOORM_IDENTITY_EMAIL="ci@example.com" \
-noorm identity ci
-
-noorm --json identity ci
+noorm ci identity new --name "CI Bot" --email ci@example.com
+noorm ci identity new --name "CI Bot" --email ci@example.com --json
 ```
 
-**JSON:** `{ "name": "...", "email": "...", "publicKey": "...", "fingerprint": "...", "source": "env" }`
+**JSON:** `{ "name": "...", "email": "...", "publicKey": "...", "identityHash": "...", "privateKey": "...", "envBlock": { "NOORM_IDENTITY_PRIVATE_KEY": "...", "NOORM_IDENTITY_NAME": "...", "NOORM_IDENTITY_EMAIL": "..." } }`
+
+The private key is shown once and never stored locally — save it to your CI secrets immediately.
+
+### ci identity enroll
+
+Register a CI identity in a real target database and propagate vault access to it. Run once by a developer who already has vault access on `--config`. The command decrypts the caller's `encrypted_vault_key`, inserts an identity row (`machine='ci'`, `os='env'`), and writes the new identity's copy of the vault key. Idempotent on identityHash — re-running just ensures vault access.
+
+```bash
+noorm ci identity enroll --config prod --name "CI Bot" --email ci@example.com
+noorm ci identity enroll --config prod --name "CI Bot" --email ci@example.com --public-key <hex>
+noorm ci identity enroll --config prod --name "CI Bot" --email ci@example.com --json
+```
+
+Without `--public-key`, noorm mints a keypair and returns the private key once (save it to CI secrets). With `--public-key`, only the pre-generated public half is enrolled (air-gapped flow: key minted on another machine via `ci identity new`).
+
+**JSON:**
+
+```json
+{
+    "success": true,
+    "name": "CI Bot",
+    "email": "ci@example.com",
+    "publicKey": "...",
+    "identityHash": "...",
+    "enrolledIn": "prod",
+    "alreadyEnrolled": false,
+    "privateKey": "...",
+    "envBlock": { "NOORM_IDENTITY_PRIVATE_KEY": "...", "NOORM_IDENTITY_NAME": "CI Bot", "NOORM_IDENTITY_EMAIL": "ci@example.com" }
+}
+```
+
+`privateKey`/`envBlock` are only present when the command minted a keypair. Fails if the caller does not hold vault access on the target config.
+
+### ci init
+
+Bootstrap ephemeral `state.enc` from `NOORM_IDENTITY_*` + `NOORM_CONNECTION_*` env vars. Runs inside the CI job (not on the developer's machine). Creates a config (default name: `ci`, override via `--name` or `NOORM_CI_CONFIG_NAME`), marks it active, sets `isTest: true`, and leaves state on disk so later `noorm` commands in the same job (`run build`, `change ff`, `ci secrets`, etc.) operate as if a developer had set things up manually. Absorbs the former `noorm identity ci` precheck — fails fast with exit 1 if any required env var is missing or malformed.
+
+```bash
+noorm ci init
+noorm ci init --name staging
+noorm ci init --force                     # Overwrite existing state.enc
+noorm ci init --json
+```
+
+**JSON:**
+
+```json
+{
+    "success": true,
+    "identity": {
+        "name": "CI Bot",
+        "email": "ci@example.com",
+        "publicKey": "...",
+        "identityHash": "...",
+        "source": "env"
+    },
+    "config": { "name": "ci", "dialect": "postgres", "database": "app", "isTest": true },
+    "stateFile": "/path/to/.noorm/state/state.enc"
+}
+```
+
+### ci secrets
+
+Batch-load secrets from a dotenv-style file into the active (or `--config`-named) vault. Run after `ci init`. Existing keys are skipped by default so a job rerun is safe; pass `--overwrite` to replace them.
+
+```bash
+noorm ci secrets --file ./ci-secrets.env
+noorm ci secrets --file ./ci-secrets.env --overwrite
+noorm ci secrets --file ./ci-secrets.env --config prod --json
+```
+
+**File format:** `KEY=value` per line; blank lines and `#` comments ignored; `=` may appear in values; a single matched pair of surrounding `"` or `'` is stripped.
+
+**JSON:**
+
+```json
+{
+    "success": true,
+    "config": "ci",
+    "set": 3,
+    "skipped": 0,
+    "errors": 0,
+    "errorDetails": []
+}
+```
+
+**Exit codes:** `0` all loaded (or all skipped); `1` precondition failure (no `state.enc`, missing config, parse error, total failure); `2` partial success (some set, some errored).
 
 ---
 
@@ -689,37 +785,14 @@ noorm help change ff
 
 ## CI/CD Examples
 
-### GitHub Actions
+Two patterns to choose between:
 
-```yaml
-name: Database Migrations
-on:
-  push:
-    branches: [main]
+- **Test CI** — ephemeral database (spun up in the CI job), no vault needed. The minimum viable flow: set `NOORM_CONNECTION_*`, then `run build` + `change ff`. Use when your templates and changes do not reference vault-backed secrets.
+- **Prod CI** — real database, vault-backed secrets. The runner needs an enrolled identity (via `ci identity enroll`, run once by a developer) and bootstraps state with `ci init`. Use when templates render secrets or the config is protected.
 
-jobs:
-  migrate:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - name: Install noorm
-        run: npm install -g @noormdev/cli
-      - name: Apply schema and changes
-        env:
-          NOORM_CONNECTION_DIALECT: postgres
-          NOORM_CONNECTION_HOST: ${{ secrets.DB_HOST }}
-          NOORM_CONNECTION_DATABASE: ${{ secrets.DB_NAME }}
-          NOORM_CONNECTION_USER: ${{ secrets.DB_USER }}
-          NOORM_CONNECTION_PASSWORD: ${{ secrets.DB_PASSWORD }}
-        run: |
-          noorm run build
-          noorm change ff
-```
+### Test CI (GitHub Actions)
 
-### Test Database Setup (GitHub Actions)
+Stateless, ephemeral. No `ci init` required because there is nothing secret to decrypt.
 
 ```yaml
 jobs:
@@ -735,9 +808,11 @@ jobs:
           - 5432:5432
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
       - run: npm ci
-      - run: npm install -g @noormdev/cli
-      - name: Setup test database
+      - name: Apply schema and changes
         env:
           NOORM_CONNECTION_DIALECT: postgres
           NOORM_CONNECTION_HOST: localhost
@@ -745,22 +820,102 @@ jobs:
           NOORM_CONNECTION_USER: postgres
           NOORM_CONNECTION_PASSWORD: test
         run: |
-          noorm run build
-          noorm change ff
+          npx noorm run build
+          npx noorm change ff
       - run: npm test
 ```
 
-### GitLab CI
+### Prod CI (GitHub Actions, vault-enabled)
+
+One-time developer setup:
+
+```bash
+# On the developer machine (already has vault access on `prod`)
+noorm ci identity enroll --config prod --name "GitHub CI" --email ci@example.com
+# → prints NOORM_IDENTITY_PRIVATE_KEY / NAME / EMAIL once; copy to GitHub Actions secrets
+```
+
+Pipeline:
+
+```yaml
+name: Deploy Database Changes
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+
+      - name: Bootstrap CI state
+        env:
+          NOORM_IDENTITY_PRIVATE_KEY: ${{ secrets.NOORM_CI_KEY }}
+          NOORM_IDENTITY_NAME: "GitHub CI"
+          NOORM_IDENTITY_EMAIL: "ci@example.com"
+          NOORM_CONNECTION_DIALECT: postgres
+          NOORM_CONNECTION_HOST: ${{ secrets.DB_HOST }}
+          NOORM_CONNECTION_DATABASE: ${{ secrets.DB_NAME }}
+          NOORM_CONNECTION_USER: ${{ secrets.DB_USER }}
+          NOORM_CONNECTION_PASSWORD: ${{ secrets.DB_PASSWORD }}
+        run: npx noorm ci init --name prod
+
+      - name: Apply changes
+        run: npx noorm change ff
+```
+
+### Prod CI with batch-loaded secrets
+
+When templates need extra secrets beyond the connection, write them to a file (from GitHub Actions secrets) and call `ci secrets` after `ci init`:
+
+```yaml
+- name: Bootstrap CI state
+  env:
+    NOORM_IDENTITY_PRIVATE_KEY: ${{ secrets.NOORM_CI_KEY }}
+    NOORM_IDENTITY_NAME: "GitHub CI"
+    NOORM_IDENTITY_EMAIL: "ci@example.com"
+    NOORM_CONNECTION_DIALECT: postgres
+    NOORM_CONNECTION_HOST: ${{ secrets.DB_HOST }}
+    NOORM_CONNECTION_DATABASE: ${{ secrets.DB_NAME }}
+    NOORM_CONNECTION_USER: ${{ secrets.DB_USER }}
+    NOORM_CONNECTION_PASSWORD: ${{ secrets.DB_PASSWORD }}
+  run: npx noorm ci init --name prod
+
+- name: Load secrets
+  env:
+    API_KEY: ${{ secrets.API_KEY }}
+    STRIPE_KEY: ${{ secrets.STRIPE_KEY }}
+  run: |
+    cat > ./ci-secrets.env <<EOF
+    API_KEY=$API_KEY
+    STRIPE_KEY=$STRIPE_KEY
+    EOF
+    npx noorm ci secrets --file ./ci-secrets.env
+    rm ./ci-secrets.env
+
+- name: Apply changes
+  run: npx noorm change ff
+```
+
+### GitLab CI (Prod, vault-enabled)
 
 ```yaml
 migrate:
   stage: deploy
   image: node:22
   script:
-    - npm install -g @noormdev/cli
-    - noorm run build
-    - noorm change ff
+    - npm ci
+    - npx noorm ci init --name prod
+    - npx noorm change ff
   variables:
+    NOORM_IDENTITY_PRIVATE_KEY: $NOORM_CI_KEY
+    NOORM_IDENTITY_NAME: "GitLab CI"
+    NOORM_IDENTITY_EMAIL: "ci@example.com"
     NOORM_CONNECTION_DIALECT: postgres
     NOORM_CONNECTION_HOST: $DB_HOST
     NOORM_CONNECTION_DATABASE: $DB_NAME
@@ -774,18 +929,23 @@ migrate:
 #!/bin/bash
 set -e
 
+export NOORM_IDENTITY_PRIVATE_KEY=$NOORM_CI_KEY
+export NOORM_IDENTITY_NAME="CI Bot"
+export NOORM_IDENTITY_EMAIL="ci@example.com"
 export NOORM_CONNECTION_DIALECT=postgres
 export NOORM_CONNECTION_HOST=$DB_HOST
 export NOORM_CONNECTION_DATABASE=$DB_NAME
 export NOORM_CONNECTION_USER=$DB_USER
 export NOORM_CONNECTION_PASSWORD=$DB_PASSWORD
 
+# Bootstrap ephemeral state from env
+noorm ci init --name prod
+
 # Acquire lock to prevent concurrent migrations
 noorm lock acquire
 trap "noorm lock release" EXIT
 
-# Build schema and apply changes
-noorm run build
+# Apply changes
 noorm change ff
 
 # Verify

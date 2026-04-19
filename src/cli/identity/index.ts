@@ -3,7 +3,6 @@
  */
 import { defineCommand } from 'citty';
 
-import ci from './ci.js';
 import init from './init.js';
 import edit from './edit.js';
 import exportKey from './export.js';
@@ -14,5 +13,5 @@ export default defineCommand({
         name: 'identity',
         description: 'Manage cryptographic identity and known users',
     },
-    subCommands: { ci, init, edit, export: exportKey, list },
+    subCommands: { init, edit, export: exportKey, list },
 });

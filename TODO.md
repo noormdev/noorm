@@ -51,7 +51,12 @@ Surfaces that exist in the TUI but have no headless CLI equivalent. Discovered a
 
 **Identity:** (entire domain TUI-only — no `noorm identity` command)
 
-- [x] **`identity ci`** - Create/load an identity for CI use via ENV variables (e.g. `NOORM_IDENTITY_PRIVATE_KEY`, `NOORM_IDENTITY_NAME`, `NOORM_IDENTITY_EMAIL`). Requires **core support** to bootstrap an identity from env vars instead of `~/.noorm/identity` on disk, so CI runners can decrypt vault/state without writing secrets to the filesystem.
+- [x] **CI provisioning + runtime** — full `noorm ci` namespace for CI/CD:
+    - `noorm ci identity new` — generate a local keypair + env block for test CI
+    - `noorm ci identity enroll --config <name>` — generate + register identity in a prod DB's `identities` table with vault propagation
+    - `noorm ci init` — bootstrap ephemeral state.enc from env vars (identity + connection)
+    - `noorm ci secrets --file <path>` — batch-load secrets from dotenv file into active config's vault
+    - Absorbs and removes the former `noorm identity ci` diagnostic
 - [x] `identity init` - Generate or regenerate an identity headlessly
 - [x] `identity edit` - Edit identity metadata (name, email)
 - [x] `identity export` - Export public key
@@ -151,6 +156,28 @@ Replace ASCII terminal UI representations with screenshots and videos throughout
 - Screenshots: PNG with terminal theme consistency
 - Videos: GIF or MP4 for multi-step workflows
 - Store in `docs/assets/` or similar
+
+
+## CI Example
+
+Reference repository showcasing noorm in a CI pipeline against one of our example databases, plus a test suite that exercises the database via `@noormdev/sdk`. Doubles as onboarding material for both CI adoption and SDK usage.
+
+**Pipeline flow:**
+
+1. `pnpm install`
+2. `noorm identity ci` — bootstrap identity from env (`NOORM_IDENTITY_PRIVATE_KEY`, etc.) without touching disk
+3. `noorm` build/migrate step — apply schema + pending changes against the CI database
+4. `pnpm test` — SDK-driven test suite (`createContext` with `requireTest: true`) runs against the prepared database
+
+**Deliverables:**
+
+- [ ] Pick one dialect to lead with (PostgreSQL preferred for ubiquity)
+- [ ] Minimal `sql/` schema + a handful of changes
+- [ ] Test suite using `@noormdev/sdk` covering read + write operations
+- [ ] GitHub Actions workflow demonstrating the full pipeline end-to-end
+- [ ] README documenting env vars, secret setup, and step-by-step walkthrough
+
+Links back from the public SDK docs and CI/CD docs so readers land on a runnable example, not prose.
 
 
 ## Dialect Boilerplates

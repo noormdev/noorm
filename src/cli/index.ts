@@ -10,6 +10,7 @@ import tab from '@bomb.sh/tab/citty';
 import { defineCommand, runMain, renderUsage, type CommandDef } from 'citty';
 
 import change from './change/index.js';
+import ci from './ci/index.js';
 import config from './config/index.js';
 import db from './db/index.js';
 import dev from './dev/index.js';
@@ -45,6 +46,7 @@ const main = defineCommand({
     },
     subCommands: {
         change,
+        ci,
         config,
         db,
         dev,

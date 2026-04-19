@@ -145,6 +145,13 @@ gtag('config', 'G-Y69K95866J');`],
                         ],
                     },
                     {
+                        text: 'Automation',
+                        collapsed: true,
+                        items: [
+                            { text: 'CI/CD', link: '/guide/automation/ci' },
+                        ],
+                    },
+                    {
                         text: 'Reference',
                         items: [
                             { text: 'SDK', link: '/reference/sdk' },
