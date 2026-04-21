@@ -4,35 +4,15 @@ build:
 paths:
     sql: ./sql
     changes: ./changes
-rules:
-    - match:
-          name: dev2
-          type: remote
-          isTest: false
-      exclude:
-          - seeds
+rules: []
 stages: {}
 strict:
     enabled: false
     stages: []
 logging:
-    enabled: true
+    enabled: false
     level: info
     file: .noorm/state/noorm.log
     maxSize: 10mb
     maxFiles: 5
-secrets:
-    - key: aws_secret_key
-      type: api_key
-      description: AWS Secret Key for S3 Intergration
-      required: true
-    - key: aws_client_key
-      type: api_key
-      description: AWS Client Key for S3 Integration
-      required: true
-    - key: poopies
-      type: string
-      required: true
-    - key: poop2
-      type: string
-      required: true
+secrets: []

@@ -1,0 +1,33 @@
+-- Feature flag seed for config: {%~ $.config?.name ?? 'unknown' %}
+-- Generated at: {%~ $.now() %}
+--
+-- Reads feature definitions from feature_flags.yml (auto-loaded as
+-- $.featureFlags) and secret-backed tokens from $.secrets. A flag whose
+-- required_secret is missing from the vault is forced off and its token
+-- cleared, so this template is safe to run in CI with no secrets configured.
+
+{% for (const flag of $.featureFlags) {
+    const secretName = flag.required_secret;
+    const secretValue = secretName ? ($.secrets?.[secretName] ?? null) : null;
+    const hasSecret = !secretName || secretValue !== null;
+    const effectiveEnabled = !!flag.enabled && hasSecret;
+    const config = {
+        ...(flag.config ?? {}),
+        token: secretValue,
+        requires_secret: secretName ?? null,
+    };
+%}
+-- flag {%~ flag.name %}: {%~ hasSecret ? 'secret resolved' : `secret "${secretName}" missing; forced disabled` %}
+INSERT INTO feature_flag (name, enabled, config)
+VALUES (
+    {%~ $.quote(flag.name) %},
+    {%~ effectiveEnabled ? 'TRUE' : 'FALSE' %},
+    {%~ $.quote($.json(config)) %}::jsonb
+)
+ON CONFLICT (name) DO UPDATE SET
+    enabled    = EXCLUDED.enabled,
+    config     = EXCLUDED.config,
+    updated_at = CURRENT_TIMESTAMP;
+
+{% } %}
+-- Applied {%~ $.featureFlags.length %} feature flags.

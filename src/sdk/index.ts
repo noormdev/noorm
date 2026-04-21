@@ -28,6 +28,8 @@
 import { initState, getStateManager } from '../core/state/index.js';
 import { getSettingsManager, type SettingsManager } from '../core/settings/index.js';
 import { getIdentityForConfig } from '../core/identity/index.js';
+import { loadIdentityFromEnv } from '../core/identity/env.js';
+import { setKeyOverride, setIdentityOverride } from '../core/identity/storage.js';
 import { resolveConfig, SettingsProvider } from '../core/config/resolver.js';
 
 import { Context } from './context.js';
@@ -89,6 +91,19 @@ export async function createContext<DB = unknown, Procs = object, Funcs = object
 
     // Resolve project root
     const projectRoot = options.projectRoot ?? process.cwd();
+
+    // Apply env-based identity overrides so CI/headless consumers can
+    // decrypt state.enc without writing ~/.noorm/identity.key. Mirrors
+    // the CLI entry point (src/cli/index.ts) — if NOORM_IDENTITY_* are
+    // set, they win; otherwise disk-based identity is used.
+    const envIdentity = loadIdentityFromEnv();
+
+    if (envIdentity) {
+
+        setKeyOverride(envIdentity.privateKey);
+        setIdentityOverride(envIdentity.identity);
+
+    }
 
     // Initialize state (may have no configs in CI)
     await initState(projectRoot);

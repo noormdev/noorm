@@ -40,7 +40,10 @@ SELECT
         WHERE tt.user_id = t.user_id
           AND tt.category_id = t.category_id
           AND tt.todo_created_at = t.created_at
-    ) AS tags
+    ) AS tags,
+    -- Appended after `tags` so CREATE OR REPLACE VIEW can upgrade existing
+    -- databases in place (Postgres only allows appending new columns).
+    t.metadata
 FROM todo t
 JOIN "user" u ON u.id = t.user_id
 JOIN category c ON c.id = t.category_id;

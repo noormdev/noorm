@@ -1,0 +1,96 @@
+# =============================================================================
+# CRON CONFIGURATION (Postgres)
+# =============================================================================
+# Human-friendly definition of recurring database jobs. The adjacent
+# crons.sql.tmpl reads this file (auto-loaded as `$.cron`) and emits idempotent
+# upserts into the cron_job / cron_schedule / cron_job_schedule tables.
+#
+# The table layer stands in for pg_cron so the schema builds on any stock
+# Postgres. A real deployment can wire these rows into pg_cron.schedule() or
+# an external runner — the shape stays the same.
+
+
+# =============================================================================
+# JOBS SECTION
+# =============================================================================
+# Each job is one unit of work made of ordered steps. Steps run sequentially;
+# a failing step stops the job for that run.
+#
+#   Jobs:
+#     JobName:
+#       Description: 'What the job does'
+#       Steps:
+#         - name: Step Name
+#           command: 'SQL to execute'
+
+Jobs:
+
+    Prune_Completed_Todos:
+        Description: 'Deletes completed todos older than 90 days'
+        Steps:
+            - name: Delete completed todos
+              command: >-
+                  DELETE FROM todo
+                  WHERE status = 'completed'
+                    AND updated_at < NOW() - INTERVAL '90 days';
+
+    Refresh_User_Stats:
+        Description: 'Touches updated_at on every active user so downstream caches refresh nightly'
+        Steps:
+            - name: Bump updated_at
+              command: >-
+                  UPDATE "user" SET updated_at = NOW()
+                  WHERE deleted_at IS NULL;
+
+    Expire_Overdue_Todos:
+        Description: 'Flags pending todos with a past due_date as high priority'
+        Steps:
+            - name: Escalate
+              command: >-
+                  UPDATE todo SET priority = 5
+                  WHERE status = 'pending'
+                    AND due_date < CURRENT_DATE
+                    AND priority < 5;
+
+
+# =============================================================================
+# SCHEDULES SECTION
+# =============================================================================
+# time:       'HHMMSS' (24h)
+# frequency:  Once | Daily | Weekly | Monthly | MonthlyRelative | OnStart | OnIdle
+# interval:   Day name for Weekly (Monday..Sunday), day-of-month for Monthly.
+#             Omit for Daily (defaults to every day).
+# every:      Seconds | Minutes | Hours (optional, sub-day recurrence)
+# every_n:    Repeat every N of the above
+# jobs:       List of Job names to run on this schedule
+
+Schedules:
+
+    DailyAt3AM:
+        time: '030000'
+        frequency: Daily
+        jobs: [Prune_Completed_Todos]
+
+    DailyAt4AM:
+        time: '040000'
+        frequency: Daily
+        jobs: [Refresh_User_Stats]
+
+    EveryHour:
+        time: '000000'
+        frequency: Daily
+        every: Hours
+        every_n: 1
+        jobs: [Expire_Overdue_Todos]
+
+    MondayAt9AM:
+        time: '090000'
+        frequency: Weekly
+        interval: Monday
+        jobs: []
+
+    MonthlyOn1stAt2AM:
+        time: '020000'
+        frequency: Monthly
+        interval: 1
+        jobs: []

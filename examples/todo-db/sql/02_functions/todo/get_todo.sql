@@ -16,6 +16,7 @@ RETURNS TABLE (
     status VARCHAR(20),
     priority INTEGER,
     due_date DATE,
+    metadata JSONB,
     updated_at TIMESTAMP WITH TIME ZONE
 )
 LANGUAGE plpgsql
@@ -31,6 +32,7 @@ BEGIN
         t.status,
         t.priority,
         t.due_date,
+        t.metadata,
         t.updated_at
     FROM todo t
     WHERE t.user_id = p_user_id

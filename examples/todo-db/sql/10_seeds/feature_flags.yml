@@ -1,0 +1,35 @@
+# =============================================================================
+# FEATURE FLAGS
+# =============================================================================
+# Declarative flag seed. Each entry can optionally name a secret to pull in
+# from the noorm vault; the template treats missing secrets as "disabled" so
+# this file works unchanged in test / CI / prod.
+#
+# Fields:
+#   name:       Flag identifier
+#   enabled:    Default on/off (overridden to OFF if required_secret is missing)
+#   description: Human note — not persisted
+#   required_secret: Secret name that must exist in the vault. If absent,
+#                    the flag is forced disabled and config.token is null.
+#   config:     Extra static JSON merged into config alongside the secret token.
+
+- name: integrations.stripe
+  enabled: true
+  description: 'Stripe billing integration'
+  required_secret: STRIPE_API_KEY
+  config:
+      webhook_endpoint: /webhooks/stripe
+      api_version: '2024-06-20'
+
+- name: integrations.sendgrid
+  enabled: true
+  description: 'Transactional email via SendGrid'
+  required_secret: SENDGRID_API_KEY
+  config:
+      from_address: noreply@example.com
+
+- name: experiments.new_ui
+  enabled: false
+  description: 'Gradual rollout of the new UI shell (no secret needed)'
+  config:
+      rollout_pct: 0

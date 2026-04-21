@@ -416,8 +416,15 @@ export class ChangesNamespace {
 
         const state = getStateManager(this.#state.projectRoot);
 
+        if (!this.#state.connection) {
+
+            throw new Error('Not connected. Call connect() first.');
+
+        }
+
         return {
             db: this.#kysely as unknown as Kysely<NoormDatabase>,
+            dialect: this.#state.connection.dialect,
             configName: this.#state.config.name,
             identity: this.#state.identity,
             projectRoot: this.#state.projectRoot,

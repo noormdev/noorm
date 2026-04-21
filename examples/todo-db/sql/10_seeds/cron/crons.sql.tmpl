@@ -1,0 +1,68 @@
+-- Cron upsert pass. Generated from cron.yml for config: {%~ $.config?.name ?? 'unknown' %}
+-- {% $.validateCronConfig($.cron) %}
+
+-- -----------------------------------------------------------------------------
+-- Schedules
+-- -----------------------------------------------------------------------------
+{% for (const schedName in $.cron.Schedules) {
+    const s = $.cron.Schedules[schedName];
+    const interval = $.scheduleInterval(s);
+%}
+INSERT INTO cron_schedule (name, active_start_time, frequency, interval, every, every_n)
+VALUES (
+    {%~ $.quote(schedName) %},
+    {%~ $.quote(s.time) %},
+    {%~ $.quote(s.frequency) %},
+    {%~ interval === null ? 'NULL' : $.quote(interval) %},
+    {%~ s.every ? $.quote(s.every) : 'NULL' %},
+    {%~ s.every_n ?? 'NULL' %}
+)
+ON CONFLICT (name) DO UPDATE SET
+    active_start_time = EXCLUDED.active_start_time,
+    frequency         = EXCLUDED.frequency,
+    interval          = EXCLUDED.interval,
+    every             = EXCLUDED.every,
+    every_n           = EXCLUDED.every_n,
+    updated_at        = CURRENT_TIMESTAMP;
+
+{% } %}
+
+-- -----------------------------------------------------------------------------
+-- Jobs
+-- -----------------------------------------------------------------------------
+{% for (const jobName in $.cron.Jobs) {
+    const j = $.cron.Jobs[jobName];
+%}
+INSERT INTO cron_job (name, description, steps, enabled)
+VALUES (
+    {%~ $.quote(jobName) %},
+    {%~ $.quote(j.Description) %},
+    {%~ $.encodeSteps(j.Steps) %},
+    TRUE
+)
+ON CONFLICT (name) DO UPDATE SET
+    description = EXCLUDED.description,
+    steps       = EXCLUDED.steps,
+    enabled     = EXCLUDED.enabled,
+    updated_at  = CURRENT_TIMESTAMP;
+
+{% } %}
+
+-- -----------------------------------------------------------------------------
+-- Desired job<->schedule attachments (rebuild pass)
+-- -----------------------------------------------------------------------------
+-- Strategy: wipe existing rows, re-insert exactly what the YAML declares.
+-- Safe because cron_job_schedule is pure configuration — no runtime state.
+DELETE FROM cron_job_schedule;
+
+{% for (const schedName in $.cron.Schedules) {
+    for (const jobName of $.cron.Schedules[schedName].jobs) {
+%}
+INSERT INTO cron_job_schedule (job_id, schedule_id)
+SELECT j.id, s.id
+FROM cron_job j, cron_schedule s
+WHERE j.name = {%~ $.quote(jobName) %}
+  AND s.name = {%~ $.quote(schedName) %};
+
+{%  }
+} %}

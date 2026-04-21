@@ -197,7 +197,7 @@ export async function executeChange(
     const [, lockErr] = await attempt(() =>
         lockManager.acquire(context.db, context.configName, identity, {
             reason: `Change: ${change.name}`,
-            dialect: context.dialect,
+            dialect: context.dialect ?? 'postgres',
         }),
     );
 
@@ -335,7 +335,7 @@ export async function revertChange(
     const [, lockErr] = await attempt(() =>
         lockManager.acquire(context.db, context.configName, identity, {
             reason: `Revert: ${change.name}`,
-            dialect: context.dialect,
+            dialect: context.dialect ?? 'postgres',
         }),
     );
 

@@ -1,0 +1,5 @@
+[test]
+preload = ["./tests/preload.ts"]
+timeout = 60000
+root = "./tests"
+concurrency = 1

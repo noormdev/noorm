@@ -1,3 +1,5 @@
 # noorm
 .noorm/state.enc
+.noorm/state/
 .noorm/*.log
+tmp/

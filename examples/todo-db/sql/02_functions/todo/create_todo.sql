@@ -8,7 +8,8 @@ CREATE OR REPLACE FUNCTION create_todo(
     p_title VARCHAR(255),
     p_description TEXT DEFAULT NULL,
     p_priority INTEGER DEFAULT 0,
-    p_due_date DATE DEFAULT NULL
+    p_due_date DATE DEFAULT NULL,
+    p_metadata JSONB DEFAULT '{}'::jsonb
 )
 RETURNS TABLE (
     user_id INTEGER,
@@ -19,14 +20,15 @@ RETURNS TABLE (
     status VARCHAR(20),
     priority INTEGER,
     due_date DATE,
+    metadata JSONB,
     updated_at TIMESTAMP WITH TIME ZONE
 )
 LANGUAGE plpgsql
 AS $$
 BEGIN
     RETURN QUERY
-    INSERT INTO todo (user_id, category_id, title, description, priority, due_date)
-    VALUES (p_user_id, p_category_id, p_title, p_description, p_priority, p_due_date)
+    INSERT INTO todo (user_id, category_id, title, description, priority, due_date, metadata)
+    VALUES (p_user_id, p_category_id, p_title, p_description, p_priority, p_due_date, COALESCE(p_metadata, '{}'::jsonb))
     RETURNING
         todo.user_id,
         todo.category_id,
@@ -36,6 +38,7 @@ BEGIN
         todo.status,
         todo.priority,
         todo.due_date,
+        todo.metadata,
         todo.updated_at;
 END;
 $$;

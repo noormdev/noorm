@@ -5,7 +5,9 @@
 CREATE OR REPLACE FUNCTION list_todo_items_by_todo(
     p_user_id INTEGER,
     p_category_id INTEGER,
-    p_todo_created_at TIMESTAMP WITH TIME ZONE
+    p_todo_created_at TIMESTAMP WITH TIME ZONE,
+    p_limit INTEGER DEFAULT NULL,
+    p_offset INTEGER DEFAULT 0
 )
 RETURNS TABLE (
     user_id INTEGER,
@@ -34,6 +36,8 @@ BEGIN
     WHERE ti.user_id = p_user_id
       AND ti.category_id = p_category_id
       AND ti.todo_created_at = p_todo_created_at
-    ORDER BY ti.item_index;
+    ORDER BY ti.item_index
+    LIMIT p_limit
+    OFFSET COALESCE(p_offset, 0);
 END;
 $$;

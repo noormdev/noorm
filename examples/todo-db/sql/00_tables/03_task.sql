@@ -16,6 +16,10 @@ CREATE TABLE todo (
     status VARCHAR(20) DEFAULT 'pending',
     priority INTEGER DEFAULT 0,
     due_date DATE,
+    -- Structured side-band data for a todo. Clients treat this as a free-form
+    -- extension point (labels, source info, external IDs). Indexed with GIN
+    -- below for membership / path queries.
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
 
     -- Composite Primary Key (inherited identity)
@@ -44,6 +48,7 @@ CREATE INDEX idx_todo_category_id ON todo (category_id);
 CREATE INDEX idx_todo_status ON todo (status);
 CREATE INDEX idx_todo_priority ON todo (priority);
 CREATE INDEX idx_todo_due_date ON todo (due_date);
+CREATE INDEX idx_todo_metadata ON todo USING GIN (metadata);
 
 -- -----------------------------------------------------------------------------
 -- Todo Item Table

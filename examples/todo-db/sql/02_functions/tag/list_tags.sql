@@ -2,7 +2,10 @@
 -- List Tags Procedure
 -- =============================================================================
 
-CREATE OR REPLACE FUNCTION list_tags()
+CREATE OR REPLACE FUNCTION list_tags(
+    p_limit INTEGER DEFAULT NULL,
+    p_offset INTEGER DEFAULT 0
+)
 RETURNS TABLE (
     id INTEGER,
     name VARCHAR(50),
@@ -19,6 +22,8 @@ BEGIN
         t.color,
         t.created_at
     FROM tag t
-    ORDER BY t.name ASC;
+    ORDER BY t.name ASC
+    LIMIT p_limit
+    OFFSET COALESCE(p_offset, 0);
 END;
 $$;

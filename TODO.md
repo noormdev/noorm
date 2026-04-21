@@ -160,24 +160,66 @@ Replace ASCII terminal UI representations with screenshots and videos throughout
 
 ## CI Example
 
-Reference repository showcasing noorm in a CI pipeline against one of our example databases, plus a test suite that exercises the database via `@noormdev/sdk`. Doubles as onboarding material for both CI adoption and SDK usage.
+Reference repository showcasing noorm in a CI pipeline against one of our example databases, plus a test suite that exercises the database via `@noormdev/sdk`. Doubles as onboarding material for both CI adoption and SDK usage. Lives at `examples/todo-db/` (Postgres schema + changes already seeded).
 
 **Pipeline flow:**
 
 1. `pnpm install`
-2. `noorm identity ci` — bootstrap identity from env (`NOORM_IDENTITY_PRIVATE_KEY`, etc.) without touching disk
-3. `noorm` build/migrate step — apply schema + pending changes against the CI database
+2. `noorm ci init` — bootstrap ephemeral state.enc from env (`NOORM_IDENTITY_*` + `NOORM_CONNECTION_*`); absorbs the former `identity ci` precheck
+3. `noorm run build` + `noorm change ff` — apply schema + pending changes against the CI database
 4. `pnpm test` — SDK-driven test suite (`createContext` with `requireTest: true`) runs against the prepared database
 
-**Deliverables:**
 
-- [ ] Pick one dialect to lead with (PostgreSQL preferred for ubiquity)
-- [ ] Minimal `sql/` schema + a handful of changes
-- [ ] Test suite using `@noormdev/sdk` covering read + write operations
+### Schema expansion (done 2026-04-19)
+
+Extended `examples/todo-db/` so the SDK test suite has meaningful feature coverage to assert against:
+
+- [x] `user.deleted_at` + `v_active_users` view + `soft_delete_user` / `restore_user` (soft-delete pattern with partial index)
+- [x] `todo.metadata` JSONB column + GIN index (exercises JSON round-trip through Kysely)
+- [x] `complete_todo(...)` — transactional SP flipping todo + all items atomically
+- [x] `search_todos(...)` — Table-Valued Function (keyword + status filter, pagination)
+- [x] `tag_input` composite type + `bulk_create_tags(tag_input[])` — TVP-style bulk upsert with insert/update attribution
+- [x] Pagination (`p_limit` / `p_offset`) on every `list_*` function; `list_users` gains `p_include_deleted` and returns `deleted_at`
+- [x] `cron_job` / `cron_schedule` / `cron_job_schedule` tables + YAML-driven seed template (`sql/10_seeds/cron/`) with a `$helpers.ts` validator that runs at template-eval time
+- [x] `feature_flag` table + vault-aware seed template (`sql/10_seeds/feature_flags.sql.tmpl`) — pulls tokens from `$.secrets`, forces flag off when the required secret is missing so it's safe to run outside a vault
+- [x] Second change `2026-02-15-soft-delete-metadata-and-bulk-ops/` with idempotent ALTER + DROP-of-changed-signatures + manifest + system-tag backfill + full revert chain
+- [x] Updated `v_todos_with_details` to expose `metadata` (appended last so `CREATE OR REPLACE VIEW` upgrades existing databases in place)
+
+
+### Next up: SDK integration tests for `examples/todo-db/`
+
+Focus of the next working session — **no CLI flow / GitHub Actions work yet**. Write a test suite under `examples/todo-db/tests/` that exercises the todo schema via `@noormdev/sdk`.
+
+- [ ] Scaffold `examples/todo-db/package.json` + test runner (bun:test) so `pnpm test` works from the example dir
+- [ ] Write `createContext` bootstrap helper (uses `requireTest: true`, reads `NOORM_CONNECTION_*` from env, falls back to a local Postgres on `localhost:5432`)
+- [ ] Happy-path SDK tests for each table (tables list in `examples/todo-db/sql/00_tables/`): insert → read-back → update → delete
+- [ ] View read tests (`examples/todo-db/sql/01_views/`) — verify projections match expected shape, including `v_active_users` filtering out soft-deleted rows and `v_todos_with_details.metadata`
+- [ ] Function / SP tests (`examples/todo-db/sql/02_functions/`) — invoke each and assert return shapes
+- [ ] **Transactional SP test** — call `complete_todo` on a todo with mixed item states; assert todo AND items are all completed AND `items_completed` counts only the flipped ones
+- [ ] **TVF test** — `search_todos` keyword filter + pagination; assert ordering and `tags` array
+- [ ] **TVP test** — `bulk_create_tags(ARRAY[ROW('foo','#111'), ROW('bar','#222')]::tag_input[])`; verify `was_inserted` flags on inserts vs updates
+- [ ] **Soft-delete test** — soft-delete a user, confirm `v_active_users` hides them, `list_users(p_include_deleted=TRUE)` still returns them, then restore
+- [ ] **JSONB test** — create a todo with nested `metadata`, query with `->>`, verify round-trip equality
+- [ ] **Cron seed test** — run the cron template, assert `cron_job` / `cron_schedule` rows match `cron.yml`; modify the YAML in-memory and confirm second run upserts cleanly
+- [ ] **Vault template test** — run feature_flags template with and without secrets in context; assert `enabled=false` + `config.token=null` when secret is missing
+- [ ] Failure-mode tests — FK violations, unique constraint violations, protected-config refusal, `complete_todo` on missing/already-completed todo
+- [ ] Edge cases — empty result sets, large payloads, transaction rollback, pagination with `p_limit=0`
+
+
+### Follow-on work (later sessions, not now)
+
+Proposed testing layers identified while building the `ci` namespace — capture here so we don't lose the thread:
+
+- [ ] **Integration tests for `ci identity enroll` + `ci secrets` happy paths** — live Postgres/MySQL/MSSQL via the Docker fixture (`tests/integration/cli/`). Currently only precondition/arg-validation paths are covered (see header comment in `tests/cli/ci/identity-enroll.test.ts`).
+- [ ] **End-to-end CI flow rehearsal** — single integration test: developer enrolls CI identity → CI job calls `ci init` → `ci secrets` → `change ff` → SDK read-back. Proves the provisioning→runtime handoff.
+- [ ] **Manual smoke test** against local Postgres using one of the GitHub Actions YAML snippets verbatim, to confirm docs are accurate.
+
+
+### Later deliverables (example repo polish)
+
 - [ ] GitHub Actions workflow demonstrating the full pipeline end-to-end
 - [ ] README documenting env vars, secret setup, and step-by-step walkthrough
-
-Links back from the public SDK docs and CI/CD docs so readers land on a runnable example, not prose.
+- [ ] Links back from the public SDK docs and CI/CD docs
 
 
 ## Dialect Boilerplates

@@ -1,5 +1,6 @@
 -- =============================================================================
 -- Update Todo Procedure
+-- Pass p_metadata = NULL to leave metadata alone; '{}'::jsonb clears it.
 -- =============================================================================
 
 CREATE OR REPLACE FUNCTION update_todo(
@@ -10,7 +11,8 @@ CREATE OR REPLACE FUNCTION update_todo(
     p_description TEXT DEFAULT NULL,
     p_status VARCHAR(20) DEFAULT 'pending',
     p_priority INTEGER DEFAULT 0,
-    p_due_date DATE DEFAULT NULL
+    p_due_date DATE DEFAULT NULL,
+    p_metadata JSONB DEFAULT NULL
 )
 RETURNS TABLE (
     user_id INTEGER,
@@ -21,6 +23,7 @@ RETURNS TABLE (
     status VARCHAR(20),
     priority INTEGER,
     due_date DATE,
+    metadata JSONB,
     updated_at TIMESTAMP WITH TIME ZONE
 )
 LANGUAGE plpgsql
@@ -34,6 +37,7 @@ BEGIN
         status = p_status,
         priority = p_priority,
         due_date = p_due_date,
+        metadata = COALESCE(p_metadata, todo.metadata),
         updated_at = CURRENT_TIMESTAMP
     WHERE todo.user_id = p_user_id
       AND todo.category_id = p_category_id
@@ -47,6 +51,7 @@ BEGIN
         todo.status,
         todo.priority,
         todo.due_date,
+        todo.metadata,
         todo.updated_at;
 END;
 $$;
