@@ -44,12 +44,25 @@ const META_SETTINGS_ENV_VARS = new Set([
     'NOORM_IDENTITY',
 ]);
 
-const { allConfigs: allSettingsEnv } = makeNestedConfig<Partial<Settings>>(process.env as Record<string, string>, {
-    filter: (key) => key.startsWith('NOORM_') && !META_SETTINGS_ENV_VARS.has(key) && !key.startsWith('NOORM_IDENTITY_') && !key.startsWith('NOORM_CONNECTION_'),
-    stripPrefix: 'NOORM_',
-    forceAllCapToLower: true,
-    memoizeOpts: false,
-});
+/**
+ * Reads NOORM_* env vars relevant to settings at call time.
+ *
+ * Constructed per-call (not module-level) to ensure process.env
+ * mutations are always visible — avoids a Bun test-runner edge case
+ * where module-scope closures over process.env miss later mutations.
+ */
+function allSettingsEnv(): Partial<Settings> {
+
+    const { allConfigs } = makeNestedConfig<Partial<Settings>>(process.env as Record<string, string>, {
+        filter: (key) => key.startsWith('NOORM_') && !META_SETTINGS_ENV_VARS.has(key) && !key.startsWith('NOORM_IDENTITY_') && !key.startsWith('NOORM_CONNECTION_'),
+        stripPrefix: 'NOORM_',
+        forceAllCapToLower: true,
+        memoizeOpts: false,
+    });
+
+    return allConfigs();
+
+}
 
 /**
  * Options for SettingsManager construction.
