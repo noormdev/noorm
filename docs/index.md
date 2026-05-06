@@ -4,7 +4,7 @@ layout: home
 hero:
   name: noorm
   text: A CLI for SQL-first database development.
-  tagline: Manage SQL files, track changes, and run builds across dev, staging, and production—no ORM required.
+  tagline: Write SQL files, deploy them to any environment. Skip the ORM.
   image:
     src: /image/0105.gif
     alt: noorm TUI demo
@@ -19,35 +19,33 @@ hero:
 features:
   - icon:
       src: /icons/fast-forward.svg
-    title: No Migration Sprawl
-    details: SQL files show what IS, not archaeology of what WAS. Fresh databases build in seconds from current schema—no replaying 3 years of history.
+    title: Current Schema, Always
+    details: SQL files define the schema as it exists today. Fresh databases build in seconds from these files. Existing databases get there through changes.
   - icon:
       src: /icons/database.svg
-    title: Raw SQL Power
-    details: Compound keys, complex constraints, proper relational modeling. Write the schema ORMs won't let you express.
+    title: Full Relational SQL
+    details: Compound keys, check constraints, triggers, stored procedures. You write whatever SQL your database supports.
   - icon:
       src: /icons/toolbox.svg
     title: Built-in Tools
-    details: Schema explorer, SQL terminal, dynamic templates, encrypted secrets. Full database management without leaving your terminal.
+    details: Schema explorer, SQL terminal, dynamic templates, encrypted secrets. One CLI replaces five browser tabs.
   - icon:
       src: /icons/cubes.svg
     title: Type-Safe SDK
-    details: Build your API layer with domain classes—consumers (queries), producers (mutations), and guards (validation). One package, used everywhere.
+    details: "Build your API layer with domain classes: consumers for queries, producers for mutations. One package shared across services and frontends."
 ---
 
 
 ## Why noorm?
 
-noorm is a command-line tool for managing SQL-first database applications. It handles everything ORMs won't touch: compound keys, check constraints, triggers, stored procedures—the full relational model.
+noorm is a command-line tool for SQL-first database development. You write compound keys, check constraints, triggers, stored procedures. noorm executes them, tracks what ran, and keeps environments in sync.
 
 **What it does:**
 
-- **SQL files** define your current schema—no migration archaeology
-- **Changes** evolve existing databases from any state to current
-- **Stages** manage dev, staging, and production with different configs
-- **SDK** provides type-safe programmatic access to your database
-
-You write SQL. noorm executes it, tracks what ran, and keeps multiple environments in sync.
+- **SQL files** define your current schema
+- **Changes** move existing databases from any state to current
+- **Stages** separate dev, staging, and production configs
+- **SDK** gives you type-safe programmatic access
 
 ### The Case for Proper Relational Design
 
@@ -119,7 +117,7 @@ From the interactive TUI (`noorm ui`), set up your project:
 2. **[c] Config → [a] Add** — Create a database config
 3. **[r] Run → Build** — Execute your SQL files
 
-Or drive the same flow from the non-interactive CLI — every command runs headlessly by default and emits structured output you can pipe into scripts:
+Or use the CLI directly. Commands run headlessly and emit structured JSON you can pipe into scripts:
 
 ```bash
 noorm run build             # Build the schema from SQL files
@@ -128,7 +126,7 @@ noorm --json db explore     # Inspect the database as JSON
 noorm vault set API_KEY ... # Push a team secret to the encrypted vault
 ```
 
-Wizard-only operations (`config add`, `config edit`, secret management) launch the TUI when invoked from the CLI — set them up once via `noorm ui`, then drive everything else from scripts.
+Wizard-only operations (`config add`, `config edit`, secret management) launch the TUI automatically. Set them up once via `noorm ui`, then run everything else from scripts.
 
 Create your SQL files:
 

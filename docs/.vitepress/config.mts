@@ -149,6 +149,7 @@ gtag('config', 'G-Y69K95866J');`],
                         collapsed: true,
                         items: [
                             { text: 'CI/CD', link: '/guide/automation/ci' },
+                            { text: 'MCP (AI Agents)', link: '/guide/automation/mcp' },
                         ],
                     },
                     {
@@ -170,6 +171,11 @@ gtag('config', 'G-Y69K95866J');`],
 
             outline: {
                 level: [2, 3],
+            },
+
+            footer: {
+                message: 'Database Schema & Change Manager',
+                copyright: `© ${new Date().getFullYear()} <a href="https://github.com/noormdev">noorm</a> · <a href="https://github.com/noormdev/noorm">GitHub</a> · <a href="https://www.npmjs.com/org/noormdev">npm</a> · ISC License`,
             },
         },
     }),

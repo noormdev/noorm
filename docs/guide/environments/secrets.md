@@ -20,15 +20,32 @@ Secrets integrate directly with SQL templates, so you can reference them without
 
 ## Setting a Secret
 
-Local secret values are managed through the TUI so that passwords never touch shell history or `ps` listings:
+You can manage local secrets through the TUI (masked input, nothing in shell history) or the CLI.
+
+**TUI:** Launch `noorm ui`, press `s` for Settings → Secrets. The form masks password input, validates connection strings as URIs, and writes the encrypted result to `.noorm/state/state.enc`. The same screen lists secrets for the active config: which are set, which are missing, and their declared types. Values stay hidden.
+
+**CLI:** The `noorm secret` namespace manages config-scoped local secrets headlessly:
 
 ```bash
-noorm ui
+# Set a secret
+noorm secret set API_KEY "sk-live-abc123"
+noorm secret set DB_PASSWORD "secret" --config prod
+
+# List secret keys (values never shown)
+noorm secret list
+noorm secret list --config staging --json
+
+# Remove a secret
+noorm secret rm OLD_KEY --yes
 ```
 
-From there, press `s` for Settings → Secrets. The secret form masks password input, validates connection strings as URIs, and stores the result encrypted in `.noorm/state/state.enc`. The same screen lists the secrets for the active config — showing which are set, which are missing, and their declared types. Values stay hidden.
+::: tip Vault vs Local Secrets
+**Local secrets** (`noorm secret`) are per-user, per-machine. They override vault values and stay on your disk.
 
-For CI/CD pipelines that need to push secrets non-interactively, use the [vault](/guide/environments/vault) — it stores encrypted team secrets directly in the database and is fully scriptable (`noorm vault set KEY "value"`).
+**Vault secrets** (`noorm vault`) are team-shared and stored encrypted in the database. Anyone with vault access can read them.
+
+In CI/CD pipelines, push secrets with the vault (`noorm vault set KEY "value"`) or batch-load via `noorm ci secrets --file`.
+:::
 
 
 ## Config-Scoped vs Global Secrets

@@ -1,7 +1,7 @@
 # CLI Reference
 
 
-Every `noorm` command runs as a non-interactive CLI by default — perfect for CI/CD pipelines, scripts, and automation. The Ink/React TUI lives behind a separate subcommand:
+Every `noorm` command runs as a non-interactive CLI by default. The Ink/React TUI lives behind a separate subcommand:
 
 ```bash
 noorm run build              # CLI: build schema headlessly
@@ -88,18 +88,26 @@ NOORM_CONNECTION_USER        # Username
 NOORM_CONNECTION_PASSWORD    # Password
 ```
 
+**Identity (CI):**
+```bash
+NOORM_IDENTITY_PRIVATE_KEY   # X25519 private key, hex PKCS8 DER (96 hex chars)
+NOORM_IDENTITY_NAME          # Display name (e.g. "CI Bot")
+NOORM_IDENTITY_EMAIL         # Email (e.g. "ci@example.com")
+NOORM_CI_CONFIG_NAME         # Default config name for `ci init` (override: --name)
+```
+
 **Paths:**
 ```bash
-NOORM_PATHS_SQL          # Schema directory (default: ./sql)
-NOORM_PATHS_CHANGES         # Changes directory (default: ./changes)
+NOORM_PATHS_SQL              # Schema directory (default: ./sql)
+NOORM_PATHS_CHANGES          # Changes directory (default: ./changes)
 ```
 
 **Behavior:**
 ```bash
-NOORM_CONFIG                # Config name to use
-NOORM_YES                   # Skip confirmations (1 or true)
-NOORM_JSON                  # Output JSON (1 or true)
-NOORM_DEBUG                 # Enable debug logging
+NOORM_CONFIG                 # Config name to use
+NOORM_YES                    # Skip confirmations (1 or true)
+NOORM_JSON                   # Output JSON (1 or true)
+NOORM_DEBUG                  # Enable debug logging
 ```
 
 
@@ -141,53 +149,41 @@ NOORM_PATHS_CHANGES         → paths.changes
 ## Commands
 
 
+### Project Bootstrap
+
+#### `init`
+
+Bootstrap a new noorm project interactively. Creates identity (if needed), project structure (`sql/`, `changes/`, `.noorm/`), `settings.yml`, and encrypted `state.enc`.
+
+```bash
+noorm init              # Interactive, requires TTY
+noorm init --force      # Reinitialize an existing .noorm/
+```
+
+**TTY required.** Fails with exit code 1 in CI or when stdin is piped. For headless setup, use `noorm ci init` instead.
+
+
 ### Configuration
 
-#### `config`
+#### `config list`
 
-List subcommands and show config overview.
+List available configurations.
 
 ```bash
-noorm config
+noorm config list
+noorm config list --json
 ```
 
-Displays help text with available subcommands. Parent route only -- no JSON output.
-
-
-#### `config add`
-
-Create a new configuration.
-
-> Wizard-only — running this command launches the TUI wizard via `noorm ui`. There is no fully headless equivalent because the wizard exists to guide credential entry interactively. To configure non-interactively, use `NOORM_*` environment variables instead.
-
-```bash
-noorm config add
+**JSON output:**
+```json
+[
+    {"name": "dev", "dialect": "postgres", "active": true},
+    {"name": "staging", "dialect": "postgres", "active": false}
+]
 ```
 
 
-#### `config edit`
-
-Edit an existing configuration.
-
-> Wizard-only — launches the TUI wizard. Use `NOORM_*` env vars or stored config files to override values non-interactively.
-
-```bash
-noorm config edit dev
-```
-
-
-#### `config rm`
-
-Remove a configuration.
-
-> Wizard-only — launches the TUI wizard so you can confirm the removal interactively.
-
-```bash
-noorm config rm staging
-```
-
-
-#### `config use`
+#### `config use <name>`
 
 Set the active configuration.
 
@@ -203,36 +199,393 @@ noorm --json config use production
 }
 ```
 
-**Error output (--json):**
+
+#### `config add`
+
+Create a new configuration.
+
+> Wizard-only. Launches the TUI wizard. To configure non-interactively, use `NOORM_*` environment variables or `config import`.
+
+```bash
+noorm config add
+```
+
+
+#### `config edit [name]`
+
+Edit an existing configuration.
+
+> Wizard-only. Launches the TUI wizard. Use `NOORM_*` env vars or `config export`/`config import` to modify non-interactively.
+
+```bash
+noorm config edit dev
+```
+
+
+#### `config rm [name]`
+
+Remove a configuration.
+
+> Wizard-only. Launches the TUI wizard so you can confirm the removal interactively.
+
+```bash
+noorm config rm staging
+```
+
+
+#### `config cp <src> <dest>`
+
+Copy a configuration to a new name.
+
+```bash
+noorm config cp dev staging
+noorm config cp dev prod --json
+```
+
+**JSON output:**
 ```json
 {
-    "success": false,
-    "error": "Config name required. Usage: noorm config use <name>"
+    "success": true,
+    "source": "dev",
+    "destination": "staging"
 }
 ```
+
+
+#### `config export <name>`
+
+Export a configuration to JSON. Useful for sharing configs between machines or backing up before edits.
+
+```bash
+noorm config export dev
+noorm config export dev --output ./dev-config.json
+```
+
+| Flag | Description |
+|------|-------------|
+| `-o, --output` | Write to file instead of stdout |
+
+
+#### `config import <path>`
+
+Import a configuration from a JSON file.
+
+```bash
+noorm config import ./dev-config.json
+noorm config import ./staging-config.json --force
+```
+
+| Flag | Description |
+|------|-------------|
+| `--force` | Overwrite existing config with the same name |
+
+
+#### `config validate <name>`
+
+Validate that a configuration can connect to its database.
+
+```bash
+noorm config validate dev
+noorm config validate production --json
+```
+
+**JSON output:**
+```json
+{
+    "success": true,
+    "config": "dev",
+    "dialect": "postgres",
+    "durationMs": 120
+}
+```
+
+Exit code 0 if valid, 1 if connection fails.
+
+
+### Identity
+
+Manage your cryptographic identity. Identity is used for change attribution, lock ownership, and vault encryption.
+
+#### `identity init`
+
+Create a new cryptographic identity. Generates an X25519 keypair and stores it at `~/.noorm/identity.{key,pub,json}`.
+
+```bash
+noorm identity init --name "Alice" --email "alice@example.com"
+noorm identity init --name "Alice" --email "alice@example.com" --force
+noorm --json identity init --name "Alice" --email "alice@example.com"
+```
+
+| Flag | Description |
+|------|-------------|
+| `--name` | Display name (required) |
+| `--email` | Email address (required) |
+| `--force` | Overwrite existing identity |
+
+**JSON output:**
+```json
+{
+    "name": "Alice",
+    "email": "alice@example.com",
+    "fingerprint": "...",
+    "publicKey": "..."
+}
+```
+
+
+#### `identity edit`
+
+Update the display name or email on the existing identity.
+
+```bash
+noorm identity edit --name "Alice Cooper"
+noorm identity edit --email "alice@newjob.com"
+noorm identity edit --name "Alice" --email "alice@new.com" --json
+```
+
+At least one of `--name` or `--email` must be provided.
+
+
+#### `identity export`
+
+Print your public key so teammates can add you to encrypted vaults.
+
+```bash
+noorm identity export
+noorm --json identity export
+```
+
+
+#### `identity list`
+
+List all known users discovered from database syncs (the audit trail of who has touched shared state).
+
+```bash
+noorm identity list
+noorm --json identity list
+```
+
+
+### Settings
+
+Manage project settings stored in `.noorm/settings.yml`. Settings control paths, build rules, stages, strict mode, logging, and teardown behavior.
+
+#### `settings init`
+
+Initialize `settings.yml` with defaults.
+
+```bash
+noorm settings init
+noorm settings init --force   # Overwrite existing
+```
+
+
+#### `settings build`
+
+Reload `settings.yml` and re-save it. Applies missing defaults and normalizes formatting.
+
+```bash
+noorm settings build
+```
+
+
+#### `settings edit`
+
+Interactive editor for settings sections: paths, build, strict, logging, stages, rules, teardown.
+
+```bash
+noorm settings edit      # Requires TTY
+```
+
+**TTY required.**
+
+
+#### `settings secret`
+
+Interactive editor for secret requirement declarations: which secrets are required for each stage.
+
+```bash
+noorm settings secret    # Requires TTY
+```
+
+**TTY required.** This manages requirement declarations, not secret values. Use `noorm secret set` or `noorm vault set` for values.
+
+
+### Secrets (Config-Scoped)
+
+Local secrets that override vault secrets for a specific config. These are stored on disk per-user (not shared with the team).
+
+#### `secret list`
+
+List secret keys for a config.
+
+```bash
+noorm secret list
+noorm secret list --config prod
+noorm secret list --json
+```
+
+
+#### `secret set <key> <value>`
+
+Set a local secret for a config.
+
+```bash
+noorm secret set API_KEY "sk-live-..."
+noorm secret set DB_PASSWORD "secret123" --config prod
+noorm secret set API_KEY "sk-live-..." --json
+```
+
+
+#### `secret rm <key>`
+
+Remove a local secret from a config.
+
+```bash
+noorm secret rm OLD_KEY --yes
+noorm secret rm OLD_KEY --yes --config prod
+```
+
+Requires `--yes` to prevent accidental deletion.
+
+
+### CI/CD Provisioning
+
+The `ci` namespace bridges the gap between developer machines (which have `.noorm/` state on disk) and CI runners (which start from scratch on every job).
+
+#### `ci init`
+
+Bootstrap ephemeral `state.enc` from `NOORM_IDENTITY_*` + `NOORM_CONNECTION_*` env vars. Run inside the CI job.
+
+```bash
+noorm ci init
+noorm ci init --name staging
+noorm ci init --force          # Overwrite existing state.enc
+noorm ci init --json
+```
+
+| Flag | Description |
+|------|-------------|
+| `--name` | Config name (default: `$NOORM_CI_CONFIG_NAME` or `"ci"`) |
+| `--force` | Overwrite existing state.enc |
+
+Creates a config, marks it active, sets `isTest: true`, and leaves state on disk so later commands (`run build`, `change ff`, `ci secrets`) work normally.
+
+Fails fast with exit 1 if required env vars are missing or malformed.
+
+**JSON output:**
+```json
+{
+    "success": true,
+    "identity": {
+        "name": "CI Bot",
+        "email": "ci@example.com",
+        "publicKey": "...",
+        "identityHash": "...",
+        "source": "env"
+    },
+    "config": {"name": "ci", "dialect": "postgres", "database": "app", "isTest": true},
+    "stateFile": "/path/to/.noorm/state/state.enc"
+}
+```
+
+
+#### `ci secrets`
+
+Batch-load secrets from a dotenv-style file into the active vault. Run after `ci init`.
+
+```bash
+noorm ci secrets --file ./ci-secrets.env
+noorm ci secrets --file ./ci-secrets.env --overwrite
+noorm ci secrets --file ./ci-secrets.env --config prod --json
+```
+
+| Flag | Description |
+|------|-------------|
+| `--file` | Path to dotenv file (required) |
+| `--config` | Target config (default: active) |
+| `--overwrite` | Replace existing keys |
+
+**File format:** `KEY=value` per line; blank lines and `#` comments ignored; surrounding quotes stripped.
+
+**Exit codes:** `0` all loaded; `1` precondition failure; `2` partial success.
+
+**JSON output:**
+```json
+{
+    "success": true,
+    "config": "ci",
+    "set": 3,
+    "skipped": 0,
+    "errors": 0
+}
+```
+
+
+#### `ci identity new`
+
+Generate a test-CI keypair locally. No database contact, no state written. Prints an env block to copy into CI secrets.
+
+```bash
+noorm ci identity new --name "CI Bot" --email ci@example.com
+noorm ci identity new --name "CI Bot" --email ci@example.com --json
+```
+
+| Flag | Description |
+|------|-------------|
+| `--name` | Display name (required) |
+| `--email` | Email address (required) |
+
+The private key is shown once and never stored. Save it immediately.
+
+**JSON output:**
+```json
+{
+    "name": "CI Bot",
+    "email": "ci@example.com",
+    "publicKey": "...",
+    "identityHash": "...",
+    "privateKey": "...",
+    "envBlock": {
+        "NOORM_IDENTITY_PRIVATE_KEY": "...",
+        "NOORM_IDENTITY_NAME": "CI Bot",
+        "NOORM_IDENTITY_EMAIL": "ci@example.com"
+    }
+}
+```
+
+
+#### `ci identity enroll`
+
+Register a CI identity in the target database and grant vault access. Run once by a developer who already has vault access.
+
+```bash
+noorm ci identity enroll --config prod --name "CI Bot" --email ci@example.com
+noorm ci identity enroll --config prod --name "CI Bot" --email ci@example.com --public-key <hex>
+```
+
+| Flag | Description |
+|------|-------------|
+| `--config` | Target configuration (required) |
+| `--name` | Display name (required) |
+| `--email` | Email address (required) |
+| `--public-key` | Pre-generated public key hex (air-gapped flow) |
+
+Without `--public-key`, mints a keypair and returns the private key once. With `--public-key`, only enrolls the provided public half (for keys minted via `ci identity new`).
+
+Idempotent on identityHash. Re-running ensures vault access.
 
 
 ### Schema Operations
 
 #### `run build`
 
-Execute all SQL files in the schema directory.
+Execute all SQL files in the schema directory. Uses checksums to skip unchanged files.
 
 ```bash
 noorm run build
 noorm --force run build    # Skip checksums, run everything
 noorm --dry-run run build  # Preview without executing
-```
-
-**Text output:**
-```
-Building schema...
-✓ sql/01_tables/001_users.sql
-✓ sql/01_tables/002_posts.sql
-• sql/02_views/001_recent.sql (unchanged)
-
-Executed: 2
-Skipped: 1
 ```
 
 **JSON output:**
@@ -249,7 +602,7 @@ Skipped: 1
 
 #### `run file <path>`
 
-Execute a single SQL file. Supports `.sql` and `.sql.tmpl` (templated) files.
+Execute a single SQL or `.sql.tmpl` file.
 
 ```bash
 noorm run file sql/01_tables/001_users.sql
@@ -266,12 +619,10 @@ noorm --json run file sql/init.sql
 }
 ```
 
-Status is `"success"` or `"skipped"` (unchanged checksum).
-
 
 #### `run dir <path>`
 
-Execute all SQL files in a directory in alphabetical order. Supports `.sql` and `.sql.tmpl` files.
+Execute all SQL files in a directory in alphabetical order.
 
 ```bash
 noorm run dir sql/01_tables/
@@ -279,42 +630,38 @@ noorm run dir seeds/
 noorm --json run dir migrations/
 ```
 
-**JSON output:**
-```json
-{
-    "status": "success",
-    "filesRun": 3,
-    "filesSkipped": 1,
-    "filesFailed": 0
-}
+
+#### `run exec <path>`
+
+Batch-execute SQL files matching a glob pattern or directory. More flexible than `run dir`.
+
+```bash
+noorm run exec sql/
+noorm run exec "sql/**/*.sql"
+noorm run exec "seeds/*.sql" --force
+noorm run exec migrations/ --dry-run
+```
+
+**Exit codes:** `0` success, `2` partial failure, `1` complete failure.
+
+
+#### `run files --paths <path,...>`
+
+Execute multiple specific SQL files in order.
+
+```bash
+noorm run files --paths seed.sql,fixtures.sql
+noorm run files --paths sql/001_tables.sql,sql/002_indexes.sql --json
 ```
 
 
 #### `run inspect <path>`
 
-Inspect the template context for a `.sql.tmpl` file without executing or rendering it. Shows data files, helpers, config, secrets, and built-in functions available in the template's `$` context.
-
-Useful for debugging templates -- see what variables are accessible before rendering.
+Inspect the template context for a `.sql.tmpl` file without executing. Shows data files, helpers, config, secrets, and built-in functions.
 
 ```bash
 noorm run inspect sql/users/001_create.sql.tmpl
-noorm --json run inspect sql/core/05_Cron/Crons.sql.tmpl
-```
-
-**Text output:**
-```
-Template: sql/users/001_create.sql.tmpl
-Config:   staging
-
-Data Files:
-  $.roles  Array [3]
-  $.permissions  Object {read, write, admin}
-
-Helpers ($helpers):
-  $.padId  Function
-
-Built-ins: quote, escape, uuid, now, json, include
-Secrets: 2 config, 0 global
+noorm --json run inspect sql/core/Crons.sql.tmpl
 ```
 
 **JSON output:**
@@ -333,45 +680,25 @@ Secrets: 2 config, 0 global
 }
 ```
 
-**Scripting pattern -- check available data files before rendering:**
-```bash
-files=$(noorm --json run inspect sql/seed.sql.tmpl | jq '.context.dataFiles | length')
-echo "Template has $files data files available"
-```
-
 
 #### `run preview <path>`
 
-Render a `.sql.tmpl` file with the full context (config, secrets, data files, helpers) and output the resulting SQL. Does not execute the SQL against any database.
-
-By default outputs raw SQL to stdout -- pipe-friendly. With `--json`, wraps the SQL in a JSON envelope.
+Render a `.sql.tmpl` file and output the resulting SQL. Does **not** execute against the database.
 
 ```bash
-# Output raw SQL
-noorm run preview sql/users/001_create.sql.tmpl
-
-# Pipe rendered SQL to a file
+noorm run preview sql/schema.sql.tmpl
 noorm run preview sql/schema.sql.tmpl > rendered.sql
-
-# Extract SQL from JSON envelope
-noorm --json run preview sql/seed.sql.tmpl | jq -r .sql
-
-# Preview with a specific config
+noorm --json run preview sql/seed.sql.tmpl
 noorm --config staging run preview sql/migrations/002.sql.tmpl
 ```
 
 **JSON output:**
 ```json
 {
-    "filepath": "sql/users/001_create.sql.tmpl",
-    "sql": "CREATE TABLE users (\n  id INT PRIMARY KEY\n);",
+    "filepath": "sql/schema.sql.tmpl",
+    "sql": "CREATE TABLE ...",
     "durationMs": 12
 }
-```
-
-**Scripting pattern -- render and apply in one pipeline:**
-```bash
-noorm run preview sql/hotfix.sql.tmpl | psql -h localhost -d myapp
 ```
 
 
@@ -390,12 +717,12 @@ Bare `noorm change` renders citty's help output and does not connect to the data
 | `change rm` | every directory under `changes/` (filesystem) |
 | `change history-detail` | anything with an execution record (non-pending) |
 
-Non-TTY callers (CI, scripts) must pass the name or the command errors out -- there is no interactive fallback.
+Non-TTY callers (CI, scripts) must pass the name or the command errors out.
 
 
 #### `change list`
 
-List every known change with its status. This used to be the behavior of bare `noorm change`; it now lives on an explicit subcommand so the parent command can render help without connecting to the database.
+List every known change with its status.
 
 ```bash
 noorm change list
@@ -403,19 +730,10 @@ noorm change list --json
 noorm change list -c staging
 ```
 
-**Text output:**
-```
-2024-01-15-init-schema (success)
-2024-01-20-add-roles (success)
-2024-02-01-notifications (pending)
-1 pending change(s)
-```
-
 **JSON output:**
 ```json
 [
     {"name": "2024-01-15-init-schema", "status": "success"},
-    {"name": "2024-01-20-add-roles", "status": "success"},
     {"name": "2024-02-01-notifications", "status": "pending"}
 ]
 ```
@@ -423,11 +741,12 @@ noorm change list -c staging
 
 #### `change ff`
 
-Fast-forward: apply all pending changes.
+Fast-forward: apply all pending changes in order.
 
 ```bash
 noorm change ff
-noorm --dry-run change ff  # Preview only
+noorm --dry-run change ff
+noorm --force change ff
 ```
 
 **JSON output:**
@@ -446,31 +765,22 @@ noorm --dry-run change ff  # Preview only
 
 #### `change next`
 
-Apply the next pending change in order (whichever comes first in the sorted list of pending changes). Useful in CI for one-step-at-a-time rollouts.
+Apply the next pending change only.
 
 ```bash
 noorm change next
 noorm --json change next
-noorm --dry-run change next
 ```
 
-Output shape matches `change run` (single-change result).
 
+#### `change run [name]`
 
-#### `change run <name>`
-
-Apply a specific change by name. Use this to apply changes out of order or to retry a failed change. On a TTY, omit the name to pick from pending + reverted changes interactively.
+Apply a specific change by name. Omit the name on a TTY to pick interactively.
 
 ```bash
 noorm change run                               # interactive picker (TTY)
 noorm change run 2024-02-01-notifications
 noorm --json change run 2024-02-01-notifications
-noorm -c staging change run 001_init
-```
-
-**Text output:**
-```
-2024-02-01-notifications (success)
 ```
 
 **JSON output:**
@@ -486,70 +796,45 @@ noorm -c staging change run 001_init
 }
 ```
 
-Status is `"success"` or `"failed"`. On failure, the top-level `error` field contains the message.
 
+#### `change revert [name]`
 
-#### `change revert <name>`
-
-Revert a previously applied change by running its backward SQL. On a TTY, omit the name to pick from previously-applied changes.
+Revert a previously applied change by running its rollback SQL. Omit the name on a TTY to pick interactively.
 
 ```bash
 noorm change revert                              # interactive picker (TTY)
 noorm change revert 2024-02-01-notifications
-noorm --json change revert 2024-02-01-notifications
-noorm -c staging change revert 002_users
+noorm --json change revert 002_users
 ```
 
-**Text output:**
-```
-002_users reverted (success)
-```
 
-**JSON output:**
-```json
-{
-    "name": "2024-02-01-notifications",
-    "direction": "revert",
-    "status": "success",
-    "files": [
-        {"filepath": "revert/001_drop-table.sql", "checksum": "d4e5f6", "status": "executed", "durationMs": 12}
-    ],
-    "durationMs": 30
-}
-```
+#### `change rewind [name]`
 
-Status is `"success"` or `"failed"`. The change must have been previously applied.
-
-
-#### `change rewind <name>`
-
-Revert the given change **and every change applied after it**, in reverse chronological order. Use this to rewind to a specific point. On a TTY, omit the name to pick the anchor change interactively.
+Revert the given change **and every change applied after it**, in reverse order. Omit the name on a TTY to pick interactively.
 
 ```bash
 noorm change rewind                              # interactive picker (TTY)
 noorm change rewind 2024-02-01-notifications
-noorm --json change rewind 2024-02-01-notifications
+noorm --json change rewind 001_init
 ```
-
-JSON output mirrors `change ff` (rollup of per-change results).
 
 
 #### `change add [description]`
 
-Scaffold a new change directory under `changes/` with `change.sql` and `revert.sql` stubs. On a TTY, omit the description to be prompted for one.
+Scaffold a new change directory. Omit the description on a TTY to be prompted.
 
 ```bash
 noorm change add                                # prompts for description (TTY)
 noorm change add add-users-table
-noorm change add "notification queue"
+noorm change add "notification queue" --json
 ```
 
-Creates `changes/<YYYY-MM-DD>-<slug>/` with empty template files.
+Creates `changes/<YYYY-MM-DD>-<slug>/` with `change.sql` and `revert.sql` stubs.
 
 
 #### `change edit [name]`
 
-Open a change's `change.sql` and `revert.sql` in `$EDITOR` (or `$VISUAL`). On a TTY, omit the name to pick from all changes on disk.
+Open a change folder in `$EDITOR`. Omit the name on a TTY to pick interactively.
 
 ```bash
 noorm change edit                               # interactive picker (TTY)
@@ -557,36 +842,24 @@ noorm change edit 2024-02-01-notifications
 EDITOR=vim noorm change edit 001_init
 ```
 
-Exits with the editor's exit code if non-zero. No JSON output -- this command is purely a spawn wrapper.
-
 
 #### `change rm [name]`
 
-Remove a change directory from disk. **Does not** touch database state -- use `change revert` or `change rewind` first if the change was applied. On a TTY, omit the name to pick interactively and confirm via prompt; `--yes` is only required on non-TTY callers.
+Remove a change directory from disk. Does **not** touch database state. On a TTY, omit the name to pick interactively; `--yes` is only required on non-TTY.
 
 ```bash
 noorm change rm                                 # picker + confirm (TTY)
-noorm change rm 2024-02-01-notifications        # confirm prompt (TTY)
-noorm change rm 2024-02-01-notifications --yes  # non-TTY / CI
+noorm change rm 2024-02-01-notifications --yes  # CI
 ```
 
 
 #### `change history`
 
-View execution history of changes including timestamps, direction, and duration.
+View execution history with timestamps, direction, and duration.
 
 ```bash
 noorm change history
 noorm --json change history
-noorm --count 50 change history
-```
-
-**Text output:**
-```
-Execution History: 3 records
-  001_init - success (1/15/2024, 10:30:00 AM)
-  002_users - success (1/20/2024, 2:15:00 PM)
-  002_users - success (1/21/2024, 9:00:00 AM)
 ```
 
 **JSON output:**
@@ -606,39 +879,77 @@ Execution History: 3 records
 ]
 ```
 
-**Scripting pattern -- check for recent failures:**
-```bash
-failures=$(noorm --json change history | jq '[.[] | select(.status == "failed")] | length')
-if [ "$failures" -gt 0 ]; then
-    echo "WARNING: $failures failed changes in history"
-fi
-```
 
+#### `change history-detail [name]`
 
-#### `change history-detail <name>`
-
-Show per-file execution detail for a single change (all historical runs, forward and revert). On a TTY, omit the name to pick from changes with execution history.
+Per-file execution detail for a single change. Omit the name on a TTY to pick interactively.
 
 ```bash
 noorm change history-detail                     # interactive picker (TTY)
-noorm change history-detail 2024-02-01-notifications
-noorm --json change history-detail 001_init
+noorm change history-detail 001_init
+noorm --json change history-detail 002_users
 ```
-
-JSON output is an array of per-execution records with their file checksums, statuses, and durations.
 
 
 ### Database Operations
 
-#### `db explore`
+#### `db create`
 
-Get schema overview.
+Create the target database if it does not exist. Connects to the dialect's system database (`postgres`, `master`, etc.) to issue the CREATE statement.
 
 ```bash
-noorm db explore
+noorm db create
+noorm db create -c dev
+noorm db create --json
 ```
 
-**JSON output:**
+
+#### `db drop`
+
+Drop the entire database.
+
+```bash
+noorm db drop --yes
+noorm db drop -c dev --yes --json
+```
+
+::: danger Destructive
+Drops the entire database. Requires `--yes`. Cannot drop protected configs without `--force`.
+:::
+
+
+#### `db reset`
+
+Teardown + build (idempotent rebuild). Drops all user objects then rebuilds from SQL files.
+
+```bash
+noorm db reset --yes
+noorm db reset -c dev --yes --json
+```
+
+::: danger Destructive
+Equivalent to `db teardown` followed by `run build`. Requires `--yes`.
+:::
+
+
+#### `db explore`
+
+Explore database schema.
+
+```bash
+noorm db explore                        # Overview counts
+noorm db explore tables                 # List all tables
+noorm db explore tables detail users    # Describe specific table
+noorm db explore views                  # List all views
+noorm db explore functions              # List all functions
+noorm db explore procedures             # List all procedures
+noorm db explore indexes                # List all indexes
+noorm db explore types                  # List custom types
+noorm db explore fks                    # List foreign keys
+noorm --json db explore                 # JSON overview
+```
+
+**JSON output (overview):**
 ```json
 {
     "tables": 12,
@@ -650,38 +961,9 @@ noorm db explore
 ```
 
 
-#### `db explore tables`
-
-List all tables.
-
-```bash
-noorm db explore tables
-```
-
-
-#### `db explore tables detail <name>`
-
-Describe a specific table.
-
-```bash
-noorm db explore tables detail users
-```
-
-**JSON output:**
-```json
-{
-    "name": "users",
-    "columns": [
-        {"name": "id", "type": "integer", "nullable": false, "primaryKey": true},
-        {"name": "email", "type": "varchar(255)", "nullable": false}
-    ]
-}
-```
-
-
 #### `db truncate`
 
-Wipe all data, keep schema.
+Wipe all data from application tables. Schema and noorm tracking tables are preserved.
 
 ```bash
 noorm -y db truncate
@@ -694,147 +976,39 @@ Drop all database objects.
 
 ```bash
 noorm -y db teardown
+noorm --force db teardown   # Override protection
 ```
 
 ::: warning Protected Configs
-`db teardown` is blocked on protected configs. Use `--force` to override (be careful!).
+`db teardown` is blocked on protected configs. Use `--force` to override.
 :::
 
 
 #### `db transfer`
 
-Transfer data between database configurations, or export/import `.dt` files. Three mutually exclusive modes: database-to-database, export, and import.
+Transfer data between database configurations, or export/import `.dt` files. Three mutually exclusive modes.
 
-**Database-to-database transfer:**
-
-Transfer all or selected tables from the active config to another config. Both must use the same dialect. Same-server transfers use direct `INSERT...SELECT`; cross-server transfers use batched reads/writes.
-
+**Database-to-database:**
 ```bash
-# Transfer all tables from active config to backup
 noorm db transfer --to backup
-
-# Transfer specific tables
-noorm db transfer --to backup --tables users,posts,comments
-
-# Upsert behavior (update existing rows)
+noorm db transfer --to backup --tables users,posts
 noorm db transfer --to backup --on-conflict update
-
-# Clear destination before transfer
 noorm db transfer --to backup --truncate
-
-# Preview transfer plan without executing
 noorm db transfer --to backup --dry-run
-
-# Transfer from named source to destination
-noorm db transfer staging --to production --tables users
 ```
 
-**JSON output (transfer):**
-```json
-{
-    "success": true,
-    "status": "success",
-    "tables": [
-        {
-            "table": "users",
-            "status": "success",
-            "rowsTransferred": 1500,
-            "rowsSkipped": 0,
-            "durationMs": 234
-        }
-    ],
-    "totalRows": 1500,
-    "durationMs": 1234
-}
-```
-
-**JSON output (dry run):**
-```json
-{
-    "success": true,
-    "dryRun": true,
-    "sameServer": true,
-    "tableCount": 3,
-    "estimatedRows": 5000,
-    "tables": [
-        {
-            "name": "users",
-            "rowCount": 1500,
-            "hasIdentity": true,
-            "dependsOn": []
-        },
-        {
-            "name": "posts",
-            "rowCount": 3500,
-            "hasIdentity": true,
-            "dependsOn": ["users"]
-        }
-    ],
-    "warnings": []
-}
-```
-
-**Export mode:**
-
-Write tables to `.dt` (plain), `.dtz` (compressed), or `.dtzx` (encrypted) files. Single-table export uses the path as a filename; multi-table export uses it as a directory.
-
+**Export to files:**
 ```bash
-# Export single table (plain .dt)
-noorm db transfer --export ./backup/users.dt --tables users
-
-# Export single table compressed
-noorm db transfer --export ./backup/users --tables users --compress
-
-# Export all tables to directory
 noorm db transfer --export ./backup/
-
-# Export all tables compressed
 noorm db transfer --export ./backup/ --compress
-
-# Export with encryption (implies compression)
-noorm db transfer --export ./backup/ --passphrase mySecret
+noorm db transfer --export ./backup/ --passphrase secret
+noorm db transfer --export ./backup/users.dt --tables users
 ```
 
-**JSON output (export):**
-```json
-{
-    "success": true,
-    "mode": "export",
-    "directory": "./backup/",
-    "tables": [
-        {
-            "table": "users",
-            "filepath": "./backup/users.dtz",
-            "rowsExported": 1500,
-            "bytesWritten": 48320
-        }
-    ],
-    "totalRows": 1500,
-    "totalBytes": 48320
-}
-```
-
-**Import mode:**
-
-Load `.dt`, `.dtz`, or `.dtzx` files into the active database.
-
+**Import from files:**
 ```bash
-# Import from .dt file
 noorm db transfer --import ./backup/users.dt
-
-# Import encrypted file with conflict skipping
-noorm db transfer --import ./backup/users.dtzx --passphrase mySecret --on-conflict skip
-```
-
-**JSON output (import):**
-```json
-{
-    "success": true,
-    "mode": "import",
-    "filepath": "./backup/users.dt",
-    "rowsImported": 1500,
-    "rowsSkipped": 0
-}
+noorm db transfer --import ./backup/users.dtzx --passphrase secret --on-conflict skip
 ```
 
 **Transfer flags:**
@@ -844,27 +1018,20 @@ noorm db transfer --import ./backup/users.dtzx --passphrase mySecret --on-confli
 | `--to` | Destination config name (db-to-db mode) |
 | `--export` | Export path: file or directory |
 | `--import` | Import from `.dt`/`.dtz`/`.dtzx` file |
-| `--compress` | Compress export as `.dtz` (default: plain `.dt`) |
+| `--compress` | Compress export as `.dtz` |
 | `--passphrase` | Passphrase for `.dtzx` encryption/decryption |
-| `--tables` | Comma-separated list of tables (default: all) |
-| `--on-conflict` | Conflict strategy: `fail`, `skip`, `update`, `replace` (default: `fail`) |
+| `--tables` | Comma-separated table list (default: all) |
+| `--on-conflict` | `fail`, `skip`, `update`, or `replace` (default: `fail`) |
 | `--batch-size` | Rows per batch for cross-server transfers (default: 1000) |
 | `--truncate` | Truncate destination tables before transfer |
 | `--no-fk` | Do not disable foreign key checks |
 | `--no-identity` | Do not preserve identity/auto-increment values |
 | `--dry-run` | Show transfer plan without executing |
 
-**Conflict strategies:**
-
-| Strategy | Behavior |
-|----------|----------|
-| `fail` | Abort on first primary key conflict (default) |
-| `skip` | Skip conflicting rows, continue transfer |
-| `update` | Update existing rows with source data |
-| `replace` | Delete and re-insert conflicting rows |
-
 
 ### Lock Operations
+
+Tool-level mutual exclusion. Prevents concurrent schema migrations across noorm instances or CI runners targeting the same database.
 
 #### `lock status`
 
@@ -875,7 +1042,7 @@ noorm lock status
 noorm --json lock status
 ```
 
-**JSON output (locked):**
+**JSON output:**
 ```json
 {
     "isLocked": true,
@@ -887,98 +1054,54 @@ noorm --json lock status
 }
 ```
 
-**JSON output (not locked):**
-```json
-{
-    "isLocked": false,
-    "lock": null
-}
-```
-
 
 #### `lock acquire`
 
-Acquire an exclusive lock on the database.
+Acquire an exclusive lock.
 
 ```bash
 noorm lock acquire
 noorm --json lock acquire
 ```
 
-CI/CD pattern with cleanup:
-
+**CI/CD pattern with cleanup:**
 ```bash
 noorm lock acquire
 trap "noorm lock release" EXIT
 noorm change ff
 ```
 
-**JSON output:**
-```json
-{
-    "acquired": true,
-    "lockedBy": "deploy@ci-runner",
-    "expiresAt": "2024-01-15T10:35:00Z"
-}
-```
-
 
 #### `lock release`
 
-Release the current database lock. Only the lock holder can release.
+Release the current lock. Only the lock holder can release.
 
 ```bash
 noorm lock release
-noorm --json lock release
-```
-
-**JSON output:**
-```json
-{
-    "released": true
-}
 ```
 
 
 #### `lock force`
 
-Force release any database lock regardless of ownership. Use when a lock holder crashed or when emergency intervention is needed.
-
-> **Warning:** Force releasing a lock can cause data corruption if the original holder is still running operations.
+Force release any lock regardless of ownership.
 
 ```bash
 noorm lock force
-noorm --json lock force
 ```
 
-**JSON output:**
-```json
-{
-    "released": true,
-    "forced": true
-}
-```
+::: warning
+Force releasing a lock can cause data corruption if the original holder is still running.
+:::
 
 
 ### Vault Operations
 
-Vault secrets are team-shared encrypted secrets stored in the database. They provide a fallback when local secrets are not set.
+Team-shared encrypted secrets stored in the database.
 
 **Secret resolution order:**
-1. Config-specific local secrets (highest priority)
+1. Config-specific local secrets (highest)
 2. Global local secrets
-3. Vault secrets (team-shared, lowest priority)
-
-All vault commands require an active config and initialized identity.
-
-
-#### `vault`
-
-Show vault help and subcommand list.
-
-```bash
-noorm vault
-```
+3. Vault secrets (team-shared, lowest)
 
 
 #### `vault init`
@@ -990,24 +1113,6 @@ noorm vault init
 noorm --json vault init
 ```
 
-The first user to initialize creates the vault encryption key. Other team members receive access via `vault propagate`.
-
-**JSON output:**
-```json
-{
-    "success": true,
-    "message": "Vault initialized successfully"
-}
-```
-
-If already initialized:
-```json
-{
-    "success": true,
-    "message": "Vault already initialized and you have access"
-}
-```
-
 
 #### `vault set <key> <value>`
 
@@ -1015,38 +1120,19 @@ Store an encrypted secret in the vault.
 
 ```bash
 noorm vault set API_KEY "sk-live-abc123"
-noorm vault set DB_PASSWORD "secret"
 noorm --json vault set API_KEY "sk-live-abc123"
 ```
 
-Upserts -- creates the secret if new, updates if it already exists.
-
-**JSON output:**
-```json
-{
-    "success": true,
-    "key": "API_KEY",
-    "action": "set"
-}
-```
+Upserts: creates if new, updates if the key exists.
 
 
 #### `vault list`
 
-List all secrets in the vault with metadata.
+List all secrets in the vault (keys and metadata only, never values).
 
 ```bash
 noorm vault list
 noorm --json vault list
-```
-
-Values are never exposed -- only keys and metadata (who set each secret and when) are returned.
-
-**Text output:**
-```
-Vault secrets (2):
-  API_KEY (set by alice@example.com)
-  DB_PASSWORD (set by bob@example.com)
 ```
 
 **JSON output:**
@@ -1054,22 +1140,13 @@ Vault secrets (2):
 {
     "success": true,
     "secrets": [
-        {"key": "API_KEY", "setBy": "alice@example.com", "updatedAt": "2024-01-15T10:30:00Z"},
-        {"key": "DB_PASSWORD", "setBy": "bob@example.com", "updatedAt": "2024-01-14T09:00:00Z"}
+        {"key": "API_KEY", "setBy": "alice@example.com", "updatedAt": "2024-01-15T10:30:00Z"}
     ],
     "status": {
         "usersWithAccess": 3,
         "usersWithoutAccess": 1
     }
 }
-```
-
-**Scripting pattern -- check for pending access:**
-```bash
-pending=$(noorm --json vault list | jq '.status.usersWithoutAccess')
-if [ "$pending" -gt 0 ]; then
-    noorm vault propagate
-fi
 ```
 
 
@@ -1082,225 +1159,63 @@ noorm vault rm OLD_API_KEY
 noorm --json vault rm OLD_API_KEY
 ```
 
-Permanently deletes the secret. Fails if the key does not exist.
-
-**JSON output:**
-```json
-{
-    "success": true,
-    "key": "OLD_API_KEY",
-    "deleted": true
-}
-```
-
 
 #### `vault cp`
 
 Copy secrets between config vaults.
 
 ```bash
-# Copy a single secret
 noorm vault cp API_KEY staging production
-
-# Copy all secrets
 noorm vault cp --all staging production
-
-# Overwrite existing secrets in destination
 noorm vault cp --all --force staging production
-
-# Preview without executing
 noorm vault cp --all --dry-run staging production
-
-# JSON output
-noorm --json vault cp --all staging production
 ```
 
 | Flag | Description |
 |------|-------------|
 | `--all` | Copy all secrets from source |
 | `--force` | Overwrite existing secrets in destination |
-| `--dry-run` | Preview what would be copied without executing |
-
-Requires vault access on both source and destination configs. If the destination vault is not initialized, it will be initialized automatically.
+| `--dry-run` | Preview without executing |
 
 Without `--force`, existing secrets in the destination are skipped.
-
-**JSON output:**
-```json
-{
-    "success": true,
-    "copied": ["API_KEY", "DB_PASSWORD"],
-    "skipped": ["EXISTING_KEY"],
-    "errors": []
-}
-```
-
-**JSON output (dry run):**
-```json
-{
-    "success": true,
-    "dryRun": true,
-    "source": "staging",
-    "destination": "production",
-    "keys": "all",
-    "force": false
-}
-```
-
-**Scripting pattern -- mirror secrets across environments:**
-```bash
-# Copy all secrets from staging to production, overwriting stale values
-noorm --config staging vault cp --all --force staging production
-
-# Verify
-noorm --config production --json vault list | jq '.secrets | length'
-```
 
 
 #### `vault propagate`
 
-Grant vault access to team members who don't have it yet.
+Grant vault access to team members who don't have it yet. Encrypts the vault key with each pending user's public key.
 
 ```bash
 noorm vault propagate
 noorm --json vault propagate
 ```
 
-Encrypts the vault key with each pending user's public key so they can decrypt vault secrets. This happens automatically on connect, but can be run manually after new team members register.
-
 **JSON output:**
 ```json
 {
     "success": true,
-    "propagatedTo": ["alice@example.com", "bob@example.com"],
+    "propagatedTo": ["alice@example.com"],
     "alreadyHadAccess": 3
 }
 ```
 
-When all users already have access:
-```json
-{
-    "success": true,
-    "propagatedTo": [],
-    "message": "All users already have vault access"
-}
-```
 
-**Scripting pattern -- ensure all team members have access:**
-```bash
-result=$(noorm --json vault propagate)
-count=$(echo "$result" | jq '.propagatedTo | length')
-echo "Granted access to $count new users"
-```
+### SQL Operations
 
+#### `sql [query]`
 
-### Utility Commands
-
-#### `info`
-
-Project and database status overview.
-
-```bash
-noorm info
-noorm --json info
-```
-
-Surfaces noorm metadata: CLI version, schema versions, install/upgrade dates, active configuration, connection details, identity info, and database object counts.
-
-**JSON output:**
-```json
-{
-    "cli_version": "0.4.2",
-    "schema_version": 1,
-    "state_version": 1,
-    "settings_version": 1,
-    "installed_at": "2026-01-15T08:30:00.000Z",
-    "upgraded_at": "2026-03-10T14:22:00.000Z",
-    "active_config": "dev",
-    "config_count": 2,
-    "connection": {
-        "host": "localhost",
-        "port": 5432,
-        "database": "mydb",
-        "dialect": "postgresql"
-    },
-    "identity": {
-        "name": "Your Name",
-        "email": "you@example.com",
-        "machine": "hostname",
-        "registered_at": "2026-01-15T08:30:00.000Z",
-        "last_seen_at": "2026-03-13T22:00:00.000Z"
-    },
-    "objects": {
-        "tables": 5,
-        "views": 12,
-        "functions": 8,
-        "procedures": 9,
-        "types": 13
-    }
-}
-```
-
-**Scripting pattern -- extract object counts:**
-```bash
-noorm --json info | jq '.objects'
-```
-
-
-#### `version`
-
-Show CLI version and diagnostic information.
-
-```bash
-noorm version
-noorm --json version
-```
-
-Displays the installed noorm version, Node.js environment, identity configuration paths/status, and project detection info. Useful for debugging installation and configuration issues.
-
-**JSON output:**
-```json
-{
-    "version": "1.0.0-alpha.3",
-    "node": "v22.14.0",
-    "platform": "darwin",
-    "arch": "arm64",
-    "identity": {
-        "exists": true,
-        "homePath": "~/.noorm",
-        "privateKeyPath": "~/.noorm/identity.key",
-        "publicKeyPath": "~/.noorm/identity.pub",
-        "name": "Your Name",
-        "email": "you@example.com"
-    },
-    "project": {
-        "found": true,
-        "path": "/path/to/project",
-        "configCount": 2,
-        "activeConfig": "dev"
-    }
-}
-```
-
-
-#### `sql`
-
-Execute raw SQL queries from the command line.
+Execute a raw SQL query.
 
 ```bash
 noorm sql "SELECT * FROM users LIMIT 10"
-noorm --json sql "SELECT 1"
 noorm sql -f query.sql
 noorm -c prod sql "SELECT count(*) FROM orders"
+noorm --json sql "SELECT id, name FROM users"
 ```
-
-Runs a raw SQL query against the active (or specified) database configuration. Queries can be passed inline as a positional argument or read from a file with `-f`.
 
 | Flag | Description |
 |------|-------------|
-| `-c, --config NAME` | Use specific configuration |
-| `-f, --file PATH` | Read SQL from a file instead of inline |
-| `--json` | Output results as JSON |
+| `-f, --file` | Read SQL from a file |
+| `-c, --config` | Use specific configuration |
 
 **JSON output:**
 ```json
@@ -1317,6 +1232,123 @@ Runs a raw SQL query against the active (or specified) database configuration. Q
 ```
 
 
+#### `sql repl`
+
+Launch the TUI SQL Terminal with multi-line editing, sortable results, and history.
+
+```bash
+noorm sql repl
+noorm sql repl --config dev
+```
+
+**TTY required.**
+
+
+#### `sql history`
+
+Show SQL execution history.
+
+```bash
+noorm sql history
+noorm sql history -n 20
+noorm --json sql history
+noorm -c prod sql history
+```
+
+| Flag | Description |
+|------|-------------|
+| `-n, --limit` | Max entries (default: 50) |
+
+
+#### `sql clear`
+
+Clear SQL execution history.
+
+```bash
+noorm sql clear --yes
+noorm sql clear --older-than 3 --yes
+noorm -c prod sql clear --yes
+```
+
+| Flag | Description |
+|------|-------------|
+| `--older-than` | Only clear entries older than N months |
+| `--yes` | Confirm without prompt (required) |
+
+
+### MCP (AI Agent Integration)
+
+Model Context Protocol server for AI coding agents. Exposes noorm operations as MCP tools.
+
+#### `mcp init`
+
+Generate MCP configuration for a coding agent.
+
+```bash
+noorm mcp init                 # Default: Claude Code
+noorm mcp init --agent cursor  # Cursor editor
+noorm mcp init --json
+```
+
+
+#### `mcp serve`
+
+Start the noorm MCP server on stdio transport. Designed to be spawned by an AI agent; stays alive as long as stdin is open.
+
+```bash
+noorm mcp serve
+```
+
+
+### Utility Commands
+
+#### `info`
+
+Project and database status overview.
+
+```bash
+noorm info
+noorm --json info
+```
+
+**JSON output:**
+```json
+{
+    "cli_version": "1.0.0-alpha.34",
+    "schema_version": 1,
+    "active_config": "dev",
+    "config_count": 2,
+    "connection": {
+        "host": "localhost",
+        "port": 5432,
+        "database": "mydb",
+        "dialect": "postgresql"
+    },
+    "identity": {
+        "name": "Your Name",
+        "email": "you@example.com"
+    },
+    "objects": {
+        "tables": 5,
+        "views": 12,
+        "functions": 8,
+        "procedures": 9,
+        "types": 13
+    }
+}
+```
+
+
+#### `version`
+
+CLI version and diagnostic information.
+
+```bash
+noorm version
+noorm --json version
+```
+
+
 #### `update`
 
 Check for and install noorm updates.
@@ -1326,65 +1358,16 @@ noorm update
 noorm --json update
 ```
 
-Checks GitHub releases for the latest version and downloads the platform-appropriate binary if an update is available. The binary is replaced in-place -- restart to use the new version.
 
-**JSON output:**
-```json
-{
-    "currentVersion": "1.0.0-alpha.11",
-    "latestVersion": "1.0.0-alpha.12",
-    "updateAvailable": true,
-    "installed": true
-}
-```
+#### `ui`
 
-**Error output (--json):**
-```json
-{
-    "currentVersion": "1.0.0-alpha.11",
-    "latestVersion": null,
-    "updateAvailable": false,
-    "installed": false,
-    "error": "Failed to check for updates (offline?)"
-}
-```
-
-
-#### `--help`
-
-Help is rendered natively by [citty](https://github.com/unjs/citty). Append `--help` (or `-h`) to any command to see its description, arguments, options, and curated examples.
+Launch the interactive terminal UI.
 
 ```bash
-noorm --help                 # Top-level command list
-noorm change --help          # Subcommands of `change`
-noorm change ff --help       # Args, options, and examples for `change ff`
-noorm vault cp --help        # Same idea — drill in to any leaf command
+noorm ui
 ```
 
-Each command file ships an optional `examples: string[]` array; the root entry point intercepts `--help` and appends an `EXAMPLES` block beneath citty's auto-generated usage so the same examples shown in this guide are reachable from the terminal.
-
-There is no JSON help format. Use `noorm <command> --help` for human-readable output and lean on this reference page for machine-discoverable structure.
-
-
-#### `secret`
-
-There is no `noorm secret` CLI command. Local (per-user) secret overrides are managed through the TUI:
-
-```bash
-noorm ui          # Then navigate to Settings → Secrets
-```
-
-For team-shared secrets stored in the database, use the [`vault` commands](#vault-operations) (`vault set`, `vault rm`, `vault list`, `vault init`, `vault propagate`). The vault is fully scriptable from CI.
-
-
-#### `identity`
-
-There is no `noorm identity` CLI command. In CI/CD, identity resolves automatically from `git config` (`user.name`, `user.email`) or `NOORM_IDENTITY` environment variables — the identity subsystem registers itself transparently when changes or locks need attribution. Use `noorm ui` to inspect or rotate identity locally.
-
-
-#### `settings`
-
-There is no `noorm settings` CLI command. Use `NOORM_*` environment variables for non-interactive configuration overrides (see [Environment Variable Overrides](#environment-variable-overrides) above) or run `noorm ui` to edit them in the wizard.
+**TTY required.**
 
 
 ## Exit Codes
@@ -1393,43 +1376,121 @@ There is no `noorm settings` CLI command. Use `NOORM_*` environment variables fo
 |------|---------|
 | `0` | Success |
 | `1` | Error (check stderr or JSON output) |
+| `2` | Partial failure (some operations succeeded, some failed) |
 
 
 ## CI/CD Examples
 
 
-### GitHub Actions
+### Test CI (GitHub Actions)
+
+Stateless, ephemeral. No identity or `ci init` needed.
 
 ```yaml
-name: Database Changes
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test_db
+        ports:
+          - 5432:5432
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+      - name: Apply schema and changes
+        env:
+          NOORM_CONNECTION_DIALECT: postgres
+          NOORM_CONNECTION_HOST: localhost
+          NOORM_CONNECTION_DATABASE: test_db
+          NOORM_CONNECTION_USER: postgres
+          NOORM_CONNECTION_PASSWORD: test
+        run: |
+          npx noorm run build
+          npx noorm change ff
+      - run: npm test
+```
 
+
+### Prod CI (GitHub Actions, vault-enabled)
+
+**One-time developer setup:**
+```bash
+noorm ci identity enroll --config prod --name "GitHub CI" --email ci@example.com
+# → prints NOORM_IDENTITY_PRIVATE_KEY / NAME / EMAIL; copy to GitHub Secrets
+```
+
+**Pipeline:**
+```yaml
+name: Deploy Database Changes
 on:
   push:
     branches: [main]
 
 jobs:
-  migrate:
+  deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
+      - run: npm ci
 
-      - name: Install noorm
-        run: npm install -g @noormdev/cli
-
-      - name: Apply changes
+      - name: Bootstrap CI state
         env:
+          NOORM_IDENTITY_PRIVATE_KEY: ${{ secrets.NOORM_CI_KEY }}
+          NOORM_IDENTITY_NAME: "GitHub CI"
+          NOORM_IDENTITY_EMAIL: "ci@example.com"
           NOORM_CONNECTION_DIALECT: postgres
           NOORM_CONNECTION_HOST: ${{ secrets.DB_HOST }}
           NOORM_CONNECTION_DATABASE: ${{ secrets.DB_NAME }}
           NOORM_CONNECTION_USER: ${{ secrets.DB_USER }}
           NOORM_CONNECTION_PASSWORD: ${{ secrets.DB_PASSWORD }}
-        run: |
-          noorm run build
-          noorm change ff
+        run: npx noorm ci init --name prod
+
+      - name: Apply changes
+        run: npx noorm change ff
+```
+
+
+### Prod CI with Batch Secrets
+
+When templates need secrets beyond the connection:
+
+```yaml
+- name: Bootstrap CI state
+  env:
+    NOORM_IDENTITY_PRIVATE_KEY: ${{ secrets.NOORM_CI_KEY }}
+    NOORM_IDENTITY_NAME: "GitHub CI"
+    NOORM_IDENTITY_EMAIL: "ci@example.com"
+    NOORM_CONNECTION_DIALECT: postgres
+    NOORM_CONNECTION_HOST: ${{ secrets.DB_HOST }}
+    NOORM_CONNECTION_DATABASE: ${{ secrets.DB_NAME }}
+    NOORM_CONNECTION_USER: ${{ secrets.DB_USER }}
+    NOORM_CONNECTION_PASSWORD: ${{ secrets.DB_PASSWORD }}
+  run: npx noorm ci init --name prod
+
+- name: Load secrets
+  env:
+    API_KEY: ${{ secrets.API_KEY }}
+    STRIPE_KEY: ${{ secrets.STRIPE_KEY }}
+  run: |
+    cat > ./ci-secrets.env <<EOF
+    API_KEY=$API_KEY
+    STRIPE_KEY=$STRIPE_KEY
+    EOF
+    npx noorm ci secrets --file ./ci-secrets.env
+    rm ./ci-secrets.env
+
+- name: Apply changes
+  run: npx noorm change ff
 ```
 
 
@@ -1438,12 +1499,15 @@ jobs:
 ```yaml
 migrate:
   stage: deploy
-  image: node:20
+  image: node:22
   script:
-    - npm install -g @noormdev/cli
-    - noorm run build
-    - noorm change ff
+    - npm ci
+    - npx noorm ci init --name prod
+    - npx noorm change ff
   variables:
+    NOORM_IDENTITY_PRIVATE_KEY: $NOORM_CI_KEY
+    NOORM_IDENTITY_NAME: "GitLab CI"
+    NOORM_IDENTITY_EMAIL: "ci@example.com"
     NOORM_CONNECTION_DIALECT: postgres
     NOORM_CONNECTION_HOST: $DB_HOST
     NOORM_CONNECTION_DATABASE: $DB_NAME
@@ -1452,79 +1516,34 @@ migrate:
 ```
 
 
-### Generic CI Pattern
+### Generic CI Script with Locking
 
 ```bash
 #!/bin/bash
 set -e
 
-# Install
-npm install -g @noormdev/cli
-
-# Configure via environment
+export NOORM_IDENTITY_PRIVATE_KEY=$NOORM_CI_KEY
+export NOORM_IDENTITY_NAME="CI Bot"
+export NOORM_IDENTITY_EMAIL="ci@example.com"
 export NOORM_CONNECTION_DIALECT=postgres
 export NOORM_CONNECTION_HOST=$DB_HOST
 export NOORM_CONNECTION_DATABASE=$DB_NAME
 export NOORM_CONNECTION_USER=$DB_USER
 export NOORM_CONNECTION_PASSWORD=$DB_PASSWORD
 
-# Build schema
-noorm run build
-
-# Apply changes
+noorm ci init --name prod
+noorm lock acquire
+trap "noorm lock release" EXIT
 noorm change ff
-
-# Verify
 noorm --json db explore
-```
-
-
-### Test Database Setup
-
-```yaml
-test:
-  runs-on: ubuntu-latest
-  services:
-    postgres:
-      image: postgres:16
-      env:
-        POSTGRES_PASSWORD: test
-        POSTGRES_DB: test_db
-      ports:
-        - 5432:5432
-
-  steps:
-    - uses: actions/checkout@v4
-    - uses: actions/setup-node@v4
-      with:
-        node-version: '20'
-
-    - run: npm ci
-    - run: npm install -g @noormdev/cli
-
-    - name: Setup test database
-      env:
-        NOORM_CONNECTION_DIALECT: postgres
-        NOORM_CONNECTION_HOST: localhost
-        NOORM_CONNECTION_DATABASE: test_db
-        NOORM_CONNECTION_USER: postgres
-        NOORM_CONNECTION_PASSWORD: test
-      run: |
-        noorm run build
-        noorm change ff
-
-    - run: npm test
 ```
 
 
 ## Scripting with JSON
 
-Parse JSON output for programmatic use:
-
 ```bash
-# Check if there are pending changes
-pending=$(noorm --json change | jq '[.[] | select(.status == "pending")] | length')
-
+# Check for pending changes
+pending=$(noorm --json change list | jq '[.[] | select(.status == "pending")] | length')
 if [ "$pending" -gt 0 ]; then
     echo "Found $pending pending changes"
     noorm change ff
@@ -1535,4 +1554,17 @@ fi
 # Get table count
 tables=$(noorm --json db explore | jq '.tables')
 echo "Database has $tables tables"
+```
+
+```bash
+# Verify vault access
+pending=$(noorm --json vault list | jq '.status.usersWithoutAccess')
+if [ "$pending" -gt 0 ]; then
+    noorm vault propagate
+fi
+```
+
+```bash
+# Render template and pipe to external tool
+noorm run preview sql/hotfix.sql.tmpl | psql -h localhost -d myapp
 ```

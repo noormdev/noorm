@@ -33,10 +33,21 @@ noorm change ff
 
 **One-time setup** (developer with vault access):
 
+Two approaches depending on your trust model:
+
 ```bash
+# Option A: Mint + enroll in one step (developer holds vault access)
 noorm ci identity enroll --config prod --name "GitHub CI" --email ci@example.com
-# Prints NOORM_IDENTITY_PRIVATE_KEY / NAME / EMAIL once — copy to your CI secrets store
+# → prints NOORM_IDENTITY_PRIVATE_KEY / NAME / EMAIL once; copy to CI secrets store
+
+# Option B: Air-gapped (key minted on a separate machine)
+noorm ci identity new --name "GitHub CI" --email ci@example.com --json > ci-key.json
+# → gives the public key to a vault-holder, who enrolls it:
+noorm ci identity enroll --config prod --name "GitHub CI" --email ci@example.com \
+    --public-key <hex from ci-key.json>
 ```
+
+`ci identity new` never contacts a database — it only generates a keypair and prints the env block. `ci identity enroll` registers the public key in the target database and grants vault access. Both are idempotent on identityHash.
 
 The full flow (with diagrams and per-provider examples) lives in the [CI automation guide](../guide/automation/ci.md).
 

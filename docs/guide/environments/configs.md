@@ -226,9 +226,23 @@ For headless smoke checks, run any command that opens a connection — e.g. `noo
 
 ## Exporting and Importing Configs
 
-Share config templates across team members or machines through the TUI: `noorm ui` → Config → press `x` to export the highlighted config or `i` to import one. Exports strip sensitive data like passwords.
+You can export configs to share across team members or machines.
 
-The exported JSON looks like this:
+**TUI:** `noorm ui` → Config → press `x` to export the highlighted config or `i` to import one.
+
+**CLI:**
+
+```bash
+# Export to stdout or file
+noorm config export dev
+noorm config export dev --output ./dev-config.json
+
+# Import from file
+noorm config import ./dev-config.json
+noorm config import ./staging-config.json --force   # overwrite existing
+```
+
+Exports strip passwords and other sensitive fields. The exported JSON looks like this:
 
 ```json
 {
@@ -243,7 +257,30 @@ The exported JSON looks like this:
 }
 ```
 
-After importing, you'll need to set any passwords or secrets separately — either through the TUI's edit screen or via `NOORM_CONNECTION_PASSWORD` at command time.
+After importing, set passwords or secrets separately: through the TUI's edit screen or with `NOORM_CONNECTION_PASSWORD` at command time.
+
+
+## Managing Configs from the CLI
+
+noorm also has headless commands for scripting and CI:
+
+```bash
+# List all configs
+noorm config list
+noorm config list --json
+
+# Copy a config
+noorm config cp dev staging
+
+# Validate connection
+noorm config validate prod
+
+# Export and import (see above)
+noorm config export dev --output ./backup.json
+noorm config import ./backup.json
+```
+
+`config validate` connects to the database and exits 0 on success, 1 on failure. Use it as a CI health check before running migrations.
 
 
 ## Common Workflows
