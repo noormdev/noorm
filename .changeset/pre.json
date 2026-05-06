@@ -3,7 +3,8 @@
   "tag": "alpha",
   "initialVersions": {
     "@noormdev/cli": "0.0.1",
-    "@noormdev/sdk": "0.0.1"
+    "@noormdev/sdk": "0.0.1",
+    "@noormdev/example-todo-db": "0.0.0"
   },
   "changesets": [
     "binary-release-automation",
@@ -42,6 +43,7 @@
     "keen-moons-glow",
     "kind-dogs-cheer",
     "mcp-server",
+    "noorm-ci-namespace",
     "noorm-init-sql-repl",
     "quiet-pandas-sleep",
     "rebuild-fix",
