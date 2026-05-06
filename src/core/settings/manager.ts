@@ -7,8 +7,7 @@
 import { readFile, writeFile, mkdir, access } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
-import { attempt, merge } from '@logosdx/utils';
-import { allConfigs } from '../config/index.js';
+import { attempt, merge, makeNestedConfig } from '@logosdx/utils';
 
 import { observer } from '../observer.js';
 import { parseSettings } from './schema.js';
@@ -32,6 +31,25 @@ import type {
     RulesEvaluationResult,
     ConfigForRuleMatch,
 } from './types.js';
+
+const META_SETTINGS_ENV_VARS = new Set([
+    'NOORM_CONFIG',
+    'NOORM_YES',
+    'NOORM_JSON',
+    'NOORM_HEADLESS',
+    'NOORM_DEBUG',
+    'NOORM_DEV',
+    'NOORM_CI_CONFIG_NAME',
+    'NOORM_LOGGER_DEBUG',
+    'NOORM_IDENTITY',
+]);
+
+const { allConfigs: allSettingsEnv } = makeNestedConfig<Partial<Settings>>(process.env as Record<string, string>, {
+    filter: (key) => key.startsWith('NOORM_') && !META_SETTINGS_ENV_VARS.has(key) && !key.startsWith('NOORM_IDENTITY_') && !key.startsWith('NOORM_CONNECTION_'),
+    stripPrefix: 'NOORM_',
+    forceAllCapToLower: true,
+    memoizeOpts: false,
+});
 
 /**
  * Options for SettingsManager construction.
@@ -176,7 +194,7 @@ export class SettingsManager {
         }
 
         // Apply environment variable overrides (NOORM_* -> nested settings)
-        this.#settings = merge(this.#settings, allConfigs()) as Settings;
+        this.#settings = merge(this.#settings, allSettingsEnv()) as Settings;
 
         this.#loaded = true;
 
