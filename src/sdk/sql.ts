@@ -13,6 +13,46 @@ import { isTvp, MSSQL_PARAM_LIMIT } from './tvp.js';
 import type { TvpValue } from './tvp.js';
 
 // ─────────────────────────────────────────────────────────────
+// Identifier Quoting
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Quote a SQL identifier for the given dialect.
+ *
+ * Required when an identifier may contain mixed-case characters or
+ * reserved words. Without quoting, PG case-folds to lowercase, MSSQL
+ * follows collation rules, and MySQL respects case-sensitivity per
+ * filesystem — none of which the SDK can predict.
+ *
+ * Schema-qualified names (`schema.name`) are split on the first `.`
+ * and each segment is quoted independently.
+ *
+ * @example
+ * quoteIdent('postgres', 'sp_Memory_Create');   // "sp_Memory_Create"
+ * quoteIdent('mssql', 'dbo.sp_Get_Users');      // [dbo].[sp_Get_Users]
+ * quoteIdent('mysql', 'sp_Memory_Create');      // `sp_Memory_Create`
+ */
+function quoteIdent(dialect: 'postgres' | 'mssql' | 'mysql', name: string): string {
+
+    const parts = name.includes('.') ? name.split('.', 2) : [name];
+
+    if (dialect === 'postgres') {
+
+        return parts.map((p) => '"' + p.replace(/"/g, '""') + '"').join('.');
+
+    }
+
+    if (dialect === 'mssql') {
+
+        return parts.map((p) => '[' + p.replace(/]/g, ']]') + ']').join('.');
+
+    }
+
+    return parts.map((p) => '`' + p.replace(/`/g, '``') + '`').join('.');
+
+}
+
+// ─────────────────────────────────────────────────────────────
 // Stored Procedure Builder
 // ─────────────────────────────────────────────────────────────
 
@@ -53,7 +93,7 @@ export function buildProcCall<T = unknown>(
 
     }
 
-    const rawName = sql.raw(name);
+    const rawName = sql.raw(quoteIdent(dialect, name));
 
     if (!params || (Array.isArray(params) && params.length === 0) || (!Array.isArray(params) && Object.keys(params).length === 0)) {
 
@@ -126,8 +166,8 @@ export function buildFuncCall<T = unknown>(
 
     }
 
-    const rawName = sql.raw(name);
-    const rawCol = sql.raw(column);
+    const rawName = sql.raw(quoteIdent(dialect, name));
+    const rawCol = sql.raw(quoteIdent(dialect, column));
 
     if (!params || (Array.isArray(params) && params.length === 0) || (!Array.isArray(params) && Object.keys(params).length === 0)) {
 
@@ -146,7 +186,7 @@ export function buildFuncCall<T = unknown>(
     if (dialect === 'postgres' && !Array.isArray(params)) {
 
         const parts = Object.entries(params).map(([key, val]) =>
-            sql`${sql.raw(key)} => ${val}`,
+            sql`${sql.raw(quoteIdent('postgres', key))} => ${val}`,
         );
 
         return sql<T>`SELECT ${rawName}(${sql.join(parts)}) AS ${rawCol}`;
@@ -230,7 +270,7 @@ export function buildTvfCall<T = unknown>(
 
     }
 
-    const rawName = sql.raw(name);
+    const rawName = sql.raw(quoteIdent(dialect, name));
 
     if (!params || (Array.isArray(params) && params.length === 0) || (!Array.isArray(params) && Object.keys(params).length === 0)) {
 
@@ -249,7 +289,7 @@ export function buildTvfCall<T = unknown>(
     if (dialect === 'postgres' && !Array.isArray(params)) {
 
         const parts = Object.entries(params).map(([key, val]) =>
-            sql`${sql.raw(key)} => ${val}`,
+            sql`${sql.raw(quoteIdent('postgres', key))} => ${val}`,
         );
 
         return sql<T>`SELECT * FROM ${rawName}(${sql.join(parts)})`;
@@ -318,7 +358,7 @@ function buildPostgresProc<T>(rawName: RawBuilder<unknown>, params: Record<strin
     }
 
     const parts = Object.entries(params).map(([key, val]) =>
-        sql`${sql.raw(key)} => ${val}`,
+        sql`${sql.raw(quoteIdent('postgres', key))} => ${val}`,
     );
 
     return sql<T>`CALL ${rawName}(${sql.join(parts)})`;

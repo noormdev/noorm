@@ -28,7 +28,8 @@ import {
 } from '../../core/vault/index.js';
 import { propagateVaultKey } from '../../core/vault/propagate.js';
 import { copyVaultSecrets, type VaultCopyOptions } from '../../core/vault/copy.js';
-import { formatIdentity } from '../../core/identity/index.js';
+import { formatIdentity, loadIdentityMetadata } from '../../core/identity/index.js';
+import type { CryptoIdentity } from '../../core/identity/types.js';
 
 import type { ContextState } from '../state.js';
 
@@ -39,10 +40,40 @@ import type { ContextState } from '../state.js';
 export class VaultNamespace {
 
     #state: ContextState;
+    #cryptoIdentity: CryptoIdentity | null = null;
 
     constructor(state: ContextState) {
 
         this.#state = state;
+
+    }
+
+    /**
+     * Load the cryptographic identity (with publicKey + identityHash) on
+     * demand. The Context's state.identity is the audit identity (name +
+     * email only); the crypto fields needed for vault encryption live in
+     * `~/.noorm/identity.json` (or a NOORM_IDENTITY_* env override).
+     *
+     * Cached after the first call so repeated vault ops don't re-read disk.
+     */
+    async #getCryptoIdentity(): Promise<CryptoIdentity> {
+
+        if (this.#cryptoIdentity) return this.#cryptoIdentity;
+
+        const loaded = await loadIdentityMetadata();
+
+        if (!loaded) {
+
+            throw new Error(
+                'Vault operations require a cryptographic identity at ~/.noorm/identity.json. '
+                + 'Run `noorm identity init` or set NOORM_IDENTITY_* env vars in CI.',
+            );
+
+        }
+
+        this.#cryptoIdentity = loaded;
+
+        return loaded;
 
     }
 
@@ -60,10 +91,12 @@ export class VaultNamespace {
      */
     async init(): Promise<[Buffer | null, Error | null]> {
 
+        const crypto = await this.#getCryptoIdentity();
+
         return initializeVault(
             this.#kysely as unknown as Kysely<NoormDatabase>,
-            this.#identityHash,
-            this.#publicKey,
+            crypto.identityHash,
+            crypto.publicKey,
             this.#dialect,
         );
 
@@ -79,9 +112,11 @@ export class VaultNamespace {
      */
     async status(): Promise<VaultStatus> {
 
+        const crypto = await this.#getCryptoIdentity();
+
         return getVaultStatus(
             this.#kysely as unknown as Kysely<NoormDatabase>,
-            this.#identityHash,
+            crypto.identityHash,
             this.#dialect,
         );
 
@@ -263,13 +298,15 @@ export class VaultNamespace {
         options?: VaultCopyOptions,
     ): Promise<[VaultCopyResult | null, Error | null]> {
 
+        const crypto = await this.#getCryptoIdentity();
+
         return copyVaultSecrets(
             this.#state.config,
             destConfig,
             keys,
-            this.#identityHash,
+            crypto.identityHash,
             privateKey,
-            this.#publicKey,
+            crypto.publicKey,
             options,
         );
 
@@ -291,22 +328,6 @@ export class VaultNamespace {
 
     }
 
-    get #identityHash(): string {
-
-        const identity = this.#state.identity as unknown as Record<string, unknown>;
-
-        return (identity['identityHash'] as string) ?? '';
-
-    }
-
-    get #publicKey(): string {
-
-        const identity = this.#state.identity as unknown as Record<string, unknown>;
-
-        return (identity['publicKey'] as string) ?? '';
-
-    }
-
     get #dialect(): Dialect {
 
         return this.#state.config.connection.dialect;
@@ -315,9 +336,11 @@ export class VaultNamespace {
 
     async #getVaultKey(privateKey: string): Promise<Buffer | null> {
 
+        const crypto = await this.#getCryptoIdentity();
+
         return getVaultKey(
             this.#kysely as unknown as Kysely<NoormDatabase>,
-            this.#identityHash,
+            crypto.identityHash,
             privateKey,
             this.#dialect,
         );

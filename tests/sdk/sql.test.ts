@@ -73,7 +73,7 @@ describe('sdk: buildProcCall', () => {
             const q = buildProcCall('mssql', 'get_users', { department_id: 1, active: true });
             const { sql, params } = compile(mssqlDb, q);
 
-            expect(sql).toBe('EXEC get_users @department_id = @1, @active = @2');
+            expect(sql).toBe('EXEC [get_users] @department_id = @1, @active = @2');
             expect(params).toEqual([1, true]);
 
         });
@@ -83,7 +83,7 @@ describe('sdk: buildProcCall', () => {
             const q = buildProcCall('mssql', 'get_users', [1, 'admin']);
             const { sql, params } = compile(mssqlDb, q);
 
-            expect(sql).toBe('EXEC get_users @1, @2');
+            expect(sql).toBe('EXEC [get_users] @1, @2');
             expect(params).toEqual([1, 'admin']);
 
         });
@@ -93,7 +93,7 @@ describe('sdk: buildProcCall', () => {
             const q = buildProcCall('mssql', 'refresh_cache');
             const { sql, params } = compile(mssqlDb, q);
 
-            expect(sql).toBe('EXEC refresh_cache');
+            expect(sql).toBe('EXEC [refresh_cache]');
             expect(params).toEqual([]);
 
         });
@@ -107,7 +107,7 @@ describe('sdk: buildProcCall', () => {
             const q = buildProcCall('postgres', 'get_users', { department_id: 1, active: true });
             const { sql, params } = compile(pgDb, q);
 
-            expect(sql).toBe('CALL get_users(department_id => $1, active => $2)');
+            expect(sql).toBe('CALL "get_users"("department_id" => $1, "active" => $2)');
             expect(params).toEqual([1, true]);
 
         });
@@ -117,7 +117,7 @@ describe('sdk: buildProcCall', () => {
             const q = buildProcCall('postgres', 'get_users', [1, 'admin']);
             const { sql, params } = compile(pgDb, q);
 
-            expect(sql).toBe('CALL get_users($1, $2)');
+            expect(sql).toBe('CALL "get_users"($1, $2)');
             expect(params).toEqual([1, 'admin']);
 
         });
@@ -127,7 +127,7 @@ describe('sdk: buildProcCall', () => {
             const q = buildProcCall('postgres', 'refresh_cache');
             const { sql, params } = compile(pgDb, q);
 
-            expect(sql).toBe('CALL refresh_cache()');
+            expect(sql).toBe('CALL "refresh_cache"()');
             expect(params).toEqual([]);
 
         });
@@ -141,7 +141,7 @@ describe('sdk: buildProcCall', () => {
             const q = buildProcCall('mysql', 'get_users', { department_id: 1, active: true });
             const { sql, params } = compile(mysqlDb, q);
 
-            expect(sql).toBe('CALL get_users(?, ?)');
+            expect(sql).toBe('CALL `get_users`(?, ?)');
             expect(params).toEqual([1, true]);
 
         });
@@ -151,7 +151,7 @@ describe('sdk: buildProcCall', () => {
             const q = buildProcCall('mysql', 'get_users', [1, 'admin']);
             const { sql, params } = compile(mysqlDb, q);
 
-            expect(sql).toBe('CALL get_users(?, ?)');
+            expect(sql).toBe('CALL `get_users`(?, ?)');
             expect(params).toEqual([1, 'admin']);
 
         });
@@ -161,7 +161,7 @@ describe('sdk: buildProcCall', () => {
             const q = buildProcCall('mysql', 'refresh_cache');
             const { sql, params } = compile(mysqlDb, q);
 
-            expect(sql).toBe('CALL refresh_cache()');
+            expect(sql).toBe('CALL `refresh_cache`()');
             expect(params).toEqual([]);
 
         });
@@ -197,7 +197,7 @@ describe('sdk: buildProcCall', () => {
             expect(sql).toBe(
                 'DECLARE @__tvp_Items CheckoutItems; ' +
                 'INSERT INTO @__tvp_Items ([Type], [ReferenceNo], [Qty]) VALUES (@1, @2, @3), (@4, @5, @6); ' +
-                'EXEC Checkout_trx @Party = @7, @PaymentMethod = @8, @Items = @__tvp_Items',
+                'EXEC [Checkout_trx] @Party = @7, @PaymentMethod = @8, @Items = @__tvp_Items',
             );
             expect(params).toEqual([1, 100, 5, 2, 200, 3, 1, 2]);
 
@@ -217,7 +217,7 @@ describe('sdk: buildProcCall', () => {
             expect(sql).toBe(
                 'DECLARE @__tvp_2 CheckoutItems; ' +
                 'INSERT INTO @__tvp_2 ([Type], [ReferenceNo], [Qty]) VALUES (@1, @2, @3); ' +
-                'EXEC Checkout_trx @4, @5, @__tvp_2',
+                'EXEC [Checkout_trx] @4, @5, @__tvp_2',
             );
             expect(params).toEqual([1, 100, 5, 1, 2]);
 
@@ -233,7 +233,7 @@ describe('sdk: buildProcCall', () => {
 
             expect(sql).toBe(
                 'DECLARE @__tvp_Items CheckoutItems; ' +
-                'EXEC Checkout_trx @Party = @1, @Items = @__tvp_Items',
+                'EXEC [Checkout_trx] @Party = @1, @Items = @__tvp_Items',
             );
             expect(params).toEqual([1]);
 
@@ -253,7 +253,7 @@ describe('sdk: buildProcCall', () => {
                 'INSERT INTO @__tvp_Orders ([id]) VALUES (@1); ' +
                 'DECLARE @__tvp_Items ItemType; ' +
                 'INSERT INTO @__tvp_Items ([sku]) VALUES (@2); ' +
-                'EXEC BulkProcess @BatchId = @3, @Orders = @__tvp_Orders, @Items = @__tvp_Items',
+                'EXEC [BulkProcess] @BatchId = @3, @Orders = @__tvp_Orders, @Items = @__tvp_Items',
             );
             expect(params).toEqual([1, 'A', 42]);
 
@@ -273,7 +273,7 @@ describe('sdk: buildProcCall', () => {
                 'INSERT INTO @__tvp_1 ([id]) VALUES (@1); ' +
                 'DECLARE @__tvp_2 ItemType; ' +
                 'INSERT INTO @__tvp_2 ([sku]) VALUES (@2), (@3); ' +
-                'EXEC BulkProcess @4, @__tvp_1, @__tvp_2',
+                'EXEC [BulkProcess] @4, @__tvp_1, @__tvp_2',
             );
             expect(params).toEqual([1, 'A', 'B', 42]);
 
@@ -323,7 +323,7 @@ describe('sdk: buildFuncCall', () => {
             const q = buildFuncCall('mssql', 'calc_total', 'total', { order_id: 42 });
             const { sql, params } = compile(mssqlDb, q);
 
-            expect(sql).toBe('DECLARE @__result sql_variant; EXEC @__result = calc_total @order_id = @1; SELECT @__result AS total');
+            expect(sql).toBe('DECLARE @__result sql_variant; EXEC @__result = [calc_total] @order_id = @1; SELECT @__result AS [total]');
             expect(params).toEqual([42]);
 
         });
@@ -333,7 +333,7 @@ describe('sdk: buildFuncCall', () => {
             const q = buildFuncCall('mssql', 'add_numbers', 'result', [1, 2]);
             const { sql, params } = compile(mssqlDb, q);
 
-            expect(sql).toBe('SELECT add_numbers(@1, @2) AS result');
+            expect(sql).toBe('SELECT [add_numbers](@1, @2) AS [result]');
             expect(params).toEqual([1, 2]);
 
         });
@@ -343,7 +343,7 @@ describe('sdk: buildFuncCall', () => {
             const q = buildFuncCall('mssql', 'get_version', 'v');
             const { sql, params } = compile(mssqlDb, q);
 
-            expect(sql).toBe('SELECT get_version() AS v');
+            expect(sql).toBe('SELECT [get_version]() AS [v]');
             expect(params).toEqual([]);
 
         });
@@ -357,7 +357,7 @@ describe('sdk: buildFuncCall', () => {
             const q = buildFuncCall('postgres', 'calc_total', 'total', { order_id: 42 });
             const { sql, params } = compile(pgDb, q);
 
-            expect(sql).toBe('SELECT calc_total(order_id => $1) AS total');
+            expect(sql).toBe('SELECT "calc_total"("order_id" => $1) AS "total"');
             expect(params).toEqual([42]);
 
         });
@@ -367,7 +367,7 @@ describe('sdk: buildFuncCall', () => {
             const q = buildFuncCall('postgres', 'add_numbers', 'result', [1, 2]);
             const { sql, params } = compile(pgDb, q);
 
-            expect(sql).toBe('SELECT add_numbers($1, $2) AS result');
+            expect(sql).toBe('SELECT "add_numbers"($1, $2) AS "result"');
             expect(params).toEqual([1, 2]);
 
         });
@@ -377,7 +377,7 @@ describe('sdk: buildFuncCall', () => {
             const q = buildFuncCall('postgres', 'get_version', 'v');
             const { sql, params } = compile(pgDb, q);
 
-            expect(sql).toBe('SELECT get_version() AS v');
+            expect(sql).toBe('SELECT "get_version"() AS "v"');
             expect(params).toEqual([]);
 
         });
@@ -399,7 +399,7 @@ describe('sdk: buildFuncCall', () => {
             const q = buildFuncCall('mysql', 'add_numbers', 'result', [1, 2]);
             const { sql, params } = compile(mysqlDb, q);
 
-            expect(sql).toBe('SELECT add_numbers(?, ?) AS result');
+            expect(sql).toBe('SELECT `add_numbers`(?, ?) AS `result`');
             expect(params).toEqual([1, 2]);
 
         });
@@ -409,7 +409,7 @@ describe('sdk: buildFuncCall', () => {
             const q = buildFuncCall('mysql', 'get_version', 'v');
             const { sql, params } = compile(mysqlDb, q);
 
-            expect(sql).toBe('SELECT get_version() AS v');
+            expect(sql).toBe('SELECT `get_version`() AS `v`');
             expect(params).toEqual([]);
 
         });
@@ -444,7 +444,7 @@ describe('sdk: buildFuncCall', () => {
             expect(sql).toBe(
                 'DECLARE @__tvp_Items ItemType; ' +
                 'INSERT INTO @__tvp_Items ([val]) VALUES (@1), (@2); ' +
-                'DECLARE @__result sql_variant; EXEC @__result = score_items @multiplier = @3, @Items = @__tvp_Items; SELECT @__result AS total',
+                'DECLARE @__result sql_variant; EXEC @__result = [score_items] @multiplier = @3, @Items = @__tvp_Items; SELECT @__result AS [total]',
             );
             expect(params).toEqual([10, 20, 2]);
 
@@ -461,7 +461,7 @@ describe('sdk: buildFuncCall', () => {
             expect(sql).toBe(
                 'DECLARE @__tvp_1 ItemType; ' +
                 'INSERT INTO @__tvp_1 ([val]) VALUES (@1); ' +
-                'DECLARE @__result sql_variant; EXEC @__result = score_items @2, @__tvp_1; SELECT @__result AS total',
+                'DECLARE @__result sql_variant; EXEC @__result = [score_items] @2, @__tvp_1; SELECT @__result AS [total]',
             );
             expect(params).toEqual([10, 2]);
 
@@ -480,7 +480,7 @@ describe('sdk: buildFuncCall', () => {
                 'INSERT INTO @__tvp_A ([x]) VALUES (@1); ' +
                 'DECLARE @__tvp_B TypeB; ' +
                 'INSERT INTO @__tvp_B ([y]) VALUES (@2); ' +
-                'DECLARE @__result sql_variant; EXEC @__result = combine_scores @A = @__tvp_A, @B = @__tvp_B; SELECT @__result AS total',
+                'DECLARE @__result sql_variant; EXEC @__result = [combine_scores] @A = @__tvp_A, @B = @__tvp_B; SELECT @__result AS [total]',
             );
             expect(params).toEqual([1, 2]);
 
@@ -499,7 +499,7 @@ describe('sdk: buildFuncCall', () => {
                 'INSERT INTO @__tvp_0 ([x]) VALUES (@1); ' +
                 'DECLARE @__tvp_1 TypeB; ' +
                 'INSERT INTO @__tvp_1 ([y]) VALUES (@2); ' +
-                'DECLARE @__result sql_variant; EXEC @__result = combine_scores @__tvp_0, @__tvp_1; SELECT @__result AS total',
+                'DECLARE @__result sql_variant; EXEC @__result = [combine_scores] @__tvp_0, @__tvp_1; SELECT @__result AS [total]',
             );
             expect(params).toEqual([1, 2]);
 
@@ -530,7 +530,7 @@ describe('sdk: buildTvfCall', () => {
             const q = buildTvfCall('mssql', 'validate_session', { session_key: 'abc' });
             const { sql, params } = compile(mssqlDb, q);
 
-            expect(sql).toBe('SELECT * FROM validate_session(@1)');
+            expect(sql).toBe('SELECT * FROM [validate_session](@1)');
             expect(params).toEqual(['abc']);
 
         });
@@ -540,7 +540,7 @@ describe('sdk: buildTvfCall', () => {
             const q = buildTvfCall('mssql', 'search_products', ['widget', 100]);
             const { sql, params } = compile(mssqlDb, q);
 
-            expect(sql).toBe('SELECT * FROM search_products(@1, @2)');
+            expect(sql).toBe('SELECT * FROM [search_products](@1, @2)');
             expect(params).toEqual(['widget', 100]);
 
         });
@@ -550,7 +550,7 @@ describe('sdk: buildTvfCall', () => {
             const q = buildTvfCall('mssql', 'get_active_items');
             const { sql, params } = compile(mssqlDb, q);
 
-            expect(sql).toBe('SELECT * FROM get_active_items()');
+            expect(sql).toBe('SELECT * FROM [get_active_items]()');
             expect(params).toEqual([]);
 
         });
@@ -564,7 +564,7 @@ describe('sdk: buildTvfCall', () => {
             const q = buildTvfCall('postgres', 'validate_session', { session_key: 'abc' });
             const { sql, params } = compile(pgDb, q);
 
-            expect(sql).toBe('SELECT * FROM validate_session(session_key => $1)');
+            expect(sql).toBe('SELECT * FROM "validate_session"("session_key" => $1)');
             expect(params).toEqual(['abc']);
 
         });
@@ -574,7 +574,7 @@ describe('sdk: buildTvfCall', () => {
             const q = buildTvfCall('postgres', 'search_products', ['widget', 100]);
             const { sql, params } = compile(pgDb, q);
 
-            expect(sql).toBe('SELECT * FROM search_products($1, $2)');
+            expect(sql).toBe('SELECT * FROM "search_products"($1, $2)');
             expect(params).toEqual(['widget', 100]);
 
         });
@@ -584,7 +584,7 @@ describe('sdk: buildTvfCall', () => {
             const q = buildTvfCall('postgres', 'get_active_items');
             const { sql, params } = compile(pgDb, q);
 
-            expect(sql).toBe('SELECT * FROM get_active_items()');
+            expect(sql).toBe('SELECT * FROM "get_active_items"()');
             expect(params).toEqual([]);
 
         });
@@ -630,7 +630,7 @@ describe('sdk: buildTvfCall', () => {
             expect(sql).toBe(
                 'DECLARE @__tvp_Items ItemType; ' +
                 'INSERT INTO @__tvp_Items ([val]) VALUES (@1); ' +
-                'SELECT * FROM expand_items(@2, @__tvp_Items)',
+                'SELECT * FROM [expand_items](@2, @__tvp_Items)',
             );
             expect(params).toEqual([10, 42]);
 
@@ -647,7 +647,7 @@ describe('sdk: buildTvfCall', () => {
             expect(sql).toBe(
                 'DECLARE @__tvp_1 ItemType; ' +
                 'INSERT INTO @__tvp_1 ([val]) VALUES (@1), (@2); ' +
-                'SELECT * FROM expand_items(@3, @__tvp_1)',
+                'SELECT * FROM [expand_items](@3, @__tvp_1)',
             );
             expect(params).toEqual([10, 20, 42]);
 
@@ -666,7 +666,7 @@ describe('sdk: buildTvfCall', () => {
                 'INSERT INTO @__tvp_A ([x]) VALUES (@1); ' +
                 'DECLARE @__tvp_B TypeB; ' +
                 'INSERT INTO @__tvp_B ([y]) VALUES (@2); ' +
-                'SELECT * FROM cross_join_tvps(@__tvp_A, @__tvp_B)',
+                'SELECT * FROM [cross_join_tvps](@__tvp_A, @__tvp_B)',
             );
             expect(params).toEqual([1, 2]);
 
@@ -686,7 +686,7 @@ describe('sdk: buildTvfCall', () => {
                 'INSERT INTO @__tvp_0 ([x]) VALUES (@1); ' +
                 'DECLARE @__tvp_2 TypeB; ' +
                 'INSERT INTO @__tvp_2 ([y]) VALUES (@2); ' +
-                'SELECT * FROM cross_join_tvps(@__tvp_0, @3, @__tvp_2)',
+                'SELECT * FROM [cross_join_tvps](@__tvp_0, @3, @__tvp_2)',
             );
             expect(params).toEqual([1, 2, 42]);
 
@@ -811,6 +811,224 @@ describe('sdk: TVP parameter count limit', () => {
         expect(() => buildTvfCall('mssql', 'big_tvf', {
             Items: tvp('BigType', rows),
         })).toThrow('exceeds MSSQL limit of 2100');
+
+    });
+
+});
+
+// ─────────────────────────────────────────────────────────────
+// Identifier Quoting (regression: PG case-folding bug)
+// ─────────────────────────────────────────────────────────────
+
+describe('sdk: identifier quoting', () => {
+
+    describe('postgres', () => {
+
+        it('should quote CamelCase proc name', () => {
+
+            const q = buildProcCall('postgres', 'sp_Memory_Create', { content: 'x' });
+            const { sql, params } = compile(pgDb, q);
+
+            expect(sql).toBe('CALL "sp_Memory_Create"("content" => $1)');
+            expect(params).toEqual(['x']);
+
+        });
+
+        it('should quote CamelCase func name and column alias', () => {
+
+            const q = buildFuncCall('postgres', 'fn_MemoryRank', 'rank', { memory_id: 1 });
+            const { sql, params } = compile(pgDb, q);
+
+            expect(sql).toBe('SELECT "fn_MemoryRank"("memory_id" => $1) AS "rank"');
+            expect(params).toEqual([1]);
+
+        });
+
+        it('should quote CamelCase TVF name', () => {
+
+            const q = buildTvfCall('postgres', 'tvf_GetUsers', { user_id: 'x' });
+            const { sql, params } = compile(pgDb, q);
+
+            expect(sql).toBe('SELECT * FROM "tvf_GetUsers"("user_id" => $1)');
+            expect(params).toEqual(['x']);
+
+        });
+
+        it('should quote schema-qualified names independently', () => {
+
+            const q = buildProcCall('postgres', 'public.sp_X', { foo: 1 });
+            const { sql, params } = compile(pgDb, q);
+
+            expect(sql).toBe('CALL "public"."sp_X"("foo" => $1)');
+            expect(params).toEqual([1]);
+
+        });
+
+        it('should escape embedded double quotes in name', () => {
+
+            const q = buildProcCall('postgres', 'sp_"Weird"', {});
+            const { sql } = compile(pgDb, q);
+
+            expect(sql).toBe('CALL "sp_""Weird"""()');
+
+        });
+
+        it('should quote CamelCase named-arg keys', () => {
+
+            const q = buildProcCall('postgres', 'sp_X', { ParamName: 1 });
+            const { sql, params } = compile(pgDb, q);
+
+            expect(sql).toBe('CALL "sp_X"("ParamName" => $1)');
+            expect(params).toEqual([1]);
+
+        });
+
+        it('should quote name in empty-params branch', () => {
+
+            const q = buildProcCall('postgres', 'sp_X');
+            const { sql } = compile(pgDb, q);
+
+            expect(sql).toBe('CALL "sp_X"()');
+
+        });
+
+    });
+
+    describe('mssql', () => {
+
+        it('should quote CamelCase proc name', () => {
+
+            const q = buildProcCall('mssql', 'sp_Get_Users', { id: 1 });
+            const { sql, params } = compile(mssqlDb, q);
+
+            expect(sql).toBe('EXEC [sp_Get_Users] @id = @1');
+            expect(params).toEqual([1]);
+
+        });
+
+        it('should quote schema-qualified names independently', () => {
+
+            const q = buildProcCall('mssql', 'dbo.sp_X');
+            const { sql } = compile(mssqlDb, q);
+
+            expect(sql).toBe('EXEC [dbo].[sp_X]');
+
+        });
+
+        it('should escape embedded close-bracket in name', () => {
+
+            const q = buildProcCall('mssql', 'sp_]X');
+            const { sql } = compile(mssqlDb, q);
+
+            expect(sql).toBe('EXEC [sp_]]X]');
+
+        });
+
+        it('should quote name in empty-params branch', () => {
+
+            const q = buildProcCall('mssql', 'sp_X');
+            const { sql } = compile(mssqlDb, q);
+
+            expect(sql).toBe('EXEC [sp_X]');
+
+        });
+
+    });
+
+    describe('mysql', () => {
+
+        it('should quote CamelCase proc name', () => {
+
+            const q = buildProcCall('mysql', 'sp_Get_Users', [1, 2]);
+            const { sql, params } = compile(mysqlDb, q);
+
+            expect(sql).toBe('CALL `sp_Get_Users`(?, ?)');
+            expect(params).toEqual([1, 2]);
+
+        });
+
+        it('should escape embedded backtick in name', () => {
+
+            const q = buildProcCall('mysql', 'sp_`X', [1]);
+            const { sql } = compile(mysqlDb, q);
+
+            expect(sql).toBe('CALL `sp_``X`(?)');
+
+        });
+
+        it('should quote name in empty-params branch', () => {
+
+            const q = buildProcCall('mysql', 'sp_X');
+            const { sql } = compile(mysqlDb, q);
+
+            expect(sql).toBe('CALL `sp_X`()');
+
+        });
+
+    });
+
+    describe('Kysely table-name quoting (smoke tests)', () => {
+
+        it('Kysely selectFrom quotes CamelCase table names (postgres)', () => {
+
+            // cast-justified: testing the SQL compiler, not the type system
+            const compiled = pgDb.selectFrom('vw_Memory' as never).selectAll().compile();
+
+            expect(compiled.sql).toContain('"vw_Memory"');
+
+        });
+
+        it('Kysely selectFrom quotes CamelCase table names (mssql)', () => {
+
+            // cast-justified: testing the SQL compiler, not the type system
+            const compiled = mssqlDb.selectFrom('vw_Memory' as never).selectAll().compile();
+
+            // Kysely's MssqlQueryCompiler uses ANSI double-quote identifiers
+            // (works under QUOTED_IDENTIFIER ON, the SQL Server default).
+            expect(compiled.sql).toContain('"vw_Memory"');
+
+        });
+
+        it('Kysely selectFrom quotes CamelCase table names (mysql)', () => {
+
+            // cast-justified: testing the SQL compiler, not the type system
+            const compiled = mysqlDb.selectFrom('vw_Memory' as never).selectAll().compile();
+
+            expect(compiled.sql).toContain('`vw_Memory`');
+
+        });
+
+    });
+
+});
+
+// ─────────────────────────────────────────────────────────────
+// PG proc fallback (CALL → SELECT * FROM when target is a FUNCTION)
+// ─────────────────────────────────────────────────────────────
+
+describe('PG proc fallback to SELECT * FROM (function path)', () => {
+
+    it('buildTvfCall produces the correct SELECT * FROM shape used by the proc fallback', () => {
+
+        const q = buildTvfCall('postgres', 'sp_Memory_Create', { p_content: 'x', p_domain: 'backend' });
+        const { sql, params } = compile(pgDb, q);
+
+        expect(sql).toBe('SELECT * FROM "sp_Memory_Create"("p_content" => $1, "p_domain" => $2)');
+        expect(params).toEqual(['x', 'backend']);
+
+    });
+
+    it('error detection: identifies "is not a procedure" error', () => {
+
+        // Local copy of the predicate to verify its shape (the real one is
+        // module-private inside context.ts; tests don't need to import it).
+        const isFnErr = (err: { code?: string; message?: string }) =>
+            err.code === '42809' && String(err.message ?? '').includes('is not a procedure');
+
+        expect(isFnErr({ code: '42809', message: 'sp_X is not a procedure' })).toBe(true);
+        expect(isFnErr({ code: '42883', message: 'function does not exist' })).toBe(false);
+        expect(isFnErr({ code: '42809', message: 'permission denied' })).toBe(false);
+        expect(isFnErr({})).toBe(false);
 
     });
 

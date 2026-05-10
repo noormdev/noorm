@@ -7,6 +7,7 @@
  */
 import type { Kysely, Transaction } from 'kysely';
 import { sql } from 'kysely';
+import { attempt } from '@logosdx/utils';
 
 import type { Dialect } from '../core/connection/index.js';
 import type { Config } from '../core/config/types.js';
@@ -231,10 +232,59 @@ export class Context<DB = unknown, Procs = object, Funcs = object, Tvfs = object
         }
 
         const params = args[0] as Record<string, unknown> | unknown[] | undefined;
+
+        if (this.dialect === 'postgres') {
+
+            return this.#executeProcPostgres<T>(name, params);
+
+        }
+
         const query = buildProcCall<T>(this.dialect, name, params);
         const result = await query.execute(this.kysely);
 
         return (result.rows ?? []) as T[];
+
+    }
+
+    /**
+     * Execute a stored procedure on PostgreSQL with FUNCTION fallback.
+     *
+     * PostgreSQL distinguishes between PROCEDURE and FUNCTION objects:
+     * `CALL` only works against true procedures and raises SQLSTATE 42809
+     * (`<name>(...) is not a procedure`) when the target is a function.
+     *
+     * The noorm playbook tells schema authors to use `CREATE PROCEDURE`
+     * for void-returning ops and `CREATE FUNCTION` for row-returning ops,
+     * and `ctx.proc()` is expected to handle both. So if `CALL` fails
+     * with the wrong-object-type error, we retry with
+     * `SELECT * FROM <name>(...)`, which works for both scalar and
+     * set-returning PG functions.
+     */
+    async #executeProcPostgres<T>(
+        name: string,
+        params: Record<string, unknown> | unknown[] | undefined,
+    ): Promise<T[]> {
+
+        const callQuery = buildProcCall<T>('postgres', name, params);
+        const [callResult, callErr] = await attempt(() => callQuery.execute(this.kysely));
+
+        if (!callErr) {
+
+            return (callResult.rows ?? []) as T[];
+
+        }
+
+        if (!isFunctionNotProcedureError(callErr)) {
+
+            throw callErr;
+
+        }
+
+        // Object is a FUNCTION, not a PROCEDURE — retry as SELECT * FROM <name>(...).
+        const tvfQuery = buildTvfCall<T>('postgres', name, params);
+        const tvfResult = await tvfQuery.execute(this.kysely);
+
+        return (tvfResult.rows ?? []) as T[];
 
     }
 
@@ -473,5 +523,42 @@ export class Context<DB = unknown, Procs = object, Funcs = object, Tvfs = object
         return ready;
 
     }
+
+}
+
+// ─────────────────────────────────────────────────────────────
+// Driver Error Helpers
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Detect a PG `CALL`-against-FUNCTION error so the SDK can fall back to
+ * `SELECT * FROM <name>(...)`. PostgreSQL surfaces this in two shapes:
+ *
+ *  - SQLSTATE 42809 (`wrong_object_type`) with message
+ *    `<name>(...) is not a procedure` — when an exact match exists but
+ *    is the wrong kind of object.
+ *  - SQLSTATE 42883 (`undefined_function`) with message
+ *    `procedure <name>(...) does not exist` and hint
+ *    `To call a function, use SELECT.` — when the procedure-search
+ *    fails outright but a function with the same signature exists.
+ *
+ * Both indicate "this is a FUNCTION, not a PROCEDURE" — retry as a
+ * function call.
+ */
+function isFunctionNotProcedureError(err: unknown): boolean {
+
+    if (!err || typeof err !== 'object') return false;
+
+    // cast-justified: pg driver error has no fixed type
+    const obj = err as { code?: string; message?: string; hint?: string };
+
+    if (obj.code !== '42809' && obj.code !== '42883') return false;
+
+    const msg = String(obj.message ?? '');
+    const hint = String(obj.hint ?? '');
+
+    return msg.includes('is not a procedure')
+        || msg.includes('procedure')
+        || hint.includes('use SELECT');
 
 }
