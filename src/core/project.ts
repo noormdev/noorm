@@ -19,6 +19,38 @@ import { homedir } from 'os';
 import { SETTINGS_DIR_PATH } from './settings/defaults.js';
 
 /**
+ * The cwd captured before any chdir performed by initProjectContext or the
+ * CLI's --cwd flag. Used by commands like `init --here` that need to operate
+ * on the user's original working directory rather than the discovered
+ * project root.
+ */
+let _originalCwd: string | null = null;
+
+/**
+ * Returns the cwd captured at CLI startup, before any chdir. Falls back to
+ * the current process cwd when called outside the CLI entry path.
+ */
+export function getOriginalCwd(): string {
+
+    return _originalCwd ?? realpathSync(process.cwd());
+
+}
+
+/**
+ * Records the original cwd. Called once at startup; subsequent calls are
+ * ignored so the first observation wins.
+ */
+export function setOriginalCwd(dir: string): void {
+
+    if (_originalCwd === null) {
+
+        _originalCwd = dir;
+
+    }
+
+}
+
+/**
  * Result of project root discovery.
  */
 export interface ProjectDiscoveryResult {
@@ -158,6 +190,8 @@ export function initProjectContext(options: { chdir?: boolean } = {}): ProjectDi
 
     // === Business logic block ===
     const result = findProjectRoot();
+
+    setOriginalCwd(result.originalCwd);
 
     // Change to project root if found and chdir is enabled
     if (result.hasProject && result.projectRoot && chdir) {

@@ -12,6 +12,7 @@ import { attempt } from '@logosdx/utils';
 import { defineCommand } from 'citty';
 
 import { hasKeyFiles, loadIdentityMetadata } from '../core/identity/index.js';
+import { getOriginalCwd } from '../core/project.js';
 import { performProjectInit, type ProjectInitIdentityInfo } from '../core/project-init.js';
 import { sharedArgs } from './_utils.js';
 
@@ -69,19 +70,16 @@ const initCommand = defineCommand({
     meta: { name: 'init', description: 'Bootstrap a new noorm project (interactive)' },
     args: {
         force: sharedArgs.force,
+        here: {
+            type: 'boolean',
+            description: 'Init in the original cwd, ignoring any parent .noorm project',
+        },
     },
     async run({ args }) {
 
-        // === TTY gate ===
-        if (!process.stdin.isTTY) {
-
-            process.stderr.write('Error: noorm init requires an interactive terminal.\n');
-            process.exit(1);
-
-        }
-
-        // === Already-initialized check ===
-        const projectRoot = process.cwd();
+        // The CLI entry walks up to find a parent .noorm and chdirs into it.
+        // --here opts out: nest a fresh project inside an existing one.
+        const projectRoot = args.here ? getOriginalCwd() : process.cwd();
         const noormDir = join(projectRoot, '.noorm');
 
         if (existsSync(noormDir) && !args.force) {
@@ -89,6 +87,13 @@ const initCommand = defineCommand({
             process.stderr.write(
                 `Error: noorm project already initialized at ${projectRoot}. Use --force to reinitialize.\n`,
             );
+            process.exit(1);
+
+        }
+
+        if (!process.stdin.isTTY) {
+
+            process.stderr.write('Error: noorm init requires an interactive terminal.\n');
             process.exit(1);
 
         }
@@ -146,6 +151,8 @@ const initCommand = defineCommand({
 (initCommand as typeof initCommand & { examples: string[] }).examples = [
     'noorm init',
     'noorm init --force',
+    'noorm init --here    # nest inside an existing parent project',
+    'noorm -c packages/db init    # init packages/db from the repo root',
 ];
 
 export default initCommand;

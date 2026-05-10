@@ -6,6 +6,9 @@
  * intercepts --help to append per-command examples after citty's
  * auto-generated usage.
  */
+import { existsSync, statSync } from 'node:fs';
+import { resolve } from 'node:path';
+
 import tab from '@bomb.sh/tab/citty';
 import { defineCommand, runMain, renderUsage, type CommandDef } from 'citty';
 
@@ -28,7 +31,7 @@ import update from './update.js';
 import vault from './vault/index.js';
 import version from './version.js';
 
-import { initProjectContext } from '../core/project.js';
+import { initProjectContext, setOriginalCwd } from '../core/project.js';
 import { loadIdentityFromEnv } from '../core/identity/env.js';
 import { setKeyOverride, setIdentityOverride } from '../core/identity/storage.js';
 
@@ -42,7 +45,7 @@ const main = defineCommand({
     meta: {
         name: 'noorm',
         version: '0.0.0', // replaced at bundle time via --define __CLI_VERSION__
-        description: 'Database schema & changeset manager',
+        description: 'Database schema & changeset manager. Global: -c, --cwd <path> runs the subcommand in <path> (must precede the subcommand, like git -C).',
     },
     subCommands: {
         change,
@@ -98,6 +101,68 @@ async function resolveCommand(rootDef: CommandDef, argv: string[]): Promise<Comm
 }
 
 /**
+ * Strip `-c <path>` / `--cwd <path>` / `--cwd=<path>` that appear before
+ * the first subcommand. Mirrors `git -C <path>` semantics: the flag is only
+ * recognized as global when it precedes the subcommand, so per-command
+ * aliases (like `--config -c`) keep working after the subcommand token.
+ *
+ * Returns the resolved cwd (or null) plus argv with global flags removed.
+ */
+function extractGlobalCwd(argv: string[]): { cwd: string | null; rest: string[] } {
+
+    const rest: string[] = [];
+    let cwd: string | null = null;
+    let seenSubcommand = false;
+    let i = 0;
+
+    while (i < argv.length) {
+
+        const arg = argv[i]!;
+
+        if (seenSubcommand) {
+
+            rest.push(arg);
+            i++;
+            continue;
+
+        }
+
+        if (!arg.startsWith('-')) {
+
+            seenSubcommand = true;
+            rest.push(arg);
+            i++;
+            continue;
+
+        }
+
+        if (arg === '-c' || arg === '--cwd') {
+
+            const next = argv[i + 1];
+            cwd = next ?? null;
+            i += 2;
+            continue;
+
+        }
+
+        if (arg.startsWith('--cwd=')) {
+
+            cwd = arg.slice('--cwd='.length);
+            i++;
+            continue;
+
+        }
+
+        rest.push(arg);
+        i++;
+
+    }
+
+    return { cwd, rest };
+
+}
+
+/**
  * Print citty's usage followed by a custom EXAMPLES block from
  * the command's top-level `examples` property (if present).
  */
@@ -129,7 +194,30 @@ async function printHelpWithExamples(cmd: CommandWithExamples, rootDef: CommandD
  */
 async function entry(): Promise<void> {
 
-    initProjectContext();
+    const rawArgv = process.argv.slice(2);
+    const { cwd: explicitCwd, rest: cleanArgv } = extractGlobalCwd(rawArgv);
+
+    if (explicitCwd !== null) {
+
+        const resolvedCwd = resolve(process.cwd(), explicitCwd);
+
+        if (!existsSync(resolvedCwd) || !statSync(resolvedCwd).isDirectory()) {
+
+            process.stderr.write(`Error: --cwd path is not a directory: ${resolvedCwd}\n`);
+            process.exit(1);
+
+        }
+
+        setOriginalCwd(process.cwd());
+        process.chdir(resolvedCwd);
+        process.argv = [process.argv[0]!, process.argv[1]!, ...cleanArgv];
+
+    }
+    else {
+
+        initProjectContext();
+
+    }
 
     // Install env-based identity overrides at process startup so that
     // every downstream loadPrivateKey() / loadIdentityMetadata() call

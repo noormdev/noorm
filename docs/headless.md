@@ -25,6 +25,23 @@ noorm change ff --help       # Args, options, and examples for `change ff`
 For shell completion, run `noorm complete` and follow the printed instructions for your shell.
 
 
+## Global Flags
+
+These flags must appear **before** the subcommand (like `git -C`). After the subcommand they revert to their per-command meaning.
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--cwd <path>` | `-c <path>` | Run the subcommand inside `<path>`. Skips the walk-up that normally finds the nearest `.noorm/`. |
+
+```bash
+# Run the subcommand at packages/db, not the repo root
+noorm -c packages/db run build
+
+# Initialize a nested project from elsewhere
+noorm -c packages/db init
+```
+
+
 ## Common Flags
 
 These options are reused across most commands. Run `<command> --help` to see exactly which apply.
@@ -37,6 +54,8 @@ These options are reused across most commands. Run `<command> --help` to see exa
 | `--yes` | `-y` | Skip confirmation prompts |
 | `--dry-run` | — | Preview without executing |
 | `--help` | `-h` | Show command help (citty native) |
+
+> **Note:** `-c` is overloaded by position. `noorm -c <path> run` is the global cwd flag; `noorm run -c <name>` is the per-command config alias. The first non-flag token (the subcommand) is the boundary.
 
 
 ## Configuration
