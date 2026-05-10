@@ -21,6 +21,31 @@ bun run typecheck               # Type check
 ```
 
 
+## Running Tests
+
+A single `bun test` (whole suite, one process) does **not** reflect CI. CI deliberately splits the suite into four independent `bun test --serial` invocations, each in a fresh process — see `.github/workflows/ci.yml:122-142`:
+
+1. `tests/utils` + `tests/core` (excluding `tests/core/transfer`) + `tests/sdk`
+2. `tests/core/transfer` (isolated — comment cites a runner-image regression)
+3. `tests/cli`
+4. `tests/integration`
+
+The split exists because cross-file pollution (module-scope `process.env` snapshots, shared DB state, singletons left dirty between files) produces hundreds of false failures in the unified run while CI is green. When triaging a "broken" test, **run the file in isolation first**; if it passes alone, the failure is contamination, not a regression.
+
+Known contamination source: `src/core/config/index.ts:34` calls `makeNestedConfig(process.env, …)` at module scope, snapshotting env at first import. The same bug was fixed for `SettingsManager` in commit `ec9ccc2` (`fix(settings): move makeNestedConfig to call-time`); the config module hasn't been moved yet.
+
+To reproduce CI locally, run the four invocations separately:
+
+```bash
+bun test --serial $(find tests/utils tests/core tests/sdk -name '*.test.ts' | grep -v tests/core/transfer | sort | tr '\n' ' ')
+bun test --serial tests/core/transfer
+bun test --serial tests/cli
+bun test --serial tests/integration
+```
+
+The integration step needs postgres/mysql/mssql reachable (CI uses service containers on ports `15432` / `13306` / `11433`).
+
+
 ## Changesets
 
 This is a pnpm monorepo with two publishable packages. Changeset frontmatter must reference the correct workspace package name:
