@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8"/>
+  <title>bronze scale</title>
+  <link rel="stylesheet" href="_card.css"/>
+  <style>
+    body { background: var(--paper-200); }
+    .row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; height: 110px; }
+    .sw { border-radius: 8px; padding: 10px; display: flex; flex-direction: column; justify-content: space-between; }
+    .sw .name { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.04em; }
+    .sw .hex { font-family: var(--font-mono); font-size: 10px; opacity: 0.85; }
+    .light { color: var(--ink-700); }
+    .dark { color: #FBF8F1; }
+    .usage { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); display: flex; gap: 14px; align-items: center; font-family: var(--font-mono); font-size: 11px; color: var(--fg-3); }
+    .usage strong { color: var(--bronze-500); font-weight: 500; }
+  </style>
+</head>
+<body class="card">
+  <div class="eyebrow">Bronze — editorial accent · pull-quotes, eyebrows, link underlines</div>
+  <div class="row">
+    <div class="sw light" style="background:#ECD8BE;"><span class="name">100</span><span class="hex">#ECD8BE</span></div>
+    <div class="sw light" style="background:#D2A47A;"><span class="name">200</span><span class="hex">#D2A47A</span></div>
+    <div class="sw dark" style="background:#B47A45;"><span class="name">300</span><span class="hex">#B47A45</span></div>
+    <div class="sw dark" style="background:#916336;"><span class="name">500 · seed</span><span class="hex">#916336</span></div>
+    <div class="sw dark" style="background:#6E4A22;"><span class="name">700</span><span class="hex">#6E4A22</span></div>
+    <div class="sw dark" style="background:#4F3617;"><span class="name">900</span><span class="hex">#4F3617</span></div>
+  </div>
+  <div class="usage"><span>Use:</span><strong>--accent-2</strong><span>·</span><strong>--link</strong><span>·</span><strong>--accent-2-soft</strong><span>· not for primary CTAs</span></div>
+</body>
+</html>

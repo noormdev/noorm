@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8"/>
+  <title>neutral scale</title>
+  <link rel="stylesheet" href="_card.css"/>
+  <style>
+    body { background: var(--paper-200); }
+    .row { display: grid; grid-template-columns: repeat(11, 1fr); gap: 4px; height: 88px; }
+    .sw { border-radius: 4px; position: relative; }
+    .sw .lbl { position: absolute; left: 6px; bottom: 6px; font-family: var(--font-mono); font-size: 10px; }
+    .light .lbl { color: var(--ink-700); }
+    .dark .lbl { color: rgba(255,255,255,0.92); }
+    .legend { display: flex; justify-content: space-between; margin-top: 14px; font-family: var(--font-mono); font-size: 11px; color: var(--fg-3); }
+    .grouplabel { display: flex; gap: 14px; margin-bottom: 8px; }
+    .grouplabel span { font-family: var(--font-mono); font-size: 11px; color: var(--fg-3); letter-spacing: 0.04em; text-transform: uppercase; }
+  </style>
+</head>
+<body class="card">
+  <div class="eyebrow">Neutrals — paper · ink scale</div>
+  <div class="grouplabel"><span style="flex:6">paper-50 → paper-500 · warm light surfaces</span><span style="flex:5">ink-100 → ink-950 · text + dark surfaces</span></div>
+  <div class="row">
+    <div class="sw light" style="background:#FFFFFF;border:1px solid var(--border);"><span class="lbl">50</span></div>
+    <div class="sw light" style="background:#FBF8F1;"><span class="lbl">100</span></div>
+    <div class="sw light" style="background:#F7F4EE;"><span class="lbl">200</span></div>
+    <div class="sw light" style="background:#F0EBE0;"><span class="lbl">300</span></div>
+    <div class="sw light" style="background:#E5DFD3;"><span class="lbl">400</span></div>
+    <div class="sw light" style="background:#D6CFC0;"><span class="lbl">500</span></div>
+    <div class="sw light" style="background:#C9CDD3;"><span class="lbl">200</span></div>
+    <div class="sw dark" style="background:#9099A4;"><span class="lbl">300</span></div>
+    <div class="sw dark" style="background:#6B7280;"><span class="lbl">400</span></div>
+    <div class="sw dark" style="background:#454A59;"><span class="lbl">500</span></div>
+    <div class="sw dark" style="background:#212931;"><span class="lbl">800</span></div>
+  </div>
+  <div class="legend"><span>#FFFFFF</span><span>#212931</span></div>
+  <div class="row" style="margin-top:18px;">
+    <div class="sw dark" style="background:#0F1216;"><span class="lbl">950</span></div>
+    <div class="sw dark" style="background:#161A20;"><span class="lbl">900</span></div>
+    <div class="sw dark" style="background:#212931;"><span class="lbl">800</span></div>
+    <div class="sw dark" style="background:#2B3340;"><span class="lbl">700</span></div>
+    <div class="sw dark" style="background:#353D4B;"><span class="lbl">600</span></div>
+    <div class="sw dark" style="background:#454A59;"><span class="lbl">500</span></div>
+    <div class="sw dark" style="background:#6B7280;"><span class="lbl">400</span></div>
+    <div class="sw dark" style="background:#9099A4;"><span class="lbl">300</span></div>
+    <div class="sw light" style="background:#C9CDD3;"><span class="lbl">200</span></div>
+    <div class="sw light" style="background:#E5E2DA;"><span class="lbl">100</span></div>
+    <div class="sw light" style="background:#F2EDE2;"><span class="lbl">50</span></div>
+  </div>
+  <div class="legend"><span>ink-950 darkest</span><span>ink-50 lightest</span></div>
+</body>
+</html>

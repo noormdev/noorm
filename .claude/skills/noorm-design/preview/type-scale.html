@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8"/>
+  <title>type scale</title>
+  <link rel="stylesheet" href="_card.css"/>
+  <style>
+    body { background: var(--paper-200); padding: 26px 24px; }
+    .row { display: grid; grid-template-columns: 64px 1fr 80px; align-items: baseline; gap: 16px; padding: 6px 0; border-bottom: 1px dashed var(--border); }
+    .row:last-child { border-bottom: 0; }
+    .lbl { font-family: var(--font-mono); font-size: 11px; color: var(--fg-3); }
+    .specimen { font-family: var(--font-sans); color: var(--ink-800); letter-spacing: -0.02em; line-height: 1.05; }
+    .meta { font-family: var(--font-mono); font-size: 10px; color: var(--fg-3); text-align: right; }
+  </style>
+</head>
+<body class="card">
+  <div class="eyebrow" style="margin-bottom:14px">Type scale · Geist · sentence case</div>
+  <div class="row"><span class="lbl">80 / dsp</span><span class="specimen" style="font-size:64px;font-weight:600">Skip the ORM.</span><span class="meta">600 · −0.02em</span></div>
+  <div class="row"><span class="lbl">48 / h1</span><span class="specimen" style="font-size:42px;font-weight:600">Current schema, always</span><span class="meta">600 · −0.02em</span></div>
+  <div class="row"><span class="lbl">38 / h2</span><span class="specimen" style="font-size:32px;font-weight:600">Why noorm?</span><span class="meta">600 · −0.02em</span></div>
+  <div class="row"><span class="lbl">30 / h3</span><span class="specimen" style="font-size:24px;font-weight:600">Building your SDK</span><span class="meta">600</span></div>
+  <div class="row"><span class="lbl">24 / h4</span><span class="specimen" style="font-size:20px;font-weight:600;letter-spacing:-0.01em">Inherited keys</span><span class="meta">600</span></div>
+  <div class="row"><span class="lbl">18 / lead</span><span class="specimen" style="font-size:17px;font-weight:400;color:var(--fg-2);letter-spacing:0">A CLI for SQL-first database development.</span><span class="meta">400 · 1.5</span></div>
+  <div class="row"><span class="lbl">16 / body</span><span class="specimen" style="font-size:15px;font-weight:400;color:var(--fg-2);letter-spacing:0">SQL files define the schema as it exists today. Existing databases get there through changes.</span><span class="meta">400 · 1.5</span></div>
+  <div class="row"><span class="lbl">14 / sm</span><span class="specimen" style="font-size:13px;font-weight:400;color:var(--fg-2);letter-spacing:0">Sidebar item · footnote · small print</span><span class="meta">400</span></div>
+</body>
+</html>

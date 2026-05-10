@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8"/>
+  <title>callouts</title>
+  <link rel="stylesheet" href="_card.css"/>
+  <style>
+    body { background: var(--paper-200); padding: 24px; }
+    .stack { display: flex; flex-direction: column; gap: 10px; }
+    .callout { display: grid; grid-template-columns: 22px 1fr; gap: 10px; padding: 12px 14px; border-radius: 8px; border: 1px solid var(--border); border-left-width: 3px; background: #FFFFFF; }
+    .callout .icon { width: 18px; height: 18px; margin-top: 1px; }
+    .callout .icon svg { width: 18px; height: 18px; fill: none; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+    .callout .body { font-family: var(--font-sans); font-size: 14px; color: var(--ink-800); line-height: 1.55; }
+    .callout .body code { font-family: var(--font-mono); font-size: 12px; padding: 1px 5px; background: var(--paper-300); border: 1px solid var(--border); border-radius: 4px; }
+    .callout .title { font-weight: 600; margin-right: 6px; }
+    .note { border-left-color: #4B7398; }
+    .note .icon svg { stroke: #4B7398; }
+    .note .title { color: #2F4D6B; }
+    .tip { border-left-color: #6E8F4E; }
+    .tip .icon svg { stroke: #6E8F4E; }
+    .tip .title { color: #4F6B33; }
+    .warn { border-left-color: #C2873C; background: #FBF6EC; }
+    .warn .icon svg { stroke: #C2873C; }
+    .warn .title { color: #835619; }
+    .danger { border-left-color: #E05742; background: #FCEEEA; }
+    .danger .icon svg { stroke: #E05742; }
+    .danger .title { color: #962E22; }
+  </style>
+</head>
+<body class="card">
+  <div class="eyebrow" style="margin-bottom:14px">Callouts — note · tip · warn · danger · 3 px left border, hairline elsewhere</div>
+  <div class="stack">
+    <div class="callout note"><div class="icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg></div><div class="body"><span class="title">Note</span>Wizard-only operations launch the TUI automatically. Set them up once via <code>noorm ui</code>.</div></div>
+    <div class="callout tip"><div class="icon"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></div><div class="body"><span class="title">Tip</span>SQL files = current schema. Changes = how to get existing databases there.</div></div>
+    <div class="callout warn"><div class="icon"><svg viewBox="0 0 24 24"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div><div class="body"><span class="title">Corporate network?</span>If <code>noorm.dev</code> is blocked, use the GitHub mirror at <code>raw.githubusercontent.com/noormdev/noorm</code>.</div></div>
+    <div class="callout danger"><div class="icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div><div class="body"><span class="title">Destructive</span><code>noorm run build --reset</code> will drop and rebuild the schema. Never run this against prod.</div></div>
+  </div>
+</body>
+</html>

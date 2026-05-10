@@ -1,0 +1,403 @@
+/* =============================================================
+   noorm — Design System Tokens
+   colors_and_type.css
+
+   The seed palette (from the user's color generator):
+     #212931  ink      — deep blue-charcoal
+     #454A59  slate    — cool slate-grey
+     #916336  bronze   — warm earthy accent
+     #E05742  ember    — primary signal / accent
+
+   Vibe: developer tooling with old-world engineering warmth.
+   Think: terracotta pots + iron + a terminal cursor.
+   ============================================================= */
+
+@import url("https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap");
+
+/* -------------------------------------------------------------
+   1. Raw palette — primitive tokens. Don't reference these in
+   product code. Use the semantic vars below.
+   ------------------------------------------------------------- */
+:root {
+  /* Seed (locked, do not change) */
+  --noorm-ink:        #212931;
+  --noorm-slate:      #454A59;
+  --noorm-bronze:     #916336;
+  --noorm-ember:      #E05742;
+
+  /* Ink scale — derived neutrals */
+  --ink-950: #0F1216;
+  --ink-900: #161A20;
+  --ink-800: #212931;   /* seed */
+  --ink-700: #2B3340;
+  --ink-600: #353D4B;
+  --ink-500: #454A59;   /* seed */
+  --ink-400: #6B7280;
+  --ink-300: #9099A4;
+  --ink-200: #C9CDD3;
+  --ink-100: #E5E2DA;
+  --ink-50:  #F2EDE2;
+
+  /* Paper scale — warm off-whites for light mode */
+  --paper-50:  #FFFFFF;
+  --paper-100: #FBF8F1;
+  --paper-200: #F7F4EE;
+  --paper-300: #F0EBE0;
+  --paper-400: #E5DFD3;
+  --paper-500: #D6CFC0;
+
+  /* Bronze scale */
+  --bronze-900: #4F3617;
+  --bronze-700: #6E4A22;
+  --bronze-500: #916336;   /* seed */
+  --bronze-300: #B47A45;
+  --bronze-200: #D2A47A;
+  --bronze-100: #ECD8BE;
+
+  /* Ember scale (the loudest brand color — CTAs, signal, errors) */
+  --ember-900: #5C1E14;
+  --ember-700: #962E22;
+  --ember-500: #E05742;   /* seed */
+  --ember-400: #ED7561;
+  --ember-300: #F49A8A;
+  --ember-100: #F9D6CE;
+
+  /* Functional accents — derived from the seed family */
+  --signal-ok:    #6E8F4E;   /* mossy green, sits naturally with bronze */
+  --signal-warn:  #C2873C;   /* lifted bronze */
+  --signal-info:  #4B7398;   /* dusty blue, pulls from slate */
+  --signal-error: #E05742;   /* ember */
+}
+
+/* -------------------------------------------------------------
+   2. Semantic tokens — LIGHT MODE (default)
+   Reference these in product code, not the primitives above.
+   ------------------------------------------------------------- */
+:root,
+[data-theme="light"] {
+  /* Surfaces, layered low to high */
+  --bg:           var(--paper-200);
+  --bg-raised:   var(--paper-100);
+  --bg-sunken:   var(--paper-300);
+  --surface:     var(--paper-50);
+  --surface-2:   var(--paper-100);
+  --code-bg:     var(--paper-300);
+
+  /* Foreground text */
+  --fg-1:        var(--ink-800);   /* primary text, headings */
+  --fg-2:        var(--ink-500);   /* secondary text, body */
+  --fg-3:        var(--ink-400);   /* muted, captions, hints */
+  --fg-on-accent:#FFFFFF;
+  --fg-inverse:  var(--paper-100);
+
+  /* Borders & dividers */
+  --border:        var(--paper-400);
+  --border-strong: var(--ink-200);
+  --border-focus:  var(--ember-500);
+
+  /* Brand */
+  --accent:        var(--ember-500);
+  --accent-hover:  var(--ember-700);
+  --accent-press:  var(--ember-900);
+  --accent-soft:   var(--ember-100);
+  --accent-2:      var(--bronze-500);
+  --accent-2-soft: var(--bronze-100);
+
+  /* Selection / link */
+  --link:        var(--bronze-700);
+  --link-hover:  var(--ember-700);
+  --selection:   color-mix(in oklab, var(--ember-500) 25%, transparent);
+
+  /* Shadow tokens — light mode is gentle, warm-tinged */
+  --shadow-xs: 0 1px 0 rgba(33, 41, 49, 0.04);
+  --shadow-sm: 0 1px 2px rgba(33, 41, 49, 0.06), 0 1px 1px rgba(33, 41, 49, 0.04);
+  --shadow-md: 0 4px 10px -2px rgba(33, 41, 49, 0.08), 0 2px 4px rgba(33, 41, 49, 0.05);
+  --shadow-lg: 0 18px 40px -12px rgba(33, 41, 49, 0.18), 0 6px 12px rgba(33, 41, 49, 0.06);
+  --shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+/* -------------------------------------------------------------
+   3. Semantic tokens — DARK MODE
+   ------------------------------------------------------------- */
+[data-theme="dark"] {
+  --bg:           var(--ink-900);
+  --bg-raised:   var(--ink-800);
+  --bg-sunken:   var(--ink-950);
+  --surface:     var(--ink-800);
+  --surface-2:   var(--ink-700);
+  --code-bg:     var(--ink-950);
+
+  --fg-1:        #F2ECE0;   /* warm cream, intentional warmth */
+  --fg-2:        #B8B3A8;
+  --fg-3:        #7E8590;
+  --fg-on-accent:#1A1206;
+  --fg-inverse:  var(--ink-900);
+
+  --border:        #2F3540;
+  --border-strong: #3D4452;
+  --border-focus:  var(--ember-400);
+
+  --accent:        var(--ember-500);
+  --accent-hover:  var(--ember-400);
+  --accent-press:  var(--ember-300);
+  --accent-soft:   color-mix(in oklab, var(--ember-500) 22%, var(--ink-900));
+  --accent-2:      var(--bronze-300);
+  --accent-2-soft: color-mix(in oklab, var(--bronze-500) 25%, var(--ink-900));
+
+  --link:        var(--bronze-200);
+  --link-hover:  var(--ember-400);
+  --selection:   color-mix(in oklab, var(--ember-500) 35%, transparent);
+
+  /* Dark shadows lean on rim-light, not drop-shadow */
+  --shadow-xs: 0 0 0 1px rgba(255, 255, 255, 0.02);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  --shadow-md: 0 6px 20px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  --shadow-lg: 0 20px 60px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  --shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+/* Auto dark mode if user prefers and no override is set */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg:           var(--ink-900);
+    --bg-raised:   var(--ink-800);
+    --bg-sunken:   var(--ink-950);
+    --surface:     var(--ink-800);
+    --surface-2:   var(--ink-700);
+    --code-bg:     var(--ink-950);
+
+    --fg-1:        #F2ECE0;
+    --fg-2:        #B8B3A8;
+    --fg-3:        #7E8590;
+    --fg-on-accent:#1A1206;
+    --fg-inverse:  var(--ink-900);
+
+    --border:        #2F3540;
+    --border-strong: #3D4452;
+    --border-focus:  var(--ember-400);
+
+    --accent:        var(--ember-500);
+    --accent-hover:  var(--ember-400);
+    --accent-press:  var(--ember-300);
+    --accent-soft:   color-mix(in oklab, var(--ember-500) 22%, var(--ink-900));
+    --accent-2:      var(--bronze-300);
+    --accent-2-soft: color-mix(in oklab, var(--bronze-500) 25%, var(--ink-900));
+
+    --link:        var(--bronze-200);
+    --link-hover:  var(--ember-400);
+    --selection:   color-mix(in oklab, var(--ember-500) 35%, transparent);
+
+    --shadow-xs: 0 0 0 1px rgba(255, 255, 255, 0.02);
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.03);
+    --shadow-md: 0 6px 20px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    --shadow-lg: 0 20px 60px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  }
+}
+
+/* -------------------------------------------------------------
+   4. Typography — type scale + semantic variables
+   Families:
+     --font-sans   Geist            — display + body (technical, clean)
+     --font-mono   Geist Mono       — code, CLI, labels, captions
+
+   We lean on Mono more than most brands. Mono = brand voice.
+   Use it for eyebrows, kbd, file paths, version tags, metadata.
+   ------------------------------------------------------------- */
+:root {
+  --font-sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, "Cascadia Mono", "Fira Code", Menlo, Consolas, monospace;
+
+  /* Type scale — modular, 1.200 minor third on desktop */
+  --fs-12: 0.75rem;     /* 12 — eyebrow, caption, kbd */
+  --fs-13: 0.8125rem;   /* 13 — small label */
+  --fs-14: 0.875rem;    /* 14 — small body, sidebar */
+  --fs-16: 1rem;        /* 16 — body */
+  --fs-18: 1.125rem;    /* 18 — lead body */
+  --fs-20: 1.25rem;     /* 20 — h5 */
+  --fs-24: 1.5rem;      /* 24 — h4 */
+  --fs-30: 1.875rem;    /* 30 — h3 */
+  --fs-38: 2.375rem;    /* 38 — h2 */
+  --fs-48: 3rem;        /* 48 — h1 */
+  --fs-64: 4rem;        /* 64 — display */
+  --fs-80: 5rem;        /* 80 — hero display */
+
+  /* Line heights */
+  --lh-tight: 1.05;
+  --lh-snug:  1.2;
+  --lh-base:  1.5;
+  --lh-loose: 1.7;
+
+  /* Tracking */
+  --tracking-tight:  -0.02em;
+  --tracking-normal:  0;
+  --tracking-wide:    0.02em;
+  --tracking-mono:    0.01em;
+  --tracking-eyebrow: 0.12em;   /* uppercase caps */
+}
+
+/* Semantic typography tokens — apply to the matching tag or class */
+.t-display,
+:where(.t-display) {
+  font-family: var(--font-sans);
+  font-size: clamp(3rem, 6vw + 1rem, var(--fs-80));
+  font-weight: 600;
+  line-height: var(--lh-tight);
+  letter-spacing: var(--tracking-tight);
+  color: var(--fg-1);
+}
+h1, .t-h1 {
+  font-family: var(--font-sans);
+  font-size: clamp(2.25rem, 3vw + 1rem, var(--fs-48));
+  font-weight: 600;
+  line-height: var(--lh-snug);
+  letter-spacing: var(--tracking-tight);
+  color: var(--fg-1);
+}
+h2, .t-h2 {
+  font-family: var(--font-sans);
+  font-size: var(--fs-38);
+  font-weight: 600;
+  line-height: var(--lh-snug);
+  letter-spacing: var(--tracking-tight);
+  color: var(--fg-1);
+}
+h3, .t-h3 {
+  font-family: var(--font-sans);
+  font-size: var(--fs-30);
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: var(--tracking-tight);
+  color: var(--fg-1);
+}
+h4, .t-h4 {
+  font-family: var(--font-sans);
+  font-size: var(--fs-24);
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--fg-1);
+}
+h5, .t-h5 {
+  font-family: var(--font-sans);
+  font-size: var(--fs-20);
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--fg-1);
+}
+.t-eyebrow {
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+  font-weight: 500;
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+p, .t-body {
+  font-family: var(--font-sans);
+  font-size: var(--fs-16);
+  font-weight: 400;
+  line-height: var(--lh-base);
+  color: var(--fg-2);
+  text-wrap: pretty;
+}
+.t-lead {
+  font-family: var(--font-sans);
+  font-size: var(--fs-18);
+  font-weight: 400;
+  line-height: var(--lh-base);
+  color: var(--fg-2);
+  text-wrap: pretty;
+}
+.t-small {
+  font-family: var(--font-sans);
+  font-size: var(--fs-14);
+  line-height: var(--lh-base);
+  color: var(--fg-2);
+}
+.t-caption {
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+  letter-spacing: var(--tracking-mono);
+  color: var(--fg-3);
+}
+code, kbd, samp, pre, .t-mono {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  font-feature-settings: "ss01", "ss02", "zero", "calt";
+}
+code {
+  background: var(--code-bg);
+  color: var(--fg-1);
+  padding: 0.12em 0.36em;
+  border-radius: var(--radius-xs, 4px);
+  border: 1px solid var(--border);
+}
+kbd {
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+  background: var(--surface);
+  color: var(--fg-1);
+  padding: 0.15em 0.5em;
+  border-radius: var(--radius-xs, 4px);
+  border: 1px solid var(--border);
+  box-shadow: inset 0 -1px 0 var(--border);
+}
+
+/* -------------------------------------------------------------
+   5. Spacing, radii, motion — the rest of the foundation
+   ------------------------------------------------------------- */
+:root {
+  /* Spacing — 4px base, half-step at 2px for code/dense UI */
+  --space-0:  0;
+  --space-px: 1px;
+  --space-1:  0.25rem;   /*  4px */
+  --space-2:  0.5rem;    /*  8px */
+  --space-3:  0.75rem;   /* 12px */
+  --space-4:  1rem;      /* 16px */
+  --space-5:  1.25rem;   /* 20px */
+  --space-6:  1.5rem;    /* 24px */
+  --space-8:  2rem;      /* 32px */
+  --space-10: 2.5rem;    /* 40px */
+  --space-12: 3rem;      /* 48px */
+  --space-16: 4rem;      /* 64px */
+  --space-20: 5rem;      /* 80px */
+  --space-24: 6rem;      /* 96px */
+
+  /* Radii — restrained. We are a CLI brand, not a candy app. */
+  --radius-xs: 4px;     /* code, kbd, tags */
+  --radius-sm: 6px;     /* inputs, buttons */
+  --radius-md: 10px;    /* cards, panels */
+  --radius-lg: 14px;    /* hero cards */
+  --radius-xl: 20px;    /* feature blocks */
+  --radius-full: 999px; /* pill buttons */
+
+  /* Borders */
+  --hairline: 1px;
+
+  /* Motion — fast, decisive, no bounce */
+  --ease-out:  cubic-bezier(0.22, 0.61, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-snap: cubic-bezier(0.4, 0.0, 0.2, 1);
+  --dur-fast: 120ms;
+  --dur-base: 180ms;
+  --dur-slow: 300ms;
+
+  /* Layout */
+  --max-w-prose:    68ch;
+  --max-w-content:  72rem;     /* 1152px */
+  --max-w-wide:     84rem;
+  --max-w-narrow:   42rem;
+  --header-h:       64px;
+}
+
+::selection { background: var(--selection); color: inherit; }
+
+/* Base reset for things using this stylesheet */
+.noorm-ds-base {
+  background: var(--bg);
+  color: var(--fg-1);
+  font-family: var(--font-sans);
+  font-size: var(--fs-16);
+  line-height: var(--lh-base);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}

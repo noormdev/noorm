@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8"/>
+  <title>spacing scale</title>
+  <link rel="stylesheet" href="_card.css"/>
+  <style>
+    body { background: var(--paper-200); padding: 24px; }
+    .row { display: grid; grid-template-columns: 80px 1fr 60px; align-items: center; gap: 14px; padding: 4px 0; }
+    .name { font-family: var(--font-mono); font-size: 11px; color: var(--fg-1); }
+    .px { font-family: var(--font-mono); font-size: 11px; color: var(--fg-3); text-align: right; }
+    .bar { height: 12px; background: var(--bronze-300); border-radius: 2px; }
+  </style>
+</head>
+<body class="card">
+  <div class="eyebrow" style="margin-bottom:14px">Spacing — 4 px base · use as `--space-N`</div>
+  <div class="row"><span class="name">--space-1</span><div class="bar" style="width:4px"></div><span class="px">4</span></div>
+  <div class="row"><span class="name">--space-2</span><div class="bar" style="width:8px"></div><span class="px">8</span></div>
+  <div class="row"><span class="name">--space-3</span><div class="bar" style="width:12px"></div><span class="px">12</span></div>
+  <div class="row"><span class="name">--space-4</span><div class="bar" style="width:16px"></div><span class="px">16</span></div>
+  <div class="row"><span class="name">--space-5</span><div class="bar" style="width:20px"></div><span class="px">20</span></div>
+  <div class="row"><span class="name">--space-6</span><div class="bar" style="width:24px"></div><span class="px">24</span></div>
+  <div class="row"><span class="name">--space-8</span><div class="bar" style="width:32px"></div><span class="px">32</span></div>
+  <div class="row"><span class="name">--space-10</span><div class="bar" style="width:40px"></div><span class="px">40</span></div>
+  <div class="row"><span class="name">--space-12</span><div class="bar" style="width:48px"></div><span class="px">48</span></div>
+  <div class="row"><span class="name">--space-16</span><div class="bar" style="width:64px"></div><span class="px">64</span></div>
+  <div class="row"><span class="name">--space-20</span><div class="bar" style="width:80px"></div><span class="px">80</span></div>
+  <div class="row"><span class="name">--space-24</span><div class="bar" style="width:96px"></div><span class="px">96</span></div>
+</body>
+</html>

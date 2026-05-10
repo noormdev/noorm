@@ -1,0 +1,85 @@
+/* preview/_card.css — shared chrome for design-system preview cards.
+   Each card is exactly 700px wide; height varies. No card title (the
+   asset name renders outside the card). */
+@import url("../colors_and_type.css");
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--fg-1);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+body.card {
+  width: 700px;
+  padding: 24px;
+  box-sizing: border-box;
+}
+
+.row { display: flex; }
+.col { display: flex; flex-direction: column; }
+.gap-1 { gap: 4px; }
+.gap-2 { gap: 8px; }
+.gap-3 { gap: 12px; }
+.gap-4 { gap: 16px; }
+.gap-5 { gap: 20px; }
+.gap-6 { gap: 24px; }
+.gap-8 { gap: 32px; }
+.center { align-items: center; }
+.between { justify-content: space-between; }
+.wrap { flex-wrap: wrap; }
+.grow { flex: 1; }
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+  margin: 0 0 12px 0;
+}
+.label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-3);
+  letter-spacing: 0.02em;
+}
+.code-inline {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--fg-1);
+  background: var(--code-bg);
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+}
+.swatch {
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  position: relative;
+  overflow: hidden;
+}
+.swatch .meta {
+  position: absolute;
+  left: 10px;
+  bottom: 8px;
+  right: 10px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: rgba(255,255,255,0.92);
+  display: flex;
+  justify-content: space-between;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.4);
+}
+.swatch.on-light .meta {
+  color: var(--ink-700);
+  text-shadow: none;
+}
+.divider {
+  height: 1px;
+  background: var(--border);
+  width: 100%;
+}

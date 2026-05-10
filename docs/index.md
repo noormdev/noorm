@@ -3,14 +3,11 @@ layout: home
 
 hero:
   name: noorm
-  text: A CLI for SQL-first database development.
-  tagline: Write SQL files, deploy them to any environment. Skip the ORM.
-  image:
-    src: /image/0105.gif
-    alt: noorm TUI demo
+  text: "Write SQL. Skip the ORM."
+  tagline: "Define your schema as files. Deploy it to any environment."
   actions:
     - theme: brand
-      text: Get Started
+      text: "Get started  →"
       link: /getting-started/installation
     - theme: alt
       text: View on GitHub

@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8"/>
+  <title>form inputs</title>
+  <link rel="stylesheet" href="_card.css"/>
+  <style>
+    body { background: var(--paper-200); padding: 24px; }
+    .stack { display: flex; flex-direction: column; gap: 14px; }
+    .field { display: flex; flex-direction: column; gap: 6px; }
+    .label { font-family: var(--font-mono); font-size: 11px; color: var(--fg-3); letter-spacing: 0.04em; text-transform: uppercase; }
+    .input { font-family: var(--font-sans); font-size: 14px; color: var(--ink-800); background: #FFFFFF; border: 1px solid var(--border); border-radius: 6px; padding: 9px 12px; outline: none; }
+    .input::placeholder { color: var(--fg-3); }
+    .input:focus, .input.focused { border-color: var(--ember-500); box-shadow: 0 0 0 3px rgba(224,87,66,0.18); }
+    .helper { font-family: var(--font-mono); font-size: 11px; color: var(--fg-3); }
+    .helper.error { color: var(--ember-500); }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .search-wrap { position: relative; }
+    .search-wrap svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); width: 14px; height: 14px; stroke: var(--fg-3); fill: none; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+    .search-wrap .input { padding-left: 32px; }
+    .search-wrap .kbd { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); font-family: var(--font-mono); font-size: 11px; padding: 2px 6px; background: var(--paper-300); border: 1px solid var(--border); border-radius: 4px; color: var(--fg-3); }
+    .toggle { display: inline-flex; align-items: center; background: var(--paper-300); border: 1px solid var(--border); border-radius: 6px; padding: 2px; font-family: var(--font-mono); font-size: 12px; }
+    .toggle button { border: 0; background: transparent; padding: 5px 10px; border-radius: 4px; color: var(--fg-2); cursor: pointer; font-family: inherit; font-size: inherit; }
+    .toggle button.on { background: #FFFFFF; color: var(--ink-800); box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
+  </style>
+</head>
+<body class="card">
+  <div class="eyebrow" style="margin-bottom:14px">Form — text · search · toggle · focus = ember 3 px ring</div>
+  <div class="stack">
+    <div class="row">
+      <div class="field"><span class="label">Database name</span><input class="input" placeholder="orders_prod"/><span class="helper">snake_case · 1–63 chars</span></div>
+      <div class="field"><span class="label">Connection</span><input class="input focused" value="postgres://localhost:5432"/><span class="helper">focused state</span></div>
+    </div>
+    <div class="field">
+      <span class="label">Search docs</span>
+      <div class="search-wrap"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><input class="input" placeholder="Try &quot;changes&quot; or &quot;basetype&quot;"/><span class="kbd">⌘K</span></div>
+    </div>
+    <div class="row">
+      <div class="field"><span class="label">Stage</span><div class="toggle"><button class="on">dev</button><button>staging</button><button>prod</button></div></div>
+      <div class="field"><span class="label">Schema (error)</span><input class="input" value="users" style="border-color:var(--ember-500)"/><span class="helper error">Table already exists at this stage.</span></div>
+    </div>
+  </div>
+</body>
+</html>

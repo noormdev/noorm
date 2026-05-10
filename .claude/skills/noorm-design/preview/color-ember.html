@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8"/>
+  <title>ember scale</title>
+  <link rel="stylesheet" href="_card.css"/>
+  <style>
+    body { background: var(--paper-200); }
+    .row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; height: 110px; }
+    .sw { border-radius: 8px; padding: 10px; display: flex; flex-direction: column; justify-content: space-between; }
+    .sw .name { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.04em; }
+    .sw .hex { font-family: var(--font-mono); font-size: 10px; opacity: 0.85; }
+    .light { color: var(--ink-700); }
+    .dark { color: #FFFFFF; }
+    .usage { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); display: flex; gap: 14px; align-items: center; font-family: var(--font-mono); font-size: 11px; color: var(--fg-3); }
+    .usage strong { color: var(--ember-500); font-weight: 500; }
+  </style>
+</head>
+<body class="card">
+  <div class="eyebrow">Ember — primary signal · CTA, cursor, errors · two per screen max</div>
+  <div class="row">
+    <div class="sw light" style="background:#F9D6CE;"><span class="name">100</span><span class="hex">#F9D6CE</span></div>
+    <div class="sw light" style="background:#F49A8A;"><span class="name">300</span><span class="hex">#F49A8A</span></div>
+    <div class="sw dark" style="background:#ED7561;"><span class="name">400</span><span class="hex">#ED7561</span></div>
+    <div class="sw dark" style="background:#E05742;"><span class="name">500 · seed</span><span class="hex">#E05742</span></div>
+    <div class="sw dark" style="background:#962E22;"><span class="name">700</span><span class="hex">#962E22</span></div>
+    <div class="sw dark" style="background:#5C1E14;"><span class="name">900</span><span class="hex">#5C1E14</span></div>
+  </div>
+  <div class="usage"><span>Use:</span><strong>--accent</strong><span>·</span><strong>--accent-hover (700)</strong><span>·</span><strong>--accent-press (900)</strong><span>·</span><strong>--accent-soft (100)</strong></div>
+</body>
+</html>

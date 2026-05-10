@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8"/>
+  <title>badges</title>
+  <link rel="stylesheet" href="_card.css"/>
+  <style>
+    body { background: var(--paper-200); padding: 24px; }
+    .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+    .lbl { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--fg-3); width: 100%; margin-bottom: 4px; }
+    .pill { font-family: var(--font-mono); font-size: 11px; padding: 3px 9px; border-radius: 999px; display: inline-flex; align-items: center; gap: 6px; letter-spacing: 0.02em; }
+    .pdot { width: 6px; height: 6px; border-radius: 50%; }
+    .ok { background: rgba(110,143,78,0.18); color: #4F6B33; } .ok .pdot { background: #6E8F4E; }
+    .warn { background: rgba(194,135,60,0.22); color: #835619; } .warn .pdot { background: #C2873C; }
+    .err { background: rgba(224,87,66,0.22); color: #962E22; } .err .pdot { background: #E05742; }
+    .info { background: rgba(75,115,152,0.22); color: #2F4D6B; } .info .pdot { background: #4B7398; }
+    .neutral { background: var(--paper-300); color: var(--ink-700); border: 1px solid var(--border); }
+    .ver { background: var(--ink-800); color: #F2ECE0; padding: 3px 8px; border-radius: 4px; font-family: var(--font-mono); font-size: 11px; }
+    .tag { background: #FFFFFF; border: 1px solid var(--border); padding: 3px 8px; border-radius: 4px; font-family: var(--font-mono); font-size: 11px; color: var(--ink-800); }
+    .new { background: var(--ember-500); color: #fff; padding: 2px 7px; border-radius: 4px; font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; font-weight: 500; }
+  </style>
+</head>
+<body class="card">
+  <div class="eyebrow" style="margin-bottom:10px">Badges & tags — small mono · status pills · version tags · NEW chips</div>
+
+  <div class="row"><span class="lbl">Status pills</span></div>
+  <div class="row">
+    <span class="pill ok"><span class="pdot"></span>passing</span>
+    <span class="pill warn"><span class="pdot"></span>2 changes pending</span>
+    <span class="pill info"><span class="pdot"></span>schema in sync</span>
+    <span class="pill err"><span class="pdot"></span>migration failed</span>
+    <span class="pill neutral"><span class="pdot" style="background:var(--fg-3)"></span>idle</span>
+  </div>
+
+  <div class="row"><span class="lbl">Version & metadata</span></div>
+  <div class="row">
+    <span class="ver">v0.14.2</span>
+    <span class="tag">postgres</span>
+    <span class="tag">mysql</span>
+    <span class="tag">sqlite</span>
+    <span class="tag">ISC license</span>
+    <span class="new">New</span>
+  </div>
+</body>
+</html>

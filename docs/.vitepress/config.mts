@@ -8,7 +8,9 @@ export default withMermaid(
         description: 'Database Schema & Change Manager',
         base: process.env.VITEPRESS_BASE || '/',
         head: [
-            ['link', { rel: 'icon', href: '/image/logo.png' }],
+            ['link', { rel: 'icon', href: '/image/logo.svg', type: 'image/svg+xml' }],
+            ['link', { rel: 'preconnect', href: 'https://fonts.googleapis.com' }],
+            ['link', { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' }],
             ['script', { async: '', src: 'https://www.googletagmanager.com/gtag/js?id=G-Y69K95866J' }],
             ['script', {}, `window.dataLayer = window.dataLayer || [];
 function gtag(){dataLayer.push(arguments);}
@@ -29,7 +31,7 @@ gtag('config', 'G-Y69K95866J');`],
         },
         themeConfig: {
             // https://vitepress.dev/reference/default-theme-config
-            logo: '/image/logo.png',
+            logo: '/image/logo.svg',
             siteTitle: 'noorm',
             nav: [
                 { text: 'Home', link: '/' },
@@ -167,6 +169,14 @@ gtag('config', 'G-Y69K95866J');`],
 
             search: {
                 provider: 'local',
+                options: {
+                    translations: {
+                        button: {
+                            buttonText: 'Search docs',
+                            buttonAriaLabel: 'Search docs',
+                        },
+                    },
+                },
             },
 
             outline: {

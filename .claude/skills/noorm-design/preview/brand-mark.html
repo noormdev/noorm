@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=700"/>
+  <title>noorm mark</title>
+  <link rel="stylesheet" href="_card.css"/>
+  <style>
+    body { background: var(--paper-200); }
+    .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; align-items: end; }
+    .tile { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+    .mk { background: var(--ink-800); border-radius: var(--radius-md); display: grid; place-items: center; }
+    .mk svg { display: block; }
+    .lbl { font-family: var(--font-mono); font-size: 10px; color: var(--fg-3); letter-spacing: 0.04em; }
+    .row2 { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--border); display: flex; align-items: center; gap: 14px; }
+    .clear { display: flex; align-items: center; gap: 12px; flex: 1; }
+    .clear-mark { width: 40px; height: 40px; border-radius: 8px; background: var(--ink-800); display: grid; place-items: center; }
+    .clear-mark svg { width: 24px; height: 24px; }
+    .wm-mini { font-family: var(--font-sans); font-weight: 600; font-size: 28px; letter-spacing: -0.03em; color: var(--ink-800); display: inline-flex; align-items: center; line-height: 1; }
+    .wm-mini .cursor { display: inline-block; width: 0.4em; height: 0.55em; background: var(--ember-500); margin-left: 0.05em; transform: translateY(0.06em); }
+  </style>
+</head>
+<body class="card">
+  <div class="eyebrow">Mark — square · rounded 12px · ink + ember + bronze</div>
+  <div class="grid">
+    <div class="tile"><div class="mk" style="width:88px;height:88px;"><svg viewBox="0 0 64 64" width="56" height="56"><path d="M14 20 L28 32 L14 44 Z" fill="#E05742"/><path d="M30 20 L44 32 L30 44 Z" fill="#E05742"/><rect x="50" y="20" width="4" height="24" fill="#916336"/></svg></div><div class="lbl">88 px</div></div>
+    <div class="tile"><div class="mk" style="width:64px;height:64px;"><svg viewBox="0 0 64 64" width="42" height="42"><path d="M14 20 L28 32 L14 44 Z" fill="#E05742"/><path d="M30 20 L44 32 L30 44 Z" fill="#E05742"/><rect x="50" y="20" width="4" height="24" fill="#916336"/></svg></div><div class="lbl">64 px</div></div>
+    <div class="tile"><div class="mk" style="width:40px;height:40px;border-radius:8px;"><svg viewBox="0 0 64 64" width="26" height="26"><path d="M14 20 L28 32 L14 44 Z" fill="#E05742"/><path d="M30 20 L44 32 L30 44 Z" fill="#E05742"/><rect x="50" y="20" width="4" height="24" fill="#916336"/></svg></div><div class="lbl">40 px</div></div>
+    <div class="tile"><div class="mk" style="width:24px;height:24px;border-radius:5px;"><svg viewBox="0 0 64 64" width="16" height="16"><path d="M14 20 L28 32 L14 44 Z" fill="#E05742"/><path d="M30 20 L44 32 L30 44 Z" fill="#E05742"/></svg></div><div class="lbl">24 px favicon</div></div>
+  </div>
+  <div class="row2">
+    <div class="clear">
+      <div class="clear-mark"><svg viewBox="0 0 64 64"><path d="M14 20 L28 32 L14 44 Z" fill="#E05742"/><path d="M30 20 L44 32 L30 44 Z" fill="#E05742"/><rect x="50" y="20" width="4" height="24" fill="#916336"/></svg></div>
+      <span class="wm-mini">noorm<span class="cursor"></span></span>
+    </div>
+    <span class="lbl">Mark + wordmark · 12 px gap</span>
+  </div>
+</body>
+</html>

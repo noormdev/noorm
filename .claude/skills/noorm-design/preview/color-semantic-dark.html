@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8"/>
+  <title>semantic dark</title>
+  <link rel="stylesheet" href="_card.css"/>
+  <style>
+    body { background: #161A20; color: #F2ECE0; }
+    .eyebrow { color: #7E8590; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    .group .head { font-family: var(--font-mono); font-size: 11px; color: #7E8590; letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 8px; }
+    .row { display: grid; grid-template-columns: 28px 1fr auto; gap: 10px; align-items: center; padding: 6px 0; }
+    .chip { width: 28px; height: 28px; border-radius: 6px; border: 1px solid #2F3540; }
+    .name { font-family: var(--font-mono); font-size: 12px; color: #F2ECE0; }
+    .hex { font-family: var(--font-mono); font-size: 11px; color: #7E8590; }
+  </style>
+</head>
+<body class="card">
+  <div class="eyebrow">Semantic tokens — dark mode</div>
+  <div class="grid">
+    <div class="group">
+      <div class="head">Surfaces & text</div>
+      <div class="row"><div class="chip" style="background:#161A20"></div><span class="name">--bg</span><span class="hex">ink-900</span></div>
+      <div class="row"><div class="chip" style="background:#212931"></div><span class="name">--surface</span><span class="hex">ink-800</span></div>
+      <div class="row"><div class="chip" style="background:#0F1216"></div><span class="name">--code-bg</span><span class="hex">ink-950</span></div>
+      <div class="row"><div class="chip" style="background:#F2ECE0"></div><span class="name">--fg-1</span><span class="hex">cream</span></div>
+      <div class="row"><div class="chip" style="background:#B8B3A8"></div><span class="name">--fg-2</span><span class="hex">warm grey</span></div>
+      <div class="row"><div class="chip" style="background:#7E8590"></div><span class="name">--fg-3</span><span class="hex">muted</span></div>
+    </div>
+    <div class="group">
+      <div class="head">Brand & state</div>
+      <div class="row"><div class="chip" style="background:#E05742"></div><span class="name">--accent</span><span class="hex">ember-500</span></div>
+      <div class="row"><div class="chip" style="background:#ED7561"></div><span class="name">--accent-hover</span><span class="hex">ember-400</span></div>
+      <div class="row"><div class="chip" style="background:#3B221C"></div><span class="name">--accent-soft</span><span class="hex">ember 22% mix</span></div>
+      <div class="row"><div class="chip" style="background:#B47A45"></div><span class="name">--accent-2</span><span class="hex">bronze-300</span></div>
+      <div class="row"><div class="chip" style="background:#2F3540"></div><span class="name">--border</span><span class="hex">2F3540</span></div>
+      <div class="row"><div class="chip" style="background:#ED7561"></div><span class="name">--border-focus</span><span class="hex">ember-400</span></div>
+    </div>
+  </div>
+</body>
+</html>

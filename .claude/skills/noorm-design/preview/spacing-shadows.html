@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8"/>
+  <title>shadows</title>
+  <link rel="stylesheet" href="_card.css"/>
+  <style>
+    body { background: var(--paper-200); padding: 30px 24px 24px; }
+    .row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+    .item { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+    .tile { width: 100%; height: 84px; background: var(--paper-50); border: 1px solid var(--border); border-radius: 10px; }
+    .name { font-family: var(--font-mono); font-size: 11px; color: var(--ink-800); }
+    .desc { font-family: var(--font-mono); font-size: 10px; color: var(--fg-3); text-align: center; line-height: 1.4; }
+    .xs { box-shadow: 0 1px 0 rgba(33,41,49,0.04); }
+    .sm { box-shadow: 0 1px 2px rgba(33,41,49,0.06), 0 1px 1px rgba(33,41,49,0.04); }
+    .md { box-shadow: 0 4px 10px -2px rgba(33,41,49,0.08), 0 2px 4px rgba(33,41,49,0.05); }
+    .lg { box-shadow: 0 18px 40px -12px rgba(33,41,49,0.18), 0 6px 12px rgba(33,41,49,0.06); }
+    .footer { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); font-family: var(--font-mono); font-size: 11px; color: var(--fg-3); }
+  </style>
+</head>
+<body class="card">
+  <div class="eyebrow" style="margin-bottom:14px">Shadows — light mode · always paired with a hairline border</div>
+  <div class="row">
+    <div class="item"><div class="tile xs"></div><div class="name">--shadow-xs</div><div class="desc">divider lift<br/>buttons, table rows</div></div>
+    <div class="item"><div class="tile sm"></div><div class="name">--shadow-sm</div><div class="desc">raised UI<br/>card default</div></div>
+    <div class="item"><div class="tile md"></div><div class="name">--shadow-md</div><div class="desc">popovers<br/>menus, tooltips</div></div>
+    <div class="item"><div class="tile lg"></div><div class="name">--shadow-lg</div><div class="desc">modals only<br/>command palette</div></div>
+  </div>
+  <div class="footer">Dark mode uses inset rim-lights instead — see color-semantic-dark · no glow effects · no text shadow</div>
+</body>
+</html>

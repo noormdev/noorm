@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8"/>
+  <title>seed palette</title>
+  <link rel="stylesheet" href="_card.css"/>
+  <style>
+    body { background: var(--paper-200); }
+    .row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+    .swatch { aspect-ratio: 1 / 1.05; border-radius: 12px; padding: 14px; display: flex; flex-direction: column; justify-content: space-between; border: none; }
+    .swatch .top { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; opacity: 0.85; }
+    .swatch .name { font-family: var(--font-sans); font-size: 22px; font-weight: 600; letter-spacing: -0.02em; }
+    .swatch .hex { font-family: var(--font-mono); font-size: 12px; opacity: 0.85; }
+    .ink { background: #212931; color: #F2ECE0; }
+    .slate { background: #454A59; color: #F2ECE0; }
+    .bronze { background: #916336; color: #FBF8F1; }
+    .ember { background: #E05742; color: #FFFFFF; }
+  </style>
+</head>
+<body class="card">
+  <div class="eyebrow">Seed palette — 4 hexes the system extends from</div>
+  <div class="row">
+    <div class="swatch ink"><span class="top">01 · neutral</span><div><div class="name">ink</div><div class="hex">#212931</div></div></div>
+    <div class="swatch slate"><span class="top">02 · neutral</span><div><div class="name">slate</div><div class="hex">#454A59</div></div></div>
+    <div class="swatch bronze"><span class="top">03 · accent</span><div><div class="name">bronze</div><div class="hex">#916336</div></div></div>
+    <div class="swatch ember"><span class="top">04 · signal</span><div><div class="name">ember</div><div class="hex">#E05742</div></div></div>
+  </div>
+</body>
+</html>

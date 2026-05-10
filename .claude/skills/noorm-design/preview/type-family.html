@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8"/>
+  <title>type families</title>
+  <link rel="stylesheet" href="_card.css"/>
+  <style>
+    body { background: var(--paper-200); padding: 26px 24px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .card2 { background: var(--paper-50); border: 1px solid var(--border); border-radius: 12px; padding: 18px; }
+    .glyph { font-size: 96px; line-height: 1; letter-spacing: -0.04em; color: var(--ink-800); margin-bottom: 14px; }
+    .sans { font-family: var(--font-sans); font-weight: 600; }
+    .mono { font-family: var(--font-mono); font-weight: 500; }
+    .row2 { display: flex; justify-content: space-between; align-items: baseline; }
+    .name { font-family: var(--font-sans); font-size: 18px; font-weight: 600; color: var(--ink-800); }
+    .meta { font-family: var(--font-mono); font-size: 11px; color: var(--fg-3); }
+    .alpha { font-family: inherit; font-size: 13px; color: var(--fg-2); margin-top: 8px; letter-spacing: 0.02em; }
+  </style>
+</head>
+<body class="card">
+  <div class="eyebrow" style="margin-bottom:14px">Families — Geist + Geist Mono</div>
+  <div class="grid">
+    <div class="card2">
+      <div class="glyph sans">Aa</div>
+      <div class="row2"><span class="name">Geist</span><span class="meta">300 / 400 / 500 / 600 / 700</span></div>
+      <div class="alpha sans">ABCDEFGHIJKLMNOPQRSTUVWXYZ<br/>abcdefghijklmnopqrstuvwxyz 0123456789</div>
+      <div class="meta" style="margin-top:10px">Display + body. Sentence case headings.</div>
+    </div>
+    <div class="card2">
+      <div class="glyph mono">{}</div>
+      <div class="row2"><span class="name mono">Geist Mono</span><span class="meta">400 / 500 / 600</span></div>
+      <div class="alpha mono">ABCDEFGHIJKLMNOPQRSTUVWXYZ<br/>abcdefghijklmnopqrstuvwxyz 0123456789</div>
+      <div class="meta" style="margin-top:10px">Code · CLI · eyebrows · captions · kbd.</div>
+    </div>
+  </div>
+</body>
+</html>

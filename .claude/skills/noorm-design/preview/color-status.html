@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8"/>
+  <title>status colors</title>
+  <link rel="stylesheet" href="_card.css"/>
+  <style>
+    body { background: var(--paper-200); }
+    .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+    .item { background: var(--paper-50); border: 1px solid var(--border); border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+    .dot { width: 12px; height: 12px; border-radius: 50%; }
+    .top { display: flex; align-items: center; gap: 8px; }
+    .top .name { font-family: var(--font-mono); font-size: 12px; color: var(--fg-1); }
+    .hex { font-family: var(--font-mono); font-size: 11px; color: var(--fg-3); }
+    .pill { font-family: var(--font-mono); font-size: 11px; padding: 3px 8px; border-radius: 999px; align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; }
+    .ok { background: rgba(110,143,78,0.15); color: #4F6B33; }
+    .ok .pdot { background: #6E8F4E; }
+    .warn { background: rgba(194,135,60,0.18); color: #835619; }
+    .warn .pdot { background: #C2873C; }
+    .info { background: rgba(75,115,152,0.18); color: #2F4D6B; }
+    .info .pdot { background: #4B7398; }
+    .err { background: rgba(224,87,66,0.18); color: #962E22; }
+    .err .pdot { background: #E05742; }
+    .pdot { width: 6px; height: 6px; border-radius: 50%; }
+  </style>
+</head>
+<body class="card">
+  <div class="eyebrow">Status — derived from the seed family · all four sit naturally next to bronze</div>
+  <div class="grid">
+    <div class="item"><div class="top"><div class="dot" style="background:#6E8F4E"></div><span class="name">--signal-ok</span></div><span class="hex">#6E8F4E mossy</span><span class="pill ok"><span class="pdot"></span>1 file applied</span></div>
+    <div class="item"><div class="top"><div class="dot" style="background:#C2873C"></div><span class="name">--signal-warn</span></div><span class="hex">#C2873C bronze-lift</span><span class="pill warn"><span class="pdot"></span>2 changes pending</span></div>
+    <div class="item"><div class="top"><div class="dot" style="background:#4B7398"></div><span class="name">--signal-info</span></div><span class="hex">#4B7398 dusty blue</span><span class="pill info"><span class="pdot"></span>schema in sync</span></div>
+    <div class="item"><div class="top"><div class="dot" style="background:#E05742"></div><span class="name">--signal-error</span></div><span class="hex">#E05742 ember</span><span class="pill err"><span class="pdot"></span>migration failed</span></div>
+  </div>
+</body>
+</html>
