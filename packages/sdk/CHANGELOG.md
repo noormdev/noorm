@@ -1,5 +1,33 @@
 # @noormdev/sdk
 
+## 1.0.0-alpha.35
+
+### Minor Changes
+
+- 01208ec: ## Added
+
+  - `feat(runner):` Split MSSQL SQL files on the `GO` batch separator. Multi-statement DDL files (multiple `CREATE PROCEDURE` / `CREATE FUNCTION` / `CREATE TRIGGER` / `CREATE VIEW` / `CREATE TYPE` in one file) now run correctly instead of failing with `Incorrect syntax near 'GO'`.
+  - `feat(runner):` Batch failures report the failed batch index in `FileResult.error` (e.g. `[batch 3 of 5] <driver error>`) and short-circuit the remaining batches.
+
+  ## Known limitations
+
+  - `GO` inside string literals or block comments is still treated as a separator — matches `sqlcmd` behavior. Document accordingly when authoring T-SQL files.
+  - `GO <N>` repetition is not implemented.
+
+### Patch Changes
+
+- 01208ec: ## Changed
+  - `feat(sdk):` `changes.ff(options?)` and `changes.next(count, options?)` now accept `BatchChangeOptions` so callers can pass `dryRun` / `force`. Previously the options were silently dropped before reaching the manager.
+- 01208ec: ## Fixed
+  - `fix(teardown):` Reorder schema teardown to drop procedures and functions before tables. MSSQL schema-bound UDFs (`WITH SCHEMABINDING`) previously blocked the table drop with `Cannot DROP TABLE because it is being referenced by object 'fn_X'`. New order: FK constraints → Procedures → Functions → Views → Tables → Types.
+  - `fix(teardown):` Replace `sp_MSforeachtable` with per-table sequential `ALTER TABLE [name] NOCHECK CONSTRAINT ALL` (and inverse) in MSSQL `db.truncate()`. The previous implementation spawned parallel workers that deadlocked on schema locks against non-trivial schemas.
+  - `fix(teardown):` `TeardownDialectOperations.disableForeignKeyChecks` / `enableForeignKeyChecks` now accept an optional `tables?: string[]` and may return `string | string[]`. PostgreSQL / MySQL / SQLite implementations ignore the argument — no behavior change for those dialects.
+- 01208ec: ## Changed
+
+  - `fix(vault):` `vault.init()` is now idempotent. A repeat call against an already-initialized vault returns `[null, null]` instead of `[null, Error('Vault already initialized')]`. The `vault:initialized` observer event still fires only on first init.
+
+  This is a behavior change for callers that were special-casing the `'Vault already initialized'` error string — they now see no error on repeat and must check whether the returned key is `null` (already initialized) or a `Buffer` (newly generated).
+
 ## 1.0.0-alpha.34
 
 ## 1.0.0-alpha.33
