@@ -1,4 +1,4 @@
-# @noormdev/example-todo-db
+# @noormdev/example-llm-memory-db-mssql
 
 ## 0.0.1-alpha.1
 
@@ -9,9 +9,3 @@
 - Updated dependencies [01208ec]
 - Updated dependencies [01208ec]
   - @noormdev/sdk@1.0.0-alpha.35
-
-## 0.0.1-alpha.0
-
-### Patch Changes
-
-- @noormdev/sdk@1.0.0-alpha.34

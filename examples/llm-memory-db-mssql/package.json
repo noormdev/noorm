@@ -1,6 +1,6 @@
 {
     "name": "@noormdev/example-llm-memory-db-mssql",
-    "version": "0.0.1-alpha.0",
+    "version": "0.0.1-alpha.1",
     "private": true,
     "type": "module",
     "description": "LLM-memory schema + SDK example exercising NoORM against MSSQL with TVPs",
