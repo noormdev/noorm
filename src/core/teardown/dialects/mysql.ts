@@ -17,13 +17,14 @@ const { quote, qualifiedName } = createDialectQuoting({
  */
 export const mysqlTeardownOperations: TeardownDialectOperations = {
 
-    disableForeignKeyChecks(): string {
+    disableForeignKeyChecks(_tables?: string[]): string {
 
+        // Session-level setting — tables ignored
         return 'SET FOREIGN_KEY_CHECKS = 0';
 
     },
 
-    enableForeignKeyChecks(): string {
+    enableForeignKeyChecks(_tables?: string[]): string {
 
         return 'SET FOREIGN_KEY_CHECKS = 1';
 

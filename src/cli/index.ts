@@ -163,6 +163,64 @@ function extractGlobalCwd(argv: string[]): { cwd: string | null; rest: string[] 
 }
 
 /**
+ * Heuristic match for SQL-looking tokens.
+ *
+ * The `noorm sql` parent command has subcommands (`query`, `history`,
+ * `clear`, `repl`), so citty interprets `noorm sql "SELECT 1"` as a
+ * subcommand named `SELECT 1` and prints "Unknown command". To preserve
+ * the natural CLI experience documented for years, we rewrite
+ * `['sql', '<sql-looking>']` to `['sql', 'query', '<sql-looking>']`
+ * before handing off to citty.
+ *
+ * Only tokens starting with a common SQL verb (whitespace-tolerant,
+ * case-insensitive) match — `sql query` and `sql history` remain
+ * untouched. See `src/cli/sql/index.ts` for context.
+ */
+const SQL_VERBS = [
+    'SELECT', 'INSERT', 'UPDATE', 'DELETE', 'MERGE', 'WITH',
+    'CREATE', 'DROP', 'ALTER', 'TRUNCATE', 'EXEC', 'EXECUTE',
+    'CALL', 'SHOW', 'EXPLAIN', 'GRANT', 'REVOKE', 'COMMENT',
+    'PRAGMA', 'VACUUM', 'ANALYZE', 'BEGIN', 'COMMIT', 'ROLLBACK',
+    'SAVEPOINT', 'USE',
+];
+
+const SQL_VERB_RE = new RegExp(`^\\s*(${SQL_VERBS.join('|')})\\b`, 'i');
+
+function rewriteBareSqlArgv(argv: string[]): string[] {
+
+    const sqlIdx = argv.findIndex((a) => !a.startsWith('-'));
+
+    if (sqlIdx === -1 || argv[sqlIdx] !== 'sql') {
+
+        return argv;
+
+    }
+
+    // Find the next positional after `sql` (skip flags and their values
+    // when they take an argument we can't disambiguate — but here we
+    // only need to find any SQL-looking positional to know whether to
+    // rewrite, since the explicit subcommands like `query`, `history`,
+    // `repl`, `clear` will not match SQL_VERB_RE).
+    const nextIdx = argv.findIndex((a, i) => i > sqlIdx && !a.startsWith('-'));
+
+    if (nextIdx === -1) return argv;
+
+    const candidate = argv[nextIdx]!;
+
+    if (!SQL_VERB_RE.test(candidate)) return argv;
+
+    // Insert `query` directly after `sql` so that any flags before the
+    // SQL token (e.g. `--json`, `-c prod`) are bound to the `query`
+    // subcommand's arg parser rather than the parent's (which no
+    // longer declares them).
+    const rewritten = [...argv];
+    rewritten.splice(sqlIdx + 1, 0, 'query');
+
+    return rewritten;
+
+}
+
+/**
  * Print citty's usage followed by a custom EXAMPLES block from
  * the command's top-level `examples` property (if present).
  */
@@ -210,12 +268,14 @@ async function entry(): Promise<void> {
 
         setOriginalCwd(process.cwd());
         process.chdir(resolvedCwd);
-        process.argv = [process.argv[0]!, process.argv[1]!, ...cleanArgv];
+        process.argv = [process.argv[0]!, process.argv[1]!, ...rewriteBareSqlArgv(cleanArgv)];
 
     }
     else {
 
         initProjectContext();
+        const rewritten = rewriteBareSqlArgv(process.argv.slice(2));
+        process.argv = [process.argv[0]!, process.argv[1]!, ...rewritten];
 
     }
 

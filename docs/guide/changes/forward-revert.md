@@ -142,12 +142,26 @@ Preview what would happen without touching the database:
 **TUI:** In any run dialog, enable the dry-run toggle before confirming.
 
 **Headless:**
-```bash
-noorm --dry-run change ff
-noorm --dry-run change run 2024-02-01-add-notifications
-```
 
-Dry run writes rendered SQL to a `tmp/` folder so you can inspect exactly what would execute. Templates are processed, manifests are resolved, but no SQL hits the database.
+    noorm change ff --dry-run
+    noorm change run 2024-02-01-add-notifications --dry-run
+    noorm change revert 2024-02-01-add-notifications --dry-run
+    noorm change next --dry-run
+
+Dry run writes rendered SQL to a `tmp/` folder so you can inspect exactly what would execute. Templates are processed, manifests are resolved, but no SQL hits the database — `__noorm_change__` and `__noorm_executions__` are left untouched.
+
+The CLI marks dry-run output with a clear `(dry-run)` header so log scrapers and operators can distinguish it from a real apply. With `--json`, the result payload includes a `dryRun: true` field:
+
+    $ noorm change ff --dry-run --json
+    Dry run: rendering changes to tmp/ (no DB writes)
+    {
+      "status": "success",
+      "executed": 2,
+      "skipped": 0,
+      "failed": 0,
+      "changes": [ /* ... */ ],
+      "dryRun": true
+    }
 
 This is essential for production deployments. Always preview before applying.
 
@@ -186,9 +200,8 @@ Option 1: **Fix and retry**
 Option 2: **Manual cleanup**
 - If partial SQL executed, you may need to manually clean up
 - Then run with `--force` to skip the checksum check:
-  ```bash
-  noorm --force change run 2024-02-01-add-notifications
-  ```
+
+        noorm change run 2024-02-01-add-notifications --force
 
 
 ## Common Workflows
@@ -196,14 +209,12 @@ Option 2: **Manual cleanup**
 
 ### Deploying to Production
 
-```bash
-# Preview what will run
-noorm --dry-run change ff
+    # Preview what will run
+    noorm change ff --dry-run
 
-# Review the rendered SQL in tmp/
-# Then apply for real
-noorm change ff
-```
+    # Review the rendered SQL in tmp/
+    # Then apply for real
+    noorm change ff
 
 
 ### Rolling Back a Bad Deploy

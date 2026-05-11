@@ -31,11 +31,38 @@ const dirCommand = defineCommand({
 
                     if (!args.json) {
 
-                        logger.info(`Run directory ${res.status}`, {
+                        for (const file of res.files) {
+
+                            if (file.status === 'failed') {
+
+                                logger.error(`${file.filepath} (failed)`);
+                                if (file.error) logger.error(`  error: ${file.error}`);
+
+                            }
+                            else if (file.status === 'skipped' && file.skipReason) {
+
+                                logger.info(`${file.filepath} (skipped: ${file.skipReason})`);
+
+                            }
+
+                        }
+
+                        const summary = {
                             filesRun: res.filesRun,
                             filesSkipped: res.filesSkipped,
                             filesFailed: res.filesFailed,
-                        });
+                        };
+
+                        if (res.status === 'success') {
+
+                            logger.info(`Run directory ${res.status}`, summary);
+
+                        }
+                        else {
+
+                            logger.error(`Run directory ${res.status}`, summary);
+
+                        }
 
                     }
 

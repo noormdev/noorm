@@ -189,6 +189,89 @@ const custom = await ctx.proc<'get_users', CustomUser>('get_users', { department
 **Throws** on SQLite (no stored procedure support).
 
 
+### Parameter handling and NULL semantics
+
+The SDK picks **one** wire-level meaning for "absent value" and sticks
+to it: every key whose value is `undefined` or `null` in the params
+object serializes as SQL `NULL`. The SDK does NOT silently drop
+`undefined` keys, and it does NOT distinguish `null` from `undefined`
+when generating named-parameter SQL. If the key is present in the
+object, the SDK emits `@key = NULL` (or the dialect-specific
+equivalent).
+
+This matters most for MSSQL stored procedures with `DEFAULT` values.
+MSSQL applies a parameter's `DEFAULT` only when the parameter is
+*omitted from the call*, not when it's explicitly `NULL`. Sending
+`@was_inferred = NULL` against `@was_inferred BIT = 0` will overwrite
+the default with NULL — and then fail an INSERT into a `NOT NULL`
+column.
+
+
+#### Why this convention
+
+JavaScript carries two values that mean "no value": `undefined` and
+`null`. Mapping both to SQL `NULL` makes the wire-level behavior
+predictable across `JSON.stringify` round-trips, Zod schemas with
+`.optional()`, and conditional spreads (`...maybeKey && { key }`).
+The alternative — treating `undefined` as "omit the key" and `null`
+as "send NULL" — works in JavaScript but breaks for HTTP request
+bodies and any serializer that drops `undefined` on the way in.
+
+The trade-off is that you can't rely on the proc's `DEFAULT`
+mechanism through an optional Zod field. Two patterns avoid the
+surprise:
+
+```typescript
+// Pattern A — encode the default in the schema.
+const memoryFlags = z.object({
+    wasInferred: z.boolean().default(false),
+    wasObserved: z.boolean().default(false),
+});
+
+// Pattern B — omit the key entirely when "absent".
+const params: Record<string, unknown> = { content: 'x' };
+if (wasInferred !== undefined) {
+    params.wasInferred = wasInferred;
+}
+// SDK only emits @wasInferred when the key is present.
+await ctx.proc('sp_Memory_Create', params);
+```
+
+Pattern A pushes the default value into the TypeScript layer; pattern
+B keeps it in SQL and trusts MSSQL's `DEFAULT` mechanism.
+
+
+#### Zod cheat-sheet
+
+| Schema | Parses missing key to | SDK emits |
+|--------|----------------------|-----------|
+| `z.string()` | (rejects) | n/a — validation fails before SDK call |
+| `z.string().nullable()` | `null` if value is `null` | `@key = NULL` |
+| `z.string().optional()` | `undefined` | `@key = NULL` (key still present) |
+| `z.string().default('')` | `''` | `@key = ''` |
+
+The pitfall: `z.string().optional()` reads like "the SDK will leave
+the parameter alone" but actually means "the SDK will send NULL."
+If the proc parameter is `NOT NULL` (or the underlying column is),
+prefer `.default(...)` or build the params object manually.
+
+
+#### When NULL is what you actually want
+
+For columns that genuinely store `NULL`, this convention is exactly
+what you want:
+
+```typescript
+// Either path produces @description = NULL.
+await ctx.proc('sp_Project_Update', { id: 1, description: undefined });
+await ctx.proc('sp_Project_Update', { id: 1, description: null });
+```
+
+Both are equivalent. Pick the one that reads better at the call site
+— usually `undefined` for "the input didn't carry this field" and
+`null` for "explicitly clear the field."
+
+
 ### Table-Valued Parameters (TVP)
 
 Pass structured table data to MSSQL stored procedures, scalar functions, and table-valued functions using the `tvp()` helper. TVPs are an MSSQL-only feature — calling with TVP params on other dialects throws.
@@ -379,6 +462,8 @@ const result = await ctx.noorm.run.build({ force: true });
 console.log(`Ran ${result.filesRun} files`);
 ```
 
+**Returns:** `Promise<BatchResult>`. See [Result shape](#run-result-shape) for the `error` and `skipReason` fields you'll find on each entry of `result.files`.
+
 
 #### run.file(filepath, options?)
 
@@ -387,6 +472,8 @@ Execute a single SQL file.
 ```typescript
 await ctx.noorm.run.file('seeds/test-data.sql');
 ```
+
+**Returns:** `Promise<FileResult>`. On failure `result.error` carries the SQL/load error message; on skip `result.skipReason` carries `'unchanged'` or `'already-run'`.
 
 
 #### run.files(filepaths, options?)
@@ -400,6 +487,8 @@ await ctx.noorm.run.files([
 ]);
 ```
 
+**Returns:** `Promise<BatchResult>`. Per-file errors and skip reasons live on `result.files[]`.
+
 
 #### run.dir(dirpath, options?)
 
@@ -407,6 +496,44 @@ Execute all SQL files in a directory.
 
 ```typescript
 await ctx.noorm.run.dir('seeds/');
+```
+
+**Returns:** `Promise<BatchResult>`. Per-file errors and skip reasons live on `result.files[]`.
+
+
+#### Run result shape
+
+`FileResult` (returned by `run.file`, and by each entry in `BatchResult.files`):
+
+| Field | Type | When set |
+|-------|------|----------|
+| `filepath` | `string` | Always |
+| `checksum` | `string` | Always (empty when the file could not be read) |
+| `status` | `'success' \| 'failed' \| 'skipped'` | Always |
+| `error` | `string` | Only when `status === 'failed'` |
+| `skipReason` | `'unchanged' \| 'already-run'` | Only when `status === 'skipped'` |
+| `durationMs` | `number` | Set for executed and failed files |
+
+Example handling a failed build:
+
+```typescript
+const result = await ctx.noorm.run.build();
+
+if (result.status !== 'success') {
+
+    for (const file of result.files) {
+
+        if (file.status === 'failed') {
+
+            console.error(`${file.filepath}: ${file.error}`);
+
+        }
+
+    }
+
+    process.exit(1);
+
+}
 ```
 
 
@@ -448,6 +575,8 @@ const result = await ctx.noorm.db.truncate();
 console.log(`Truncated ${result.truncated.length} tables`);
 ```
 
+**Implementation notes.** FK constraints are disabled first, every targeted table is `DELETE`d (or `TRUNCATE`d, where the dialect supports it), then constraints are re-enabled. PG/MySQL/SQLite flip a session- or connection-level switch once. MSSQL, which has no session-level toggle, emits one `ALTER TABLE [name] NOCHECK CONSTRAINT ALL` per truncated table on a single connection — replacing the older `sp_MSforeachtable` call that spawned parallel workers and could deadlock. See [dev/teardown.md](../dev/teardown.md#mssql-truncate-strategy) for the full reasoning.
+
 
 #### db.teardown()
 
@@ -479,6 +608,8 @@ Full rebuild: teardown + build.
 ```typescript
 await ctx.noorm.db.reset();
 ```
+
+**Implementation notes.** Objects are dropped in `FK → Procedures → Functions → Views → Tables → Types` order. Procs/funcs/views go before tables because MSSQL schema-bound objects (`WITH SCHEMABINDING`) hold dependency locks on the tables they reference — dropping the table first fails with `Cannot DROP TABLE ... because it is being referenced by object ...`. Types drop last because TVPs may still be referenced by procs/funcs earlier in the chain. See [dev/teardown.md](../dev/teardown.md#drop-order) for the full reasoning.
 
 
 ### ctx.noorm.changes — Change Management
@@ -599,29 +730,59 @@ ctx.noorm.changes.validate(change);
 
 #### changes.apply(name, options?)
 
-Apply a specific change.
+Apply a specific change. Pass `{ dryRun: true }` to render rendered SQL to `tmp/` without touching the database, or `{ preview: true }` to emit rendered SQL without writing. `{ force: true }` bypasses the checksum/already-applied check.
 
 ```typescript
 const result = await ctx.noorm.changes.apply('2024-01-15-add-users');
+
+// Dry run — does not touch __noorm_change__ or __noorm_executions__.
+const dry = await ctx.noorm.changes.apply(
+    '2024-01-15-add-users',
+    { dryRun: true },
+);
 ```
+
+**Options:** `ChangeOptions` — `{ force?: boolean; dryRun?: boolean; preview?: boolean; output?: string | null }`.
 
 
 #### changes.revert(name, options?)
 
-Revert a specific change.
+Revert a specific change. Accepts the same `ChangeOptions` as `apply()`.
 
 ```typescript
 const result = await ctx.noorm.changes.revert('2024-01-15-add-users');
+
+// Dry-run a revert before pulling the trigger in production.
+const dry = await ctx.noorm.changes.revert(
+    '2024-01-15-add-users',
+    { dryRun: true },
+);
 ```
 
 
-#### changes.ff()
+#### changes.ff(options?)
 
-Apply all pending changes.
+Apply all pending changes. Accepts `BatchChangeOptions` — the same fields as `ChangeOptions` plus `abortOnError`. Pass `{ dryRun: true }` to render every pending change to `tmp/` without writing to the database; the tracking tables (`__noorm_change__`, `__noorm_executions__`) are left untouched.
 
 ```typescript
 const result = await ctx.noorm.changes.ff();
 console.log(`Applied ${result.executed} changes`);
+
+// Preview before a production deploy.
+const dry = await ctx.noorm.changes.ff({ dryRun: true });
+```
+
+
+#### changes.next(count?, options?)
+
+Apply the next `count` pending changes (default `1`). Accepts the same `BatchChangeOptions` as `ff()`.
+
+```typescript
+const result = await ctx.noorm.changes.next();
+const three = await ctx.noorm.changes.next(3);
+
+// Render the next two without touching the database.
+const dry = await ctx.noorm.changes.next(2, { dryRun: true });
 ```
 
 
@@ -901,23 +1062,40 @@ Database-stored encrypted secrets shared across team members. Unlike config-scop
 
 Initialize the vault for this database. Creates the vault key and stores it encrypted for the current identity.
 
+Idempotent. Calling `init()` a second time against an already-initialized vault returns `[null, null]` — no state change, no error. Callers can `init()` defensively at startup without special-casing an error string.
+
+The three return shapes:
+
+| Shape | Meaning |
+|-------|---------|
+| `[Buffer, null]` | First-time init succeeded. The buffer is the vault key. |
+| `[null, null]` | Vault already initialized. No work done. Use `vault.get` / `vault.set` with the user's private key. |
+| `[null, Error]` | Actual failure (DB error, encryption error). |
+
 ```typescript
 const [vaultKey, err] = await ctx.noorm.vault.init();
-if (err) {
-    console.error('Vault init failed:', err.message);
+if (err) throw err;
+
+if (vaultKey) {
+    // First-time init — seed initial team secrets, etc.
+}
+else {
+    // Already initialized — proceed normally with vault.get / vault.set.
 }
 ```
 
-**Returns:** `Promise<[Buffer | null, Error | null]>` — the vault key buffer or an error.
+The `vault:initialized` observer event fires only on first init, never on repeat calls. Cross-reference with `vault.status()` if you need to distinguish "just initialized" from "was already there" alongside other status fields.
+
+**Returns:** `Promise<[Buffer | null, Error | null]>` — the vault key buffer on first init, `null` if already initialized, or an `Error` on failure.
 
 
 #### vault.status()
 
-Get vault status for the current identity.
+Get vault status for the current identity. Useful alongside `vault.init()` when callers need to know whether a vault existed before they called `init()`: a `[null, null]` from `init()` plus `status.isInitialized === true` confirms idempotent no-op.
 
 ```typescript
 const status = await ctx.noorm.vault.status();
-console.log(`Initialized: ${status.initialized}, Has access: ${status.hasAccess}`);
+console.log(`Initialized: ${status.isInitialized}, Has access: ${status.hasAccess}`);
 ```
 
 **Returns:** `Promise<VaultStatus>`

@@ -20,15 +20,34 @@ const { quote, qualifiedName } = createDialectQuoting({
  */
 export const mssqlTeardownOperations: TeardownDialectOperations = {
 
-    disableForeignKeyChecks(): string {
+    disableForeignKeyChecks(tables?: string[]): string | string[] {
 
-        // MSSQL uses NOCHECK per-table, but we'll use sp_MSforeachtable
-        // for a session-wide effect during teardown
+        // MSSQL has no session-level FK toggle. With a table list, emit
+        // per-table NOCHECK statements (sequential, single connection).
+        // Without a list, fall back to sp_MSforeachtable for backward
+        // compatibility — but production callers should always pass tables
+        // because the foreach spawns parallel workers that deadlock on
+        // schema locks (see mssql-problems.md #6).
+        if (tables && tables.length > 0) {
+
+            return tables.map((t) => `ALTER TABLE ${qualifiedName(t)} NOCHECK CONSTRAINT ALL`);
+
+        }
+
         return 'EXEC sp_MSforeachtable \'ALTER TABLE ? NOCHECK CONSTRAINT ALL\'';
 
     },
 
-    enableForeignKeyChecks(): string {
+    enableForeignKeyChecks(tables?: string[]): string | string[] {
+
+        if (tables && tables.length > 0) {
+
+            // WITH CHECK CHECK CONSTRAINT ALL re-validates existing rows.
+            // Plain CHECK CONSTRAINT ALL marks the FK as trusted-only, which
+            // matches the original sp_MSforeachtable behavior.
+            return tables.map((t) => `ALTER TABLE ${qualifiedName(t)} CHECK CONSTRAINT ALL`);
+
+        }
 
         return 'EXEC sp_MSforeachtable \'ALTER TABLE ? CHECK CONSTRAINT ALL\'';
 

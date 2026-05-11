@@ -99,16 +99,42 @@ const execCommand = defineCommand({
 
                         for (const file of res.files) {
 
-                            logger.info(`${file.filepath} (${file.status})`);
+                            if (file.status === 'failed') {
+
+                                logger.error(`${file.filepath} (failed)`);
+                                if (file.error) logger.error(`  error: ${file.error}`);
+
+                            }
+                            else if (file.status === 'skipped' && file.skipReason) {
+
+                                logger.info(`${file.filepath} (skipped: ${file.skipReason})`);
+
+                            }
+                            else {
+
+                                logger.info(`${file.filepath} (${file.status})`);
+
+                            }
 
                         }
 
-                        logger.info(`Run exec ${res.status}`, {
+                        const summary = {
                             filesRun: res.filesRun,
                             filesSkipped: res.filesSkipped,
                             filesFailed: res.filesFailed,
                             durationMs: res.durationMs,
-                        });
+                        };
+
+                        if (res.status === 'success') {
+
+                            logger.info(`Run exec ${res.status}`, summary);
+
+                        }
+                        else {
+
+                            logger.error(`Run exec ${res.status}`, summary);
+
+                        }
 
                     }
 

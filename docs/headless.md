@@ -57,6 +57,8 @@ These options are reused across most commands. Run `<command> --help` to see exa
 
 > **Note:** `-c` is overloaded by position. `noorm -c <path> run` is the global cwd flag; `noorm run -c <name>` is the per-command config alias. The first non-flag token (the subcommand) is the boundary.
 
+> **`--json` placement:** `--json` is per-subcommand, not global — it must appear **after** the subcommand name (`noorm change ff --json`, not `noorm --json change ff`). See [CLI flag conventions](./cli/flags.md) for the full reasoning. For per-command help, see [Discovering command help](./cli/help.md).
+
 
 ## Configuration
 
@@ -177,9 +179,10 @@ Bootstrap a new noorm project interactively. Creates identity (if needed), proje
 ```bash
 noorm init              # Interactive, requires TTY
 noorm init --force      # Reinitialize an existing .noorm/
+noorm init --yes        # Non-interactive, requires existing identity
 ```
 
-**TTY required.** Fails with exit code 1 in CI or when stdin is piped. For headless setup, use `noorm ci init` instead.
+**TTY required by default.** Fails with exit code 1 in CI or when stdin is piped. For scripted bootstrap, set up the identity with `noorm identity init --name ... --email ...` then run `noorm init --yes` (or set `NOORM_YES=1`). For the full non-interactive matrix across all TTY-gated commands, see [Non-interactive operation](./guide/automation/non-interactive.md). For ephemeral CI runners, use `noorm ci init` instead.
 
 
 ### Configuration
@@ -416,7 +419,7 @@ Interactive editor for settings sections: paths, build, strict, logging, stages,
 noorm settings edit      # Requires TTY
 ```
 
-**TTY required.**
+**TTY required.** `--yes` / `NOORM_YES` errors with a redirect hint — edit `settings.yml` directly. See [Non-interactive operation](./guide/automation/non-interactive.md).
 
 
 #### `settings secret`
@@ -427,7 +430,7 @@ Interactive editor for secret requirement declarations: which secrets are requir
 noorm settings secret    # Requires TTY
 ```
 
-**TTY required.** This manages requirement declarations, not secret values. Use `noorm secret set` or `noorm vault set` for values.
+**TTY required.** This manages requirement declarations, not secret values. Use `noorm secret set` or `noorm vault set` for values. `--yes` / `NOORM_YES` errors with a redirect hint pointing at direct YAML edits.
 
 
 ### Secrets (Config-Scoped)
@@ -1260,7 +1263,7 @@ noorm sql repl
 noorm sql repl --config dev
 ```
 
-**TTY required.**
+**TTY required.** `--yes` / `NOORM_YES` errors with a redirect hint — use `noorm sql query "<SQL>"` or `noorm sql query --file query.sql` for non-interactive SQL.
 
 
 #### `sql history`

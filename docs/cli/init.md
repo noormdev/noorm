@@ -9,6 +9,7 @@ project structure (`sql/`, `changes/`, `.noorm/`), `settings.yml`, and `state.en
 
 - `--force` / `-f` — overwrite an existing `.noorm/` directory
 - `--here` — initialize in the original cwd, ignoring any parent `.noorm/` discovered while walking up
+- `--yes` / `-y` — proceed non-interactively when a full identity already exists at `~/.noorm/identity.{key,pub,json}`. Equivalent to setting `NOORM_YES=1`. See [Non-interactive operation](../guide/automation/non-interactive.md) for details.
 
 
 ## Picking the project root
@@ -26,7 +27,26 @@ Two flags opt out of that behavior, depending on where you want to invoke from:
 
 ## Environment
 
-Interactive TTY required. Fails with exit code 1 in CI or piped stdin.
+Interactive TTY required by default. Fails with exit code 1 in CI or piped stdin
+unless `--yes` / `NOORM_YES=1` is set AND a full identity already exists.
+
+
+## Non-interactive (CI) flow
+
+`noorm init --yes` (or `NOORM_YES=1 noorm init`) skips all prompts when a full
+crypto identity already lives at `~/.noorm/identity.{key,pub,json}`. The identity
+must be in place first — `--yes` does NOT bootstrap one. If any of the three
+files is missing, `noorm init --yes` exits 1 with:
+
+    Error: noorm init --yes requires an existing identity at ~/.noorm/identity.{key,pub,json}.
+    Run: noorm identity init --name "Your Name" --email "you@example.com"
+    Then re-run: noorm init --yes
+
+The end-to-end CI bootstrap is two commands:
+
+    # CI flow
+    noorm identity init --name "$CI_USER" --email "$CI_EMAIL"
+    noorm init --yes
 
 
 ## Example
@@ -34,6 +54,17 @@ Interactive TTY required. Fails with exit code 1 in CI or piped stdin.
     noorm init
     noorm init --force
     noorm init --here
+    noorm init --yes                 # non-interactive, requires existing identity
 
     # From the repo root, init a sub-project at packages/db
     noorm -c packages/db init
+
+
+## Next steps
+
+After `init` lays down `settings.yml` and `.noorm/`, the database
+itself still has to be provisioned. See
+[Creating a database](../guide/database/create.md) for the configs-first
+workflow (`config import` → `db create` → `config use`), and
+[CLI flag conventions](./flags.md) for `--json` placement and the
+global-vs-per-subcommand rules.

@@ -18,7 +18,7 @@ import React from 'react';
 import { observer } from '../../core/observer.js';
 import { enableAutoLoggerInit } from '../../core/logger/init.js';
 import { getStateManager } from '../../core/state/index.js';
-import { sharedArgs } from '../_utils.js';
+import { isYesMode, sharedArgs } from '../_utils.js';
 
 /**
  * No-op stream that discards all writes.
@@ -33,10 +33,24 @@ const replCommand = defineCommand({
     },
     args: {
         config: sharedArgs.config,
+        yes: sharedArgs.yes,
     },
     async run({ args }) {
 
         // === TTY gate ===
+        // A REPL is interactive by definition. --yes / NOORM_YES can't help
+        // here, but redirecting users to the headless alternatives can.
+        if (isYesMode(args)) {
+
+            process.stderr.write(
+                'Error: noorm sql repl is interactive only. For non-interactive SQL, use:\n' +
+                '  noorm sql query "SELECT 1"            # one-shot\n' +
+                '  noorm sql --file query.sql            # from a file\n',
+            );
+            process.exit(1);
+
+        }
+
         if (!process.stdin.isTTY) {
 
             process.stderr.write('Error: noorm sql repl requires an interactive terminal.\n');

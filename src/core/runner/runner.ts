@@ -27,15 +27,14 @@
  */
 import path from 'node:path';
 import { readFile, readdir, writeFile as fsWriteFile, mkdir } from 'node:fs/promises';
-import { sql } from 'kysely';
 
 import { attempt, attemptSync } from '@logosdx/utils';
 
 import { observer } from '../observer.js';
 import { formatIdentity } from '../identity/resolver.js';
 import { processFile, isTemplate } from '../template/index.js';
-import { getSqlErrorMessage } from '../shared/index.js';
 import { computeChecksum, computeChecksumFromContent, computeCombinedChecksum } from './checksum.js';
+import { executeSqlBody } from './mssql-batches.js';
 import { Tracker } from './tracker.js';
 import type {
     RunOptions,
@@ -906,18 +905,18 @@ async function executeSingleFileWithUpdate(
 
     }
 
-    // Execute SQL
-    const [, execErr] = await attempt(() => sql.raw(sqlContent).execute(context.db));
+    // Execute SQL (MSSQL splits on `GO` batches; other dialects run as one)
+    const execErrMsg = await executeSqlBody(context, sqlContent);
 
     const durationMs = performance.now() - start;
 
-    if (execErr) {
+    if (execErrMsg) {
 
         const result: FileResult = {
             filepath,
             checksum: finalChecksum,
             status: 'failed',
-            error: getSqlErrorMessage(execErr),
+            error: execErrMsg,
             durationMs,
         };
 
@@ -926,14 +925,14 @@ async function executeSingleFileWithUpdate(
             relFilepath,
             'failed',
             Math.round(durationMs),
-            getSqlErrorMessage(execErr),
+            execErrMsg,
         );
 
         observer.emit('file:after', {
             filepath,
             status: 'failed',
             durationMs,
-            error: getSqlErrorMessage(execErr),
+            error: execErrMsg,
         });
 
         return result;
@@ -1086,18 +1085,18 @@ async function executeSingleFile(
 
     }
 
-    // Execute SQL
-    const [, execErr] = await attempt(() => sql.raw(sqlContent).execute(context.db));
+    // Execute SQL (MSSQL splits on `GO` batches; other dialects run as one)
+    const execErrMsg = await executeSqlBody(context, sqlContent);
 
     const durationMs = performance.now() - start;
 
-    if (execErr) {
+    if (execErrMsg) {
 
         const result: FileResult = {
             filepath,
             checksum,
             status: 'failed',
-            error: getSqlErrorMessage(execErr),
+            error: execErrMsg,
             durationMs,
         };
 
@@ -1106,7 +1105,7 @@ async function executeSingleFile(
             filepath: relFilepath,
             checksum,
             status: 'failed',
-            errorMessage: getSqlErrorMessage(execErr),
+            errorMessage: execErrMsg,
             durationMs: Math.round(durationMs),
         });
 
@@ -1114,7 +1113,7 @@ async function executeSingleFile(
             filepath,
             status: 'failed',
             durationMs,
-            error: getSqlErrorMessage(execErr),
+            error: execErrMsg,
         });
 
         return result;

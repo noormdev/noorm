@@ -20,6 +20,7 @@ import type {
     StrictConfig,
     TeardownConfig,
 } from '../../core/settings/types.js';
+import { isYesMode, sharedArgs } from '../_utils.js';
 
 type Manager = ReturnType<typeof getSettingsManager>;
 
@@ -553,8 +554,23 @@ async function addRulePrompt(manager: Manager): Promise<void> {
 
 const editCommand = defineCommand({
     meta: { name: 'edit', description: 'Interactively edit project settings' },
-    args: {},
-    async run() {
+    args: {
+        yes: sharedArgs.yes,
+    },
+    async run({ args }) {
+
+        // settings.yml has no useful non-interactive surface here — the
+        // YAML can be edited with any text editor. --yes / NOORM_YES gets
+        // a redirect hint instead of going through prompts blindly.
+        if (isYesMode(args)) {
+
+            process.stderr.write(
+                'Error: noorm settings edit is interactive only.\n' +
+                "Edit settings.yml directly, or use 'noorm settings build' to validate after changes.\n",
+            );
+            process.exit(1);
+
+        }
 
         if (!process.stdin.isTTY) {
 

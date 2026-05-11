@@ -20,11 +20,15 @@ const nextCommand = defineCommand({
             required: false,
         },
         config: sharedArgs.config,
+        force: sharedArgs.force,
+        dryRun: sharedArgs.dryRun,
         json: sharedArgs.json,
     },
     async run({ args }) {
 
         const count = args.count ? parseInt(args.count, 10) : 1;
+        const dryRun = Boolean(args.dryRun);
+        const force = Boolean(args.force);
 
         if (isNaN(count) || count < 1) {
 
@@ -37,9 +41,15 @@ const nextCommand = defineCommand({
             args,
             fn: (ctx, logger) => {
 
-                return ctx.noorm.changes.next(count).then((res) => {
+                return ctx.noorm.changes.next(count, { dryRun, force }).then((res) => {
 
                     if (!args.json) {
+
+                        if (dryRun) {
+
+                            logger.info('Dry run: rendering changes to tmp/ (no DB writes)');
+
+                        }
 
                         if (res.executed === 0) {
 
@@ -48,15 +58,19 @@ const nextCommand = defineCommand({
                         }
                         else {
 
-                            logger.info(`Applied ${res.executed} change(s)`, {
+                            const label = dryRun ? 'Rendered' : 'Applied';
+
+                            logger.info(`${label} ${res.executed} change(s)`, {
                                 executed: res.executed,
                                 skipped: res.skipped,
                                 failed: res.failed,
+                                ...(dryRun ? { dryRun: true } : {}),
                             });
 
                             for (const cs of res.changes) {
 
-                                logger.info(`  ${cs.name} (${cs.status})`);
+                                const suffix = dryRun ? `${cs.status}, dry-run` : cs.status;
+                                logger.info(`  ${cs.name} (${suffix})`);
 
                             }
 
@@ -75,7 +89,8 @@ const nextCommand = defineCommand({
 
         if (args.json) {
 
-            outputResult(args, result, '');
+            const payload = dryRun ? { ...result, dryRun: true } : result;
+            outputResult(args, payload, '');
 
         }
 
@@ -87,6 +102,7 @@ const nextCommand = defineCommand({
 (nextCommand as typeof nextCommand & { examples: string[] }).examples = [
     'noorm change next',
     'noorm change next 3',
+    'noorm change next --dry-run',
     'noorm change next -c prod',
     'noorm change next --json',
 ];

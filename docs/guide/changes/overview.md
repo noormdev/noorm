@@ -292,13 +292,12 @@ For templates, this shows the rendered SQL. Use this before running against prod
 
 ### Dry Run
 
-Render files to a temporary directory without executing:
+Render files to a temporary directory without executing. Available on every apply/revert command: `change run`, `change revert`, `change ff`, and `change next`:
 
-```bash
-noorm change run 2025-02-01-migrate-user-roles --dry-run
-```
+    noorm change run 2025-02-01-migrate-user-roles --dry-run
+    noorm change ff --dry-run
 
-Files are written to `tmp/` so you can inspect them.
+Files are written to `tmp/` so you can inspect them. The dry-run branch does **not** consult the tracking tables (`__noorm_change__`, `__noorm_executions__`) and never writes to them — making it safe to run repeatedly in production. The CLI tags human output with `(dry-run)` and adds `dryRun: true` to the JSON payload so CI pipelines can verify the result didn't touch the database.
 
 
 ## When Changes Re-Run

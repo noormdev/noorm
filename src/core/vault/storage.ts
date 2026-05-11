@@ -25,20 +25,41 @@ import {
 /**
  * Initialize the vault for a database.
  *
- * Generates a new vault key and stores it encrypted for the current user.
- * Only the first user to initialize gets the vault key.
- * Uses dialect-aware table names to support both legacy prefixed and
- * schema-qualified table locations.
+ * Idempotent: if the vault is already initialized, returns [null, null]
+ * without modifying state. Only the first call generates and returns
+ * the vault key.
+ *
+ * On first call:
+ *   - Generates a new vault key.
+ *   - Encrypts it for the current user.
+ *   - Emits the `vault:initialized` observer event.
+ *   - Returns [vaultKey, null].
+ *
+ * On repeat calls:
+ *   - No state change. No event emission.
+ *   - Returns [null, null]. Callers that need the existing key for
+ *     ongoing operations should use vault.get / vault.set with their
+ *     private key.
  *
  * @param db - Kysely database instance
  * @param identityHash - Current user's identity hash
  * @param publicKey - Current user's public key (hex)
  * @param dialect - Database dialect for table name resolution
+ * @returns [Buffer | null, Error | null]
+ *   - [Buffer, null] on first successful init.
+ *   - [null, null] when the vault is already initialized.
+ *   - [null, Error] on actual failure (DB error, etc.).
  *
  * @example
  * ```typescript
- * const [, err] = await initializeVault(db, identity.identityHash, identity.publicKey, 'postgres');
- * if (err) console.error('Failed to initialize vault');
+ * const [vaultKey, err] = await initializeVault(db, identity.identityHash, identity.publicKey, 'postgres');
+ * if (err) throw err;
+ * if (vaultKey) {
+ *     // first-time init — set initial secrets, etc.
+ * }
+ * else {
+ *     // already initialized — use vault.get / vault.set with private key
+ * }
  * ```
  */
 export async function initializeVault(
@@ -67,7 +88,8 @@ export async function initializeVault(
 
     if (existing?.encrypted_vault_key) {
 
-        return [null, new Error('Vault already initialized')];
+        // Idempotent — vault already initialized, no work done, no event emitted.
+        return [null, null];
 
     }
 

@@ -25,13 +25,40 @@ const buildCommand = defineCommand({
 
                     if (!args.json) {
 
-                        logger.info('Build completed successfully', {
+                        for (const file of res.files) {
+
+                            if (file.status === 'failed') {
+
+                                logger.error(`${file.filepath} (failed)`);
+                                if (file.error) logger.error(`  error: ${file.error}`);
+
+                            }
+                            else if (file.status === 'skipped' && file.skipReason) {
+
+                                logger.info(`${file.filepath} (skipped: ${file.skipReason})`);
+
+                            }
+
+                        }
+
+                        const summary = {
                             status: res.status,
                             filesRun: res.filesRun,
                             filesSkipped: res.filesSkipped,
                             filesFailed: res.filesFailed,
                             durationMs: res.durationMs,
-                        });
+                        };
+
+                        if (res.status === 'success') {
+
+                            logger.info('Build completed', summary);
+
+                        }
+                        else {
+
+                            logger.error('Build completed', summary);
+
+                        }
 
                     }
 

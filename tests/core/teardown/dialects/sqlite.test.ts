@@ -14,6 +14,14 @@ describe('teardown: sqlite dialect', () => {
 
         });
 
+        it('ignores tables arg (connection-level PRAGMA)', () => {
+
+            const sql = sqliteTeardownOperations.disableForeignKeyChecks(['users', 'posts']);
+
+            expect(sql).toBe('PRAGMA foreign_keys = OFF');
+
+        });
+
     });
 
     describe('enableForeignKeyChecks', () => {
@@ -21,6 +29,14 @@ describe('teardown: sqlite dialect', () => {
         it('should return PRAGMA foreign_keys = ON', () => {
 
             const sql = sqliteTeardownOperations.enableForeignKeyChecks();
+
+            expect(sql).toBe('PRAGMA foreign_keys = ON');
+
+        });
+
+        it('ignores tables arg (connection-level PRAGMA)', () => {
+
+            const sql = sqliteTeardownOperations.enableForeignKeyChecks(['users', 'posts']);
 
             expect(sql).toBe('PRAGMA foreign_keys = ON');
 

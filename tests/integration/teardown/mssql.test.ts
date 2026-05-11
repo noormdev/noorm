@@ -506,4 +506,93 @@ describe('integration: mssql teardown', () => {
 
     });
 
+    // ─────────────────────────────────────────────────────────────
+    // M-5: schema-bound UDFs must not block table drops.
+    // M-6: truncate must not deadlock (canary: 5 sequential iterations).
+    // ─────────────────────────────────────────────────────────────
+
+    describe('teardownSchema with schema-bound UDF (M-5)', () => {
+
+        beforeEach(async () => {
+
+            await teardownTestSchema(db, 'mssql').catch(() => {});
+
+        });
+
+        it('drops a schema-bound UDF referencing a table without "is being referenced" errors', async () => {
+
+            await sql.raw(`
+                CREATE TABLE Memory (
+                    id INT PRIMARY KEY,
+                    score INT NOT NULL,
+                    confidence INT NOT NULL
+                )
+            `).execute(db);
+
+            // Schema-bound UDF — holds a dependency lock on Memory.score.
+            // Pre-fix, this would cause teardownSchema to fail when DROP TABLE
+            // ran before DROP FUNCTION.
+            await sql.raw(`
+                CREATE FUNCTION dbo.fn_MemoryScore(@id INT)
+                RETURNS INT
+                WITH SCHEMABINDING
+                AS
+                BEGIN
+                    DECLARE @s INT;
+                    SELECT @s = score FROM dbo.Memory WHERE id = @id;
+                    RETURN @s;
+                END
+            `).execute(db);
+
+            const result = await teardownSchema(db, 'mssql');
+
+            expect(result.dropped.tables).toContain('Memory');
+            expect(result.dropped.functions).toContain('fn_MemoryScore');
+
+            // Both objects should be gone.
+            const tables = await fetchList(db, 'mssql', 'tables');
+            expect(tables.map((t) => t.name)).not.toContain('Memory');
+            const functions = await fetchList(db, 'mssql', 'functions');
+            expect(functions.map((f) => f.name)).not.toContain('fn_MemoryScore');
+
+        });
+
+    });
+
+    describe('truncateData deadlock canary (M-6)', () => {
+
+        beforeEach(async () => {
+
+            await teardownTestSchema(db, 'mssql').catch(() => {});
+            await deployTestSchema(db, 'mssql');
+
+        });
+
+        it('runs 5 sequential truncates without deadlock and never emits sp_MSforeachtable', async () => {
+
+            for (let i = 0; i < 5; i++) {
+
+                // Re-seed before each iteration so DELETEs actually have rows.
+                await seedTestData(db, 'mssql');
+
+                const result = await truncateData(db, 'mssql');
+
+                // Regression guard: no sp_MSforeachtable in emitted SQL.
+                const flat = result.statements.join('\n');
+                expect(flat).not.toContain('sp_MSforeachtable');
+
+                // Per-table NOCHECK/CHECK markers must appear.
+                expect(flat).toContain('NOCHECK CONSTRAINT ALL');
+                expect(flat).toContain('CHECK CONSTRAINT ALL');
+
+                // All non-noorm rows are gone.
+                const usersCnt = await sql.raw('SELECT COUNT(*) as cnt FROM users').execute(db);
+                expect((usersCnt.rows[0] as { cnt: number }).cnt).toBe(0);
+
+            }
+
+        }, 60_000);
+
+    });
+
 });

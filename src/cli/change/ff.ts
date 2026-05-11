@@ -18,23 +18,57 @@ const ffCommand = defineCommand({
     },
     async run({ args }) {
 
+        const dryRun = Boolean(args.dryRun);
+        const force = Boolean(args.force);
+
         const [result, error] = await withContext({
             args,
             fn: (ctx, logger) => {
 
-                return ctx.noorm.changes.ff().then((res) => {
+                return ctx.noorm.changes.ff({ dryRun, force }).then((res) => {
 
                     if (!args.json) {
 
-                        logger.info(`Fast-forward ${res.status}`, {
+                        if (dryRun) {
+
+                            logger.info('Dry run: rendering changes to tmp/ (no DB writes)');
+
+                        }
+
+                        const summary = {
                             executed: res.executed,
                             skipped: res.skipped,
                             failed: res.failed,
-                        });
+                            ...(dryRun ? { dryRun: true } : {}),
+                        };
+
+                        const headerPrefix = dryRun ? 'Fast-forward (dry-run)' : 'Fast-forward';
+
+                        if (res.status === 'success') {
+
+                            logger.info(`${headerPrefix} ${res.status}`, summary);
+
+                        }
+                        else {
+
+                            logger.error(`${headerPrefix} ${res.status}`, summary);
+
+                        }
 
                         for (const cs of res.changes) {
 
-                            logger.info(`  ${cs.name} (${cs.status})`);
+                            if (cs.status === 'failed') {
+
+                                logger.error(`  ${cs.name} (failed)`);
+                                if (cs.error) logger.error(`    error: ${cs.error}`);
+
+                            }
+                            else {
+
+                                const suffix = dryRun ? `${cs.status}, dry-run` : cs.status;
+                                logger.info(`  ${cs.name} (${suffix})`);
+
+                            }
 
                         }
 
@@ -51,7 +85,11 @@ const ffCommand = defineCommand({
 
         if (args.json) {
 
-            outputResult(args, result, '');
+            // Annotate the JSON payload with the dry-run flag so callers in
+            // CI pipelines can detect that the result didn't touch the DB
+            // without having to also parse the surrounding human output.
+            const payload = dryRun ? { ...result, dryRun: true } : result;
+            outputResult(args, payload, '');
 
         }
 

@@ -71,6 +71,68 @@ function createMockKysely(tableRows: Record<string, unknown>[]) {
 
 }
 
+/**
+ * Like createMockKysely, but returns different row sets per category.
+ *
+ * Mirrors the Promise.all order in teardownSchema:
+ *   1. tables, 2. views, 3. functions, 4. procedures, 5. types, 6. foreignKeys
+ *
+ * Used to assert drop ordering with mixed object types present.
+ */
+function createMockKyselyForTeardown(rows: {
+    tables?: Record<string, unknown>[];
+    views?: Record<string, unknown>[];
+    functions?: Record<string, unknown>[];
+    procedures?: Record<string, unknown>[];
+    types?: Record<string, unknown>[];
+    foreignKeys?: Record<string, unknown>[];
+}) {
+
+    const db = new Kysely<unknown>({
+        dialect: {
+            createAdapter: () => new PostgresAdapter(),
+            createDriver: () => new DummyDriver(),
+            createIntrospector: (db) => new PostgresIntrospector(db),
+            createQueryCompiler: () => new PostgresQueryCompiler(),
+        },
+    });
+
+    const sequence: Record<string, unknown>[][] = [
+        rows.tables ?? [],
+        rows.views ?? [],
+        rows.functions ?? [],
+        rows.procedures ?? [],
+        rows.types ?? [],
+        rows.foreignKeys ?? [],
+    ];
+
+    let callCount = 0;
+    const originalExecutor = db.getExecutor();
+
+    vi.spyOn(originalExecutor, 'provideConnection').mockImplementation(async (consumer) => {
+
+        return consumer({
+            executeQuery: vi.fn().mockImplementation(() => {
+
+                const next = sequence[callCount] ?? [];
+                callCount++;
+
+                return Promise.resolve({ rows: next });
+
+            }),
+            streamQuery: () => {
+
+                throw new Error('not implemented');
+
+            },
+        });
+
+    });
+
+    return db;
+
+}
+
 
 describe('teardown: operations', () => {
 
@@ -255,6 +317,138 @@ describe('teardown: truncateData preserve filtering', () => {
 
     });
 
+    it('emits zero statements when there is nothing to truncate', async () => {
+
+        const db = createMockKysely([
+            tableRow('seeds'),
+            tableRow('lookups'),
+        ]);
+
+        const result = await truncateData(db, 'postgres', {
+            preserve: ['seeds', 'lookups'],
+            dryRun: true,
+        });
+
+        expect(result.truncated).toEqual([]);
+        // No FK disable/enable bookends when nothing is being truncated
+        expect(result.statements).toEqual([]);
+
+    });
+
+});
+
+// ─────────────────────────────────────────────────────────────
+// truncateData — MSSQL per-table NOCHECK (M-6 deadlock fix)
+// ─────────────────────────────────────────────────────────────
+
+describe('teardown: truncateData mssql NOCHECK strategy (M-6)', () => {
+
+    it('emits per-table NOCHECK then per-table DELETE then per-table CHECK', async () => {
+
+        const db = createMockKysely([
+            { table_name: 'users', schema_name: 'dbo', column_count: 3, row_count: 0 },
+            { table_name: 'posts', schema_name: 'dbo', column_count: 3, row_count: 0 },
+        ]);
+
+        const result = await truncateData(db, 'mssql', { dryRun: true });
+
+        // Expect three groups: NOCHECK x2, DELETE x2, CHECK x2.
+        // Order within each group preserves the table-list order.
+        const nocheck = result.statements.filter((s) => s.includes('NOCHECK CONSTRAINT ALL'));
+        const checks = result.statements.filter((s) => s.includes('CHECK CONSTRAINT ALL') && !s.includes('NOCHECK'));
+        const deletes = result.statements.filter((s) => s.includes('DELETE FROM'));
+
+        // truncateData passes only table names (no schema) to the dialect ops,
+        // so the emitted ALTER/DELETE statements are unqualified.
+        expect(nocheck).toEqual([
+            'ALTER TABLE [users] NOCHECK CONSTRAINT ALL',
+            'ALTER TABLE [posts] NOCHECK CONSTRAINT ALL',
+        ]);
+        expect(deletes.length).toBe(2);
+        expect(deletes[0]).toContain('DELETE FROM [users]');
+        expect(deletes[1]).toContain('DELETE FROM [posts]');
+        expect(checks).toEqual([
+            'ALTER TABLE [users] CHECK CONSTRAINT ALL',
+            'ALTER TABLE [posts] CHECK CONSTRAINT ALL',
+        ]);
+
+    });
+
+    it('never emits sp_MSforeachtable for mssql truncate (regression guard)', async () => {
+
+        const db = createMockKysely([
+            { table_name: 'A', schema_name: 'dbo', column_count: 1, row_count: 0 },
+            { table_name: 'B', schema_name: 'dbo', column_count: 1, row_count: 0 },
+            { table_name: 'C', schema_name: 'dbo', column_count: 1, row_count: 0 },
+        ]);
+
+        const result = await truncateData(db, 'mssql', { dryRun: true });
+        const joined = result.statements.join('\n');
+
+        expect(joined).not.toContain('sp_MSforeachtable');
+
+    });
+
+    it('preserves identity reseed (DBCC CHECKIDENT) for mssql', async () => {
+
+        const db = createMockKysely([
+            { table_name: 'users', schema_name: 'dbo', column_count: 1, row_count: 0 },
+        ]);
+
+        const result = await truncateData(db, 'mssql', { dryRun: true });
+
+        const hasReseed = result.statements.some((s) => s.includes('DBCC CHECKIDENT'));
+        expect(hasReseed).toBe(true);
+
+    });
+
+    it('produces full statement sequence for an only-list (NOCHECK → DELETE → CHECK)', async () => {
+
+        const db = createMockKysely([
+            { table_name: 'A', schema_name: 'dbo', column_count: 1, row_count: 0 },
+            { table_name: 'B', schema_name: 'dbo', column_count: 1, row_count: 0 },
+            { table_name: 'C', schema_name: 'dbo', column_count: 1, row_count: 0 },
+        ]);
+
+        const result = await truncateData(db, 'mssql', {
+            only: ['A', 'B'],
+            dryRun: true,
+        });
+
+        expect(result.truncated).toEqual(['A', 'B']);
+
+        const firstNocheckIdx = result.statements.findIndex((s) => s.includes('NOCHECK CONSTRAINT ALL'));
+        const firstDeleteIdx = result.statements.findIndex((s) => s.includes('DELETE FROM'));
+        const firstCheckIdx = result.statements.findIndex(
+            (s) => s.includes('CHECK CONSTRAINT ALL') && !s.includes('NOCHECK'),
+        );
+
+        expect(firstNocheckIdx).toBeLessThan(firstDeleteIdx);
+        expect(firstDeleteIdx).toBeLessThan(firstCheckIdx);
+
+    });
+
+});
+
+// ─────────────────────────────────────────────────────────────
+// truncateData — other dialects (no behavior change)
+// ─────────────────────────────────────────────────────────────
+
+describe('teardown: truncateData session-level FK toggle dialects', () => {
+
+    it('postgres emits single SET disable/enable around truncates', async () => {
+
+        const db = createMockKysely([
+            tableRow('users'),
+        ]);
+
+        const result = await truncateData(db, 'postgres', { dryRun: true });
+
+        expect(result.statements[0]).toBe('SET session_replication_role = \'replica\'');
+        expect(result.statements[result.statements.length - 1]).toBe('SET session_replication_role = \'origin\'');
+
+    });
+
 });
 
 // ─────────────────────────────────────────────────────────────
@@ -292,6 +486,123 @@ describe('teardown: teardownSchema preserveTables filtering', () => {
 
         expect(result.dropped.tables).toEqual(['users']);
         expect(result.preserved).toEqual(['__noorm_changes']);
+
+    });
+
+});
+
+// ─────────────────────────────────────────────────────────────
+// teardownSchema — drop order (M-5: schema-bound deps)
+// MSSQL schema-bound UDFs/views hold dependency locks on tables.
+// Procs/funcs/views must be dropped BEFORE tables. Types last.
+// ─────────────────────────────────────────────────────────────
+
+describe('teardown: teardownSchema drop order', () => {
+
+    it('drops mssql objects in order: FK → Procs → Funcs → Views → Tables → Types', async () => {
+
+        // MSSQL explore row shapes — see src/core/explore/dialects/mssql.ts
+        const db = createMockKyselyForTeardown({
+            tables: [
+                { table_name: 'Memory', schema_name: 'dbo', column_count: 3, row_count: 0 },
+            ],
+            views: [
+                { view_name: 'vw_Memory', schema_name: 'dbo', column_count: 2 },
+            ],
+            functions: [
+                { func_name: 'fn_MemoryConfidence', schema_name: 'dbo', param_count: 1, return_type: 'scalar' },
+            ],
+            procedures: [
+                { proc_name: 'sp_Memory_Create', schema_name: 'dbo', param_count: 2 },
+            ],
+            types: [],
+            foreignKeys: [],
+        });
+
+        const result = await teardownSchema(db, 'mssql', { dryRun: true });
+
+        // Filter out comment-only lines (e.g. from sqlite no-op statements)
+        const stmts = result.statements.filter((s) => !s.startsWith('--'));
+
+        const procIdx = stmts.findIndex((s) => s.includes('DROP PROCEDURE') && s.includes('sp_Memory_Create'));
+        const funcIdx = stmts.findIndex((s) => s.includes('DROP FUNCTION') && s.includes('fn_MemoryConfidence'));
+        const viewIdx = stmts.findIndex((s) => s.includes('DROP VIEW') && s.includes('vw_Memory'));
+        const tableIdx = stmts.findIndex((s) => s.includes('DROP TABLE') && s.includes('Memory') && !s.includes('vw_'));
+
+        expect(procIdx).toBeGreaterThanOrEqual(0);
+        expect(funcIdx).toBeGreaterThan(procIdx);
+        expect(viewIdx).toBeGreaterThan(funcIdx);
+        expect(tableIdx).toBeGreaterThan(viewIdx);
+
+    });
+
+    it('drops fks before procedures/functions/views/tables', async () => {
+
+        const db = createMockKyselyForTeardown({
+            tables: [
+                { table_name: 'orders', schema_name: 'dbo', column_count: 3, row_count: 0 },
+            ],
+            views: [
+                { view_name: 'vw_orders', schema_name: 'dbo', column_count: 2 },
+            ],
+            functions: [
+                { func_name: 'fn_total', schema_name: 'dbo', param_count: 0, return_type: 'scalar' },
+            ],
+            procedures: [
+                { proc_name: 'sp_run', schema_name: 'dbo', param_count: 0 },
+            ],
+            types: [],
+            foreignKeys: [
+                {
+                    fk_name: 'fk_orders_user',
+                    schema_name: 'dbo',
+                    table_name: 'orders',
+                    column_name: 'user_id',
+                    ref_schema: 'dbo',
+                    ref_table: 'users',
+                    ref_column: 'id',
+                    delete_action: 'NO ACTION',
+                    update_action: 'NO ACTION',
+                },
+            ],
+        });
+
+        const result = await teardownSchema(db, 'mssql', { dryRun: true });
+        const stmts = result.statements.filter((s) => !s.startsWith('--'));
+
+        const fkIdx = stmts.findIndex((s) => s.includes('DROP CONSTRAINT') && s.includes('fk_orders_user'));
+        const procIdx = stmts.findIndex((s) => s.includes('DROP PROCEDURE'));
+        const funcIdx = stmts.findIndex((s) => s.includes('DROP FUNCTION'));
+        const viewIdx = stmts.findIndex((s) => s.includes('DROP VIEW'));
+        const tableIdx = stmts.findIndex((s) => s.includes('DROP TABLE'));
+
+        expect(fkIdx).toBeGreaterThanOrEqual(0);
+        expect(procIdx).toBeGreaterThan(fkIdx);
+        expect(funcIdx).toBeGreaterThan(procIdx);
+        expect(viewIdx).toBeGreaterThan(funcIdx);
+        expect(tableIdx).toBeGreaterThan(viewIdx);
+
+    });
+
+    it('drops types last (after tables)', async () => {
+
+        const db = createMockKyselyForTeardown({
+            tables: [
+                { table_name: 'orders', schema_name: 'dbo', column_count: 3, row_count: 0 },
+            ],
+            types: [
+                { type_name: 'EmailAddress', schema_name: 'dbo', is_table_type: false },
+            ],
+        });
+
+        const result = await teardownSchema(db, 'mssql', { dryRun: true });
+        const stmts = result.statements.filter((s) => !s.startsWith('--'));
+
+        const tableIdx = stmts.findIndex((s) => s.includes('DROP TABLE'));
+        const typeIdx = stmts.findIndex((s) => s.includes('DROP TYPE'));
+
+        expect(tableIdx).toBeGreaterThanOrEqual(0);
+        expect(typeIdx).toBeGreaterThan(tableIdx);
 
     });
 

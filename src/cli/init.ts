@@ -14,7 +14,7 @@ import { defineCommand } from 'citty';
 import { hasKeyFiles, loadIdentityMetadata } from '../core/identity/index.js';
 import { getOriginalCwd } from '../core/project.js';
 import { performProjectInit, type ProjectInitIdentityInfo } from '../core/project-init.js';
-import { sharedArgs } from './_utils.js';
+import { isYesMode, sharedArgs } from './_utils.js';
 
 /**
  * Exit with cancellation message.
@@ -70,6 +70,7 @@ const initCommand = defineCommand({
     meta: { name: 'init', description: 'Bootstrap a new noorm project (interactive)' },
     args: {
         force: sharedArgs.force,
+        yes: sharedArgs.yes,
         here: {
             type: 'boolean',
             description: 'Init in the original cwd, ignoring any parent .noorm project',
@@ -81,6 +82,7 @@ const initCommand = defineCommand({
         // --here opts out: nest a fresh project inside an existing one.
         const projectRoot = args.here ? getOriginalCwd() : process.cwd();
         const noormDir = join(projectRoot, '.noorm');
+        const yesMode = isYesMode(args);
 
         if (existsSync(noormDir) && !args.force) {
 
@@ -91,7 +93,28 @@ const initCommand = defineCommand({
 
         }
 
-        if (!process.stdin.isTTY) {
+        // === Identity resolution ===
+        // Resolve identity first so --yes can decide whether a non-interactive
+        // path is viable. Without a full identity, --yes has nothing to fall
+        // back on and must error with the bootstrap hint.
+        const keysExist = await hasKeyFiles();
+        const metadata = await loadIdentityMetadata();
+        const hasFullIdentity = keysExist && metadata !== null;
+
+        if (yesMode && !hasFullIdentity) {
+
+            process.stderr.write(
+                'Error: noorm init --yes requires an existing identity at ~/.noorm/identity.{key,pub,json}.\n' +
+                'Run: noorm identity init --name "Your Name" --email "you@example.com"\n' +
+                'Then re-run: noorm init --yes\n',
+            );
+            process.exit(1);
+
+        }
+
+        // TTY gate only fires when --yes can't carry us through. With a full
+        // identity and --yes set we have everything needed to bootstrap.
+        if (!process.stdin.isTTY && !yesMode) {
 
             process.stderr.write('Error: noorm init requires an interactive terminal.\n');
             process.exit(1);
@@ -99,11 +122,6 @@ const initCommand = defineCommand({
         }
 
         p.intro('noorm init');
-
-        // === Identity resolution ===
-        const keysExist = await hasKeyFiles();
-        const metadata = await loadIdentityMetadata();
-        const hasFullIdentity = keysExist && metadata !== null;
 
         let identityInfo: ProjectInitIdentityInfo | null = null;
         if (!hasFullIdentity) {

@@ -28,6 +28,8 @@ The exercise ran on `noorm v1.0.0-alpha.34` against `mcr.microsoft.com/mssql/ser
 
 **Suggested fix:** Honour `NOORM_YES=1` (already documented as a behaviour env var) when an identity already exists, defaulting all the bootstrap questions. Alternatively add `--non-interactive` and `--name`/`--email` overrides to `noorm init`.
 
+**Status:** Partially addressed by `--yes` / `NOORM_YES` for `noorm init`. With an existing identity at `~/.noorm/identity.{key,pub,json}`, `noorm init --yes` now bootstraps without prompting. Missing identity errors with a hint pointing at `noorm identity init --name ... --email ...`. See `docs/guide/automation/non-interactive.md`. Cross-referenced from `docs/guide/troubleshooting.md` for discovery.
+
 
 ## 2. `noorm config add` is TUI-only
 
@@ -45,6 +47,8 @@ The CLI literally tells you to launch the TUI. `noorm config edit` and `noorm co
 **Workaround:** Author the config as JSON and use the documented `noorm config import <path>` (which is non-interactive). The shape required is the `Config` interface from `references/config.md` — `name`, `connection.{dialect,host,port,database,user,password}`, `isTest`, `protected`. A `stage` field is also accepted.
 
 **Suggested fix:** Promote `config import` in CLI help/examples for scripted setup, or add `--from-stage <stageName>` and `--name <name>` flags to `config add` so it can build the config from `settings.yml` defaults without prompting.
+
+**Status:** Still TUI-only. `noorm config add --yes` is out of scope for the `--yes` slice (the command redirects to the TUI rather than gating on a TTY). Use `noorm config import <path>` for scripted setup — that path is fully non-interactive. The configs-first workflow (including `config import`) is now documented in `docs/guide/database/create.md`.
 
 
 ## 3. Schema runner does not split MSSQL `GO` batches
@@ -77,6 +81,8 @@ The repo is aware of this — `tests/utils/db.ts:391` ships a private `splitMssq
 **Workaround:** All `.sql` files in this example contain exactly one CREATE statement; the proc bucket has 73 files instead of the natural 13 grouped-by-domain files. A small `tmp/split-procs.ts` script handled the migration. No `GO` appears anywhere in `sql/`.
 
 **Suggested fix:** Lift `splitMssqlBatches()` into `src/core/runner/runner.ts` and call it for `dialect === 'mssql'`. Optionally allow other dialects' batch separators (PostgreSQL doesn't have one; MySQL has `DELIMITER //` for procs, which is a different problem).
+
+**Status:** Fixed in worktree branch `worktree-noorm-fixes` (commit shows in `git log`). The runner now imports `splitMssqlBatches` from `src/core/runner/mssql-batches.ts` and feeds batches one at a time to tedious when `dialect === 'mssql'`. Multi-batch failures surface as `[batch N of M] <driver error>` in `FileResult.error`. The original workaround (one `CREATE` per file) is no longer needed but this example hasn't been re-consolidated — that's a follow-up.
 
 
 ## 4. Build/run failures are silent — no error detail in stdout, stderr, or `--json`
@@ -129,6 +135,8 @@ This is unavoidable for schema-bound functions in this design — the validators
 
 **Suggested fix:** Reorder teardown so functions and procedures are dropped *before* tables. The current order seems to assume FKs are the only inter-object dependency; for MSSQL that's not true.
 
+**Status:** Fixed. Teardown now drops in `FK → Procedures → Functions → Views → Tables → Types` order, so schema-bound UDFs release their dependency locks before `DROP TABLE` runs. See `docs/dev/teardown.md#drop-order`.
+
 
 ## 6. `db.truncate()` deadlocks on `sp_MSforeachtable`
 
@@ -151,6 +159,8 @@ The deadlock is intermittent — some runs succeed, some fail at a random table.
 **Workaround:** Wrote a `resetApplicationData(ctx)` helper in `tests/helpers/test-context.ts` that issues `DELETE FROM [dbo].[<table>]` for each application table in explicit FK order over a single connection. Reference tables stay preserved (matching `settings.yml > teardown.preserveTables`) and sentinel rows are re-seeded at the end. With this helper, the same suite goes from ~10 deadlocks per run to zero.
 
 **Suggested fix:** Replace `sp_MSforeachtable` with explicit, ordered DELETE statements driven from the FK graph the SDK already discovers (it ships `db.listForeignKeys()` for exploration). For full teardown, dropping in dep-graph order is the only safe approach.
+
+**Status:** Fixed. `db.truncate()` now emits per-table `ALTER TABLE NOCHECK CONSTRAINT ALL` / `DELETE FROM` / `ALTER TABLE CHECK CONSTRAINT ALL` statements on a single connection — no `sp_MSforeachtable`, no parallel workers. The hand-rolled `resetApplicationData(ctx)` helper in this example can be deleted; `ctx.noorm.db.truncate()` is now safe to call from `beforeEach` against this schema. See `docs/dev/teardown.md#mssql-truncate-strategy`.
 
 
 ## 7. `noorm.run.file()` skips by checksum even after `truncate()` wiped the rows
@@ -219,6 +229,8 @@ This works but it pushes the proc's default knowledge into the TypeScript layer,
 
 **Suggested fix:** When building named-parameter EXEC statements, the SDK should `delete obj[key]` (or skip emitting the param) when `obj[key] === undefined`. That preserves the principle "undefined means absent, null means explicit NULL", which is the JS convention for HTTP query params, JSON serialization, etc.
 
+**Status:** Resolved as documentation. The `undefined` / `null` → SQL `NULL` mapping is intentional — the SDK picks one wire-level meaning for "absent value" and refuses to split it across two JavaScript shapes. The workaround (use `.default(...)` in Zod, or build the params object without the key) is now documented as a first-class convention. See `docs/reference/sdk.md` "Parameter handling and NULL semantics" and `docs/guide/troubleshooting.md`.
+
 
 ## 9. `noorm db create` lacks `--name`; documented invocation in instructions doesn't exist
 
@@ -256,6 +268,8 @@ There is no `--name <database>` flag. Env-only mode (`NOORM_CONNECTION_*` env va
 
 **Suggested fix:** Either add a `--name` flag (with `--dialect`, `--host`, etc.) for true env-less DB creation, or update the playbook in `tmp/instructions-mssql.md` to reflect the actual flow. The current instructions imply an order of operations that the CLI doesn't support.
 
+**Status:** Resolved as documentation. The configs-first workflow (`config import` → `db create -c <name>` → `config use`) is intentional — configs are the canonical source of truth for connection info, and a parallel `--name` flag would duplicate that record. See `docs/guide/database/create.md` for the full reasoning and end-to-end CI bootstrap.
+
 
 ## 10. `noorm help <subcommand>` is not implemented
 
@@ -271,8 +285,12 @@ The CLI has a `help` subcommand for the root (`noorm help`) but not for nested c
 
 **Suggested fix:** Either alias `noorm help <cmd> <sub>` to `noorm <cmd> <sub> --help`, or remove the example from the instructions. The CI/CD examples in `references/cli.md` already show the `--help` form consistently.
 
+**Status:** Resolved as documentation. citty (the CLI framework) doesn't ship a re-dispatching `help` subcommand, and the `--help` / `-h` flag is the canonical surface across every `noorm` command. The convention is now documented at `docs/cli/help.md`, with a redirect note in `docs/guide/troubleshooting.md`.
+
 
 ## 11. SDK vault.init() returned-tuple semantics changed; previously-idempotent test now fails
+
+**Status:** Fixed — `vault.init()` is now idempotent at the SDK boundary. A second call returns `[null, null]` instead of `[null, Error('Vault already initialized')]`. The contract is documented in `docs/dev/vault.md` and `docs/reference/sdk.md`. The example test in this directory (`tests/integration/vault.test.ts:106`) still expects the old error contract; it will be updated on next sync.
 
 **Severity:** medium — silent contract change in a public SDK surface.
 

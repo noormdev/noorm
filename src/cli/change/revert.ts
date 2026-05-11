@@ -31,6 +31,9 @@ const revertCommand = defineCommand({
 
         if (!args.name && !requireTty('Change name')) process.exit(1);
 
+        const dryRun = Boolean(args.dryRun);
+        const force = Boolean(args.force);
+
         const [result, error] = await withContext({
             args,
             fn: async (ctx, logger) => {
@@ -58,11 +61,39 @@ const revertCommand = defineCommand({
 
                 }
 
-                const res = await ctx.noorm.changes.revert(changeName);
+                if (!args.json && dryRun) {
+
+                    logger.info('Dry run: rendering revert files to tmp/ (no DB writes)');
+
+                }
+
+                const res = await ctx.noorm.changes.revert(changeName, { dryRun, force });
 
                 if (!args.json) {
 
-                    logger.info(`${res.name} reverted (${res.status})`);
+                    if (res.status === 'success') {
+
+                        const suffix = dryRun ? `${res.status}, dry-run` : res.status;
+                        logger.info(`${res.name} reverted (${suffix})`);
+
+                    }
+                    else {
+
+                        logger.error(`${res.name} revert (${res.status})`);
+                        if (res.error) logger.error(`  error: ${res.error}`);
+
+                        for (const file of res.files) {
+
+                            if (file.status === 'failed') {
+
+                                logger.error(`  ${file.filepath} (failed)`);
+                                if (file.error) logger.error(`    error: ${file.error}`);
+
+                            }
+
+                        }
+
+                    }
 
                 }
 
@@ -82,7 +113,8 @@ const revertCommand = defineCommand({
 
         if (args.json) {
 
-            outputResult(args, result, '');
+            const payload = dryRun ? { ...result, dryRun: true } : result;
+            outputResult(args, payload, '');
 
         }
 

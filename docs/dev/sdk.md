@@ -277,6 +277,47 @@ Parameter types control the call signature:
 `proc()` and `func()` throw on SQLite, which has no stored procedure or function call support. `tvf()` is only available on MSSQL and PostgreSQL.
 
 
+#### Parameter handling and NULL semantics
+
+The SDK serializes both `undefined` and `null` to SQL `NULL` when
+building named-parameter `EXEC` / `CALL` statements. If a key is
+present in the params object — regardless of whether the value is
+`undefined` or `null` — the SDK emits `@key = NULL` (or the
+dialect-specific equivalent). The SDK does NOT silently drop
+`undefined` keys.
+
+This is a deliberate convention. Mapping both JavaScript "no value"
+shapes to a single wire-level meaning makes serialization predictable
+through `JSON.stringify`, Zod's `.optional()`, and conditional spread
+patterns. The cost is that you cannot rely on a SQL proc's `DEFAULT`
+value through an optional Zod field — MSSQL applies `DEFAULT` only when
+the parameter is *omitted from the call*, and the SDK never omits.
+
+When authoring SDK call sites or domain wrappers that target MSSQL
+procs with `DEFAULT` parameters, prefer one of:
+
+```typescript
+// A — encode the default in the validator.
+const memoryFlags = z.object({
+    wasInferred: z.boolean().default(false),
+    wasObserved: z.boolean().default(false),
+})
+
+// B — omit the key entirely from the params object when "absent".
+const params: Record<string, unknown> = { content: 'x' }
+if (wasInferred !== undefined) {
+    params.wasInferred = wasInferred
+}
+await ctx.proc('sp_Memory_Create', params)
+```
+
+If you are extending the SDK with a new dialect or proc-call code
+path, preserve this contract: present-key-is-NULL, absent-key-is-omit.
+See the user-facing reference at
+[`docs/reference/sdk.md`](../reference/sdk.md#parameter-handling-and-null-semantics)
+for the consumer-side narrative.
+
+
 ### ctx.noorm — Noorm Operations
 
 

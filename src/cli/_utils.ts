@@ -53,6 +53,40 @@ export const sharedArgs = {
 } as const;
 
 /**
+ * Determine whether the user has opted into non-interactive mode.
+ *
+ * Returns true when either the `--yes` / `-y` flag is set or the
+ * `NOORM_YES` environment variable holds a truthy value.
+ *
+ * Truthy values for `NOORM_YES`: any non-empty string except `0` or
+ * `false` (case-insensitive). Falsy values: undefined, empty string,
+ * `0`, `false`. This matches common shell conventions (`NOORM_YES=1`,
+ * `NOORM_YES=true`, `NOORM_YES=yes` all enable; `NOORM_YES=0` does not).
+ *
+ * Centralized so TTY-gated commands handle the env var the same way and
+ * docs can point at a single semantic.
+ *
+ * @example
+ * if (!process.stdin.isTTY && !isYesMode(args)) {
+ *     process.stderr.write('Error: requires TTY.\n');
+ *     process.exit(1);
+ * }
+ */
+export function isYesMode(args: CliArgs): boolean {
+
+    if (args.yes) return true;
+
+    const env = process.env['NOORM_YES'];
+
+    if (env === undefined || env === '') return false;
+    if (env === '0') return false;
+    if (env.toLowerCase() === 'false') return false;
+
+    return true;
+
+}
+
+/**
  * Extended context with crypto identity for vault operations.
  */
 export interface VaultContext {

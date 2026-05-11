@@ -23,13 +23,14 @@ const { quote } = createDialectQuoting({
  */
 export const sqliteTeardownOperations: TeardownDialectOperations = {
 
-    disableForeignKeyChecks(): string {
+    disableForeignKeyChecks(_tables?: string[]): string {
 
+        // Connection-level PRAGMA — tables ignored
         return 'PRAGMA foreign_keys = OFF';
 
     },
 
-    enableForeignKeyChecks(): string {
+    enableForeignKeyChecks(_tables?: string[]): string {
 
         return 'PRAGMA foreign_keys = ON';
 

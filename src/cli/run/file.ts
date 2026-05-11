@@ -31,7 +31,22 @@ const fileCommand = defineCommand({
 
                     if (!args.json) {
 
-                        logger.info(`${res.filepath} (${res.status})`);
+                        if (res.status === 'failed') {
+
+                            logger.error(`${res.filepath} (failed)`);
+                            if (res.error) logger.error(`  error: ${res.error}`);
+
+                        }
+                        else if (res.status === 'skipped' && res.skipReason) {
+
+                            logger.info(`${res.filepath} (skipped: ${res.skipReason})`);
+
+                        }
+                        else {
+
+                            logger.info(`${res.filepath} (${res.status})`);
+
+                        }
 
                     }
 

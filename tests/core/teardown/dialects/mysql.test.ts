@@ -14,6 +14,14 @@ describe('teardown: mysql dialect', () => {
 
         });
 
+        it('ignores tables arg (session-level toggle)', () => {
+
+            const sql = mysqlTeardownOperations.disableForeignKeyChecks(['users', 'posts']);
+
+            expect(sql).toBe('SET FOREIGN_KEY_CHECKS = 0');
+
+        });
+
     });
 
     describe('enableForeignKeyChecks', () => {
@@ -21,6 +29,14 @@ describe('teardown: mysql dialect', () => {
         it('should return SET FOREIGN_KEY_CHECKS = 1', () => {
 
             const sql = mysqlTeardownOperations.enableForeignKeyChecks();
+
+            expect(sql).toBe('SET FOREIGN_KEY_CHECKS = 1');
+
+        });
+
+        it('ignores tables arg (session-level toggle)', () => {
+
+            const sql = mysqlTeardownOperations.enableForeignKeyChecks(['users', 'posts']);
 
             expect(sql).toBe('SET FOREIGN_KEY_CHECKS = 1');
 

@@ -207,7 +207,15 @@ async function buildSecretsContext(
 
 ### Initialization
 
-The first user to initialize creates the vault key:
+The first user to initialize creates the vault key. `initializeVault` is **idempotent**: calling it a second time against an already-initialized vault returns `[null, null]` without touching state or emitting an event. Callers can `init()` defensively at startup without special-casing an error.
+
+The three possible return shapes:
+
+| Shape | Meaning |
+|-------|---------|
+| `[Buffer, null]` | First-time init succeeded; this buffer is the vault key. Use it to seed initial secrets, propagate to teammates, etc. |
+| `[null, null]` | Vault already initialized. No work done. Use `vault.get` / `vault.set` with the user's private key for ongoing operations. |
+| `[null, Error]` | Actual failure (DB error, encryption error). The error is the underlying cause. |
 
 ```typescript
 async function initializeVault(
@@ -225,7 +233,8 @@ async function initializeVault(
         .executeTakeFirst();
 
     if (existing?.encrypted_vault_key) {
-        return [null, new Error('Vault already initialized')];
+        // Idempotent — no state change, no event emission.
+        return [null, null];
     }
 
     // Generate new vault key
@@ -244,6 +253,24 @@ async function initializeVault(
     observer.emit('vault:initialized', { identityHash });
 
     return [vaultKey, null];
+}
+```
+
+The `vault:initialized` observer event fires only on first init — repeat calls return early before the emit.
+
+Typical call-site pattern at the SDK boundary:
+
+```typescript
+const [vaultKey, err] = await ctx.noorm.vault.init();
+if (err) throw err;
+
+if (vaultKey) {
+    // First-time init — seed initial team secrets.
+    await ctx.noorm.vault.set('API_KEY', process.env.SEED_KEY!, privateKey);
+}
+else {
+    // Already initialized — use the vault normally.
+    const apiKey = await ctx.noorm.vault.get('API_KEY', privateKey);
 }
 ```
 

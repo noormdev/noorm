@@ -13,6 +13,7 @@ import type {
     Change,
     ChangeOptions,
     ChangeResult,
+    BatchChangeOptions,
     BatchChangeResult,
     ChangeListItem,
     ChangeHistoryRecord,
@@ -218,9 +219,16 @@ export class ChangesNamespace {
     /**
      * Apply a specific change.
      *
+     * Pass `dryRun: true` to render the change to `tmp/` without
+     * touching the database, or `preview: true` to emit rendered SQL.
+     *
      * @example
      * ```typescript
      * const result = await ctx.noorm.changes.apply('2024-01-15-add-users')
+     * const dry = await ctx.noorm.changes.apply(
+     *     '2024-01-15-add-users',
+     *     { dryRun: true },
+     * )
      * ```
      */
     async apply(name: string, options?: ChangeOptions): Promise<ChangeResult> {
@@ -232,9 +240,16 @@ export class ChangesNamespace {
     /**
      * Revert a specific change.
      *
+     * Pass `dryRun: true` to render the revert files to `tmp/` without
+     * touching the database, or `preview: true` to emit rendered SQL.
+     *
      * @example
      * ```typescript
      * const result = await ctx.noorm.changes.revert('2024-01-15-add-users')
+     * const dry = await ctx.noorm.changes.revert(
+     *     '2024-01-15-add-users',
+     *     { dryRun: true },
+     * )
      * ```
      */
     async revert(name: string, options?: ChangeOptions): Promise<ChangeResult> {
@@ -248,29 +263,41 @@ export class ChangesNamespace {
     /**
      * Apply all pending changes.
      *
+     * Pass `dryRun: true` to render each change to `tmp/` without
+     * touching the database. Pass `preview: true` to emit rendered
+     * SQL (also without DB writes). When omitted, both default to
+     * `false` and changes are applied normally.
+     *
      * @example
      * ```typescript
      * const result = await ctx.noorm.changes.ff()
+     * const dry = await ctx.noorm.changes.ff({ dryRun: true })
+     * const forced = await ctx.noorm.changes.ff({ force: true })
      * ```
      */
-    async ff(): Promise<BatchChangeResult> {
+    async ff(options?: BatchChangeOptions): Promise<BatchChangeResult> {
 
-        return this.#getManager().ff();
+        return this.#getManager().ff(options);
 
     }
 
     /**
      * Apply the next N pending changes (default 1).
      *
+     * Pass `dryRun: true` to render the changes to `tmp/` without
+     * touching the database. Pass `preview: true` to emit rendered
+     * SQL (also without DB writes).
+     *
      * @example
      * ```typescript
      * const result = await ctx.noorm.changes.next()
      * const result = await ctx.noorm.changes.next(3)
+     * const dry = await ctx.noorm.changes.next(2, { dryRun: true })
      * ```
      */
-    async next(count: number = 1): Promise<BatchChangeResult> {
+    async next(count: number = 1, options?: BatchChangeOptions): Promise<BatchChangeResult> {
 
-        return this.#getManager().next(count);
+        return this.#getManager().next(count, options);
 
     }
 

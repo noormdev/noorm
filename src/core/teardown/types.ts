@@ -180,13 +180,28 @@ export interface TeardownDialectOperations {
 
     /**
      * Generate SQL to disable FK checks.
+     *
+     * Dialects with session-level FK toggles (PG, MySQL, SQLite) ignore
+     * `tables` and return a single statement. MSSQL has no session toggle,
+     * so when `tables` is provided it returns one
+     * `ALTER TABLE NOCHECK CONSTRAINT ALL` per table — sequential and on a
+     * single connection, to avoid the `sp_MSforeachtable` parallel-worker
+     * deadlock that plagues schemas with many cross-FK tables.
+     *
+     * @param tables - Optional list of tables to scope the disable to
+     *                 (used by MSSQL; ignored by other dialects).
      */
-    disableForeignKeyChecks(): string;
+    disableForeignKeyChecks(tables?: string[]): string | string[];
 
     /**
      * Generate SQL to re-enable FK checks.
+     *
+     * See {@link disableForeignKeyChecks} for the `tables` parameter rationale.
+     *
+     * @param tables - Optional list of tables to scope the enable to
+     *                 (used by MSSQL; ignored by other dialects).
      */
-    enableForeignKeyChecks(): string;
+    enableForeignKeyChecks(tables?: string[]): string | string[];
 
     /**
      * Generate SQL to truncate a table.

@@ -79,10 +79,10 @@ All 38 tables, 18 views, 10 helper functions, and ALL 69 procs (`PROCEDURE` + sc
 
 - `noorm init`, `noorm config add`, `noorm sql repl`, `noorm settings edit/secret`, `noorm identity init` are TTY-only.
 - `noorm change ff --dry-run` is **not** a dry run — it commits the change. Use file inspection if previewing.
-- `--json` global flag must come AFTER the subcommand: `noorm sql query "..." --json` works, `noorm --json sql query "..."` does not.
-- `noorm sql "<query>"` with multi-word query gets parsed by citty as a subcommand. Use `noorm sql query "<query>"`.
+- `--json` global flag must come AFTER the subcommand: `noorm sql query "..." --json` works, `noorm --json sql query "..."` does not. **Resolved as documentation**: `--json` is per-subcommand by design; see `docs/cli/flags.md` and `docs/guide/troubleshooting.md`.
+- `noorm sql "<query>"` with multi-word query gets parsed by citty as a subcommand. Use `noorm sql query "<query>"`. The bare `sql "<SQL>"` form only fires when the first token is a recognized SQL keyword (see `docs/cli/sql.md`); use the explicit `sql query` form for anything else.
 - `ctx.proc()` returns `T[]`, not `T`. Phase 1's proc-authoring conventions doc had this wrong; fixed by destructure-and-guard in all 8 `sp_*_Create` wrappers.
-- `vault.init()` is one-shot: returns `[null, Error('Vault already initialized')]` on repeat.
+- ~~`vault.init()` is one-shot: returns `[null, Error('Vault already initialized')]` on repeat.~~ **Fixed in SDK** — `vault.init()` is now idempotent and returns `[null, null]` on repeat calls. The PG example's `tests/integration/03_vault.test.ts` still asserts the old error contract; it will be updated when the example author re-syncs.
 - `noorm.run.file()` resolves on SQL failure; failure surfaces via the `file:after` event's `status` field.
 - PG container's `tmpfs` mount can fill under aggressive teardown+build cycles, producing PANIC 53100. `docker restart noorm-test-postgres` clears it.
 - **`Bun.spawn` PATH gotcha** (Phase 2 specific): Bun's test runner auto-prepends every ancestor's `node_modules/.bin` to PATH, which shadows the user's globally-installed `noorm` binary with the workspace shim (`packages/cli/noorm.js` → `bin/noorm`). The shim's bundled binary may lag the locally-rebuilt one and not have the `mcp` subcommand. The MCP discovery test resolves this by walking PATH and picking the first `noorm` outside any `node_modules` directory. Worth surfacing in noorm's testing docs.

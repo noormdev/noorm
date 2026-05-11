@@ -13,6 +13,7 @@ import { defineCommand } from 'citty';
 
 import { getSettingsManager } from '../../core/settings/index.js';
 import type { SecretType, Stage, StageSecret } from '../../core/settings/types.js';
+import { isYesMode, sharedArgs } from '../_utils.js';
 
 type Manager = ReturnType<typeof getSettingsManager>;
 
@@ -297,8 +298,25 @@ async function handleRemove(manager: Manager): Promise<void> {
 
 const secretCommand = defineCommand({
     meta: { name: 'secret', description: 'Manage secret requirements in settings' },
-    args: {},
-    async run() {
+    args: {
+        yes: sharedArgs.yes,
+    },
+    async run({ args }) {
+
+        // This command manages secret REQUIREMENT declarations in
+        // settings.yml — not the values. There's no clean non-interactive
+        // analog, so redirect users to direct YAML edits + the existing
+        // 'noorm secret set' command for actual values.
+        if (isYesMode(args)) {
+
+            process.stderr.write(
+                'Error: noorm settings secret is interactive only.\n' +
+                "Edit the 'secrets' section of settings.yml directly to add/remove requirements.\n" +
+                'To set actual secret values, use: noorm secret set <key> <value>\n',
+            );
+            process.exit(1);
+
+        }
 
         if (!process.stdin.isTTY) {
 

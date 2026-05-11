@@ -17,14 +17,14 @@ const { quote, qualifiedName } = createDialectQuoting({
  */
 export const postgresTeardownOperations: TeardownDialectOperations = {
 
-    disableForeignKeyChecks(): string {
+    disableForeignKeyChecks(_tables?: string[]): string {
 
-        // Session-level setting that disables FK triggers
+        // Session-level setting that disables FK triggers — tables ignored
         return 'SET session_replication_role = \'replica\'';
 
     },
 
-    enableForeignKeyChecks(): string {
+    enableForeignKeyChecks(_tables?: string[]): string {
 
         return 'SET session_replication_role = \'origin\'';
 

@@ -65,11 +65,32 @@ const rewindCommand = defineCommand({
 
                 if (!args.json) {
 
-                    logger.info(`Rewind: ${res.status} (${res.executed} reverted, ${res.failed} failed)`);
+                    const summaryMsg = `Rewind: ${res.status} (${res.executed} reverted, ${res.failed} failed)`;
+
+                    if (res.status === 'failed') {
+
+                        logger.error(summaryMsg);
+
+                    }
+                    else {
+
+                        logger.info(summaryMsg);
+
+                    }
 
                     for (const change of res.changes) {
 
-                        logger.info(`  ${change.name} — ${change.status}`);
+                        if (change.status === 'failed') {
+
+                            logger.error(`  ${change.name} — failed`);
+                            if (change.error) logger.error(`    error: ${change.error}`);
+
+                        }
+                        else {
+
+                            logger.info(`  ${change.name} — ${change.status}`);
+
+                        }
 
                     }
 

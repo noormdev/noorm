@@ -41,6 +41,28 @@ export function isNoormTable(name: string | undefined | null): boolean {
 }
 
 /**
+ * Append a dialect FK-toggle result to a statements buffer.
+ *
+ * `disableForeignKeyChecks` / `enableForeignKeyChecks` return either a
+ * single statement (PG/MySQL/SQLite session toggles) or a list of per-table
+ * statements (MSSQL, to avoid the sp_MSforeachtable deadlock). Both shapes
+ * land in the same flat array so downstream execution stays uniform.
+ */
+function pushFlat(out: string[], value: string | string[]): void {
+
+    if (Array.isArray(value)) {
+
+        out.push(...value);
+
+        return;
+
+    }
+
+    out.push(value);
+
+}
+
+/**
  * Truncate data from tables.
  *
  * Disables FK checks, truncates specified tables, then re-enables FK checks.
@@ -125,16 +147,22 @@ export async function truncateData(
 
     }
 
-    // Build SQL statements
-    statements.push(ops.disableForeignKeyChecks());
+    // Build SQL statements. Skip the FK disable/enable bookends entirely
+    // when nothing will be truncated — keeps the dry-run output honest
+    // and avoids emitting a no-op `ALTER TABLE NOCHECK` against an empty list.
+    if (truncated.length > 0) {
 
-    for (const tableName of truncated) {
+        pushFlat(statements, ops.disableForeignKeyChecks(truncated));
 
-        statements.push(ops.truncateTable(tableName, undefined, options.restartIdentity ?? true));
+        for (const tableName of truncated) {
+
+            statements.push(ops.truncateTable(tableName, undefined, options.restartIdentity ?? true));
+
+        }
+
+        pushFlat(statements, ops.enableForeignKeyChecks(truncated));
 
     }
-
-    statements.push(ops.enableForeignKeyChecks());
 
     // Execute unless dry run
     if (!options.dryRun) {
@@ -191,7 +219,12 @@ export async function truncateData(
  * Drop all user-created database objects.
  *
  * Preserves noorm internal tables (__noorm_*) and optionally other objects.
- * Order: FK constraints → Tables → Views → Functions → Types
+ * Order: FK constraints → Procedures → Functions → Views → Tables → Types
+ *
+ * Procedures/functions/views are dropped before tables because MSSQL
+ * schema-bound objects (e.g. `WITH SCHEMABINDING`) hold dependency locks
+ * on the tables they reference — dropping the table first fails with
+ * "Cannot DROP TABLE ... because it is being referenced by object ...".
  *
  * @param db - Kysely database instance
  * @param dialect - Database dialect
@@ -274,7 +307,34 @@ export async function teardownSchema(
 
     }
 
-    // 2. Drop views (unless keepViews)
+    // 2. Drop procedures (unless keepProcedures) — drop early so they
+    // don't hold references to functions/views/tables we drop below
+    if (!options.keepProcedures) {
+
+        for (const proc of procedures) {
+
+            dropped.procedures.push(proc.name);
+            statements.push(ops.dropProcedure(proc.name, proc.schema));
+
+        }
+
+    }
+
+    // 3. Drop functions (unless keepFunctions) — must precede table drops
+    // so schema-bound UDFs release their dependency locks on tables
+    if (!options.keepFunctions) {
+
+        for (const fn of functions) {
+
+            dropped.functions.push(fn.name);
+            statements.push(ops.dropFunction(fn.name, fn.schema));
+
+        }
+
+    }
+
+    // 4. Drop views (unless keepViews) — schema-bound views also hold
+    // dependency locks on tables, so they must precede table drops
     if (!options.keepViews) {
 
         for (const view of views) {
@@ -286,7 +346,7 @@ export async function teardownSchema(
 
     }
 
-    // 3. Drop tables
+    // 5. Drop tables — safe now that schema-bound dependents are gone
     for (const table of tables) {
 
         const tableName = table.name;
@@ -309,30 +369,6 @@ export async function teardownSchema(
 
         dropped.tables.push(tableName);
         statements.push(ops.dropTable(tableName, table.schema));
-
-    }
-
-    // 4. Drop functions (unless keepFunctions)
-    if (!options.keepFunctions) {
-
-        for (const fn of functions) {
-
-            dropped.functions.push(fn.name);
-            statements.push(ops.dropFunction(fn.name, fn.schema));
-
-        }
-
-    }
-
-    // 5. Drop procedures (unless keepProcedures)
-    if (!options.keepProcedures) {
-
-        for (const proc of procedures) {
-
-            dropped.procedures.push(proc.name);
-            statements.push(ops.dropProcedure(proc.name, proc.schema));
-
-        }
 
     }
 

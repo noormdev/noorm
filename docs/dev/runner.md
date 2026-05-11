@@ -191,6 +191,79 @@ const previewsToFile = await preview(context, [
 ```
 
 
+## Errors and Skips
+
+
+Every file the runner touches comes back as a `FileResult`. Two optional fields on that result are the ones callers usually care about when something goes wrong:
+
+| Field | Set when | What it carries |
+|-------|----------|-----------------|
+| `error` | `status === 'failed'` | The SQL or load error as a string. For SQL failures this is the dialect's error message (already passed through `getSqlErrorMessage`), so it reads the same as you'd see in `psql` or SSMS. |
+| `skipReason` | `status === 'skipped'` | Why the file did not run. Currently one of `'unchanged'` (checksum matches a previous successful execution) or `'already-run'` (used for change-level checks). |
+
+Batch results (`BatchResult`, returned by `build`, `dir`, and `files`) carry the same shape. Each entry in `BatchResult.files` is a `FileResult`, so `files[].error` and `files[].skipReason` are how you find out *which* file in a 200-file build is the one that failed. `BatchResult.error` is reserved for failures that happen before any file executes — e.g. the tracking table cannot be created.
+
+
+```typescript
+const result = await ctx.noorm.run.build();
+
+if (result.status !== 'success') {
+
+    for (const file of result.files) {
+
+        if (file.status === 'failed') {
+
+            console.error(`${file.filepath}: ${file.error}`);
+
+        }
+        else if (file.status === 'skipped') {
+
+            console.log(`${file.filepath} (skipped: ${file.skipReason})`);
+
+        }
+
+    }
+
+}
+```
+
+
+The CLI display layer surfaces both fields automatically. `noorm run build`, `noorm run file`, `noorm run dir`, and `noorm run files` print the failing file's error inline beneath the status line, and skipped files include the `skipReason` in parentheses. `--json` returns the full `FileResult`/`BatchResult` object verbatim — no fields are stripped. The same applies to `noorm change run`, `noorm change ff`, `noorm change revert`, and `noorm change rewind` for change-level operations.
+
+
+## MSSQL Batch Handling
+
+
+T-SQL has a separator that is not a semicolon. `GO` ends a batch — and a handful of DDL statements (`CREATE PROCEDURE`, `CREATE FUNCTION`, `CREATE TRIGGER`, `CREATE VIEW`, `CREATE TYPE` for table-valued parameters) must be the only statement in their batch. Without batch splitting you can fit exactly one of those per file. A natural domain grouping of 13 procedures explodes into 73 files.
+
+
+`GO` is not SQL. It is a sqlcmd / SSMS client-side directive — the database engine never sees it. So when a runner feeds raw file content to the driver, `GO` reaches tedious as a token and the driver answers with `Incorrect syntax near 'GO'`.
+
+
+When `context.dialect === 'mssql'`, the runner splits SQL content on `^\s*GO\s*$` (case-insensitive, multiline) before execution. Each batch runs sequentially via `sql.raw(batch).execute(db)`. If batch N fails, the runner short-circuits — batches `N+1..M` are NOT executed. The failing batch index is prefixed onto the error so the offending statement is easy to locate:
+
+
+```typescript
+const result = await ctx.noorm.run.file('sql/procs/checkout.sql');
+
+if (result.status === 'failed') {
+
+    console.error(result.error);
+    // "[batch 3 of 5] Incorrect syntax near 'WHERE'."
+
+}
+```
+
+
+Non-MSSQL dialects bypass the splitter entirely — the full file is executed in one `sql.raw(...).execute(...)` call exactly as before, so PostgreSQL / MySQL / SQLite behavior is unchanged.
+
+
+**Known limitation:** the splitter is line-oriented. It does not parse SQL. A `GO` on its own line inside a `/* ... */` block comment or a `'...'` string literal will still be treated as a separator. Keep `GO` tokens out of strings and block comments. This matches sqlcmd behavior — if it would break sqlcmd, it breaks here too.
+
+
+An empty file (or one that contains only comments after stripping `GO`s) is treated as success with zero duration. The file ran; it just had nothing to execute. That mirrors `sqlcmd -i /dev/null`.
+
+
 ## Observer Events
 
 | Event | Payload | Description |

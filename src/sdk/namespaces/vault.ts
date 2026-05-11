@@ -84,9 +84,23 @@ export class VaultNamespace {
     /**
      * Initialize the vault for this database.
      *
+     * Idempotent. Returns the vault key on first init; returns [null, null]
+     * on subsequent calls when the vault already exists. Returns [null, Error]
+     * only on real failures (DB errors, encryption errors).
+     *
+     * The `vault:initialized` observer event fires only on first init, never
+     * on repeat calls.
+     *
      * @example
      * ```typescript
-     * const [vaultKey, err] = await ctx.noorm.vault.init()
+     * const [vaultKey, err] = await ctx.noorm.vault.init();
+     * if (err) throw err;
+     * if (vaultKey) {
+     *     // first-time init — set initial secrets, etc.
+     * }
+     * else {
+     *     // already initialized — vault.get / vault.set with private key
+     * }
      * ```
      */
     async init(): Promise<[Buffer | null, Error | null]> {

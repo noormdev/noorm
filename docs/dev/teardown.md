@@ -20,10 +20,13 @@ noorm's teardown module provides controlled database reset operations. Wipe data
 | `teardownSchema` | Drop all objects | Full rebuild, change testing |
 
 Both operations:
+
 - Automatically disable/enable FK constraints
 - Preserve noorm internal tables (`__noorm_*`)
 - Support dry-run mode for preview
 - Generate dialect-specific SQL
+
+In SDK terms, `db.truncate()` is the data wipe and `db.reset()` is the schema teardown plus re-run of changes. Reach for `truncate()` between tests when the schema is stable; reach for `reset()` when you want a from-scratch rebuild. See [reference/sdk.md](../reference/sdk.md) for the surface.
 
 
 ## Truncate Data
@@ -96,11 +99,14 @@ console.log(`Preserved: ${result.preserved.join(', ')}`)
 
 Objects are dropped in dependency-safe order:
 
-1. **Foreign key constraints** - Must go first to allow table drops
-2. **Views** - May depend on tables
-3. **Tables** - Core schema objects
-4. **Functions/Procedures** - May depend on types
-5. **Types** - Enum and composite types last
+1. **Foreign key constraints** - Released first so tables can be dropped later
+2. **Procedures** - Dropped before functions/views/tables they call
+3. **Functions** - Dropped before tables, because schema-bound UDFs (e.g. MSSQL `WITH SCHEMABINDING`) hold dependency locks on the tables they reference. Drop the table first and you get `Cannot DROP TABLE ... because it is being referenced by object 'fn_X'`
+4. **Views** - Same reason as functions; schema-bound views block table drops until they are gone
+5. **Tables** - Safe now that all schema-bound dependents have been removed
+6. **Types** - Enums, composites, and table types (TVPs) drop last
+
+The order is identical across all dialects. PostgreSQL/MySQL don't strictly require procs/funcs/views to drop before tables — `DROP TABLE ... CASCADE` would handle it — but the same order is correct and harmless, so noorm uses it everywhere for consistency. MSSQL is the dialect that breaks under any other ordering, because it has no `CASCADE` for `DROP TABLE` and schema-bound objects hold real dependency locks.
 
 ### Selective Teardown
 
@@ -240,12 +246,30 @@ All four database dialects are supported with appropriate SQL generation:
 
 | Feature | PostgreSQL | MySQL | MSSQL | SQLite |
 |---------|------------|-------|-------|--------|
-| Truncate tables | ✓ | ✓ | ✓ | DELETE FROM |
-| Restart identity | ✓ | ✓ | RESEED | — |
-| Disable FK checks | SET session_replication_role | SET FOREIGN_KEY_CHECKS | NOCHECK | PRAGMA foreign_keys |
+| Truncate tables | ✓ | ✓ | DELETE FROM | DELETE FROM |
+| Restart identity | ✓ | ✓ | DBCC CHECKIDENT RESEED | — |
+| Disable FK checks | SET session_replication_role | SET FOREIGN_KEY_CHECKS | per-table ALTER NOCHECK | PRAGMA foreign_keys |
 | Drop cascade | CASCADE | — | — | — |
 
 SQLite uses DELETE instead of TRUNCATE since SQLite doesn't support TRUNCATE.
+
+### MSSQL truncate strategy
+
+MSSQL doesn't have a session-level FK toggle. Earlier versions of this module used `EXEC sp_MSforeachtable 'ALTER TABLE ? NOCHECK CONSTRAINT ALL'`, which is a single statement but spawns parallel worker tasks under the hood. On schemas with many cross-FK tables the workers race for schema locks and deadlock — about 10 deadlocks per full-suite run on a 38-table schema in practice.
+
+`truncateData` now passes the list of tables it intends to truncate to the dialect helper, and the MSSQL helper returns one statement per table on a single connection:
+
+```sql
+ALTER TABLE [users] NOCHECK CONSTRAINT ALL
+ALTER TABLE [posts] NOCHECK CONSTRAINT ALL
+-- ... one per table ...
+DELETE FROM [users]; IF EXISTS (...) DBCC CHECKIDENT (...)
+DELETE FROM [posts]; ...
+ALTER TABLE [users] CHECK CONSTRAINT ALL
+ALTER TABLE [posts] CHECK CONSTRAINT ALL
+```
+
+No parallel workers, no deadlock. The `TruncateDialectOperations.disableForeignKeyChecks(tables)` / `.enableForeignKeyChecks(tables)` parameter is the contract — PG, MySQL, and SQLite ignore it (their session/connection-level toggles cover every table at once) and continue to return a single statement.
 
 
 ## Observer Events

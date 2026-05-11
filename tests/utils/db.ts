@@ -13,6 +13,7 @@ import { join } from 'node:path';
 import { createConnection, testConnection } from '../../src/core/connection/factory.js';
 import type { ConnectionConfig, ConnectionResult, Dialect } from '../../src/core/connection/types.js';
 import type { Config } from '../../src/core/config/types.js';
+import { splitMssqlBatches } from '../../src/core/runner/mssql-batches.js';
 
 /**
  * Test connection configurations.
@@ -378,26 +379,6 @@ function preprocessMySqlDelimiter(content: string): string {
     processed = processed.replace(new RegExp(customDelimiter.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), ';');
 
     return processed;
-
-}
-
-/**
- * Preprocess MSSQL GO batch separator.
- *
- * MSSQL uses GO to separate batches, not semicolons.
- * This function splits content by GO and returns individual batches.
- *
- * @param content - SQL file content
- * @returns Array of SQL batches
- */
-function splitMssqlBatches(content: string): string[] {
-
-    // Split by GO on its own line (case-insensitive)
-    const batches = content.split(/^\s*GO\s*$/mi);
-
-    return batches
-        .map(b => b.trim())
-        .filter(b => b.length > 0 && !b.startsWith('--'));
 
 }
 

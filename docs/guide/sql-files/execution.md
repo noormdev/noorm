@@ -177,6 +177,58 @@ Use `001_`, `002_` prefixes rather than `1_`, `2_` for consistent sorting. Leadi
 :::
 
 
+## MSSQL: Multiple Statements per File
+
+
+SQL Server has a particular rule: `CREATE PROCEDURE`, `CREATE FUNCTION`, `CREATE TRIGGER`, `CREATE VIEW`, and `CREATE TYPE` (for table-valued parameters) must each be the only statement in their batch. SQL Server expresses this with `GO` — a separator that ends a batch.
+
+
+`GO` is not part of the SQL language. It's a sqlcmd / SSMS directive. Tools that pass raw file content directly to the driver get back `Incorrect syntax near 'GO'`. noorm handles this for you: on MSSQL connections, the runner splits files on `GO` (anchored to its own line) and executes each batch in order.
+
+
+```sql
+-- sql/09_procedures/checkout.sql
+CREATE PROCEDURE checkout_begin
+    @CustomerId INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    INSERT INTO orders (customer_id, status) VALUES (@CustomerId, 'pending');
+END
+GO
+
+CREATE PROCEDURE checkout_commit
+    @OrderId INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    UPDATE orders SET status = 'paid' WHERE id = @OrderId;
+END
+GO
+
+CREATE PROCEDURE checkout_cancel
+    @OrderId INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    UPDATE orders SET status = 'cancelled' WHERE id = @OrderId;
+END
+GO
+```
+
+
+Three related procedures, one file. If batch 2 fails, noorm reports `[batch 2 of 3]` in the error and skips batch 3 — so you know exactly which `CREATE PROCEDURE` blew up without re-reading the file in your head.
+
+
+`GO` recognition is line-oriented: the literal token `GO` must be the entire trimmed content of a line (case-insensitive). `GO;`, `GOLANG`, or `GO` mid-line do not split. Keep `GO` tokens out of string literals and `/* ... */` block comments — the splitter does not parse SQL, so an inadvertent `GO` inside a string on its own line will still be treated as a separator. This matches sqlcmd behavior.
+
+
+PostgreSQL, MySQL, and SQLite do not need this — their drivers accept multiple statements separated by `;` (with the caveats covered in [Organization](/guide/sql-files/organization)). The splitter only engages when the active config's dialect is `mssql`.
+
+
+For the gory details on what the runner does under the hood, see [MSSQL Batch Handling](/dev/runner#mssql-batch-handling).
+
+
 ## Summary
 
 | Command | Purpose |

@@ -14,6 +14,14 @@ describe('teardown: postgres dialect', () => {
 
         });
 
+        it('ignores tables arg (session-level toggle)', () => {
+
+            const sql = postgresTeardownOperations.disableForeignKeyChecks(['users', 'posts']);
+
+            expect(sql).toBe('SET session_replication_role = \'replica\'');
+
+        });
+
     });
 
     describe('enableForeignKeyChecks', () => {
@@ -21,6 +29,14 @@ describe('teardown: postgres dialect', () => {
         it('should return origin replication role SQL', () => {
 
             const sql = postgresTeardownOperations.enableForeignKeyChecks();
+
+            expect(sql).toBe('SET session_replication_role = \'origin\'');
+
+        });
+
+        it('ignores tables arg (session-level toggle)', () => {
+
+            const sql = postgresTeardownOperations.enableForeignKeyChecks(['users', 'posts']);
 
             expect(sql).toBe('SET session_replication_role = \'origin\'');
 

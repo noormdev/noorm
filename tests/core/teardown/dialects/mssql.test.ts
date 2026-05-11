@@ -6,7 +6,7 @@ describe('teardown: mssql dialect', () => {
 
     describe('disableForeignKeyChecks', () => {
 
-        it('should return sp_MSforeachtable NOCHECK CONSTRAINT ALL', () => {
+        it('returns sp_MSforeachtable fallback when no tables passed', () => {
 
             const sql = mssqlTeardownOperations.disableForeignKeyChecks();
 
@@ -14,15 +14,73 @@ describe('teardown: mssql dialect', () => {
 
         });
 
+        it('returns sp_MSforeachtable fallback for an empty table list', () => {
+
+            const sql = mssqlTeardownOperations.disableForeignKeyChecks([]);
+
+            expect(sql).toBe('EXEC sp_MSforeachtable \'ALTER TABLE ? NOCHECK CONSTRAINT ALL\'');
+
+        });
+
+        it('returns per-table ALTER NOCHECK array when tables provided (deadlock-safe path)', () => {
+
+            const stmts = mssqlTeardownOperations.disableForeignKeyChecks(['A', 'B']);
+
+            expect(stmts).toEqual([
+                'ALTER TABLE [A] NOCHECK CONSTRAINT ALL',
+                'ALTER TABLE [B] NOCHECK CONSTRAINT ALL',
+            ]);
+
+        });
+
+        it('quotes table names with brackets in per-table mode', () => {
+
+            const stmts = mssqlTeardownOperations.disableForeignKeyChecks(['weird]name']);
+
+            expect(stmts).toEqual([
+                'ALTER TABLE [weird]]name] NOCHECK CONSTRAINT ALL',
+            ]);
+
+        });
+
+        it('never emits sp_MSforeachtable in per-table mode (regression guard for M-6)', () => {
+
+            const stmts = mssqlTeardownOperations.disableForeignKeyChecks(['x', 'y', 'z']);
+            const flat = Array.isArray(stmts) ? stmts.join('\n') : stmts;
+
+            expect(flat).not.toContain('sp_MSforeachtable');
+
+        });
+
     });
 
     describe('enableForeignKeyChecks', () => {
 
-        it('should return sp_MSforeachtable CHECK CONSTRAINT ALL', () => {
+        it('returns sp_MSforeachtable fallback when no tables passed', () => {
 
             const sql = mssqlTeardownOperations.enableForeignKeyChecks();
 
             expect(sql).toBe('EXEC sp_MSforeachtable \'ALTER TABLE ? CHECK CONSTRAINT ALL\'');
+
+        });
+
+        it('returns per-table ALTER CHECK array when tables provided', () => {
+
+            const stmts = mssqlTeardownOperations.enableForeignKeyChecks(['A', 'B']);
+
+            expect(stmts).toEqual([
+                'ALTER TABLE [A] CHECK CONSTRAINT ALL',
+                'ALTER TABLE [B] CHECK CONSTRAINT ALL',
+            ]);
+
+        });
+
+        it('never emits sp_MSforeachtable in per-table mode (regression guard for M-6)', () => {
+
+            const stmts = mssqlTeardownOperations.enableForeignKeyChecks(['x', 'y']);
+            const flat = Array.isArray(stmts) ? stmts.join('\n') : stmts;
+
+            expect(flat).not.toContain('sp_MSforeachtable');
 
         });
 
@@ -60,7 +118,26 @@ describe('teardown: mssql dialect', () => {
 
             const sql = mssqlTeardownOperations.truncateTable('table]with]brackets');
 
+            // The DELETE half goes through qualifiedName() and is correctly escaped.
             expect(sql).toContain('DELETE FROM [table]]with]]brackets]');
+
+        });
+
+        it('does NOT escape brackets in the DBCC CHECKIDENT clause (latent bug)', () => {
+
+            // LATENT BUG: DBCC CHECKIDENT interpolation does not escape ']' in
+            // table/schema names. See tmp/slices/follow-ups.md.
+            //
+            // This test pins current behaviour so the bug is visible: when it
+            // starts failing because someone fixed the escaping, delete this
+            // test and update `should escape closing brackets in table name`
+            // to assert the DBCC half too.
+            const sql = mssqlTeardownOperations.truncateTable('table]with]brackets');
+
+            // OBJECT_NAME(...) filter and DBCC argument both interpolate the
+            // raw name with single quotes — an unescaped ']' survives verbatim.
+            expect(sql).toContain('OBJECT_NAME(object_id) = \'table]with]brackets\'');
+            expect(sql).toContain('DBCC CHECKIDENT (\'table]with]brackets\', RESEED, 0)');
 
         });
 

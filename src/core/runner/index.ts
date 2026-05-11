@@ -26,6 +26,9 @@ export {
     computeCombinedChecksum,
 } from './checksum.js';
 
+// MSSQL batch splitter
+export { splitMssqlBatches } from './mssql-batches.js';
+
 // Types
 export type {
     RunOptions,
