@@ -1,5 +1,35 @@
 # @noormdev/cli
 
+## 1.0.0-alpha.35
+
+### Minor Changes
+
+- f522adc: ### Added
+
+  - `feat(cli):` Add `noorm init --here` to initialize a project in the original cwd, ignoring any parent `.noorm/` discovered while walking up
+  - `feat(cli):` Add global `-c <path>` / `--cwd <path>` flag (like `git -C`) that runs the subcommand inside `<path>` and skips the walk-up. Must precede the subcommand; after the subcommand `-c` keeps its per-command `--config` meaning.
+
+  ### Changed
+
+  - `refactor(cli):` `noorm init` now reports an existing `.noorm/` _before_ the TTY gate, so scripted invocations get the more actionable error.
+
+- 01208ec: ## Added
+  - `feat(cli):` Universal `--yes` / `-y` flag and `NOORM_YES=1` environment variable for TTY-gated commands. Unblocks CI, scripted bootstrap, and subagent flows.
+  - `feat(cli):` `noorm init --yes` now succeeds in non-TTY environments when an identity already exists at `~/.noorm/identity.{key,pub,json}`. Without an identity, it errors with a hint pointing at `noorm identity init --name "X" --email "Y"`.
+  - `feat(cli):` `noorm sql repl --yes`, `noorm settings edit --yes`, and `noorm settings secret --yes` print a documented redirect-hint error instead of refusing silently, telling the user which non-interactive alternative to use (`sql query` / direct YAML edit / `secret set`).
+
+### Patch Changes
+
+- 01208ec: ## Fixed
+  - `fix(cli):` Wire `noorm change ff --dry-run` (and `next` / `run` / `revert`) through to the SDK — the flag previously parsed but did nothing
+  - `fix(cli):` Drop the unreachable positional `query` arg from `noorm sql` and add an argv rewriter so `noorm sql "SELECT 1"` is rewritten to `noorm sql query "SELECT 1"` before citty dispatch
+  - `fix(cli):` Show `(dry-run)` markers in human output and `dryRun: true` in `--json` envelopes for all four change commands
+- 01208ec: ## Fixed
+  - `fix(cli):` Surface SQL errors and skip reasons in `run` and `change` output
+  - `fix(cli):` `noorm run build` / `dir` / `files` / `exec` now print each failed file's driver error inline and route the summary through `logger.error` on non-success
+  - `fix(cli):` `noorm run file` and the skip path now report `(skipped: <reason>)` so callers know whether the file was unchanged or already-run
+  - `fix(cli):` `noorm change ff` / `run` / `revert` / `rewind` print per-change error detail on failure instead of just `(failed)`
+
 ## 1.0.0-alpha.34
 
 ### Minor Changes
