@@ -179,6 +179,11 @@ code, kbd, samp, pre {
     padding: 0.12em 0.36em;
     font-size: 0.92em;
     color: var(--vp-c-text-1);
+    /* Override the broad `code` feature-settings (line ~142): the "calt"
+       contextual-alternate ligatures shift glyphs left in the padded chip.
+       Keep slashed zero, drop ligatures + stylistic sets for inline code only. */
+    font-variant-ligatures: none;
+    font-feature-settings: "zero";
 }
 
 /* ─────────────────────────────────────────────
