@@ -190,3 +190,12 @@ Consistent hotkey conventions across all screens:
 | `Shift+L` | Toggle log viewer overlay |
 
 Use `numberNav` prop on `SelectList` for 1-9 quick selection in lists.
+
+<atomic-signals>
+
+## Project signals (auto-loaded)
+
+
+@.claude/project/signals.md
+
+</atomic-signals>

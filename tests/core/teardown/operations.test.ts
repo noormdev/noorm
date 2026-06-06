@@ -607,3 +607,93 @@ describe('teardown: teardownSchema drop order', () => {
     });
 
 });
+
+// ─────────────────────────────────────────────────────────────
+// teardownSchema — CHECK constraints vs function drops (issue #36)
+// A scalar UDF referenced by a CHECK constraint cannot be dropped
+// while the referencing table exists (MSSQL error 3729). Functions
+// are dropped before tables (for schema-bound deps), so the CHECK
+// dependency must be severed first by dropping CHECK constraints
+// ahead of the function drops.
+// ─────────────────────────────────────────────────────────────
+
+describe('teardown: teardownSchema mssql CHECK-constraint dependency (issue #36)', () => {
+
+    const schemaWithCheckBackedFunction = {
+        tables: [
+            { table_name: 'Thing', schema_name: 'dbo', column_count: 2, row_count: 0 },
+        ],
+        functions: [
+            { func_name: 'IsPositive_fn', schema_name: 'dbo', param_count: 1, return_type: 'scalar' },
+        ],
+    };
+
+    it('drops CHECK constraints before any function drop', async () => {
+
+        const db = createMockKyselyForTeardown(schemaWithCheckBackedFunction);
+
+        const result = await teardownSchema(db, 'mssql', { dryRun: true });
+        const stmts = result.statements.filter((s) => !s.startsWith('--'));
+
+        const checkIdx = stmts.findIndex((s) => s.includes('sys.check_constraints'));
+        const funcIdx = stmts.findIndex((s) => s.includes('DROP FUNCTION'));
+
+        expect(checkIdx).toBeGreaterThanOrEqual(0);
+        expect(funcIdx).toBeGreaterThan(checkIdx);
+
+    });
+
+    it('drops CHECK constraints before tables', async () => {
+
+        const db = createMockKyselyForTeardown(schemaWithCheckBackedFunction);
+
+        const result = await teardownSchema(db, 'mssql', { dryRun: true });
+        const stmts = result.statements.filter((s) => !s.startsWith('--'));
+
+        const checkIdx = stmts.findIndex((s) => s.includes('sys.check_constraints'));
+        const tableIdx = stmts.findIndex((s) => s.includes('DROP TABLE'));
+
+        expect(checkIdx).toBeGreaterThanOrEqual(0);
+        expect(tableIdx).toBeGreaterThan(checkIdx);
+
+    });
+
+    it('preserves noorm-schema CHECK constraints (excludes noorm schema)', async () => {
+
+        const db = createMockKyselyForTeardown(schemaWithCheckBackedFunction);
+
+        const result = await teardownSchema(db, 'mssql', { dryRun: true });
+        const checkStmt = result.statements.find((s) => s.includes('sys.check_constraints'));
+
+        expect(checkStmt).toBeDefined();
+        expect(checkStmt).toContain("<> 'noorm'");
+
+    });
+
+    it('does not drop CHECK constraints when functions are kept', async () => {
+
+        const db = createMockKyselyForTeardown(schemaWithCheckBackedFunction);
+
+        const result = await teardownSchema(db, 'mssql', { dryRun: true, keepFunctions: true });
+        const checkStmt = result.statements.find((s) => s.includes('sys.check_constraints'));
+
+        expect(checkStmt).toBeUndefined();
+
+    });
+
+    it('does not emit CHECK-constraint drops for non-mssql dialects', async () => {
+
+        const db = createMockKyselyForTeardown({
+            tables: [
+                { table_name: 'thing', schema_name: 'public', column_count: 2, row_count: 0 },
+            ],
+        });
+
+        const result = await teardownSchema(db, 'postgres', { dryRun: true });
+        const checkStmt = result.statements.find((s) => s.includes('check_constraints'));
+
+        expect(checkStmt).toBeUndefined();
+
+    });
+
+});

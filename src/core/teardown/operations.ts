@@ -307,6 +307,17 @@ export async function teardownSchema(
 
     }
 
+    // 1b. Drop CHECK constraints before functions (unless keepFunctions).
+    // A scalar UDF referenced by a CHECK constraint can't be dropped while
+    // its table exists (MSSQL error 3729). Functions are dropped before
+    // tables below for schema-bound deps, so sever the CHECK dependency
+    // first. Only MSSQL provides this op; other dialects don't need it.
+    if (!options.keepFunctions && ops.dropCheckConstraints) {
+
+        statements.push(ops.dropCheckConstraints());
+
+    }
+
     // 2. Drop procedures (unless keepProcedures) — drop early so they
     // don't hold references to functions/views/tables we drop below
     if (!options.keepProcedures) {

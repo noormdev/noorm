@@ -268,4 +268,15 @@ export interface TeardownDialectOperations {
      */
     dropForeignKey(constraintName: string, tableName: string, schema?: string): string;
 
+    /**
+     * Generate SQL to drop every CHECK constraint in user schemas.
+     *
+     * Optional, MSSQL-only. A scalar UDF referenced by a CHECK constraint
+     * cannot be dropped while the referencing table still exists (MSSQL
+     * error 3729). Functions are dropped before tables to satisfy
+     * schema-bound dependents, so the CHECK dependency must be severed
+     * first. Other dialects don't need this and omit the method.
+     */
+    dropCheckConstraints?(): string;
+
 }

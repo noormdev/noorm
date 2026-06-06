@@ -44,3 +44,5 @@ worktrees/
 skills/*/workspace/
 skills/*/evals/
 graphify-out/
+.claude/.scratchpad/
+.claude/project/.deterministic-signals.prev.md

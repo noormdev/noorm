@@ -1,0 +1,1 @@
+- 2026-06-06 mssql-build-non-idempotent-create-type — "MSSQL build non-idempotent: bare CREATE TYPE blocks db.reset() rebuild" — *(closed 2026-06-06)*

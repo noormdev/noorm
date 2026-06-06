@@ -319,7 +319,17 @@ export class DbNamespace {
 
         checkProtectedConfig(this.#state.config, 'reset');
 
-        await this.teardown();
+        // Full teardown — deliberately does NOT honor preserveTables.
+        // reset() rebuilds the entire schema from sql/, so any table left
+        // standing (e.g. reference vocabulary kept in preserveTables for the
+        // truncate workflow) would collide with the build's CREATE TABLE and
+        // abort the rebuild. preserveTables stays in effect for standalone
+        // teardown() and truncate(); a full rebuild starts from nothing.
+        await teardownSchema(this.#kysely, this.#dialect, {
+            configName: this.#state.config.name,
+            executedBy: formatIdentity(this.#state.identity),
+            postScript: this.#state.settings.teardown?.postScript,
+        });
 
         if (this.#buildFn) {
 

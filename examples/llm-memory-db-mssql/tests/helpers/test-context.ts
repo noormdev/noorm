@@ -13,10 +13,11 @@
  * pools concurrently call `db.truncate()` (sp_MSforeach_worker fights
  * for schema locks across connections).
  *
- * Why not `db.reset()`: noorm's teardown drops tables before
- * functions, but schema-bound `fn_MemoryConfidence` etc. reference
- * `Memory` and `Task` and block the table drop. Using `truncate()`
- * sidesteps this and is also faster (no full DDL rebuild per file).
+ * Why not `db.reset()`: `db.reset()` works correctly now (teardown #36
+ * fixed the drop ordering, and reset() no longer preserves the reference
+ * vocabulary so the rebuild doesn't collide). We build once + `truncate()`
+ * per test purely for speed — a full DDL rebuild on every `beforeEach`
+ * would be far slower than wiping rows.
  *
  * @example
  * let ctx: Awaited<ReturnType<typeof bootstrap>>['ctx'];

@@ -559,6 +559,49 @@ describe('integration: mssql teardown', () => {
 
     });
 
+    describe('teardownSchema with CHECK-constraint UDF (issue #36)', () => {
+
+        beforeEach(async () => {
+
+            await teardownTestSchema(db, 'mssql').catch(() => {});
+
+        });
+
+        it('drops a table whose CHECK constraint references a scalar UDF without error 3729', async () => {
+
+            // Scalar UDF referenced by a CHECK constraint — the canonical
+            // base/subtype "IsType" pattern. Pre-fix, teardown dropped the
+            // function before the table and failed with:
+            //   Cannot DROP FUNCTION 'dbo.IsPositive_fn' because it is being
+            //   referenced by object 'Thing_IsPositive'. (3729)
+            await sql.raw(`
+                CREATE FUNCTION dbo.IsPositive_fn(@n INT) RETURNS BIT
+                AS BEGIN RETURN IIF(@n > 0, 1, 0) END
+            `).execute(db);
+
+            await sql.raw(`
+                CREATE TABLE dbo.Thing (
+                    Id INT PRIMARY KEY,
+                    Qty INT NOT NULL,
+                    CONSTRAINT Thing_IsPositive CHECK (dbo.IsPositive_fn(Qty) = 1)
+                )
+            `).execute(db);
+
+            const result = await teardownSchema(db, 'mssql');
+
+            expect(result.dropped.tables).toContain('Thing');
+            expect(result.dropped.functions).toContain('IsPositive_fn');
+
+            // Both objects should be gone.
+            const tables = await fetchList(db, 'mssql', 'tables');
+            expect(tables.map((t) => t.name)).not.toContain('Thing');
+            const functions = await fetchList(db, 'mssql', 'functions');
+            expect(functions.map((f) => f.name)).not.toContain('IsPositive_fn');
+
+        });
+
+    });
+
     describe('truncateData deadlock canary (M-6)', () => {
 
         beforeEach(async () => {

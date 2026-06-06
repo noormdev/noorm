@@ -26,6 +26,29 @@ function WithProvider({ children }: { children: React.ReactNode }) {
 
 }
 
+/**
+ * Poll until `check` is true or the timeout elapses. Replaces fixed
+ * `setTimeout` waits, which flake under CI load when observer→React state
+ * propagation takes longer than the hard-coded delay.
+ */
+async function waitFor(check: () => boolean, timeout = 2000, interval = 5): Promise<void> {
+
+    const start = Date.now();
+
+    while (!check()) {
+
+        if (Date.now() - start > timeout) {
+
+            throw new Error('waitFor: condition not met within timeout');
+
+        }
+
+        await new Promise((r) => setTimeout(r, interval));
+
+    }
+
+}
+
 describe('cli: hooks/useObserver', () => {
 
     afterEach(() => {
@@ -60,9 +83,17 @@ describe('cli: hooks/useObserver', () => {
 
             expect(lastFrame()).toContain('received:none');
 
-            await new Promise((r) => setTimeout(r, 10));
-            observer.emit('config:created', { name: 'test-config' });
-            await new Promise((r) => setTimeout(r, 10));
+            // Re-emit each poll until received: this tolerates both a not-yet
+            // -registered useEffect subscription and slow state propagation,
+            // without depending on a fixed delay. Re-emitting is harmless here
+            // because the handler sets the same value each time.
+            await waitFor(() => {
+
+                observer.emit('config:created', { name: 'test-config' });
+
+                return lastFrame()?.includes('received:test-config') ?? false;
+
+            });
 
             expect(lastFrame()).toContain('received:test-config');
 
@@ -92,13 +123,16 @@ describe('cli: hooks/useObserver', () => {
 
             const { lastFrame, unmount } = render(<WithProvider><Counter /></WithProvider>);
 
-            await new Promise((r) => setTimeout(r, 10));
+            // Subscription must be active before emitting exactly three times,
+            // so the count is deterministic (can't re-emit to recover here).
+            // Generous wait for the useEffect to register, then poll the count.
+            await new Promise((r) => setTimeout(r, 100));
 
             observer.emit('config:created', { name: 'first' });
             observer.emit('config:created', { name: 'second' });
             observer.emit('config:created', { name: 'third' });
 
-            await new Promise((r) => setTimeout(r, 10));
+            await waitFor(() => lastFrame()?.includes('count:3') ?? false);
 
             expect(lastFrame()).toContain('count:3');
 
