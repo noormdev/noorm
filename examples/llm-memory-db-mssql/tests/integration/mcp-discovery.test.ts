@@ -121,9 +121,12 @@ beforeAll(async () => {
     // The MCP server starts disconnected. `overview` and `list` both call
     // `session.getContext()`, which throws if no connection exists. Connect
     // once for the whole suite — the SessionManager memoises by config.
+    // Connect with the `test` config — the one the suite bootstraps
+    // (createContext({ config: 'test' }) in the helpers, and `noorm ci init
+    // --name test` in CI). The `dev` config isn't provisioned under test.
     const connectRes = await client.callTool({
         name: 'run_noorm_cmd',
-        arguments: { command: 'connect', config: 'dev' },
+        arguments: { command: 'connect', config: 'test' },
     });
 
     expect(isError(connectRes)).toBeFalsy();
