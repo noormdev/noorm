@@ -494,7 +494,7 @@ describe('sdk: Context proc/func runtime', () => {
 
             expect(query.sql).toContain('DECLARE @__tvp_Items CheckoutItems');
             expect(query.sql).toContain('INSERT INTO @__tvp_Items');
-            expect(query.sql).toContain('EXEC checkout_trx');
+            expect(query.sql).toContain('EXEC [checkout_trx]');
 
         });
 

@@ -169,7 +169,7 @@ describe('integration: postgres tvf()', () => {
         const query = buildTvfCall('postgres', 'fn_get_todo_items_by_list', { p_list_id: LIST_ID_1 });
         const compiled = query.compile(db);
 
-        expect(compiled.sql).toBe('SELECT * FROM fn_get_todo_items_by_list(p_list_id => $1)');
+        expect(compiled.sql).toBe('SELECT * FROM "fn_get_todo_items_by_list"("p_list_id" => $1)');
         expect(compiled.parameters).toEqual([LIST_ID_1]);
 
     });
@@ -271,7 +271,7 @@ describe('integration: mssql tvf()', () => {
         const query = buildTvfCall('mssql', 'fn_GetTodoItemsByList', [LIST_ID_1]);
         const compiled = query.compile(db);
 
-        expect(compiled.sql).toBe('SELECT * FROM fn_GetTodoItemsByList(@1)');
+        expect(compiled.sql).toBe('SELECT * FROM [fn_GetTodoItemsByList](@1)');
         expect(compiled.parameters).toEqual([LIST_ID_1]);
 
     });

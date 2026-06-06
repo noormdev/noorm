@@ -55,6 +55,12 @@ describe('sql-terminal: executor', () => {
                 beforeCleanup();
                 afterCleanup();
 
+                // Restore spies — these tests spy on kysely's shared `sql.raw`
+                // export. Left un-restored, the mock leaks process-wide and
+                // breaks every later test that runs real SQL through sql.raw
+                // (e.g. the sdk impersonate suite).
+                vi.restoreAllMocks();
+
             });
 
             // Mock Kysely execute function

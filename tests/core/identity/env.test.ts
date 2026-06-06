@@ -10,7 +10,17 @@ describe('core: identity env loader', () => {
 
     afterEach(() => {
 
-        process.env = { ...originalEnv };
+        // Restore env in place — never reassign `process.env` to a new object.
+        // Modules that captured the original reference at import (e.g. the
+        // config module's makeNestedConfig binding) would otherwise read a
+        // detached object, silently poisoning every later env-config test.
+        for (const key of Object.keys(process.env)) {
+
+            if (!(key in originalEnv)) delete process.env[key];
+
+        }
+
+        Object.assign(process.env, originalEnv);
 
     });
 
