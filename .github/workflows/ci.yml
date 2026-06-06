@@ -276,6 +276,125 @@ jobs:
                   NOORM_TEST_PREBUILT: '1'
               run: bun test
 
+    # ───────────────────────────────────────────────────────────────────
+    # examples/llm-memory-db-mssql is a second e2e target: a 38-table
+    # LLM-memory schema on SQL Server 2022 that exercises the
+    # MSSQL-specific surface — table-valued parameters, schema-bound
+    # validators, role-scoped views, named-procedure calls — plus a
+    # meta-test that drives `noorm mcp serve` end-to-end. Same shape as
+    # example-todo-db: bootstrap state.enc with `noorm ci`, build the
+    # schema, apply the committed change, then run the SDK suite.
+    #
+    # Two notable deviations from the todo-db pattern:
+    #
+    # 1. We use `noorm run build` instead of `noorm db reset` because
+    #    schema-bound validator UDFs in `sql/03_validators/` lock the
+    #    tables they reference, blocking the teardown step (gap #5 in
+    #    examples/llm-memory-db-mssql/mssql-problems.md).
+    #
+    # 2. The test bootstrap is `config: 'test'` with `requireTest: true`,
+    #    so the CI config must be named `test` and carry isTest=true.
+    # ───────────────────────────────────────────────────────────────────
+    example-llm-memory-db-mssql:
+        runs-on: ubuntu-24.04
+        needs: build
+
+        services:
+            mssql:
+                image: mcr.microsoft.com/mssql/server:2022-latest
+                ports:
+                    - 11433:1433
+                env:
+                    ACCEPT_EULA: 'Y'
+                    SA_PASSWORD: 'NoOrm_Test123!'
+                    MSSQL_PID: Developer
+                options: >-
+                    --health-cmd "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'NoOrm_Test123!' -C -Q 'SELECT 1' || exit 1"
+                    --health-interval 10s
+                    --health-timeout 5s
+                    --health-retries 10
+                    --health-start-period 30s
+
+        # Job-level env shared by every CLI step + the SDK test process.
+        # NOORM_name=test + NOORM_isTest=true line up with the
+        # `config: 'test', requireTest: true` call in
+        # examples/llm-memory-db-mssql/tests/helpers/test-context.ts.
+        env:
+            NOORM_CONNECTION_DIALECT: mssql
+            NOORM_CONNECTION_HOST: localhost
+            NOORM_CONNECTION_PORT: '11433'
+            NOORM_CONNECTION_USER: SA
+            NOORM_CONNECTION_PASSWORD: 'NoOrm_Test123!'
+            NOORM_CONNECTION_DATABASE: noorm_llm_test
+            NOORM_name: test
+            NOORM_type: remote
+            NOORM_isTest: 'true'
+
+        steps:
+            - uses: actions/checkout@v4
+
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: '24'
+
+            - uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version: '1.3.11'
+
+            - run: bun install --frozen-lockfile
+            - run: bun run build:packages
+
+            - name: Expose `noorm` CLI on PATH
+              run: |
+                  BIN_DIR="$GITHUB_WORKSPACE/.ci-bin"
+                  mkdir -p "$BIN_DIR"
+                  cat > "$BIN_DIR/noorm" <<EOF
+                  #!/usr/bin/env bash
+                  exec node "$GITHUB_WORKSPACE/packages/cli/dist/index.js" "\$@"
+                  EOF
+                  chmod +x "$BIN_DIR/noorm"
+                  echo "$BIN_DIR" >> $GITHUB_PATH
+
+            - name: noorm ci identity new  —  mint ephemeral keypair
+              working-directory: examples/llm-memory-db-mssql
+              run: |
+                  OUT=$(noorm ci identity new \
+                      --name llm-memory-db-mssql-ci \
+                      --email ci@noorm.local \
+                      --json)
+                  PRIV=$(echo "$OUT" | jq -r '.data.privateKey // .privateKey')
+                  echo "::add-mask::$PRIV"
+                  echo "NOORM_IDENTITY_PRIVATE_KEY=$PRIV" >> "$GITHUB_ENV"
+                  echo "NOORM_IDENTITY_NAME=llm-memory-db-mssql-ci" >> "$GITHUB_ENV"
+                  echo "NOORM_IDENTITY_EMAIL=ci@noorm.local" >> "$GITHUB_ENV"
+
+            - name: noorm ci init  —  bootstrap state.enc from env
+              working-directory: examples/llm-memory-db-mssql
+              run: noorm ci init --name test --force --json
+
+            - name: noorm db create  —  create target database
+              working-directory: examples/llm-memory-db-mssql
+              run: noorm db create --json
+
+            - name: noorm run build  —  build schema (types, tables, validators, views, procs)
+              working-directory: examples/llm-memory-db-mssql
+              run: noorm run build --json
+
+            - name: noorm change ff  —  apply forward changes
+              working-directory: examples/llm-memory-db-mssql
+              run: noorm change ff --yes --json
+
+            - name: Typecheck example
+              working-directory: examples/llm-memory-db-mssql
+              run: bun run typecheck
+
+            - name: Run example test suite
+              working-directory: examples/llm-memory-db-mssql
+              env:
+                  CI: 'false'
+                  FORCE_COLOR: 'true'
+              run: bun test
+
     cli-e2e:
         runs-on: ubuntu-24.04
         needs: build
