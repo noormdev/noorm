@@ -118,9 +118,14 @@ async function verifyDatabaseExists(
  */
 export async function createMssqlConnection(config: ConnectionConfig): Promise<ConnectionResult> {
 
-    // Dynamic import to avoid compile-time dependency
-    const Tedious = await import('tedious');
-    const Tarn = await import('tarn');
+    // Dynamic import to avoid compile-time dependency. Normalize CJS interop:
+    // when bundled (tsup), the module's exports land under `.default`, so a
+    // bare `Tarn.Pool` is undefined and kysely throws "Pool is not a
+    // constructor". Mirror the postgres dialect's `pkg.default ?? pkg` guard.
+    const TediousImport = await import('tedious');
+    const TarnImport = await import('tarn');
+    const Tedious = TediousImport.default ?? TediousImport;
+    const Tarn = TarnImport.default ?? TarnImport;
 
     // Preflight: verify database exists via master
     await verifyDatabaseExists(Tedious, Tarn, config);
