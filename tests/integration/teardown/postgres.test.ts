@@ -4,7 +4,7 @@
  * Tests truncateData, teardownSchema, and previewTeardown against a real PostgreSQL database.
  * Requires docker-compose.test.yml containers to be running.
  */
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'bun:test';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'bun:test';
 import { sql } from 'kysely';
 import type { Kysely } from 'kysely';
 
@@ -317,6 +317,56 @@ describe('integration: postgres teardown', () => {
                 expect(fkDropIndex).toBeLessThan(tableDropIndex);
 
             }
+
+        });
+
+    });
+
+    // ─────────────────────────────────────────────────────────────
+    // CHECK-constraint UDF teardown (issue #36 cross-dialect guard)
+    // MSSQL needs an explicit CHECK-constraint pre-drop because it has
+    // no DROP FUNCTION ... CASCADE. Postgres is immune *only because*
+    // dropFunction emits CASCADE, which removes the dependent CHECK
+    // constraint. This test locks in that behavior so a future refactor
+    // that drops CASCADE doesn't silently reintroduce the bug on PG.
+    // ─────────────────────────────────────────────────────────────
+
+    describe('teardownSchema with CHECK-constraint UDF (issue #36)', () => {
+
+        afterEach(async () => {
+
+            await sql.raw('DROP TABLE IF EXISTS ev_thing CASCADE').execute(db).catch(() => {});
+            await sql.raw('DROP FUNCTION IF EXISTS ev_is_positive(int) CASCADE').execute(db).catch(() => {});
+
+        });
+
+        it('emits DROP FUNCTION ... CASCADE so a CHECK-referenced UDF tears down', async () => {
+
+            const result = await teardownSchema(db, 'postgres', { dryRun: true });
+
+            const fnDrop = result.statements.find((s) => s.includes('DROP FUNCTION'));
+            expect(fnDrop).toBeDefined();
+            expect(fnDrop).toContain('CASCADE');
+
+        });
+
+        it('drops a table whose CHECK constraint references a scalar UDF without error', async () => {
+
+            await sql.raw(
+                'CREATE FUNCTION ev_is_positive(n int) RETURNS boolean '
+                + 'AS $$ SELECT n > 0 $$ LANGUAGE sql IMMUTABLE',
+            ).execute(db);
+            await sql.raw(
+                'CREATE TABLE ev_thing (id int PRIMARY KEY, qty int NOT NULL '
+                + 'CHECK (ev_is_positive(qty)))',
+            ).execute(db);
+
+            const result = await teardownSchema(db, 'postgres');
+
+            expect(result.dropped.tables).toContain('ev_thing');
+
+            const functions = await fetchList(db, 'postgres', 'functions');
+            expect(functions.map((f) => f.name)).not.toContain('ev_is_positive');
 
         });
 

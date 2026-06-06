@@ -116,4 +116,24 @@ export const mssqlTeardownOperations: TeardownDialectOperations = {
 
     },
 
+    dropCheckConstraints(): string {
+
+        // A scalar UDF referenced by a CHECK constraint can't be dropped while
+        // the referencing table exists (error 3729). We drop functions before
+        // tables (for schema-bound deps), so sever the CHECK dependency first.
+        // Built dynamically because constraint names aren't known up front;
+        // the `noorm` schema is excluded so internal tables stay intact.
+        return [
+            "DECLARE @noorm_drop_checks NVARCHAR(MAX) = N'';",
+            'SELECT @noorm_drop_checks += N\'ALTER TABLE \' '
+                + '+ QUOTENAME(SCHEMA_NAME(t.schema_id)) + N\'.\' + QUOTENAME(t.name) '
+                + '+ N\' DROP CONSTRAINT \' + QUOTENAME(cc.name) + N\';\'',
+            'FROM sys.check_constraints cc '
+                + 'INNER JOIN sys.tables t ON cc.parent_object_id = t.object_id',
+            "WHERE SCHEMA_NAME(t.schema_id) <> 'noorm';",
+            'EXEC sp_executesql @noorm_drop_checks;',
+        ].join('\n');
+
+    },
+
 };
