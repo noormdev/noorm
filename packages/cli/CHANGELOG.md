@@ -1,5 +1,37 @@
 # @noormdev/cli
 
+## 1.0.0-alpha.36
+
+### Patch Changes
+
+- 3ef0007: fix(mssql): noorm db create / run no longer crash with "Pool is not a constructor"
+
+  In the bundled CLI, `await import('tarn')` / `await import('tedious')` expose
+  their exports under `.default`, so kysely's MSSQL dialect received an undefined
+  `Pool` and every MSSQL command (`noorm db create`, `run`, `change`, etc.) failed
+  with `Cannot connect to server: Pool is not a constructor`. Normalize the CJS
+  interop, mirroring the postgres dialect.
+
+- 3ef0007: fix(cli): noorm db reset rebuilds cleanly regardless of preserveTables
+
+  `noorm db reset` (teardown + build) honored `settings.teardown.preserveTables`
+  during the teardown phase, so preserved tables (e.g. reference vocabulary kept
+  for the `noorm db truncate` workflow) survived and then collided with the
+  build's `CREATE TABLE`, aborting the rebuild and leaving a partial schema.
+  `noorm db reset` now performs a full teardown that ignores `preserveTables` —
+  a full rebuild starts from nothing. `noorm db teardown` and `noorm db truncate`
+  still honor the setting.
+
+- 3ef0007: fix(cli): noorm db teardown drops MSSQL CHECK constraints before functions
+
+  `noorm db teardown` (and `noorm db reset`) aborted with MSSQL error 3729 on
+  any schema where a scalar UDF is referenced by a CHECK constraint (the
+  canonical base/subtype "IsType" pattern). Functions are dropped before tables
+  to satisfy schema-bound dependents, which left the CHECK-constraint dependency
+  intact. Teardown now severs it first by dropping all user-schema CHECK
+  constraints (excluding the `noorm` schema) ahead of the function drops, so
+  both schema-bound functions and CHECK-backed functions tear down cleanly.
+
 ## 1.0.0-alpha.35
 
 ### Minor Changes
