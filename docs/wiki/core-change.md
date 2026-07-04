@@ -1,3 +1,7 @@
+---
+type: Domain
+---
+
 # core-change
 
 ## What it does

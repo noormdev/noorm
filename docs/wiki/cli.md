@@ -1,3 +1,7 @@
+---
+type: Domain
+---
+
 # cli
 
 ## What it does

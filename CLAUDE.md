@@ -196,6 +196,6 @@ Use `numberNav` prop on `SelectList` for 1-9 quick selection in lists.
 ## Project signals (auto-loaded)
 
 
-@.claude/project/signals.md
+@docs/wiki/index.md
 
 </atomic-signals>

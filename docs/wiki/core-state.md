@@ -1,3 +1,7 @@
+---
+type: Domain
+---
+
 # core-state
 
 ## What it does

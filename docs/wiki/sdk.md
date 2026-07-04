@@ -1,3 +1,7 @@
+---
+type: Domain
+---
+
 # sdk
 
 ## What it does

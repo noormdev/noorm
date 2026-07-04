@@ -1,3 +1,7 @@
+---
+type: Domain
+---
+
 # mcp-rpc
 
 ## What it does

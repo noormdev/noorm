@@ -1,3 +1,11 @@
+---
+type: Index
+---
+
+<wiki-type>repo</wiki-type>
+<scan-sha></scan-sha>
+<wiki-schema>1</wiki-schema>
+
 # Project signals
 
 ## Framework & runtime

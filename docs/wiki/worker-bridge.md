@@ -1,3 +1,7 @@
+---
+type: Domain
+---
+
 # worker-bridge
 
 ## What it does

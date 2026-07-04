@@ -1,3 +1,7 @@
+---
+type: Domain
+---
+
 # core-identity
 
 ## What it does

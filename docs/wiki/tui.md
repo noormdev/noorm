@@ -1,3 +1,7 @@
+---
+type: Domain
+---
+
 # tui
 
 ## What it does

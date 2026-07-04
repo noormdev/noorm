@@ -1,3 +1,7 @@
+---
+type: Domain
+---
+
 # core-runner
 
 ## What it does

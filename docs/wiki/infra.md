@@ -1,3 +1,7 @@
+---
+type: Domain
+---
+
 # infra
 
 ## What it does

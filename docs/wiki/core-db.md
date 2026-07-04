@@ -1,3 +1,7 @@
+---
+type: Domain
+---
+
 # core-db
 
 ## What it does
