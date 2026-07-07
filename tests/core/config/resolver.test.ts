@@ -440,7 +440,12 @@ describe('config: resolver', () => {
             // Stored should override stage defaults
             const config = resolveConfig(state, { settings });
 
-            expect(config!.protected).toBe(false); // stored has protected=false
+            // Stage `protected: true` is an access ceiling, not a value the
+            // stored config can override to something looser: stored has no
+            // explicit access (defaults to admin/admin), which is looser
+            // than the operator/viewer ceiling, so it gets clamped down.
+            expect(config!.protected).toBe(true);
+            expect(config!.access).toEqual({ user: 'operator', mcp: 'viewer' });
             expect(config!.connection.host).toBe('localhost'); // stored overrides stage
 
         });
@@ -500,8 +505,10 @@ describe('config: resolver', () => {
 
             const config = resolveConfig(state, { settings });
 
-            // Since stored has protected=false, it overrides stage default
-            expect(config!.protected).toBe(false);
+            // Stage `protected: true` clamps the stored config's (looser,
+            // default admin/admin) access down to the ceiling.
+            expect(config!.protected).toBe(true);
+            expect(config!.access).toEqual({ user: 'operator', mcp: 'viewer' });
 
         });
 
@@ -533,6 +540,110 @@ describe('config: resolver', () => {
             const config = resolveConfig(state, { settings, stage: 'production' });
 
             expect(config!.identity).toBe('from-production-stage');
+
+        });
+
+    });
+
+    describe('legacy protected mapping', () => {
+
+        it('should map a stored legacy protected:true (no access) to guarded access', () => {
+
+            const stored = createConfig({ name: 'prod', protected: true });
+            const state = createMockState({
+                configs: { prod: stored },
+                activeConfig: 'prod',
+            });
+
+            const config = resolveConfig(state);
+
+            expect(config!.access).toEqual({ user: 'operator', mcp: 'viewer' });
+            expect(config!.protected).toBe(true);
+
+        });
+
+        it('should map a stored legacy protected:false (no access) to open access', () => {
+
+            const stored = createConfig({ name: 'dev', protected: false });
+            const state = createMockState({
+                configs: { dev: stored },
+                activeConfig: 'dev',
+            });
+
+            const config = resolveConfig(state);
+
+            expect(config!.access).toEqual({ user: 'admin', mcp: 'admin' });
+            expect(config!.protected).toBe(false);
+
+        });
+
+    });
+
+    describe('stage access ceiling', () => {
+
+        function resolveWithStageProtected(
+            access: { user: 'viewer' | 'operator' | 'admin'; mcp: 'viewer' | 'operator' | 'admin' | false },
+            stageProtected: boolean,
+        ) {
+
+            const stored = createConfig({ name: 'prod', access });
+            const state = createMockState({
+                configs: { prod: stored },
+                activeConfig: 'prod',
+            });
+            const settings = createMockSettings({
+                prod: {
+                    defaults: {
+                        protected: stageProtected,
+                        log: { level: 'info' },
+                    },
+                },
+            });
+
+            return resolveConfig(state, { settings });
+
+        }
+
+        it('should not clamp when the stage is not protected', () => {
+
+            const config = resolveWithStageProtected({ user: 'admin', mcp: 'admin' }, false);
+
+            expect(config!.access).toEqual({ user: 'admin', mcp: 'admin' });
+
+        });
+
+        it('should clamp a looser user+mcp access down to the ceiling', () => {
+
+            const config = resolveWithStageProtected({ user: 'admin', mcp: 'admin' }, true);
+
+            expect(config!.access).toEqual({ user: 'operator', mcp: 'viewer' });
+            expect(config!.protected).toBe(true);
+
+        });
+
+        it('should leave access exactly at the ceiling unchanged', () => {
+
+            const config = resolveWithStageProtected({ user: 'operator', mcp: 'viewer' }, true);
+
+            expect(config!.access).toEqual({ user: 'operator', mcp: 'viewer' });
+
+        });
+
+        it('should let a stricter access survive the ceiling untouched', () => {
+
+            const config = resolveWithStageProtected({ user: 'viewer', mcp: false }, true);
+
+            expect(config!.access).toEqual({ user: 'viewer', mcp: false });
+            expect(config!.protected).toBe(true);
+
+        });
+
+        it('should clamp each channel independently', () => {
+
+            // user is looser than the ceiling, mcp is already stricter
+            const config = resolveWithStageProtected({ user: 'admin', mcp: false }, true);
+
+            expect(config!.access).toEqual({ user: 'operator', mcp: false });
 
         });
 
@@ -599,8 +710,12 @@ describe('config: resolver', () => {
 
         });
 
-        it('should detect protected constraint violation', () => {
+        it('should not report a protected violation (enforced as an access ceiling at resolution instead)', () => {
 
+            // A config with protected=false / open access reaching this
+            // check is only possible outside resolveConfig, which clamps
+            // access to the stage ceiling before returning. checkConfigCompleteness
+            // no longer duplicates that enforcement as a violation.
             const config = createConfig({
                 name: 'prod',
                 protected: false,
@@ -618,9 +733,8 @@ describe('config: resolver', () => {
 
             const result = checkConfigCompleteness(config, state, settings);
 
-            expect(result.complete).toBe(false);
-            expect(result.violations).toHaveLength(1);
-            expect(result.violations[0]).toContain('protected=true');
+            expect(result.complete).toBe(true);
+            expect(result.violations).toEqual([]);
 
         });
 

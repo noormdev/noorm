@@ -22,9 +22,10 @@ Replace `Config.protected: boolean` with config-scoped, channel-keyed roles enfo
         mcp: Role | false;
     }
 
-- `Config` gains required `access: ConfigAccess`. Zod default when absent: `{ user: 'admin', mcp: 'admin' }`.
-- `ConfigSummary` gains `access: ConfigAccess`.
-- Until CP6, `Config.protected` remains present and is **derived at load**: `protected = (access.user !== 'admin')`. No caller may write `protected` after CP2. CP6 deletes the field everywhere except the state migration parser.
+- `Config` gains `access?: ConfigAccess` — optional in the type until CP6 because CP4/CP5-owned files (`src/cli/ci/init.ts`, TUI config screens, app-context) construct `Config` literals without it; every config materialized through `parseConfig`/state load has it populated. **CP6 makes the field required** once those constructors are updated. Zod default when absent: `{ user: 'admin', mcp: 'admin' }`.
+- `ConfigSummary` gains required `access: ConfigAccess`.
+- Until CP6, `Config.protected` remains present and is **derived at load**: `protected = (access.user !== 'admin')`. It is never persisted (state `persist()` strips it; the zod schema never emits a stored value). No caller may write `protected` after CP2. CP6 deletes the field everywhere except the state migration parser.
+- Enforcement code must not trust the optionality: on the `mcp` channel, a config with absent `access` is **denied** (fail closed) — in practice unreachable, since configs reach enforcement via parse/migration.
 
 
 ## Permissions and matrix
@@ -139,3 +140,5 @@ Each checkpoint ends green: `bash tmp/run-test-groups.sh` (mirrors CI's four fre
 
 
 - 2026-07-07 — Initial spec from design doc + scoping report (issue #40).
+- 2026-07-07 — CP1: `checkPolicy` takes a structural `PolicyTarget` (Config lacks `access` until CP2). Verification method corrected to CI-mirrored four-group runs.
+- 2026-07-07 — CP2: `Config.access` optional until CP6 (CP4/CP5-owned constructors); fail-closed rule added for absent access on the mcp channel. Stage `protected: true` override-block in `checkConfigCompleteness` replaced by the ceiling clamp (the old "stored wins" behavior was the bug the clamp fixes).

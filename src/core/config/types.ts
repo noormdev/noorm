@@ -7,6 +7,7 @@
  */
 import type { ConnectionConfig, Dialect } from '../connection/types.js';
 import type { LogLevel } from '../logger/types.js';
+import type { ConfigAccess } from '../policy/index.js';
 
 /**
  * Full configuration object.
@@ -33,6 +34,22 @@ export interface Config {
     name: string;
     type: 'local' | 'remote';
     isTest: boolean;
+
+    /**
+     * Per-channel access roles — the source of truth for policy checks
+     * (`checkPolicy`/`guarded` from `core/policy`). Optional at the type
+     * level only because not every construction site has adopted it yet;
+     * `parseConfig`/`ConfigSchema` always populate it, defaulting to
+     * `{ user: 'admin', mcp: 'admin' }`.
+     */
+    access?: ConfigAccess;
+
+    /**
+     * Derived from `access.user !== 'admin'`, recomputed wherever configs
+     * are materialized (schema parsing, state read/write). No caller should
+     * set this independently — it never reflects an independent choice, only
+     * a mirror of `access`.
+     */
     protected: boolean;
 
     connection: ConnectionConfig;
@@ -48,6 +65,8 @@ export interface ConfigInput {
     name?: string;
     type?: 'local' | 'remote';
     isTest?: boolean;
+    access?: ConfigAccess;
+    /** Legacy input path — mapped to `access` by `ConfigSchema`. */
     protected?: boolean;
     connection?: Partial<ConnectionConfig>;
     identity?: string;
@@ -63,6 +82,7 @@ export interface ConfigSummary {
     name: string;
     type: 'local' | 'remote';
     isTest: boolean;
+    access: ConfigAccess;
     protected: boolean;
     isActive: boolean;
     dialect: Dialect;

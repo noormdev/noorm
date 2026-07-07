@@ -12,9 +12,11 @@ import { merge, clone } from '@logosdx/utils';
 
 import type { Config, ConfigInput, CompletenessCheck } from './types.js';
 import { getEnvConfigName } from '../environment.js';
-import { parseConfig } from './schema.js';
+import { parseConfig, type ConfigSchemaType } from './schema.js';
 import { getEnvConfig } from './index.js';
 import type { SettingsManager, StageDefaults } from '../settings/index.js';
+import { guarded } from '../policy/index.js';
+import type { ConfigAccess, Role } from '../policy/index.js';
 
 /**
  * Interface for state manager dependency.
@@ -62,11 +64,19 @@ export class SettingsProvider {
 
 /**
  * Default config values.
+ *
+ * `access` is deliberately absent here: it must be decided from what the
+ * merged input (stored/env/flags) actually supplied, not injected ahead of
+ * it. Merging a default `access` in first would make it "already present"
+ * by the time `parseConfig` runs, short-circuiting the legacy `protected`
+ * fallback in `withResolvedAccess` and silently opening up any config that
+ * only sets legacy `protected: true`. `parseConfig` still defaults absent
+ * `access` to admin/admin (via `resolveLegacyAccess`) — just after the
+ * merge, from the real inputs, not before it.
  */
 const DEFAULTS: ConfigInput = {
     type: 'local',
     isTest: false,
-    protected: false,
     connection: {
         host: 'localhost',
         pool: { min: 0, max: 10 },
@@ -75,6 +85,64 @@ const DEFAULTS: ConfigInput = {
         level: 'info',
     },
 };
+
+/**
+ * Ceiling a `protected: true` stage caps a config's access to. A config can
+ * still be stricter than this (e.g. `mcp: false`); it just can't be looser.
+ */
+const PROTECTED_STAGE_CEILING: ConfigAccess = { user: 'operator', mcp: 'viewer' };
+
+/**
+ * Strictness rank for comparing roles: `false` (invisible) is stricter than
+ * `viewer`, which is stricter than `operator`, which is stricter than `admin`.
+ */
+function roleRank(role: Role | false): number {
+
+    if (role === false) return 0;
+    if (role === 'viewer') return 1;
+    if (role === 'operator') return 2;
+
+    return 3;
+
+}
+
+/**
+ * Clamps access down to a ceiling, per channel. A value stricter than the
+ * ceiling survives unchanged; a looser value is pulled down to it. Never
+ * loosens a value that was already stricter than the ceiling.
+ */
+function clampToCeiling(access: ConfigAccess, ceiling: ConfigAccess): ConfigAccess {
+
+    return {
+        user: roleRank(access.user) <= roleRank(ceiling.user) ? access.user : ceiling.user,
+        mcp: roleRank(access.mcp) <= roleRank(ceiling.mcp) ? access.mcp : ceiling.mcp,
+    };
+
+}
+
+/**
+ * Applies the stage `protected: true` access ceiling to a resolved config.
+ *
+ * A `protected: true` stage no longer sets `protected` on the config
+ * directly — it caps how open the config's access can be. Stricter configs
+ * (e.g. an already-viewer config) are left alone.
+ */
+function applyStageCeiling(
+    config: ConfigSchemaType,
+    stageDefaults: StageDefaults | null,
+): ConfigSchemaType {
+
+    if (stageDefaults?.protected !== true) return config;
+
+    const access = clampToCeiling(config.access, PROTECTED_STAGE_CEILING);
+
+    return {
+        ...config,
+        access,
+        protected: guarded({ name: config.name, access }),
+    };
+
+}
 
 /**
  * Options for resolving a config.
@@ -178,8 +246,8 @@ export function resolveConfig(state: StateProvider, options: ResolveOptions = {}
     merged = merge(merged, envConfig) as ConfigInput;
     merged = merge(merged, options.flags ?? {});
 
-    // 5. Validate and return with defaults applied
-    return parseConfig(merged);
+    // 5. Validate, apply defaults, and clamp to the stage's access ceiling
+    return applyStageCeiling(parseConfig(merged), stageDefaults);
 
 }
 
@@ -240,7 +308,7 @@ function resolveFromEnvOnly(
 
     }
 
-    return parseConfig(merged);
+    return applyStageCeiling(parseConfig(merged), stageDefaults);
 
 }
 
@@ -320,14 +388,9 @@ export function checkConfigCompleteness(
     // Check stage constraint violations
     const defaults = stage.defaults ?? {} as ConfigInput;
 
-    // protected: true cannot be overridden to false
-    if (defaults.protected === true && config.protected === false) {
-
-        result.violations.push(
-            `Stage "${stageName ?? config.name}" requires protected=true, but config has protected=false`,
-        );
-
-    }
+    // protected: true is enforced as an access ceiling at resolution
+    // (resolveConfig/applyStageCeiling), so a resolved config can no longer
+    // violate it here — it's clamped before this function ever sees it.
 
     // isTest: true cannot be overridden to false
     if (defaults.isTest === true && config.isTest === false) {

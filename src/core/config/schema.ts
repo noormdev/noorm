@@ -6,10 +6,48 @@
  */
 import { z } from 'zod';
 
+import { resolveLegacyAccess } from '../policy/index.js';
+import type { ConfigAccess } from '../policy/index.js';
+
 /**
  * Valid database dialects.
  */
 export const DialectSchema = z.enum(['postgres', 'mysql', 'sqlite', 'mssql']);
+
+/**
+ * Per-channel access roles. Mirrors `ConfigAccess` from `core/policy`.
+ */
+const RoleSchema = z.enum(['viewer', 'operator', 'admin']);
+
+const AccessSchema = z.object({
+    user: RoleSchema,
+    mcp: z.union([RoleSchema, z.literal(false)]),
+});
+
+/**
+ * Resolves the final `access` plus the derived `protected` from raw input
+ * that may carry either the new `access` field, the legacy `protected`
+ * boolean, or neither.
+ *
+ * `access` wins when present. Otherwise the legacy boolean maps to a role
+ * pair for one version (`docs/spec/config-access-roles.md#migration`). The
+ * output's `protected` is always the derived value — never a pass-through
+ * of the raw input — since `access` is the only stored source of truth.
+ */
+function withResolvedAccess<T extends { protected?: boolean; access?: ConfigAccess }>(
+    data: T,
+): Omit<T, 'protected' | 'access'> & { access: ConfigAccess; protected: boolean } {
+
+    const { protected: legacyProtected, access, ...rest } = data;
+    const resolvedAccess = resolveLegacyAccess(access, legacyProtected);
+
+    return {
+        ...rest,
+        access: resolvedAccess,
+        protected: resolvedAccess.user !== 'admin',
+    };
+
+}
 
 /**
  * Config name pattern - alphanumeric with hyphens and underscores.
@@ -76,16 +114,24 @@ export const ConnectionSchema = z
     });
 
 /**
- * Full config schema.
+ * Full config object schema, before access/protected resolution.
  */
-export const ConfigSchema = z.object({
+const ConfigObjectSchema = z.object({
     name: ConfigNameSchema,
     type: z.enum(['local', 'remote']).default('local'),
     isTest: z.boolean().default(false),
-    protected: z.boolean().default(false),
+    /** Legacy input path — mapped to `access` by `withResolvedAccess`. */
+    protected: z.boolean().optional(),
+    access: AccessSchema.optional(),
     connection: ConnectionSchema,
     identity: z.string().optional(),
 });
+
+/**
+ * Full config schema. Resolves `access` (defaulting/mapping legacy
+ * `protected`) and derives `protected` from it.
+ */
+export const ConfigSchema = ConfigObjectSchema.transform(withResolvedAccess);
 
 /**
  * Partial connection schema (all fields optional).
@@ -114,6 +160,8 @@ export const ConfigInputSchema = z.object({
         .optional(),
     type: z.enum(['local', 'remote']).optional(),
     isTest: z.boolean().optional(),
+    access: AccessSchema.optional(),
+    /** Legacy input path — mapped to `access` by `ConfigSchema`. */
     protected: z.boolean().optional(),
     connection: PartialConnectionSchema.optional(),
     identity: z.string().optional(),
@@ -124,9 +172,9 @@ export const ConfigInputSchema = z.object({
  *
  * Allows missing name (will be generated as '__env__').
  */
-export const EnvConfigSchema = ConfigSchema.extend({
-    name: ConfigNameSchema.optional(),
-});
+export const EnvConfigSchema = ConfigObjectSchema
+    .extend({ name: ConfigNameSchema.optional() })
+    .transform(withResolvedAccess);
 
 // ─────────────────────────────────────────────────────────────
 // Type Exports

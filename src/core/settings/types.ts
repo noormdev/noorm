@@ -5,6 +5,7 @@
  * Unlike encrypted configs (credentials), settings are version controlled
  * and shared across the team via .noorm/settings.yml
  */
+import type { ConfigAccess } from '../policy/index.js';
 
 /**
  * Secret type hints for CLI input handling.
@@ -303,4 +304,12 @@ export interface ConfigForRuleMatch {
     type: 'local' | 'remote';
     isTest: boolean;
     protected: boolean;
+
+    /**
+     * Optional so callers that haven't adopted access roles yet (still
+     * passing only `protected`) keep working. When present, `ruleMatches`
+     * matches `match.protected` against `guarded(config)` instead of the
+     * raw `protected` boolean.
+     */
+    access?: ConfigAccess;
 }

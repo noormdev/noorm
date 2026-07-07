@@ -321,6 +321,71 @@ describe('config: schema validation', () => {
 
         });
 
+        describe('access roles', () => {
+
+            it('should default access to admin/admin when neither access nor protected is given', () => {
+
+                const result = parseConfig(createValidConfig());
+
+                expect(result.access).toEqual({ user: 'admin', mcp: 'admin' });
+                expect(result.protected).toBe(false);
+
+            });
+
+            it('should map legacy protected: true to guarded access', () => {
+
+                const config = createValidConfig({ protected: true });
+
+                const result = parseConfig(config);
+
+                expect(result.access).toEqual({ user: 'operator', mcp: 'viewer' });
+                expect(result.protected).toBe(true);
+
+            });
+
+            it('should map legacy protected: false to open access', () => {
+
+                const config = createValidConfig({ protected: false });
+
+                const result = parseConfig(config);
+
+                expect(result.access).toEqual({ user: 'admin', mcp: 'admin' });
+                expect(result.protected).toBe(false);
+
+            });
+
+            it('should prefer an explicit access over the legacy protected flag', () => {
+
+                const config = {
+                    ...createValidConfig({ protected: true }),
+                    access: { user: 'viewer' as const, mcp: false as const },
+                };
+
+                const result = parseConfig(config);
+
+                expect(result.access).toEqual({ user: 'viewer', mcp: false });
+
+            });
+
+            it('should never emit the raw input protected value — only the derived one', () => {
+
+                // access says open (admin/admin) while the legacy protected
+                // flag says guarded; the derived value must follow access,
+                // never pass the raw input's protected straight through.
+                const config = {
+                    ...createValidConfig(),
+                    protected: true,
+                    access: { user: 'admin' as const, mcp: 'admin' as const },
+                };
+
+                const result = parseConfig(config);
+
+                expect(result.protected).toBe(false);
+
+            });
+
+        });
+
     });
 
 });

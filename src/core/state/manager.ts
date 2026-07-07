@@ -18,6 +18,7 @@ import { createEmptyState } from './types.js';
 import { migrateState, needsMigration } from './migrations.js';
 import { getPackageVersion } from './version.js';
 import { observer } from '../observer.js';
+import { resolveLegacyAccess } from '../policy/index.js';
 
 const DEFAULT_STATE_DIR = '.noorm/state';
 const DEFAULT_STATE_FILE = 'state.enc';
@@ -232,7 +233,18 @@ export class StateManager {
 
         }
 
-        const json = JSON.stringify(state);
+        // `protected` is derived from `access` and never persisted — only
+        // `access` is the stored source of truth.
+        const persistedConfigs: Record<string, Omit<Config, 'protected'>> = {};
+
+        for (const [name, config] of Object.entries(state.configs)) {
+
+            const { protected: _protected, ...rest } = config;
+            persistedConfigs[name] = rest;
+
+        }
+
+        const json = JSON.stringify({ ...state, configs: persistedConfigs });
         const payload = encrypt(json, this.privateKey);
 
         const [, writeErr] = attemptSync(() =>
@@ -289,7 +301,9 @@ export class StateManager {
 
         const state = this.getState();
         const isNew = !state.configs[name];
-        state.configs[name] = config;
+        const access = resolveLegacyAccess(config.access, config.protected);
+
+        state.configs[name] = { ...config, access, protected: access.user !== 'admin' };
         this.persist();
 
         observer.emit(isNew ? 'config:created' : 'config:updated', {
@@ -326,15 +340,22 @@ export class StateManager {
 
         const state = this.getState();
 
-        return Object.entries(state.configs).map(([name, config]) => ({
-            name,
-            type: config.type,
-            isTest: config.isTest,
-            protected: config.protected,
-            isActive: state.activeConfig === name,
-            dialect: config.connection.dialect,
-            database: config.connection.database,
-        }));
+        return Object.entries(state.configs).map(([name, config]) => {
+
+            const access = resolveLegacyAccess(config.access, config.protected);
+
+            return {
+                name,
+                type: config.type,
+                isTest: config.isTest,
+                access,
+                protected: access.user !== 'admin',
+                isActive: state.activeConfig === name,
+                dialect: config.connection.dialect,
+                database: config.connection.database,
+            };
+
+        });
 
     }
 

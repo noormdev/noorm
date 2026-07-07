@@ -5,12 +5,14 @@
  * polluting the project directory.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
-import { mkdtempSync, rmSync, existsSync } from 'fs';
+import { mkdtempSync, rmSync, existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { StateManager, resetStateManager } from '../../../src/core/state/index.js';
 import type { Config } from '../../../src/core/config/types.js';
 import type { KnownUser } from '../../../src/core/identity/types.js';
 import { generateKeyPair } from '../../../src/core/identity/crypto.js';
+import { decrypt } from '../../../src/core/state/encryption/index.js';
+import type { EncryptedPayload } from '../../../src/core/state/types.js';
 
 /**
  * Create a valid test config.
@@ -130,7 +132,9 @@ describe('state: manager', () => {
             await state.setConfig('dev', config);
 
             const retrieved = state.getConfig('dev');
-            expect(retrieved).toEqual(config);
+            // setConfig backfills access (derived from the legacy protected
+            // flag) onto configs that don't carry it yet.
+            expect(retrieved).toEqual({ ...config, access: { user: 'admin', mcp: 'admin' } });
 
         });
 
@@ -172,6 +176,42 @@ describe('state: manager', () => {
             expect(list).toHaveLength(initialCount + 2);
             expect(list.find((c) => c.name === 'dev')).toBeDefined();
             expect(list.find((c) => c.name === 'prod')?.protected).toBe(true);
+
+        });
+
+        it('should include access in config summaries', async () => {
+
+            await state.setConfig('dev', createTestConfig('dev'));
+            await state.setConfig('prod', createTestConfig('prod', { protected: true }));
+
+            const list = state.listConfigs();
+
+            expect(list.find((c) => c.name === 'dev')?.access).toEqual({
+                user: 'admin',
+                mcp: 'admin',
+            });
+            expect(list.find((c) => c.name === 'prod')?.access).toEqual({
+                user: 'operator',
+                mcp: 'viewer',
+            });
+
+        });
+
+        it('should not persist a stored protected field on disk', async () => {
+
+            await state.setConfig('dev', createTestConfig('dev', { protected: true }));
+
+            const raw = readFileSync(state.getStatePath(), 'utf8');
+            const payload = JSON.parse(raw) as EncryptedPayload;
+            const decrypted = JSON.parse(decrypt(payload, testPrivateKey)) as {
+                configs: Record<string, Record<string, unknown>>;
+            };
+
+            expect(decrypted.configs['dev']).not.toHaveProperty('protected');
+            expect(decrypted.configs['dev']?.['access']).toEqual({
+                user: 'operator',
+                mcp: 'viewer',
+            });
 
         });
 
