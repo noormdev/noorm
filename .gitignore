@@ -46,3 +46,4 @@ skills/*/evals/
 graphify-out/
 .claude/.scratchpad/
 .claude/project/.deterministic-signals.prev.md
+.claude/.atomic-index/
