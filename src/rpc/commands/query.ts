@@ -1,10 +1,10 @@
 import { z } from 'zod';
 
 import { executeRawSql } from '../../core/sql-terminal/executor.js';
-import { classifyStatements } from '../../core/policy/index.js';
+import { checkConfigPolicy, classifyStatements } from '../../core/policy/index.js';
 import type { Permission, SqlClass } from '../../core/policy/index.js';
 import type { RpcCommand } from '../types.js';
-import { RpcError, checkConfigPolicy } from '../types.js';
+import { RpcError } from '../types.js';
 
 const sqlSchema = z.object({
     query: z.string().describe('The SQL query to execute'),

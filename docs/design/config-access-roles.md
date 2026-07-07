@@ -44,6 +44,7 @@ Hard-coded. Cells: allow (✓) / confirm / deny (✗). Not user-extensible.
 | change:revert | ✗ | confirm | ✓ |
 | run:build / run:file / run:dir | ✗ | confirm | ✓ |
 | db:create | ✗ | confirm | ✓ |
+| db:reset | ✗ | confirm | ✓ |
 | db:destroy | ✗ | ✗ | confirm |
 | config:rm | ✗ | confirm | confirm |
 

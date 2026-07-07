@@ -21,6 +21,7 @@ import { setKeyOverride, setIdentityOverride } from '../../core/identity/storage
 import { getEnvConfig } from '../../core/config/index.js';
 import type { Config } from '../../core/config/types.js';
 import type { ConnectionConfig } from '../../core/connection/types.js';
+import { OPEN_ACCESS, guarded } from '../../core/policy/index.js';
 import { initState } from '../../core/state/index.js';
 import { outputResult, outputError, sharedArgs } from '../_utils.js';
 
@@ -150,7 +151,8 @@ const initCommand = defineCommand({
             name: configName,
             type: 'remote',
             isTest: true,
-            protected: false,
+            access: OPEN_ACCESS,
+            protected: guarded({ name: configName, access: OPEN_ACCESS }),
             connection,
         };
 

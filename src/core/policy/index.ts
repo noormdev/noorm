@@ -4,7 +4,7 @@
  * One central policy check for every channel (CLI/TUI/SDK, MCP) and every
  * config-scoped action.
  */
-export { checkPolicy, guarded } from './check.js';
+export { checkConfigPolicy, checkPolicy, guarded } from './check.js';
 export { classifyStatements } from './classify.js';
 export type { SqlClass } from './classify.js';
 export { GUARDED_ACCESS, OPEN_ACCESS, resolveLegacyAccess } from './legacy-access.js';

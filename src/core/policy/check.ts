@@ -1,6 +1,6 @@
 import { shouldSkipConfirmations } from '../environment.js';
 import { MATRIX } from './matrix.js';
-import type { Channel, Permission, PolicyCheck, PolicyTarget } from './types.js';
+import type { Channel, ConfigAccess, Permission, PolicyCheck, PolicyTarget } from './types.js';
 
 /**
  * Resolve whether a channel may exercise a permission against a config.
@@ -73,6 +73,39 @@ export function checkPolicy(channel: Channel, target: PolicyTarget, permission: 
         requiresConfirmation: true,
         confirmationPhrase: `yes-${target.name}`,
     };
+
+}
+
+/**
+ * Runs `checkPolicy` against a config that may not yet carry `access` —
+ * the single fail-closed wrapper every caller reaches for once `Config`
+ * itself only guarantees `access` optionally (docs/spec/config-access-roles.md#data-model).
+ * Absent access denies on both channels with the same message, rather than
+ * each caller hand-rolling its own "no access configuration" branch. In
+ * practice this never triggers: every config reaching enforcement came
+ * through `parseConfig`/state load, which always populates `access`.
+ *
+ * @example
+ * const check = checkConfigPolicy('mcp', ctx.noorm.config, 'sql:write');
+ * if (!check.allowed) throw new RpcError(check.blockedReason ?? 'denied');
+ */
+export function checkConfigPolicy(
+    channel: Channel,
+    config: { name: string; access?: ConfigAccess },
+    permission: Permission,
+): PolicyCheck {
+
+    if (!config.access) {
+
+        return {
+            allowed: false,
+            requiresConfirmation: false,
+            blockedReason: `Config "${config.name}" has no access configuration.`,
+        };
+
+    }
+
+    return checkPolicy(channel, { name: config.name, access: config.access }, permission);
 
 }
 

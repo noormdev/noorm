@@ -20,6 +20,7 @@ export const MATRIX: Record<Permission, Record<Role, PolicyCell>> = {
     'run:dir': { viewer: 'deny', operator: 'confirm', admin: 'allow' },
 
     'db:create': { viewer: 'deny', operator: 'confirm', admin: 'allow' },
+    'db:reset': { viewer: 'deny', operator: 'confirm', admin: 'allow' },
     'db:destroy': { viewer: 'deny', operator: 'deny', admin: 'confirm' },
 
     'config:rm': { viewer: 'deny', operator: 'confirm', admin: 'confirm' },

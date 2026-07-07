@@ -37,7 +37,7 @@ export type Permission =
     | 'sql:read' | 'sql:write' | 'sql:ddl'
     | 'change:run' | 'change:ff' | 'change:revert'
     | 'run:build' | 'run:file' | 'run:dir'
-    | 'db:create' | 'db:destroy'
+    | 'db:create' | 'db:reset' | 'db:destroy'
     | 'config:rm';
 
 /**

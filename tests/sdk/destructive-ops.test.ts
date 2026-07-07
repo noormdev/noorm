@@ -1,12 +1,13 @@
 /**
  * SDK destructive-ops guard tests.
  *
- * Proves that config.protected = true unconditionally blocks every
- * destructive operation across DbNamespace, DtNamespace, and
- * ChangesNamespace, and that the same operations are NOT blocked on
- * an unprotected config (they may fail for other reasons, but not with
- * ProtectedConfigError). Read-only ops are never blocked regardless of
- * the protected flag.
+ * Proves that role-denied configs (viewer/operator) unconditionally block
+ * every destructive operation across DbNamespace, DtNamespace, and
+ * ChangesNamespace via checkPolicy, and that admin-role configs proceed
+ * frictionlessly — both change:revert (`change:revert`) and
+ * truncate/teardown/reset/importFile (`db:reset`) are `allow` cells for
+ * admin, matching the legacy protected:false behavior for open configs.
+ * Read-only ops are never blocked regardless of access.
  */
 import { describe, it, expect } from 'bun:test';
 
@@ -17,28 +18,36 @@ import { ProtectedConfigError } from '../../src/sdk/guards.js';
 
 import type { ContextState } from '../../src/sdk/state.js';
 import type { Config } from '../../src/core/config/types.js';
+import type { ConfigAccess } from '../../src/core/policy/index.js';
 
 // ─────────────────────────────────────────────────────────────
 // Fixtures
 // ─────────────────────────────────────────────────────────────
 
-function makeConfig(isProtected: boolean): Config {
+/** Mirrors the legacy `protected: true` migration mapping. */
+const OPERATOR_ACCESS: ConfigAccess = { user: 'operator', mcp: 'viewer' };
+
+/** Mirrors the legacy `protected: false` migration mapping. */
+const ADMIN_ACCESS: ConfigAccess = { user: 'admin', mcp: 'admin' };
+
+function makeConfig(access: ConfigAccess): Config {
 
     return {
-        name: isProtected ? 'prod' : 'dev',
+        name: access.user === 'admin' ? 'dev' : 'prod',
         type: 'local',
         isTest: false,
-        protected: isProtected,
+        access,
+        protected: access.user !== 'admin',
         connection: { dialect: 'postgres', database: 'testdb' },
     };
 
 }
 
-function makeState(isProtected: boolean): ContextState {
+function makeState(access: ConfigAccess): ContextState {
 
     return {
         connection: null,
-        config: makeConfig(isProtected),
+        config: makeConfig(access),
         settings: {},
         identity: {
             name: 'tester',
@@ -55,17 +64,18 @@ function makeState(isProtected: boolean): ContextState {
 // Tests
 // ─────────────────────────────────────────────────────────────
 
-describe('sdk: protected config guard', () => {
+describe('sdk: access-guarded destructive ops', () => {
 
     // ─────────────────────────────────────────────────────
-    // DbNamespace — protected blocks all destructive ops
+    // DbNamespace — operator role can't satisfy the db:reset
+    // confirm cell (SDK has no interactive prompt)
     // ─────────────────────────────────────────────────────
 
-    describe('DbNamespace on protected config', () => {
+    describe('DbNamespace on operator-role config', () => {
 
         it('should throw ProtectedConfigError for truncate()', async () => {
 
-            const db = new DbNamespace(makeState(true));
+            const db = new DbNamespace(makeState(OPERATOR_ACCESS));
 
             await expect(db.truncate()).rejects.toThrow(ProtectedConfigError);
 
@@ -73,7 +83,7 @@ describe('sdk: protected config guard', () => {
 
         it('should throw ProtectedConfigError for teardown()', async () => {
 
-            const db = new DbNamespace(makeState(true));
+            const db = new DbNamespace(makeState(OPERATOR_ACCESS));
 
             await expect(db.teardown()).rejects.toThrow(ProtectedConfigError);
 
@@ -81,7 +91,7 @@ describe('sdk: protected config guard', () => {
 
         it('should throw ProtectedConfigError for reset()', async () => {
 
-            const db = new DbNamespace(makeState(true));
+            const db = new DbNamespace(makeState(OPERATOR_ACCESS));
 
             await expect(db.reset()).rejects.toThrow(ProtectedConfigError);
 
@@ -90,14 +100,15 @@ describe('sdk: protected config guard', () => {
     });
 
     // ─────────────────────────────────────────────────────
-    // DtNamespace — protected blocks importFile
+    // DtNamespace — operator role can't satisfy the db:reset
+    // confirm cell (SDK has no interactive prompt)
     // ─────────────────────────────────────────────────────
 
-    describe('DtNamespace on protected config', () => {
+    describe('DtNamespace on operator-role config', () => {
 
         it('should throw ProtectedConfigError for importFile()', async () => {
 
-            const dt = new DtNamespace(makeState(true));
+            const dt = new DtNamespace(makeState(OPERATOR_ACCESS));
 
             await expect(dt.importFile('./fake.dtz')).rejects.toThrow(ProtectedConfigError);
 
@@ -106,14 +117,15 @@ describe('sdk: protected config guard', () => {
     });
 
     // ─────────────────────────────────────────────────────
-    // ChangesNamespace — protected blocks revert and rewind
+    // ChangesNamespace — operator role requires confirmation,
+    // which the SDK cannot satisfy without NOORM_YES
     // ─────────────────────────────────────────────────────
 
-    describe('ChangesNamespace on protected config', () => {
+    describe('ChangesNamespace on operator-role config', () => {
 
         it('should throw ProtectedConfigError for revert()', async () => {
 
-            const changes = new ChangesNamespace(makeState(true));
+            const changes = new ChangesNamespace(makeState(OPERATOR_ACCESS));
 
             await expect(changes.revert('any-change')).rejects.toThrow(ProtectedConfigError);
 
@@ -121,7 +133,7 @@ describe('sdk: protected config guard', () => {
 
         it('should throw ProtectedConfigError for rewind()', async () => {
 
-            const changes = new ChangesNamespace(makeState(true));
+            const changes = new ChangesNamespace(makeState(OPERATOR_ACCESS));
 
             await expect(changes.rewind('any-change')).rejects.toThrow(ProtectedConfigError);
 
@@ -130,42 +142,15 @@ describe('sdk: protected config guard', () => {
     });
 
     // ─────────────────────────────────────────────────────
-    // Unprotected config — guard does NOT block
+    // Admin role — change:revert is a frictionless `allow` cell,
+    // matching the legacy protected:false behavior exactly
     // ─────────────────────────────────────────────────────
 
-    describe('DbNamespace on unprotected config', () => {
-
-        it('should not throw ProtectedConfigError for truncate()', async () => {
-
-            const db = new DbNamespace(makeState(false));
-
-            const err = await db.truncate().catch((e: unknown) => e);
-
-            expect(err).not.toBeInstanceOf(ProtectedConfigError);
-
-        });
-
-    });
-
-    describe('DtNamespace on unprotected config', () => {
-
-        it('should not throw ProtectedConfigError for importFile()', async () => {
-
-            const dt = new DtNamespace(makeState(false));
-
-            const err = await dt.importFile('./fake.dtz').catch((e: unknown) => e);
-
-            expect(err).not.toBeInstanceOf(ProtectedConfigError);
-
-        });
-
-    });
-
-    describe('ChangesNamespace on unprotected config', () => {
+    describe('ChangesNamespace on admin-role config', () => {
 
         it('should not throw ProtectedConfigError for revert()', async () => {
 
-            const changes = new ChangesNamespace(makeState(false));
+            const changes = new ChangesNamespace(makeState(ADMIN_ACCESS));
 
             const err = await changes.revert('any-change').catch((e: unknown) => e);
 
@@ -176,14 +161,46 @@ describe('sdk: protected config guard', () => {
     });
 
     // ─────────────────────────────────────────────────────
-    // Read-only ops — never blocked by protected flag
+    // Admin role — db:reset is an `allow` cell for admin, so
+    // truncate/teardown/reset/importFile proceed frictionlessly,
+    // same as the legacy protected:false behavior
     // ─────────────────────────────────────────────────────
 
-    describe('DtNamespace read-only ops on protected config', () => {
+    describe('DbNamespace on admin-role config', () => {
+
+        it('should not throw ProtectedConfigError for truncate()', async () => {
+
+            const db = new DbNamespace(makeState(ADMIN_ACCESS));
+            const err = await db.truncate().catch((e: unknown) => e);
+
+            expect(err).not.toBeInstanceOf(ProtectedConfigError);
+
+        });
+
+    });
+
+    describe('DtNamespace on admin-role config', () => {
+
+        it('should not throw ProtectedConfigError for importFile()', async () => {
+
+            const dt = new DtNamespace(makeState(ADMIN_ACCESS));
+            const err = await dt.importFile('./fake.dtz').catch((e: unknown) => e);
+
+            expect(err).not.toBeInstanceOf(ProtectedConfigError);
+
+        });
+
+    });
+
+    // ─────────────────────────────────────────────────────
+    // Read-only ops — never blocked regardless of access
+    // ─────────────────────────────────────────────────────
+
+    describe('DtNamespace read-only ops on operator-role config', () => {
 
         it('should not throw ProtectedConfigError for exportTable()', async () => {
 
-            const dt = new DtNamespace(makeState(true));
+            const dt = new DtNamespace(makeState(OPERATOR_ACCESS));
 
             const err = await dt.exportTable('users', './fake.dtz').catch((e: unknown) => e);
 

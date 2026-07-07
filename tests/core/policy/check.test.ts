@@ -2,7 +2,7 @@
  * Access policy: checkPolicy + guarded.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
-import { checkPolicy, guarded } from '../../../src/core/policy/index.js';
+import { checkConfigPolicy, checkPolicy, guarded } from '../../../src/core/policy/index.js';
 import type { Channel, Permission, PolicyCell, PolicyTarget, Role } from '../../../src/core/policy/index.js';
 
 /**
@@ -26,6 +26,7 @@ const EXPECTED_MATRIX: Record<Permission, Record<Role, PolicyCell>> = {
     'run:dir': { viewer: 'deny', operator: 'confirm', admin: 'allow' },
 
     'db:create': { viewer: 'deny', operator: 'confirm', admin: 'allow' },
+    'db:reset': { viewer: 'deny', operator: 'confirm', admin: 'allow' },
     'db:destroy': { viewer: 'deny', operator: 'deny', admin: 'confirm' },
 
     'config:rm': { viewer: 'deny', operator: 'confirm', admin: 'confirm' },
@@ -36,7 +37,7 @@ const PERMISSIONS: Permission[] = [
     'sql:read', 'sql:write', 'sql:ddl',
     'change:run', 'change:ff', 'change:revert',
     'run:build', 'run:file', 'run:dir',
-    'db:create', 'db:destroy',
+    'db:create', 'db:reset', 'db:destroy',
     'config:rm',
 ];
 const ROLES: Role[] = ['viewer', 'operator', 'admin'];
@@ -167,6 +168,40 @@ describe('policy: checkPolicy', () => {
         expect(check.allowed).toBe(false);
         expect(check.requiresConfirmation).toBe(false);
         expect(check.blockedReason).toBeDefined();
+
+    });
+
+});
+
+describe('policy: checkConfigPolicy', () => {
+
+    it('should deny on the user channel with the shared message when access is absent', () => {
+
+        const check = checkConfigPolicy('user', { name: 'legacy' }, 'explore');
+
+        expect(check.allowed).toBe(false);
+        expect(check.requiresConfirmation).toBe(false);
+        expect(check.blockedReason).toBe('Config "legacy" has no access configuration.');
+
+    });
+
+    it('should deny on the mcp channel with the same shared message when access is absent', () => {
+
+        const check = checkConfigPolicy('mcp', { name: 'legacy' }, 'explore');
+
+        expect(check.allowed).toBe(false);
+        expect(check.requiresConfirmation).toBe(false);
+        expect(check.blockedReason).toBe('Config "legacy" has no access configuration.');
+
+    });
+
+    it('should delegate to checkPolicy when access is present', () => {
+
+        const check = checkConfigPolicy('user', targetFor('admin'), 'db:destroy');
+
+        expect(check.allowed).toBe(true);
+        expect(check.requiresConfirmation).toBe(true);
+        expect(check.confirmationPhrase).toBe('yes-acme');
 
     });
 

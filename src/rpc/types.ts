@@ -1,8 +1,6 @@
 import type { z } from 'zod';
 import type { Context } from '../sdk/context.js';
-import type { Config } from '../core/config/types.js';
-import { checkPolicy } from '../core/policy/index.js';
-import type { Channel, Permission, PolicyCheck, Role } from '../core/policy/index.js';
+import type { Channel, Permission, Role } from '../core/policy/index.js';
 
 /**
  * A registered RPC command.
@@ -41,33 +39,6 @@ export interface RpcSession {
     disconnectAll(): Promise<void>;
     hasConnection(config: string): boolean;
     listConnections(): string[];
-
-}
-
-/**
- * Runs `checkPolicy` against a config's access, failing closed when
- * `access` is absent instead of trusting the type-level optionality
- * (docs/spec/config-access-roles.md#data-model). In practice this never
- * triggers on the RPC path — every config reaching a command handler came
- * through `parseConfig`/state load, which always populates `access`.
- *
- * @example
- * const check = checkConfigPolicy('mcp', ctx.noorm.config, 'sql:write');
- * if (!check.allowed) throw new RpcError(check.blockedReason ?? 'denied');
- */
-export function checkConfigPolicy(channel: Channel, config: Config, permission: Permission): PolicyCheck {
-
-    if (!config.access) {
-
-        return {
-            allowed: false,
-            requiresConfirmation: false,
-            blockedReason: `Config "${config.name}" has no access configuration.`,
-        };
-
-    }
-
-    return checkPolicy(channel, { name: config.name, access: config.access }, permission);
 
 }
 

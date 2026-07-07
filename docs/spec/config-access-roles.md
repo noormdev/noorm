@@ -36,7 +36,7 @@ Replace `Config.protected: boolean` with config-scoped, channel-keyed roles enfo
         | 'sql:read' | 'sql:write' | 'sql:ddl'
         | 'change:run' | 'change:ff' | 'change:revert'
         | 'run:build' | 'run:file' | 'run:dir'
-        | 'db:create' | 'db:destroy'
+        | 'db:create' | 'db:reset' | 'db:destroy'
         | 'config:rm'
 
 Matrix (cells: `allow` / `confirm` / `deny`), hard-coded in `src/core/policy/`:
@@ -51,6 +51,7 @@ Matrix (cells: `allow` / `confirm` / `deny`), hard-coded in `src/core/policy/`:
 | change:revert | deny | confirm | allow |
 | run:build, run:file, run:dir | deny | confirm | allow |
 | db:create | deny | confirm | allow |
+| db:reset | deny | confirm | allow |
 | db:destroy | deny | deny | confirm |
 | config:rm | deny | confirm | confirm |
 
@@ -92,7 +93,7 @@ Lives in `src/core/policy/classify.ts` (moved and generalized from `src/rpc/prot
 2. **Gate location**: `run_noorm_cmd` dispatch in `src/mcp/server.ts`. For non-`'open'` commands: resolve target config (explicit `config` arg, else session active config), then `checkPolicy('mcp', config, cmd.permission)`; deny → `isError` result with `blockedReason`, handler never runs.
 3. **Channel ownership**: `SessionManager` is constructed with a `Channel` (`'mcp'` in `mcp serve`). It exposes the channel to the gate.
 4. **Invisibility** (`mcp: false`, mcp channel only): `list_configs` omits the config; `SessionManager.connect` and `getContext` throw the **byte-identical** error an unknown config name produces (assert equality in tests). Session info returned by `connect` reports the channel's effective role instead of `protected`.
-5. **SDK**: `CreateContextOptions` gains `channel?: Channel` (default `'user'`). `src/sdk/guards.ts` destructive-op checks call `checkPolicy` instead of reading `protected`.
+5. **SDK**: `CreateContextOptions` gains `channel?: Channel` (default `'user'`). `src/sdk/guards.ts` destructive-op checks call `checkPolicy` instead of reading `protected`. Guard permission mapping: `db.truncate`/`db.teardown`/`db.reset`/`dt.importFile` → `db:reset` (data-destructive, admin frictionless — preserves pre-migration behavior for open configs, which is the migration section's promise); `changes.revert`/`changes.rewind` → `change:revert`. `db:destroy` is reserved for dropping a database. In the SDK (no prompt available), `requiresConfirmation` blocks with a message naming `NOORM_YES=1` and the CLI/TUI; `checkPolicy` already resolves `NOORM_YES=1` to allow on the user channel.
 6. **CLI/TUI**: same `checkPolicy` on the `user` channel. `SmartConfirm` takes a `PolicyCheck` (or the inputs to compute one) instead of `protected: boolean`; `ProtectedConfirm` keeps the `yes-<config>` phrase flow, driven by `confirmationPhrase`.
 7. **Settings stages**: stage `protected: true` becomes an access **ceiling** at resolution (`src/core/config/resolver.ts`): resolved access is clamped to at most `{ user: 'operator', mcp: 'viewer' }`; stricter survives, looser is clamped. Settings rule `match.protected` matches `guarded(config)`. Stage/rule YAML vocabulary is unchanged in this issue.
 
@@ -142,3 +143,4 @@ Each checkpoint ends green: `bash tmp/run-test-groups.sh` (mirrors CI's four fre
 - 2026-07-07 — Initial spec from design doc + scoping report (issue #40).
 - 2026-07-07 — CP1: `checkPolicy` takes a structural `PolicyTarget` (Config lacks `access` until CP2). Verification method corrected to CI-mirrored four-group runs.
 - 2026-07-07 — CP2: `Config.access` optional until CP6 (CP4/CP5-owned constructors); fail-closed rule added for absent access on the mcp channel. Stage `protected: true` override-block in `checkConfigCompleteness` replaced by the ceiling clamp (the old "stored wins" behavior was the bug the clamp fixes).
+- 2026-07-07 — CP4: added `db:reset` permission (viewer deny / operator confirm / admin allow) for data-destructive-but-not-drop operations; the initial CP4 mapping of truncate/teardown/reset/importFile to `db:destroy` violated the migration section's behavior-preservation promise for open configs.

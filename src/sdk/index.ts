@@ -141,7 +141,11 @@ export async function createContext<DB = unknown, Procs = object, Funcs = object
     // Resolve identity (respecting config override if set)
     const identity = getIdentityForConfig(config);
 
-    return new Context<DB, Procs, Funcs, Tvfs>(config, settings, identity, options, projectRoot);
+    // Default the channel so guards.ts can always read it off state.options,
+    // without every call site (or ContextState fixture) special-casing undefined.
+    const resolvedOptions: CreateContextOptions = { ...options, channel: options.channel ?? 'user' };
+
+    return new Context<DB, Procs, Funcs, Tvfs>(config, settings, identity, resolvedOptions, projectRoot);
 
 }
 
@@ -175,6 +179,11 @@ export type {
     ExtractArgs,
     ExtractReturn,
 } from './types.js';
+
+// Access policy types — `Config.access` (re-exported below) is typed
+// `ConfigAccess`, whose fields are typed `Role`; re-exporting all three
+// keeps the public surface closed under its own references.
+export type { Channel, ConfigAccess, Role } from '../core/policy/index.js';
 
 // TVP (Table-Valued Parameters)
 export { tvp } from './tvp.js';

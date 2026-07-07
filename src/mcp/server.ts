@@ -4,7 +4,7 @@ import { attempt, attemptSync } from '@logosdx/utils';
 
 import type { RpcRegistry } from '../rpc/registry.js';
 import type { SessionManager } from '../rpc/session.js';
-import { checkConfigPolicy } from '../rpc/types.js';
+import { checkConfigPolicy } from '../core/policy/index.js';
 import type { RpcSession } from '../rpc/types.js';
 
 /**

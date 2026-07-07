@@ -67,7 +67,7 @@ export class DtNamespace {
         options?: ImportOptions,
     ): Promise<[{ rowsImported: number; rowsSkipped: number } | null, Error | null]> {
 
-        checkProtectedConfig(this.#state.config, 'dt.import');
+        checkProtectedConfig(this.#state.config, this.#state.options, 'db:reset', 'dt.import');
 
         return importDtFile({
             filepath,
