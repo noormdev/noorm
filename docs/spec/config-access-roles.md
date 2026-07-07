@@ -53,9 +53,12 @@ Matrix (cells: `allow` / `confirm` / `deny`), hard-coded in `src/core/policy/`:
 | db:destroy | deny | deny | confirm |
 | config:rm | deny | confirm | confirm |
 
-    checkPolicy(channel: Channel, config: Config, permission: Permission): PolicyCheck
+    type PolicyTarget = { name: string; access: ConfigAccess }
+    // Config satisfies PolicyTarget structurally once CP2 adds `access`.
+
+    checkPolicy(channel: Channel, target: PolicyTarget, permission: Permission): PolicyCheck
     // PolicyCheck = { allowed, requiresConfirmation, confirmationPhrase?, blockedReason? }
-    // — same shape as the old ProtectionCheck.
+    // — same shape as the old ProtectionCheck. guarded(target) likewise takes PolicyTarget.
 
 Channel resolution of `confirm`:
 
@@ -108,7 +111,7 @@ New state migration in `src/core/version/state/migrations/` (registered in `src/
 ## Checkpoints
 
 
-Each checkpoint ends green: `bun test --serial`, `bun run typecheck`, `bun run typecheck:tests`, `bun run lint`. Commit per green checkpoint.
+Each checkpoint ends green: `bash tmp/run-test-groups.sh` (mirrors CI's four fresh-process `bun test --serial` groups — a single whole-suite `bun test` cross-contaminates and does not reflect CI; DB containers from repo-root `docker-compose.yml` must be up), `bun run typecheck`, `bun run typecheck:tests`, `bun run lint`. Commit per green checkpoint.
 
 | CP | Scope | Key files | Done when |
 |---|---|---|---|
@@ -124,7 +127,9 @@ Each checkpoint ends green: `bun test --serial`, `bun run typecheck`, `bun run t
 ## Conventions binding on builders
 
 
-- Bun repo: run tests with `bun test --serial` (cross-contamination — see repo CLAUDE.md). Typecheck both tsconfigs.
+- Bun repo: run tests via `bash tmp/run-test-groups.sh` (CI-mirrored groups; see repo CLAUDE.md on cross-contamination). Typecheck both tsconfigs.
+- Changeset frontmatter must reference `@noormdev/cli` and/or `@noormdev/sdk` — never `noorm` or `@noormdev/main` (breaks the Release workflow).
+- Repo rules auto-load from `.claude/rules/` (typescript.md 4-block function structure + `attempt` tuples, tui-development.md, testing.md, documentation.md) — follow them.
 - No `as` casts, no `any`; error tuples via `@logosdx/utils` `attempt`/`attemptSync` (existing idiom); native `#private` fields.
 - TDD: failing test before implementation, per checkpoint.
 - Discard scratch by moving it to `tmp/trash/`; never `rm`; do not chain shell commands.
