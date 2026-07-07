@@ -74,6 +74,24 @@ describe('policy: classifyStatements', () => {
 
         });
 
+        it('should classify a leading line comment followed by SELECT as read', () => {
+
+            expect(classifyStatements('-- this is a comment\nSELECT 1', 'postgres')).toBe('read');
+
+        });
+
+        it('should classify a leading block comment followed by SELECT as read', () => {
+
+            expect(classifyStatements('/* comment */ SELECT 1', 'postgres')).toBe('read');
+
+        });
+
+        it('should classify SELECT with a semicolon inside a string literal as read (no false split)', () => {
+
+            expect(classifyStatements("SELECT 'a;b' FROM t", 'mssql')).toBe('read');
+
+        });
+
     });
 
     describe('write', () => {

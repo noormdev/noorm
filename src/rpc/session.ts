@@ -1,6 +1,9 @@
 import { attempt } from '@logosdx/utils';
 
 import { createContext, type Context } from '../sdk/index.js';
+import { configNotFoundMessage } from '../core/config/resolver.js';
+import { resolveLegacyAccess } from '../core/policy/index.js';
+import type { Channel, Role } from '../core/policy/index.js';
 import { RpcError, type RpcSession } from './types.js';
 
 /**
@@ -10,7 +13,7 @@ export interface SessionInfo {
     name: string;
     dialect: string;
     database: string;
-    protected: boolean;
+    role: Role;
 }
 
 /**
@@ -25,10 +28,30 @@ export class SessionManager implements RpcSession {
     #contexts = new Map<string, Context>();
 
     /**
+     * The channel this session was opened on. Drives policy checks
+     * (`checkConfigPolicy`) and mcp-channel invisibility in `connect`/
+     * `getContext`. Defaults to `'user'` so pre-existing `new SessionManager()`
+     * call sites keep working; `mcp serve` passes `'mcp'` explicitly.
+     */
+    readonly channel: Channel;
+
+    constructor(channel: Channel = 'user') {
+
+        this.channel = channel;
+
+    }
+
+    /**
      * Connect to a database configuration.
      *
      * Creates a Context, connects, and stores it.
      * If config is omitted, resolves the active config from state.
+     *
+     * On the `mcp` channel, a config with `access.mcp === false` (or no
+     * `access` at all — fail closed per docs/spec/config-access-roles.md)
+     * is invisible: this throws the byte-identical error an unknown config
+     * name produces, rather than surfacing that the config exists but is
+     * off-limits.
      */
     async connect(config?: string): Promise<SessionInfo> {
 
@@ -40,6 +63,15 @@ export class SessionManager implements RpcSession {
 
         }
 
+        const resolvedName = ctx.noorm.config.name;
+        const rawAccess = ctx.noorm.config.access;
+
+        if (this.channel === 'mcp' && (!rawAccess || rawAccess.mcp === false)) {
+
+            throw new RpcError('Failed to create context', configNotFoundMessage(resolvedName));
+
+        }
+
         const [, connectErr] = await attempt(() => ctx.connect());
 
         if (connectErr) {
@@ -48,15 +80,17 @@ export class SessionManager implements RpcSession {
 
         }
 
-        const resolvedName = ctx.noorm.config.name;
-
         this.#contexts.set(resolvedName, ctx);
+
+        const access = resolveLegacyAccess(rawAccess, ctx.noorm.config.protected);
 
         return {
             name: resolvedName,
             dialect: ctx.dialect,
             database: ctx.noorm.config.connection.database,
-            protected: ctx.noorm.config.protected,
+            // access.mcp === false is unreachable here — the invisibility
+            // guard above already denies before a context is ever stored.
+            role: this.channel === 'mcp' ? (access.mcp === false ? 'viewer' : access.mcp) : access.user,
         };
 
     }

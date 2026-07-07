@@ -162,6 +162,18 @@ export interface ResolveOptions {
 }
 
 /**
+ * Message for a config name that has no stored config.
+ *
+ * Single source of truth: `SessionManager`'s mcp-channel invisibility deny
+ * (`src/rpc/session.ts`) reuses this so a hidden config's connect error is
+ * byte-identical to an unknown config's, rather than hand-copying the string.
+ *
+ * @example
+ * configNotFoundMessage('prod') // 'Config "prod" not found'
+ */
+export const configNotFoundMessage = (name: string): string => `Config "${name}" not found`;
+
+/**
  * Resolve the active config from all sources.
  *
  * Merges config from (lowest to highest priority):
@@ -224,7 +236,7 @@ export function resolveConfig(state: StateProvider, options: ResolveOptions = {}
     const stored = state.getConfig(configName);
     if (!stored) {
 
-        throw new Error(`Config "${configName}" not found`);
+        throw new Error(configNotFoundMessage(configName));
 
     }
 

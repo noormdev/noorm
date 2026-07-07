@@ -21,6 +21,7 @@ const runBuildCommand: RpcCommand<BuildInput> = {
         { description: 'force rebuild all', input: { force: true } },
     ],
     inputSchema: buildSchema,
+    permission: 'run:build',
     handler: async (input, session) => {
 
         const { force } = input;
@@ -38,6 +39,7 @@ const runFileCommand: RpcCommand<RunFileInput> = {
         { description: 'run a file', input: { path: 'sql/procedures/usp_get_user.sql' } },
     ],
     inputSchema: runFileSchema,
+    permission: 'run:file',
     handler: async (input, session) => {
 
         const { path } = input;

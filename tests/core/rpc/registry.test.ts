@@ -22,6 +22,7 @@ describe('rpc: registry', () => {
                 description: 'A test command',
                 examples: [{ description: 'basic usage', input: { foo: 'bar' } }],
                 inputSchema: z.object({ foo: z.string() }),
+                permission: 'open',
                 handler: async () => ({ result: true }),
             };
 
@@ -50,6 +51,7 @@ describe('rpc: registry', () => {
                 description: 'First command',
                 examples: [],
                 inputSchema: z.object({}),
+                permission: 'open',
                 handler: async () => ({}),
             });
 
@@ -58,6 +60,7 @@ describe('rpc: registry', () => {
                 description: 'Second command',
                 examples: [],
                 inputSchema: z.object({}),
+                permission: 'open',
                 handler: async () => ({}),
             });
 
@@ -83,6 +86,7 @@ describe('rpc: registry', () => {
                 inputSchema: z.object({
                     query: z.string().describe('The SQL query to execute'),
                 }),
+                permission: 'sql:read',
                 handler: async () => ({}),
             });
 

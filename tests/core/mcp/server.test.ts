@@ -11,7 +11,8 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 
 import { createMcpServer } from '../../../src/mcp/server.js';
 import { RpcRegistry } from '../../../src/rpc/registry.js';
-import type { RpcSession } from '../../../src/rpc/types.js';
+import type { RpcCommand, RpcSession } from '../../../src/rpc/types.js';
+import type { ConfigAccess } from '../../../src/core/policy/index.js';
 import type { Context } from '../../../src/sdk/context.js';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -88,6 +89,27 @@ async function callText(
 
 const mockContext = {} as Context;
 
+/**
+ * Builds a fake Context carrying a config with the given access — used to
+ * drive the dispatch gate's `checkConfigPolicy` call. `access: undefined`
+ * simulates a config that reached enforcement without `access` populated
+ * (fail-closed case).
+ */
+function mockContextWithAccess(access: ConfigAccess | undefined, name = 'test'): Context {
+
+    return {
+        noorm: {
+            config: {
+                name,
+                access,
+                protected: false,
+                connection: { database: 'testdb' },
+            },
+        },
+    } as unknown as Context;
+
+}
+
 function buildMockSession(overrides: Partial<RpcSession> = {}): RpcSession & {
     getContextCalls: string[];
 } {
@@ -95,6 +117,7 @@ function buildMockSession(overrides: Partial<RpcSession> = {}): RpcSession & {
     const getContextCalls: string[] = [];
 
     return {
+        channel: 'mcp',
         getContextCalls,
         getContext(config?: string) {
 
@@ -107,7 +130,7 @@ function buildMockSession(overrides: Partial<RpcSession> = {}): RpcSession & {
             name: 'test',
             dialect: 'postgres',
             database: 'testdb',
-            protected: false,
+            role: 'admin',
         }),
         disconnect: async () => {},
         disconnectAll: async () => {},
@@ -127,6 +150,7 @@ function buildRegistry() {
         description: 'A test command',
         examples: [{ description: 'basic', input: { value: 'hello' } }],
         inputSchema: z.object({ value: z.string().describe('Test value') }),
+        permission: 'open',
         handler: async (input) => ({ echo: (input as { value: string }).value }),
     });
 
@@ -135,6 +159,7 @@ function buildRegistry() {
         description: 'A command that always throws',
         examples: [],
         inputSchema: z.object({}),
+        permission: 'open',
         handler: async () => {
 
             throw new Error('boom');
@@ -150,6 +175,7 @@ function buildRegistry() {
         inputSchema: z.object({
             config: z.string().optional().describe('Config name'),
         }),
+        permission: 'open',
         handler: async (_input, session) => session.connect(),
     });
 
@@ -263,6 +289,7 @@ describe('mcp: server dispatch (run_noorm_cmd)', () => {
             description: 'Calls getContext',
             examples: [],
             inputSchema: z.object({}),
+            permission: 'open',
             handler: async (_input, session) => {
 
                 session.getContext();
@@ -298,7 +325,7 @@ describe('mcp: server dispatch (run_noorm_cmd)', () => {
                     name: config ?? 'active',
                     dialect: 'postgres',
                     database: 'testdb',
-                    protected: false,
+                    role: 'admin',
                 };
 
             },
@@ -311,6 +338,7 @@ describe('mcp: server dispatch (run_noorm_cmd)', () => {
             description: 'Connect',
             examples: [],
             inputSchema: z.object({ config: z.string().optional() }),
+            permission: 'open',
             handler: async (input, session) => session.connect((input as { config?: string }).config),
         });
 
@@ -327,6 +355,137 @@ describe('mcp: server dispatch (run_noorm_cmd)', () => {
         const body = parsed as { name: string };
 
         expect(body.name).toBe('staging');
+
+    });
+
+});
+
+describe('mcp: server dispatch — policy gate (CP3)', () => {
+
+    /**
+     * Registers a single gated command and wires a session whose
+     * `getContext` resolves to a config with the given access, so the
+     * dispatch gate's `checkConfigPolicy` call is exercised end-to-end.
+     */
+    async function setup(
+        permission: RpcCommand['permission'],
+        access: ConfigAccess | undefined,
+    ) {
+
+        const called = { value: false };
+        const registry = new RpcRegistry();
+
+        registry.register({
+            name: 'gated_cmd',
+            description: 'A permission-gated command',
+            examples: [],
+            inputSchema: z.object({}),
+            permission,
+            handler: async () => {
+
+                called.value = true;
+
+                return { ok: true };
+
+            },
+        });
+
+        const session = buildMockSession({
+            getContext: () => mockContextWithAccess(access),
+        });
+
+        const { client, cleanup } = await createTestPair(registry, session);
+
+        return { client, cleanup, called };
+
+    }
+
+    it('should deny and never invoke the handler when the resolved role denies the permission (viewer)', async () => {
+
+        const { client, cleanup, called } = await setup('change:run', { user: 'admin', mcp: 'viewer' });
+
+        const { isError, parsed } = await callJson(client, 'run_noorm_cmd', { command: 'gated_cmd', payload: {} });
+
+        await cleanup();
+
+        const body = parsed as { error: string };
+
+        expect(isError).toBe(true);
+        expect(body.error).toContain('change:run');
+        expect(called.value).toBe(false);
+
+    });
+
+    it('should collapse an operator confirm cell to deny on the mcp channel', async () => {
+
+        const { client, cleanup, called } = await setup('change:run', { user: 'admin', mcp: 'operator' });
+
+        const { isError, parsed } = await callJson(client, 'run_noorm_cmd', { command: 'gated_cmd', payload: {} });
+
+        await cleanup();
+
+        const body = parsed as { error: string };
+
+        expect(isError).toBe(true);
+        expect(body.error.toLowerCase()).toContain('cli');
+        expect(called.value).toBe(false);
+
+    });
+
+    it('should allow and invoke the handler when the resolved role allows the permission (admin)', async () => {
+
+        const { client, cleanup, called } = await setup('change:run', { user: 'admin', mcp: 'admin' });
+
+        const { isError } = await callJson(client, 'run_noorm_cmd', { command: 'gated_cmd', payload: {} });
+
+        await cleanup();
+
+        expect(isError).toBeFalsy();
+        expect(called.value).toBe(true);
+
+    });
+
+    it('should fail closed and deny when the resolved config has no access at all', async () => {
+
+        const { client, cleanup, called } = await setup('explore', undefined);
+
+        const { isError } = await callJson(client, 'run_noorm_cmd', { command: 'gated_cmd', payload: {} });
+
+        await cleanup();
+
+        expect(isError).toBe(true);
+        expect(called.value).toBe(false);
+
+    });
+
+    it("should skip the gate entirely for 'open' commands, even when getContext would throw", async () => {
+
+        const registry = new RpcRegistry();
+
+        registry.register({
+            name: 'open_cmd',
+            description: 'An open command',
+            examples: [],
+            inputSchema: z.object({}),
+            permission: 'open',
+            handler: async () => ({ ok: true }),
+        });
+
+        const session = buildMockSession({
+            getContext: () => {
+
+                throw new Error('should not be called for an open command');
+
+            },
+        });
+
+        const { client, cleanup } = await createTestPair(registry, session);
+
+        const { isError } = await callJson(client, 'run_noorm_cmd', { command: 'open_cmd', payload: {} });
+
+        await cleanup();
+
+        expect(isError).toBeFalsy();
 
     });
 

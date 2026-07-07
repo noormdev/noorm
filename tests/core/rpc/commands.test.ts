@@ -8,6 +8,7 @@ import { changesCommands } from '../../../src/rpc/commands/changes.js';
 import { runCommands } from '../../../src/rpc/commands/run.js';
 import { RpcError } from '../../../src/rpc/types.js';
 import type { RpcSession } from '../../../src/rpc/types.js';
+import type { ConfigAccess, Channel } from '../../../src/core/policy/index.js';
 import type { Context } from '../../../src/sdk/context.js';
 
 // === Mock factories ===
@@ -16,14 +17,17 @@ interface MockContextOptions {
     configName?: string;
     dialect?: string;
     database?: string;
-    protected?: boolean;
+    access?: ConfigAccess;
+    channel?: Channel;
 }
 
 /**
  * Creates a mock RpcSession with a fake context for unit testing handlers.
  *
- * Provides full mock noorm operations so handlers can reach the protection
+ * Provides full mock noorm operations so handlers can reach the policy
  * check and session delegation logic without needing a real database.
+ * Defaults to the `mcp` channel since that's what CP3 gates; individual
+ * tests override `channel` to prove the same handler logic is channel-generic.
  */
 function createMockSession(options: MockContextOptions = {}): RpcSession {
 
@@ -33,7 +37,8 @@ function createMockSession(options: MockContextOptions = {}): RpcSession {
         noorm: {
             config: {
                 name: options.configName ?? 'test',
-                protected: options.protected ?? false,
+                access: options.access ?? { user: 'admin', mcp: 'admin' },
+                protected: false,
                 connection: { database: options.database ?? 'testdb' },
             },
             changes: {
@@ -50,12 +55,13 @@ function createMockSession(options: MockContextOptions = {}): RpcSession {
     } as unknown as Context;
 
     return {
+        channel: options.channel ?? 'mcp',
         getContext: () => mockContext,
         connect: async (config?: string) => ({
             name: config ?? 'test',
             dialect: 'postgres',
             database: 'testdb',
-            protected: false,
+            role: 'admin',
         }),
         disconnect: async () => {},
         disconnectAll: async () => {},
@@ -75,12 +81,13 @@ function createMockSession(options: MockContextOptions = {}): RpcSession {
 function createDisconnectedSession(): RpcSession {
 
     return {
+        channel: 'mcp',
         getContext: () => {
 
             throw new RpcError('Not connected — call connect first');
 
         },
-        connect: async () => ({ name: 'test', dialect: 'postgres', database: 'testdb', protected: false }),
+        connect: async () => ({ name: 'test', dialect: 'postgres', database: 'testdb', role: 'admin' }),
         disconnect: async () => {},
         disconnectAll: async () => {},
         hasConnection: () => false,
@@ -89,83 +96,108 @@ function createDisconnectedSession(): RpcSession {
 
 }
 
-// === Group 1: SQL Protection ===
+// === Group 1: SQL access-role escalation ===
 
 describe('rpc commands: sql', () => {
 
     const cmd = queryCommands[0]!;
 
-    it('should block INSERT on protected config', async () => {
+    it('should deny INSERT (sql:write) for a viewer role', async () => {
 
-        const session = createMockSession({ protected: true });
+        const session = createMockSession({ access: { user: 'admin', mcp: 'viewer' } });
         const input = cmd.inputSchema.parse({ query: 'INSERT INTO t VALUES (1)' });
 
-        await expect(cmd.handler(input, session)).rejects.toThrow(/protected/i);
+        await expect(cmd.handler(input, session)).rejects.toThrow(/sql:write/i);
 
     });
 
-    it('should block DROP on protected config', async () => {
+    it('should deny DROP (sql:ddl) for a viewer role', async () => {
 
-        const session = createMockSession({ protected: true });
+        const session = createMockSession({ access: { user: 'admin', mcp: 'viewer' } });
         const input = cmd.inputSchema.parse({ query: 'DROP TABLE users' });
 
-        await expect(cmd.handler(input, session)).rejects.toThrow(/protected/i);
+        await expect(cmd.handler(input, session)).rejects.toThrow(/sql:ddl/i);
 
     });
 
-    it('should block UPDATE on protected config', async () => {
+    it('should deny UPDATE (sql:write) for a viewer role', async () => {
 
-        const session = createMockSession({ protected: true });
+        const session = createMockSession({ access: { user: 'admin', mcp: 'viewer' } });
         const input = cmd.inputSchema.parse({ query: 'UPDATE users SET name = \'bob\'' });
 
-        await expect(cmd.handler(input, session)).rejects.toThrow(/protected/i);
+        await expect(cmd.handler(input, session)).rejects.toThrow(/sql:write/i);
 
     });
 
-    it('should block DELETE on protected config', async () => {
+    it('should deny DELETE (sql:write) for a viewer role', async () => {
 
-        const session = createMockSession({ protected: true });
+        const session = createMockSession({ access: { user: 'admin', mcp: 'viewer' } });
         const input = cmd.inputSchema.parse({ query: 'DELETE FROM users' });
 
-        await expect(cmd.handler(input, session)).rejects.toThrow(/protected/i);
+        await expect(cmd.handler(input, session)).rejects.toThrow(/sql:write/i);
 
     });
 
-    it('should allow SELECT on protected config (no protection error)', async () => {
+    it('should allow SELECT for a viewer role (no policy error)', async () => {
 
-        const session = createMockSession({ protected: true });
+        const session = createMockSession({ access: { user: 'admin', mcp: 'viewer' } });
         const input = cmd.inputSchema.parse({ query: 'SELECT * FROM users LIMIT 10' });
 
-        // Protection check passes; executeRawSql will fail without a real DB
+        // Policy check passes; executeRawSql will fail without a real DB.
         const [, err] = await attempt(() => cmd.handler(input, session));
 
         if (err) {
 
-            expect(err.message).not.toMatch(/protected/i);
+            expect(err.message).not.toMatch(/sql:(write|ddl)/i);
 
         }
 
     });
 
-    it('should allow INSERT on unprotected config (no protection error)', async () => {
+    it('should allow INSERT (sql:write) for an operator role (no policy error)', async () => {
 
-        const session = createMockSession({ protected: false });
+        const session = createMockSession({ access: { user: 'admin', mcp: 'operator' } });
         const input = cmd.inputSchema.parse({ query: 'INSERT INTO t VALUES (1)' });
 
-        // Protection check is skipped; executeRawSql will fail without a real DB
+        // Policy check passes; executeRawSql will fail without a real DB.
         const [, err] = await attempt(() => cmd.handler(input, session));
 
         if (err) {
 
-            expect(err.message).not.toMatch(/protected/i);
+            expect(err.message).not.toMatch(/sql:write/i);
 
         }
 
     });
 
-    it('should include config name in protection error', async () => {
+    it('should deny DROP (sql:ddl) for an operator role', async () => {
 
-        const session = createMockSession({ protected: true, configName: 'prod' });
+        const session = createMockSession({ access: { user: 'admin', mcp: 'operator' } });
+        const input = cmd.inputSchema.parse({ query: 'DROP TABLE users' });
+
+        await expect(cmd.handler(input, session)).rejects.toThrow(/sql:ddl/i);
+
+    });
+
+    it('should allow DROP (sql:ddl) for an admin role (no policy error)', async () => {
+
+        const session = createMockSession({ access: { user: 'admin', mcp: 'admin' } });
+        const input = cmd.inputSchema.parse({ query: 'DROP TABLE users' });
+
+        // Policy check passes; executeRawSql will fail without a real DB.
+        const [, err] = await attempt(() => cmd.handler(input, session));
+
+        if (err) {
+
+            expect(err.message).not.toMatch(/sql:ddl/i);
+
+        }
+
+    });
+
+    it('should include config name in the denial reason', async () => {
+
+        const session = createMockSession({ access: { user: 'admin', mcp: 'viewer' }, configName: 'prod' });
         const input = cmd.inputSchema.parse({ query: 'DROP TABLE secrets' });
 
         const [, err] = await attempt(() => cmd.handler(input, session));
@@ -181,6 +213,15 @@ describe('rpc commands: sql', () => {
         const input = cmd.inputSchema.parse({ query: 'SELECT 1' });
 
         await expect(cmd.handler(input, session)).rejects.toThrow(/not connected/i);
+
+    });
+
+    it('should apply the same escalation on the user channel', async () => {
+
+        const session = createMockSession({ access: { user: 'viewer', mcp: 'admin' }, channel: 'user' });
+        const input = cmd.inputSchema.parse({ query: 'INSERT INTO t VALUES (1)' });
+
+        await expect(cmd.handler(input, session)).rejects.toThrow(/sql:write/i);
 
     });
 
@@ -202,7 +243,7 @@ describe('rpc commands: session', () => {
                 connectCalled = true;
                 receivedConfig = config;
 
-                return { name: config ?? 'test', dialect: 'postgres', database: 'testdb', protected: false };
+                return { name: config ?? 'test', dialect: 'postgres', database: 'testdb', role: 'admin' };
 
             },
         };
@@ -226,7 +267,7 @@ describe('rpc commands: session', () => {
 
                 receivedConfig = config;
 
-                return { name: 'test', dialect: 'postgres', database: 'testdb', protected: false };
+                return { name: 'test', dialect: 'postgres', database: 'testdb', role: 'admin' };
 
             },
         };

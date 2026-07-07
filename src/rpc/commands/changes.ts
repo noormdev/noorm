@@ -21,6 +21,7 @@ const changeHistoryCommand: RpcCommand<HistoryInput> = {
         { description: 'get last 5', input: { limit: 5 } },
     ],
     inputSchema: historySchema,
+    permission: 'explore',
     handler: async (input, session) => {
 
         const { limit } = input;
@@ -38,6 +39,7 @@ const changeRunCommand: RpcCommand<ChangeNameInput> = {
         { description: 'apply a change', input: { name: '2026-01-15-add-users-table' } },
     ],
     inputSchema: changeNameSchema,
+    permission: 'change:run',
     handler: async (input, session) => {
 
         const { name } = input;
@@ -55,6 +57,7 @@ const changeFfCommand: RpcCommand<Record<string, never>> = {
         { description: 'apply all pending', input: {} },
     ],
     inputSchema: z.object({}),
+    permission: 'change:ff',
     handler: async (_input, session) => {
 
         const ctx = session.getContext();
@@ -71,6 +74,7 @@ const changeRevertCommand: RpcCommand<ChangeNameInput> = {
         { description: 'revert a change', input: { name: '2026-01-15-add-users-table' } },
     ],
     inputSchema: changeNameSchema,
+    permission: 'change:revert',
     handler: async (input, session) => {
 
         const { name } = input;
