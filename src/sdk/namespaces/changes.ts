@@ -387,7 +387,7 @@ export class ChangesNamespace {
      */
     async rewind(target: number | string): Promise<BatchChangeResult> {
 
-        checkProtectedConfig(this.#state.config, this.#state.options, 'change:revert', 'changes.revert');
+        checkProtectedConfig(this.#state.config, this.#state.options, 'change:revert', 'changes.rewind');
 
         return this.#getManager().rewind(target);
 

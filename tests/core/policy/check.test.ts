@@ -2,7 +2,7 @@
  * Access policy: checkPolicy + guarded.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
-import { assertPolicy, checkConfigPolicy, checkPolicy, guarded } from '../../../src/core/policy/index.js';
+import { assertPolicy, checkConfigPolicy, checkPolicy, confirmationPhraseFor, guarded } from '../../../src/core/policy/index.js';
 import type { Channel, Permission, PolicyCell, PolicyTarget, Role } from '../../../src/core/policy/index.js';
 
 /**
@@ -228,6 +228,20 @@ describe('policy: assertPolicy', () => {
         expect(() => assertPolicy('user', { name: 'legacy' }, 'explore')).toThrow(
             'Config "legacy" has no access configuration.',
         );
+
+    });
+
+});
+
+describe('policy: confirmationPhraseFor', () => {
+
+    it('should produce the yes-<name> phrase checkPolicy resolves for a confirm cell', () => {
+
+        expect(confirmationPhraseFor('prod')).toBe('yes-prod');
+
+        const check = checkPolicy('user', targetFor('operator', 'prod'), 'change:run');
+
+        expect(check.confirmationPhrase).toBe(confirmationPhraseFor('prod'));
 
     });
 

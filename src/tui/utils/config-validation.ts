@@ -206,10 +206,8 @@ export function buildAccessFromValues(values: FormValues): ConfigAccess {
 }
 
 /**
- * `guarded()` narrowed for the TUI's `Config.access`, which stays optional
- * at the type level until CP6 even though every config reaching the TUI via
- * state load has it populated. Display-only (styling cues), same role as
- * `guarded()` itself — never an enforcement input.
+ * `guarded()` narrowed for the TUI's `Config`. Display-only (styling cues),
+ * same role as `guarded()` itself — never an enforcement input.
  *
  * @example
  * ```tsx
@@ -218,6 +216,6 @@ export function buildAccessFromValues(values: FormValues): ConfigAccess {
  */
 export function isConfigGuarded(config: Config): boolean {
 
-    return config.access ? guarded({ name: config.name, access: config.access }) : false;
+    return guarded(config);
 
 }

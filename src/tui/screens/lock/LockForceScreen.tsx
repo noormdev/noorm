@@ -26,6 +26,7 @@ import { Panel, Spinner, SmartConfirm, useToast } from '../../components/index.j
 import { useAsyncEffect } from '../../hooks/index.js';
 import { createConnection, testConnection } from '../../../core/connection/index.js';
 import { getLockManager } from '../../../core/lock/index.js';
+import { confirmationPhraseFor } from '../../../core/policy/index.js';
 import { isConfigGuarded } from '../../utils/index.js';
 
 /**
@@ -280,7 +281,7 @@ export function LockForceScreen({ params: _params }: ScreenProps): ReactElement 
 
                 <SmartConfirm
                     requiresConfirmation={isGuarded}
-                    confirmationPhrase={isGuarded ? `yes-${activeConfigName ?? 'unknown'}` : undefined}
+                    confirmationPhrase={isGuarded ? confirmationPhraseFor(activeConfigName ?? 'unknown') : undefined}
                     configName={activeConfigName ?? 'unknown'}
                     action="force-release lock for"
                     message="Force-release this lock?"

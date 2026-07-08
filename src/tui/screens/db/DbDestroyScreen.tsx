@@ -25,7 +25,7 @@ import { useToast, Panel, Spinner, ProtectedConfirm } from '../../components/ind
 import { useAsyncEffect } from '../../hooks/index.js';
 import { checkDbStatus, destroyDb } from '../../../core/db/index.js';
 import { useConnectionContext } from '../../providers/ConnectionProvider.js';
-import { checkConfigPolicy } from '../../../core/policy/index.js';
+import { checkConfigPolicy, confirmationPhraseFor } from '../../../core/policy/index.js';
 
 /**
  * Screen phase state.
@@ -268,7 +268,7 @@ export function DbDestroyScreen({ params: _params }: ScreenProps): ReactElement 
 
                 <ProtectedConfirm
                     configName={activeConfigName ?? 'unknown'}
-                    confirmPhrase={check?.confirmationPhrase ?? `yes-${activeConfigName ?? 'unknown'}`}
+                    confirmPhrase={check?.confirmationPhrase ?? confirmationPhraseFor(activeConfigName ?? 'unknown')}
                     action="drop database for"
                     onConfirm={handleConfirm}
                     onCancel={handleCancel}

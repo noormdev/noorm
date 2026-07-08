@@ -29,7 +29,7 @@ import { useAppContext, useSettings } from '../../app-context.js';
 import { useToast, Panel, Spinner, ProtectedConfirm } from '../../components/index.js';
 import { useConnection, useAsyncEffect } from '../../hooks/index.js';
 import { getErrorMessage } from '../../utils/index.js';
-import { checkConfigPolicy } from '../../../core/policy/index.js';
+import { checkConfigPolicy, confirmationPhraseFor } from '../../../core/policy/index.js';
 
 type Phase = 'loading' | 'blocked' | 'preview' | 'confirm' | 'running' | 'done' | 'error';
 
@@ -337,7 +337,7 @@ export function DbTruncateScreen({ params: _params }: ScreenProps): ReactElement
 
                 <ProtectedConfirm
                     configName={activeConfigName ?? 'unknown'}
-                    confirmPhrase={check?.confirmationPhrase ?? `yes-${activeConfigName ?? 'unknown'}`}
+                    confirmPhrase={check?.confirmationPhrase ?? confirmationPhraseFor(activeConfigName ?? 'unknown')}
                     action="truncate data for"
                     onConfirm={executeTruncate}
                     onCancel={() => setPhase('preview')}

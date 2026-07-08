@@ -47,7 +47,7 @@ export interface StageSecret {
  * Stage defaults that can be overridden when creating a config.
  *
  * These provide initial values. Some are enforceable constraints:
- * - protected: true - Cannot be overridden to false
+ * - protected: true - Clamped as an access ceiling at resolution, not an override-block (`resolver.ts`)
  * - isTest: true - Cannot be overridden to false
  * - dialect - Cannot be changed after creation
  */
@@ -60,6 +60,7 @@ export interface StageDefaults {
     password?: string;
     ssl?: boolean;
     isTest?: boolean;
+    /** Settings-stage vocabulary — distinct from the removed `Config.protected`; see docs/spec/config-access-roles.md. */
     protected?: boolean;
 }
 
@@ -107,7 +108,7 @@ export interface RuleMatch {
     /** Config name (exact match) */
     name?: string;
 
-    /** Protected config flag */
+    /** Settings-stage vocabulary — distinct from the removed `Config.protected`; matched against `guarded(config)`. */
     protected?: boolean;
 
     /** Test database flag */

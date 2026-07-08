@@ -24,7 +24,7 @@ import { previewTeardown, teardownSchema } from '../../../core/teardown/index.js
 import { formatIdentity } from '../../../core/identity/index.js';
 import { getErrorMessage, resolveScreenIdentity } from '../../utils/index.js';
 import { useConnection, useAsyncEffect } from '../../hooks/index.js';
-import { checkConfigPolicy } from '../../../core/policy/index.js';
+import { checkConfigPolicy, confirmationPhraseFor } from '../../../core/policy/index.js';
 import { attempt } from '@logosdx/utils';
 
 import type { Kysely } from 'kysely';
@@ -544,7 +544,7 @@ export function DbTeardownScreen({ params: _params }: ScreenProps): ReactElement
 
                 <ProtectedConfirm
                     configName={activeConfigName ?? 'unknown'}
-                    confirmPhrase={check?.confirmationPhrase ?? `yes-${activeConfigName ?? 'unknown'}`}
+                    confirmPhrase={check?.confirmationPhrase ?? confirmationPhraseFor(activeConfigName ?? 'unknown')}
                     action="drop schema for"
                     onConfirm={executeTeardown}
                     onCancel={() => setPhase('preview')}

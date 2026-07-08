@@ -119,7 +119,12 @@ export class SessionManager implements RpcSession {
     /**
      * Get the active context for a config.
      *
-     * Throws if not connected.
+     * Throws if not connected. Does not re-check `access` — `connect()` is
+     * the sole writer into `#contexts` and already gates on it, and a config
+     * edit lands in a separate CLI process; it can't mutate this process's
+     * already-held `Context.config`, so it only takes effect on the next
+     * `connect()`. Re-checking a snapshot on every call would add cost
+     * without closing any real gap.
      */
     getContext(config?: string): Context {
 

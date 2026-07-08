@@ -537,20 +537,6 @@ export class SettingsManager {
     }
 
     /**
-     * Check if a stage enforces protected: true.
-     *
-     * When a stage has protected: true in defaults, configs
-     * linked to that stage cannot override it to false.
-     */
-    stageEnforcesProtected(stageName: string): boolean {
-
-        const defaults = this.getStageDefaults(stageName);
-
-        return defaults.protected === true;
-
-    }
-
-    /**
      * Check if a stage enforces isTest: true.
      *
      * When a stage has isTest: true in defaults, configs

@@ -688,28 +688,6 @@ stages:
 
         });
 
-        it('should check if stage enforces protected', async () => {
-
-            const { manager, cleanup } = createTestContext();
-
-            try {
-
-                await manager.load();
-                await manager.setStage('prod', { defaults: { protected: true } });
-                await manager.setStage('dev', { defaults: { protected: false } });
-
-                expect(manager.stageEnforcesProtected('prod')).toBe(true);
-                expect(manager.stageEnforcesProtected('dev')).toBe(false);
-
-            }
-            finally {
-
-                cleanup();
-
-            }
-
-        });
-
         it('should check if stage enforces isTest', async () => {
 
             const { manager, cleanup } = createTestContext();

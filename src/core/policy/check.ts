@@ -3,6 +3,20 @@ import { MATRIX } from './matrix.js';
 import type { Channel, ConfigAccess, Permission, PolicyCheck, PolicyTarget } from './types.js';
 
 /**
+ * The type-to-confirm phrase for a config — the single source every
+ * `confirm`-cell resolution and TUI confirmation dialog derives from, so the
+ * format can't drift between `checkPolicy` and its callers.
+ *
+ * @example
+ * confirmationPhraseFor('prod'); // 'yes-prod'
+ */
+export function confirmationPhraseFor(name: string): string {
+
+    return `yes-${name}`;
+
+}
+
+/**
  * Resolve whether a channel may exercise a permission against a config.
  *
  * The matrix cell is channel-agnostic (`allow`/`confirm`/`deny`); only
@@ -71,7 +85,7 @@ export function checkPolicy(channel: Channel, target: PolicyTarget, permission: 
     return {
         allowed: true,
         requiresConfirmation: true,
-        confirmationPhrase: `yes-${target.name}`,
+        confirmationPhrase: confirmationPhraseFor(target.name),
     };
 
 }

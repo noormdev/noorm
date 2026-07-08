@@ -22,7 +22,7 @@ import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
 import { Panel, Confirm, ProtectedConfirm, Spinner, useToast, MissingParamPanel, NotFoundPanel } from '../../components/index.js';
-import { checkConfigPolicy } from '../../../core/policy/index.js';
+import { checkConfigPolicy, confirmationPhraseFor } from '../../../core/policy/index.js';
 import { getErrorMessage } from '../../utils/index.js';
 
 /**
@@ -192,7 +192,7 @@ export function ConfigRemoveScreen({ params }: ScreenProps): ReactElement {
         return (
             <ProtectedConfirm
                 configName={configName}
-                confirmPhrase={check.confirmationPhrase ?? `yes-${configName}`}
+                confirmPhrase={check.confirmationPhrase ?? confirmationPhraseFor(configName)}
                 action="delete"
                 onConfirm={handleConfirm}
                 onCancel={handleCancel}

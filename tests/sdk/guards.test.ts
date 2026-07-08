@@ -111,6 +111,22 @@ describe('checkProtectedConfig', () => {
 
     });
 
+    it('surfaces the policy blockedReason (role + permission) on a deny cell', () => {
+
+        const config = makeConfig(VIEWER_ACCESS, { name: 'prod' });
+
+        expect.assertions(1);
+
+        const [, err] = attemptSync(() => checkProtectedConfig(config, {}, 'db:reset', 'truncate'));
+
+        if (err instanceof ProtectedConfigError) {
+
+            expect(err.message).toContain('"db:reset" is not allowed on config "prod" (role: viewer).');
+
+        }
+
+    });
+
     it('throws ProtectedConfigError when the role requires confirmation the SDK cannot give (db:reset, operator)', () => {
 
         const config = makeConfig(OPERATOR_ACCESS, { name: 'prod' });
@@ -266,12 +282,22 @@ describe('checkProtectedConfig', () => {
 
     it('defaults the channel to user when options.channel is omitted', () => {
 
-        // A viewer config denies db:reset on the `user` channel. If the
-        // default silently fell through to some other channel this would
-        // not throw, so this pins the CreateContextOptions.channel default.
-        const config = makeConfig(VIEWER_ACCESS);
+        // change:revert is a confirm cell for operator — allowed on `user`
+        // once NOORM_YES skips the prompt, but OPERATOR_ACCESS.mcp is
+        // 'viewer', a deny cell, so the `mcp` channel is always blocked.
+        // (VIEWER_ACCESS.mcp === false would deny on both channels
+        // regardless of the default, proving nothing about which one ran.)
+        // If the default silently fell through to `mcp` this would throw,
+        // so this pins the CreateContextOptions.channel default to `user`.
+        process.env['NOORM_YES'] = '1';
 
-        expect(() => checkProtectedConfig(config, {}, 'db:reset', 'truncate')).toThrow(ProtectedConfigError);
+        const config = makeConfig(OPERATOR_ACCESS);
+
+        const [, err] = attemptSync(() => checkProtectedConfig(config, {}, 'change:revert', 'changes.revert'));
+
+        delete process.env['NOORM_YES'];
+
+        expect(err).toBeNull();
 
     });
 

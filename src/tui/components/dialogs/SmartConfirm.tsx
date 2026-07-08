@@ -22,6 +22,7 @@
  */
 import type { ReactElement } from 'react';
 
+import { confirmationPhraseFor } from '../../../core/policy/index.js';
 import { Confirm } from './Confirm.js';
 import { ProtectedConfirm } from './ProtectedConfirm.js';
 
@@ -75,7 +76,7 @@ export function SmartConfirm(props: SmartConfirmProps): ReactElement {
         return (
             <ProtectedConfirm
                 configName={props.configName}
-                confirmPhrase={props.confirmationPhrase ?? `yes-${props.configName}`}
+                confirmPhrase={props.confirmationPhrase ?? confirmationPhraseFor(props.configName)}
                 action={props.action}
                 onConfirm={props.onConfirm}
                 onCancel={props.onCancel}

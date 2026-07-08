@@ -137,35 +137,26 @@ describe('rpc commands: sql', () => {
 
     });
 
-    it('should allow SELECT for a viewer role (no policy error)', async () => {
+    it('should allow SELECT for a viewer role (policy passes, execution reached)', async () => {
 
         const session = createMockSession({ access: { user: 'admin', mcp: 'viewer' } });
         const input = cmd.inputSchema.parse({ query: 'SELECT * FROM users LIMIT 10' });
 
-        // Policy check passes; executeRawSql will fail without a real DB.
-        const [, err] = await attempt(() => cmd.handler(input, session));
-
-        if (err) {
-
-            expect(err.message).not.toMatch(/sql:(write|ddl)/i);
-
-        }
+        // The policy gate is the only thing in this call chain that rejects
+        // for a denied permission — executeRawSqlUnchecked catches its own
+        // DB errors into a `{ success: false }` result instead of rejecting.
+        // So an unconditional resolve is proof the policy check allowed this
+        // query; a denied permission would reject instead.
+        await expect(cmd.handler(input, session)).resolves.toBeDefined();
 
     });
 
-    it('should allow INSERT (sql:write) for an operator role (no policy error)', async () => {
+    it('should allow INSERT (sql:write) for an operator role (policy passes, execution reached)', async () => {
 
         const session = createMockSession({ access: { user: 'admin', mcp: 'operator' } });
         const input = cmd.inputSchema.parse({ query: 'INSERT INTO t VALUES (1)' });
 
-        // Policy check passes; executeRawSql will fail without a real DB.
-        const [, err] = await attempt(() => cmd.handler(input, session));
-
-        if (err) {
-
-            expect(err.message).not.toMatch(/sql:write/i);
-
-        }
+        await expect(cmd.handler(input, session)).resolves.toBeDefined();
 
     });
 
@@ -178,19 +169,12 @@ describe('rpc commands: sql', () => {
 
     });
 
-    it('should allow DROP (sql:ddl) for an admin role (no policy error)', async () => {
+    it('should allow DROP (sql:ddl) for an admin role (policy passes, execution reached)', async () => {
 
         const session = createMockSession({ access: { user: 'admin', mcp: 'admin' } });
         const input = cmd.inputSchema.parse({ query: 'DROP TABLE users' });
 
-        // Policy check passes; executeRawSql will fail without a real DB.
-        const [, err] = await attempt(() => cmd.handler(input, session));
-
-        if (err) {
-
-            expect(err.message).not.toMatch(/sql:ddl/i);
-
-        }
+        await expect(cmd.handler(input, session)).resolves.toBeDefined();
 
     });
 

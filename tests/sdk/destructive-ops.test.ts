@@ -121,6 +121,22 @@ describe('sdk: access-guarded destructive ops', () => {
 
         });
 
+        it('should name the "dt.importFile" method the consumer called, not an internal alias', async () => {
+
+            const dt = new DtNamespace(makeState(OPERATOR_ACCESS));
+
+            expect.assertions(1);
+
+            const err = await dt.importFile('./fake.dtz').catch((e: unknown) => e);
+
+            if (err instanceof ProtectedConfigError) {
+
+                expect(err.operation).toBe('dt.importFile');
+
+            }
+
+        });
+
     });
 
     // ─────────────────────────────────────────────────────
@@ -143,6 +159,22 @@ describe('sdk: access-guarded destructive ops', () => {
             const changes = new ChangesNamespace(makeState(OPERATOR_ACCESS));
 
             await expect(changes.rewind('any-change')).rejects.toThrow(ProtectedConfigError);
+
+        });
+
+        it('should name the "changes.rewind" method the consumer called, not "changes.revert"', async () => {
+
+            const changes = new ChangesNamespace(makeState(OPERATOR_ACCESS));
+
+            expect.assertions(1);
+
+            const err = await changes.rewind('any-change').catch((e: unknown) => e);
+
+            if (err instanceof ProtectedConfigError) {
+
+                expect(err.operation).toBe('changes.rewind');
+
+            }
 
         });
 

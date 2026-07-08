@@ -111,7 +111,7 @@ export function checkProtectedConfig(
 
     if (!check.allowed) {
 
-        throw new ProtectedConfigError(config.name, operation);
+        throw new ProtectedConfigError(config.name, operation, check.blockedReason);
 
     }
 
