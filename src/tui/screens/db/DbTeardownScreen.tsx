@@ -24,12 +24,13 @@ import { previewTeardown, teardownSchema } from '../../../core/teardown/index.js
 import { formatIdentity } from '../../../core/identity/index.js';
 import { getErrorMessage, resolveScreenIdentity } from '../../utils/index.js';
 import { useConnection, useAsyncEffect } from '../../hooks/index.js';
+import { checkConfigPolicy } from '../../../core/policy/index.js';
 import { attempt } from '@logosdx/utils';
 
 import type { Kysely } from 'kysely';
 import type { TeardownPreview, TeardownResult } from '../../../core/teardown/index.js';
 
-type Phase = 'loading' | 'preview' | 'view' | 'confirm' | 'running' | 'done' | 'error';
+type Phase = 'loading' | 'blocked' | 'preview' | 'view' | 'confirm' | 'running' | 'done' | 'error';
 
 type ViewCategory = 'tables' | 'views' | 'functions' | 'types' | 'foreignKeys';
 
@@ -51,6 +52,7 @@ export function DbTeardownScreen({ params: _params }: ScreenProps): ReactElement
     const { activeConfig, activeConfigName, identity: cryptoIdentity } = useAppContext();
     const { settings } = useSettings();
     const { showToast } = useToast();
+    const check = activeConfig ? checkConfigPolicy('user', activeConfig, 'db:reset') : null;
 
     const [phase, setPhase] = useState<Phase>('loading');
     const [error, setError] = useState<string | null>(null);
@@ -76,6 +78,15 @@ export function DbTeardownScreen({ params: _params }: ScreenProps): ReactElement
 
             setError('No active configuration');
             setPhase('error');
+
+            return;
+
+        }
+
+        // Block viewer-role configs before connecting
+        if (check && !check.allowed) {
+
+            setPhase('blocked');
 
             return;
 
@@ -197,6 +208,16 @@ export function DbTeardownScreen({ params: _params }: ScreenProps): ReactElement
 
         if (!isFocused) return;
 
+        if (phase === 'blocked') {
+
+            if (key.escape || key.return) {
+
+                back();
+
+            }
+
+        }
+
         if (phase === 'preview') {
 
             if (key.escape) {
@@ -312,6 +333,23 @@ export function DbTeardownScreen({ params: _params }: ScreenProps): ReactElement
             <Panel title="Schema Teardown" borderColor="red" paddingX={1} paddingY={1}>
                 <Text color="red">No active configuration selected.</Text>
             </Panel>
+        );
+
+    }
+
+    // Blocked - denied by policy
+    if (phase === 'blocked') {
+
+        return (
+            <Box flexDirection="column" gap={1}>
+                <Panel title="Schema Teardown" borderColor="red" paddingX={1} paddingY={1}>
+                    <Text color="red">{check?.blockedReason}</Text>
+                </Panel>
+
+                <Box flexWrap="wrap" columnGap={2}>
+                    <Text dimColor>[Enter/Esc] Back</Text>
+                </Box>
+            </Box>
         );
 
     }
@@ -506,6 +544,7 @@ export function DbTeardownScreen({ params: _params }: ScreenProps): ReactElement
 
                 <ProtectedConfirm
                     configName={activeConfigName ?? 'unknown'}
+                    confirmPhrase={check?.confirmationPhrase ?? `yes-${activeConfigName ?? 'unknown'}`}
                     action="drop schema for"
                     onConfirm={executeTeardown}
                     onCancel={() => setPhase('preview')}

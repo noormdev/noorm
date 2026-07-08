@@ -10,8 +10,11 @@
  * const config = buildConnectionConfig(values, dialect);
  * ```
  */
-import type { FormValues } from '../components/index.js';
+import type { FormValues, SelectOption } from '../components/index.js';
 import type { ConnectionConfig, Dialect } from '../../core/connection/types.js';
+import type { Config } from '../../core/config/types.js';
+import type { ConfigAccess, Role } from '../../core/policy/index.js';
+import { guarded } from '../../core/policy/index.js';
 
 
 /**
@@ -147,5 +150,74 @@ export function buildConnectionConfig(
                 ? String(values['password'])
                 : defaults?.password,
     };
+
+}
+
+/**
+ * Select options for the `userRole` field — the `user` channel has no
+ * `false`/off state, unlike `mcp`.
+ */
+export const USER_ROLE_OPTIONS: SelectOption[] = [
+    { label: 'Viewer', value: 'viewer' },
+    { label: 'Operator', value: 'operator' },
+    { label: 'Admin', value: 'admin' },
+];
+
+/**
+ * Select options for the `mcpRole` field — `off` maps to `access.mcp: false`
+ * (invisible to the MCP channel), the one state the `user` channel lacks.
+ */
+export const MCP_ROLE_OPTIONS: SelectOption[] = [
+    { label: 'Off (hidden from MCP)', value: 'off' },
+    { label: 'Viewer', value: 'viewer' },
+    { label: 'Operator', value: 'operator' },
+    { label: 'Admin', value: 'admin' },
+];
+
+function isRole(value: string): value is Role {
+
+    return value === 'viewer' || value === 'operator' || value === 'admin';
+
+}
+
+/**
+ * Builds a `ConfigAccess` from the `userRole`/`mcpRole` select fields shared
+ * by ConfigAdd/ConfigEdit. The select only ever offers valid options, so an
+ * unrecognized/missing value should never happen in practice — the fallback
+ * is defense-in-depth and fails closed (`viewer`/`false`) rather than
+ * granting `admin` on a value it can't recognize.
+ *
+ * @example
+ * ```typescript
+ * buildAccessFromValues({ userRole: 'operator', mcpRole: 'off' });
+ * // { user: 'operator', mcp: false }
+ * ```
+ */
+export function buildAccessFromValues(values: FormValues): ConfigAccess {
+
+    const userRoleValue = String(values['userRole'] ?? 'viewer');
+    const mcpRoleValue = String(values['mcpRole'] ?? 'off');
+
+    return {
+        user: isRole(userRoleValue) ? userRoleValue : 'viewer',
+        mcp: mcpRoleValue === 'off' ? false : (isRole(mcpRoleValue) ? mcpRoleValue : false),
+    };
+
+}
+
+/**
+ * `guarded()` narrowed for the TUI's `Config.access`, which stays optional
+ * at the type level until CP6 even though every config reaching the TUI via
+ * state load has it populated. Display-only (styling cues), same role as
+ * `guarded()` itself — never an enforcement input.
+ *
+ * @example
+ * ```tsx
+ * borderColor={isConfigGuarded(activeConfig) ? 'yellow' : undefined}
+ * ```
+ */
+export function isConfigGuarded(config: Config): boolean {
+
+    return config.access ? guarded({ name: config.name, access: config.access }) : false;
 
 }

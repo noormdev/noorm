@@ -8,6 +8,7 @@
  * ```tsx
  * <ProtectedConfirm
  *     configName="production"
+ *     confirmPhrase="yes-production"
  *     action="delete"
  *     onConfirm={() => deleteConfig('production')}
  *     onCancel={() => setShowConfirm(false)}
@@ -29,6 +30,13 @@ import { Panel } from '../layout/Panel.js';
 export interface ProtectedConfirmProps {
     /** Name of the protected configuration */
     configName: string;
+
+    /**
+     * Phrase the user must type to confirm — sourced from `checkPolicy`'s
+     * `confirmationPhrase` (or hand-built by callers with no matrix
+     * permission, e.g. lock force-release). Never recomputed here.
+     */
+    confirmPhrase: string;
 
     /** Action being performed (for display) */
     action: string;
@@ -54,6 +62,7 @@ export interface ProtectedConfirmProps {
  */
 export function ProtectedConfirm({
     configName,
+    confirmPhrase,
     action,
     onConfirm,
     onCancel,
@@ -68,7 +77,6 @@ export function ProtectedConfirm({
     });
     const isFocused = hasExternalFocus ? externalFocused : internalFocus.isFocused;
 
-    const confirmPhrase = `yes-${configName}`;
     const [input, setInput] = useState('');
     const [error, setError] = useState<string | null>(null);
 

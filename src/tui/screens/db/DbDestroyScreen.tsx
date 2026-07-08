@@ -25,6 +25,7 @@ import { useToast, Panel, Spinner, ProtectedConfirm } from '../../components/ind
 import { useAsyncEffect } from '../../hooks/index.js';
 import { checkDbStatus, destroyDb } from '../../../core/db/index.js';
 import { useConnectionContext } from '../../providers/ConnectionProvider.js';
+import { checkConfigPolicy } from '../../../core/policy/index.js';
 
 /**
  * Screen phase state.
@@ -43,6 +44,7 @@ export function DbDestroyScreen({ params: _params }: ScreenProps): ReactElement 
     const { activeConfig, activeConfigName } = useAppContext();
     const { destroyConnection } = useConnectionContext();
     const { showToast } = useToast();
+    const check = activeConfig ? checkConfigPolicy('user', activeConfig, 'db:destroy') : null;
 
     // Phase state
     const [phase, setPhase] = useState<Phase>('loading');
@@ -63,8 +65,8 @@ export function DbDestroyScreen({ params: _params }: ScreenProps): ReactElement 
 
         }
 
-        // Block protected configs
-        if (activeConfig.protected) {
+        // Block configs the policy denies db:destroy on (viewer/operator)
+        if (check && !check.allowed) {
 
             setPhase('blocked');
 
@@ -195,21 +197,13 @@ export function DbDestroyScreen({ params: _params }: ScreenProps): ReactElement 
 
     }
 
-    // Blocked - protected config
+    // Blocked - denied by policy
     if (phase === 'blocked') {
 
         return (
             <Box flexDirection="column" gap={1}>
                 <Panel title="Destroy Database" borderColor="red" paddingX={1} paddingY={1}>
-                    <Box flexDirection="column" gap={1}>
-                        <Text color="red">
-                            Cannot destroy protected configuration{' '}
-                            <Text bold>{activeConfigName}</Text>
-                        </Text>
-                        <Text dimColor>
-                            Protected configs cannot be dropped to prevent accidental data loss.
-                        </Text>
-                    </Box>
+                    <Text color="red">{check?.blockedReason}</Text>
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
@@ -274,6 +268,7 @@ export function DbDestroyScreen({ params: _params }: ScreenProps): ReactElement 
 
                 <ProtectedConfirm
                     configName={activeConfigName ?? 'unknown'}
+                    confirmPhrase={check?.confirmationPhrase ?? `yes-${activeConfigName ?? 'unknown'}`}
                     action="drop database for"
                     onConfirm={handleConfirm}
                     onCancel={handleCancel}

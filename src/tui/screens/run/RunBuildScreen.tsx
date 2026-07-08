@@ -31,6 +31,7 @@ import { getEffectiveBuildPaths } from '../../../core/settings/rules.js';
 import { discoverFiles, runBuild } from '../../../core/runner/index.js';
 import { filterFilesByPaths } from '../../../core/shared/index.js';
 import { createConnection, testConnection } from '../../../core/connection/index.js';
+import { checkConfigPolicy, guarded } from '../../../core/policy/index.js';
 import { getErrorMessage, resolveScreenIdentity, buildRunContext } from '../../utils/index.js';
 import { attempt } from '@logosdx/utils';
 
@@ -49,6 +50,7 @@ export function RunBuildScreen({ params: _params }: ScreenProps): ReactElement {
     const { activeConfig, activeConfigName, stateManager, identity: cryptoIdentity } = useAppContext();
     const { settings } = useSettings();
     const globalModes = useGlobalModes();
+    const check = activeConfig ? checkConfigPolicy('user', activeConfig, 'run:build') : null;
     const { showToast } = useToast();
     const { state: progress, reset: resetProgress } = useRunProgress();
 
@@ -77,7 +79,8 @@ export function RunBuildScreen({ params: _params }: ScreenProps): ReactElement {
 
         const configForMatch = {
             name: activeConfigName,
-            protected: activeConfig.protected ?? false,
+            access: activeConfig.access,
+            protected: activeConfig.access ? guarded({ name: activeConfigName, access: activeConfig.access }) : false,
             isTest: activeConfig.isTest ?? false,
             type: activeConfig.type,
         };
@@ -223,7 +226,7 @@ export function RunBuildScreen({ params: _params }: ScreenProps): ReactElement {
         }
 
         // Retry on 'r' in error or complete phase
-        if (input === 'r' && (phase === 'error' || phase === 'complete')) {
+        if (input === 'r' && (phase === 'error' || phase === 'complete') && check?.allowed) {
 
             executeBuild();
 
@@ -241,6 +244,23 @@ export function RunBuildScreen({ params: _params }: ScreenProps): ReactElement {
                         <Text color="yellow">No active configuration selected.</Text>
                         <Text dimColor>Select a configuration first.</Text>
                     </Box>
+                </Panel>
+
+                <Box flexWrap="wrap" columnGap={2}>
+                    <Text dimColor>[Esc] Back</Text>
+                </Box>
+            </Box>
+        );
+
+    }
+
+    // Denied by policy
+    if (check && !check.allowed) {
+
+        return (
+            <Box flexDirection="column" gap={1}>
+                <Panel title="Run Build" borderColor="red" paddingX={1} paddingY={1}>
+                    <Text color="red">{check.blockedReason}</Text>
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
@@ -330,7 +350,8 @@ export function RunBuildScreen({ params: _params }: ScreenProps): ReactElement {
                 </Panel>
 
                 <SmartConfirm
-                    protected={activeConfig.protected ?? false}
+                    requiresConfirmation={check?.requiresConfirmation ?? false}
+                    confirmationPhrase={check?.confirmationPhrase}
                     configName={activeConfigName ?? ''}
                     action="run build"
                     message={`Run ${files.length} SQL files on ${activeConfigName}?`}

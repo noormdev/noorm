@@ -23,7 +23,16 @@ import { useRouter } from '../../router.js';
 import { useAppContext } from '../../app-context.js';
 import { Panel, Form, useToast, MissingParamPanel, NotFoundPanel } from '../../components/index.js';
 import { testConnection } from '../../../core/connection/factory.js';
-import { getErrorMessage, validateConfigName, validatePort, buildConnectionConfig } from '../../utils/index.js';
+import { guarded, resolveLegacyAccess } from '../../../core/policy/index.js';
+import {
+    getErrorMessage,
+    validateConfigName,
+    validatePort,
+    buildConnectionConfig,
+    buildAccessFromValues,
+    USER_ROLE_OPTIONS,
+    MCP_ROLE_OPTIONS,
+} from '../../utils/index.js';
 
 /**
  * ConfigEditScreen component.
@@ -53,6 +62,8 @@ export function ConfigEditScreen({ params }: ScreenProps): ReactElement {
     const fields: FormField[] = useMemo(() => {
 
         if (!config) return [];
+
+        const access = resolveLegacyAccess(config.access, config.protected);
 
         return [
             {
@@ -104,10 +115,18 @@ export function ConfigEditScreen({ params }: ScreenProps): ReactElement {
                 placeholder: '(unchanged if empty)',
             },
             {
-                key: 'protected',
-                label: 'Protected',
-                type: 'checkbox',
-                defaultValue: config.protected,
+                key: 'userRole',
+                label: 'User Role (CLI/TUI access)',
+                type: 'select',
+                options: USER_ROLE_OPTIONS,
+                defaultValue: access.user,
+            },
+            {
+                key: 'mcpRole',
+                label: 'MCP Role (agent access)',
+                type: 'select',
+                options: MCP_ROLE_OPTIONS,
+                defaultValue: access.mcp === false ? 'off' : access.mcp,
             },
             {
                 key: 'isTest',
@@ -157,11 +176,13 @@ export function ConfigEditScreen({ params }: ScreenProps): ReactElement {
 
             // Build updated config
             const newName = String(values['name']);
+            const access = buildAccessFromValues(values);
             const updatedConfig = {
                 ...config,
                 name: newName,
                 isTest: Boolean(values['isTest']),
-                protected: Boolean(values['protected']),
+                access,
+                protected: guarded({ name: newName, access }),
                 connection: connectionConfig,
             };
 

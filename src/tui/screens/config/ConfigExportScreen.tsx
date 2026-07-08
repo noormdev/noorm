@@ -128,12 +128,16 @@ export function ConfigExportScreen({ params }: ScreenProps): ReactElement {
 
             const [_, err] = await attempt(async () => {
 
-                // Build export data (omit user/password)
+                // Build export data (omit user/password). `access` is the
+                // source of truth; `protected` rides along so an
+                // as-yet-unupgraded importer on the recipient's end still
+                // gets a safe (if coarser) access decision.
                 const exportData = {
                     config: {
                         name: config.name,
                         type: config.type,
                         isTest: config.isTest,
+                        access: config.access,
                         protected: config.protected,
                         connection: {
                             dialect: config.connection.dialect,

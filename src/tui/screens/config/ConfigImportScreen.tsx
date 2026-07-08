@@ -33,6 +33,7 @@ import {
 import { decryptWithPrivateKey } from '../../../core/identity/crypto.js';
 import { loadPrivateKey } from '../../../core/identity/storage.js';
 import type { SharedConfigPayload } from '../../../core/identity/types.js';
+import { guarded, resolveLegacyAccess } from '../../../core/policy/index.js';
 import { getErrorMessage } from '../../utils/index.js';
 
 /**
@@ -203,13 +204,15 @@ export function ConfigImportScreen({ params }: ScreenProps): ReactElement {
             const [_, err] = await attempt(async () => {
 
                 const configName = String(values['name'] || importedData.config.name);
+                const access = resolveLegacyAccess(importedData.config.access, importedData.config.protected);
 
                 // Build full config with credentials
                 const config: Config = {
                     name: configName,
                     type: importedData.config.type ?? 'local',
                     isTest: importedData.config.isTest ?? false,
-                    protected: importedData.config.protected ?? false,
+                    access,
+                    protected: guarded({ name: configName, access }),
                     connection: {
                         dialect: importedData.config.connection?.dialect ?? 'postgres',
                         host: importedData.config.connection?.host,

@@ -11,6 +11,7 @@ import { FocusProvider } from '../../../src/tui/focus.js';
 import {
     Confirm,
     ProtectedConfirm,
+    SmartConfirm,
     FilePicker,
 } from '../../../src/tui/components/dialogs/index.js';
 
@@ -84,6 +85,7 @@ describe('cli: components/dialogs', () => {
                 <TestWrapper>
                     <ProtectedConfirm
                         configName="production"
+                        confirmPhrase="yes-production"
                         action="delete"
                         onConfirm={() => {}}
                         onCancel={() => {}}
@@ -101,6 +103,7 @@ describe('cli: components/dialogs', () => {
                 <TestWrapper>
                     <ProtectedConfirm
                         configName="production"
+                        confirmPhrase="yes-production"
                         action="destroy"
                         onConfirm={() => {}}
                         onCancel={() => {}}
@@ -118,6 +121,7 @@ describe('cli: components/dialogs', () => {
                 <TestWrapper>
                     <ProtectedConfirm
                         configName="production"
+                        confirmPhrase="yes-production"
                         action="delete"
                         onConfirm={() => {}}
                         onCancel={() => {}}
@@ -129,12 +133,32 @@ describe('cli: components/dialogs', () => {
 
         });
 
+        it('should use the confirmPhrase prop rather than recomputing it from configName', () => {
+
+            const { lastFrame } = render(
+                <TestWrapper>
+                    <ProtectedConfirm
+                        configName="prod"
+                        confirmPhrase="totally-different-phrase"
+                        action="delete"
+                        onConfirm={() => {}}
+                        onCancel={() => {}}
+                    />
+                </TestWrapper>,
+            );
+
+            expect(lastFrame()).toContain('totally-different-phrase');
+            expect(lastFrame()).not.toContain('yes-prod');
+
+        });
+
         it('should render protected configuration title', () => {
 
             const { lastFrame } = render(
                 <TestWrapper>
                     <ProtectedConfirm
                         configName="prod"
+                        confirmPhrase="yes-prod"
                         action="delete"
                         onConfirm={() => {}}
                         onCancel={() => {}}
@@ -143,6 +167,51 @@ describe('cli: components/dialogs', () => {
             );
 
             expect(lastFrame()).toContain('Protected Configuration');
+
+        });
+
+    });
+
+    describe('SmartConfirm', () => {
+
+        it('should render ProtectedConfirm with the policy-supplied phrase when requiresConfirmation is true', () => {
+
+            const { lastFrame } = render(
+                <TestWrapper>
+                    <SmartConfirm
+                        requiresConfirmation
+                        confirmationPhrase="yes-production"
+                        configName="production"
+                        action="apply this change"
+                        message="Apply this change?"
+                        onConfirm={() => {}}
+                        onCancel={() => {}}
+                    />
+                </TestWrapper>,
+            );
+
+            expect(lastFrame()).toContain('Protected Configuration');
+            expect(lastFrame()).toContain('yes-production');
+
+        });
+
+        it('should render a plain Confirm when requiresConfirmation is false', () => {
+
+            const { lastFrame } = render(
+                <TestWrapper>
+                    <SmartConfirm
+                        requiresConfirmation={false}
+                        configName="dev"
+                        action="apply this change"
+                        message="Apply this change?"
+                        onConfirm={() => {}}
+                        onCancel={() => {}}
+                    />
+                </TestWrapper>,
+            );
+
+            expect(lastFrame()).toContain('Apply this change?');
+            expect(lastFrame()).not.toContain('Protected Configuration');
 
         });
 
