@@ -113,6 +113,7 @@ import <path>` with a pre-built JSON file. See
 destructive operations:
 
 - `noorm db drop`, `noorm db reset`, `noorm db teardown` still require `--yes` *or* `--force` per their own contracts. `NOORM_YES=1` does count toward those gates.
+- Every destructive command is also gated by the config's access role (`viewer`/`operator`/`admin` — see [Access Roles](../../headless.md#access-roles)). `--yes`/`NOORM_YES=1` only skips an `operator` confirmation prompt; it cannot open a `deny` cell. A `viewer`-role config still refuses `db teardown` no matter how many flags you pass.
 - Vault and identity operations that need a private key still need the key — either on disk at `~/.noorm/identity.key` or in `$NOORM_IDENTITY_PRIVATE_KEY`.
 
 If a command refuses with a useful error in interactive mode, it refuses

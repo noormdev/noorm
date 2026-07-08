@@ -13,7 +13,7 @@ Real projects talk to multiple databases:
 - `dev` - Your local machine, fast iteration
 - `test` - Gets wiped between test runs
 - `staging` - Mirrors production, catches issues early
-- `prod` - The real thing, protected from accidents
+- `prod` - The real thing, locked down by access roles
 
 Without saved configs, you'd type connection details every time. With them, you switch environments in one keystroke.
 
@@ -110,7 +110,8 @@ Every config has these fields:
 | `database` | Yes | Database name or file path |
 | `user` | No | Authentication username |
 | `password` | No | Authentication password (stored encrypted) |
-| `protected` | No | Enables safety checks (default: false) |
+| `access.user` | No | CLI/TUI/SDK role: `viewer`, `operator`, or `admin` (default: `admin`) |
+| `access.mcp` | No | MCP role: `viewer`, `operator`, `admin`, or `false` to hide from MCP (default: `admin`) |
 | `isTest` | No | Marks as test database (default: false) |
 | `ssl` | No | SSL/TLS configuration |
 | `pool` | No | Connection pool settings |
@@ -126,33 +127,39 @@ Every config has these fields:
 | SQLite | N/A |
 
 
-## Protected Configs
+## Access Roles
 
-Production databases need safeguards. Mark a config as protected to prevent accidental damage by toggling the **Protected** flag in `noorm ui` → Config → Edit.
+Production databases need safeguards. Every config carries an access role per **channel** — who's asking. `noorm ui` → Config → Edit sets `access.user` (the CLI/TUI/SDK) and `access.mcp` (an AI agent connected via MCP) independently, so a config can be wide open to you at the terminal while showing an agent only read access.
 
-Protected configs change how dangerous operations behave:
+| Role | Behavior |
+|------|----------|
+| `viewer` | Read-only: explore schema, run `SELECT`/`EXPLAIN` |
+| `operator` | Reads plus writes; destructive operations (`change run/ff/revert`, `run build`, `db create`/`db reset`) require typing a confirmation phrase; `db drop` is denied |
+| `admin` | Frictionless — everything allowed, nothing prompts |
 
-| Operation | Protected Behavior |
-|-----------|-------------------|
-| `change run` | Requires confirmation |
-| `change revert` | Requires confirmation |
-| `change ff` | Requires confirmation |
-| `db create` | Requires confirmation |
-| `db teardown` | **Blocked entirely** |
+| Operation | viewer | operator | admin |
+|-----------|--------|----------|-------|
+| `change run` / `change ff` / `change revert` | denied | confirm | allowed |
+| `run build` | denied | confirm | allowed |
+| `db create` | denied | confirm | allowed |
+| `db teardown` | denied | confirm | allowed |
+| `db drop` | denied | denied | confirm |
 
-When you run a protected operation in the TUI, noorm asks you to type a confirmation phrase. This catches the "oops, wrong database" moment before damage happens.
+When an `operator`-role operation needs confirmation in the TUI, noorm asks you to type a phrase (`yes-<config-name>`). This catches the "oops, wrong database" moment before damage happens.
 
 **Skipping confirmations in CI:**
 
-Automated pipelines can't type confirmations. Set `NOORM_YES=1` to skip them:
+Automated pipelines can't type confirmations. Set `NOORM_YES=1` to skip them on the `user` channel:
 
 ```bash
 export NOORM_YES=1
 noorm -c prod change run
 ```
 
-::: warning Protection is Not Security
-Protected configs prevent accidents, not attacks. They won't stop a determined user or malicious script. Use proper database permissions for real security.
+There is no equivalent skip on the MCP channel — an agent hitting a `confirm` cell always gets denied, redirected to the CLI. See [MCP](/guide/automation/mcp#access-roles) for the agent-facing side of this.
+
+::: warning Access Roles Are Not Security
+Roles prevent accidents, not attacks. They won't stop a determined user or malicious script. Use proper database permissions for real security.
 :::
 
 

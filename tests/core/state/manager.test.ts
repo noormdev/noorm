@@ -250,6 +250,60 @@ describe('state: manager', () => {
 
         });
 
+        it('should backfill a legacy protected:true config at current schemaVersion to guarded access', async () => {
+
+            // Reproduces a config that reached the current schemaVersion carrying
+            // the legacy `protected` boolean without `access` — e.g. saved
+            // directly via setConfig, bypassing ConfigSchema (the CLI `config
+            // import` bug this guards against). The schema-version migration
+            // is a no-op at current version, so this raw shape survives
+            // unchanged into the backfill loop; it must resolve per the
+            // documented fail-closed mapping (protected:true -> operator/viewer),
+            // not the admin/admin open-access fallback.
+            const statePath = state.getStatePath();
+            const currentVersion = getPackageVersion();
+
+            const currentState = {
+                version: currentVersion,
+                schemaVersion: CURRENT_VERSIONS.state,
+                identity: {},
+                knownUsers: {},
+                activeConfig: null,
+                configs: {
+                    guarded: {
+                        name: 'guarded',
+                        type: 'local',
+                        isTest: false,
+                        protected: true,
+                        connection: { dialect: 'sqlite', database: ':memory:' },
+                    },
+                },
+                secrets: {},
+                globalSecrets: {},
+            };
+
+            mkdirSync(dirname(statePath), { recursive: true });
+            writeFileSync(
+                statePath,
+                JSON.stringify(encrypt(JSON.stringify(currentState), testPrivateKey), null, 2),
+            );
+
+            await state.load();
+
+            expect(state.getConfig('guarded')?.access).toEqual({ user: 'operator', mcp: 'viewer' });
+
+            const raw = readFileSync(statePath, 'utf8');
+            const decrypted = JSON.parse(
+                decrypt(JSON.parse(raw) as EncryptedPayload, testPrivateKey),
+            ) as { configs: Record<string, Record<string, unknown>> };
+
+            expect(decrypted.configs['guarded']?.['access']).toEqual({
+                user: 'operator',
+                mcp: 'viewer',
+            });
+
+        });
+
     });
 
     // ─────────────────────────────────────────────────────────────

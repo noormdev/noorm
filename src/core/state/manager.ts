@@ -204,6 +204,15 @@ export class StateManager {
         // whether it actually mutated anything (below) feeds the persist
         // decision, so a config backfilled at an already-current schema
         // version still lands on disk instead of being re-healed forever.
+        //
+        // `config` is typed `Config`, but the object underneath is untyped
+        // JSON that reached the current schema version without ever passing
+        // through `parseConfig` (e.g. a legacy-shaped config saved directly
+        // via `setConfig`, bypassing the zod path). It can still carry a
+        // stray legacy `protected` key the type doesn't declare, so read it
+        // defensively rather than assuming `undefined` — fail-safe,
+        // consistent with the fail-closed default: `protected: true` maps
+        // to operator/viewer, never the admin/admin fallback.
         let backfilledAccess = false;
 
         for (const config of Object.values(this.state.configs)) {
@@ -214,7 +223,12 @@ export class StateManager {
 
             }
 
-            config.access = resolveLegacyAccess(config.access, undefined);
+            const rawConfig: unknown = config;
+            const legacyProtected = isRecord(rawConfig) && typeof rawConfig['protected'] === 'boolean'
+                ? rawConfig['protected']
+                : undefined;
+
+            config.access = resolveLegacyAccess(config.access, legacyProtected);
 
         }
 

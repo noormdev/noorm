@@ -167,6 +167,27 @@ NOORM_PATHS_CHANGES         → paths.changes
 4. Config defaults
 
 
+## Access Roles
+
+Each config carries a per-channel access grant: `access: { user, mcp }`. The `user` role governs the CLI, TUI, and SDK; `mcp` governs the MCP server (see [MCP](./guide/automation/mcp.md)). Roles are fixed — `viewer`, `operator`, `admin` — and hard-coded to this matrix (cells: allow / confirm / deny):
+
+| Command class | viewer | operator | admin |
+|---|---|---|---|
+| explore, `sql` reads | allow | allow | allow |
+| `sql` writes (INSERT/UPDATE/DELETE) | deny | allow | allow |
+| `sql` DDL (CREATE/ALTER/DROP/...) | deny | deny | allow |
+| `change run`/`ff`/`revert`, `run build`/`file`/`dir` | deny | confirm | allow |
+| `db create`, `db reset` (truncate/teardown/reset) | deny | confirm | allow |
+| `db drop` | deny | deny | confirm |
+| `config rm` | deny | confirm | confirm |
+
+Raw SQL (`noorm sql`) is gated by what the statement actually does, not by a flag — a multi-statement input is classified by its highest class (a `SELECT` plus a `DROP` classifies as DDL). Unparseable or unrecognized statements classify as DDL, fail closed.
+
+`confirm` means: type the phrase `yes-<config-name>` when prompted, or set `NOORM_YES=1` to skip the prompt in CI. There is no `--force` override for a denied permission — `--force` only skips file checksums (see [Common Flags](#common-flags)).
+
+**Migration note:** the old `Config.protected: boolean` maps automatically on first load — `protected: true` becomes `{ user: 'operator', mcp: 'viewer' }`, `protected: false` (or absent) becomes `{ user: 'admin', mcp: 'admin' }`. The legacy field is still accepted on `config import` for one version, then dropped.
+
+
 ## Commands
 
 
@@ -936,7 +957,7 @@ noorm db drop -c dev --yes --json
 ```
 
 ::: danger Destructive
-Drops the entire database. Requires `--yes`. Cannot drop protected configs without `--force`.
+Drops the entire database. Requires `--yes`. Gated by the config's `db:destroy` access: `viewer`/`operator` are denied outright — there is no flag that overrides this — and `admin` still requires confirmation. See [Access Roles](#access-roles) above.
 :::
 
 
@@ -998,11 +1019,10 @@ Drop all database objects.
 
 ```bash
 noorm -y db teardown
-noorm --force db teardown   # Override protection
 ```
 
-::: warning Protected Configs
-`db teardown` is blocked on protected configs. Use `--force` to override.
+::: warning Access Roles
+`db teardown` is gated by the config's `db:reset` access: `viewer` is denied, `operator` must confirm (`yes-<config>`, or `NOORM_YES=1` in CI), `admin` runs unconfirmed. There is no `--force` override — see [Access Roles](#access-roles) above.
 :::
 
 

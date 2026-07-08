@@ -66,8 +66,8 @@ Three reasons, in order of importance:
 1. **Configs already hold the database name.** The connection block
    in a noorm config carries `dialect`, `host`, `port`, `database`,
    `user`, `password`, and a handful of safety flags (`isTest`,
-   `protected`). Passing `--name foo` would let you bypass the
-   `protected` flag and create a database the active config doesn't
+   `access`). Passing `--name foo` would let you bypass the config's
+   `access` role and create a database the active config doesn't
    know about — a foot-gun.
 
 2. **The config is also where stage defaults, secrets, and identity

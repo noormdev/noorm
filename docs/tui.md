@@ -19,17 +19,17 @@ noorm - Database Schema & Change Manager
 
 Active Config:  dev  |  Configs: 2
 
-┌─ Status ─────────────────────┐  ┌─ Quick Actions ──────────────┐
-│                              │  │                              │
-│ Connection: ● Connected      │  │ [1] Run Build                │
-│ Pending:    0 pending        │  │ [2] Apply Changes (ff)       │
-│ Lock:       FREE             │  │ [3] View Lock Status         │
-│                              │  │                              │
-│ Stage Configs:               │  │                              │
-│   ✓ dev                      │  │                              │
-│     prod [protected]         │  │                              │
-│                              │  │                              │
-└──────────────────────────────┘  └──────────────────────────────┘
+┌─ Status ────────────────────────────┐  ┌─ Quick Actions ──────────────┐
+│                                     │  │                              │
+│ Connection: ● Connected             │  │ [1] Run Build                │
+│ Pending:    0 pending               │  │ [2] Apply Changes (ff)       │
+│ Lock:       FREE                    │  │ [3] View Lock Status         │
+│                                     │  │                              │
+│ Stage Configs:                      │  │                              │
+│   ✓ dev                             │  │                              │
+│     prod [user:operator mcp:viewer] │  │                              │
+│                                     │  │                              │
+└─────────────────────────────────────┘  └──────────────────────────────┘
 
 ┌─ Recent Activity ────────────────────────────────────────────┐
 │                                                              │
@@ -131,7 +131,7 @@ Home > Configurations
 │                                                             │
 │ > ○ dev       postgres                                      │
 │   ● test      postgres (active) [test]                      │
-│   ○ prod      postgres [protected]                          │
+│   ○ prod      postgres [user:operator mcp:off]               │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 
@@ -143,7 +143,7 @@ Home > Configurations
 - `●` indicates active config
 - `○` indicates inactive config
 - `>` indicates cursor position
-- `[protected]` tag shows protected configs
+- `[user:<role> mcp:<role|off>]` tag shows access roles for any config that isn't fully open (`admin`/`admin`) — omitted entirely for wide-open configs
 - `[test]` tag shows test configs
 - Press `Enter` on a config to activate it
 

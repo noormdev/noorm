@@ -77,7 +77,7 @@ stages:
         locked: true         # Configs from this stage cannot be deleted
         defaults:
             dialect: postgres
-            protected: true  # Cannot be overridden to false
+            protected: true  # Access ceiling: clamps resolved access to at most operator/viewer
             isTest: false
         secrets:
             - key: DB_PASSWORD
@@ -136,7 +136,7 @@ secrets:
 |---|---|---|
 | `description` | `string?` | Human-readable rule description |
 | `match.name` | `string?` | Exact config name match |
-| `match.protected` | `boolean?` | Match protected configs |
+| `match.protected` | `boolean?` | Matches `guarded(config)` (`access.user !== 'admin'`) — legacy field name, current semantics |
 | `match.isTest` | `boolean?` | Match test configs |
 | `match.type` | `'local' \| 'remote'?` | Match connection type |
 | `include` | `string[]?` | Folders to add when matched |
@@ -158,7 +158,7 @@ All conditions within a rule are AND'd — every specified field must match.
 | `defaults.password` | `string?` | Password |
 | `defaults.ssl` | `boolean?` | Enable SSL |
 | `defaults.isTest` | `boolean?` | Test flag (if `true`, cannot be overridden to `false`) |
-| `defaults.protected` | `boolean?` | Protection flag (if `true`, cannot be overridden to `false`) |
+| `defaults.protected` | `boolean?` | If `true`, acts as an access ceiling: resolved config `access` is clamped to at most `{ user: 'operator', mcp: 'viewer' }` |
 | `secrets[]` | array | Secrets required for this stage |
 
 ### `secrets[]` (stage or universal)
@@ -208,7 +208,10 @@ interface Config {
     name: string;                   // Unique identifier
     type: 'local' | 'remote';      // Connection type (default: 'local')
     isTest: boolean;                // Test database flag (default: false)
-    protected: boolean;             // Blocks destructive ops (default: false)
+    access: {                       // Per-channel access roles (replaces the legacy `protected` boolean)
+        user: 'viewer' | 'operator' | 'admin';           // CLI/TUI/SDK role (default: 'admin')
+        mcp: 'viewer' | 'operator' | 'admin' | false;    // MCP role; `false` hides the config from MCP (default: 'admin')
+    };
     connection: {
         dialect: 'postgres' | 'mysql' | 'sqlite' | 'mssql';
         host?: string;              // Required for non-SQLite
@@ -234,7 +237,9 @@ interface Config {
 
 ## Stage Constraints
 
-When a stage sets `defaults.protected: true` or `defaults.isTest: true`, configs created from that stage **cannot override those values to `false`**. This enforces safety invariants — a production stage stays protected, a test stage stays flagged as test.
+`defaults.isTest: true` cannot be overridden to `false` for configs created from that stage. `defaults.protected: true` works differently: it is an access **ceiling** applied at config resolution — a config linked to that stage gets its resolved `access` clamped to at most `{ user: 'operator', mcp: 'viewer' }`, no matter what `access` the config itself declares. This enforces safety invariants — a production stage stays guarded, a test stage stays flagged as test.
+
+See `docs/spec/config-access-roles.md` for the full per-channel access model (`viewer`/`operator`/`admin` roles, the permission matrix, and MCP's `access.mcp: false` invisibility).
 
 ## Minimal Settings Example
 

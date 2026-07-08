@@ -46,7 +46,7 @@ const paths = settings.getEffectiveBuildPaths({
     name: 'dev',
     type: 'local',
     isTest: false,
-    protected: false,
+    access: { user: 'admin', mcp: 'admin' },
 })
 console.log('Effective include:', paths.include)
 console.log('Effective exclude:', paths.exclude)
@@ -195,7 +195,7 @@ All conditions in a rule are AND'd together—every specified condition must be 
 | Condition | Type | Description |
 |-----------|------|-------------|
 | `name` | string | Config name (exact match) |
-| `protected` | boolean | Protected config flag |
+| `protected` | boolean | Matches `guarded(config)` — `true` when `access.user !== 'admin'`, regardless of the field's legacy name |
 | `isTest` | boolean | Test database flag |
 | `type` | `'local'` \| `'remote'` | Connection type |
 
@@ -203,7 +203,7 @@ All conditions in a rule are AND'd together—every specified condition must be 
 import { ruleMatches } from './core/settings'
 
 const match = { isTest: true, type: 'local' }
-const config = { name: 'test', type: 'local', isTest: true, protected: false }
+const config = { name: 'test', type: 'local', isTest: true, access: { user: 'admin', mcp: 'admin' } }
 
 ruleMatches(match, config)  // true - both conditions match
 ```
@@ -251,7 +251,7 @@ const { include, exclude } = settings.getEffectiveBuildPaths({
     name: 'dev',
     type: 'local',
     isTest: false,
-    protected: false,
+    access: { user: 'admin', mcp: 'admin' },
 })
 
 // Build only these paths
@@ -307,14 +307,14 @@ Defaults provide initial values when creating a config. Users can override most 
 
 | Default | Behavior |
 |---------|----------|
-| `protected: true` | Cannot be overridden to false |
+| `protected: true` | Enforced as an access **ceiling** at config resolution (`resolveConfig`), not a value check here: resolved `access` is clamped to at most `{ user: 'operator', mcp: 'viewer' }` no matter what the config or the TUI sets |
 | `isTest: true` | Cannot be overridden to false |
 | `dialect` | Cannot be changed after creation |
 
 ```typescript
-// Check if stage enforces protection
+// Check if stage sets the protected default (the ceiling is applied later, at resolution)
 if (settings.stageEnforcesProtected('prod')) {
-    // Config cannot set protected: false
+    // This stage's configs get clamped to at most operator/viewer access
 }
 
 // Get stage defaults
@@ -585,7 +585,7 @@ const result = settings.evaluateRules({
     name: 'dev',
     type: 'local',
     isTest: true,
-    protected: false
+    access: { user: 'admin', mcp: 'admin' }
 })
 // { matchedRules: [...], include: [...], exclude: [...] }
 ```

@@ -90,7 +90,7 @@ jobs:
 
 ## Prod CI
 
-When templates render vault-backed secrets or the target config is protected, the runner needs two things the test flow skipped:
+When templates render vault-backed secrets or the target config's `access.user` role isn't `admin`, the runner needs two things the test flow skipped:
 
 1. **An identity** — an X25519 keypair whose public key is enrolled in the target database, giving it a slot in the `encrypted_vault_key` column.
 2. **A bootstrapped `.noorm/state/state.enc`** — the ephemeral state that every later command expects to find.
