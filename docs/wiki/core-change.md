@@ -12,30 +12,31 @@ Change directories hold a `manifest.json` and SQL files. Each change has a descr
 
 ## CLI code
 
-- `src/core/change/scaffold.ts` — create/add/remove/rename/reorder change files on disk
-- `src/core/change/parser.ts` — `parseChange`, `discoverChanges`, `resolveManifest`, `validateChange`, `parseSequence`, `parseDescription`
-- `src/core/change/executor.ts` — `executeChange`, `revertChange`; applies SQL via the runner, records results
-- `src/core/change/history.ts` — `ChangeHistory`; queries `__noorm_change__` and `__noorm_executions__` for per-change and per-file history
-- `src/core/change/tracker.ts` — `ChangeTracker`; `canRevert` logic, orphaned-change detection
-- `src/core/change/manager.ts` — `ChangeManager`; high-level facade: `list`, `run`, `revert`, `ff` (fast-forward)
-- `src/core/change/validation.ts` — `validateChangeContent`; structural content checks
-- `src/core/change/types.ts` — all change types, error classes (`ChangeValidationError`, `ChangeNotFoundError`, etc.)
+- [`src/core/change/scaffold.ts`](../../src/core/change/scaffold.ts) — create/add/remove/rename/reorder change files on disk
+- [`src/core/change/parser.ts`](../../src/core/change/parser.ts) — `parseChange`, `discoverChanges`, `resolveManifest`, `validateChange`, `parseSequence`, `parseDescription`
+- [`src/core/change/executor.ts`](../../src/core/change/executor.ts) — `executeChange`, `revertChange`; applies SQL via the runner, records results. Each gates via `assertPolicy` (`core/policy`) against `ChangeContext.access`/`channel` before running (`change:run`/`change:revert` permissions)
+- [`src/core/change/history.ts`](../../src/core/change/history.ts) — `ChangeHistory`; queries `__noorm_change__` and `__noorm_executions__` for per-change and per-file history
+- [`src/core/change/tracker.ts`](../../src/core/change/tracker.ts) — `ChangeTracker`; `canRevert` logic, orphaned-change detection
+- [`src/core/change/manager.ts`](../../src/core/change/manager.ts) — `ChangeManager`; high-level facade: `list`, `run`, `revert`, `ff` (fast-forward)
+- [`src/core/change/validation.ts`](../../src/core/change/validation.ts) — `validateChangeContent`; structural content checks
+- [`src/core/change/types.ts`](../../src/core/change/types.ts) — all change types, error classes (`ChangeValidationError`, `ChangeNotFoundError`, etc.)
 
 ## Docs
 
-- `docs/dev/change.md` — developer reference for change internals
-- `docs/guide/changes/overview.md` — user-facing: what changes are
-- `docs/guide/changes/forward-revert.md` — forward and revert semantics
-- `docs/guide/changes/history.md` — history querying
-- `docs/cli/run.md` — run command docs (also covers change run)
+- [`docs/dev/change.md`](../dev/change.md) — developer reference for change internals
+- [`docs/guide/changes/overview.md`](../guide/changes/overview.md) — user-facing: what changes are
+- [`docs/guide/changes/forward-revert.md`](../guide/changes/forward-revert.md) — forward and revert semantics
+- [`docs/guide/changes/history.md`](../guide/changes/history.md) — history querying
+- [`docs/cli/run.md`](../cli/run.md) — run command docs (also covers change run)
 
 ## Coupling
 
 - Calls `runner` (`runFile`) to execute SQL inside a change — changes in runner's `RunOptions` or file-execution semantics propagate here.
-- Reads config via `src/core/config/` to resolve the active database connection — config schema changes affect `ChangeContext` construction.
-- Emits events via `src/core/observer.ts` (`change:*` events) — the TUI subscribes via `useChangeProgress` hook.
-- Writes to `__noorm_change__` and `__noorm_executions__` tables defined in `src/core/shared/tables.ts` — table renames propagate to executor and history queries.
-- CLI commands in `src/cli/change/` call manager + scaffold functions — CLI argument shape changes here require CLI command updates.
+- Reads config via [`src/core/config/`](../../src/core/config) to resolve the active database connection — config schema changes affect `ChangeContext` construction.
+- Emits events via [`src/core/observer.ts`](../../src/core/observer.ts) (`change:*` events) — the TUI subscribes via `useChangeProgress` hook.
+- Writes to `__noorm_change__` and `__noorm_executions__` tables defined in [`src/core/shared/tables.ts`](../../src/core/shared/tables.ts) — table renames propagate to executor and history queries.
+- CLI commands in [`src/cli/change/`](../../src/cli/change) call manager + scaffold functions — CLI argument shape changes here require CLI command updates.
+- `executeChange`/`revertChange` call `assertPolicy` from [`src/core/policy/`](../../src/core/policy) before executing — `ChangeContext` carries `access`/`channel` for the gate; policy-matrix changes affect which roles can run/revert changes.
 
 ## Conventions worth knowing
 
