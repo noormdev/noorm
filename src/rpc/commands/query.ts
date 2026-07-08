@@ -1,23 +1,13 @@
 import { z } from 'zod';
 
 import { executeRawSql } from '../../core/sql-terminal/executor.js';
-import { checkConfigPolicy, classifyStatements } from '../../core/policy/index.js';
-import type { Permission, SqlClass } from '../../core/policy/index.js';
 import type { RpcCommand } from '../types.js';
-import { RpcError } from '../types.js';
 
 const sqlSchema = z.object({
     query: z.string().describe('The SQL query to execute'),
 });
 
 type SqlInput = z.infer<typeof sqlSchema>;
-
-/** Maps a classified statement to the permission it's gated by. */
-const CLASS_PERMISSION: Record<SqlClass, Permission> = {
-    read: 'sql:read',
-    write: 'sql:write',
-    ddl: 'sql:ddl',
-};
 
 const sqlCommand: RpcCommand<SqlInput> = {
     name: 'sql',
@@ -28,7 +18,8 @@ const sqlCommand: RpcCommand<SqlInput> = {
     ],
     inputSchema: sqlSchema,
     // Dispatch gates on 'sql:read' (always allowed); the actual class is
-    // checked here once the query text is known.
+    // checked by executeRawSql itself once the query text is known — the
+    // single sql-gate seam shared with the CLI and TUI SQL terminal.
     permission: 'sql:read',
     handler: async (input, session) => {
 
@@ -36,16 +27,11 @@ const sqlCommand: RpcCommand<SqlInput> = {
         const ctx = session.getContext();
         const config = ctx.noorm.config;
 
-        const statementClass = classifyStatements(query, ctx.dialect);
-        const check = checkConfigPolicy(session.channel, config, CLASS_PERMISSION[statementClass]);
-
-        if (!check.allowed) {
-
-            throw new RpcError(check.blockedReason ?? `"${CLASS_PERMISSION[statementClass]}" is not allowed on config "${config.name}"`);
-
-        }
-
-        return executeRawSql(ctx.kysely, query, config.name);
+        return executeRawSql(ctx.kysely, query, config.name, {
+            access: config.access,
+            channel: session.channel,
+            dialect: ctx.dialect,
+        });
 
     },
 };

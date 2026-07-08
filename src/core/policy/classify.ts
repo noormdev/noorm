@@ -1,4 +1,4 @@
-import { parse } from 'sql-parser-cst';
+import { cstVisitor, parse, type Program } from 'sql-parser-cst';
 import { attemptSync } from '@logosdx/utils';
 
 import type { Dialect } from '../connection/types.js';
@@ -66,6 +66,45 @@ const WRITE_KEYWORDS: Record<string, true> = {
 const CLASS_RANK: Record<SqlClass, number> = { read: 0, write: 1, ddl: 2 };
 
 /**
+ * Side-effecting builtins that must not be treated as read-only just because
+ * they're invoked from a SELECT. Guardrail against a `viewer` config running
+ * `SELECT pg_terminate_backend(...)` through the read-allowed `sql` path.
+ *
+ * Deliberately a denylist, not an allowlist: `SELECT f()` is statically
+ * undecidable, so pure helpers (`count`, `now`, `coalesce`, ...) stay `read`
+ * and only known-dangerous calls are caught. An unlisted side-effecting
+ * function on a viewer config is a documented limitation — this guards
+ * against casual/accidental writes, not a determined adversary.
+ */
+export const DESTRUCTIVE_FUNCTIONS: ReadonlySet<string> = new Set([
+    'pg_terminate_backend',
+    'pg_cancel_backend',
+    'pg_reload_conf',
+    'pg_rotate_logfile',
+    'pg_promote',
+    'pg_switch_wal',
+    'pg_create_restore_point',
+    'pg_drop_replication_slot',
+    'lo_import',
+    'lo_export',
+    'lo_unlink',
+    'setval',
+    'nextval',
+    'dblink_exec',
+    'query_to_xml',
+    'query_to_xmlschema',
+    'query_to_xml_and_xmlschema',
+    'cursor_to_xml',
+    'cursor_to_xmlschema',
+]);
+
+/**
+ * Word-boundary match for a denylisted function call, used by the keyword
+ * fallback. Built once from `DESTRUCTIVE_FUNCTIONS` rather than per call.
+ */
+const DESTRUCTIVE_FUNCTION_PATTERN = new RegExp(`\\b(?:${[...DESTRUCTIVE_FUNCTIONS].join('|')})\\s*\\(`, 'i');
+
+/**
  * Classify raw SQL as `read`, `write`, or `ddl`.
  *
  * Strategy: try sql-parser-cst first, fall back to keyword-based
@@ -108,8 +147,12 @@ export function classifyStatements(sql: string, dialect: Dialect): SqlClass {
 
 /**
  * Classify via CST. Highest class among all parsed statements wins.
+ *
+ * A data-modifying CTE definition (`WITH t AS (DELETE ... ) SELECT ...`) or
+ * a denylisted function call anywhere in the tree upgrades the result to at
+ * least `write`, even when the outer/final statement is a plain SELECT.
  */
-function classifyCst(program: { statements: Array<{ type: string; clauses?: Array<{ type: string }> }> }): SqlClass {
+function classifyCst(program: Program): SqlClass {
 
     let highest: SqlClass = 'read';
 
@@ -119,7 +162,58 @@ function classifyCst(program: { statements: Array<{ type: string; clauses?: Arra
 
     }
 
+    if (containsWriteSignal(program)) {
+
+        highest = maxClass(highest, 'write');
+
+    }
+
     return highest;
+
+}
+
+/**
+ * True when the tree contains a data-modifying statement nested inside
+ * another statement (only possible via a CTE definition body — see
+ * `CommonTableExpr.expr` in sql-parser-cst's types) or a call to a
+ * `DESTRUCTIVE_FUNCTIONS` builtin anywhere. Either signals at least `write`
+ * regardless of what the outer/final statement looks like.
+ */
+function containsWriteSignal(program: Program): boolean {
+
+    let found = false;
+
+    const markWrite = () => {
+
+        found = true;
+
+    };
+
+    const visit = cstVisitor({
+        insert_stmt: markWrite,
+        update_stmt: markWrite,
+        delete_stmt: markWrite,
+        merge_stmt: markWrite,
+        func_call: (node) => {
+
+            // A schema-qualified call (`pg_catalog.pg_terminate_backend(...)`) parses to a
+            // member_expr name; its `property` is the called identifier regardless of
+            // qualification depth (`db.pg_catalog.fn` nests further qualifiers under
+            // `object`, so `property` is always the rightmost/actual function name).
+            const funcName = node.name.type === 'identifier' ? node.name : node.name.property;
+
+            if (funcName.type === 'identifier' && DESTRUCTIVE_FUNCTIONS.has(funcName.name.toLowerCase())) {
+
+                found = true;
+
+            }
+
+        },
+    });
+
+    visit(program);
+
+    return found;
 
 }
 
@@ -170,6 +264,12 @@ function classifyKeyword(sql: string): SqlClass {
 
     }
 
+    if (hasDestructiveFunctionCall(stripped)) {
+
+        highest = maxClass(highest, 'write');
+
+    }
+
     return highest;
 
 }
@@ -212,39 +312,33 @@ function classifyKeywordStatement(stmt: string): SqlClass {
 }
 
 /**
- * Classify a CTE (WITH ...) by the keyword of its final statement.
- *
- * Finds the last top-level keyword after all CTE definitions by tracking
- * parenthesis depth to skip past nested subqueries.
+ * Classify a CTE (WITH ...): the highest of (a) the final statement's own
+ * class and (b) any data-modifying CTE definition's class. A `WITH t AS
+ * (DELETE ...) SELECT ...` must classify as `write` even though the final
+ * statement is a SELECT — keying only off the final keyword would miss it.
  */
 function classifyCte(upper: string): SqlClass {
 
-    // Find the final statement after the CTE definitions.
-    // CTEs are: WITH name AS (...), name AS (...) <final statement>
-    // We need to find the keyword after the last closing paren at depth 0.
-    let depth = 0;
-    let lastCloseIdx = -1;
+    return maxClass(classifyCteDefinitions(upper), classifyCteFinalStatement(upper));
 
-    for (let i = 0; i < upper.length; i++) {
+}
 
-        if (upper[i] === '(') depth++;
-        if (upper[i] === ')') {
+/**
+ * Classify a CTE by the keyword of its final statement.
+ *
+ * Finds the keyword right after the CTE definition list ends, using the
+ * same `AS (...)` boundary as `classifyCteDefinitions` — not just the
+ * last top-level closing paren, which a subquery inside the final
+ * statement itself (`... WHERE id IN (SELECT ...)`) would also close at
+ * depth 0, misidentifying the CTE boundary.
+ */
+function classifyCteFinalStatement(upper: string): SqlClass {
 
-            depth--;
+    const cteEnd = findCteDefinitionsEnd(upper);
 
-            if (depth === 0) {
+    if (cteEnd === -1) return 'ddl';
 
-                lastCloseIdx = i;
-
-            }
-
-        }
-
-    }
-
-    if (lastCloseIdx === -1) return 'ddl';
-
-    const afterCte = upper.slice(lastCloseIdx + 1).trim();
+    const afterCte = upper.slice(cteEnd).trim();
 
     // Skip optional comma (recursive CTEs)
     const finalStmt = afterCte.replace(/^,/, '').trim();
@@ -253,6 +347,175 @@ function classifyCte(upper: string): SqlClass {
     if (finalKeyword === 'SELECT') return hasTopLevelInto(finalStmt) ? 'ddl' : 'read';
     if (finalKeyword && READ_KEYWORDS[finalKeyword]) return 'read';
     if (finalKeyword && WRITE_KEYWORDS[finalKeyword]) return 'write';
+
+    return 'ddl';
+
+}
+
+/**
+ * Index just past the closing paren of the last `name AS (...)` CTE
+ * definition — the boundary between the definition list and the final
+ * statement. Walks the same comma-separated, depth-0 `AS (...)` structure
+ * as `classifyCteDefinitions` so a paren inside the final statement's own
+ * subquery is never mistaken for this boundary.
+ */
+function findCteDefinitionsEnd(upper: string): number {
+
+    let depth = 0;
+    let i = 0;
+    let end = -1;
+
+    while (i < upper.length) {
+
+        if (upper[i] === '(') {
+
+            if (depth === 0 && isPrecededByAsKeyword(upper, i)) {
+
+                const bodyEnd = findMatchingParen(upper, i);
+
+                end = bodyEnd + 1;
+                i = bodyEnd + 1;
+                continue;
+
+            }
+
+            depth++;
+            i++;
+            continue;
+
+        }
+
+        if (upper[i] === ')') {
+
+            depth--;
+            i++;
+            continue;
+
+        }
+
+        i++;
+
+    }
+
+    return end;
+
+}
+
+/**
+ * Scan each top-level CTE definition body (`name AS (...)`) for a leading
+ * data-modifying or DDL keyword. Mirrors the CST path's inspection of the
+ * parsed CTE's inner statement type, for dialects where the parser throws
+ * and classification falls back to keywords.
+ */
+function classifyCteDefinitions(upper: string): SqlClass {
+
+    let highest: SqlClass = 'read';
+    let depth = 0;
+    let i = 0;
+
+    while (i < upper.length) {
+
+        if (upper[i] === '(') {
+
+            if (depth === 0 && isPrecededByAsKeyword(upper, i)) {
+
+                const bodyEnd = findMatchingParen(upper, i);
+                const body = upper.slice(i + 1, bodyEnd).trim();
+
+                highest = maxClass(highest, classifyCteBodyKeyword(body));
+
+                i = bodyEnd + 1;
+                continue;
+
+            }
+
+            depth++;
+            i++;
+            continue;
+
+        }
+
+        if (upper[i] === ')') {
+
+            depth--;
+            i++;
+            continue;
+
+        }
+
+        i++;
+
+    }
+
+    return highest;
+
+}
+
+/**
+ * True when the `(` at `openIdx` is immediately preceded (ignoring
+ * whitespace) by a standalone `AS` keyword — the shape of a CTE
+ * definition's `name AS (...)` body, as opposed to a column-list paren
+ * (`name(a, b)`) or an unrelated nested paren.
+ */
+function isPrecededByAsKeyword(text: string, openIdx: number): boolean {
+
+    let j = openIdx - 1;
+
+    while (j >= 0) {
+
+        const ch = text[j];
+
+        if (ch === undefined || !/\s/.test(ch)) break;
+
+        j--;
+
+    }
+
+    if (j < 1 || text[j] !== 'S' || text[j - 1] !== 'A') return false;
+
+    const before = text[j - 2];
+
+    return before === undefined || !/\w/.test(before);
+
+}
+
+/**
+ * Index of the `)` matching the `(` at `openIdx`, tracking nested depth.
+ * Falls back to the end of the string for malformed/unterminated input.
+ */
+function findMatchingParen(text: string, openIdx: number): number {
+
+    let depth = 0;
+
+    for (let k = openIdx; k < text.length; k++) {
+
+        if (text[k] === '(') depth++;
+        if (text[k] === ')') {
+
+            depth--;
+
+            if (depth === 0) return k;
+
+        }
+
+    }
+
+    return text.length - 1;
+
+}
+
+/**
+ * Classify a single CTE definition body by its leading keyword. Recurses
+ * for a CTE-within-a-CTE (`t AS (WITH inner AS (...) SELECT ...)`).
+ */
+function classifyCteBodyKeyword(body: string): SqlClass {
+
+    const firstWord = body.match(/^(\w+)/)?.[1];
+
+    if (!firstWord) return 'read';
+    if (firstWord === 'WITH') return classifyCte(body);
+    if (READ_KEYWORDS[firstWord]) return 'read';
+    if (WRITE_KEYWORDS[firstWord]) return 'write';
 
     return 'ddl';
 
@@ -330,6 +593,69 @@ function hasTopLevelInto(sql: string): boolean {
     }
 
     return false;
+
+}
+
+/**
+ * True when the SQL invokes a `DESTRUCTIVE_FUNCTIONS` builtin outside a
+ * string literal. Used by the keyword fallback, where there's no CST to
+ * walk for `func_call` nodes.
+ */
+function hasDestructiveFunctionCall(sql: string): boolean {
+
+    return DESTRUCTIVE_FUNCTION_PATTERN.test(blankStringLiterals(sql));
+
+}
+
+/**
+ * Replace the contents of single-quoted string literals with spaces,
+ * preserving overall length. Mirrors the quote-tracking used elsewhere in
+ * this file (`stripComments`, `hasTopLevelInto`) so a denylisted function
+ * name embedded in a quoted value can't spoof a match.
+ */
+function blankStringLiterals(sql: string): string {
+
+    let result = '';
+    let i = 0;
+
+    while (i < sql.length) {
+
+        if (sql[i] !== "'") {
+
+            result += sql[i++];
+            continue;
+
+        }
+
+        result += ' ';
+        i++;
+
+        while (i < sql.length) {
+
+            if (sql[i] === "'" && sql[i + 1] === "'") {
+
+                result += '  ';
+                i += 2;
+                continue;
+
+            }
+
+            if (sql[i] === "'") {
+
+                result += ' ';
+                i++;
+                break;
+
+            }
+
+            result += ' ';
+            i++;
+
+        }
+
+    }
+
+    return result;
 
 }
 

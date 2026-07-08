@@ -220,6 +220,7 @@ export function ChangeRewindScreen({ params }: ScreenProps): ReactElement {
                 projectRoot,
                 settings,
                 cryptoIdentity,
+                activeConfig,
             });
 
             const result = await manager.rewind(changesToRevert.length);

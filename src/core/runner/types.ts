@@ -10,6 +10,7 @@ import type { Kysely } from 'kysely';
 
 import type { NoormDatabase, ExecutionStatus } from '../shared/index.js';
 import type { Identity } from '../identity/index.js';
+import type { Channel, ConfigAccess } from '../policy/index.js';
 
 // ─────────────────────────────────────────────────────────────
 // Run Options
@@ -76,6 +77,8 @@ export const DEFAULT_RUN_OPTIONS: Required<Omit<RunOptions, 'output'>> & { outpu
  *     configName: 'dev',
  *     identity: { name: 'Alice', email: 'alice@example.com' },
  *     projectRoot: '/project',
+ *     access: { user: 'admin', mcp: 'admin' },
+ *     channel: 'user',
  * }
  * ```
  */
@@ -91,6 +94,17 @@ export interface RunContext {
 
     /** Project root for template resolution */
     projectRoot: string;
+
+    /**
+     * Config's per-channel access roles. Every exported run entrypoint
+     * (`runBuild`/`runFile`/`runDir`/`runFiles`) gates on this once, at the
+     * core seam, so SDK/TUI/CLI callers inherit one enforcement path
+     * instead of re-implementing the check per caller.
+     */
+    access: ConfigAccess;
+
+    /** Caller channel for the policy gate — `user` for CLI/TUI/SDK, `mcp` for MCP. */
+    channel: Channel;
 
     /** Database dialect for schema-aware operations. Default: 'postgres' */
     dialect?: 'postgres' | 'mysql' | 'sqlite' | 'mssql';

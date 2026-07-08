@@ -17,6 +17,7 @@ import type {
     ExecutionStatus,
 } from '../shared/index.js';
 import type { Identity } from '../identity/index.js';
+import type { Channel, ConfigAccess } from '../policy/index.js';
 
 // ─────────────────────────────────────────────────────────────
 // File Types
@@ -299,6 +300,8 @@ export const DEFAULT_BATCH_OPTIONS: Required<Omit<BatchChangeOptions, 'output'>>
  *     projectRoot: '/project',
  *     changesDir: '/project/changes',
  *     sqlDir: '/project/sql',
+ *     access: { user: 'admin', mcp: 'admin' },
+ *     channel: 'user',
  * }
  * ```
  */
@@ -320,6 +323,16 @@ export interface ChangeContext {
 
     /** Schema directory for resolving .txt references */
     sqlDir: string;
+
+    /**
+     * Config's per-channel access roles. `executeChange`/`revertChange`
+     * gate on this once, at the core seam, so SDK/TUI/CLI callers inherit
+     * one enforcement path instead of re-implementing the check per caller.
+     */
+    access: ConfigAccess;
+
+    /** Caller channel for the policy gate — `user` for CLI/TUI/SDK, `mcp` for MCP. */
+    channel: Channel;
 
     /** Config object for template context */
     config?: Record<string, unknown>;

@@ -287,4 +287,160 @@ describe('policy: classifyStatements', () => {
 
     });
 
+    describe('CTE-DML — data-modifying CTE definitions bypass the read gate', () => {
+
+        it('should classify WITH t AS (DELETE ... RETURNING ...) SELECT as write (CST, postgres)', () => {
+
+            expect(classifyStatements(
+                'WITH t AS (DELETE FROM users WHERE id=1 RETURNING id) SELECT * FROM t',
+                'postgres',
+            )).toBe('write');
+
+        });
+
+        it('should classify WITH t AS (INSERT ... RETURNING ...) SELECT as write (CST, postgres)', () => {
+
+            expect(classifyStatements(
+                "WITH t AS (INSERT INTO users(name) VALUES ('x') RETURNING id) SELECT * FROM t",
+                'postgres',
+            )).toBe('write');
+
+        });
+
+        it('should classify WITH t AS (UPDATE ... RETURNING ...) SELECT as write (CST, postgres)', () => {
+
+            expect(classifyStatements(
+                "WITH t AS (UPDATE users SET name='y' WHERE id=1 RETURNING id) SELECT * FROM t",
+                'postgres',
+            )).toBe('write');
+
+        });
+
+        it('should classify WITH t AS (DELETE ...) SELECT as write via keyword fallback (mssql TOP forces fallback)', () => {
+
+            expect(classifyStatements(
+                'WITH t AS (DELETE TOP (1) FROM users) SELECT * FROM t',
+                'mssql',
+            )).toBe('write');
+
+        });
+
+        it('should still classify a pure WITH t AS (SELECT ...) SELECT as read (CST, postgres — no false positive)', () => {
+
+            expect(classifyStatements('WITH t AS (SELECT 1) SELECT * FROM t', 'postgres')).toBe('read');
+
+        });
+
+        it('should still classify a pure WITH t AS (SELECT ...) SELECT as read via keyword fallback (mssql — no false positive)', () => {
+
+            expect(classifyStatements(
+                'WITH t AS (SELECT TOP 1 * FROM t) SELECT * FROM t',
+                'mssql',
+            )).toBe('read');
+
+        });
+
+    });
+
+    describe('destructive function denylist', () => {
+
+        it('should classify SELECT pg_terminate_backend(...) as write (CST, postgres)', () => {
+
+            expect(classifyStatements('SELECT pg_terminate_backend(123)', 'postgres')).toBe('write');
+
+        });
+
+        it('should classify SELECT pg_terminate_backend(...) as write via keyword fallback (mssql TOP forces fallback)', () => {
+
+            expect(classifyStatements('SELECT TOP 1 pg_terminate_backend(123)', 'mssql')).toBe('write');
+
+        });
+
+        it('should stay write when a denylisted function is called inside an already-write statement', () => {
+
+            expect(classifyStatements(
+                'UPDATE t SET x = pg_terminate_backend(1) WHERE id = 1',
+                'postgres',
+            )).toBe('write');
+
+        });
+
+        it('should classify SELECT count(*) as read (pure function, not on the denylist)', () => {
+
+            expect(classifyStatements('SELECT count(*) FROM t', 'postgres')).toBe('read');
+
+        });
+
+        it('should classify SELECT now() as read (pure function, not on the denylist)', () => {
+
+            expect(classifyStatements('SELECT now()', 'postgres')).toBe('read');
+
+        });
+
+        it('should classify SELECT delete_user(1) as read — documented limitation: unlisted side-effecting functions are not caught', () => {
+
+            expect(classifyStatements('SELECT delete_user(1)', 'postgres')).toBe('read');
+
+        });
+
+        it('should classify a schema-qualified denylisted function call as write (member_expr name)', () => {
+
+            expect(classifyStatements('SELECT pg_catalog.pg_terminate_backend(1)', 'postgres')).toBe('write');
+
+        });
+
+        it('should classify a quoted-schema-qualified denylisted function call as write (member_expr name)', () => {
+
+            expect(classifyStatements('SELECT "pg_catalog".pg_terminate_backend(1)', 'postgres')).toBe('write');
+
+        });
+
+        it('should classify a doubly-qualified denylisted function call as write (nested member_expr, rightmost property wins)', () => {
+
+            expect(classifyStatements('SELECT db.pg_catalog.pg_terminate_backend(1)', 'postgres')).toBe('write');
+
+        });
+
+        it('should classify a schema-qualified pure function call as read (no false positive from qualification alone)', () => {
+
+            expect(classifyStatements('SELECT pg_catalog.count(x) FROM t', 'postgres')).toBe('read');
+
+        });
+
+        it('should classify a denylisted name used as a column qualifier (not a function call) as read', () => {
+
+            expect(classifyStatements('SELECT pg_terminate_backend.x FROM t', 'postgres')).toBe('read');
+
+        });
+
+        it('should classify SELECT query_to_xml(...) as write (arbitrary-SQL-executing XML function)', () => {
+
+            expect(classifyStatements("SELECT query_to_xml('DELETE FROM users', false, false, '')", 'postgres')).toBe('write');
+
+        });
+
+    });
+
+    describe('CTE final statement — own subquery parens must not be mistaken for the CTE boundary', () => {
+
+        it('should classify a CTE with a SELECT final statement containing a subquery as read via keyword fallback (mssql)', () => {
+
+            expect(classifyStatements(
+                'WITH t AS (SELECT TOP 1 * FROM x) SELECT * FROM users WHERE id IN (SELECT id FROM t)',
+                'mssql',
+            )).toBe('read');
+
+        });
+
+        it('should classify a CTE with a DELETE final statement containing a subquery as write via keyword fallback (mssql), not over-denied to ddl', () => {
+
+            expect(classifyStatements(
+                'WITH t AS (SELECT TOP 1 * FROM x) DELETE FROM users WHERE id IN (SELECT id FROM t)',
+                'mssql',
+            )).toBe('write');
+
+        });
+
+    });
+
 });

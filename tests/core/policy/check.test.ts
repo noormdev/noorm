@@ -2,7 +2,7 @@
  * Access policy: checkPolicy + guarded.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
-import { checkConfigPolicy, checkPolicy, guarded } from '../../../src/core/policy/index.js';
+import { assertPolicy, checkConfigPolicy, checkPolicy, guarded } from '../../../src/core/policy/index.js';
 import type { Channel, Permission, PolicyCell, PolicyTarget, Role } from '../../../src/core/policy/index.js';
 
 /**
@@ -202,6 +202,32 @@ describe('policy: checkConfigPolicy', () => {
         expect(check.allowed).toBe(true);
         expect(check.requiresConfirmation).toBe(true);
         expect(check.confirmationPhrase).toBe('yes-acme');
+
+    });
+
+});
+
+describe('policy: assertPolicy', () => {
+
+    it('should throw with the blockedReason when a viewer is denied', () => {
+
+        expect(() => assertPolicy('user', targetFor('viewer'), 'db:destroy')).toThrow(
+            '"db:destroy" is not allowed on config "acme" (role: viewer).',
+        );
+
+    });
+
+    it('should not throw when an admin is allowed', () => {
+
+        expect(() => assertPolicy('user', targetFor('admin'), 'sql:read')).not.toThrow();
+
+    });
+
+    it('should deny with the shared fallback message when access is absent', () => {
+
+        expect(() => assertPolicy('user', { name: 'legacy' }, 'explore')).toThrow(
+            'Config "legacy" has no access configuration.',
+        );
 
     });
 

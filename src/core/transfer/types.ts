@@ -6,6 +6,7 @@
  */
 import type { DtColumn } from '../dt/types.js';
 import type { Dialect } from '../connection/types.js';
+import type { Channel } from '../policy/index.js';
 
 /**
  * Strategy for handling primary key conflicts during transfer.
@@ -58,6 +59,12 @@ export interface TransferOptions {
 
     /** Passphrase for .dtzx export encryption. */
     passphrase?: string;
+
+    /**
+     * Caller channel for the `db:reset` policy gate against the
+     * destination config (the write target). Default: `'user'`.
+     */
+    channel?: Channel;
 
 }
 

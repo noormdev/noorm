@@ -164,6 +164,7 @@ export function ChangeNextScreen({ params }: ScreenProps): ReactElement {
                 projectRoot,
                 settings,
                 cryptoIdentity,
+                activeConfig,
             });
 
             const result = await manager.next(count);

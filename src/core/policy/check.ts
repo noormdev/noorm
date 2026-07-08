@@ -112,6 +112,35 @@ export function checkConfigPolicy(
 }
 
 /**
+ * Runs `checkConfigPolicy` and throws when denied — the single fail-closed
+ * gate every command entrypoint (`runBuild`/`runFile`/`runDir`, `executeChange`/
+ * `revertChange`, `executeRawSql`) reaches for instead of hand-rolling its own
+ * check-then-throw with a duplicated fallback message. Callers that need a
+ * tuple instead of a throw (e.g. `transferData`) wrap this in `attemptSync`.
+ *
+ * @throws Error carrying the policy's blockedReason when the channel's role
+ * denies the permission.
+ *
+ * @example
+ * assertPolicy(context.channel, { name: context.configName, access: context.access }, 'run:build');
+ */
+export function assertPolicy(
+    channel: Channel,
+    target: { name: string; access?: ConfigAccess },
+    permission: Permission,
+): void {
+
+    const check = checkConfigPolicy(channel, target, permission);
+
+    if (!check.allowed) {
+
+        throw new Error(check.blockedReason ?? `"${permission}" is not allowed on config "${target.name}".`);
+
+    }
+
+}
+
+/**
  * Display-only shorthand for "this config isn't wide open" — used by TUI
  * styling, `config list`, and settings rule matching. Never an enforcement
  * input; `checkPolicy` is the only gate.

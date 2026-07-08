@@ -164,7 +164,7 @@ export function RunBuildScreen({ params: _params }: ScreenProps): ReactElement {
 
             const context = buildRunContext({
                 db, configName: activeConfigName, identity,
-                projectRoot, activeConfig: activeConfig as unknown as Record<string, unknown>,
+                projectRoot, activeConfig,
                 stateManager, dialect: conn.dialect,
             });
 

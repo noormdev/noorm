@@ -130,6 +130,8 @@ function makeContext(dialect: RunContext['dialect']): TestSetup {
         configName: 'test',
         identity: { name: 'Test', email: 't@x.com', source: 'config' },
         projectRoot: '/tmp',
+        access: { user: 'admin', mcp: 'admin' },
+        channel: 'user',
         dialect,
     };
 

@@ -11,7 +11,7 @@ import { join } from 'node:path';
 import { Kysely, SqliteDialect } from 'kysely';
 import { BunSqliteDatabase } from '../../../src/core/connection/dialects/sqlite-bun.js';
 
-import { executeChange } from '../../../src/core/change/executor.js';
+import { executeChange, revertChange } from '../../../src/core/change/executor.js';
 import { ChangeHistory } from '../../../src/core/change/history.js';
 import { v1 } from '../../../src/core/version/schema/migrations/v1.js';
 import { resetLockManager } from '../../../src/core/lock/index.js';
@@ -78,6 +78,8 @@ describe('change: executor', () => {
             projectRoot: tempDir,
             changesDir,
             sqlDir,
+            access: { user: 'admin', mcp: 'admin' },
+            channel: 'user',
             dialect: 'sqlite',
         };
 
@@ -334,6 +336,50 @@ describe('change: executor', () => {
             expect(events).toContain('file');
             expect(events).toContain('complete');
             expect(events.indexOf('start')).toBeLessThan(events.indexOf('complete'));
+
+        });
+
+    });
+
+    describe('policy gate', () => {
+
+        // The gate is the first thing executeChange/revertChange do, so a
+        // viewer denial fires before any file I/O, lock acquisition, or
+        // history/tracker DB access is attempted.
+
+        it('should deny executeChange for a viewer role', async () => {
+
+            const change = await createTestChange('test-gate-run', [
+                { name: '001.sql', content: 'CREATE TABLE gate_test (id INTEGER)' },
+            ]);
+
+            const context: ChangeContext = { ...buildContext(), access: { user: 'viewer', mcp: false } };
+
+            await expect(executeChange(context, change)).rejects.toThrow(/change:run/);
+
+        });
+
+        it('should deny revertChange for a viewer role', async () => {
+
+            const change = await createTestChange('test-gate-revert', [
+                { name: '001.sql', content: 'CREATE TABLE gate_test2 (id INTEGER)' },
+            ]);
+
+            const context: ChangeContext = { ...buildContext(), access: { user: 'viewer', mcp: false } };
+
+            await expect(revertChange(context, change)).rejects.toThrow(/change:revert/);
+
+        });
+
+        it('should carry the config name in the denial reason', async () => {
+
+            const change = await createTestChange('test-gate-name', [
+                { name: '001.sql', content: 'CREATE TABLE gate_test3 (id INTEGER)' },
+            ]);
+
+            const context: ChangeContext = { ...buildContext(), access: { user: 'viewer', mcp: false } };
+
+            await expect(executeChange(context, change)).rejects.toThrow(/"test"/);
 
         });
 

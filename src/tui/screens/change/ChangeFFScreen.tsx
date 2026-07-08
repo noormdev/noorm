@@ -155,6 +155,7 @@ export function ChangeFFScreen({ params: _params }: ScreenProps): ReactElement {
                 projectRoot,
                 settings,
                 cryptoIdentity,
+                activeConfig,
             });
 
             const result = await manager.ff();

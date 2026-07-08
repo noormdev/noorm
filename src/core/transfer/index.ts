@@ -23,7 +23,10 @@
  * }
  * ```
  */
+import { attemptSync } from '@logosdx/utils';
+
 import { withDualConnection } from '../db/dual.js';
+import { assertPolicy } from '../policy/index.js';
 import type { Config } from '../config/types.js';
 import type { TransferOptions, TransferResult, TransferPlan } from './types.js';
 
@@ -67,6 +70,17 @@ export async function transferData(
     destConfig: Config,
     options: TransferOptions = {},
 ): Promise<[TransferResult | null, Error | null]> {
+
+    // Transfer writes into the destination — that's the destructive act,
+    // so the gate targets destConfig, not sourceConfig. Checked before any
+    // connection opens; dry runs are gated too (the matrix has no carve-out).
+    const [, policyErr] = attemptSync(() => assertPolicy(options.channel ?? 'user', destConfig, 'db:reset'));
+
+    if (policyErr) {
+
+        return [null, policyErr];
+
+    }
 
     // Validate dialects are supported
     const srcDialect = sourceConfig.connection.dialect;

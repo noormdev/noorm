@@ -24,6 +24,7 @@ import {
     discoverFiles as coreDiscoverFiles,
 } from '../../core/runner/index.js';
 import { getStateManager } from '../../core/state/index.js';
+import { checkProtectedConfig } from '../guards.js';
 
 import type { ContextState } from '../state.js';
 import type { BuildOptions } from '../types.js';
@@ -102,6 +103,8 @@ export class RunNamespace {
      */
     async file(filepath: string, options?: RunOptions): Promise<FileResult> {
 
+        checkProtectedConfig(this.#state.config, this.#state.options, 'run:file', 'run.file');
+
         const context = this.#createRunContext();
         const absolutePath = this.#resolvePath(filepath);
 
@@ -118,6 +121,8 @@ export class RunNamespace {
      * ```
      */
     async files(filepaths: string[], options?: RunOptions): Promise<BatchResult> {
+
+        checkProtectedConfig(this.#state.config, this.#state.options, 'run:dir', 'run.files');
 
         const context = this.#createRunContext();
         const absolutePaths = filepaths.map((fp) => this.#resolvePath(fp));
@@ -136,6 +141,8 @@ export class RunNamespace {
      */
     async dir(dirpath: string, options?: RunOptions): Promise<BatchResult> {
 
+        checkProtectedConfig(this.#state.config, this.#state.options, 'run:dir', 'run.dir');
+
         const context = this.#createRunContext();
         const absolutePath = this.#resolvePath(dirpath);
 
@@ -152,6 +159,8 @@ export class RunNamespace {
      * ```
      */
     async build(options?: BuildOptions): Promise<BatchResult> {
+
+        checkProtectedConfig(this.#state.config, this.#state.options, 'run:build', 'run.build');
 
         const context = this.#createRunContext();
         const sqlPath = path.join(
@@ -197,6 +206,8 @@ export class RunNamespace {
             identity: this.#state.identity,
             projectRoot: this.#state.projectRoot,
             dialect: this.#state.config.connection.dialect,
+            access: this.#state.config.access,
+            channel: this.#state.options.channel ?? 'user',
             config: this.#state.config as unknown as Record<string, unknown>,
             secrets: state.getAllSecrets(this.#state.config.name),
             globalSecrets: state.getAllGlobalSecrets(),

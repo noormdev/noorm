@@ -149,6 +149,8 @@ export function ChangeRunScreen({ params }: ScreenProps): ReactElement {
                 projectRoot,
                 changesDir: resolveChangesDir(projectRoot, settings),
                 sqlDir: resolveSqlDir(projectRoot, settings),
+                access: activeConfig.access,
+                channel: 'user' as const,
             };
 
             // Execute change
