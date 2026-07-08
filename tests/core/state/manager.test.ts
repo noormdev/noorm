@@ -5,14 +5,16 @@
  * polluting the project directory.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
-import { mkdtempSync, rmSync, existsSync, readFileSync } from 'fs';
-import { join } from 'path';
-import { StateManager, resetStateManager } from '../../../src/core/state/index.js';
+import { mkdtempSync, rmSync, existsSync, readFileSync, mkdirSync, writeFileSync } from 'fs';
+import { join, dirname } from 'path';
+import { StateManager, resetStateManager, getPackageVersion } from '../../../src/core/state/index.js';
 import type { Config } from '../../../src/core/config/types.js';
 import type { KnownUser } from '../../../src/core/identity/types.js';
 import { generateKeyPair } from '../../../src/core/identity/crypto.js';
-import { decrypt } from '../../../src/core/state/encryption/index.js';
+import { encrypt, decrypt } from '../../../src/core/state/encryption/index.js';
 import type { EncryptedPayload } from '../../../src/core/state/types.js';
+import { guarded } from '../../../src/core/policy/index.js';
+import { CURRENT_VERSIONS } from '../../../src/core/version/types.js';
 
 /**
  * Create a valid test config.
@@ -23,7 +25,7 @@ function createTestConfig(name: string, overrides: Partial<Config> = {}): Config
         name,
         type: 'local',
         isTest: true,
-        protected: false,
+        access: { user: 'admin', mcp: 'admin' },
         connection: {
             dialect: 'sqlite',
             database: ':memory:',
@@ -115,6 +117,142 @@ describe('state: manager', () => {
     });
 
     // ─────────────────────────────────────────────────────────────
+    // Migration (legacy `protected` -> `access`, on real load())
+    // ─────────────────────────────────────────────────────────────
+
+    describe('load: legacy protected -> access migration', () => {
+
+        /**
+         * Writes a state.enc file shaped like state predating per-config
+         * access roles: no `schemaVersion` field (that field didn't exist
+         * yet) and configs carrying the legacy `protected` boolean instead
+         * of `access`.
+         */
+        function writeLegacyState(
+            statePath: string,
+            privateKey: string,
+            configs: Record<string, unknown>,
+        ): void {
+
+            const legacyState = {
+                version: '1.0.0',
+                knownUsers: {},
+                activeConfig: null,
+                configs,
+                secrets: {},
+                globalSecrets: {},
+            };
+
+            mkdirSync(dirname(statePath), { recursive: true });
+            writeFileSync(
+                statePath,
+                JSON.stringify(encrypt(JSON.stringify(legacyState), privateKey), null, 2),
+            );
+
+        }
+
+        it('should migrate a legacy protected:true config to guarded access', async () => {
+
+            const statePath = state.getStatePath();
+            writeLegacyState(statePath, testPrivateKey, {
+                prod: {
+                    name: 'prod',
+                    type: 'local',
+                    isTest: false,
+                    protected: true,
+                    connection: { dialect: 'sqlite', database: ':memory:' },
+                },
+            });
+
+            await state.load();
+
+            expect(state.getConfig('prod')?.access).toEqual({ user: 'operator', mcp: 'viewer' });
+
+            const raw = readFileSync(statePath, 'utf8');
+            const decrypted = JSON.parse(
+                decrypt(JSON.parse(raw) as EncryptedPayload, testPrivateKey),
+            ) as { schemaVersion: number; configs: Record<string, Record<string, unknown>> };
+
+            expect(decrypted.schemaVersion).toBe(CURRENT_VERSIONS.state);
+            expect(decrypted.configs['prod']).not.toHaveProperty('protected');
+
+        });
+
+        it('should migrate a legacy protected:false config to open access', async () => {
+
+            const statePath = state.getStatePath();
+            writeLegacyState(statePath, testPrivateKey, {
+                dev: {
+                    name: 'dev',
+                    type: 'local',
+                    isTest: false,
+                    protected: false,
+                    connection: { dialect: 'sqlite', database: ':memory:' },
+                },
+            });
+
+            await state.load();
+
+            expect(state.getConfig('dev')?.access).toEqual({ user: 'admin', mcp: 'admin' });
+
+            const raw = readFileSync(statePath, 'utf8');
+            const decrypted = JSON.parse(
+                decrypt(JSON.parse(raw) as EncryptedPayload, testPrivateKey),
+            ) as { schemaVersion: number; configs: Record<string, Record<string, unknown>> };
+
+            expect(decrypted.schemaVersion).toBe(CURRENT_VERSIONS.state);
+            expect(decrypted.configs['dev']).not.toHaveProperty('protected');
+
+        });
+
+        it('should persist a backfilled access to disk even when no version migration ran', async () => {
+
+            const statePath = state.getStatePath();
+            const currentVersion = getPackageVersion();
+
+            const currentState = {
+                version: currentVersion,
+                schemaVersion: CURRENT_VERSIONS.state,
+                identity: {},
+                knownUsers: {},
+                activeConfig: null,
+                configs: {
+                    corrupt: {
+                        name: 'corrupt',
+                        type: 'local',
+                        isTest: false,
+                        connection: { dialect: 'sqlite', database: ':memory:' },
+                    },
+                },
+                secrets: {},
+                globalSecrets: {},
+            };
+
+            mkdirSync(dirname(statePath), { recursive: true });
+            writeFileSync(
+                statePath,
+                JSON.stringify(encrypt(JSON.stringify(currentState), testPrivateKey), null, 2),
+            );
+
+            await state.load();
+
+            expect(state.getConfig('corrupt')?.access).toEqual({ user: 'admin', mcp: 'admin' });
+
+            const raw = readFileSync(statePath, 'utf8');
+            const decrypted = JSON.parse(
+                decrypt(JSON.parse(raw) as EncryptedPayload, testPrivateKey),
+            ) as { configs: Record<string, Record<string, unknown>> };
+
+            expect(decrypted.configs['corrupt']?.['access']).toEqual({
+                user: 'admin',
+                mcp: 'admin',
+            });
+
+        });
+
+    });
+
+    // ─────────────────────────────────────────────────────────────
     // Config Operations
     // ─────────────────────────────────────────────────────────────
 
@@ -132,9 +270,7 @@ describe('state: manager', () => {
             await state.setConfig('dev', config);
 
             const retrieved = state.getConfig('dev');
-            // setConfig backfills access (derived from the legacy protected
-            // flag) onto configs that don't carry it yet.
-            expect(retrieved).toEqual({ ...config, access: { user: 'admin', mcp: 'admin' } });
+            expect(retrieved).toEqual(config);
 
         });
 
@@ -148,10 +284,10 @@ describe('state: manager', () => {
         it('should update existing config', async () => {
 
             await state.setConfig('dev', createTestConfig('dev'));
-            await state.setConfig('dev', createTestConfig('dev', { protected: true }));
+            await state.setConfig('dev', createTestConfig('dev', { access: { user: 'operator', mcp: 'viewer' } }));
 
             const config = state.getConfig('dev');
-            expect(config?.protected).toBe(true);
+            expect(guarded(config!)).toBe(true);
 
         });
 
@@ -170,19 +306,19 @@ describe('state: manager', () => {
             const initialCount = state.listConfigs().length;
 
             await state.setConfig('dev', createTestConfig('dev'));
-            await state.setConfig('prod', createTestConfig('prod', { protected: true }));
+            await state.setConfig('prod', createTestConfig('prod', { access: { user: 'operator', mcp: 'viewer' } }));
 
             const list = state.listConfigs();
             expect(list).toHaveLength(initialCount + 2);
             expect(list.find((c) => c.name === 'dev')).toBeDefined();
-            expect(list.find((c) => c.name === 'prod')?.protected).toBe(true);
+            expect(guarded(list.find((c) => c.name === 'prod')!)).toBe(true);
 
         });
 
         it('should include access in config summaries', async () => {
 
             await state.setConfig('dev', createTestConfig('dev'));
-            await state.setConfig('prod', createTestConfig('prod', { protected: true }));
+            await state.setConfig('prod', createTestConfig('prod', { access: { user: 'operator', mcp: 'viewer' } }));
 
             const list = state.listConfigs();
 
@@ -199,7 +335,7 @@ describe('state: manager', () => {
 
         it('should not persist a stored protected field on disk', async () => {
 
-            await state.setConfig('dev', createTestConfig('dev', { protected: true }));
+            await state.setConfig('dev', createTestConfig('dev', { access: { user: 'operator', mcp: 'viewer' } }));
 
             const raw = readFileSync(state.getStatePath(), 'utf8');
             const payload = JSON.parse(raw) as EncryptedPayload;

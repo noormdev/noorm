@@ -42,14 +42,12 @@ function _matchesCondition<K extends keyof RuleMatch>(
 }
 
 /**
- * Whether a config counts as "guarded" for rule matching. Prefers
- * `guarded(config)` (the policy module's `access`-based definition) when
- * `access` is present; falls back to the raw `protected` boolean for
- * callers that haven't adopted access roles yet.
+ * Whether a config counts as "guarded" for rule matching, per the policy
+ * module's `access`-based definition.
  */
 function isConfigGuarded(config: ConfigForRuleMatch): boolean {
 
-    return config.access ? guarded({ name: config.name, access: config.access }) : config.protected;
+    return guarded(config);
 
 }
 
@@ -61,7 +59,7 @@ function isConfigGuarded(config: ConfigForRuleMatch): boolean {
  * @example
  * ```typescript
  * const rule = { match: { isTest: true, type: 'local' } }
- * const config = { name: 'dev', isTest: true, type: 'local', protected: false }
+ * const config = { name: 'dev', isTest: true, type: 'local', access: { user: 'admin', mcp: 'admin' } }
  *
  * ruleMatches(rule.match, config)  // true
  * ```

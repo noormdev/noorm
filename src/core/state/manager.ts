@@ -12,16 +12,30 @@ import { attemptSync, attempt } from '@logosdx/utils';
 import type { Config } from '../config/types.js';
 import type { KnownUser } from '../identity/types.js';
 import { loadPrivateKey } from '../identity/storage.js';
+import { resolveLegacyAccess } from '../policy/index.js';
+import {
+    migrateState as migrateSchemaVersion,
+    needsStateMigration,
+} from '../version/state/index.js';
 import { encrypt, decrypt } from './encryption/index.js';
 import type { State, ConfigSummary, EncryptedPayload } from './types.js';
 import { createEmptyState } from './types.js';
 import { migrateState, needsMigration } from './migrations.js';
 import { getPackageVersion } from './version.js';
 import { observer } from '../observer.js';
-import { resolveLegacyAccess } from '../policy/index.js';
 
 const DEFAULT_STATE_DIR = '.noorm/state';
 const DEFAULT_STATE_FILE = 'state.enc';
+
+/**
+ * Narrows freshly-parsed JSON to a plain record so the schema-version
+ * migration (which expects `Record<string, unknown>`) can run on it.
+ */
+function isRecord(value: unknown): value is Record<string, unknown> {
+
+    return typeof value === 'object' && value !== null;
+
+}
 
 /**
  * Options for StateManager constructor.
@@ -165,13 +179,49 @@ export class StateManager {
 
         }
 
+        // Two independent migration systems run here, in this order:
+        // schema-version migrations (core/version/state, keyed on the numeric
+        // `schemaVersion` field — the canonical version-migration domain,
+        // e.g. the v2 `protected` -> `access` mapping) run first, on the raw
+        // record. The package-semver migration below only knows about
+        // State's own six top-level fields and would silently drop anything
+        // schema-version-owned (including `schemaVersion` itself) if it ran
+        // first.
+        const stateRecord = isRecord(parsedState) ? parsedState : {};
+        const schemaMigratedState = migrateSchemaVersion(stateRecord);
+
         // Apply migrations if needed (migrateState emits state:migrated if version changed)
-        const wasMigrated = needsMigration(parsedState, currentVersion);
-        this.state = migrateState(parsedState, currentVersion);
+        const needsVersionMigration =
+            needsMigration(schemaMigratedState, currentVersion) ||
+            needsStateMigration(stateRecord);
+        this.state = migrateState(schemaMigratedState, currentVersion);
+
+        // Raw-data-boundary invariant: migrations above guarantee every
+        // config carries `access`, but a hand-edited or corrupted state
+        // file can still reach this point without it. This is the single
+        // place that backfills it, so no downstream consumer
+        // (setConfig/listConfigs/guarded) needs its own fallback. Tracking
+        // whether it actually mutated anything (below) feeds the persist
+        // decision, so a config backfilled at an already-current schema
+        // version still lands on disk instead of being re-healed forever.
+        let backfilledAccess = false;
+
+        for (const config of Object.values(this.state.configs)) {
+
+            if (!config.access) {
+
+                backfilledAccess = true;
+
+            }
+
+            config.access = resolveLegacyAccess(config.access, undefined);
+
+        }
+
         this.loaded = true;
 
-        // Persist if migrations were applied
-        if (wasMigrated) {
+        // Persist if migrations were applied or the backfill above mutated a config
+        if (needsVersionMigration || backfilledAccess) {
 
             this.persist();
 
@@ -233,18 +283,7 @@ export class StateManager {
 
         }
 
-        // `protected` is derived from `access` and never persisted — only
-        // `access` is the stored source of truth.
-        const persistedConfigs: Record<string, Omit<Config, 'protected'>> = {};
-
-        for (const [name, config] of Object.entries(state.configs)) {
-
-            const { protected: _protected, ...rest } = config;
-            persistedConfigs[name] = rest;
-
-        }
-
-        const json = JSON.stringify({ ...state, configs: persistedConfigs });
+        const json = JSON.stringify(state);
         const payload = encrypt(json, this.privateKey);
 
         const [, writeErr] = attemptSync(() =>
@@ -301,9 +340,8 @@ export class StateManager {
 
         const state = this.getState();
         const isNew = !state.configs[name];
-        const access = resolveLegacyAccess(config.access, config.protected);
 
-        state.configs[name] = { ...config, access, protected: access.user !== 'admin' };
+        state.configs[name] = { ...config };
         this.persist();
 
         observer.emit(isNew ? 'config:created' : 'config:updated', {
@@ -340,22 +378,15 @@ export class StateManager {
 
         const state = this.getState();
 
-        return Object.entries(state.configs).map(([name, config]) => {
-
-            const access = resolveLegacyAccess(config.access, config.protected);
-
-            return {
-                name,
-                type: config.type,
-                isTest: config.isTest,
-                access,
-                protected: access.user !== 'admin',
-                isActive: state.activeConfig === name,
-                dialect: config.connection.dialect,
-                database: config.connection.database,
-            };
-
-        });
+        return Object.entries(state.configs).map(([name, config]) => ({
+            name,
+            type: config.type,
+            isTest: config.isTest,
+            access: config.access,
+            isActive: state.activeConfig === name,
+            dialect: config.connection.dialect,
+            database: config.connection.database,
+        }));
 
     }
 

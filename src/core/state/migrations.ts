@@ -35,10 +35,17 @@ export function migrateState(state: unknown, currentVersion: string): State {
     const obj = state as Record<string, unknown>;
     const previousVersion = obj['version'] as string | undefined;
 
+    // schemaVersion is owned by the schema-version migration (core/version/state),
+    // which runs before this function and stamps it onto the input record;
+    // carry it through rather than dropping it as an unrecognized field.
+    // Falls back to 0 (unversioned) for callers that skip that stage.
+    const schemaVersion = typeof obj['schemaVersion'] === 'number' ? obj['schemaVersion'] : 0;
+
     // Build migrated state with defaults for missing fields
     // Note: identity is now stored globally in ~/.noorm/, not in project state
     const migrated: State = {
         version: currentVersion,
+        schemaVersion,
         knownUsers: (obj['knownUsers'] as Record<string, KnownUser>) ?? {},
         activeConfig: (obj['activeConfig'] as string | null) ?? null,
         configs: (obj['configs'] as Record<string, unknown> as State['configs']) ?? {},

@@ -21,7 +21,6 @@ function makeConfig(access: ConfigAccess, overrides: Partial<Config> = {}): Conf
         type: 'local',
         isTest: true,
         access,
-        protected: access.user !== 'admin',
         connection: { dialect: 'postgres', database: 'testdb' },
         ...overrides,
     };

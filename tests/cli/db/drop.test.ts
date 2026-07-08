@@ -91,7 +91,6 @@ describe('cli: noorm db drop — access policy gate', () => {
             type: 'local',
             isTest: true,
             access,
-            protected: access.user !== 'admin',
             connection: { dialect: 'sqlite', database: dbPath },
         };
 

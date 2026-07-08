@@ -11,6 +11,7 @@ import {
 } from '../../../src/core/config/index.js';
 import { SettingsProvider } from '../../../src/core/config/resolver.js';
 import type { Config, Stage } from '../../../src/core/config/index.js';
+import { guarded } from '../../../src/core/policy/index.js';
 
 /**
  * Create a mock state provider for testing.
@@ -78,7 +79,7 @@ function createConfig(overrides: Partial<Config> = {}): Config {
         name: 'test',
         type: 'local',
         isTest: true,
-        protected: false,
+        access: { user: 'admin', mcp: 'admin' },
         connection: {
             dialect: 'sqlite',
             database: ':memory:',
@@ -373,7 +374,7 @@ describe('config: resolver', () => {
             const config = resolveConfig(state);
 
             expect(config!.type).toBe('local');
-            expect(config!.protected).toBe(false);
+            expect(config!.access).toEqual({ user: 'admin', mcp: 'admin' });
 
         });
 
@@ -444,7 +445,7 @@ describe('config: resolver', () => {
             // stored config can override to something looser: stored has no
             // explicit access (defaults to admin/admin), which is looser
             // than the operator/viewer ceiling, so it gets clamped down.
-            expect(config!.protected).toBe(true);
+            expect(guarded(config!)).toBe(true);
             expect(config!.access).toEqual({ user: 'operator', mcp: 'viewer' });
             expect(config!.connection.host).toBe('localhost'); // stored overrides stage
 
@@ -456,7 +457,6 @@ describe('config: resolver', () => {
                 name: 'prod',
                 type: 'local',
                 isTest: false,
-                protected: false,
                 connection: {
                     dialect: 'postgres',
                     database: 'myapp',
@@ -507,7 +507,7 @@ describe('config: resolver', () => {
 
             // Stage `protected: true` clamps the stored config's (looser,
             // default admin/admin) access down to the ceiling.
-            expect(config!.protected).toBe(true);
+            expect(guarded(config!)).toBe(true);
             expect(config!.access).toEqual({ user: 'operator', mcp: 'viewer' });
 
         });
@@ -545,39 +545,11 @@ describe('config: resolver', () => {
 
     });
 
-    describe('legacy protected mapping', () => {
-
-        it('should map a stored legacy protected:true (no access) to guarded access', () => {
-
-            const stored = createConfig({ name: 'prod', protected: true });
-            const state = createMockState({
-                configs: { prod: stored },
-                activeConfig: 'prod',
-            });
-
-            const config = resolveConfig(state);
-
-            expect(config!.access).toEqual({ user: 'operator', mcp: 'viewer' });
-            expect(config!.protected).toBe(true);
-
-        });
-
-        it('should map a stored legacy protected:false (no access) to open access', () => {
-
-            const stored = createConfig({ name: 'dev', protected: false });
-            const state = createMockState({
-                configs: { dev: stored },
-                activeConfig: 'dev',
-            });
-
-            const config = resolveConfig(state);
-
-            expect(config!.access).toEqual({ user: 'admin', mcp: 'admin' });
-            expect(config!.protected).toBe(false);
-
-        });
-
-    });
+    // Legacy `protected`-only (no `access`) stored configs are no longer
+    // representable through the typed `StateProvider`/`Config` surface —
+    // `access` is required on `Config`, so the state migration (v2) and
+    // `parseConfig`'s legacy mapping (tests/core/config/schema.test.ts) are
+    // the only remaining places raw `protected` boolean input is resolved.
 
     describe('stage access ceiling', () => {
 
@@ -617,7 +589,7 @@ describe('config: resolver', () => {
             const config = resolveWithStageProtected({ user: 'admin', mcp: 'admin' }, true);
 
             expect(config!.access).toEqual({ user: 'operator', mcp: 'viewer' });
-            expect(config!.protected).toBe(true);
+            expect(guarded(config!)).toBe(true);
 
         });
 
@@ -634,7 +606,7 @@ describe('config: resolver', () => {
             const config = resolveWithStageProtected({ user: 'viewer', mcp: false }, true);
 
             expect(config!.access).toEqual({ user: 'viewer', mcp: false });
-            expect(config!.protected).toBe(true);
+            expect(guarded(config!)).toBe(true);
 
         });
 
@@ -712,13 +684,13 @@ describe('config: resolver', () => {
 
         it('should not report a protected violation (enforced as an access ceiling at resolution instead)', () => {
 
-            // A config with protected=false / open access reaching this
-            // check is only possible outside resolveConfig, which clamps
-            // access to the stage ceiling before returning. checkConfigCompleteness
-            // no longer duplicates that enforcement as a violation.
+            // A config with open access reaching this check is only
+            // possible outside resolveConfig, which clamps access to the
+            // stage ceiling before returning. checkConfigCompleteness no
+            // longer duplicates that enforcement as a violation.
             const config = createConfig({
                 name: 'prod',
-                protected: false,
+                access: { user: 'admin', mcp: 'admin' },
             });
             const state = createMockState();
 
@@ -767,7 +739,7 @@ describe('config: resolver', () => {
 
             const config = createConfig({
                 name: 'prod',
-                protected: true,
+                access: { user: 'operator', mcp: 'viewer' },
             });
             const state = createMockState({
                 secrets: { prod: ['DB_PASSWORD', 'API_KEY'] },

@@ -43,7 +43,6 @@ function testConfig(name: string, overrides: Partial<Config> = {}): Config {
         name,
         type: 'local',
         isTest: true,
-        protected: false,
         access: { user: 'admin', mcp: 'admin' },
         connection: { dialect: 'sqlite', database: ':memory:' },
         ...overrides,
@@ -145,30 +144,6 @@ describe('rpc: session manager', () => {
 
         });
 
-        it('should deny a config with no access at all on the mcp channel (fail closed)', async () => {
-
-            const mcpSession = new SessionManager('mcp');
-
-            // Simulates a config reaching enforcement without `access`
-            // populated — never happens via parseConfig/state load, but
-            // enforcement code must not trust the type-level optionality.
-            const legacyConfig: Config = {
-                name: 'legacy',
-                type: 'local',
-                isTest: true,
-                protected: false,
-                connection: { dialect: 'sqlite', database: ':memory:' },
-            };
-
-            configs.set('legacy', legacyConfig);
-
-            const [, err] = await attempt(() => mcpSession.connect('legacy'));
-
-            expect(err).toBeDefined();
-            expect(err!.message).toBe('Failed to create context: Config "legacy" not found');
-
-        });
-
         it('should allow a visible config through on the mcp channel and report its mcp role', async () => {
 
             const mcpSession = new SessionManager('mcp');
@@ -188,6 +163,29 @@ describe('rpc: session manager', () => {
             const info = await session.connect('secret');
 
             expect(info.role).toBe('operator');
+
+        });
+
+        it('should deny an mcp-channel config that reaches connect with no `access` at all, identically to an unknown config', async () => {
+
+            const mcpSession = new SessionManager('mcp');
+
+            const [, unknownErr] = await attempt(() => mcpSession.connect('does-not-exist'));
+
+            // `Config.access` is required at compile time; this hand-built
+            // double simulates a runtime boundary that bypasses it (a
+            // non-TS SDK caller, or state that slipped past the load-time
+            // normalization) to prove the `!rawAccess` fail-closed check in
+            // session.ts actually denies rather than throwing or opening up.
+            const noAccessConfig = testConfig('no-access');
+            Reflect.deleteProperty(noAccessConfig, 'access');
+            configs.set('no-access', noAccessConfig);
+
+            const [, noAccessErr] = await attempt(() => mcpSession.connect('no-access'));
+
+            expect(unknownErr).toBeDefined();
+            expect(noAccessErr).toBeDefined();
+            expect(noAccessErr!.message).toBe(unknownErr!.message.replace('does-not-exist', 'no-access'));
 
         });
 

@@ -303,13 +303,7 @@ export interface ConfigForRuleMatch {
     name: string;
     type: 'local' | 'remote';
     isTest: boolean;
-    protected: boolean;
 
-    /**
-     * Optional so callers that haven't adopted access roles yet (still
-     * passing only `protected`) keep working. When present, `ruleMatches`
-     * matches `match.protected` against `guarded(config)` instead of the
-     * raw `protected` boolean.
-     */
-    access?: ConfigAccess;
+    /** `ruleMatches` matches `match.protected` against `guarded(config)`. */
+    access: ConfigAccess;
 }

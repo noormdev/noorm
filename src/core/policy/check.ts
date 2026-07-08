@@ -77,13 +77,15 @@ export function checkPolicy(channel: Channel, target: PolicyTarget, permission: 
 }
 
 /**
- * Runs `checkPolicy` against a config that may not yet carry `access` —
- * the single fail-closed wrapper every caller reaches for once `Config`
- * itself only guarantees `access` optionally (docs/spec/config-access-roles.md#data-model).
+ * Runs `checkPolicy` against a config that may not carry `access` — the
+ * single fail-closed wrapper every caller reaches for when the value in
+ * hand isn't a validated `Config` (e.g. raw JSON, a test double). `Config`
+ * itself requires `access` (docs/spec/config-access-roles.md#data-model).
  * Absent access denies on both channels with the same message, rather than
  * each caller hand-rolling its own "no access configuration" branch. In
- * practice this never triggers: every config reaching enforcement came
- * through `parseConfig`/state load, which always populates `access`.
+ * practice this never triggers for a real `Config`: every one reaching
+ * enforcement came through `parseConfig`/state load, which always
+ * populates `access`.
  *
  * @example
  * const check = checkConfigPolicy('mcp', ctx.noorm.config, 'sql:write');

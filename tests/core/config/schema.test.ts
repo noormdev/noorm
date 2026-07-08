@@ -10,6 +10,7 @@ import {
     ConfigValidationError,
 } from '../../../src/core/config/index.js';
 import type { Config } from '../../../src/core/config/index.js';
+import { guarded } from '../../../src/core/policy/index.js';
 
 /**
  * Create a valid test config.
@@ -20,7 +21,7 @@ function createValidConfig(overrides: Partial<Config> = {}): Config {
         name: 'test',
         type: 'local',
         isTest: true,
-        protected: false,
+        access: { user: 'admin', mcp: 'admin' },
         connection: {
             dialect: 'sqlite',
             database: ':memory:',
@@ -293,7 +294,7 @@ describe('config: schema validation', () => {
 
             expect(result.type).toBe('local');
             expect(result.isTest).toBe(false);
-            expect(result.protected).toBe(false);
+            expect(result.access).toEqual({ user: 'admin', mcp: 'admin' });
 
         });
 
@@ -302,14 +303,14 @@ describe('config: schema validation', () => {
             const config = createValidConfig({
                 type: 'remote',
                 isTest: true,
-                protected: true,
+                access: { user: 'operator', mcp: 'viewer' },
             });
 
             const result = parseConfig(config);
 
             expect(result.type).toBe('remote');
             expect(result.isTest).toBe(true);
-            expect(result.protected).toBe(true);
+            expect(result.access).toEqual({ user: 'operator', mcp: 'viewer' });
 
         });
 
@@ -323,41 +324,51 @@ describe('config: schema validation', () => {
 
         describe('access roles', () => {
 
+            /** Strips the default `access` so the legacy `protected` fallback is reachable. */
+            function withoutAccess(config: Config): Omit<Config, 'access'> {
+
+                const { access: _access, ...rest } = config;
+
+                return rest;
+
+            }
+
             it('should default access to admin/admin when neither access nor protected is given', () => {
 
-                const result = parseConfig(createValidConfig());
+                const result = parseConfig(withoutAccess(createValidConfig()));
 
                 expect(result.access).toEqual({ user: 'admin', mcp: 'admin' });
-                expect(result.protected).toBe(false);
+                expect(guarded(result)).toBe(false);
 
             });
 
             it('should map legacy protected: true to guarded access', () => {
 
-                const config = createValidConfig({ protected: true });
+                const config = { ...withoutAccess(createValidConfig()), protected: true };
 
                 const result = parseConfig(config);
 
                 expect(result.access).toEqual({ user: 'operator', mcp: 'viewer' });
-                expect(result.protected).toBe(true);
+                expect(guarded(result)).toBe(true);
 
             });
 
             it('should map legacy protected: false to open access', () => {
 
-                const config = createValidConfig({ protected: false });
+                const config = { ...withoutAccess(createValidConfig()), protected: false };
 
                 const result = parseConfig(config);
 
                 expect(result.access).toEqual({ user: 'admin', mcp: 'admin' });
-                expect(result.protected).toBe(false);
+                expect(guarded(result)).toBe(false);
 
             });
 
             it('should prefer an explicit access over the legacy protected flag', () => {
 
                 const config = {
-                    ...createValidConfig({ protected: true }),
+                    ...createValidConfig(),
+                    protected: true,
                     access: { user: 'viewer' as const, mcp: false as const },
                 };
 
@@ -367,11 +378,11 @@ describe('config: schema validation', () => {
 
             });
 
-            it('should never emit the raw input protected value — only the derived one', () => {
+            it('should never let the raw input protected value override an explicit access', () => {
 
                 // access says open (admin/admin) while the legacy protected
-                // flag says guarded; the derived value must follow access,
-                // never pass the raw input's protected straight through.
+                // flag says guarded; the resolved access must follow the
+                // explicit access, never the raw input's protected flag.
                 const config = {
                     ...createValidConfig(),
                     protected: true,
@@ -380,7 +391,7 @@ describe('config: schema validation', () => {
 
                 const result = parseConfig(config);
 
-                expect(result.protected).toBe(false);
+                expect(guarded(result)).toBe(false);
 
             });
 

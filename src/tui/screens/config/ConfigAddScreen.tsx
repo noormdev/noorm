@@ -27,7 +27,7 @@ import { useRouter } from '../../router.js';
 import { useAppContext, useSettings } from '../../app-context.js';
 import { Panel, Form, useToast } from '../../components/index.js';
 import { testConnection } from '../../../core/connection/factory.js';
-import { guarded, GUARDED_ACCESS, OPEN_ACCESS } from '../../../core/policy/index.js';
+import { GUARDED_ACCESS, OPEN_ACCESS } from '../../../core/policy/index.js';
 import {
     getErrorMessage,
     validateConfigName,
@@ -180,7 +180,6 @@ export function ConfigAddScreen({ params }: ScreenProps): ReactElement {
                 type: 'local',
                 isTest: Boolean(values['isTest']),
                 access,
-                protected: guarded({ name: configName, access }),
                 connection: connectionConfig,
             };
 

@@ -15,7 +15,6 @@ import { getEnvConfigName } from '../environment.js';
 import { parseConfig, type ConfigSchemaType } from './schema.js';
 import { getEnvConfig } from './index.js';
 import type { SettingsManager, StageDefaults } from '../settings/index.js';
-import { guarded } from '../policy/index.js';
 import type { ConfigAccess, Role } from '../policy/index.js';
 
 /**
@@ -123,9 +122,8 @@ function clampToCeiling(access: ConfigAccess, ceiling: ConfigAccess): ConfigAcce
 /**
  * Applies the stage `protected: true` access ceiling to a resolved config.
  *
- * A `protected: true` stage no longer sets `protected` on the config
- * directly — it caps how open the config's access can be. Stricter configs
- * (e.g. an already-viewer config) are left alone.
+ * A `protected: true` stage caps how open the config's access can be.
+ * Stricter configs (e.g. an already-viewer config) are left alone.
  */
 function applyStageCeiling(
     config: ConfigSchemaType,
@@ -134,12 +132,9 @@ function applyStageCeiling(
 
     if (stageDefaults?.protected !== true) return config;
 
-    const access = clampToCeiling(config.access, PROTECTED_STAGE_CEILING);
-
     return {
         ...config,
-        access,
-        protected: guarded({ name: config.name, access }),
+        access: clampToCeiling(config.access, PROTECTED_STAGE_CEILING),
     };
 
 }

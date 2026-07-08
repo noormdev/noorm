@@ -23,7 +23,6 @@ import { useRouter } from '../../router.js';
 import { useAppContext } from '../../app-context.js';
 import { Panel, Form, useToast, MissingParamPanel, NotFoundPanel } from '../../components/index.js';
 import { testConnection } from '../../../core/connection/factory.js';
-import { guarded, resolveLegacyAccess } from '../../../core/policy/index.js';
 import {
     getErrorMessage,
     validateConfigName,
@@ -63,7 +62,7 @@ export function ConfigEditScreen({ params }: ScreenProps): ReactElement {
 
         if (!config) return [];
 
-        const access = resolveLegacyAccess(config.access, config.protected);
+        const access = config.access;
 
         return [
             {
@@ -182,7 +181,6 @@ export function ConfigEditScreen({ params }: ScreenProps): ReactElement {
                 name: newName,
                 isTest: Boolean(values['isTest']),
                 access,
-                protected: guarded({ name: newName, access }),
                 connection: connectionConfig,
             };
 

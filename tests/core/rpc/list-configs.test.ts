@@ -32,7 +32,6 @@ function testConfig(name: string, overrides: Partial<Config> = {}): Config {
         name,
         type: 'local',
         isTest: true,
-        protected: false,
         access: { user: 'admin', mcp: 'admin' },
         connection: { dialect: 'sqlite', database: ':memory:' },
         ...overrides,

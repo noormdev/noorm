@@ -29,7 +29,7 @@ function createTestConfig(name: string): Config {
         name,
         type: 'local',
         isTest: true,
-        protected: false,
+        access: { user: 'admin', mcp: 'admin' },
         connection: {
             dialect: 'sqlite',
             database: ':memory:',

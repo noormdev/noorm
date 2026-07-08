@@ -30,7 +30,6 @@ import { useFocusScope } from '../../focus.js';
 import { useActiveConfig, useSettings, useGlobalModes } from '../../app-context.js';
 import { Panel, Spinner } from '../../components/index.js';
 import { getEffectiveBuildPaths } from '../../../core/settings/rules.js';
-import { guarded } from '../../../core/policy/index.js';
 
 /**
  * RunListScreen component.
@@ -71,7 +70,6 @@ export function RunListScreen({ params: _params }: ScreenProps): ReactElement {
         const configForMatch = {
             name: activeConfigName ?? '',
             access: activeConfig.access,
-            protected: activeConfig.access ? guarded({ name: activeConfigName ?? '', access: activeConfig.access }) : false,
             isTest: activeConfig.isTest ?? false,
             type: activeConfig.type,
         };

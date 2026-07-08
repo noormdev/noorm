@@ -25,26 +25,23 @@ const AccessSchema = z.object({
 });
 
 /**
- * Resolves the final `access` plus the derived `protected` from raw input
- * that may carry either the new `access` field, the legacy `protected`
- * boolean, or neither.
+ * Resolves the final `access` from raw input that may carry either the new
+ * `access` field, the legacy `protected` boolean, or neither.
  *
  * `access` wins when present. Otherwise the legacy boolean maps to a role
- * pair for one version (`docs/spec/config-access-roles.md#migration`). The
- * output's `protected` is always the derived value — never a pass-through
- * of the raw input — since `access` is the only stored source of truth.
+ * pair for one version (`docs/spec/config-access-roles.md#migration`).
+ * `access` is the only stored source of truth — the legacy boolean is never
+ * echoed back in the output.
  */
 function withResolvedAccess<T extends { protected?: boolean; access?: ConfigAccess }>(
     data: T,
-): Omit<T, 'protected' | 'access'> & { access: ConfigAccess; protected: boolean } {
+): Omit<T, 'protected' | 'access'> & { access: ConfigAccess } {
 
     const { protected: legacyProtected, access, ...rest } = data;
-    const resolvedAccess = resolveLegacyAccess(access, legacyProtected);
 
     return {
         ...rest,
-        access: resolvedAccess,
-        protected: resolvedAccess.user !== 'admin',
+        access: resolveLegacyAccess(access, legacyProtected),
     };
 
 }
@@ -287,7 +284,7 @@ export function validateConfigInput(input: unknown): asserts input is ConfigInpu
  * const config = parseConfig(minimal)
  * // config.type === 'local' (default)
  * // config.isTest === false (default)
- * // config.protected === false (default)
+ * // config.access === { user: 'admin', mcp: 'admin' } (default)
  * ```
  */
 export function parseConfig(config: unknown): ConfigSchemaType {

@@ -2,7 +2,6 @@ import { attempt } from '@logosdx/utils';
 
 import { createContext, type Context } from '../sdk/index.js';
 import { configNotFoundMessage } from '../core/config/resolver.js';
-import { resolveLegacyAccess } from '../core/policy/index.js';
 import type { Channel, Role } from '../core/policy/index.js';
 import { RpcError, type RpcSession } from './types.js';
 
@@ -82,15 +81,13 @@ export class SessionManager implements RpcSession {
 
         this.#contexts.set(resolvedName, ctx);
 
-        const access = resolveLegacyAccess(rawAccess, ctx.noorm.config.protected);
-
         return {
             name: resolvedName,
             dialect: ctx.dialect,
             database: ctx.noorm.config.connection.database,
             // access.mcp === false is unreachable here — the invisibility
             // guard above already denies before a context is ever stored.
-            role: this.channel === 'mcp' ? (access.mcp === false ? 'viewer' : access.mcp) : access.user,
+            role: this.channel === 'mcp' ? (rawAccess.mcp === false ? 'viewer' : rawAccess.mcp) : rawAccess.user,
         };
 
     }

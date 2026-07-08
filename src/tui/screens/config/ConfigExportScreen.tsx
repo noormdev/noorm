@@ -32,6 +32,7 @@ import {
 } from '../../components/index.js';
 import { encryptForRecipient } from '../../../core/identity/crypto.js';
 import type { KnownUser } from '../../../core/identity/types.js';
+import { guarded } from '../../../core/policy/index.js';
 import { getErrorMessage } from '../../utils/index.js';
 
 /**
@@ -138,7 +139,7 @@ export function ConfigExportScreen({ params }: ScreenProps): ReactElement {
                         type: config.type,
                         isTest: config.isTest,
                         access: config.access,
-                        protected: config.protected,
+                        protected: guarded(config),
                         connection: {
                             dialect: config.connection.dialect,
                             host: config.connection.host,

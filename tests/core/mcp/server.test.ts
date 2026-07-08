@@ -102,7 +102,6 @@ function mockContextWithAccess(access: ConfigAccess | undefined, name = 'test'):
             config: {
                 name,
                 access,
-                protected: false,
                 connection: { database: 'testdb' },
             },
         },

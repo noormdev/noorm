@@ -31,7 +31,7 @@ import { getEffectiveBuildPaths } from '../../../core/settings/rules.js';
 import { discoverFiles, runBuild } from '../../../core/runner/index.js';
 import { filterFilesByPaths } from '../../../core/shared/index.js';
 import { createConnection, testConnection } from '../../../core/connection/index.js';
-import { checkConfigPolicy, guarded } from '../../../core/policy/index.js';
+import { checkConfigPolicy } from '../../../core/policy/index.js';
 import { getErrorMessage, resolveScreenIdentity, buildRunContext } from '../../utils/index.js';
 import { attempt } from '@logosdx/utils';
 
@@ -80,7 +80,6 @@ export function RunBuildScreen({ params: _params }: ScreenProps): ReactElement {
         const configForMatch = {
             name: activeConfigName,
             access: activeConfig.access,
-            protected: activeConfig.access ? guarded({ name: activeConfigName, access: activeConfig.access }) : false,
             isTest: activeConfig.isTest ?? false,
             type: activeConfig.type,
         };

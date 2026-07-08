@@ -37,7 +37,6 @@ function makeConfig(access: ConfigAccess): Config {
         type: 'local',
         isTest: false,
         access,
-        protected: access.user !== 'admin',
         connection: { dialect: 'postgres', database: 'testdb' },
     };
 

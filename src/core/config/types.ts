@@ -3,7 +3,8 @@
  *
  * Configs define how noorm connects to databases and where to find
  * SQL/change files. They support multiple environments,
- * environment variable overrides, and protected configs for production safety.
+ * environment variable overrides, and per-channel access roles for
+ * production safety (`docs/spec/config-access-roles.md`).
  */
 import type { ConnectionConfig, Dialect } from '../connection/types.js';
 import type { LogLevel } from '../logger/types.js';
@@ -18,7 +19,7 @@ import type { ConfigAccess } from '../policy/index.js';
  *     name: 'dev',
  *     type: 'local',
  *     isTest: false,
- *     protected: false,
+ *     access: { user: 'admin', mcp: 'admin' },
  *     connection: {
  *         dialect: 'postgres',
  *         host: 'localhost',
@@ -37,20 +38,10 @@ export interface Config {
 
     /**
      * Per-channel access roles — the source of truth for policy checks
-     * (`checkPolicy`/`guarded` from `core/policy`). Optional at the type
-     * level only because not every construction site has adopted it yet;
-     * `parseConfig`/`ConfigSchema` always populate it, defaulting to
-     * `{ user: 'admin', mcp: 'admin' }`.
+     * (`checkPolicy`/`guarded` from `core/policy`). Every config materialized
+     * through `parseConfig`/state load has it populated.
      */
-    access?: ConfigAccess;
-
-    /**
-     * Derived from `access.user !== 'admin'`, recomputed wherever configs
-     * are materialized (schema parsing, state read/write). No caller should
-     * set this independently — it never reflects an independent choice, only
-     * a mirror of `access`.
-     */
-    protected: boolean;
+    access: ConfigAccess;
 
     connection: ConnectionConfig;
 
@@ -66,7 +57,11 @@ export interface ConfigInput {
     type?: 'local' | 'remote';
     isTest?: boolean;
     access?: ConfigAccess;
-    /** Legacy input path — mapped to `access` by `ConfigSchema`. */
+    /**
+     * Legacy input path — a config produced before per-channel access
+     * roles. Accepted for one version at parse time and mapped to `access`
+     * via `resolveLegacyAccess` (`ConfigSchema`); never stored.
+     */
     protected?: boolean;
     connection?: Partial<ConnectionConfig>;
     identity?: string;
@@ -83,7 +78,6 @@ export interface ConfigSummary {
     type: 'local' | 'remote';
     isTest: boolean;
     access: ConfigAccess;
-    protected: boolean;
     isActive: boolean;
     dialect: Dialect;
     database: string;

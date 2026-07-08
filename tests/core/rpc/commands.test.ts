@@ -38,7 +38,6 @@ function createMockSession(options: MockContextOptions = {}): RpcSession {
             config: {
                 name: options.configName ?? 'test',
                 access: options.access ?? { user: 'admin', mcp: 'admin' },
-                protected: false,
                 connection: { database: options.database ?? 'testdb' },
             },
             changes: {

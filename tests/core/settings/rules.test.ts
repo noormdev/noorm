@@ -17,28 +17,28 @@ describe('settings: rule evaluation', () => {
         name: 'dev',
         type: 'local',
         isTest: false,
-        protected: false,
+        access: { user: 'admin', mcp: 'admin' },
     };
 
     const testConfig: ConfigForRuleMatch = {
         name: 'test',
         type: 'local',
         isTest: true,
-        protected: false,
+        access: { user: 'admin', mcp: 'admin' },
     };
 
     const prodConfig: ConfigForRuleMatch = {
         name: 'prod',
         type: 'remote',
         isTest: false,
-        protected: true,
+        access: { user: 'operator', mcp: 'viewer' },
     };
 
     const stagingConfig: ConfigForRuleMatch = {
         name: 'staging',
         type: 'remote',
         isTest: true,
-        protected: false,
+        access: { user: 'admin', mcp: 'admin' },
     };
 
     describe('ruleMatches', () => {
@@ -112,50 +112,6 @@ describe('settings: rule evaluation', () => {
             const match = {};
 
             expect(ruleMatches(match, devConfig)).toBe(true);
-
-        });
-
-        describe('protected via guarded(access)', () => {
-
-            it('should match protected via guarded(access) when access is present', () => {
-
-                // access.user is not admin, so guarded() is true, even
-                // though the legacy `protected` field says false — access
-                // is the source of truth once it's present.
-                const config: ConfigForRuleMatch = {
-                    name: 'prod',
-                    type: 'remote',
-                    isTest: false,
-                    protected: false,
-                    access: { user: 'operator', mcp: 'viewer' },
-                };
-
-                expect(ruleMatches({ protected: true }, config)).toBe(true);
-                expect(ruleMatches({ protected: false }, config)).toBe(false);
-
-            });
-
-            it('should treat admin access as not guarded regardless of the stale protected flag', () => {
-
-                const config: ConfigForRuleMatch = {
-                    name: 'prod',
-                    type: 'remote',
-                    isTest: false,
-                    protected: true,
-                    access: { user: 'admin', mcp: 'admin' },
-                };
-
-                expect(ruleMatches({ protected: false }, config)).toBe(true);
-                expect(ruleMatches({ protected: true }, config)).toBe(false);
-
-            });
-
-            it('should fall back to the raw protected flag when access is absent', () => {
-
-                expect(ruleMatches({ protected: true }, prodConfig)).toBe(true);
-                expect(ruleMatches({ protected: false }, devConfig)).toBe(true);
-
-            });
 
         });
 

@@ -81,7 +81,6 @@ describe('cli: noorm config list — access tag display', () => {
             type: 'local',
             isTest: false,
             access,
-            protected: access.user !== 'admin',
             connection: { dialect: 'sqlite', database: join(tmpDir, 'target.db') },
         };
 
