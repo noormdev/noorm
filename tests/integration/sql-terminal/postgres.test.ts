@@ -1,13 +1,13 @@
 /**
  * Integration tests for PostgreSQL sql-terminal operations.
  *
- * Tests executeRawSql against a real PostgreSQL database.
+ * Tests executeRawSqlUnchecked against a real PostgreSQL database.
  * Requires docker-compose.test.yml containers to be running.
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'bun:test';
 import type { Kysely } from 'kysely';
 
-import { executeRawSql } from '../../../src/core/sql-terminal/executor.js';
+import { executeRawSqlUnchecked } from '../../../src/core/sql-terminal/executor.js';
 import { observer } from '../../../src/core/observer.js';
 import {
     createTestConnection,
@@ -60,7 +60,7 @@ describe('integration: postgres sql-terminal', () => {
 
         it('should return columns and rows for simple SELECT', async () => {
 
-            const result = await executeRawSql(db, 'SELECT id, email, username FROM users', 'test');
+            const result = await executeRawSqlUnchecked(db, 'SELECT id, email, username FROM users', 'test');
 
             expect(result.success).toBe(true);
             expect(result.columns).toEqual(['id', 'email', 'username']);
@@ -76,7 +76,7 @@ describe('integration: postgres sql-terminal', () => {
 
         it('should return correct column count for SELECT *', async () => {
 
-            const result = await executeRawSql(db, 'SELECT * FROM users', 'test');
+            const result = await executeRawSqlUnchecked(db, 'SELECT * FROM users', 'test');
 
             expect(result.success).toBe(true);
             expect(result.columns).toHaveLength(9); // All columns from users table
@@ -88,7 +88,7 @@ describe('integration: postgres sql-terminal', () => {
 
         it('should return empty array for SELECT with no results', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 "SELECT * FROM users WHERE email = 'nonexistent@test.com'",
                 'test',
@@ -102,7 +102,7 @@ describe('integration: postgres sql-terminal', () => {
 
         it('should handle SELECT with WHERE clause', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 "SELECT * FROM users WHERE email = 'user1@test.com'",
                 'test',
@@ -117,7 +117,7 @@ describe('integration: postgres sql-terminal', () => {
 
         it('should handle SELECT with JOIN', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 `SELECT u.username, tl.title
                  FROM users u
@@ -133,7 +133,7 @@ describe('integration: postgres sql-terminal', () => {
 
         it('should handle SELECT with aggregate functions', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 'SELECT COUNT(*) as user_count FROM users',
                 'test',
@@ -148,7 +148,7 @@ describe('integration: postgres sql-terminal', () => {
 
         it('should handle SELECT with GROUP BY', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 `SELECT u.username, COUNT(tl.id) as list_count
                  FROM users u
@@ -168,7 +168,7 @@ describe('integration: postgres sql-terminal', () => {
 
         it('should handle SELECT with ORDER BY and LIMIT', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 'SELECT username FROM users ORDER BY username LIMIT 2',
                 'test',
@@ -183,7 +183,7 @@ describe('integration: postgres sql-terminal', () => {
 
         it('should handle SELECT from views', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 'SELECT * FROM v_active_users',
                 'test',
@@ -198,7 +198,7 @@ describe('integration: postgres sql-terminal', () => {
 
         it('should measure execution duration', async () => {
 
-            const result = await executeRawSql(db, 'SELECT * FROM users', 'test');
+            const result = await executeRawSqlUnchecked(db, 'SELECT * FROM users', 'test');
 
             expect(result.success).toBe(true);
             expect(result.durationMs).toBeGreaterThanOrEqual(0);
@@ -212,7 +212,7 @@ describe('integration: postgres sql-terminal', () => {
 
         it('should return rowsAffected for INSERT', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 `INSERT INTO users (email, username, password_hash, display_name)
                  VALUES ('new@test.com', 'newuser', 'hash123', 'New User')`,
@@ -223,7 +223,7 @@ describe('integration: postgres sql-terminal', () => {
             expect(result.rowsAffected).toBe(1);
 
             // Verify insert worked
-            const verify = await executeRawSql(
+            const verify = await executeRawSqlUnchecked(
                 db,
                 "SELECT * FROM users WHERE email = 'new@test.com'",
                 'test',
@@ -234,7 +234,7 @@ describe('integration: postgres sql-terminal', () => {
 
         it('should return rowsAffected for multi-row INSERT', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 `INSERT INTO users (email, username, password_hash, display_name)
                  VALUES
@@ -251,7 +251,7 @@ describe('integration: postgres sql-terminal', () => {
 
         it('should handle INSERT with RETURNING clause', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 `INSERT INTO users (email, username, password_hash, display_name)
                  VALUES ('returning@test.com', 'returnuser', 'hash123', 'Return User')
@@ -273,7 +273,7 @@ describe('integration: postgres sql-terminal', () => {
 
         it('should return rowsAffected for UPDATE', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 "UPDATE users SET display_name = 'Updated Name' WHERE username = 'user1'",
                 'test',
@@ -283,7 +283,7 @@ describe('integration: postgres sql-terminal', () => {
             expect(result.rowsAffected).toBe(1);
 
             // Verify update worked
-            const verify = await executeRawSql(
+            const verify = await executeRawSqlUnchecked(
                 db,
                 "SELECT display_name FROM users WHERE username = 'user1'",
                 'test',
@@ -294,7 +294,7 @@ describe('integration: postgres sql-terminal', () => {
 
         it('should return rowsAffected for multi-row UPDATE', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 "UPDATE users SET avatar_url = 'https://example.com/avatar.png'",
                 'test',
@@ -307,7 +307,7 @@ describe('integration: postgres sql-terminal', () => {
 
         it('should return 0 rowsAffected for UPDATE with no matches', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 "UPDATE users SET display_name = 'Ghost' WHERE username = 'nonexistent'",
                 'test',
@@ -320,7 +320,7 @@ describe('integration: postgres sql-terminal', () => {
 
         it('should handle UPDATE with RETURNING clause', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 `UPDATE users
                  SET display_name = 'Returned Update'
@@ -342,7 +342,7 @@ describe('integration: postgres sql-terminal', () => {
 
         it('should return rowsAffected for DELETE', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 "DELETE FROM todo_items WHERE title = 'Complete report'",
                 'test',
@@ -355,7 +355,7 @@ describe('integration: postgres sql-terminal', () => {
 
         it('should return rowsAffected for multi-row DELETE', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 'DELETE FROM todo_items',
                 'test',
@@ -368,7 +368,7 @@ describe('integration: postgres sql-terminal', () => {
 
         it('should return 0 rowsAffected for DELETE with no matches', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 "DELETE FROM users WHERE email = 'nonexistent@test.com'",
                 'test',
@@ -381,7 +381,7 @@ describe('integration: postgres sql-terminal', () => {
 
         it('should handle DELETE with RETURNING clause', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 `DELETE FROM todo_items
                  WHERE title = 'Complete report'
@@ -402,7 +402,7 @@ describe('integration: postgres sql-terminal', () => {
 
         it('should execute CREATE TABLE successfully', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 `CREATE TABLE test_ddl_table (
                     id SERIAL PRIMARY KEY,
@@ -414,7 +414,7 @@ describe('integration: postgres sql-terminal', () => {
             expect(result.success).toBe(true);
 
             // Verify table exists
-            const verify = await executeRawSql(
+            const verify = await executeRawSqlUnchecked(
                 db,
                 `SELECT table_name FROM information_schema.tables
                  WHERE table_schema = 'public' AND table_name = 'test_ddl_table'`,
@@ -423,20 +423,20 @@ describe('integration: postgres sql-terminal', () => {
             expect(verify.rows).toHaveLength(1);
 
             // Clean up
-            await executeRawSql(db, 'DROP TABLE test_ddl_table', 'test');
+            await executeRawSqlUnchecked(db, 'DROP TABLE test_ddl_table', 'test');
 
         });
 
         it('should execute ALTER TABLE successfully', async () => {
 
             // Create temp table
-            await executeRawSql(
+            await executeRawSqlUnchecked(
                 db,
                 'CREATE TABLE test_alter_table (id SERIAL PRIMARY KEY)',
                 'test',
             );
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 'ALTER TABLE test_alter_table ADD COLUMN description TEXT',
                 'test',
@@ -445,7 +445,7 @@ describe('integration: postgres sql-terminal', () => {
             expect(result.success).toBe(true);
 
             // Verify column exists
-            const verify = await executeRawSql(
+            const verify = await executeRawSqlUnchecked(
                 db,
                 `SELECT column_name FROM information_schema.columns
                  WHERE table_name = 'test_alter_table' AND column_name = 'description'`,
@@ -454,20 +454,20 @@ describe('integration: postgres sql-terminal', () => {
             expect(verify.rows).toHaveLength(1);
 
             // Clean up
-            await executeRawSql(db, 'DROP TABLE test_alter_table', 'test');
+            await executeRawSqlUnchecked(db, 'DROP TABLE test_alter_table', 'test');
 
         });
 
         it('should execute DROP TABLE successfully', async () => {
 
             // Create temp table
-            await executeRawSql(
+            await executeRawSqlUnchecked(
                 db,
                 'CREATE TABLE test_drop_table (id SERIAL PRIMARY KEY)',
                 'test',
             );
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 'DROP TABLE test_drop_table',
                 'test',
@@ -476,7 +476,7 @@ describe('integration: postgres sql-terminal', () => {
             expect(result.success).toBe(true);
 
             // Verify table is gone
-            const verify = await executeRawSql(
+            const verify = await executeRawSqlUnchecked(
                 db,
                 `SELECT table_name FROM information_schema.tables
                  WHERE table_schema = 'public' AND table_name = 'test_drop_table'`,
@@ -488,7 +488,7 @@ describe('integration: postgres sql-terminal', () => {
 
         it('should execute CREATE INDEX successfully', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 'CREATE INDEX test_idx_email ON users (email)',
                 'test',
@@ -497,7 +497,7 @@ describe('integration: postgres sql-terminal', () => {
             expect(result.success).toBe(true);
 
             // Clean up
-            await executeRawSql(db, 'DROP INDEX test_idx_email', 'test');
+            await executeRawSqlUnchecked(db, 'DROP INDEX test_idx_email', 'test');
 
         });
 
@@ -507,7 +507,7 @@ describe('integration: postgres sql-terminal', () => {
 
         it('should return error for syntax errors', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 'SELCT * FROM users', // Typo: SELCT
                 'test',
@@ -521,7 +521,7 @@ describe('integration: postgres sql-terminal', () => {
 
         it('should return error for non-existent table', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 'SELECT * FROM nonexistent_table_xyz',
                 'test',
@@ -535,7 +535,7 @@ describe('integration: postgres sql-terminal', () => {
 
         it('should return error for invalid column reference', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 'SELECT nonexistent_column FROM users',
                 'test',
@@ -549,7 +549,7 @@ describe('integration: postgres sql-terminal', () => {
 
         it('should return error for constraint violations', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 `INSERT INTO users (email, username, password_hash)
                  VALUES ('user1@test.com', 'duplicate', 'hash')`, // Duplicate email
@@ -567,7 +567,7 @@ describe('integration: postgres sql-terminal', () => {
 
         it('should return error for foreign key violations', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 `INSERT INTO todo_lists (user_id, title)
                  VALUES ('99999999-9999-9999-9999-999999999999', 'Orphan List')`,
@@ -582,7 +582,7 @@ describe('integration: postgres sql-terminal', () => {
 
         it('should include duration even on error', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 'INVALID SQL QUERY',
                 'test',
@@ -615,7 +615,7 @@ describe('integration: postgres sql-terminal', () => {
 
             try {
 
-                await executeRawSql(db, 'SELECT * FROM users', 'test-config');
+                await executeRawSqlUnchecked(db, 'SELECT * FROM users', 'test-config');
 
                 expect(events.length).toBe(2);
 
@@ -657,7 +657,7 @@ describe('integration: postgres sql-terminal', () => {
 
             try {
 
-                await executeRawSql(db, 'INVALID QUERY', 'test-config');
+                await executeRawSqlUnchecked(db, 'INVALID QUERY', 'test-config');
 
                 const afterEvent = events.find((e) => e.event === 'after');
                 expect(afterEvent).toBeDefined();
@@ -680,7 +680,7 @@ describe('integration: postgres sql-terminal', () => {
 
         it('should handle UUID columns correctly', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 'SELECT id FROM users LIMIT 1',
                 'test',
@@ -696,7 +696,7 @@ describe('integration: postgres sql-terminal', () => {
 
         it('should handle TIMESTAMPTZ columns correctly', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 'SELECT created_at FROM users LIMIT 1',
                 'test',
@@ -711,7 +711,7 @@ describe('integration: postgres sql-terminal', () => {
 
         it('should handle BOOLEAN columns correctly', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 'SELECT is_completed FROM todo_items',
                 'test',
@@ -725,7 +725,7 @@ describe('integration: postgres sql-terminal', () => {
 
         it('should handle NULL values correctly', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 'SELECT deleted_at FROM users LIMIT 1',
                 'test',
@@ -738,7 +738,7 @@ describe('integration: postgres sql-terminal', () => {
 
         it('should handle SMALLINT columns correctly', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 'SELECT priority FROM todo_items LIMIT 1',
                 'test',
@@ -751,7 +751,7 @@ describe('integration: postgres sql-terminal', () => {
 
         it('should handle TEXT columns correctly', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 'SELECT description FROM todo_items WHERE description IS NOT NULL LIMIT 1',
                 'test',
@@ -768,7 +768,7 @@ describe('integration: postgres sql-terminal', () => {
 
         it('should handle CTEs (Common Table Expressions)', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 `WITH user_list_counts AS (
                     SELECT user_id, COUNT(*) as list_count
@@ -790,7 +790,7 @@ describe('integration: postgres sql-terminal', () => {
 
         it('should handle subqueries', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 `SELECT username
                  FROM users
@@ -805,7 +805,7 @@ describe('integration: postgres sql-terminal', () => {
 
         it('should handle window functions', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 `SELECT
                     username,
@@ -822,7 +822,7 @@ describe('integration: postgres sql-terminal', () => {
 
         it('should handle CASE expressions', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 `SELECT
                     title,
@@ -852,7 +852,7 @@ describe('integration: postgres sql-terminal', () => {
 
             it('should execute recursive CTE for hierarchy traversal', async () => {
 
-                const result = await executeRawSql(
+                const result = await executeRawSqlUnchecked(
                     db,
                     `WITH RECURSIVE numbers AS (
                         SELECT 1 AS n
@@ -876,7 +876,7 @@ describe('integration: postgres sql-terminal', () => {
 
             it('should return execution plan', async () => {
 
-                const result = await executeRawSql(
+                const result = await executeRawSqlUnchecked(
                     db,
                     'EXPLAIN SELECT * FROM users',
                     'test',
@@ -893,16 +893,16 @@ describe('integration: postgres sql-terminal', () => {
 
             it('should handle explicit BEGIN/COMMIT', async () => {
 
-                await executeRawSql(db, 'BEGIN', 'test');
-                await executeRawSql(
+                await executeRawSqlUnchecked(db, 'BEGIN', 'test');
+                await executeRawSqlUnchecked(
                     db,
                     `INSERT INTO users (id, email, username, password_hash)
                      VALUES (gen_random_uuid(), 'tx@test.com', 'txuser', 'hash')`,
                     'test',
                 );
-                await executeRawSql(db, 'COMMIT', 'test');
+                await executeRawSqlUnchecked(db, 'COMMIT', 'test');
 
-                const result = await executeRawSql(
+                const result = await executeRawSqlUnchecked(
                     db,
                     "SELECT * FROM users WHERE email = 'tx@test.com'",
                     'test',
@@ -915,16 +915,16 @@ describe('integration: postgres sql-terminal', () => {
 
             it('should handle ROLLBACK', async () => {
 
-                await executeRawSql(db, 'BEGIN', 'test');
-                await executeRawSql(
+                await executeRawSqlUnchecked(db, 'BEGIN', 'test');
+                await executeRawSqlUnchecked(
                     db,
                     `INSERT INTO users (id, email, username, password_hash)
                      VALUES (gen_random_uuid(), 'rollback@test.com', 'rbuser', 'hash')`,
                     'test',
                 );
-                await executeRawSql(db, 'ROLLBACK', 'test');
+                await executeRawSqlUnchecked(db, 'ROLLBACK', 'test');
 
-                const result = await executeRawSql(
+                const result = await executeRawSqlUnchecked(
                     db,
                     "SELECT * FROM users WHERE email = 'rollback@test.com'",
                     'test',

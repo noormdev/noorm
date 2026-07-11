@@ -3,6 +3,7 @@
  *
  * All interfaces and types for the noorm programmatic SDK.
  */
+import type { Channel } from '../core/policy/index.js';
 
 
 // ─────────────────────────────────────────────────────────────
@@ -52,6 +53,13 @@ export interface CreateContextOptions {
 
     /** Stage name for stage defaults (from settings.yml) */
     stage?: string;
+
+    /**
+     * Which caller channel this context represents for access-policy checks
+     * (`checkPolicy` in `src/sdk/guards.ts`). SDK/CLI/TUI callers are `user`;
+     * pass `'mcp'` when the context backs an MCP session. Default: `'user'`.
+     */
+    channel?: Channel;
 
 }
 

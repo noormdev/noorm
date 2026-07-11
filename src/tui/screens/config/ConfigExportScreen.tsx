@@ -32,6 +32,7 @@ import {
 } from '../../components/index.js';
 import { encryptForRecipient } from '../../../core/identity/crypto.js';
 import type { KnownUser } from '../../../core/identity/types.js';
+import { guarded } from '../../../core/policy/index.js';
 import { getErrorMessage } from '../../utils/index.js';
 
 /**
@@ -128,13 +129,17 @@ export function ConfigExportScreen({ params }: ScreenProps): ReactElement {
 
             const [_, err] = await attempt(async () => {
 
-                // Build export data (omit user/password)
+                // Build export data (omit user/password). `access` is the
+                // source of truth; `protected` rides along so an
+                // as-yet-unupgraded importer on the recipient's end still
+                // gets a safe (if coarser) access decision.
                 const exportData = {
                     config: {
                         name: config.name,
                         type: config.type,
                         isTest: config.isTest,
-                        protected: config.protected,
+                        access: config.access,
+                        protected: guarded(config),
                         connection: {
                             dialect: config.connection.dialect,
                             host: config.connection.host,

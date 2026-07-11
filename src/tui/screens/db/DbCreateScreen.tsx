@@ -23,11 +23,12 @@ import { useAppContext } from '../../app-context.js';
 import { useToast, Panel, Spinner, SmartConfirm } from '../../components/index.js';
 import { useAsyncEffect } from '../../hooks/index.js';
 import { checkDbStatus, createDb } from '../../../core/db/index.js';
+import { checkConfigPolicy } from '../../../core/policy/index.js';
 
 /**
  * Screen phase state.
  */
-type Phase = 'loading' | 'confirm' | 'running' | 'done' | 'error';
+type Phase = 'loading' | 'blocked' | 'confirm' | 'running' | 'done' | 'error';
 
 /**
  * DbCreateScreen component.
@@ -40,6 +41,7 @@ export function DbCreateScreen({ params: _params }: ScreenProps): ReactElement {
     const { isFocused } = useFocusScope('DbCreate');
     const { activeConfig, activeConfigName } = useAppContext();
     const { showToast } = useToast();
+    const check = activeConfig ? checkConfigPolicy('user', activeConfig, 'db:create') : null;
 
     // Phase state
     const [phase, setPhase] = useState<Phase>('loading');
@@ -55,6 +57,15 @@ export function DbCreateScreen({ params: _params }: ScreenProps): ReactElement {
 
             setPhase('error');
             setError('No active configuration');
+
+            return;
+
+        }
+
+        // Block viewer-role configs before connecting
+        if (check && !check.allowed) {
+
+            setPhase('blocked');
 
             return;
 
@@ -147,6 +158,16 @@ export function DbCreateScreen({ params: _params }: ScreenProps): ReactElement {
 
         if (!isFocused) return;
 
+        if (phase === 'blocked') {
+
+            if (key.escape || key.return) {
+
+                back();
+
+            }
+
+        }
+
         if (phase === 'done' || phase === 'error') {
 
             if (key.return || key.escape) {
@@ -179,6 +200,23 @@ export function DbCreateScreen({ params: _params }: ScreenProps): ReactElement {
 
     }
 
+    // Blocked - denied by policy
+    if (phase === 'blocked') {
+
+        return (
+            <Box flexDirection="column" gap={1}>
+                <Panel title="Create Database" borderColor="red" paddingX={1} paddingY={1}>
+                    <Text color="red">{check?.blockedReason}</Text>
+                </Panel>
+
+                <Box flexWrap="wrap" columnGap={2}>
+                    <Text dimColor>[Enter/Esc] Back</Text>
+                </Box>
+            </Box>
+        );
+
+    }
+
     // Loading phase
     if (phase === 'loading') {
 
@@ -202,7 +240,8 @@ export function DbCreateScreen({ params: _params }: ScreenProps): ReactElement {
 
         return (
             <SmartConfirm
-                protected={activeConfig.protected ?? false}
+                requiresConfirmation={check?.requiresConfirmation ?? false}
+                confirmationPhrase={check?.confirmationPhrase}
                 configName={activeConfigName ?? 'unknown'}
                 action={willCreateDb ? 'create database for' : 'initialize tracking for'}
                 message={actionText}

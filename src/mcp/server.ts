@@ -1,9 +1,10 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { attempt } from '@logosdx/utils';
+import { attempt, attemptSync } from '@logosdx/utils';
 
 import type { RpcRegistry } from '../rpc/registry.js';
 import type { SessionManager } from '../rpc/session.js';
+import { checkConfigPolicy } from '../core/policy/index.js';
 import type { RpcSession } from '../rpc/types.js';
 
 /**
@@ -78,6 +79,41 @@ export function createMcpServer(registry: RpcRegistry, session: SessionManager):
                     }],
                     isError: true,
                 };
+
+            }
+
+            // Gate config-scoped commands before the handler ever runs. `'open'`
+            // commands (list_configs, connect, disconnect) target no config and
+            // skip this — target resolution itself requires an active connection.
+            if (cmd.permission !== 'open') {
+
+                const [target, targetErr] = attemptSync(() => session.getContext(config));
+
+                if (targetErr) {
+
+                    return {
+                        content: [{
+                            type: 'text' as const,
+                            text: JSON.stringify({ error: targetErr.message }),
+                        }],
+                        isError: true,
+                    };
+
+                }
+
+                const check = checkConfigPolicy(session.channel, target.noorm.config, cmd.permission);
+
+                if (!check.allowed) {
+
+                    return {
+                        content: [{
+                            type: 'text' as const,
+                            text: JSON.stringify({ error: check.blockedReason ?? `"${cmd.permission}" is not allowed.` }),
+                        }],
+                        isError: true,
+                    };
+
+                }
 
             }
 

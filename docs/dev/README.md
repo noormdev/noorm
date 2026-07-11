@@ -40,7 +40,7 @@ Configs define database connections. They merge from multiple sources with clear
 CLI flags > Environment > Stored config > Stage defaults > Defaults
 ```
 
-Protected configs require confirmation for dangerous operations. Stages enforce team-wide constraints.
+Per-channel access roles (`viewer`/`operator`/`admin`) gate dangerous operations. Stages enforce team-wide constraints.
 
 [Read more about Configuration](./config.md)
 

@@ -31,8 +31,9 @@ import {
     SmartConfirm,
     StatusList,
 } from '../../components/index.js';
+import { checkConfigPolicy } from '../../../core/policy/index.js';
 import { useChangeProgress, useAsyncEffect } from '../../hooks/index.js';
-import { getErrorMessage, loadChangesWithStatus, buildPendingChangeList, createChangeManager } from '../../utils/index.js';
+import { getErrorMessage, loadChangesWithStatus, buildPendingChangeList, createChangeManager, isConfigGuarded } from '../../utils/index.js';
 import { createConnection } from '../../../core/connection/factory.js';
 
 /**
@@ -54,6 +55,7 @@ export function ChangeNextScreen({ params }: ScreenProps): ReactElement {
     const { navigate: _navigate, back } = useRouter();
     const { isFocused } = useFocusScope('ChangeNext');
     const { activeConfig, activeConfigName, projectRoot, settings, stateManager, identity: cryptoIdentity } = useAppContext();
+    const check = activeConfig ? checkConfigPolicy('user', activeConfig, 'change:run') : null;
 
     // Pre-fill count from params
     const initialCount = params.count ? parseInt(String(params.count), 10) : 1;
@@ -162,6 +164,7 @@ export function ChangeNextScreen({ params }: ScreenProps): ReactElement {
                 projectRoot,
                 settings,
                 cryptoIdentity,
+                activeConfig,
             });
 
             const result = await manager.next(count);
@@ -237,6 +240,17 @@ export function ChangeNextScreen({ params }: ScreenProps): ReactElement {
 
     }
 
+    // Denied by policy
+    if (check && !check.allowed) {
+
+        return (
+            <Panel title="Apply Next Changes" paddingX={2} paddingY={1} borderColor="red">
+                <Text color="red">{check.blockedReason}</Text>
+            </Panel>
+        );
+
+    }
+
     // Loading
     if (step === 'loading') {
 
@@ -306,11 +320,12 @@ export function ChangeNextScreen({ params }: ScreenProps): ReactElement {
         );
 
         return (
-            <Panel title="Apply Next Changes" paddingX={2} paddingY={1} borderColor={activeConfig.protected ? 'yellow' : undefined}>
+            <Panel title="Apply Next Changes" paddingX={2} paddingY={1} borderColor={isConfigGuarded(activeConfig) ? 'yellow' : undefined}>
                 <Box flexDirection="column" gap={1}>
                     {confirmContent}
                     <SmartConfirm
-                        protected={activeConfig.protected ?? false}
+                        requiresConfirmation={check?.requiresConfirmation ?? false}
+                        confirmationPhrase={check?.confirmationPhrase}
                         configName={activeConfigName ?? 'config'}
                         action="apply these changes"
                         message="Apply these changes?"

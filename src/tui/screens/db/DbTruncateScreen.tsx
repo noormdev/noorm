@@ -29,8 +29,9 @@ import { useAppContext, useSettings } from '../../app-context.js';
 import { useToast, Panel, Spinner, ProtectedConfirm } from '../../components/index.js';
 import { useConnection, useAsyncEffect } from '../../hooks/index.js';
 import { getErrorMessage } from '../../utils/index.js';
+import { checkConfigPolicy, confirmationPhraseFor } from '../../../core/policy/index.js';
 
-type Phase = 'loading' | 'preview' | 'confirm' | 'running' | 'done' | 'error';
+type Phase = 'loading' | 'blocked' | 'preview' | 'confirm' | 'running' | 'done' | 'error';
 
 /**
  * DbTruncateScreen component.
@@ -42,6 +43,7 @@ export function DbTruncateScreen({ params: _params }: ScreenProps): ReactElement
     const { activeConfig, activeConfigName } = useAppContext();
     const { settings } = useSettings();
     const { showToast } = useToast();
+    const check = activeConfig ? checkConfigPolicy('user', activeConfig, 'db:reset') : null;
 
     const [phase, setPhase] = useState<Phase>('loading');
     const [error, setError] = useState<string | null>(null);
@@ -64,6 +66,15 @@ export function DbTruncateScreen({ params: _params }: ScreenProps): ReactElement
 
             setError('No active configuration');
             setPhase('error');
+
+            return;
+
+        }
+
+        // Block viewer-role configs before connecting
+        if (check && !check.allowed) {
+
+            setPhase('blocked');
 
             return;
 
@@ -152,6 +163,16 @@ export function DbTruncateScreen({ params: _params }: ScreenProps): ReactElement
 
         if (!isFocused) return;
 
+        if (phase === 'blocked') {
+
+            if (key.escape || key.return) {
+
+                back();
+
+            }
+
+        }
+
         if (phase === 'preview') {
 
             if (key.escape) {
@@ -193,6 +214,23 @@ export function DbTruncateScreen({ params: _params }: ScreenProps): ReactElement
             <Panel title="Wipe Data" borderColor="red" paddingX={1} paddingY={1}>
                 <Text color="red">No active configuration selected.</Text>
             </Panel>
+        );
+
+    }
+
+    // Blocked - denied by policy
+    if (phase === 'blocked') {
+
+        return (
+            <Box flexDirection="column" gap={1}>
+                <Panel title="Wipe Data" borderColor="red" paddingX={1} paddingY={1}>
+                    <Text color="red">{check?.blockedReason}</Text>
+                </Panel>
+
+                <Box flexWrap="wrap" columnGap={2}>
+                    <Text dimColor>[Enter/Esc] Back</Text>
+                </Box>
+            </Box>
         );
 
     }
@@ -299,6 +337,7 @@ export function DbTruncateScreen({ params: _params }: ScreenProps): ReactElement
 
                 <ProtectedConfirm
                     configName={activeConfigName ?? 'unknown'}
+                    confirmPhrase={check?.confirmationPhrase ?? confirmationPhraseFor(activeConfigName ?? 'unknown')}
                     action="truncate data for"
                     onConfirm={executeTruncate}
                     onCancel={() => setPhase('preview')}

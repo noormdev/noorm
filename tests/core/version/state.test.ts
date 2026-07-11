@@ -166,7 +166,9 @@ describe('version: state', () => {
 
             expect(migrated['identity']).toEqual({ name: 'test' });
             expect(migrated['activeConfig']).toBe('dev');
-            expect(migrated['configs']).toEqual({ dev: {} });
+            // v2 backfills access roles onto every config (see the "v2:
+            // per-config access roles" tests below for the mapping itself).
+            expect(migrated['configs']).toEqual({ dev: { access: { user: 'admin', mcp: 'admin' } } });
 
         });
 
@@ -251,6 +253,145 @@ describe('version: state', () => {
 
             expect(state).not.toHaveProperty('schemaVersion');
             expect(migrated).toHaveProperty('schemaVersion');
+
+        });
+
+        describe('v2: per-config access roles', () => {
+
+            it('should map protected: true to guarded access and drop protected', () => {
+
+                const state = {
+                    schemaVersion: 1,
+                    configs: {
+                        prod: {
+                            name: 'prod',
+                            protected: true,
+                            connection: { dialect: 'sqlite', database: ':memory:' },
+                        },
+                    },
+                };
+
+                const migrated = migrateState(state);
+
+                expect(migrated['configs']).toEqual({
+                    prod: {
+                        name: 'prod',
+                        connection: { dialect: 'sqlite', database: ':memory:' },
+                        access: { user: 'operator', mcp: 'viewer' },
+                    },
+                });
+
+            });
+
+            it('should map protected: false to open access and drop protected', () => {
+
+                const state = {
+                    schemaVersion: 1,
+                    configs: {
+                        dev: {
+                            name: 'dev',
+                            protected: false,
+                            connection: { dialect: 'sqlite', database: ':memory:' },
+                        },
+                    },
+                };
+
+                const migrated = migrateState(state);
+
+                expect(migrated['configs']).toEqual({
+                    dev: {
+                        name: 'dev',
+                        connection: { dialect: 'sqlite', database: ':memory:' },
+                        access: { user: 'admin', mcp: 'admin' },
+                    },
+                });
+
+            });
+
+            it('should map absent protected to open access', () => {
+
+                const state = {
+                    schemaVersion: 1,
+                    configs: {
+                        dev: {
+                            name: 'dev',
+                            connection: { dialect: 'sqlite', database: ':memory:' },
+                        },
+                    },
+                };
+
+                const migrated = migrateState(state);
+
+                expect(migrated['configs']).toEqual({
+                    dev: {
+                        name: 'dev',
+                        connection: { dialect: 'sqlite', database: ':memory:' },
+                        access: { user: 'admin', mcp: 'admin' },
+                    },
+                });
+
+            });
+
+            it('should leave an already-migrated access untouched', () => {
+
+                const state = {
+                    schemaVersion: 1,
+                    configs: {
+                        staging: {
+                            name: 'staging',
+                            access: { user: 'viewer', mcp: false },
+                            connection: { dialect: 'sqlite', database: ':memory:' },
+                        },
+                    },
+                };
+
+                const migrated = migrateState(state);
+
+                expect(migrated['configs']).toEqual({
+                    staging: {
+                        name: 'staging',
+                        connection: { dialect: 'sqlite', database: ':memory:' },
+                        access: { user: 'viewer', mcp: false },
+                    },
+                });
+
+            });
+
+            it('should keep access when both access and legacy protected are present (access wins)', () => {
+
+                const state = {
+                    schemaVersion: 1,
+                    configs: {
+                        prod: {
+                            name: 'prod',
+                            access: { user: 'admin', mcp: 'admin' },
+                            protected: true,
+                            connection: { dialect: 'sqlite', database: ':memory:' },
+                        },
+                    },
+                };
+
+                const migrated = migrateState(state);
+
+                expect(migrated['configs']).toEqual({
+                    prod: {
+                        name: 'prod',
+                        connection: { dialect: 'sqlite', database: ':memory:' },
+                        access: { user: 'admin', mcp: 'admin' },
+                    },
+                });
+
+            });
+
+            it('should bump schemaVersion to current', () => {
+
+                const state = { schemaVersion: 1, configs: {} };
+
+                const migrated = migrateState(state);
+
+                expect(migrated['schemaVersion']).toBe(CURRENT_VERSIONS.state);
+
+            });
 
         });
 

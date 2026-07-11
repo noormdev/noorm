@@ -22,6 +22,7 @@ import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
 import { Panel, Confirm, ProtectedConfirm, Spinner, useToast, MissingParamPanel, NotFoundPanel } from '../../components/index.js';
+import { checkConfigPolicy, confirmationPhraseFor } from '../../../core/policy/index.js';
 import { getErrorMessage } from '../../utils/index.js';
 
 /**
@@ -49,6 +50,9 @@ export function ConfigRemoveScreen({ params }: ScreenProps): ReactElement {
 
     // Check if this is the active config
     const isActive = configName === activeConfigName;
+
+    // Policy check for the config:rm permission
+    const check = config ? checkConfigPolicy('user', config, 'config:rm') : null;
 
     // Handle confirm
     const handleConfirm = useCallback(async () => {
@@ -104,8 +108,8 @@ export function ConfigRemoveScreen({ params }: ScreenProps): ReactElement {
 
         if (!isFocused) return;
 
-        // Handle escape for error states (no config, not found, active config)
-        if (!configName || !config || isActive) {
+        // Handle escape for error states (no config, not found, active config, denied)
+        if (!configName || !config || isActive || (check && !check.allowed)) {
 
             if (key.escape || key.return) {
 
@@ -153,6 +157,23 @@ export function ConfigRemoveScreen({ params }: ScreenProps): ReactElement {
 
     }
 
+    // Denied by policy (viewer role)
+    if (check && !check.allowed) {
+
+        return (
+            <Box flexDirection="column" gap={1}>
+                <Panel title="Delete Configuration" paddingX={2} paddingY={1} borderColor="red">
+                    <Text color="red">{check.blockedReason}</Text>
+                </Panel>
+
+                <Box flexWrap="wrap" columnGap={2}>
+                    <Text dimColor>[Enter/Esc] Back</Text>
+                </Box>
+            </Box>
+        );
+
+    }
+
     // Deleting
     if (deleting) {
 
@@ -164,12 +185,14 @@ export function ConfigRemoveScreen({ params }: ScreenProps): ReactElement {
 
     }
 
-    // Confirmation step - use ProtectedConfirm for protected configs
-    if (config.protected) {
+    // Confirmation step - type-to-confirm when config:rm requires it
+    // (operator/admin both confirm per the matrix, unless NOORM_YES is set)
+    if (check?.requiresConfirmation) {
 
         return (
             <ProtectedConfirm
                 configName={configName}
+                confirmPhrase={check.confirmationPhrase ?? confirmationPhraseFor(configName)}
                 action="delete"
                 onConfirm={handleConfirm}
                 onCancel={handleCancel}

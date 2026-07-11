@@ -13,7 +13,7 @@ import {
     seedTestData,
     resetTestData,
 } from '../../utils/db.js';
-import { executeRawSql } from '../../../src/core/sql-terminal/executor.js';
+import { executeRawSqlUnchecked } from '../../../src/core/sql-terminal/executor.js';
 
 
 describe('integration: sqlite sql-terminal', () => {
@@ -49,7 +49,7 @@ describe('integration: sqlite sql-terminal', () => {
 
         it('should execute simple SELECT and return columns and rows', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 'SELECT id, email, username FROM users',
                 'test-config',
@@ -63,7 +63,7 @@ describe('integration: sqlite sql-terminal', () => {
 
         it('should return correct row data', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 "SELECT email, username FROM users WHERE email = 'user1@test.com'",
                 'test-config',
@@ -80,7 +80,7 @@ describe('integration: sqlite sql-terminal', () => {
 
         it('should handle SELECT with WHERE clause returning multiple rows', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 'SELECT id, title FROM todo_items WHERE priority >= 1',
                 'test-config',
@@ -93,7 +93,7 @@ describe('integration: sqlite sql-terminal', () => {
 
         it('should handle SELECT with JOIN', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 `SELECT u.username, tl.title
                  FROM users u
@@ -109,7 +109,7 @@ describe('integration: sqlite sql-terminal', () => {
 
         it('should handle SELECT with aggregate functions', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 'SELECT COUNT(*) as total, MAX(priority) as max_priority FROM todo_items',
                 'test-config',
@@ -124,7 +124,7 @@ describe('integration: sqlite sql-terminal', () => {
 
         it('should handle SELECT returning empty result set', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 "SELECT * FROM users WHERE email = 'nonexistent@test.com'",
                 'test-config',
@@ -138,7 +138,7 @@ describe('integration: sqlite sql-terminal', () => {
 
         it('should handle SELECT from view', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 'SELECT * FROM v_active_users',
                 'test-config',
@@ -153,7 +153,7 @@ describe('integration: sqlite sql-terminal', () => {
 
         it('should return execution duration', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 'SELECT * FROM users',
                 'test-config',
@@ -170,7 +170,7 @@ describe('integration: sqlite sql-terminal', () => {
 
         it('should execute INSERT and return rowsAffected', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 `INSERT INTO users (id, email, username, password_hash, display_name)
                  VALUES ('99999999-9999-9999-9999-999999999999', 'new@test.com', 'newuser', 'hash', 'New User')`,
@@ -184,14 +184,14 @@ describe('integration: sqlite sql-terminal', () => {
 
         it('should persist inserted data', async () => {
 
-            await executeRawSql(
+            await executeRawSqlUnchecked(
                 db,
                 `INSERT INTO users (id, email, username, password_hash)
                  VALUES ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'test@insert.com', 'inserttest', 'hash')`,
                 'test-config',
             );
 
-            const check = await executeRawSql(
+            const check = await executeRawSqlUnchecked(
                 db,
                 "SELECT email FROM users WHERE username = 'inserttest'",
                 'test-config',
@@ -207,14 +207,14 @@ describe('integration: sqlite sql-terminal', () => {
 
             // SQLite doesn't support multi-value INSERT in all versions
             // So we do multiple inserts to test rowsAffected
-            const result1 = await executeRawSql(
+            const result1 = await executeRawSqlUnchecked(
                 db,
                 `INSERT INTO users (id, email, username, password_hash)
                  VALUES ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'a@test.com', 'usera', 'hash')`,
                 'test-config',
             );
 
-            const result2 = await executeRawSql(
+            const result2 = await executeRawSqlUnchecked(
                 db,
                 `INSERT INTO users (id, email, username, password_hash)
                  VALUES ('cccccccc-cccc-cccc-cccc-cccccccccccc', 'b@test.com', 'userb', 'hash')`,
@@ -232,7 +232,7 @@ describe('integration: sqlite sql-terminal', () => {
 
         it('should execute UPDATE and return rowsAffected', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 "UPDATE users SET display_name = 'Updated Name' WHERE username = 'user1'",
                 'test-config',
@@ -245,7 +245,7 @@ describe('integration: sqlite sql-terminal', () => {
 
         it('should update multiple rows', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 "UPDATE users SET avatar_url = 'https://example.com/avatar.png'",
                 'test-config',
@@ -258,7 +258,7 @@ describe('integration: sqlite sql-terminal', () => {
 
         it('should return rowsAffected = 0 when no rows match', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 "UPDATE users SET display_name = 'Ghost' WHERE username = 'nonexistent'",
                 'test-config',
@@ -271,13 +271,13 @@ describe('integration: sqlite sql-terminal', () => {
 
         it('should persist updated data', async () => {
 
-            await executeRawSql(
+            await executeRawSqlUnchecked(
                 db,
                 "UPDATE users SET display_name = 'Alice Smith' WHERE username = 'user1'",
                 'test-config',
             );
 
-            const check = await executeRawSql(
+            const check = await executeRawSqlUnchecked(
                 db,
                 "SELECT display_name FROM users WHERE username = 'user1'",
                 'test-config',
@@ -293,7 +293,7 @@ describe('integration: sqlite sql-terminal', () => {
 
         it('should execute DELETE and return rowsAffected', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 "DELETE FROM todo_items WHERE title = 'Buy groceries'",
                 'test-config',
@@ -306,7 +306,7 @@ describe('integration: sqlite sql-terminal', () => {
 
         it('should delete multiple rows', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 'DELETE FROM todo_items WHERE is_completed = 0',
                 'test-config',
@@ -319,7 +319,7 @@ describe('integration: sqlite sql-terminal', () => {
 
         it('should return rowsAffected = 0 when no rows match', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 "DELETE FROM users WHERE email = 'nonexistent@ghost.com'",
                 'test-config',
@@ -332,13 +332,13 @@ describe('integration: sqlite sql-terminal', () => {
 
         it('should persist deletion', async () => {
 
-            await executeRawSql(
+            await executeRawSqlUnchecked(
                 db,
                 "DELETE FROM users WHERE username = 'user3'",
                 'test-config',
             );
 
-            const check = await executeRawSql(
+            const check = await executeRawSqlUnchecked(
                 db,
                 'SELECT COUNT(*) as count FROM users',
                 'test-config',
@@ -354,7 +354,7 @@ describe('integration: sqlite sql-terminal', () => {
 
         it('should execute CREATE TABLE', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 `CREATE TABLE test_table (
                     id INTEGER PRIMARY KEY,
@@ -366,7 +366,7 @@ describe('integration: sqlite sql-terminal', () => {
             expect(result.success).toBe(true);
 
             // Verify table exists
-            const check = await executeRawSql(
+            const check = await executeRawSqlUnchecked(
                 db,
                 "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'test_table'",
                 'test-config',
@@ -379,13 +379,13 @@ describe('integration: sqlite sql-terminal', () => {
         it('should execute DROP TABLE', async () => {
 
             // First create a table
-            await executeRawSql(
+            await executeRawSqlUnchecked(
                 db,
                 'CREATE TABLE temp_table (id INTEGER)',
                 'test-config',
             );
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 'DROP TABLE temp_table',
                 'test-config',
@@ -394,7 +394,7 @@ describe('integration: sqlite sql-terminal', () => {
             expect(result.success).toBe(true);
 
             // Verify table is gone
-            const check = await executeRawSql(
+            const check = await executeRawSqlUnchecked(
                 db,
                 "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'temp_table'",
                 'test-config',
@@ -406,7 +406,7 @@ describe('integration: sqlite sql-terminal', () => {
 
         it('should execute CREATE INDEX', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 'CREATE INDEX idx_test_display_name ON users(display_name)',
                 'test-config',
@@ -415,7 +415,7 @@ describe('integration: sqlite sql-terminal', () => {
             expect(result.success).toBe(true);
 
             // Verify index exists
-            const check = await executeRawSql(
+            const check = await executeRawSqlUnchecked(
                 db,
                 "SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_test_display_name'",
                 'test-config',
@@ -427,7 +427,7 @@ describe('integration: sqlite sql-terminal', () => {
 
         it('should execute ALTER TABLE', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 'ALTER TABLE users ADD COLUMN bio TEXT',
                 'test-config',
@@ -436,7 +436,7 @@ describe('integration: sqlite sql-terminal', () => {
             expect(result.success).toBe(true);
 
             // Verify column exists
-            const check = await executeRawSql(
+            const check = await executeRawSqlUnchecked(
                 db,
                 'PRAGMA table_info(users)',
                 'test-config',
@@ -453,7 +453,7 @@ describe('integration: sqlite sql-terminal', () => {
 
         it('should execute PRAGMA queries', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 'PRAGMA table_info(users)',
                 'test-config',
@@ -468,7 +468,7 @@ describe('integration: sqlite sql-terminal', () => {
 
         it('should execute PRAGMA foreign_keys', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 'PRAGMA foreign_keys',
                 'test-config',
@@ -484,7 +484,7 @@ describe('integration: sqlite sql-terminal', () => {
 
         it('should return error for syntax error', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 'SELEC * FORM users',
                 'test-config',
@@ -498,7 +498,7 @@ describe('integration: sqlite sql-terminal', () => {
 
         it('should return error for non-existent table', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 'SELECT * FROM nonexistent_table',
                 'test-config',
@@ -511,7 +511,7 @@ describe('integration: sqlite sql-terminal', () => {
 
         it('should return error for non-existent column', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 'SELECT nonexistent_column FROM users',
                 'test-config',
@@ -524,7 +524,7 @@ describe('integration: sqlite sql-terminal', () => {
 
         it('should return error for constraint violation', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 `INSERT INTO users (id, email, username, password_hash)
                  VALUES ('11111111-1111-1111-1111-111111111111', 'duplicate@test.com', 'user1', 'hash')`,
@@ -543,7 +543,7 @@ describe('integration: sqlite sql-terminal', () => {
 
         it('should return error for invalid SQL type', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 'NOT_A_VALID_SQL_COMMAND',
                 'test-config',
@@ -556,7 +556,7 @@ describe('integration: sqlite sql-terminal', () => {
 
         it('should return duration even on error', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 'INVALID SQL',
                 'test-config',
@@ -569,7 +569,7 @@ describe('integration: sqlite sql-terminal', () => {
 
         it('should not return columns or rows on error', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 'SELECT * FROM nonexistent',
                 'test-config',
@@ -587,7 +587,7 @@ describe('integration: sqlite sql-terminal', () => {
 
         it('should handle subqueries', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 `SELECT username FROM users
                  WHERE id IN (SELECT user_id FROM todo_lists)`,
@@ -601,7 +601,7 @@ describe('integration: sqlite sql-terminal', () => {
 
         it('should handle GROUP BY and HAVING', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 `SELECT list_id, COUNT(*) as item_count
                  FROM todo_items
@@ -617,7 +617,7 @@ describe('integration: sqlite sql-terminal', () => {
 
         it('should handle ORDER BY with LIMIT', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 'SELECT username FROM users ORDER BY username ASC LIMIT 2',
                 'test-config',
@@ -632,7 +632,7 @@ describe('integration: sqlite sql-terminal', () => {
 
         it('should handle CASE expressions', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 `SELECT title,
                         CASE priority
@@ -652,7 +652,7 @@ describe('integration: sqlite sql-terminal', () => {
 
         it('should handle COALESCE and IFNULL', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 `SELECT username, COALESCE(display_name, 'Anonymous') as name
                  FROM users`,
@@ -675,10 +675,10 @@ describe('integration: sqlite sql-terminal', () => {
 
         it('should handle BEGIN/COMMIT', async () => {
 
-            const beginResult = await executeRawSql(db, 'BEGIN', 'test-config');
+            const beginResult = await executeRawSqlUnchecked(db, 'BEGIN', 'test-config');
             expect(beginResult.success).toBe(true);
 
-            const insertResult = await executeRawSql(
+            const insertResult = await executeRawSqlUnchecked(
                 db,
                 `INSERT INTO users (id, email, username, password_hash)
                  VALUES ('dddddddd-dddd-dddd-dddd-dddddddddddd', 'tx@test.com', 'txuser', 'hash')`,
@@ -686,11 +686,11 @@ describe('integration: sqlite sql-terminal', () => {
             );
             expect(insertResult.success).toBe(true);
 
-            const commitResult = await executeRawSql(db, 'COMMIT', 'test-config');
+            const commitResult = await executeRawSqlUnchecked(db, 'COMMIT', 'test-config');
             expect(commitResult.success).toBe(true);
 
             // Verify data is committed
-            const check = await executeRawSql(
+            const check = await executeRawSqlUnchecked(
                 db,
                 "SELECT * FROM users WHERE username = 'txuser'",
                 'test-config',
@@ -707,7 +707,7 @@ describe('integration: sqlite sql-terminal', () => {
 
             it('should execute recursive CTE', async () => {
 
-                const result = await executeRawSql(
+                const result = await executeRawSqlUnchecked(
                     db,
                     `WITH RECURSIVE numbers(n) AS (
                         SELECT 1
@@ -731,7 +731,7 @@ describe('integration: sqlite sql-terminal', () => {
 
             it('should return query plan', async () => {
 
-                const result = await executeRawSql(
+                const result = await executeRawSqlUnchecked(
                     db,
                     'EXPLAIN QUERY PLAN SELECT * FROM users',
                     'test-config',
@@ -748,7 +748,7 @@ describe('integration: sqlite sql-terminal', () => {
 
             it('should execute PRAGMA commands', async () => {
 
-                const result = await executeRawSql(
+                const result = await executeRawSqlUnchecked(
                     db,
                     'PRAGMA table_info(users)',
                     'test-config',

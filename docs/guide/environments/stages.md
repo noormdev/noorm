@@ -96,14 +96,14 @@ Some defaults are **enforced** and cannot be overridden in the TUI:
 
 | Default | Behavior |
 |---------|----------|
-| `protected: true` | Cannot be set to false in the TUI |
+| `protected: true` | Acts as an access ceiling: whatever `access` the config or the developer sets, the *resolved* access is clamped to at most `{ user: 'operator', mcp: 'viewer' }` |
 | `isTest: true` | Cannot be set to false in the TUI |
 | `dialect` | Cannot be changed after config creation |
 
-This means if your `prod` stage sets `protected: true`, developers cannot create an unprotected production config through the normal workflow.
+This means if your `prod` stage sets `protected: true`, developers cannot create a fully-open production config through the normal workflow — even picking `admin` in the TUI's access editor gets clamped back down at resolution time.
 
 ::: tip Manual Override
-These enforced defaults can still be changed by manually editing the encrypted state file, but this requires deliberate action. The protection is against accidents, not determined circumvention.
+The ceiling is enforced every time the config is resolved, so it survives even a manually edited state file — there's no stored value to hand-edit around. The protection is against accidents, not an attempt at real security.
 :::
 
 

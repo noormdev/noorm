@@ -7,7 +7,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'bun:test';
 import type { Kysely } from 'kysely';
 
-import { executeRawSql } from '../../../src/core/sql-terminal/executor.js';
+import { executeRawSqlUnchecked } from '../../../src/core/sql-terminal/executor.js';
 import {
     createTestConnection,
     deployTestSchema,
@@ -60,7 +60,7 @@ describe('integration: mysql sql-terminal', () => {
 
         it('should return correct columns for simple SELECT', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 'SELECT id, email, username FROM users',
                 configName,
@@ -73,7 +73,7 @@ describe('integration: mysql sql-terminal', () => {
 
         it('should return correct row count', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 'SELECT * FROM users',
                 configName,
@@ -86,7 +86,7 @@ describe('integration: mysql sql-terminal', () => {
 
         it('should return correct row data', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 'SELECT email, username FROM users ORDER BY username',
                 configName,
@@ -105,7 +105,7 @@ describe('integration: mysql sql-terminal', () => {
 
         it('should handle SELECT with WHERE clause', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 "SELECT * FROM users WHERE email = 'user1@test.com'",
                 configName,
@@ -119,7 +119,7 @@ describe('integration: mysql sql-terminal', () => {
 
         it('should handle SELECT with JOIN', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 `SELECT u.username, tl.title
                  FROM users u
@@ -136,7 +136,7 @@ describe('integration: mysql sql-terminal', () => {
 
         it('should handle SELECT with LIMIT', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 'SELECT * FROM users LIMIT 2',
                 configName,
@@ -149,7 +149,7 @@ describe('integration: mysql sql-terminal', () => {
 
         it('should handle SELECT with aggregate functions', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 'SELECT COUNT(*) as total, MAX(priority) as max_priority FROM todo_items',
                 configName,
@@ -164,7 +164,7 @@ describe('integration: mysql sql-terminal', () => {
 
         it('should handle SELECT from views', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 'SELECT * FROM v_active_users',
                 configName,
@@ -177,7 +177,7 @@ describe('integration: mysql sql-terminal', () => {
 
         it('should handle empty result set', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 "SELECT * FROM users WHERE email = 'nonexistent@test.com'",
                 configName,
@@ -191,7 +191,7 @@ describe('integration: mysql sql-terminal', () => {
 
         it('should include duration in result', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 'SELECT * FROM users',
                 configName,
@@ -209,7 +209,7 @@ describe('integration: mysql sql-terminal', () => {
 
         it('should return rowsAffected for single INSERT', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 `INSERT INTO users (id, email, username, password_hash, display_name)
                  VALUES (UUID(), 'new@test.com', 'newuser', 'hash123', 'New User')`,
@@ -223,7 +223,7 @@ describe('integration: mysql sql-terminal', () => {
 
         it('should return rowsAffected for multiple INSERT', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 `INSERT INTO users (id, email, username, password_hash, display_name) VALUES
                  (UUID(), 'batch1@test.com', 'batch1', 'hash1', 'Batch 1'),
@@ -238,7 +238,7 @@ describe('integration: mysql sql-terminal', () => {
 
         it('should handle INSERT with all columns', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 `INSERT INTO users (
                     id, email, username, password_hash, display_name, avatar_url
@@ -259,7 +259,7 @@ describe('integration: mysql sql-terminal', () => {
 
         it('should return rowsAffected for UPDATE', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 "UPDATE users SET display_name = 'Updated Name' WHERE email = 'user1@test.com'",
                 configName,
@@ -272,7 +272,7 @@ describe('integration: mysql sql-terminal', () => {
 
         it('should return rowsAffected for UPDATE affecting multiple rows', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 "UPDATE users SET display_name = 'Bulk Update'",
                 configName,
@@ -285,7 +285,7 @@ describe('integration: mysql sql-terminal', () => {
 
         it('should return 0 rowsAffected when no rows match', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 "UPDATE users SET display_name = 'No Match' WHERE email = 'nonexistent@test.com'",
                 configName,
@@ -302,7 +302,7 @@ describe('integration: mysql sql-terminal', () => {
 
         it('should return rowsAffected for DELETE', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 "DELETE FROM todo_items WHERE title = 'Buy groceries'",
                 configName,
@@ -315,7 +315,7 @@ describe('integration: mysql sql-terminal', () => {
 
         it('should return rowsAffected for DELETE affecting multiple rows', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 'DELETE FROM todo_items',
                 configName,
@@ -328,7 +328,7 @@ describe('integration: mysql sql-terminal', () => {
 
         it('should return 0 rowsAffected when no rows match', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 "DELETE FROM users WHERE email = 'nonexistent@test.com'",
                 configName,
@@ -345,7 +345,7 @@ describe('integration: mysql sql-terminal', () => {
 
         it('should execute CREATE TABLE successfully', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 `CREATE TABLE test_ddl (
                     id INT PRIMARY KEY AUTO_INCREMENT,
@@ -357,20 +357,20 @@ describe('integration: mysql sql-terminal', () => {
             expect(result.success).toBe(true);
 
             // Cleanup
-            await executeRawSql(db, 'DROP TABLE test_ddl', configName);
+            await executeRawSqlUnchecked(db, 'DROP TABLE test_ddl', configName);
 
         });
 
         it('should execute DROP TABLE successfully', async () => {
 
             // Create table first
-            await executeRawSql(
+            await executeRawSqlUnchecked(
                 db,
                 'CREATE TABLE test_drop (id INT PRIMARY KEY)',
                 configName,
             );
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 'DROP TABLE test_drop',
                 configName,
@@ -383,13 +383,13 @@ describe('integration: mysql sql-terminal', () => {
         it('should execute ALTER TABLE successfully', async () => {
 
             // Create table first
-            await executeRawSql(
+            await executeRawSqlUnchecked(
                 db,
                 'CREATE TABLE test_alter (id INT PRIMARY KEY)',
                 configName,
             );
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 'ALTER TABLE test_alter ADD COLUMN name VARCHAR(100)',
                 configName,
@@ -398,20 +398,20 @@ describe('integration: mysql sql-terminal', () => {
             expect(result.success).toBe(true);
 
             // Cleanup
-            await executeRawSql(db, 'DROP TABLE test_alter', configName);
+            await executeRawSqlUnchecked(db, 'DROP TABLE test_alter', configName);
 
         });
 
         it('should execute CREATE INDEX successfully', async () => {
 
             // Create table first
-            await executeRawSql(
+            await executeRawSqlUnchecked(
                 db,
                 'CREATE TABLE test_index (id INT PRIMARY KEY, name VARCHAR(100))',
                 configName,
             );
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 'CREATE INDEX idx_test_name ON test_index (name)',
                 configName,
@@ -420,7 +420,7 @@ describe('integration: mysql sql-terminal', () => {
             expect(result.success).toBe(true);
 
             // Cleanup
-            await executeRawSql(db, 'DROP TABLE test_index', configName);
+            await executeRawSqlUnchecked(db, 'DROP TABLE test_index', configName);
 
         });
 
@@ -430,7 +430,7 @@ describe('integration: mysql sql-terminal', () => {
 
         it('should return error for syntax error', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 'SELEC * FROM users',
                 configName,
@@ -444,7 +444,7 @@ describe('integration: mysql sql-terminal', () => {
 
         it('should return error for non-existent table', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 'SELECT * FROM nonexistent_table',
                 configName,
@@ -458,7 +458,7 @@ describe('integration: mysql sql-terminal', () => {
 
         it('should return error for non-existent column', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 'SELECT nonexistent_column FROM users',
                 configName,
@@ -471,7 +471,7 @@ describe('integration: mysql sql-terminal', () => {
 
         it('should return error for constraint violation', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 `INSERT INTO users (id, email, username, password_hash)
                  VALUES (UUID(), 'user1@test.com', 'duplicate', 'hash')`,
@@ -486,7 +486,7 @@ describe('integration: mysql sql-terminal', () => {
 
         it('should return error for foreign key violation', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 `INSERT INTO todo_lists (id, user_id, title)
                  VALUES (UUID(), 'nonexistent-user-id-123', 'Test List')`,
@@ -500,7 +500,7 @@ describe('integration: mysql sql-terminal', () => {
 
         it('should include duration even on error', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 'INVALID SQL QUERY',
                 configName,
@@ -518,7 +518,7 @@ describe('integration: mysql sql-terminal', () => {
 
         it('should handle SHOW statements', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 'SHOW TABLES',
                 configName,
@@ -531,7 +531,7 @@ describe('integration: mysql sql-terminal', () => {
 
         it('should handle DESCRIBE statement', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 'DESCRIBE users',
                 configName,
@@ -544,7 +544,7 @@ describe('integration: mysql sql-terminal', () => {
 
         it('should handle CALL procedure', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 "CALL get_user_by_email('user1@test.com')",
                 configName,
@@ -556,7 +556,7 @@ describe('integration: mysql sql-terminal', () => {
 
         it('should handle MySQL date functions', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 'SELECT NOW() as `current_time`, CURDATE() as `current_date`',
                 configName,
@@ -570,7 +570,7 @@ describe('integration: mysql sql-terminal', () => {
 
         it('should handle MySQL string functions', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 "SELECT CONCAT(username, ' <', email, '>') as formatted FROM users LIMIT 1",
                 configName,
@@ -584,7 +584,7 @@ describe('integration: mysql sql-terminal', () => {
 
         it('should handle backtick-quoted identifiers', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 'SELECT `id`, `email` FROM `users` LIMIT 1',
                 configName,
@@ -597,7 +597,7 @@ describe('integration: mysql sql-terminal', () => {
 
         it('should handle IF expression', async () => {
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 db,
                 'SELECT IF(is_completed, \'Done\', \'Pending\') as status FROM todo_items',
                 configName,
@@ -616,7 +616,7 @@ describe('integration: mysql sql-terminal', () => {
 
             it('should execute recursive CTE', async () => {
 
-                const result = await executeRawSql(
+                const result = await executeRawSqlUnchecked(
                     db,
                     `WITH RECURSIVE numbers AS (
                         SELECT 1 AS n
@@ -640,7 +640,7 @@ describe('integration: mysql sql-terminal', () => {
 
             it('should return execution plan', async () => {
 
-                const result = await executeRawSql(
+                const result = await executeRawSqlUnchecked(
                     db,
                     'EXPLAIN SELECT * FROM users',
                     configName,

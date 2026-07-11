@@ -21,6 +21,7 @@ const connectCommand: RpcCommand<ConnectInput> = {
         { description: 'connect to specific config', input: { config: 'dev' } },
     ],
     inputSchema: connectSchema,
+    permission: 'open',
     handler: async (input, session) => {
 
         return session.connect(input.config);
@@ -36,6 +37,7 @@ const disconnectCommand: RpcCommand<DisconnectInput> = {
         { description: 'disconnect specific config', input: { config: 'dev' } },
     ],
     inputSchema: disconnectSchema,
+    permission: 'open',
     handler: async (input, session) => {
 
         await session.disconnect(input.config);

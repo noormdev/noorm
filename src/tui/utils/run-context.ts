@@ -16,6 +16,7 @@ import type { RunContext } from '../../core/runner/types.js';
 import type { Dialect } from '../../core/connection/types.js';
 import type { NoormDatabase } from '../../core/shared/index.js';
 import type { Identity } from '../../core/identity/types.js';
+import type { Config } from '../../core/config/types.js';
 import type { StateManager } from '../../core/state/index.js';
 
 /**
@@ -26,7 +27,7 @@ export interface BuildRunContextOptions {
     configName: string;
     identity: Identity;
     projectRoot: string;
-    activeConfig: Record<string, unknown>;
+    activeConfig: Config;
     stateManager: StateManager;
     dialect?: Dialect;
 }
@@ -55,7 +56,9 @@ export function buildRunContext(options: BuildRunContextOptions): RunContext {
         identity,
         projectRoot,
         dialect,
-        config: activeConfig,
+        access: activeConfig.access,
+        channel: 'user',
+        config: activeConfig as unknown as Record<string, unknown>,
         secrets: stateManager.getAllSecrets(configName),
         globalSecrets: stateManager.getAllGlobalSecrets(),
     };

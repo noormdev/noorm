@@ -30,8 +30,9 @@ import {
     SmartConfirm,
     StatusList,
 } from '../../components/index.js';
+import { checkConfigPolicy } from '../../../core/policy/index.js';
 import { useChangeProgress, useAsyncEffect } from '../../hooks/index.js';
-import { getErrorMessage, loadChangesWithStatus, buildPendingChangeList, createChangeManager } from '../../utils/index.js';
+import { getErrorMessage, loadChangesWithStatus, buildPendingChangeList, createChangeManager, isConfigGuarded } from '../../utils/index.js';
 import { validateChangeContent } from '../../../core/change/validation.js';
 import { createConnection } from '../../../core/connection/factory.js';
 
@@ -53,6 +54,7 @@ export function ChangeFFScreen({ params: _params }: ScreenProps): ReactElement {
     const { navigate: _navigate, back } = useRouter();
     const { isFocused } = useFocusScope('ChangeFF');
     const { activeConfig, activeConfigName, projectRoot, settings, stateManager, identity: cryptoIdentity } = useAppContext();
+    const check = activeConfig ? checkConfigPolicy('user', activeConfig, 'change:ff') : null;
 
     const { results, currentChange, progress, reset: resetProgress } = useChangeProgress();
 
@@ -153,6 +155,7 @@ export function ChangeFFScreen({ params: _params }: ScreenProps): ReactElement {
                 projectRoot,
                 settings,
                 cryptoIdentity,
+                activeConfig,
             });
 
             const result = await manager.ff();
@@ -213,6 +216,17 @@ export function ChangeFFScreen({ params: _params }: ScreenProps): ReactElement {
 
     }
 
+    // Denied by policy
+    if (check && !check.allowed) {
+
+        return (
+            <Panel title="Fast-Forward" paddingX={2} paddingY={1} borderColor="red">
+                <Text color="red">{check.blockedReason}</Text>
+            </Panel>
+        );
+
+    }
+
     // Loading
     if (step === 'loading') {
 
@@ -252,11 +266,12 @@ export function ChangeFFScreen({ params: _params }: ScreenProps): ReactElement {
         );
 
         return (
-            <Panel title="Fast-Forward" paddingX={2} paddingY={1} borderColor={activeConfig.protected ? 'yellow' : undefined}>
+            <Panel title="Fast-Forward" paddingX={2} paddingY={1} borderColor={isConfigGuarded(activeConfig) ? 'yellow' : undefined}>
                 <Box flexDirection="column" gap={1}>
                     {confirmContent}
                     <SmartConfirm
-                        protected={activeConfig.protected ?? false}
+                        requiresConfirmation={check?.requiresConfirmation ?? false}
+                        confirmationPhrase={check?.confirmationPhrase}
                         configName={activeConfigName ?? 'config'}
                         action="apply all pending changes"
                         message="Apply all pending changes?"

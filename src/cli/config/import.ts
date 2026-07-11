@@ -10,41 +10,9 @@ import { readFile } from 'node:fs/promises';
 import { attempt, attemptSync } from '@logosdx/utils';
 import { defineCommand } from 'citty';
 
-import type { Config } from '../../core/config/types.js';
+import { ConfigValidationError, parseConfig } from '../../core/config/schema.js';
 import { initState, getStateManager } from '../../core/state/index.js';
 import { outputResult, outputError, sharedArgs } from '../_utils.js';
-
-/**
- * Parse and validate a raw JSON value as a Config.
- *
- * Returns the typed Config when the required fields are present,
- * or null when validation fails. Does not throw.
- */
-function parseConfig(value: unknown): Config | null {
-
-    if (!value || typeof value !== 'object') {
-
-        return null;
-
-    }
-
-    const obj = value as Record<string, unknown>;
-
-    if (!obj['name'] || typeof obj['name'] !== 'string') {
-
-        return null;
-
-    }
-
-    if (!obj['connection'] || typeof obj['connection'] !== 'object') {
-
-        return null;
-
-    }
-
-    return obj as unknown as Config;
-
-}
 
 const importCommand = defineCommand({
     meta: {
@@ -78,11 +46,15 @@ const importCommand = defineCommand({
 
         }
 
-        const config = parseConfig(jsonValue);
+        const [config, configErr] = attemptSync(() => parseConfig(jsonValue));
 
-        if (!config) {
+        if (configErr) {
 
-            outputError(args, 'Config JSON is missing required fields: name, connection');
+            const message = configErr instanceof ConfigValidationError
+                ? configErr.message
+                : 'Config JSON is missing required fields: name, connection';
+
+            outputError(args, message);
             process.exit(1);
 
         }

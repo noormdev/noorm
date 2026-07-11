@@ -8,6 +8,7 @@ import { attempt } from '@logosdx/utils';
 import { defineCommand } from 'citty';
 
 import { initState, getStateManager } from '../../core/state/index.js';
+import { guarded } from '../../core/policy/index.js';
 import { outputResult, outputError, sharedArgs } from '../_utils.js';
 
 const listCommand = defineCommand({
@@ -44,9 +45,10 @@ const listCommand = defineCommand({
         const lines = configs.map((c) => {
 
             const active = c.isActive ? ' (active)' : '';
+            const accessTag = guarded(c) ? `user:${c.access.user} mcp:${c.access.mcp === false ? 'off' : c.access.mcp}` : null;
             const flags = [
                 c.isTest ? 'test' : null,
-                c.protected ? 'protected' : null,
+                accessTag,
             ].filter(Boolean).join(', ');
             const suffix = flags ? ` [${flags}]` : '';
 

@@ -4,7 +4,7 @@
  * Multi-step flow to collect config details:
  * 1. Name and dialect selection
  * 2. Connection details (host, port, database, user, password)
- * 3. Options (protected, test flags)
+ * 3. Options (access roles, test flags)
  * 4. Connection test
  * 5. Save
  *
@@ -24,10 +24,19 @@ import type { Config } from '../../../core/config/types.js';
 import type { Dialect } from '../../../core/connection/types.js';
 
 import { useRouter } from '../../router.js';
-import { useAppContext } from '../../app-context.js';
+import { useAppContext, useSettings } from '../../app-context.js';
 import { Panel, Form, useToast } from '../../components/index.js';
 import { testConnection } from '../../../core/connection/factory.js';
-import { getErrorMessage, validateConfigName, validatePort, buildConnectionConfig } from '../../utils/index.js';
+import { GUARDED_ACCESS, OPEN_ACCESS } from '../../../core/policy/index.js';
+import {
+    getErrorMessage,
+    validateConfigName,
+    validatePort,
+    buildConnectionConfig,
+    buildAccessFromValues,
+    USER_ROLE_OPTIONS,
+    MCP_ROLE_OPTIONS,
+} from '../../utils/index.js';
 
 /**
  * ConfigAddScreen component.
@@ -39,11 +48,18 @@ export function ConfigAddScreen({ params }: ScreenProps): ReactElement {
     const { back, navigate } = useRouter();
     const fromInit = Boolean(params.fromInit);
     const { stateManager, configs, refresh } = useAppContext();
+    const { settings } = useSettings();
     const { showToast } = useToast();
 
     const [busy, setBusy] = useState(false);
     const [busyLabel, setBusyLabel] = useState('Testing connection...');
     const [connectionError, setConnectionError] = useState<string | null>(null);
+
+    // Default access for a brand-new config: the matched stage's `protected`
+    // flag (guarded when true) if the caller navigated with a known stage
+    // name, otherwise fully open.
+    const matchedStage = params.name ? settings?.stages?.[params.name] : undefined;
+    const defaultAccess = matchedStage?.defaults?.protected ? GUARDED_ACCESS : OPEN_ACCESS;
 
     // Form fields for config creation
     const fields: FormField[] = [
@@ -102,10 +118,18 @@ export function ConfigAddScreen({ params }: ScreenProps): ReactElement {
             placeholder: '(optional)',
         },
         {
-            key: 'protected',
-            label: 'Protected (requires confirmation for destructive ops)',
-            type: 'checkbox',
-            defaultValue: false,
+            key: 'userRole',
+            label: 'User Role (CLI/TUI access)',
+            type: 'select',
+            options: USER_ROLE_OPTIONS,
+            defaultValue: defaultAccess.user,
+        },
+        {
+            key: 'mcpRole',
+            label: 'MCP Role (agent access)',
+            type: 'select',
+            options: MCP_ROLE_OPTIONS,
+            defaultValue: defaultAccess.mcp === false ? 'off' : defaultAccess.mcp,
         },
         {
             key: 'isTest',
@@ -150,11 +174,12 @@ export function ConfigAddScreen({ params }: ScreenProps): ReactElement {
 
             // Build full config
             const configName = String(values['name']);
+            const access = buildAccessFromValues(values);
             const config: Config = {
                 name: configName,
                 type: 'local',
                 isTest: Boolean(values['isTest']),
-                protected: Boolean(values['protected']),
+                access,
                 connection: connectionConfig,
             };
 

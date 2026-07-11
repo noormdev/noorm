@@ -32,8 +32,9 @@ import {
     SmartConfirm,
     StatusList,
 } from '../../components/index.js';
+import { checkConfigPolicy } from '../../../core/policy/index.js';
 import { useChangeProgress, useAsyncEffect } from '../../hooks/index.js';
-import { getErrorMessage, loadChangesWithStatus, buildAppliedChangeList, createChangeManager } from '../../utils/index.js';
+import { getErrorMessage, loadChangesWithStatus, buildAppliedChangeList, createChangeManager, isConfigGuarded } from '../../utils/index.js';
 import { createConnection } from '../../../core/connection/factory.js';
 
 /**
@@ -55,6 +56,7 @@ export function ChangeRewindScreen({ params }: ScreenProps): ReactElement {
     const { navigate: _navigate, back } = useRouter();
     const { isFocused } = useFocusScope('ChangeRewind');
     const { activeConfig, activeConfigName, projectRoot, settings, stateManager, identity: cryptoIdentity } = useAppContext();
+    const check = activeConfig ? checkConfigPolicy('user', activeConfig, 'change:revert') : null;
 
     // Pre-fill from params - can be count or change name
     const target = params.count ? String(params.count) : (params.name ?? '');
@@ -218,6 +220,7 @@ export function ChangeRewindScreen({ params }: ScreenProps): ReactElement {
                 projectRoot,
                 settings,
                 cryptoIdentity,
+                activeConfig,
             });
 
             const result = await manager.rewind(changesToRevert.length);
@@ -288,6 +291,17 @@ export function ChangeRewindScreen({ params }: ScreenProps): ReactElement {
         return (
             <Panel title="Rewind Changes" paddingX={2} paddingY={1} borderColor="yellow">
                 <Text color="yellow">No active configuration.</Text>
+            </Panel>
+        );
+
+    }
+
+    // Denied by policy
+    if (check && !check.allowed) {
+
+        return (
+            <Panel title="Rewind Changes" paddingX={2} paddingY={1} borderColor="red">
+                <Text color="red">{check.blockedReason}</Text>
             </Panel>
         );
 
@@ -374,11 +388,12 @@ export function ChangeRewindScreen({ params }: ScreenProps): ReactElement {
         );
 
         return (
-            <Panel title="Rewind Changes" paddingX={2} paddingY={1} borderColor={activeConfig.protected ? 'yellow' : undefined}>
+            <Panel title="Rewind Changes" paddingX={2} paddingY={1} borderColor={isConfigGuarded(activeConfig) ? 'yellow' : undefined}>
                 <Box flexDirection="column" gap={1}>
                     {confirmContent}
                     <SmartConfirm
-                        protected={activeConfig.protected ?? false}
+                        requiresConfirmation={check?.requiresConfirmation ?? false}
+                        confirmationPhrase={check?.confirmationPhrase}
                         configName={activeConfigName ?? 'config'}
                         action="revert these changes"
                         message="Revert these changes?"

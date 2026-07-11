@@ -29,6 +29,8 @@ import { attempt, attemptSync } from '@logosdx/utils';
 import { observer } from '../observer.js';
 import { formatIdentity } from '../identity/resolver.js';
 import { processFile, isTemplate } from '../template/index.js';
+import { assertPolicy } from '../policy/index.js';
+import type { Permission } from '../policy/index.js';
 import { computeChecksum, computeCombinedChecksum } from '../runner/checksum.js';
 import { getSqlErrorMessage } from '../shared/index.js';
 import { getLockManager } from '../lock/index.js';
@@ -59,6 +61,23 @@ const DEFAULT_OPTIONS: Required<Omit<ChangeOptions, 'output'>> & { output: strin
 /** Default SQL template - files with only this content are considered empty */
 const SQL_TEMPLATE = '-- TODO: Add SQL statements here';
 
+/**
+ * Gate a change entrypoint against the config's access policy.
+ *
+ * The single enforcement seam for `executeChange`/`revertChange`: every
+ * caller (SDK, TUI, CLI) funnels through one of these functions, so gating
+ * here — rather than per-caller — closes the surface uniformly. Change
+ * files are command-gated, not content-classified.
+ *
+ * @throws Error carrying the policy's blockedReason when the channel's
+ * role denies the permission.
+ */
+function assertChangePolicy(context: ChangeContext, permission: Permission): void {
+
+    assertPolicy(context.channel, { name: context.configName, access: context.access }, permission);
+
+}
+
 // ─────────────────────────────────────────────────────────────
 // Execute Change (Change Direction)
 // ─────────────────────────────────────────────────────────────
@@ -88,6 +107,8 @@ export async function executeChange(
     change: Change,
     options: ChangeOptions = {},
 ): Promise<ChangeResult> {
+
+    assertChangePolicy(context, 'change:run');
 
     const start = performance.now();
     const opts = { ...DEFAULT_OPTIONS, ...options };
@@ -251,6 +272,8 @@ export async function revertChange(
     change: Change,
     options: ChangeOptions = {},
 ): Promise<ChangeResult> {
+
+    assertChangePolicy(context, 'change:revert');
 
     const start = performance.now();
     const opts = { ...DEFAULT_OPTIONS, ...options };

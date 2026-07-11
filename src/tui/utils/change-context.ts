@@ -7,7 +7,7 @@
  * @example
  * ```typescript
  * const manager = createChangeManager({
- *     db, configName, projectRoot, settings, cryptoIdentity,
+ *     db, configName, projectRoot, settings, cryptoIdentity, activeConfig,
  * });
  * await manager.ff();
  * ```
@@ -17,6 +17,7 @@ import type { Kysely } from 'kysely';
 import type { NoormDatabase } from '../../core/shared/index.js';
 import type { Settings } from '../../core/settings/types.js';
 import type { CryptoIdentity } from '../../core/identity/types.js';
+import type { Config } from '../../core/config/types.js';
 import type { ChangeContext } from '../../core/change/types.js';
 import { ChangeManager } from '../../core/change/manager.js';
 import { resolveChangesDir, resolveSqlDir } from './paths.js';
@@ -31,6 +32,7 @@ export interface CreateChangeManagerOptions {
     projectRoot: string;
     settings: Settings | null;
     cryptoIdentity: CryptoIdentity | null | undefined;
+    activeConfig: Config;
 }
 
 /**
@@ -50,7 +52,7 @@ export interface CreateChangeManagerOptions {
  */
 export function createChangeManager(options: CreateChangeManagerOptions): ChangeManager {
 
-    const { db, configName, projectRoot, settings, cryptoIdentity } = options;
+    const { db, configName, projectRoot, settings, cryptoIdentity, activeConfig } = options;
 
     const context: ChangeContext = {
         db,
@@ -59,6 +61,8 @@ export function createChangeManager(options: CreateChangeManagerOptions): Change
         projectRoot,
         changesDir: resolveChangesDir(projectRoot, settings),
         sqlDir: resolveSqlDir(projectRoot, settings),
+        access: activeConfig.access,
+        channel: 'user',
     };
 
     return new ChangeManager(context);

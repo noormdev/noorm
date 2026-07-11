@@ -1,7 +1,7 @@
 /**
  * ConfigListScreen - displays all database configurations.
  *
- * Shows a list of configs with their status (active, dialect, protected).
+ * Shows a list of configs with their status (active, dialect, access roles).
  * Keyboard shortcuts provide quick access to actions:
  * - Enter: Set as active config
  * - a: Add new config
@@ -27,6 +27,8 @@ import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
 import { Panel, SelectList, type SelectListItem } from '../../components/index.js';
 import { syncIdentityWithConfig } from '../../../core/identity/index.js';
+import { guarded } from '../../../core/policy/index.js';
+import type { ConfigAccess } from '../../../core/policy/index.js';
 
 /**
  * Config list item value.
@@ -35,8 +37,23 @@ interface ConfigListValue {
     name: string;
     dialect: string;
     isActive: boolean;
-    protected: boolean;
+    access: ConfigAccess;
     isTest: boolean;
+}
+
+/**
+ * Formats access as `user:<role> mcp:<role|off>` — same format as
+ * `noorm config list` (`src/cli/config/list.ts`) — omitted entirely for
+ * fully open (admin/admin) configs.
+ */
+function formatAccessTag(config: { name: string; access: ConfigAccess }): string | null {
+
+    if (!guarded(config)) return null;
+
+    const { access } = config;
+
+    return `user:${access.user} mcp:${access.mcp === false ? 'off' : access.mcp}`;
+
 }
 
 /**
@@ -56,19 +73,25 @@ export function ConfigListScreen({ params: _params }: ScreenProps): ReactElement
     );
 
     // Convert configs to list items
-    const items: SelectListItem<ConfigListValue>[] = configs.map((config) => ({
-        key: config.name,
-        label: config.name,
-        value: {
-            name: config.name,
-            dialect: config.dialect,
-            isActive: config.isActive,
-            protected: config.protected,
-            isTest: config.isTest,
-        },
-        description: `${config.dialect}${config.isActive ? ' (active)' : ''}${config.protected ? ' [protected]' : ''}${config.isTest ? ' [test]' : ''}`,
-        icon: config.isActive ? '●' : '○',
-    }));
+    const items: SelectListItem<ConfigListValue>[] = configs.map((config) => {
+
+        const accessTag = formatAccessTag(config);
+
+        return {
+            key: config.name,
+            label: config.name,
+            value: {
+                name: config.name,
+                dialect: config.dialect,
+                isActive: config.isActive,
+                access: config.access,
+                isTest: config.isTest,
+            },
+            description: `${config.dialect}${config.isActive ? ' (active)' : ''}${accessTag ? ` [${accessTag}]` : ''}${config.isTest ? ' [test]' : ''}`,
+            icon: config.isActive ? '●' : '○',
+        };
+
+    });
 
     // Handle config selection (Enter) - set as active
     const handleSelect = useCallback(

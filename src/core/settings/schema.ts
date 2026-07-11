@@ -72,6 +72,7 @@ const StageDefaultsSchema = z.object({
     password: z.string().optional(),
     ssl: z.boolean().optional(),
     isTest: z.boolean().optional(),
+    // Settings-stage vocabulary — distinct from the removed `Config.protected`; see docs/spec/config-access-roles.md.
     protected: z.boolean().optional(),
 });
 
@@ -96,6 +97,7 @@ const StageSchema = z.object({
 const RuleMatchSchema = z
     .object({
         name: z.string().optional(),
+        // Settings-stage vocabulary — distinct from the removed `Config.protected`; matched against `guarded(config)`.
         protected: z.boolean().optional(),
         isTest: z.boolean().optional(),
         type: ConnectionTypeSchema.optional(),

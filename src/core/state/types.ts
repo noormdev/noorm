@@ -8,6 +8,7 @@
  */
 import type { Config, ConfigSummary } from '../config/types.js';
 import type { KnownUser } from '../identity/types.js';
+import { CURRENT_VERSIONS } from '../version/types.js';
 
 // Re-export ConfigSummary from config/types to avoid duplication
 export type { ConfigSummary };
@@ -21,6 +22,14 @@ export type { ConfigSummary };
 export interface State {
     /** Package version that last saved this state */
     version: string;
+
+    /**
+     * State schema version (independent of `version` above) — tracks the
+     * schema-version migrations registered in `core/version/state`, e.g.
+     * the v2 `protected` -> `access` mapping
+     * (docs/spec/config-access-roles.md#migration).
+     */
+    schemaVersion: number;
 
     /** Known users discovered from database syncs (identityHash -> KnownUser) */
     knownUsers: Record<string, KnownUser>;
@@ -72,6 +81,7 @@ export function createEmptyState(version: string): State {
 
     return {
         version,
+        schemaVersion: CURRENT_VERSIONS.state,
         knownUsers: {},
         activeConfig: null,
         configs: {},

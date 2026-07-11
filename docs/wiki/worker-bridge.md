@@ -10,25 +10,25 @@ Hub-and-spoke worker thread infrastructure. `WorkerBridge` (an `ObserverRelay` s
 
 ## CLI code
 
-- `src/core/worker-bridge/bridge.ts` — `WorkerBridge`; ObserverRelay subclass, message correlation, error propagation
-- `src/core/worker-bridge/pool.ts` — `WorkerPool`; round-robin N-worker dispatch
-- `src/core/worker-bridge/order-buffer.ts` — `OrderBuffer`; index-ordered response reassembly
-- `src/core/worker-bridge/paths.ts` — `resolveWorker`; path resolution for dev/compiled contexts
-- `src/core/worker-bridge/types.ts` — `WireMessage`, `Correlated`, event contract types
-- `src/workers/connection.ts` — persistent DB worker entry point; owns Kysely instance, handles all DB ops
-- `src/workers/compute.ts` — stateless compute worker entry point; serialize/deserialize for DT pipeline
+- [`src/core/worker-bridge/bridge.ts`](../../src/core/worker-bridge/bridge.ts) — `WorkerBridge`; ObserverRelay subclass, message correlation, error propagation
+- [`src/core/worker-bridge/pool.ts`](../../src/core/worker-bridge/pool.ts) — `WorkerPool`; round-robin N-worker dispatch
+- [`src/core/worker-bridge/order-buffer.ts`](../../src/core/worker-bridge/order-buffer.ts) — `OrderBuffer`; index-ordered response reassembly
+- [`src/core/worker-bridge/paths.ts`](../../src/core/worker-bridge/paths.ts) — `resolveWorker`; path resolution for dev/compiled contexts
+- [`src/core/worker-bridge/types.ts`](../../src/core/worker-bridge/types.ts) — `WireMessage`, `Correlated`, event contract types
+- [`src/workers/connection.ts`](../../src/workers/connection.ts) — persistent DB worker entry point; owns Kysely instance, handles all DB ops
+- [`src/workers/compute.ts`](../../src/workers/compute.ts) — stateless compute worker entry point; serialize/deserialize for DT pipeline
 
 ## Docs
 
-- `docs/dev/README.md` — worker bridge architecture overview (section in monorepo dev guide)
+- [`docs/dev/README.md`](../dev/README.md) — worker bridge architecture overview (section in monorepo dev guide)
 
 ## Coupling
 
 - `resolveWorker` is called wherever a worker is spawned — never hardcode worker paths.
 - `WorkerBridge` extends `ObserverRelay` from `@logosdx/observer` — observer domain is a dependency.
-- DT module (`src/core/dt/`) spawns compute workers via `WorkerPool` — DT changes may require worker message-type updates.
-- Connection worker (`src/workers/connection.ts`) holds the Kysely instance used by runner and change executor in worker contexts — worker restart resets all in-flight operations.
-- Bun `--compile` binary path resolution: `src/workers/compute.ts` → `workers/compute.js` in `$bunfs` — the `IS_COMPILED` guard in `paths.ts` handles this.
+- DT module ([`src/core/dt/`](../../src/core/dt)) spawns compute workers via `WorkerPool` — DT changes may require worker message-type updates.
+- Connection worker ([`src/workers/connection.ts`](../../src/workers/connection.ts)) holds the Kysely instance used by runner and change executor in worker contexts — worker restart resets all in-flight operations.
+- Bun `--compile` binary path resolution: [`src/workers/compute.ts`](../../src/workers/compute.ts) → `workers/compute.js` in `$bunfs` — the `IS_COMPILED` guard in `paths.ts` handles this.
 
 ## Conventions worth knowing
 

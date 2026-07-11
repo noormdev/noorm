@@ -33,6 +33,7 @@ import {
 import { decryptWithPrivateKey } from '../../../core/identity/crypto.js';
 import { loadPrivateKey } from '../../../core/identity/storage.js';
 import type { SharedConfigPayload } from '../../../core/identity/types.js';
+import { resolveLegacyAccess } from '../../../core/policy/index.js';
 import { getErrorMessage } from '../../utils/index.js';
 
 /**
@@ -48,9 +49,12 @@ type ImportStep =
 
 /**
  * Imported config data structure.
+ *
+ * `config.protected` is the legacy field a not-yet-upgraded exporter may
+ * still send; `resolveLegacyAccess` maps it to `access` on import.
  */
 interface ImportedData {
-    config: Partial<Config>;
+    config: Partial<Config> & { protected?: boolean };
     secrets: Record<string, string>;
 }
 
@@ -203,13 +207,14 @@ export function ConfigImportScreen({ params }: ScreenProps): ReactElement {
             const [_, err] = await attempt(async () => {
 
                 const configName = String(values['name'] || importedData.config.name);
+                const access = resolveLegacyAccess(importedData.config.access, importedData.config.protected);
 
                 // Build full config with credentials
                 const config: Config = {
                     name: configName,
                     type: importedData.config.type ?? 'local',
                     isTest: importedData.config.isTest ?? false,
-                    protected: importedData.config.protected ?? false,
+                    access,
                     connection: {
                         dialect: importedData.config.connection?.dialect ?? 'postgres',
                         host: importedData.config.connection?.host,

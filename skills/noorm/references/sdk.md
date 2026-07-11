@@ -45,7 +45,7 @@ const ctx = await createContext<DB, Procs, Funcs, Tvfs>(options);
 | `config` | `string` | — | Config name from stored state. Falls back to `NOORM_CONFIG` env, then env-only mode |
 | `projectRoot` | `string` | `process.cwd()` | Project root directory |
 | `requireTest` | `boolean` | `false` | Refuse if `config.isTest` is not `true`. Throws `RequireTestError` |
-| `allowProtected` | `boolean` | `false` | Allow destructive ops on protected configs. Otherwise throws `ProtectedConfigError` |
+| `channel` | `Channel` | `'user'` | Which caller channel this context represents for access-policy checks (`'user'` or `'mcp'`). Destructive ops throw `ProtectedConfigError` when the config's role for this channel denies or can't confirm the action |
 | `stage` | `string` | — | Stage name for stage defaults from `settings.yml` |
 
 ### Env-Only Mode (CI/CD)
@@ -332,7 +332,7 @@ const tables = await ctx.noorm.db.listTables();
 const detail = await ctx.noorm.db.describeTable('users');
 const overview = await ctx.noorm.db.overview(); // Counts of all object types
 
-// Destructive (guarded by config.protected — set allowProtected to override)
+// Destructive (guarded by config.access[channel] via checkPolicy — throws ProtectedConfigError on deny/unconfirmable)
 await ctx.noorm.db.truncate();   // Wipe data, keep schema
 await ctx.noorm.db.teardown();   // Drop all objects
 await ctx.noorm.db.reset();      // teardown() + build() — full schema rebuild
@@ -589,7 +589,7 @@ it('should apply changes safely', async () => {
 | Guard | Error Type | Purpose |
 |---|---|---|
 | `requireTest: true` | `RequireTestError` | Blocks non-test configs |
-| `config.protected` | `ProtectedConfigError` | Blocks destructive ops unless `allowProtected: true` |
+| `config.access[channel]` | `ProtectedConfigError` | Blocks destructive ops the role denies outright, or that resolve to "requires confirmation" (the SDK has no prompt — set `NOORM_YES=1`, or run via the CLI/TUI) |
 
 ### Error Types for Assertions
 

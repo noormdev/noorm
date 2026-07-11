@@ -42,7 +42,7 @@ interface Config {
     name: string              // Unique identifier: 'dev', 'staging', 'prod'
     type: 'local' | 'remote'  // Connection type
     isTest: boolean           // Test database flag
-    protected: boolean        // Requires confirmation for dangerous ops
+    access: ConfigAccess      // Per-channel access roles — see Access Roles below
 
     connection: {
         dialect: 'postgres' | 'mysql' | 'sqlite' | 'mssql'
@@ -100,7 +100,7 @@ NOORM_{PATH}_{TO}_{VALUE}  →  { path: { to: { value: '' } } }
 |----------|-------------|-------|
 | `NOORM_NAME` | `name` | |
 | `NOORM_TYPE` | `type` | 'local' or 'remote' |
-| `NOORM_PROTECTED` | `protected` | Use 'true'/'false' |
+| `NOORM_PROTECTED` | `access` (legacy) | Use 'true'/'false'. Maps through the deprecated `protected` boolean into `access` — see [Access Roles](#access-roles) |
 | `NOORM_IDENTITY` | `identity` | |
 | `NOORM_isTest` | `isTest` | camelCase preserved |
 
@@ -197,39 +197,42 @@ const full = parseConfig(partial)
 ```
 
 
-## Protected Configs
+## Access Roles
 
-Production databases need safeguards. Protected configs require confirmation for dangerous operations and block some entirely.
+`Config.protected: boolean` was replaced by per-channel access roles. Roles live on the config, not the caller — the caller is a **channel**: `user` (CLI/TUI/SDK) or `mcp` (the MCP server). Each config declares a role per channel:
 
 ```typescript
 const config = {
     name: 'prod',
-    protected: true,
+    access: {
+        user: 'operator',   // what a human at the CLI/TUI gets
+        mcp: 'viewer',       // what a connected AI agent gets — can differ from user
+    },
     // ...
 }
 ```
 
-Action classification:
+Three roles, hard-coded, not user-extensible:
 
-| Action | Protected Behavior |
-|--------|-------------------|
-| `change:run` | Requires confirmation |
-| `change:revert` | Requires confirmation |
-| `change:ff` | Requires confirmation |
-| `change:next` | Requires confirmation |
-| `run:build` | Requires confirmation |
-| `run:file` | Requires confirmation |
-| `run:dir` | Requires confirmation |
-| `db:create` | Requires confirmation |
-| `db:destroy` | **Blocked entirely** |
-| `config:rm` | Requires confirmation |
+| Permission | viewer | operator | admin |
+|---|---|---|---|
+| explore, `sql:read` | allow | allow | allow |
+| `sql:write` | deny | allow | allow |
+| `sql:ddl` | deny | deny | allow |
+| `change:run`, `change:ff`, `change:revert` | deny | confirm | allow |
+| `run:build`, `run:file`, `run:dir` | deny | confirm | allow |
+| `db:create`, `db:reset` | deny | confirm | allow |
+| `db:destroy` | deny | deny | confirm |
+| `config:rm` | deny | confirm | confirm |
 
-Check protection before executing:
+`mcp: false` is not a role — it makes the config invisible on the MCP channel (absent from `list_configs`, `connect` fails with the byte-identical error an unknown config produces).
+
+Check policy before executing:
 
 ```typescript
-import { checkProtection } from './core/config'
+import { checkPolicy } from './core/policy'
 
-const check = checkProtection(config, 'change:run')
+const check = checkPolicy('user', config, 'change:run')
 
 if (!check.allowed) {
     console.error(check.blockedReason)
@@ -246,12 +249,14 @@ if (check.requiresConfirmation) {
 // Proceed with action
 ```
 
-Skip confirmations in CI with `NOORM_YES=1`:
+`confirm` resolves per channel: on `user` it prompts for `yes-<config>` (skippable with `NOORM_YES=1`); on `mcp` it collapses straight to deny — there's no human on the other end of stdio to type a phrase.
 
 ```bash
 export NOORM_YES=1
-noorm change run  # No prompt, even on protected config
+noorm change run  # No prompt, even on an operator-role config
 ```
+
+**Migration:** a legacy `protected: true` maps to `{ user: 'operator', mcp: 'viewer' }`; `protected: false` or absent maps to `{ user: 'admin', mcp: 'admin' }`. The `protected` field is accepted on input for one version, then dropped — see the state migration in `core/version/state/migrations/`.
 
 
 ## Stages
@@ -266,7 +271,7 @@ stages:
         locked: true           # Cannot delete this config
         defaults:
             dialect: postgres
-            protected: true    # Cannot be overridden to false
+            protected: true    # Access ceiling: clamps resolved access to at most operator/viewer
         secrets:
             - key: DB_PASSWORD
               type: password
@@ -327,7 +332,7 @@ Stage constraints that can't be violated:
 
 | Constraint | Behavior |
 |------------|----------|
-| `protected: true` in defaults | Cannot set `protected: false` |
+| `protected: true` in defaults | Clamps resolved `access` to at most `{ user: 'operator', mcp: 'viewer' }` — stricter survives, looser is clamped down (see [Access Roles](#access-roles)) |
 | `isTest: true` in defaults | Cannot set `isTest: false` |
 | `locked: true` | Config cannot be deleted |
 
@@ -412,8 +417,8 @@ For listings, use `ConfigSummary` which omits sensitive connection details:
 ```typescript
 const summaries = state.listConfigs()
 // [
-//     { name: 'dev', type: 'local', isTest: false, protected: false, isActive: true, dialect: 'postgres', database: 'dev_db' },
-//     { name: 'prod', type: 'remote', isTest: false, protected: true, isActive: false, dialect: 'postgres', database: 'prod_db' },
+//     { name: 'dev', type: 'local', isTest: false, access: { user: 'admin', mcp: 'admin' }, isActive: true, dialect: 'postgres', database: 'dev_db' },
+//     { name: 'prod', type: 'remote', isTest: false, access: { user: 'operator', mcp: 'viewer' }, isActive: false, dialect: 'postgres', database: 'prod_db' },
 // ]
 ```
 
@@ -424,7 +429,7 @@ interface ConfigSummary {
     name: string
     type: 'local' | 'remote'
     isTest: boolean
-    protected: boolean
+    access: ConfigAccess
     isActive: boolean
     dialect: Dialect
     database: string

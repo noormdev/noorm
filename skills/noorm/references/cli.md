@@ -591,11 +591,10 @@ noorm -y db truncate
 
 ### db teardown
 
-Drop all database objects. **Blocked on protected configs** unless `--force` is used.
+Drop all database objects. Gated by the config's `db:reset` access role: `viewer` denied, `operator` must confirm (`--yes`/`NOORM_YES=1`), `admin` runs unconfirmed. No flag overrides a `viewer` denial.
 
 ```bash
 noorm -y db teardown
-noorm --force db teardown   # Override protection
 ```
 
 ### db transfer
@@ -788,7 +787,7 @@ noorm help change ff
 Two patterns to choose between:
 
 - **Test CI** — ephemeral database (spun up in the CI job), no vault needed. The minimum viable flow: set `NOORM_CONNECTION_*`, then `run build` + `change ff`. Use when your templates and changes do not reference vault-backed secrets.
-- **Prod CI** — real database, vault-backed secrets. The runner needs an enrolled identity (via `ci identity enroll`, run once by a developer) and bootstraps state with `ci init`. Use when templates render secrets or the config is protected.
+- **Prod CI** — real database, vault-backed secrets. The runner needs an enrolled identity (via `ci identity enroll`, run once by a developer) and bootstraps state with `ci init`. Use when templates render secrets or the config's `access.user` role isn't `admin`.
 
 ### Test CI (GitHub Actions)
 

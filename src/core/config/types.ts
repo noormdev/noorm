@@ -3,10 +3,12 @@
  *
  * Configs define how noorm connects to databases and where to find
  * SQL/change files. They support multiple environments,
- * environment variable overrides, and protected configs for production safety.
+ * environment variable overrides, and per-channel access roles for
+ * production safety (`docs/spec/config-access-roles.md`).
  */
 import type { ConnectionConfig, Dialect } from '../connection/types.js';
 import type { LogLevel } from '../logger/types.js';
+import type { ConfigAccess } from '../policy/index.js';
 
 /**
  * Full configuration object.
@@ -17,7 +19,7 @@ import type { LogLevel } from '../logger/types.js';
  *     name: 'dev',
  *     type: 'local',
  *     isTest: false,
- *     protected: false,
+ *     access: { user: 'admin', mcp: 'admin' },
  *     connection: {
  *         dialect: 'postgres',
  *         host: 'localhost',
@@ -33,7 +35,13 @@ export interface Config {
     name: string;
     type: 'local' | 'remote';
     isTest: boolean;
-    protected: boolean;
+
+    /**
+     * Per-channel access roles — the source of truth for policy checks
+     * (`checkPolicy`/`guarded` from `core/policy`). Every config materialized
+     * through `parseConfig`/state load has it populated.
+     */
+    access: ConfigAccess;
 
     connection: ConnectionConfig;
 
@@ -48,6 +56,12 @@ export interface ConfigInput {
     name?: string;
     type?: 'local' | 'remote';
     isTest?: boolean;
+    access?: ConfigAccess;
+    /**
+     * Legacy input path — a config produced before per-channel access
+     * roles. Accepted for one version at parse time and mapped to `access`
+     * via `resolveLegacyAccess` (`ConfigSchema`); never stored.
+     */
     protected?: boolean;
     connection?: Partial<ConnectionConfig>;
     identity?: string;
@@ -63,7 +77,7 @@ export interface ConfigSummary {
     name: string;
     type: 'local' | 'remote';
     isTest: boolean;
-    protected: boolean;
+    access: ConfigAccess;
     isActive: boolean;
     dialect: Dialect;
     database: string;

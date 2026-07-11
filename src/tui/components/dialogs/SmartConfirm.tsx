@@ -1,12 +1,17 @@
 /**
- * SmartConfirm — renders ProtectedConfirm or Confirm based on protection status.
+ * SmartConfirm — renders ProtectedConfirm or Confirm based on a policy check.
  *
  * Eliminates the repeated if/else branch pattern across screens that
- * conditionally show type-to-confirm vs simple yes/no confirmation.
+ * conditionally show type-to-confirm vs simple yes/no confirmation. Takes
+ * `requiresConfirmation`/`confirmationPhrase` as flat props (mirroring
+ * `PolicyCheck`'s shape) rather than a single `check` object, matching this
+ * component's existing flat prop style.
  *
  * @example
+ * const check = checkConfigPolicy('user', activeConfig, 'change:run');
  * <SmartConfirm
- *     protected={activeConfig.protected ?? false}
+ *     requiresConfirmation={check.requiresConfirmation}
+ *     confirmationPhrase={check.confirmationPhrase}
  *     configName={activeConfigName ?? 'config'}
  *     action="apply this change"
  *     message="Apply this change?"
@@ -17,6 +22,7 @@
  */
 import type { ReactElement } from 'react';
 
+import { confirmationPhraseFor } from '../../../core/policy/index.js';
 import { Confirm } from './Confirm.js';
 import { ProtectedConfirm } from './ProtectedConfirm.js';
 
@@ -25,8 +31,11 @@ import { ProtectedConfirm } from './ProtectedConfirm.js';
  */
 export interface SmartConfirmProps {
 
-    /** Whether the config is protected (determines which confirm to show). */
-    protected: boolean;
+    /** Whether a typed confirmation phrase is required (from `PolicyCheck.requiresConfirmation`). */
+    requiresConfirmation: boolean;
+
+    /** The phrase to type when `requiresConfirmation` is true (from `PolicyCheck.confirmationPhrase`). */
+    confirmationPhrase?: string;
 
     /** Config name for ProtectedConfirm. */
     configName: string;
@@ -58,15 +67,16 @@ export interface SmartConfirmProps {
 }
 
 /**
- * Renders ProtectedConfirm or Confirm based on protection status.
+ * Renders ProtectedConfirm or Confirm based on a policy check.
  */
 export function SmartConfirm(props: SmartConfirmProps): ReactElement {
 
-    if (props.protected) {
+    if (props.requiresConfirmation) {
 
         return (
             <ProtectedConfirm
                 configName={props.configName}
+                confirmPhrase={props.confirmationPhrase ?? confirmationPhraseFor(props.configName)}
                 action={props.action}
                 onConfirm={props.onConfirm}
                 onCancel={props.onCancel}

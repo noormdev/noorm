@@ -89,7 +89,7 @@ export function getEnvConfig(): ConfigInput {
  * Config module - configuration management for noorm.
  *
  * Handles config loading, validation, merging from multiple sources,
- * and protected config handling.
+ * and per-channel access roles (`docs/spec/config-access-roles.md`).
  */
 
 // Types
@@ -121,12 +121,4 @@ export {
     type SettingsProvider,
     type CompletenessCheckOptions,
 } from './resolver.js';
-
-// Protection
-export {
-    checkProtection,
-    validateConfirmation,
-    type ProtectedAction,
-    type ProtectionCheck,
-} from './protection.js';
 

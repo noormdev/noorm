@@ -507,6 +507,7 @@ export function DbTransferScreen({ params: _params }: ScreenProps): ReactElement
             tables,
             onConflict: conflictStrategy,
             truncateFirst,
+            channel: 'user',
         };
 
         const [_result, err] = await transferData(activeConfig, destConfig, options);

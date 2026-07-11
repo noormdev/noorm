@@ -314,7 +314,7 @@ The CLI shows a preview of affected objects before execution and requires explic
 - `__noorm_locks__` - Active operation locks
 
 **Confirmation Required:**
-- Protected configs require extra confirmation
+- Teardown is gated by the config's access role: `viewer`/`operator` is denied or requires confirmation, `admin` runs unconfirmed
 - Production stages show additional warnings
 - Dry-run is recommended before actual execution
 
@@ -345,7 +345,7 @@ These settings are applied automatically by the CLI and can be overridden per-op
 
 4. **Post-script for seeds** - Use `postScript` to re-insert required seed data after teardown.
 
-5. **Check protected status** - Teardown on protected configs should require explicit confirmation.
+5. **Check the config's access role** - Teardown on a `viewer`/`operator`-role config is denied or requires explicit confirmation (`checkPolicy(channel, config, 'db:reset')`); only `admin` runs unconfirmed.
 
 ```typescript
 // Safe teardown pattern

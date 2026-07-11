@@ -2,13 +2,16 @@
  * noorm db drop — drop the entire database.
  *
  * Destructive operation that drops the database associated with the
- * active (or specified) configuration. Requires --yes flag for safety.
+ * active (or specified) configuration. Gated by the config's `db:destroy`
+ * access: viewer/operator are denied outright; admin requires --yes to
+ * satisfy the matrix's confirmation requirement.
  */
 import { attempt } from '@logosdx/utils';
 import { defineCommand } from 'citty';
 
 import { initState, getStateManager } from '../../core/state/index.js';
 import { destroyDb } from '../../core/db/index.js';
+import { checkConfigPolicy } from '../../core/policy/index.js';
 import { outputResult, outputError, sharedArgs } from '../_utils.js';
 
 const dropCommand = defineCommand({
@@ -22,13 +25,6 @@ const dropCommand = defineCommand({
         json: sharedArgs.json,
     },
     async run({ args }) {
-
-        if (!args.yes) {
-
-            outputError(args, 'This is a destructive operation. Pass --yes to confirm.');
-            process.exit(1);
-
-        }
 
         const projectRoot = process.cwd();
 
@@ -60,9 +56,21 @@ const dropCommand = defineCommand({
 
         }
 
-        if (config.protected) {
+        const check = checkConfigPolicy('user', config, 'db:destroy');
 
-            outputError(args, `Config "${configName}" is protected. Cannot drop protected databases.`);
+        if (!check.allowed) {
+
+            outputError(args, check.blockedReason ?? `Config "${configName}" cannot be dropped.`);
+            process.exit(1);
+
+        }
+
+        if (check.requiresConfirmation && !args.yes) {
+
+            outputError(
+                args,
+                `This is a destructive operation requiring confirmation (${check.confirmationPhrase}). Pass --yes to confirm.`,
+            );
             process.exit(1);
 
         }

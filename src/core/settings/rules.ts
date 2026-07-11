@@ -14,6 +14,7 @@ import type {
     RulesEvaluationResult,
     ConfigForRuleMatch,
 } from './types.js';
+import { guarded } from '../policy/index.js';
 
 /**
  * Check if a single condition matches.
@@ -41,6 +42,16 @@ function _matchesCondition<K extends keyof RuleMatch>(
 }
 
 /**
+ * Whether a config counts as "guarded" for rule matching, per the policy
+ * module's `access`-based definition.
+ */
+function isConfigGuarded(config: ConfigForRuleMatch): boolean {
+
+    return guarded(config);
+
+}
+
+/**
  * Check if all conditions in a rule match the config.
  *
  * All specified conditions must be true (AND logic).
@@ -48,7 +59,7 @@ function _matchesCondition<K extends keyof RuleMatch>(
  * @example
  * ```typescript
  * const rule = { match: { isTest: true, type: 'local' } }
- * const config = { name: 'dev', isTest: true, type: 'local', protected: false }
+ * const config = { name: 'dev', isTest: true, type: 'local', access: { user: 'admin', mcp: 'admin' } }
  *
  * ruleMatches(rule.match, config)  // true
  * ```
@@ -62,7 +73,7 @@ export function ruleMatches(match: RuleMatch, config: ConfigForRuleMatch): boole
 
     }
 
-    if (match.protected !== undefined && config.protected !== match.protected) {
+    if (match.protected !== undefined && isConfigGuarded(config) !== match.protected) {
 
         return false;
 

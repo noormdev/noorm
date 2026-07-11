@@ -2,7 +2,8 @@
  * Db namespace — database exploration and schema operations.
  *
  * Mirrors [d] db in the TUI. All operations require a connection.
- * Destructive operations are unconditionally blocked on protected configs.
+ * Destructive operations are gated by the config's `db:reset` access
+ * (see `checkProtectedConfig` in ../guards.ts).
  */
 import type { Kysely } from 'kysely';
 
@@ -274,7 +275,7 @@ export class DbNamespace {
      */
     async truncate(options?: TruncateOptions): Promise<TruncateResult> {
 
-        checkProtectedConfig(this.#state.config, 'truncate');
+        checkProtectedConfig(this.#state.config, this.#state.options, 'db:reset', 'truncate');
 
         const preserve = options?.preserve
             ?? this.#state.settings.teardown?.preserveTables;
@@ -296,7 +297,7 @@ export class DbNamespace {
      */
     async teardown(): Promise<TeardownResult> {
 
-        checkProtectedConfig(this.#state.config, 'teardown');
+        checkProtectedConfig(this.#state.config, this.#state.options, 'db:reset', 'teardown');
 
         return teardownSchema(this.#kysely, this.#dialect, {
             configName: this.#state.config.name,
@@ -317,7 +318,7 @@ export class DbNamespace {
      */
     async reset(): Promise<void> {
 
-        checkProtectedConfig(this.#state.config, 'reset');
+        checkProtectedConfig(this.#state.config, this.#state.options, 'db:reset', 'reset');
 
         // Full teardown — deliberately does NOT honor preserveTables.
         // reset() rebuilds the entire schema from sql/, so any table left

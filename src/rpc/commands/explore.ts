@@ -33,6 +33,7 @@ const overviewCommand: RpcCommand<Record<string, never>> = {
         { description: 'get overview', input: {} },
     ],
     inputSchema: z.object({}),
+    permission: 'explore',
     handler: async (_input, session) => {
 
         const ctx = session.getContext();
@@ -51,6 +52,7 @@ const listCommand: RpcCommand<ListInput> = {
         { description: 'list foreign keys', input: { category: 'foreignKeys' } },
     ],
     inputSchema: listSchema,
+    permission: 'explore',
     handler: async (input, session) => {
 
         const { category } = input;
@@ -70,6 +72,7 @@ const detailCommand: RpcCommand<DetailInput> = {
         { description: 'view procedure detail', input: { category: 'procedures', name: 'usp_GetUser' } },
     ],
     inputSchema: detailSchema,
+    permission: 'explore',
     handler: async (input, session) => {
 
         const { category, name, schema } = input;

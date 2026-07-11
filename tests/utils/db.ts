@@ -844,7 +844,7 @@ export function makeTestConfig(name: string, connection: ConnectionConfig): Conf
         name,
         type: 'local',
         isTest: true,
-        protected: false,
+        access: { user: 'admin', mcp: 'admin' },
         connection,
     };
 

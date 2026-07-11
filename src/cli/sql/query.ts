@@ -49,7 +49,11 @@ const sqlCommand = defineCommand({
 
         const [result, error] = await withContext({
             args,
-            fn: async (ctx) => executeRawSql(ctx.kysely as unknown as Kysely<unknown>, query!, args.config ?? 'default'),
+            fn: async (ctx) => executeRawSql(ctx.kysely as unknown as Kysely<unknown>, query!, ctx.noorm.config.name, {
+                access: ctx.noorm.config.access,
+                channel: 'user',
+                dialect: ctx.dialect,
+            }),
         });
 
         if (error) process.exit(1);

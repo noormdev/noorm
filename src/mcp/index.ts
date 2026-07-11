@@ -12,7 +12,7 @@ import { createMcpServer } from './server.js';
 export async function startServer(): Promise<void> {
 
     const registry = createRegistry();
-    const session = new SessionManager();
+    const session = new SessionManager('mcp');
     const server = createMcpServer(registry, session);
     const transport = new StdioServerTransport();
 

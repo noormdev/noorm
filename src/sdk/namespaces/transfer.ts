@@ -6,6 +6,7 @@
 import type { Config } from '../../core/config/types.js';
 import type { TransferOptions, TransferResult, TransferPlan } from '../../core/transfer/types.js';
 import { transferData, getTransferPlan } from '../../core/transfer/index.js';
+import { checkProtectedConfig } from '../guards.js';
 
 import type { ContextState } from '../state.js';
 
@@ -39,7 +40,15 @@ export class TransferNamespace {
         options?: TransferOptions,
     ): Promise<[TransferResult | null, Error | null]> {
 
-        return transferData(this.#state.config, destConfig, options);
+        // Gated against destConfig (the write target), not the source — the
+        // SDK has no interactive prompt, so a `db:reset` confirm cell blocks
+        // outright here, same as db.truncate()/dt.importFile().
+        checkProtectedConfig(destConfig, this.#state.options, 'db:reset', 'transfer.to');
+
+        return transferData(this.#state.config, destConfig, {
+            ...options,
+            channel: this.#state.options.channel ?? 'user',
+        });
 
     }
 

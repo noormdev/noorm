@@ -48,7 +48,7 @@ describe('integration: sdk DbNamespace reset vs preserveTables', () => {
                 name: 'test',
                 type: 'local',
                 isTest: true,
-                protected: false,
+                access: { user: 'admin', mcp: 'admin' },
                 connection: { dialect: 'postgres', database: 'noorm_test' },
             },
             settings: { teardown: { preserveTables: ['ev_keep'] } },

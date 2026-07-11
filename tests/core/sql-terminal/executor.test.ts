@@ -1,13 +1,14 @@
 /**
  * SQL Terminal Executor tests.
  *
- * Tests executeRawSql with mocked database interactions.
+ * Tests executeRawSqlUnchecked (execution mechanics) and executeRawSql
+ * (mandatory policy gate) with mocked database interactions.
  * Verifies observer events, result structure, and error handling.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'bun:test';
 import type { Kysely, RawBuilder } from 'kysely';
 
-import { executeRawSql } from '../../../src/core/sql-terminal/executor.js';
+import { executeRawSql, executeRawSqlUnchecked } from '../../../src/core/sql-terminal/executor.js';
 import { observer } from '../../../src/core/observer.js';
 
 /**
@@ -26,7 +27,7 @@ interface ExecuteAfterEventData {
 
 describe('sql-terminal: executor', () => {
 
-    describe('executeRawSql', () => {
+    describe('executeRawSqlUnchecked / executeRawSql', () => {
 
         let mockDb: Kysely<unknown>;
         let mockExecute: ReturnType<typeof vi.fn>;
@@ -84,7 +85,7 @@ describe('sql-terminal: executor', () => {
                 execute: mockExecute,
             } as unknown as RawBuilder<unknown>);
 
-            await executeRawSql(mockDb, 'SELECT * FROM users', 'production');
+            await executeRawSqlUnchecked(mockDb, 'SELECT * FROM users', 'production');
 
             const beforeEvent = events.find((e) => e.event === 'before');
             expect(beforeEvent).toBeDefined();
@@ -110,7 +111,7 @@ describe('sql-terminal: executor', () => {
                 execute: mockExecute,
             } as unknown as RawBuilder<unknown>);
 
-            await executeRawSql(mockDb, 'SELECT * FROM users', 'production');
+            await executeRawSqlUnchecked(mockDb, 'SELECT * FROM users', 'production');
 
             const afterEvent = events.find((e) => e.event === 'after');
             expect(afterEvent).toBeDefined();
@@ -135,7 +136,7 @@ describe('sql-terminal: executor', () => {
                 execute: mockExecute,
             } as unknown as RawBuilder<unknown>);
 
-            await executeRawSql(mockDb, 'SELECT * FROM users', 'production');
+            await executeRawSqlUnchecked(mockDb, 'SELECT * FROM users', 'production');
 
             const afterEvent = events.find((e) => e.event === 'after');
             expect(afterEvent).toBeDefined();
@@ -164,7 +165,7 @@ describe('sql-terminal: executor', () => {
                 execute: mockExecute,
             } as unknown as RawBuilder<unknown>);
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 mockDb,
                 'SELECT id, name, email FROM users',
                 'test',
@@ -192,7 +193,7 @@ describe('sql-terminal: executor', () => {
                 execute: mockExecute,
             } as unknown as RawBuilder<unknown>);
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 mockDb,
                 'INSERT INTO users (name) VALUES (\'Alice\'), (\'Bob\'), (\'Charlie\')',
                 'test',
@@ -218,7 +219,7 @@ describe('sql-terminal: executor', () => {
                 execute: mockExecute,
             } as unknown as RawBuilder<unknown>);
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 mockDb,
                 'UPDATE users SET active = true WHERE id > 10',
                 'test',
@@ -242,7 +243,7 @@ describe('sql-terminal: executor', () => {
                 execute: mockExecute,
             } as unknown as RawBuilder<unknown>);
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 mockDb,
                 'DELETE FROM users WHERE id < 5',
                 'test',
@@ -264,7 +265,7 @@ describe('sql-terminal: executor', () => {
                 execute: mockExecute,
             } as unknown as RawBuilder<unknown>);
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 mockDb,
                 'SELECT * FORM users',
                 'test',
@@ -287,7 +288,7 @@ describe('sql-terminal: executor', () => {
                 execute: mockExecute,
             } as unknown as RawBuilder<unknown>);
 
-            const result = await executeRawSql(mockDb, 'SELECT 1', 'test');
+            const result = await executeRawSqlUnchecked(mockDb, 'SELECT 1', 'test');
 
             expect(result.success).toBe(false);
             expect(result.errorMessage).toBe('String error');
@@ -307,7 +308,7 @@ describe('sql-terminal: executor', () => {
             } as unknown as RawBuilder<unknown>);
 
             const query = 'SELECT * FROM users WHERE id = 42';
-            await executeRawSql(mockDb, query, 'test');
+            await executeRawSqlUnchecked(mockDb, query, 'test');
 
             expect(rawSpy).toHaveBeenCalledWith(query);
             expect(mockExecute).toHaveBeenCalledWith(mockDb);
@@ -326,7 +327,7 @@ describe('sql-terminal: executor', () => {
                 execute: mockExecute,
             } as unknown as RawBuilder<unknown>);
 
-            const result = await executeRawSql(
+            const result = await executeRawSqlUnchecked(
                 mockDb,
                 'SELECT * FROM users WHERE id = -1',
                 'test',
@@ -359,7 +360,7 @@ describe('sql-terminal: executor', () => {
                 execute: mockExecute,
             } as unknown as RawBuilder<unknown>);
 
-            const result = await executeRawSql(mockDb, 'SELECT 1', 'test');
+            const result = await executeRawSqlUnchecked(mockDb, 'SELECT 1', 'test');
 
             expect(result.success).toBe(true);
             // setTimeout(15) may fire slightly early - allow 10ms minimum
@@ -387,13 +388,90 @@ describe('sql-terminal: executor', () => {
                 execute: mockExecute,
             } as unknown as RawBuilder<unknown>);
 
-            const result = await executeRawSql(mockDb, 'SELECT * FROM complex_table', 'test');
+            const result = await executeRawSqlUnchecked(mockDb, 'SELECT * FROM complex_table', 'test');
 
             expect(result.success).toBe(true);
             expect(result.columns).toEqual(['id', 'metadata', 'createdAt', 'count', 'isActive']);
             expect(result.rows![0]!['metadata']).toEqual({ tags: ['important', 'urgent'] });
             expect(result.rows![0]!['createdAt']).toBeInstanceOf(Date);
             expect(result.rows![0]!['count']).toBe(BigInt(9007199254740991));
+
+        });
+
+        describe('policy gate', () => {
+
+            const VIEWER_GATE = {
+                access: { user: 'admin' as const, mcp: 'viewer' as const },
+                channel: 'mcp' as const,
+                dialect: 'postgres' as const,
+            };
+            const ADMIN_GATE = {
+                access: { user: 'admin' as const, mcp: 'admin' as const },
+                channel: 'user' as const,
+                dialect: 'postgres' as const,
+            };
+
+            it('should execute a SELECT for a viewer role (sql:read allows)', async () => {
+
+                mockExecute.mockResolvedValue({ rows: [{ id: 1 }], numAffectedRows: undefined });
+
+                const { sql } = await import('kysely');
+                vi.spyOn(sql, 'raw').mockReturnValue({
+                    execute: mockExecute,
+                } as unknown as RawBuilder<unknown>);
+
+                const result = await executeRawSql(mockDb, 'SELECT * FROM users', 'prod', VIEWER_GATE);
+
+                expect(result.success).toBe(true);
+
+            });
+
+            it('should deny an INSERT for a viewer role without touching the database', async () => {
+
+                const { sql } = await import('kysely');
+                const rawSpy = vi.spyOn(sql, 'raw');
+
+                await expect(
+                    executeRawSql(mockDb, 'INSERT INTO users VALUES (1)', 'prod', VIEWER_GATE),
+                ).rejects.toThrow(/sql:write/);
+
+                expect(rawSpy).not.toHaveBeenCalled();
+
+            });
+
+            it('should allow an INSERT for an admin role', async () => {
+
+                mockExecute.mockResolvedValue({ rows: [], numAffectedRows: BigInt(1) });
+
+                const { sql } = await import('kysely');
+                vi.spyOn(sql, 'raw').mockReturnValue({
+                    execute: mockExecute,
+                } as unknown as RawBuilder<unknown>);
+
+                const result = await executeRawSql(mockDb, 'INSERT INTO users VALUES (1)', 'prod', ADMIN_GATE);
+
+                expect(result.success).toBe(true);
+
+            });
+
+            it('requires a gate — the public symbol cannot execute raw SQL ungated', async () => {
+
+                mockExecute.mockResolvedValue({ rows: [], numAffectedRows: BigInt(1) });
+
+                const { sql } = await import('kysely');
+                const rawSpy = vi.spyOn(sql, 'raw').mockReturnValue({
+                    execute: mockExecute,
+                } as unknown as RawBuilder<unknown>);
+
+                // @ts-expect-error `gate` is mandatory on executeRawSql — this line
+                // only compiles because the error is suppressed, proving the type
+                // system rejects an ungated call. Ungated execution mechanics are
+                // executeRawSqlUnchecked's job, tested above.
+                await expect(executeRawSql(mockDb, 'INSERT INTO users VALUES (1)', 'prod')).rejects.toThrow();
+
+                expect(rawSpy).not.toHaveBeenCalled();
+
+            });
 
         });
 

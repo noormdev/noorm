@@ -8,12 +8,13 @@ import { RpcError } from '../types.js';
 
 const listConfigsCommand: RpcCommand<Record<string, never>, ConfigSummary[]> = {
     name: 'list_configs',
-    description: 'List all database configurations with dialect, database name, and protection status. Does not require a database connection.',
+    description: 'List all database configurations with dialect, database name, and access role. Does not require a database connection.',
     examples: [
         { description: 'list all configs', input: {} },
     ],
     inputSchema: z.object({}),
-    handler: async (): Promise<ConfigSummary[]> => {
+    permission: 'open',
+    handler: async (_input, session): Promise<ConfigSummary[]> => {
 
         const [manager, err] = await attempt(() => initState());
 
@@ -23,7 +24,17 @@ const listConfigsCommand: RpcCommand<Record<string, never>, ConfigSummary[]> = {
 
         }
 
-        return manager.listConfigs();
+        const summaries = manager.listConfigs();
+
+        // Invisibility: a config with access.mcp === false does not exist
+        // as far as the mcp channel is concerned.
+        if (session.channel === 'mcp') {
+
+            return summaries.filter((summary) => summary.access.mcp !== false);
+
+        }
+
+        return summaries;
 
     },
 };

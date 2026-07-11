@@ -7,7 +7,7 @@
 import { describe, it, expect, afterAll } from 'bun:test';
 import path from 'node:path';
 import { rm } from 'node:fs/promises';
-import { preview } from '../../../src/core/runner/runner.js';
+import { preview, runBuild, runFile, runDir, runFiles } from '../../../src/core/runner/runner.js';
 import type { RunContext } from '../../../src/core/runner/types.js';
 
 const FIXTURES_DIR = path.join(import.meta.dirname, 'fixtures');
@@ -19,6 +19,8 @@ const mockContext: RunContext = {
     configName: 'test',
     identity: { name: 'Test User', email: 'test@example.com', source: 'config' },
     projectRoot: FIXTURES_DIR,
+    access: { user: 'admin', mcp: 'admin' },
+    channel: 'user',
     config: { table: 'users' },
     secrets: { API_KEY: 'secret123' },
 };
@@ -130,6 +132,54 @@ describe('runner: preview', () => {
         const results = await preview(mockContext, [filepath]);
 
         expect(results[0]!.checksum).toMatch(/^[a-f0-9]{64}$/);
+
+    });
+
+});
+
+describe('runner: policy gate', () => {
+
+    // Viewer denies run:build/run:file/run:dir outright (matrix cell:
+    // deny) — the gate is the first thing each entrypoint does, so this
+    // proves it fires before any file I/O or DB access is attempted.
+    const viewerContext: RunContext = {
+        ...mockContext,
+        access: { user: 'viewer', mcp: false },
+    };
+
+    it('should deny runBuild for a viewer role', async () => {
+
+        await expect(runBuild(viewerContext, FIXTURES_DIR)).rejects.toThrow(/run:build/);
+
+    });
+
+    it('should deny runFile for a viewer role', async () => {
+
+        const filepath = path.join(FIXTURES_DIR, 'raw.sql');
+
+        await expect(runFile(viewerContext, filepath)).rejects.toThrow(/run:file/);
+
+    });
+
+    it('should deny runDir for a viewer role', async () => {
+
+        await expect(runDir(viewerContext, FIXTURES_DIR)).rejects.toThrow(/run:dir/);
+
+    });
+
+    it('should deny runFiles for a viewer role', async () => {
+
+        const filepath = path.join(FIXTURES_DIR, 'raw.sql');
+
+        await expect(runFiles(viewerContext, [filepath])).rejects.toThrow(/run:dir/);
+
+    });
+
+    it('should carry the config name in the denial reason', async () => {
+
+        const filepath = path.join(FIXTURES_DIR, 'raw.sql');
+
+        await expect(runFile(viewerContext, filepath)).rejects.toThrow(/"test"/);
 
     });
 

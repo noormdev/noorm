@@ -31,12 +31,14 @@ import {
     SmartConfirm,
     MissingParamPanel,
 } from '../../components/index.js';
+import { checkConfigPolicy } from '../../../core/policy/index.js';
 import { useChangeProgress, useAsyncEffect } from '../../hooks/index.js';
 import { getErrorMessage,
     loadChangesWithStatus,
     resolveScreenIdentity,
     resolveChangesDir,
     resolveSqlDir,
+    isConfigGuarded,
 } from '../../utils/index.js';
 import { revertChange } from '../../../core/change/executor.js';
 import { createConnection } from '../../../core/connection/factory.js';
@@ -59,6 +61,7 @@ export function ChangeRevertScreen({ params }: ScreenProps): ReactElement {
     const { navigate: _navigate, back } = useRouter();
     const { isFocused } = useFocusScope('ChangeRevert');
     const { activeConfig, activeConfigName, projectRoot, settings, identity: cryptoIdentity } = useAppContext();
+    const check = activeConfig ? checkConfigPolicy('user', activeConfig, 'change:revert') : null;
 
     const changeName = params.name;
 
@@ -150,6 +153,8 @@ export function ChangeRevertScreen({ params }: ScreenProps): ReactElement {
                 projectRoot,
                 changesDir: resolveChangesDir(projectRoot, settings),
                 sqlDir: resolveSqlDir(projectRoot, settings),
+                access: activeConfig.access,
+                channel: 'user' as const,
             };
 
             // Execute revert
@@ -215,6 +220,17 @@ export function ChangeRevertScreen({ params }: ScreenProps): ReactElement {
 
     }
 
+    // Denied by policy
+    if (check && !check.allowed) {
+
+        return (
+            <Panel title="Revert Change" paddingX={2} paddingY={1} borderColor="red">
+                <Text color="red">{check.blockedReason}</Text>
+            </Panel>
+        );
+
+    }
+
     // Loading
     if (step === 'loading') {
 
@@ -245,11 +261,12 @@ export function ChangeRevertScreen({ params }: ScreenProps): ReactElement {
         );
 
         return (
-            <Panel title="Revert Change" paddingX={2} paddingY={1} borderColor={activeConfig.protected ? 'yellow' : undefined}>
+            <Panel title="Revert Change" paddingX={2} paddingY={1} borderColor={isConfigGuarded(activeConfig) ? 'yellow' : undefined}>
                 <Box flexDirection="column" gap={1}>
                     {confirmContent}
                     <SmartConfirm
-                        protected={activeConfig.protected ?? false}
+                        requiresConfirmation={check?.requiresConfirmation ?? false}
+                        confirmationPhrase={check?.confirmationPhrase}
                         configName={activeConfigName ?? 'config'}
                         action="revert this change"
                         message="Revert this change?"

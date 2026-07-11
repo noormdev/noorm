@@ -92,10 +92,22 @@ A database connection profile stored in encrypted state.
 | name | string | Yes | Unique identifier (e.g., `dev`, `staging`, `prod`) |
 | type | enum | Yes | `local` or `remote` |
 | isTest | boolean | Yes | Marks database as disposable for testing |
-| protected | boolean | Yes | Requires confirmation for dangerous operations |
+| access | ConfigAccess | Yes | Per-channel access roles (`{ user, mcp }`) — replaces the legacy `protected` boolean |
 | connection | ConnectionConfig | Yes | Database connection details |
 | paths | PathConfig | Yes | File system paths for schema and changes |
 | identity | string | No | Override identity for `executed_by` field |
+
+
+### ConfigAccess
+
+Per-channel access grant. `Role` is `'viewer' | 'operator' | 'admin'`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| user | Role | Access for the CLI, TUI, and SDK |
+| mcp | Role \| `false` | Access for the MCP server. `false` hides the config entirely on this channel |
+
+`checkPolicy(channel, config, permission)` resolves a `ConfigAccess` + `Permission` into `allow`/`confirm`/`deny`, channel-aware (`confirm` prompts on `user`, collapses to `deny` on `mcp`). See `docs/spec/config-access-roles.md` for the full permission matrix.
 
 
 ### ConnectionConfig
@@ -143,7 +155,7 @@ Lightweight config view for listings. Omits sensitive connection details.
 | name | string | Config identifier |
 | type | enum | `local` or `remote` |
 | isTest | boolean | Test database flag |
-| protected | boolean | Protection enabled |
+| access | ConfigAccess | Per-channel access roles |
 | isActive | boolean | Currently selected config |
 
 
@@ -192,7 +204,7 @@ stages:
         locked: true
         defaults:
             dialect: postgres
-            protected: true
+            protected: true   # access ceiling: clamps resolved access to at most operator/viewer
         secrets:
             - key: DB_PASSWORD
               type: password
@@ -200,7 +212,7 @@ stages:
 
 rules:
     - match:
-          protected: true
+          protected: true   # matches guarded(config), i.e. access.user !== 'admin'
       exclude:
           - '**/*.seed.sql'
 
@@ -268,7 +280,7 @@ Initial values when creating a config from a stage.
 | password | string? | Default password |
 | ssl | boolean? | Default SSL setting |
 | isTest | boolean? | Default test flag |
-| protected | boolean? | Default protection (cannot be overridden if true) |
+| protected | boolean? | `true` becomes an access **ceiling** at resolution: resolved `access` is clamped to at most `{ user: 'operator', mcp: 'viewer' }` — a stricter config-level `access` survives unchanged |
 
 
 ### StageSecret
@@ -301,7 +313,7 @@ Conditions for rule evaluation.
 | Field | Type | Description |
 |-------|------|-------------|
 | name | string? | Match config by name |
-| protected | boolean? | Match by protection status |
+| protected | boolean? | Matches `guarded(config)` — `true` if `access.user !== 'admin'` — despite the field's legacy name, this reads current `access`, not a stored flag |
 | isTest | boolean? | Match by test flag |
 | type | enum? | Match by `local` or `remote` |
 
@@ -444,7 +456,7 @@ The decrypted contents of a shared config.
 | connection | object | Host, port, database, ssl, pool (no user/password) |
 | paths | object | Schema and change directories |
 | isTest | boolean | Test database flag |
-| protected | boolean | Protection status |
+| access | ConfigAccess | Per-channel access roles |
 | secrets | Map | Config-scoped secrets |
 
 **Note:** `user` and `password` are intentionally omitted. Recipients provide their own credentials on import.

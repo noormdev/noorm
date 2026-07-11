@@ -52,8 +52,8 @@ Teardown removes all database objects. Clean slate for full rebuilds.
 noorm -y db teardown
 ```
 
-::: warning Protected Configs
-`db teardown` is blocked on protected configs. Use `--force` to override, but consider whether you really want to drop everything from production.
+::: warning Access Roles
+`db teardown` is gated by the config's `db:reset` access role: `viewer` is denied outright, `operator` must confirm (`yes-<config>`, or `NOORM_YES=1` in CI), `admin` runs unconfirmed — see [Access Roles](#access-roles) below.
 :::
 
 ### Drop Order
@@ -79,45 +79,46 @@ noorm internal tables are always preserved:
 After teardown, noorm can still track what was applied previously. Changes are marked as `stale`, meaning they'll re-run on the next [fast-forward](/guide/changes/forward-revert). See [History](/guide/changes/history) for how this affects your execution log.
 
 
-## Protected Configs
+## Access Roles
 
-[Configs](/guide/environments/configs) marked as `protected: true` block destructive operations. This prevents accidentally wiping production data. You can also set protection at the [stage level](/guide/environments/stages).
+[Configs](/guide/environments/configs) declare an `access.user` role — `viewer`, `operator`, or `admin` — that gates `db teardown` (and `truncate`, `reset`) via the `db:reset` permission. This prevents accidentally wiping production data. You can also cap it at the [stage level](/guide/environments/stages): a stage with `protected: true` clamps every linked config's resolved access to at most `operator`/`viewer`.
 
 ```yaml
 # .noorm/settings.yml
 stages:
     prod:
         defaults:
-            protected: true
+            protected: true   # access ceiling: at most operator/viewer
 ```
 
-When you attempt teardown on a protected config:
+When you attempt teardown on a `viewer`-role config:
 
 ```
-Cannot teardown on protected config "prod"
+Cannot teardown on config "prod": "db:reset" is not allowed on config "prod" (role: viewer)
 ```
 
-### Overriding Protection
+An `operator`-role config doesn't refuse teardown — it asks for confirmation instead (see below).
 
-**CLI**: Use `--force` flag (with `--yes` to skip confirmation)
+### Confirming on `operator`
+
+**CLI/TUI**: Type the confirmation phrase, or pass `--yes` (`NOORM_YES=1` in CI) to skip the prompt:
 
 ```bash
-noorm -y --force db teardown --config prod
+NOORM_YES=1 noorm db teardown --config prod
 ```
 
-**SDK**: Pass `allowProtected: true`
+**SDK**: There is no prompt to answer. `ctx.noorm.db.teardown()` throws `ProtectedConfigError` on an `operator`-role config unless `NOORM_YES=1` is set in the environment — the same variable the CLI honors:
 
 ```typescript
-const ctx = await createContext({
-    config: 'prod',
-    allowProtected: true,
-})
+const ctx = await createContext({ config: 'prod' })
 
-await ctx.teardown()  // Now allowed
+await ctx.noorm.db.teardown()  // Throws ProtectedConfigError on operator; run via CLI/TUI or set NOORM_YES=1
 ```
 
+A `viewer`-role config denies `db teardown` outright — no flag, environment variable, or SDK option overrides that. Give the config `admin` access if it genuinely needs frictionless teardown.
+
 ::: danger
-Overriding protection on production databases should be exceedingly rare. If you find yourself doing this regularly, reconsider your deployment workflow.
+Running teardown against production should be exceedingly rare. If you find yourself doing this regularly, reconsider your deployment workflow.
 :::
 
 
@@ -347,7 +348,7 @@ SQLite uses DELETE instead of TRUNCATE because SQLite does not support TRUNCATE.
 
 **Use postScript for seeds.** Re-insert required data automatically after teardown.
 
-**Check protected status.** The protected flag exists for a reason. Think twice before overriding.
+**Check the config's access role.** A `viewer`/`operator` role exists for a reason. Think twice before switching a config to `admin` just to skip the confirmation.
 
 ```bash
 # Safe teardown pattern

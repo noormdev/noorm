@@ -192,7 +192,7 @@ A **config** is a saved database connection. You can have multiple configs for d
 - `dev` - Your local database
 - `test` - Test database (gets wiped between runs)
 - `staging` - Staging server
-- `prod` - Production (protected)
+- `prod` - Production (guarded — see Access Roles below)
 
 ```
 ┌─ Configs ─────────────────────────────────┐
@@ -215,15 +215,16 @@ noorm -c prod run build
 ```
 
 
-## Protected Configs
+## Access Roles
 
-Some configs are marked as **protected**. This prevents accidental destructive operations:
+Every config declares an access role — `viewer`, `operator`, or `admin` — separately for two **channels**: `user` (you, at the CLI or TUI) and `mcp` (an AI agent connected over MCP). This is how you prevent accidental destructive operations:
 
-- `db teardown` - Blocked on protected configs
-- `db truncate` - Requires confirmation
-- Accidental `DROP TABLE` - Still executes (be careful!)
+- `viewer` - Read-only. `db teardown`, writes, and changes are all blocked.
+- `operator` - Reads and writes are fine; `db teardown` and applying changes require typing a confirmation phrase.
+- `admin` - No friction. Everything is allowed, nothing prompts.
+- Accidental `DROP TABLE` via raw SQL - Still executes if the role allows SQL writes/DDL (be careful!)
 
-Protection is a safety net, not a security boundary. It catches mistakes like running teardown against the wrong database.
+Roles are a safety net, not a security boundary. They catch mistakes like running teardown against the wrong database — they won't stop a determined user or malicious script.
 
 
 ## Secrets
@@ -320,7 +321,7 @@ stages:
         required: true
 ```
 
-Now when you create a config with stage `production`, it's automatically protected and requires an `AWS_SECRET_KEY` secret.
+Now when you create a config with stage `production`, its resolved access is capped to at most `operator`/`viewer` (it can be stricter, never looser), and it requires an `AWS_SECRET_KEY` secret.
 
 
 ## SQL Files vs Changes

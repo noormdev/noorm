@@ -233,6 +233,8 @@ export class ChangesNamespace {
      */
     async apply(name: string, options?: ChangeOptions): Promise<ChangeResult> {
 
+        checkProtectedConfig(this.#state.config, this.#state.options, 'change:run', 'changes.apply');
+
         return this.#getManager().run(name, options);
 
     }
@@ -254,7 +256,7 @@ export class ChangesNamespace {
      */
     async revert(name: string, options?: ChangeOptions): Promise<ChangeResult> {
 
-        checkProtectedConfig(this.#state.config, 'changes.revert');
+        checkProtectedConfig(this.#state.config, this.#state.options, 'change:revert', 'changes.revert');
 
         return this.#getManager().revert(name, options);
 
@@ -277,6 +279,8 @@ export class ChangesNamespace {
      */
     async ff(options?: BatchChangeOptions): Promise<BatchChangeResult> {
 
+        checkProtectedConfig(this.#state.config, this.#state.options, 'change:ff', 'changes.ff');
+
         return this.#getManager().ff(options);
 
     }
@@ -296,6 +300,8 @@ export class ChangesNamespace {
      * ```
      */
     async next(count: number = 1, options?: BatchChangeOptions): Promise<BatchChangeResult> {
+
+        checkProtectedConfig(this.#state.config, this.#state.options, 'change:run', 'changes.next');
 
         return this.#getManager().next(count, options);
 
@@ -381,7 +387,7 @@ export class ChangesNamespace {
      */
     async rewind(target: number | string): Promise<BatchChangeResult> {
 
-        checkProtectedConfig(this.#state.config, 'changes.revert');
+        checkProtectedConfig(this.#state.config, this.#state.options, 'change:revert', 'changes.rewind');
 
         return this.#getManager().rewind(target);
 
@@ -457,6 +463,8 @@ export class ChangesNamespace {
             projectRoot: this.#state.projectRoot,
             changesDir: this.#changesDir,
             sqlDir: this.#sqlDir,
+            access: this.#state.config.access,
+            channel: this.#state.options.channel ?? 'user',
             config: this.#state.config as unknown as Record<string, unknown>,
             secrets: state.getAllSecrets(this.#state.config.name),
             globalSecrets: state.getAllGlobalSecrets(),

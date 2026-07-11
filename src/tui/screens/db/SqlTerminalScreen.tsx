@@ -204,12 +204,22 @@ export function SqlTerminalScreen({ params }: ScreenProps): ReactElement {
     // Execute query
     const handleExecute = useCallback(async (sql: string) => {
 
-        if (!dbRef.current || !historyManagerRef.current || !activeConfigName) return;
+        if (!dbRef.current || !historyManagerRef.current || !activeConfigName || !activeConfig) return;
 
         setIsExecuting(true);
         setResult(null);
 
-        const execResult = await executeRawSql(dbRef.current, sql, activeConfigName);
+        const [rawResult, gateErr] = await attempt(() =>
+            executeRawSql(dbRef.current!, sql, activeConfigName, {
+                access: activeConfig.access,
+                channel: 'user',
+                dialect: activeConfig.connection.dialect,
+            }),
+        );
+
+        const execResult: SqlExecutionResult = gateErr
+            ? { success: false, errorMessage: gateErr.message, durationMs: 0 }
+            : rawResult!;
 
         // Save to history
         await historyManagerRef.current.addEntry(sql, execResult);
@@ -247,7 +257,7 @@ export function SqlTerminalScreen({ params }: ScreenProps): ReactElement {
 
         }
 
-    }, [activeConfigName, showToast]);
+    }, [activeConfigName, activeConfig, showToast]);
 
     // Navigate history
     const handleHistoryNavigate = useCallback((direction: 'up' | 'down') => {

@@ -22,10 +22,12 @@ import { attempt } from '@logosdx/utils';
 import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
-import { Panel, Spinner, ProtectedConfirm, useToast } from '../../components/index.js';
+import { Panel, Spinner, SmartConfirm, useToast } from '../../components/index.js';
 import { useAsyncEffect } from '../../hooks/index.js';
 import { createConnection, testConnection } from '../../../core/connection/index.js';
 import { getLockManager } from '../../../core/lock/index.js';
+import { confirmationPhraseFor } from '../../../core/policy/index.js';
+import { isConfigGuarded } from '../../utils/index.js';
 
 /**
  * Screen phase state.
@@ -43,6 +45,9 @@ export function LockForceScreen({ params: _params }: ScreenProps): ReactElement 
     const { isFocused } = useFocusScope('LockForce');
     const { activeConfig, activeConfigName } = useAppContext();
     const { showToast } = useToast();
+    // Locks have no matrix permission — guarded() drives confirm UX only,
+    // never enforcement (docs/spec/config-access-roles.md#permissions-and-matrix).
+    const isGuarded = activeConfig ? isConfigGuarded(activeConfig) : false;
 
     const [phase, setPhase] = useState<Phase>('loading');
     const [error, setError] = useState<string | null>(null);
@@ -274,9 +279,12 @@ export function LockForceScreen({ params: _params }: ScreenProps): ReactElement 
                     </Box>
                 </Panel>
 
-                <ProtectedConfirm
+                <SmartConfirm
+                    requiresConfirmation={isGuarded}
+                    confirmationPhrase={isGuarded ? confirmationPhraseFor(activeConfigName ?? 'unknown') : undefined}
                     configName={activeConfigName ?? 'unknown'}
                     action="force-release lock for"
+                    message="Force-release this lock?"
                     onConfirm={handleConfirm}
                     onCancel={handleCancel}
                     focusLabel="LockForceConfirm"

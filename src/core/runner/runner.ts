@@ -33,6 +33,8 @@ import { attempt, attemptSync } from '@logosdx/utils';
 import { observer } from '../observer.js';
 import { formatIdentity } from '../identity/resolver.js';
 import { processFile, isTemplate } from '../template/index.js';
+import { assertPolicy } from '../policy/index.js';
+import type { Permission } from '../policy/index.js';
 import { computeChecksum, computeChecksumFromContent, computeCombinedChecksum } from './checksum.js';
 import { executeSqlBody } from './mssql-batches.js';
 import { Tracker } from './tracker.js';
@@ -61,6 +63,23 @@ const FILE_HEADER_TEMPLATE = `-- ===============================================
 -- ============================================================
 
 `;
+
+/**
+ * Gate a run entrypoint against the config's access policy.
+ *
+ * The single enforcement seam for `runBuild`/`runFile`/`runDir`/`runFiles`:
+ * every caller (SDK, TUI, CLI) funnels through one of these functions, so
+ * gating here — rather than per-caller — closes the surface uniformly.
+ * Run files are command-gated, not content-classified.
+ *
+ * @throws Error carrying the policy's blockedReason when the channel's
+ * role denies the permission.
+ */
+function assertRunPolicy(context: RunContext, permission: Permission): void {
+
+    assertPolicy(context.channel, { name: context.configName, access: context.access }, permission);
+
+}
 
 // ─────────────────────────────────────────────────────────────
 // Build Mode
@@ -92,6 +111,8 @@ export async function runBuild(
     options: RunOptions = {},
     preFilteredFiles?: string[],
 ): Promise<BatchResult> {
+
+    assertRunPolicy(context, 'run:build');
 
     const start = performance.now();
     const opts = { ...DEFAULT_RUN_OPTIONS_INTERNAL, ...options };
@@ -175,6 +196,8 @@ export async function runFile(
     options: RunOptions = {},
 ): Promise<FileResult> {
 
+    assertRunPolicy(context, 'run:file');
+
     const opts = { ...DEFAULT_RUN_OPTIONS_INTERNAL, ...options };
 
     observer.emit('run:file', {
@@ -252,6 +275,8 @@ export async function runDir(
     options: RunOptions = {},
 ): Promise<BatchResult> {
 
+    assertRunPolicy(context, 'run:dir');
+
     const start = performance.now();
     const opts = { ...DEFAULT_RUN_OPTIONS_INTERNAL, ...options };
 
@@ -299,6 +324,8 @@ export async function runFiles(
     files: string[],
     options: RunOptions = {},
 ): Promise<BatchResult> {
+
+    assertRunPolicy(context, 'run:dir');
 
     const opts = { ...DEFAULT_RUN_OPTIONS_INTERNAL, ...options };
 

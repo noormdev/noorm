@@ -69,7 +69,7 @@ export function RunListScreen({ params: _params }: ScreenProps): ReactElement {
         // Create config for rule matching
         const configForMatch = {
             name: activeConfigName ?? '',
-            protected: activeConfig.protected ?? false,
+            access: activeConfig.access,
             isTest: activeConfig.isTest ?? false,
             type: activeConfig.type,
         };

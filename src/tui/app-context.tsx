@@ -52,6 +52,7 @@ import type { StateManager } from '../core/state/manager.js';
 import type { SettingsManager } from '../core/settings/manager.js';
 import type { CryptoIdentity } from '../core/identity/types.js';
 import { loadExistingIdentity } from '../core/identity/index.js';
+import { GUARDED_ACCESS, OPEN_ACCESS } from '../core/policy/index.js';
 
 // ─────────────────────────────────────────────────────────────
 // Project Name Detection
@@ -410,13 +411,14 @@ export function AppContextProvider({
                 if (!stage.defaults?.dialect) continue;
 
                 // Create placeholder config from stage defaults
+                const access = stage.defaults.protected ? GUARDED_ACCESS : OPEN_ACCESS;
                 const config: Config = {
                     name: stageName,
                     type: stage.defaults.host && stage.defaults.host !== 'localhost'
                         ? 'remote'
                         : 'local',
                     isTest: stage.defaults.isTest ?? false,
-                    protected: stage.defaults.protected ?? false,
+                    access,
                     connection: {
                         dialect: stage.defaults.dialect,
                         host: stage.defaults.host ?? 'localhost',
