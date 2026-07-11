@@ -3,10 +3,11 @@
  *
  * These exercise the real streaming download (`downloadToFile`) against a live
  * local HTTP server — no fetch/fs mocks — because the regressions we care about
- * are behavioral: does it stream to disk, does it report progress, and does it
- * fail (rather than hang forever) when the connection stalls? The `installUpdate`
- * swap step is deliberately not tested here: in a test process `process.execPath`
- * is the test runner's own binary, and swapping it would be catastrophic.
+ * are behavioral: does it stream to disk, report progress, resume from a stall
+ * via a range request, and fail (rather than hang) once retries run out? The
+ * `installUpdate` swap step is deliberately not tested here: in a test process
+ * `process.execPath` is the test runner's own binary, and swapping it would be
+ * catastrophic.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
 import { readFile, stat, mkdtemp, rm } from 'fs/promises';
@@ -25,6 +26,14 @@ let workDir: string;
 // A payload large enough to cross the progress-emit threshold (512 KiB) a few
 // times, so we can assert on real chunked progress rather than a single tick.
 const PAYLOAD = new Uint8Array(1_500_000).fill(65); // 1.5 MB of 'A'
+
+// How much /resume streams before it stalls on the first request.
+const RESUME_PARTIAL = 700_000;
+const RESUME_ETAG = '"asset-v1"';
+
+// Range headers seen by /resume, so a test can prove the second attempt resumed
+// (sent a byte range) rather than restarting from scratch.
+let resumeRanges: Array<string | null> = [];
 
 beforeAll(async () => {
 
@@ -65,6 +74,47 @@ beforeAll(async () => {
 
             }
 
+            // Resumable asset. First request (no Range): 200 with an ETag,
+            // streams a partial prefix, then stalls. A subsequent Range request:
+            // 206 with the remainder, so the download completes on resume.
+            if (url.pathname === '/resume') {
+
+                const range = req.headers.get('range');
+                resumeRanges.push(range);
+
+                if (!range) {
+
+                    const stream = new ReadableStream({
+                        start(controller) {
+
+                            controller.enqueue(PAYLOAD.slice(0, RESUME_PARTIAL));
+                            // stall — never enqueue the rest, never close
+
+                        },
+                    });
+
+                    return new Response(stream, {
+                        headers: {
+                            'content-length': String(PAYLOAD.byteLength),
+                            etag: RESUME_ETAG,
+                        },
+                    });
+
+                }
+
+                const startByte = Number(/bytes=(\d+)-/.exec(range)?.[1] ?? 0);
+
+                return new Response(PAYLOAD.slice(startByte), {
+                    status: 206,
+                    headers: {
+                        etag: RESUME_ETAG,
+                        'content-range': `bytes ${startByte}-${PAYLOAD.byteLength - 1}/${PAYLOAD.byteLength}`,
+                        'content-length': String(PAYLOAD.byteLength - startByte),
+                    },
+                });
+
+            }
+
             if (url.pathname === '/notfound') {
 
                 return new Response('nope', { status: 404 });
@@ -87,7 +137,7 @@ afterAll(async () => {
 
 });
 
-describe('downloadToFile', () => {
+describe('updater: downloadToFile', () => {
 
     it('streams the full body to disk and makes it executable', async () => {
 
@@ -136,29 +186,96 @@ describe('downloadToFile', () => {
 
     });
 
+    it('resumes from the partial via a range request after a stall', async () => {
+
+        resumeRanges = [];
+        const dest = join(workDir, 'resume.bin');
+        const retries: Array<{ attempt: number; maxAttempts: number }> = [];
+
+        const onRetry = (r: { attempt: number; maxAttempts: number }) => {
+
+            retries.push({ attempt: r.attempt, maxAttempts: r.maxAttempts });
+
+        };
+
+        observer.on('update:retry', onRetry);
+        await downloadToFile(`${baseUrl}/resume`, dest, '1.0.0-test', { stallMs: 300, backoffMs: 20 });
+        observer.off('update:retry', onRetry);
+
+        // The file is whole and correct despite the mid-stream stall.
+        const written = await readFile(dest);
+        expect(written.byteLength).toBe(PAYLOAD.byteLength);
+        expect(written.every((b) => b === 65)).toBe(true);
+
+        // It retried once...
+        expect(retries.length).toBe(1);
+
+        // ...and the retry was a RESUME: first request had no Range, the second
+        // asked for exactly the bytes already on disk — not a fresh restart.
+        expect(resumeRanges[0]).toBeNull();
+        expect(resumeRanges[1]).toBe(`bytes=${RESUME_PARTIAL}-`);
+
+    });
+
     it('aborts with a "stalled" error instead of hanging when the stream stops', async () => {
 
         const dest = join(workDir, 'stall.bin');
 
         const start = performance.now();
-        const [, err] = await attempt(() => downloadToFile(`${baseUrl}/stall`, dest, '1.0.0-test', 300));
+        const [, err] = await attempt(() =>
+            downloadToFile(`${baseUrl}/stall`, dest, '1.0.0-test', { stallMs: 200, maxAttempts: 1 }),
+        );
         const elapsed = performance.now() - start;
 
         expect(err).toBeTruthy();
         expect(err!.message).toContain('stalled');
-        // proves it did not hang: bounded by the injected 300ms stall window
+        // proves it did not hang: one attempt, bounded by the 200ms stall window
         expect(elapsed).toBeLessThan(3000);
 
     });
 
-    it('rejects a non-OK response with the status code', async () => {
+    it('gives up after exhausting the retry budget on a persistent stall', async () => {
+
+        const dest = join(workDir, 'give-up.bin');
+        let retryCount = 0;
+
+        const onRetry = () => {
+
+            retryCount++;
+
+        };
+
+        observer.on('update:retry', onRetry);
+        const [, err] = await attempt(() =>
+            downloadToFile(`${baseUrl}/stall`, dest, '1.0.0-test', { stallMs: 150, maxAttempts: 3, backoffMs: 10 }),
+        );
+        observer.off('update:retry', onRetry);
+
+        expect(err).toBeTruthy();
+        expect(err!.message).toContain('stalled');
+        // 3 attempts → 2 retry notices between them
+        expect(retryCount).toBe(2);
+
+    });
+
+    it('does not retry a non-retriable 404', async () => {
 
         const dest = join(workDir, 'nf.bin');
+        let retryCount = 0;
 
+        const onRetry = () => {
+
+            retryCount++;
+
+        };
+
+        observer.on('update:retry', onRetry);
         const [, err] = await attempt(() => downloadToFile(`${baseUrl}/notfound`, dest, '1.0.0-test'));
+        observer.off('update:retry', onRetry);
 
         expect(err).toBeTruthy();
         expect(err!.message).toContain('404');
+        expect(retryCount).toBe(0); // 4xx is permanent — fail fast, no retries
 
     });
 

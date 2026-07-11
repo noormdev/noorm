@@ -14,7 +14,7 @@
  * ```
  */
 import { spawn } from 'child_process';
-import { open, rename, unlink, chmod } from 'fs/promises';
+import { open, rename, unlink, chmod, stat } from 'fs/promises';
 
 import { attempt } from '@logosdx/utils';
 
@@ -31,11 +31,22 @@ import type { UpdateResult } from './types.js';
 const PACKAGE_NAME = '@noormdev/cli';
 
 /**
- * Abort the download if no bytes arrive for this long. A bare `fetch()` has no
- * timeout, so a stalled connection would otherwise hang the process forever
- * with no error to surface — this converts a silent hang into a real failure.
+ * Abort a download attempt if no bytes arrive for this long. A bare `fetch()`
+ * has no timeout, so a stalled connection would otherwise hang the process
+ * forever with no error to surface — this converts a silent hang into a real
+ * failure that the retry loop can act on.
  */
 const DOWNLOAD_STALL_MS = 30_000;
+
+/**
+ * How many times to (re)start a download before giving up. A stall or network
+ * error resumes from the bytes already on disk via an HTTP range request, so
+ * these are cheap — a flaky connection retries the tail, not the whole ~70MB.
+ */
+const DOWNLOAD_MAX_ATTEMPTS = 5;
+
+/** Base backoff between attempts; scaled by attempt number. */
+const RETRY_BACKOFF_MS = 500;
 
 /** Emit a progress event at most once per this many bytes, to avoid spamming. */
 const PROGRESS_EMIT_BYTES = 512 * 1024;
@@ -131,27 +142,139 @@ function installViaNpm(version: string, previousVersion: string): Promise<Update
 // Binary Updater
 // =============================================================================
 
+/** Tunables for `downloadToFile`; all optional, defaulting to the constants above. */
+export interface DownloadOptions {
+    /** Abort an attempt if no chunk arrives within this window. */
+    stallMs?: number;
+
+    /** Total (re)start budget before giving up. */
+    maxAttempts?: number;
+
+    /** Base backoff between attempts, scaled by attempt number. */
+    backoffMs?: number;
+}
+
 /**
- * Stream a URL to a file, emitting `update:progress` as bytes arrive and
- * aborting if the transfer stalls (no data for `stallMs`).
+ * A download failure that knows whether retrying could help. A stalled or reset
+ * connection is `retriable`; a `404`/`403` is not — no point re-pulling 70MB
+ * five times for a permanent error.
+ */
+class DownloadError extends Error {
+
+    override readonly name = 'DownloadError' as const;
+
+    constructor(message: string, readonly retriable: boolean) {
+
+        super(message);
+
+    }
+
+}
+
+/** Mutable state threaded across attempts so a resume survives a thrown attempt. */
+interface DownloadState {
+    /** ETag of the asset, sent as `If-Range` so a resume is rejected if it changed. */
+    etag?: string;
+
+    /** Full size of the asset in bytes, once known from a response. */
+    total: number;
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** Current size of a file, or 0 if it doesn't exist — the resume offset. */
+async function fileSizeOrZero(path: string): Promise<number> {
+
+    const [info] = await attempt(() => stat(path));
+
+    return info?.size ?? 0;
+
+}
+
+/** Parse the total from a `Content-Range: bytes 200-1023/1024` header. */
+function parseContentRangeTotal(header: string | null): number {
+
+    const total = header?.split('/')[1];
+
+    return total ? Number(total) || 0 : 0;
+
+}
+
+/**
+ * Download `url` to `destPath`, resuming from bytes already on disk and
+ * retrying transient failures, emitting `update:progress` throughout.
  *
- * Streaming instead of buffering the whole ~70MB into memory lets the caller
- * show real progress, and the stall-abort guarantees the download either
- * completes, errors, or times out — never hangs indefinitely on a dead socket.
+ * Streaming (not buffering ~70MB into memory) lets the caller show progress;
+ * the per-attempt stall-abort guarantees no indefinite hang; and the range-based
+ * resume means a flaky connection retries the tail rather than the whole file.
  *
- * @param stallMs - Abort if no chunk arrives within this window. Overridable
- * for tests; production uses `DOWNLOAD_STALL_MS`.
- * @throws Error on a non-OK response, an empty body, a stall, or a write failure.
+ * @throws DownloadError/Error when the retry budget is exhausted or the failure
+ * is non-retriable (e.g. HTTP 404). On throw, the partial file is left in place
+ * for the caller to clean up.
  */
 export async function downloadToFile(
     url: string,
     destPath: string,
     version: string,
-    stallMs: number = DOWNLOAD_STALL_MS,
+    options: DownloadOptions = {},
 ): Promise<void> {
 
-    const controller = new AbortController();
+    const stallMs = options.stallMs ?? DOWNLOAD_STALL_MS;
+    const maxAttempts = options.maxAttempts ?? DOWNLOAD_MAX_ATTEMPTS;
+    const backoffMs = options.backoffMs ?? RETRY_BACKOFF_MS;
 
+    const state: DownloadState = { total: 0 };
+
+    for (let attemptNo = 1; attemptNo <= maxAttempts; attemptNo++) {
+
+        const offset = await fileSizeOrZero(destPath);
+
+        // A prior attempt already pulled the whole asset — nothing left to do.
+        if (state.total > 0 && offset >= state.total) break;
+
+        const [, err] = await attempt(() => downloadAttempt(url, destPath, version, offset, state, stallMs));
+
+        if (!err) break;
+
+        const retriable = !(err instanceof DownloadError) || err.retriable;
+
+        if (!retriable || attemptNo >= maxAttempts) throw err;
+
+        observer.emit('update:retry', { version, attempt: attemptNo, maxAttempts, error: err.message });
+
+        await sleep(backoffMs * attemptNo);
+
+    }
+
+    await chmod(destPath, 0o755);
+
+}
+
+/**
+ * One download attempt: fetch (resuming from `offset` when possible), stream the
+ * body to `destPath`, and emit progress. Mutates `state.etag`/`state.total` as
+ * soon as headers arrive so the orchestrator can resume even if this attempt
+ * later throws.
+ *
+ * @throws DownloadError on an HTTP error, or the underlying stall/stream error.
+ */
+async function downloadAttempt(
+    url: string,
+    destPath: string,
+    version: string,
+    offset: number,
+    state: DownloadState,
+    stallMs: number,
+): Promise<void> {
+
+    // Resume only when there are bytes on disk AND an ETag to guard against the
+    // asset changing under us; otherwise start clean.
+    const resuming = offset > 0 && state.etag !== undefined;
+    const headers: Record<string, string> = resuming
+        ? { Range: `bytes=${offset}-`, 'If-Range': state.etag! }
+        : {};
+
+    const controller = new AbortController();
     let stallTimer: ReturnType<typeof setTimeout> | undefined;
 
     const armStall = () => {
@@ -164,24 +287,53 @@ export async function downloadToFile(
 
     };
 
-    const response = await fetch(url, { signal: controller.signal });
+    const response = await fetch(url, { headers, signal: controller.signal });
 
-    if (!response.ok || !response.body) {
+    const etag = response.headers.get('etag');
+    if (etag) state.etag = etag;
+
+    // Decide where the write starts and in which mode. 206 = server honored the
+    // range → append. 200 = server sent the whole asset (fresh, or If-Range
+    // rejected because it changed) → truncate and start over.
+    let received: number;
+    let writeMode: 'a' | 'w';
+
+    if (response.status === 206) {
+
+        state.total = parseContentRangeTotal(response.headers.get('content-range')) || state.total;
+        received = offset;
+        writeMode = 'a';
+
+    }
+    else if (response.ok) {
+
+        state.total = Number(response.headers.get('content-length')) || 0;
+        received = 0;
+        writeMode = 'w';
+
+    }
+    else {
 
         clearTimeout(stallTimer);
 
-        throw new Error(`HTTP ${response.status} downloading binary`);
+        // 408/429/5xx are transient; other 4xx (404/403/…) are permanent.
+        const retriable = response.status === 408 || response.status === 429 || response.status >= 500;
+
+        throw new DownloadError(`HTTP ${response.status} downloading binary`, retriable);
 
     }
 
-    const total = Number(response.headers.get('content-length')) || 0;
-    let received = 0;
+    if (!response.body) {
+
+        clearTimeout(stallTimer);
+
+        throw new DownloadError('empty response body', true);
+
+    }
+
+    const handle = await open(destPath, writeMode);
     let sinceLastEmit = 0;
 
-    const handle = await open(destPath, 'w');
-
-    // A stall or write failure must still close the handle and clear the timer,
-    // so wrap the streaming loop and clean up in both outcomes.
     const [, streamErr] = await attempt(async () => {
 
         armStall();
@@ -197,14 +349,11 @@ export async function downloadToFile(
             if (sinceLastEmit >= PROGRESS_EMIT_BYTES) {
 
                 sinceLastEmit = 0;
-                observer.emit('update:progress', { version, received, total });
+                observer.emit('update:progress', { version, received, total: state.total });
 
             }
 
         }
-
-        // Final tick so consumers see 100% even when the last chunk was small.
-        observer.emit('update:progress', { version, received, total: total || received });
 
     });
 
@@ -221,7 +370,15 @@ export async function downloadToFile(
 
     }
 
-    await chmod(destPath, 0o755);
+    // A clean end that's short of the advertised total means the connection
+    // dropped without throwing — treat as retriable so the loop resumes.
+    if (state.total > 0 && received < state.total) {
+
+        throw new DownloadError(`connection closed early (${received}/${state.total} bytes)`, true);
+
+    }
+
+    observer.emit('update:progress', { version, received, total: state.total || received });
 
 }
 
