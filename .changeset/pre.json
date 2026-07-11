@@ -70,6 +70,7 @@
     "tty-yes-flag-cli",
     "tvp-support",
     "typed-tuples-sdk",
+    "update-progress-stall",
     "vault-init-idempotent-sdk",
     "version-command",
     "version-debug",
