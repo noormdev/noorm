@@ -71,6 +71,7 @@
     "tvp-support",
     "typed-tuples-sdk",
     "update-progress-stall",
+    "update-resumable-download",
     "vault-init-idempotent-sdk",
     "version-command",
     "version-debug",
