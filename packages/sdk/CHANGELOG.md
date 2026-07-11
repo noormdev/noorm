@@ -1,5 +1,7 @@
 # @noormdev/sdk
 
+## 1.0.0-alpha.38
+
 ## 1.0.0-alpha.37
 
 ### Minor Changes
