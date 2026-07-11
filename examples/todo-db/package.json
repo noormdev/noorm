@@ -1,6 +1,6 @@
 {
     "name": "@noormdev/example-todo-db",
-    "version": "0.0.1-alpha.2",
+    "version": "0.0.1-alpha.3",
     "private": true,
     "type": "module",
     "description": "SDK integration tests exercising the todo-db example schema",
