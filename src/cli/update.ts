@@ -98,6 +98,17 @@ const updateCommand = defineCommand({
 
         };
 
+        const onRetry = ({ attempt: n, maxAttempts, error }: { attempt: number; maxAttempts: number; error: string }) => {
+
+            if (args.json) return;
+
+            // End the in-place progress line before printing the notice.
+            const prefix = isTty ? '\n' : '';
+
+            process.stdout.write(`${prefix}${error} — resuming (attempt ${n + 1}/${maxAttempts})...\n`);
+
+        };
+
         if (!args.json) {
 
             process.stdout.write(isTty ? 'Installing...\n' : 'Installing (downloading binary)...\n');
@@ -105,10 +116,12 @@ const updateCommand = defineCommand({
         }
 
         observer.on('update:progress', onProgress);
+        observer.on('update:retry', onRetry);
 
         const [result, installErr] = await attempt(() => installUpdate(checkResult.latestVersion));
 
         observer.off('update:progress', onProgress);
+        observer.off('update:retry', onRetry);
 
         if (isTty) {
 
