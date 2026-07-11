@@ -1,6 +1,6 @@
 {
     "name": "@noormdev/example-llm-memory-db-pg",
-    "version": "0.0.1-alpha.2",
+    "version": "0.0.1-alpha.3",
     "private": true,
     "type": "module",
     "description": "Full-surface noorm example: LLM memory + task tracker schema, SDK, and tests against PostgreSQL",
