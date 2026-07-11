@@ -117,6 +117,7 @@ export interface UpdateEvents {
 
     // Update installation
     'update:installing': { version: string };
+    'update:progress': { version: string; received: number; total: number };
     'update:complete': { previousVersion: string; newVersion: string };
     'update:failed': { version: string; error: string };
     'update:skipped': { version: string; reason: 'user-denied' | 'user-deferred' };
