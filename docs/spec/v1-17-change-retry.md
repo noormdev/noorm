@@ -220,7 +220,12 @@ Commits (chronological):
   (overloaded `skipped` status) by excluding `skipped` rows from `needsRunFile`'s lookup.
 - `4610c34` — CP2 Postgres transactional wrap: `TRANSACTIONAL_DIALECTS` + `runFileBatch`
   extraction + `context.db.transaction()` with sentinel-based rollback + pg-gated
-  `tests/integration/change/postgres-transaction.test.ts` (written, not run).
+  `tests/integration/change/postgres-transaction.test.ts`.
+- `fb35c7e` — CP2 test bootstrap fix (reopen): the pg integration test ran only `v1.up`, so
+  the lock manager / ChangeHistory hit `noorm.*` (created by `v2.up`) and 42P01'd before any
+  rollback assertion. Added `v2.up` in `beforeAll` and targeted assertions at the `noorm`
+  schema. Test-only — the transaction wrap was already correct. Verified: 2/2 pass against
+  live Postgres, deterministic.
 
 **Out-of-scope work performed during this build:**
 
@@ -245,3 +250,6 @@ Commits (chronological):
   (change A-success/B-fail/C-never-reached → C should run on retry). Traced to have NO live
   bug; the coverage gap is what's open. Left for orchestrator disposition (fix-now / defer /
   issue / drop).
+- 2026-07-12 — Reopen: pg integration test bootstrapped only v1; added v2.up + noorm-schema
+  assertions so the Postgres rollback criterion is actually exercised (commit fb35c7e).
+  Test-only; source unchanged.
