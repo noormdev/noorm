@@ -5,7 +5,7 @@
  * polluting the project directory.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
-import { mkdtempSync, rmSync, existsSync, readFileSync, mkdirSync, writeFileSync } from 'fs';
+import { mkdtempSync, rmSync, existsSync, readFileSync, mkdirSync, writeFileSync, statSync } from 'fs';
 import { join, dirname } from 'path';
 import { StateManager, resetStateManager, getPackageVersion } from '../../../src/core/state/index.js';
 import type { Config } from '../../../src/core/config/types.js';
@@ -643,6 +643,16 @@ describe('state: manager', () => {
 
         });
 
+        it('should write statePath at mode 0600 after a persisting operation', async () => {
+
+            await state.load();
+            await state.setConfig('dev', createTestConfig('dev'));
+
+            const stat = statSync(state.getStatePath());
+            expect(stat.mode & 0o777).toBe(0o600);
+
+        });
+
     });
 
     // ─────────────────────────────────────────────────────────────
@@ -886,6 +896,24 @@ describe('state: manager', () => {
             await newState.importEncrypted(exported);
 
             expect(newState.getConfig('dev')?.name).toBe('dev');
+
+        });
+
+        it('should write statePath at mode 0600 after importEncrypted', async () => {
+
+            await state.load();
+            await state.setConfig('dev', createTestConfig('dev'));
+            const exported = state.exportEncrypted()!;
+
+            const newState = new StateManager(tempDir, {
+                stateDir: '.test-state',
+                stateFile: 'imported-mode.enc',
+                privateKey: testPrivateKey,
+            });
+            await newState.importEncrypted(exported);
+
+            const stat = statSync(newState.getStatePath());
+            expect(stat.mode & 0o777).toBe(0o600);
 
         });
 

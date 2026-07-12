@@ -6,7 +6,7 @@
  *
  * Encryption uses the user's private key from ~/.noorm/identity.key
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { attemptSync, attempt } from '@logosdx/utils';
 import type { Config } from '../config/types.js';
@@ -301,7 +301,7 @@ export class StateManager {
         const payload = encrypt(json, this.privateKey);
 
         const [, writeErr] = attemptSync(() =>
-            writeFileSync(this.statePath, JSON.stringify(payload, null, 2)),
+            writeFileSync(this.statePath, JSON.stringify(payload, null, 2), { mode: 0o600 }),
         );
 
         if (writeErr) {
@@ -310,6 +310,9 @@ export class StateManager {
             throw writeErr;
 
         }
+
+        // Ensure permissions are correct (writeFile mode may not work on all platforms)
+        attemptSync(() => chmodSync(this.statePath, 0o600));
 
         observer.emit('state:persisted', {
             configCount: Object.keys(state.configs).length,
@@ -749,7 +752,11 @@ export class StateManager {
 
         }
 
-        writeFileSync(this.statePath, encrypted);
+        writeFileSync(this.statePath, encrypted, { mode: 0o600 });
+
+        // Ensure permissions are correct (writeFile mode may not work on all platforms)
+        attemptSync(() => chmodSync(this.statePath, 0o600));
+
         this.loaded = false;
         await this.load();
 
