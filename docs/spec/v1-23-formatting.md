@@ -111,3 +111,25 @@ None — pure internal-implementation consolidation. No new user-facing behavior
 ## Change log
 
 <!-- Populated on first amendment after the spec is approved. Do not log drafting/refinement turns. -->
+
+## Implementation log
+
+### shipped — 2026-07-12
+
+Built in 1 implement→review iteration of `/subagent-implementation`. Commits (chronological):
+
+- `bceb391` — CP-1..CP-7 all checkpoints: shared `formatAccessTag`, `formatByteSize`, voca `truncate`/`camelCase`/`slugify`, dayjs `formatDate`, native logger timestamp formatter
+- `0711a2e` — spec restructured to match `atomic validate spec`'s required template (Change tree/Outline/Flows/Risks/Change log, tabular Checkpoints); no content change, structure only
+
+**Out-of-scope work performed during this build:**
+
+- none — all 7 checkpoints stayed within the ticket's stated scope (formatting/string helpers only)
+
+**Unforeseens — surprises that emerged during implementation:**
+
+- Reviewer found an undocumented output divergence in CP-4 (voca `camelCase` splits on embedded dots, hand-rolled didn't) not caught by the 6 existing test cases. Dispositioned same iteration: documented in the spec's Risks table rather than requiring a re-implementation round — confirmed to be a non-regression (no test/fixture exercises dotted basenames) and arguably an improvement.
+- Initial spec draft used prose `### CP-N` subsections instead of `atomic validate spec`'s required tabular `## Checkpoints` + `## Change tree`/`## Outline`/`## Flows`/`## Risks`/`## Change log` structure. Caught at finalize verification, restructured before shipping (commit `0711a2e`).
+
+**Deferred items still open:**
+
+- none — the one non-blocking finding (F-1, embedded-dot camelCase) was dispositioned in-iteration (documented, not deferred). See `FOLLOWUPS.md` in the task scratchpad for the full trail.
