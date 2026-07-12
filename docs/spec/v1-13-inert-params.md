@@ -118,3 +118,27 @@ Commit per green checkpoint.
 ## Change log
 
 <!-- Populated on first amendment after the spec is approved. Do not log drafting/refinement turns. -->
+
+## Implementation log
+
+### shipped — 2026-07-12
+
+Built across 2 iterations of /subagent-implementation. Commits (chronological):
+
+- `feef1aa` — CP1: removed `ToUniversalOptions.version` (`src/core/dt/type-map.ts`) and its dead pass-through in `buildDtSchema` (`src/core/dt/schema.ts`)
+- `5d0af82` — CP2: deleted the D8 worker-fetch DI seam (`connectionString`/`connectionBridge`/`computePool`) from `ExportTableOptions`/`ImportFileOptions` and its plumbing in `src/core/dt/index.ts`; left a short intent comment at the `exportTable()` seam site
+
+**Out-of-scope work performed during this build:**
+
+- Deleted `buildBatchSql()` helper in `src/core/dt/index.ts` — not itemized in the original ticket text, but a direct, necessary consequence of removing its sole caller (the `if (connectionBridge)` fetch branch); leaving it would have been new dead code introduced by this same deletion pass. Reviewer accepted as legitimate, not scope creep.
+- `let` → `const` lint fixups on `totalRows`/`batchRows` in `exportTableWithWorkers` — required once their only reassignment sites (the deleted conditional branches) were gone. No value/behavior change.
+
+**Unforeseens — surprises that emerged during implementation:**
+
+- The ticket text and dispatch brief located `ToUniversalOptions.version` at `src/sdk/types.ts`. That file has no such type — it holds `ExportOptions`/`ImportOptions` (ticket 25's territory). The real location, matching the original audit evidence (AP-yagni-04), is `src/core/dt/type-map.ts:29-40`. Corrected in the spec's Goal section before any implementation started; net effect is favorable for the ticket-25 merge touchpoint — this spec ended up with **zero file overlap** with `src/sdk/types.ts` or `src/sdk/namespaces/*.ts`.
+- No existing test in the repo exercises `exportTableWithWorkers`/`importFileWithWorkers` (the file-based DT worker pipeline) end-to-end — coverage is at the primitive level only (`DtWriter`/`DtReader`/`serialize`/`schema`/`type-map`/`DtStreamer`). This is a pre-existing gap, not introduced here; flagged in the spec's Risks section rather than closed, per the ticket's effort:S / deletion-only scope boundary.
+- The harness's `Write`/`Edit` tools were sandboxed to an unrelated stray worktree (leftover isolation from a different task, tickets 36/37) for the entire session, including inside both implementer/reviewer subagent dispatches. All file mutation was done via `Bash` heredocs and `sed -i ''`, confined to `.worktrees/v1-13-inert-params/`, exactly as anticipated by the dispatch brief's harness note.
+
+**Deferred items still open:**
+
+- none — both iterations passed review with zero findings (0🔴 0🟡 0🔵 0❓ each); `FOLLOWUPS.md` is empty, nothing to triage.
