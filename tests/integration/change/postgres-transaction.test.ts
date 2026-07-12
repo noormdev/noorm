@@ -2,12 +2,11 @@
  * Integration tests for Postgres whole-change transactional rollback
  * (CP2 of v1-17-change-retry).
  *
- * WRITTEN BUT NOT RUN this pass — no live Postgres available locally.
- * Recorded for CI group 4 (`tests/integration`). Verifies that a change
- * that fails mid-execution on Postgres leaves no partial state: neither
- * the DDL nor the operation/file history rows persist, and a retry
- * reruns the whole change fresh (see docs/spec/v1-17-change-retry.md,
- * "Postgres whole-change rollback").
+ * Requires a live Postgres (CI group 4 / docker-compose.yml, port 15432).
+ * Verifies that a change that fails mid-execution on Postgres leaves no
+ * partial state: neither the DDL nor the operation/file history rows
+ * persist, and a retry reruns the whole change fresh (see
+ * docs/spec/v1-17-change-retry.md, "Postgres whole-change rollback").
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'bun:test';
 import { mkdtemp, rm, mkdir, writeFile } from 'fs/promises';
@@ -18,18 +17,24 @@ import { attempt } from '@logosdx/utils';
 
 import { executeChange } from '../../../src/core/change/executor.js';
 import { v1 } from '../../../src/core/version/schema/migrations/v1.js';
+import { v2 } from '../../../src/core/version/schema/migrations/v2.js';
 import { resetLockManager } from '../../../src/core/lock/index.js';
 import { createTestConnection, skipIfNoContainer } from '../../utils/db.js';
+import { noormDb, getNoormTables } from '../../../src/core/shared/index.js';
 import type { NoormDatabase } from '../../../src/core/shared/index.js';
 import type { Change, ChangeContext } from '../../../src/core/change/types.js';
 
 /**
- * Drop all noorm tracking tables if they exist.
+ * Reset noorm tracking state to a clean slate on Postgres.
  *
- * Postgres-only mirror of the cleanup helper in
- * tests/integration/version/schema.test.ts's `dropNoormTables`.
+ * Drops the `noorm` schema (created by v2) and any leftover v1-era
+ * `__noorm_*__` public tables, so a shared CI database can't carry state
+ * between runs. Ordered schema-first: v2 moves the public tables into
+ * `noorm`, so a prior run leaves them there, not in public.
  */
-async function dropNoormTables(db: Kysely<unknown>): Promise<void> {
+async function resetNoormState(db: Kysely<unknown>): Promise<void> {
+
+    await attempt(() => sql`DROP SCHEMA IF EXISTS noorm CASCADE`.execute(db));
 
     for (const table of [
         '__noorm_vault__',
@@ -49,10 +54,15 @@ async function dropNoormTables(db: Kysely<unknown>): Promise<void> {
 describe('integration: postgres change transaction', () => {
 
     let db: Kysely<NoormDatabase>;
+    let ndb: Kysely<NoormDatabase>;
     let destroy: () => Promise<void>;
     let tempDir: string;
     let changesDir: string;
     let sqlDir: string;
+
+    // Clean schema-qualified table names (postgres) used with noormDb's
+    // withSchema('noorm') — mirrors how production ChangeHistory queries.
+    const tables = getNoormTables('postgres');
 
     const testIdentity = { name: 'Test User', email: 'test@example.com', source: 'config' as const };
 
@@ -122,7 +132,9 @@ describe('integration: postgres change transaction', () => {
      * Whether a table exists in the public schema.
      *
      * Uses `to_regclass` rather than information_schema so a rolled-back
-     * CREATE TABLE (never committed) reliably reports absent.
+     * CREATE TABLE (never committed) reliably reports absent. Change SQL
+     * runs against the connection's default search_path (public), not the
+     * noorm schema, so user tables land in public.
      */
     async function tableExists(tableName: string): Promise<boolean> {
 
@@ -138,10 +150,17 @@ describe('integration: postgres change transaction', () => {
 
         const conn = await createTestConnection('postgres');
         db = conn.db as Kysely<NoormDatabase>;
+        ndb = noormDb(db, 'postgres');
         destroy = conn.destroy;
 
-        await dropNoormTables(db as Kysely<unknown>);
+        // Bootstrap the noorm tracking tables. On postgres the lock manager
+        // and ChangeHistory resolve to the `noorm` schema (noormDb ->
+        // withSchema('noorm')), which only exists after v2 creates it and
+        // moves the v1 tables into it — v1 alone leaves them in public as
+        // `__noorm_*__` and every noorm.* reference 42P01s.
+        await resetNoormState(db as Kysely<unknown>);
         await v1.up(db as Kysely<unknown>, 'postgres');
+        await v2.up(db as Kysely<unknown>, 'postgres');
 
     }, 30_000);
 
@@ -149,7 +168,7 @@ describe('integration: postgres change transaction', () => {
 
         if (destroy) {
 
-            await dropNoormTables(db as Kysely<unknown>).catch(() => {});
+            await resetNoormState(db as Kysely<unknown>).catch(() => {});
             await destroy();
 
         }
@@ -172,9 +191,6 @@ describe('integration: postgres change transaction', () => {
     afterEach(async () => {
 
         resetLockManager();
-
-        await attempt(() => sql`DELETE FROM __noorm_executions__`.execute(db));
-        await attempt(() => sql`DELETE FROM __noorm_change__`.execute(db));
 
         await rm(tempDir, { recursive: true, force: true });
 
@@ -205,8 +221,8 @@ describe('integration: postgres change transaction', () => {
         expect(await tableExists(tableA)).toBe(false);
 
         // No operation or file history rows persist for this change.
-        const changeRows = await db
-            .selectFrom('__noorm_change__')
+        const changeRows = await ndb
+            .selectFrom(tables.change)
             .selectAll()
             .where('name', '=', changeName)
             .execute();
@@ -215,14 +231,12 @@ describe('integration: postgres change transaction', () => {
 
         const execRows = await sql<{ n: number }>`
             SELECT COUNT(*)::int AS n
-            FROM __noorm_executions__ e
-            JOIN __noorm_change__ c ON c.id = e.change_id
+            FROM noorm."executions" e
+            JOIN noorm."change" c ON c.id = e.change_id
             WHERE c.name = ${changeName}
         `.execute(db);
 
         expect(execRows.rows[0]?.n).toBe(0);
-
-        await attempt(() => sql`${sql.raw(`DROP TABLE IF EXISTS ${tableA}`)}`.execute(db));
 
     });
 
@@ -255,8 +269,8 @@ describe('integration: postgres change transaction', () => {
         expect(await tableExists(tableA)).toBe(true);
         expect(await tableExists(tableB)).toBe(true);
 
-        const changeRows = await db
-            .selectFrom('__noorm_change__')
+        const changeRows = await ndb
+            .selectFrom(tables.change)
             .selectAll()
             .where('name', '=', changeName)
             .where('status', '=', 'success')
