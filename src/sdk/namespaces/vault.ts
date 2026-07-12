@@ -125,8 +125,7 @@ export class VaultNamespace {
      *
      * @example
      * ```typescript
-     * const [vaultKey, err] = await ctx.noorm.vault.init();
-     * if (err) throw err;
+     * const vaultKey = await ctx.noorm.vault.init();
      * if (vaultKey) {
      *     // first-time init — set initial secrets, etc.
      * }
@@ -181,7 +180,7 @@ export class VaultNamespace {
      *
      * @example
      * ```typescript
-     * const [, err] = await ctx.noorm.vault.set('API_KEY', 'sk-live-...', privateKey)
+     * await ctx.noorm.vault.set('API_KEY', 'sk-live-...', privateKey)
      * ```
      */
     async set(
@@ -274,7 +273,7 @@ export class VaultNamespace {
      *
      * @example
      * ```typescript
-     * const [deleted, err] = await ctx.noorm.vault.delete('OLD_KEY')
+     * const deleted = await ctx.noorm.vault.delete('OLD_KEY')
      * ```
      */
     async delete(key: string): Promise<boolean> {
@@ -344,7 +343,7 @@ export class VaultNamespace {
      *
      * @example
      * ```typescript
-     * const [result, err] = await ctx.noorm.vault.copy(destConfig, ['API_KEY'], privateKey)
+     * const result = await ctx.noorm.vault.copy(destConfig, ['API_KEY'], privateKey)
      * ```
      */
     async copy(

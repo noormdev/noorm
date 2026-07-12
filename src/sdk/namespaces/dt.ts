@@ -32,7 +32,7 @@ export class DtNamespace {
      *
      * @example
      * ```typescript
-     * const [result, err] = await ctx.noorm.dt.exportTable('users', './exports/users.dtz')
+     * const result = await ctx.noorm.dt.exportTable('users', './exports/users.dtz')
      * ```
      */
     async exportTable(
@@ -66,7 +66,7 @@ export class DtNamespace {
      *
      * @example
      * ```typescript
-     * const [result, err] = await ctx.noorm.dt.importFile('./exports/users.dtz', {
+     * const result = await ctx.noorm.dt.importFile('./exports/users.dtz', {
      *     onConflict: 'skip',
      * })
      * ```

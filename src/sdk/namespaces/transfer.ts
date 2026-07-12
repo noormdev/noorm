@@ -29,7 +29,7 @@ export class TransferNamespace {
      *
      * @example
      * ```typescript
-     * const [result, err] = await ctx.noorm.transfer.to(destConfig, {
+     * const result = await ctx.noorm.transfer.to(destConfig, {
      *     tables: ['users', 'posts'],
      *     onConflict: 'skip',
      * })
@@ -65,7 +65,7 @@ export class TransferNamespace {
      *
      * @example
      * ```typescript
-     * const [plan, err] = await ctx.noorm.transfer.plan(destConfig)
+     * const plan = await ctx.noorm.transfer.plan(destConfig)
      * ```
      */
     async plan(

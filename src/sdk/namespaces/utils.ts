@@ -46,6 +46,11 @@ export class UtilsNamespace {
     /**
      * Tests if the connection can be established.
      *
+     * Deliberately returns `{ ok, error? }` instead of throwing like the rest of
+     * the SDK: a connection attempt that correctly reports failure has done its
+     * job, so the caller gets the outcome as data to display, not an exception
+     * to handle.
+     *
      * @example
      * ```typescript
      * const result = await ctx.noorm.utils.testConnection()
