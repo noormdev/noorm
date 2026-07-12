@@ -80,3 +80,28 @@ not unit tests.
 - `docker compose -f docker-compose.test.yml config` -- validates the renamed compose file parses; does not start containers.
 
 No test groups, no integration, no `docker compose up`.
+
+
+## Implementation log
+
+### shipped -- 2026-07-12
+
+Built across 2 iterations of /subagent-implementation. Commits (chronological):
+
+- `f192a63` -- CP-1 through CP-7, CP-9: docker-compose rename + refs, postgres-problems.md relocation, CNAME deletion, TODO.md gaps collapse, docs/dev/README.md deletion, CLAUDE.md pnpm-to-bun fix, docs/wiki/CLAUDE.md steering content, CLAUDE.md Changesets release-engine paragraph (includes iteration 2's fix for the 2 stale "monorepo root" annotations, folded into the same commit since it landed before the first commit)
+- `80398f5` -- deferred cross-repo follow-up (CP-10, ignatius) recorded durably
+
+**Out-of-scope work performed during this build:**
+
+- none
+
+**Unforeseens -- surprises that emerged during implementation:**
+
+- Task brief's premise for CP-8 (.gitignore graphify-out line, claimed deleted 2026-07-11) was verified false before implementation started -- the directory exists on disk today and was never git-tracked. Treated as a no-op per Deviation #1; flagged explicitly rather than silently dropped or silently followed.
+- Task brief offered two disposal options for postgres-problems.md (realm raw/ bucket or delete); neither was taken. Two files (examples/llm-memory-db-pg/README.md, REPORT.md) had content-bearing relative links to it describing unique Phase 2 content not fully duplicated in REPORT.md's own summary -- moved in-repo instead, per Deviation #2, to preserve that content and the links without a cross-repo commit.
+- examples/llm-memory-db-mssql/README.md:25 had a bare `docker compose up -d` (no -f flag) not named in the original ticket/research evidence lists -- found during pre-implementation grep sweep. Fixed as part of CP-1 since leaving it would silently break post-rename (compose's default-filename resolution).
+- TODO.md's "one still-open item" (db dt-modify) actually lives in the "TUI Parity Gaps" H3, not literally inside "Headless CLI Gaps" as ticket 21's text implies -- both sections collapsed together per Deviation #3.
+
+**Deferred items still open:**
+
+- `.claude/project/followups/v1-21-31-hygiene-f2.md` -- ignatius CLAUDE.md release-engine paragraph (ticket 31, cross-repo, not applied). Verbatim paragraph text recorded in the followup entry.
