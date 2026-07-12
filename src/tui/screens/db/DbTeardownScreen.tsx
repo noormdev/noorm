@@ -19,10 +19,9 @@ import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useAppContext, useSettings } from '../../app-context.js';
 import { useToast, Panel, Spinner, ProtectedConfirm } from '../../components/index.js';
-import { createConnection } from '../../../core/connection/index.js';
 import { previewTeardown, teardownSchema } from '../../../core/teardown/index.js';
 import { formatIdentity } from '../../../core/identity/index.js';
-import { getErrorMessage, resolveScreenIdentity } from '../../utils/index.js';
+import { getErrorMessage, resolveScreenIdentity, withScreenConnection } from '../../utils/index.js';
 import { useConnection, useAsyncEffect } from '../../hooks/index.js';
 import { checkConfigPolicy, confirmationPhraseFor } from '../../../core/policy/index.js';
 import { attempt } from '@logosdx/utils';
@@ -133,48 +132,35 @@ export function DbTeardownScreen({ params: _params }: ScreenProps): ReactElement
 
         setPhase('running');
 
-        const [conn, connErr] = await attempt(() =>
-            createConnection(activeConfig.connection, activeConfigName),
+        // Resolve identity for change tracking
+        const identity = resolveScreenIdentity(cryptoIdentity);
+
+        const [, err] = await withScreenConnection(
+            activeConfig.connection, activeConfigName,
+            async (db) => {
+
+                const teardownResult = await teardownSchema(db as Kysely<unknown>, activeConfig.connection.dialect, {
+                    preserveTables,
+                    postScript,
+                    configName: activeConfigName,
+                    executedBy: formatIdentity(identity),
+                });
+
+                setResult(teardownResult);
+
+            },
         );
 
-        if (connErr || !conn) {
+        if (err) {
 
-            setError(`Connection failed: ${connErr?.message ?? 'Unknown error'}`);
+            setError(getErrorMessage(err));
             setPhase('error');
 
             return;
 
         }
 
-        try {
-
-            const db = conn.db as Kysely<unknown>;
-
-            // Resolve identity for change tracking
-            const identity = resolveScreenIdentity(cryptoIdentity);
-
-            const teardownResult = await teardownSchema(db, activeConfig.connection.dialect, {
-                preserveTables,
-                postScript,
-                configName: activeConfigName,
-                executedBy: formatIdentity(identity),
-            });
-
-            setResult(teardownResult);
-            setPhase('done');
-
-        }
-        catch (err) {
-
-            setError(getErrorMessage(err));
-            setPhase('error');
-
-        }
-        finally {
-
-            await conn.destroy();
-
-        }
+        setPhase('done');
 
     }, [activeConfig, activeConfigName, preserveTables, postScript, cryptoIdentity]);
 

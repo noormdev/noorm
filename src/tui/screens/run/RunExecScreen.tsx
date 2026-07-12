@@ -28,12 +28,8 @@ import { useSettings, useGlobalModes, useAppContext } from '../../app-context.js
 import { Panel, Spinner, SelectList, type SelectListItem, Confirm, KeyHandler, useToast } from '../../components/index.js';
 import { useRunProgress, useAsyncEffect } from '../../hooks/index.js';
 import { discoverFiles, runFiles } from '../../../core/runner/index.js';
-import { createConnection, testConnection } from '../../../core/connection/index.js';
-import { getErrorMessage, resolveScreenIdentity, buildRunContext } from '../../utils/index.js';
+import { getErrorMessage, resolveScreenIdentity, buildRunContext, withScreenConnection } from '../../utils/index.js';
 import { attempt } from '@logosdx/utils';
-
-import type { NoormDatabase } from '../../../core/shared/index.js';
-import type { Kysely } from 'kysely';
 
 type Phase = 'loading' | 'picker' | 'confirm' | 'running' | 'complete' | 'error';
 
@@ -121,64 +117,37 @@ export function RunExecScreen({ params: _params }: ScreenProps): ReactElement {
         // Resolve identity
         const identity = resolveScreenIdentity(cryptoIdentity);
 
-        // Test connection
-        const testResult = await testConnection(activeConfig.connection);
+        const [, err] = await withScreenConnection(
+            activeConfig.connection, activeConfigName,
+            async (db) => {
 
-        if (!testResult.ok) {
+                const context = buildRunContext({
+                    db, configName: activeConfigName, identity,
+                    projectRoot, activeConfig,
+                    stateManager, dialect: activeConfig.connection.dialect,
+                });
 
-            setError(`Connection failed: ${testResult.error}`);
-            setPhase('error');
+                const options = {
+                    force: globalModes.force,
+                    dryRun: globalModes.dryRun,
+                };
 
-            return;
+                // Run all files as a single batch operation
+                await runFiles(context, filesToRun, options);
 
-        }
-
-        // Create connection
-        const [conn, connErr] = await attempt(() =>
-            createConnection(activeConfig.connection, activeConfigName),
+            },
         );
 
-        if (connErr || !conn) {
-
-            setError(`Connection failed: ${connErr?.message ?? 'Unknown error'}`);
-            setPhase('error');
-
-            return;
-
-        }
-
-        try {
-
-            const db = conn.db as Kysely<NoormDatabase>;
-
-            const context = buildRunContext({
-                db, configName: activeConfigName, identity,
-                projectRoot, activeConfig,
-                stateManager, dialect: conn.dialect,
-            });
-
-            const options = {
-                force: globalModes.force,
-                dryRun: globalModes.dryRun,
-            };
-
-            // Run all files as a single batch operation
-            await runFiles(context, filesToRun, options);
-
-            setPhase('complete');
-
-        }
-        catch (err) {
+        if (err) {
 
             setError(getErrorMessage(err));
             setPhase('error');
 
-        }
-        finally {
-
-            await conn.destroy();
+            return;
 
         }
+
+        setPhase('complete');
 
     }, [activeConfig, activeConfigName, stateManager, selectedFiles, globalModes, resetProgress, projectRoot]);
 

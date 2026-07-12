@@ -18,7 +18,6 @@ import type { Kysely } from 'kysely';
 
 import type { TruncateResult } from '../../../core/teardown/index.js';
 import type { TableSummary } from '../../../core/explore/types.js';
-import { createConnection } from '../../../core/connection/index.js';
 import { truncateData } from '../../../core/teardown/index.js';
 import { fetchList } from '../../../core/explore/operations.js';
 
@@ -28,7 +27,7 @@ import { useFocusScope } from '../../focus.js';
 import { useAppContext, useSettings } from '../../app-context.js';
 import { useToast, Panel, Spinner, ProtectedConfirm } from '../../components/index.js';
 import { useConnection, useAsyncEffect } from '../../hooks/index.js';
-import { getErrorMessage } from '../../utils/index.js';
+import { getErrorMessage, withScreenConnection } from '../../utils/index.js';
 import { checkConfigPolicy, confirmationPhraseFor } from '../../../core/policy/index.js';
 
 type Phase = 'loading' | 'blocked' | 'preview' | 'confirm' | 'running' | 'done' | 'error';
@@ -118,43 +117,30 @@ export function DbTruncateScreen({ params: _params }: ScreenProps): ReactElement
 
         setPhase('running');
 
-        const [conn, connErr] = await attempt(() =>
-            createConnection(activeConfig.connection, activeConfigName),
+        const [, err] = await withScreenConnection(
+            activeConfig.connection, activeConfigName,
+            async (db) => {
+
+                const truncateResult = await truncateData(db as Kysely<unknown>, activeConfig.connection.dialect, {
+                    preserve: preserveTables,
+                    restartIdentity: true,
+                });
+
+                setResult(truncateResult);
+
+            },
         );
 
-        if (connErr || !conn) {
+        if (err) {
 
-            setError(`Connection failed: ${connErr?.message ?? 'Unknown error'}`);
+            setError(getErrorMessage(err));
             setPhase('error');
 
             return;
 
         }
 
-        try {
-
-            const db = conn.db;
-
-            const truncateResult = await truncateData(db, activeConfig.connection.dialect, {
-                preserve: preserveTables,
-                restartIdentity: true,
-            });
-
-            setResult(truncateResult);
-            setPhase('done');
-
-        }
-        catch (err) {
-
-            setError(getErrorMessage(err));
-            setPhase('error');
-
-        }
-        finally {
-
-            await conn.destroy();
-
-        }
+        setPhase('done');
 
     }, [activeConfig, activeConfigName, preserveTables]);
 
