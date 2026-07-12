@@ -239,14 +239,7 @@ const transferCommand = defineCommand({
 
             if (planError) process.exit(1);
 
-            const [planResult, planErr] = plan;
-
-            if (planErr) {
-
-                outputError(args, planErr.message);
-                process.exit(1);
-
-            }
+            const planResult = plan;
 
             if (args.json) {
 
@@ -322,14 +315,7 @@ const transferCommand = defineCommand({
 
         if (transferError) process.exit(1);
 
-        const [result, transferErr] = transferResult;
-
-        if (transferErr) {
-
-            outputError(args, transferErr.message);
-            process.exit(1);
-
-        }
+        const result = transferResult;
 
         if (args.json) {
 
@@ -427,16 +413,10 @@ async function handleExport(opts: {
                     ext,
                 });
 
-                const [result, err] = await ctx.noorm.dt.exportTable(tableName, filepath, {
+                const result = await ctx.noorm.dt.exportTable(tableName, filepath, {
                     passphrase,
                     batchSize,
                 });
-
-                if (err) {
-
-                    throw err;
-
-                }
 
                 totalRows += result?.rowsWritten ?? 0;
                 totalBytes += result?.bytesWritten ?? 0;
@@ -542,18 +522,12 @@ async function handleImport(opts: {
 
             }
 
-            const [result, err] = await ctx.noorm.dt.importFile(importPath, {
+            const result = await ctx.noorm.dt.importFile(importPath, {
                 passphrase,
                 batchSize,
                 onConflict,
                 truncate,
             });
-
-            if (err) {
-
-                throw err;
-
-            }
 
             return result;
 

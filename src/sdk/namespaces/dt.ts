@@ -39,9 +39,9 @@ export class DtNamespace {
         tableName: string,
         filepath: string,
         options?: ExportOptions,
-    ): Promise<[{ rowsWritten: number; bytesWritten: number } | null, Error | null]> {
+    ): Promise<{ rowsWritten: number; bytesWritten: number }> {
 
-        return coreExportTable({
+        const [result, err] = await coreExportTable({
             db: this.#kysely,
             dialect: this.#dialect,
             tableName,
@@ -50,6 +50,14 @@ export class DtNamespace {
             passphrase: options?.passphrase,
             batchSize: options?.batchSize,
         });
+
+        if (err) throw err;
+
+        // coreExportTable only leaves result null when err is set (checked
+        // above), so this narrows without a cast.
+        if (!result) throw new Error('exportTable returned no result and no error');
+
+        return result;
 
     }
 
@@ -66,11 +74,11 @@ export class DtNamespace {
     async importFile(
         filepath: string,
         options?: ImportOptions,
-    ): Promise<[{ rowsImported: number; rowsSkipped: number } | null, Error | null]> {
+    ): Promise<{ rowsImported: number; rowsSkipped: number }> {
 
         checkProtectedConfig(this.#state.config, this.#state.options, 'db:reset', 'dt.importFile');
 
-        return importDtFile({
+        const [result, err] = await importDtFile({
             filepath,
             db: this.#kysely,
             dialect: this.#dialect,
@@ -79,6 +87,14 @@ export class DtNamespace {
             onConflict: options?.onConflict,
             truncate: options?.truncate,
         });
+
+        if (err) throw err;
+
+        // importDtFile only leaves result null when err is set (checked
+        // above), so this narrows without a cast.
+        if (!result) throw new Error('importFile returned no result and no error');
+
+        return result;
 
     }
 
