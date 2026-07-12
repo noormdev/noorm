@@ -59,17 +59,7 @@ describe('cli: noorm change rewind — exit code on partial failure', () => {
 
     });
 
-    // Skip: reaching a 'partial' rewind result requires >= 2 applied changes,
-    // which makes ChangeManager.rewind() sort `applied` by `appliedAt` (manager.ts:369).
-    // For the SQLite dialect (both sqlite-bun and better-sqlite3 adapters), the driver
-    // returns `executed_at` as a raw string, not a Date, despite ChangeStatus.appliedAt
-    // being typed `Date | null` (history.ts:172, types.ts:140) — so `a.appliedAt?.getTime()`
-    // throws `TypeError: a.appliedAt?.getTime is not a function` before rewind() ever
-    // computes a status. This crash is unconditional whenever 2+ changes are applied,
-    // so it also breaks real (non-test) `noorm change rewind` usage against SQLite. Fixing
-    // it means touching manager.ts/history.ts, which is out of scope for this ticket
-    // (see docs/spec/v1-01-rewind-exit.md "Out of scope"). Un-skip once that's fixed.
-    it.skip('should exit 2 and log the failure when a rewind partially fails', async () => {
+    it('should exit 2 and log the failure when a rewind partially fails', async () => {
 
         // Later-applied change reverts cleanly; earlier-applied change's
         // revert SQL errors. Rewind reverts most-recent-first, so the good
