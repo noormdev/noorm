@@ -120,3 +120,26 @@ Consequences:
 
 - 2026-07-12 — initial spec from ticket 01 + VR-cli-01, all evidence re-verified against worktree source.
 - 2026-07-12 — iteration 1: CP-1 split into CP-1a/CP-1b after discovering the pre-existing SQLite `appliedAt` string bug makes a 'partial' rewind unconstructible in the unit harness (crash verified first-hand). Partial assertion authored but skipped; fix itself unchanged.
+
+
+## Implementation log
+
+### shipped (branch v1/01-rewind-exit, pending merge) — 2026-07-12
+
+Built across 1 iteration of /subagent-implementation. Commits (chronological):
+
+- `693235e` — spec authored (contract, verified evidence, partial-status test recipe)
+- `0c158ea` — CP-1a/CP-1b/CP-2/CP-3/CP-4: two-expression fix in rewind.ts + change-rewind.test.ts (full-success asserted e2e; partial authored, skipped)
+
+**Out-of-scope work performed during this build:**
+
+- none (core/change untouched; spec amendment CP-1 → CP-1a/CP-1b was documentation of reality, not scope change)
+
+**Unforeseens — surprises that emerged during implementation:**
+
+- Pre-existing production bug: SQLite `appliedAt` returned as string; `manager.rewind()` sort comparator throws with >= 2 applied changes (exit 1 before status computation). Verified first-hand via compiled-CLI repro. Made the partial-exit-2 assertion unconstructible in the unit harness; handled by authoring the test per spec recipe and `it.skip`-ing with a line-cited rationale (see Discovered blocker).
+
+**Deferred items still open:**
+
+- F-1 (FOLLOWUPS.md, this loop's scratchpad): fix SQLite timestamp parsing at the history/connection seam, then un-skip the partial test — needs its own ticket; also reportable as a new v1-audit finding since `change rewind` on SQLite with >= 2 applied changes is broken today.
+- Partial-path exit-code behavior is integration-verifiable today (postgres/mysql/mssql) — central runner / integration lane decision belongs to the fleet orchestrator.
