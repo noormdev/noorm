@@ -4,8 +4,10 @@
  * Tests truncateData, teardownSchema, and previewTeardown against a real MSSQL instance.
  * Requires docker-compose.test.yml to be running.
  */
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'bun:test';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'bun:test';
 import { sql, type Kysely } from 'kysely';
+
+import { attempt } from '@logosdx/utils';
 
 import {
     truncateData,
@@ -635,6 +637,56 @@ describe('integration: mssql teardown', () => {
             }
 
         }, 60_000);
+
+    });
+
+    // ─────────────────────────────────────────────────────────────
+    // v1-03: FK re-enable guarantee — a mid-truncate failure must never
+    // leave FK enforcement off. An AFTER DELETE trigger on one user table
+    // simulates the failure (e.g. a business-rule trigger blocking a
+    // delete); truncateData must still throw the injected error AND
+    // leave every FK constraint enabled afterward.
+    // ─────────────────────────────────────────────────────────────
+
+    describe('truncateData mid-truncate failure (v1-03 FK re-enable guarantee)', () => {
+
+        beforeEach(async () => {
+
+            await teardownTestSchema(db, 'mssql').catch(() => {});
+            await deployTestSchema(db, 'mssql');
+            await seedTestData(db, 'mssql');
+
+            await sql.raw(`
+                CREATE TRIGGER trg_block_delete ON todo_lists
+                AFTER DELETE
+                AS BEGIN
+                    THROW 50000, 'injected mid-truncate failure', 1;
+                END
+            `).execute(db);
+
+        });
+
+        afterEach(async () => {
+
+            await sql.raw('DROP TRIGGER IF EXISTS trg_block_delete').execute(db);
+
+        });
+
+        it('re-enables FK checks even when a mid-truncate DELETE throws, and re-surfaces the injected error', async () => {
+
+            const [, err] = await attempt(() => truncateData(db, 'mssql'));
+
+            expect(err).toBeInstanceOf(Error);
+            expect(err?.message).toContain('injected mid-truncate failure');
+
+            const disabledFks = await sql.raw(
+                'SELECT COUNT(*) as cnt FROM sys.foreign_keys WHERE is_disabled = 1',
+            ).execute(db);
+            const cnt = (disabledFks.rows[0] as { cnt: number }).cnt;
+
+            expect(cnt).toBe(0);
+
+        });
 
     });
 

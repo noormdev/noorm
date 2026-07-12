@@ -63,6 +63,7 @@ export interface TransferEvents {
         totalRows: number;
         tableCount: number;
         durationMs: number;
+        fkChecksRestored: boolean;
     };
 
 }

@@ -123,6 +123,7 @@ export async function transferData(
                     tables: [],
                     totalRows: 0,
                     durationMs: 0,
+                    fkChecksRestored: true,
                 };
 
             }
@@ -141,6 +142,7 @@ export async function transferData(
                     })),
                     totalRows: 0,
                     durationMs: 0,
+                    fkChecksRestored: true,
                 };
 
             }

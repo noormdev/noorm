@@ -170,7 +170,13 @@ export async function executeTransfer(
 
     }
 
-    // Re-enable FK checks on destination
+    // Re-enable FK checks on destination. A failed re-enable never fails
+    // the transfer itself (data already moved), but it must stay visible
+    // to the caller — a swallowed failure here left referential integrity
+    // off on the destination with no signal beyond an observer event
+    // (QL-safe-05).
+    let fkChecksRestored = true;
+
     if (options.disableForeignKeys !== false) {
 
         const [, enableErr] = await attempt(() =>
@@ -181,6 +187,8 @@ export async function executeTransfer(
         );
 
         if (enableErr) {
+
+            fkChecksRestored = false;
 
             // Log warning but don't fail the transfer
             observer.emit('error', {
@@ -201,6 +209,7 @@ export async function executeTransfer(
         tables: tableResults,
         totalRows,
         durationMs,
+        fkChecksRestored,
     };
 
     observer.emit('transfer:complete', {
@@ -208,6 +217,7 @@ export async function executeTransfer(
         totalRows,
         tableCount: plan.tables.length,
         durationMs,
+        fkChecksRestored,
     });
 
     return [result, null];
