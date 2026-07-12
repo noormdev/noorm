@@ -49,7 +49,7 @@ function withResolvedAccess<T extends { protected?: boolean; access?: ConfigAcce
 /**
  * Config name pattern - alphanumeric with hyphens and underscores.
  */
-const ConfigNameSchema = z
+export const ConfigNameSchema = z
     .string()
     .min(1, 'Config name is required')
     .regex(
@@ -60,7 +60,7 @@ const ConfigNameSchema = z
 /**
  * Port number validation.
  */
-const PortSchema = z
+export const PortSchema = z
     .number()
     .int()
     .min(1, 'Port must be at least 1')

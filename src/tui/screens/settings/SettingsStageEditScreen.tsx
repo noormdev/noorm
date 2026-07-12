@@ -21,6 +21,7 @@ import { useRouter } from '../../router.js';
 import { useAppContext } from '../../app-context.js';
 import { Panel, Form } from '../../components/index.js';
 import { useSettingsOperation } from '../../hooks/index.js';
+import { validateStagePort } from '../../utils/index.js';
 
 /**
  * SettingsStageEditScreen component.
@@ -139,21 +140,7 @@ export function SettingsStageEditScreen({ params }: ScreenProps): ReactElement {
                 type: 'text',
                 defaultValue: defaults.port ? String(defaults.port) : '',
                 placeholder: '5432',
-                validate: (value) => {
-
-                    if (typeof value !== 'string' || !value) return undefined;
-
-                    const port = parseInt(value, 10);
-
-                    if (isNaN(port) || port < 1 || port > 65535) {
-
-                        return 'Port must be 1-65535';
-
-                    }
-
-                    return undefined;
-
-                },
+                validate: (value) => validateStagePort(typeof value === 'string' ? value : undefined),
             },
             {
                 key: 'database',

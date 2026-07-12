@@ -33,7 +33,7 @@ const LogLevelSchema = z.enum(['silent', 'error', 'warn', 'info', 'verbose']);
 /**
  * Port number validation.
  */
-const PortSchema = z
+export const PortSchema = z
     .number()
     .int()
     .min(1, 'Port must be at least 1')

@@ -16,13 +16,9 @@ import type { Config } from '../../core/config/types.js';
 import type { ConfigAccess, Role } from '../../core/policy/index.js';
 import { guarded } from '../../core/policy/index.js';
 import { DEFAULT_PORTS } from '../../core/connection/index.js';
+import { ConfigNameSchema, PortSchema } from '../../core/config/schema.js';
 
 export { DEFAULT_PORTS };
-
-/**
- * Config name pattern — letters, numbers, hyphens, underscores.
- */
-const CONFIG_NAME_PATTERN = /^[a-z0-9_-]+$/i;
 
 /**
  * Validates a config name for format and optional uniqueness.
@@ -43,11 +39,11 @@ export function validateConfigName(
     existingNames?: string[],
 ): string | undefined {
 
-    if (!value) return 'Name is required';
+    const result = ConfigNameSchema.safeParse(value);
 
-    if (!CONFIG_NAME_PATTERN.test(value)) {
+    if (!result.success) {
 
-        return 'Only letters, numbers, hyphens, underscores';
+        return result.error.issues[0]?.message ?? 'Invalid config name';
 
     }
 
@@ -77,9 +73,17 @@ export function validatePort(value: string | undefined): string | undefined {
 
     const port = parseInt(value, 10);
 
-    if (isNaN(port) || port < 1 || port > 65535) {
+    if (isNaN(port)) {
 
         return 'Port must be 1-65535';
+
+    }
+
+    const result = PortSchema.safeParse(port);
+
+    if (!result.success) {
+
+        return result.error.issues[0]?.message ?? 'Invalid port';
 
     }
 
