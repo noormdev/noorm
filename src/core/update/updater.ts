@@ -16,7 +16,7 @@
 import { spawn } from 'child_process';
 import { open, rename, unlink, chmod, stat } from 'fs/promises';
 
-import { attempt, wait } from '@logosdx/utils';
+import { attempt, retry, wait } from '@logosdx/utils';
 
 import { observer } from '../observer.js';
 import { getCurrentVersion } from './checker.js';
@@ -223,26 +223,31 @@ export async function downloadToFile(
 
     const state: DownloadState = { total: 0 };
 
-    for (let attemptNo = 1; attemptNo <= maxAttempts; attemptNo++) {
+    await retry(
+        async () => {
 
-        const offset = await fileSizeOrZero(destPath);
+            const offset = await fileSizeOrZero(destPath);
 
-        // A prior attempt already pulled the whole asset — nothing left to do.
-        if (state.total > 0 && offset >= state.total) break;
+            // A prior attempt already pulled the whole asset — nothing left to do.
+            if (state.total > 0 && offset >= state.total) return;
 
-        const [, err] = await attempt(() => downloadAttempt(url, destPath, version, offset, state, stallMs));
+            await downloadAttempt(url, destPath, version, offset, state, stallMs);
 
-        if (!err) break;
+        },
+        {
+            retries: maxAttempts,
+            delay: 0,
+            throwLastError: true,
+            shouldRetry: (err) => !(err instanceof DownloadError) || err.retriable,
+            onRetry: async (err, attempt) => {
 
-        const retriable = !(err instanceof DownloadError) || err.retriable;
+                observer.emit('update:retry', { version, attempt, maxAttempts, error: err.message });
 
-        if (!retriable || attemptNo >= maxAttempts) throw err;
+                await wait(backoffMs * attempt);
 
-        observer.emit('update:retry', { version, attempt: attemptNo, maxAttempts, error: err.message });
-
-        await wait(backoffMs * attemptNo);
-
-    }
+            },
+        },
+    );
 
     await chmod(destPath, 0o755);
 
