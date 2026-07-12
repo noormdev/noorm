@@ -17,9 +17,9 @@ TARGETS=(README.md docs skills examples)
 
 # Files that intentionally show the broken form: either contrasted directly
 # against the correct form under a "does not work" heading, a literal shell
-# transcript of a real bug-hunting session, or (docs/spec) the ticket spec
-# describing this very guard in prose.
-EXEMPT_REGEX='^(docs/cli/flags\.md|docs/guide/troubleshooting\.md|examples/llm-memory-db-mssql/mssql-problems\.md|examples/llm-memory-db-pg/REPORT\.md|examples/llm-memory-db-pg/REPORT-PHASE-1\.md|docs/spec/v1-06-json-sweep\.md):'
+# transcript of a real bug-hunting session. `docs/spec/` is exempt wholesale —
+# specs document the anti-pattern in prose by nature.
+EXEMPT_REGEX='^(docs/cli/flags\.md|docs/guide/troubleshooting\.md|examples/llm-memory-db-mssql/mssql-problems\.md|examples/llm-memory-db-pg/REPORT\.md|examples/llm-memory-db-pg/REPORT-PHASE-1\.md|docs/spec/.*):'
 
 MATCHES=$(grep -rn -- "$PATTERN" "${TARGETS[@]}" 2>/dev/null | grep -Ev "$EXEMPT_REGEX") || true
 
