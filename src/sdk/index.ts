@@ -209,8 +209,18 @@ export type {
     TableSummary,
     TableDetail,
     ExploreOverview,
+    ViewSummary,
+    ProcedureSummary,
+    FunctionSummary,
+    TypeSummary,
+    IndexSummary,
+    ForeignKeySummary,
+    ViewDetail,
+    ProcedureDetail,
+    FunctionDetail,
+    TypeDetail,
 } from '../core/explore/index.js';
-export type { TruncateResult, TeardownResult, TeardownPreview } from '../core/teardown/index.js';
+export type { TruncateResult, TeardownResult, TeardownPreview, TruncateOptions } from '../core/teardown/index.js';
 export type { BatchResult, FileResult, RunOptions } from '../core/runner/index.js';
 export type {
     ChangeResult,
