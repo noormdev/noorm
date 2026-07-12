@@ -23,7 +23,7 @@
  * }
  * ```
  */
-import { attempt } from '@logosdx/utils';
+import { attempt, wait } from '@logosdx/utils';
 import type { Kysely } from 'kysely';
 
 import { observer } from '../observer.js';
@@ -165,7 +165,7 @@ class LockManager {
             }
 
             // Wait and retry
-            await sleep(opts.pollInterval);
+            await wait(opts.pollInterval);
 
         }
 
@@ -590,16 +590,6 @@ export function getLockManager(): LockManager {
 export function resetLockManager(): void {
 
     instance = null;
-
-}
-
-// ─────────────────────────────────────────────────────────────
-// Utility
-// ─────────────────────────────────────────────────────────────
-
-function sleep(ms: number): Promise<void> {
-
-    return new Promise((resolve) => setTimeout(resolve, ms));
 
 }
 

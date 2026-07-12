@@ -16,7 +16,7 @@
 import { spawn } from 'child_process';
 import { open, rename, unlink, chmod, stat } from 'fs/promises';
 
-import { attempt } from '@logosdx/utils';
+import { attempt, wait } from '@logosdx/utils';
 
 import { observer } from '../observer.js';
 import { getCurrentVersion } from './checker.js';
@@ -180,8 +180,6 @@ interface DownloadState {
     total: number;
 }
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
 /** Current size of a file, or 0 if it doesn't exist — the resume offset. */
 async function fileSizeOrZero(path: string): Promise<number> {
 
@@ -242,7 +240,7 @@ export async function downloadToFile(
 
         observer.emit('update:retry', { version, attempt: attemptNo, maxAttempts, error: err.message });
 
-        await sleep(backoffMs * attemptNo);
+        await wait(backoffMs * attemptNo);
 
     }
 
