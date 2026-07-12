@@ -137,3 +137,31 @@ name and recreates under the new one).
 ## Change log
 
 - 2026-07-12 — initial spec, D6 ruling implementation.
+- 2026-07-12 — implementation shipped (iterations 1-2); added implementation log.
+
+## Implementation log
+
+- Status: shipped — 2026-07-12 (branch `v1/29-locked-stage-guard`, not yet merged).
+- Iteration 1 (`e6ce6ba`) — core seam. `ConfigStageLockedError` + `assertCanDeleteConfig`
+  added to `resolver.ts`, exported via `config/index.ts`; `StateManager.deleteConfig(name,
+  settings?)` calls the guard as its first statement and throws the named error naming the
+  stage. Reviewer PASS; revert-probe confirmed load-bearing (removing the guard call turns
+  the locked-stage seam test RED).
+- Iteration 2 (`5b20462`) — TUI surfacing. `ConfigRemoveScreen` renders a stage-named blocked
+  panel before confirmation; both remove and edit-rename paths pass the `SettingsProvider`
+  into `deleteConfig`. Reviewer PASS; both revert-probes confirmed load-bearing.
+- Verified at finalize: `bun run typecheck` (0 errors); `tests/core/state/manager.test.ts` +
+  `tests/core/config/resolver.test.ts` (77 pass); `tests/cli/screens/config/` (3 pass);
+  eslint clean on all 8 touched files. Build n/a (Ink tests render source).
+- Named error chosen: `ConfigStageLockedError` (D1 producer-throw convention, matching
+  `LockAcquireError`/`ConfigValidationError` shape). `isStageLockedByName` left in place but
+  not separately wired — `canDeleteConfig`'s own stage lookup already covers the enforcement
+  path; wiring both would duplicate it.
+- Cross-ticket constraint recorded for ticket 28 (see Out of scope): the headless deletion
+  path must pass the `SettingsProvider` into `deleteConfig` so `--yes` inherits the lock
+  guard; `--yes` skips the confirm prompt, never the guard.
+- Open follow-up (pre-existing, NOT introduced here): `ConfigEditScreen.tsx` calls
+  `useStdout()` after two conditional early returns, violating Rules of Hooks ("hooks order
+  changed" warning under the new async-load test). Confirmed present at base `e6ce6ba`. Fix
+  in a dedicated ticket — move `useStdout()` above the `if (!configName)`/`if (!config)`
+  guards.
