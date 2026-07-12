@@ -181,8 +181,8 @@ Each checkpoint ends green: the new test file(s) for that checkpoint, `bun run t
 integration/docker suites — this work is scoped to Change Executor (`core-change` domain);
 full-suite verification happens centrally, not per-ticket.
 
-| CP | Scope | Key files | Done when |
-|---|---|---|---|
+| # | Checkpoint | Files/areas | Verifies |
+|---|------------|-------------|----------|
 | 1 | Per-file skip on retry | `src/core/change/history.ts` (`needsRunFile`), `src/core/change/executor.ts` (force threading, per-file skip check), `tests/core/change/executor-retry.test.ts` | New test: A-succeeds/B-fails/fix/retry executes only B, A's history shows one success. `force: true` re-runs both. `bun test tests/core/change/executor-retry.test.ts` green, `bun run typecheck`, `bun run lint` green. |
 | 2 | Postgres transactional wrap | `src/core/change/executor.ts` (`TRANSACTIONAL_DIALECTS`, transaction wrap), `tests/integration/change/postgres-transaction.test.ts` (written, not run) | Production code wraps `executeFiles` in `context.db.transaction()` when dialect is postgres; failed result has no `operationId`. Integration test file exists, follows the `tests/utils/db.ts` `createTestConnection`/`skipIfNoContainer('postgres')` convention, is NOT executed (no live DB in this pass). `bun run typecheck`, `bun run lint` green. |
 
@@ -200,3 +200,48 @@ full-suite verification happens centrally, not per-ticket.
 
 - 2026-07-12 — Initial spec (autonomous audit-ticket delivery, no design doc per ticket
   scope).
+
+- 2026-07-12 — Checkpoints table header conformed to the canonical
+  `# | Checkpoint | Files/areas | Verifies` columns (`atomic validate spec` S5); no
+  content change.
+
+
+## Implementation log
+
+
+### shipped — 2026-07-12
+
+Built across 2 checkpoints (3 implement→review iterations) of /subagent-implementation.
+Commits (chronological):
+
+- `f27a67b` — CP1 per-file skip on change retry: `ChangeHistory.needsRunFile` +
+  `executeFiles` skip wiring + `force` threading + `tests/core/change/executor-retry.test.ts`.
+  Iteration 1 shipped it; iteration 2 fixed a reviewer-caught third-attempt regression
+  (overloaded `skipped` status) by excluding `skipped` rows from `needsRunFile`'s lookup.
+- `4610c34` — CP2 Postgres transactional wrap: `TRANSACTIONAL_DIALECTS` + `runFileBatch`
+  extraction + `context.db.transaction()` with sentinel-based rollback + pg-gated
+  `tests/integration/change/postgres-transaction.test.ts` (written, not run).
+
+**Out-of-scope work performed during this build:**
+
+- Minor DRY refactor inside `executeFiles`: relative-path/checksum now computed once per loop
+  iteration (was three inline recomputations) — came directly with wiring the per-file skip;
+  reviewer judged it in-scope-adjacent, not gratuitous.
+
+**Unforeseens — surprises that emerged during implementation:**
+
+- `createFileRecords` inserts a fresh `pending` row for every file before the loop; that row
+  (highest `id`) would shadow the prior operation's real terminal record in `needsRunFile`.
+  Fixed by excluding `pending` (CP1) and, after the iteration-2 regression, also `skipped`
+  rows from the lookup — the skip decision keys only off true terminal (`success`/`failed`)
+  records.
+- On Postgres a FAILED change now leaves NO persisted history (operation+file rows roll back
+  with the DDL). Intentional per spec — the caller still sees the failure via the returned
+  `ChangeResult`; on retry the top-level `needsRun` reruns the change fresh.
+
+**Deferred items still open:**
+
+- F-1 (FOLLOWUPS.md, 🟡, non-blocking): no test for the "never-reached file" retry case
+  (change A-success/B-fail/C-never-reached → C should run on retry). Traced to have NO live
+  bug; the coverage gap is what's open. Left for orchestrator disposition (fix-now / defer /
+  issue / drop).
