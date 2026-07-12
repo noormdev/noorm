@@ -39,6 +39,21 @@ NOORM_INSTALL_DIR=~/my-tools curl -fsSL https://noorm.dev/install.sh | sh
 
 Download [noorm-windows-x64.exe](https://github.com/noormdev/noorm/releases) from the latest `@noormdev/cli` release, rename it to `noorm.exe`, and add it to your PATH.
 
+### Integrity verification
+
+Every install path verifies the downloaded binary before it runs. The release publishes a `checksums.txt` alongside the binaries, and the installer (`install.sh`), the npm `postinstall` step, and `noorm update` each recompute the binary's SHA-256 and compare it against that file before making the binary executable. A mismatch aborts — a corrupted download or a tampered release asset never gets run.
+
+Verification is fail-closed: if `checksums.txt` can't be fetched (an offline mirror, a network block, an older release without it), the install stops rather than trusting an unverified binary. To override that one case — and only that case — set `NOORM_INSECURE=1`:
+
+```bash
+NOORM_INSECURE=1 curl -fsSL https://noorm.dev/install.sh | sh
+
+# self-update equivalent
+noorm update --insecure
+```
+
+`NOORM_INSECURE` skips verification only when the checksums can't be reached. A confirmed hash mismatch always fails, escape hatch or not — the flag can't wave through a binary that has actually been altered.
+
 ### Verify
 
 ```bash
