@@ -18,10 +18,11 @@
  * this file seeds a role that would pass under any gate (`admin`/`admin`)
  * and has no role-denial cases to mirror from `drop.test.ts`.
  *
- * A second finding surfaced while writing these tests: `createDb`'s
- * `created` flag is deterministically `false` for SQLite targets even on a
- * genuine fresh create (see the `it.skip` below for the root-cause chain).
- * Distinct from ticket #34; also out of scope to fix here.
+ * A second finding surfaced while writing these tests — `createDb`'s
+ * `created` flag was deterministically `false` for SQLite targets even on a
+ * genuine fresh create. Fixed under ticket 35: SQLite existence is captured
+ * before the connectivity probe auto-creates the file, and the CLI threads its
+ * status into `createDb`. The two `created`-flag tests below pin that behavior.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync, existsSync, statSync } from 'node:fs';
