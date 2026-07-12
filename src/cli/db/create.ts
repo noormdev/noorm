@@ -74,7 +74,7 @@ const createCommand = defineCommand({
         }
 
         // Create database
-        const result = await createDb(config.connection, configName);
+        const result = await createDb(config.connection, configName, { precheckedStatus: status });
 
         if (!result.ok) {
 

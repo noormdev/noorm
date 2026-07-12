@@ -142,25 +142,7 @@ describe('cli: noorm db create — fresh vs already-exists', () => {
 
     });
 
-    // Skip: `created` should be `true` here -- the target was genuinely fresh
-    // (asserted via `existsSync(dbPath) === false` above, before `runCreate`).
-    // It is deterministically `false` instead. Root cause, not a test-harness
-    // artifact: checkDbStatus's own testConnection call (operations.ts:36;
-    // factory.ts:230 does not swap sqlite to a system db the way postgres/mysql/
-    // mssql do) opens a real connection to the target sqlite file, and the
-    // SQLite driver auto-creates the file as a side effect of merely connecting
-    // (src/core/db/dialects/sqlite.ts:39's own comment: "SQLite creates the
-    // file automatically when connecting"). By the time createDb's internal
-    // checkDbStatus re-checks existence (operations.ts:133), the file already
-    // exists on disk, so `!status.exists` (operations.ts:149) never fires and
-    // `created` (assigned at operations.ts:159, returned at operations.ts:203)
-    // never flips to `true` for sqlite targets -- not in this test, and not
-    // for a real `noorm db create` user either. This is a NEW finding
-    // surfaced while writing this ticket's tests, distinct from ticket #34
-    // (rewind's SQLite Date-vs-string crash) -- out of scope to fix here per
-    // this ticket's test-additive-only scope. Un-skip once it's fixed and
-    // tracked under its own ticket.
-    it.skip('created is true when the JSON output reports a genuinely fresh create', async () => {
+    it('created is true when the JSON output reports a genuinely fresh create', async () => {
 
         await seedConfig({ user: 'admin', mcp: 'admin' });
 
@@ -172,6 +154,21 @@ describe('cli: noorm db create — fresh vs already-exists', () => {
 
         const parsed = JSON.parse(result.stdout);
         expect(parsed.created).toBe(true);
+
+    });
+
+    it('created is false when the SQLite target file already existed before create ran', async () => {
+
+        await seedConfig({ user: 'admin', mcp: 'admin' });
+
+        writeFileSync(dbPath, '');
+
+        const result = runCreate(['--json']);
+
+        expect(result.status).toBe(0);
+
+        const parsed = JSON.parse(result.stdout);
+        expect(parsed.created).toBe(false);
 
     });
 

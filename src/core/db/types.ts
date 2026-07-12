@@ -48,6 +48,14 @@ export interface CreateDbOptions {
 
     /** Initialize noorm tracking tables (default: true) */
     initializeTracking?: boolean;
+
+    /**
+     * Reuse a status already computed by the caller instead of calling
+     * `checkDbStatus` again internally. For SQLite, a caller's own probe
+     * already touched the target file (opening a connection auto-creates
+     * it), so a second internal check would see a false "already exists".
+     */
+    precheckedStatus?: DbStatus;
 }
 
 /**
