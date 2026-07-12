@@ -237,6 +237,7 @@ export async function executeChange(
             files,
             'change',
             changeChecksum,
+            opts.force,
             history,
             start,
         ),
@@ -376,6 +377,7 @@ export async function revertChange(
             files,
             'revert',
             revertChecksum,
+            opts.force,
             history,
             start,
         ),
@@ -414,6 +416,7 @@ async function executeFiles(
     files: ChangeFile[],
     direction: 'change' | 'revert',
     checksum: string,
+    force: boolean,
     history: ChangeHistory,
     startTime: number,
 ): Promise<ChangeResult> {
@@ -509,6 +512,53 @@ async function executeFiles(
             });
 
             const fileStart = performance.now();
+            const relPath = path.relative(context.projectRoot, file.path);
+            const fileChecksum = fileChecksums.get(file.path) ?? '';
+
+            // Per-file skip: a prior success with a matching checksum means this
+            // file doesn't need to run again, even though the overall change's
+            // checksum differs because another file needed fixing.
+            const needsRunFileResult = await history.needsRunFile(
+                change.name,
+                direction,
+                relPath,
+                fileChecksum,
+                force,
+            );
+
+            if (!needsRunFileResult.needsRun) {
+
+                results.push({
+                    filepath: file.path,
+                    checksum: fileChecksum,
+                    status: 'skipped',
+                    skipReason: needsRunFileResult.skipReason,
+                    durationMs: 0,
+                });
+
+                const skipUpdateErr = await history.updateFileExecution(
+                    operationId,
+                    relPath,
+                    'skipped',
+                    0,
+                    undefined,
+                    needsRunFileResult.skipReason,
+                );
+
+                if (skipUpdateErr) {
+
+                    // Log but continue - the skip decision itself is sound
+                    observer.emit('error', {
+                        source: 'change',
+                        error: new Error(skipUpdateErr),
+                        context: { filepath: relPath, operation: 'update-skipped-record' },
+                    });
+
+                }
+
+                continue;
+
+            }
 
             // Load and render file
             const [sqlContent, loadErr] = await attempt(() => loadAndRenderFile(context, file.path));
@@ -524,14 +574,13 @@ async function executeFiles(
 
                 results.push({
                     filepath: file.path,
-                    checksum: fileChecksums.get(file.path) ?? '',
+                    checksum: fileChecksum,
                     status: 'failed',
                     error: loadErr.message,
                     durationMs,
                 });
 
                 // Update DB record (use relative path to match createFileRecords)
-                const relPath = path.relative(context.projectRoot, file.path);
                 const updateErr = await history.updateFileExecution(
                     operationId,
                     relPath,
@@ -571,17 +620,16 @@ async function executeFiles(
 
                 results.push({
                     filepath: file.path,
-                    checksum: fileChecksums.get(file.path) ?? '',
+                    checksum: fileChecksum,
                     status: 'failed',
                     error: errorMessage,
                     durationMs,
                 });
 
                 // Update DB record (use relative path to match createFileRecords)
-                const execRelPath = path.relative(context.projectRoot, file.path);
                 const updateErr2 = await history.updateFileExecution(
                     operationId,
-                    execRelPath,
+                    relPath,
                     'failed',
                     durationMs,
                     errorMessage,
@@ -593,7 +641,7 @@ async function executeFiles(
                     observer.emit('error', {
                         source: 'change',
                         error: new Error(updateErr2),
-                        context: { filepath: execRelPath, operation: 'update-failed-record' },
+                        context: { filepath: relPath, operation: 'update-failed-record' },
                     });
 
                 }
@@ -605,16 +653,15 @@ async function executeFiles(
             // Success
             results.push({
                 filepath: file.path,
-                checksum: fileChecksums.get(file.path) ?? '',
+                checksum: fileChecksum,
                 status: 'success',
                 durationMs,
             });
 
             // Update DB record (use relative path to match createFileRecords)
-            const successRelPath = path.relative(context.projectRoot, file.path);
             const updateErr = await history.updateFileExecution(
                 operationId,
-                successRelPath,
+                relPath,
                 'success',
                 durationMs,
             );
@@ -625,7 +672,7 @@ async function executeFiles(
                 observer.emit('error', {
                     source: 'change',
                     error: new Error(updateErr),
-                    context: { filepath: successRelPath, operation: 'update-success-record' },
+                    context: { filepath: relPath, operation: 'update-success-record' },
                 });
 
             }
