@@ -80,7 +80,7 @@ These are distinct from the placement-sweep occurrences above — they're deleti
 
 Add a grep-based guard script matching the repo's existing `scripts/*.sh` bash convention (see `scripts/install.sh`, `scripts/ralph-wiggum.sh` for style — `#!/bin/bash` or `#!/bin/sh`, header comment block, `set -e`).
 
-- New file: `scripts/check-json-placement.sh`. Greps `README.md docs/ skills/ examples/` for the pattern `noorm --json ` (literal, trailing space), excluding the 5 exempt files from Scope decision A by path. Exit 1 and print offending `file:line` matches if any are found; exit 0 with a short confirmation otherwise.
+- New file: `scripts/check-json-placement.sh`. Greps `README.md docs/ skills/ examples/` for the pattern `noorm --json ` (literal, trailing space), excluding the 5 exempt files from Scope decision A **plus the entire `docs/spec/` tree** by path (see Change log, 2026-07-12). Exit 1 and print offending `file:line` matches if any are found; exit 0 with a short confirmation otherwise.
 - Wire it as a `package.json` script (e.g. `"lint:docs": "bash scripts/check-json-placement.sh"`).
 - Wire it into `.github/workflows/docs.yml` (the docs-focused workflow, triggers on `docs/**`) as a step before the VitePress build — `docs.yml` doesn't currently gate on any check, this becomes its first one. Do not add it to `ci.yml` (that workflow doesn't trigger on `docs/**`/`skills/**` paths and this ticket doesn't extend its trigger paths).
 - Prove it works: temporarily plant a bad-form line in a scratch/tracked file, run the script, confirm exit 1 with the planted line reported, then remove the plant. Record the before/after output in `TESTING.md`, not as a permanent test fixture.
@@ -99,7 +99,7 @@ Add a grep-based guard script matching the repo's existing `scripts/*.sh` bash c
 | # | Checkpoint | Done when |
 |---|------------|-----------|
 | CP1 | Dead surface deleted | `shouldOutputJson` gone from `src/core/environment.ts`; its test block gone from `tests/core/config/env.test.ts`; zero-caller proof re-confirmed post-edit (`rg -n 'shouldOutputJson'` returns nothing); `NOORM_JSON` META_ENV_VARS registrations in `config/index.ts`/`settings/manager.ts` intact (Scope decision B) |
-| CP2 | Doc sweep clean | `rg -c 'noorm --json ' <each of the 18 files>` returns 0 for all; `rg 'noorm --json '` over `README.md docs/ skills/ examples/` returns exactly the 5 exempt files' pre-existing counts (9 total: 3+1+3+1+1) and nothing else |
+| CP2 | Doc sweep clean | `rg -c 'noorm --json ' <each of the 18 files>` returns 0 for all; `rg 'noorm --json '` over `README.md docs/ skills/ examples/` returns exactly the 5 exempt files' pre-existing counts (9 total: 3+1+3+1+1), plus this spec file's own prose occurrences under `docs/spec/` (a documentation surface that describes the anti-pattern, not one a reader copies commands from — exempted wholesale per Change log 2026-07-12), and nothing else |
 | CP3 | NOORM_JSON doc rows removed | The 4 "forces JSON output" table/block rows (docs/headless.md ×2, docs/dev/config.md, docs/guide/environments/configs.md, skills/cli.md) gone; neighboring NOORM_YES/NOORM_CONFIG rows intact |
 | CP4 | Doc-lint guard in place and proven | `scripts/check-json-placement.sh` exists, wired into `package.json` and `docs.yml`; plant-and-catch proof recorded in TESTING.md, plant removed from tracked files afterward |
 | CP5 | Quality gates green | `bun run typecheck`, `bun run lint`, `bun run build` all pass at HEAD |
@@ -107,6 +107,11 @@ Add a grep-based guard script matching the repo's existing `scripts/*.sh` bash c
 
 ## Acceptance criteria (verbatim from ticket, with Scope-decision annotations)
 
-- `rg 'noorm --json '` over README, docs/, skills/, examples/ returns 0 **— except the 5 files identified in Scope decision A as correctly documenting the gotcha via contrast/historical transcript (flags.md, troubleshooting.md, mssql-problems.md, REPORT.md, REPORT-PHASE-1.md); these keep their existing occurrences unchanged.**
+- `rg 'noorm --json '` over README, docs/, skills/, examples/ returns 0 **— except (a) the 5 files identified in Scope decision A as correctly documenting the gotcha via contrast/historical transcript (flags.md, troubleshooting.md, mssql-problems.md, REPORT.md, REPORT-PHASE-1.md), and (b) files under `docs/spec/`, which are internal implementation contracts (not user-facing command references) and necessarily quote the broken form to describe the transform rule; both keep their occurrences unchanged. The doc-lint guard exempts both.**
 - `NOORM_JSON`/`shouldOutputJson` gone from source and docs **— `shouldOutputJson` fully gone from source; `NOORM_JSON` gone from docs as a claimed working feature (C2), but the string remains in source only as an inert META_ENV_VARS/META_SETTINGS_ENV_VARS filter entry per Scope decision B (prevents config-object pollution; unrelated to the dead JSON-output-forcing behavior).**
 - Doc-lint check in place.
+
+
+## Change log
+
+- **2026-07-12** — Doc-lint guard (`scripts/check-json-placement.sh`) exempts the entire `docs/spec/` tree, not only the single named file `docs/spec/v1-06-json-sweep.md`. C3 originally said "the 5 exempt files from Scope decision A by path." Rationale: `docs/spec/` holds internal implementation contracts that describe CLI behavior in prose — including the very anti-pattern this ticket documents — and are not surfaces a reader copies runnable commands from. A per-file exemption would force every future spec that discusses `--json` placement to be added to the guard's list by hand; a tree-level exemption is the stable form. This also resolves a latent self-inconsistency: CP2's original "9 total, nothing else" wording was unsatisfiable because this spec file itself contains the pattern. Surfaced by atomic-reviewer (round 1) against `git diff v1/02-yes-flag...HEAD`.
