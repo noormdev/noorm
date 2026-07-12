@@ -122,3 +122,42 @@ Flow: ConnectionManager.closeAll bounds a hanging destroy()
 ## Change log
 
 <!-- Populated on first amendment after the spec is approved. Do not log drafting/refinement turns. -->
+
+
+## Implementation log
+
+### shipped (branch v1/10-logosdx-primitives) — 2026-07-12
+
+Built across 4 iterations of /subagent-implementation, one checkpoint each, green-committed per PASS. Commits (chronological):
+
+- `b8994ef` — spec: contract for the four behavior-preserving swaps
+- `7c77d16` — CP-1 replace two local `sleep()` copies with `wait()` (updater.ts, lock/manager.ts)
+- `dbdcff7` — CP-2 `runWithTimeout` for lifecycle `#executePhase` + connection `closeAll` (deleted `#executeWithTimeout`)
+- `4095c1e` — CP-3 rewrite `downloadToFile` retry loop with `retry()`
+- `acbf59b` — CP-4 `AbortSignal.timeout()` in `fetchPackageInfo` (registry.ts)
+
+Every reviewer verdict PASS with 0 findings (0 blocking, 0 non-blocking). No stuck-fix escalation, no soft-stop. FOLLOWUPS.md ledger empty.
+
+**Behavior-invariant confirmations (verified by reviewer against installed @logosdx/utils@6.1.0 source, not just prescriptions):**
+
+- CP-1 `wait()`: same ms args (`backoffMs * attemptNo`, `opts.pollInterval`); pure substitution.
+- CP-2 `runWithTimeout`: same timeout thresholds (`#getPhaseTimeout(phase)`, `CLOSE_TIMEOUT`=5000); `throws: true` at BOTH sites preserves non-timeout error propagation into the existing `attempt()` error branch; a genuine timeout now yields a catchable `TimeoutError` (the ticket's intended upgrade).
+- CP-3 `retry()`: `retries: maxAttempts` (same try count), `delay: 0` with linear backoff kept inside `onRetry` (`wait(backoffMs*attempt)`) to reproduce the linear-by-attempt timing retry()'s constant `delay` cannot; `shouldRetry` = old `retriable` predicate; `onRetry` `attempt` arg == old 1-indexed `attemptNo` (same `update:retry` emit count+shape); `throwLastError: true` re-throws the original error (not `RetryError`) on exhaustion so callers/tests still see the real "stalled"/"404" message.
+- CP-4 `AbortSignal.timeout()`: same 5000ms `TIMEOUT_MS`; abort still funnels to `if (fetchErr) return null`; abort reason never inspected so the `TimeoutError` DOMException is invisible; no timer to leak.
+
+**Out-of-scope work performed during this build:**
+
+- none. Exactly the 4 swap sites + the spec. The wider "rules doc mandates unused utilities" observation was left as context per the ticket scope boundary.
+
+**Unforeseens — surprises that emerged during implementation:**
+
+- Two deviations from the research docs' literal prescriptions were required for exact behavior preservation, both anticipated in the spec: (1) retry()'s own `delay`/`backoff` can't express linear-by-attempt backoff — kept the wait inside `onRetry`; (2) `runWithTimeout` without `throws: true` silently swallows non-timeout errors — added `throws: true` at both sites.
+- ConnectionManager.closeAll gains a real behavior improvement inherent to the swap: a destroy() that hangs past 5000ms now surfaces an `error` event (previously the hand-rolled race silently resolved past the timeout with no signal). Intentional, in-scope side effect of adopting a catchable TimeoutError; no existing test exercises a >5s hang so none needed updating.
+- No new tests added: no swap changed an observable error type that an existing test asserts on. The `Error`->`TimeoutError` upgrade has no asserting test, and a >5s-hang timeout test is impractical at unit level. Existing 95 tests across the five files are the behavior safety net.
+- `updater.test.ts` has a pre-existing combined-run timing flake ("emits monotonic progress") unrelated to this change — reproduces on master. Run in isolation (6/6 green); see scratchpad TESTING.md.
+
+**Deferred items still open:**
+
+- none. FOLLOWUPS.md empty; nothing deferred, no issues filed.
+
+**Verification @ acbf59b:** updater.test.ts 6/6 (isolation); registry+lock+lifecycle+connection 89/89 (combined); `bun run typecheck` exit 0; `bun run lint` exit 0.
