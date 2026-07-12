@@ -41,3 +41,14 @@ Skipped because: deletion-only, no new behavior. The safety net is the existing 
 ## Change log
 
 - 2026-07-12: created. Inline spec per ticket (suggested verb: /subagent-implementation, spec-only). All five targets re-verified by orchestrator in fresh worktree before authoring; zero references gained since audit.
+
+## Implementation log
+
+- Status: shipped — 2026-07-12
+- Iterations: 1 (implement → review, PASS on first pass, 0 findings)
+- Commits: c2bfa6e (spec), 65c67ca (all five checkpoints, 10 files, +3/-277)
+- Verified: typecheck, lint, build, `bun test --serial tests/cli/hooks` (24/24) — locally at 65c67ca; per-checkpoint zero-reference rg proofs re-run independently by reviewer and orchestrator; `bun install --frozen-lockfile` confirms package.json/bun.lockb agreement; `bun pm ls` shows no survivors of the five removed deps.
+- Lockfile delta: 5 packages removed (583 → 578 direct install set per `bun install` output).
+- Scope notes: docs/wiki/tui.md:38 stale pointer removed alongside the index.md row (AP-yagni-01 prescription names both). docs/wiki/scan.md deliberately untouched (auto-generated).
+- Deferred: full 4-group CI test verification (integration group needs live DBs) — runs in CI on push.
+- Open followups: none.
