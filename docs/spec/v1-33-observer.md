@@ -191,3 +191,53 @@ them is not.
 ## Change log
 
 ## Implementation log
+
+### shipped (pending user ship decision) — 2026-07-12
+
+Built across 2 iterations of `/subagent-implementation` (1 CHANGES_REQUESTED, 1 PASS — both
+iterations landed in a single commit since nothing commits under CHANGES_REQUESTED). Stacked on
+`v1/14-sdk-types` @ `443929c`. Commits (chronological):
+
+- `3283f77` — docs(spec): this spec
+- `9eb2dbd` — CP1: removed `NoormOps.get observer()` + unused import; added top-level
+  `export { observer as noormObserver }` with process-global/`configName`-filtering JSDoc in
+  `src/sdk/index.ts`; TDD test in `tests/sdk/noorm-ops.test.ts`; swept all 6 named doc/skill/
+  example sites; fixed `tests/sdk/bundle-smoke.test.ts`'s pre-existing use of the deleted
+  accessor (required collateral, caught by iteration 1's reviewer, not in the spec's original
+  file list)
+
+**Out-of-scope work performed during this build:**
+
+- `tests/sdk/bundle-smoke.test.ts` — required collateral, not optional. Matches the spec's own
+  `tests/sdk/*.test.ts` glob and directly exercised the deleted `ctx.noorm.observer` accessor
+  against the built bundle; `bun test tests/sdk/bundle-smoke.test.ts` broke without this fix once
+  `packages/sdk/dist` was built. Caught by iteration 1's reviewer via a due-diligence sweep the
+  implementer's narrower "only run the file(s) you touched" testing scope had missed.
+
+**Unforeseens — surprises that emerged during implementation:**
+
+- `instanceof ObserverEngine` doesn't hold across the built-bundle boundary: `tsup.sdk.config.ts`
+  sets `noExternal: [/.*/]`, so `@logosdx/observer` is inlined into `packages/sdk/dist/index.js`
+  as a separate copy of the class from the one a test imports directly from `@logosdx/observer`.
+  `tests/sdk/bundle-smoke.test.ts`'s new `noormObserver` assertions use a functional/shape check
+  (`on`/`emit`/`off` are functions) plus a real `on()`→`emit()`→listener-received round trip
+  instead — verified adequate by the reviewer, not just asserted by the implementer.
+- `dts-bundle-generator` doesn't carry JSDoc across a re-export alias (`export { observer as
+  noormObserver }`) — the shipped `.d.ts`'s `noormObserver` has no attached doc comment; only
+  the terser original doc on `core/observer.ts`'s `observer` const survives, which shows an
+  internal example irrelevant to external consumers. Inherent tool limitation; the spec's
+  Non-goals forbid touching `core/observer.ts` to work around it. Logged as FOLLOWUPS F-1.
+- The acceptance criterion's literal `rg 'noorm\.observer'` sweep isn't 0 across `docs/` — 3
+  files (`docs/spec/v1-14-sdk-types.md`, `docs/spec/v1-25-sdk-contract.md`,
+  `docs/spec/v1-33-observer.md` itself) retain 26 total matches, all historical/self-narrating
+  spec prose (two are other, already-completed tickets' closed specs on the base branch; the
+  third is this ticket's own spec describing the migration it performs). Adjudicated non-blocking
+  by the iteration 1 reviewer with reasoning recorded in `STATE.md` — not a silent pass-over.
+
+**Deferred items still open:**
+
+- FOLLOWUPS F-1 (🔵): `noormObserver`'s JSDoc doesn't survive `dts-bundle-generator`'s
+  re-export-alias handling into the shipped `.d.ts` — candidate fix is duplicating/adapting the
+  doc onto the origin `observer` const in `core/observer.ts` under a future ticket, or accepting
+  as a known generator limitation. Open pending user disposition (fix-now / defer / issue / drop)
+  — not auto-decided.
