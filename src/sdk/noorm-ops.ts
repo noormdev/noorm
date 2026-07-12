@@ -118,8 +118,7 @@ export class NoormOps {
 
         if (!this.#db) {
 
-            this.#db = new DbNamespace(this.#state);
-            this.#db._buildFn = (opts) => this.run.build(opts);
+            this.#db = new DbNamespace(this.#state, (opts) => this.run.build(opts));
 
         }
 

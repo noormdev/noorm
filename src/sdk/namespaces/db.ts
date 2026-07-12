@@ -40,11 +40,12 @@ import { checkProtectedConfig } from '../guards.js';
 export class DbNamespace {
 
     #state: ContextState;
-    #buildFn: ((opts?: BuildOptions) => Promise<unknown>) | null = null;
+    #buildFn: ((opts?: BuildOptions) => Promise<unknown>) | null;
 
-    constructor(state: ContextState) {
+    constructor(state: ContextState, buildFn?: (opts?: BuildOptions) => Promise<unknown>) {
 
         this.#state = state;
+        this.#buildFn = buildFn ?? null;
 
     }
 
@@ -338,17 +339,6 @@ export class DbNamespace {
             await this.#buildFn({ force: true });
 
         }
-
-    }
-
-    // ─────────────────────────────────────────────────────
-    // Build injection (for reset)
-    // ─────────────────────────────────────────────────────
-
-    /** @internal Used by NoormOps to wire up reset -> build. */
-    set _buildFn(fn: (opts?: BuildOptions) => Promise<unknown>) {
-
-        this.#buildFn = fn;
 
     }
 
