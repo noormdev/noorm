@@ -610,35 +610,39 @@ import {
 
 ## Observer Events
 
-Subscribe to real-time progress events emitted by core operations:
+Subscribe to real-time progress events emitted by core operations via the
+process-global `noormObserver` bus — a singleton shared across every
+`Context` in the process, not scoped to one `ctx`:
 
 ```typescript
+import { noormObserver } from '@noormdev/sdk';
+
 // File execution progress
-ctx.noorm.observer.on('file:before', (data) => {
+noormObserver.on('file:before', (data) => {
     console.log('Running:', data.filepath);
 });
-ctx.noorm.observer.on('file:after', (data) => {
+noormObserver.on('file:after', (data) => {
     console.log(data.filepath, data.status, data.durationMs + 'ms');
 });
-ctx.noorm.observer.on('file:skip', (data) => {
+noormObserver.on('file:skip', (data) => {
     console.log('Skipped:', data.filepath, data.reason);
 });
 
 // Change lifecycle
-ctx.noorm.observer.on('change:start', (data) => {
+noormObserver.on('change:start', (data) => {
     console.log(`Applying ${data.name} (${data.files.length} files)`);
 });
-ctx.noorm.observer.on('change:complete', (data) => {
+noormObserver.on('change:complete', (data) => {
     console.log(data.name, data.direction, data.status);
 });
 
 // Build progress
-ctx.noorm.observer.on('build:start', (data) => {
+noormObserver.on('build:start', (data) => {
     console.log(`Building ${data.fileCount} files from ${data.sqlPath}`);
 });
 
 // Pattern matching for multiple events
-ctx.noorm.observer.on(/^file:/, ({ event, data }) => {
+noormObserver.on(/^file:/, ({ event, data }) => {
     console.log(`[${event}]`, data);
 });
 ```

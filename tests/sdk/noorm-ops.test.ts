@@ -5,9 +5,11 @@
  * namespace getters, shared state reading, and not-connected errors.
  */
 import { describe, it, expect } from 'bun:test';
+import { ObserverEngine } from '@logosdx/observer';
 
 import { Context } from '../../src/sdk/context.js';
 import { NoormOps } from '../../src/sdk/noorm-ops.js';
+import { noormObserver } from '../../src/sdk/index.js';
 import { ChangesNamespace } from '../../src/sdk/namespaces/changes.js';
 import { RunNamespace } from '../../src/sdk/namespaces/run.js';
 import { DbNamespace } from '../../src/sdk/namespaces/db.js';
@@ -211,12 +213,12 @@ describe('sdk: NoormOps', () => {
 
         });
 
-        it('should expose observer', () => {
+        it('should not expose observer on NoormOps', () => {
 
             const ctx = createContext();
 
-            expect(ctx.noorm.observer).toBeDefined();
-            expect(typeof ctx.noorm.observer.on).toBe('function');
+            // @ts-expect-error observer was relocated to the top-level `noormObserver` export
+            expect(ctx.noorm.observer).toBeUndefined();
 
         });
 
@@ -315,6 +317,21 @@ describe('sdk: NoormOps', () => {
             expect(() => ctx.kysely).toThrow('Not connected');
 
         });
+
+    });
+
+});
+
+// ─────────────────────────────────────────────────────────────
+// noormObserver (top-level export)
+// ─────────────────────────────────────────────────────────────
+
+describe('sdk: noormObserver export', () => {
+
+    it('should be importable from the SDK entry point as an ObserverEngine instance', () => {
+
+        expect(noormObserver).toBeInstanceOf(ObserverEngine);
+        expect(typeof noormObserver.on).toBe('function');
 
     });
 

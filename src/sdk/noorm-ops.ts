@@ -8,7 +8,6 @@
 import type { Config } from '../core/config/types.js';
 import type { Settings } from '../core/settings/index.js';
 import type { Identity } from '../core/identity/index.js';
-import { observer } from '../core/observer.js';
 
 import type { ContextState } from './state.js';
 import {
@@ -85,12 +84,6 @@ export class NoormOps {
     get identity(): Identity {
 
         return this.#state.identity;
-
-    }
-
-    get observer() {
-
-        return observer;
 
     }
 

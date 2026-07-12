@@ -831,14 +831,16 @@ const [result, err] = await ctx.noorm.dt.importFile('./exports/users.dtz', {
 
 #### Event Subscriptions
 
-Subscribe to core events via the observer:
+Subscribe to core events via the process-global `noormObserver` bus:
 
 ```typescript
-ctx.noorm.observer.on('file:after', (event) => {
+import { noormObserver } from 'noorm/sdk'
+
+noormObserver.on('file:after', (event) => {
     console.log(`Executed ${event.filepath} in ${event.durationMs}ms`)
 })
 
-ctx.noorm.observer.on('change:complete', (event) => {
+noormObserver.on('change:complete', (event) => {
     console.log(`Change ${event.name}: ${event.status}`)
 })
 ```

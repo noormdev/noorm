@@ -197,6 +197,28 @@ export { VaultAccessError } from './namespaces/vault.js';
 export { ImpersonationError } from './impersonate/index.js';
 export type { ImpersonatedScope } from './impersonate/index.js';
 
+/**
+ * Process-global event bus for noorm core events.
+ *
+ * This is a singleton — one `ObserverEngine` instance shared across every
+ * `Context`/config created in the process, NOT scoped per-context. If a
+ * process runs `createContext()` more than once (e.g. a server juggling
+ * several tenant databases), every context's events flow through this same
+ * bus. Every context-scoped event payload carries `configName`, so
+ * multi-context consumers can filter to the config they care about.
+ *
+ * @example
+ * ```typescript
+ * import { noormObserver } from '@noormdev/sdk'
+ *
+ * noormObserver.on('file:after', (data) => {
+ *     if (data.configName !== 'my-config') return
+ *     console.log(`Executed ${data.filepath} in ${data.durationMs}ms`)
+ * })
+ * ```
+ */
+export { observer as noormObserver } from '../core/observer.js';
+
 // Re-export observer types for event subscriptions
 export type { NoormEvents, NoormEventNames } from '../core/observer.js';
 

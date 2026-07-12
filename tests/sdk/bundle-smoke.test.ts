@@ -256,15 +256,6 @@ describe.skipIf(!bundleExists)('sdk bundle: Context instantiation', () => {
 
     });
 
-    it('should expose noorm.observer', () => {
-
-        const ctx = createBundleContext();
-
-        expect(typeof ctx.noorm.observer.on).toBe('function');
-        expect(typeof ctx.noorm.observer.emit).toBe('function');
-
-    });
-
     it('should lazily create all namespace instances', () => {
 
         const ctx = createBundleContext();
@@ -279,6 +270,39 @@ describe.skipIf(!bundleExists)('sdk bundle: Context instantiation', () => {
         expect(ctx.noorm.transfer).toBeInstanceOf(bundle.TransferNamespace);
         expect(ctx.noorm.dt).toBeInstanceOf(bundle.DtNamespace);
         expect(ctx.noorm.utils).toBeInstanceOf(bundle.UtilsNamespace);
+
+    });
+
+});
+
+// ─────────────────────────────────────────────────────────────
+// Observer Event Bus
+// ─────────────────────────────────────────────────────────────
+
+describe.skipIf(!bundleExists)('sdk bundle: noormObserver export', () => {
+
+    it('should export noormObserver with the ObserverEngine method shape', () => {
+
+        expect(bundle.noormObserver).toBeDefined();
+        expect(typeof bundle.noormObserver.on).toBe('function');
+        expect(typeof bundle.noormObserver.emit).toBe('function');
+        expect(typeof bundle.noormObserver.off).toBe('function');
+
+    });
+
+    it('should invoke subscribed listeners on emit', () => {
+
+        let received: unknown;
+
+        bundle.noormObserver.on('bundle-smoke:noormObserver', (data: unknown) => {
+
+            received = data;
+
+        });
+
+        bundle.noormObserver.emit('bundle-smoke:noormObserver', { ok: true });
+
+        expect(received).toEqual({ ok: true });
 
     });
 
