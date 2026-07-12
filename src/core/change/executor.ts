@@ -22,6 +22,7 @@
  */
 import path from 'node:path';
 import { readFile, writeFile as fsWriteFile, mkdir } from 'node:fs/promises';
+import type { Kysely } from 'kysely';
 import { sql } from 'kysely';
 
 import { attempt, attemptSync } from '@logosdx/utils';
@@ -31,8 +32,10 @@ import { formatIdentity } from '../identity/resolver.js';
 import { processFile, isTemplate } from '../template/index.js';
 import { assertPolicy } from '../policy/index.js';
 import type { Permission } from '../policy/index.js';
+import type { Dialect } from '../connection/types.js';
 import { computeChecksum, computeCombinedChecksum } from '../runner/checksum.js';
 import { getSqlErrorMessage } from '../shared/index.js';
+import type { NoormDatabase } from '../shared/index.js';
 import { getLockManager } from '../lock/index.js';
 import { ChangeHistory } from './history.js';
 import { ChangeTracker } from './tracker.js';
@@ -408,7 +411,46 @@ export async function revertChange(
 // ─────────────────────────────────────────────────────────────
 
 /**
+ * Dialects where wrapping a change's execution in a DB transaction
+ * actually rolls back DDL alongside the history rows written for it.
+ * Postgres only, for now — see the spec's Approach section
+ * (docs/spec/v1-17-change-retry.md) for the full rationale: MySQL's DDL
+ * implicitly commits (a wrapping transaction would silently do nothing),
+ * MSSQL's GO-batch-split execution (`runner/mssql-batches.ts`) hasn't been
+ * verified to compose safely with a wrapping transaction, and SQLite is
+ * excluded on purpose so the per-file-skip scenario this ticket's unit
+ * tests depend on (file A commits independently of file B's failure)
+ * keeps working rather than collapsing into all-or-nothing.
+ */
+const TRANSACTIONAL_DIALECTS = new Set<Dialect>(['postgres']);
+
+/**
+ * Sentinel used to carry a failed `ChangeResult` out of a rolled-back
+ * Postgres transaction.
+ *
+ * Thrown (never returned) from inside `context.db.transaction().execute()`
+ * so Kysely rolls back everything issued in the callback — DDL and the
+ * operation/file history rows alike. Caught immediately outside the
+ * transaction and unwrapped back into the result the caller sees.
+ */
+class ChangeRollback extends Error {
+
+    constructor(readonly result: ChangeResult) {
+
+        super('change rolled back');
+
+    }
+
+}
+
+/**
  * Execute files with tracking.
+ *
+ * Dispatches to `runFileBatch` either directly against `context.db`
+ * (non-transactional dialects — identical to CP1's behavior) or inside a
+ * `context.db.transaction()` (Postgres), so a failed Postgres change
+ * leaves no partial state: neither the DDL nor the operation/file history
+ * rows persist.
  */
 async function executeFiles(
     context: ChangeContext,
@@ -421,8 +463,99 @@ async function executeFiles(
     startTime: number,
 ): Promise<ChangeResult> {
 
-    // Expand .txt manifests to actual file list
+    const dialect = context.dialect ?? 'postgres';
     const expandedFiles = await expandFiles(files, context.sqlDir);
+
+    if (!TRANSACTIONAL_DIALECTS.has(dialect)) {
+
+        return runFileBatch(
+            context,
+            change,
+            expandedFiles,
+            direction,
+            checksum,
+            force,
+            history,
+            context.db,
+            startTime,
+        );
+
+    }
+
+    // On Postgres a FAILED change leaves NO persisted history at all —
+    // the operation and file rows created inside this transaction roll
+    // back together with the DDL. The caller still sees the failure via
+    // the returned ChangeResult (unwrapped from ChangeRollback below),
+    // but it's invisible in the DB — intentional per spec (atomicity over
+    // a persisted failure record). On retry, the top-level `needsRun`
+    // finds no record for the change and reruns it fresh. Do NOT try to
+    // persist a failure record outside the transaction — that would
+    // defeat the guarantee this branch exists for.
+    const [result, err] = await attempt(() =>
+        context.db.transaction().execute(async (trx) => {
+
+            const trxHistory = new ChangeHistory(trx, context.configName, dialect);
+
+            const batchResult = await runFileBatch(
+                context,
+                change,
+                expandedFiles,
+                direction,
+                checksum,
+                force,
+                trxHistory,
+                trx,
+                startTime,
+            );
+
+            if (batchResult.status !== 'success') {
+
+                throw new ChangeRollback(batchResult);
+
+            }
+
+            return batchResult;
+
+        }),
+    );
+
+    if (err) {
+
+        if (err instanceof ChangeRollback) {
+
+            return { ...err.result, operationId: undefined };
+
+        }
+
+        return createFailedResult(change.name, direction, err.message, startTime);
+
+    }
+
+    return result;
+
+}
+
+/**
+ * Run one execution batch — operation creation, per-file execution with
+ * history tracking, and finalization — against a given executor handle.
+ *
+ * Extracted from `executeFiles` so the identical batch logic runs either
+ * directly against `context.db` (non-transactional dialects) or inside a
+ * `context.db.transaction()` callback against `trx` (Postgres): only the
+ * `executor` (where SQL runs) and `history` (where tracking rows are
+ * written) vary between the two call sites.
+ */
+async function runFileBatch(
+    context: ChangeContext,
+    change: Change,
+    expandedFiles: ChangeFile[],
+    direction: 'change' | 'revert',
+    checksum: string,
+    force: boolean,
+    history: ChangeHistory,
+    executor: Kysely<NoormDatabase>,
+    startTime: number,
+): Promise<ChangeResult> {
 
     // Create operation record
     const [operationId, createErr] = await attempt(() =>
@@ -605,7 +738,7 @@ async function executeFiles(
             }
 
             // Execute SQL
-            const [, execErr] = await attempt(() => sql.raw(sqlContent).execute(context.db));
+            const [, execErr] = await attempt(() => sql.raw(sqlContent).execute(executor));
 
             const durationMs = performance.now() - fileStart;
 
