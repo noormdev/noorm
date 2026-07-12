@@ -20,7 +20,8 @@ import { attempt, retry, wait } from '@logosdx/utils';
 
 import { observer } from '../observer.js';
 import { getCurrentVersion } from './checker.js';
-import { detectInstallMode, getBinaryDownloadUrl } from './install-mode.js';
+import { verifyChecksum } from './checksum.js';
+import { detectInstallMode, getBinaryDownloadUrl, getChecksumsUrl, getBinaryAssetName } from './install-mode.js';
 import type { UpdateResult } from './types.js';
 
 // =============================================================================
@@ -391,9 +392,11 @@ async function downloadAttempt(
  * Streams the platform-appropriate binary to a temp file **in the target's own
  * directory** — a cross-filesystem `rename` (e.g. `os.tmpdir()` on a different
  * volume than `~/.local/bin`) throws `EXDEV`, so the swap must stage next to the
- * destination — then atomically replaces the current executable.
+ * destination — then verifies its sha256 against checksums.txt before atomically
+ * replacing the current executable. A tampered or corrupted binary must never
+ * reach the swap, so verification runs after download and before rename.
  */
-async function installViaBinary(version: string, previousVersion: string): Promise<UpdateResult> {
+async function installViaBinary(version: string, previousVersion: string, insecure = false): Promise<UpdateResult> {
 
     const url = getBinaryDownloadUrl(version);
     const currentExe = process.execPath;
@@ -414,6 +417,21 @@ async function installViaBinary(version: string, previousVersion: string): Promi
         await attempt(() => unlink(tmpPath));
 
         return fail(downloadErr.message);
+
+    }
+
+    const [, verifyErr] = await attempt(() => verifyChecksum({
+        checksumsUrl: getChecksumsUrl(version),
+        assetName: getBinaryAssetName(),
+        filePath: tmpPath,
+        insecure,
+    }));
+
+    if (verifyErr) {
+
+        await attempt(() => unlink(tmpPath));
+
+        return fail(verifyErr.message);
 
     }
 
@@ -460,10 +478,15 @@ async function installViaBinary(version: string, previousVersion: string): Promi
  * Install update via the appropriate channel.
  *
  * Automatically detects install mode and routes to the correct updater:
- * - npm mode: runs `npm install -g @noormdev/cli@{version}`
- * - binary mode: downloads replacement binary from GitHub releases
+ * - npm mode: runs `npm install -g @noormdev/cli@{version}` (npm's own
+ *   registry integrity hashes already cover this channel — `options` is
+ *   ignored here)
+ * - binary mode: downloads replacement binary from GitHub releases and
+ *   verifies its checksum before the atomic swap
  *
  * @param version - Version to install
+ * @param options.insecure - Skip checksum verification when checksums.txt is
+ * unreachable (binary mode only). Never bypasses a confirmed mismatch.
  * @returns Promise that resolves when install completes
  *
  * @example
@@ -482,7 +505,7 @@ async function installViaBinary(version: string, previousVersion: string): Promi
  * }
  * ```
  */
-export function installUpdate(version: string): Promise<UpdateResult> {
+export function installUpdate(version: string, options: { insecure?: boolean } = {}): Promise<UpdateResult> {
 
     const previousVersion = getCurrentVersion();
     const mode = detectInstallMode();
@@ -491,7 +514,7 @@ export function installUpdate(version: string): Promise<UpdateResult> {
 
     if (mode === 'binary') {
 
-        return installViaBinary(version, previousVersion);
+        return installViaBinary(version, previousVersion, options.insecure ?? false);
 
     }
 
