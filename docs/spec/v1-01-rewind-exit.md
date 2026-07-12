@@ -78,10 +78,23 @@ Test naming per `.claude/rules/testing.md`: `describe('cli: noorm change rewind 
 
 | # | Checkpoint | Independently verifiable by |
 |---|------------|------------------------------|
-| CP-1 | `tests/cli/run/change-rewind.test.ts` exists with: (a) partial rewind exits 2 and error text appears in output, (b) full-success rewind exits 0. Written TDD: (a) fails against unfixed rewind.ts, passes after fix | `bun run build && bun test tests/cli/run/change-rewind.test.ts` |
+| CP-1a | `tests/cli/run/change-rewind.test.ts` asserts a full-success rewind exits 0, end-to-end against the compiled CLI | `bun run build && bun test tests/cli/run/change-rewind.test.ts` |
+| CP-1b | Same file contains the partial-rewind exit-2 test, authored per the recipe below but `it.skip`'d with an inline rationale — blocked by the pre-existing SQLite `appliedAt` bug (see Discovered blocker). Un-skip once that bug is fixed | read the file; skip rationale cites the blocker |
 | CP-2 | `src/cli/change/rewind.ts` exit expression is `result.status === 'success' ? 0 : 2` | read line ~119 |
 | CP-3 | `src/cli/change/rewind.ts` summary log branch is `res.status !== 'success'` routed to `logger.error` | read lines ~70-79 |
 | CP-4 | Typecheck and lint green | `bun run typecheck && bun run lint` |
+
+
+## Discovered blocker (iteration 1 — verified first-hand)
+
+
+The spec's original CP-1 required the partial-rewind exit-2 assertion to run green in the SQLite harness. That is currently impossible: a `'partial'` result needs >= 2 applied changes, and with >= 2 applied changes `ChangeManager.rewind()` crashes before computing any status — `.sort()` at `src/core/change/manager.ts:369-376` calls `a.appliedAt?.getTime()`, but on the SQLite dialect `appliedAt` is a raw string (driver returns `executed_at` unparsed; `src/core/change/history.ts:172`), not the `Date | null` its type declares (`src/core/change/types.ts:140`). The `TypeError` propagates to the CLI error path and exits 1. Reproduced empirically against the compiled CLI: two applied changes, `change rewind <first>` exits 1 with `a.appliedAt?.getTime is not a function`.
+
+Consequences:
+
+- Real (non-test) `noorm change rewind` against SQLite with >= 2 applied changes is broken in production today, independent of this ticket.
+- The fix lives in `src/core/change/` (manager/history), explicitly out of scope here. Deferred as a follow-up finding (F-1) for a new ticket.
+- The partial-path exit code is verifiable today only via integration databases (postgres/mysql/mssql drivers return real `Date`s) — deferred per protocol; the unit-harness assertion lands when F-1 is fixed.
 
 
 ## Acceptance criteria (ticket, verbatim)
@@ -106,3 +119,4 @@ Test naming per `.claude/rules/testing.md`: `describe('cli: noorm change rewind 
 
 
 - 2026-07-12 — initial spec from ticket 01 + VR-cli-01, all evidence re-verified against worktree source.
+- 2026-07-12 — iteration 1: CP-1 split into CP-1a/CP-1b after discovering the pre-existing SQLite `appliedAt` string bug makes a 'partial' rewind unconstructible in the unit harness (crash verified first-hand). Partial assertion authored but skipped; fix itself unchanged.
