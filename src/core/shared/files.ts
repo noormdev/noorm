@@ -81,18 +81,3 @@ export function filterFilesByPaths(
     });
 
 }
-
-/**
- * Check if a file path matches a pattern prefix.
- *
- * @param filePath - Relative file path to check
- * @param pattern - Pattern prefix to match against
- * @returns True if the file path starts with the pattern
- */
-export function matchesPathPrefix(filePath: string, pattern: string): boolean {
-
-    const normalizedPattern = pattern.split(/[\\/]/).join(sep);
-
-    return filePath === normalizedPattern || filePath.startsWith(normalizedPattern + sep);
-
-}
