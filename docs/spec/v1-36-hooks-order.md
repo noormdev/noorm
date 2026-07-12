@@ -98,3 +98,26 @@ No sibling-screen follow-up needed — the audit found no other occurrence.
 ## Change log
 
 - 2026-07-12 — initial spec, stacked on `v1/29-locked-stage-guard`.
+
+## Implementation log
+
+### shipped — 2026-07-12
+
+Built in 1 iteration of `/subagent-implementation` (stacked on `v1/29-locked-stage-guard`, HEAD `d0ed966`, not master). Commits (chronological):
+
+- `9763eb8` — spec added
+- `6a78f0b` — CP-1: hoisted `useStdout()` above both early-return guards; added hooks-order regression test
+
+**Out-of-scope work performed during this build:**
+
+- none
+
+**Unforeseens — surprises that emerged during implementation:**
+
+- none — bug reproduced exactly as ticket 29's STATE.md described; fix was a single-line reorder
+
+**Deferred items still open:**
+
+- none — cross-screen audit (`src/tui/screens/**/*.tsx`) found no sibling screen repeating the pattern; `SqlTerminalScreen.tsx`'s `useStdout()` call is already unconditional (line 49, before any state/returns); the five other `MissingParamPanel`/`NotFoundPanel` screens all call their hooks before their early returns
+
+**Verified at finalize:** `bun run typecheck` (0 errors, whole-repo scope); `bun run lint` (0 errors, whole-repo scope); `bun test --serial tests/cli/screens/config/ConfigEditScreen.test.tsx` (2 pass, 0 fail, no hooks-order warning in output). Build not run — no dist/ dependency for this checkpoint.
