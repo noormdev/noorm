@@ -195,3 +195,51 @@ Non-goals as a discovered-not-fixed follow-up.
 | `ColumnDetail`/`ParameterDetail` leak un-reviewed (confirmed present) | confirmed | Explicitly out of the ticket's named 11; documented in Non-goals; FOLLOWUPS entry raised for user disposition, not silently fixed or silently ignored. |
 
 ## Change log
+
+## Implementation log
+
+### shipped (pending user ship decision) — 2026-07-12
+
+Built across 2 iterations of `/subagent-implementation` (2 implement→review cycles, both PASS
+on first pass). Stacked on `v1/25-sdk-contract` @ `43aa192`. Commits (chronological):
+
+- `928d862` — docs(spec): this spec
+- `6df7718` — CP1: removed public `_buildFn` setter on `DbNamespace`; constructor injection
+  wired once in `NoormOps.get db()`; fixed the one other call site
+  (`tests/integration/sdk/db-reset.test.ts`) using the removed setter
+- `113e39c` — CP2: explicit `export type` for the 11 curated explore/teardown types in
+  `src/sdk/index.ts`; new `tests/sdk/dts-surface.test.ts` regression guard against the built
+  `.d.ts`
+
+**Out-of-scope work performed during this build:**
+
+- `tests/integration/sdk/db-reset.test.ts` — required collateral, not optional. The only call
+  site outside `noorm-ops.ts` using the removed `_buildFn` setter; `bun run typecheck` breaks
+  without this update. Switched to passing the build fn as the constructor's 2nd arg; not
+  executed (needs a live postgres container, out of this loop's scope).
+
+**Unforeseens — surprises that emerged during implementation:**
+
+- Baseline verification (before iteration 1) found `ColumnDetail`/`ParameterDetail` already
+  leaking into the shipped `.d.ts` unreviewed, same VR-api-05 pattern as the 11 named types but
+  not in the ticket's literal list. Not expanded into scope — documented in the spec's
+  Non-goals and raised as FOLLOWUPS F-1 for user disposition, per the orchestrator's
+  "report before expanding" guidance rather than silently growing the diff.
+- `bun run typecheck:tests` (not in the mandated command set) surfaces one pre-existing error
+  in `tests/sdk/db-namespace.test.ts:104` (`ConnectionResult.destroy` missing from a fixture
+  object) — confirmed present at the base commit `43aa192`, in a fixture this ticket's diff
+  never touches (only appended new `describe` blocks after line 256). Pre-existing from ticket
+  25's `ConnectionResult` shape change, not introduced here, not fixed here.
+- The orchestrator's first attempt at committing the spec accidentally swept the already-staged
+  CP1 code changes into the same commit (`git commit` with no pathspec commits all staged
+  changes, not just the newly `git add`-ed file). Caught immediately via `git show --stat`,
+  fixed with `git reset --soft HEAD~1` + `git reset HEAD` + re-committing in two correctly
+  scoped commits. No user-visible impact — corrected before any push.
+
+**Deferred items still open:**
+
+- FOLLOWUPS F-1 (🟡): `ColumnDetail`/`ParameterDetail` unreviewed leak — same treatment as the
+  11 curated types, candidate for a fast-follow ticket.
+- FOLLOWUPS F-2 (🔵): pre-existing `Lock`/`LockOptions` name-collision warning from
+  `dts-bundle-generator` — cosmetic, unrelated to this ticket's domain, noted for awareness.
+- Both left open pending user disposition (fix-now / defer / issue / drop) — not auto-decided.
