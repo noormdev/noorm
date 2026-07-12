@@ -416,6 +416,35 @@ export function checkConfigCompleteness(
 }
 
 /**
+ * Error when a config is linked to a locked stage and cannot be deleted.
+ *
+ * Thrown by `assertCanDeleteConfig` — the throwing counterpart to
+ * `canDeleteConfig`'s bool+reason check.
+ *
+ * @example
+ * ```typescript
+ * const [, err] = await attempt(() => stateManager.deleteConfig(name, settings))
+ * if (err instanceof ConfigStageLockedError) {
+ *     console.log(`Blocked by stage "${err.stageName}"`)
+ * }
+ * ```
+ */
+export class ConfigStageLockedError extends Error {
+
+    override readonly name = 'ConfigStageLockedError' as const;
+
+    constructor(
+        public readonly configName: string,
+        public readonly stageName: string,
+    ) {
+
+        super(`Config "${configName}" is linked to locked stage "${stageName}" and cannot be deleted`);
+
+    }
+
+}
+
+/**
  * Check if a config can be deleted.
  *
  * Locked stages prevent config deletion.
@@ -440,11 +469,37 @@ export function canDeleteConfig(
 
         return {
             allowed: false,
-            reason: `Config "${configName}" is linked to a locked stage and cannot be deleted`,
+            reason: `Config "${configName}" is linked to locked stage "${stageName ?? configName}" and cannot be deleted`,
         };
 
     }
 
     return { allowed: true };
+
+}
+
+/**
+ * Runs `canDeleteConfig` and throws when denied — the throwing counterpart
+ * every deletion seam reaches for, mirroring `checkConfigPolicy`/`assertPolicy`
+ * in `core/policy/check.ts`.
+ *
+ * @throws ConfigStageLockedError when the config's stage is locked.
+ *
+ * @example
+ * assertCanDeleteConfig(configName, settingsProvider);
+ */
+export function assertCanDeleteConfig(
+    configName: string,
+    settings?: SettingsProvider,
+    stageName?: string,
+): void {
+
+    const check = canDeleteConfig(configName, settings, stageName);
+
+    if (!check.allowed) {
+
+        throw new ConfigStageLockedError(configName, stageName ?? configName);
+
+    }
 
 }

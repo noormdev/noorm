@@ -10,6 +10,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { attemptSync, attempt } from '@logosdx/utils';
 import type { Config } from '../config/types.js';
+import { assertCanDeleteConfig, type SettingsProvider } from '../config/resolver.js';
 import type { KnownUser } from '../identity/types.js';
 import { loadPrivateKey } from '../identity/storage.js';
 import { resolveLegacyAccess } from '../policy/index.js';
@@ -367,8 +368,12 @@ export class StateManager {
 
     /**
      * Delete a config and its secrets.
+     *
+     * @throws ConfigStageLockedError if the config is linked to a locked stage.
      */
-    async deleteConfig(name: string): Promise<void> {
+    async deleteConfig(name: string, settings?: SettingsProvider): Promise<void> {
+
+        assertCanDeleteConfig(name, settings);
 
         const state = this.getState();
         delete state.configs[name];

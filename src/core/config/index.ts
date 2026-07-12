@@ -116,6 +116,8 @@ export {
     resolveConfig,
     checkConfigCompleteness,
     canDeleteConfig,
+    assertCanDeleteConfig,
+    ConfigStageLockedError,
     type ResolveOptions,
     type StateProvider,
     type SettingsProvider,
