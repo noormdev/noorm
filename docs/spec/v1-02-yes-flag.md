@@ -145,3 +145,25 @@ Plus any test file the implementation adds or touches, run individually. Whole-g
 ## Change log
 
 - 2026-07-12 — Initial spec authored from ticket 02 + QL-safe-02 evidence (spec-only, no design doc, per project ruling).
+
+## Implementation log
+
+### shipped (branch v1/02-yes-flag, unmerged) — 2026-07-12
+
+Built across 2 iterations of /subagent-implementation. Commits (chronological):
+
+- `9003555` — spec authored
+- `59e7032` — CP-1..CP-4: isEnvTruthy parser + delegation, CreateContextOptions.yes, checkProtectedConfig honors yes, withContext threading, reset pre-gate isYesMode, full test coverage (15 unit + 6 CLI subprocess + mcp collapse case)
+
+**Out-of-scope work performed during this build:**
+
+- none
+
+**Unforeseens — surprises that emerged during implementation:**
+
+- CLI subprocess tests need `dist/` — central verification must `bun run build` before running tests/cli (recorded in scratchpad TESTING.md).
+- A sqlite fixture in the CLI harness let the ticket acceptance criterion be proven end-to-end without docker — no integration deferral needed for it.
+
+**Deferred items still open:**
+
+- none (FOLLOWUPS ledger empty; both iteration-1 reviewer findings closed in iteration 2)
