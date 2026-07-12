@@ -35,12 +35,9 @@ import { checkConfigPolicy } from '../../../core/policy/index.js';
 import { useChangeProgress, useAsyncEffect } from '../../hooks/index.js';
 import { getErrorMessage,
     loadChangesWithStatus,
-    resolveScreenIdentity,
-    resolveChangesDir,
-    resolveSqlDir,
+    createChangeManager,
     isConfigGuarded,
 } from '../../utils/index.js';
-import { executeChange } from '../../../core/change/executor.js';
 import { validateChangeContent } from '../../../core/change/validation.js';
 import { createConnection } from '../../../core/connection/factory.js';
 
@@ -141,20 +138,16 @@ export function ChangeRunScreen({ params }: ScreenProps): ReactElement {
             );
             const db = conn.db as Kysely<NoormDatabase>;
 
-            // Build context
-            const context = {
+            const manager = createChangeManager({
                 db,
                 configName: activeConfigName ?? '',
-                identity: resolveScreenIdentity(cryptoIdentity),
                 projectRoot,
-                changesDir: resolveChangesDir(projectRoot, settings),
-                sqlDir: resolveSqlDir(projectRoot, settings),
-                access: activeConfig.access,
-                channel: 'user' as const,
-            };
+                settings,
+                cryptoIdentity,
+                activeConfig,
+            });
 
-            // Execute change
-            const result = await executeChange(context, change);
+            const result = await manager.run(change.name);
 
             await conn.destroy();
 
