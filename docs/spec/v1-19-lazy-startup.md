@@ -221,3 +221,39 @@ log below.
 ## Change log
 
 - 2026-07-12 — initial spec (from ticket 19 + QL-perf-01/QL-perf-02).
+
+
+## Implementation log
+
+### shipped (unit-green locally; central CI-group verification n/a per centralized-testing) — 2026-07-12
+
+Built across 1 iteration of /subagent-implementation (reviewer PASS, 0 findings).
+Stacked on v1/05-help-breadcrumb @ dda8187. Commits (chronological):
+
+- `5470f65` — spec
+- `d35d3d9` — CP-1: lazy command thunks in src/cli/index.ts (18 static imports -> Resolvable thunks) + always-present zero-cost complete stub + tab(main) gated behind rawArgs[0]==='complete'; ink/react moved into run() of ui.ts and sql/repl.ts as dynamic imports; new tests/cli/lazy-startup.test.ts (AST static-import-graph check), red-first
+
+**Startup measurement** (tsup bundle `node packages/cli/dist/index.js --version`, warm, macOS arm64, Node v24.13.0; discard 1 cold run then 5 warm):
+
+- Before: 0.14, 0.14, 0.14, 0.14, 0.14 s; index.js 619316 bytes, ~2.87MB total static-reachable JS.
+- After: 0.04, 0.03, 0.03, 0.03, 0.03 s; index.js 42902 bytes; the 1.2MB React/Ink chunk (chunk containing `react-reconciler`) is no longer statically imported by index.js — it loads only via the dynamically-imported TUI app/build chunks.
+- ~4x faster warm startup (~78% reduction), matching the evidence file's 75-85% Ink/React-attributable prediction.
+
+**Acceptance criteria met:**
+
+- Headless `--version` imports no ink/react: proven three ways — source-level AST test (green), built-bundle chunk analysis (React chunk not in index.js's static graph), and the timing delta.
+- Tab completion still works: `noorm complete zsh` prints a real `#compdef noorm` script; an actual completion request (`noorm complete --`) resolves the full command tree and lists all commands (the gated `tab(main)` still walks the whole tree when the invocation IS a completion request). Both verified from the built bundle.
+- Ticket 05 help/breadcrumb preserved: `noorm change --help` still prints the `noorm change` breadcrumb + EXAMPLES block; `--help` and bare `noorm` still list `complete  Generate shell completion scripts`.
+
+**Out-of-scope work performed during this build:**
+
+- none
+
+**Unforeseens — surprises that emerged during implementation:**
+
+- Naively gating `tab(main)` on `rawArgs[0] === 'complete'` would have silently dropped the `complete` entry from every non-completion `--help`/usage listing (a help-content regression), because `@bomb.sh/tab` is what registers `main.subCommands.complete`. Resolved by adding a zero-cost `completeStub` (defineCommand with meta byte-matching the adapter's own) that the real `tab(main)` overwrites in place on an actual completion request. This subtlety was anticipated in the spec's Contract section before implementation.
+
+**Deferred items still open:**
+
+- Signals refresh deferred. `atomic signals stale` returns exit 1 (stale) on this branch, but the staleness is from the two new files (spec + test) — not a domain/module structural change. Committing a `docs/wiki/` refresh on this stacked feature branch would conflict with the same refresh across the ~15 sibling v1 worktrees at merge time. Refresh once at the post-integration point instead.
+- FOLLOWUPS ledger: empty (reviewer returned 0 findings across all severities).
