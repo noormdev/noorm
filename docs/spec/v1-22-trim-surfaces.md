@@ -62,10 +62,11 @@ ours to delete; it simply goes unused in our code after `useEventPromise` is gon
   `tests/core/dt/worker-pipeline.test.ts`, `tests/cli/hooks/useObserver.test.tsx` green.
 - `rg` confirms zero surviving references for every deleted symbol, including
   `.claude/rules/tui-development.md`.
-- `git diff` touches only `src/core/worker-bridge/{bridge,pool}.ts`,
+- `git diff` touches only `src/core/worker-bridge/{bridge,pool,index,types}.ts`,
   `src/tui/hooks/useObserver.ts`, `src/tui/hooks/index.ts`,
   `.claude/rules/tui-development.md`, `tests/core/worker-bridge/bridge.test.ts`,
-  `tests/cli/hooks/useObserver.test.tsx` — nothing in `src/rpc/`, `src/mcp/`, or
+  `tests/cli/hooks/useObserver.test.tsx`, `tests/fixtures/workers/echo.ts` (F-1
+  fold-in, dead `workerData` branch) — nothing in `src/rpc/`, `src/mcp/`, or
   production DT/worker call sites.
 
 ## Verification commands
@@ -79,3 +80,12 @@ bun test --serial tests/workers/connection.test.ts tests/workers/compute.test.ts
 bun test --serial tests/core/dt/worker-pipeline.test.ts
 bun test --serial tests/cli/hooks/useObserver.test.tsx
 ```
+
+## Change log
+
+
+### 2026-07-12 — CP-1 and CP-2 delivered
+
+**What changed:** CP-1 (WorkerBridge/WorkerPool generic surfaces: `isTransferable`/`__transfer`, `transfer()`, ctor `data` param + `static get workerData()`, `WorkerPool.on()`) and CP-2 (`useEventPromise`/`EventPromiseState` + the `tui-development.md` doc example) both deleted, verified zero-caller via `rg`, and landed as commits `0ac3e56` and `2e3cc21`. CP-1 folded in a same-cause dead-code removal in `tests/fixtures/workers/echo.ts` (the `if (workerData)` branch, its import, and the orphaned `'init'` `EchoEvents` member — all unreachable the moment the ctor `data` param was cut). Acceptance criteria's `git diff` file list corrected to include `src/core/worker-bridge/{index,types}.ts` and `tests/fixtures/workers/echo.ts`, which CP-1's own table already named but the summary list had omitted.
+
+**Why:** ticket 22 (deletion-only, yagni audit findings AP-yagni-03/AP-yagni-05). Independent `atomic-reviewer` pass on the full `master..HEAD` diff returned VERDICT PASS, 0🔴 0🟡 1🔵 (the stale acceptance-criteria list, corrected above) — `RpcSession.hasConnection`/`listConnections` (ticket 32, out of scope) confirmed untouched.
