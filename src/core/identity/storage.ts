@@ -249,6 +249,16 @@ export async function loadPrivateKey(): Promise<string | null> {
 
     }
 
+    const permissionsOk = await validateKeyPermissions();
+
+    if (!permissionsOk) {
+
+        throw new Error(
+            `Insecure permissions on private key file (${PRIVATE_KEY_PATH}). Fix with: chmod 600 ${PRIVATE_KEY_PATH}`,
+        );
+
+    }
+
     return content.trim();
 
 }
@@ -331,13 +341,28 @@ export async function hasKeyFiles(): Promise<boolean> {
 // =============================================================================
 
 /**
- * Validate that private key file has correct permissions.
+ * Validate that a private key file has secure permissions.
  *
- * @returns True if permissions are 600 (owner read/write only)
+ * Threat-model check, not strict equality: passes when no group/other
+ * bits are set (mode & 0o077 === 0), so both 0600 and a stricter 0400
+ * pass while 0644/0640/0660/0666 fail.
+ *
+ * Windows emulates POSIX modes and `stat` commonly reports 0666 there
+ * regardless of actual ACLs, so this always returns true on win32 —
+ * otherwise the check would hard-lock every Windows user out.
+ *
+ * @param path - Key file to check (defaults to the private key path)
+ * @returns True if permissions are secure, or the platform is win32
  */
-export async function validateKeyPermissions(): Promise<boolean> {
+export async function validateKeyPermissions(path: string = PRIVATE_KEY_PATH): Promise<boolean> {
 
-    const [stats, err] = await attempt(() => stat(PRIVATE_KEY_PATH));
+    if (process.platform === 'win32') {
+
+        return true;
+
+    }
+
+    const [stats, err] = await attempt(() => stat(path));
 
     if (err) {
 
@@ -348,7 +373,7 @@ export async function validateKeyPermissions(): Promise<boolean> {
     // Check mode (mask off file type bits)
     const mode = stats.mode & 0o777;
 
-    return mode === PRIVATE_KEY_MODE;
+    return (mode & 0o077) === 0;
 
 }
 

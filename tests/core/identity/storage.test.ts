@@ -10,6 +10,7 @@ import {
     getPrivateKeyPath,
     getPublicKeyPath,
     getNoormHomePath,
+    validateKeyPermissions,
 } from '../../../src/core/identity/storage.js';
 import { generateKeyPair } from '../../../src/core/identity/crypto.js';
 
@@ -163,6 +164,58 @@ describe('identity: storage (file operations)', () => {
             const mode = stats.mode & 0o777;
 
             expect(mode).toBe(0o600);
+
+        });
+
+    });
+
+    describe('validateKeyPermissions', () => {
+
+        it('accepts 0600 (owner read/write only)', async () => {
+
+            const keyPath = join(tempDir, 'identity.key');
+            await writeFile(keyPath, 'test', { mode: 0o600 });
+            await chmod(keyPath, 0o600);
+
+            expect(await validateKeyPermissions(keyPath)).toBe(true);
+
+        });
+
+        it('accepts 0400 (owner read-only, stricter than required)', async () => {
+
+            const keyPath = join(tempDir, 'identity.key');
+            await writeFile(keyPath, 'test', { mode: 0o600 });
+            await chmod(keyPath, 0o400);
+
+            expect(await validateKeyPermissions(keyPath)).toBe(true);
+
+        });
+
+        it('rejects 0644 (world-readable)', async () => {
+
+            const keyPath = join(tempDir, 'identity.key');
+            await writeFile(keyPath, 'test', { mode: 0o644 });
+            await chmod(keyPath, 0o644);
+
+            expect(await validateKeyPermissions(keyPath)).toBe(false);
+
+        });
+
+        it('rejects 0660 (group read/write)', async () => {
+
+            const keyPath = join(tempDir, 'identity.key');
+            await writeFile(keyPath, 'test', { mode: 0o660 });
+            await chmod(keyPath, 0o660);
+
+            expect(await validateKeyPermissions(keyPath)).toBe(false);
+
+        });
+
+        it('rejects a missing file', async () => {
+
+            const keyPath = join(tempDir, 'does-not-exist.key');
+
+            expect(await validateKeyPermissions(keyPath)).toBe(false);
 
         });
 
