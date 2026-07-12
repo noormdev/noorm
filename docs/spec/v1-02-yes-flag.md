@@ -99,13 +99,13 @@ Existing tests that pin the old narrow semantics (e.g. `tests/core/config/env.te
 
 ## Checkpoints
 
-| # | Checkpoint | Independently verifiable by |
-|---|-----------|------------------------------|
-| CP-1 | `isEnvTruthy` exists in `src/core/environment.ts` with the exhaustive semantics above; `shouldSkipConfirmations` and `isYesMode` delegate to it; no other copy of `NOORM_YES` truthiness logic remains in src/ | Unit tests in `tests/core/config/env.test.ts` (parser table: `1`/`true`/`TRUE`/`yes`/arbitrary → true; `0`/`false`/`FALSE`/empty/undefined → false) and `tests/cli/yes-flag.test.ts` (isYesMode parity); grep shows no `NOORM_YES` string comparison outside the parser and its two delegators |
-| CP-2 | `CreateContextOptions.yes` exists; `checkProtectedConfig` allows a `requiresConfirmation` result when `options.yes` is true and still throws when absent/false; error message names `--yes` and `NOORM_YES`; `yes: true` does NOT unblock mcp channel | Unit tests in `tests/sdk/guards.test.ts` (operator + `yes: true` → no throw; operator + no yes + no env → `ProtectedConfigError`; mcp + `yes: true` → throws) |
-| CP-3 | SDK gate-level: `ctx.noorm.db.truncate()/teardown()/reset()` on an operator-role config pass the guard when the context was created with `yes: true` and no `NOORM_YES` env | Tests in `tests/sdk/destructive-ops.test.ts` following that file's existing harness, covering all three methods |
-| CP-4 | CLI: `db reset` pre-gate accepts `NOORM_YES` via `isYesMode`; `withContext` passes `yes: isYesMode(args)` into `createContext`; truncate/teardown/reset CLI paths carry the flag (mirroring `tests/cli/db/drop.test.ts` as far as the CLI test harness permits without a live DB) | Tests in `tests/cli/yes-flag.test.ts` and/or `tests/cli/db/`; anything requiring a live database is recorded as integration-deferred in TESTING.md, not silently skipped |
-| CP-5 | Quality signals green: `bun run typecheck`, `bun run lint`, and every touched test file passes in isolation | Orchestrator-run commands |
+| # | Checkpoint | Files/areas | Verifies |
+|---|-----------|-------------|----------|
+| CP-1 | `isEnvTruthy` exists with the exhaustive semantics above; `shouldSkipConfirmations` and `isYesMode` delegate to it; no other copy of `NOORM_YES` truthiness logic remains in src/ | `src/core/environment.ts`, `src/cli/_utils.ts` | Unit tests in `tests/core/config/env.test.ts` (parser table: `1`/`true`/`TRUE`/`yes`/arbitrary → true; `0`/`false`/`FALSE`/empty/undefined → false) and `tests/cli/yes-flag.test.ts` (isYesMode parity); grep shows no `NOORM_YES` string comparison outside the parser and its two delegators |
+| CP-2 | `CreateContextOptions.yes` exists; `checkProtectedConfig` allows a `requiresConfirmation` result when `options.yes` is true and still throws when absent/false; error message names `--yes` and `NOORM_YES`; `yes: true` does NOT unblock mcp channel | `src/sdk/types.ts`, `src/sdk/guards.ts` | Unit tests in `tests/sdk/guards.test.ts` (operator + `yes: true` → no throw; operator + no yes + no env → `ProtectedConfigError`; mcp + `yes: true` → throws, including the confirm-cell collapse case) |
+| CP-3 | SDK gate-level: `ctx.noorm.db.truncate()/teardown()/reset()` on an operator-role config pass the guard when the context was created with `yes: true` and no `NOORM_YES` env | `src/sdk/namespaces/db.ts` (no change — options ride through) | Tests in `tests/sdk/destructive-ops.test.ts` following that file's existing harness, covering all three methods |
+| CP-4 | CLI: `db reset` pre-gate accepts `NOORM_YES` via `isYesMode`; `withContext` passes `yes: isYesMode(args)` into `createContext`; truncate/teardown/reset CLI paths carry the flag (mirroring `tests/cli/db/drop.test.ts` as far as the CLI test harness permits without a live DB) | `src/cli/db/reset.ts`, `src/cli/_utils.ts`, `tests/cli/db/` | Tests in `tests/cli/db/reset.test.ts` and/or `tests/cli/yes-flag.test.ts`; anything requiring a live database is recorded as integration-deferred in TESTING.md, not silently skipped |
+| CP-5 | Quality signals green: `bun run typecheck`, `bun run lint`, and every touched test file passes in isolation | repo-wide | Orchestrator-run commands |
 
 
 ## Acceptance criteria (ticket, verbatim)
@@ -145,6 +145,7 @@ Plus any test file the implementation adds or touches, run individually. Whole-g
 ## Change log
 
 - 2026-07-12 — Initial spec authored from ticket 02 + QL-safe-02 evidence (spec-only, no design doc, per project ruling).
+- 2026-07-12 — Checkpoint table reshaped to canonical columns (# | Checkpoint | Files/areas | Verifies) to satisfy `atomic validate spec` S5; content unchanged.
 
 ## Implementation log
 
