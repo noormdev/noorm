@@ -22,9 +22,6 @@
  * ```
  */
 import type { Dialect } from '../connection/types.js';
-import type { WorkerBridge } from '../worker-bridge/bridge.js';
-import type { WorkerPool } from '../worker-bridge/pool.js';
-import type { ConnectionEvents, ComputeEvents } from '../worker-bridge/types.js';
 
 // ---------------------------------------------------------------------------
 // Universal type system
@@ -360,15 +357,6 @@ export interface ExportTableOptions {
     /** Rows per batch. Default: 1000. */
     batchSize?: number;
 
-    /** Connection string for the worker to connect to the database. When provided, enables worker-based fetching. */
-    connectionString?: string;
-
-    /** Shared connection worker override. When omitted, one is created if connectionString is available. */
-    connectionBridge?: WorkerBridge<ConnectionEvents>;
-
-    /** Shared compute pool override. When omitted, one is created automatically. */
-    computePool?: WorkerPool<ComputeEvents>;
-
 }
 
 /**
@@ -402,9 +390,6 @@ export interface ImportFileOptions {
 
     /** Rows per batch. Default: 1000. */
     batchSize?: number;
-
-    /** Shared compute pool override. When omitted, one is created automatically. */
-    computePool?: WorkerPool<ComputeEvents>;
 
 }
 

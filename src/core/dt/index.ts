@@ -44,7 +44,7 @@ import type { Kysely } from 'kysely';
 import type { NoormDatabase } from '../shared/tables.js';
 import type { ExportTableOptions, ImportFileOptions, DtStreamerOptions, DtSchema, DtValue, DatabaseVersion } from './types.js';
 import type { Dialect } from '../connection/types.js';
-import type { ConnectionEvents, ComputeEvents } from '../worker-bridge/types.js';
+import type { ComputeEvents } from '../worker-bridge/types.js';
 
 import { observer } from '../observer.js';
 import { WorkerBridge } from '../worker-bridge/bridge.js';
@@ -56,7 +56,6 @@ import { DtReader } from './reader.js';
 import { DtStreamer } from './streamer.js';
 import { buildDtSchema, validateSchema } from './schema.js';
 
-const CONNECTION_WORKER = resolveWorker('connection');
 const COMPUTE_WORKER = resolveWorker('compute');
 
 /**
@@ -69,34 +68,6 @@ function createDefaultComputePool(): WorkerPool<ComputeEvents> {
     return WorkerBridge.pool<ComputeEvents>(COMPUTE_WORKER, {
         size: Math.max(1, availableParallelism() - 2),
     });
-
-}
-
-/**
- * Create and connect a connection worker bridge.
- *
- * Spawns a new worker thread and connects it to the given database.
- */
-async function createDefaultConnectionBridge(
-    dialect: Dialect,
-    connectionString: string,
-): Promise<[WorkerBridge<ConnectionEvents> | null, Error | null]> {
-
-    const bridge = new WorkerBridge<ConnectionEvents>(CONNECTION_WORKER);
-
-    const [, connectErr] = await attempt(() =>
-        bridge.request('connect', { dialect, connectionString }),
-    );
-
-    if (connectErr) {
-
-        await attempt(() => bridge.shutdown());
-
-        return [null, connectErr];
-
-    }
-
-    return [bridge, null];
 
 }
 
@@ -160,36 +131,14 @@ export async function exportTable(
 
     }
 
-    // Resolve workers — use provided overrides or create our own
-    let ownedConnectionBridge: WorkerBridge<ConnectionEvents> | null = null;
-    let ownedComputePool: WorkerPool<ComputeEvents> | null = null;
-
-    let connectionBridge = options.connectionBridge;
-    let computePool = options.computePool;
-
-    // Create connection worker when connection string is available but no bridge provided
-    if (!connectionBridge && options.connectionString) {
-
-        const [bridge, bridgeErr] = await createDefaultConnectionBridge(dialect, options.connectionString);
-
-        if (bridgeErr) {
-
-            return [null, bridgeErr];
-
-        }
-
-        connectionBridge = bridge!;
-        ownedConnectionBridge = bridge!;
-
-    }
-
-    // Always create compute pool when not provided
-    if (!computePool) {
-
-        computePool = createDefaultComputePool();
-        ownedComputePool = computePool;
-
-    }
+    // This seam once let a caller hand in a running connection worker for
+    // off-main-thread fetch (TUI responsiveness during a big export), a
+    // connectionString to spin a dedicated fetch worker against a different
+    // database, or a shared computePool to amortize worker spinup across a
+    // batch of table exports. No caller ever used any of the three — deleted
+    // per D8. The removed createDefaultConnectionBridge (see git history on
+    // this file) is the rebuild recipe if a real caller shows up.
+    const computePool = createDefaultComputePool();
 
     // Worker pipeline: offload fetching and serialization to worker threads
     const [result, workerErr] = await exportTableWithWorkers({
@@ -199,23 +148,11 @@ export async function exportTable(
         filepath,
         dialect,
         batchSize,
-        connectionBridge,
         computePool,
         kyselyDb,
     });
 
-    // Shut down owned workers
-    if (ownedComputePool) {
-
-        await attempt(() => ownedComputePool!.shutdown());
-
-    }
-
-    if (ownedConnectionBridge) {
-
-        await attempt(() => ownedConnectionBridge!.shutdown());
-
-    }
+    await attempt(() => computePool.shutdown());
 
     if (workerErr) {
 
@@ -250,28 +187,6 @@ function getQuoteIdent(dialect: string): (c: string) => string {
 }
 
 /**
- * Build a raw SQL string for a paginated SELECT query.
- */
-function buildBatchSql(
-    dialect: string,
-    tableName: string,
-    columnList: string,
-    orderCol: string,
-    batchSize: number,
-    offset: number,
-): string {
-
-    if (dialect === 'mssql') {
-
-        return `SELECT ${columnList} FROM [${tableName}] ORDER BY ${orderCol} OFFSET ${offset} ROWS FETCH NEXT ${batchSize} ROWS ONLY`;
-
-    }
-
-    return `SELECT ${columnList} FROM "${tableName}" LIMIT ${batchSize} OFFSET ${offset}`;
-
-}
-
-/**
  * Worker-based export pipeline — offload fetching and serialization to worker threads.
  *
  * Uses a three-stage pipeline:
@@ -288,38 +203,16 @@ async function exportTableWithWorkers(ctx: {
     filepath: string;
     dialect: string;
     batchSize: number;
-    connectionBridge?: WorkerBridge<ConnectionEvents>;
     computePool: WorkerPool<ComputeEvents>;
     kyselyDb: Kysely<NoormDatabase>;
 }): Promise<[{ rowsWritten: number; bytesWritten: number } | null, Error | null]> {
 
     const { writer, dtSchema, tableName, filepath, dialect, batchSize } = ctx;
-    const { connectionBridge, computePool, kyselyDb } = ctx;
+    const { computePool, kyselyDb } = ctx;
     const backpressureLimit = batchSize * 3;
 
     // --- Stage 0: Get total row count ---
-    let totalRows = 0;
-
-    if (connectionBridge) {
-
-        const countSql = dialect === 'mssql'
-            ? `SELECT COUNT(*) AS cnt FROM [${tableName}]`
-            : `SELECT COUNT(*) AS cnt FROM "${tableName}"`;
-
-        const [countResult, countErr] = await attempt(() =>
-            connectionBridge.request('query', { sql: countSql }),
-        );
-
-        if (countErr) {
-
-            return [null, countErr];
-
-        }
-
-        const firstRow = countResult!.rows[0] as Record<string, unknown> | undefined;
-        totalRows = Number(firstRow?.['cnt'] ?? 0);
-
-    }
+    const totalRows = 0;
 
     // --- Stage 1-3: Fetch → Serialize → Write ---
     const columns = dtSchema.columns.map((c) => c.name);
@@ -358,69 +251,37 @@ async function exportTableWithWorkers(ctx: {
         }
 
         // Fetch a batch
-        let batchRows: Record<string, unknown>[];
+        const [rows, fetchErr] = await attempt(() => {
 
-        if (connectionBridge) {
-
-            const batchSql = buildBatchSql(dialect, tableName, columnList, orderCol, batchSize, offset);
-
-            const [queryResult, queryErr] = await attempt(() =>
-                connectionBridge.request('query', { sql: batchSql }),
-            );
-
-            if (queryErr) {
-
-                pipelineError = queryErr;
-                break;
-
-            }
-
-            if (queryResult!.error) {
-
-                pipelineError = new Error(queryResult!.error);
-                break;
-
-            }
-
-            batchRows = queryResult!.rows as Record<string, unknown>[];
-
-        }
-        else {
-
-            // Direct Kysely fetch when no connection worker is available
-            const [rows, fetchErr] = await attempt(() => {
-
-                if (dialect === 'mssql') {
-
-                    return sql<Record<string, unknown>>`
-                        SELECT ${sql.raw(columnList)}
-                        FROM ${sql.table(tableName)}
-                        ORDER BY ${sql.raw(orderCol)}
-                        OFFSET ${offset} ROWS
-                        FETCH NEXT ${batchSize} ROWS ONLY
-                    `.execute(kyselyDb);
-
-                }
+            if (dialect === 'mssql') {
 
                 return sql<Record<string, unknown>>`
                     SELECT ${sql.raw(columnList)}
                     FROM ${sql.table(tableName)}
-                    LIMIT ${batchSize}
-                    OFFSET ${offset}
+                    ORDER BY ${sql.raw(orderCol)}
+                    OFFSET ${offset} ROWS
+                    FETCH NEXT ${batchSize} ROWS ONLY
                 `.execute(kyselyDb);
-
-            });
-
-            if (fetchErr) {
-
-                pipelineError = fetchErr;
-                break;
 
             }
 
-            batchRows = rows.rows;
+            return sql<Record<string, unknown>>`
+                SELECT ${sql.raw(columnList)}
+                FROM ${sql.table(tableName)}
+                LIMIT ${batchSize}
+                OFFSET ${offset}
+            `.execute(kyselyDb);
+
+        });
+
+        if (fetchErr) {
+
+            pipelineError = fetchErr;
+            break;
 
         }
+
+        const batchRows = rows.rows;
 
         if (batchRows.length === 0) break;
 
@@ -615,16 +476,7 @@ export async function importDtFile(
 
     }
 
-    // Resolve compute pool — use provided override or create our own
-    let ownedComputePool: WorkerPool<ComputeEvents> | null = null;
-    let computePool = options.computePool;
-
-    if (!computePool) {
-
-        computePool = createDefaultComputePool();
-        ownedComputePool = computePool;
-
-    }
+    const computePool = createDefaultComputePool();
 
     // Worker pipeline: offload deserialization to compute pool
     const [result, workerErr] = await importFileWithWorkers({
@@ -640,12 +492,7 @@ export async function importDtFile(
         kyselyDb,
     });
 
-    // Shut down owned compute pool
-    if (ownedComputePool) {
-
-        await attempt(() => ownedComputePool!.shutdown());
-
-    }
+    await attempt(() => computePool.shutdown());
 
     if (workerErr) {
 
