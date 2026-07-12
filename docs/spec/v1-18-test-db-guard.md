@@ -98,3 +98,26 @@ The second criterion is central-verification scope: because this changes the sha
 ## Change log
 
 - 2026-07-12 — initial spec from ticket 18 + QL-safe-06 evidence.
+
+## Implementation log
+
+### shipped (branch v1/18-test-db-guard, unmerged) — 2026-07-12
+
+Built across 1 iteration of /subagent-implementation. Commits (chronological):
+
+- `120ef1e` — spec
+- `592013e` — CP-1 guard (`NotATestDatabaseError`, `assertTestDatabase`, wiring) + 7 tests in `tests/utils/db-guard.test.ts`
+
+**Out-of-scope work performed during this build:**
+
+- none
+
+**Unforeseens — surprises that emerged during implementation:**
+
+- `TEST_CONNECTIONS` snapshots `process.env` at module load — guard tests mutate/restore the exported object instead of env vars (anticipated in spec, held).
+- Signals refresh skipped at finalize: `atomic signals stale` is already STALE on untouched master (~53 lines of pre-existing drift); refreshing inside this worktree would commit unrelated wiki churn to a surgical branch. Ship verb refreshes at merge.
+
+**Deferred items still open:**
+
+- none — reviewer returned zero findings; FOLLOWUPS ledger empty.
+- Central verification before merge: CI group 4 (`bun test --serial tests/integration`) against docker services (15432/13306/11433) — proves no false positive on the legitimate CI config. Not run in this loop per testing protocol.
