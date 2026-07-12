@@ -210,4 +210,49 @@ Flow: install.sh, checksums.txt fetches fine but the downloaded binary's bytes d
 
 ## Implementation log
 
-<!-- Filled in at finalize per /subagent-implementation Phase 3. -->
+### shipped (branch v1/16-binary-checksums, stacked on v1/10-logosdx-primitives) — 2026-07-12
+
+Built across 5 iterations of /subagent-implementation, one checkpoint each, green-committed per PASS. Every reviewer verdict PASS. Commits (chronological):
+
+- `3c2cff4` — spec: contract for checksum verification across the distribution chain
+- `f67fcfd` — CP-1 add src/core/update/checksum.ts (parseChecksums, sha256File, ChecksumError, verifyChecksum) + install-mode.ts URL helpers
+- `c6679c7` — CP-2 wire verifyChecksum into installViaBinary before the atomic swap + --insecure / NOORM_INSECURE escape hatch (updater.ts, cli/update.ts, _utils.ts)
+- `49066d7` — CP-3 install.sh sha256 verification before chmod+mv
+- `161fced` — CP-4 postinstall.js verify-before-trust (download to temp, verify, chmod+rename on match only)
+- `36eabd6` — CP-5 release-binary.yml + publish.yml emit + upload checksums.txt
+
+**The three verification call sites wired** (all reject a tampered binary before it is chmod'd/executed/swapped-in):
+
+- `noorm update` — `installViaBinary` (src/core/update/updater.ts) verifies sha256 against checksums.txt immediately before the atomic `rename(tmpPath, currentExe)`; a mismatch/unverified file returns `{success:false}` and unlinks the temp, never touching the live binary.
+- `install.sh` (curl-pipe-sh, the marketed path) — downloads checksums.txt, awk-looks-up `noorm-${suffix}`, shasum/sha256sum dual-tool compare before chmod+mv.
+- `packages/cli/scripts/postinstall.js` (npm postinstall) — downloads binary to `${dest}.download`, streamed node:crypto sha256, verifies, chmod+renames into place only on match.
+
+Release workflows now `shasum -a 256 noorm-* > checksums.txt` (from `working-directory: packages/cli/bin` so filenames are bare — the exact string all three verifiers look up) and upload it alongside the binaries.
+
+**Fail mode + escape hatch chosen (a deliberate hardening past ignatius, documented in spec Approach):**
+
+- Confirmed hash MISMATCH → ALWAYS hard-fail, unconditionally. The escape hatch can never wave through a proven-tampered binary.
+- Cannot verify (checksums.txt unreachable / no entry for this asset / no sha256 tool) → hard-fail by DEFAULT, bypassable by the single escape hatch `NOORM_INSECURE=1` (env, all three surfaces) plus `--insecure` (citty flag on `noorm update`). This is the correction to ignatius's weakness (it silently soft-fails on unreachable checksums). Divergence from a literal reading of the ticket's "hard-fail on mismatch OR unreachable ... with an escape hatch" is intentional: treating both as one bypassable condition would let --insecure pass a confirmed-bad hash, defeating the feature. Flagged in spec for a human override if unintended.
+
+**Out-of-scope work performed during this build:**
+
+- none. Exactly the 3 verification call sites + release checksums.txt emission (both workflows) + the escape hatch + tests + spec. Signing/notarization left as post-v1 per the ticket scope boundary.
+
+**Unforeseens — surprises that emerged during implementation:**
+
+- `postinstall.js` runs during `npm install` before the package is built, so it cannot import `src/core/update/checksum.ts` — `parseChecksums`/`sha256File` are reimplemented locally in plain Node (crypto + fs streams). Same for `install.sh` (bash). This cross-language duplication (~15 lines each) is the low-priority QL-xrepo-05 category (platform/arch detection is already hand-written across bash/TS); a cross-language abstraction is not worth it. The regex/line-format is pinned identically across all three to the `shasum -a 256` output the release step produces.
+- postinstall.js's "never fail npm install" philosophy (every failure exits 0) gets ONE deliberate, commented exception: a confirmed ChecksumFailure exits 1. Every other failure mode (unsupported platform, binary 404, network error) still exits 0 unchanged — a corrupt/tampered binary SHOULD fail the install; a flaky download should not.
+- `installViaBinary`'s real binary-swap path (renaming over `process.execPath`) is untestable-by-design in a test process (the existing updater.test.ts documents this) — tamper-rejection is instead proven at the unit level in checksum.test.ts (verifyChecksum throws on mismatch even with insecure:true, via a real local Bun.serve, no fetch mocks) since verifyChecksum is precisely what stops the swap from ever being reached.
+- `updater.test.ts` carries pre-existing combined-run timing flakes (from ticket 10) unrelated to this change — always run it in isolation (6/6 green). See scratchpad TESTING.md.
+
+**Deferred items still open (from FOLLOWUPS.md — non-blocking, none gate v1):**
+
+- F-2 🔵 — `is_insecure()` (install.sh) / `isInsecureMode`/`isYesMode` (_utils.ts) falsy-match isn't fully case-insensitive (`FaLSe`-style typo enables insecure mode). Matches the pre-existing NOORM_YES convention verbatim; a proper fix would normalize via `tr` and should also touch isYesMode for consistency.
+- F-3 🔵 — postinstall.js: a sha256File stream-read error degrades to soft-fail exit(0) rather than the "unverifiable" branch. Low-probability (file was just written); not a security hole (verification precedes rename, so no unverified binary is trusted).
+- F-4 🔵 — postinstall.js new comments use ASCII `--` vs the em-dash in sibling checksum.ts. Cosmetic.
+- F-1 🔵 (CLOSED iter 2, c6679c7) — sha256File raw-Error-not-ChecksumError concern; confirmed a non-issue since installViaBinary's attempt() reads only err.message.
+
+**Manual release-day check (unit-unverifiable — recorded in TESTING.md):** the CP-5 workflow change can only be fully verified by cutting an actual release. On first release after merge: confirm checksums.txt lands in the GitHub Release with BARE filenames, smoke-test one install path prints "checksum verified", and confirm fail-closed behavior when checksums.txt is absent.
+
+**Verification @ 36eabd6 (run by orchestrator at finalize, not trusting subagents):** typecheck exit 0; lint exit 0; checksum.test.ts 12/12; insecure-flag.test.ts 8/8; updater.test.ts 6/6 (isolation); shellcheck install.sh 0 findings; sh -n install.sh exit 0; node --check postinstall.js exit 0; both workflow YAMLs parse; atomic validate spec exit 0.
+
