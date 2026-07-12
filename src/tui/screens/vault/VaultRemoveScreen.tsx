@@ -60,7 +60,17 @@ export function VaultRemoveScreen({ params }: ScreenProps): ReactElement {
 
         const db = connRef.current.db;
         const connDialect = connRef.current.dialect;
-        const vaultKey = await getVaultKey(db as Kysely<NoormDatabase>, identity.identityHash, privateKey, connDialect);
+
+        const [vaultKey, vaultKeyErr] = await attempt(() => getVaultKey(db as Kysely<NoormDatabase>, identity.identityHash, privateKey, connDialect));
+
+        if (vaultKeyErr) {
+
+            setError(vaultKeyErr.message);
+            setPhase('ready');
+
+            return;
+
+        }
 
         if (!vaultKey) {
 
@@ -72,7 +82,16 @@ export function VaultRemoveScreen({ params }: ScreenProps): ReactElement {
         }
 
         // Check if exists
-        const exists = await vaultSecretExists(db as Kysely<NoormDatabase>, secretKey, connDialect);
+        const [exists, existsErr] = await attempt(() => vaultSecretExists(db as Kysely<NoormDatabase>, secretKey, connDialect));
+
+        if (existsErr) {
+
+            setError(existsErr.message);
+            setPhase('ready');
+
+            return;
+
+        }
 
         if (!exists) {
 
