@@ -7,7 +7,7 @@ const registry = createRegistry();
 describe('rpc registry: completeness', () => {
 
     const expectedCommands = [
-        'connect', 'disconnect',
+        'connect', 'disconnect', 'status',
         'list_configs',
         'overview', 'list', 'detail',
         'sql',
@@ -15,10 +15,10 @@ describe('rpc registry: completeness', () => {
         'run_build', 'run_file',
     ];
 
-    it('should have all 13 commands registered', () => {
+    it('should have all 14 commands registered', () => {
 
         const registered = registry.list().map(c => c.name);
-        expect(registered).toHaveLength(13);
+        expect(registered).toHaveLength(14);
 
         for (const name of expectedCommands) {
 
@@ -47,6 +47,7 @@ describe('rpc registry: schema validation — valid inputs', () => {
     const validInputs: Record<string, Record<string, unknown>> = {
         connect: {},
         disconnect: {},
+        status: {},
         list_configs: {},
         overview: {},
         list: { category: 'tables' },
