@@ -96,8 +96,8 @@ Today both screens keep the already-loaded `Change` object in state (from the lo
 
 ## Checkpoints
 
-| CP | Scope | Files | Done when |
-|----|-------|-------|-----------|
+| # | Checkpoint | Files/areas | Verifies |
+|---|------------|-------------|----------|
 | CP1 | `isVisibleToChannel` + wire both rpc call sites | `src/core/policy/check.ts`, `src/core/policy/index.ts`, `src/rpc/commands/config.ts`, `src/rpc/session.ts`, new test | Fail-closed test red→green; `list-configs.test.ts` + `session.test.ts` still green |
 | CP2 | Change screens adopt `createChangeManager` | `src/tui/screens/change/ChangeRunScreen.tsx`, `ChangeRevertScreen.tsx` | No `executeChange`/`revertChange` import in either file; typecheck/lint/build green |
 | CP3 | `withScreenConnection` gains `onConnect`; adopted by the 4 screens that don't need it | `src/tui/utils/connection.ts`, `RunBuildScreen.tsx`, `RunExecScreen.tsx`, `DbTeardownScreen.tsx`, `DbTruncateScreen.tsx` | rg check clean for these 4; typecheck/lint/build green |
@@ -127,3 +127,30 @@ No integration/docker tests. No `tests/cli` serial run required unless a change 
 ## Change log
 
 - 2026-07-12 — initial spec, authored inline by the orchestrator per `/subagent-implementation` (no design doc — ticket is pre-scoped, spec-only per dispatch brief).
+- 2026-07-12 — checkpoint table normalized to the `# | Checkpoint | Files/areas | Verifies` column contract (`atomic validate spec`); implementation log appended at finalize. No decision changes.
+
+## Implementation log
+
+### shipped — 2026-07-12
+
+Built across 4 iterations of /subagent-implementation (fresh atomic-implementer → atomic-reviewer per checkpoint, sonnet). Every reviewer pass returned PASS with 0🔴 0🟡 0🔵 0❓. Commits (chronological):
+
+- `9f47d7b` — spec (this doc)
+- `eb083a0` — CP1: `isVisibleToChannel` in core/policy, wired into `list_configs` + `SessionManager.connect`; fail-closed null-handling test (red→green). Fixes the latent disagreement where `config.ts` had no `access` guard while `session.ts` did.
+- `1f8a1d1` — CP2: ChangeRunScreen/ChangeRevertScreen adopt `createChangeManager` (`.run`/`.revert`), dropping the hand-rolled ChangeContext.
+- `43471c3` — CP3: `withScreenConnection` gains optional `onConnect` hook; adopted by RunBuild/RunExec/DbTeardown/DbTruncate.
+- `a290e7a` — CP4: RunDir/RunFile adopt `withScreenConnection` with `onConnect` to preserve mid-run cancel-ref.
+
+**Out-of-scope work performed during this build:**
+
+- none — scope held to the two Change screens, the six connection-adopting screens, and the one policy consolidation. `ConnectionProvider.tsx` excluded by design (D2).
+
+**Unforeseens — surprises that emerged during implementation:**
+
+- The dispatch brief assumed existing screen tests as a safety net; there are none (`tests/cli/screens/` only covers `init/`). TUI checkpoints leaned on typecheck + lint + build + rg pattern-removal proofs + line-by-line diff review instead. Recorded in the Testing section.
+- CP4's test→create cancel-check seam is now internal to `withScreenConnection` and cannot be reproduced; accepted as a microsecond window still guarded by the post-create check. Flagged and reviewer-verified.
+- `withScreenConnection` needed an `onConnect` hook to fit the two cancel-ref screens without exposing the raw connection — the one justified addition (D1), additive since the helper had zero prior callers.
+
+**Deferred items still open:**
+
+- F-1 (FOLLOWUPS): `DbTransferScreen`/`SqlTerminalScreen` hand-roll `conn.destroy()` but were outside AP-dup-07's 7-file scope and carry neither duplicated error-string template. Their dual/persistent connection shapes likely don't fit `withScreenConnection`'s one-shot contract (same reason as the D2 ConnectionProvider exclusion). Left for a future connection-lifecycle audit; not this ticket.
