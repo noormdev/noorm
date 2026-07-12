@@ -78,7 +78,7 @@ Both probes confirm the assertions keep their teeth after the fix — they were 
 
 ## Checkpoints
 
-| # | Checkpoint | Files | Agent | Verifies |
+| # | Checkpoint | Files/areas | Agent | Verifies |
 |---|------------|-------|-------|----------|
 | 1 | Add `chunkedStream` helper; wire into `/ok` and `/resume`'s 206 leg; run the 20x determinism proof + revert-probe | `tests/core/update/updater.test.ts` | atomic-implementer (mode: surgical) | 20/20 isolated runs green; revert-probe reliably reds; typecheck/lint green; no `src/` file touched |
 
@@ -102,3 +102,35 @@ tests/core/update/updater.test.ts ......... M  (chunkedStream helper; /ok and /r
 ## Change log
 
 <!-- Populated on first amendment after the spec is approved. Do not log drafting/refinement turns. -->
+
+
+## Implementation log
+
+### shipped (branch v1/37-updater-flake, stacked on v1/16-binary-checksums) — 2026-07-12
+
+Built in 1 iteration of /subagent-implementation (single checkpoint, test-only), green-committed on PASS. Reviewer verdict PASS. Commits (chronological):
+
+- `24ed7c5` — spec: determinism contract (stacked base, root-cause hypothesis + evidence, mechanism, revert-probe contract)
+- `20a5fb5` — CP-1 `chunkedStream` helper in `updater.test.ts`; `/ok` and `/resume`'s 206 leg stream in 128 KiB chunks with a `wait(0)` cooperative yield
+
+**Root cause (diagnosed before touching the test, per atomic-debug):** not the stall-timer wall clock the ticket suspected. A Bun runtime-internal race in `for await` iteration over a `fetch()` Response's `.body` `ReadableStream` (native frames `ReadableStreamAsyncIterator`; known upstream category — oven-sh/bun #6289, #31159, #1190, #6860, #5039), triggered when a body arrives as one instantly-complete chunk. The thrown `TypeError` isn't a `DownloadError`, so `downloadToFile`'s `shouldRetry` classifies it retriable — indistinguishable from a real stall. Fires at natural EOF of the sole/last attempt: on the progress test it pre-empts the final `update:progress` emit (→ 1 tick, not >1); on the resume test it emits a spurious second `update:retry` (→ retries.length 2, not 1). Byte assertions never saw it because `retry()` always eventually produces the correct file.
+
+**Determinism mechanism:** serve `/ok` and `/resume`'s 206 leg via a `pull()`-based `chunkedStream` (128 KiB pieces, `wait(0)` between enqueues) so those bodies complete over multiple ticks instead of one native-buffered blob. `/stall` and `/resume`'s first (stalling) leg left as single-`enqueue()`-never-close — the race only manifests on natural completion, never the abort path. Test-only; no `src/` change.
+
+**Deviation from ticket prescription (flagged in spec):** ticket suggested fake timers / injectable clock for the stall+retry windows. Rejected — the race is in Bun's native stream path, which fake timers don't touch. Fixed the actual trigger instead. No production seam was added (ticket allowed one "if unavoidable"; it was avoidable).
+
+**Evidence:** baseline 6/25 and 10/25 isolated-run failures (≈ ticket's 44%) → post-fix 80/80 isolated runs green across implementer (20) + reviewer (40) + orchestrator finalize (20), 0 flakes. Revert-probe both directions: injected spurious-retry throw → 10/10 red on `retries.length`; injected progress-emit skip → 10/10 red on `ticks.length`; both fully reverted (empty `src/` diff, no probe scaffolding committed). Assertions retained full strictness — none weakened.
+
+**Out-of-scope work performed during this build:**
+
+- none. Single-file test change plus the scratchpad TESTING.md. No product behavior change; other flaky tests left to their own tickets per the scope boundary.
+
+**Unforeseens — surprises that emerged during implementation:**
+
+- The ticket's stated cause (wall-clock stall-window race) was a red herring — instrumentation showed a Bun runtime stream-iteration race instead. Documented in the spec's Root-cause section so a future reader doesn't re-chase the timer theory. The fix still delivers exactly what the ticket wanted (deterministic timing-derived-count assertions), just via the correct substrate.
+
+**Deferred items still open:**
+
+- none blocking. F-1 (reviewer ❓ — spec Contract references TESTING.md) resolved at finalize: TESTING.md is the orchestrator-owned scratchpad doc, written with the determinism + revert-probe evidence; the committed repo diff is test-code only by design.
+
+**Verification @ 20a5fb5 (run by orchestrator at finalize, not trusting subagents):** `bun run typecheck` exit 0; `bun run lint` exit 0; `bun test tests/core/update/updater.test.ts` × 20 isolated fresh-process runs → 20/20 green (each 6 pass / 0 fail); `git diff 1a06a3b..HEAD -- src/` empty.
