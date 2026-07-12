@@ -463,3 +463,63 @@ carve-out and 08's pinned test.)
 ## Change log
 
 - 2026-07-12 — initial spec, authored by orchestrator pre-implementation.
+
+## Implementation log
+
+### shipped (pending user ship decision) — 2026-07-12
+
+Built across 6 iterations of `/subagent-implementation` (5 implement→review cycles + 1
+orchestrator-run final verification sweep). Stacked on `v1/08-dangerous-tests` @ `35e19e6`.
+Commits (chronological):
+
+- `b038211` — docs(spec): this spec
+- `36406d0` — CP1: `NotConnectedError`/`requireConnection` dedup (8 sites), dialect precheck
+  dedup (4 sites), vault storage absence-vs-failure fix (5 functions)
+- `6430901` — CP2: `VaultNamespace.init/set/delete/copy` tuple→throw, new `VaultAccessError`
+- `8d06eb8` — CP3: `TransferNamespace.to/plan` + `DtNamespace.exportTable/importFile`
+  tuple→throw, required `src/cli/db/transfer.ts` consumer update
+- `1558da6` — CP4: JSDoc sweep (11 edit points), including the confirmed `v1/07` overlap fix
+- `943699b` — CP5: TUI regression guard (`VaultSetScreen.tsx`, `VaultRemoveScreen.tsx`)
+
+**Out-of-scope work performed during this build:**
+
+- `src/cli/db/transfer.ts` (4 call sites) — required collateral, not optional. The one
+  first-party consumer that destructured the converted tuples; `bun run typecheck` breaks
+  without this update. Simplified the file in the process (removed now-redundant manual
+  `if (err) throw err;` unwraps).
+- `src/tui/screens/vault/{VaultSetScreen,VaultRemoveScreen}.tsx` (3 call sites) — required
+  collateral to avoid a regression the storage.ts fix would otherwise introduce (unhandled
+  promise rejection in 2 event handlers with no upstream `attempt()` boundary). Flagged
+  prominently in the spec before implementation; reviewer confirmed the fix is minimal and
+  correct.
+
+**Unforeseens — surprises that emerged during implementation:**
+
+- The acceptance criteria's literal wording ("wrong key / decrypt failure → throw") appeared
+  to contradict ticket 08's own pinned test and `key.ts`'s deliberate crypto-primitive
+  contract. Resolved by reading the wording as satisfied at the write path (`vault.set()`
+  throwing `VaultAccessError`) rather than the read path — documented at length in the spec's
+  "Vault absence-vs-failure rule" section with three independent supporting citations. Not
+  escalated to the user since the resolution is well-supported and low-blast-radius if
+  overruled later (confined to `getVaultKey`'s decrypt-failure branch).
+- `tsconfig.test.json`'s `typecheck:tests` surfaces 243 pre-existing errors across 38 files,
+  none introduced by this diff (verified definitively — only 3 test files touched across the
+  whole ticket, 2 are brand-new with zero errors, the 3rd's errors are on pre-existing
+  ticket-08 lines). This is real, pre-existing hygiene debt unrelated to this ticket's scope
+  — not fixed here, worth its own ticket if not already tracked.
+
+**Deferred items still open:**
+
+- FOLLOWUPS.md F-1 (🔵 nit, `changes.ts`'s double `requireConnection` call — spec-authored
+  shape, not a defect), F-2/F-3 (🔵 nits, dead optional chaining / redundant local rename in
+  the CLI file — cosmetic). None block ship; all are one-line tidy-ups if anyone touches these
+  files again.
+- `propagateVaultKey`'s and `getVaultStatus`'s own internal error-swallowing (flagged in the
+  spec's "Source-reading findings" and "Out of scope" sections) — a different file than the
+  cited bug, needs its own design decision about surfacing partial-propagation failure. Not a
+  FOLLOWUPS entry since it was never in this ticket's scope to begin with, not a thing that
+  emerged during the build.
+- `tests/integration/sdk/**` (CI group 4, live DB) — not run in this loop per the testing
+  scope (no docker/live DB in this environment). Required before ship; see `TESTING.md`.
+- Ticket 26 (doc/skill contradiction sweep) is the explicit downstream consumer of this
+  ticket's shipped contract — not started here, by design.
