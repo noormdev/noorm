@@ -18,7 +18,7 @@ TDD skipped because: docs/JSDoc-only change — no runtime behavior to test. Gat
 
 All line numbers re-verified against branch `v1/07-sdk-docs-drift` @ `1f718c5`. Verification commands (V1-V5) are listed after the table.
 
-| CP | Fix | Files (verified lines) | Bad form → correct form | Verify |
+| # | Checkpoint | Files/areas | Bad form → correct form | Verifies |
 |----|-----|------------------------|-------------------------|--------|
 | CP1 | JSDoc `@example` on `ExportOptions`/`ImportOptions` calls top-level Context methods that don't exist (ships in published `.d.ts`) | `src/sdk/types.ts:91,117` | `ctx.exportTable(...)` → `ctx.noorm.dt.exportTable(...)`; `ctx.importFile(...)` → `ctx.noorm.dt.importFile(...)` — mirror the correct examples at `src/sdk/namespaces/dt.ts:34,60`; keep tuple-return style as-is | V1 |
 | CP2 | Tutorial + teardown guide call nonexistent Context methods | `docs/getting-started/building-your-sdk.md:373,382`; `docs/guide/database/teardown.md:195,196,234` (+ prose ~240) | `this.#ctx.reset()` → `this.#ctx.noorm.db.reset()`; `this.#ctx.truncate()` → `this.#ctx.noorm.db.truncate()`; `ctx.truncate()` → `ctx.noorm.db.truncate()`; `ctx.runFile('./seeds/test-data.sql')` → `ctx.noorm.run.file('./seeds/test-data.sql')`; `ctx.reset()` → `ctx.noorm.db.reset()`; teardown.md prose "combines `teardown()` and `build({ force: true })`" → reference `ctx.noorm.db.teardown()` / `ctx.noorm.run.build({ force: true })` | V2 |
@@ -98,3 +98,28 @@ These files mention the bad forms on purpose — they document the gotchas. Leav
 
 
 - 2026-07-12 — spec created from ticket 07 + audit findings; all line numbers re-verified against worktree branch `v1/07-sdk-docs-drift` @ `1f718c5`.
+- 2026-07-12 — checkpoint table header conformed to `atomic validate spec` column contract (`# | Checkpoint | Files/areas | … | Verifies`); content unchanged.
+
+
+## Implementation log
+
+### shipped — 2026-07-12
+
+Built across 2 iterations of /subagent-implementation. Commits (chronological):
+
+- `930df95` — spec authored and committed on branch `v1/07-sdk-docs-drift`
+- `9cf7ec1` — CP1-CP5: all five API-name corrections (8 files: SDK JSDoc, tutorial, teardown guide, dev docs, pg example README, skill file)
+- `dab4945` — F-1 polish: pg README config fences made strict JSON (comment lines stripped)
+
+**Out-of-scope work performed during this build:**
+
+- none
+
+**Unforeseens — surprises that emerged during implementation:**
+
+- `src/sdk/index.ts:8` JSDoc also imported from `'noorm/sdk'` (same defect class as VR-docs-03, ships in the `.d.ts`) — folded into CP3.
+- Reviewer caught `// filename` comment lines inside the new pg README ```json fences (invalid for `config import`'s bare `JSON.parse`) — fixed in iteration 2.
+
+**Deferred items still open:**
+
+- none — F-1 was the only follow-up; closed iter 2 (`dab4945`). Error-style sweep of doc examples deliberately left to ticket 26 per spec out-of-scope.
