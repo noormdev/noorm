@@ -256,3 +256,41 @@ secret-key gap as the one deliberate behavior change.
   list) is included so the "no surviving copies" acceptance criterion holds repo-wide; wired to
   the authoritative **settings** `PortSchema`. Merging the two core `PortSchema` definitions is
   explicitly deferred (see Out of scope + F-2). No accept/reject change.
+- 2026-07-12 — implementation shipped (iterations 1-3); added implementation log.
+
+## Implementation log
+
+### shipped — 2026-07-12 (branch `v1/11-validation-source`, stacked on `v1/29-locked-stage-guard`, not yet merged)
+
+Built across 3 iterations of the subagent implement→review loop. Commits (chronological, on top of base `d0ed966`):
+
+- `600e2cc` — docs(spec): initial spec.
+- `8431afa` — CP-1: extract `validateConfigChecks` to `core/config/validate.ts` (consumed by `cli/config/validate.ts` + `ConfigValidateScreen.tsx`); move `DEFAULT_PORTS` to `core/connection/defaults.ts` (consumed by `same-server.ts`, `tui/utils/config-validation.ts`, and the 3 dialect factories, mssql's two hardcodes included). No behavior change.
+- `f3f96fc` — docs(spec): amend CP-2 scope to include the fourth port-copy in the stage editor.
+- `1ef49b6` — CP-2: export `ConfigNameSchema`/`PortSchema` (config) and `PortSchema` (settings); `validateConfigName`/`validatePort`/`validateStagePort` delegate to them. All four TUI hand-copies removed. Same accept/reject.
+- `4c5de4e` — CP-3: secret-key gap closure. `isValidSecretKey` + `InvalidSecretKeyError` in `core/state/manager.ts`; `setSecret` validates the key first (throws before any mutation, D1 producer-throw); TUI `validateSecretKey` + `SecretValueForm` delegate to the same check; `SECRET_KEY_PATTERN` + its barrel re-exports deleted.
+
+**Single-definition proof (each of the 4 rule-sets, at HEAD `4c5de4e`):**
+
+- Validate algorithm — `validateConfigChecks` defined once (`core/config/validate.ts`); only one inline `key: 'connection'` check-builder in `src`.
+- Ports — one `const DEFAULT_PORTS` (`core/connection/defaults.ts`); zero dialect hardcodes.
+- Name/port schemas — zero `CONFIG_NAME_PATTERN`/manual-bound hand-copies in `src`; validators delegate to the exported Zod schemas.
+- Secret-key format — the `/^[A-Za-z][A-Za-z0-9_]*$/` literal occurs exactly once (`core/state/manager.ts:799`); zero in `src/tui`.
+
+**Gap closure verified across surfaces:** the check sits at the single `StateManager.setSecret` seam every caller funnels through. Reviewer revert-probe proved it load-bearing (removing the guard turns the seam tests red). End-to-end CLI proof: `noorm secret set "key with spaces" v --config dev` exits 1 with the named-error message (was a silent success before); the invalid-key check fires before the config-exists check, so it rejects regardless of config state. CLI/SDK/MCP/TUI now reject an invalid secret key identically via the shared seam.
+
+**Out-of-scope work performed during this build:**
+
+- CP-2 was extended (spec amended, `f3f96fc`) to a fourth TUI port-bound hand-copy in `SettingsStageEditScreen.tsx` that AP-dup-03's evidence never listed (the audit's Coverage marks `core/settings` screens as not examined in depth). Included because the acceptance criterion "`rg` finds no surviving copies" is repo-wide; wired to the authoritative **settings** `PortSchema` (the schema that governs a stage-default port at save time). No accept/reject change.
+
+**Unforeseens — surprises during implementation:**
+
+- The port-bound rule turned out to have two authoritative core Zod encodings (`config/schema.ts` + `settings/schema.ts`), not one. Each TUI validator was pointed at its own domain's schema; merging the two core schemas was deliberately NOT done (design decision, not mechanical dedup) — see F-2.
+- SDK `SecretsNamespace` is read-only (`get()` only) — the "SDK inherits enforcement" claim is satisfied by the shared seam (any future SDK write path calling `setSecret` gets the check for free), not by a new SDK surface.
+- The `tests/cli` group carries a stable 84-failure baseline caused by `dist/cli/index.js` being absent in a fresh worktree (integration-style tests spawn the built binary). Pre-existing, unrelated to this branch; confirmed unchanged every iteration.
+
+**Deferred items still open (FOLLOWUPS ledger — awaiting orchestrator/user disposition):**
+
+- F-1 (🔵 nit) — three dialect JSDoc `@example` blocks lost their illustrative `port:` line so the CP-1 `rg` port-hardcode gate would pass on doc content. Examples still valid (port optional). Restore + narrow the gate if a reader wants it back.
+- F-2 (🟡 risk) — `core/config/schema.ts` and `core/settings/schema.ts` each declare a private `PortSchema` with the identical 1-65535 rule. Candidate future ticket: extract one shared `PortSchema`. Out of scope here (core-vs-core dup the audit never examined; a design decision, not mechanical dedup).
+
