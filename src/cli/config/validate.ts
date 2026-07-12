@@ -8,15 +8,8 @@ import { attempt } from '@logosdx/utils';
 import { defineCommand } from 'citty';
 
 import { initState, getStateManager } from '../../core/state/index.js';
-import { testConnection } from '../../core/connection/factory.js';
+import { validateConfigChecks } from '../../core/config/validate.js';
 import { outputResult, outputError, sharedArgs } from '../_utils.js';
-
-interface CheckResult {
-    key: string;
-    label: string;
-    status: 'success' | 'error';
-    detail: string;
-}
 
 const validateCommand = defineCommand({
     meta: {
@@ -54,55 +47,7 @@ const validateCommand = defineCommand({
 
         }
 
-        const checks: CheckResult[] = [];
-        let valid = true;
-
-        // Connection test
-        const connResult = await testConnection(config.connection);
-
-        checks.push({
-            key: 'connection',
-            label: 'Connection',
-            status: connResult.ok ? 'success' : 'error',
-            detail: connResult.ok ? 'Connection successful' : (connResult.error ?? 'Connection failed'),
-        });
-
-        if (!connResult.ok) valid = false;
-
-        // Required fields
-        const requiredChecks = [
-            { key: 'name', label: 'Name', value: config.name },
-            { key: 'database', label: 'Database', value: config.connection.database },
-        ];
-
-        for (const check of requiredChecks) {
-
-            const isSet = Boolean(check.value);
-            checks.push({
-                key: check.key,
-                label: check.label,
-                status: isSet ? 'success' : 'error',
-                detail: isSet ? check.value : 'Not set',
-            });
-
-            if (!isSet) valid = false;
-
-        }
-
-        // Host check for non-SQLite
-        if (config.connection.dialect !== 'sqlite') {
-
-            const hasHost = Boolean(config.connection.host);
-            checks.push({
-                key: 'host',
-                label: 'Host',
-                status: hasHost ? 'success' : 'error',
-                detail: hasHost ? config.connection.host! : 'Not set',
-            });
-
-            if (!hasHost) valid = false;
-
-        }
+        const { checks, valid } = await validateConfigChecks(config);
 
         // Output
         const statusText = valid ? 'VALID' : 'INVALID';

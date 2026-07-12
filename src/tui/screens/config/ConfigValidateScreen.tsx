@@ -22,7 +22,7 @@ import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
 import { Panel, Spinner, StatusList, type StatusListItem } from '../../components/index.js';
-import { testConnection } from '../../../core/connection/factory.js';
+import { validateConfigChecks } from '../../../core/config/validate.js';
 
 /**
  * Validate steps.
@@ -62,79 +62,17 @@ export function ConfigValidateScreen({ params }: ScreenProps): ReactElement {
 
         const validate = async () => {
 
-            const results: StatusListItem[] = [];
-            let allValid = true;
+            const { checks, valid } = await validateConfigChecks(config);
 
-            // Check connection
-            results.push({
-                key: 'connection',
-                label: 'Connection',
-                status: 'pending',
-                detail: 'Testing database connection...',
-            });
-            setItems([...results]);
+            const results: StatusListItem[] = checks.map((check) => ({
+                key: check.key,
+                label: check.label,
+                status: check.status,
+                detail: check.detail,
+            }));
 
-            const connResult = await testConnection(config.connection);
-
-            if (connResult.ok) {
-
-                results[0] = {
-                    ...results[0]!,
-                    status: 'success',
-                    detail: 'Connection successful',
-                };
-
-            }
-            else {
-
-                results[0] = {
-                    ...results[0]!,
-                    status: 'error',
-                    detail: connResult.error ?? 'Connection failed',
-                };
-                allValid = false;
-
-            }
-            setItems([...results]);
-
-            // Check required fields
-            const requiredChecks = [
-                { key: 'name', label: 'Name', value: config.name },
-                { key: 'database', label: 'Database', value: config.connection.database },
-            ];
-
-            for (const check of requiredChecks) {
-
-                const isSet = Boolean(check.value);
-                results.push({
-                    key: check.key,
-                    label: check.label,
-                    status: isSet ? 'success' : 'error',
-                    detail: isSet ? check.value : 'Not set',
-                });
-
-                if (!isSet) allValid = false;
-
-            }
-            setItems([...results]);
-
-            // Check host for non-SQLite
-            if (config.connection.dialect !== 'sqlite') {
-
-                const hasHost = Boolean(config.connection.host);
-                results.push({
-                    key: 'host',
-                    label: 'Host',
-                    status: hasHost ? 'success' : 'error',
-                    detail: hasHost ? config.connection.host! : 'Not set',
-                });
-
-                if (!hasHost) allValid = false;
-                setItems([...results]);
-
-            }
-
-            setIsValid(allValid);
+            setItems(results);
+            setIsValid(valid);
             setStep('complete');
 
         };

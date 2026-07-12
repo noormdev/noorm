@@ -15,17 +15,9 @@ import type { ConnectionConfig, Dialect } from '../../core/connection/types.js';
 import type { Config } from '../../core/config/types.js';
 import type { ConfigAccess, Role } from '../../core/policy/index.js';
 import { guarded } from '../../core/policy/index.js';
+import { DEFAULT_PORTS } from '../../core/connection/index.js';
 
-
-/**
- * Default ports by dialect.
- */
-export const DEFAULT_PORTS: Record<Dialect, number> = {
-    postgres: 5432,
-    mysql: 3306,
-    sqlite: 0,
-    mssql: 1433,
-};
+export { DEFAULT_PORTS };
 
 /**
  * Config name pattern — letters, numbers, hyphens, underscores.

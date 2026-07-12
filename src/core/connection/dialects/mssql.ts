@@ -10,6 +10,7 @@
  */
 import { Kysely, MssqlDialect, sql } from 'kysely';
 import type { ConnectionConfig, ConnectionResult } from '../types.js';
+import { DEFAULT_PORTS } from '../defaults.js';
 import { MssqlLimitPlugin } from './mssql-limit-plugin.js';
 
 /**
@@ -34,7 +35,7 @@ function buildTediousConfig(
             },
         },
         options: {
-            port: config.port ?? 1433,
+            port: config.port ?? DEFAULT_PORTS.mssql,
             database: database ?? config.database,
             trustServerCertificate: !config.ssl,
             encrypt: true,
@@ -83,7 +84,7 @@ async function verifyDatabaseExists(
         if (rows.length === 0) {
 
             throw new Error(
-                `Database '${config.database}' does not exist on ${config.host ?? 'localhost'}:${config.port ?? 1433}`,
+                `Database '${config.database}' does not exist on ${config.host ?? 'localhost'}:${config.port ?? DEFAULT_PORTS.mssql}`,
             );
 
         }
@@ -109,7 +110,6 @@ async function verifyDatabaseExists(
  * const conn = createMssqlConnection({
  *     dialect: 'mssql',
  *     host: 'localhost',
- *     port: 1433,
  *     database: 'myapp',
  *     user: 'sa',
  *     password: 'secret',
