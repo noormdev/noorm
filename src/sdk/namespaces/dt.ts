@@ -9,6 +9,7 @@ import type { Dialect } from '../../core/connection/index.js';
 import { exportTable as coreExportTable, importDtFile } from '../../core/dt/index.js';
 
 import type { ContextState } from '../state.js';
+import { requireConnection } from '../state.js';
 import type { ExportOptions, ImportOptions } from '../types.js';
 import { checkProtectedConfig } from '../guards.js';
 
@@ -87,13 +88,7 @@ export class DtNamespace {
 
     get #kysely(): Kysely<unknown> {
 
-        if (!this.#state.connection) {
-
-            throw new Error('Not connected. Call connect() first.');
-
-        }
-
-        return this.#state.connection.db;
+        return requireConnection(this.#state).db;
 
     }
 

@@ -160,7 +160,9 @@ export async function getVaultKey(
 
     });
 
-    if (err || !row?.encrypted_vault_key) return null;
+    if (err) throw err;
+
+    if (!row?.encrypted_vault_key) return null;
 
     const encryptedValue = row.encrypted_vault_key;
 
@@ -312,7 +314,9 @@ export async function getVaultSecret(
 
     });
 
-    if (err || !row) return null;
+    if (err) throw err;
+
+    if (!row) return null;
 
     const [parsed, parseErr] = attemptSync(() =>
         JSON.parse(row.encrypted_value) as { iv: string; authTag: string; ciphertext: string },
@@ -361,7 +365,9 @@ export async function getAllVaultSecrets(
 
     });
 
-    if (err || !rows) return {};
+    if (err) throw err;
+
+    if (!rows) return {};
 
     const secrets: Record<string, VaultSecret> = {};
 
@@ -424,7 +430,9 @@ export async function listVaultSecretKeys(
 
     });
 
-    if (err || !rows) return [];
+    if (err) throw err;
+
+    if (!rows) return [];
 
     return rows.map((r) => r.secret_key);
 
@@ -508,7 +516,7 @@ export async function vaultSecretExists(
 
     });
 
-    if (err) return false;
+    if (err) throw err;
 
     return !!row;
 

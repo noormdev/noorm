@@ -27,6 +27,7 @@ import { getStateManager } from '../../core/state/index.js';
 import { checkProtectedConfig } from '../guards.js';
 
 import type { ContextState } from '../state.js';
+import { requireConnection } from '../state.js';
 import type { BuildOptions } from '../types.js';
 
 // ─────────────────────────────────────────────────────────────
@@ -178,13 +179,7 @@ export class RunNamespace {
 
     get #kysely(): Kysely<unknown> {
 
-        if (!this.#state.connection) {
-
-            throw new Error('Not connected. Call connect() first.');
-
-        }
-
-        return this.#state.connection.db;
+        return requireConnection(this.#state).db;
 
     }
 

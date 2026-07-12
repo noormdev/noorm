@@ -190,7 +190,7 @@ export { tvp } from './tvp.js';
 export type { TvpValue } from './tvp.js';
 
 // Guards (errors for catching)
-export { RequireTestError, ProtectedConfigError } from './guards.js';
+export { RequireTestError, ProtectedConfigError, NotConnectedError } from './guards.js';
 
 // Impersonation
 export { ImpersonationError } from './impersonate/index.js';

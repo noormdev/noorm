@@ -37,6 +37,28 @@ export class RequireTestError extends Error {
 }
 
 /**
+ * Error thrown when a namespace method requiring a live connection is
+ * called before `connect()` (or after `disconnect()`).
+ *
+ * @example
+ * ```typescript
+ * const ctx = await createContext({ config: 'dev' })
+ * await ctx.noorm.db.listTables()  // Throws NotConnectedError — never called connect()
+ * ```
+ */
+export class NotConnectedError extends Error {
+
+    override readonly name = 'NotConnectedError' as const;
+
+    constructor() {
+
+        super('Not connected. Call connect() first.');
+
+    }
+
+}
+
+/**
  * Error thrown when the config's access policy blocks a destructive
  * operation — either the role denies it outright, or the role requires
  * confirmation the SDK cannot provide interactively.

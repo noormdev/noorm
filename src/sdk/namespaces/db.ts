@@ -29,6 +29,7 @@ import { truncateData, teardownSchema, previewTeardown } from '../../core/teardo
 import { formatIdentity } from '../../core/identity/index.js';
 
 import type { ContextState } from '../state.js';
+import { requireConnection } from '../state.js';
 import type { BuildOptions } from '../types.js';
 import { checkProtectedConfig } from '../guards.js';
 
@@ -357,13 +358,7 @@ export class DbNamespace {
 
     get #kysely(): Kysely<unknown> {
 
-        if (!this.#state.connection) {
-
-            throw new Error('Not connected. Call connect() first.');
-
-        }
-
-        return this.#state.connection.db;
+        return requireConnection(this.#state).db;
 
     }
 

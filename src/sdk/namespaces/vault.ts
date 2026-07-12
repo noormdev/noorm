@@ -32,6 +32,7 @@ import { formatIdentity, loadIdentityMetadata } from '../../core/identity/index.
 import type { CryptoIdentity } from '../../core/identity/types.js';
 
 import type { ContextState } from '../state.js';
+import { requireConnection } from '../state.js';
 
 // ─────────────────────────────────────────────────────────────
 // VaultNamespace
@@ -332,13 +333,7 @@ export class VaultNamespace {
 
     get #kysely(): Kysely<unknown> {
 
-        if (!this.#state.connection) {
-
-            throw new Error('Not connected. Call connect() first.');
-
-        }
-
-        return this.#state.connection.db;
+        return requireConnection(this.#state).db;
 
     }
 

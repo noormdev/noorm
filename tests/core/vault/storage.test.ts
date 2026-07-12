@@ -258,4 +258,60 @@ describe('vault: storage CRUD', () => {
 
     });
 
+    describe('absence vs. infra failure', () => {
+
+        it('should resolve getVaultKey to null on genuine absence (identity row exists, key never set)', async () => {
+
+            const alice = await seedIdentity(db);
+
+            const fetched = await getVaultKey(db, alice.identityHash, alice.privateKey, 'sqlite');
+
+            expect(fetched).toBeNull();
+
+        });
+
+        it('should propagate a thrown error from getVaultKey when the query itself fails', async () => {
+
+            const alice = await seedIdentity(db);
+
+            await db.destroy();
+
+            await expect(
+                getVaultKey(db, alice.identityHash, alice.privateKey, 'sqlite'),
+            ).rejects.toThrow();
+
+            // Recreate so afterEach can destroy cleanly.
+            db = await createTestDb();
+
+        });
+
+        it('should resolve getVaultSecret to null on genuine absence (key never set)', async () => {
+
+            const alice = await seedIdentity(db);
+            const [vaultKey] = await initializeVault(db, alice.identityHash, alice.publicKey, 'sqlite');
+
+            const value = await getVaultSecret(db, vaultKey as Buffer, 'NEVER_SET', 'sqlite');
+
+            expect(value).toBeNull();
+
+        });
+
+        it('should propagate a thrown error from getVaultSecret when the query itself fails', async () => {
+
+            const alice = await seedIdentity(db);
+            const [vaultKey] = await initializeVault(db, alice.identityHash, alice.publicKey, 'sqlite');
+
+            await db.destroy();
+
+            await expect(
+                getVaultSecret(db, vaultKey as Buffer, 'API_KEY', 'sqlite'),
+            ).rejects.toThrow();
+
+            // Recreate so afterEach can destroy cleanly.
+            db = await createTestDb();
+
+        });
+
+    });
+
 });

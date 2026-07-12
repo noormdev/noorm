@@ -12,6 +12,7 @@ import type { Settings } from '../core/settings/index.js';
 import type { Identity } from '../core/identity/index.js';
 import type { ChangeManager } from '../core/change/index.js';
 
+import { NotConnectedError } from './guards.js';
 import type { CreateContextOptions } from './types.js';
 
 // ─────────────────────────────────────────────────────────────
@@ -26,4 +27,28 @@ export interface ContextState {
     options: CreateContextOptions;
     projectRoot: string;
     changeManager: ChangeManager | null;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Guards
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Require a live connection, collapsing the 8 duplicated
+ * `if (!state.connection) throw ...` sites across the namespaces into one
+ * helper. Covers both call shapes: namespaces that only need `.db`, and
+ * `ChangesNamespace#createChangeContext`, which also needs `.dialect`.
+ *
+ * @throws NotConnectedError if state.connection is null
+ */
+export function requireConnection(state: ContextState): ConnectionResult {
+
+    if (!state.connection) {
+
+        throw new NotConnectedError();
+
+    }
+
+    return state.connection;
+
 }

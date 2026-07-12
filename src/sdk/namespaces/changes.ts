@@ -38,6 +38,7 @@ import { getStateManager } from '../../core/state/index.js';
 import { checkProtectedConfig } from '../guards.js';
 
 import type { ContextState } from '../state.js';
+import { requireConnection } from '../state.js';
 
 // ─────────────────────────────────────────────────────────────
 // ChangesNamespace
@@ -435,29 +436,18 @@ export class ChangesNamespace {
 
     get #kysely(): Kysely<unknown> {
 
-        if (!this.#state.connection) {
-
-            throw new Error('Not connected. Call connect() first.');
-
-        }
-
-        return this.#state.connection.db;
+        return requireConnection(this.#state).db;
 
     }
 
     #createChangeContext(): ChangeContext {
 
         const state = getStateManager(this.#state.projectRoot);
-
-        if (!this.#state.connection) {
-
-            throw new Error('Not connected. Call connect() first.');
-
-        }
+        const conn = requireConnection(this.#state);
 
         return {
             db: this.#kysely as unknown as Kysely<NoormDatabase>,
-            dialect: this.#state.connection.dialect,
+            dialect: conn.dialect,
             configName: this.#state.config.name,
             identity: this.#state.identity,
             projectRoot: this.#state.projectRoot,
