@@ -3,10 +3,12 @@
  *
  * Transfers data to another DB config, or exports/imports .dt files.
  */
+import * as p from '@clack/prompts';
 import { attempt } from '@logosdx/utils';
 import { defineCommand } from 'citty';
 
 import { resolveExportExtension, resolveExportPath, ensureExportDirectory } from '../../core/dt/index.js';
+import { MIN_PASSPHRASE_LENGTH } from '../../core/dt/crypto.js';
 import { getStateManager } from '../../core/state/index.js';
 import type { TransferOptions, ConflictStrategy } from '../../core/transfer/index.js';
 import { withContext, outputResult, outputError, sharedArgs, type CliArgs } from '../_utils.js';
@@ -44,6 +46,96 @@ function isConflictStrategy(value: unknown): value is ValidStrategy {
 
 }
 
+// ---------------------------------------------------------------------------
+// Passphrase resolution — flag, masked prompt, or CI escape hatch
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolve the passphrase for a .dtzx export, enforcing MIN_PASSPHRASE_LENGTH.
+ *
+ * A bare `--passphrase` flag leaks via ps/shell history, so an interactive
+ * TTY session (and no `--json`) prompts via a masked @clack/prompts input
+ * instead. Non-interactive callers without the flag get an immediate,
+ * actionable exit rather than hanging on a stdin read — the documented CI
+ * escape hatch is still the flag.
+ */
+async function resolveExportPassphrase(passphrase: string | undefined, args: TransferArgs): Promise<string> {
+
+    if (passphrase) {
+
+        if (passphrase.length < MIN_PASSPHRASE_LENGTH) {
+
+            outputError(args, `Passphrase must be at least ${MIN_PASSPHRASE_LENGTH} characters`);
+            process.exit(1);
+
+        }
+
+        return passphrase;
+
+    }
+
+    if (!process.stdin.isTTY || args.json) {
+
+        outputError(args, '--passphrase required for .dtzx encrypted export (non-interactive session; pass --passphrase or run interactively for a masked prompt)');
+        process.exit(1);
+
+    }
+
+    const result = await p.password({
+        message: 'Passphrase for .dtzx encryption',
+        validate: (value) => (
+            value && value.length >= MIN_PASSPHRASE_LENGTH
+                ? undefined
+                : `Passphrase must be at least ${MIN_PASSPHRASE_LENGTH} characters`
+        ),
+    });
+
+    if (p.isCancel(result)) {
+
+        p.cancel('Cancelled.');
+        process.exit(0);
+
+    }
+
+    return result;
+
+}
+
+/**
+ * Resolve the passphrase for a .dtzx import.
+ *
+ * No length floor — legacy archives may have been encrypted with a
+ * passphrase shorter than MIN_PASSPHRASE_LENGTH, and a wrong passphrase
+ * already fails via GCM auth tag verification. Same masked-prompt /
+ * CI-escape-hatch idiom as the export path.
+ */
+async function resolveImportPassphrase(passphrase: string | undefined, args: TransferArgs): Promise<string> {
+
+    if (passphrase) return passphrase;
+
+    if (!process.stdin.isTTY || args.json) {
+
+        outputError(args, '--passphrase required for .dtzx encrypted import (non-interactive session; pass --passphrase or run interactively for a masked prompt)');
+        process.exit(1);
+
+    }
+
+    const result = await p.password({
+        message: 'Passphrase for .dtzx decryption',
+        validate: (value) => (value ? undefined : 'Passphrase is required'),
+    });
+
+    if (p.isCancel(result)) {
+
+        p.cancel('Cancelled.');
+        process.exit(0);
+
+    }
+
+    return result;
+
+}
+
 const transferCommand = defineCommand({
     meta: {
         name: 'transfer',
@@ -72,7 +164,7 @@ const transferCommand = defineCommand({
         },
         passphrase: {
             type: 'string',
-            description: 'Passphrase for .dtzx encryption/decryption (implies compression)',
+            description: `Passphrase for .dtzx (implies compression, min ${MIN_PASSPHRASE_LENGTH} chars on export). Omit on TTY for masked prompt.`,
         },
         tables: {
             type: 'string',
@@ -104,7 +196,7 @@ const transferCommand = defineCommand({
         const destConfigName = args.to;
         const exportPath = args.export;
         const importPath = args.import;
-        const passphrase = args.passphrase;
+        let passphrase = args.passphrase;
         const compress = args.compress === true;
 
         if (compress && !exportPath) {
@@ -130,17 +222,15 @@ const transferCommand = defineCommand({
 
         }
 
-        if (exportPath?.endsWith('.dtzx') && !passphrase) {
+        if (exportPath?.endsWith('.dtzx')) {
 
-            outputError(args, '--passphrase required for .dtzx encrypted export');
-            process.exit(1);
+            passphrase = await resolveExportPassphrase(passphrase, args);
 
         }
 
-        if (importPath?.endsWith('.dtzx') && !passphrase) {
+        if (importPath?.endsWith('.dtzx')) {
 
-            outputError(args, '--passphrase required for .dtzx encrypted import');
-            process.exit(1);
+            passphrase = await resolveImportPassphrase(passphrase, args);
 
         }
 
@@ -375,7 +465,8 @@ const transferCommand = defineCommand({
     'noorm db transfer --export ./backup/ --compress',
     'noorm db transfer --export ./backup/users.dt --tables users',
     'noorm db transfer --import ./backup/users.dt',
-    'noorm db transfer --import ./backup/users.dtzx --passphrase mySecret',
+    'noorm db transfer --import ./backup/users.dtzx --passphrase correct-horse-battery',
+    'noorm db transfer --export ./backup/users.dtzx  # omits --passphrase, prompts interactively',
 ];
 
 export default transferCommand;

@@ -30,14 +30,24 @@ const PBKDF2_ITERATIONS = 100_000;
 const PBKDF2_DIGEST = 'sha256';
 
 /**
+ * Minimum passphrase length enforced on encryption.
+ *
+ * Not enforced on decryption — a floor there would brick .dtzx archives
+ * encrypted by older versions with shorter passphrases; a wrong passphrase
+ * already fails via GCM auth tag verification.
+ */
+export const MIN_PASSPHRASE_LENGTH = 12;
+
+/**
  * Encrypt data with a passphrase using AES-256-GCM.
  *
  * Derives a key from the passphrase using PBKDF2 with a random salt.
  * Each call generates a new salt and IV for unique ciphertexts.
  *
  * @param data - Data to encrypt
- * @param passphrase - User-provided encryption passphrase
+ * @param passphrase - User-provided encryption passphrase, at least MIN_PASSPHRASE_LENGTH characters
  * @returns Encrypted payload with salt, IV, authTag, and ciphertext
+ * @throws If passphrase is shorter than MIN_PASSPHRASE_LENGTH
  *
  * @example
  * ```typescript
@@ -46,6 +56,12 @@ const PBKDF2_DIGEST = 'sha256';
  * ```
  */
 export function encryptWithPassphrase(data: Buffer, passphrase: string): DtEncryptedPayload {
+
+    if (passphrase.length < MIN_PASSPHRASE_LENGTH) {
+
+        throw new Error(`Passphrase must be at least ${MIN_PASSPHRASE_LENGTH} characters`);
+
+    }
 
     const salt = randomBytes(SALT_LENGTH);
     const iv = randomBytes(IV_LENGTH);
