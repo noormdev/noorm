@@ -158,7 +158,7 @@ examples/llm-memory-db-pg/
 
 Phase 1 used the noorm CLI to bootstrap `.noorm/`, declare two stages (`dev` + `test`), build the schema from SQL files, apply an evolutionary change, generate the SDK shape, and write the test suite. Phase 2 used the noorm MCP server to verify schema integrity, grade test quality, and add a meta-test that exercises the MCP itself.
 
-The full play-by-play is in `REPORT.md` (final deliverable) and `REPORT-PHASE-1.md` (intermediate report). Three real noorm SDK bugs surfaced during Phase 1 and were fixed at the source — see `../../postgres-problems.md` (monorepo root) for the full list of CLI/SDK/MCP issues encountered.
+The full play-by-play is in `REPORT.md` (final deliverable) and `REPORT-PHASE-1.md` (intermediate report). Three real noorm SDK bugs surfaced during Phase 1 and were fixed at the source — see `postgres-problems.md` (in this directory) for the full list of CLI/SDK/MCP issues encountered.
 
 
 ## What this is NOT

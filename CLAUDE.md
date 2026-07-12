@@ -48,12 +48,14 @@ The integration step needs postgres/mysql/mssql reachable (CI uses service conta
 
 ## Changesets
 
-This is a pnpm monorepo with two publishable packages. Changeset frontmatter must reference the correct workspace package name:
+This is a bun workspace monorepo with two publishable packages. Changeset frontmatter must reference the correct workspace package name:
 
 - **`@noormdev/cli`** — `packages/cli` (CLI/TUI)
 - **`@noormdev/sdk`** — `packages/sdk` (programmatic SDK)
 
 Never use `noorm` or `@noormdev/main` — those are not workspace packages and will fail the Release workflow.
+
+Changesets is the release engine because it supports a fixed-version group: `@noormdev/cli` and `@noormdev/sdk` are coupled packages that always bump together on every release, which fits a two-package monorepo where the packages version in lockstep rather than independently.
 
 
 ## Tech Stack
