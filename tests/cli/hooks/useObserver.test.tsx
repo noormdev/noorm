@@ -1,7 +1,7 @@
 /**
  * Observer hooks tests.
  *
- * Tests useOnEvent, useOnceEvent, useEmit, and useEventPromise.
+ * Tests useOnEvent, useOnceEvent, and useEmit.
  */
 import { afterEach, describe, it, expect } from 'bun:test';
 import { render } from 'ink-testing-library';
@@ -14,7 +14,6 @@ import {
     useOnEvent,
     useOnceEvent,
     useEmit,
-    useEventPromise,
 } from '../../../src/tui/hooks/useObserver.js';
 
 /**
@@ -385,143 +384,6 @@ describe('cli: hooks/useObserver', () => {
 
             unmount();
             cleanup();
-
-        });
-
-    });
-
-    describe('useEventPromise', () => {
-
-        it('should start in pending state', () => {
-
-            function PromiseUser() {
-
-                const [value, error, pending] = useEventPromise('build:complete');
-
-                return (
-                    <Text>
-                        pending:{String(pending)}|value:{value ? 'yes' : 'no'}|error:
-                        {error ? 'yes' : 'no'}
-                    </Text>
-                );
-
-            }
-
-            const { lastFrame, unmount } = render(<WithProvider><PromiseUser /></WithProvider>);
-
-            expect(lastFrame()).toContain('pending:true');
-            expect(lastFrame()).toContain('value:no');
-            expect(lastFrame()).toContain('error:no');
-
-            unmount();
-
-        });
-
-        it('should resolve with value when event fires', async () => {
-
-            function PromiseUser() {
-
-                const [value, _error, pending] = useEventPromise('build:complete');
-
-                return (
-                    <Text>
-                        pending:{String(pending)}|status:{value?.status ?? 'none'}
-                    </Text>
-                );
-
-            }
-
-            const { lastFrame, unmount } = render(<WithProvider><PromiseUser /></WithProvider>);
-
-            await new Promise((r) => setTimeout(r, 10));
-
-            observer.emit('build:complete', {
-                status: 'success',
-                filesRun: 5,
-                filesSkipped: 2,
-                filesFailed: 0,
-                durationMs: 1234,
-            });
-
-            await new Promise((r) => setTimeout(r, 10));
-
-            expect(lastFrame()).toContain('pending:false');
-            expect(lastFrame()).toContain('status:success');
-
-            unmount();
-
-        });
-
-        it('should allow cancellation', async () => {
-
-            function CancellableUser() {
-
-                const [value, _error, pending, cancel] = useEventPromise('build:complete');
-
-                useEffect(() => {
-
-                    const timer = setTimeout(() => cancel(), 20);
-
-                    return () => clearTimeout(timer);
-
-                }, [cancel]);
-
-                return (
-                    <Text>
-                        pending:{String(pending)}|value:{value ? 'yes' : 'no'}
-                    </Text>
-                );
-
-            }
-
-            const { lastFrame, unmount } = render(<WithProvider><CancellableUser /></WithProvider>);
-
-            await new Promise((r) => setTimeout(r, 50));
-
-            // After cancellation, the subscription is removed but pending stays true
-            // (no event was received to resolve it) — this is @logosdx/react behavior
-            expect(lastFrame()).toContain('pending:true');
-            expect(lastFrame()).toContain('value:no');
-
-            unmount();
-
-        });
-
-        it('should cleanup on unmount', async () => {
-
-            let resolveCount = 0;
-
-            function PromiseUser() {
-
-                const [value] = useEventPromise('build:complete');
-
-                useEffect(() => {
-
-                    if (value) resolveCount++;
-
-                }, [value]);
-
-                return <Text>waiting</Text>;
-
-            }
-
-            const { unmount } = render(<WithProvider><PromiseUser /></WithProvider>);
-
-            await new Promise((r) => setTimeout(r, 10));
-
-            unmount();
-
-            observer.emit('build:complete', {
-                status: 'success',
-                filesRun: 0,
-                filesSkipped: 0,
-                filesFailed: 0,
-                durationMs: 0,
-            });
-
-            await new Promise((r) => setTimeout(r, 10));
-
-            expect(resolveCount).toBe(0);
 
         });
 
