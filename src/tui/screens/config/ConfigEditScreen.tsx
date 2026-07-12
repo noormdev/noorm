@@ -42,6 +42,7 @@ export function ConfigEditScreen({ params }: ScreenProps): ReactElement {
     const { back } = useRouter();
     const { stateManager, settingsManager, refresh } = useAppContext();
     const { showToast } = useToast();
+    const { stdout } = useStdout();
 
     const configName = params.name;
 
@@ -253,7 +254,6 @@ export function ConfigEditScreen({ params }: ScreenProps): ReactElement {
 
     }
 
-    const { stdout } = useStdout();
     const terminalHeight = stdout.rows ?? 24;
 
     // Reserve space for Panel border (2), title (2), padding (2)
