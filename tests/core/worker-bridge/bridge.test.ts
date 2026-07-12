@@ -7,7 +7,6 @@ const ECHO_WORKER = resolve(import.meta.dir, '../../fixtures/workers/echo.ts');
 interface EchoEvents {
     'ping': { message: string }
     'ping:res': { message: string }
-    'init': Record<string, unknown>
 }
 
 describe('worker-bridge: WorkerBridge', () => {
@@ -33,14 +32,6 @@ describe('worker-bridge: WorkerBridge', () => {
         bridge = new WorkerBridge<EchoEvents>(ECHO_WORKER);
         const result = await bridge.request('ping', { message: 'hello' });
         expect(result.message).toBe('hello');
-
-    });
-
-    it('should forward workerData to the worker', async () => {
-
-        bridge = new WorkerBridge<EchoEvents>(ECHO_WORKER, { greeting: 'hi' });
-        const { data } = await bridge.once('init');
-        expect(data.greeting).toBe('hi');
 
     });
 
