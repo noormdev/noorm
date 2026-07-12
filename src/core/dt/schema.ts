@@ -84,7 +84,6 @@ export async function buildDtSchema(
         const mapping = toUniversalType({
             dbType: col.dataType,
             dialect,
-            version,
         });
 
         const dtCol: DtColumn = {

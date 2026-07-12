@@ -34,9 +34,6 @@ export interface ToUniversalOptions {
     /** Source database dialect. */
     dialect: Dialect;
 
-    /** Source database version (optional, for future version-aware source mapping). */
-    version?: DatabaseVersion;
-
 }
 
 /**
