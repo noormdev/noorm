@@ -86,3 +86,26 @@ CP-1 and CP-2/CP-3 are independent slices; CP-4 depends on CP-1.
 
 
 - 2026-07-12 — initial spec authored from ticket 03 + QL-safe-01/QL-safe-05 evidence.
+
+
+## Implementation log
+
+
+### shipped (pending central verification) — 2026-07-12
+
+Built across 1 iteration of /subagent-implementation. Commits (chronological):
+
+- `b70124f` — spec authored
+- `1b89f2b` — CP-1..CP-4: truncateData enable-FK guarantee, TransferResult.fkChecksRestored, CLI JSON/stderr surfacing, MSSQL integration failure-injection test
+
+**Out-of-scope work performed during this build:**
+
+- none
+
+**Unforeseens — surprises that emerged during implementation:**
+
+- Two additional `TransferResult` literal sites in `src/core/transfer/index.ts` (empty-plan and dry-run early returns) required the new field — caught by typecheck, both set `fkChecksRestored: true` (FK checks never touched on those paths).
+
+**Deferred items still open:**
+
+- Central runner must execute the full 4-group suite + per-dialect integration tests (MSSQL especially) — see `.claude/.scratchpad/2026-07-12-v1-03/TESTING.md`. Unit signals green locally @ 1b89f2b.
