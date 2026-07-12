@@ -6,6 +6,7 @@
 import { StateManager } from './manager.js';
 
 export { StateManager };
+export { InvalidSecretKeyError, isValidSecretKey } from './manager.js';
 export type { StateManagerOptions } from './manager.js';
 export * from './types.js';
 export { migrateState, needsMigration } from './migrations.js';

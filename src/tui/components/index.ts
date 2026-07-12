@@ -72,7 +72,6 @@ export {
     SecretValueList,
     SecretValueListHelp,
     SECRET_TYPE_OPTIONS,
-    SECRET_KEY_PATTERN,
     validateSecretKey,
     checkDuplicateKey,
 } from './secrets/index.js';

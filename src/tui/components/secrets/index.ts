@@ -25,7 +25,6 @@ export type { StageSecret, SecretType, SecretValueItem, SecretValueSummary } fro
 
 export {
     SECRET_TYPE_OPTIONS,
-    SECRET_KEY_PATTERN,
     validateSecretKey,
     checkDuplicateKey,
 } from './types.js';

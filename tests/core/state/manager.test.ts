@@ -7,7 +7,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { mkdtempSync, rmSync, existsSync, readFileSync, mkdirSync, writeFileSync } from 'fs';
 import { join, dirname } from 'path';
-import { StateManager, resetStateManager, getPackageVersion } from '../../../src/core/state/index.js';
+import { StateManager, resetStateManager, getPackageVersion, InvalidSecretKeyError } from '../../../src/core/state/index.js';
 import type { Config, Stage } from '../../../src/core/config/types.js';
 import { ConfigStageLockedError } from '../../../src/core/config/index.js';
 import { SettingsProvider } from '../../../src/core/config/resolver.js';
@@ -529,6 +529,37 @@ describe('state: manager', () => {
             await expect(state.setSecret('nonexistent', 'KEY', 'value')).rejects.toThrow(
                 'does not exist',
             );
+
+        });
+
+        it('should reject a key with spaces', async () => {
+
+            await expect(state.setSecret('dev', 'key with spaces', 'v')).rejects.toThrow(
+                InvalidSecretKeyError,
+            );
+
+        });
+
+        it('should reject a key starting with a digit', async () => {
+
+            await expect(state.setSecret('dev', '1abc', 'v')).rejects.toThrow(
+                InvalidSecretKeyError,
+            );
+
+        });
+
+        it('should reject a key with a hyphen', async () => {
+
+            await expect(state.setSecret('dev', 'a-b', 'v')).rejects.toThrow(
+                InvalidSecretKeyError,
+            );
+
+        });
+
+        it('should accept valid keys', async () => {
+
+            await expect(state.setSecret('dev', 'API_KEY', 'v')).resolves.toBeUndefined();
+            await expect(state.setSecret('dev', 'db_password', 'v')).resolves.toBeUndefined();
 
         });
 
