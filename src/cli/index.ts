@@ -12,25 +12,6 @@ import { resolve } from 'node:path';
 import tab from '@bomb.sh/tab/citty';
 import { defineCommand, runMain, renderUsage, type CommandDef } from 'citty';
 
-import change from './change/index.js';
-import ci from './ci/index.js';
-import config from './config/index.js';
-import db from './db/index.js';
-import dev from './dev/index.js';
-import identity from './identity/index.js';
-import info from './info.js';
-import init from './init.js';
-import lock from './lock/index.js';
-import mcp from './mcp/index.js';
-import run from './run/index.js';
-import secret from './secret/index.js';
-import settings from './settings/index.js';
-import sql from './sql/index.js';
-import ui from './ui.js';
-import update from './update.js';
-import vault from './vault/index.js';
-import version from './version.js';
-
 import { initProjectContext, setOriginalCwd } from '../core/project.js';
 import { loadIdentityFromEnv } from '../core/identity/env.js';
 import { setKeyOverride, setIdentityOverride } from '../core/identity/storage.js';
@@ -41,6 +22,23 @@ import { setKeyOverride, setIdentityOverride } from '../core/identity/storage.js
  */
 export type CommandWithExamples = CommandDef & { examples?: string[] };
 
+/**
+ * Zero-cost stand-in for the `complete` subcommand that `@bomb.sh/tab`
+ * would otherwise register by walking the entire `subCommands` tree
+ * (forcing every lazy thunk below to resolve on every invocation, the
+ * exact cost this file exists to avoid). Same meta the adapter itself
+ * uses, so `noorm --help` / bare `noorm` list `complete` identically to
+ * before. Overwritten in place by the real `tab(main)` call below when
+ * the invocation actually is a completion request.
+ */
+const completeStub = defineCommand({
+    meta: {
+        name: 'complete',
+        description: 'Generate shell completion scripts',
+    },
+    run() {},
+});
+
 const main = defineCommand({
     meta: {
         name: 'noorm',
@@ -48,24 +46,25 @@ const main = defineCommand({
         description: 'Database schema & changeset manager. Global: -c, --cwd <path> runs the subcommand in <path> (must precede the subcommand, like git -C).',
     },
     subCommands: {
-        change,
-        ci,
-        config,
-        db,
-        dev,
-        identity,
-        info,
-        init,
-        lock,
-        mcp,
-        run,
-        secret,
-        settings,
-        sql,
-        ui,
-        update,
-        vault,
-        version,
+        change: () => import('./change/index.js').then((m) => m.default),
+        ci: () => import('./ci/index.js').then((m) => m.default),
+        config: () => import('./config/index.js').then((m) => m.default),
+        db: () => import('./db/index.js').then((m) => m.default),
+        dev: () => import('./dev/index.js').then((m) => m.default),
+        identity: () => import('./identity/index.js').then((m) => m.default),
+        info: () => import('./info.js').then((m) => m.default),
+        init: () => import('./init.js').then((m) => m.default),
+        lock: () => import('./lock/index.js').then((m) => m.default),
+        mcp: () => import('./mcp/index.js').then((m) => m.default),
+        run: () => import('./run/index.js').then((m) => m.default),
+        secret: () => import('./secret/index.js').then((m) => m.default),
+        settings: () => import('./settings/index.js').then((m) => m.default),
+        sql: () => import('./sql/index.js').then((m) => m.default),
+        ui: () => import('./ui.js').then((m) => m.default),
+        update: () => import('./update.js').then((m) => m.default),
+        vault: () => import('./vault/index.js').then((m) => m.default),
+        version: () => import('./version.js').then((m) => m.default),
+        complete: completeStub,
     },
 });
 
@@ -308,11 +307,19 @@ async function entry(): Promise<void> {
 
     }
 
-    // Register shell completion as the `complete` subcommand on main.
-    // The adapter walks main.subCommands to generate completions.
-    await tab(main);
-
     const rawArgs = process.argv.slice(2);
+
+    // Only walk the entire subCommands tree (resolving every lazy thunk
+    // above) when the invocation is actually a completion request. The
+    // always-present completeStub above keeps `complete` listed in every
+    // other help/usage output at zero resolution cost; tab(main) replaces
+    // it in place (same main.subCommands object reference) before runMain
+    // dispatches to it.
+    if (rawArgs[0] === 'complete') {
+
+        await tab(main);
+
+    }
 
     if (rawArgs.includes('--help') || rawArgs.includes('-h')) {
 

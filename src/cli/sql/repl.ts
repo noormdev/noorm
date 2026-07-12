@@ -7,13 +7,15 @@
  *
  * If --config is provided, the active config is switched before the TUI
  * launches so the REPL starts against the intended database.
+ *
+ * Ink and React are loaded lazily inside run() (alongside the TUI app)
+ * so that resolving this module's meta never pays their import cost —
+ * only actually launching the REPL does.
  */
 import { Writable } from 'node:stream';
 
 import { attempt } from '@logosdx/utils';
 import { defineCommand } from 'citty';
-import { render } from 'ink';
-import React from 'react';
 
 import { observer } from '../../core/observer.js';
 import { enableAutoLoggerInit } from '../../core/logger/init.js';
@@ -91,7 +93,11 @@ const replCommand = defineCommand({
         }
 
         // === Launch TUI at db/sql ===
-        const { App } = await import('../../tui/app.js');
+        const [{ render }, { default: React }, { App }] = await Promise.all([
+            import('ink'),
+            import('react'),
+            import('../../tui/app.js'),
+        ]);
 
         enableAutoLoggerInit(process.cwd(), {
             console: nullStream,
