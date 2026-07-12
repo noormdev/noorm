@@ -140,6 +140,29 @@ secret-key gap as the one deliberate behavior change.
   `port < 1 || port > 65535` bounds check — the schema is now the only place that bound lives.
 - Import `ConfigNameSchema`/`PortSchema` from `../../core/config/schema.js`.
 
+### `src/tui/screens/settings/SettingsStageEditScreen.tsx`
+
+- The stage-defaults "Default Port" field carries a fourth independent copy of the
+  1-65535 bound (inline `isNaN(port) || port < 1 || port > 65535` → `'Port must be
+  1-65535'`, line ~148) — a TUI live-form port validator with a hand-copied bound, the
+  exact class this ticket's item 3 targets. It was not enumerated in AP-dup-03's evidence
+  list (the audit's Coverage section records `core/settings` screens as not examined in
+  depth), but the acceptance criterion "`rg` finds no surviving copies" of the port rule
+  is literal, so it is in scope for this consolidation. Surfaced by the checkpoint-2
+  implementer.
+- Authority: a stage-default port is validated at save time by **`core/settings/schema.ts`**
+  (`StageDefaultsSchema.port` → that file's private `PortSchema`), NOT by
+  `core/config/schema.ts`'s `PortSchema`. So the correct authoritative schema for this
+  screen is the **settings** `PortSchema` — pointing the live-form validator at the same
+  schema that governs the data at save time is the whole point of the ticket (prevent
+  live-form vs save-time divergence).
+- Export `PortSchema` from `core/settings/schema.ts` (currently module-private) and replace
+  the screen's inline validator body with a `PortSchema.safeParse(port)` delegation,
+  keeping the existing `!value → undefined` (optional) and `isNaN → error` short-circuits
+  (same shape as the `config-validation.ts` `validatePort` rewrite). Same accept/reject
+  (1-65535 integer); displayed message text may shift to the schema's canonical Zod wording
+  (presentation, allowed).
+
 ### `src/core/state/manager.ts` — the gap closure
 
 - Add `InvalidSecretKeyError extends Error` (colocated in this file, next to `setSecret`,
@@ -187,7 +210,7 @@ secret-key gap as the one deliberate behavior change.
 | # | Scope | Done when |
 |---|-------|-----------|
 | 1 | `core/config/validate.ts` (new), wire `cli/config/validate.ts` + `ConfigValidateScreen.tsx`; `core/connection/defaults.ts` (new), wire `same-server.ts`, `tui/utils/config-validation.ts`, `dialects/{postgres,mysql,mssql}.ts` | New tests for `validateConfigChecks` (all-pass sqlite case, missing-host non-sqlite case) and for `DEFAULT_PORTS` single-definition (`rg` proof, see below) pass. `bun run typecheck` clean. `rg "DEFAULT_PORTS\s*[:=]\s*\{" src` and `rg "port:\s*5432|port:\s*3306|port:\s*1433" src/core/connection/dialects` find zero hits outside `core/connection/defaults.ts`. |
-| 2 | `core/config/schema.ts` (export `ConfigNameSchema`/`PortSchema`); `tui/utils/config-validation.ts` (`validateConfigName`/`validatePort` call the schemas) | Existing `tests/cli/config-validation.test.ts` still green (unmodified). New tests: TUI validators reject/accept the exact same boundary cases as before (empty, bad chars, dup name, port 0/1/65535/65536/non-numeric). `rg "CONFIG_NAME_PATTERN|port < 1 \|\| port > 65535"` finds zero hits. |
+| 2 | `core/config/schema.ts` (export `ConfigNameSchema`/`PortSchema`); `core/settings/schema.ts` (export `PortSchema`); `tui/utils/config-validation.ts` (`validateConfigName`/`validatePort` call the config schemas); `tui/screens/settings/SettingsStageEditScreen.tsx` (port validator calls the settings `PortSchema`) | Existing `tests/cli/config-validation.test.ts` still green (unmodified). New tests: TUI validators reject/accept the exact same boundary cases as before (empty, bad chars, dup name, port 0/1/65535/65536/non-numeric), for both the config-form and stage-defaults port validators. `rg "CONFIG_NAME_PATTERN|port < 1 \|\| port > 65535"` finds zero hits across `src` (all four TUI hand-copies gone). |
 | 3 | `core/state/manager.ts` (`InvalidSecretKeyError`, `isValidSecretKey`, `setSecret` gap closure), `core/state/index.ts` export; `tui/components/secrets/types.ts` + `SecretValueForm.tsx` wired to `isValidSecretKey` | **Failing test first**: a `StateManager.setSecret(configName, 'key with spaces', 'v')` test that fails on current code, passes after the fix, asserting `InvalidSecretKeyError` — this is the seam that covers CLI (`cli/secret/set.ts`, `cli/ci/secrets.ts`), SDK, and MCP identically. Valid keys (existing `manager.test.ts` cases) unaffected. `rg "A-Za-z][A-Za-z0-9_]"` (the identifier pattern) finds exactly one literal occurrence (`core/state/manager.ts`) plus its usages — zero independent copies in `src/tui/**`. |
 
 ## Acceptance criteria (verbatim from ticket 11)
@@ -211,6 +234,16 @@ secret-key gap as the one deliberate behavior change.
   namespaces/secrets.ts`, currently read-only — `get()` only) or to MCP — out of scope. The
   ticket's "SDK/MCP inherit enforcement" claim is about the shared seam (any future caller of
   `StateManager.setSecret` gets the check for free), not about adding new SDK/MCP surfaces.
+- **Merging the two core Zod `PortSchema` definitions** (`core/config/schema.ts` and
+  `core/settings/schema.ts`) into one shared schema. Both encode the identical 1-65535 bound,
+  so this is a real core-vs-core duplication — but it is a different finding than AP-dup-03
+  (which is about TUI hand-copies vs the authoritative Zod schema, not two core schemas), the
+  audit never examined it (Coverage lists `core/settings` as not examined in depth), and
+  whether a stage-default port and a config port are "one rule" or "two rules that agree
+  today" is a design question, not mechanical dedup. This ticket points each TUI validator at
+  its own domain's authoritative schema (config validator → config `PortSchema`, stage-defaults
+  validator → settings `PortSchema`), which fully closes the TUI hand-copies; the two core
+  schemas staying separate is recorded as a follow-up (F-2) for a future ticket.
 - `src/core/config/resolver.ts`'s `checkConfigCompleteness` (stage-required-secrets check) —
   a different check than the three-check validate algorithm this ticket consolidates; already
   correctly single-sourced, not touched.
@@ -218,3 +251,8 @@ secret-key gap as the one deliberate behavior change.
 ## Change log
 
 - 2026-07-12 — initial spec.
+- 2026-07-12 — checkpoint 2 scope extended: a fourth port-bound hand-copy in
+  `SettingsStageEditScreen.tsx` (surfaced by the CP2 implementer, not in AP-dup-03's evidence
+  list) is included so the "no surviving copies" acceptance criterion holds repo-wide; wired to
+  the authoritative **settings** `PortSchema`. Merging the two core `PortSchema` definitions is
+  explicitly deferred (see Out of scope + F-2). No accept/reject change.
