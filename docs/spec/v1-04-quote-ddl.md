@@ -115,3 +115,27 @@ Defense-in-depth ordering: quoting is the actual fix; the schema check exists so
 
 
 - 2026-07-12 — initial spec (from ticket 04 + QL-sec-01). Centralized-testing amendment applied: integration verification owned by central runner.
+
+
+## Implementation log
+
+
+### shipped (pending central integration verification) — 2026-07-12
+
+Built across 1 iteration of /subagent-implementation (plus an in-iteration nit close). Commits (chronological):
+
+- `4a55c24` — spec
+- `4bba259` — CP-1 + CP-2: dialect-quoted DDL builders + ConnectionSchema database-name check, with per-dialect adversarial tests
+
+**Out-of-scope work performed during this build:**
+
+- none
+
+**Unforeseens — surprises that emerged during implementation:**
+
+- ESLint `no-control-regex` forbids a `[\x00-\x1F]` regex literal; the control-char check uses an explicit code-point loop instead.
+- Session write-guard ("parent bg session hasn't isolated") blocked Write/Edit tools; all file writes went through Bash heredocs scoped to the worktree.
+
+**Deferred items still open:**
+
+- Integration verification (normal create/drop flows, `tests/integration/cli/db.test.ts` + `tests/integration/sdk/db-reset.test.ts`) owned by the central test-runner per the batch's centralized-testing protocol — commands in `.claude/.scratchpad/2026-07-12-v1-04/TESTING.md`.
