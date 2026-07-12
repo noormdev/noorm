@@ -18,7 +18,7 @@ Apply every pending change in chronological order:
 **Headless:**
 ```bash
 noorm change ff
-noorm --json change ff
+noorm change ff --json
 ```
 
 Fast-forward is the workhorse for deployments. It finds all unapplied changes, sorts them by date, and executes each one in sequence. If any change fails, execution stops immediately.
@@ -272,7 +272,7 @@ noorm run build
 noorm change ff
 
 # Verify the result
-noorm --json db explore
+noorm db explore --json
 ```
 
 The build step handles the initial schema. The fast-forward applies any changes that have been merged since the last deploy.

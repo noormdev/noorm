@@ -190,8 +190,8 @@ Same pipeline, but templates need vault-decrypted secrets:
 Use `--json` for structured output:
 
 ```bash
-noorm --json ci init | jq '.stateFile'
-noorm --json run build | jq '.status'
+noorm ci init --json | jq '.stateFile'
+noorm run build --json | jq '.status'
 ```
 
 

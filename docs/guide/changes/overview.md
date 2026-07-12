@@ -208,7 +208,7 @@ From the headless CLI, `noorm change list` prints every known change with its st
 
 ```bash
 noorm change list             # Human-friendly table
-noorm --json change list      # Same data as JSON
+noorm change list --json      # Same data as JSON
 ```
 
 ```json

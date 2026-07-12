@@ -196,7 +196,7 @@ noorm vault init
 noorm vault set API_KEY "$API_KEY"
 
 # List with JSON output
-noorm --json vault list
+noorm vault list --json
 
 # Copy secrets between environments
 noorm vault cp --all staging production

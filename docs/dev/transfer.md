@@ -569,7 +569,7 @@ noorm db transfer --to backup --dry-run
 noorm db transfer --to backup --truncate
 
 # JSON output for scripting
-noorm --json db transfer --to backup
+noorm db transfer --to backup --json
 
 # Export single table to .dt file
 noorm db transfer --export ./backup/users.dt --tables users

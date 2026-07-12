@@ -192,7 +192,6 @@ Environment variables override stored config values. This is how you inject secr
 |----------|---------|
 | `NOORM_CONFIG` | Which config to use |
 | `NOORM_YES` | Skip confirmations (set to `1`) |
-| `NOORM_JSON` | JSON output mode (set to `1`) |
 
 **Example: Override host for CI runner**
 

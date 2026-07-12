@@ -161,7 +161,7 @@ noorm vault set DB_PASSWORD "$DB_PASSWORD"
 echo "$DB_PASSWORD" | noorm vault set DB_PASSWORD
 
 # List vault secrets as JSON
-noorm --json vault list
+noorm vault list --json
 
 # Remove a vault secret
 noorm vault rm OLD_API_KEY

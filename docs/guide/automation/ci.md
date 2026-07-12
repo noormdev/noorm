@@ -295,7 +295,7 @@ noorm lock acquire
 trap "noorm lock release" EXIT
 
 noorm change ff
-noorm --json db explore
+noorm db explore --json
 ```
 
 

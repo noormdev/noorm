@@ -30,7 +30,7 @@ Not every command accepts every flag — append `--help` to any command to see t
 
 **Example:**
 ```bash
-noorm --json --config prod change ff
+noorm --config prod change ff --json
 noorm change ff --help       # Per-command help, rendered by citty
 ```
 
@@ -386,7 +386,7 @@ Colored console output with status icons:
 Use `--json` for machine-readable output:
 
 ```bash
-noorm --json change ff | jq '.executed'
+noorm change ff --json | jq '.executed'
 ```
 
 JSON mode disables colors and outputs structured data.
@@ -436,7 +436,7 @@ jobs:
               run: noorm change ff
 
             - name: Export schema (optional)
-              run: noorm --json -c prod db explore > schema.json
+              run: noorm -c prod db explore --json > schema.json
 ```
 
 
@@ -480,7 +480,7 @@ set -e
 CONFIG="${1:-}"  # Optional, falls back to active config
 
 echo "Checking for pending changes..."
-PENDING=$(noorm --json ${CONFIG:+-c "$CONFIG"} change | jq '[.[] | select(.status=="pending")] | length')
+PENDING=$(noorm ${CONFIG:+-c "$CONFIG"} change --json | jq '[.[] | select(.status=="pending")] | length')
 
 if [ "$PENDING" -gt 0 ]; then
     echo "Applying $PENDING pending changes..."
@@ -516,7 +516,7 @@ noorm change ff
 
 2. **Use `--json` for scripting** - Easier to parse than text output
    ```bash
-   noorm --json change | jq '.[] | select(.status=="pending")'
+   noorm change --json | jq '.[] | select(.status=="pending")'
    ```
 
 3. **Check exit codes** - Non-zero means failure
