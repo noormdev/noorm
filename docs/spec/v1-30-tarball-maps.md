@@ -98,3 +98,24 @@ Skipped because: packaging-config only (a `package.json` `files` array entry) �
 ## Change log
 
 - 2026-07-12 — initial spec from ticket 30 + VR-hyg-06. Mechanism (files-array negation) pre-verified against both npm and bun packers before implementation to remove ambiguity for the implementer.
+
+
+## Implementation log
+
+### shipped — 2026-07-12
+
+Built across 1 iteration of /subagent-implementation. Commits (chronological):
+
+- `0fd0628a3ebbea13b28fb1c665958686ed609fe1` — CP-1 add `"!dist/**/*.map"` to packages/sdk/package.json files array
+
+**Out-of-scope work performed during this build:**
+
+- none
+
+**Unforeseens — surprises that emerged during implementation:**
+
+- none — mechanism was pre-verified against both npm and bun packers before dispatch, so implementation was a single-line change with no discovery needed.
+
+**Deferred items still open:**
+
+- none — reviewer returned 0🔴 0🟡 0🔵 0❓, FOLLOWUPS.md empty.
