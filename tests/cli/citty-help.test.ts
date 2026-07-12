@@ -59,3 +59,44 @@ describe('cli: citty help interceptor', () => {
     });
 
 });
+
+describe('cli: citty help interceptor - breadcrumb depth', () => {
+
+    it('should print the full parent breadcrumb for a 2-level-deep command (change add)', () => {
+
+        const { stdout, code } = runCli(['change', 'add', '--help']);
+
+        expect(code).toBe(0);
+        expect(stdout).toContain('USAGE noorm change add');
+
+    });
+
+    it('should print the full parent breadcrumb for a 3-level-deep command (db explore tables)', () => {
+
+        const { stdout, code } = runCli(['db', 'explore', 'tables', '--help']);
+
+        expect(code).toBe(0);
+        expect(stdout).toContain('USAGE noorm db explore tables');
+
+    });
+
+    it('should print the full parent breadcrumb for a 3-level-deep command (ci identity enroll)', () => {
+
+        const { stdout, code } = runCli(['ci', 'identity', 'enroll', '--help']);
+
+        expect(code).toBe(0);
+        expect(stdout).toContain('USAGE noorm ci identity enroll');
+
+    });
+
+    it('should print a single noorm segment for root --help, never doubled', () => {
+
+        const { stdout, code } = runCli(['--help']);
+
+        expect(code).toBe(0);
+        expect(stdout).toContain('USAGE noorm ');
+        expect(stdout).not.toContain('noorm noorm');
+
+    });
+
+});

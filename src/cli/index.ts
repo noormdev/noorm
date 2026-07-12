@@ -73,11 +73,14 @@ const main = defineCommand({
  * Walk argv one positional at a time to find the target command.
  *
  * Stops at the first flag (token starting with `-`) or unknown subcommand.
- * Returns the resolved command definition object.
+ * Returns the resolved command definition plus the ordered chain of parent
+ * command names (root to immediate parent) walked to reach it, so callers
+ * can rebuild the full USAGE breadcrumb instead of citty's single-level one.
  */
-async function resolveCommand(rootDef: CommandDef, argv: string[]): Promise<CommandDef> {
+async function resolveCommand(rootDef: CommandDef, argv: string[]): Promise<{ cmd: CommandDef; parentNames: string[] }> {
 
     let current: unknown = rootDef;
+    const parentNames: string[] = [];
 
     for (const arg of argv) {
 
@@ -92,11 +95,16 @@ async function resolveCommand(rootDef: CommandDef, argv: string[]): Promise<Comm
             break;
 
         }
+
+        const meta = await (typeof resolved.meta === 'function' ? resolved.meta() : resolved.meta);
+        parentNames.push(meta?.name ?? arg);
         current = sub;
 
     }
 
-    return typeof current === 'function' ? await (current as () => Promise<CommandDef>)() : current as CommandDef;
+    const cmd = typeof current === 'function' ? await (current as () => Promise<CommandDef>)() : current as CommandDef;
+
+    return { cmd, parentNames };
 
 }
 
@@ -223,10 +231,18 @@ function rewriteBareSqlArgv(argv: string[]): string[] {
 /**
  * Print citty's usage followed by a custom EXAMPLES block from
  * the command's top-level `examples` property (if present).
+ *
+ * citty's renderUsage only concatenates one level (`parent.meta.name + ' ' +
+ * cmd.meta.name`), so a synthetic parent joining the full breadcrumb is
+ * built here rather than always passing the absolute root command.
  */
-async function printHelpWithExamples(cmd: CommandWithExamples, rootDef: CommandDef): Promise<void> {
+async function printHelpWithExamples(cmd: CommandWithExamples, parentNames: string[]): Promise<void> {
 
-    const usage = await renderUsage(cmd, rootDef);
+    const parent: CommandDef | undefined = parentNames.length > 0
+        ? { meta: { name: parentNames.join(' ') } }
+        : undefined;
+
+    const usage = await renderUsage(cmd, parent);
     process.stdout.write(usage + '\n');
 
     if (cmd.examples && cmd.examples.length > 0) {
@@ -300,8 +316,8 @@ async function entry(): Promise<void> {
 
     if (rawArgs.includes('--help') || rawArgs.includes('-h')) {
 
-        const cmd = await resolveCommand(main as CommandDef, rawArgs);
-        await printHelpWithExamples(cmd as CommandWithExamples, main as CommandDef);
+        const { cmd, parentNames } = await resolveCommand(main as CommandDef, rawArgs);
+        await printHelpWithExamples(cmd as CommandWithExamples, parentNames);
         process.exit(0);
 
     }
