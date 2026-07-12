@@ -21,7 +21,7 @@
  * await lifecycle.shutdown('user')
  * ```
  */
-import { attempt } from '@logosdx/utils';
+import { attempt, runWithTimeout } from '@logosdx/utils';
 
 import { observer } from '../observer.js';
 import { getConnectionManager } from '../connection/manager.js';
@@ -340,7 +340,7 @@ export class LifecycleManager {
 
         // Execute all resources with timeout
         const [, err] = await attempt(() =>
-            this.#executeWithTimeout(() => this.#executePhaseResources(resources), timeout),
+            runWithTimeout(() => this.#executePhaseResources(resources), { timeout, throws: true }),
         );
 
         const durationMs = Date.now() - start;
@@ -374,37 +374,6 @@ export class LifecycleManager {
             }
 
         }
-
-    }
-
-    /**
-     * Execute a function with a timeout.
-     */
-    async #executeWithTimeout<T>(fn: () => Promise<T>, timeoutMs: number): Promise<T> {
-
-        return new Promise((resolve, reject) => {
-
-            const timer = setTimeout(() => {
-
-                reject(new Error(`Timeout after ${timeoutMs}ms`));
-
-            }, timeoutMs);
-
-            fn()
-                .then((result) => {
-
-                    clearTimeout(timer);
-                    resolve(result);
-
-                })
-                .catch((error) => {
-
-                    clearTimeout(timer);
-                    reject(error);
-
-                });
-
-        });
 
     }
 
