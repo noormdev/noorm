@@ -48,10 +48,9 @@ The schema artifact this project implements lives at `tmp/llm-memory-db.pseudo` 
 ## Setup
 
 
-The actual order matters — `noorm db create` requires an active named config, so configs must be imported before the database can be created. From inside `examples/llm-memory-db-pg/`, create `dev.json` and `test.json`:
+The actual order matters — `noorm db create` requires an active named config, so configs must be imported before the database can be created. From inside `examples/llm-memory-db-pg/`, create `dev.json`:
 
 ```json
-// dev.json
 {
     "name": "dev",
     "connection": {
@@ -66,8 +65,9 @@ The actual order matters — `noorm db create` requires an active named config, 
 }
 ```
 
+Then create `test.json`:
+
 ```json
-// test.json
 {
     "name": "test",
     "connection": {
