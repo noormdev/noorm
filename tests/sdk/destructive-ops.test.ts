@@ -50,7 +50,7 @@ function makeConfig(access: ConfigAccess): Config {
 
 }
 
-function makeState(access: ConfigAccess): ContextState {
+function makeState(access: ConfigAccess, options: ContextState['options'] = {}): ContextState {
 
     return {
         connection: null,
@@ -60,7 +60,7 @@ function makeState(access: ConfigAccess): ContextState {
             name: 'tester',
             source: 'system',
         },
-        options: {},
+        options,
         projectRoot: '/tmp',
         changeManager: null,
     };
@@ -101,6 +101,43 @@ describe('sdk: access-guarded destructive ops', () => {
             const db = new DbNamespace(makeState(OPERATOR_ACCESS));
 
             await expect(db.reset()).rejects.toThrow(ProtectedConfigError);
+
+        });
+
+    });
+
+    // ─────────────────────────────────────────────────────
+    // DbNamespace — options.yes: true (context created with the
+    // programmatic --yes equivalent) satisfies the db:reset confirm
+    // cell for operator role without NOORM_YES in the environment
+    // ─────────────────────────────────────────────────────
+
+    describe('DbNamespace on operator-role config with options.yes: true', () => {
+
+        it('should not throw ProtectedConfigError for truncate()', async () => {
+
+            const db = new DbNamespace(makeState(OPERATOR_ACCESS, { yes: true }));
+            const err = await db.truncate().catch((e: unknown) => e);
+
+            expect(err).not.toBeInstanceOf(ProtectedConfigError);
+
+        });
+
+        it('should not throw ProtectedConfigError for teardown()', async () => {
+
+            const db = new DbNamespace(makeState(OPERATOR_ACCESS, { yes: true }));
+            const err = await db.teardown().catch((e: unknown) => e);
+
+            expect(err).not.toBeInstanceOf(ProtectedConfigError);
+
+        });
+
+        it('should not throw ProtectedConfigError for reset()', async () => {
+
+            const db = new DbNamespace(makeState(OPERATOR_ACCESS, { yes: true }));
+            const err = await db.reset().catch((e: unknown) => e);
+
+            expect(err).not.toBeInstanceOf(ProtectedConfigError);
 
         });
 

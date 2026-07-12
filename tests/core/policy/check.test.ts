@@ -159,6 +159,30 @@ describe('policy: checkPolicy', () => {
 
     });
 
+    it('should skip user-channel confirmation when NOORM_YES=yes (unified truthiness, not just 1/true)', () => {
+
+        process.env['NOORM_YES'] = 'yes';
+
+        const check = checkPolicy('user', targetFor('operator', 'prod'), 'change:run');
+
+        expect(check.allowed).toBe(true);
+        expect(check.requiresConfirmation).toBe(false);
+        expect(check.confirmationPhrase).toBeUndefined();
+
+    });
+
+    it('should still require confirmation when NOORM_YES=0 (unified truthiness stays falsy for 0)', () => {
+
+        process.env['NOORM_YES'] = '0';
+
+        const check = checkPolicy('user', targetFor('operator', 'prod'), 'change:run');
+
+        expect(check.allowed).toBe(true);
+        expect(check.requiresConfirmation).toBe(true);
+        expect(check.confirmationPhrase).toBe('yes-prod');
+
+    });
+
     it('should deny with a blockedReason when access.mcp is false', () => {
 
         const target: PolicyTarget = { name: 'invisible', access: { user: 'admin', mcp: false } };

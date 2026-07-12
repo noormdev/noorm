@@ -315,4 +315,63 @@ describe('checkProtectedConfig', () => {
 
     });
 
+    it('throws ProtectedConfigError for operator role on db:reset when options.yes is absent and NOORM_YES is unset', () => {
+
+        const config = makeConfig(OPERATOR_ACCESS, { name: 'prod' });
+
+        expect(() => checkProtectedConfig(config, { channel: 'user' }, 'db:reset', 'truncate')).toThrow(ProtectedConfigError);
+
+    });
+
+    it('allows a confirm cell for operator role (db:reset) once options.yes is true, without NOORM_YES', () => {
+
+        const config = makeConfig(OPERATOR_ACCESS, { name: 'prod' });
+
+        const [, err] = attemptSync(() => checkProtectedConfig(config, { channel: 'user', yes: true }, 'db:reset', 'truncate'));
+
+        expect(err).toBeNull();
+
+    });
+
+    it('denies db:reset on the mcp channel even when options.yes is true (operator config, mcp resolves to viewer -> deny)', () => {
+
+        const config = makeConfig(OPERATOR_ACCESS, { name: 'prod' });
+
+        expect(() => checkProtectedConfig(config, { channel: 'mcp', yes: true }, 'db:reset', 'truncate')).toThrow(ProtectedConfigError);
+
+    });
+
+    it('denies db:reset on the mcp channel via the confirm-to-deny collapse, even when options.yes is true (mcp:operator hits a confirm cell, not a plain deny)', () => {
+
+        // mcp:'viewer' above hits db:reset's deny cell directly and never
+        // reaches checkPolicy's mcp-collapse branch (check.ts ~68-75). Here
+        // mcp:'operator' resolves db:reset to the same 'confirm' cell as the
+        // user channel, so this only denies if the mcp channel collapses
+        // confirm-to-deny before options.yes is ever consulted -- the
+        // invariant spec C2 pins. If that collapse branch were removed,
+        // options.yes: true would satisfy requiresConfirmation and this
+        // would NOT throw.
+        const config = makeConfig({ user: 'operator', mcp: 'operator' }, { name: 'prod' });
+
+        expect(() => checkProtectedConfig(config, { channel: 'mcp', yes: true }, 'db:reset', 'truncate')).toThrow(ProtectedConfigError);
+
+    });
+
+    it('names --yes in the confirmation message alongside NOORM_YES=1', () => {
+
+        const config = makeConfig(ADMIN_ACCESS, { name: 'prod' });
+
+        expect.assertions(2);
+
+        const [, err] = attemptSync(() => checkProtectedConfig(config, {}, 'db:destroy', 'drop'));
+
+        if (err instanceof ProtectedConfigError) {
+
+            expect(err.message).toContain('--yes');
+            expect(err.message).toContain('NOORM_YES=1');
+
+        }
+
+    });
+
 });

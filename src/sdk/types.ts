@@ -61,6 +61,14 @@ export interface CreateContextOptions {
      */
     channel?: Channel;
 
+    /**
+     * Pre-confirm operations that a policy `confirm` cell would otherwise
+     * block — the programmatic equivalent of the CLI's --yes. Only
+     * meaningful on the user channel; mcp collapses confirm to deny
+     * before this is consulted. Default: false.
+     */
+    yes?: boolean;
+
 }
 
 // ─────────────────────────────────────────────────────────────
