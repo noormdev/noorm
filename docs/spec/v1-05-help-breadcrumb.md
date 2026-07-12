@@ -81,3 +81,27 @@ The EXAMPLES block (`cmd.examples` appended after the usage line) is untouched �
 ## Change log
 
 - 2026-07-12 — initial spec (from ticket 05 + VR-cli-02).
+
+
+## Implementation log
+
+### shipped (unit-green; central integration verification n/a) — 2026-07-12
+
+Built across 1 iteration of /subagent-implementation (reviewer PASS, 0 findings). Commits (chronological):
+
+- `368d43c` — spec
+- `089403f` — CP-1: resolveCommand returns {cmd, parentNames}; printHelpWithExamples builds joined-breadcrumb synthetic parent for renderUsage; entry() call site updated; 4 breadcrumb tests (change add / db explore tables / ci identity enroll / root-not-doubled), red-first
+
+**Out-of-scope work performed during this build:**
+
+- none
+
+**Unforeseens — surprises that emerged during implementation:**
+
+- Spec's illustrative meta-resolution snippet (`typeof x === 'function' ? await x() : x`) didn't typecheck: citty's `Resolvable<CommandMeta>` admits a bare `Promise<CommandMeta>`, not only a thunk. Implemented as `await (typeof resolved.meta === 'function' ? resolved.meta() : resolved.meta)`, matching citty's own `resolveValue` + `await` pattern — strictly more robust. Reviewer confirmed correct.
+- The root `(noorm noorm v0.0.0)` header (not just the USAGE line) was also fixed for free — citty derives both from the same `commandName`.
+- Session write-guard blocked Write/Edit tools (parent bg session not isolated); all file writes went through Bash heredocs scoped to the worktree.
+
+**Deferred items still open:**
+
+- none (reviewer returned 0 findings; FOLLOWUPS ledger empty)
