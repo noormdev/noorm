@@ -266,3 +266,40 @@ it's needed) is recorded for the central runner, not executed in this iteration.
   implementer via TDD (un-skipped test still failed after the first fix; traced to the double
   invocation rather than guessing a workaround). CP1's file list expanded to include
   `src/core/db/types.ts` and `src/cli/db/create.ts`.
+
+## Implementation log
+
+### shipped — 2026-07-12
+
+Built across 2 iterations of /subagent-implementation, stacked on `v1/08-dangerous-tests`
+(`35e19e6`). Commits (chronological):
+
+- `6819c29` — docs(spec): the spec itself.
+- `714ede5` — CP1+CP2: SQLite pre-probe existence capture in `checkDbStatus`, `precheckedStatus`
+  threading through `createDb`, un-skip of ticket 08's F-1 test, and the new existing-target
+  regression test.
+
+**Out-of-scope work performed during this build:**
+
+- Expanded CP1 from the ticket's initially-implied single-file fix (`operations.ts`) to also touch
+  `src/core/db/types.ts` and `src/cli/db/create.ts`. Necessary: the `checkDbStatus` pre-probe fix
+  alone is insufficient because the CLI calls `checkDbStatus` twice (once in `create.ts`, once
+  inside `createDb`), and the first call's probe auto-creates the file before the second's check.
+  Threading the CLI's status through is exactly the ticket's own sanctioned alternative ("thread
+  the pre-probe existence state through"). Blast radius verified minimal (`createDb`: one caller;
+  `checkDbStatus`: two call sites).
+
+**Unforeseens — surprises that emerged during implementation:**
+
+- The double-`checkDbStatus` invocation was not in the original root-cause chain — the spec's
+  first draft traced only `createDb → checkDbStatus → testConnection`. Iteration 1's implementer
+  surfaced it via TDD (the un-skipped test still failed after the isolated fix) and correctly
+  reported BLOCKED rather than reaching for a module-scope existence cache (which it flagged as
+  reproducing this repo's own env-snapshot contamination anti-pattern). Spec corrected in place.
+
+**Deferred items still open:**
+
+- FOLLOWUPS F-1: no *named* automated live-DB assertion pins pg/mysql/mssql `created` semantics —
+  the guarantee is structural (sqlite-gated fix, reviewer-confirmed) plus the existing
+  `tests/integration` run. Recorded for the central runner; optional future ticket to add an
+  explicit per-dialect `created`-flag assertion to `tests/integration/cli/db.test.ts`.
