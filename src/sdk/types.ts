@@ -88,7 +88,7 @@ export interface BuildOptions {
  *
  * @example
  * ```typescript
- * const [result, err] = await ctx.exportTable('users', './exports/users.dtz', {
+ * const [result, err] = await ctx.noorm.dt.exportTable('users', './exports/users.dtz', {
  *     passphrase: 'secret',
  *     batchSize: 5000,
  * });
@@ -114,7 +114,7 @@ export interface ExportOptions {
  *
  * @example
  * ```typescript
- * const [result, err] = await ctx.importFile('./exports/users.dtz', {
+ * const [result, err] = await ctx.noorm.dt.importFile('./exports/users.dtz', {
  *     onConflict: 'skip',
  *     truncate: true,
  * });

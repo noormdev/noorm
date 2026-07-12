@@ -91,12 +91,12 @@ async function main(): Promise<void> {
 If no project is found and the user is heading to the home screen, they're redirected to the init screen to create a project.
 
 
-## SDK Usage
+## Internal Usage Without `chdir`
 
-SDKs might want discovery without the automatic `chdir`:
+Internal callers (this module lives at `src/core/project.ts` — it is not exported from the published `@noormdev/sdk` package) might want discovery without the automatic `chdir`:
 
 ```typescript
-import { findProjectRoot } from 'noorm/core'
+import { findProjectRoot } from './core/project.js'
 
 // Find project root
 const { projectRoot, hasProject } = findProjectRoot()

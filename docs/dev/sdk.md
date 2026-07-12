@@ -13,17 +13,17 @@ The noorm SDK provides programmatic access to noorm-managed databases. Use it fo
 
 ## Installation
 
-The SDK is part of the main noorm package:
+The SDK is published as a standalone `@noormdev/sdk` package:
 
-```typescript
-import { createContext } from 'noorm/sdk'
+```bash
+pnpm add @noormdev/sdk
 ```
 
 
 ## Quick Start
 
 ```typescript
-import { createContext } from 'noorm/sdk'
+import { createContext } from '@noormdev/sdk'
 
 // Create a typed context for the 'dev' config
 const ctx = await createContext<{ users: { id: number; name: string } }>({
@@ -90,11 +90,9 @@ interface CreateContextOptions {
 }
 ```
 
-> **Finding the project root**: Unlike the CLI, the SDK does not automatically walk up directories to find the project. Pass `projectRoot` explicitly, or use [Project Discovery](./project-discovery.md) to find it first:
+> **Finding the project root**: `projectRoot` defaults to `process.cwd()`. That's correct when your script runs from the project directory. When running from elsewhere (a monorepo tooling package, a CI step with a different working directory), pass the directory containing `.noorm/` explicitly:
 > ```typescript
-> import { findProjectRoot } from 'noorm/core'
-> const { projectRoot } = findProjectRoot()
-> const ctx = await createContext({ projectRoot })
+> const ctx = await createContext({ projectRoot: '/path/to/project' })
 > ```
 
 ```typescript
@@ -850,7 +848,7 @@ ctx.noorm.observer.on('change:complete', (event) => {
 ### Test Suites (Jest/Vitest)
 
 ```typescript
-import { createContext, Context } from 'noorm/sdk'
+import { createContext, Context } from '@noormdev/sdk'
 
 describe('User API', () => {
     let ctx: Context
@@ -887,7 +885,7 @@ describe('User API', () => {
 ### Scripts and Tooling
 
 ```typescript
-import { createContext } from 'noorm/sdk'
+import { createContext } from '@noormdev/sdk'
 
 // Data export script
 const ctx = await createContext({ config: 'prod' })
@@ -907,7 +905,7 @@ await ctx.disconnect()
 ### Type Generation
 
 ```typescript
-import { createContext } from 'noorm/sdk'
+import { createContext } from '@noormdev/sdk'
 
 const ctx = await createContext({ config: 'dev' })
 await ctx.connect()
@@ -925,7 +923,7 @@ await ctx.disconnect()
 ### CI/CD Pipeline
 
 ```typescript
-import { createContext } from 'noorm/sdk'
+import { createContext } from '@noormdev/sdk'
 
 const ctx = await createContext({ config: process.env.DB_CONFIG })
 await ctx.connect()
@@ -954,7 +952,7 @@ import {
     RequireTestError,
     ProtectedConfigError,
     LockAcquireError,
-} from 'noorm/sdk'
+} from '@noormdev/sdk'
 
 try {
     const ctx = await createContext({ config: 'prod', requireTest: true })

@@ -770,14 +770,14 @@ noorm version
 noorm --json version
 ```
 
-### help
+### --help
 
-Show help for any command.
+Show help for any command. There is no `help` subcommand — append `--help` (or `-h`) to any command instead.
 
 ```bash
-noorm help
-noorm help config use
-noorm help change ff
+noorm --help
+noorm config use --help
+noorm change ff --help
 ```
 
 ---
