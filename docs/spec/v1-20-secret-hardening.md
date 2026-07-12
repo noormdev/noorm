@@ -88,3 +88,4 @@ Each checkpoint is one iteration: TDD (failing test first), then implementation,
 ## Change log
 
 - 2026-07-12 — initial spec from ticket 20 + audit findings (QL-sec-02/04/05/06).
+- 2026-07-12 — all three checkpoints implemented and reviewer-gated PASS (203101f, cd6b4c4, a5b39ca). CP-4 (state.enc mode 0600) was folded into CP-1's scope, not a separate checkpoint -- see the File modes per artifact table. No contract deviations.
