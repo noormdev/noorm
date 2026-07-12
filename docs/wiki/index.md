@@ -4,14 +4,14 @@ type: Index
 ---
 
 <wiki-type>repo</wiki-type>
-<scan-sha>f4d4ca36e98785afdb428172b90890d2f69ca66e</scan-sha>
+<scan-sha>5d44b591675fd6d4e22e63bdad27a0154433004c</scan-sha>
 <wiki-schema>1</wiki-schema>
 
 # Project signals
 
 ## Framework & runtime
 
-- **Language:** TypeScript (80% LOC, 872 files), Bun runtime (>=1.2), Node >=22.13
+- **Language:** TypeScript (80% LOC, 887 files), Bun runtime (>=1.2), Node >=22.13
 - **SQL layer:** Kysely query builder + executor; dialect-aware across PostgreSQL, MySQL, MSSQL, SQLite
 - **TUI:** Ink 6 + React 19 ([`src/tui/`](../../src/tui)); Citty for CLI arg parsing ([`src/cli/`](../../src/cli))
 - **Event bus:** `@logosdx/observer` (`ObserverEngine`); module-scope singleton in [`src/core/observer.ts`](../../src/core/observer.ts)
@@ -42,8 +42,8 @@ CI gate: lint → typecheck → build → 4 test groups → 3 example jobs. Inte
 
 | Language | LOC | Files | % |
 |----------|-----|-------|---|
-| TypeScript | 204246 | 886 | 80% |
-| Markdown | 43000 | 195 | 17% |
+| TypeScript | 204655 | 887 | 80% |
+| Markdown | 43261 | 198 | 17% |
 | YAML | 1114 | 16 | 1% |
 | JavaScript | 1005 | 22 | 1% |
 | HTML | 955 | 26 | 2% |
