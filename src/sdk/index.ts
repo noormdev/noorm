@@ -191,6 +191,7 @@ export type { TvpValue } from './tvp.js';
 
 // Guards (errors for catching)
 export { RequireTestError, ProtectedConfigError, NotConnectedError } from './guards.js';
+export { VaultAccessError } from './namespaces/vault.js';
 
 // Impersonation
 export { ImpersonationError } from './impersonate/index.js';
