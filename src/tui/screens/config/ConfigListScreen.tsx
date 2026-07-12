@@ -27,7 +27,7 @@ import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
 import { Panel, SelectList, type SelectListItem } from '../../components/index.js';
 import { syncIdentityWithConfig } from '../../../core/identity/index.js';
-import { guarded } from '../../../core/policy/index.js';
+import { formatAccessTag } from '../../../core/policy/index.js';
 import type { ConfigAccess } from '../../../core/policy/index.js';
 
 /**
@@ -39,21 +39,6 @@ interface ConfigListValue {
     isActive: boolean;
     access: ConfigAccess;
     isTest: boolean;
-}
-
-/**
- * Formats access as `user:<role> mcp:<role|off>` — same format as
- * `noorm config list` (`src/cli/config/list.ts`) — omitted entirely for
- * fully open (admin/admin) configs.
- */
-function formatAccessTag(config: { name: string; access: ConfigAccess }): string | null {
-
-    if (!guarded(config)) return null;
-
-    const { access } = config;
-
-    return `user:${access.user} mcp:${access.mcp === false ? 'off' : access.mcp}`;
-
 }
 
 /**

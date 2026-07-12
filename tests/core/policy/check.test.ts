@@ -2,7 +2,7 @@
  * Access policy: checkPolicy + guarded.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
-import { assertPolicy, checkConfigPolicy, checkPolicy, confirmationPhraseFor, guarded } from '../../../src/core/policy/index.js';
+import { assertPolicy, checkConfigPolicy, checkPolicy, confirmationPhraseFor, formatAccessTag, guarded } from '../../../src/core/policy/index.js';
 import type { Channel, Permission, PolicyCell, PolicyTarget, Role } from '../../../src/core/policy/index.js';
 
 /**
@@ -264,6 +264,34 @@ describe('policy: guarded', () => {
     it('should be true for viewer', () => {
 
         expect(guarded(targetFor('viewer'))).toBe(true);
+
+    });
+
+});
+
+describe('policy: formatAccessTag', () => {
+
+    it('should render "user:<role> mcp:<role>" for a guarded config', () => {
+
+        const config: PolicyTarget = { name: 'prod', access: { user: 'operator', mcp: 'viewer' } };
+
+        expect(formatAccessTag(config)).toBe('user:operator mcp:viewer');
+
+    });
+
+    it('should render "mcp:off" when access.mcp is false', () => {
+
+        const config: PolicyTarget = { name: 'prod', access: { user: 'viewer', mcp: false } };
+
+        expect(formatAccessTag(config)).toBe('user:viewer mcp:off');
+
+    });
+
+    it('should return null for an admin/admin (fully open) config', () => {
+
+        const config: PolicyTarget = { name: 'prod', access: { user: 'admin', mcp: 'admin' } };
+
+        expect(formatAccessTag(config)).toBeNull();
 
     });
 

@@ -167,3 +167,22 @@ export function guarded(target: PolicyTarget): boolean {
     return target.access.user !== 'admin';
 
 }
+
+/**
+ * Formats access as `user:<role> mcp:<role|off>` — the shared display
+ * string for `noorm config list` and the TUI config list screen, so the
+ * format can't drift between the two. Omitted entirely (`null`) for fully
+ * open (admin/admin) configs, per `guarded()`.
+ *
+ * @example
+ * formatAccessTag({ name: 'prod', access: { user: 'operator', mcp: false } }); // 'user:operator mcp:off'
+ */
+export function formatAccessTag(config: { name: string; access: ConfigAccess }): string | null {
+
+    if (!guarded(config)) return null;
+
+    const { access } = config;
+
+    return `user:${access.user} mcp:${access.mcp === false ? 'off' : access.mcp}`;
+
+}

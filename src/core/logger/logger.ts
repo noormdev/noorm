@@ -23,8 +23,6 @@ import { join, dirname } from 'node:path';
 import { createWriteStream } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 
-import dayjs from 'dayjs';
-
 import { observer, type NoormEvents } from '../observer.js';
 import { isCi } from '../environment.js';
 import { classifyEvent, shouldLog } from './classifier.js';
@@ -32,6 +30,7 @@ import { generateMessage } from './formatter.js';
 import { formatColorLine } from './color.js';
 import { filterData } from './redact.js';
 import { checkAndRotate } from './rotation.js';
+import { formatLogTimestamp, formatLogTimestampIso } from './timestamp.js';
 import type { LogLevel, LoggerConfig, LoggerState, EntryLevel } from './types.js';
 import { DEFAULT_LOGGER_CONFIG } from './types.js';
 import type { Settings } from '../settings/types.js';
@@ -514,7 +513,7 @@ export class Logger {
         else if (this.#color) {
 
             // Colored format: [timestamp] icon event  message  key=value key=value
-            const timestamp = dayjs().format('YY-MM-DD HH:mm:ss');
+            const timestamp = formatLogTimestamp(new Date());
             const colorLine = formatColorLine(
                 level,
                 event,
@@ -527,7 +526,7 @@ export class Logger {
         else {
 
             // Plain format: [timestamp] [LEVEL] [event] message
-            const timestamp = dayjs().format('YY-MM-DD HH:mm:ss');
+            const timestamp = formatLogTimestamp(new Date());
             const levelLabel = level.toUpperCase().padEnd(5);
             let line = `[${timestamp}] [${levelLabel}] [${event}] ${message}`;
 
@@ -586,7 +585,7 @@ export class Logger {
     ): Record<string, unknown> {
 
         const entry: Record<string, unknown> = {
-            time: dayjs().format('YYYY-MM-DDTHH:mm:ss.SSSZ'),
+            time: formatLogTimestampIso(new Date()),
             type: event,
             level,
             message,

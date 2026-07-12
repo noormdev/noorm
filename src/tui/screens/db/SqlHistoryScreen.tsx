@@ -30,6 +30,7 @@ import { SqlHistoryManager } from '../../../core/sql-terminal/index.js';
 
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime.js';
+import v from 'voca';
 
 dayjs.extend(relativeTime);
 
@@ -42,19 +43,6 @@ function formatDuration(ms: number): string {
     if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
 
     return `${(ms / 60000).toFixed(1)}m`;
-
-}
-
-/**
- * Truncate SQL for display.
- */
-function truncateSql(sql: string, maxLen: number): string {
-
-    const oneLine = sql.replace(/\s+/g, ' ').trim();
-
-    if (oneLine.length <= maxLen) return oneLine;
-
-    return oneLine.slice(0, maxLen - 3) + '...';
 
 }
 
@@ -373,7 +361,7 @@ export function SqlHistoryScreen({ params: _params }: ScreenProps): ReactElement
                                         inverse={isHighlighted}
                                         color={entry.success ? undefined : 'red'}
                                     >
-                                        {truncateSql(entry.query, 60)}
+                                        {v.truncate(entry.query.replace(/\s+/g, ' ').trim(), 60)}
                                     </Text>
                                 </Box>
                                 <Box marginLeft={2} gap={1}>
