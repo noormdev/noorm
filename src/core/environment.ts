@@ -130,19 +130,6 @@ export function shouldSkipConfirmations(): boolean {
 }
 
 /**
- * Check if output should be JSON.
- *
- * Returns true if NOORM_JSON is set, enabling headless/parseable output.
- */
-export function shouldOutputJson(): boolean {
-
-    const json = process.env['NOORM_JSON'];
-
-    return json === '1' || json === 'true';
-
-}
-
-/**
  * Get the active config name from environment.
  *
  * Returns the value of NOORM_CONFIG if set.

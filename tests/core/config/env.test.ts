@@ -12,7 +12,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import {
     getEnvConfig,
 } from '../../../src/core/config/index.js';
-import { getEnvConfigName, isCi, isEnvTruthy, shouldOutputJson, shouldSkipConfirmations } from '../../../src/core/environment.js';
+import { getEnvConfigName, isCi, isEnvTruthy, shouldSkipConfirmations } from '../../../src/core/environment.js';
 
 describe('config: env', () => {
 
@@ -488,32 +488,6 @@ describe('config: env', () => {
             expect(isEnvTruthy('00')).toBe(true);
             expect(isEnvTruthy(' ')).toBe(true);
             expect(isEnvTruthy(' 0')).toBe(true);
-
-        });
-
-    });
-
-    describe('shouldOutputJson', () => {
-
-        it('should return false when not set', () => {
-
-            expect(shouldOutputJson()).toBe(false);
-
-        });
-
-        it('should return true when NOORM_JSON=1', () => {
-
-            process.env['NOORM_JSON'] = '1';
-
-            expect(shouldOutputJson()).toBe(true);
-
-        });
-
-        it('should return true when NOORM_JSON=true', () => {
-
-            process.env['NOORM_JSON'] = 'true';
-
-            expect(shouldOutputJson()).toBe(true);
 
         });
 
