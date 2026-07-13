@@ -64,10 +64,83 @@ export const TEST_CONNECTIONS: Record<Dialect, ConnectionConfig> = {
 const FIXTURES_DIR = join(import.meta.dirname, '..', 'fixtures', 'sql');
 
 /**
+ * Error thrown when a resolved connection's database name does not look
+ * like a dedicated test database.
+ *
+ * `createTestConnection` targets run destructive operations (truncate,
+ * teardown, drop) — this stops a stray `.env`, a leaked CI secret, or a
+ * copy-pasted production env file from pointing that suite at a real
+ * database with nothing in the code path to stop it.
+ *
+ * @example
+ * ```typescript
+ * throw new NotATestDatabaseError('postgres', 'prod_analytics')
+ * ```
+ */
+export class NotATestDatabaseError extends Error {
+
+    override readonly name = 'NotATestDatabaseError' as const;
+
+    constructor(
+        public readonly dialect: Dialect,
+        public readonly database: string | undefined,
+    ) {
+
+        const resolved = database ? `"${database}"` : '(unset)';
+        const envVar = `TEST_${dialect.toUpperCase()}_DATABASE`;
+
+        super(
+            `Refusing to connect: ${dialect} database ${resolved} does not look like a test ` +
+            'database. The test suite runs destructive operations (truncate, teardown, drop). ' +
+            'Use a database whose name is ":memory:" or contains "test" as a word ' +
+            `(e.g. "noorm_test"), or set ${envVar} to a dedicated test database, e.g. "noorm_test".`,
+        );
+
+    }
+
+}
+
+/**
+ * Assert that a connection's resolved database name looks like a test
+ * database.
+ *
+ * `checkRequireTest` (`src/sdk/guards.ts`) gates on the declared
+ * `Config.isTest` flag, but `createTestConnection` only holds a
+ * `ConnectionConfig` with no `isTest` field — this naming-convention
+ * check is the single source of truth for the test harness's fallback
+ * guard. Pure synchronous validation, no I/O.
+ *
+ * @throws NotATestDatabaseError unless `config.database` is `:memory:`
+ * or contains "test" as a `_`/`-`-delimited word
+ *
+ * @example
+ * ```typescript
+ * assertTestDatabase({ dialect: 'postgres', database: 'noorm_test' }) // no-op
+ * assertTestDatabase({ dialect: 'postgres', database: 'prod' }) // throws
+ * ```
+ */
+export function assertTestDatabase(config: ConnectionConfig): void {
+
+    const { dialect, database } = config;
+    const isMemory = database === ':memory:';
+    const isTestNamed = Boolean(database) && /(^|[_-])test([_-]|$)/i.test(database ?? '');
+
+    if (!isMemory && !isTestNamed) {
+
+        throw new NotATestDatabaseError(dialect, database);
+
+    }
+
+}
+
+/**
  * Create a test database connection.
  *
  * @param dialect - Database dialect to connect to
  * @returns Connection result with db instance and destroy function
+ *
+ * @throws NotATestDatabaseError if the resolved database name doesn't
+ * look like a test database — checked before any connection attempt
  *
  * @example
  * ```typescript
@@ -83,6 +156,8 @@ const FIXTURES_DIR = join(import.meta.dirname, '..', 'fixtures', 'sql');
 export async function createTestConnection(dialect: Dialect): Promise<ConnectionResult> {
 
     const config = TEST_CONNECTIONS[dialect];
+
+    assertTestDatabase(config);
 
     return createConnection(config, `__test_${dialect}__`);
 
