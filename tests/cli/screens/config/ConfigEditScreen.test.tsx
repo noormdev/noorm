@@ -129,6 +129,37 @@ describe('cli: ConfigEditScreen', () => {
 
     });
 
+    it('should not fire a "hooks order changed" warning across the async-load boundary', async () => {
+
+        mockStateManager = createMockStateManager('prod', makeConfig('prod'));
+        mockSettingsManager = createMockSettingsManager({ prod: { locked: true } });
+
+        const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+        const { unmount } = render(
+            <TestWrapper>
+                <ConfigEditScreen params={{ name: 'prod' }} />
+            </TestWrapper>,
+        );
+
+        // AppContextProvider's autoLoad kicks off async stateManager/config
+        // resolution; the initial render (config unresolved) takes the
+        // early-return branch, then a later render (config resolved) reaches
+        // the bottom of the component - the exact transition that changes
+        // hook count if useStdout is called after the returns.
+        await new Promise((r) => setTimeout(r, 200));
+
+        const hooksOrderWarning = consoleErrorSpy.mock.calls.some(
+            (call) => typeof call[0] === 'string' && call[0].includes('change in the order of Hooks'),
+        );
+
+        expect(hooksOrderWarning).toBe(false);
+
+        consoleErrorSpy.mockRestore();
+        unmount();
+
+    });
+
     it('should pass a SettingsProvider into the rename-path deleteConfig call', async () => {
 
         mockStateManager = createMockStateManager('prod', makeConfig('prod'));
