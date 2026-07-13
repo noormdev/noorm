@@ -73,3 +73,57 @@ Both are satisfied by Checkpoint 1's (b)/(c) pair (absence-vs-failure) and by ev
 
 - 2026-07-12 — initial spec, authored by orchestrator pre-implementation.
 - 2026-07-12 — Checkpoint 3 corrected mid-implementation: the absent-table exportTable path does not fast-fail in `buildDtSchema` (returns empty, reaches the worker pipeline), and a `.dtz` bad path hangs on an unforwarded gunzip stream error. Switched (b) to a destroyed-connection fast-fail and (c) to a `.dt` path. Both empirically verified against live containers. The `.dtz` reader hang is a real `src/core/dt/reader.ts` bug logged as a follow-up (out of this test-only ticket's scope).
+
+## Implementation log
+
+### shipped (pending user ship decision) — 2026-07-12
+
+Built across 4 iterations of `/subagent-implementation` (3 checkpoint cycles + 1
+tightening cycle for a reviewer follow-up), each implement→review with an independent
+revert-probe. Stacked on `v1/33-observer` @ `168da07`. Live-run against the shared
+pg@15432 / mysql@13306 / mssql@11433 containers. Commits (chronological):
+
+- `86b6e76` — docs(spec): this spec
+- `567993c` — CP1: `tests/integration/sdk/vault-namespace.test.ts` — 15 tests (a)-(e) × 3
+  dialects
+- `2b208c6` — CP2: `tests/integration/sdk/transfer-namespace.test.ts` — 7 tests
+  (unreachable-dest failure × 3 + pg happy-path plan)
+- `8ab5bc0` — docs(spec): CP3 correction (verified dt failure modes)
+- `d3a4c3b` — CP3: `tests/integration/sdk/dt-namespace.test.ts` — 9 tests (a)-(c) × 3
+  dialects
+- `74a8f9b` — F-1 tightening: case (f) isolating `getVaultSecret`'s read-path throw × 3
+  dialects (vault suite now 18 tests)
+- `02e0843` — docs(followups): defer F-2
+
+Final live run: 31 tests across the 3 new files (18 vault + 7 transfer + 9 dt), 0 fail,
+~3s serial; full `tests/integration/sdk` group 72 pass / 0 fail (no regression to
+`db-reset`/`tvf`/`tvp`). `bun run typecheck`, `bun run lint`, `bun run build` all exit 0.
+
+**Out-of-scope work performed during this build:**
+
+- None to `src/**` — test-only ticket, held. The `.dtz` reader bug found during CP3 was
+  logged, not fixed (see below).
+
+**Unforeseens — surprises that emerged during implementation:**
+
+- pg/mssql route vault/identity tables through a schema-qualified `noorm.*` layout created
+  by `v2.up`, not the `v1.up`-only bootstrap the spec's Harness section assumed. A v1-only
+  bootstrap leaves `noorm.identities`/`noorm.vault` unreachable by the production vault code
+  (which reads via `noormDb()`/`getNoormTables()`), so the vault test bootstraps `v1.up`+
+  `v2.up` and tears down with an idempotent `.ifExists()` sweep. Test-file-only.
+- `dt.exportTable` on a nonexistent *table name* does NOT fast-fail — `buildDtSchema`'s
+  column lookup returns an empty result set (not a SQL error), so the export falls through
+  to the full worker pipeline (~11 min). CP3 case (b) was switched to a destroyed-connection
+  fast-fail (sub-ms). Spec CP3 row + risk table corrected (commit `8ab5bc0`).
+- `DtReader` hangs on a bad `.dtz` path: `fileStream.pipe(gunzip)` never forwards the source
+  `'error'`, so ENOENT becomes an unhandled stream error instead of a rejection. CP3 case (c)
+  uses `.dt` to avoid it; the bug itself is a real `src/core/dt/reader.ts` defect, deferred
+  (F-2), not fixed (out of test-only scope).
+
+**Deferred items still open:**
+
+- F-1 (🟡) — closed in iteration 4 (`74a8f9b`): case (c) proved only `getVaultKey`'s
+  infra-failure throw (identity read fires first); case (f) added to isolate `getVaultSecret`'s
+  own read-path throw via a vault-secrets-table-only drop after `vault.init()`.
+- F-2 (🟡) — deferred to `.claude/project/followups/v1-38-sdk-integration-f-2.md`: the
+  `.dtz` reader hang. Real production defect, own ticket. Not fixed here.
