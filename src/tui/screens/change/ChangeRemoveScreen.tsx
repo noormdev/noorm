@@ -23,9 +23,10 @@ import { attempt } from '@logosdx/utils';
 import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
-import { Panel, Spinner, StatusMessage, Confirm, MissingParamPanel } from '../../components/index.js';
+import { Panel, Spinner, StatusMessage, SmartConfirm, MissingParamPanel } from '../../components/index.js';
+import { checkConfigPolicy } from '../../../core/policy/index.js';
 import { useAsyncEffect } from '../../hooks/index.js';
-import { getErrorMessage, loadChangesWithStatus } from '../../utils/index.js';
+import { getErrorMessage, loadChangesWithStatus, isConfigGuarded } from '../../utils/index.js';
 import { deleteChange } from '../../../core/change/scaffold.js';
 import { ChangeHistory } from '../../../core/change/history.js';
 import { createConnection } from '../../../core/connection/factory.js';
@@ -48,6 +49,7 @@ export function ChangeRemoveScreen({ params }: ScreenProps): ReactElement {
     const { navigate: _navigate, back } = useRouter();
     const { isFocused } = useFocusScope('ChangeRemove');
     const { activeConfig, activeConfigName, projectRoot, settings } = useAppContext();
+    const check = activeConfig ? checkConfigPolicy('user', activeConfig, 'change:rm') : null;
 
     const changeName = params.name;
 
@@ -195,6 +197,17 @@ export function ChangeRemoveScreen({ params }: ScreenProps): ReactElement {
 
     }
 
+    // Denied by policy
+    if (check && !check.allowed) {
+
+        return (
+            <Panel title="Delete Change" paddingX={2} paddingY={1} borderColor="red">
+                <Text color="red">{check.blockedReason}</Text>
+            </Panel>
+        );
+
+    }
+
     // Loading
     if (step === 'loading') {
 
@@ -217,7 +230,7 @@ export function ChangeRemoveScreen({ params }: ScreenProps): ReactElement {
                     : 'This change has not been applied.';
 
         return (
-            <Panel title="Delete Change" paddingX={2} paddingY={1} borderColor="yellow">
+            <Panel title="Delete Change" paddingX={2} paddingY={1} borderColor={isConfigGuarded(activeConfig) ? 'yellow' : undefined}>
                 <Box flexDirection="column" gap={1}>
                     <Text>
                         Delete change:{' '}
@@ -237,7 +250,11 @@ export function ChangeRemoveScreen({ params }: ScreenProps): ReactElement {
 
                     <Text color="yellow">{warningMessage}</Text>
 
-                    <Confirm
+                    <SmartConfirm
+                        requiresConfirmation={check?.requiresConfirmation ?? false}
+                        confirmationPhrase={check?.confirmationPhrase}
+                        configName={activeConfigName ?? 'config'}
+                        action="delete this change"
                         message="Are you sure you want to delete this change?"
                         onConfirm={handleDelete}
                         onCancel={handleCancel}
