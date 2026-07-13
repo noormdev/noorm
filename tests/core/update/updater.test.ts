@@ -14,7 +14,7 @@ import { readFile, stat, mkdtemp, rm } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
-import { attempt } from '@logosdx/utils';
+import { attempt, wait } from '@logosdx/utils';
 
 import { downloadToFile } from '../../../src/core/update/updater.js';
 import { observer } from '../../../src/core/observer.js';
@@ -35,6 +35,49 @@ const RESUME_ETAG = '"asset-v1"';
 // (sent a byte range) rather than restarting from scratch.
 let resumeRanges: Array<string | null> = [];
 
+// 128 KiB — enough to force multiple pull() cycles for the 1.5 MB PAYLOAD, so
+// the mock server delivers a body over several ticks instead of one
+// native-buffered blob. A single-tick, instantly-complete body is what
+// triggers a Bun runtime race in `for await` iteration over `response.body`
+// (see docs/spec/v1-37-updater-flake.md, "Root-cause hypothesis and
+// evidence") — this keeps the streaming tests deterministic without
+// touching production code.
+const CHUNK_SIZE = 128 * 1024;
+
+/**
+ * Streams `data` out in bounded pieces via a pull()-based ReadableStream,
+ * yielding cooperatively between enqueues so consumers see the body arrive
+ * over multiple ticks rather than as one instantly-complete chunk.
+ *
+ * @example
+ * new Response(chunkedStream(PAYLOAD));
+ */
+function chunkedStream(data: Uint8Array, chunkSize = CHUNK_SIZE): ReadableStream<Uint8Array> {
+
+    let offset = 0;
+
+    return new ReadableStream({
+        async pull(controller) {
+
+            if (offset >= data.byteLength) {
+
+                controller.close();
+
+                return;
+
+            }
+
+            const end = Math.min(offset + chunkSize, data.byteLength);
+            controller.enqueue(data.slice(offset, end));
+            offset = end;
+
+            await wait(0);
+
+        },
+    });
+
+}
+
 beforeAll(async () => {
 
     workDir = await mkdtemp(join(tmpdir(), 'noorm-updater-test-'));
@@ -48,7 +91,7 @@ beforeAll(async () => {
             // Healthy download with a correct Content-Length.
             if (url.pathname === '/ok') {
 
-                return new Response(PAYLOAD, {
+                return new Response(chunkedStream(PAYLOAD), {
                     headers: { 'content-length': String(PAYLOAD.byteLength) },
                 });
 
@@ -104,7 +147,7 @@ beforeAll(async () => {
 
                 const startByte = Number(/bytes=(\d+)-/.exec(range)?.[1] ?? 0);
 
-                return new Response(PAYLOAD.slice(startByte), {
+                return new Response(chunkedStream(PAYLOAD.slice(startByte)), {
                     status: 206,
                     headers: {
                         etag: RESUME_ETAG,

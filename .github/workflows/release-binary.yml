@@ -29,10 +29,18 @@ jobs:
             - name: Build binaries
               run: bun run build:binary
 
+            - name: Generate checksums
+              working-directory: packages/cli/bin
+              run: |
+                  shasum -a 256 noorm-* > checksums.txt
+                  cat checksums.txt
+
             - name: Upload binaries to release
               uses: softprops/action-gh-release@v2
               with:
                   tag_name: ${{ steps.version.outputs.tag }}
-                  files: packages/cli/bin/noorm-*
+                  files: |
+                      packages/cli/bin/noorm-*
+                      packages/cli/bin/checksums.txt
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

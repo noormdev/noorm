@@ -4,9 +4,54 @@ set -e
 # noorm installer
 # Usage: curl -fsSL https://noorm.dev/install.sh | sh
 #    or: curl -fsSL https://raw.githubusercontent.com/noormdev/noorm/master/install.sh | sh
+#
+# NOORM_INSECURE: set to a truthy value (anything other than empty, "0", or "false")
+#   to skip checksum verification when checksums.txt is unreachable, has no entry
+#   for this platform, or no sha256 tool is available. Does NOT bypass a confirmed
+#   checksum mismatch -- a verified bad hash always aborts the install.
 
 REPO="noormdev/noorm"
 BINARY_NAME="noorm"
+
+# NOORM_INSECURE truthy check -- mirrors the TS isInsecureMode/isYesMode convention:
+# any value other than empty, "0", or "false" (case-insensitive) counts as truthy.
+is_insecure() {
+    case "$NOORM_INSECURE" in
+        ''|0|false|FALSE|False) return 1 ;;
+        *) return 0 ;;
+    esac
+}
+
+# Compare $file's sha256 against its entry (matched by $asset name) in $checksums.
+# Sets $verify_result to "match", "mismatch", or "unverifiable" (no entry / no
+# hashing tool present -- the caller decides whether NOORM_INSECURE allows that).
+verify_checksum() {
+    file="$1"
+    checksums="$2"
+    asset="$3"
+
+    expected=$(awk -v a="$asset" '$2 == a { print $1 }' "$checksums" | head -n1)
+
+    if [ -z "$expected" ]; then
+        verify_result="unverifiable"
+        return
+    fi
+
+    if command -v shasum >/dev/null 2>&1; then
+        actual=$(shasum -a 256 "$file" | awk '{ print $1 }')
+    elif command -v sha256sum >/dev/null 2>&1; then
+        actual=$(sha256sum "$file" | awk '{ print $1 }')
+    else
+        verify_result="unverifiable"
+        return
+    fi
+
+    if [ "$expected" = "$actual" ]; then
+        verify_result="match"
+    else
+        verify_result="mismatch"
+    fi
+}
 
 main() {
     os=$(detect_os)
@@ -33,6 +78,45 @@ main() {
         rm -f "$tmpfile"
         exit 1
     fi
+
+    asset="noorm-${suffix}"
+    url_checksums="https://github.com/${REPO}/releases/download/${tag}/checksums.txt"
+    checksums_file=$(mktemp)
+
+    if curl -fsSL -o "$checksums_file" "$url_checksums"; then
+        have_checksums=1
+    else
+        have_checksums=0
+    fi
+
+    if [ "$have_checksums" -eq 1 ]; then
+        verify_checksum "$tmpfile" "$checksums_file" "$asset"
+    else
+        verify_result="unverifiable"
+    fi
+
+    case "$verify_result" in
+        match)
+            echo "Checksum verified for ${asset}."
+            ;;
+        mismatch)
+            echo "Error: checksum mismatch for ${asset} -- downloaded binary does not match checksums.txt." >&2
+            rm -f "$tmpfile" "$checksums_file"
+            exit 1
+            ;;
+        unverifiable)
+            if is_insecure; then
+                echo "Warning: could not verify checksum for ${asset} (checksums.txt unreachable, no matching entry, or no sha256 tool available) -- proceeding unverified because NOORM_INSECURE is set." >&2
+            else
+                echo "Error: could not verify checksum for ${asset} (checksums.txt unreachable, no matching entry, or no sha256 tool available)." >&2
+                echo "Set NOORM_INSECURE=1 to bypass this check and install unverified (never bypasses a confirmed mismatch)." >&2
+                rm -f "$tmpfile" "$checksums_file"
+                exit 1
+            fi
+            ;;
+    esac
+
+    rm -f "$checksums_file"
 
     chmod +x "$tmpfile"
     mkdir -p "$install_dir"

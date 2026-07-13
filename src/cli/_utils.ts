@@ -33,6 +33,7 @@ export interface CliArgs {
     force?: boolean;
     dryRun?: boolean;
     yes?: boolean;
+    insecure?: boolean;
     [key: string]: unknown;
 }
 
@@ -77,6 +78,37 @@ export function isYesMode(args: CliArgs): boolean {
     if (args.yes) return true;
 
     const env = process.env['NOORM_YES'];
+
+    if (env === undefined || env === '') return false;
+    if (env === '0') return false;
+    if (env.toLowerCase() === 'false') return false;
+
+    return true;
+
+}
+
+/**
+ * Determine whether the user has opted out of binary checksum verification.
+ *
+ * Returns true when either the `--insecure` flag is set or the
+ * `NOORM_INSECURE` environment variable holds a truthy value. Mirrors
+ * `isYesMode`'s exact truthy-string parsing so both escape hatches behave
+ * identically from a shell's point of view.
+ *
+ * This only ever widens the "we couldn't verify" case — checksums.txt
+ * unreachable — into a warning. It never downgrades a confirmed checksum
+ * mismatch, which always fails regardless of this flag.
+ *
+ * @example
+ * if (isInsecureMode(args)) {
+ *     process.stderr.write('Warning: checksum verification will be skipped if checksums.txt is unreachable.\n');
+ * }
+ */
+export function isInsecureMode(args: CliArgs): boolean {
+
+    if (args.insecure) return true;
+
+    const env = process.env['NOORM_INSECURE'];
 
     if (env === undefined || env === '') return false;
     if (env === '0') return false;

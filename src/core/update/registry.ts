@@ -67,17 +67,12 @@ export interface RegistryPackageInfo {
  */
 export async function fetchPackageInfo(): Promise<RegistryPackageInfo | null> {
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
-
     const [response, fetchErr] = await attempt(() =>
         fetch(REGISTRY_URL, {
-            signal: controller.signal,
+            signal: AbortSignal.timeout(TIMEOUT_MS),
             headers: { 'Accept': 'application/json' },
         }),
     );
-
-    clearTimeout(timeoutId);
 
     if (fetchErr) {
 
