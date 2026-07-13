@@ -67,7 +67,7 @@ const rewindCommand = defineCommand({
 
                     const summaryMsg = `Rewind: ${res.status} (${res.executed} reverted, ${res.failed} failed)`;
 
-                    if (res.status === 'failed') {
+                    if (res.status !== 'success') {
 
                         logger.error(summaryMsg);
 
@@ -116,7 +116,7 @@ const rewindCommand = defineCommand({
 
         }
 
-        process.exit(result.status === 'failed' ? 2 : 0);
+        process.exit(result.status === 'success' ? 0 : 2);
 
     },
 });

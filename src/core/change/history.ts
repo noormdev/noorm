@@ -49,6 +49,43 @@ import type {
 import type { ChangeType } from '../shared/index.js';
 
 // ─────────────────────────────────────────────────────────────
+// Date Hydration
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Normalizes a change-tracking timestamp column to a real `Date`.
+ *
+ * WHY: postgres/mysql/mssql drivers parse `executed_at` into a `Date`
+ * automatically, but SQLite (both `bun:sqlite` and `better-sqlite3`)
+ * hands back the raw `CURRENT_TIMESTAMP` text (`'YYYY-MM-DD HH:MM:SS'`,
+ * always UTC, no offset marker). Parsing that string with `new Date(str)`
+ * directly reads it as local time, silently shifting the result by the
+ * host's UTC offset — so the string must be marked UTC explicitly first.
+ *
+ * @example
+ * hydrateDate('2026-07-12 09:02:59') // -> 2026-07-12T09:02:59.000Z
+ * hydrateDate(new Date('2026-07-12T09:02:59.000Z')) // -> unchanged
+ * hydrateDate(null) // -> null
+ */
+export function hydrateDate(value: Date | string | null | undefined): Date | null {
+
+    if (value === null || value === undefined) {
+
+        return null;
+
+    }
+
+    if (value instanceof Date) {
+
+        return value;
+
+    }
+
+    return new Date(`${value.replace(' ', 'T')}Z`);
+
+}
+
+// ─────────────────────────────────────────────────────────────
 // History Class
 // ─────────────────────────────────────────────────────────────
 
@@ -169,9 +206,9 @@ export class ChangeHistory {
         return {
             name: record.name,
             status: record.status,
-            appliedAt: record.executed_at,
+            appliedAt: hydrateDate(record.executed_at),
             appliedBy: record.executed_by,
-            revertedAt: revertRecord?.executed_at ?? null,
+            revertedAt: hydrateDate(revertRecord?.executed_at),
             errorMessage: record.error_message || null,
         };
 
@@ -220,7 +257,7 @@ export class ChangeHistory {
                 statuses.set(record.name, {
                     name: record.name,
                     status: record.status,
-                    appliedAt: record.executed_at,
+                    appliedAt: hydrateDate(record.executed_at),
                     appliedBy: record.executed_by,
                     revertedAt: null, // Will be filled in below
                     errorMessage: record.error_message || null,
@@ -253,7 +290,7 @@ export class ChangeHistory {
                 if (!seenReverts.has(revert.name) && statuses.has(revert.name)) {
 
                     const status = statuses.get(revert.name)!;
-                    status.revertedAt = revert.executed_at;
+                    status.revertedAt = hydrateDate(revert.executed_at);
                     seenReverts.add(revert.name);
 
                 }
@@ -908,7 +945,9 @@ export class ChangeHistory {
             name: r.name,
             direction: r.direction,
             status: r.status,
-            executedAt: r.executed_at,
+            // Non-null: executed_at is NOT NULL with a CURRENT_TIMESTAMP
+            // default, always populated on write (see createOperation).
+            executedAt: hydrateDate(r.executed_at)!,
             executedBy: r.executed_by,
             durationMs: r.duration_ms,
             errorMessage: r.error_message || null,
@@ -981,7 +1020,9 @@ export class ChangeHistory {
             changeType: r.change_type,
             direction: r.direction,
             status: r.status,
-            executedAt: r.executed_at,
+            // Non-null: executed_at is NOT NULL with a CURRENT_TIMESTAMP
+            // default, always populated on write (see createOperation).
+            executedAt: hydrateDate(r.executed_at)!,
             executedBy: r.executed_by,
             durationMs: r.duration_ms,
             errorMessage: r.error_message || null,
