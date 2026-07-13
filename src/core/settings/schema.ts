@@ -6,6 +6,8 @@
  */
 import { z } from 'zod';
 
+import { PortSchema } from '../connection/defaults.js';
+
 // ─────────────────────────────────────────────────────────────
 // Base Schemas
 // ─────────────────────────────────────────────────────────────
@@ -30,14 +32,7 @@ const ConnectionTypeSchema = z.enum(['local', 'remote']);
  */
 const LogLevelSchema = z.enum(['silent', 'error', 'warn', 'info', 'verbose']);
 
-/**
- * Port number validation.
- */
-export const PortSchema = z
-    .number()
-    .int()
-    .min(1, 'Port must be at least 1')
-    .max(65535, 'Port must be at most 65535');
+export { PortSchema };
 
 /**
  * File size pattern (e.g., '10mb', '100kb').

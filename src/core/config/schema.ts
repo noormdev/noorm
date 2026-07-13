@@ -6,6 +6,7 @@
  */
 import { z } from 'zod';
 
+import { PortSchema } from '../connection/defaults.js';
 import { resolveLegacyAccess } from '../policy/index.js';
 import type { ConfigAccess } from '../policy/index.js';
 
@@ -57,14 +58,7 @@ export const ConfigNameSchema = z
         'Config name must contain only letters, numbers, hyphens, and underscores',
     );
 
-/**
- * Port number validation.
- */
-export const PortSchema = z
-    .number()
-    .int()
-    .min(1, 'Port must be at least 1')
-    .max(65535, 'Port must be at most 65535');
+export { PortSchema };
 
 /**
  * Connection pool configuration.
