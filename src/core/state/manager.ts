@@ -78,20 +78,23 @@ export interface StateManagerOptions {
  */
 export class StateManager {
 
-    private state: State | null = null;
-    private privateKey: string | undefined;
-    private statePath: string;
-    private loaded = false;
+    #state: State | null = null;
+    #privateKey: string | undefined;
+    #statePath: string;
+    #loaded = false;
+    // eslint-disable-next-line no-unused-private-class-members
+    #projectRoot: string;
 
     constructor(
-        private readonly projectRoot: string,
+        projectRoot: string,
         options: StateManagerOptions = {},
     ) {
 
-        this.privateKey = options.privateKey;
+        this.#projectRoot = projectRoot;
+        this.#privateKey = options.privateKey;
         const stateDir = options.stateDir ?? DEFAULT_STATE_DIR;
         const stateFile = options.stateFile ?? DEFAULT_STATE_FILE;
-        this.statePath = join(projectRoot, stateDir, stateFile);
+        this.#statePath = join(projectRoot, stateDir, stateFile);
 
     }
 
@@ -108,15 +111,15 @@ export class StateManager {
      */
     async load(): Promise<void> {
 
-        if (this.loaded) return;
+        if (this.#loaded) return;
 
         // Try to load private key if not provided
-        if (!this.privateKey) {
+        if (!this.#privateKey) {
 
             const [key] = await attempt(() => loadPrivateKey());
             if (key) {
 
-                this.privateKey = key;
+                this.#privateKey = key;
 
             }
 
@@ -125,10 +128,10 @@ export class StateManager {
         const currentVersion = getPackageVersion();
 
         // New project - no state file yet
-        if (!existsSync(this.statePath)) {
+        if (!existsSync(this.#statePath)) {
 
-            this.state = createEmptyState(currentVersion);
-            this.loaded = true;
+            this.#state = createEmptyState(currentVersion);
+            this.#loaded = true;
             observer.emit('state:loaded', {
                 configCount: 0,
                 activeConfig: null,
@@ -140,7 +143,7 @@ export class StateManager {
         }
 
         // Existing state file - require private key
-        if (!this.privateKey) {
+        if (!this.#privateKey) {
 
             throw new Error(
                 'Private key required to decrypt state. ' + 'Set up identity with: noorm init',
@@ -148,7 +151,7 @@ export class StateManager {
 
         }
 
-        const [raw, readErr] = attemptSync(() => readFileSync(this.statePath, 'utf8'));
+        const [raw, readErr] = attemptSync(() => readFileSync(this.#statePath, 'utf8'));
         if (readErr) {
 
             observer.emit('error', { source: 'state', error: readErr });
@@ -164,7 +167,7 @@ export class StateManager {
 
         }
 
-        const [decrypted, decryptErr] = attemptSync(() => decrypt(payload!, this.privateKey!));
+        const [decrypted, decryptErr] = attemptSync(() => decrypt(payload!, this.#privateKey!));
         if (decryptErr) {
 
             observer.emit('error', { source: 'state', error: decryptErr });
@@ -195,7 +198,7 @@ export class StateManager {
         const needsVersionMigration =
             needsMigration(schemaMigratedState, currentVersion) ||
             needsStateMigration(stateRecord);
-        this.state = migrateState(schemaMigratedState, currentVersion);
+        this.#state = migrateState(schemaMigratedState, currentVersion);
 
         // Raw-data-boundary invariant: migrations above guarantee every
         // config carries `access`, but a hand-edited or corrupted state
@@ -216,7 +219,7 @@ export class StateManager {
         // to operator/viewer, never the admin/admin fallback.
         let backfilledAccess = false;
 
-        for (const config of Object.values(this.state.configs)) {
+        for (const config of Object.values(this.#state.configs)) {
 
             if (!config.access) {
 
@@ -233,19 +236,19 @@ export class StateManager {
 
         }
 
-        this.loaded = true;
+        this.#loaded = true;
 
         // Persist if migrations were applied or the backfill above mutated a config
         if (needsVersionMigration || backfilledAccess) {
 
-            this.persist();
+            this.#persist();
 
         }
 
         observer.emit('state:loaded', {
-            configCount: Object.keys(this.state.configs).length,
-            activeConfig: this.state.activeConfig,
-            version: this.state.version,
+            configCount: Object.keys(this.#state.configs).length,
+            activeConfig: this.#state.activeConfig,
+            version: this.#state.version,
         });
 
     }
@@ -264,7 +267,7 @@ export class StateManager {
         const [key] = await attempt(() => loadPrivateKey());
         if (key) {
 
-            this.privateKey = key;
+            this.#privateKey = key;
 
             return true;
 
@@ -279,9 +282,9 @@ export class StateManager {
      *
      * Requires private key to be set.
      */
-    private persist(): void {
+    #persist(): void {
 
-        if (!this.privateKey) {
+        if (!this.#privateKey) {
 
             throw new Error(
                 'Private key required to save state. ' + 'Set up identity with: noorm init',
@@ -289,9 +292,9 @@ export class StateManager {
 
         }
 
-        const state = this.getState();
+        const state = this.#getState();
 
-        const dir = dirname(this.statePath);
+        const dir = dirname(this.#statePath);
         if (!existsSync(dir)) {
 
             mkdirSync(dir, { recursive: true });
@@ -299,10 +302,10 @@ export class StateManager {
         }
 
         const json = JSON.stringify(state);
-        const payload = encrypt(json, this.privateKey);
+        const payload = encrypt(json, this.#privateKey);
 
         const [, writeErr] = attemptSync(() =>
-            writeFileSync(this.statePath, JSON.stringify(payload, null, 2), { mode: 0o600 }),
+            writeFileSync(this.#statePath, JSON.stringify(payload, null, 2), { mode: 0o600 }),
         );
 
         if (writeErr) {
@@ -313,7 +316,7 @@ export class StateManager {
         }
 
         // Ensure permissions are correct (writeFile mode may not work on all platforms)
-        attemptSync(() => chmodSync(this.statePath, 0o600));
+        attemptSync(() => chmodSync(this.#statePath, 0o600));
 
         observer.emit('state:persisted', {
             configCount: Object.keys(state.configs).length,
@@ -324,15 +327,15 @@ export class StateManager {
     /**
      * Get the loaded state, throwing if not loaded.
      */
-    private getState(): State {
+    #getState(): State {
 
-        if (!this.loaded || !this.state) {
+        if (!this.#loaded || !this.#state) {
 
             throw new Error('StateManager not loaded. Call load() first.');
 
         }
 
-        return this.state;
+        return this.#state;
 
     }
 
@@ -345,7 +348,7 @@ export class StateManager {
      */
     getConfig(name: string): Config | null {
 
-        const state = this.getState();
+        const state = this.#getState();
 
         return state.configs[name] ?? null;
 
@@ -356,11 +359,11 @@ export class StateManager {
      */
     async setConfig(name: string, config: Config): Promise<void> {
 
-        const state = this.getState();
+        const state = this.#getState();
         const isNew = !state.configs[name];
 
         state.configs[name] = { ...config };
-        this.persist();
+        this.#persist();
 
         observer.emit(isNew ? 'config:created' : 'config:updated', {
             name,
@@ -378,7 +381,7 @@ export class StateManager {
 
         assertCanDeleteConfig(name, settings);
 
-        const state = this.getState();
+        const state = this.#getState();
         delete state.configs[name];
         delete state.secrets[name];
 
@@ -388,7 +391,7 @@ export class StateManager {
 
         }
 
-        this.persist();
+        this.#persist();
         observer.emit('config:deleted', { name });
 
     }
@@ -398,7 +401,7 @@ export class StateManager {
      */
     listConfigs(): ConfigSummary[] {
 
-        const state = this.getState();
+        const state = this.#getState();
 
         return Object.entries(state.configs).map(([name, config]) => ({
             name,
@@ -417,7 +420,7 @@ export class StateManager {
      */
     getActiveConfig(): Config | null {
 
-        const state = this.getState();
+        const state = this.#getState();
         if (!state.activeConfig) return null;
 
         return state.configs[state.activeConfig] ?? null;
@@ -429,7 +432,7 @@ export class StateManager {
      */
     getActiveConfigName(): string | null {
 
-        const state = this.getState();
+        const state = this.#getState();
 
         return state.activeConfig;
 
@@ -440,7 +443,7 @@ export class StateManager {
      */
     async setActiveConfig(name: string): Promise<void> {
 
-        const state = this.getState();
+        const state = this.#getState();
         if (!state.configs[name]) {
 
             throw new Error(`Config "${name}" does not exist.`);
@@ -449,7 +452,7 @@ export class StateManager {
 
         const previous = state.activeConfig;
         state.activeConfig = name;
-        this.persist();
+        this.#persist();
 
         observer.emit('config:activated', { name, previous });
 
@@ -464,7 +467,7 @@ export class StateManager {
      */
     getSecret(configName: string, key: string): string | null {
 
-        const state = this.getState();
+        const state = this.#getState();
 
         return state.secrets[configName]?.[key] ?? null;
 
@@ -475,7 +478,7 @@ export class StateManager {
      */
     getAllSecrets(configName: string): Record<string, string> {
 
-        const state = this.getState();
+        const state = this.#getState();
 
         return state.secrets[configName] ? { ...state.secrets[configName] } : {};
 
@@ -492,7 +495,7 @@ export class StateManager {
 
         }
 
-        const state = this.getState();
+        const state = this.#getState();
 
         if (!state.configs[configName]) {
 
@@ -507,7 +510,7 @@ export class StateManager {
         }
 
         state.secrets[configName][key] = value;
-        this.persist();
+        this.#persist();
 
         observer.emit('secret:set', { configName, key });
 
@@ -518,12 +521,12 @@ export class StateManager {
      */
     async deleteSecret(configName: string, key: string): Promise<void> {
 
-        const state = this.getState();
+        const state = this.#getState();
 
         if (state.secrets[configName]) {
 
             delete state.secrets[configName][key];
-            this.persist();
+            this.#persist();
 
             observer.emit('secret:deleted', { configName, key });
 
@@ -536,7 +539,7 @@ export class StateManager {
      */
     listSecrets(configName: string): string[] {
 
-        const state = this.getState();
+        const state = this.#getState();
 
         return Object.keys(state.secrets[configName] ?? {});
 
@@ -556,7 +559,7 @@ export class StateManager {
      */
     getGlobalSecret(key: string): string | null {
 
-        const state = this.getState();
+        const state = this.#getState();
 
         return state.globalSecrets[key] ?? null;
 
@@ -567,7 +570,7 @@ export class StateManager {
      */
     getAllGlobalSecrets(): Record<string, string> {
 
-        const state = this.getState();
+        const state = this.#getState();
 
         return { ...state.globalSecrets };
 
@@ -583,9 +586,9 @@ export class StateManager {
      */
     async setGlobalSecret(key: string, value: string): Promise<void> {
 
-        const state = this.getState();
+        const state = this.#getState();
         state.globalSecrets[key] = value;
-        this.persist();
+        this.#persist();
 
         observer.emit('global-secret:set', { key });
 
@@ -596,12 +599,12 @@ export class StateManager {
      */
     async deleteGlobalSecret(key: string): Promise<void> {
 
-        const state = this.getState();
+        const state = this.#getState();
 
         if (key in state.globalSecrets) {
 
             delete state.globalSecrets[key];
-            this.persist();
+            this.#persist();
 
             observer.emit('global-secret:deleted', { key });
 
@@ -614,7 +617,7 @@ export class StateManager {
      */
     listGlobalSecrets(): string[] {
 
-        const state = this.getState();
+        const state = this.#getState();
 
         return Object.keys(state.globalSecrets);
 
@@ -629,7 +632,7 @@ export class StateManager {
      */
     getKnownUsers(): Record<string, KnownUser> {
 
-        const state = this.getState();
+        const state = this.#getState();
 
         return { ...state.knownUsers };
 
@@ -640,7 +643,7 @@ export class StateManager {
      */
     getKnownUser(identityHash: string): KnownUser | null {
 
-        const state = this.getState();
+        const state = this.#getState();
 
         return state.knownUsers[identityHash] ?? null;
 
@@ -653,7 +656,7 @@ export class StateManager {
      */
     findKnownUsersByEmail(email: string): KnownUser[] {
 
-        const state = this.getState();
+        const state = this.#getState();
 
         return Object.values(state.knownUsers).filter((u) => u.email === email);
 
@@ -666,9 +669,9 @@ export class StateManager {
      */
     async addKnownUser(user: KnownUser): Promise<void> {
 
-        const state = this.getState();
+        const state = this.#getState();
         state.knownUsers[user.identityHash] = user;
-        this.persist();
+        this.#persist();
 
         observer.emit('known-user:added', {
             email: user.email,
@@ -682,7 +685,7 @@ export class StateManager {
      */
     async addKnownUsers(users: KnownUser[]): Promise<void> {
 
-        const state = this.getState();
+        const state = this.#getState();
 
         for (const user of users) {
 
@@ -690,7 +693,7 @@ export class StateManager {
 
         }
 
-        this.persist();
+        this.#persist();
 
     }
 
@@ -703,7 +706,7 @@ export class StateManager {
      */
     getVersion(): string {
 
-        const state = this.getState();
+        const state = this.#getState();
 
         return state.version;
 
@@ -714,7 +717,7 @@ export class StateManager {
      */
     exists(): boolean {
 
-        return existsSync(this.statePath);
+        return existsSync(this.#statePath);
 
     }
 
@@ -723,7 +726,7 @@ export class StateManager {
      */
     getStatePath(): string {
 
-        return this.statePath;
+        return this.#statePath;
 
     }
 
@@ -732,9 +735,9 @@ export class StateManager {
      */
     exportEncrypted(): string | null {
 
-        if (!existsSync(this.statePath)) return null;
+        if (!existsSync(this.#statePath)) return null;
 
-        return readFileSync(this.statePath, 'utf8');
+        return readFileSync(this.#statePath, 'utf8');
 
     }
 
@@ -743,7 +746,7 @@ export class StateManager {
      */
     async importEncrypted(encrypted: string): Promise<void> {
 
-        if (!this.privateKey) {
+        if (!this.#privateKey) {
 
             throw new Error('Private key required to import state.');
 
@@ -753,22 +756,22 @@ export class StateManager {
         const [payload, parseErr] = attemptSync(() => JSON.parse(encrypted) as EncryptedPayload);
         if (parseErr) throw parseErr;
 
-        const [, decryptErr] = attemptSync(() => decrypt(payload!, this.privateKey!));
+        const [, decryptErr] = attemptSync(() => decrypt(payload!, this.#privateKey!));
         if (decryptErr) throw decryptErr;
 
-        const dir = dirname(this.statePath);
+        const dir = dirname(this.#statePath);
         if (!existsSync(dir)) {
 
             mkdirSync(dir, { recursive: true });
 
         }
 
-        writeFileSync(this.statePath, encrypted, { mode: 0o600 });
+        writeFileSync(this.#statePath, encrypted, { mode: 0o600 });
 
         // Ensure permissions are correct (writeFile mode may not work on all platforms)
-        attemptSync(() => chmodSync(this.statePath, 0o600));
+        attemptSync(() => chmodSync(this.#statePath, 0o600));
 
-        this.loaded = false;
+        this.#loaded = false;
         await this.load();
 
     }
@@ -780,7 +783,7 @@ export class StateManager {
      */
     setPrivateKey(privateKey: string): void {
 
-        this.privateKey = privateKey;
+        this.#privateKey = privateKey;
 
     }
 
@@ -789,7 +792,7 @@ export class StateManager {
      */
     hasPrivateKey(): boolean {
 
-        return !!this.privateKey;
+        return !!this.#privateKey;
 
     }
 
