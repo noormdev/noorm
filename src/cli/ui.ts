@@ -3,12 +3,15 @@
  *
  * This is the only CLI subcommand that renders the Ink/React TUI.
  * The TUI always starts at the home route; deep-linking is not supported.
+ *
+ * Ink, React, and the TUI app are all loaded lazily inside run() so that
+ * resolving this module's meta (e.g. for `noorm --help`'s root command
+ * listing, or `noorm ui --help`) never pays their import cost — only
+ * actually launching the UI does.
  */
 import { Writable } from 'node:stream';
 
 import { defineCommand } from 'citty';
-import { render } from 'ink';
-import React from 'react';
 
 import { observer } from '../core/observer.js';
 import { enableAutoLoggerInit } from '../core/logger/init.js';
@@ -28,9 +31,11 @@ const uiCommand = defineCommand({
     },
     async run() {
 
-        // Lazy import the TUI app so citty --help on other commands
-        // doesn't pay the cost of loading Ink + all screens.
-        const { App } = await import('../tui/app.js');
+        const [{ render }, { default: React }, { App }] = await Promise.all([
+            import('ink'),
+            import('react'),
+            import('../tui/app.js'),
+        ]);
 
         enableAutoLoggerInit(process.cwd(), {
             console: nullStream,
