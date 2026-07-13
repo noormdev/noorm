@@ -35,7 +35,7 @@ export interface ConfigAccess {
 export type Permission =
     | 'explore'
     | 'sql:read' | 'sql:write' | 'sql:ddl'
-    | 'change:run' | 'change:ff' | 'change:revert'
+    | 'change:run' | 'change:ff' | 'change:revert' | 'change:rm'
     | 'run:build' | 'run:file' | 'run:dir'
     | 'db:create' | 'db:reset' | 'db:destroy'
     | 'config:rm';

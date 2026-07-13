@@ -34,7 +34,7 @@ Replace `Config.protected: boolean` with config-scoped, channel-keyed roles enfo
     type Permission =
         | 'explore'
         | 'sql:read' | 'sql:write' | 'sql:ddl'
-        | 'change:run' | 'change:ff' | 'change:revert'
+        | 'change:run' | 'change:ff' | 'change:revert' | 'change:rm'
         | 'run:build' | 'run:file' | 'run:dir'
         | 'db:create' | 'db:reset' | 'db:destroy'
         | 'config:rm'
@@ -54,6 +54,7 @@ Matrix (cells: `allow` / `confirm` / `deny`), hard-coded in `src/core/policy/`:
 | db:reset | deny | confirm | allow |
 | db:destroy | deny | deny | confirm |
 | config:rm | deny | confirm | confirm |
+| change:rm | deny | confirm | confirm |
 
     type PolicyTarget = { name: string; access: ConfigAccess }
     // Config satisfies PolicyTarget structurally once CP2 adds `access`.
@@ -151,3 +152,4 @@ Each checkpoint ends green: `bash tmp/run-test-groups.sh` (mirrors CI's four fre
 - 2026-07-07 — CP2: `Config.access` optional until CP6 (CP4/CP5-owned constructors); fail-closed rule added for absent access on the mcp channel. Stage `protected: true` override-block in `checkConfigCompleteness` replaced by the ceiling clamp (the old "stored wins" behavior was the bug the clamp fixes).
 - 2026-07-07 — CP4: added `db:reset` permission (viewer deny / operator confirm / admin allow) for data-destructive-but-not-drop operations; the initial CP4 mapping of truncate/teardown/reset/importFile to `db:destroy` violated the migration section's behavior-preservation promise for open configs.
 - 2026-07-08 — CP8 (post challenge-swarm): classifier now catches CTE-wrapped DML and a destructive-function denylist (viewer write-bypass was confirmed critical). User-channel enforcement moved to the core seam so run/change/transfer/sql-terminal are gated for SDK+TUI+CLI (the earlier "same checkPolicy" claim was only partly delivered). Correctness + hygiene fixes per the swarm. Downgrade guard, state.enc durability/atomicity, and denial observability explicitly deferred (alpha; pre-existing; separate workstreams).
+- 2026-07-13 — `change:rm` added (viewer deny / operator confirm / admin confirm — admin gets confirm not allow because deleting an applied change also deletes its DB tracking row), refs `docs/spec/v1-44-change-rm-gate.md`.

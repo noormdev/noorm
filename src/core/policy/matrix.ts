@@ -14,6 +14,7 @@ export const MATRIX: Record<Permission, Record<Role, PolicyCell>> = {
     'change:run': { viewer: 'deny', operator: 'confirm', admin: 'allow' },
     'change:ff': { viewer: 'deny', operator: 'confirm', admin: 'allow' },
     'change:revert': { viewer: 'deny', operator: 'confirm', admin: 'allow' },
+    'change:rm': { viewer: 'deny', operator: 'confirm', admin: 'confirm' },
 
     'run:build': { viewer: 'deny', operator: 'confirm', admin: 'allow' },
     'run:file': { viewer: 'deny', operator: 'confirm', admin: 'allow' },
