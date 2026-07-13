@@ -1003,7 +1003,7 @@ noorm --config dev change run 2024-01-15-add-users
 noorm --config test db truncate
 
 # JSON output for scripting
-noorm --json --config dev change ff | jq '.status'
+noorm --config dev change ff --json | jq '.status'
 ```
 
 

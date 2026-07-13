@@ -44,7 +44,7 @@ Print your public key so teammates can add you to encrypted vaults:
 
 ```bash
 noorm identity export
-noorm --json identity export
+noorm identity export --json
 ```
 
 
@@ -54,7 +54,7 @@ Show every identity discovered from database syncs (the audit trail of who has t
 
 ```bash
 noorm identity list
-noorm --json identity list
+noorm identity list --json
 ```
 
 

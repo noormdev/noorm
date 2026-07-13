@@ -258,7 +258,7 @@ noorm --dry-run db teardown
 ### JSON Output
 
 ```bash
-noorm --json db teardown
+noorm db teardown --json
 ```
 
 ```json

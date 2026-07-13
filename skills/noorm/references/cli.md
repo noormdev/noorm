@@ -71,7 +71,6 @@ NOORM_PATHS_CHANGES          # Changes directory (default: ./changes)
 ```bash
 NOORM_CONFIG                 # Config name to use (alternative to --config flag)
 NOORM_YES                    # Skip confirmations: 1 or true
-NOORM_JSON                   # Force JSON output: 1 or true
 NOORM_HEADLESS               # Signal CI mode (routes logs to stdout; detected automatically in CI)
 NOORM_DEBUG                  # Enable debug logging
 ```
@@ -101,7 +100,7 @@ Set the active configuration.
 
 ```bash
 noorm config use dev
-noorm --json config use production
+noorm config use production --json
 ```
 
 **JSON:** `{ "activeConfig": "production" }`
@@ -115,7 +114,7 @@ Create a new cryptographic identity. Generates an X25519 keypair and stores it a
 ```bash
 noorm identity init --name "Alice" --email "alice@example.com"
 noorm identity init --name "Alice" --email "alice@example.com" --force
-noorm --json identity init --name "Alice" --email "alice@example.com"
+noorm identity init --name "Alice" --email "alice@example.com" --json
 ```
 
 **JSON:** `{ "name": "Alice", "email": "alice@example.com", "fingerprint": "...", "publicKey": "..." }`
@@ -135,7 +134,7 @@ Print your public key so teammates can add you to encrypted vaults.
 
 ```bash
 noorm identity export
-noorm --json identity export
+noorm identity export --json
 ```
 
 ### identity list
@@ -144,7 +143,7 @@ List all known users discovered from database syncs (the audit trail of who has 
 
 ```bash
 noorm identity list
-noorm --json identity list
+noorm identity list --json
 ```
 
 ---
@@ -313,7 +312,7 @@ Execute a single SQL or `.sql.tmpl` file.
 ```bash
 noorm run file sql/01_tables/001_users.sql
 noorm run file seed.sql.tmpl
-noorm --json run file sql/init.sql
+noorm run file sql/init.sql --json
 ```
 
 **JSON:** `{ "filepath": "seed.sql", "status": "success", "durationMs": 45 }`
@@ -335,7 +334,7 @@ Show the template context for a `.sql.tmpl` file without rendering it. Lists ava
 
 ```bash
 noorm run inspect sql/users/001_create.sql.tmpl
-noorm --json run inspect sql/core/Crons.sql.tmpl
+noorm run inspect sql/core/Crons.sql.tmpl --json
 ```
 
 **JSON:**
@@ -362,7 +361,7 @@ Render a `.sql.tmpl` file and output the resulting SQL. Does **not** execute aga
 ```bash
 noorm run preview sql/schema.sql.tmpl              # Raw SQL to stdout
 noorm run preview sql/schema.sql.tmpl > rendered.sql # Pipe to file
-noorm --json run preview sql/seed.sql.tmpl           # JSON envelope
+noorm run preview sql/seed.sql.tmpl --json           # JSON envelope
 noorm --config staging run preview sql/migrations/002.sql.tmpl
 ```
 
@@ -394,7 +393,7 @@ List every known change with its status (pending, success, failed, reverted, sta
 
 ```bash
 noorm change list
-noorm --json change list
+noorm change list --json
 noorm -c staging change list
 ```
 
@@ -430,7 +429,7 @@ Apply the next pending change only (rather than all of them).
 
 ```bash
 noorm change next
-noorm --json change next
+noorm change next --json
 ```
 
 Useful when you want to apply changes one at a time and verify each before continuing.
@@ -442,7 +441,7 @@ Apply a specific change by name. Omit the name on a TTY to pick from pending / r
 ```bash
 noorm change run                             # Interactive picker
 noorm change run 2024-02-01-notifications
-noorm --json change run 001_init
+noorm change run 001_init --json
 noorm -c staging change run 001_init
 ```
 
@@ -467,7 +466,7 @@ Revert a previously applied change by running its rollback SQL. Omit the name on
 ```bash
 noorm change revert                          # Interactive picker
 noorm change revert 2024-02-01-notifications
-noorm --json change revert 002_users
+noorm change revert 002_users --json
 ```
 
 ### change rewind
@@ -478,7 +477,7 @@ Revert applied changes back to (and including) a named change — the inverse of
 noorm change rewind                          # Interactive picker
 noorm change rewind 001_init
 noorm change rewind 002_users --dry-run
-noorm --json change rewind 003_roles
+noorm change rewind 003_roles --json
 ```
 
 ### change add
@@ -522,7 +521,7 @@ View execution history with timestamps, direction, duration, and identity.
 ```bash
 noorm change history
 noorm --count 50 change history
-noorm --json change history
+noorm change history --json
 ```
 
 **JSON:**
@@ -551,7 +550,7 @@ Per-file execution history for a specific change — every operation record plus
 noorm change history-detail                  # Interactive picker
 noorm change history-detail 001_init
 noorm change history-detail 003_roles --count 5
-noorm --json change history-detail 002_users
+noorm change history-detail 002_users --json
 ```
 
 ---
@@ -564,7 +563,7 @@ Database schema inspection.
 noorm db explore                        # Overview counts
 noorm db explore tables                 # List all tables
 noorm db explore tables detail users    # Describe specific table
-noorm --json db explore                 # JSON overview
+noorm db explore --json                 # JSON overview
 ```
 
 **JSON (overview):** `{ "tables": 12, "views": 3, "indexes": 8, "functions": 2, "procedures": 0 }`
@@ -698,7 +697,7 @@ Execute raw SQL queries directly.
 noorm sql "SELECT * FROM users LIMIT 10"
 noorm sql -f query.sql                   # Read from file
 noorm -c prod sql "SELECT count(*) FROM orders"
-noorm --json sql "SELECT id, name FROM users"
+noorm sql "SELECT id, name FROM users" --json
 ```
 
 **JSON:**
@@ -734,7 +733,7 @@ Show recent SQL execution history for a config. Reads persisted history from `.n
 ```bash
 noorm sql history
 noorm sql history -n 20
-noorm --json sql history
+noorm sql history --json
 noorm -c prod sql history
 ```
 
@@ -756,7 +755,7 @@ Project and database status overview.
 
 ```bash
 noorm info
-noorm --json info
+noorm info --json
 ```
 
 Surfaces: CLI version, schema versions, active config, connection details, identity, database object counts.
@@ -767,7 +766,7 @@ CLI version and diagnostic information.
 
 ```bash
 noorm version
-noorm --json version
+noorm version --json
 ```
 
 ### help
@@ -948,7 +947,7 @@ trap "noorm lock release" EXIT
 noorm change ff
 
 # Verify
-noorm --json db explore
+noorm db explore --json
 ```
 
 ## Scripting Patterns
@@ -956,7 +955,7 @@ noorm --json db explore
 ### Check for pending changes before deploying
 
 ```bash
-pending=$(noorm --json change | jq '[.[] | select(.status == "pending")] | length')
+pending=$(noorm change --json | jq '[.[] | select(.status == "pending")] | length')
 if [ "$pending" -gt 0 ]; then
     echo "Found $pending pending changes"
     noorm change ff
@@ -966,14 +965,14 @@ fi
 ### Verify table count after migration
 
 ```bash
-tables=$(noorm --json db explore | jq '.tables')
+tables=$(noorm db explore --json | jq '.tables')
 echo "Database has $tables tables"
 ```
 
 ### Check for failures in change history
 
 ```bash
-failures=$(noorm --json change history | jq '[.[] | select(.status == "failed")] | length')
+failures=$(noorm change history --json | jq '[.[] | select(.status == "failed")] | length')
 if [ "$failures" -gt 0 ]; then
     echo "WARNING: $failures failed changes in history"
     exit 1
@@ -989,14 +988,14 @@ noorm run preview sql/hotfix.sql.tmpl | psql -h localhost -d myapp
 ### Check template context before rendering
 
 ```bash
-files=$(noorm --json run inspect sql/seed.sql.tmpl | jq '.context.dataFiles | length')
+files=$(noorm run inspect sql/seed.sql.tmpl --json | jq '.context.dataFiles | length')
 echo "Template has $files data files available"
 ```
 
 ### Check vault access and propagate if needed
 
 ```bash
-pending=$(noorm --json vault list | jq '.status.usersWithoutAccess')
+pending=$(noorm vault list --json | jq '.status.usersWithoutAccess')
 if [ "$pending" -gt 0 ]; then
     noorm vault propagate
 fi

@@ -123,7 +123,7 @@ Execution History: 20 records
 With JSON output for parsing:
 
 ```bash
-noorm --json change history
+noorm change history --json
 ```
 
 ```json
@@ -286,7 +286,7 @@ Now you know the issue---there's duplicate data that needs cleaning before the c
 Compare with successful runs of the same change on other environments. Did something change between runs? Did the data differ?
 
 ```bash
-noorm --json change history --count 100 | jq '.[] | select(.name == "2025-01-16-add-payments")'
+noorm change history --count 100 --json | jq '.[] | select(.name == "2025-01-16-add-payments")'
 ```
 
 

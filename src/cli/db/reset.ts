@@ -6,7 +6,7 @@
  */
 import { defineCommand } from 'citty';
 
-import { withContext, outputResult, sharedArgs } from '../_utils.js';
+import { withContext, outputResult, isYesMode, sharedArgs } from '../_utils.js';
 
 const resetCommand = defineCommand({
     meta: {
@@ -20,7 +20,7 @@ const resetCommand = defineCommand({
     },
     async run({ args }) {
 
-        if (!args.yes) {
+        if (!isYesMode(args)) {
 
             process.stderr.write('Error: This is a destructive operation. Pass --yes to confirm.\n');
             process.exit(1);

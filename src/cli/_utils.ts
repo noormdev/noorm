@@ -20,7 +20,7 @@ import { createContext } from '../sdk/index.js';
 import { ensureSchemaVersion, type NoormDatabase } from '../core/version/index.js';
 import { loadPrivateKey, loadIdentityMetadata } from '../core/identity/storage.js';
 import { registerIdentity } from '../core/identity/sync.js';
-import { isDev } from '../core/environment.js';
+import { isDev, isEnvTruthy } from '../core/environment.js';
 import { getConfig } from '../core/config/index.js';
 
 /**
@@ -75,15 +75,7 @@ export const sharedArgs = {
  */
 export function isYesMode(args: CliArgs): boolean {
 
-    if (args.yes) return true;
-
-    const env = process.env['NOORM_YES'];
-
-    if (env === undefined || env === '') return false;
-    if (env === '0') return false;
-    if (env.toLowerCase() === 'false') return false;
-
-    return true;
+    return !!args.yes || isEnvTruthy(process.env['NOORM_YES']);
 
 }
 
@@ -201,7 +193,7 @@ export async function withContext<T>(opts: {
     const logger = await createCliLogger(projectRoot, !!args.json);
     await logger.start();
 
-    const [ctx, ctxError] = await attempt(() => createContext<NoormDatabase>({ config: args.config }));
+    const [ctx, ctxError] = await attempt(() => createContext<NoormDatabase>({ config: args.config, yes: isYesMode(args) }));
     if (ctxError) {
 
         outputError(args, `Failed to create context: ${ctxError.message}`, logger);

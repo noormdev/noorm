@@ -52,7 +52,7 @@ The same subcommands run non-interactively — add `--json` to get machine-reada
 noorm db explore                          # Overview
 noorm db explore tables                   # List tables
 noorm db explore tables detail users      # Table detail
-noorm --json db explore > schema.json     # JSON output
+noorm db explore --json > schema.json     # JSON output
 ```
 
 
@@ -342,7 +342,7 @@ Use `--json` flag for machine-readable output.
 ### Overview
 
 ```bash
-noorm --json db explore
+noorm db explore --json
 ```
 
 ```json
@@ -361,7 +361,7 @@ noorm --json db explore
 ### Table List
 
 ```bash
-noorm --json db explore tables
+noorm db explore tables --json
 ```
 
 ```json
@@ -376,7 +376,7 @@ noorm --json db explore tables
 ### Table Detail
 
 ```bash
-noorm --json db explore tables detail users
+noorm db explore tables detail users --json
 ```
 
 ```json
@@ -402,7 +402,7 @@ noorm --json db explore tables detail users
 ### View Detail
 
 ```bash
-noorm --json db explore views detail active_users
+noorm db explore views detail active_users --json
 ```
 
 ```json
@@ -422,7 +422,7 @@ noorm --json db explore views detail active_users
 ### Function Detail
 
 ```bash
-noorm --json db explore functions detail calculate_total
+noorm db explore functions detail calculate_total --json
 ```
 
 ```json

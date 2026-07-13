@@ -119,7 +119,7 @@ Or use the CLI directly. Commands run headlessly and emit structured JSON you ca
 ```bash
 noorm run build             # Build the schema from SQL files
 noorm change ff             # Apply all pending changes
-noorm --json db explore     # Inspect the database as JSON
+noorm db explore --json     # Inspect the database as JSON
 noorm vault set API_KEY ... # Push a team secret to the encrypted vault
 ```
 

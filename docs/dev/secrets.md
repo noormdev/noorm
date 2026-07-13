@@ -155,7 +155,7 @@ The local secret store is intentionally TUI-only — there is no headless `noorm
 ```bash
 noorm vault set DB_PASSWORD "$DB_PASSWORD"
 echo "$API_KEY" | noorm vault set API_KEY      # Pipe to avoid process listings
-noorm --json vault list                        # Inspect what's stored
+noorm vault list --json                        # Inspect what's stored
 noorm vault rm OLD_API_KEY
 ```
 

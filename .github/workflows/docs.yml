@@ -31,6 +31,9 @@ jobs:
                   bun install --frozen-lockfile
                   cd docs && bun install --frozen-lockfile
 
+            - name: Check --json doc placement
+              run: bun run lint:docs
+
             - name: Build docs
               env:
                   VITEPRESS_BASE: /
