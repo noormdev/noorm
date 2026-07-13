@@ -159,6 +159,8 @@ export class ChangesNamespace {
      */
     async delete(change: Change): Promise<void> {
 
+        checkProtectedConfig(this.#state.config, this.#state.options, 'change:rm', 'changes.delete');
+
         return coreDeleteChange(change);
 
     }
