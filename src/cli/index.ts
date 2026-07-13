@@ -39,10 +39,12 @@ const completeStub = defineCommand({
     run() {},
 });
 
+declare const __CLI_VERSION__: string;
+
 const main = defineCommand({
     meta: {
         name: 'noorm',
-        version: '0.0.0', // replaced at bundle time via --define __CLI_VERSION__
+        version: typeof __CLI_VERSION__ !== 'undefined' ? __CLI_VERSION__ : '0.0.0-dev',
         description: 'Database schema & changeset manager. Global: -c, --cwd <path> runs the subcommand in <path> (must precede the subcommand, like git -C).',
     },
     subCommands: {
