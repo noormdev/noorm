@@ -1,9 +1,7 @@
-import { Worker, parentPort, workerData } from 'worker_threads';
-import type { Transferable as NodeTransferable } from 'worker_threads';
+import { Worker, parentPort } from 'worker_threads';
 import { ObserverRelay } from '@logosdx/observer';
 import { randomUUID } from 'crypto';
 import { WorkerPool } from './pool.js';
-import { isTransferable } from './types.js';
 import type { WireMessage, ResKey, PoolOptions } from './types.js';
 
 type Port = Worker | import('worker_threads').MessagePort
@@ -13,14 +11,14 @@ export class WorkerBridge<TEvents extends { [K: string]: object }> extends Obser
     #port: Port;
     #ownsWorker: boolean;
 
-    constructor(script?: string | URL, data?: unknown) {
+    constructor(script?: string | URL) {
 
         const isParent = !!script;
         super({ name: isParent ? 'bridge:parent' : 'bridge:worker' });
 
         if (script) {
 
-            this.#port = new Worker(script, { workerData: data });
+            this.#port = new Worker(script);
             this.#ownsWorker = true
 
             // Detect worker crash — emit error event so orchestrators can abort
@@ -59,16 +57,7 @@ export class WorkerBridge<TEvents extends { [K: string]: object }> extends Obser
 
     protected override send(event: string, data: unknown): void {
 
-        if (isTransferable(data)) {
-
-            this.#port.postMessage({ event, data }, data.__transfer as NodeTransferable[]);
-
-        }
-        else {
-
-            this.#port.postMessage({ event, data }, []);
-
-        }
+        this.#port.postMessage({ event, data }, []);
 
     }
 
@@ -87,28 +76,12 @@ export class WorkerBridge<TEvents extends { [K: string]: object }> extends Obser
 
     }
 
-    transfer<K extends keyof TEvents & string>(
-        event: K,
-        data: TEvents[K],
-        transferables: NodeTransferable[],
-    ): void {
-
-        this.#port.postMessage({ event, data }, transferables);
-
-    }
-
     static pool<T extends { [K: string]: object }>(
         script: string | URL,
         options: PoolOptions,
     ): WorkerPool<T> {
 
         return new WorkerPool<T>(script, options);
-
-    }
-
-    static get workerData() {
-
-        return workerData;
 
     }
 

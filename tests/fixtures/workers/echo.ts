@@ -1,4 +1,4 @@
-import { parentPort, workerData } from 'worker_threads';
+import { parentPort } from 'worker_threads';
 
 if (!parentPort) throw new Error('Not in worker');
 
@@ -10,10 +10,3 @@ parentPort.on('message', ({ event, data }: { event: string; data: Record<string,
     parentPort!.postMessage({ event: resEvent, data: { ...data } });
 
 });
-
-// If workerData was provided, send it back as an init event
-if (workerData) {
-
-    parentPort.postMessage({ event: 'init', data: workerData });
-
-}

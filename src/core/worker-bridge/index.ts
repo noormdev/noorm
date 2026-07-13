@@ -9,5 +9,4 @@ export type {
     ComputeEvents,
     PoolOptions,
 } from './types.js';
-export { isTransferable } from './types.js';
 export { resolveWorker } from './paths.js';

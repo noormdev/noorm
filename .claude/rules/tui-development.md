@@ -128,7 +128,7 @@ For fixed-position elements (like toast), use fixed width to reserve space and p
 Use hooks from `src/tui/hooks/useObserver.ts` for event subscriptions. These handle cleanup automatically.
 
 ```tsx
-import { useOnEvent, useOnceEvent, useEmit, useEventPromise } from '../hooks/index.js';
+import { useOnEvent, useOnceEvent, useEmit } from '../hooks/index.js';
 
 // Subscribe to events - cleanup on unmount
 useOnEvent('changeset:complete', (data) => {
@@ -143,10 +143,6 @@ useOnceEvent('build:complete', (data) => setFinalResult(data), []);
 // Emit events via memoized callback
 const emitStart = useEmit('build:start');
 emitStart({ schemaPath, fileCount });
-
-// Promise-based with state management
-const [result, error, pending, cancel] = useEventPromise('build:complete');
-if (pending) return <Spinner />;
 ```
 
 

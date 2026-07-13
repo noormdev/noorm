@@ -15,13 +15,6 @@ export type ResKey<K extends string> = `${K}:res`
 // See Correlation Protocol in the spec.
 export type Correlated<T> = T & { __cid: string }
 
-// Type guard for zero-copy ArrayBuffer transfer
-export function isTransferable(data: unknown): data is { __transfer: Transferable[] } {
-
-    return !!data && typeof data === 'object' && '__transfer' in data;
-
-}
-
 // --- Connection Worker Events ---
 
 export type ConnectionEvents = {
