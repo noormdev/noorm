@@ -175,7 +175,7 @@ The SDK provides teardown methods with test-oriented safety guards.
 ### Basic Test Setup
 
 ```typescript
-import { createContext, RequireTestError } from 'noorm/sdk'
+import { createContext, RequireTestError } from '@noormdev/sdk'
 
 describe('user service', () => {
 
@@ -192,8 +192,8 @@ describe('user service', () => {
 
     beforeEach(async () => {
         // Fast reset between tests
-        await ctx.truncate()
-        await ctx.runFile('./seeds/test-data.sql')
+        await ctx.noorm.db.truncate()
+        await ctx.noorm.run.file('./seeds/test-data.sql')
     })
 
     afterAll(async () => {
@@ -231,11 +231,11 @@ beforeAll(async () => {
     await ctx.connect()
 
     // Full teardown + rebuild
-    await ctx.reset()
+    await ctx.noorm.db.reset()
 })
 ```
 
-The `reset()` method combines `teardown()` and `build({ force: true })` for complete schema reconstruction.
+The `reset()` method combines `ctx.noorm.db.teardown()` and `ctx.noorm.run.build({ force: true })` for complete schema reconstruction.
 
 
 ## Scripted Usage

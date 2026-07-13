@@ -5,7 +5,7 @@
  *
  * @example
  * ```typescript
- * import { createContext } from 'noorm/sdk'
+ * import { createContext } from '@noormdev/sdk'
  *
  * const ctx = await createContext<MyDatabase>({ config: 'dev' })
  * await ctx.connect()
