@@ -263,6 +263,25 @@ function describeVaultNamespace(dialect: Dialect): void {
 
         });
 
+        it('(f) vault.get() rejects when the vault secrets table is gone but the identity/key is intact (isolates getVaultSecret\'s read-path throw)', async () => {
+
+            const vault = new VaultNamespace(makeState(conn, config));
+            await vault.init();
+
+            // Vault key resolves fine (identities table intact); drop only the
+            // vault table so getVaultSecret's read fails after #getVaultKey
+            // succeeds — case (c) destroys the whole connection and only
+            // proves #getVaultKey's throw, since that read happens first.
+            const ndb = noormDb(conn.db as Kysely<NoormDatabase>, dialect);
+            await ndb.schema.dropTable(getNoormTables(dialect).vault).execute();
+
+            const err = await vault.get('ANY_KEY', alice.privateKey).catch((e: unknown) => e);
+
+            expect(err).toBeInstanceOf(Error);
+            expect(err).not.toBeInstanceOf(NotConnectedError);
+
+        });
+
     });
 
 }
