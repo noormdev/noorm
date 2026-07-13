@@ -399,4 +399,107 @@ describe('config: schema validation', () => {
 
     });
 
+    describe('database name validation (ConnectionSchema refine)', () => {
+
+        const dangerousChars: Array<[label: string, char: string]> = [
+            ['double quote', '"'],
+            ['single quote', '\''],
+            ['backtick', '`'],
+            ['opening bracket', '['],
+            ['closing bracket', ']'],
+            ['semicolon', ';'],
+            ['NUL control char', '\x00'],
+            ['unit separator control char', '\x1f'],
+            ['DEL control char', '\x7f'],
+        ];
+
+        const serverDialects = ['postgres', 'mysql', 'mssql'] as const;
+
+        for (const dialect of serverDialects) {
+
+            describe(dialect, () => {
+
+                for (const [label, char] of dangerousChars) {
+
+                    it(`should reject a database name containing a ${label}`, () => {
+
+                        const config = createValidConfig({
+                            connection: { dialect, database: `db${char}name`, host: 'localhost' },
+                        });
+
+                        expect(() => validateConfig(config)).toThrow(ConfigValidationError);
+                        expect(() => validateConfig(config)).toThrow(
+                            'Database name must not contain quotes, backticks, brackets, semicolons, or control characters',
+                        );
+
+                    });
+
+                }
+
+                it('should accept normal database names (dots, dashes, spaces, underscores, unicode)', () => {
+
+                    const validNames = ['myapp', 'my-app', 'my.app', 'my app', 'my_app', 'café_db'];
+
+                    for (const database of validNames) {
+
+                        const config = createValidConfig({
+                            connection: { dialect, database, host: 'localhost' },
+                        });
+
+                        expect(() => validateConfig(config)).not.toThrow();
+
+                    }
+
+                });
+
+                it('should report the field as connection.database', () => {
+
+                    const config = createValidConfig({
+                        connection: { dialect, database: 'bad"name', host: 'localhost' },
+                    });
+
+                    try {
+
+                        validateConfig(config);
+
+                    }
+                    catch (err) {
+
+                        expect(err).toBeInstanceOf(ConfigValidationError);
+                        expect((err as ConfigValidationError).field).toBe('connection.database');
+
+                    }
+
+                });
+
+            });
+
+        }
+
+        describe('sqlite (exempt)', () => {
+
+            it('should accept :memory:', () => {
+
+                const config = createValidConfig({
+                    connection: { dialect: 'sqlite', database: ':memory:' },
+                });
+
+                expect(() => validateConfig(config)).not.toThrow();
+
+            });
+
+            it('should accept a file path containing brackets and quotes', () => {
+
+                const config = createValidConfig({
+                    connection: { dialect: 'sqlite', database: './data/app[1]\'s.db' },
+                });
+
+                expect(() => validateConfig(config)).not.toThrow();
+
+            });
+
+        });
+
+    });
+
 });

@@ -82,6 +82,40 @@ const SSLSchema = z.union([
 ]);
 
 /**
+ * Characters rejected in a server-dialect database name.
+ *
+ * `dbName` is interpolated into raw DDL (`CREATE DATABASE`/`DROP DATABASE`)
+ * quoted as a single dialect-specific identifier. These are the characters
+ * that could otherwise break out of that identifier or (for MSSQL) the
+ * string literal used in the drop batch's existence check.
+ */
+const DANGEROUS_DB_NAME_CHARS = new Set(['"', '\'', '`', '[', ']', ';']);
+
+/**
+ * Checks whether a database name contains a character that could break out
+ * of dialect-specific identifier/string-literal quoting, or a raw control
+ * character. Sqlite is exempt (its `database` is a file path, not a DDL
+ * identifier).
+ */
+function containsDangerousDbNameChar(database: string): boolean {
+
+    for (const char of database) {
+
+        const code = char.codePointAt(0) ?? 0;
+
+        if (DANGEROUS_DB_NAME_CHARS.has(char) || code <= 0x1f || code === 0x7f) {
+
+            return true;
+
+        }
+
+    }
+
+    return false;
+
+}
+
+/**
  * Connection configuration schema.
  *
  * SQLite only requires dialect + database (or filename).
@@ -102,7 +136,15 @@ export const ConnectionSchema = z
     .refine((conn) => conn.dialect === 'sqlite' || conn.host, {
         message: 'Host is required for non-SQLite databases',
         path: ['host'],
-    });
+    })
+    .refine(
+        (conn) => conn.dialect === 'sqlite' || !containsDangerousDbNameChar(conn.database),
+        {
+            message:
+                'Database name must not contain quotes, backticks, brackets, semicolons, or control characters',
+            path: ['database'],
+        },
+    );
 
 /**
  * Full config object schema, before access/protected resolution.
