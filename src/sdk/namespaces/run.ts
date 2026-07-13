@@ -9,6 +9,7 @@ import path from 'node:path';
 import type { Kysely } from 'kysely';
 
 import type { NoormDatabase } from '../../core/shared/index.js';
+import { filterFilesByPaths } from '../../core/shared/index.js';
 import type {
     RunContext,
     RunOptions,
@@ -23,6 +24,7 @@ import {
     preview as corePreview,
     discoverFiles as coreDiscoverFiles,
 } from '../../core/runner/index.js';
+import { getEffectiveBuildPaths } from '../../core/settings/rules.js';
 import { getStateManager } from '../../core/state/index.js';
 import { checkProtectedConfig } from '../guards.js';
 
@@ -154,6 +156,17 @@ export class RunNamespace {
     /**
      * Execute all SQL files in the schema directory.
      *
+     * Honors `settings.build.include`/`exclude` and `settings.rules`
+     * identically to the TUI's Run Build screen (`RunBuildScreen.tsx`) —
+     * headless callers (CLI/MCP/SDK, plus `db.reset`) must see the same
+     * effective file set a human confirms interactively. The filtered list
+     * is always computed and passed through, even when nothing is excluded,
+     * so an all-excluded build (`preFilteredFiles = []`) reads as a real
+     * pre-filtered result rather than "not provided" (runner.ts's
+     * `if (preFilteredFiles)` check would otherwise fall back to full
+     * discovery for an empty array only if we conditionally passed
+     * `undefined` instead).
+     *
      * @example
      * ```typescript
      * await ctx.noorm.run.build({ force: true })
@@ -169,7 +182,29 @@ export class RunNamespace {
             this.#state.settings.paths?.sql ?? 'sql',
         );
 
-        return runBuild(context, sqlPath, { force: options?.force });
+        const configForMatch = {
+            name: this.#state.config.name,
+            access: this.#state.config.access,
+            isTest: this.#state.config.isTest ?? false,
+            type: this.#state.config.type,
+        };
+
+        const effectivePaths = getEffectiveBuildPaths(
+            this.#state.settings.build?.include ?? [],
+            this.#state.settings.build?.exclude ?? [],
+            this.#state.settings.rules ?? [],
+            configForMatch,
+        );
+
+        const discoveredFiles = await coreDiscoverFiles(sqlPath);
+        const filteredFiles = filterFilesByPaths(
+            discoveredFiles,
+            sqlPath,
+            effectivePaths.include,
+            effectivePaths.exclude,
+        );
+
+        return runBuild(context, sqlPath, { force: options?.force }, filteredFiles);
 
     }
 
