@@ -23,6 +23,7 @@ import { useRouter } from '../../router.js';
 import { useAppContext } from '../../app-context.js';
 import { Panel, Form, useToast, MissingParamPanel, NotFoundPanel } from '../../components/index.js';
 import { testConnection } from '../../../core/connection/factory.js';
+import { SettingsProvider } from '../../../core/config/resolver.js';
 import {
     getErrorMessage,
     validateConfigName,
@@ -39,7 +40,7 @@ import {
 export function ConfigEditScreen({ params }: ScreenProps): ReactElement {
 
     const { back } = useRouter();
-    const { stateManager, refresh } = useAppContext();
+    const { stateManager, settingsManager, refresh } = useAppContext();
     const { showToast } = useToast();
 
     const configName = params.name;
@@ -56,6 +57,16 @@ export function ConfigEditScreen({ params }: ScreenProps): ReactElement {
         return stateManager.getConfig(configName);
 
     }, [stateManager, configName]);
+
+    // Settings provider is only built once settingsManager has loaded; a null
+    // provider means "no stages known" = no lock, matching canDeleteConfig's
+    // own no-settings behavior. Passed into the rename-path delete below so
+    // the core-seam guard (StateManager.deleteConfig) can enforce it.
+    const settingsProvider = useMemo(
+
+        () => (settingsManager ? new SettingsProvider(settingsManager) : null),
+        [settingsManager],
+    );
 
     // Form fields with existing values
     const fields: FormField[] = useMemo(() => {
@@ -192,7 +203,7 @@ export function ConfigEditScreen({ params }: ScreenProps): ReactElement {
                 // If name changed, delete old and create new
                 if (newName !== configName) {
 
-                    await stateManager.deleteConfig(configName);
+                    await stateManager.deleteConfig(configName, settingsProvider ?? undefined);
 
                 }
 
@@ -218,7 +229,7 @@ export function ConfigEditScreen({ params }: ScreenProps): ReactElement {
             back();
 
         },
-        [stateManager, config, configName, refresh, showToast, back],
+        [stateManager, config, configName, settingsProvider, refresh, showToast, back],
     );
 
     // Handle cancel

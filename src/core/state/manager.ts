@@ -10,6 +10,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { attemptSync, attempt } from '@logosdx/utils';
 import type { Config } from '../config/types.js';
+import { assertCanDeleteConfig, type SettingsProvider } from '../config/resolver.js';
 import type { KnownUser } from '../identity/types.js';
 import { loadPrivateKey } from '../identity/storage.js';
 import { resolveLegacyAccess } from '../policy/index.js';
@@ -367,8 +368,12 @@ export class StateManager {
 
     /**
      * Delete a config and its secrets.
+     *
+     * @throws ConfigStageLockedError if the config is linked to a locked stage.
      */
-    async deleteConfig(name: string): Promise<void> {
+    async deleteConfig(name: string, settings?: SettingsProvider): Promise<void> {
+
+        assertCanDeleteConfig(name, settings);
 
         const state = this.getState();
         delete state.configs[name];
@@ -477,6 +482,12 @@ export class StateManager {
      * Set a secret value.
      */
     async setSecret(configName: string, key: string, value: string): Promise<void> {
+
+        if (!isValidSecretKey(key)) {
+
+            throw new InvalidSecretKeyError(key);
+
+        }
 
         const state = this.getState();
 
@@ -772,6 +783,45 @@ export class StateManager {
     hasPrivateKey(): boolean {
 
         return !!this.privateKey;
+
+    }
+
+}
+
+/**
+ * Identifier rule for secret keys: the one place the format regex is
+ * declared. `setSecret` enforces it as the actual seam every CLI/SDK/MCP
+ * caller funnels through; the TUI's live-typing validators call this same
+ * predicate instead of hand-copying the pattern.
+ */
+export function isValidSecretKey(key: string): boolean {
+
+    return /^[A-Za-z][A-Za-z0-9_]*$/.test(key);
+
+}
+
+/**
+ * Error when a secret key fails the identifier format rule.
+ *
+ * Thrown by `setSecret` before any state mutation.
+ *
+ * @example
+ * ```typescript
+ * const [, err] = await attempt(() => stateManager.setSecret('dev', 'bad key', 'v'))
+ * if (err instanceof InvalidSecretKeyError) {
+ *     console.log(`Rejected key: ${err.key}`)
+ * }
+ * ```
+ */
+export class InvalidSecretKeyError extends Error {
+
+    override readonly name = 'InvalidSecretKeyError' as const;
+
+    constructor(
+        public readonly key: string,
+    ) {
+
+        super(`Secret key "${key}" is invalid: must start with a letter and contain only letters, numbers, and underscores`);
 
     }
 

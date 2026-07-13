@@ -5,4 +5,5 @@
  */
 export { createConnection, testConnection } from './factory.js';
 export { getConnectionManager, resetConnectionManager } from './manager.js';
+export { DEFAULT_PORTS, PortSchema } from './defaults.js';
 export * from './types.js';

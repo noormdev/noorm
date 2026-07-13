@@ -27,3 +27,4 @@ export {
     type ConnectionDefaults,
 } from './config-validation.js';
 export { getErrorMessage } from './error.js';
+export { validateStagePort } from './settings-validation.js';

@@ -7,8 +7,10 @@
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { mkdtempSync, rmSync, existsSync, readFileSync, mkdirSync, writeFileSync } from 'fs';
 import { join, dirname } from 'path';
-import { StateManager, resetStateManager, getPackageVersion } from '../../../src/core/state/index.js';
-import type { Config } from '../../../src/core/config/types.js';
+import { StateManager, resetStateManager, getPackageVersion, InvalidSecretKeyError } from '../../../src/core/state/index.js';
+import type { Config, Stage } from '../../../src/core/config/types.js';
+import { ConfigStageLockedError } from '../../../src/core/config/index.js';
+import { SettingsProvider } from '../../../src/core/config/resolver.js';
 import type { KnownUser } from '../../../src/core/identity/types.js';
 import { generateKeyPair } from '../../../src/core/identity/crypto.js';
 import { encrypt, decrypt } from '../../../src/core/state/encryption/index.js';
@@ -32,6 +34,28 @@ function createTestConfig(name: string, overrides: Partial<Config> = {}): Config
         },
         ...overrides,
     };
+
+}
+
+/**
+ * Create a mock settings provider for testing.
+ */
+function createMockSettings(stages: Record<string, Stage> = {}): SettingsProvider {
+
+    const mock = {
+        getStage(name: string): Stage | null {
+
+            return stages[name] ?? null;
+
+        },
+        findStageForConfig(configName: string): Stage | null {
+
+            return stages[configName] ?? null;
+
+        },
+    };
+
+    return Object.assign(Object.create(SettingsProvider.prototype), mock);
 
 }
 
@@ -431,6 +455,44 @@ describe('state: manager', () => {
 
         });
 
+        describe('deleteConfig: locked stage guard', () => {
+
+            it('should throw ConfigStageLockedError naming the stage when linked to a locked stage', async () => {
+
+                await state.setConfig('prod', createTestConfig('prod'));
+                const settings = createMockSettings({ prod: { locked: true } });
+
+                await expect(state.deleteConfig('prod', settings)).rejects.toThrow(
+                    ConfigStageLockedError,
+                );
+                await expect(state.deleteConfig('prod', settings)).rejects.toThrow('prod');
+                expect(state.getConfig('prod')).not.toBeNull();
+
+            });
+
+            it('should delete cleanly when linked to an unlocked stage', async () => {
+
+                await state.setConfig('dev', createTestConfig('dev'));
+                const settings = createMockSettings({ dev: { locked: false } });
+
+                await state.deleteConfig('dev', settings);
+
+                expect(state.getConfig('dev')).toBeNull();
+
+            });
+
+            it('should delete cleanly when no settings provider is given', async () => {
+
+                await state.setConfig('staging', createTestConfig('staging'));
+
+                await state.deleteConfig('staging');
+
+                expect(state.getConfig('staging')).toBeNull();
+
+            });
+
+        });
+
     });
 
     // ─────────────────────────────────────────────────────────────
@@ -467,6 +529,37 @@ describe('state: manager', () => {
             await expect(state.setSecret('nonexistent', 'KEY', 'value')).rejects.toThrow(
                 'does not exist',
             );
+
+        });
+
+        it('should reject a key with spaces', async () => {
+
+            await expect(state.setSecret('dev', 'key with spaces', 'v')).rejects.toThrow(
+                InvalidSecretKeyError,
+            );
+
+        });
+
+        it('should reject a key starting with a digit', async () => {
+
+            await expect(state.setSecret('dev', '1abc', 'v')).rejects.toThrow(
+                InvalidSecretKeyError,
+            );
+
+        });
+
+        it('should reject a key with a hyphen', async () => {
+
+            await expect(state.setSecret('dev', 'a-b', 'v')).rejects.toThrow(
+                InvalidSecretKeyError,
+            );
+
+        });
+
+        it('should accept valid keys', async () => {
+
+            await expect(state.setSecret('dev', 'API_KEY', 'v')).resolves.toBeUndefined();
+            await expect(state.setSecret('dev', 'db_password', 'v')).resolves.toBeUndefined();
 
         });
 

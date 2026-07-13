@@ -23,6 +23,7 @@ import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
 import { Panel, Confirm, ProtectedConfirm, Spinner, useToast, MissingParamPanel, NotFoundPanel } from '../../components/index.js';
 import { checkConfigPolicy, confirmationPhraseFor } from '../../../core/policy/index.js';
+import { canDeleteConfig, SettingsProvider } from '../../../core/config/resolver.js';
 import { getErrorMessage } from '../../utils/index.js';
 
 /**
@@ -32,7 +33,7 @@ export function ConfigRemoveScreen({ params }: ScreenProps): ReactElement {
 
     const { back } = useRouter();
     const { isFocused } = useFocusScope('ConfigRemove');
-    const { stateManager, activeConfigName, refresh } = useAppContext();
+    const { stateManager, settingsManager, activeConfigName, refresh } = useAppContext();
     const { showToast } = useToast();
 
     const configName = params.name;
@@ -54,6 +55,23 @@ export function ConfigRemoveScreen({ params }: ScreenProps): ReactElement {
     // Policy check for the config:rm permission
     const check = config ? checkConfigPolicy('user', config, 'config:rm') : null;
 
+    // Settings provider is only built once settingsManager has loaded; a null
+    // provider means "no stages known" = no lock, matching canDeleteConfig's
+    // own no-settings behavior.
+    const settingsProvider = useMemo(
+
+        () => (settingsManager ? new SettingsProvider(settingsManager) : null),
+        [settingsManager],
+    );
+
+    // Locked-stage pre-check so the user never reaches a confirm/spinner
+    // step for a delete that is guaranteed to fail at the core seam.
+    const lockCheck = useMemo(
+
+        () => (config && configName && settingsProvider ? canDeleteConfig(configName, settingsProvider) : { allowed: true }),
+        [config, settingsProvider, configName],
+    );
+
     // Handle confirm
     const handleConfirm = useCallback(async () => {
 
@@ -70,7 +88,7 @@ export function ConfigRemoveScreen({ params }: ScreenProps): ReactElement {
 
         const [_, err] = await attempt(async () => {
 
-            await stateManager.deleteConfig(configName);
+            await stateManager.deleteConfig(configName, settingsProvider ?? undefined);
             await refresh();
 
         });
@@ -94,7 +112,7 @@ export function ConfigRemoveScreen({ params }: ScreenProps): ReactElement {
         });
         back();
 
-    }, [stateManager, configName, refresh, showToast, back]);
+    }, [stateManager, configName, settingsProvider, refresh, showToast, back]);
 
     // Handle cancel
     const handleCancel = useCallback(() => {
@@ -109,7 +127,7 @@ export function ConfigRemoveScreen({ params }: ScreenProps): ReactElement {
         if (!isFocused) return;
 
         // Handle escape for error states (no config, not found, active config, denied)
-        if (!configName || !config || isActive || (check && !check.allowed)) {
+        if (!configName || !config || isActive || (check && !check.allowed) || !lockCheck.allowed) {
 
             if (key.escape || key.return) {
 
@@ -164,6 +182,23 @@ export function ConfigRemoveScreen({ params }: ScreenProps): ReactElement {
             <Box flexDirection="column" gap={1}>
                 <Panel title="Delete Configuration" paddingX={2} paddingY={1} borderColor="red">
                     <Text color="red">{check.blockedReason}</Text>
+                </Panel>
+
+                <Box flexWrap="wrap" columnGap={2}>
+                    <Text dimColor>[Enter/Esc] Back</Text>
+                </Box>
+            </Box>
+        );
+
+    }
+
+    // Denied by locked stage (belt-and-suspenders with the core-seam guard)
+    if (!lockCheck.allowed) {
+
+        return (
+            <Box flexDirection="column" gap={1}>
+                <Panel title="Delete Configuration" paddingX={2} paddingY={1} borderColor="red">
+                    <Text color="red">{lockCheck.reason}</Text>
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>

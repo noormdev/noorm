@@ -6,6 +6,7 @@
  */
 import { Kysely, MysqlDialect } from 'kysely';
 import type { ConnectionConfig, ConnectionResult } from '../types.js';
+import { DEFAULT_PORTS } from '../defaults.js';
 
 /**
  * Create a MySQL connection.
@@ -15,7 +16,6 @@ import type { ConnectionConfig, ConnectionResult } from '../types.js';
  * const conn = createMysqlConnection({
  *     dialect: 'mysql',
  *     host: 'localhost',
- *     port: 3306,
  *     database: 'myapp',
  *     user: 'root',
  *     password: 'secret',
@@ -30,7 +30,7 @@ export async function createMysqlConnection(config: ConnectionConfig): Promise<C
 
     const pool = createPool({
         host: config.host ?? 'localhost',
-        port: config.port ?? 3306,
+        port: config.port ?? DEFAULT_PORTS.mysql,
         user: config.user,
         password: config.password,
         database: config.database,

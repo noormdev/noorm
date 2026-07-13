@@ -5,16 +5,7 @@
  * enabling direct INSERT...SELECT transfers without data marshalling.
  */
 import type { ConnectionConfig, Dialect } from '../connection/types.js';
-
-/**
- * Default ports by dialect.
- */
-const DEFAULT_PORTS: Record<Dialect, number> = {
-    postgres: 5432,
-    mysql: 3306,
-    mssql: 1433,
-    sqlite: 0, // Not applicable
-};
+import { DEFAULT_PORTS } from '../connection/defaults.js';
 
 /**
  * Normalize a hostname for comparison.
