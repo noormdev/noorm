@@ -32,6 +32,9 @@ export { generateMessage, formatEntry, serializeEntry } from './formatter.js';
 // Color Formatter
 export { formatColorLine, formatDuration, STATUS_ICONS } from './color.js';
 
+// Timestamp Formatter
+export { formatLogTimestamp, formatLogTimestampIso } from './timestamp.js';
+
 // Rotation
 export {
     parseSize,

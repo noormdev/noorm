@@ -17,6 +17,7 @@
 import { useState, useMemo, useCallback } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { attempt } from '@logosdx/utils';
+import v from 'voca';
 
 import type { ReactElement } from 'react';
 import type { ScreenProps } from '../../types.js';
@@ -179,7 +180,7 @@ export function DebugListScreen({ params }: ScreenProps): ReactElement {
 
             if (row['executed_at']) descParts.push(formatDate(row['executed_at']));
             if (row['duration_ms']) descParts.push(`${row['duration_ms']}ms`);
-            if (row['filepath']) descParts.push(truncate(String(row['filepath']), 40));
+            if (row['filepath']) descParts.push(v.truncate(String(row['filepath']), 40));
             if (row['locked_by']) descParts.push(`by ${row['locked_by']}`);
 
             return {
@@ -516,16 +517,5 @@ function formatDate(value: unknown): string {
     }
 
     return String(value);
-
-}
-
-/**
- * Truncate a string to a maximum length.
- */
-function truncate(str: string, maxLen: number): string {
-
-    if (str.length <= maxLen) return str;
-
-    return str.slice(0, maxLen - 3) + '...';
 
 }

@@ -27,6 +27,8 @@ import path from 'node:path';
 import { mkdir, writeFile, rename, unlink, rm, stat } from 'node:fs/promises';
 
 import { attempt } from '@logosdx/utils';
+import dayjs from 'dayjs';
+import v from 'voca';
 
 import { observer } from '../observer.js';
 import { parseSequence, parseDescription } from './parser.js';
@@ -90,8 +92,8 @@ export async function createChange(
 
     // Generate name
     const date = options.date ?? new Date();
-    const dateStr = formatDate(date);
-    const slug = slugify(options.description);
+    const dateStr = dayjs(date).format('YYYY-MM-DD');
+    const slug = v.slugify(options.description);
     const name = `${dateStr}-${slug}`;
 
     const changeDir = path.join(changesDir, name);
@@ -187,7 +189,7 @@ export async function addFile(
     const sequence = maxSequence + 1;
 
     // Generate filename
-    const slug = slugify(options.name);
+    const slug = v.slugify(options.name);
     const extension = options.type === 'txt' ? '.txt' : '.sql';
     const filename = `${padSequence(sequence)}_${slug}${extension}`;
 
@@ -352,7 +354,7 @@ export async function renameFile(
     }
 
     // Generate new filename
-    const slug = slugify(newDescription);
+    const slug = v.slugify(newDescription);
     const newFilename = `${padSequence(sequence)}_${slug}${extension}`;
     const newPath = path.join(path.dirname(file.path), newFilename);
 
@@ -562,32 +564,6 @@ export async function deleteChange(change: Change): Promise<void> {
 // ─────────────────────────────────────────────────────────────
 // Internal Helpers
 // ─────────────────────────────────────────────────────────────
-
-/**
- * Format date as YYYY-MM-DD.
- */
-function formatDate(date: Date): string {
-
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-
-    return `${year}-${month}-${day}`;
-
-}
-
-/**
- * Convert text to URL-safe slug.
- */
-function slugify(text: string): string {
-
-    return text
-        .toLowerCase()
-        .trim()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-+|-+$/g, '');
-
-}
 
 /**
  * Pad sequence number to 3 digits.

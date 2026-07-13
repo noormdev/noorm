@@ -11,6 +11,7 @@
  */
 import { useState, useEffect } from 'react';
 import { Box, Text, useInput } from 'ink';
+import { formatByteSize } from '@logosdx/utils';
 
 import type { ReactElement } from 'react';
 import type { ScreenProps } from '../../types.js';
@@ -30,18 +31,6 @@ type ClearOption = '3months' | 'all';
  * Screen phase.
  */
 type Phase = 'select' | 'confirm' | 'clearing' | 'done';
-
-/**
- * Format bytes for display.
- */
-function formatBytes(bytes: number): string {
-
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-
-}
 
 /**
  * SQL Clear Screen component.
@@ -292,7 +281,7 @@ export function SqlClearScreen({ params: _params }: ScreenProps): ReactElement {
                         </Box>
                         <Box gap={2}>
                             <Text>Results size:</Text>
-                            <Text bold>{formatBytes(stats.resultsSize)}</Text>
+                            <Text bold>{formatByteSize(stats.resultsSize, { decimals: 1 })}</Text>
                         </Box>
                     </Box>
                 ) : (
