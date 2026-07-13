@@ -96,15 +96,15 @@ class LockManager {
         while (true) {
 
             // Clean up expired locks first
-            await this.cleanupExpired(db, configName, opts.dialect);
+            await this.#cleanupExpired(db, configName, opts.dialect);
 
             // Try to get existing lock
-            const existing = await this.getLock(db, configName, opts.dialect);
+            const existing = await this.#getLock(db, configName, opts.dialect);
 
             if (!existing) {
 
                 // No lock exists, create one
-                const lock = await this.createLock(db, configName, identity, opts);
+                const lock = await this.#createLock(db, configName, identity, opts);
                 observer.emit('lock:acquired', {
                     configName,
                     identity,
@@ -120,7 +120,7 @@ class LockManager {
             if (existing.lockedBy === identity) {
 
                 // We already hold the lock - extend it
-                const lock = await this.extendLock(db, configName, identity, opts);
+                const lock = await this.#extendLock(db, configName, identity, opts);
                 observer.emit('lock:acquired', {
                     configName,
                     identity,
@@ -192,7 +192,7 @@ class LockManager {
         const tables = getNoormTables(dialect);
 
         // Check existing lock
-        const existing = await this.getLock(db, configName, dialect);
+        const existing = await this.#getLock(db, configName, dialect);
 
         if (!existing) {
 
@@ -236,7 +236,7 @@ class LockManager {
 
         const ndb = noormDb(db, dialect);
         const tables = getNoormTables(dialect);
-        const existing = await this.getLock(db, configName, dialect);
+        const existing = await this.#getLock(db, configName, dialect);
         if (!existing) {
 
             return false;
@@ -323,7 +323,7 @@ class LockManager {
         dialect: Dialect = 'postgres',
     ): Promise<void> {
 
-        const existing = await this.getLock(db, configName, dialect);
+        const existing = await this.#getLock(db, configName, dialect);
 
         if (!existing) {
 
@@ -340,7 +340,7 @@ class LockManager {
         if (existing.expiresAt < new Date()) {
 
             // Clean it up
-            await this.cleanupExpired(db, configName, dialect);
+            await this.#cleanupExpired(db, configName, dialect);
 
             throw new LockExpiredError(configName, identity, existing.expiresAt);
 
@@ -369,7 +369,7 @@ class LockManager {
         // Validate first
         await this.validate(db, configName, identity, opts.dialect);
 
-        return this.extendLock(db, configName, identity, options);
+        return this.#extendLock(db, configName, identity, options);
 
     }
 
@@ -388,9 +388,9 @@ class LockManager {
     ): Promise<LockStatus> {
 
         // Clean up expired first
-        await this.cleanupExpired(db, configName, dialect);
+        await this.#cleanupExpired(db, configName, dialect);
 
-        const lock = await this.getLock(db, configName, dialect);
+        const lock = await this.#getLock(db, configName, dialect);
 
         return {
             isLocked: lock !== null,
@@ -406,7 +406,7 @@ class LockManager {
     /**
      * Get lock from database, or null if none exists.
      */
-    private async getLock(
+    async #getLock(
         db: Kysely<NoormDatabase>,
         configName: string,
         dialect: Dialect,
@@ -439,7 +439,7 @@ class LockManager {
     /**
      * Create a new lock in the database.
      */
-    private async createLock(
+    async #createLock(
         db: Kysely<NoormDatabase>,
         configName: string,
         identity: string,
@@ -474,7 +474,7 @@ class LockManager {
     /**
      * Extend an existing lock.
      */
-    private async extendLock(
+    async #extendLock(
         db: Kysely<NoormDatabase>,
         configName: string,
         identity: string,
@@ -506,7 +506,7 @@ class LockManager {
             .execute();
 
         // Fetch the updated lock
-        const lock = await this.getLock(db, configName, dialect);
+        const lock = await this.#getLock(db, configName, dialect);
 
         return lock!;
 
@@ -515,7 +515,7 @@ class LockManager {
     /**
      * Clean up expired locks.
      */
-    private async cleanupExpired(
+    async #cleanupExpired(
         db: Kysely<NoormDatabase>,
         configName: string,
         dialect: Dialect = 'postgres',
