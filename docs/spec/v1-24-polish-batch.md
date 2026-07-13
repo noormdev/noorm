@@ -42,3 +42,29 @@ Ticket: `tickets/v1/24-polish-batch.md` (realm repo). Branch: `v1/24-polish-batc
 ## Change log
 
 - 2026-07-12 — initial spec, authored by orchestrator pre-implementation.
+
+## Implementation log
+
+### shipped — 2026-07-12
+
+Built across 2 iterations of /subagent-implementation (5 checkpoints dispatched in parallel iteration 1, since files are disjoint; 2 non-blocking reviewer findings addressed in iteration 2). Commits (chronological):
+
+- `10b4e3b` — setup: spec added
+- `7e7d432` — CP-1: ImportOptions.onConflict reuses ConflictStrategy
+- `e1faa6b` — CP-2: isDebug() delegates to isEnvTruthy(); observer.ts/connection-manager.ts call isDebug() instead of raw process.env truthiness
+- `b4cc4c1` — CP-3: camelCase citty arg keys in transfer.ts/enroll.ts (includes iteration-2 shared test-helper extraction)
+- `0c46ec1` — CP-4: removed unused `export namespace StateManager` example from typescript.md
+- `be41f52` — CP-5: MCP error payload drops `stack`, logged server-side instead (includes iteration-2 test-assertion strengthening)
+- `8385f1b` — follow-up: deferred db-transfer-no-fk-negation-collision
+
+**Out-of-scope work performed during this build:**
+
+- none — all 5 checkpoints stayed within their declared file scope.
+
+**Unforeseens — surprises that emerged during implementation:**
+
+- citty's `--no-X` raw-arg negation rule collides with the `no-fk`/`no-identity` flag names themselves: `--no-fk` has never set `noFk`/`no-fk` to `true` in either the old or new code — it silently negates an unrelated, undeclared `fk` key instead. Confirmed byte-identical before/after the checkpoint 3 rename (spec's "flag surface must not change" bar met), but the flags have likely never worked as documented. Pre-existing, not introduced by this ticket.
+
+**Deferred items still open:**
+
+- `.claude/project/followups/db-transfer-no-fk-negation-collision.md` — needs a dedicated ticket (likely fix: rename away from the `no-` prefix, or explicit non-auto-negated boolean parsing).
