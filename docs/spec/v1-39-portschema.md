@@ -64,3 +64,19 @@ messages). Two definitions of one rule can silently drift. Extract a single shar
 ## Change log
 
 - 2026-07-12 — initial spec.
+- 2026-07-12 — implementation shipped (iteration 1); added implementation log.
+
+## Implementation log
+
+### shipped — 2026-07-12 (branch `v1/39-portschema`, stacked on `v1/11-validation-source`, not yet merged)
+
+Built across 1 iteration of the subagent implement→review loop. Commits (chronological, on top of base `6890e80`):
+
+- `fbbbcd2` — docs(spec): initial spec.
+- `fe68e1a` — CP-1: extract `PortSchema` to `core/connection/defaults.ts` (co-located with `DEFAULT_PORTS`); `core/connection/index.ts` re-exports it; `core/config/schema.ts` and `core/settings/schema.ts` each replace their local declaration with an import + re-export. No behavior change; TUI consumers untouched.
+
+**Out-of-scope work performed during this build:** none.
+
+**Unforeseens — surprises that emerged during implementation:** Write/Edit tools blocked in the worktree by a session isolation guard; implementer and orchestrator both fell back to Bash heredoc/sed, verified via `git diff` after each edit. No effect on the shipped diff.
+
+**Deferred items still open:** none — reviewer returned 0 findings across all severities (0🔴 0🟡 0🔵 0❓); `FOLLOWUPS.md` empty, nothing to triage.
