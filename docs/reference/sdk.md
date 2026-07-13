@@ -925,7 +925,7 @@ console.log(result.sql);
 
 #### transfer.to(destConfig, options?)
 
-Transfer data from this context's database to a destination config. Both contexts must be connected.
+Transfer data from this context's database to a destination config. Both contexts must be connected. Throws on failure.
 
 ```typescript
 const source = await createContext({ config: 'staging' });
@@ -933,15 +933,13 @@ const dest = await createContext({ config: 'dev' });
 await source.connect();
 await dest.connect();
 
-const [result, err] = await source.noorm.transfer.to(dest.noorm.config, {
+const result = await source.noorm.transfer.to(dest.noorm.config, {
     tables: ['users', 'posts'],
     onConflict: 'skip',
     batchSize: 5000,
 });
 
-if (result) {
-    console.log(`Transferred ${result.totalRows} rows (${result.status})`);
-}
+console.log(`Transferred ${result.totalRows} rows (${result.status})`);
 
 await source.disconnect();
 await dest.disconnect();
@@ -964,15 +962,13 @@ await dest.disconnect();
 
 #### transfer.plan(destConfig, options?)
 
-Generate a transfer plan without executing. Inspects both databases and returns table ordering, row estimates, and warnings.
+Generate a transfer plan without executing. Inspects both databases and returns table ordering, row estimates, and warnings. Throws on failure.
 
 ```typescript
-const [plan, err] = await source.noorm.transfer.plan(dest.noorm.config);
-if (plan) {
-    console.log(`${plan.estimatedRows} rows across ${plan.tables.length} tables`);
-    for (const warning of plan.warnings) {
-        console.warn(warning);
-    }
+const plan = await source.noorm.transfer.plan(dest.noorm.config);
+console.log(`${plan.estimatedRows} rows across ${plan.tables.length} tables`);
+for (const warning of plan.warnings) {
+    console.warn(warning);
 }
 ```
 
@@ -982,16 +978,14 @@ if (plan) {
 
 #### dt.exportTable(tableName, filepath, options?)
 
-Export a table to a .dt file. The file extension determines the format: `.dt` (plain), `.dtz` (gzipped), `.dtzx` (encrypted).
+Export a table to a .dt file. The file extension determines the format: `.dt` (plain), `.dtz` (gzipped), `.dtzx` (encrypted). Throws on failure.
 
 ```typescript
-const [result, err] = await ctx.noorm.dt.exportTable('users', './exports/users.dtz');
-if (result) {
-    console.log(`Exported ${result.rowsWritten} rows (${result.bytesWritten} bytes)`);
-}
+const result = await ctx.noorm.dt.exportTable('users', './exports/users.dtz');
+console.log(`Exported ${result.rowsWritten} rows (${result.bytesWritten} bytes)`);
 
 // Encrypted export
-const [encrypted, encErr] = await ctx.noorm.dt.exportTable('users', './exports/users.dtzx', {
+const encrypted = await ctx.noorm.dt.exportTable('users', './exports/users.dtzx', {
     passphrase: 'my-secret',
 });
 ```
@@ -1007,15 +1001,13 @@ const [encrypted, encErr] = await ctx.noorm.dt.exportTable('users', './exports/u
 
 #### dt.importFile(filepath, options?)
 
-Import a .dt file into the connected database.
+Import a .dt file into the connected database. Throws on failure.
 
 ```typescript
-const [result, err] = await ctx.noorm.dt.importFile('./exports/users.dtz', {
+const result = await ctx.noorm.dt.importFile('./exports/users.dtz', {
     onConflict: 'skip',
 });
-if (result) {
-    console.log(`Imported ${result.rowsImported} rows, skipped ${result.rowsSkipped}`);
-}
+console.log(`Imported ${result.rowsImported} rows, skipped ${result.rowsSkipped}`);
 ```
 
 **Options (`ImportOptions`):**
@@ -1064,19 +1056,10 @@ Database-stored encrypted secrets shared across team members. Unlike config-scop
 
 Initialize the vault for this database. Creates the vault key and stores it encrypted for the current identity.
 
-Idempotent. Calling `init()` a second time against an already-initialized vault returns `[null, null]` — no state change, no error. Callers can `init()` defensively at startup without special-casing an error string.
-
-The three return shapes:
-
-| Shape | Meaning |
-|-------|---------|
-| `[Buffer, null]` | First-time init succeeded. The buffer is the vault key. |
-| `[null, null]` | Vault already initialized. No work done. Use `vault.get` / `vault.set` with the user's private key. |
-| `[null, Error]` | Actual failure (DB error, encryption error). |
+Idempotent. Calling `init()` a second time against an already-initialized vault returns `null` — no state change, no error. Callers can `init()` defensively at startup without special-casing an error string. Real failures (DB errors, encryption errors) throw.
 
 ```typescript
-const [vaultKey, err] = await ctx.noorm.vault.init();
-if (err) throw err;
+const vaultKey = await ctx.noorm.vault.init();
 
 if (vaultKey) {
     // First-time init — seed initial team secrets, etc.
@@ -1088,12 +1071,12 @@ else {
 
 The `vault:initialized` observer event fires only on first init, never on repeat calls. Cross-reference with `vault.status()` if you need to distinguish "just initialized" from "was already there" alongside other status fields.
 
-**Returns:** `Promise<[Buffer | null, Error | null]>` — the vault key buffer on first init, `null` if already initialized, or an `Error` on failure.
+**Returns:** `Promise<Buffer | null>` — the vault key buffer on first init, `null` if already initialized. Throws on failure.
 
 
 #### vault.status()
 
-Get vault status for the current identity. Useful alongside `vault.init()` when callers need to know whether a vault existed before they called `init()`: a `[null, null]` from `init()` plus `status.isInitialized === true` confirms idempotent no-op.
+Get vault status for the current identity. Useful alongside `vault.init()` when callers need to know whether a vault existed before they called `init()`: a `null` from `init()` plus `status.isInitialized === true` confirms idempotent no-op.
 
 ```typescript
 const status = await ctx.noorm.vault.status();
@@ -1105,16 +1088,13 @@ console.log(`Initialized: ${status.isInitialized}, Has access: ${status.hasAcces
 
 #### vault.set(key, value, privateKey)
 
-Set a vault secret. Requires the caller's private key for vault key decryption.
+Set a vault secret. Requires the caller's private key for vault key decryption. Throws on failure.
 
 ```typescript
-const [, err] = await ctx.noorm.vault.set('API_KEY', 'sk-live-...', privateKey);
-if (err) {
-    console.error('Failed to set secret:', err.message);
-}
+await ctx.noorm.vault.set('API_KEY', 'sk-live-...', privateKey);
 ```
 
-**Returns:** `Promise<[void, Error | null]>`
+**Returns:** `Promise<void>` — throws on failure.
 
 
 #### vault.get(key, privateKey)
@@ -1156,16 +1136,16 @@ console.log('Available secrets:', keys.join(', '));
 
 #### vault.delete(key)
 
-Delete a vault secret.
+Delete a vault secret. Throws on failure.
 
 ```typescript
-const [deleted, err] = await ctx.noorm.vault.delete('OLD_KEY');
+const deleted = await ctx.noorm.vault.delete('OLD_KEY');
 if (deleted) {
     console.log('Secret removed');
 }
 ```
 
-**Returns:** `Promise<[boolean, Error | null]>`
+**Returns:** `Promise<boolean>` — throws on failure.
 
 
 #### vault.exists(key)
@@ -1193,20 +1173,18 @@ console.log(`Propagated to ${result.propagatedTo.length} new users`);
 
 #### vault.copy(destConfig, keys, privateKey, options?)
 
-Copy vault secrets to another config's database. Useful for seeding a new environment with secrets from an existing one.
+Copy vault secrets to another config's database. Useful for seeding a new environment with secrets from an existing one. Throws on failure.
 
 ```typescript
-const [result, err] = await ctx.noorm.vault.copy(
+const result = await ctx.noorm.vault.copy(
     destConfig,
     ['API_KEY', 'DB_TOKEN'],
     privateKey,
 );
-if (result) {
-    console.log(`Copied ${result.copied} secrets`);
-}
+console.log(`Copied ${result.copied} secrets`);
 ```
 
-**Returns:** `Promise<[VaultCopyResult | null, Error | null]>`
+**Returns:** `Promise<VaultCopyResult>` — throws on failure.
 
 
 ### ctx.noorm.utils — Utilities
@@ -1289,7 +1267,20 @@ const ctx = await createContext();
 
 ## Error Handling
 
+SDK methods throw named, `instanceof`-matchable errors and let them propagate — a call either
+returns its value or throws. There are no `[value, error]` tuples on the `ctx.noorm.*` surface.
+Wrap a call in `attempt()` (from `@logosdx/utils`) only when you're going to do something with the
+error: translate it, recover, observe, or knowingly ignore it. If you'd just re-throw it unchanged,
+skip `attempt` and let it propagate. Never wrap an SDK call in try-catch.
+
+Carve-outs that don't follow that plain throw-and-`attempt` pattern:
+`ctx.noorm.utils.testConnection()` returns `{ ok, error? }` by design — a probe reporting failure as
+data, not an exception. `ctx.transaction(...)` callbacks must throw to trigger Kysely's rollback —
+throwing is the rollback signal, so don't swallow it inside the callback. Raw `ctx.kysely` queries
+throw whatever the driver throws.
+
 ```typescript
+import { attempt } from '@logosdx/utils';
 import {
     createContext,
     tvp,
@@ -1298,28 +1289,20 @@ import {
     LockAcquireError,
 } from '@noormdev/sdk';
 
-try {
-    const ctx = await createContext({ config: 'prod', requireTest: true });
-} catch (err) {
-    if (err instanceof RequireTestError) {
-        console.error('Cannot use production config in tests');
-    }
+// attempt() is used deliberately here — the caller inspects the named error and reacts to it.
+const [ctx, err] = await attempt(() => createContext({ config: 'prod', requireTest: true }));
+if (err instanceof RequireTestError) {
+    console.error('Cannot use production config in tests');
 }
 
-try {
-    await ctx.noorm.db.truncate();
-} catch (err) {
-    if (err instanceof ProtectedConfigError) {
-        console.error('Denied by the config\'s access role, or needs confirmation the SDK can\'t give');
-    }
+const [, truncateErr] = await attempt(() => ctx.noorm.db.truncate());
+if (truncateErr instanceof ProtectedConfigError) {
+    console.error('Denied by the config\'s access role, or needs confirmation the SDK can\'t give');
 }
 
-try {
-    await ctx.noorm.lock.acquire();
-} catch (err) {
-    if (err instanceof LockAcquireError) {
-        console.error(`Lock held by ${err.holder}`);
-    }
+const [, lockErr] = await attempt(() => ctx.noorm.lock.acquire());
+if (lockErr instanceof LockAcquireError) {
+    console.error(`Lock held by ${lockErr.holder}`);
 }
 ```
 

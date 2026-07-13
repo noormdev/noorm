@@ -261,8 +261,7 @@ The `vault:initialized` observer event fires only on first init — repeat calls
 Typical call-site pattern at the SDK boundary:
 
 ```typescript
-const [vaultKey, err] = await ctx.noorm.vault.init();
-if (err) throw err;
+const vaultKey = await ctx.noorm.vault.init();
 
 if (vaultKey) {
     // First-time init — seed initial team secrets.

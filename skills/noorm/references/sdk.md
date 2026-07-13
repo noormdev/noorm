@@ -369,22 +369,22 @@ Lock options: `timeout` (lock duration, default 5min), `wait` (block until avail
 Team-shared encrypted secrets stored in the database.
 
 ```typescript
-await ctx.noorm.vault.init();
+await ctx.noorm.vault.init();               // Buffer | null — null when already initialized (idempotent, not an error)
 const status = await ctx.noorm.vault.status();
 
 // CRUD (requires private key for encryption/decryption)
-const [, err] = await ctx.noorm.vault.set('API_KEY', 'sk-live-...', privateKey);
+await ctx.noorm.vault.set('API_KEY', 'sk-live-...', privateKey);   // throws on failure
 const value = await ctx.noorm.vault.get('API_KEY', privateKey);     // string | null
 const all = await ctx.noorm.vault.getAll(privateKey);               // Record<string, VaultSecret>
 const keys = await ctx.noorm.vault.list();                          // string[]
-const [deleted, err] = await ctx.noorm.vault.delete('API_KEY');     // [boolean, Error | null]
+const deleted = await ctx.noorm.vault.delete('API_KEY');            // boolean — throws on failure
 const exists = await ctx.noorm.vault.exists('API_KEY');
 
 // Team access management
 await ctx.noorm.vault.propagate(privateKey);
 
 // Copy between configs
-const [result, err] = await ctx.noorm.vault.copy(destConfig, keys, privateKey, {
+const result = await ctx.noorm.vault.copy(destConfig, keys, privateKey, {
     force: true, // Overwrite existing
 });
 ```
@@ -413,15 +413,15 @@ const result = await ctx.noorm.templates.render('sql/001_users.sql.tmpl');
 Data transfer between database configurations.
 
 ```typescript
-// Execute transfer
-const [result, err] = await ctx.noorm.transfer.to(destConfig, {
+// Execute transfer — throws on failure
+const result = await ctx.noorm.transfer.to(destConfig, {
     tables: ['users', 'posts'],        // Specific tables (default: all)
     onConflict: 'skip',                // 'fail' | 'skip' | 'update' | 'replace'
     truncate: false,                   // Clear destination first?
 });
 
-// Plan without executing
-const [plan, err] = await ctx.noorm.transfer.plan(destConfig, options);
+// Plan without executing — throws on failure
+const plan = await ctx.noorm.transfer.plan(destConfig, options);
 ```
 
 ### dt
@@ -429,16 +429,16 @@ const [plan, err] = await ctx.noorm.transfer.plan(destConfig, options);
 Portable data files: `.dt` (plain), `.dtz` (compressed), `.dtzx` (encrypted).
 
 ```typescript
-// Export
-const [result, err] = await ctx.noorm.dt.exportTable('users', './exports/users.dtz', {
+// Export — throws on failure
+const result = await ctx.noorm.dt.exportTable('users', './exports/users.dtz', {
     passphrase: 'secret',   // Use .dtzx encryption
     schema: 'public',       // PostgreSQL schema
     batchSize: 5000,         // Rows per batch (default: 1000)
 });
 // result: { rowsWritten, bytesWritten }
 
-// Import
-const [result, err] = await ctx.noorm.dt.importFile('./exports/users.dtz', {
+// Import — throws on failure
+const result = await ctx.noorm.dt.importFile('./exports/users.dtz', {
     onConflict: 'skip',     // 'fail' | 'skip' | 'update' | 'replace'
     truncate: true,          // Clear table first
     batchSize: 1000,

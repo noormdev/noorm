@@ -24,8 +24,7 @@ beforeAll(async () => {
     const status = await ctx.noorm.vault.status();
     if (!status.isInitialized) {
 
-        const [, err] = await ctx.noorm.vault.init();
-        if (err) throw err;
+        await ctx.noorm.vault.init();
 
     }
 
@@ -50,15 +49,13 @@ afterAll(async () => {
 
 describe('ctx.noorm.vault.init', () => {
 
-    it('reports already-initialized via the [result, err] tuple on repeat init', async () => {
+    it('returns null on repeat init and leaves status intact', async () => {
 
-        // First call happened in beforeAll. A repeat init() returns a
-        // non-null Error in the tuple's second slot ("Vault already
-        // initialized") rather than throwing — callers can safely call
-        // it without a try/catch and just check the tuple.
-        const [, err] = await ctx.noorm.vault.init();
-        expect(err).not.toBeNull();
-        expect(err?.message).toContain('already initialized');
+        // First call happened in beforeAll. A repeat init() is idempotent
+        // — it returns null rather than treating "already initialized" as
+        // an error. Real failures (DB errors, encryption errors) throw.
+        const result = await ctx.noorm.vault.init();
+        expect(result).toBeNull();
 
         const status = await ctx.noorm.vault.status();
         expect(status.isInitialized).toBe(true);
@@ -72,8 +69,7 @@ describe('ctx.noorm.vault.set / get', () => {
 
     it('stores a value and returns it via get()', async () => {
 
-        const [, setErr] = await ctx.noorm.vault.set(TEST_KEY, 'test-value', privateKey);
-        expect(setErr).toBeNull();
+        await ctx.noorm.vault.set(TEST_KEY, 'test-value', privateKey);
 
         const value = await ctx.noorm.vault.get(TEST_KEY, privateKey);
         expect(value).toBe('test-value');
@@ -86,8 +82,7 @@ describe('ctx.noorm.vault.list', () => {
 
     it('includes a key after it is set', async () => {
 
-        const [, setErr] = await ctx.noorm.vault.set(TEST_KEY, 'list-me', privateKey);
-        expect(setErr).toBeNull();
+        await ctx.noorm.vault.set(TEST_KEY, 'list-me', privateKey);
 
         const keys = await ctx.noorm.vault.list();
         expect(Array.isArray(keys)).toBe(true);
@@ -99,13 +94,11 @@ describe('ctx.noorm.vault.list', () => {
 
 describe('ctx.noorm.vault.delete', () => {
 
-    it('returns [true, null] and exists() reports false afterwards', async () => {
+    it('returns true and exists() reports false afterwards', async () => {
 
-        const [, setErr] = await ctx.noorm.vault.set(TEST_KEY, 'delete-me', privateKey);
-        expect(setErr).toBeNull();
+        await ctx.noorm.vault.set(TEST_KEY, 'delete-me', privateKey);
 
-        const [deleted, delErr] = await ctx.noorm.vault.delete(TEST_KEY);
-        expect(delErr).toBeNull();
+        const deleted = await ctx.noorm.vault.delete(TEST_KEY);
         expect(deleted).toBe(true);
 
         const stillThere = await ctx.noorm.vault.exists(TEST_KEY);
