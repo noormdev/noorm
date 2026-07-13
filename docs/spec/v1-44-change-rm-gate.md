@@ -52,3 +52,29 @@ Rationale recorded here for the spec amendment: deleting an applied change also 
 ## Change log
 
 - 2026-07-13 — initial spec, authored by orchestrator pre-implementation.
+
+## Implementation log
+
+### shipped (uncommitted merge) — 2026-07-13
+
+Built across 4 iterations of the implement-review subagent loop, one checkpoint each, zero CHANGES_REQUESTED rounds (every reviewer pass returned VERDICT PASS with zero findings on the first attempt). Commits (chronological):
+
+- 2867115 — docs(spec): add v1-44 change:rm gate spec
+- 5dc77c7 — CP1: feat(policy): add change:rm permission to access matrix
+- 4f950bd — CP2: feat(tui): gate ChangeRemoveScreen behind change:rm policy
+- 2d0bba5 — CP3: feat(cli): gate change rm behind change:rm policy
+- 7a78d85 — CP4: feat(sdk): gate changes.delete behind change:rm policy
+
+Out-of-scope work performed during this build:
+
+- none. Every checkpoint stayed within its declared Files scope.
+
+Unforeseens — surprises that emerged during implementation:
+
+- CP3 (CLI gate): the spec text pointed at src/cli/change/revert.ts and ff.ts as the CLI gating pattern to mirror. Neither actually calls checkConfigPolicy directly — they inherit enforcement for free through the core-seam in core/change/executor.ts (assertChangePolicy), since they route through withContext and the SDK. rm.ts is an offline, disk-only operation with no such seam to inherit from, so it needs its own direct check. The implementer pivoted to mirror src/cli/config/rm.ts instead, which has an identical deny/confirm/confirm matrix shape and the same direct-check structure. The reviewer verified this pivot was correct, not a deviation.
+- CP3 also surfaced and fixed a pre-existing gap: rm.ts checked raw args.yes instead of isYesMode(args), so NOORM_YES=1 alone did not previously satisfy its ad-hoc confirm prompt. Folded into the same checkpoint since the confirm-gate rewrite touched that exact code path.
+- CP4: change:rm is a deny/confirm/confirm matrix row, unlike change:revert's deny/confirm/allow — admin is NOT frictionless for delete(). The test suite needed five role/yes combinations instead of the usual two-sided viewer/admin pattern other namespaces use, plus a dedicated real-filesystem disk-mutation test since the spec explicitly required proving no-mutation-on-deny and actual-deletion-on-allow, not just error-type assertions.
+
+Deferred items still open:
+
+- F-1 (blue nit, docs/headless.md staleness): the Access Roles matrix table and the change rm command section in docs/headless.md do not yet mention change:rm. Recorded in FOLLOWUPS.md, not fixed in this build (out of every checkpoint's declared scope). No red or yellow findings were produced by the loop.
