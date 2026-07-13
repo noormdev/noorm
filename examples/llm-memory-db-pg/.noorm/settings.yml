@@ -1,15 +1,15 @@
 build:
     include:
-        - sql/00_types
-        - sql/01_reference
-        - sql/02_tables
-        - sql/03_subtypes
-        - sql/04_binary
-        - sql/05_seeds
-        - sql/06_functions
-        - sql/07_views
-        - sql/08_procedures
-        - sql/09_triggers
+        - 00_types
+        - 01_reference
+        - 02_tables
+        - 03_subtypes
+        - 04_binary
+        - 05_seeds
+        - 06_functions
+        - 07_views
+        - 08_procedures
+        - 09_triggers
 paths:
     sql: ./sql
     changes: ./changes
@@ -17,7 +17,7 @@ rules:
     - match:
           isTest: true
       include:
-          - sql/05_seeds
+          - 05_seeds
 stages:
     dev:
         description: Local development database
