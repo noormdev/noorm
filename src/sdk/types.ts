@@ -4,6 +4,7 @@
  * All interfaces and types for the noorm programmatic SDK.
  */
 import type { Channel } from '../core/policy/index.js';
+import type { ConflictStrategy } from '../core/transfer/types.js';
 
 
 // ─────────────────────────────────────────────────────────────
@@ -137,7 +138,7 @@ export interface ImportOptions {
     batchSize?: number;
 
     /** Conflict strategy. Default: 'fail'. */
-    onConflict?: 'fail' | 'skip' | 'update' | 'replace';
+    onConflict?: ConflictStrategy;
 
     /** Truncate target table before import. Default: false. */
     truncate?: boolean;
