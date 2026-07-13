@@ -35,7 +35,6 @@ Ink/React-based terminal UI launched by `noorm ui`. Full-screen interactive inte
 - [`src/tui/screens/secret/`](../../src/tui/screens/secret) — 4 secret screens
 - [`src/tui/screens/settings/`](../../src/tui/screens/settings) — 17 settings screens
 - [`src/tui/screens/vault/`](../../src/tui/screens/vault) — 5 vault screens
-- [`src/hooks/observer.ts`](../../src/hooks/observer.ts) — `useObserver` hook (non-tui hooks barrel)
 - [`src/tui/screens/UpdateScreen.tsx`](../../src/tui/screens/UpdateScreen.tsx) — update available prompt
 - [`src/tui/screens/MoreScreen.tsx`](../../src/tui/screens/MoreScreen.tsx) — extended help screen
 
