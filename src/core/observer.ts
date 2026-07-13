@@ -27,6 +27,7 @@ import type { TransferEvents } from './transfer/events.js';
 import type { DtEvents } from './dt/events.js';
 import type { LogLevel } from './logger/types.js';
 import type { TruncateResult, TeardownResult } from './teardown/types.js';
+import { isDebug } from './environment.js';
 
 /**
  * All events emitted by noorm core modules.
@@ -244,7 +245,7 @@ export type NoormEventCallback<E extends NoormEventNames> = ObserverEngine.Event
  */
 export const observer = new ObserverEngine<NoormEvents>({
     name: 'noorm',
-    spy: process.env['NOORM_DEBUG']
+    spy: isDebug()
         ? (action) => console.error(`[noorm:${action.fn}] ${String(action.event)}`)
         : undefined,
 });

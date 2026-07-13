@@ -10,6 +10,7 @@ import type { ConnectionResult } from './types.js';
 import type { WorkerBridge } from '../worker-bridge/bridge.js';
 import type { ConnectionEvents } from '../worker-bridge/types.js';
 import { observer } from '../observer.js';
+import { isDebug } from '../environment.js';
 
 /**
  * Internal connection entry with metadata.
@@ -57,7 +58,7 @@ class ConnectionManager {
         // Listen for shutdown event
         this.#unsubscribe = observer.on('app:shutdown', async () => {
 
-            if (process.env['NOORM_DEBUG']) {
+            if (isDebug()) {
 
                 console.error(
                     `[ConnectionManager] app:shutdown received, closing ${this.size} connections`,
@@ -68,7 +69,7 @@ class ConnectionManager {
             this.#shuttingDown = true;
             await this.closeAll();
 
-            if (process.env['NOORM_DEBUG']) {
+            if (isDebug()) {
 
                 console.error('[ConnectionManager] all connections closed');
 
