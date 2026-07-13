@@ -51,7 +51,7 @@ After completing the wizard, noorm validates the connection. If it succeeds, you
 
 ## Creating a Config Non-Interactively
 
-`noorm config add`, `edit`, and `rm` all launch the TUI wizard — they exist to guide credential entry interactively. For CI/CD pipelines and scripts that need to skip the wizard entirely, build the config from **environment variables** instead:
+`noorm config add` and `edit` launch the TUI wizard — they exist to guide credential entry interactively. Removal is the exception: `noorm config rm <name> --yes` deletes headlessly, no wizard involved (see the [CLI Reference](/headless#config-rm-name)). For CI/CD pipelines and scripts that need to skip the config wizard entirely, build the config from **environment variables** instead:
 
 ```bash
 export NOORM_CONNECTION_DIALECT=postgres

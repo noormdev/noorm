@@ -692,7 +692,9 @@ Status listing previously lived on the bare `change` handler -- it was moved to 
 
 ### TUI-Only Wizards
 
-Some commands (`config add`, `config edit`, `config rm`) don't have a sensible headless equivalent — they exist to walk users through credential entry interactively. These commands `import { app } from '../../tui/app.js'` and route the user into the appropriate TUI screen, then exit. See `src/cli/config/add.ts` for the canonical pattern.
+Some commands (`config add`, `config edit`) don't have a sensible headless equivalent — they exist to walk users through credential entry interactively. Rather than importing the TUI, they print `Interactive only — run: noorm ui` to stderr and exit 1, leaving the user to launch the TUI themselves. See `src/cli/config/add.ts` for the canonical pattern.
+
+`config rm` used to live in this bucket but is now real and headless: bootstrap state (`initState`/`getStateManager`), gate the deletion through `checkConfigPolicy` (denies or requires `--yes`/`NOORM_YES` per the config's `user`-channel role for `config:rm`), then call `StateManager.deleteConfig()` — the same core path the TUI's removal screen uses, so the locked-stage guard applies identically. See `src/cli/config/rm.ts`.
 
 
 ### Registering Commands at the Root
