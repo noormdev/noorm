@@ -155,6 +155,23 @@ export function assertPolicy(
 }
 
 /**
+ * Whether a config is visible on a channel — the mcp-channel invisibility
+ * rule, extracted so `list_configs` and `session.ts`'s `connect()` share one
+ * fail-closed implementation instead of two independently drifting copies.
+ *
+ * Fails closed: missing `access` is treated the same as `access.mcp ===
+ * false`. The `user` channel is always visible; only `mcp` can be hidden.
+ *
+ * @example
+ * isVisibleToChannel(config.access, 'mcp'); // false when access.mcp === false or access is missing
+ */
+export function isVisibleToChannel(access: ConfigAccess | undefined, channel: Channel): boolean {
+
+    return !(channel === 'mcp' && (!access || access.mcp === false));
+
+}
+
+/**
  * Display-only shorthand for "this config isn't wide open" — used by TUI
  * styling, `config list`, and settings rule matching. Never an enforcement
  * input; `checkPolicy` is the only gate.

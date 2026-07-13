@@ -15,7 +15,7 @@ import { attempt } from '@logosdx/utils';
 
 import type { Kysely } from 'kysely';
 
-import type { ConnectionConfig } from '../../core/connection/types.js';
+import type { ConnectionConfig, ConnectionResult } from '../../core/connection/types.js';
 import type { NoormDatabase } from '../../core/shared/index.js';
 import { createConnection, testConnection } from '../../core/connection/index.js';
 
@@ -38,6 +38,7 @@ export async function withScreenConnection<T>(
     connectionConfig: ConnectionConfig,
     configName: string,
     fn: (db: Kysely<NoormDatabase>) => Promise<T>,
+    options?: { onConnect?: (conn: ConnectionResult) => void },
 ): Promise<[T | null, Error | null]> {
 
     const testResult = await testConnection(connectionConfig);
@@ -57,6 +58,8 @@ export async function withScreenConnection<T>(
         return [null, new Error(`Connection failed: ${connErr?.message ?? 'Unknown error'}`)];
 
     }
+
+    options?.onConnect?.(conn);
 
     const [result, err] = await attempt(async () => {
 
