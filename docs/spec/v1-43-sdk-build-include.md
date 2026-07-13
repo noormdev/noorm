@@ -46,3 +46,28 @@ Also fix the `filterFilesByPaths` JSDoc example (`src/core/shared/files.ts:~20-4
 ## Change log
 
 - 2026-07-13 — initial spec, authored by orchestrator pre-implementation.
+
+## Implementation log
+
+### shipped — 2026-07-13
+
+Built across 3 iterations of /subagent-implementation. Commits (chronological):
+
+- `f8186ce` — spec authored pre-implementation
+- `e31305d` — CP-1 SDK run.build honors include/exclude/rules (filtering pipeline + preFilteredFiles 4th arg; 6 unit tests, no mock.module, DummyDriver seam)
+- `af47089` — CP-2 filterFilesByPaths JSDoc example corrected to sql-dir base + unprefixed patterns
+
+**Out-of-scope work performed during this build:**
+
+- none (an unrequested `#createRunContext()` reordering in iter 1 was reverted in iter 2 per reviewer finding)
+
+**Unforeseens — surprises that emerged during implementation:**
+
+- Kysely `withSchema('noorm')` clones the executor, so executor-level test spies miss schema-scoped queries; test seam moved to `driver.acquireConnection()`
+- module-scope `mock.module` violates the repo's db-namespace.test.ts precedent (shared module cache in one-process CI group); tests reworked to real runBuild + DummyDriver + real state manager on temp projectRoot
+
+**Deferred items still open:**
+
+- F-1 (scratchpad FOLLOWUPS.md): zero-match warning when filtering yields 0 files — spec non-goal, needs product decision on surface; awaiting user triage
+
+**Call-site audit (acceptance criterion):** recorded in STATE.md iter 3 — only two production `filterFilesByPaths` callers (TUI RunBuildScreen.tsx:106, SDK run.ts:200), both base = resolved sql dir; no wrong-base caller found.
