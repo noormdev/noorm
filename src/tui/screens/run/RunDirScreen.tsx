@@ -12,7 +12,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Box, Text } from 'ink';
 import { ProgressBar } from '@inkjs/ui';
-import { join, relative, dirname } from 'path';
+import { join, normalize, relative, dirname } from 'path';
 
 import type { ReactElement } from 'react';
 import type { ScreenProps } from '../../types.js';
@@ -39,8 +39,11 @@ function extractDirectories(files: string[], projectRoot: string, sqlPath: strin
 
     const dirs = new Set<string>();
 
-    // Always include the schema path itself as an option
-    dirs.add(sqlPath);
+    // Always include the schema path itself as an option.
+    // Normalize so a './sql'-style settings value collapses into the same
+    // entry as the relative()-derived dirs below — a verbatim './sql' seed
+    // never matches the count/selection filters and renders as "0 files".
+    dirs.add(normalize(sqlPath));
 
     for (const file of files) {
 
