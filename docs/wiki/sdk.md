@@ -48,6 +48,7 @@ Also includes the DT (Data Transfer format) module for typed binary serializatio
 - [`docs/dev/transfer.md`](../dev/transfer.md) — DT transfer internals
 - [`docs/getting-started/building-your-sdk.md`](../getting-started/building-your-sdk.md) — getting-started guide for SDK users
 - [`skills/noorm/references/sdk.md`](../../skills/noorm/references/sdk.md) — skill reference for SDK usage patterns
+- [`docs/spec/v1-13-inert-params.md`](../spec/v1-13-inert-params.md) — implementation contract: deletion of `ToUniversalOptions.version` and the DT export/import worker-fetch DI-override trio (`connectionString`/`connectionBridge`/`computePool`), D8 ruling
 
 ## Coupling
 
