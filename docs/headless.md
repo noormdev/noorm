@@ -178,6 +178,7 @@ Each config carries a per-channel access grant: `access: { user, mcp }`. The `us
 | `db create`, `db reset` (truncate/teardown/reset) | deny | confirm | allow |
 | `db drop` | deny | deny | confirm |
 | `config rm` | deny | confirm | confirm |
+| `change rm` | deny | confirm | confirm |
 
 Raw SQL (`noorm sql`) is gated by what the statement actually does, not by a flag — a multi-statement input is classified by its highest class (a `SELECT` plus a `DROP` classifies as DDL). Unparseable or unrecognized statements classify as DDL, fail closed.
 
@@ -897,7 +898,7 @@ EDITOR=vim noorm change edit 001_init
 
 #### `change rm [name]`
 
-Remove a change directory from disk. Does **not** touch database state. On a TTY, omit the name to pick interactively; `--yes` is only required on non-TTY.
+Remove a change directory from disk. Does **not** touch database state. Gated by the config's `change:rm` access (see [Access Roles](#access-roles) above): `viewer` is denied; `operator` and `admin` confirm via `--yes` or `NOORM_YES=1`. On a TTY, omit the name to pick interactively.
 
 ```bash
 noorm change rm                                 # picker + confirm (TTY)
