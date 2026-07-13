@@ -20,9 +20,9 @@ An end-to-end noorm example: an LLM-memory schema running on SQL Server 2022, ex
 - Docker (for the MSSQL 2022 container).
 - An existing noorm identity at `~/.noorm/identity.{key,pub,json}`. If you don't have one yet, run `noorm init` from an interactive terminal once (see `mssql-problems.md` gap #1 — `init` requires a TTY).
 
-The MSSQL container is declared in `docker-compose.yml` at the monorepo root and listens on port `11433`. From the monorepo root:
+The MSSQL container is declared in `docker-compose.test.yml` at the monorepo root and listens on port `11433`. From the monorepo root:
 
-    docker compose up -d
+    docker compose -f docker-compose.test.yml up -d
 
 
 ## Setup

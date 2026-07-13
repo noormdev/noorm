@@ -116,7 +116,7 @@ New state migration in `src/core/version/state/migrations/` (registered in `src/
 ## Checkpoints
 
 
-Each checkpoint ends green: `bash tmp/run-test-groups.sh` (mirrors CI's four fresh-process `bun test --serial` groups — a single whole-suite `bun test` cross-contaminates and does not reflect CI; DB containers from repo-root `docker-compose.yml` must be up), `bun run typecheck`, `bun run typecheck:tests`, `bun run lint`. Commit per green checkpoint.
+Each checkpoint ends green: `bash tmp/run-test-groups.sh` (mirrors CI's four fresh-process `bun test --serial` groups — a single whole-suite `bun test` cross-contaminates and does not reflect CI; DB containers from repo-root `docker-compose.test.yml` must be up), `bun run typecheck`, `bun run typecheck:tests`, `bun run lint`. Commit per green checkpoint.
 
 | CP | Scope | Key files | Done when |
 |---|---|---|---|

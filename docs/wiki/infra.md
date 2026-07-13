@@ -26,7 +26,7 @@ Build pipeline, CI, binary release, package publishing, and reference examples. 
 - [`tsconfig.sdk-types.json`](../../tsconfig.sdk-types.json) — SDK type extraction config
 - [`tsconfig.test.json`](../../tsconfig.test.json) — test TypeScript config
 - [`bunfig.toml`](../../bunfig.toml) — Bun runtime config
-- [`docker-compose.yml`](../../docker-compose.yml) — local dev databases: PostgreSQL (15432), MySQL (13306), MSSQL (11433)
+- [`docker-compose.test.yml`](../../docker-compose.test.yml) — local dev databases: PostgreSQL (15432), MySQL (13306), MSSQL (11433)
 
 ## Docs
 
