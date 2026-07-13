@@ -24,11 +24,11 @@ type TransferArgs = CliArgs & {
     compress?: boolean;
     passphrase?: string;
     tables?: string;
-    'on-conflict'?: string;
-    'batch-size'?: string;
+    onConflict?: string;
+    batchSize?: string;
     truncate?: boolean;
-    'no-fk'?: boolean;
-    'no-identity'?: boolean;
+    noFk?: boolean;
+    noIdentity?: boolean;
     dryRun?: boolean;
 };
 
@@ -170,11 +170,11 @@ const transferCommand = defineCommand({
             type: 'string',
             description: 'Comma-separated list of tables (default: all)',
         },
-        'on-conflict': {
+        onConflict: {
             type: 'string',
             description: 'Conflict strategy: fail, skip, update, replace (default: fail)',
         },
-        'batch-size': {
+        batchSize: {
             type: 'string',
             description: 'Rows per batch for cross-server transfers (default: 1000)',
         },
@@ -182,11 +182,11 @@ const transferCommand = defineCommand({
             type: 'boolean',
             description: 'Truncate destination tables before transfer',
         },
-        'no-fk': {
+        noFk: {
             type: 'boolean',
             description: 'Do not disable foreign key checks',
         },
-        'no-identity': {
+        noIdentity: {
             type: 'boolean',
             description: 'Do not preserve identity/auto-increment values',
         },
@@ -235,7 +235,7 @@ const transferCommand = defineCommand({
         }
 
         // Validate --on-conflict once before mode dispatch
-        const rawConflict = args['on-conflict'] ?? 'fail';
+        const rawConflict = args.onConflict ?? 'fail';
 
         if (!isConflictStrategy(rawConflict)) {
 
@@ -247,7 +247,7 @@ const transferCommand = defineCommand({
         const onConflict: ConflictStrategy = rawConflict;
 
         const tableList = args.tables ? String(args.tables).split(',').map((t) => t.trim()) : undefined;
-        const batchSize = args['batch-size'] ? parseInt(String(args['batch-size']), 10) : undefined;
+        const batchSize = args.batchSize ? parseInt(String(args.batchSize), 10) : undefined;
 
         if (exportPath) {
 
@@ -302,8 +302,8 @@ const transferCommand = defineCommand({
             tables: tableList,
             onConflict,
             batchSize,
-            disableForeignKeys: args['no-fk'] !== true,
-            preserveIdentity: args['no-identity'] !== true,
+            disableForeignKeys: args.noFk !== true,
+            preserveIdentity: args.noIdentity !== true,
             truncateFirst: args.truncate === true,
             dryRun: args.dryRun === true,
         };
