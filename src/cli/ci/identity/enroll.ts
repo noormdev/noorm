@@ -40,7 +40,7 @@ const enrollCommand = defineCommand({
             description: 'Email address for the CI identity',
             required: true,
         },
-        'public-key': {
+        publicKey: {
             type: 'string',
             description: 'Pre-generated X25519 public key (hex). If omitted, a new keypair is generated.',
         },
@@ -50,7 +50,7 @@ const enrollCommand = defineCommand({
 
         const name = args.name?.trim();
         const email = args.email?.trim();
-        const providedPublicKey = args['public-key']?.trim();
+        const providedPublicKey = args.publicKey?.trim();
 
         if (!name || !email || !args.config) {
 

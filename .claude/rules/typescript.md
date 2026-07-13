@@ -269,7 +269,7 @@ assert(condition, 'message', CustomError);
 
 ## Class Patterns
 
-Use private fields with `#` prefix. Namespace types under the class.
+Use private fields with `#` prefix.
 
 ```typescript
 export class StateManager {
@@ -283,15 +283,6 @@ export class StateManager {
 
         this.#state = state;
 
-    }
-
-}
-
-export namespace StateManager {
-
-    export interface Config {
-        name: string;
-        connection: ConnectionConfig;
     }
 
 }

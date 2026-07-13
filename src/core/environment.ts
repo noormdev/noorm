@@ -88,7 +88,7 @@ export function isDev(): boolean {
  */
 export function isDebug(): boolean {
 
-    return process.env['NOORM_DEBUG'] === 'true';
+    return isEnvTruthy(process.env['NOORM_DEBUG']);
 
 }
 

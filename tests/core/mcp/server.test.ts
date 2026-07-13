@@ -4,7 +4,7 @@
  * Uses InMemoryTransport + Client to exercise the full JSON-RPC
  * pipeline through createMcpServer without a real network transport.
  */
-import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach, spyOn } from 'bun:test';
 import { z } from 'zod';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
@@ -256,19 +256,32 @@ describe('mcp: server dispatch (run_noorm_cmd)', () => {
 
     });
 
-    it('should return isError with message and stack when handler throws', async () => {
+    it('should return isError with message only (no stack) and log the stack server-side when handler throws', async () => {
+
+        const errorSpy = spyOn(console, 'error').mockImplementation(() => {});
 
         const { isError, parsed } = await callJson(client, 'run_noorm_cmd', {
             command: 'failing_cmd',
             payload: {},
         });
 
-        const body = parsed as { error: string; stack: string };
+        const body = parsed as { error: string; stack?: string };
 
         expect(isError).toBe(true);
         expect(body.error).toBe('boom');
-        expect(typeof body.stack).toBe('string');
-        expect(body.stack).toContain('boom');
+        expect(body).not.toHaveProperty('stack');
+
+        expect(errorSpy).toHaveBeenCalled();
+        const loggedArgs = errorSpy.mock.calls.flat();
+        const loggedArg = loggedArgs.find((arg) => typeof arg === 'string' && arg.includes('boom'));
+
+        expect(loggedArg).toBeDefined();
+        // A plain `err.message` is just "boom" — a real stack has frame lines
+        // like "    at functionName (file:line:col)", so this fails if the
+        // source regresses to logging the message instead of the stack.
+        expect(loggedArg).toMatch(/\n\s*at /);
+
+        errorSpy.mockRestore();
 
     });
 

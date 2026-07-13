@@ -129,10 +129,13 @@ export function createMcpServer(registry: RpcRegistry, session: SessionManager):
 
             if (err) {
 
+                // Stack traces stay server-side; the MCP client only sees the message.
+                console.error(err.stack ?? err.message);
+
                 return {
                     content: [{
                         type: 'text' as const,
-                        text: JSON.stringify({ error: err.message, stack: err.stack }),
+                        text: JSON.stringify({ error: err.message }),
                     }],
                     isError: true,
                 };

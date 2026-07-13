@@ -20,6 +20,10 @@ import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { parseArgs } from 'citty';
+
+import transferCommand from '../../../src/cli/db/transfer.js';
+import { assertArgsDef } from '../citty-args.js';
 
 const CLI = join(process.cwd(), 'dist/cli/index.js');
 
@@ -93,6 +97,58 @@ describe('cli: noorm db transfer — passphrase floor', () => {
 
         expect(result.status).toBe(1);
         expect(result.stdout + result.stderr).toContain('--passphrase');
+
+    });
+
+    it('parses --on-conflict into the renamed onConflict arg (invalid value echoes the parsed value)', () => {
+
+        const result = runTransfer(['--export', 'backup.dt', '--tables', 'users', '--on-conflict', 'bogus']);
+
+        expect(result.status).toBe(1);
+        expect(result.stdout + result.stderr).toContain('Invalid --on-conflict value: "bogus"');
+
+    });
+
+});
+
+/**
+ * checkpoint 3 (v1-24-polish-batch): kebab-declared citty args (`on-conflict`,
+ * `batch-size`, `no-fk`, `no-identity`) were renamed to camelCase. These tests
+ * exercise citty's real `parseArgs` against the command's actual `args`
+ * definition — the exact object citty hands to `run({ args })` — so a broken
+ * rename (stale kebab key left in `args`, or an accessor that reads a name
+ * citty never populates) fails here without needing a live DB connection.
+ */
+describe('cli: noorm db transfer — camelCase arg parsing (checkpoint 3)', () => {
+
+    it('parses --on-conflict and --batch-size into onConflict/batchSize', () => {
+
+        const argsDef = transferCommand.args;
+        assertArgsDef(argsDef);
+
+        const parsed = parseArgs(['--to', 'backup', '--on-conflict', 'skip', '--batch-size', '500'], argsDef);
+
+        expect(parsed.onConflict).toBe('skip');
+        expect(parsed.batchSize).toBe('500');
+
+    });
+
+    it('parses --no-fk and --no-identity without a CLI-arg-parsing error, matching the pre-existing citty negation bug', () => {
+
+        const argsDef = transferCommand.args;
+        assertArgsDef(argsDef);
+
+        const parsed = parseArgs(['--to', 'backup', '--no-fk', '--no-identity'], argsDef);
+
+        // Pre-existing bug (out of scope for this checkpoint, not fixed here): citty
+        // unconditionally strips any `--no-<x>` token and negates a flag literally
+        // named `<x>`, so `--no-fk`/`--no-identity` have never set `noFk`/`noIdentity` —
+        // they negate unrelated `fk`/`identity` flags instead. This asserts the rename
+        // left that behavior identically unchanged (still broken, not newly broken).
+        expect(parsed.noFk).toBeUndefined();
+        expect(parsed.noIdentity).toBeUndefined();
+        expect(parsed.fk).toBe(false);
+        expect(parsed.identity).toBe(false);
 
     });
 
