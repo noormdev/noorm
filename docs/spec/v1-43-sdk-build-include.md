@@ -71,3 +71,4 @@ Built across 3 iterations of /subagent-implementation. Commits (chronological):
 - F-1 (scratchpad FOLLOWUPS.md): zero-match warning when filtering yields 0 files — spec non-goal, needs product decision on surface; awaiting user triage
 
 **Call-site audit (acceptance criterion):** recorded in STATE.md iter 3 — only two production `filterFilesByPaths` callers (TUI RunBuildScreen.tsx:106, SDK run.ts:200), both base = resolved sql dir; no wrong-base caller found.
+- 2026-07-13 — post-merge hardening: eager discovery in `build()` broke runBuild's discovery-failure contract (missing sql dir → throw → `db reset` exit 1, caught by G3 CI). Discovery now attempt()-wrapped, falling back to runBuild's own graceful path; regression test added.

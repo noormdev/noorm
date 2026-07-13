@@ -6,6 +6,8 @@
  */
 import path from 'node:path';
 
+import { attempt } from '@logosdx/utils';
+
 import type { Kysely } from 'kysely';
 
 import type { NoormDatabase } from '../../core/shared/index.js';
@@ -196,7 +198,18 @@ export class RunNamespace {
             configForMatch,
         );
 
-        const discoveredFiles = await coreDiscoverFiles(sqlPath);
+        // attempt() here to preserve runBuild's discovery-failure contract:
+        // on error (e.g. missing sql dir) fall back to runBuild's own
+        // discovery, which emits and resolves a failed BatchResult instead
+        // of throwing — db.reset and CLI callers rely on that shape.
+        const [discoveredFiles, discoverErr] = await attempt(() => coreDiscoverFiles(sqlPath));
+
+        if (discoverErr) {
+
+            return runBuild(context, sqlPath, { force: options?.force });
+
+        }
+
         const filteredFiles = filterFilesByPaths(
             discoveredFiles,
             sqlPath,

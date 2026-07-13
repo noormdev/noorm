@@ -225,6 +225,27 @@ describe('sdk: RunNamespace.build() filtering', () => {
 
     });
 
+    it('should resolve a failed BatchResult, not throw, when the sql dir is missing', async () => {
+
+        // Regression: db reset on a project without a sql/ dir must keep
+        // runBuild's discovery-failure contract (failed result, no throw) —
+        // an eager throw here crashed `noorm db reset` to exit 1.
+        const { mkdtemp } = await import('node:fs/promises');
+        const { tmpdir } = await import('node:os');
+        const projectRoot = await mkdtemp(join(tmpdir(), 'noorm-run-filter-nodir-'));
+        tempDirs.push(projectRoot);
+        await loadEmptyState(projectRoot);
+
+        const state = makeState(projectRoot, {});
+        const run = new RunNamespace(state);
+
+        const result = await run.build();
+
+        expect(result.status).toBe('failed');
+        expect(result.files).toEqual([]);
+
+    });
+
     it('should pass every discovered file when build settings are empty (regression guard)', async () => {
 
         const projectRoot = await makeSqlProject();
