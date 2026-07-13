@@ -30,12 +30,13 @@ const EXPECTED_MATRIX: Record<Permission, Record<Role, PolicyCell>> = {
     'db:destroy': { viewer: 'deny', operator: 'deny', admin: 'confirm' },
 
     'config:rm': { viewer: 'deny', operator: 'confirm', admin: 'confirm' },
+    'change:rm': { viewer: 'deny', operator: 'confirm', admin: 'confirm' },
 };
 
 const PERMISSIONS: Permission[] = [
     'explore',
     'sql:read', 'sql:write', 'sql:ddl',
-    'change:run', 'change:ff', 'change:revert',
+    'change:run', 'change:ff', 'change:revert', 'change:rm',
     'run:build', 'run:file', 'run:dir',
     'db:create', 'db:reset', 'db:destroy',
     'config:rm',
