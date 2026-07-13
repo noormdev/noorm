@@ -30,6 +30,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { ProgressBar, TextInput } from '@inkjs/ui';
+import { attempt } from '@logosdx/utils';
 
 import type { ReactElement } from 'react';
 import type { ScreenProps } from '../../types.js';
@@ -626,7 +627,7 @@ export function DbTransferScreen({ params: _params }: ScreenProps): ReactElement
                 passphrase: passphrase || undefined,
             });
 
-            try {
+            const [, err] = await attempt(async () => {
 
                 await reader.open();
                 const schema = reader.schema;
@@ -638,8 +639,9 @@ export function DbTransferScreen({ params: _params }: ScreenProps): ReactElement
 
                 }
 
-            }
-            catch (err) {
+            });
+
+            if (err) {
 
                 if (!isCancelled()) {
 
