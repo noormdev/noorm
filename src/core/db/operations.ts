@@ -32,6 +32,16 @@ import { attempt } from '@logosdx/utils';
  */
 export async function checkDbStatus(config: ConnectionConfig): Promise<DbStatus> {
 
+    const ops = getDialectOperations(config.dialect);
+
+    // SQLite's connectivity probe below connects directly to the target file
+    // (factory.ts has no sqlite system database to swap to), which auto-creates
+    // the file as a side effect. Capture existence before that happens so the
+    // post-probe check below can't report a false positive for a fresh target.
+    const sqlitePreProbeExists = config.dialect === 'sqlite'
+        ? await ops.databaseExists(config, config.database)
+        : undefined;
+
     // Test server connectivity first
     const serverTest = await testConnection(config, { testServerOnly: true });
 
@@ -47,8 +57,7 @@ export async function checkDbStatus(config: ConnectionConfig): Promise<DbStatus>
     }
 
     // Check if database exists
-    const ops = getDialectOperations(config.dialect);
-    const [exists, existsErr] = await attempt(() => ops.databaseExists(config, config.database));
+    const [existsAfterProbe, existsErr] = await attempt(() => ops.databaseExists(config, config.database));
 
     if (existsErr) {
 
@@ -60,6 +69,8 @@ export async function checkDbStatus(config: ConnectionConfig): Promise<DbStatus>
         };
 
     }
+
+    const exists = sqlitePreProbeExists ?? existsAfterProbe;
 
     if (!exists) {
 
@@ -122,15 +133,17 @@ export async function createDb(
     options: CreateDbOptions = {},
 ): Promise<DbOperationResult> {
 
-    const { ifNotExists = true, initializeTracking = true } = options;
+    const { ifNotExists = true, initializeTracking = true, precheckedStatus } = options;
 
     const dbName = config.database;
 
     // Get dialect operations
     const ops = getDialectOperations(config.dialect);
 
-    // Check current status
-    const status = await checkDbStatus(config);
+    // Reuse the caller's status when supplied, instead of re-deriving it —
+    // a second checkDbStatus call for SQLite would see the caller's own
+    // probe having already auto-created the target file.
+    const status = precheckedStatus ?? await checkDbStatus(config);
 
     if (!status.serverOk) {
 
