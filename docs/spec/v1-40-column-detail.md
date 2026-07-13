@@ -119,3 +119,33 @@ the gap ticket 14's spec documented under Non-goals and FOLLOWUPS F-1.
 | Scope creep into re-reviewing the 11 types ticket 14 already shipped | low | Explicitly out of scope — see Non-goals. This spec's diff touches only the two new names. |
 
 ## Change log
+
+## Implementation log
+
+### shipped (pending user ship decision) — 2026-07-12
+
+Built across 1 iteration of `/subagent-implementation` (1 implement→review cycle, PASS on
+first pass — 0🔴 0🟡 0🔵 0❓). Stacked on `v1/14-sdk-types` @ `443929c`. Commits (chronological):
+
+- `d6927ae` — docs(spec): this spec
+- `01b2edb` — CP1: added `ColumnDetail`, `ParameterDetail` to the existing curated
+  `export type { ... } from '../core/explore/index.js'` block in `src/sdk/index.ts`; extended
+  `tests/sdk/dts-surface.test.ts`'s `curatedTypes` array with both names
+
+**Out-of-scope work performed during this build:**
+
+- None. Diff scoped to exactly the 2 files the spec's Change tree named.
+
+**Unforeseens — surprises that emerged during implementation:**
+
+- None. Baseline verification confirmed the spec's cited pre-change `.d.ts` line numbers
+  (`2428,2439`) exactly, unchanged from ticket 14's original citation — the leak and its
+  location were fully characterized before this ticket started.
+
+**Deferred items still open:**
+
+- None. Reviewer emitted zero findings; `FOLLOWUPS.md` for this loop stayed empty (no entries
+  to disposition).
+- Ticket 14's own carried-forward FOLLOWUPS (F-2, the pre-existing `Lock`/`LockOptions`
+  dts-bundle-generator collision warning) remains open — unrelated to this ticket's scope, not
+  touched or resolved here.
