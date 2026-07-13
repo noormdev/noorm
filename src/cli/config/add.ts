@@ -14,8 +14,8 @@ const addCommand = defineCommand({
     },
     async run() {
 
-        process.stdout.write('Interactive only — run: noorm ui\n');
-        process.exit(0);
+        process.stderr.write('Interactive only — run: noorm ui\n');
+        process.exit(1);
 
     },
 });

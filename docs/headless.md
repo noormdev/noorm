@@ -245,7 +245,7 @@ noorm config use production --json
 
 Create a new configuration.
 
-> Wizard-only. Launches the TUI wizard. To configure non-interactively, use `NOORM_*` environment variables or `config import`.
+> Wizard-only. Launches the TUI wizard. To configure non-interactively, use `NOORM_*` environment variables or `config import`. Exits 1 (message on stderr) — there is no headless equivalent.
 
 ```bash
 noorm config add
@@ -256,22 +256,33 @@ noorm config add
 
 Edit an existing configuration.
 
-> Wizard-only. Launches the TUI wizard. Use `NOORM_*` env vars or `config export`/`config import` to modify non-interactively.
+> Wizard-only. Launches the TUI wizard. Use `NOORM_*` env vars or `config export`/`config import` to modify non-interactively. Exits 1 (message on stderr) — there is no headless equivalent.
 
 ```bash
 noorm config edit dev
 ```
 
 
-#### `config rm [name]`
+#### `config rm <name>`
 
 Remove a configuration.
 
-> Wizard-only. Launches the TUI wizard so you can confirm the removal interactively.
-
 ```bash
-noorm config rm staging
+noorm config rm staging --yes
+noorm config rm staging --yes --json
 ```
+
+**JSON output:**
+```json
+{
+    "name": "staging",
+    "deleted": true
+}
+```
+
+::: danger Destructive
+Requires `--yes` (or `NOORM_YES=1`) — there is no TTY confirmation prompt, so the flag is mandatory even at an interactive terminal. An unknown config name fails with exit 1. Gated by the config's `config:rm` access (see [Access Roles](#access-roles) above); a config linked to a locked stage cannot be removed until the stage is unlocked.
+:::
 
 
 #### `config cp <src> <dest>`
