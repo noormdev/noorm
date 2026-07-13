@@ -57,6 +57,8 @@ describe.skipIf(!dtsExists)('sdk .d.ts: curated type exports', () => {
         'FunctionDetail',
         'TypeDetail',
         'TruncateOptions',
+        'ColumnDetail',
+        'ParameterDetail',
     ] as const;
 
     for (const name of curatedTypes) {
