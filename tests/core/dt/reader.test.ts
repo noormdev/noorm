@@ -159,6 +159,30 @@ describe('dt: reader', () => {
 
         });
 
+        it('should reject promptly with the underlying ENOENT for a nonexistent .dtz path', async () => {
+
+            const filepath = path.join(testDir, 'does-not-exist.dtz');
+            const reader = new DtReader({ filepath });
+
+            // Bun's own per-test timeout (2s) is the hang detector: if the
+            // source stream's 'error' event stops being forwarded into the
+            // gunzip stream, this test times out instead of the promise
+            // ever rejecting -- never waits out the old 15s hang.
+            await expect(reader.open()).rejects.toThrow(/ENOENT/);
+
+        }, 2000);
+
+        it('should reject via gunzip error for a corrupt (non-gzip) .dtz file', async () => {
+
+            const filepath = path.join(testDir, 'corrupt.dtz');
+            await Bun.write(filepath, 'not gzip bytes');
+
+            const reader = new DtReader({ filepath });
+
+            await expect(reader.open()).rejects.toThrow();
+
+        }, 2000);
+
     });
 
     // -----------------------------------------------------------------------

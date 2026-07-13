@@ -23,15 +23,17 @@
  * worker thread spins up, and doesn't touch the shared `beforeAll`
  * connection other tests in this file depend on.
  *
- * (c) uses a `.dt` (not `.dtz`) nonexistent path. `.dtz` goes through
- * `DtReader`'s gzip branch (`fileStream.pipe(gunzip)`), and `.pipe()` does
- * not forward the source stream's `'error'` event to the destination — with
- * no listener on `fileStream` itself, an ENOENT on a `.dtz` path becomes an
- * unhandled stream error that hangs the process instead of rejecting
- * `reader.open()`'s promise (verified live). `.dt` uses the raw stream
- * directly as readline's `input`, which does propagate stream errors into
- * the async iteration, so it rejects cleanly and fast, before worker
- * spin-up. Filed as a follow-up, not fixed here (test-only ticket).
+ * (c) uses a `.dt` (not `.dtz`) nonexistent path; (d) is the `.dtz`
+ * sibling. `.dtz` goes through `DtReader`'s gzip branch
+ * (`fileStream.pipe(gunzip)`), and `.pipe()` does not forward the source
+ * stream's `'error'` event to the destination — with no listener on
+ * `fileStream` itself, an ENOENT on a `.dtz` path used to become an
+ * unhandled stream error that hung the process instead of rejecting
+ * `reader.open()`'s promise (verified live, ticket v1-41). Fixed by
+ * forwarding `fileStream`'s `'error'` into `gunzip.destroy(err)`; (d) proves
+ * that fix holds at this SDK boundary. `.dt` uses the raw stream directly as
+ * readline's `input`, which already propagates stream errors into the async
+ * iteration, so it rejects cleanly and fast, before worker spin-up.
  *
  * No happy-path export/import here — ticket 25's contract table already
  * unit-proves the shape; this file's job is only the real-failure throw
@@ -124,6 +126,14 @@ function describeDtNamespace(dialect: Dialect): void {
             const dt = new DtNamespace(makeState(conn, config));
 
             await expect(dt.importFile('/nonexistent-dir-noorm-test/x.dt')).rejects.toThrow();
+
+        });
+
+        it('(d) dt.importFile() rejects a generic Error for a genuinely absent .dtz file (proves the checkpoint-1 fix: DtReader now forwards fileStream errors through the gzip branch)', async () => {
+
+            const dt = new DtNamespace(makeState(conn, config));
+
+            await expect(dt.importFile('/nonexistent-dir-noorm-test/x.dtz')).rejects.toThrow();
 
         });
 

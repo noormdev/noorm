@@ -175,6 +175,10 @@ export class DtReader {
             const fileStream = createReadStream(this.#filepath);
             const gunzip = createGunzip();
 
+            // .pipe() does not forward the source 'error' event, so an
+            // unhandled fileStream error (e.g. ENOENT) would otherwise
+            // crash the process instead of rejecting open().
+            fileStream.on('error', (err) => gunzip.destroy(err));
             fileStream.pipe(gunzip);
 
             return gunzip;
