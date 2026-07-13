@@ -241,6 +241,8 @@ export type {
     ProcedureDetail,
     FunctionDetail,
     TypeDetail,
+    ColumnDetail,
+    ParameterDetail,
 } from '../core/explore/index.js';
 export type { TruncateResult, TeardownResult, TeardownPreview, TruncateOptions } from '../core/teardown/index.js';
 export type { BatchResult, FileResult, RunOptions } from '../core/runner/index.js';
