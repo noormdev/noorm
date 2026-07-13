@@ -325,6 +325,7 @@ const transferCommand = defineCommand({
                 tables: result?.tables,
                 totalRows: result?.totalRows,
                 durationMs: result?.durationMs,
+                fkChecksRestored: result?.fkChecksRestored,
             }, '');
 
         }
@@ -337,6 +338,15 @@ const transferCommand = defineCommand({
             process.stdout.write(`  Total rows: ${result?.totalRows}\n`);
             process.stdout.write(`  Tables: ${successCount} success, ${failedCount} failed\n`);
             process.stdout.write(`  Duration: ${((result?.durationMs ?? 0) / 1000).toFixed(2)}s\n`);
+
+            if (result?.fkChecksRestored === false) {
+
+                process.stderr.write(
+                    'WARNING: foreign key checks were NOT restored on the destination — '
+                    + 'referential integrity may be disabled. Re-enable manually.\n',
+                );
+
+            }
 
             const failures = result?.tables.filter((t) => t.status === 'failed') ?? [];
 

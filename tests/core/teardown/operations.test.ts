@@ -7,6 +7,7 @@
  */
 import { describe, it, expect, vi } from 'bun:test';
 
+import { attempt } from '@logosdx/utils';
 import {
     Kysely,
     DummyDriver,
@@ -16,6 +17,7 @@ import {
 } from 'kysely';
 
 import { isNoormTable, truncateData, teardownSchema } from '../../../src/core/teardown/index.js';
+import { observer } from '../../../src/core/observer.js';
 
 // ─────────────────────────────────────────────────────────────
 // Helpers — mock Kysely that returns controlled table rows
@@ -130,6 +132,76 @@ function createMockKyselyForTeardown(rows: {
     });
 
     return db;
+
+}
+
+/**
+ * Like createMockKysely, but records every executed SQL statement (past
+ * the initial table-list query) and can inject a failure into any
+ * statement matching `failWhen`. Used to prove the FK re-enable
+ * guarantee: a disable/truncate failure must not skip the enable-FK
+ * phase, and enable-phase failures must not stop remaining enables.
+ *
+ * The mock always compiles through a PostgresAdapter/Compiler regardless
+ * of the `dialect` string passed to `truncateData` — same as
+ * `createMockKysely` above — because `sql.raw(...)` statements pass
+ * through untouched; only the SQL text (built by the dialect-specific
+ * teardown ops) differs, not the compiler.
+ */
+function createRecordingMockKysely(
+    tableRows: Record<string, unknown>[],
+    failWhen?: (sqlText: string) => boolean,
+) {
+
+    const db = new Kysely<unknown>({
+        dialect: {
+            createAdapter: () => new PostgresAdapter(),
+            createDriver: () => new DummyDriver(),
+            createIntrospector: (db) => new PostgresIntrospector(db),
+            createQueryCompiler: () => new PostgresQueryCompiler(),
+        },
+    });
+
+    const executed: string[] = [];
+    let callCount = 0;
+    const originalExecutor = db.getExecutor();
+
+    vi.spyOn(originalExecutor, 'provideConnection').mockImplementation(async (consumer) => {
+
+        return consumer({
+            executeQuery: vi.fn().mockImplementation((compiledQuery: { sql: string }) => {
+
+                callCount++;
+
+                // First query is listTables (includeNoormTables)
+                if (callCount === 1) {
+
+                    return Promise.resolve({ rows: tableRows });
+
+                }
+
+                const stmt = compiledQuery.sql;
+                executed.push(stmt);
+
+                if (failWhen?.(stmt)) {
+
+                    return Promise.reject(new Error(`injected failure: ${stmt}`));
+
+                }
+
+                return Promise.resolve({ rows: [] });
+
+            }),
+            streamQuery: () => {
+
+                throw new Error('not implemented');
+
+            },
+        });
+
+    });
+
+    return { db, executed };
 
 }
 
@@ -446,6 +518,139 @@ describe('teardown: truncateData session-level FK toggle dialects', () => {
 
         expect(result.statements[0]).toBe('SET session_replication_role = \'replica\'');
         expect(result.statements[result.statements.length - 1]).toBe('SET session_replication_role = \'origin\'');
+
+    });
+
+});
+
+// ─────────────────────────────────────────────────────────────
+// truncateData — FK re-enable guarantee (v1-03)
+// A mid-truncate failure must never leave FK enforcement off: the
+// enable-FK phase always executes, the original disable/truncate error
+// still surfaces, and enable-phase failures don't stop remaining enables.
+// ─────────────────────────────────────────────────────────────
+
+describe('teardown: truncateData FK re-enable guarantee (v1-03)', () => {
+
+    it('mssql: mid-truncate DELETE failure still executes every enable-FK statement, throws the injected error', async () => {
+
+        const { db, executed } = createRecordingMockKysely(
+            [
+                { table_name: 'users', schema_name: 'dbo', column_count: 1, row_count: 0 },
+                { table_name: 'posts', schema_name: 'dbo', column_count: 1, row_count: 0 },
+            ],
+            (stmt) => stmt.includes('DELETE FROM [users]'),
+        );
+
+        const [, err] = await attempt(() => truncateData(db, 'mssql'));
+
+        expect(err).toBeInstanceOf(Error);
+        expect(err?.message).toContain('DELETE FROM [users]');
+
+        const checks = executed.filter((s) => s.includes('CHECK CONSTRAINT ALL') && !s.includes('NOCHECK'));
+        expect(checks).toEqual([
+            'ALTER TABLE [users] CHECK CONSTRAINT ALL',
+            'ALTER TABLE [posts] CHECK CONSTRAINT ALL',
+        ]);
+
+    });
+
+    it('postgres: mid-truncate failure still executes the enable statement, throws the original error', async () => {
+
+        const { db, executed } = createRecordingMockKysely(
+            [tableRow('users')],
+            (stmt) => stmt.startsWith('TRUNCATE TABLE'),
+        );
+
+        const [, err] = await attempt(() => truncateData(db, 'postgres'));
+
+        expect(err).toBeInstanceOf(Error);
+        expect(err?.message).toContain('TRUNCATE TABLE');
+
+        expect(executed).toContain('SET session_replication_role = \'origin\'');
+
+    });
+
+    it('mssql: enable-only failure on one table still executes the remaining enable statements, throws the enable error', async () => {
+
+        const { db, executed } = createRecordingMockKysely(
+            [
+                { table_name: 'users', schema_name: 'dbo', column_count: 1, row_count: 0 },
+                { table_name: 'posts', schema_name: 'dbo', column_count: 1, row_count: 0 },
+            ],
+            (stmt) => stmt === 'ALTER TABLE [users] CHECK CONSTRAINT ALL',
+        );
+
+        const [, err] = await attempt(() => truncateData(db, 'mssql'));
+
+        expect(err).toBeInstanceOf(Error);
+        expect(err?.message).toContain('ALTER TABLE [users] CHECK CONSTRAINT ALL');
+
+        const checks = executed.filter((s) => s.includes('CHECK CONSTRAINT ALL') && !s.includes('NOCHECK'));
+        expect(checks).toEqual([
+            'ALTER TABLE [users] CHECK CONSTRAINT ALL',
+            'ALTER TABLE [posts] CHECK CONSTRAINT ALL',
+        ]);
+
+    });
+
+    it('mssql: truncate failure and enable failure both occur — the thrown error is the truncate one', async () => {
+
+        const { db, executed } = createRecordingMockKysely(
+            [
+                { table_name: 'users', schema_name: 'dbo', column_count: 1, row_count: 0 },
+            ],
+            (stmt) => stmt.includes('DELETE FROM [users]') || stmt === 'ALTER TABLE [users] CHECK CONSTRAINT ALL',
+        );
+
+        const [, err] = await attempt(() => truncateData(db, 'mssql'));
+
+        expect(err).toBeInstanceOf(Error);
+        // The DELETE failure is captured first and takes priority over the
+        // later CHECK CONSTRAINT ALL failure — the caller needs to know why
+        // the truncate itself broke.
+        expect(err?.message).toContain('DELETE FROM [users]');
+        expect(err?.message).not.toContain('CHECK CONSTRAINT ALL');
+
+        // The enable phase must still have been attempted despite the
+        // earlier truncate failure, even though it also failed.
+        expect(executed).toContain('ALTER TABLE [users] CHECK CONSTRAINT ALL');
+
+    });
+
+    it('emits teardown:error for each enable-FK failure, not just the first', async () => {
+
+        const { db } = createRecordingMockKysely(
+            [
+                { table_name: 'users', schema_name: 'dbo', column_count: 1, row_count: 0 },
+                { table_name: 'posts', schema_name: 'dbo', column_count: 1, row_count: 0 },
+            ],
+            (stmt) => stmt.includes('CHECK CONSTRAINT ALL') && !stmt.includes('NOCHECK'),
+        );
+
+        const events: Array<{ error: Error; object: string | null }> = [];
+        const unsub = observer.on('teardown:error', (data) => events.push(data));
+
+        try {
+
+            await attempt(() => truncateData(db, 'mssql'));
+
+            const enableErrorEvents = events.filter(
+                (e) => e.object?.includes('CHECK CONSTRAINT ALL') && !e.object.includes('NOCHECK'),
+            );
+
+            // Both tables' CHECK CONSTRAINT ALL fail — each must emit its own
+            // teardown:error, proving the loop doesn't stop after the first.
+            expect(enableErrorEvents.length).toBe(2);
+            expect(enableErrorEvents[0]!.object).toBe('ALTER TABLE [users] CHECK CONSTRAINT ALL');
+            expect(enableErrorEvents[1]!.object).toBe('ALTER TABLE [posts] CHECK CONSTRAINT ALL');
+
+        }
+        finally {
+
+            unsub();
+
+        }
 
     });
 

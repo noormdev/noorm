@@ -63,6 +63,68 @@ function pushFlat(out: string[], value: string | string[]): void {
 }
 
 /**
+ * Execute a group of teardown SQL statements against `db`.
+ *
+ * Shared by every phase (disable/truncate/enable): skips comment-only
+ * entries, splits `'; '`-joined compound statements (e.g. MSSQL's
+ * DELETE + DBCC CHECKIDENT reseed), and emits `teardown:progress` /
+ * `teardown:error` exactly as the old inline loop did.
+ *
+ * `continueOnError` encodes the two failure policies the FK re-enable
+ * guarantee needs: the disable/truncate phase stops at the first
+ * failure (pre-fix throw-on-first-failure semantics, preserved here as
+ * "stop and let the caller decide what to do next"), while the
+ * enable-FK phase must attempt every statement even after a failure —
+ * one MSSQL table's re-enable failing must not skip the other tables'
+ * re-enable. Either way the first error encountered is returned rather
+ * than thrown, so the caller can run both phases before deciding what
+ * to surface.
+ */
+async function executeStatements(
+    db: Kysely<unknown>,
+    statements: string[],
+    continueOnError: boolean,
+): Promise<Error | null> {
+
+    let firstError: Error | null = null;
+
+    for (const stmt of statements) {
+
+        if (stmt.startsWith('--')) continue;
+
+        const subStatements = stmt.includes('; ')
+            ? stmt.split('; ').map(s => s.trim()).filter(s => s.length > 0)
+            : [stmt];
+
+        for (const subStmt of subStatements) {
+
+            observer.emit('teardown:progress', {
+                category: 'tables',
+                object: subStmt.includes('DELETE') || subStmt.includes('TRUNCATE') ? subStmt : null,
+                action: 'truncating',
+            });
+
+            const [, execErr] = await attempt(() => sql.raw(subStmt).execute(db));
+
+            if (execErr) {
+
+                observer.emit('teardown:error', { error: execErr, object: subStmt });
+
+                firstError = firstError ?? execErr;
+
+                if (!continueOnError) return firstError;
+
+            }
+
+        }
+
+    }
+
+    return firstError;
+
+}
+
+/**
  * Truncate data from tables.
  *
  * Disables FK checks, truncates specified tables, then re-enables FK checks.
@@ -147,56 +209,45 @@ export async function truncateData(
 
     }
 
-    // Build SQL statements. Skip the FK disable/enable bookends entirely
-    // when nothing will be truncated — keeps the dry-run output honest
-    // and avoids emitting a no-op `ALTER TABLE NOCHECK` against an empty list.
+    // Build SQL statements in three groups (disable/truncate/enable) so the
+    // enable-FK phase can execute independently of a disable/truncate
+    // failure below. `statements` stays the same flat concatenation for
+    // dry-run output — skip the FK disable/enable bookends entirely when
+    // nothing will be truncated, keeping the dry-run output honest and
+    // avoiding a no-op `ALTER TABLE NOCHECK` against an empty list.
+    const disableStatements: string[] = [];
+    const truncateStatements: string[] = [];
+    const enableStatements: string[] = [];
+
     if (truncated.length > 0) {
 
-        pushFlat(statements, ops.disableForeignKeyChecks(truncated));
+        pushFlat(disableStatements, ops.disableForeignKeyChecks(truncated));
 
         for (const tableName of truncated) {
 
-            statements.push(ops.truncateTable(tableName, undefined, options.restartIdentity ?? true));
+            truncateStatements.push(ops.truncateTable(tableName, undefined, options.restartIdentity ?? true));
 
         }
 
-        pushFlat(statements, ops.enableForeignKeyChecks(truncated));
+        pushFlat(enableStatements, ops.enableForeignKeyChecks(truncated));
+
+        statements.push(...disableStatements, ...truncateStatements, ...enableStatements);
 
     }
 
-    // Execute unless dry run
+    // Execute unless dry run. The enable-FK phase always runs, even when the
+    // disable/truncate phase fails — a mid-truncate error must never leave
+    // FK enforcement off (e.g. MSSQL's per-table NOCHECK survives reconnects
+    // until manually repaired). The disable/truncate error takes priority
+    // when both phases fail — the caller needs to know why the truncate
+    // itself broke, not just that FK re-enable also failed.
     if (!options.dryRun) {
 
-        for (const stmt of statements) {
+        const truncateError = await executeStatements(db, [...disableStatements, ...truncateStatements], false);
+        const enableError = await executeStatements(db, enableStatements, true);
 
-            // Skip comments
-            if (stmt.startsWith('--')) continue;
-
-            // Handle multi-statement strings (e.g., SQLite truncate returns two statements)
-            const subStatements = stmt.includes('; ')
-                ? stmt.split('; ').map(s => s.trim()).filter(s => s.length > 0)
-                : [stmt];
-
-            for (const subStmt of subStatements) {
-
-                observer.emit('teardown:progress', {
-                    category: 'tables',
-                    object: subStmt.includes('DELETE') || subStmt.includes('TRUNCATE') ? subStmt : null,
-                    action: 'truncating',
-                });
-
-                const [, execErr] = await attempt(() => sql.raw(subStmt).execute(db));
-
-                if (execErr) {
-
-                    observer.emit('teardown:error', { error: execErr, object: subStmt });
-                    throw execErr;
-
-                }
-
-            }
-
-        }
+        if (truncateError) throw truncateError;
+        if (enableError) throw enableError;
 
     }
 
