@@ -5,7 +5,7 @@
  * or to a file when --output is provided. Intended for backup and
  * cross-machine transfer workflows where the user explicitly owns the data.
  */
-import { writeFile } from 'node:fs/promises';
+import { chmod, writeFile } from 'node:fs/promises';
 
 import { attempt } from '@logosdx/utils';
 import { defineCommand } from 'citty';
@@ -50,7 +50,9 @@ const exportCommand = defineCommand({
 
         if (args.output) {
 
-            const [, writeErr] = await attempt(() => writeFile(args.output as string, json, 'utf8'));
+            const [, writeErr] = await attempt(() =>
+                writeFile(args.output as string, json, { encoding: 'utf8', mode: 0o600 }),
+            );
 
             if (writeErr) {
 
@@ -58,6 +60,9 @@ const exportCommand = defineCommand({
                 process.exit(1);
 
             }
+
+            // Ensure permissions are correct (writeFile mode may not work on all platforms)
+            await attempt(() => chmod(args.output as string, 0o600));
 
             process.stdout.write(`Config '${args.name}' exported to ${args.output}\n`);
 

@@ -169,7 +169,7 @@ describe('dt: reader', () => {
 
         it('should require passphrase', async () => {
 
-            const filepath = await writeFixture('.dtzx', 'secret');
+            const filepath = await writeFixture('.dtzx', 'secret-min-12chars');
             const reader = new DtReader({ filepath });
 
             await expect(reader.open()).rejects.toThrow('Passphrase required');
@@ -178,8 +178,8 @@ describe('dt: reader', () => {
 
         it('should read encrypted file with correct passphrase', async () => {
 
-            const filepath = await writeFixture('.dtzx', 'secret');
-            const reader = new DtReader({ filepath, passphrase: 'secret' });
+            const filepath = await writeFixture('.dtzx', 'secret-min-12chars');
+            const reader = new DtReader({ filepath, passphrase: 'secret-min-12chars' });
             await reader.open();
 
             expect(reader.schema!.v).toBe(1);
@@ -202,7 +202,7 @@ describe('dt: reader', () => {
 
         it('should fail with wrong passphrase', async () => {
 
-            const filepath = await writeFixture('.dtzx', 'secret');
+            const filepath = await writeFixture('.dtzx', 'secret-min-12chars');
             const reader = new DtReader({ filepath, passphrase: 'wrong' });
 
             await expect(reader.open()).rejects.toThrow();
