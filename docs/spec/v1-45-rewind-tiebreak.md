@@ -36,3 +36,26 @@ Fix: the history table's autoincrement `id` (`src/core/change/types.ts:449/492` 
 ## Change log
 
 - 2026-07-13 — initial spec, authored by orchestrator pre-implementation.
+
+## Implementation log
+
+### shipped — 2026-07-14
+
+Built across 1 iteration of /subagent-implementation. Commits (chronological):
+
+- `a3c4eb6` — spec added
+- `8f770f8` — CP-1 tiebreak fix: appliedHistoryId plumbed through ChangeStatus/ChangeListItem (types.ts), sourced from the history row's autoincrement id in history.ts's getStatus()/getAllStatuses(), consumed as id-descending tiebreak in manager.ts rewind()'s sort (appliedAt stays primary key)
+- `0df96a2` — followup F-1 deferred
+
+**Out-of-scope work performed during this build:**
+
+- none — blast radius held to exactly the 3 files predicted (types.ts, history.ts, manager.ts) plus the test file.
+
+**Unforeseens — surprises that emerged during implementation:**
+
+- Ticket/spec text claimed "two" ticket-34-gated it.skip tests in tests/core/change/manager.test.ts (~261, ~299); only one existed (line 254 pre-edit) — the ticket-34 SQLite date-hydration fix had already landed on this branch's base (b971f2f) and the second skip it originally referenced lived in a different file (tests/cli/run/change-rewind.test.ts), outside this ticket's scoped test surface. Verified via baseline run (10 pass, 1 skip, 0 fail on b971f2f) before touching code. Resolved by un-skipping the one existing test and adding the new tie-specific test the checkpoint called for; both satisfy the ticket's acceptance criteria.
+- `ChangeListItem` is also constructed in `src/tui/utils/change-loader.ts` (three call sites) without setting `appliedHistoryId` — left the field optional/additive rather than touching that file, keeping blast radius at 3 files per the spec's risk budget. TUI callers unaffected since they don't consume the field.
+
+**Deferred items still open:**
+
+- `v1-45-rewind-tiebreak-f1` (project-level followup, risk): the new tie-specific test (and the pre-existing sibling at ~line 250) force the appliedAt tie via wall-clock timing coincidence rather than a deterministically forced equal executed_at — rare risk of false confidence on a run that straddles a second boundary. Not blocking; deferred rather than fixed in this iteration since it's a pre-existing test-technique pattern, not a regression introduced here.
