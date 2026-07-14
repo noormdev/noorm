@@ -15,11 +15,11 @@ Change directories hold a `manifest.json` and SQL files. Each change has a descr
 - [`src/core/change/scaffold.ts`](../../src/core/change/scaffold.ts) — create/add/remove/rename/reorder change files on disk
 - [`src/core/change/parser.ts`](../../src/core/change/parser.ts) — `parseChange`, `discoverChanges`, `resolveManifest`, `validateChange`, `parseSequence`, `parseDescription`
 - [`src/core/change/executor.ts`](../../src/core/change/executor.ts) — `executeChange`, `revertChange`; applies SQL via the runner, records results. Each gates via `assertPolicy` (`core/policy`) against `ChangeContext.access`/`channel` before running (`change:run`/`change:revert` permissions)
-- [`src/core/change/history.ts`](../../src/core/change/history.ts) — `ChangeHistory`; queries `__noorm_change__` and `__noorm_executions__` for per-change and per-file history
+- [`src/core/change/history.ts`](../../src/core/change/history.ts) — `ChangeHistory`; queries `__noorm_change__` and `__noorm_executions__` for per-change and per-file history; selects the change row's `id` and surfaces it as `appliedHistoryId` on `ChangeStatus`
 - [`src/core/change/tracker.ts`](../../src/core/change/tracker.ts) — `ChangeTracker`; `canRevert` logic, orphaned-change detection
-- [`src/core/change/manager.ts`](../../src/core/change/manager.ts) — `ChangeManager`; high-level facade: `list`, `run`, `revert`, `ff` (fast-forward)
+- [`src/core/change/manager.ts`](../../src/core/change/manager.ts) — `ChangeManager`; high-level facade: `list`, `run`, `revert`, `ff` (fast-forward), `rewind` (revert back to a target change, ordering applied changes by `appliedAt` descending then `appliedHistoryId` descending)
 - [`src/core/change/validation.ts`](../../src/core/change/validation.ts) — `validateChangeContent`; structural content checks
-- [`src/core/change/types.ts`](../../src/core/change/types.ts) — all change types, error classes (`ChangeValidationError`, `ChangeNotFoundError`, etc.)
+- [`src/core/change/types.ts`](../../src/core/change/types.ts) — all change types, error classes (`ChangeValidationError`, `ChangeNotFoundError`, etc.); `ChangeStatus`/`ChangeListItem` carry an optional `appliedHistoryId: number | null`
 
 ## Docs
 
@@ -45,3 +45,4 @@ Change directories hold a `manifest.json` and SQL files. Each change has a descr
 - `parseSequence` extracts a numeric prefix from filename for ordering.
 - `DEFAULT_CHANGE_OPTIONS` and `DEFAULT_BATCH_OPTIONS` define timeout and retry defaults.
 - Error classes extend `Error` with a `code` field; callers check `code` to distinguish failure modes.
+- `ChangeManager.rewind()` sorts applied changes by `appliedAt` descending, tiebreaking on `appliedHistoryId` (the history row's autoincrement id) descending when two changes share the same second-precision `appliedAt` — e.g. entries applied within the same `change ff` batch.
