@@ -147,6 +147,14 @@ export interface ChangeStatus {
 
     /** Error message if failed */
     errorMessage: string | null;
+
+    /**
+     * History-row id of the record that produced `appliedAt` — the true
+     * apply-order key (autoincrement, unlike second-precision `appliedAt`).
+     * Optional/additive: `undefined` where not hydrated, `null` when the
+     * change has never been applied.
+     */
+    appliedHistoryId?: number | null;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -215,6 +223,14 @@ export interface ChangeListItem {
 
     /** Error message if failed */
     errorMessage: string | null;
+
+    /**
+     * History-row id of the record that produced `appliedAt` — the true
+     * apply-order key (autoincrement, unlike second-precision `appliedAt`).
+     * Optional/additive: `undefined` where not hydrated, `null` when the
+     * change has never been applied.
+     */
+    appliedHistoryId?: number | null;
 
     // Computed
     /** True if exists on disk but no DB record */

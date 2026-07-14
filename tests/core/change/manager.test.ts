@@ -247,11 +247,7 @@ describe('change: manager', () => {
 
         });
 
-        // Skip: ticket 34's SQLite date-hydration crash is fixed, but un-skipping
-        // exposes a second bug — rewind's appliedAt sort has no tiebreaker, so
-        // changes applied within the same clock tick revert in the wrong order
-        // and rewind(name) can stop early (v1 audit ticket 45). Un-skip when 45 lands.
-        it.skip('should revert until and including the older of two applied changes with rewind(name)', async () => {
+        it('should revert until and including the older of two applied changes with rewind(name)', async () => {
 
             await createTestChange(
                 '2025-01-01-first',
@@ -279,6 +275,43 @@ describe('change: manager', () => {
 
             expect(byName.get('2025-01-01-first')).toBe('reverted');
             expect(byName.get('2025-01-02-second')).toBe('reverted');
+
+        });
+
+        // Two changes applied back-to-back land the same second-precision
+        // `executed_at` (SQLite CURRENT_TIMESTAMP default) — a routine tie,
+        // not an edge case (e.g. `change ff` applying several pending changes
+        // in one process tick). Only the history table's autoincrement id
+        // records true apply order, so rewind's sort must break ties on it
+        // descending (highest id = most recently applied = reverted first).
+        // Applying in name order makes list()'s name-sorted array equal the
+        // chronological apply order forward, while the correct revert order
+        // is that array reversed -- exactly what a missing tiebreak gets
+        // wrong (stable sort keeps forward/name order on a tie).
+        it('should revert tied appliedAt changes in id-descending apply order with rewind(2)', async () => {
+
+            await createTestChange(
+                '2025-02-01-first',
+                [{ name: '001.sql', content: 'CREATE TABLE rewind_tie_first (id INTEGER PRIMARY KEY)' }],
+                [{ name: '001.sql', content: 'DROP TABLE rewind_tie_first' }],
+            );
+            await createTestChange(
+                '2025-02-02-second',
+                [{ name: '001.sql', content: 'CREATE TABLE rewind_tie_second (id INTEGER PRIMARY KEY)' }],
+                [{ name: '001.sql', content: 'DROP TABLE rewind_tie_second' }],
+            );
+
+            const manager = new ChangeManager(buildContext());
+
+            await manager.run('2025-02-01-first');
+            await manager.run('2025-02-02-second');
+
+            const result = await manager.rewind(2);
+
+            expect(result.status).toBe('success');
+            expect(result.executed).toBe(2);
+            expect(result.changes[0].name).toBe('2025-02-02-second');
+            expect(result.changes[1].name).toBe('2025-02-01-first');
 
         });
 
