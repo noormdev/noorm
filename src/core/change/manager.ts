@@ -135,6 +135,7 @@ export class ChangeManager {
                 appliedBy: status?.appliedBy ?? null,
                 revertedAt: status?.revertedAt ?? null,
                 errorMessage: status?.errorMessage ?? null,
+                appliedHistoryId: status?.appliedHistoryId ?? null,
                 isNew: !status,
                 orphaned: false,
             });
@@ -153,6 +154,7 @@ export class ChangeManager {
                 appliedBy: status.appliedBy,
                 revertedAt: status.revertedAt,
                 errorMessage: status.errorMessage,
+                appliedHistoryId: status.appliedHistoryId ?? null,
                 isNew: false,
                 orphaned: true,
                 // Disk fields are not available for orphaned changes
@@ -362,7 +364,12 @@ export class ChangeManager {
         const opts = { ...DEFAULT_BATCH, ...options };
         const start = performance.now();
 
-        // Get applied changes sorted by appliedAt (most recent first)
+        // Get applied changes sorted by appliedAt (most recent first), tiebreaking
+        // on the history table's autoincrement id -- appliedAt is second-precision,
+        // so changes applied within the same tick (e.g. `change ff`) tie, and the
+        // id is the only reliable true apply-order key. appliedAt stays primary
+        // because not every applied entry is guaranteed to carry an id (older/
+        // partial hydration paths leave it undefined).
         const list = await this.list();
         const applied = list
             .filter((cs) => !cs.orphaned && cs.status === 'success' && cs.appliedAt)
@@ -371,7 +378,16 @@ export class ChangeManager {
                 const aTime = a.appliedAt?.getTime() ?? 0;
                 const bTime = b.appliedAt?.getTime() ?? 0;
 
-                return bTime - aTime; // Most recent first
+                if (aTime !== bTime) {
+
+                    return bTime - aTime; // Most recent first
+
+                }
+
+                const aId = a.appliedHistoryId ?? 0;
+                const bId = b.appliedHistoryId ?? 0;
+
+                return bId - aId; // Tie: most recently applied (highest id) first
 
             });
 

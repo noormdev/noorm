@@ -154,6 +154,7 @@ export class ChangeHistory {
             this.#ndb
                 .selectFrom(this.#tables.change)
                 .select([
+                    'id',
                     'name',
                     'status',
                     'executed_at',
@@ -210,6 +211,7 @@ export class ChangeHistory {
             appliedBy: record.executed_by,
             revertedAt: hydrateDate(revertRecord?.executed_at),
             errorMessage: record.error_message || null,
+            appliedHistoryId: record.id,
         };
 
     }
@@ -261,6 +263,7 @@ export class ChangeHistory {
                     appliedBy: record.executed_by,
                     revertedAt: null, // Will be filled in below
                     errorMessage: record.error_message || null,
+                    appliedHistoryId: record.id,
                 });
 
             }
