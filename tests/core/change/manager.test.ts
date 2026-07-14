@@ -247,6 +247,33 @@ describe('change: manager', () => {
 
         });
 
+        it('should revert the two most-recently-applied changes in order with rewind(2)', async () => {
+
+            await createTestChange(
+                '2025-01-01-first',
+                [{ name: '001.sql', content: 'CREATE TABLE rewind2_first (id INTEGER PRIMARY KEY)' }],
+                [{ name: '001.sql', content: 'DROP TABLE rewind2_first' }],
+            );
+            await createTestChange(
+                '2025-01-02-second',
+                [{ name: '001.sql', content: 'CREATE TABLE rewind2_second (id INTEGER PRIMARY KEY)' }],
+                [{ name: '001.sql', content: 'DROP TABLE rewind2_second' }],
+            );
+
+            const manager = new ChangeManager(buildContext());
+
+            await manager.run('2025-01-01-first');
+            await manager.run('2025-01-02-second');
+
+            const result = await manager.rewind(2);
+
+            expect(result.status).toBe('success');
+            expect(result.executed).toBe(2);
+            expect(result.changes[0]?.name).toBe('2025-01-02-second');
+            expect(result.changes[1]?.name).toBe('2025-01-01-first');
+
+        });
+
         it('should revert until and including the older of two applied changes with rewind(name)', async () => {
 
             await createTestChange(
