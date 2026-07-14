@@ -413,8 +413,7 @@ export async function revertChange(
 /**
  * Dialects where wrapping a change's execution in a DB transaction
  * actually rolls back DDL alongside the history rows written for it.
- * Postgres only, for now — see the spec's Approach section
- * (docs/spec/v1-17-change-retry.md) for the full rationale: MySQL's DDL
+ * Postgres only, for now: MySQL's DDL
  * implicitly commits (a wrapping transaction would silently do nothing),
  * MSSQL's GO-batch-split execution (`runner/mssql-batches.ts`) hasn't been
  * verified to compose safely with a wrapping transaction, and SQLite is

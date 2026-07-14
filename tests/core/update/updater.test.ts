@@ -39,8 +39,7 @@ let resumeRanges: Array<string | null> = [];
 // the mock server delivers a body over several ticks instead of one
 // native-buffered blob. A single-tick, instantly-complete body is what
 // triggers a Bun runtime race in `for await` iteration over `response.body`
-// (see docs/spec/v1-37-updater-flake.md, "Root-cause hypothesis and
-// evidence") — this keeps the streaming tests deterministic without
+// — this keeps the streaming tests deterministic without
 // touching production code.
 const CHUNK_SIZE = 128 * 1024;
 

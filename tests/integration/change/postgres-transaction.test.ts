@@ -5,8 +5,7 @@
  * Requires a live Postgres (CI group 4 / docker-compose.yml, port 15432).
  * Verifies that a change that fails mid-execution on Postgres leaves no
  * partial state: neither the DDL nor the operation/file history rows
- * persist, and a retry reruns the whole change fresh (see
- * docs/spec/v1-17-change-retry.md, "Postgres whole-change rollback").
+ * persist, and a retry reruns the whole change fresh.
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'bun:test';
 import { mkdtemp, rm, mkdir, writeFile } from 'fs/promises';

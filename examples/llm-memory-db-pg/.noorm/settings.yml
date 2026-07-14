@@ -14,7 +14,8 @@ paths:
     sql: ./sql
     changes: ./changes
 rules:
-    - match:
+    - description: Include test seeds
+      match:
           isTest: true
       include:
           - 05_seeds
