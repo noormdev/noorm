@@ -48,6 +48,14 @@ import { ChangeValidationError } from './types.js';
 const SQL_TEMPLATE = `-- TODO: Add SQL statements here
 `;
 
+/** Stub content for a freshly scaffolded change/<seq>_<slug>.sql */
+const CHANGE_STUB_TEMPLATE = `-- Add the SQL statements that apply this change.
+`;
+
+/** Stub content for a freshly scaffolded revert/<seq>_<slug>.sql */
+const REVERT_STUB_TEMPLATE = `-- Add the SQL statements that undo this change.
+`;
+
 /** Default template for changelog */
 const CHANGELOG_TEMPLATE = `# Changelog
 
@@ -73,7 +81,7 @@ TODO: Describe any impact on existing data or functionality.
  *
  * @param changesDir - Parent directory for changes
  * @param options - Creation options
- * @returns Parsed change (empty, ready for files)
+ * @returns Parsed change with a runnable change/revert stub already scaffolded
  *
  * @example
  * ```typescript
@@ -135,8 +143,11 @@ export async function createChange(
         path: changeDir,
     });
 
-    // Return parsed change
-    return {
+    // An empty change/ + revert/ pair fails parseChange's validation, and the
+    // caller sees that misreported as "change not found" rather than "needs
+    // editing". Scaffold a stub in each folder via addFile so the sequence/
+    // filename convention has one source of truth.
+    let change: Change = {
         name,
         path: changeDir,
         date,
@@ -145,6 +156,19 @@ export async function createChange(
         revertFiles: [],
         hasChangelog: true,
     };
+
+    change = await addFile(change, 'change', {
+        name: slug,
+        type: 'sql',
+        content: CHANGE_STUB_TEMPLATE,
+    });
+    change = await addFile(change, 'revert', {
+        name: slug,
+        type: 'sql',
+        content: REVERT_STUB_TEMPLATE,
+    });
+
+    return change;
 
 }
 
