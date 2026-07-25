@@ -93,9 +93,21 @@ export class Tracker {
      * @param filepath - File path to check
      * @param checksum - Current file checksum
      * @param force - Force re-run regardless of status
+     * @param excludeOperationId - Operation whose own rows should be ignored.
+     * `executeFiles` inserts a `pending` row for every discovered file
+     * *before* running any of them (for batch visibility), so within that
+     * same operation the newest row for a file is always its own pending
+     * record — reading as "new" forever and making checksum-based skipping
+     * unreachable. Passing the running operation's id here excludes those
+     * rows so the lookup finds the last *completed* operation instead.
      * @returns Whether file needs to run and why
      */
-    async needsRun(filepath: string, checksum: string, force: boolean): Promise<NeedsRunResult> {
+    async needsRun(
+        filepath: string,
+        checksum: string,
+        force: boolean,
+        excludeOperationId?: number,
+    ): Promise<NeedsRunResult> {
 
         // Force always runs
         if (force) {
@@ -106,23 +118,31 @@ export class Tracker {
 
         // Find most recent execution for this file and config
         // Also fetch the parent change status to check for stale
+        let query = (this.#ndb
+            .selectFrom(this.#tables.executions)
+            .innerJoin(
+                this.#tables.change,
+                `${this.#tables.change}.id`,
+                `${this.#tables.executions}.change_id`,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            ) as any)
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            .select((eb: any) => [
+                eb.ref(`${this.#tables.executions}.checksum`).as('checksum'),
+                eb.ref(`${this.#tables.executions}.status`).as('exec_status'),
+                eb.ref(`${this.#tables.change}.status`).as('change_status'),
+            ])
+            .where(`${this.#tables.executions}.filepath`, '=', filepath)
+            .where(`${this.#tables.change}.config_name`, '=', this.#configName);
+
+        if (excludeOperationId !== undefined) {
+
+            query = query.where(`${this.#tables.executions}.change_id`, '<>', excludeOperationId);
+
+        }
+
         const [record, err] = await attempt(() =>
-            (this.#ndb
-                .selectFrom(this.#tables.executions)
-                .innerJoin(
-                    this.#tables.change,
-                    `${this.#tables.change}.id`,
-                    `${this.#tables.executions}.change_id`,
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                ) as any)
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                .select((eb: any) => [
-                    eb.ref(`${this.#tables.executions}.checksum`).as('checksum'),
-                    eb.ref(`${this.#tables.executions}.status`).as('exec_status'),
-                    eb.ref(`${this.#tables.change}.status`).as('change_status'),
-                ])
-                .where(`${this.#tables.executions}.filepath`, '=', filepath)
-                .where(`${this.#tables.change}.config_name`, '=', this.#configName)
+            query
                 .orderBy(`${this.#tables.executions}.id`, 'desc')
                 .limit(1)
                 .executeTakeFirst(),
@@ -136,8 +156,11 @@ export class Tracker {
                 context: { filepath, operation: 'needs-run-check' },
             });
 
-            // On error, assume file needs to run
-            return { needsRun: true, reason: 'new' };
+            // Distinct from 'new': the SELECT itself failed, so whether a
+            // record exists is genuinely unknown. Reporting this as 'new'
+            // would make a transient read failure indistinguishable from a
+            // first-ever run in logs and audits.
+            return { needsRun: true, reason: 'error' };
 
         }
 
@@ -531,12 +554,18 @@ export class Tracker {
 
         }
 
-        // Check if any rows were updated
+        // Exactly one row must match. Zero means the pending record is
+        // missing; more than one means (change_id, filepath) isn't unique --
+        // exactly the shape a duplicate discovered file would take, and
+        // tolerating it here would silently update N rows and mask the
+        // duplicate from ever surfacing.
         const numUpdated = Number(result?.numUpdatedRows ?? 0);
 
-        if (numUpdated === 0) {
+        if (numUpdated !== 1) {
 
-            const errMsg = `No execution record found for ${filepath} (operationId: ${operationId})`;
+            const errMsg = numUpdated === 0
+                ? `No execution record found for ${filepath} (operationId: ${operationId})`
+                : `Expected exactly 1 execution record for ${filepath} (operationId: ${operationId}), matched ${numUpdated}`;
 
             observer.emit('error', {
                 source: 'runner',
@@ -549,6 +578,67 @@ export class Tracker {
         }
 
         return null;
+
+    }
+
+    /**
+     * Find prior successful executions of a file, most recent first.
+     *
+     * Called on the failure path only. A file that fails after a history of
+     * clean runs at this config rules out a broken file and points instead
+     * at drift between what the tracker expects and what the target
+     * database actually has — the detail that would have answered #54
+     * immediately instead of reading as intermittent double execution.
+     *
+     * @param filepath - File path to check (relative, as stored)
+     * @param excludeOperationId - Omit rows belonging to the operation
+     * currently running, so a failure doesn't cite itself as history.
+     */
+    async priorSuccessfulExecutions(
+        filepath: string,
+        excludeOperationId?: number,
+    ): Promise<Array<{ operationName: string; operationId: number }>> {
+
+        let query = (this.#ndb
+            .selectFrom(this.#tables.executions)
+            .innerJoin(
+                this.#tables.change,
+                `${this.#tables.change}.id`,
+                `${this.#tables.executions}.change_id`,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            ) as any)
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            .select((eb: any) => [
+                eb.ref(`${this.#tables.change}.name`).as('operationName'),
+                eb.ref(`${this.#tables.executions}.change_id`).as('operationId'),
+            ])
+            .where(`${this.#tables.executions}.filepath`, '=', filepath)
+            .where(`${this.#tables.executions}.status`, '=', 'success')
+            .where(`${this.#tables.change}.config_name`, '=', this.#configName);
+
+        if (excludeOperationId !== undefined) {
+
+            query = query.where(`${this.#tables.executions}.change_id`, '<>', excludeOperationId);
+
+        }
+
+        const [rows, err] = await attempt(() =>
+            query.orderBy(`${this.#tables.executions}.id`, 'desc').execute(),
+        );
+
+        if (err) {
+
+            observer.emit('error', {
+                source: 'runner',
+                error: err,
+                context: { filepath, operation: 'prior-successful-executions' },
+            });
+
+            return [];
+
+        }
+
+        return rows ?? [];
 
     }
 

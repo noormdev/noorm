@@ -65,6 +65,25 @@ function getInstallCommand(dialect: Dialect): string {
 }
 
 /**
+ * Retry/backoff behavior for a connection attempt.
+ *
+ * Defaults preserve the standard 3-attempt backoff connecting commands
+ * rely on. A best-effort probe (e.g. resolving the vault tier for
+ * `run preview`/`run inspect`, which are documented-offline commands)
+ * opts out with `{ retries: 1, delay: 0 }` — one attempt, no wait — so an
+ * unreachable database fails in milliseconds instead of the ~6-7s the
+ * default policy adds.
+ */
+export interface ConnectionRetryOptions {
+    /** Number of attempts before giving up. @default 3 */
+    retries?: number;
+    /** Delay in ms before each retry, before the backoff multiplier. @default 1000 */
+    delay?: number;
+    /** Multiplier applied to the delay on every retry. @default 2 */
+    backoff?: number;
+}
+
+/**
  * Create a database connection with retry logic.
  *
  * Automatically retries on transient connection failures (ECONNREFUSED, ETIMEDOUT).
@@ -87,7 +106,10 @@ function getInstallCommand(dialect: Dialect): string {
 export async function createConnection(
     config: ConnectionConfig,
     configName: string = '__default__',
+    retryOptions: ConnectionRetryOptions = {},
 ): Promise<ConnectionResult> {
+
+    const { retries = 3, delay = 1000, backoff = 2 } = retryOptions;
 
     const [conn, err] = await attempt(() =>
         retry(
@@ -121,9 +143,9 @@ export async function createConnection(
 
             },
             {
-                retries: 3,
-                delay: 1000,
-                backoff: 2, // 1s, 2s, 4s
+                retries,
+                delay,
+                backoff,
                 jitterFactor: 0.1,
                 shouldRetry: (err) => {
 
@@ -179,7 +201,15 @@ export async function createConnection(
         destroy: wrappedDestroy,
     };
 
-    observer.emit('connection:open', { configName, dialect: config.dialect });
+    // host/port/database remove the "which database was I actually talking
+    // to" ambiguity (#51) -- never user/password.
+    observer.emit('connection:open', {
+        configName,
+        dialect: config.dialect,
+        host: config.host,
+        port: config.port,
+        database: config.database,
+    });
 
     return trackedConn;
 
