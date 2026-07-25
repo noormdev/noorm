@@ -14,6 +14,7 @@ import type { Config } from '../core/config/types.js';
 import type { Settings } from '../core/settings/index.js';
 import type { Identity } from '../core/identity/index.js';
 import { createConnection } from '../core/connection/index.js';
+import type { ConnectionRetryOptions } from '../core/connection/index.js';
 
 import { buildProcCall, buildFuncCall, buildTvfCall } from './sql.js';
 import { NoormOps } from './noorm-ops.js';
@@ -133,13 +134,21 @@ export class Context<DB = unknown, Procs = object, Funcs = object, Tvfs = object
     // Lifecycle
     // ─────────────────────────────────────────────────────────
 
-    async connect(): Promise<void> {
+    /**
+     * Connect to the configured database.
+     *
+     * `retryOptions` defaults to the standard 3-attempt backoff. Pass
+     * `{ retries: 1, delay: 0 }` for a best-effort probe that must fail
+     * fast rather than hang on an unreachable database.
+     */
+    async connect(retryOptions?: ConnectionRetryOptions): Promise<void> {
 
         if (this.#state.connection) return;
 
         this.#state.connection = await createConnection(
             this.#state.config.connection,
             this.#state.config.name,
+            retryOptions,
         );
 
     }

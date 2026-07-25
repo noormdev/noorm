@@ -8,6 +8,7 @@ import {
     sqlQuote,
     generateUuid,
     isoNow,
+    UndefinedSqlValueError,
 } from '../../../src/core/template/utils.js';
 
 describe('template: utils', () => {
@@ -104,6 +105,14 @@ describe('template: utils', () => {
         it('should return NULL for null', () => {
 
             expect(sqlQuote(null)).toBe('NULL');
+
+        });
+
+        it('should throw UndefinedSqlValueError for undefined, distinct from null', () => {
+
+            // A missing value must never render as the SQL literal 'undefined'
+            // (noorm#50) — null is a legitimate SQL value, undefined is not.
+            expect(() => sqlQuote(undefined)).toThrow(UndefinedSqlValueError);
 
         });
 
