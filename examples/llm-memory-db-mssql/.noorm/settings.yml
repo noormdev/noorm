@@ -4,16 +4,16 @@ paths:
 
 build:
     include:
-        - sql/00_types
-        - sql/01_reference
-        - sql/02_tables
-        - sql/03_validators
-        - sql/04_subtypes
-        - sql/05_binary
-        - sql/06_seeds
-        - sql/07_functions
-        - sql/08_views
-        - sql/09_procedures
+        - 00_types
+        - 01_reference
+        - 02_tables
+        - 03_validators
+        - 04_subtypes
+        - 05_binary
+        - 06_seeds
+        - 07_functions
+        - 08_views
+        - 09_procedures
     exclude: []
 
 stages:
@@ -46,7 +46,7 @@ rules:
       match:
           isTest: true
       include:
-          - sql/06_seeds
+          - 06_seeds
 
 strict:
     enabled: false
