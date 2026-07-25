@@ -175,4 +175,19 @@ describe('cli: noorm db drop — access policy gate', () => {
 
     });
 
+    it('targets the NOORM_CONNECTION_* database instead of the persisted config when both are set (#51)', async () => {
+
+        await seedConfig({ user: 'admin', mcp: 'admin' });
+
+        const envDbPath = join(tmpDir, 'env-target.db');
+        writeFileSync(envDbPath, '');
+
+        const result = runDrop(['--yes'], { NOORM_CONNECTION_DATABASE: envDbPath });
+
+        expect(result.status).toBe(0);
+        expect(existsSync(envDbPath)).toBe(false);
+        expect(existsSync(dbPath)).toBe(true);
+
+    });
+
 });

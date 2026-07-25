@@ -198,4 +198,27 @@ describe('cli: noorm db create — fresh vs already-exists', () => {
 
     });
 
+    it('targets the NOORM_CONNECTION_* database instead of the persisted config when both are set (#51)', async () => {
+
+        await seedConfig({ user: 'admin', mcp: 'admin' });
+
+        const envDbPath = join(tmpDir, 'env-target.db');
+
+        expect(existsSync(dbPath)).toBe(false);
+        expect(existsSync(envDbPath)).toBe(false);
+
+        const result = runCreate(['--json'], { NOORM_CONNECTION_DATABASE: envDbPath });
+
+        expect(result.status).toBe(0);
+        expect(existsSync(envDbPath)).toBe(true);
+        expect(existsSync(dbPath)).toBe(false);
+
+        const parsed = JSON.parse(result.stdout);
+        expect(parsed.database).toBe(envDbPath);
+
+        const status = await checkDbStatus({ dialect: 'sqlite', database: envDbPath });
+        expect(status.trackingInitialized).toBe(true);
+
+    });
+
 });
