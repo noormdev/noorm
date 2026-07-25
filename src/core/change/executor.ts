@@ -61,9 +61,6 @@ const DEFAULT_OPTIONS: Required<Omit<ChangeOptions, 'output'>> & { output: strin
     output: null,
 };
 
-/** Default SQL template - files with only this content are considered empty */
-const SQL_TEMPLATE = '-- TODO: Add SQL statements here';
-
 /**
  * Gate a change entrypoint against the config's access policy.
  *
@@ -1102,10 +1099,7 @@ async function validateFilesHaveContent(files: ChangeFile[]): Promise<boolean> {
 
         }
 
-        const trimmed = content?.trim() ?? '';
-
-        // Check if file has actual content (not empty, not just the template)
-        if (trimmed && trimmed !== SQL_TEMPLATE) {
+        if (hasExecutableSql(content ?? '')) {
 
             return true;
 
@@ -1114,6 +1108,27 @@ async function validateFilesHaveContent(files: ChangeFile[]): Promise<boolean> {
     }
 
     return false;
+
+}
+
+/**
+ * True if content has a line that isn't blank or a `--` line comment.
+ *
+ * Scaffolded stubs (and the default template) are comment-only by design;
+ * matching on a single fixed template string missed any other wording,
+ * so a differently-worded stub would silently execute as a no-op.
+ */
+function hasExecutableSql(content: string): boolean {
+
+    return content
+        .split('\n')
+        .some((line) => {
+
+            const trimmed = line.trim();
+
+            return trimmed.length > 0 && !trimmed.startsWith('--');
+
+        });
 
 }
 
