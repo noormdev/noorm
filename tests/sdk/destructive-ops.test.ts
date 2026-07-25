@@ -72,7 +72,11 @@ function makeState(access: ConfigAccess, options: ContextState['options'] = {}):
 
 }
 
-/** Fake Change fixture for delete() gate tests. rm({ force: true }) on a nonexistent path silently no-ops, so a placeholder path is safe for every test except the dedicated disk-mutation block below. */
+/**
+ * Fake Change fixture for delete() gate tests. rm({ force: true }) on a
+ * nonexistent path silently no-ops, so a placeholder path is safe for every
+ * test except the dedicated disk-mutation block below.
+ */
 function makeFakeChange(changePath: string = join(tmpdir(), 'sample-change')): Change {
 
     return {
