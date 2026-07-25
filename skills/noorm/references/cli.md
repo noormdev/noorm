@@ -289,8 +289,8 @@ Execute all SQL files in the schema directory. Uses checksums to skip unchanged 
 
 ```bash
 noorm run build
-noorm --force run build     # Skip checksums, rebuild everything
-noorm --dry-run run build   # Preview without executing
+noorm run build --force     # Skip checksums, rebuild everything
+noorm run build --dry-run   # Preview without executing
 ```
 
 **JSON:**
@@ -362,7 +362,7 @@ Render a `.sql.tmpl` file and output the resulting SQL. Does **not** execute aga
 noorm run preview sql/schema.sql.tmpl              # Raw SQL to stdout
 noorm run preview sql/schema.sql.tmpl > rendered.sql # Pipe to file
 noorm run preview sql/seed.sql.tmpl --json           # JSON envelope
-noorm --config staging run preview sql/migrations/002.sql.tmpl
+noorm run preview sql/migrations/002.sql.tmpl --config staging
 ```
 
 **JSON:** `{ "filepath": "...", "sql": "CREATE TABLE ...", "durationMs": 12 }`
@@ -405,8 +405,8 @@ Fast-forward: apply all pending changes in order.
 
 ```bash
 noorm change ff
-noorm --dry-run change ff   # Preview only
-noorm --force change ff     # Skip checksum checks
+noorm change ff --dry-run   # Preview only
+noorm change ff --force     # Skip checksum checks
 ```
 
 **JSON:**
@@ -585,7 +585,7 @@ noorm db explore --json                 # JSON overview
 Wipe all data from application tables. Schema and noorm tracking tables are preserved.
 
 ```bash
-noorm -y db truncate
+noorm db truncate -y
 ```
 
 ### db teardown
@@ -593,7 +593,7 @@ noorm -y db truncate
 Drop all database objects. Gated by the config's `db:reset` access role: `viewer` denied, `operator` must confirm (`--yes`/`NOORM_YES=1`), `admin` runs unconfirmed. No flag overrides a `viewer` denial.
 
 ```bash
-noorm -y db teardown
+noorm db teardown -y
 ```
 
 ### db transfer

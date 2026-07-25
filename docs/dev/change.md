@@ -156,15 +156,19 @@ const change = await createChange('/project/changes', {
     description: 'add-user-preferences',
     date: new Date(),  // Optional, defaults to today
 })
-// Creates: 2025-12-18-add-user-preferences/
+// Creates: 2025-12-18-add-user-preferences/, already seeded with a runnable
+// stub in each folder: change/001_add-user-preferences.sql and
+// revert/001_add-user-preferences.sql (a comment naming what belongs there).
+// An empty change/+revert/ pair fails validation, so createChange never
+// returns one — see "Scaffolding a Runnable Stub" below.
 
-// Add a SQL file
+// Add a SQL file — sequence numbers continue from the stub, so this is 002
 const updated = await addFile(change, 'change', {
     name: 'create-preferences-table',
     type: 'sql',
     content: 'CREATE TABLE user_preferences (...);',
 })
-// Creates: change/001_create-preferences-table.sql
+// Creates: change/002_create-preferences-table.sql
 
 // Add a manifest file
 await addFile(updated, 'change', {
@@ -172,11 +176,24 @@ await addFile(updated, 'change', {
     type: 'txt',
     paths: ['tables/preferences.sql', 'views/user_prefs.sql'],
 })
-// Creates: change/002_schema-refs.txt
+// Creates: change/003_schema-refs.txt
 
 // Remove a file
-await removeFile(change, 'change', '001_create-preferences-table.sql')
+await removeFile(change, 'change', '001_add-user-preferences.sql')
 ```
+
+
+### Scaffolding a Runnable Stub
+
+`createChange` doesn't leave `change/` and `revert/` empty. An empty pair fails
+`parseChange`'s validation, and the caller sees that misreported as "change not found"
+rather than "needs editing" — so `createChange` scaffolds one stub file into each folder via
+`addFile`, using the change's own slug as the filename: `001_<slug>.sql` in `change/`,
+`001_<slug>.sql` in `revert/`. Each stub is a single comment naming what belongs there
+("Add the SQL statements that apply this change" / "...undo this change"). A stub full of
+comments still isn't runnable content — `executeChange` rejects files that are empty or
+contain only comments/template placeholders, with a message that says so, before it ever
+executes anything.
 
 
 ## Change Status

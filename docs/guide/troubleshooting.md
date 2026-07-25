@@ -6,19 +6,23 @@ for `noorm`. Each entry is a search target plus a one-paragraph fix
 and a link to the deeper doc.
 
 
-## `noorm --json sql query "SELECT 1"` doesn't produce JSON
+## `noorm --config prod run build` fails or targets the wrong directory
 
-`--json` is a per-subcommand flag, not a global. It must appear *after*
-the subcommand name. citty (the parser) sees `--json` before the
-subcommand as a root flag that doesn't exist, then fails silently on
-output. Move the flag:
+`--config` (long form) is per-subcommand only — it has no global meaning. Neither do
+`--dry-run`, `--json`, or `--yes`: the only flag with a root-level meaning is `-c`/`--cwd`.
+Placed before the subcommand, `--config` (and everything else) is rejected outright rather
+than silently ignored:
+
+    # rejected: --config has no global form
+    noorm --config prod run build
 
     # works
-    noorm sql query "SELECT 1" --json
-    noorm change ff --json
-    noorm config list --json
+    noorm run build --config prod
+    noorm run build -c prod
 
-See [CLI flag conventions](../cli/flags.md) for the full rule.
+`-c` is the sharper trap: `noorm -c prod run build` is *not* the same command — before the
+subcommand, `-c` means `--cwd`, not `--config`. See [CLI flag conventions](../cli/flags.md)
+for the full rule.
 
 
 ## `noorm help db create` errors with "Unknown command help"

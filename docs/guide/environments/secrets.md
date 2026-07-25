@@ -151,7 +151,7 @@ Types are hints for the CLI. All secrets are stored identically (encrypted strin
 
 ## Secrets in CI/CD
 
-The local secret store exists for per-developer overrides — it's deliberately TUI-only so that raw values never leak into shell history. For non-interactive environments, push values to the [vault](/guide/environments/vault) instead, which is scriptable end-to-end:
+The local secret store exists for per-developer overrides — `noorm secret set` is headless, but it writes to `.noorm/state/state.enc` on disk, which a fresh CI runner doesn't have. For non-interactive environments, push values to the [vault](/guide/environments/vault) instead, which is scriptable end-to-end and reachable from a clean checkout:
 
 ```bash
 # Write a secret to the vault

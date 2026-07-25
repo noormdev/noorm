@@ -27,7 +27,11 @@ For shell completion, run `noorm complete` and follow the printed instructions f
 
 ## Global Flags
 
-These flags must appear **before** the subcommand (like `git -C`). After the subcommand they revert to their per-command meaning.
+A flag goes on the command that uses it. `-c`/`--cwd <path>` is the one exception: it's
+recognized **before** the subcommand instead, because it's consumed before dispatch — it sets
+the working directory everything else (config discovery, project root) resolves against. An
+unrecognized or misplaced flag typed before the subcommand exits non-zero naming the correct
+form, rather than being silently dropped.
 
 | Flag | Short | Description |
 |------|-------|-------------|
@@ -39,7 +43,13 @@ noorm -c packages/db run build
 
 # Initialize a nested project from elsewhere
 noorm -c packages/db init
+
+# every other flag belongs on the subcommand
+noorm run build --dry-run
 ```
+
+`--cwd`/`-c` only has this global meaning *before* the subcommand — after it, `-c` is the
+per-command `--config` alias instead (see the note below).
 
 
 ## Common Flags
@@ -55,9 +65,7 @@ These options are reused across most commands. Run `<command> --help` to see exa
 | `--dry-run` | — | Preview without executing |
 | `--help` | `-h` | Show command help (citty native) |
 
-> **Note:** `-c` is overloaded by position. `noorm -c <path> run` is the global cwd flag; `noorm run -c <name>` is the per-command config alias. The first non-flag token (the subcommand) is the boundary.
-
-> **`--json` placement:** `--json` is per-subcommand, not global — it must appear **after** the subcommand name, e.g. `noorm change ff --json`. See [CLI flag conventions](./cli/flags.md) for the full reasoning. For per-command help, see [Discovering command help](./cli/help.md).
+> **Note:** `-c` is overloaded by position. `noorm -c <path> run` is the global cwd flag; `noorm run -c <name>` is the per-command config alias. The first non-flag token (the subcommand) is the boundary. Every flag other than `-c`/`--cwd` — `--config`, `--force`, `--json`, `--dry-run`, `--yes`, etc. — has no global meaning; it only works after the subcommand. See [CLI flag conventions](./cli/flags.md) for the full reasoning. For per-command help, see [Discovering command help](./cli/help.md).
 
 
 ## Configuration
@@ -70,7 +78,7 @@ These options are reused across most commands. Run `<command> --help` to see exa
 noorm run build
 
 # Use specific config
-noorm --config staging run build
+noorm run build --config staging
 
 # Or via environment
 export NOORM_CONFIG=staging
@@ -637,8 +645,8 @@ Execute all SQL files in the schema directory. Uses checksums to skip unchanged 
 
 ```bash
 noorm run build
-noorm --force run build    # Skip checksums, run everything
-noorm --dry-run run build  # Preview without executing
+noorm run build --force    # Skip checksums, run everything
+noorm run build --dry-run  # Preview without executing
 ```
 
 **JSON output:**
@@ -742,7 +750,7 @@ Render a `.sql.tmpl` file and output the resulting SQL. Does **not** execute aga
 noorm run preview sql/schema.sql.tmpl
 noorm run preview sql/schema.sql.tmpl > rendered.sql
 noorm run preview sql/seed.sql.tmpl --json
-noorm --config staging run preview sql/migrations/002.sql.tmpl
+noorm run preview sql/migrations/002.sql.tmpl --config staging
 ```
 
 **JSON output:**
@@ -798,8 +806,8 @@ Fast-forward: apply all pending changes in order.
 
 ```bash
 noorm change ff
-noorm --dry-run change ff
-noorm --force change ff
+noorm change ff --dry-run
+noorm change ff --force
 ```
 
 **JSON output:**
@@ -882,7 +890,12 @@ noorm change add add-users-table
 noorm change add "notification queue" --json
 ```
 
-Creates `changes/<YYYY-MM-DD>-<slug>/` with `change.sql` and `revert.sql` stubs.
+Creates `changes/<YYYY-MM-DD>-<slug>/` with `change/` and `revert/` directories, each
+holding a `001_<slug>.sql` stub (a single comment naming what belongs there — "Add the SQL
+statements that apply this change" / "...undo this change"), plus `changelog.md`. The stub
+comments alone don't count as content: running the change before editing them fails with an
+actionable message ("Files are empty or contain only template placeholders"), not "change not
+found".
 
 
 #### `change edit [name]`
@@ -1019,7 +1032,7 @@ noorm db explore --json                 # JSON overview
 Wipe all data from application tables. Schema and noorm tracking tables are preserved.
 
 ```bash
-noorm -y db truncate
+noorm db truncate -y
 ```
 
 
@@ -1028,7 +1041,7 @@ noorm -y db truncate
 Drop all database objects.
 
 ```bash
-noorm -y db teardown
+noorm db teardown -y
 ```
 
 ::: warning Access Roles
@@ -1589,6 +1602,29 @@ trap "noorm lock release" EXIT
 noorm change ff
 noorm db explore --json
 ```
+
+
+## Output Streams
+
+A command's **result** — the human summary, or the `--json` payload — always goes to
+**stdout**. Everything else — progress lines, warnings, the logger's event stream — goes to
+**stderr**, in both text and `--json` mode. This holds regardless of whether the command
+succeeds or fails: a setup failure (bad config, no connection) prints nothing to stdout in
+text mode — the diagnostic goes to stderr — and a single JSON error document to stdout in
+`--json` mode, e.g. `{"success":false,"error":"..."}`.
+
+That means `--json` output is always exactly one parseable JSON document on stdout, with no
+log noise ahead of or after it — no `tail -1` needed:
+
+```bash
+noorm change history --json | jq '.[0].status'
+```
+
+A command that finds nothing to report still writes a result — never silence. `noorm change
+list` on a project with no changesets prints `No changes found.` on stdout in text mode and
+`[]` on stdout in `--json` mode; either way, a CI step can tell "ran and found nothing" from
+"didn't run" by checking the exit code and the (always-present) stdout line, rather than
+guessing from empty output.
 
 
 ## Scripting with JSON
