@@ -9,7 +9,7 @@
  */
 
 import { createHash } from 'crypto';
-import { createReadStream, createWriteStream, existsSync, chmodSync, mkdirSync, renameSync, unlinkSync } from 'fs';
+import { createReadStream, createWriteStream, existsSync, chmodSync, mkdirSync, readFileSync, renameSync, unlinkSync } from 'fs';
 import { get as httpsGet } from 'https';
 import { dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
@@ -18,6 +18,8 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const PACKAGE_ROOT = resolve(__dirname, '..');
 const BIN_DIR = resolve(PACKAGE_ROOT, 'bin');
 const REPO = 'noormdev/noorm';
+
+const ROOT_PACKAGE_NAME = '@noormdev/main';
 
 const BINARY_NAME = process.platform === 'win32' ? 'noorm.exe' : 'noorm';
 const DEST = resolve(BIN_DIR, BINARY_NAME);
@@ -37,6 +39,62 @@ class ChecksumFailure extends Error {
         this.name = 'ChecksumFailure';
 
     }
+
+}
+
+/**
+ * Local mirror of `attemptSync` from `@logosdx/utils`, which this script
+ * cannot import: postinstall runs before the workspace is built, and in a
+ * consumer's tree the dependency need not be installed at all.
+ *
+ * Exists so the callers below keep the repo's error-tuple convention instead
+ * of ad-hoc try/catch control flow -- the one unavoidable try/catch is
+ * encapsulated here, exactly as the real utility encapsulates it.
+ */
+function attemptSync(fn) {
+
+    try {
+        return [fn(), null];
+    }
+    catch (err) {
+        return [null, err];
+    }
+
+}
+
+/**
+ * Detects the noorm monorepo source checkout, where this script must not run.
+ *
+ * The download is pinned to the release tag matching this package's version,
+ * which in a source checkout is routinely not a published release -- every
+ * commit after a version bump points at a tag that does not exist yet, and
+ * tags cut before the release workflow started emitting checksums.txt have
+ * nothing to verify against. Either way the download fails, and a failed
+ * verification is a hard failure by design (see main().catch below), so it
+ * takes `bun install` down with it.
+ *
+ * Nothing in the repo needs it: the CLI is built from source here
+ * (`bun run build:packages`, or `bun run build:binary` for a real binary) and
+ * the downloaded asset is never executed. Skipping is the whole fix.
+ *
+ * Keyed on the private workspace root two levels up, which the npm tarball
+ * never ships -- an installed copy lives at node_modules/@noormdev/cli, whose
+ * grandparent is node_modules itself and has no package.json.
+ */
+function isSourceCheckout() {
+
+    const rootPackage = resolve(PACKAGE_ROOT, '..', '..', 'package.json');
+
+    if (!existsSync(rootPackage)) {
+        return false;
+    }
+
+    // An unreadable or malformed package.json two levels up says nothing about
+    // being in the source repo -- fall through to the normal download path
+    // rather than silently skipping a consumer's install.
+    const [pkg] = attemptSync(() => JSON.parse(readFileSync(rootPackage, 'utf8')));
+
+    return pkg?.name === ROOT_PACKAGE_NAME;
 
 }
 
@@ -289,6 +347,11 @@ async function verifyChecksum(checksumsUrl, assetName) {
  * main().catch() below.
  */
 async function main() {
+
+    if (isSourceCheckout()) {
+        console.log('noorm source checkout detected - skipping release binary download (build one with `bun run build:binary`).');
+        return;
+    }
 
     const suffix = getPlatformSuffix();
     const version = await getVersion();
