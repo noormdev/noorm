@@ -19,6 +19,7 @@ import { attempt } from '@logosdx/utils';
 import { outputError, outputResult, sharedArgs } from '../_utils.js';
 import { processFile } from '../../core/template/engine.js';
 import { getStateManager } from '../../core/state/index.js';
+import { resolveRenderSecrets, RENDER_SECRETS_NOTICE } from './_render-secrets.js';
 
 const previewCommand = defineCommand({
     meta: {
@@ -52,12 +53,13 @@ const previewCommand = defineCommand({
 
         const activeConfigName = args.config ?? stateManager.getActiveConfigName();
         const activeConfig = activeConfigName ? stateManager.getConfig(activeConfigName) : undefined;
+        const { secrets, vaultProbeFailed } = await resolveRenderSecrets(stateManager, activeConfigName);
 
         // Render the template
         const [result, err] = await attempt(() => processFile(fullPath, {
             projectRoot,
             config: activeConfig as unknown as Record<string, unknown>,
-            secrets: activeConfigName ? stateManager.getAllSecrets(activeConfigName) : {},
+            secrets,
             globalSecrets: stateManager.getAllGlobalSecrets(),
         }));
 
@@ -74,10 +76,20 @@ const previewCommand = defineCommand({
                 filepath: args.path,
                 sql: result.sql,
                 durationMs: result.durationMs,
+                ...(vaultProbeFailed ? { vaultProbeFailed: true, notice: RENDER_SECRETS_NOTICE } : {}),
             }, '');
 
         }
         else {
+
+            // Diagnostic, not result — stdout is reserved for the raw SQL
+            // below so `noorm run preview x.sql.tmpl > rendered.sql` stays
+            // pipeable.
+            if (vaultProbeFailed) {
+
+                process.stderr.write(RENDER_SECRETS_NOTICE + '\n');
+
+            }
 
             // Output raw SQL so it can be piped to a file or other tool
             process.stdout.write(result.sql);

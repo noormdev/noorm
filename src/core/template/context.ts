@@ -32,6 +32,106 @@ import { loadDataFile, hasLoader } from './loaders/index.js';
 import { toContextKey, sqlEscape, sqlQuote, generateUuid, isoNow } from './utils.js';
 
 /**
+ * Tiers `$.secrets` actually resolves from, in priority order.
+ *
+ * Named here (not derived) because `buildContext` only ever sees the
+ * already-built `options.secrets` record — it has no visibility into which
+ * tiers produced it. Every render-path caller (`RunNamespace`,
+ * `ChangesNamespace`, `TemplatesNamespace`, `run preview`, `run inspect`,
+ * the TUI run context) sources `secrets` from `buildSecretsContext`, which
+ * merges all three. Keep this list in step with that function: a
+ * `MissingSecretError` that names a tier nobody searched sends the reader
+ * looking in the wrong place, and one that omits a tier hides where the
+ * value should have come from.
+ *
+ * A vault tier that cannot be reached (no vault, no key, unreachable DB)
+ * degrades to the local tiers rather than failing, so it is still listed —
+ * it was searched, it just had nothing to give.
+ */
+const SECRET_TIERS_SEARCHED = ['config-local', 'global-local', 'vault'] as const;
+
+/**
+ * Error when a template reads a secret that could not be resolved.
+ *
+ * A missing secret has no correct SQL rendering. Before this, a miss on the
+ * plain `secrets` object read as `undefined`, and `sqlQuote` stringified
+ * that into the literal text `undefined` — a real credential shipped with
+ * the six-character password `undefined` (noorm#50). Thrown by the
+ * `$.secrets` proxy's `get` trap; the `has` trap does not throw, so
+ * templates can still probe for an optional secret via `'KEY' in $.secrets`.
+ *
+ * @example
+ * ```typescript
+ * const [, err] = await attempt(() => processFile(templatePath, { secrets }));
+ * if (err instanceof MissingSecretError) {
+ *     console.log(`missing ${err.key}, searched: ${err.tiersSearched.join(', ')}`);
+ * }
+ * ```
+ */
+export class MissingSecretError extends Error {
+
+    override readonly name = 'MissingSecretError' as const;
+
+    constructor(
+        public readonly key: string,
+        public readonly tiersSearched: readonly string[] = SECRET_TIERS_SEARCHED,
+    ) {
+
+        super(`Secret "${key}" not found (searched: ${tiersSearched.join(', ')})`);
+
+    }
+
+}
+
+/**
+ * Wrap a resolved secrets record so an unknown key fails loudly instead of
+ * reading as `undefined`.
+ *
+ * `Object.keys`, spreading, and `JSON.stringify` never trigger `get` for a
+ * key that isn't actually present — they resolve keys through `ownKeys`/
+ * `getOwnPropertyDescriptor`, which this proxy leaves at the default
+ * (forwarded to `target`) — so none of them throw. `toJSON` is special-cased
+ * because `JSON.stringify` probes it as a `get` on the value itself before
+ * falling back to default object serialization.
+ *
+ * @param secrets - The merged secrets record to guard
+ * @returns A proxy over `secrets` whose `get` throws on an unresolved key
+ *
+ * @example
+ * ```typescript
+ * const secrets = createSecretsProxy({ API_KEY: 'abc' });
+ * secrets.API_KEY;       // 'abc'
+ * 'MISSING' in secrets;  // false, does not throw
+ * secrets.MISSING;       // throws MissingSecretError
+ * ```
+ */
+function createSecretsProxy(secrets: Record<string, string>): Record<string, string> {
+
+    return new Proxy(secrets, {
+
+        get(target, prop, receiver) {
+
+            if (typeof prop === 'symbol' || prop === 'toJSON' || prop in target) {
+
+                return Reflect.get(target, prop, receiver);
+
+            }
+
+            throw new MissingSecretError(prop);
+
+        },
+
+        has(target, prop) {
+
+            return Reflect.has(target, prop);
+
+        },
+
+    });
+
+}
+
+/**
  * Build the template context ($) for a template file.
  *
  * @param templatePath - Absolute path to the template file
@@ -67,7 +167,7 @@ export async function buildContext(
         ...(hasLocalConfig ? {} : { config: options.config }),
 
         // Secrets
-        secrets: options.secrets ?? {},
+        secrets: createSecretsProxy(options.secrets ?? {}),
         globalSecrets: options.globalSecrets ?? {},
 
         // Environment

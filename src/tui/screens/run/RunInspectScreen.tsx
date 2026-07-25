@@ -15,21 +15,27 @@ import { Box, Text, useInput } from 'ink';
 import { join, relative } from 'path';
 
 import type { ReactElement } from 'react';
+import type { Kysely } from 'kysely';
 import type { ScreenProps } from '../../types.js';
 
 import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useSettings, useAppContext } from '../../app-context.js';
 import { Panel, Spinner, SearchableList } from '../../components/index.js';
-import { useAsyncEffect } from '../../hooks/index.js';
+import { useAsyncEffect, useConnection } from '../../hooks/index.js';
 import { discoverFiles } from '../../../core/runner/index.js';
 import { buildContext } from '../../../core/template/context.js';
 import { processFile } from '../../../core/template/engine.js';
 import { loadHelpers, type HelperLoadError } from '../../../core/template/helpers.js';
+import { getVaultKey, buildSecretsContext } from '../../../core/vault/index.js';
+import { loadIdentityMetadata, loadPrivateKey } from '../../../core/identity/storage.js';
 import { attempt } from '@logosdx/utils';
 
 import type { SelectListItem } from '../../components/index.js';
 import type { TemplateContext } from '../../../core/template/types.js';
+import type { Dialect } from '../../../core/connection/types.js';
+import type { NoormDatabase } from '../../../core/shared/index.js';
+import type { StateManager } from '../../../core/state/index.js';
 
 type Phase = 'loading' | 'picker' | 'inspecting' | 'expanded' | 'preview' | 'error';
 
@@ -238,6 +244,39 @@ function categorizeContext(ctx: TemplateContext, helperKeys: Set<string>, helper
 }
 
 /**
+ * Resolve `$.secrets` through all three tiers for the shared connection.
+ *
+ * Inspect must show what apply would actually see — a preview reading
+ * different secrets than `run file`/`run build` use is the exact silent
+ * divergence this fixes. Falls back to the local-only tiers when
+ * disconnected, no identity is on disk, or the vault key can't be
+ * decrypted; only `noorm vault *` screens treat that as an error.
+ */
+async function resolveRenderSecrets(
+    stateManager: StateManager,
+    configName: string,
+    db: Kysely<NoormDatabase> | null,
+    dialect: Dialect | null,
+): Promise<Record<string, string>> {
+
+    if (!db || !dialect) return buildSecretsContext(stateManager, configName);
+
+    const [vaultKey] = await attempt(async () => {
+
+        const cryptoIdentity = await loadIdentityMetadata();
+        const privateKey = cryptoIdentity ? await loadPrivateKey() : null;
+
+        if (!cryptoIdentity || !privateKey) return null;
+
+        return getVaultKey(db, cryptoIdentity.identityHash, privateKey, dialect);
+
+    });
+
+    return buildSecretsContext(stateManager, configName, db, vaultKey, dialect);
+
+}
+
+/**
  * Component that handles keyboard input for a specific focus scope.
  */
 function KeyHandler({
@@ -284,6 +323,7 @@ export function RunInspectScreen({ params }: ScreenProps): ReactElement {
     const { back } = useRouter();
     const { activeConfig, activeConfigName, stateManager } = useAppContext();
     const { settings } = useSettings();
+    const { db, dialect } = useConnection();
 
     const [phase, setPhase] = useState<Phase>('loading');
     const [allFiles, setAllFiles] = useState<string[]>([]);
@@ -355,15 +395,17 @@ export function RunInspectScreen({ params }: ScreenProps): ReactElement {
 
         const [results, err] = await attempt(async () => {
 
-            const [ctx, helperResult] = await Promise.all([
-                buildContext(selectedFile, {
-                    projectRoot,
-                    config: activeConfig as unknown as Record<string, unknown>,
-                    secrets: stateManager.getAllSecrets(activeConfigName ?? ''),
-                    globalSecrets: stateManager.getAllGlobalSecrets(),
-                }),
+            const [secrets, helperResult] = await Promise.all([
+                resolveRenderSecrets(stateManager, activeConfigName ?? '', db, dialect),
                 loadHelpers(templateDir, projectRoot),
             ]);
+
+            const ctx = await buildContext(selectedFile, {
+                projectRoot,
+                config: activeConfig as unknown as Record<string, unknown>,
+                secrets,
+                globalSecrets: stateManager.getAllGlobalSecrets(),
+            });
 
             return {
                 ctx,
@@ -389,7 +431,7 @@ export function RunInspectScreen({ params }: ScreenProps): ReactElement {
 
         }
 
-    }, [selectedFile, projectRoot, activeConfig, activeConfigName, stateManager]);
+    }, [selectedFile, projectRoot, activeConfig, activeConfigName, stateManager, db, dialect]);
 
     // Effect to load context when file changes
     useEffect(() => {
@@ -421,10 +463,12 @@ export function RunInspectScreen({ params }: ScreenProps): ReactElement {
         setPhase('loading');
         setError(null);
 
+        const secrets = await resolveRenderSecrets(stateManager, activeConfigName ?? '', db, dialect);
+
         const [result, err] = await attempt(() => processFile(selectedFile, {
             projectRoot,
             config: activeConfig as unknown as Record<string, unknown>,
-            secrets: stateManager.getAllSecrets(activeConfigName ?? ''),
+            secrets,
             globalSecrets: stateManager.getAllGlobalSecrets(),
         }));
 
@@ -445,7 +489,7 @@ export function RunInspectScreen({ params }: ScreenProps): ReactElement {
 
         }
 
-    }, [selectedFile, projectRoot, activeConfig, activeConfigName, stateManager]);
+    }, [selectedFile, projectRoot, activeConfig, activeConfigName, stateManager, db, dialect]);
 
     // Handle refresh
     const handleRefresh = useCallback(() => {

@@ -67,12 +67,41 @@ export function sqlEscape(value: string): string {
 }
 
 /**
+ * Error when a value that must be rendered into SQL is `undefined`.
+ *
+ * `undefined` reaching `sqlQuote` is always a bug upstream — a missing
+ * secret, an unresolved config key, a typo'd lookup — never a value a
+ * template author meant to write. `null` remains a legitimate SQL value
+ * and still quotes to `NULL`; stringifying `undefined` is how a missing
+ * secret shipped as the literal password `undefined` (noorm#50).
+ *
+ * @example
+ * ```typescript
+ * sqlQuote(null)       // → 'NULL'
+ * sqlQuote(undefined)  // throws UndefinedSqlValueError
+ * ```
+ */
+export class UndefinedSqlValueError extends Error {
+
+    override readonly name = 'UndefinedSqlValueError' as const;
+
+    constructor() {
+
+        super('sqlQuote() received undefined — use null for an explicit SQL NULL, or resolve the missing value before rendering');
+
+    }
+
+}
+
+/**
  * SQL-escape and wrap in single quotes.
  *
- * Handles null values and various types appropriately.
+ * Handles null values and various types appropriately. Throws on
+ * `undefined` rather than stringifying it — see `UndefinedSqlValueError`.
  *
  * @param value - The value to quote
  * @returns The quoted SQL literal
+ * @throws UndefinedSqlValueError if value is undefined
  *
  * @example
  * ```typescript
@@ -82,7 +111,13 @@ export function sqlEscape(value: string): string {
  * sqlQuote(true)       // → "'true'"
  * ```
  */
-export function sqlQuote(value: string | number | boolean | null): string {
+export function sqlQuote(value: string | number | boolean | null | undefined): string {
+
+    if (value === undefined) {
+
+        throw new UndefinedSqlValueError();
+
+    }
 
     if (value === null) {
 

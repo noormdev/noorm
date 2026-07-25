@@ -212,7 +212,7 @@ export function RunDirScreen({ params }: ScreenProps): ReactElement {
 
         const identity = resolveScreenIdentity(cryptoIdentity);
 
-        const context = buildRunContext({
+        const context = await buildRunContext({
             db: sharedDb, configName: activeConfigName, identity,
             projectRoot, activeConfig,
             stateManager, dialect: sharedDialect ?? undefined,
@@ -271,7 +271,7 @@ export function RunDirScreen({ params }: ScreenProps): ReactElement {
 
                 }
 
-                const context = buildRunContext({
+                const context = await buildRunContext({
                     db, configName: activeConfigName, identity,
                     projectRoot, activeConfig,
                     stateManager, dialect: activeConfig.connection.dialect,

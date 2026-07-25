@@ -8,13 +8,53 @@
  *
  * Local always wins over remote.
  */
+import { attempt } from '@logosdx/utils';
+
 import type { Kysely } from 'kysely';
 
 import type { NoormDatabase } from '../shared/tables.js';
 import type { Dialect } from '../connection/types.js';
 import type { StateManager } from '../state/manager.js';
+import { loadIdentityMetadata, loadPrivateKey } from '../identity/storage.js';
 
-import { getVaultSecret } from './storage.js';
+import { getVaultKey, getVaultSecret } from './storage.js';
+
+/**
+ * Resolve the vault key for the current identity, if any.
+ *
+ * Degrades to `null` on any failure — no identity on disk, no vault
+ * access yet, or a decrypt failure all mean the vault tier is
+ * unavailable, not that the caller should fail. A project with no vault
+ * at all must keep working exactly as it does today.
+ *
+ * Single source of truth for the five render-context builders that need
+ * it (`run`/`changes`/`templates` SDK namespaces, `run preview`/`run
+ * inspect`) — a future change to the degrade rules is one edit here.
+ *
+ * @example
+ * ```typescript
+ * const vaultKey = await resolveVaultKey(db, 'postgres');
+ * ```
+ */
+export async function resolveVaultKey(
+    db: Kysely<NoormDatabase>,
+    dialect: Dialect,
+): Promise<Buffer | null> {
+
+    const [vaultKey] = await attempt(async () => {
+
+        const cryptoIdentity = await loadIdentityMetadata();
+        const privateKey = cryptoIdentity ? await loadPrivateKey() : null;
+
+        if (!cryptoIdentity || !privateKey) return null;
+
+        return getVaultKey(db, cryptoIdentity.identityHash, privateKey, dialect);
+
+    });
+
+    return vaultKey ?? null;
+
+}
 
 /**
  * Resolve a secret value.

@@ -132,7 +132,7 @@ export function RunBuildScreen({ params: _params }: ScreenProps): ReactElement {
             activeConfig.connection, activeConfigName,
             async (db) => {
 
-                const context = buildRunContext({
+                const context = await buildRunContext({
                     db, configName: activeConfigName, identity,
                     projectRoot, activeConfig,
                     stateManager, dialect: activeConfig.connection.dialect,

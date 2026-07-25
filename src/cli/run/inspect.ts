@@ -19,6 +19,7 @@ import { outputError, outputResult, sharedArgs } from '../_utils.js';
 import { buildContext } from '../../core/template/context.js';
 import { loadHelpers } from '../../core/template/helpers.js';
 import { getStateManager } from '../../core/state/index.js';
+import { resolveRenderSecrets, RENDER_SECRETS_NOTICE } from './_render-secrets.js';
 
 // Built-in helper names (always present in context)
 const BUILTIN_HELPERS = new Set(['quote', 'escape', 'uuid', 'now', 'json', 'include']);
@@ -89,6 +90,7 @@ const inspectCommand = defineCommand({
 
         const activeConfigName = args.config ?? stateManager.getActiveConfigName();
         const activeConfig = activeConfigName ? stateManager.getConfig(activeConfigName) : undefined;
+        const { secrets, vaultProbeFailed } = await resolveRenderSecrets(stateManager, activeConfigName);
 
         // Load context and helpers in parallel
         const [results, err] = await attempt(async () => {
@@ -97,7 +99,7 @@ const inspectCommand = defineCommand({
                 buildContext(fullPath, {
                     projectRoot,
                     config: activeConfig as unknown as Record<string, unknown>,
-                    secrets: activeConfigName ? stateManager.getAllSecrets(activeConfigName) : {},
+                    secrets,
                     globalSecrets: stateManager.getAllGlobalSecrets(),
                 }),
                 loadHelpers(templateDir, projectRoot),
@@ -160,9 +162,10 @@ const inspectCommand = defineCommand({
                 })),
                 builtins,
                 configKeys: activeConfig ? Object.keys(activeConfig) : [],
-                secretCount: activeConfigName ? Object.keys(stateManager.getAllSecrets(activeConfigName)).length : 0,
+                secretCount: Object.keys(secrets).length,
                 globalSecretCount: Object.keys(stateManager.getAllGlobalSecrets()).length,
             },
+            ...(vaultProbeFailed ? { vaultProbeFailed: true, notice: RENDER_SECRETS_NOTICE } : {}),
         };
 
         const textLines = [
@@ -217,9 +220,14 @@ const inspectCommand = defineCommand({
 
         if (activeConfigName) {
 
-            const secretCount = Object.keys(stateManager.getAllSecrets(activeConfigName)).length;
             const globalCount = Object.keys(stateManager.getAllGlobalSecrets()).length;
-            textLines.push(`Secrets: ${secretCount} config, ${globalCount} global`);
+            textLines.push(`Secrets: ${Object.keys(secrets).length} resolved, ${globalCount} global`);
+
+            if (vaultProbeFailed) {
+
+                textLines.push(RENDER_SECRETS_NOTICE);
+
+            }
 
         }
 

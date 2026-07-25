@@ -28,6 +28,7 @@ import {
 } from '../../core/runner/index.js';
 import { getEffectiveBuildPaths } from '../../core/settings/rules.js';
 import { getStateManager } from '../../core/state/index.js';
+import { resolveVaultKey, buildSecretsContext } from '../../core/vault/index.js';
 import { checkProtectedConfig } from '../guards.js';
 
 import type { ContextState } from '../state.js';
@@ -87,7 +88,7 @@ export class RunNamespace {
         output?: string | null,
     ): Promise<FileResult[]> {
 
-        const context = this.#createRunContext();
+        const context = await this.#createRunContext();
         const absolutePaths = filepaths.map((fp) => this.#resolvePath(fp));
 
         return corePreview(context, absolutePaths, output);
@@ -110,7 +111,7 @@ export class RunNamespace {
 
         checkProtectedConfig(this.#state.config, this.#state.options, 'run:file', 'run.file');
 
-        const context = this.#createRunContext();
+        const context = await this.#createRunContext();
         const absolutePath = this.#resolvePath(filepath);
 
         return coreRunFile(context, absolutePath, options);
@@ -129,7 +130,7 @@ export class RunNamespace {
 
         checkProtectedConfig(this.#state.config, this.#state.options, 'run:dir', 'run.files');
 
-        const context = this.#createRunContext();
+        const context = await this.#createRunContext();
         const absolutePaths = filepaths.map((fp) => this.#resolvePath(fp));
 
         return coreRunFiles(context, absolutePaths, options);
@@ -148,7 +149,7 @@ export class RunNamespace {
 
         checkProtectedConfig(this.#state.config, this.#state.options, 'run:dir', 'run.dir');
 
-        const context = this.#createRunContext();
+        const context = await this.#createRunContext();
         const absolutePath = this.#resolvePath(dirpath);
 
         return coreRunDir(context, absolutePath, options);
@@ -178,7 +179,7 @@ export class RunNamespace {
 
         checkProtectedConfig(this.#state.config, this.#state.options, 'run:build', 'run.build');
 
-        const context = this.#createRunContext();
+        const context = await this.#createRunContext();
         const sqlPath = path.join(
             this.#state.projectRoot,
             this.#state.settings.paths?.sql ?? 'sql',
@@ -206,7 +207,7 @@ export class RunNamespace {
 
         if (discoverErr) {
 
-            return runBuild(context, sqlPath, { force: options?.force });
+            return runBuild(context, sqlPath, { force: options?.force, dryRun: options?.dryRun });
 
         }
 
@@ -217,7 +218,7 @@ export class RunNamespace {
             effectivePaths.exclude,
         );
 
-        return runBuild(context, sqlPath, { force: options?.force }, filteredFiles);
+        return runBuild(context, sqlPath, { force: options?.force, dryRun: options?.dryRun }, filteredFiles);
 
     }
 
@@ -239,20 +240,23 @@ export class RunNamespace {
 
     }
 
-    #createRunContext(): RunContext {
+    async #createRunContext(): Promise<RunContext> {
 
         const state = getStateManager(this.#state.projectRoot);
+        const db = this.#kysely as unknown as Kysely<NoormDatabase>;
+        const dialect = this.#state.config.connection.dialect;
+        const vaultKey = await resolveVaultKey(db, dialect);
 
         return {
-            db: this.#kysely as unknown as Kysely<NoormDatabase>,
+            db,
             configName: this.#state.config.name,
             identity: this.#state.identity,
             projectRoot: this.#state.projectRoot,
-            dialect: this.#state.config.connection.dialect,
+            dialect,
             access: this.#state.config.access,
             channel: this.#state.options.channel ?? 'user',
             config: this.#state.config as unknown as Record<string, unknown>,
-            secrets: state.getAllSecrets(this.#state.config.name),
+            secrets: await buildSecretsContext(state, this.#state.config.name, db, vaultKey, dialect),
             globalSecrets: state.getAllGlobalSecrets(),
         };
 
