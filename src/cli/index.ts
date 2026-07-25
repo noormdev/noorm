@@ -110,14 +110,44 @@ async function resolveCommand(rootDef: CommandDef, argv: string[]): Promise<{ cm
 }
 
 /**
- * Strip `-c <path>` / `--cwd <path>` / `--cwd=<path>` that appear before
- * the first subcommand. Mirrors `git -C <path>` semantics: the flag is only
- * recognized as global when it precedes the subcommand, so per-command
- * aliases (like `--config -c`) keep working after the subcommand token.
- *
- * Returns the resolved cwd (or null) plus argv with global flags removed.
+ * `--help`/`-h`/`--version`/`-v` are already recognized at any position:
+ * `entry()` scans for `--help`/`-h` directly (below) and citty's own
+ * `runMain` handles a bare `--version`/`-v` before ever reaching
+ * `runCommand`. They must pass through `extractGlobalCwd` untouched
+ * rather than trip its "unrecognized flag" error.
  */
-function extractGlobalCwd(argv: string[]): { cwd: string | null; rest: string[] } {
+const BUILTIN_ROOT_FLAGS = new Set(['--help', '-h', '--version', '-v']);
+
+/**
+ * Strip `-c <path>` / `--cwd <path>` / `--cwd=<path>` from the argv that
+ * precedes the subcommand name — the sole flag with a genuine root-level
+ * meaning. Every other flag belongs on the command that uses it and is
+ * rejected outright if it appears before the subcommand, for two reasons:
+ *
+ * 1. `--cwd` is consumed before dispatch: it sets the working directory
+ *    everything else (project discovery, config resolution) resolves
+ *    against, so it is the CLI's own flag rather than any subcommand's.
+ * 2. `-c` already means `--config` after the subcommand (see the
+ *    "`--config` / `-c` overload" note in docs/cli/flags.md). Hoisting
+ *    any other flag to the root doesn't hit that collision, but it does
+ *    reintroduce the asymmetry this function used to have with
+ *    `--config`/`--force` — which were never hoisted — for no reason
+ *    beyond "why not". A flag goes on the command that uses it.
+ *
+ * citty forwards only `rawArgs.slice(subCommandArgIndex + 1)` to the
+ * resolved subcommand (`node_modules/citty/dist/index.mjs:217`), so any
+ * flag before that index is silently dropped before a leaf command's own
+ * arg parser ever sees it. Mirrors `git -C <path>` semantics: `--cwd` is
+ * only recognized as global when it precedes the subcommand, so a
+ * per-command flag of the same short name (`--config -c`) keeps working
+ * untouched once seen after it.
+ *
+ * Any other flag-looking token seen before the subcommand can't be
+ * honoured for the same reason an unrecognised flag couldn't — silently
+ * forwarding it would be the defect this function exists to avoid — so
+ * it is reported as an error instead of being dropped.
+ */
+function extractGlobalCwd(argv: string[]): { cwd: string | null; rest: string[]; error: null } | { cwd: null; rest: null; error: string } {
 
     const rest: string[] = [];
     let cwd: string | null = null;
@@ -128,7 +158,7 @@ function extractGlobalCwd(argv: string[]): { cwd: string | null; rest: string[] 
 
         const arg = argv[i]!;
 
-        if (seenSubcommand) {
+        if (seenSubcommand || BUILTIN_ROOT_FLAGS.has(arg)) {
 
             rest.push(arg);
             i++;
@@ -162,12 +192,17 @@ function extractGlobalCwd(argv: string[]): { cwd: string | null; rest: string[] 
 
         }
 
-        rest.push(arg);
-        i++;
+        return {
+            cwd: null,
+            rest: null,
+            error: `Unrecognized flag '${arg}' before the subcommand — noorm can't forward it there. `
+                + 'The only root-level flag is -c/--cwd <path>; every other flag goes on the command that uses it. '
+                + `Move '${arg}' after the subcommand instead, e.g. noorm <command> ... ${arg}.`,
+        };
 
     }
 
-    return { cwd, rest };
+    return { cwd, rest, error: null };
 
 }
 
@@ -270,7 +305,16 @@ async function printHelpWithExamples(cmd: CommandWithExamples, parentNames: stri
 async function entry(): Promise<void> {
 
     const rawArgv = process.argv.slice(2);
-    const { cwd: explicitCwd, rest: cleanArgv } = extractGlobalCwd(rawArgv);
+    const parsedCwd = extractGlobalCwd(rawArgv);
+
+    if (parsedCwd.error !== null) {
+
+        process.stderr.write(`Error: ${parsedCwd.error}\n`);
+        process.exit(1);
+
+    }
+
+    const { cwd: explicitCwd, rest: cleanArgv } = parsedCwd;
 
     if (explicitCwd !== null) {
 
@@ -285,16 +329,19 @@ async function entry(): Promise<void> {
 
         setOriginalCwd(process.cwd());
         process.chdir(resolvedCwd);
-        process.argv = [process.argv[0]!, process.argv[1]!, ...rewriteBareSqlArgv(cleanArgv)];
 
     }
     else {
 
         initProjectContext();
-        const rewritten = rewriteBareSqlArgv(process.argv.slice(2));
-        process.argv = [process.argv[0]!, process.argv[1]!, ...rewritten];
 
     }
+
+    // Both branches funnel through the same reassignment. `cleanArgv` is
+    // rawArgv with only the -c/--cwd tokens (if any) removed, so this is
+    // a no-op rewrite when --cwd was absent — using it unconditionally
+    // keeps one code path instead of two that must stay in sync.
+    process.argv = [process.argv[0]!, process.argv[1]!, ...rewriteBareSqlArgv(cleanArgv)];
 
     // Install env-based identity overrides at process startup so that
     // every downstream loadPrivateKey() / loadIdentityMetadata() call

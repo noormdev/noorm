@@ -21,7 +21,7 @@
         "test:coverage": "bun test --serial --coverage",
         "lint": "eslint src tests",
         "lint:fix": "eslint src tests --fix",
-        "lint:docs": "bash scripts/check-json-placement.sh",
+        "lint:docs": "bash scripts/check-flag-placement.sh",
         "typecheck": "tsc --noEmit",
         "typecheck:tests": "tsc --noEmit -p tsconfig.test.json",
         "clean": "rm -rf dist coverage",
