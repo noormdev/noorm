@@ -4,10 +4,12 @@
  * Creates the database and bootstraps noorm tracking tables.
  * Uses server-level connection so the target database need not exist yet.
  */
-import { attempt } from '@logosdx/utils';
+import { attempt, attemptSync } from '@logosdx/utils';
 import { defineCommand } from 'citty';
 
 import { initState, getStateManager } from '../../core/state/index.js';
+import { getSettingsManager } from '../../core/settings/index.js';
+import { resolveConfig, SettingsProvider } from '../../core/config/resolver.js';
 import { checkDbStatus, createDb } from '../../core/db/index.js';
 import { outputResult, outputError, sharedArgs } from '../_utils.js';
 
@@ -34,23 +36,40 @@ const createCommand = defineCommand({
         }
 
         const stateManager = getStateManager(projectRoot);
-        const configName = args.config ?? stateManager.getActiveConfigName();
+        const settingsManager = getSettingsManager(projectRoot);
 
-        if (!configName) {
+        const [, settingsErr] = await attempt(() => settingsManager.load());
+
+        if (settingsErr) {
+
+            outputError(args, `Failed to load settings: ${settingsErr.message}`);
+            process.exit(1);
+
+        }
+
+        // resolveConfig merges DEFAULTS <- stage <- stored <- env <- flags, the
+        // same path every other connecting command reaches via withContext, so
+        // NOORM_CONNECTION_* outranks a persisted config here too.
+        const [config, resolveErr] = attemptSync(() => resolveConfig(stateManager, {
+            name: args.config,
+            settings: new SettingsProvider(settingsManager),
+        }));
+
+        if (resolveErr) {
+
+            outputError(args, resolveErr.message);
+            process.exit(1);
+
+        }
+
+        if (!config) {
 
             outputError(args, 'No active configuration. Use: noorm config use <name>');
             process.exit(1);
 
         }
 
-        const config = stateManager.getConfig(configName);
-
-        if (!config) {
-
-            outputError(args, `Config "${configName}" not found.`);
-            process.exit(1);
-
-        }
+        const configName = config.name;
 
         // Check current status
         const status = await checkDbStatus(config.connection);
