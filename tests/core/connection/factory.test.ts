@@ -7,6 +7,7 @@ import { describe, it, expect, afterEach } from 'bun:test';
 import { sql } from 'kysely';
 import { createConnection, testConnection } from '../../../src/core/connection/index.js';
 import type { ConnectionConfig } from '../../../src/core/connection/index.js';
+import { observer } from '../../../src/core/observer.js';
 
 describe('connection: factory', () => {
 
@@ -78,6 +79,98 @@ describe('connection: factory', () => {
             };
 
             await expect(createConnection(config)).rejects.toThrow('Unsupported dialect');
+
+        });
+
+    });
+
+    describe('retryOptions (v1/49-54 finding 1 — best-effort probe fails fast)', () => {
+
+        it('should not apply the default retry/backoff when retryOptions overrides to a single attempt', async () => {
+
+            // Nothing listens here — a fast, certain ECONNREFUSED, not a
+            // slow network timeout. The default policy (3 attempts, ~2s
+            // apart) would take ~6-7s; overriding to one attempt with no
+            // delay must skip that wait entirely.
+            const config: ConnectionConfig = {
+                dialect: 'postgres',
+                host: '127.0.0.1',
+                port: 59999,
+                database: 'nope',
+            };
+
+            const start = Date.now();
+
+            await expect(
+                createConnection(config, '__probe__', { retries: 1, delay: 0 }),
+            ).rejects.toThrow();
+
+            const elapsed = Date.now() - start;
+
+            // The default policy measured 6252ms here, so 4500 still fails
+            // loudly if the override stops working. Deliberately not tighter:
+            // a bare refused connection takes milliseconds, and the slack is
+            // for a loaded runner, not for the behaviour under test.
+            expect(elapsed).toBeLessThan(4500);
+
+        });
+
+    });
+
+    describe('connection:open target (CP9.5, v1/49-54)', () => {
+
+        // `NoormEvents['connection:open']` (src/core/observer.ts) still
+        // declares only configName/dialect -- widening that shared type is
+        // out of this checkpoint's scope. The extra fields exist on the
+        // runtime payload regardless, so assert on the raw shape rather
+        // than the (currently narrower) declared event type.
+
+        it('should carry host, port, and database, removing the "which database" ambiguity #51 reported', async () => {
+
+            const config: ConnectionConfig = {
+                dialect: 'sqlite',
+                database: ':memory:',
+                host: 'db.internal',
+                port: 5432,
+            };
+
+            const events: Array<Record<string, unknown>> = [];
+            const cleanup = observer.on('connection:open', (data) => events.push(data as Record<string, unknown>));
+
+            const conn = await createConnection(config, 'test-target-config');
+            connections.push(conn);
+            cleanup();
+
+            expect(events).toHaveLength(1);
+            expect(events[0]).toMatchObject({
+                configName: 'test-target-config',
+                dialect: 'sqlite',
+                host: 'db.internal',
+                port: 5432,
+                database: ':memory:',
+            });
+
+        });
+
+        it('should never carry credentials', async () => {
+
+            const config: ConnectionConfig = {
+                dialect: 'sqlite',
+                database: ':memory:',
+                user: 'should-not-appear',
+                password: 'super-secret-password',
+            };
+
+            const events: Array<Record<string, unknown>> = [];
+            const cleanup = observer.on('connection:open', (data) => events.push(data as Record<string, unknown>));
+
+            const conn = await createConnection(config, 'test-no-creds');
+            connections.push(conn);
+            cleanup();
+
+            expect(events[0]).not.toHaveProperty('user');
+            expect(events[0]).not.toHaveProperty('password');
+            expect(JSON.stringify(events[0])).not.toContain('super-secret-password');
 
         });
 

@@ -587,6 +587,27 @@ export async function executeFiles(
     // Convert FileInput[] to string[] for preview/dryRun modes
     const filepaths = files.map((f) => f.path);
 
+    // A duplicate filepath would make updateFileExecution's
+    // WHERE change_id = ? AND filepath = ? match more than one row later
+    // in this same operation -- silently updating N records instead of
+    // failing. Uniqueness of the discovered batch is an invariant this
+    // function depends on, not something that happens to hold today.
+    const duplicateFilepaths = findDuplicates(filepaths);
+
+    if (duplicateFilepaths.length > 0) {
+
+        const error = `Duplicate files in execution batch: ${duplicateFilepaths.join(', ')}`;
+
+        observer.emit('error', {
+            source: 'runner:duplicate-files',
+            error: new Error(error),
+            context: { duplicates: duplicateFilepaths },
+        });
+
+        return createFailedBatchResult(error, performance.now() - start);
+
+    }
+
     // Handle preview mode
     if (opts.preview) {
 
@@ -738,6 +759,19 @@ export async function executeFiles(
             break;
 
         }
+
+    }
+
+    // When abortOnError stops the loop early, fewer results than files is
+    // by design -- the remaining files were never attempted, only marked
+    // skipped above. The invariant "one result per file" only holds for a
+    // full pass; this guards against a future regression re-introducing
+    // double (or dropped) execution within that pass.
+    if (!failed && results.length !== files.length) {
+
+        throw new Error(
+            `Execution accounting mismatch: expected ${files.length} results, got ${results.length}`,
+        );
 
     }
 
@@ -901,7 +935,11 @@ async function executeSingleFileWithUpdate(
     // For 'change', the change-level check was already done by the caller
     if (changeType !== 'change') {
 
-        const needsRunResult = await tracker.needsRun(relFilepath, finalChecksum, options.force);
+        // Exclude this operation's own rows -- createFileRecords already
+        // inserted a pending row for every file in this batch before this
+        // loop started, so without the exclusion the newest row is always
+        // this run's own pending record and every file reads as "new".
+        const needsRunResult = await tracker.needsRun(relFilepath, finalChecksum, options.force, operationId);
 
         if (!needsRunResult.needsRun) {
 
@@ -939,11 +977,13 @@ async function executeSingleFileWithUpdate(
 
     if (execErrMsg) {
 
+        const error = execErrMsg + (await describePriorSuccesses(tracker, relFilepath, operationId));
+
         const result: FileResult = {
             filepath,
             checksum: finalChecksum,
             status: 'failed',
-            error: execErrMsg,
+            error,
             durationMs,
         };
 
@@ -952,14 +992,14 @@ async function executeSingleFileWithUpdate(
             relFilepath,
             'failed',
             Math.round(durationMs),
-            execErrMsg,
+            error,
         );
 
         observer.emit('file:after', {
             filepath,
             status: 'failed',
             durationMs,
-            error: execErrMsg,
+            error,
         });
 
         return result;
@@ -1119,11 +1159,13 @@ async function executeSingleFile(
 
     if (execErrMsg) {
 
+        const error = execErrMsg + (await describePriorSuccesses(tracker, relFilepath, operationId));
+
         const result: FileResult = {
             filepath,
             checksum,
             status: 'failed',
-            error: execErrMsg,
+            error,
             durationMs,
         };
 
@@ -1132,7 +1174,7 @@ async function executeSingleFile(
             filepath: relFilepath,
             checksum,
             status: 'failed',
-            errorMessage: execErrMsg,
+            errorMessage: error,
             durationMs: Math.round(durationMs),
         });
 
@@ -1140,7 +1182,7 @@ async function executeSingleFile(
             filepath,
             status: 'failed',
             durationMs,
-            error: execErrMsg,
+            error,
         });
 
         return result;
@@ -1435,6 +1477,54 @@ function formatErrorChain(err: Error): string {
     }
 
     return parts.join(': ');
+
+}
+
+/**
+ * Find values that occur more than once, without depending on discovery
+ * order. Used to reject a duplicate discovered file loudly rather than let
+ * it silently update the same execution record twice.
+ */
+function findDuplicates(values: string[]): string[] {
+
+    const seen = new Set<string>();
+    const duplicates = new Set<string>();
+
+    for (const value of values) {
+
+        if (seen.has(value)) duplicates.add(value);
+        seen.add(value);
+
+    }
+
+    return [...duplicates];
+
+}
+
+/**
+ * Build a suffix describing prior successful executions of a file, for
+ * appending to a failure message.
+ *
+ * @example
+ * ```typescript
+ * const error = execErrMsg + await describePriorSuccesses(tracker, relFilepath, operationId)
+ * // "already exists; 1 prior successful execution (build:2026-07-24T…, operation 7)"
+ * ```
+ */
+async function describePriorSuccesses(
+    tracker: Tracker,
+    relFilepath: string,
+    excludeOperationId: number,
+): Promise<string> {
+
+    const prior = await tracker.priorSuccessfulExecutions(relFilepath, excludeOperationId);
+
+    if (prior.length === 0) return '';
+
+    const [latest] = prior;
+    const plural = prior.length === 1 ? '' : 's';
+
+    return `; ${prior.length} prior successful execution${plural} (${latest!.operationName}, operation ${latest!.operationId})`;
 
 }
 

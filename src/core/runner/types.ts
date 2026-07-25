@@ -220,8 +220,12 @@ export interface BatchResult {
 
 /**
  * Why a file needs to run.
+ *
+ * 'error' is distinct from 'new': it means the lookup that would have
+ * decided this failed to read at all, so treat it as needing a run without
+ * claiming it's a first-ever execution.
  */
-export type RunReason = 'new' | 'changed' | 'failed' | 'stale' | 'force';
+export type RunReason = 'new' | 'changed' | 'failed' | 'stale' | 'force' | 'error';
 
 /**
  * Result of checking if a file needs to run.

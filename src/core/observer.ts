@@ -161,7 +161,16 @@ export interface NoormEvents extends SettingsEvents, UpdateEvents, VaultEvents, 
     'identity:not-found': void;
 
     // Connection
-    'connection:open': { configName: string; dialect: string };
+    // host/port/database are carried so a log line names the database that was
+    // actually connected to — a config name alone cannot, since env vars can
+    // redirect it (see #51).
+    'connection:open': {
+        configName: string;
+        dialect: string;
+        host?: string;
+        port?: number;
+        database?: string;
+    };
     'connection:close': { configName: string };
     'connection:error': { configName: string; error: string };
 
