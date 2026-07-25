@@ -13,16 +13,19 @@ const teardownCommand = defineCommand({
     args: {
         config: sharedArgs.config,
         force: sharedArgs.force,
+        dryRun: sharedArgs.dryRun,
         yes: sharedArgs.yes,
         json: sharedArgs.json,
     },
     async run({ args }) {
 
+        const dryRun = Boolean(args.dryRun);
+
         const [result, error] = await withContext({
             args,
             fn: (ctx, logger) => {
 
-                return ctx.noorm.db.teardown().then((res) => {
+                return ctx.noorm.db.teardown({ dryRun }).then((res) => {
 
                     const droppedCount = res.dropped.tables.length +
                         res.dropped.views.length +
@@ -31,7 +34,9 @@ const teardownCommand = defineCommand({
 
                     if (!args.json) {
 
-                        logger.info(`Dropped ${droppedCount} objects`);
+                        const verb = dryRun ? 'Would drop' : 'Dropped';
+
+                        logger.info(`${verb} ${droppedCount} objects`);
                         logger.info(`  Tables: ${res.dropped.tables.length}`);
                         logger.info(`  Views: ${res.dropped.views.length}`);
                         logger.info(`  Functions: ${res.dropped.functions.length}`);
@@ -58,6 +63,7 @@ const teardownCommand = defineCommand({
             outputResult(args, {
                 dropped: result.dropped,
                 count: droppedCount,
+                ...(dryRun ? { dryRun: true } : {}),
             }, '');
 
         }
@@ -70,6 +76,7 @@ const teardownCommand = defineCommand({
 (teardownCommand as typeof teardownCommand & { examples: string[] }).examples = [
     'noorm db teardown',
     'noorm db teardown --yes',
+    'noorm db teardown --dry-run',
     'noorm db teardown --force --yes',
     'noorm db teardown --json --yes',
 ];

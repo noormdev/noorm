@@ -84,6 +84,9 @@ export interface BuildOptions {
     /** Skip checksum checks, rebuild everything. Default: false */
     force?: boolean;
 
+    /** Render files without executing them. Default: false */
+    dryRun?: boolean;
+
 }
 
 // ─────────────────────────────────────────────────────────────

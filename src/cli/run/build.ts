@@ -13,17 +13,26 @@ const buildCommand = defineCommand({
     args: {
         config: sharedArgs.config,
         force: sharedArgs.force,
+        dryRun: sharedArgs.dryRun,
         json: sharedArgs.json,
     },
     async run({ args }) {
+
+        const dryRun = Boolean(args.dryRun);
 
         const [result, error] = await withContext({
             args,
             fn: (ctx, logger) => {
 
-                return ctx.noorm.run.build({ force: args.force }).then((res) => {
+                return ctx.noorm.run.build({ force: args.force, dryRun }).then((res) => {
 
                     if (!args.json) {
+
+                        if (dryRun) {
+
+                            logger.info('Dry run: rendering files to tmp/ (no DB writes)');
+
+                        }
 
                         for (const file of res.files) {
 
@@ -38,6 +47,11 @@ const buildCommand = defineCommand({
                                 logger.info(`${file.filepath} (skipped: ${file.skipReason})`);
 
                             }
+                            else if (dryRun) {
+
+                                logger.info(`${file.filepath} (${file.status}, dry-run)`);
+
+                            }
 
                         }
 
@@ -47,16 +61,19 @@ const buildCommand = defineCommand({
                             filesSkipped: res.filesSkipped,
                             filesFailed: res.filesFailed,
                             durationMs: res.durationMs,
+                            ...(dryRun ? { dryRun: true } : {}),
                         };
+
+                        const headerPrefix = dryRun ? 'Build (dry-run)' : 'Build';
 
                         if (res.status === 'success') {
 
-                            logger.info('Build completed', summary);
+                            logger.info(`${headerPrefix} completed`, summary);
 
                         }
                         else {
 
-                            logger.error('Build completed', summary);
+                            logger.error(`${headerPrefix} completed`, summary);
 
                         }
 
@@ -73,7 +90,11 @@ const buildCommand = defineCommand({
 
         if (args.json) {
 
-            outputResult(args, result, '');
+            // Annotate the JSON payload with the dry-run flag, matching
+            // `change ff --dry-run`, so CI can detect a no-write result
+            // without parsing human output.
+            const payload = dryRun ? { ...result, dryRun: true } : result;
+            outputResult(args, payload, '');
 
         }
 
@@ -85,6 +106,7 @@ const buildCommand = defineCommand({
 (buildCommand as typeof buildCommand & { examples: string[] }).examples = [
     'noorm run build',
     'noorm run build --force',
+    'noorm run build --dry-run',
     'noorm run build --json',
 ];
 
