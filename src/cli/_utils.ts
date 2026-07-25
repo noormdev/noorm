@@ -158,6 +158,7 @@ async function createCliLogger(projectRoot: string, json: boolean): Promise<Logg
             level: getConfig('log.level', defaultLevel)!,
         },
         console: process.stdout,
+        diagnostics: process.stderr,
         file: fileStream ?? undefined,
         json,
         color: !json,
@@ -354,9 +355,12 @@ export async function withVaultContext<T>(opts: {
 /**
  * Output a success result as either JSON or text.
  *
- * When logger is provided and args.json is false, the text message is
- * routed through logger.info so it appears in the same stream as event
- * output. Otherwise it writes directly to stdout.
+ * The result always goes to stdout, in every mode — that is what
+ * distinguishes a command's result from the logger's event stream, which
+ * always goes to stderr (see Logger#writeConsole). `--json` funnels
+ * through `logger.result()` when a logger is available (stdout + log
+ * file); plain text writes directly to stdout, never through
+ * `logger.info`, so it can't be pulled onto the diagnostics stream.
  */
 export function outputResult(
     args: CliArgs,
@@ -381,16 +385,7 @@ export function outputResult(
     }
     else {
 
-        if (logger) {
-
-            logger.info(text);
-
-        }
-        else {
-
-            process.stdout.write(text + '\n');
-
-        }
+        process.stdout.write(text + '\n');
 
     }
 

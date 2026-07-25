@@ -64,7 +64,11 @@ describe('logger: output formats', () => {
 
     describe('stream routing', () => {
 
-        it('should write to console stream when provided', async () => {
+        // CP4: the event stream (info/warn/error/debug, observer events) is
+        // diagnostics output, not a command result — it must land on stderr
+        // in every mode, including json, so it never mixes with the one
+        // parseable JSON document `result()` puts on stdout.
+        it('should write to diagnostics stream when provided, even in json mode', async () => {
 
             const { stream, output } = createMockStream();
 
@@ -72,7 +76,7 @@ describe('logger: output formats', () => {
                 projectRoot,
                 settings,
                 config: DEFAULT_LOGGER_CONFIG,
-                console: stream,
+                diagnostics: stream,
                 json: true,
             });
 
@@ -82,6 +86,26 @@ describe('logger: output formats', () => {
 
             expect(output.length).toBeGreaterThan(0);
             expect(output[0]).toContain('test message');
+
+        });
+
+        it('should not write event-stream output to the console stream, even in json mode', async () => {
+
+            const { stream: consoleStream, output: consoleOutput } = createMockStream();
+
+            const logger = new Logger({
+                projectRoot,
+                settings,
+                config: DEFAULT_LOGGER_CONFIG,
+                console: consoleStream,
+                json: true,
+            });
+
+            await logger.start();
+            logger.info('test message');
+            await logger.stop();
+
+            expect(consoleOutput.length).toBe(0);
 
         });
 
@@ -106,9 +130,10 @@ describe('logger: output formats', () => {
 
         });
 
-        it('should write to both console and file when both provided', async () => {
+        it('should route result() to console and info() to diagnostics separately, both also reaching file', async () => {
 
             const { stream: consoleStream, output: consoleOutput } = createMockStream();
+            const { stream: diagnosticsStream, output: diagnosticsOutput } = createMockStream();
             const { stream: fileStream, output: fileOutput } = createMockStream();
 
             const logger = new Logger({
@@ -116,18 +141,22 @@ describe('logger: output formats', () => {
                 settings,
                 config: DEFAULT_LOGGER_CONFIG,
                 console: consoleStream,
+                diagnostics: diagnosticsStream,
                 file: fileStream,
                 json: true,
             });
 
             await logger.start();
             logger.info('dual output');
+            logger.result({ ok: true });
             await logger.stop();
 
-            expect(consoleOutput.length).toBeGreaterThan(0);
+            expect(diagnosticsOutput.length).toBeGreaterThan(0);
+            expect(diagnosticsOutput[0]).toContain('dual output');
+
+            expect(consoleOutput).toEqual(['{"ok":true}\n']);
+
             expect(fileOutput.length).toBeGreaterThan(0);
-            expect(consoleOutput[0]).toContain('dual output');
-            expect(fileOutput[0]).toContain('dual output');
 
         });
 
@@ -143,7 +172,7 @@ describe('logger: output formats', () => {
                 projectRoot,
                 settings,
                 config: DEFAULT_LOGGER_CONFIG,
-                console: stream,
+                diagnostics: stream,
                 json: true,
             });
 
@@ -169,7 +198,7 @@ describe('logger: output formats', () => {
                 projectRoot,
                 settings,
                 config: DEFAULT_LOGGER_CONFIG,
-                console: stream,
+                diagnostics: stream,
                 json: true,
             });
 
@@ -192,7 +221,7 @@ describe('logger: output formats', () => {
                 projectRoot,
                 settings,
                 config: { ...DEFAULT_LOGGER_CONFIG, level: 'verbose' },
-                console: stream,
+                diagnostics: stream,
                 json: true,
             });
 
@@ -220,7 +249,7 @@ describe('logger: output formats', () => {
                 projectRoot,
                 settings,
                 config: { ...DEFAULT_LOGGER_CONFIG, level: 'verbose' },
-                console: stream,
+                diagnostics: stream,
                 json: true,
             });
 
@@ -305,7 +334,7 @@ describe('logger: output formats', () => {
                 projectRoot,
                 settings,
                 config: DEFAULT_LOGGER_CONFIG,
-                console: stream,
+                diagnostics: stream,
                 json: true,
             });
 
@@ -329,7 +358,7 @@ describe('logger: output formats', () => {
                 projectRoot,
                 settings,
                 config: DEFAULT_LOGGER_CONFIG,
-                console: stream,
+                diagnostics: stream,
                 json: true,
             });
 
