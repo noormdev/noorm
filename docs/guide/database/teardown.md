@@ -28,7 +28,7 @@ Both operations permanently destroy data. `truncate` wipes all rows. `teardown` 
 Truncate removes all data while preserving table structure. Fast reset for test cycles.
 
 ```bash
-noorm -y db truncate
+noorm db truncate -y
 ```
 
 ### What Gets Truncated
@@ -49,7 +49,7 @@ noorm -y db truncate
 Teardown removes all database objects. Clean slate for full rebuilds.
 
 ```bash
-noorm -y db teardown
+noorm db teardown -y
 ```
 
 ::: warning Access Roles
@@ -246,13 +246,13 @@ For CI/CD pipelines, drive the same teardown commands non-interactively. Always 
 
 ```bash
 # Truncate all data
-noorm -y db truncate
+noorm db truncate -y
 
 # Full teardown
-noorm -y db teardown
+noorm db teardown -y
 
 # Preview what would be dropped
-noorm --dry-run db teardown
+noorm db teardown --dry-run
 ```
 
 ### JSON Output
@@ -316,7 +316,7 @@ test:
 set -e
 
 # Reset to clean state before test run
-noorm -y db teardown --config test
+noorm db teardown --config test -y
 noorm run build --config test
 noorm change ff --config test
 
@@ -352,8 +352,8 @@ SQLite uses DELETE instead of TRUNCATE because SQLite does not support TRUNCATE.
 
 ```bash
 # Safe teardown pattern
-noorm --dry-run db teardown  # Preview first
-noorm -y db teardown         # Execute after review
+noorm db teardown --dry-run  # Preview first
+noorm db teardown -y         # Execute after review
 ```
 
 

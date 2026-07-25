@@ -30,7 +30,7 @@ Not every command accepts every flag — append `--help` to any command to see t
 
 **Example:**
 ```bash
-noorm --config prod change ff --json
+noorm change ff --config prod --json
 noorm change ff --help       # Per-command help, rendered by citty
 ```
 
@@ -51,7 +51,7 @@ If you've already set an active config (via `noorm config use <name>` or through
 ```bash
 # These are equivalent if 'dev' is the active config
 noorm change ff
-noorm --config dev change ff
+noorm change ff --config dev
 ```
 
 
@@ -61,7 +61,7 @@ Specify a config by name using `--config` or the `NOORM_CONFIG` env var:
 
 ```bash
 # Via flag
-noorm --config production change ff
+noorm change ff --config production
 
 # Via env var
 export NOORM_CONFIG=production
@@ -120,7 +120,7 @@ Execute all SQL files in the schema directory.
 
 ```bash
 noorm run build
-noorm --force run build  # Skip checksums
+noorm run build --force  # Skip checksums
 ```
 
 **JSON output:**
@@ -463,7 +463,7 @@ migrate:
     stage: deploy
     script:
         - npm ci
-        - noorm --config production change ff
+        - noorm change ff --config production
     only:
         - main
     environment:
@@ -533,7 +533,7 @@ noorm change ff
 
 6. **Test with `--dry-run`** - Preview operations before executing
    ```bash
-   noorm --dry-run change ff
+   noorm change ff --dry-run
    ```
 
 7. **Capture logs** - noorm appends to `.noorm/state/noorm.log` for debugging

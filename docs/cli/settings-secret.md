@@ -5,7 +5,7 @@ Interactive editor for the secret *requirement* declarations in
 `settings.yml`. Manages which secrets each stage requires — not the
 actual values.
 
-For secret values, see [`noorm secret set`](../headless.md#secrets-config-scoped).
+For secret values, see [`noorm secret set`](./secret.md).
 
 
 ## Environment

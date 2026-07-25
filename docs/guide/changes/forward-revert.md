@@ -233,7 +233,7 @@ noorm change revert 2024-02-15-broken-change
 After running `db teardown`, all changes are marked as `stale`. The next fast-forward re-applies everything:
 
 ```bash
-noorm -y db teardown
+noorm db teardown -y
 noorm run build      # Rebuild base schema
 noorm change ff      # Re-apply all changes
 ```

@@ -90,16 +90,39 @@ The three-digit prefix guarantees execution order. Names after the underscore ar
 
 ## Creating a Change
 
-Change creation is wizard-driven. Run `noorm ui`, press `g` from home to enter the changes screen, then `a` to add a new one and enter a name like `add-email-verification`. noorm scaffolds the folder structure for you:
+Scaffold a change headlessly with `noorm change add`:
+
+```bash
+noorm change add add-email-verification
+noorm change add                          # prompts for a description (TTY only)
+```
+
+Or from the TUI: run `noorm ui`, press `g` from home to enter the changes screen, then `a`
+and enter a name like `add-email-verification`. Either path scaffolds the same layout:
 
 ```
 changes/2025-01-15-add-email-verification/
 ├── change/
+│   └── 001_add-email-verification.sql
 ├── revert/
+│   └── 001_add-email-verification.sql
 └── changelog.md
 ```
 
-Now add your SQL files to `change/`. If you want rollback support, add corresponding scripts to `revert/`. Once the directory exists you can apply, revert, and inspect the change from the headless CLI (`noorm change ff`, `noorm change run`, `noorm change revert`, `noorm change history`).
+Unlike an empty folder pair, `001_add-email-verification.sql` is a real, runnable stub — one
+comment line naming what belongs there ("Add the SQL statements that apply this change" in
+`change/`, "...undo this change" in `revert/`). Replace the comment with your SQL. A comment
+alone isn't enough to run: `change run` rejects a changeset whose files contain only
+comments or template placeholders, with a message that tells you to edit the files — not the
+misleading "change not found" a genuinely empty folder pair used to produce.
+
+For a multi-statement change, add more files by hand following the same `NNN_description`
+convention (see [Naming Conventions](#naming-conventions) above) — `002_`, `003_`, and so on.
+Files run in filename order (a plain string sort, so keep sequence numbers zero-padded to
+three digits or the sort stops being numeric past `009_`).
+
+Once the directory exists you can apply, revert, and inspect the change from the headless
+CLI (`noorm change ff`, `noorm change run`, `noorm change revert`, `noorm change history`).
 
 
 ## Write Idempotent DDL

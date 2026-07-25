@@ -162,9 +162,32 @@ The `$` object contains everything available in templates:
 | `$.<helper>` | Functions from inherited `$helpers.ts` files |
 | `$.<filename>` | Auto-loaded data from co-located files |
 | `$.config` | Active configuration object |
-| `$.secrets` | Decrypted secrets for active config |
+| `$.secrets` | Decrypted secrets for active config. Reading an unresolved key throws `MissingSecretError` naming the key and the tiers searched (config-local, global-local, vault) — see [Secret Access](#secret-access). |
 | `$.globalSecrets` | Decrypted global secrets |
 | `$.env` | Environment variables |
+
+
+### Secret Access
+
+`$.secrets` is a `Proxy`, not a plain object (`src/core/template/context.ts`). Its `get` trap
+throws on any key not present in the merged result; its `has` trap does not, so `in` is the
+only safe way to check for an optional secret before reading it:
+
+```typescript
+'API_KEY' in $.secrets       // false — does not throw
+$.secrets.API_KEY            // throws MissingSecretError if unresolved
+$.secrets.API_KEY ?? 'x'     // still throws — `??` evaluates the left operand first
+'API_KEY' in $.secrets ? $.secrets.API_KEY : 'x'   // the correct optional-read form
+```
+
+`Object.keys`, object spread, and `JSON.stringify` never trigger `get` for an absent key —
+they resolve through `ownKeys`/`getOwnPropertyDescriptor`, which the proxy leaves at the
+default (forwarded to the underlying record) — so none of them throw.
+
+`sqlQuote` (`src/core/template/utils.ts`) throws `UndefinedSqlValueError` on `undefined` for
+the same reason: an `undefined` reaching SQL rendering is always an upstream bug (a missing
+secret, a bad lookup), never an intentional value. `null` is unaffected and still quotes to
+`NULL`.
 
 
 ### Built-in Helpers

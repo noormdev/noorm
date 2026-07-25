@@ -989,19 +989,19 @@ Every `noorm` subcommand runs as a non-interactive CLI by default — there is n
 
 ```bash
 # Build schema
-noorm --config dev run build
+noorm run build --config dev
 
 # Fast-forward changes
-noorm --config dev change ff
+noorm change ff --config dev
 
 # Apply single change
-noorm --config dev change run 2024-01-15-add-users
+noorm change run 2024-01-15-add-users --config dev
 
 # Truncate database
-noorm --config test db truncate
+noorm db truncate --config test
 
 # JSON output for scripting
-noorm --config dev change ff --json | jq '.status'
+noorm change ff --config dev --json | jq '.status'
 ```
 
 
@@ -1055,7 +1055,7 @@ jobs:
       - run: npm ci
       - name: Apply changes
         run: |
-          npx noorm --config ${{ vars.DB_CONFIG }} change ff
+          npx noorm change ff --config ${{ vars.DB_CONFIG }}
         env:
           DB_HOST: ${{ secrets.DB_HOST }}
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
