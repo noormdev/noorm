@@ -505,9 +505,10 @@ export class Logger {
 
         if (this.#json) {
 
-            // JSON mode for console
+            // Event stream, not a command result — stays on diagnostics even in
+            // JSON mode, so `result()`'s payload is the only thing on stdout.
             const entry = this.#buildJsonEntry(level, event, message, data, hasData);
-            this.#writers.console.write(JSON.stringify(entry) + '\n');
+            this.#writers.diagnostics.write(JSON.stringify(entry) + '\n');
 
         }
         else if (this.#color) {

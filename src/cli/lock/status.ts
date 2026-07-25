@@ -18,53 +18,27 @@ const statusCommand = defineCommand({
 
         const [status, error] = await withContext({
             args,
-            fn: (ctx, logger) => {
-
-                return ctx.noorm.lock.status().then((res) => {
-
-                    if (!args.json) {
-
-                        if (res.isLocked && res.lock) {
-
-                            logger.info(`Locked by ${res.lock.lockedBy}`, {
-                                since: res.lock.lockedAt.toISOString(),
-                                expires: res.lock.expiresAt.toISOString(),
-                            });
-
-                        }
-                        else {
-
-                            logger.info('No active lock');
-
-                        }
-
-                    }
-
-                    return res;
-
-                });
-
-            },
+            fn: (ctx) => ctx.noorm.lock.status(),
         });
 
         if (error) process.exit(1);
 
-        if (args.json) {
+        const output = status.isLocked && status.lock
+            ? {
+                isLocked: true,
+                lock: {
+                    lockedBy: status.lock.lockedBy,
+                    lockedAt: status.lock.lockedAt.toISOString(),
+                    expiresAt: status.lock.expiresAt.toISOString(),
+                },
+            }
+            : { isLocked: false, lock: null };
 
-            const output = status.isLocked && status.lock
-                ? {
-                    isLocked: true,
-                    lock: {
-                        lockedBy: status.lock.lockedBy,
-                        lockedAt: status.lock.lockedAt.toISOString(),
-                        expiresAt: status.lock.expiresAt.toISOString(),
-                    },
-                }
-                : { isLocked: false, lock: null };
+        const text = status.isLocked && status.lock
+            ? `Locked by ${status.lock.lockedBy} (since ${status.lock.lockedAt.toISOString()}, expires ${status.lock.expiresAt.toISOString()})`
+            : 'No active lock';
 
-            outputResult(args, output, '');
-
-        }
+        outputResult(args, output, text);
 
         process.exit(0);
 

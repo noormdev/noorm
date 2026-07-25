@@ -25,37 +25,17 @@ const historyCommand = defineCommand({
 
         const [history, error] = await withContext({
             args,
-            fn: (ctx, logger) => {
-
-                return ctx.noorm.changes.history(count).then((records) => {
-
-                    if (!args.json) {
-
-                        logger.info(`Execution History: ${records.length} records`);
-
-                        for (const record of records) {
-
-                            const date = new Date(record.executedAt).toLocaleString();
-                            logger.info(`  ${record.name} - ${record.status} (${date})`);
-
-                        }
-
-                    }
-
-                    return records;
-
-                });
-
-            },
+            fn: (ctx) => ctx.noorm.changes.history(count),
         });
 
         if (error) process.exit(1);
 
-        if (args.json) {
+        const text = [
+            `Execution History: ${history.length} records`,
+            ...history.map((record) => `  ${record.name} - ${record.status} (${new Date(record.executedAt).toLocaleString()})`),
+        ].join('\n');
 
-            outputResult(args, history, '');
-
-        }
+        outputResult(args, history, text);
 
         process.exit(0);
 
