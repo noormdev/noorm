@@ -167,6 +167,12 @@ describe('sdk: render path connects the vault tier (CP6, postgres)', () => {
         await rebuildSchema(conn.db);
         identity = await seedIdentity(conn.db);
 
+        // Must precede the fixture seeding below: `setConfig`/`setSecret`
+        // encrypt through `loadPrivateKey()`, which reads ~/.noorm/identity.key
+        // unless this override is already installed -- so seeding first passes
+        // only on a machine that has run `noorm init`.
+        overrideIdentity(identity);
+
         projectRoot = await mkdtemp(join(tmpdir(), 'noorm-vault-render-'));
         await mkdir(join(projectRoot, 'sql'), { recursive: true });
 
@@ -218,8 +224,6 @@ describe('sdk: render path connects the vault tier (CP6, postgres)', () => {
         const [, setErr] = await setVaultSecret(conn.db, vaultKey!, 'DB_PASS_WORKER', 'vault-only-value', identity.email, dialect);
         expect(setErr).toBeNull();
 
-        overrideIdentity(identity);
-
         const relPath = await writeTemplate('DB_PASS_WORKER');
         const templates = new TemplatesNamespace(makeState());
 
@@ -234,8 +238,6 @@ describe('sdk: render path connects the vault tier (CP6, postgres)', () => {
         const [vaultKey] = await initializeVault(conn.db, identity.identityHash, identity.publicKey, dialect);
         await setVaultSecret(conn.db, vaultKey!, 'SHARED_KEY', 'from-vault', identity.email, dialect);
         await setVaultSecret(conn.db, vaultKey!, 'GLOBAL_OR_VAULT', 'from-vault-2', identity.email, dialect);
-
-        overrideIdentity(identity);
 
         const state = getStateManager(projectRoot);
         await state.setGlobalSecret('SHARED_KEY', 'from-global');
@@ -261,8 +263,6 @@ describe('sdk: render path connects the vault tier (CP6, postgres)', () => {
 
         // Vault never initialized for this identity — the resolver must
         // still resolve local secrets, not throw.
-        overrideIdentity(identity);
-
         const state = getStateManager(projectRoot);
         await state.setSecret(config.name, 'LOCAL_ONLY', 'config-value');
 
@@ -278,8 +278,6 @@ describe('sdk: render path connects the vault tier (CP6, postgres)', () => {
 
         const [vaultKey] = await initializeVault(conn.db, identity.identityHash, identity.publicKey, dialect);
         await setVaultSecret(conn.db, vaultKey!, 'PARITY_KEY', 'vault-parity-value', identity.email, dialect);
-
-        overrideIdentity(identity);
 
         const relPath = await writeTemplate('PARITY_KEY');
 
