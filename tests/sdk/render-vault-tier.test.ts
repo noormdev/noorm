@@ -6,13 +6,15 @@
  * replaced `getAllSecrets`; the live-vault precedence itself is proven
  * against a real database in `tests/integration/sdk/run-vault-secrets.test.ts`.
  */
-import { afterEach, describe, expect, it } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { TemplatesNamespace } from '../../src/sdk/namespaces/templates.js';
 import { getStateManager, resetStateManager } from '../../src/core/state/index.js';
+import { generateKeyPair } from '../../src/core/identity/index.js';
+import { setKeyOverride, clearKeyOverride } from '../../src/core/identity/storage.js';
 
 import type { ContextState } from '../../src/sdk/state.js';
 import type { Config } from '../../src/core/config/types.js';
@@ -67,8 +69,20 @@ async function makeProject(templateBody: string): Promise<string> {
 
 const tempDirs: string[] = [];
 
+// `getStateManager()` falls back to `loadPrivateKey()`, which reads
+// ~/.noorm/identity.key -- so seeding fixtures through `setConfig`/`setSecret`
+// would pass on a developer machine that has run `noorm init` and throw
+// "Private key required to save state" on a fresh runner. The in-memory
+// override is what makes state encryption here independent of the host.
+beforeEach(() => {
+
+    setKeyOverride(generateKeyPair().privateKey);
+
+});
+
 afterEach(async () => {
 
+    clearKeyOverride();
     resetStateManager();
 
     await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
