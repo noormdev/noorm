@@ -11,6 +11,25 @@ import {
     decryptState,
 } from '../../../src/core/identity/crypto.js';
 
+/**
+ * Flips the first byte of a hex ciphertext so the result is always different
+ * from the input.
+ *
+ * Assigning a fixed byte instead (`'ff' + ct.slice(2)`) is a no-op the 1-in-256
+ * times the ciphertext already starts with that value, leaving the payload
+ * untouched — decryption then succeeds and the tamper-detection assertion fails
+ * for reasons that have nothing to do with the code under test.
+ */
+function tamperFirstByte(ciphertext: string) {
+
+    const flipped = (parseInt(ciphertext.slice(0, 2), 16) ^ 0xff)
+        .toString(16)
+        .padStart(2, '0');
+
+    return flipped + ciphertext.slice(2);
+
+}
+
 describe('identity: crypto', () => {
 
     describe('generateKeyPair', () => {
@@ -174,8 +193,7 @@ describe('identity: crypto', () => {
                 'recipient@example.com',
             );
 
-            // Tamper with ciphertext
-            const tampered = { ...payload, ciphertext: 'ff' + payload.ciphertext.slice(2) };
+            const tampered = { ...payload, ciphertext: tamperFirstByte(payload.ciphertext) };
 
             expect(() => {
 
@@ -295,8 +313,7 @@ describe('identity: crypto', () => {
             const keypair = generateKeyPair();
             const encrypted = encryptState('secret', keypair.privateKey);
 
-            // Tamper with ciphertext
-            const tampered = { ...encrypted, ciphertext: 'ff' + encrypted.ciphertext.slice(2) };
+            const tampered = { ...encrypted, ciphertext: tamperFirstByte(encrypted.ciphertext) };
 
             expect(() => {
 
