@@ -30,13 +30,9 @@ import { useRunProgress, useAsyncEffect } from '../../hooks/index.js';
 import { getEffectiveBuildPaths } from '../../../core/settings/rules.js';
 import { discoverFiles, runBuild } from '../../../core/runner/index.js';
 import { filterFilesByPaths } from '../../../core/shared/index.js';
-import { createConnection, testConnection } from '../../../core/connection/index.js';
 import { checkConfigPolicy } from '../../../core/policy/index.js';
-import { getErrorMessage, resolveScreenIdentity, buildRunContext } from '../../utils/index.js';
+import { getErrorMessage, resolveScreenIdentity, buildRunContext, withScreenConnection } from '../../utils/index.js';
 import { attempt } from '@logosdx/utils';
-
-import type { NoormDatabase } from '../../../core/shared/index.js';
-import type { Kysely } from 'kysely';
 
 type Phase = 'loading' | 'confirm' | 'running' | 'complete' | 'error';
 
@@ -132,66 +128,39 @@ export function RunBuildScreen({ params: _params }: ScreenProps): ReactElement {
         // Resolve identity
         const identity = resolveScreenIdentity(cryptoIdentity);
 
-        // Test connection
-        const testResult = await testConnection(activeConfig.connection);
+        const [, err] = await withScreenConnection(
+            activeConfig.connection, activeConfigName,
+            async (db) => {
 
-        if (!testResult.ok) {
+                const context = await buildRunContext({
+                    db, configName: activeConfigName, identity,
+                    projectRoot, activeConfig,
+                    stateManager, dialect: activeConfig.connection.dialect,
+                });
 
-            setError(`Connection failed: ${testResult.error}`);
-            setPhase('error');
+                // Run options from global modes
+                const options = {
+                    force: globalModes.force,
+                    dryRun: globalModes.dryRun,
+                    abortOnError: true,
+                };
 
-            return;
+                // Run build with filtered files
+                await runBuild(context, sqlPath, options, files);
 
-        }
-
-        // Create connection
-        const [conn, connErr] = await attempt(() =>
-            createConnection(activeConfig.connection, activeConfigName),
+            },
         );
 
-        if (connErr || !conn) {
-
-            setError(`Connection failed: ${connErr?.message ?? 'Unknown error'}`);
-            setPhase('error');
-
-            return;
-
-        }
-
-        try {
-
-            const db = conn.db as Kysely<NoormDatabase>;
-
-            const context = buildRunContext({
-                db, configName: activeConfigName, identity,
-                projectRoot, activeConfig,
-                stateManager, dialect: conn.dialect,
-            });
-
-            // Run options from global modes
-            const options = {
-                force: globalModes.force,
-                dryRun: globalModes.dryRun,
-                abortOnError: true,
-            };
-
-            // Run build with filtered files
-            await runBuild(context, sqlPath, options, files);
-
-            setPhase('complete');
-
-        }
-        catch (err) {
+        if (err) {
 
             setError(getErrorMessage(err));
             setPhase('error');
 
-        }
-        finally {
-
-            await conn.destroy();
+            return;
 
         }
+
+        setPhase('complete');
 
     }, [
         activeConfig,

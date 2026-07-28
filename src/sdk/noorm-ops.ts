@@ -8,7 +8,6 @@
 import type { Config } from '../core/config/types.js';
 import type { Settings } from '../core/settings/index.js';
 import type { Identity } from '../core/identity/index.js';
-import { observer } from '../core/observer.js';
 
 import type { ContextState } from './state.js';
 import {
@@ -88,12 +87,6 @@ export class NoormOps {
 
     }
 
-    get observer() {
-
-        return observer;
-
-    }
-
     // ─────────────────────────────────────────────────────
     // Namespace Getters (lazy)
     // ─────────────────────────────────────────────────────
@@ -118,8 +111,7 @@ export class NoormOps {
 
         if (!this.#db) {
 
-            this.#db = new DbNamespace(this.#state);
-            this.#db._buildFn = (opts) => this.run.build(opts);
+            this.#db = new DbNamespace(this.#state, (opts) => this.run.build(opts));
 
         }
 

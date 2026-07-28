@@ -29,7 +29,7 @@ export class TransferNamespace {
      *
      * @example
      * ```typescript
-     * const [result, err] = await ctx.noorm.transfer.to(destConfig, {
+     * const result = await ctx.noorm.transfer.to(destConfig, {
      *     tables: ['users', 'posts'],
      *     onConflict: 'skip',
      * })
@@ -38,17 +38,25 @@ export class TransferNamespace {
     async to(
         destConfig: Config,
         options?: TransferOptions,
-    ): Promise<[TransferResult | null, Error | null]> {
+    ): Promise<TransferResult> {
 
         // Gated against destConfig (the write target), not the source — the
         // SDK has no interactive prompt, so a `db:reset` confirm cell blocks
         // outright here, same as db.truncate()/dt.importFile().
         checkProtectedConfig(destConfig, this.#state.options, 'db:reset', 'transfer.to');
 
-        return transferData(this.#state.config, destConfig, {
+        const [result, err] = await transferData(this.#state.config, destConfig, {
             ...options,
             channel: this.#state.options.channel ?? 'user',
         });
+
+        if (err) throw err;
+
+        // transferData only leaves result null when err is set (checked above),
+        // so this narrows without a cast.
+        if (!result) throw new Error('transferData returned no result and no error');
+
+        return result;
 
     }
 
@@ -57,15 +65,23 @@ export class TransferNamespace {
      *
      * @example
      * ```typescript
-     * const [plan, err] = await ctx.noorm.transfer.plan(destConfig)
+     * const plan = await ctx.noorm.transfer.plan(destConfig)
      * ```
      */
     async plan(
         destConfig: Config,
         options?: TransferOptions,
-    ): Promise<[TransferPlan | null, Error | null]> {
+    ): Promise<TransferPlan> {
 
-        return getTransferPlan(this.#state.config, destConfig, options);
+        const [plan, err] = await getTransferPlan(this.#state.config, destConfig, options);
+
+        if (err) throw err;
+
+        // getTransferPlan only leaves plan null when err is set (checked above),
+        // so this narrows without a cast.
+        if (!plan) throw new Error('getTransferPlan returned no plan and no error');
+
+        return plan;
 
     }
 

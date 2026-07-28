@@ -3,10 +3,12 @@
  *
  * Transfers data to another DB config, or exports/imports .dt files.
  */
+import * as p from '@clack/prompts';
 import { attempt } from '@logosdx/utils';
 import { defineCommand } from 'citty';
 
 import { resolveExportExtension, resolveExportPath, ensureExportDirectory } from '../../core/dt/index.js';
+import { MIN_PASSPHRASE_LENGTH } from '../../core/dt/crypto.js';
 import { getStateManager } from '../../core/state/index.js';
 import type { TransferOptions, ConflictStrategy } from '../../core/transfer/index.js';
 import { withContext, outputResult, outputError, sharedArgs, type CliArgs } from '../_utils.js';
@@ -22,11 +24,11 @@ type TransferArgs = CliArgs & {
     compress?: boolean;
     passphrase?: string;
     tables?: string;
-    'on-conflict'?: string;
-    'batch-size'?: string;
+    onConflict?: string;
+    batchSize?: string;
     truncate?: boolean;
-    'no-fk'?: boolean;
-    'no-identity'?: boolean;
+    noFk?: boolean;
+    noIdentity?: boolean;
     dryRun?: boolean;
 };
 
@@ -41,6 +43,96 @@ type ValidStrategy = keyof typeof VALID_CONFLICT_STRATEGIES;
 function isConflictStrategy(value: unknown): value is ValidStrategy {
 
     return typeof value === 'string' && value in VALID_CONFLICT_STRATEGIES;
+
+}
+
+// ---------------------------------------------------------------------------
+// Passphrase resolution — flag, masked prompt, or CI escape hatch
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolve the passphrase for a .dtzx export, enforcing MIN_PASSPHRASE_LENGTH.
+ *
+ * A bare `--passphrase` flag leaks via ps/shell history, so an interactive
+ * TTY session (and no `--json`) prompts via a masked @clack/prompts input
+ * instead. Non-interactive callers without the flag get an immediate,
+ * actionable exit rather than hanging on a stdin read — the documented CI
+ * escape hatch is still the flag.
+ */
+async function resolveExportPassphrase(passphrase: string | undefined, args: TransferArgs): Promise<string> {
+
+    if (passphrase) {
+
+        if (passphrase.length < MIN_PASSPHRASE_LENGTH) {
+
+            outputError(args, `Passphrase must be at least ${MIN_PASSPHRASE_LENGTH} characters`);
+            process.exit(1);
+
+        }
+
+        return passphrase;
+
+    }
+
+    if (!process.stdin.isTTY || args.json) {
+
+        outputError(args, '--passphrase required for .dtzx encrypted export (non-interactive session; pass --passphrase or run interactively for a masked prompt)');
+        process.exit(1);
+
+    }
+
+    const result = await p.password({
+        message: 'Passphrase for .dtzx encryption',
+        validate: (value) => (
+            value && value.length >= MIN_PASSPHRASE_LENGTH
+                ? undefined
+                : `Passphrase must be at least ${MIN_PASSPHRASE_LENGTH} characters`
+        ),
+    });
+
+    if (p.isCancel(result)) {
+
+        p.cancel('Cancelled.');
+        process.exit(0);
+
+    }
+
+    return result;
+
+}
+
+/**
+ * Resolve the passphrase for a .dtzx import.
+ *
+ * No length floor — legacy archives may have been encrypted with a
+ * passphrase shorter than MIN_PASSPHRASE_LENGTH, and a wrong passphrase
+ * already fails via GCM auth tag verification. Same masked-prompt /
+ * CI-escape-hatch idiom as the export path.
+ */
+async function resolveImportPassphrase(passphrase: string | undefined, args: TransferArgs): Promise<string> {
+
+    if (passphrase) return passphrase;
+
+    if (!process.stdin.isTTY || args.json) {
+
+        outputError(args, '--passphrase required for .dtzx encrypted import (non-interactive session; pass --passphrase or run interactively for a masked prompt)');
+        process.exit(1);
+
+    }
+
+    const result = await p.password({
+        message: 'Passphrase for .dtzx decryption',
+        validate: (value) => (value ? undefined : 'Passphrase is required'),
+    });
+
+    if (p.isCancel(result)) {
+
+        p.cancel('Cancelled.');
+        process.exit(0);
+
+    }
+
+    return result;
 
 }
 
@@ -72,17 +164,17 @@ const transferCommand = defineCommand({
         },
         passphrase: {
             type: 'string',
-            description: 'Passphrase for .dtzx encryption/decryption (implies compression)',
+            description: `Passphrase for .dtzx (implies compression, min ${MIN_PASSPHRASE_LENGTH} chars on export). Omit on TTY for masked prompt.`,
         },
         tables: {
             type: 'string',
             description: 'Comma-separated list of tables (default: all)',
         },
-        'on-conflict': {
+        onConflict: {
             type: 'string',
             description: 'Conflict strategy: fail, skip, update, replace (default: fail)',
         },
-        'batch-size': {
+        batchSize: {
             type: 'string',
             description: 'Rows per batch for cross-server transfers (default: 1000)',
         },
@@ -90,13 +182,20 @@ const transferCommand = defineCommand({
             type: 'boolean',
             description: 'Truncate destination tables before transfer',
         },
-        'no-fk': {
+        // Declared under their positive names so citty's own `--no-<x>` negation
+        // is what implements the documented `--no-fk`/`--no-identity`. Declaring
+        // `noFk`/`noIdentity` instead cannot work: citty strips the `--no-` token
+        // and negates a flag named `fk`, so the camelCase arg never received the
+        // value and both flags were silent no-ops.
+        fk: {
             type: 'boolean',
-            description: 'Do not disable foreign key checks',
+            default: true,
+            description: 'Disable foreign key checks during transfer (--no-fk to leave them enforced)',
         },
-        'no-identity': {
+        identity: {
             type: 'boolean',
-            description: 'Do not preserve identity/auto-increment values',
+            default: true,
+            description: 'Preserve identity/auto-increment values (--no-identity to let the destination assign them)',
         },
     },
     async run({ args }) {
@@ -104,7 +203,7 @@ const transferCommand = defineCommand({
         const destConfigName = args.to;
         const exportPath = args.export;
         const importPath = args.import;
-        const passphrase = args.passphrase;
+        let passphrase = args.passphrase;
         const compress = args.compress === true;
 
         if (compress && !exportPath) {
@@ -130,22 +229,20 @@ const transferCommand = defineCommand({
 
         }
 
-        if (exportPath?.endsWith('.dtzx') && !passphrase) {
+        if (exportPath?.endsWith('.dtzx')) {
 
-            outputError(args, '--passphrase required for .dtzx encrypted export');
-            process.exit(1);
+            passphrase = await resolveExportPassphrase(passphrase, args);
 
         }
 
-        if (importPath?.endsWith('.dtzx') && !passphrase) {
+        if (importPath?.endsWith('.dtzx')) {
 
-            outputError(args, '--passphrase required for .dtzx encrypted import');
-            process.exit(1);
+            passphrase = await resolveImportPassphrase(passphrase, args);
 
         }
 
         // Validate --on-conflict once before mode dispatch
-        const rawConflict = args['on-conflict'] ?? 'fail';
+        const rawConflict = args.onConflict ?? 'fail';
 
         if (!isConflictStrategy(rawConflict)) {
 
@@ -157,7 +254,7 @@ const transferCommand = defineCommand({
         const onConflict: ConflictStrategy = rawConflict;
 
         const tableList = args.tables ? String(args.tables).split(',').map((t) => t.trim()) : undefined;
-        const batchSize = args['batch-size'] ? parseInt(String(args['batch-size']), 10) : undefined;
+        const batchSize = args.batchSize ? parseInt(String(args.batchSize), 10) : undefined;
 
         if (exportPath) {
 
@@ -212,8 +309,8 @@ const transferCommand = defineCommand({
             tables: tableList,
             onConflict,
             batchSize,
-            disableForeignKeys: args['no-fk'] !== true,
-            preserveIdentity: args['no-identity'] !== true,
+            disableForeignKeys: args.fk !== false,
+            preserveIdentity: args.identity !== false,
             truncateFirst: args.truncate === true,
             dryRun: args.dryRun === true,
         };
@@ -239,14 +336,7 @@ const transferCommand = defineCommand({
 
             if (planError) process.exit(1);
 
-            const [planResult, planErr] = plan;
-
-            if (planErr) {
-
-                outputError(args, planErr.message);
-                process.exit(1);
-
-            }
+            const planResult = plan;
 
             if (args.json) {
 
@@ -322,14 +412,7 @@ const transferCommand = defineCommand({
 
         if (transferError) process.exit(1);
 
-        const [result, transferErr] = transferResult;
-
-        if (transferErr) {
-
-            outputError(args, transferErr.message);
-            process.exit(1);
-
-        }
+        const result = transferResult;
 
         if (args.json) {
 
@@ -339,6 +422,7 @@ const transferCommand = defineCommand({
                 tables: result?.tables,
                 totalRows: result?.totalRows,
                 durationMs: result?.durationMs,
+                fkChecksRestored: result?.fkChecksRestored,
             }, '');
 
         }
@@ -351,6 +435,15 @@ const transferCommand = defineCommand({
             process.stdout.write(`  Total rows: ${result?.totalRows}\n`);
             process.stdout.write(`  Tables: ${successCount} success, ${failedCount} failed\n`);
             process.stdout.write(`  Duration: ${((result?.durationMs ?? 0) / 1000).toFixed(2)}s\n`);
+
+            if (result?.fkChecksRestored === false) {
+
+                process.stderr.write(
+                    'WARNING: foreign key checks were NOT restored on the destination — '
+                    + 'referential integrity may be disabled. Re-enable manually.\n',
+                );
+
+            }
 
             const failures = result?.tables.filter((t) => t.status === 'failed') ?? [];
 
@@ -375,7 +468,8 @@ const transferCommand = defineCommand({
     'noorm db transfer --export ./backup/ --compress',
     'noorm db transfer --export ./backup/users.dt --tables users',
     'noorm db transfer --import ./backup/users.dt',
-    'noorm db transfer --import ./backup/users.dtzx --passphrase mySecret',
+    'noorm db transfer --import ./backup/users.dtzx --passphrase correct-horse-battery',
+    'noorm db transfer --export ./backup/users.dtzx  # omits --passphrase, prompts interactively',
 ];
 
 export default transferCommand;
@@ -427,16 +521,10 @@ async function handleExport(opts: {
                     ext,
                 });
 
-                const [result, err] = await ctx.noorm.dt.exportTable(tableName, filepath, {
+                const result = await ctx.noorm.dt.exportTable(tableName, filepath, {
                     passphrase,
                     batchSize,
                 });
-
-                if (err) {
-
-                    throw err;
-
-                }
 
                 totalRows += result?.rowsWritten ?? 0;
                 totalBytes += result?.bytesWritten ?? 0;
@@ -542,18 +630,12 @@ async function handleImport(opts: {
 
             }
 
-            const [result, err] = await ctx.noorm.dt.importFile(importPath, {
+            const result = await ctx.noorm.dt.importFile(importPath, {
                 passphrase,
                 batchSize,
                 onConflict,
                 truncate,
             });
-
-            if (err) {
-
-                throw err;
-
-            }
 
             return result;
 

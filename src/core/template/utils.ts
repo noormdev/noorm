@@ -15,31 +15,7 @@
  */
 import path from 'node:path';
 
-/**
- * Convert a string to camelCase.
- *
- * Splits on hyphens, underscores, and case boundaries,
- * then joins with first word lowercased and rest capitalized.
- *
- * @param str - Input string in any casing
- * @returns camelCase string
- */
-function camelCase(str: string): string {
-
-    const words = str
-        .replace(/([a-z])([A-Z])/g, '$1 $2')
-        .split(/[-_\s]+/)
-        .filter(Boolean);
-
-    if (words.length === 0) return '';
-
-    return words
-        .map((w, i) => i === 0
-            ? w.toLowerCase()
-            : w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-        .join('');
-
-}
+import v from 'voca';
 
 /**
  * Convert a filename to a camelCase context key.
@@ -65,7 +41,7 @@ export function toContextKey(filename: string): string {
     const base = path.basename(filename, ext);
 
     // Convert to camelCase
-    return camelCase(base);
+    return v.camelCase(base);
 
 }
 
@@ -91,12 +67,41 @@ export function sqlEscape(value: string): string {
 }
 
 /**
+ * Error when a value that must be rendered into SQL is `undefined`.
+ *
+ * `undefined` reaching `sqlQuote` is always a bug upstream — a missing
+ * secret, an unresolved config key, a typo'd lookup — never a value a
+ * template author meant to write. `null` remains a legitimate SQL value
+ * and still quotes to `NULL`; stringifying `undefined` is how a missing
+ * secret shipped as the literal password `undefined` (noorm#50).
+ *
+ * @example
+ * ```typescript
+ * sqlQuote(null)       // → 'NULL'
+ * sqlQuote(undefined)  // throws UndefinedSqlValueError
+ * ```
+ */
+export class UndefinedSqlValueError extends Error {
+
+    override readonly name = 'UndefinedSqlValueError' as const;
+
+    constructor() {
+
+        super('sqlQuote() received undefined — use null for an explicit SQL NULL, or resolve the missing value before rendering');
+
+    }
+
+}
+
+/**
  * SQL-escape and wrap in single quotes.
  *
- * Handles null values and various types appropriately.
+ * Handles null values and various types appropriately. Throws on
+ * `undefined` rather than stringifying it — see `UndefinedSqlValueError`.
  *
  * @param value - The value to quote
  * @returns The quoted SQL literal
+ * @throws UndefinedSqlValueError if value is undefined
  *
  * @example
  * ```typescript
@@ -106,7 +111,13 @@ export function sqlEscape(value: string): string {
  * sqlQuote(true)       // → "'true'"
  * ```
  */
-export function sqlQuote(value: string | number | boolean | null): string {
+export function sqlQuote(value: string | number | boolean | null | undefined): string {
+
+    if (value === undefined) {
+
+        throw new UndefinedSqlValueError();
+
+    }
 
     if (value === null) {
 

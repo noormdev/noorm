@@ -2,7 +2,7 @@
  * Access policy: checkPolicy + guarded.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
-import { assertPolicy, checkConfigPolicy, checkPolicy, confirmationPhraseFor, guarded } from '../../../src/core/policy/index.js';
+import { assertPolicy, checkConfigPolicy, checkPolicy, confirmationPhraseFor, formatAccessTag, guarded } from '../../../src/core/policy/index.js';
 import type { Channel, Permission, PolicyCell, PolicyTarget, Role } from '../../../src/core/policy/index.js';
 
 /**
@@ -30,12 +30,13 @@ const EXPECTED_MATRIX: Record<Permission, Record<Role, PolicyCell>> = {
     'db:destroy': { viewer: 'deny', operator: 'deny', admin: 'confirm' },
 
     'config:rm': { viewer: 'deny', operator: 'confirm', admin: 'confirm' },
+    'change:rm': { viewer: 'deny', operator: 'confirm', admin: 'confirm' },
 };
 
 const PERMISSIONS: Permission[] = [
     'explore',
     'sql:read', 'sql:write', 'sql:ddl',
-    'change:run', 'change:ff', 'change:revert',
+    'change:run', 'change:ff', 'change:revert', 'change:rm',
     'run:build', 'run:file', 'run:dir',
     'db:create', 'db:reset', 'db:destroy',
     'config:rm',
@@ -159,6 +160,30 @@ describe('policy: checkPolicy', () => {
 
     });
 
+    it('should skip user-channel confirmation when NOORM_YES=yes (unified truthiness, not just 1/true)', () => {
+
+        process.env['NOORM_YES'] = 'yes';
+
+        const check = checkPolicy('user', targetFor('operator', 'prod'), 'change:run');
+
+        expect(check.allowed).toBe(true);
+        expect(check.requiresConfirmation).toBe(false);
+        expect(check.confirmationPhrase).toBeUndefined();
+
+    });
+
+    it('should still require confirmation when NOORM_YES=0 (unified truthiness stays falsy for 0)', () => {
+
+        process.env['NOORM_YES'] = '0';
+
+        const check = checkPolicy('user', targetFor('operator', 'prod'), 'change:run');
+
+        expect(check.allowed).toBe(true);
+        expect(check.requiresConfirmation).toBe(true);
+        expect(check.confirmationPhrase).toBe('yes-prod');
+
+    });
+
     it('should deny with a blockedReason when access.mcp is false', () => {
 
         const target: PolicyTarget = { name: 'invisible', access: { user: 'admin', mcp: false } };
@@ -264,6 +289,34 @@ describe('policy: guarded', () => {
     it('should be true for viewer', () => {
 
         expect(guarded(targetFor('viewer'))).toBe(true);
+
+    });
+
+});
+
+describe('policy: formatAccessTag', () => {
+
+    it('should render "user:<role> mcp:<role>" for a guarded config', () => {
+
+        const config: PolicyTarget = { name: 'prod', access: { user: 'operator', mcp: 'viewer' } };
+
+        expect(formatAccessTag(config)).toBe('user:operator mcp:viewer');
+
+    });
+
+    it('should render "mcp:off" when access.mcp is false', () => {
+
+        const config: PolicyTarget = { name: 'prod', access: { user: 'viewer', mcp: false } };
+
+        expect(formatAccessTag(config)).toBe('user:viewer mcp:off');
+
+    });
+
+    it('should return null for an admin/admin (fully open) config', () => {
+
+        const config: PolicyTarget = { name: 'prod', access: { user: 'admin', mcp: 'admin' } };
+
+        expect(formatAccessTag(config)).toBeNull();
 
     });
 

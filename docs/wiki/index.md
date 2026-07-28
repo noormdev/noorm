@@ -4,14 +4,14 @@ type: Index
 ---
 
 <wiki-type>repo</wiki-type>
-<scan-sha>f4d4ca36e98785afdb428172b90890d2f69ca66e</scan-sha>
+<scan-sha>33101f0bf56f53ee3568f149bd7f99afd795ead2</scan-sha>
 <wiki-schema>1</wiki-schema>
 
 # Project signals
 
 ## Framework & runtime
 
-- **Language:** TypeScript (80% LOC, 872 files), Bun runtime (>=1.2), Node >=22.13
+- **Language:** TypeScript (80% LOC, 887 files), Bun runtime (>=1.2), Node >=22.13
 - **SQL layer:** Kysely query builder + executor; dialect-aware across PostgreSQL, MySQL, MSSQL, SQLite
 - **TUI:** Ink 6 + React 19 ([`src/tui/`](../../src/tui)); Citty for CLI arg parsing ([`src/cli/`](../../src/cli))
 - **Event bus:** `@logosdx/observer` (`ObserverEngine`); module-scope singleton in [`src/core/observer.ts`](../../src/core/observer.ts)
@@ -42,8 +42,8 @@ CI gate: lint → typecheck → build → 4 test groups → 3 example jobs. Inte
 
 | Language | LOC | Files | % |
 |----------|-----|-------|---|
-| TypeScript | 204246 | 886 | 80% |
-| Markdown | 43000 | 195 | 17% |
+| TypeScript | 204655 | 887 | 80% |
+| Markdown | 43261 | 198 | 17% |
 | YAML | 1114 | 16 | 1% |
 | JavaScript | 1005 | 22 | 1% |
 | HTML | 955 | 26 | 2% |
@@ -54,7 +54,7 @@ CI gate: lint → typecheck → build → 4 test groups → 3 example jobs. Inte
 
 - **CI:** GitHub Actions (`ubuntu-24.04`), Bun 1.3.11 pinned; 4 test groups + 3 example jobs per push to master/main
 - **DB services (CI):** Postgres 17 on 15432, MySQL 8.0 on 13306, MSSQL 2022 on 11433
-- **DB services (local):** [`docker-compose.yml`](../../docker-compose.yml) at repo root (same ports)
+- **DB services (local):** [`docker-compose.test.yml`](../../docker-compose.test.yml) at repo root (same ports)
 - **Publish:** Changesets-driven (`changeset publish`) via [`.github/workflows/publish.yml`](../../.github/workflows/publish.yml); packages: `@noormdev/cli` and `@noormdev/sdk`
 - **Binary release:** `bun build --compile` → GitHub Releases via [`.github/workflows/release-binary.yml`](../../.github/workflows/release-binary.yml)
 - **Docs:** VitePress, deployed via [`.github/workflows/docs.yml`](../../.github/workflows/docs.yml)
@@ -71,10 +71,10 @@ CI gate: lint → typecheck → build → 4 test groups → 3 example jobs. Inte
 | core-policy | [`src/core/policy/`](../../src/core/policy), [`tests/core/policy/`](../../tests/core/policy) | Access-control policy: role×permission matrix, SQL statement classifier, legacy `protected`→`access` migration | [`docs/wiki/core-policy.md`](core-policy.md) |
 | sdk | [`src/sdk/`](../../src/sdk), [`src/core/dt/`](../../src/core/dt), [`packages/sdk/`](../../packages/sdk), [`tests/sdk/`](../../tests/sdk), [`tests/integration/sdk/`](../../tests/integration/sdk) | Programmatic API (`createContext`) + DT binary serialization format | [`docs/wiki/sdk.md`](sdk.md) |
 | cli | [`src/cli/`](../../src/cli), [`packages/cli/`](../../packages/cli), [`skills/noorm/`](../../skills/noorm), [`tests/cli/`](../../tests/cli) | Citty CLI with 17 command groups, headless mode, binary distribution | [`docs/wiki/cli.md`](cli.md) |
-| tui | [`src/tui/`](../../src/tui), [`src/hooks/`](../../src/hooks), [`.claude/rules/tui-development.md`](../../.claude/rules/tui-development.md), [`tests/cli/components/`](../../tests/cli/components), [`tests/cli/hooks/`](../../tests/cli/hooks), [`tests/cli/screens/`](../../tests/cli/screens) | Ink/React TUI with focus manager, keyboard routing, per-domain screens | [`docs/wiki/tui.md`](tui.md) |
+| tui | [`src/tui/`](../../src/tui), [`.claude/rules/tui-development.md`](../../.claude/rules/tui-development.md), [`tests/cli/components/`](../../tests/cli/components), [`tests/cli/hooks/`](../../tests/cli/hooks), [`tests/cli/screens/`](../../tests/cli/screens) | Ink/React TUI with focus manager, keyboard routing, per-domain screens | [`docs/wiki/tui.md`](tui.md) |
 | mcp-rpc | [`src/mcp/`](../../src/mcp), [`src/rpc/`](../../src/rpc), [`src/cli/mcp/`](../../src/cli/mcp), [`tests/core/mcp/`](../../tests/core/mcp), [`tests/core/rpc/`](../../tests/core/rpc) | MCP server over stdio wrapping flat RPC command registry, permission-gated dispatch | [`docs/wiki/mcp-rpc.md`](mcp-rpc.md) |
 | worker-bridge | [`src/core/worker-bridge/`](../../src/core/worker-bridge), [`src/workers/`](../../src/workers), [`tests/core/worker-bridge/`](../../tests/core/worker-bridge), [`tests/workers/`](../../tests/workers) | Hub-and-spoke worker threads for DT serialization and DB connection worker | [`docs/wiki/worker-bridge.md`](worker-bridge.md) |
-| infra | [`.github/`](../../.github), [`scripts/`](../../scripts), [`examples/`](../../examples), [`docs/`](..), `tsup.*.config.ts`, [`docker-compose.yml`](../../docker-compose.yml), [`bunfig.toml`](../../bunfig.toml) | CI, build pipeline, binary release, example projects, VitePress docs | [`docs/wiki/infra.md`](infra.md) |
+| infra | [`.github/`](../../.github), [`scripts/`](../../scripts), [`examples/`](../../examples), [`docs/`](..), `tsup.*.config.ts`, [`docker-compose.test.yml`](../../docker-compose.test.yml), [`bunfig.toml`](../../bunfig.toml) | CI, build pipeline, binary release, example projects, VitePress docs | [`docs/wiki/infra.md`](infra.md) |
 
 ## Cross-cutting
 

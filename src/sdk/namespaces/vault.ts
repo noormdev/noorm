@@ -32,6 +32,37 @@ import { formatIdentity, loadIdentityMetadata } from '../../core/identity/index.
 import type { CryptoIdentity } from '../../core/identity/types.js';
 
 import type { ContextState } from '../state.js';
+import { requireConnection } from '../state.js';
+
+// ─────────────────────────────────────────────────────────────
+// Errors
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Error thrown by `VaultNamespace.set()` when the supplied `privateKey`
+ * yields no usable vault key — either the vault was never propagated to
+ * this identity, or the key doesn't match. The two causes are
+ * indistinguishable by design (see the vault absence-vs-failure rule).
+ *
+ * @example
+ * ```typescript
+ * await ctx.noorm.vault.set('API_KEY', 'value', privateKey)  // Throws VaultAccessError
+ * ```
+ */
+export class VaultAccessError extends Error {
+
+    override readonly name = 'VaultAccessError' as const;
+
+    constructor(public readonly configName: string) {
+
+        super(
+            `No vault access for config "${configName}". Run vault.init() or have a team `
+            + 'member vault.propagate() access to you.',
+        );
+
+    }
+
+}
 
 // ─────────────────────────────────────────────────────────────
 // VaultNamespace
@@ -84,17 +115,17 @@ export class VaultNamespace {
     /**
      * Initialize the vault for this database.
      *
-     * Idempotent. Returns the vault key on first init; returns [null, null]
-     * on subsequent calls when the vault already exists. Returns [null, Error]
-     * only on real failures (DB errors, encryption errors).
+     * Idempotent. Returns the vault key on first init; returns null on
+     * subsequent calls when the vault already exists — that is NOT an error
+     * case. Throws the underlying Error only on real failures (DB errors,
+     * encryption errors).
      *
      * The `vault:initialized` observer event fires only on first init, never
      * on repeat calls.
      *
      * @example
      * ```typescript
-     * const [vaultKey, err] = await ctx.noorm.vault.init();
-     * if (err) throw err;
+     * const vaultKey = await ctx.noorm.vault.init();
      * if (vaultKey) {
      *     // first-time init — set initial secrets, etc.
      * }
@@ -103,16 +134,20 @@ export class VaultNamespace {
      * }
      * ```
      */
-    async init(): Promise<[Buffer | null, Error | null]> {
+    async init(): Promise<Buffer | null> {
 
         const crypto = await this.#getCryptoIdentity();
 
-        return initializeVault(
+        const [vaultKey, err] = await initializeVault(
             this.#kysely as unknown as Kysely<NoormDatabase>,
             crypto.identityHash,
             crypto.publicKey,
             this.#dialect,
         );
+
+        if (err) throw err;
+
+        return vaultKey;
 
     }
 
@@ -145,20 +180,20 @@ export class VaultNamespace {
      *
      * @example
      * ```typescript
-     * const [, err] = await ctx.noorm.vault.set('API_KEY', 'sk-live-...', privateKey)
+     * await ctx.noorm.vault.set('API_KEY', 'sk-live-...', privateKey)
      * ```
      */
     async set(
         key: string,
         value: string,
         privateKey: string,
-    ): Promise<[void, Error | null]> {
+    ): Promise<void> {
 
         const vaultKey = await this.#getVaultKey(privateKey);
 
-        if (!vaultKey) return [undefined, new Error('No vault access')];
+        if (!vaultKey) throw new VaultAccessError(this.#state.config.name);
 
-        return setVaultSecret(
+        const [, err] = await setVaultSecret(
             this.#kysely as unknown as Kysely<NoormDatabase>,
             vaultKey,
             key,
@@ -166,6 +201,8 @@ export class VaultNamespace {
             formatIdentity(this.#state.identity),
             this.#dialect,
         );
+
+        if (err) throw err;
 
     }
 
@@ -236,16 +273,20 @@ export class VaultNamespace {
      *
      * @example
      * ```typescript
-     * const [deleted, err] = await ctx.noorm.vault.delete('OLD_KEY')
+     * const deleted = await ctx.noorm.vault.delete('OLD_KEY')
      * ```
      */
-    async delete(key: string): Promise<[boolean, Error | null]> {
+    async delete(key: string): Promise<boolean> {
 
-        return deleteVaultSecret(
+        const [deleted, err] = await deleteVaultSecret(
             this.#kysely as unknown as Kysely<NoormDatabase>,
             key,
             this.#dialect,
         );
+
+        if (err) throw err;
+
+        return deleted;
 
     }
 
@@ -302,7 +343,7 @@ export class VaultNamespace {
      *
      * @example
      * ```typescript
-     * const [result, err] = await ctx.noorm.vault.copy(destConfig, ['API_KEY'], privateKey)
+     * const result = await ctx.noorm.vault.copy(destConfig, ['API_KEY'], privateKey)
      * ```
      */
     async copy(
@@ -310,11 +351,11 @@ export class VaultNamespace {
         keys: string[] | 'all',
         privateKey: string,
         options?: VaultCopyOptions,
-    ): Promise<[VaultCopyResult | null, Error | null]> {
+    ): Promise<VaultCopyResult> {
 
         const crypto = await this.#getCryptoIdentity();
 
-        return copyVaultSecrets(
+        const [result, err] = await copyVaultSecrets(
             this.#state.config,
             destConfig,
             keys,
@@ -324,6 +365,14 @@ export class VaultNamespace {
             options,
         );
 
+        if (err) throw err;
+
+        // copyVaultSecrets only leaves result null when err is set (checked above),
+        // so this narrows without a cast.
+        if (!result) throw new Error('copyVaultSecrets returned no result and no error');
+
+        return result;
+
     }
 
     // ─────────────────────────────────────────────────────
@@ -332,13 +381,7 @@ export class VaultNamespace {
 
     get #kysely(): Kysely<unknown> {
 
-        if (!this.#state.connection) {
-
-            throw new Error('Not connected. Call connect() first.');
-
-        }
-
-        return this.#state.connection.db;
+        return requireConnection(this.#state).db;
 
     }
 

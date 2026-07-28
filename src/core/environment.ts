@@ -88,34 +88,44 @@ export function isDev(): boolean {
  */
 export function isDebug(): boolean {
 
-    return process.env['NOORM_DEBUG'] === 'true';
+    return isEnvTruthy(process.env['NOORM_DEBUG']);
 
 }
 
+
+/**
+ * Parse an environment-variable string value into a boolean using the
+ * shared NOORM_YES-style truthiness rule.
+ *
+ * A value is truthy iff it is a non-empty string that is not `'0'` and not
+ * `'false'` in any letter case — this matches common shell conventions
+ * (`NOORM_YES=1`, `NOORM_YES=true`, `NOORM_YES=yes` all enable; `NOORM_YES=0`
+ * does not). No trimming: the raw string is compared as-is. Centralized so
+ * every NOORM_YES-shaped env var (and future ones, e.g. NOORM_DEBUG) parses
+ * the same way instead of each call site inventing its own truthy set.
+ *
+ * @example
+ * isEnvTruthy(process.env['NOORM_YES']); // '1' -> true, '0' -> false
+ */
+export function isEnvTruthy(value: string | undefined): boolean {
+
+    if (!value) return false;
+
+    const normalized = value.toLowerCase();
+
+    return normalized !== '0' && normalized !== 'false';
+
+}
 
 /**
  * Check if confirmations should be skipped.
  *
- * Returns true if NOORM_YES is set, enabling non-interactive mode.
+ * Returns true if NOORM_YES is set to a truthy value, enabling
+ * non-interactive mode.
  */
 export function shouldSkipConfirmations(): boolean {
 
-    const yes = process.env['NOORM_YES'];
-
-    return yes === '1' || yes === 'true';
-
-}
-
-/**
- * Check if output should be JSON.
- *
- * Returns true if NOORM_JSON is set, enabling headless/parseable output.
- */
-export function shouldOutputJson(): boolean {
-
-    const json = process.env['NOORM_JSON'];
-
-    return json === '1' || json === 'true';
+    return isEnvTruthy(process.env['NOORM_YES']);
 
 }
 

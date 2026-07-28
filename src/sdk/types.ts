@@ -4,6 +4,7 @@
  * All interfaces and types for the noorm programmatic SDK.
  */
 import type { Channel } from '../core/policy/index.js';
+import type { ConflictStrategy } from '../core/transfer/types.js';
 
 
 // ─────────────────────────────────────────────────────────────
@@ -61,6 +62,14 @@ export interface CreateContextOptions {
      */
     channel?: Channel;
 
+    /**
+     * Pre-confirm operations that a policy `confirm` cell would otherwise
+     * block — the programmatic equivalent of the CLI's --yes. Only
+     * meaningful on the user channel; mcp collapses confirm to deny
+     * before this is consulted. Default: false.
+     */
+    yes?: boolean;
+
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -75,6 +84,9 @@ export interface BuildOptions {
     /** Skip checksum checks, rebuild everything. Default: false */
     force?: boolean;
 
+    /** Render files without executing them. Default: false */
+    dryRun?: boolean;
+
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -88,7 +100,7 @@ export interface BuildOptions {
  *
  * @example
  * ```typescript
- * const [result, err] = await ctx.exportTable('users', './exports/users.dtz', {
+ * const result = await ctx.noorm.dt.exportTable('users', './exports/users.dtz', {
  *     passphrase: 'secret',
  *     batchSize: 5000,
  * });
@@ -114,7 +126,7 @@ export interface ExportOptions {
  *
  * @example
  * ```typescript
- * const [result, err] = await ctx.importFile('./exports/users.dtz', {
+ * const result = await ctx.noorm.dt.importFile('./exports/users.dtz', {
  *     onConflict: 'skip',
  *     truncate: true,
  * });
@@ -129,7 +141,7 @@ export interface ImportOptions {
     batchSize?: number;
 
     /** Conflict strategy. Default: 'fail'. */
-    onConflict?: 'fail' | 'skip' | 'update' | 'replace';
+    onConflict?: ConflictStrategy;
 
     /** Truncate target table before import. Default: false. */
     truncate?: boolean;

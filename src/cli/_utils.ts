@@ -20,7 +20,7 @@ import { createContext } from '../sdk/index.js';
 import { ensureSchemaVersion, type NoormDatabase } from '../core/version/index.js';
 import { loadPrivateKey, loadIdentityMetadata } from '../core/identity/storage.js';
 import { registerIdentity } from '../core/identity/sync.js';
-import { isDev } from '../core/environment.js';
+import { isDev, isEnvTruthy } from '../core/environment.js';
 import { getConfig } from '../core/config/index.js';
 
 /**
@@ -33,6 +33,7 @@ export interface CliArgs {
     force?: boolean;
     dryRun?: boolean;
     yes?: boolean;
+    insecure?: boolean;
     [key: string]: unknown;
 }
 
@@ -74,9 +75,32 @@ export const sharedArgs = {
  */
 export function isYesMode(args: CliArgs): boolean {
 
-    if (args.yes) return true;
+    return !!args.yes || isEnvTruthy(process.env['NOORM_YES']);
 
-    const env = process.env['NOORM_YES'];
+}
+
+/**
+ * Determine whether the user has opted out of binary checksum verification.
+ *
+ * Returns true when either the `--insecure` flag is set or the
+ * `NOORM_INSECURE` environment variable holds a truthy value. Mirrors
+ * `isYesMode`'s exact truthy-string parsing so both escape hatches behave
+ * identically from a shell's point of view.
+ *
+ * This only ever widens the "we couldn't verify" case — checksums.txt
+ * unreachable — into a warning. It never downgrades a confirmed checksum
+ * mismatch, which always fails regardless of this flag.
+ *
+ * @example
+ * if (isInsecureMode(args)) {
+ *     process.stderr.write('Warning: checksum verification will be skipped if checksums.txt is unreachable.\n');
+ * }
+ */
+export function isInsecureMode(args: CliArgs): boolean {
+
+    if (args.insecure) return true;
+
+    const env = process.env['NOORM_INSECURE'];
 
     if (env === undefined || env === '') return false;
     if (env === '0') return false;
@@ -134,6 +158,7 @@ async function createCliLogger(projectRoot: string, json: boolean): Promise<Logg
             level: getConfig('log.level', defaultLevel)!,
         },
         console: process.stdout,
+        diagnostics: process.stderr,
         file: fileStream ?? undefined,
         json,
         color: !json,
@@ -169,7 +194,7 @@ export async function withContext<T>(opts: {
     const logger = await createCliLogger(projectRoot, !!args.json);
     await logger.start();
 
-    const [ctx, ctxError] = await attempt(() => createContext<NoormDatabase>({ config: args.config }));
+    const [ctx, ctxError] = await attempt(() => createContext<NoormDatabase>({ config: args.config, yes: isYesMode(args) }));
     if (ctxError) {
 
         outputError(args, `Failed to create context: ${ctxError.message}`, logger);
@@ -330,9 +355,12 @@ export async function withVaultContext<T>(opts: {
 /**
  * Output a success result as either JSON or text.
  *
- * When logger is provided and args.json is false, the text message is
- * routed through logger.info so it appears in the same stream as event
- * output. Otherwise it writes directly to stdout.
+ * The result always goes to stdout, in every mode — that is what
+ * distinguishes a command's result from the logger's event stream, which
+ * always goes to stderr (see Logger#writeConsole). `--json` funnels
+ * through `logger.result()` when a logger is available (stdout + log
+ * file); plain text writes directly to stdout, never through
+ * `logger.info`, so it can't be pulled onto the diagnostics stream.
  */
 export function outputResult(
     args: CliArgs,
@@ -357,16 +385,7 @@ export function outputResult(
     }
     else {
 
-        if (logger) {
-
-            logger.info(text);
-
-        }
-        else {
-
-            process.stdout.write(text + '\n');
-
-        }
+        process.stdout.write(text + '\n');
 
     }
 

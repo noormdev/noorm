@@ -10,7 +10,7 @@ import { attempt } from '@logosdx/utils';
 import { observer } from '../core/observer.js';
 import { checkForUpdate, getCurrentVersion } from '../core/update/checker.js';
 import { installUpdate } from '../core/update/updater.js';
-import { outputError, outputResult, sharedArgs } from './_utils.js';
+import { isInsecureMode, outputError, outputResult, sharedArgs } from './_utils.js';
 
 /** Render a byte count as MB with one decimal (e.g. 41.2). */
 function toMb(bytes: number): string {
@@ -26,6 +26,10 @@ const updateCommand = defineCommand({
     },
     args: {
         json: sharedArgs.json,
+        insecure: {
+            type: 'boolean',
+            description: 'Skip checksum verification when checksums.txt is unreachable (never bypasses a confirmed mismatch)',
+        },
     },
     async run({ args }) {
 
@@ -115,10 +119,18 @@ const updateCommand = defineCommand({
 
         }
 
+        const insecure = isInsecureMode(args);
+
+        if (insecure) {
+
+            process.stderr.write('Warning: checksum verification will be skipped if checksums.txt is unreachable (--insecure).\n');
+
+        }
+
         observer.on('update:progress', onProgress);
         observer.on('update:retry', onRetry);
 
-        const [result, installErr] = await attempt(() => installUpdate(checkResult.latestVersion));
+        const [result, installErr] = await attempt(() => installUpdate(checkResult.latestVersion, { insecure }));
 
         observer.off('update:progress', onProgress);
         observer.off('update:retry', onRetry);
@@ -184,6 +196,7 @@ const updateCommand = defineCommand({
 (updateCommand as typeof updateCommand & { examples: string[] }).examples = [
     'noorm update',
     'noorm update --json',
+    'noorm update --insecure',
 ];
 
 export default updateCommand;

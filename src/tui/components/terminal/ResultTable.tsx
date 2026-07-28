@@ -20,6 +20,7 @@
  */
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import { Box, Text, useInput } from 'ink';
+import v from 'voca';
 import type { ReactElement } from 'react';
 
 /**
@@ -238,17 +239,6 @@ function detectNumericIdColumn(
     }
 
     return null;
-
-}
-
-/**
- * Truncate a string to max length with ellipsis.
- */
-function truncate(str: string, maxLen: number): string {
-
-    if (str.length <= maxLen) return str;
-
-    return str.slice(0, maxLen - 1) + '\u2026';
 
 }
 
@@ -650,7 +640,7 @@ export function ResultTable({
                     {columns.map((col, colIndex) => {
 
                         const colWidth = columnWidths[col] ?? col.length;
-                        const value = truncate(formatCellValue(row[col]), colWidth);
+                        const value = v.truncate(formatCellValue(row[col]), colWidth, '\u2026');
                         const paddedValue = value.padEnd(colWidth);
 
                         return (

@@ -24,11 +24,12 @@ import type {
     ExploreOverview,
 } from '../../core/explore/index.js';
 import { fetchOverview, fetchList, fetchDetail } from '../../core/explore/index.js';
-import type { TruncateOptions, TruncateResult, TeardownResult, TeardownPreview } from '../../core/teardown/index.js';
+import type { TruncateOptions, TruncateResult, TeardownOptions, TeardownResult, TeardownPreview } from '../../core/teardown/index.js';
 import { truncateData, teardownSchema, previewTeardown } from '../../core/teardown/index.js';
 import { formatIdentity } from '../../core/identity/index.js';
 
 import type { ContextState } from '../state.js';
+import { requireConnection } from '../state.js';
 import type { BuildOptions } from '../types.js';
 import { checkProtectedConfig } from '../guards.js';
 
@@ -39,11 +40,12 @@ import { checkProtectedConfig } from '../guards.js';
 export class DbNamespace {
 
     #state: ContextState;
-    #buildFn: ((opts?: BuildOptions) => Promise<unknown>) | null = null;
+    #buildFn: ((opts?: BuildOptions) => Promise<unknown>) | null;
 
-    constructor(state: ContextState) {
+    constructor(state: ContextState, buildFn?: (opts?: BuildOptions) => Promise<unknown>) {
 
         this.#state = state;
+        this.#buildFn = buildFn ?? null;
 
     }
 
@@ -290,12 +292,17 @@ export class DbNamespace {
     /**
      * Drop all database objects except noorm tracking tables.
      *
+     * Pass `dryRun: true` to compute what would be dropped without
+     * executing any statements.
+     *
      * @example
      * ```typescript
      * const result = await ctx.noorm.db.teardown()
+     *
+     * const preview = await ctx.noorm.db.teardown({ dryRun: true })
      * ```
      */
-    async teardown(): Promise<TeardownResult> {
+    async teardown(options?: TeardownOptions): Promise<TeardownResult> {
 
         checkProtectedConfig(this.#state.config, this.#state.options, 'db:reset', 'teardown');
 
@@ -304,6 +311,7 @@ export class DbNamespace {
             executedBy: formatIdentity(this.#state.identity),
             preserveTables: this.#state.settings.teardown?.preserveTables,
             postScript: this.#state.settings.teardown?.postScript,
+            dryRun: options?.dryRun,
         });
 
     }
@@ -341,29 +349,12 @@ export class DbNamespace {
     }
 
     // ─────────────────────────────────────────────────────
-    // Build injection (for reset)
-    // ─────────────────────────────────────────────────────
-
-    /** @internal Used by NoormOps to wire up reset -> build. */
-    set _buildFn(fn: (opts?: BuildOptions) => Promise<unknown>) {
-
-        this.#buildFn = fn;
-
-    }
-
-    // ─────────────────────────────────────────────────────
     // Private
     // ─────────────────────────────────────────────────────
 
     get #kysely(): Kysely<unknown> {
 
-        if (!this.#state.connection) {
-
-            throw new Error('Not connected. Call connect() first.');
-
-        }
-
-        return this.#state.connection.db;
+        return requireConnection(this.#state).db;
 
     }
 

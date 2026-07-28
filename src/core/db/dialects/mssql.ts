@@ -10,6 +10,57 @@ import type { ConnectionConfig } from '../../connection/types.js';
 import type { DialectDbOperations } from '../types.js';
 
 import { createConnection } from '../../connection/factory.js';
+import { createDialectQuoting } from '../../shared/index.js';
+
+const { quote } = createDialectQuoting({ open: '[', close: ']', escape: ']]' });
+
+/**
+ * Builds the CREATE DATABASE statement.
+ *
+ * Quotes dbName as a single identifier so embedded closing brackets can't
+ * break out of the DDL into arbitrary statements.
+ *
+ * @example
+ * buildCreateDatabaseSql('my]app'); // → 'CREATE DATABASE [my]]app]'
+ */
+export function buildCreateDatabaseSql(dbName: string): string {
+
+    return `CREATE DATABASE ${quote(dbName)}`;
+
+}
+
+/**
+ * Builds the conditional-drop batch: single-user + rollback to disconnect
+ * active sessions, then drop, guarded by an existence check.
+ *
+ * T-SQL string literals have no backslash-escape channel, so the embedded
+ * single quote is doubled per the standard SQL literal-escaping rule; the
+ * `ALTER`/`DROP` identifiers are bracket-quoted independently of the
+ * literal, since the two escaping rules don't share a channel to break out
+ * through.
+ *
+ * @example
+ * buildDropDatabaseSql('myapp');
+ * // → "IF EXISTS(SELECT 1 FROM sys.databases WHERE name = 'myapp')\n" +
+ * //   'BEGIN\n' +
+ * //   '    ALTER DATABASE [myapp] SET SINGLE_USER WITH ROLLBACK IMMEDIATE;\n' +
+ * //   '    DROP DATABASE [myapp];\n' +
+ * //   'END'
+ */
+export function buildDropDatabaseSql(dbName: string): string {
+
+    const identifier = quote(dbName);
+    const literal = dbName.replace(/'/g, '\'\'');
+
+    return [
+        `IF EXISTS(SELECT 1 FROM sys.databases WHERE name = '${literal}')`,
+        'BEGIN',
+        `    ALTER DATABASE ${identifier} SET SINGLE_USER WITH ROLLBACK IMMEDIATE;`,
+        `    DROP DATABASE ${identifier};`,
+        'END',
+    ].join('\n');
+
+}
 
 /**
  * Execute a query against the master database.
@@ -67,7 +118,7 @@ export const mssqlDbOperations: DialectDbOperations = {
 
         await withMasterDb(config, async (conn) => {
 
-            await sql.raw(`CREATE DATABASE [${dbName}]`).execute(conn.db);
+            await sql.raw(buildCreateDatabaseSql(dbName)).execute(conn.db);
 
         });
 
@@ -78,17 +129,7 @@ export const mssqlDbOperations: DialectDbOperations = {
         await withMasterDb(config, async (conn) => {
 
             // Set to single user mode to disconnect all users
-            await sql
-                .raw(
-                    `
-                IF EXISTS(SELECT 1 FROM sys.databases WHERE name = '${dbName}')
-                BEGIN
-                    ALTER DATABASE [${dbName}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
-                    DROP DATABASE [${dbName}];
-                END
-            `,
-                )
-                .execute(conn.db);
+            await sql.raw(buildDropDatabaseSql(dbName)).execute(conn.db);
 
         });
 

@@ -14,10 +14,12 @@ import type { Config } from '../core/config/types.js';
 import type { Settings } from '../core/settings/index.js';
 import type { Identity } from '../core/identity/index.js';
 import { createConnection } from '../core/connection/index.js';
+import type { ConnectionRetryOptions } from '../core/connection/index.js';
 
 import { buildProcCall, buildFuncCall, buildTvfCall } from './sql.js';
 import { NoormOps } from './noorm-ops.js';
 import type { ContextState } from './state.js';
+import { requireConnection } from './state.js';
 import type { CreateContextOptions, ExtractArgs, ExtractReturn } from './types.js';
 import { dialectStrategy, validateUsername } from './impersonate/dialect-strategy.js';
 import { buildScope } from './impersonate/scope.js';
@@ -95,13 +97,7 @@ export class Context<DB = unknown, Procs = object, Funcs = object, Tvfs = object
 
     get kysely(): Kysely<DB> {
 
-        if (!this.#state.connection) {
-
-            throw new Error('Not connected. Call connect() first.');
-
-        }
-
-        return this.#state.connection.db as Kysely<DB>;
+        return requireConnection(this.#state).db as Kysely<DB>;
 
     }
 
@@ -138,13 +134,21 @@ export class Context<DB = unknown, Procs = object, Funcs = object, Tvfs = object
     // Lifecycle
     // ─────────────────────────────────────────────────────────
 
-    async connect(): Promise<void> {
+    /**
+     * Connect to the configured database.
+     *
+     * `retryOptions` defaults to the standard 3-attempt backoff. Pass
+     * `{ retries: 1, delay: 0 }` for a best-effort probe that must fail
+     * fast rather than hang on an unreachable database.
+     */
+    async connect(retryOptions?: ConnectionRetryOptions): Promise<void> {
 
         if (this.#state.connection) return;
 
         this.#state.connection = await createConnection(
             this.#state.config.connection,
             this.#state.config.name,
+            retryOptions,
         );
 
     }
@@ -224,12 +228,6 @@ export class Context<DB = unknown, Procs = object, Funcs = object, Tvfs = object
         name: N,
         ...args: ExtractArgs<Procs[N]> extends void ? [] : [params: ExtractArgs<Procs[N]>]
     ): Promise<T[]> {
-
-        if (this.dialect === 'sqlite') {
-
-            throw new Error('SQLite does not support stored procedures.');
-
-        }
 
         const params = args[0] as Record<string, unknown> | unknown[] | undefined;
 
@@ -314,12 +312,6 @@ export class Context<DB = unknown, Procs = object, Funcs = object, Tvfs = object
         ...args: ExtractArgs<Funcs[N]> extends void ? [column: string] : [params: ExtractArgs<Funcs[N]>, column: string]
     ): Promise<T> {
 
-        if (this.dialect === 'sqlite') {
-
-            throw new Error('SQLite does not support database function calls.');
-
-        }
-
         // Extract params and column from rest args
         const hasParams = !(args.length === 1 && typeof args[0] === 'string');
         const params = hasParams ? args[0] as Record<string, unknown> | unknown[] : undefined;
@@ -362,18 +354,6 @@ export class Context<DB = unknown, Procs = object, Funcs = object, Tvfs = object
         name: N,
         ...args: ExtractArgs<Tvfs[N]> extends void ? [] : [params: ExtractArgs<Tvfs[N]>]
     ): Promise<T[]> {
-
-        if (this.dialect === 'sqlite') {
-
-            throw new Error('SQLite does not support table-valued functions.');
-
-        }
-
-        if (this.dialect === 'mysql') {
-
-            throw new Error('MySQL does not support table-valued functions.');
-
-        }
 
         const params = args[0] as Record<string, unknown> | unknown[] | undefined;
         const query = buildTvfCall<T>(this.dialect, name, params);

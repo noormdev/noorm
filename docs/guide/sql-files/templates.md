@@ -353,6 +353,30 @@ INSERT INTO app_config (key, value) VALUES
 
 Secrets resolve through a three-tier hierarchy: config-specific local secrets override global local secrets, which override team-shared [vault](/guide/environments/vault) secrets. This means you can store production credentials in the vault and override them locally for development without affecting teammates. See the [secret resolution hierarchy](/guide/environments/vault#secret-resolution-hierarchy) for details.
 
+A key that isn't set in any of the three tiers has no correct SQL rendering, so reading it
+throws instead of quietly resolving to `undefined`:
+
+```sql
+-- Throws: Secret "STRIPE_KEY" not found (searched: config-local, global-local, vault)
+{%~ $.secrets.STRIPE_KEY %}
+```
+
+This is deliberate — a missing secret used to render as the literal six-character string
+`undefined`, which is valid SQL and easy to miss in a review. `$.secrets.KEY ?? fallback`
+can't paper over a missing key either, because `??` still evaluates the throwing read on its
+left side. To probe for a secret that's genuinely optional, check for it first with `in`,
+which never throws:
+
+```sql
+{% const hasKey = 'STRIPE_KEY' in $.secrets; %}
+{%~ hasKey ? $.quote($.secrets.STRIPE_KEY) : 'NULL' %}
+```
+
+`in` before read is how a template says "this secret is allowed to be missing" on purpose,
+rather than by accident. See
+[`examples/todo-db/sql/10_seeds/feature_flags.sql.tmpl`](https://github.com/noormdev/noorm/blob/master/examples/todo-db/sql/10_seeds/feature_flags.sql.tmpl)
+for a full example that forces a feature flag off when its backing secret isn't configured.
+
 
 ### Generating Multiple Similar Objects
 

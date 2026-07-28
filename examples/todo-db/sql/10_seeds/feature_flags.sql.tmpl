@@ -8,7 +8,10 @@
 
 {% for (const flag of $.featureFlags) {
     const secretName = flag.required_secret;
-    const secretValue = secretName ? ($.secrets?.[secretName] ?? null) : null;
+    // `in` before read: $.secrets throws on an unresolved key so a missing
+    // secret can never render as the string "undefined". Probing for an
+    // optional secret has to say so explicitly.
+    const secretValue = secretName && (secretName in $.secrets) ? $.secrets[secretName] : null;
     const hasSecret = !secretName || secretValue !== null;
     const effectiveEnabled = !!flag.enabled && hasSecret;
     const config = {

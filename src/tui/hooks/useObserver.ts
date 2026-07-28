@@ -16,9 +16,6 @@
  * // Emit events
  * const emitStart = useEmit('build:start')
  * emitStart({ sqlPath, fileCount })
- *
- * // Promise-based subscription
- * const [waiting, result, cancel] = useEventPromise('build:complete')
  * ```
  */
 import { useCallback, useRef, useMemo, type DependencyList } from 'react';
@@ -103,45 +100,6 @@ export function useEmit<E extends NoormEventNames>(
     const { emitFactory } = useNoormObserver();
 
     return emitFactory(event);
-
-}
-
-/**
- * State for useEventPromise hook.
- */
-export interface EventPromiseState<T> {
-    /** The resolved value, or null if pending/error */
-    value: T | null;
-
-    /** The error if rejected, or null if pending/success */
-    error: Error | null;
-
-    /** Whether the promise is still pending */
-    pending: boolean;
-}
-
-/**
- * Subscribe to an event as a promise with state management.
- *
- * Returns the current state and a cancel function. The promise resolves
- * on the first event emission. Call cancel to unsubscribe early.
- *
- * @example
- * ```typescript
- * const [waiting, result, cancel] = useEventPromise('build:complete')
- *
- * if (waiting) return <Spinner label="Building..." />
- * if (result) return <Text>Built {result.filesRun} files</Text>
- * ```
- */
-export function useEventPromise<E extends NoormEventNames>(
-    event: E,
-): [value: NoormEvents[E] | null, error: Error | null, pending: boolean, cancel: () => void] {
-
-    const { oncePromise } = useNoormObserver();
-    const [waiting, data, cancel] = oncePromise(event);
-
-    return [data, null, waiting, cancel];
 
 }
 

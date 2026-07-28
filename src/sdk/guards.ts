@@ -37,6 +37,28 @@ export class RequireTestError extends Error {
 }
 
 /**
+ * Error thrown when a namespace method requiring a live connection is
+ * called before `connect()` (or after `disconnect()`).
+ *
+ * @example
+ * ```typescript
+ * const ctx = await createContext({ config: 'dev' })
+ * await ctx.noorm.db.listTables()  // Throws NotConnectedError — never called connect()
+ * ```
+ */
+export class NotConnectedError extends Error {
+
+    override readonly name = 'NotConnectedError' as const;
+
+    constructor() {
+
+        super('Not connected. Call connect() first.');
+
+    }
+
+}
+
+/**
  * Error thrown when the config's access policy blocks a destructive
  * operation — either the role denies it outright, or the role requires
  * confirmation the SDK cannot provide interactively.
@@ -95,14 +117,20 @@ export function checkRequireTest(
  *
  * The SDK has no interactive prompt: a permission that resolves to
  * "requires confirmation" (matrix `confirm` cells on the `user` channel)
- * blocks just like an outright denial, naming `NOORM_YES=1` as the
- * scripted opt-in and the CLI/TUI as the interactive route.
+ * blocks just like an outright denial unless the caller pre-confirmed via
+ * `options.yes` (the programmatic equivalent of the CLI's `--yes`) —
+ * mirrors `db drop`'s CLI gate (`check.requiresConfirmation && !args.yes`).
+ * `options.yes` is only consulted once `checkConfigPolicy` has already
+ * resolved the channel: on `mcp`, `confirm` collapses to deny before this
+ * function ever sees a `requiresConfirmation` result, so `yes: true` never
+ * unblocks an MCP-channel context.
  *
- * @throws ProtectedConfigError if the policy denies or requires confirmation
+ * @throws ProtectedConfigError if the policy denies, or requires
+ * confirmation that `options.yes` doesn't supply
  */
 export function checkProtectedConfig(
     config: Config,
-    options: Pick<CreateContextOptions, 'channel'>,
+    options: Pick<CreateContextOptions, 'channel' | 'yes'>,
     permission: Permission,
     operation: string,
 ): void {
@@ -115,12 +143,12 @@ export function checkProtectedConfig(
 
     }
 
-    if (check.requiresConfirmation) {
+    if (check.requiresConfirmation && !options.yes) {
 
         throw new ProtectedConfigError(
             config.name,
             operation,
-            'requires confirmation — set NOORM_YES=1 for scripted use, or run this via the noorm CLI/TUI to confirm interactively',
+            'requires confirmation — pass --yes, or set NOORM_YES=1 for scripted use, or run this via the noorm CLI/TUI to confirm interactively',
         );
 
     }

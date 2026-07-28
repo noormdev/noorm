@@ -93,7 +93,8 @@ describe('cli: db explore', () => {
 
         expect(result.ok).toBe(true);
 
-        const text = stripAnsi(result.stderr);
+        // CP4: the result belongs on stdout, not the diagnostics stream.
+        const text = stripAnsi(result.stdout);
         expect(text).toContain('Database Overview');
 
     });

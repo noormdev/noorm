@@ -4,21 +4,30 @@
  * Offline operation: no database connection required. Reads settings
  * to locate the changes directory, then removes the named change.
  *
- * On a TTY the command prompts the user to pick a change (if omitted)
- * and confirms the deletion interactively; `--yes` skips the confirm.
- * On a non-TTY (CI, piped) both the name and `--yes` are required so
- * the command never hangs or deletes silently.
+ * Gated by the resolved config change:rm access role, best-effort:
+ * when an active or --config config is resolvable, viewer is denied
+ * outright and operator/admin require confirmation. When no config is
+ * resolvable at all (fresh project, config add never run), the gate
+ * is a no-op and confirmation defaults to required, matching the
+ * pre-ticket behavior of this command.
+ *
+ * Confirmation has no TTY prompt substitute: --yes or NOORM_YES is the
+ * only mechanism, mirroring the headless-only confirmation stance used
+ * by config rm. On a TTY the command still prompts the user to pick a
+ * change when the name is omitted; that picker is unrelated UX, not
+ * the confirm gate.
  */
 import { join } from 'node:path';
 import { stat } from 'node:fs/promises';
 
-import * as p from '@clack/prompts';
 import { attempt } from '@logosdx/utils';
 import { defineCommand } from 'citty';
 
 import { deleteChange } from '../../core/change/index.js';
 import { getSettingsManager } from '../../core/settings/index.js';
-import { outputResult, outputError, sharedArgs } from '../_utils.js';
+import { initState, getStateManager } from '../../core/state/index.js';
+import { checkConfigPolicy } from '../../core/policy/index.js';
+import { outputResult, outputError, sharedArgs, isYesMode } from '../_utils.js';
 import { selectChangeFromFs, requireTty } from './_prompt.js';
 
 const rmCommand = defineCommand({
@@ -29,12 +38,36 @@ const rmCommand = defineCommand({
             description: 'Change name to delete (omit to pick interactively on a TTY)',
             required: false,
         },
+        config: sharedArgs.config,
         yes: sharedArgs.yes,
         json: sharedArgs.json,
     },
     async run({ args }) {
 
         const projectRoot = process.cwd();
+
+        const [, initErr] = await attempt(() => initState(projectRoot));
+
+        if (initErr) {
+
+            outputError(args, `Failed to load state: ${initErr.message}`);
+            process.exit(1);
+
+        }
+
+        const stateManager = getStateManager(projectRoot);
+        const configName = args.config ?? stateManager.getActiveConfigName();
+        const config = configName ? stateManager.getConfig(configName) : null;
+
+        const check = config ? checkConfigPolicy('user', config, 'change:rm') : null;
+
+        if (check && !check.allowed) {
+
+            outputError(args, check.blockedReason ?? `Config "${configName}" cannot delete changes.`);
+            process.exit(1);
+
+        }
+
         const settingsManager = getSettingsManager(projectRoot);
 
         const [, settingsErr] = await attempt(() => settingsManager.load());
@@ -76,29 +109,16 @@ const rmCommand = defineCommand({
 
         }
 
-        if (!args.yes) {
+        const requiresConfirmation = check ? check.requiresConfirmation : true;
 
-            if (!process.stdin.isTTY) {
+        if (requiresConfirmation && !isYesMode(args)) {
 
-                outputError(
-                    args,
-                    `Pass --yes to confirm deletion of change: ${changeName}`,
-                );
-                process.exit(1);
+            const message = check
+                ? `This is a destructive operation requiring confirmation (${check.confirmationPhrase}). Pass --yes to confirm.`
+                : `Pass --yes to confirm deletion of change: ${changeName}`;
 
-            }
-
-            const confirmed = await p.confirm({
-                message: `Delete change "${changeName}"? This cannot be undone.`,
-                initialValue: false,
-            });
-
-            if (p.isCancel(confirmed) || !confirmed) {
-
-                process.stderr.write('Cancelled.\n');
-                process.exit(1);
-
-            }
+            outputError(args, message);
+            process.exit(1);
 
         }
 

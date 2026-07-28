@@ -12,7 +12,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Box, Text } from 'ink';
 import { ProgressBar } from '@inkjs/ui';
-import { join, relative, dirname } from 'path';
+import { join, normalize, relative, dirname } from 'path';
 
 import type { ReactElement } from 'react';
 import type { ScreenProps } from '../../types.js';
@@ -23,13 +23,10 @@ import { Panel, Spinner, Confirm, SelectList, FilePicker, KeyHandler, useToast }
 import { useRunProgress, useAsyncEffect } from '../../hooks/index.js';
 import { discoverFiles, runFiles, checkFilesStatus } from '../../../core/runner/index.js';
 import type { FilesStatusResult } from '../../../core/runner/index.js';
-import { createConnection, testConnection } from '../../../core/connection/index.js';
-import { getErrorMessage, resolveScreenIdentity, buildRunContext } from '../../utils/index.js';
+import { getErrorMessage, resolveScreenIdentity, buildRunContext, withScreenConnection } from '../../utils/index.js';
 import { useConnection } from '../../hooks/index.js';
 import { attempt } from '@logosdx/utils';
 
-import type { NoormDatabase } from '../../../core/shared/index.js';
-import type { Kysely } from 'kysely';
 import type { SelectListItem } from '../../components/index.js';
 
 type Phase = 'loading' | 'picker' | 'confirm' | 'checking' | 'rerun-confirm' | 'running' | 'complete' | 'error';
@@ -42,8 +39,11 @@ function extractDirectories(files: string[], projectRoot: string, sqlPath: strin
 
     const dirs = new Set<string>();
 
-    // Always include the schema path itself as an option
-    dirs.add(sqlPath);
+    // Always include the schema path itself as an option.
+    // Normalize so a './sql'-style settings value collapses into the same
+    // entry as the relative()-derived dirs below — a verbatim './sql' seed
+    // never matches the count/selection filters and renders as "0 files".
+    dirs.add(normalize(sqlPath));
 
     for (const file of files) {
 
@@ -212,7 +212,7 @@ export function RunDirScreen({ params }: ScreenProps): ReactElement {
 
         const identity = resolveScreenIdentity(cryptoIdentity);
 
-        const context = buildRunContext({
+        const context = await buildRunContext({
             db: sharedDb, configName: activeConfigName, identity,
             projectRoot, activeConfig,
             stateManager, dialect: sharedDialect ?? undefined,
@@ -260,109 +260,62 @@ export function RunDirScreen({ params }: ScreenProps): ReactElement {
         // Resolve identity
         const identity = resolveScreenIdentity(cryptoIdentity);
 
-        // Test connection
-        const testResult = await testConnection(activeConfig.connection);
+        const [, err] = await withScreenConnection(
+            activeConfig.connection, activeConfigName,
+            async (db) => {
 
-        if (!testResult.ok) {
+                // Check if cancelled during connection creation
+                if (cancelledRef.current) {
 
-            setError(`Connection failed: ${testResult.error}`);
-            setPhase('error');
+                    throw new Error('Execution cancelled');
 
-            return;
+                }
 
-        }
+                const context = await buildRunContext({
+                    db, configName: activeConfigName, identity,
+                    projectRoot, activeConfig,
+                    stateManager, dialect: activeConfig.connection.dialect,
+                });
 
-        // Check if cancelled during connection test
-        if (cancelledRef.current) {
+                const options = {
+                    force: force || forceRerun || globalModes.force,
+                    dryRun: globalModes.dryRun,
+                    abortOnError: true,
+                };
 
-            setError('Execution cancelled');
-            setPhase('error');
+                await runFiles(context, selectedDirFiles, options);
 
-            return;
+                // Check if cancelled during execution
+                if (cancelledRef.current) {
 
-        }
+                    throw new Error('Execution cancelled');
 
-        // Create connection
-        const [conn, connErr] = await attempt(() =>
-            createConnection(activeConfig.connection, activeConfigName),
+                }
+
+            },
+            // Store connection ref for cancellation
+            {
+                onConnect: (conn) => {
+
+                    activeConnectionRef.current = conn;
+
+                },
+            },
         );
 
-        if (connErr || !conn) {
+        activeConnectionRef.current = null;
 
-            setError(`Connection failed: ${connErr?.message ?? 'Unknown error'}`);
+        if (err) {
+
+            // Don't show error if cancelled (connection destroyed intentionally)
+            setError(cancelledRef.current ? 'Execution cancelled' : getErrorMessage(err));
             setPhase('error');
 
             return;
 
         }
 
-        // Store connection ref for cancellation
-        activeConnectionRef.current = conn;
-
-        try {
-
-            // Check if cancelled during connection creation
-            if (cancelledRef.current) {
-
-                setError('Execution cancelled');
-                setPhase('error');
-
-                return;
-
-            }
-
-            const db = conn.db as Kysely<NoormDatabase>;
-
-            const context = buildRunContext({
-                db, configName: activeConfigName, identity,
-                projectRoot, activeConfig,
-                stateManager, dialect: conn.dialect,
-            });
-
-            const options = {
-                force: force || forceRerun || globalModes.force,
-                dryRun: globalModes.dryRun,
-                abortOnError: true,
-            };
-
-            await runFiles(context, selectedDirFiles, options);
-
-            // Check if cancelled during execution
-            if (cancelledRef.current) {
-
-                setError('Execution cancelled');
-                setPhase('error');
-
-                return;
-
-            }
-
-            setPhase('complete');
-
-        }
-        catch (err) {
-
-            // Don't show error if cancelled (connection destroyed intentionally)
-            if (cancelledRef.current) {
-
-                setError('Execution cancelled');
-
-            }
-            else {
-
-                setError(getErrorMessage(err));
-
-            }
-
-            setPhase('error');
-
-        }
-        finally {
-
-            activeConnectionRef.current = null;
-            await conn.destroy();
-
-        }
+        setPhase('complete');
 
     }, [activeConfig, activeConfigName, stateManager, selectedDirFiles, globalModes, forceRerun, resetProgress, projectRoot, cryptoIdentity]);
 

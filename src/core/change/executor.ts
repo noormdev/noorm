@@ -22,6 +22,7 @@
  */
 import path from 'node:path';
 import { readFile, writeFile as fsWriteFile, mkdir } from 'node:fs/promises';
+import type { Kysely } from 'kysely';
 import { sql } from 'kysely';
 
 import { attempt, attemptSync } from '@logosdx/utils';
@@ -31,8 +32,10 @@ import { formatIdentity } from '../identity/resolver.js';
 import { processFile, isTemplate } from '../template/index.js';
 import { assertPolicy } from '../policy/index.js';
 import type { Permission } from '../policy/index.js';
+import type { Dialect } from '../connection/types.js';
 import { computeChecksum, computeCombinedChecksum } from '../runner/checksum.js';
 import { getSqlErrorMessage } from '../shared/index.js';
+import type { NoormDatabase } from '../shared/index.js';
 import { getLockManager } from '../lock/index.js';
 import { ChangeHistory } from './history.js';
 import { ChangeTracker } from './tracker.js';
@@ -57,9 +60,6 @@ const DEFAULT_OPTIONS: Required<Omit<ChangeOptions, 'output'>> & { output: strin
     preview: false,
     output: null,
 };
-
-/** Default SQL template - files with only this content are considered empty */
-const SQL_TEMPLATE = '-- TODO: Add SQL statements here';
 
 /**
  * Gate a change entrypoint against the config's access policy.
@@ -237,6 +237,7 @@ export async function executeChange(
             files,
             'change',
             changeChecksum,
+            opts.force,
             history,
             start,
         ),
@@ -376,6 +377,7 @@ export async function revertChange(
             files,
             'revert',
             revertChecksum,
+            opts.force,
             history,
             start,
         ),
@@ -406,7 +408,45 @@ export async function revertChange(
 // ─────────────────────────────────────────────────────────────
 
 /**
+ * Dialects where wrapping a change's execution in a DB transaction
+ * actually rolls back DDL alongside the history rows written for it.
+ * Postgres only, for now: MySQL's DDL
+ * implicitly commits (a wrapping transaction would silently do nothing),
+ * MSSQL's GO-batch-split execution (`runner/mssql-batches.ts`) hasn't been
+ * verified to compose safely with a wrapping transaction, and SQLite is
+ * excluded on purpose so the per-file-skip scenario this ticket's unit
+ * tests depend on (file A commits independently of file B's failure)
+ * keeps working rather than collapsing into all-or-nothing.
+ */
+const TRANSACTIONAL_DIALECTS = new Set<Dialect>(['postgres']);
+
+/**
+ * Sentinel used to carry a failed `ChangeResult` out of a rolled-back
+ * Postgres transaction.
+ *
+ * Thrown (never returned) from inside `context.db.transaction().execute()`
+ * so Kysely rolls back everything issued in the callback — DDL and the
+ * operation/file history rows alike. Caught immediately outside the
+ * transaction and unwrapped back into the result the caller sees.
+ */
+class ChangeRollback extends Error {
+
+    constructor(readonly result: ChangeResult) {
+
+        super('change rolled back');
+
+    }
+
+}
+
+/**
  * Execute files with tracking.
+ *
+ * Dispatches to `runFileBatch` either directly against `context.db`
+ * (non-transactional dialects — identical to CP1's behavior) or inside a
+ * `context.db.transaction()` (Postgres), so a failed Postgres change
+ * leaves no partial state: neither the DDL nor the operation/file history
+ * rows persist.
  */
 async function executeFiles(
     context: ChangeContext,
@@ -414,12 +454,104 @@ async function executeFiles(
     files: ChangeFile[],
     direction: 'change' | 'revert',
     checksum: string,
+    force: boolean,
     history: ChangeHistory,
     startTime: number,
 ): Promise<ChangeResult> {
 
-    // Expand .txt manifests to actual file list
+    const dialect = context.dialect ?? 'postgres';
     const expandedFiles = await expandFiles(files, context.sqlDir);
+
+    if (!TRANSACTIONAL_DIALECTS.has(dialect)) {
+
+        return runFileBatch(
+            context,
+            change,
+            expandedFiles,
+            direction,
+            checksum,
+            force,
+            history,
+            context.db,
+            startTime,
+        );
+
+    }
+
+    // On Postgres a FAILED change leaves NO persisted history at all —
+    // the operation and file rows created inside this transaction roll
+    // back together with the DDL. The caller still sees the failure via
+    // the returned ChangeResult (unwrapped from ChangeRollback below),
+    // but it's invisible in the DB — intentional per spec (atomicity over
+    // a persisted failure record). On retry, the top-level `needsRun`
+    // finds no record for the change and reruns it fresh. Do NOT try to
+    // persist a failure record outside the transaction — that would
+    // defeat the guarantee this branch exists for.
+    const [result, err] = await attempt(() =>
+        context.db.transaction().execute(async (trx) => {
+
+            const trxHistory = new ChangeHistory(trx, context.configName, dialect);
+
+            const batchResult = await runFileBatch(
+                context,
+                change,
+                expandedFiles,
+                direction,
+                checksum,
+                force,
+                trxHistory,
+                trx,
+                startTime,
+            );
+
+            if (batchResult.status !== 'success') {
+
+                throw new ChangeRollback(batchResult);
+
+            }
+
+            return batchResult;
+
+        }),
+    );
+
+    if (err) {
+
+        if (err instanceof ChangeRollback) {
+
+            return { ...err.result, operationId: undefined };
+
+        }
+
+        return createFailedResult(change.name, direction, err.message, startTime);
+
+    }
+
+    return result;
+
+}
+
+/**
+ * Run one execution batch — operation creation, per-file execution with
+ * history tracking, and finalization — against a given executor handle.
+ *
+ * Extracted from `executeFiles` so the identical batch logic runs either
+ * directly against `context.db` (non-transactional dialects) or inside a
+ * `context.db.transaction()` callback against `trx` (Postgres): only the
+ * `executor` (where SQL runs) and `history` (where tracking rows are
+ * written) vary between the two call sites.
+ */
+async function runFileBatch(
+    context: ChangeContext,
+    change: Change,
+    expandedFiles: ChangeFile[],
+    direction: 'change' | 'revert',
+    checksum: string,
+    force: boolean,
+    history: ChangeHistory,
+    executor: Kysely<NoormDatabase>,
+    startTime: number,
+): Promise<ChangeResult> {
 
     // Create operation record
     const [operationId, createErr] = await attempt(() =>
@@ -509,6 +641,53 @@ async function executeFiles(
             });
 
             const fileStart = performance.now();
+            const relPath = path.relative(context.projectRoot, file.path);
+            const fileChecksum = fileChecksums.get(file.path) ?? '';
+
+            // Per-file skip: a prior success with a matching checksum means this
+            // file doesn't need to run again, even though the overall change's
+            // checksum differs because another file needed fixing.
+            const needsRunFileResult = await history.needsRunFile(
+                change.name,
+                direction,
+                relPath,
+                fileChecksum,
+                force,
+            );
+
+            if (!needsRunFileResult.needsRun) {
+
+                results.push({
+                    filepath: file.path,
+                    checksum: fileChecksum,
+                    status: 'skipped',
+                    skipReason: needsRunFileResult.skipReason,
+                    durationMs: 0,
+                });
+
+                const skipUpdateErr = await history.updateFileExecution(
+                    operationId,
+                    relPath,
+                    'skipped',
+                    0,
+                    undefined,
+                    needsRunFileResult.skipReason,
+                );
+
+                if (skipUpdateErr) {
+
+                    // Log but continue - the skip decision itself is sound
+                    observer.emit('error', {
+                        source: 'change',
+                        error: new Error(skipUpdateErr),
+                        context: { filepath: relPath, operation: 'update-skipped-record' },
+                    });
+
+                }
+
+                continue;
+
+            }
 
             // Load and render file
             const [sqlContent, loadErr] = await attempt(() => loadAndRenderFile(context, file.path));
@@ -524,14 +703,13 @@ async function executeFiles(
 
                 results.push({
                     filepath: file.path,
-                    checksum: fileChecksums.get(file.path) ?? '',
+                    checksum: fileChecksum,
                     status: 'failed',
                     error: loadErr.message,
                     durationMs,
                 });
 
                 // Update DB record (use relative path to match createFileRecords)
-                const relPath = path.relative(context.projectRoot, file.path);
                 const updateErr = await history.updateFileExecution(
                     operationId,
                     relPath,
@@ -556,7 +734,7 @@ async function executeFiles(
             }
 
             // Execute SQL
-            const [, execErr] = await attempt(() => sql.raw(sqlContent).execute(context.db));
+            const [, execErr] = await attempt(() => sql.raw(sqlContent).execute(executor));
 
             const durationMs = performance.now() - fileStart;
 
@@ -571,17 +749,16 @@ async function executeFiles(
 
                 results.push({
                     filepath: file.path,
-                    checksum: fileChecksums.get(file.path) ?? '',
+                    checksum: fileChecksum,
                     status: 'failed',
                     error: errorMessage,
                     durationMs,
                 });
 
                 // Update DB record (use relative path to match createFileRecords)
-                const execRelPath = path.relative(context.projectRoot, file.path);
                 const updateErr2 = await history.updateFileExecution(
                     operationId,
-                    execRelPath,
+                    relPath,
                     'failed',
                     durationMs,
                     errorMessage,
@@ -593,7 +770,7 @@ async function executeFiles(
                     observer.emit('error', {
                         source: 'change',
                         error: new Error(updateErr2),
-                        context: { filepath: execRelPath, operation: 'update-failed-record' },
+                        context: { filepath: relPath, operation: 'update-failed-record' },
                     });
 
                 }
@@ -605,16 +782,15 @@ async function executeFiles(
             // Success
             results.push({
                 filepath: file.path,
-                checksum: fileChecksums.get(file.path) ?? '',
+                checksum: fileChecksum,
                 status: 'success',
                 durationMs,
             });
 
             // Update DB record (use relative path to match createFileRecords)
-            const successRelPath = path.relative(context.projectRoot, file.path);
             const updateErr = await history.updateFileExecution(
                 operationId,
-                successRelPath,
+                relPath,
                 'success',
                 durationMs,
             );
@@ -625,7 +801,7 @@ async function executeFiles(
                 observer.emit('error', {
                     source: 'change',
                     error: new Error(updateErr),
-                    context: { filepath: successRelPath, operation: 'update-success-record' },
+                    context: { filepath: relPath, operation: 'update-success-record' },
                 });
 
             }
@@ -923,10 +1099,7 @@ async function validateFilesHaveContent(files: ChangeFile[]): Promise<boolean> {
 
         }
 
-        const trimmed = content?.trim() ?? '';
-
-        // Check if file has actual content (not empty, not just the template)
-        if (trimmed && trimmed !== SQL_TEMPLATE) {
+        if (hasExecutableSql(content ?? '')) {
 
             return true;
 
@@ -935,6 +1108,27 @@ async function validateFilesHaveContent(files: ChangeFile[]): Promise<boolean> {
     }
 
     return false;
+
+}
+
+/**
+ * True if content has a line that isn't blank or a `--` line comment.
+ *
+ * Scaffolded stubs (and the default template) are comment-only by design;
+ * matching on a single fixed template string missed any other wording,
+ * so a differently-worded stub would silently execute as a no-op.
+ */
+function hasExecutableSql(content: string): boolean {
+
+    return content
+        .split('\n')
+        .some((line) => {
+
+            const trimmed = line.trim();
+
+            return trimmed.length > 0 && !trimmed.startsWith('--');
+
+        });
 
 }
 

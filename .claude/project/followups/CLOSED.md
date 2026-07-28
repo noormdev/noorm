@@ -1,1 +1,2 @@
 - 2026-06-06 mssql-build-non-idempotent-create-type — "MSSQL build non-idempotent: bare CREATE TYPE blocks db.reset() rebuild" — *(closed 2026-06-06)*
+- 2026-07-13 v1-38-sdk-integration-f-2 — "dt reader .dtz bad-path hangs instead of rejecting (unforwarded gunzip stream error)" — *(closed 2026-07-13)*

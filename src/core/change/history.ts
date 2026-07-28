@@ -49,6 +49,43 @@ import type {
 import type { ChangeType } from '../shared/index.js';
 
 // ─────────────────────────────────────────────────────────────
+// Date Hydration
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Normalizes a change-tracking timestamp column to a real `Date`.
+ *
+ * WHY: postgres/mysql/mssql drivers parse `executed_at` into a `Date`
+ * automatically, but SQLite (both `bun:sqlite` and `better-sqlite3`)
+ * hands back the raw `CURRENT_TIMESTAMP` text (`'YYYY-MM-DD HH:MM:SS'`,
+ * always UTC, no offset marker). Parsing that string with `new Date(str)`
+ * directly reads it as local time, silently shifting the result by the
+ * host's UTC offset — so the string must be marked UTC explicitly first.
+ *
+ * @example
+ * hydrateDate('2026-07-12 09:02:59') // -> 2026-07-12T09:02:59.000Z
+ * hydrateDate(new Date('2026-07-12T09:02:59.000Z')) // -> unchanged
+ * hydrateDate(null) // -> null
+ */
+export function hydrateDate(value: Date | string | null | undefined): Date | null {
+
+    if (value === null || value === undefined) {
+
+        return null;
+
+    }
+
+    if (value instanceof Date) {
+
+        return value;
+
+    }
+
+    return new Date(`${value.replace(' ', 'T')}Z`);
+
+}
+
+// ─────────────────────────────────────────────────────────────
 // History Class
 // ─────────────────────────────────────────────────────────────
 
@@ -117,6 +154,7 @@ export class ChangeHistory {
             this.#ndb
                 .selectFrom(this.#tables.change)
                 .select([
+                    'id',
                     'name',
                     'status',
                     'executed_at',
@@ -169,10 +207,11 @@ export class ChangeHistory {
         return {
             name: record.name,
             status: record.status,
-            appliedAt: record.executed_at,
+            appliedAt: hydrateDate(record.executed_at),
             appliedBy: record.executed_by,
-            revertedAt: revertRecord?.executed_at ?? null,
+            revertedAt: hydrateDate(revertRecord?.executed_at),
             errorMessage: record.error_message || null,
+            appliedHistoryId: record.id,
         };
 
     }
@@ -220,10 +259,11 @@ export class ChangeHistory {
                 statuses.set(record.name, {
                     name: record.name,
                     status: record.status,
-                    appliedAt: record.executed_at,
+                    appliedAt: hydrateDate(record.executed_at),
                     appliedBy: record.executed_by,
                     revertedAt: null, // Will be filled in below
                     errorMessage: record.error_message || null,
+                    appliedHistoryId: record.id,
                 });
 
             }
@@ -253,7 +293,7 @@ export class ChangeHistory {
                 if (!seenReverts.has(revert.name) && statuses.has(revert.name)) {
 
                     const status = statuses.get(revert.name)!;
-                    status.revertedAt = revert.executed_at;
+                    status.revertedAt = hydrateDate(revert.executed_at);
                     seenReverts.add(revert.name);
 
                 }
@@ -375,6 +415,132 @@ export class ChangeHistory {
             skipReason: 'already applied',
             previousChecksum: record.checksum,
             previousStatus: record.status,
+        };
+
+    }
+
+    /**
+     * Check if a single file within a change needs to run.
+     *
+     * Mirrors `Tracker.needsRun` (runner/tracker.ts) but scoped to this
+     * change's name+direction+config instead of a global filepath lookup,
+     * so file A's success under one change never satisfies file A's check
+     * under a different change.
+     *
+     * Excludes `pending` rows from consideration: `createFileRecords`
+     * inserts a fresh pending row for every file before the per-file loop
+     * runs, and that row (always the highest id for this filepath) would
+     * otherwise shadow the prior operation's real success/failure record,
+     * making retries re-run every file instead of just the one that failed.
+     *
+     * Also excludes `skipped` rows: `status: 'skipped'` is written for two
+     * different meanings — `skipRemainingFiles` writes it for files never
+     * reached after an earlier failure (must re-run), while this method's
+     * own per-file-skip path (called from `executor.ts`) writes it for a
+     * file that matched a prior success (must stay skipped). A `skipped`
+     * row is never itself a decision basis: a success-match skip still has
+     * its covering `success` row further back in history (found once the
+     * `skipped` row is excluded), and a never-reached skip has no terminal
+     * row at all, so the lookup falls through to `{ needsRun: true, reason:
+     * 'new' }` below and the file runs. Both resolve correctly without
+     * consulting the ambiguous row — excluding it here is what prevents a
+     * third attempt from re-running a file a prior success already covered.
+     *
+     * @param name - Change name
+     * @param direction - 'change' or 'revert'
+     * @param filepath - Relative filepath as stored in execution records
+     * @param checksum - Current checksum of the file
+     * @param force - Force re-run regardless of status
+     * @returns Whether the file needs to run and why
+     */
+    async needsRunFile(
+        name: string,
+        direction: Direction,
+        filepath: string,
+        checksum: string,
+        force: boolean,
+    ): Promise<NeedsRunResult> {
+
+        // Force always runs
+        if (force) {
+
+            return { needsRun: true, reason: 'force' };
+
+        }
+
+        // Get most recent completed execution record for this file, scoped
+        // to this change's name+direction+config
+        const [record, err] = await attempt(() =>
+            (this.#ndb
+                .selectFrom(this.#tables.executions)
+                .innerJoin(
+                    this.#tables.change,
+                    `${this.#tables.change}.id`,
+                    `${this.#tables.executions}.change_id`,
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                ) as any)
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                .select((eb: any) => [
+                    eb.ref(`${this.#tables.executions}.checksum`).as('checksum'),
+                    eb.ref(`${this.#tables.executions}.status`).as('exec_status'),
+                ])
+                .where(`${this.#tables.change}.name`, '=', name)
+                .where(`${this.#tables.change}.direction`, '=', direction)
+                .where(`${this.#tables.change}.config_name`, '=', this.#configName)
+                .where(`${this.#tables.executions}.filepath`, '=', filepath)
+                .where(`${this.#tables.executions}.status`, 'not in', ['pending', 'skipped'])
+                .orderBy(`${this.#tables.executions}.id`, 'desc')
+                .limit(1)
+                .executeTakeFirst(),
+        );
+
+        if (err) {
+
+            observer.emit('error', {
+                source: 'change',
+                error: err,
+                context: { name, filepath, operation: 'needs-run-file-check' },
+            });
+
+            // On error, assume needs to run
+            return { needsRun: true, reason: 'new' };
+
+        }
+
+        // No previous completed record - new file
+        if (!record) {
+
+            return { needsRun: true, reason: 'new' };
+
+        }
+
+        // Previous execution failed - retry
+        if (record.exec_status === 'failed') {
+
+            return {
+                needsRun: true,
+                reason: 'failed',
+                previousChecksum: record.checksum,
+            };
+
+        }
+
+        // Checksum changed since the last recorded attempt
+        if (record.checksum !== checksum) {
+
+            return {
+                needsRun: true,
+                reason: 'changed',
+                previousChecksum: record.checksum,
+            };
+
+        }
+
+        // Success and unchanged - skip
+        return {
+            needsRun: false,
+            skipReason: 'already applied',
+            previousChecksum: record.checksum,
         };
 
     }
@@ -908,7 +1074,9 @@ export class ChangeHistory {
             name: r.name,
             direction: r.direction,
             status: r.status,
-            executedAt: r.executed_at,
+            // Non-null: executed_at is NOT NULL with a CURRENT_TIMESTAMP
+            // default, always populated on write (see createOperation).
+            executedAt: hydrateDate(r.executed_at)!,
             executedBy: r.executed_by,
             durationMs: r.duration_ms,
             errorMessage: r.error_message || null,
@@ -981,7 +1149,9 @@ export class ChangeHistory {
             changeType: r.change_type,
             direction: r.direction,
             status: r.status,
-            executedAt: r.executed_at,
+            // Non-null: executed_at is NOT NULL with a CURRENT_TIMESTAMP
+            // default, always populated on write (see createOperation).
+            executedAt: hydrateDate(r.executed_at)!,
             executedBy: r.executed_by,
             durationMs: r.duration_ms,
             errorMessage: r.error_message || null,

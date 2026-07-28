@@ -12,7 +12,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import {
     getEnvConfig,
 } from '../../../src/core/config/index.js';
-import { getEnvConfigName, isCi, shouldOutputJson, shouldSkipConfirmations } from '../../../src/core/environment.js';
+import { getEnvConfigName, isCi, isEnvTruthy, shouldSkipConfirmations } from '../../../src/core/environment.js';
 
 describe('config: env', () => {
 
@@ -375,29 +375,119 @@ describe('config: env', () => {
 
         });
 
+        it('should return true when NOORM_YES=TRUE (case-insensitive, unified truthiness)', () => {
+
+            process.env['NOORM_YES'] = 'TRUE';
+
+            expect(shouldSkipConfirmations()).toBe(true);
+
+        });
+
+        it('should return true when NOORM_YES=yes (unified truthiness)', () => {
+
+            process.env['NOORM_YES'] = 'yes';
+
+            expect(shouldSkipConfirmations()).toBe(true);
+
+        });
+
+        it('should return true for an arbitrary non-empty value (unified truthiness widens beyond 1/true)', () => {
+
+            process.env['NOORM_YES'] = 'on';
+
+            expect(shouldSkipConfirmations()).toBe(true);
+
+        });
+
+        it('should return false when NOORM_YES=0', () => {
+
+            process.env['NOORM_YES'] = '0';
+
+            expect(shouldSkipConfirmations()).toBe(false);
+
+        });
+
+        it('should return false when NOORM_YES=false', () => {
+
+            process.env['NOORM_YES'] = 'false';
+
+            expect(shouldSkipConfirmations()).toBe(false);
+
+        });
+
+        it('should return false when NOORM_YES=FALSE (case-insensitive)', () => {
+
+            process.env['NOORM_YES'] = 'FALSE';
+
+            expect(shouldSkipConfirmations()).toBe(false);
+
+        });
+
+        it('should return false when NOORM_YES is empty string', () => {
+
+            process.env['NOORM_YES'] = '';
+
+            expect(shouldSkipConfirmations()).toBe(false);
+
+        });
+
     });
 
-    describe('shouldOutputJson', () => {
+    describe('isEnvTruthy', () => {
 
-        it('should return false when not set', () => {
+        it('should return false for undefined', () => {
 
-            expect(shouldOutputJson()).toBe(false);
-
-        });
-
-        it('should return true when NOORM_JSON=1', () => {
-
-            process.env['NOORM_JSON'] = '1';
-
-            expect(shouldOutputJson()).toBe(true);
+            expect(isEnvTruthy(undefined)).toBe(false);
 
         });
 
-        it('should return true when NOORM_JSON=true', () => {
+        it('should return false for empty string', () => {
 
-            process.env['NOORM_JSON'] = 'true';
+            expect(isEnvTruthy('')).toBe(false);
 
-            expect(shouldOutputJson()).toBe(true);
+        });
+
+        it('should return false for "0"', () => {
+
+            expect(isEnvTruthy('0')).toBe(false);
+
+        });
+
+        it('should return false for "false" in any letter case', () => {
+
+            expect(isEnvTruthy('false')).toBe(false);
+            expect(isEnvTruthy('FALSE')).toBe(false);
+            expect(isEnvTruthy('False')).toBe(false);
+
+        });
+
+        it('should return true for "1"', () => {
+
+            expect(isEnvTruthy('1')).toBe(true);
+
+        });
+
+        it('should return true for "true" in any letter case', () => {
+
+            expect(isEnvTruthy('true')).toBe(true);
+            expect(isEnvTruthy('TRUE')).toBe(true);
+            expect(isEnvTruthy('True')).toBe(true);
+
+        });
+
+        it('should return true for "yes"', () => {
+
+            expect(isEnvTruthy('yes')).toBe(true);
+
+        });
+
+        it('should return true for any other non-empty string, including "no"/"off"', () => {
+
+            expect(isEnvTruthy('no')).toBe(true);
+            expect(isEnvTruthy('off')).toBe(true);
+            expect(isEnvTruthy('00')).toBe(true);
+            expect(isEnvTruthy(' ')).toBe(true);
+            expect(isEnvTruthy(' 0')).toBe(true);
 
         });
 

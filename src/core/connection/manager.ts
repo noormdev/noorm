@@ -4,12 +4,13 @@
  * Tracks ALL active database connections and ensures they're closed on shutdown.
  * Connections can be cached by config name for reuse, or tracked ephemerally.
  */
-import { attempt } from '@logosdx/utils';
+import { attempt, runWithTimeout } from '@logosdx/utils';
 import type { Config } from '../config/types.js';
 import type { ConnectionResult } from './types.js';
 import type { WorkerBridge } from '../worker-bridge/bridge.js';
 import type { ConnectionEvents } from '../worker-bridge/types.js';
 import { observer } from '../observer.js';
+import { isDebug } from '../environment.js';
 
 /**
  * Internal connection entry with metadata.
@@ -57,7 +58,7 @@ class ConnectionManager {
         // Listen for shutdown event
         this.#unsubscribe = observer.on('app:shutdown', async () => {
 
-            if (process.env['NOORM_DEBUG']) {
+            if (isDebug()) {
 
                 console.error(
                     `[ConnectionManager] app:shutdown received, closing ${this.size} connections`,
@@ -68,7 +69,7 @@ class ConnectionManager {
             this.#shuttingDown = true;
             await this.closeAll();
 
-            if (process.env['NOORM_DEBUG']) {
+            if (isDebug()) {
 
                 console.error('[ConnectionManager] all connections closed');
 
@@ -212,22 +213,9 @@ class ConnectionManager {
         const trackedEntries = Array.from(this.#tracked.entries());
         for (const [id, entry] of trackedEntries) {
 
-            let timer: ReturnType<typeof setTimeout>;
-            const destroyWithTimeout = Promise.race([
-                entry.conn.destroy().then(() => {
-
-                    clearTimeout(timer);
-
-                }),
-                new Promise<void>((resolve) => {
-
-                    timer = setTimeout(resolve, CLOSE_TIMEOUT);
-
-                }),
-            ]);
-
-            const [, err] = await attempt(() => destroyWithTimeout);
-            clearTimeout(timer!);
+            const [, err] = await attempt(() =>
+                runWithTimeout(() => entry.conn.destroy(), { timeout: CLOSE_TIMEOUT, throws: true }),
+            );
             this.#tracked.delete(id);
 
             if (err) {

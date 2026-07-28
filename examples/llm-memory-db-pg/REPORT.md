@@ -3,7 +3,7 @@
 
 This is the Phase 2 deliverable for the LLM memory + task-tracker example built end-to-end against PostgreSQL using noorm. It captures: what was built, the coverage stats, every noorm CLI / SDK / MCP issue surfaced along the way, and the judgment calls that shaped the final shape.
 
-For Phase 1 details (schema authoring play-by-play, the three SDK bugs that were fixed mid-build, and the convention quirks that bit the early subagents) see `REPORT-PHASE-1.md` in this directory. The full external problem log lives at `../../postgres-problems.md` in the monorepo root.
+For Phase 1 details (schema authoring play-by-play, the three SDK bugs that were fixed mid-build, and the convention quirks that bit the early subagents) see `REPORT-PHASE-1.md` in this directory. The full external problem log lives at `postgres-problems.md` in this directory.
 
 
 ## Final state
@@ -55,7 +55,7 @@ All 38 tables, 18 views, 10 helper functions, and ALL 69 procs (`PROCEDURE` + sc
 
 - **Domain coverage**: every entity domain (Memory, Note, Tag, Artifact, Milestone, Task, Agent, Project, Audit) has both an SQL-layer test (asserting on the proc/view contract) AND a domain-layer test (asserting on the facade plumbing through Zod + camelCase mapping).
 - **Failure-mode coverage**: every state-machine rejection, every sentinel guard (Agent(0) / Project(0)), every exclusivity trigger pair, every cycle-detection guard, every FK guard, and every UNIQUE constraint has a paired failure test that asserts on a tight error pattern (regex match against the literal RAISE EXCEPTION message — tighter than `.rejects.toThrow()` alone, less brittle than coupling to driver-specific SQLSTATE codes).
-- **Integration coverage**: `ctx.noorm.observer` (4 tests), `ctx.noorm.lock` (5 tests including real cross-identity contention), `ctx.noorm.vault` (4 tests including double-init failure), `ctx.impersonate` (5 tests including SQLSTATE-pinned rejection + post-revert control).
+- **Integration coverage**: `noormObserver` (4 tests), `ctx.noorm.lock` (5 tests including real cross-identity contention), `ctx.noorm.vault` (4 tests including double-init failure), `ctx.impersonate` (5 tests including SQLSTATE-pinned rejection + post-revert control).
 - **MCP coverage**: 8 tests in `tests/mcp-discovery.test.ts` exercise the full JSON-RPC surface (initialize handshake, tools/list, tools/call for both `noorm_help` and `run_noorm_cmd`).
 
 

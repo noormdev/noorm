@@ -2,7 +2,7 @@ import { attempt } from '@logosdx/utils';
 
 import { createContext, type Context } from '../sdk/index.js';
 import { configNotFoundMessage } from '../core/config/resolver.js';
-import type { Channel, Role } from '../core/policy/index.js';
+import { isVisibleToChannel, type Channel, type Role } from '../core/policy/index.js';
 import { RpcError, type RpcSession } from './types.js';
 
 /**
@@ -65,7 +65,7 @@ export class SessionManager implements RpcSession {
         const resolvedName = ctx.noorm.config.name;
         const rawAccess = ctx.noorm.config.access;
 
-        if (this.channel === 'mcp' && (!rawAccess || rawAccess.mcp === false)) {
+        if (!isVisibleToChannel(rawAccess, this.channel)) {
 
             throw new RpcError('Failed to create context', configNotFoundMessage(resolvedName));
 

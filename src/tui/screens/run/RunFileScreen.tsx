@@ -22,13 +22,10 @@ import { Panel, Spinner, Confirm, SearchableList, KeyHandler, useToast } from '.
 import { useRunProgress, useAsyncEffect } from '../../hooks/index.js';
 import { discoverFiles, runFile, checkFilesStatus } from '../../../core/runner/index.js';
 import type { FilesStatusResult } from '../../../core/runner/index.js';
-import { createConnection, testConnection } from '../../../core/connection/index.js';
-import { getErrorMessage, resolveScreenIdentity, buildRunContext } from '../../utils/index.js';
+import { getErrorMessage, resolveScreenIdentity, buildRunContext, withScreenConnection } from '../../utils/index.js';
 import { useConnection } from '../../hooks/index.js';
 import { attempt } from '@logosdx/utils';
 
-import type { NoormDatabase } from '../../../core/shared/index.js';
-import type { Kysely } from 'kysely';
 import type { SelectListItem } from '../../components/index.js';
 
 type Phase = 'loading' | 'picker' | 'confirm' | 'checking' | 'rerun-confirm' | 'running' | 'complete' | 'error';
@@ -153,7 +150,7 @@ export function RunFileScreen({ params }: ScreenProps): ReactElement {
 
         const identity = resolveScreenIdentity(cryptoIdentity);
 
-        const context = buildRunContext({
+        const context = await buildRunContext({
             db: sharedDb, configName: activeConfigName, identity,
             projectRoot, activeConfig,
             stateManager, dialect: sharedDialect ?? undefined,
@@ -201,108 +198,61 @@ export function RunFileScreen({ params }: ScreenProps): ReactElement {
         // Resolve identity
         const identity = resolveScreenIdentity(cryptoIdentity);
 
-        // Test connection
-        const testResult = await testConnection(activeConfig.connection);
+        const [, err] = await withScreenConnection(
+            activeConfig.connection, activeConfigName,
+            async (db) => {
 
-        if (!testResult.ok) {
+                // Check if cancelled during connection creation
+                if (cancelledRef.current) {
 
-            setError(`Connection failed: ${testResult.error}`);
-            setPhase('error');
+                    throw new Error('Execution cancelled');
 
-            return;
+                }
 
-        }
+                const context = await buildRunContext({
+                    db, configName: activeConfigName, identity,
+                    projectRoot, activeConfig,
+                    stateManager, dialect: activeConfig.connection.dialect,
+                });
 
-        // Check if cancelled during connection test
-        if (cancelledRef.current) {
+                const options = {
+                    force: force || forceRerun || globalModes.force,
+                    dryRun: globalModes.dryRun,
+                };
 
-            setError('Execution cancelled');
-            setPhase('error');
+                await runFile(context, selectedFile, options);
 
-            return;
+                // Check if cancelled during execution
+                if (cancelledRef.current) {
 
-        }
+                    throw new Error('Execution cancelled');
 
-        // Create connection
-        const [conn, connErr] = await attempt(() =>
-            createConnection(activeConfig.connection, activeConfigName),
+                }
+
+            },
+            // Store connection ref for cancellation
+            {
+                onConnect: (conn) => {
+
+                    activeConnectionRef.current = conn;
+
+                },
+            },
         );
 
-        if (connErr || !conn) {
+        activeConnectionRef.current = null;
 
-            setError(`Connection failed: ${connErr?.message ?? 'Unknown error'}`);
+        if (err) {
+
+            // Don't show error if cancelled (connection destroyed intentionally)
+            setError(cancelledRef.current ? 'Execution cancelled' : getErrorMessage(err));
             setPhase('error');
 
             return;
 
         }
 
-        // Store connection ref for cancellation
-        activeConnectionRef.current = conn;
-
-        try {
-
-            // Check if cancelled during connection creation
-            if (cancelledRef.current) {
-
-                setError('Execution cancelled');
-                setPhase('error');
-
-                return;
-
-            }
-
-            const db = conn.db as Kysely<NoormDatabase>;
-
-            const context = buildRunContext({
-                db, configName: activeConfigName, identity,
-                projectRoot, activeConfig,
-                stateManager, dialect: conn.dialect,
-            });
-
-            const options = {
-                force: force || forceRerun || globalModes.force,
-                dryRun: globalModes.dryRun,
-            };
-
-            await runFile(context, selectedFile, options);
-
-            // Check if cancelled during execution
-            if (cancelledRef.current) {
-
-                setError('Execution cancelled');
-                setPhase('error');
-
-                return;
-
-            }
-
-            setPhase('complete');
-
-        }
-        catch (err) {
-
-            // Don't show error if cancelled (connection destroyed intentionally)
-            if (cancelledRef.current) {
-
-                setError('Execution cancelled');
-
-            }
-            else {
-
-                setError(getErrorMessage(err));
-
-            }
-
-            setPhase('error');
-
-        }
-        finally {
-
-            activeConnectionRef.current = null;
-            await conn.destroy();
-
-        }
+        setPhase('complete');
 
     }, [activeConfig, activeConfigName, stateManager, selectedFile, globalModes, forceRerun, resetProgress, projectRoot, cryptoIdentity]);
 

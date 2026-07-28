@@ -370,7 +370,7 @@ export class Client {
      */
     async reset(): Promise<void> {
 
-        await this.#ctx.reset();
+        await this.#ctx.noorm.db.reset();
 
     }
 
@@ -379,7 +379,7 @@ export class Client {
      */
     async truncate(): Promise<void> {
 
-        await this.#ctx.truncate();
+        await this.#ctx.noorm.db.truncate();
 
     }
 

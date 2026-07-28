@@ -159,6 +159,30 @@ describe('dt: reader', () => {
 
         });
 
+        it('should reject promptly with the underlying ENOENT for a nonexistent .dtz path', async () => {
+
+            const filepath = path.join(testDir, 'does-not-exist.dtz');
+            const reader = new DtReader({ filepath });
+
+            // Bun's own per-test timeout (2s) is the hang detector: if the
+            // source stream's 'error' event stops being forwarded into the
+            // gunzip stream, this test times out instead of the promise
+            // ever rejecting -- never waits out the old 15s hang.
+            await expect(reader.open()).rejects.toThrow(/ENOENT/);
+
+        }, 2000);
+
+        it('should reject via gunzip error for a corrupt (non-gzip) .dtz file', async () => {
+
+            const filepath = path.join(testDir, 'corrupt.dtz');
+            await Bun.write(filepath, 'not gzip bytes');
+
+            const reader = new DtReader({ filepath });
+
+            await expect(reader.open()).rejects.toThrow();
+
+        }, 2000);
+
     });
 
     // -----------------------------------------------------------------------
@@ -169,7 +193,7 @@ describe('dt: reader', () => {
 
         it('should require passphrase', async () => {
 
-            const filepath = await writeFixture('.dtzx', 'secret');
+            const filepath = await writeFixture('.dtzx', 'secret-min-12chars');
             const reader = new DtReader({ filepath });
 
             await expect(reader.open()).rejects.toThrow('Passphrase required');
@@ -178,8 +202,8 @@ describe('dt: reader', () => {
 
         it('should read encrypted file with correct passphrase', async () => {
 
-            const filepath = await writeFixture('.dtzx', 'secret');
-            const reader = new DtReader({ filepath, passphrase: 'secret' });
+            const filepath = await writeFixture('.dtzx', 'secret-min-12chars');
+            const reader = new DtReader({ filepath, passphrase: 'secret-min-12chars' });
             await reader.open();
 
             expect(reader.schema!.v).toBe(1);
@@ -202,7 +226,7 @@ describe('dt: reader', () => {
 
         it('should fail with wrong passphrase', async () => {
 
-            const filepath = await writeFixture('.dtzx', 'secret');
+            const filepath = await writeFixture('.dtzx', 'secret-min-12chars');
             const reader = new DtReader({ filepath, passphrase: 'wrong' });
 
             await expect(reader.open()).rejects.toThrow();

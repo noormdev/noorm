@@ -96,14 +96,12 @@ describe('integration: sdk DbNamespace reset vs preserveTables', () => {
 
         await createMarkers();
 
-        const db = new DbNamespace(makeState());
-
         let buildForced: boolean | undefined;
-        db._buildFn = async (opts?: { force?: boolean }) => {
+        const db = new DbNamespace(makeState(), async (opts?: { force?: boolean }) => {
 
             buildForced = opts?.force;
 
-        };
+        });
 
         await db.reset();
 

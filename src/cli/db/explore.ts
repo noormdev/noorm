@@ -30,36 +30,21 @@ const exploreCommand = defineCommand({
 
         const [overview, error] = await withContext({
             args,
-            fn: (ctx, logger) => {
-
-                return ctx.noorm.db.overview().then((res) => {
-
-                    if (!args.json) {
-
-                        logger.info('Database Overview', {
-                            tables: res.tables,
-                            views: res.views,
-                            functions: res.functions,
-                            procedures: res.procedures,
-                            types: res.types,
-                        });
-
-                    }
-
-                    return res;
-
-                });
-
-            },
+            fn: (ctx) => ctx.noorm.db.overview(),
         });
 
         if (error) process.exit(1);
 
-        if (args.json) {
+        const text = [
+            'Database Overview',
+            `  Tables:     ${overview.tables}`,
+            `  Views:      ${overview.views}`,
+            `  Functions:  ${overview.functions}`,
+            `  Procedures: ${overview.procedures}`,
+            `  Types:      ${overview.types}`,
+        ].join('\n');
 
-            outputResult(args, overview, '');
-
-        }
+        outputResult(args, overview, text);
 
         process.exit(0);
 

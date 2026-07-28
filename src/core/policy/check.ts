@@ -155,6 +155,23 @@ export function assertPolicy(
 }
 
 /**
+ * Whether a config is visible on a channel — the mcp-channel invisibility
+ * rule, extracted so `list_configs` and `session.ts`'s `connect()` share one
+ * fail-closed implementation instead of two independently drifting copies.
+ *
+ * Fails closed: missing `access` is treated the same as `access.mcp ===
+ * false`. The `user` channel is always visible; only `mcp` can be hidden.
+ *
+ * @example
+ * isVisibleToChannel(config.access, 'mcp'); // false when access.mcp === false or access is missing
+ */
+export function isVisibleToChannel(access: ConfigAccess | undefined, channel: Channel): boolean {
+
+    return !(channel === 'mcp' && (!access || access.mcp === false));
+
+}
+
+/**
  * Display-only shorthand for "this config isn't wide open" — used by TUI
  * styling, `config list`, and settings rule matching. Never an enforcement
  * input; `checkPolicy` is the only gate.
@@ -165,5 +182,24 @@ export function assertPolicy(
 export function guarded(target: PolicyTarget): boolean {
 
     return target.access.user !== 'admin';
+
+}
+
+/**
+ * Formats access as `user:<role> mcp:<role|off>` — the shared display
+ * string for `noorm config list` and the TUI config list screen, so the
+ * format can't drift between the two. Omitted entirely (`null`) for fully
+ * open (admin/admin) configs, per `guarded()`.
+ *
+ * @example
+ * formatAccessTag({ name: 'prod', access: { user: 'operator', mcp: false } }); // 'user:operator mcp:off'
+ */
+export function formatAccessTag(config: { name: string; access: ConfigAccess }): string | null {
+
+    if (!guarded(config)) return null;
+
+    const { access } = config;
+
+    return `user:${access.user} mcp:${access.mcp === false ? 'off' : access.mcp}`;
 
 }

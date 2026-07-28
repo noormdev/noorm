@@ -5,7 +5,7 @@ Every `noorm` command runs as a non-interactive CLI by default. The Ink/React TU
 
 ```bash
 noorm run build              # CLI: build schema headlessly
-noorm --json change ff       # CLI: fast-forward with JSON output
+noorm change ff --json       # CLI: fast-forward with JSON output
 noorm ui                     # TUI: launch the interactive terminal UI
 ```
 
@@ -27,7 +27,11 @@ For shell completion, run `noorm complete` and follow the printed instructions f
 
 ## Global Flags
 
-These flags must appear **before** the subcommand (like `git -C`). After the subcommand they revert to their per-command meaning.
+A flag goes on the command that uses it. `-c`/`--cwd <path>` is the one exception: it's
+recognized **before** the subcommand instead, because it's consumed before dispatch — it sets
+the working directory everything else (config discovery, project root) resolves against. An
+unrecognized or misplaced flag typed before the subcommand exits non-zero naming the correct
+form, rather than being silently dropped.
 
 | Flag | Short | Description |
 |------|-------|-------------|
@@ -39,7 +43,13 @@ noorm -c packages/db run build
 
 # Initialize a nested project from elsewhere
 noorm -c packages/db init
+
+# every other flag belongs on the subcommand
+noorm run build --dry-run
 ```
+
+`--cwd`/`-c` only has this global meaning *before* the subcommand — after it, `-c` is the
+per-command `--config` alias instead (see the note below).
 
 
 ## Common Flags
@@ -55,9 +65,7 @@ These options are reused across most commands. Run `<command> --help` to see exa
 | `--dry-run` | — | Preview without executing |
 | `--help` | `-h` | Show command help (citty native) |
 
-> **Note:** `-c` is overloaded by position. `noorm -c <path> run` is the global cwd flag; `noorm run -c <name>` is the per-command config alias. The first non-flag token (the subcommand) is the boundary.
-
-> **`--json` placement:** `--json` is per-subcommand, not global — it must appear **after** the subcommand name (`noorm change ff --json`, not `noorm --json change ff`). See [CLI flag conventions](./cli/flags.md) for the full reasoning. For per-command help, see [Discovering command help](./cli/help.md).
+> **Note:** `-c` is overloaded by position. `noorm -c <path> run` is the global cwd flag; `noorm run -c <name>` is the per-command config alias. The first non-flag token (the subcommand) is the boundary. Every flag other than `-c`/`--cwd` — `--config`, `--force`, `--json`, `--dry-run`, `--yes`, etc. — has no global meaning; it only works after the subcommand. See [CLI flag conventions](./cli/flags.md) for the full reasoning. For per-command help, see [Discovering command help](./cli/help.md).
 
 
 ## Configuration
@@ -70,7 +78,7 @@ These options are reused across most commands. Run `<command> --help` to see exa
 noorm run build
 
 # Use specific config
-noorm --config staging run build
+noorm run build --config staging
 
 # Or via environment
 export NOORM_CONFIG=staging
@@ -127,7 +135,6 @@ NOORM_PATHS_CHANGES          # Changes directory (default: ./changes)
 ```bash
 NOORM_CONFIG                 # Config name to use
 NOORM_YES                    # Skip confirmations (1 or true)
-NOORM_JSON                   # Output JSON (1 or true)
 NOORM_DEBUG                  # Enable debug logging
 ```
 
@@ -142,7 +149,6 @@ All `NOORM_*` environment variables are processed through a nesting convention t
 |----------|---------|
 | `NOORM_CONFIG` | Select which stored config to use |
 | `NOORM_YES` | Skip confirmations (`1` or `true`) |
-| `NOORM_JSON` | Force JSON output (`1` or `true`) |
 
 These are excluded from config nesting and consumed directly by the CLI.
 
@@ -180,6 +186,7 @@ Each config carries a per-channel access grant: `access: { user, mcp }`. The `us
 | `db create`, `db reset` (truncate/teardown/reset) | deny | confirm | allow |
 | `db drop` | deny | deny | confirm |
 | `config rm` | deny | confirm | confirm |
+| `change rm` | deny | confirm | confirm |
 
 Raw SQL (`noorm sql`) is gated by what the statement actually does, not by a flag — a multi-statement input is classified by its highest class (a `SELECT` plus a `DROP` classifies as DDL). Unparseable or unrecognized statements classify as DDL, fail closed.
 
@@ -232,7 +239,7 @@ Set the active configuration.
 
 ```bash
 noorm config use dev
-noorm --json config use production
+noorm config use production --json
 ```
 
 **JSON output:**
@@ -247,7 +254,7 @@ noorm --json config use production
 
 Create a new configuration.
 
-> Wizard-only. Launches the TUI wizard. To configure non-interactively, use `NOORM_*` environment variables or `config import`.
+> Wizard-only. Launches the TUI wizard. To configure non-interactively, use `NOORM_*` environment variables or `config import`. Exits 1 (message on stderr) — there is no headless equivalent.
 
 ```bash
 noorm config add
@@ -258,22 +265,33 @@ noorm config add
 
 Edit an existing configuration.
 
-> Wizard-only. Launches the TUI wizard. Use `NOORM_*` env vars or `config export`/`config import` to modify non-interactively.
+> Wizard-only. Launches the TUI wizard. Use `NOORM_*` env vars or `config export`/`config import` to modify non-interactively. Exits 1 (message on stderr) — there is no headless equivalent.
 
 ```bash
 noorm config edit dev
 ```
 
 
-#### `config rm [name]`
+#### `config rm <name>`
 
 Remove a configuration.
 
-> Wizard-only. Launches the TUI wizard so you can confirm the removal interactively.
-
 ```bash
-noorm config rm staging
+noorm config rm staging --yes
+noorm config rm staging --yes --json
 ```
+
+**JSON output:**
+```json
+{
+    "name": "staging",
+    "deleted": true
+}
+```
+
+::: danger Destructive
+Requires `--yes` (or `NOORM_YES=1`) — there is no TTY confirmation prompt, so the flag is mandatory even at an interactive terminal. An unknown config name fails with exit 1. Gated by the config's `config:rm` access (see [Access Roles](#access-roles) above); a config linked to a locked stage cannot be removed until the stage is unlocked.
+:::
 
 
 #### `config cp <src> <dest>`
@@ -356,7 +374,7 @@ Create a new cryptographic identity. Generates an X25519 keypair and stores it a
 ```bash
 noorm identity init --name "Alice" --email "alice@example.com"
 noorm identity init --name "Alice" --email "alice@example.com" --force
-noorm --json identity init --name "Alice" --email "alice@example.com"
+noorm identity init --name "Alice" --email "alice@example.com" --json
 ```
 
 | Flag | Description |
@@ -395,7 +413,7 @@ Print your public key so teammates can add you to encrypted vaults.
 
 ```bash
 noorm identity export
-noorm --json identity export
+noorm identity export --json
 ```
 
 
@@ -405,7 +423,7 @@ List all known users discovered from database syncs (the audit trail of who has 
 
 ```bash
 noorm identity list
-noorm --json identity list
+noorm identity list --json
 ```
 
 
@@ -627,8 +645,8 @@ Execute all SQL files in the schema directory. Uses checksums to skip unchanged 
 
 ```bash
 noorm run build
-noorm --force run build    # Skip checksums, run everything
-noorm --dry-run run build  # Preview without executing
+noorm run build --force    # Skip checksums, run everything
+noorm run build --dry-run  # Preview without executing
 ```
 
 **JSON output:**
@@ -650,7 +668,7 @@ Execute a single SQL or `.sql.tmpl` file.
 ```bash
 noorm run file sql/01_tables/001_users.sql
 noorm run file seed.sql.tmpl
-noorm --json run file sql/init.sql
+noorm run file sql/init.sql --json
 ```
 
 **JSON output:**
@@ -670,7 +688,7 @@ Execute all SQL files in a directory in alphabetical order.
 ```bash
 noorm run dir sql/01_tables/
 noorm run dir seeds/
-noorm --json run dir migrations/
+noorm run dir migrations/ --json
 ```
 
 
@@ -704,7 +722,7 @@ Inspect the template context for a `.sql.tmpl` file without executing. Shows dat
 
 ```bash
 noorm run inspect sql/users/001_create.sql.tmpl
-noorm --json run inspect sql/core/Crons.sql.tmpl
+noorm run inspect sql/core/Crons.sql.tmpl --json
 ```
 
 **JSON output:**
@@ -731,8 +749,8 @@ Render a `.sql.tmpl` file and output the resulting SQL. Does **not** execute aga
 ```bash
 noorm run preview sql/schema.sql.tmpl
 noorm run preview sql/schema.sql.tmpl > rendered.sql
-noorm --json run preview sql/seed.sql.tmpl
-noorm --config staging run preview sql/migrations/002.sql.tmpl
+noorm run preview sql/seed.sql.tmpl --json
+noorm run preview sql/migrations/002.sql.tmpl --config staging
 ```
 
 **JSON output:**
@@ -788,8 +806,8 @@ Fast-forward: apply all pending changes in order.
 
 ```bash
 noorm change ff
-noorm --dry-run change ff
-noorm --force change ff
+noorm change ff --dry-run
+noorm change ff --force
 ```
 
 **JSON output:**
@@ -812,7 +830,7 @@ Apply the next pending change only.
 
 ```bash
 noorm change next
-noorm --json change next
+noorm change next --json
 ```
 
 
@@ -823,7 +841,7 @@ Apply a specific change by name. Omit the name on a TTY to pick interactively.
 ```bash
 noorm change run                               # interactive picker (TTY)
 noorm change run 2024-02-01-notifications
-noorm --json change run 2024-02-01-notifications
+noorm change run 2024-02-01-notifications --json
 ```
 
 **JSON output:**
@@ -847,7 +865,7 @@ Revert a previously applied change by running its rollback SQL. Omit the name on
 ```bash
 noorm change revert                              # interactive picker (TTY)
 noorm change revert 2024-02-01-notifications
-noorm --json change revert 002_users
+noorm change revert 002_users --json
 ```
 
 
@@ -858,7 +876,7 @@ Revert the given change **and every change applied after it**, in reverse order.
 ```bash
 noorm change rewind                              # interactive picker (TTY)
 noorm change rewind 2024-02-01-notifications
-noorm --json change rewind 001_init
+noorm change rewind 001_init --json
 ```
 
 
@@ -872,7 +890,12 @@ noorm change add add-users-table
 noorm change add "notification queue" --json
 ```
 
-Creates `changes/<YYYY-MM-DD>-<slug>/` with `change.sql` and `revert.sql` stubs.
+Creates `changes/<YYYY-MM-DD>-<slug>/` with `change/` and `revert/` directories, each
+holding a `001_<slug>.sql` stub (a single comment naming what belongs there — "Add the SQL
+statements that apply this change" / "...undo this change"), plus `changelog.md`. The stub
+comments alone don't count as content: running the change before editing them fails with an
+actionable message ("Files are empty or contain only template placeholders"), not "change not
+found".
 
 
 #### `change edit [name]`
@@ -888,7 +911,7 @@ EDITOR=vim noorm change edit 001_init
 
 #### `change rm [name]`
 
-Remove a change directory from disk. Does **not** touch database state. On a TTY, omit the name to pick interactively; `--yes` is only required on non-TTY.
+Remove a change directory from disk. Does **not** touch database state. Gated by the config's `change:rm` access (see [Access Roles](#access-roles) above): `viewer` is denied; `operator` and `admin` confirm via `--yes` or `NOORM_YES=1`. On a TTY, omit the name to pick interactively.
 
 ```bash
 noorm change rm                                 # picker + confirm (TTY)
@@ -902,7 +925,7 @@ View execution history with timestamps, direction, and duration.
 
 ```bash
 noorm change history
-noorm --json change history
+noorm change history --json
 ```
 
 **JSON output:**
@@ -930,7 +953,7 @@ Per-file execution detail for a single change. Omit the name on a TTY to pick in
 ```bash
 noorm change history-detail                     # interactive picker (TTY)
 noorm change history-detail 001_init
-noorm --json change history-detail 002_users
+noorm change history-detail 002_users --json
 ```
 
 
@@ -989,7 +1012,7 @@ noorm db explore procedures             # List all procedures
 noorm db explore indexes                # List all indexes
 noorm db explore types                  # List custom types
 noorm db explore fks                    # List foreign keys
-noorm --json db explore                 # JSON overview
+noorm db explore --json                 # JSON overview
 ```
 
 **JSON output (overview):**
@@ -1009,7 +1032,7 @@ noorm --json db explore                 # JSON overview
 Wipe all data from application tables. Schema and noorm tracking tables are preserved.
 
 ```bash
-noorm -y db truncate
+noorm db truncate -y
 ```
 
 
@@ -1018,7 +1041,7 @@ noorm -y db truncate
 Drop all database objects.
 
 ```bash
-noorm -y db teardown
+noorm db teardown -y
 ```
 
 ::: warning Access Roles
@@ -1081,7 +1104,7 @@ Check if database is locked.
 
 ```bash
 noorm lock status
-noorm --json lock status
+noorm lock status --json
 ```
 
 **JSON output:**
@@ -1103,7 +1126,7 @@ Acquire an exclusive lock.
 
 ```bash
 noorm lock acquire
-noorm --json lock acquire
+noorm lock acquire --json
 ```
 
 **CI/CD pattern with cleanup:**
@@ -1152,7 +1175,7 @@ Initialize the vault for the current database.
 
 ```bash
 noorm vault init
-noorm --json vault init
+noorm vault init --json
 ```
 
 
@@ -1162,7 +1185,7 @@ Store an encrypted secret in the vault.
 
 ```bash
 noorm vault set API_KEY "sk-live-abc123"
-noorm --json vault set API_KEY "sk-live-abc123"
+noorm vault set API_KEY "sk-live-abc123" --json
 ```
 
 Upserts: creates if new, updates if the key exists.
@@ -1174,7 +1197,7 @@ List all secrets in the vault (keys and metadata only, never values).
 
 ```bash
 noorm vault list
-noorm --json vault list
+noorm vault list --json
 ```
 
 **JSON output:**
@@ -1198,7 +1221,7 @@ Remove a secret from the vault.
 
 ```bash
 noorm vault rm OLD_API_KEY
-noorm --json vault rm OLD_API_KEY
+noorm vault rm OLD_API_KEY --json
 ```
 
 
@@ -1228,7 +1251,7 @@ Grant vault access to team members who don't have it yet. Encrypts the vault key
 
 ```bash
 noorm vault propagate
-noorm --json vault propagate
+noorm vault propagate --json
 ```
 
 **JSON output:**
@@ -1251,7 +1274,7 @@ Execute a raw SQL query.
 noorm sql "SELECT * FROM users LIMIT 10"
 noorm sql -f query.sql
 noorm -c prod sql "SELECT count(*) FROM orders"
-noorm --json sql "SELECT id, name FROM users"
+noorm sql "SELECT id, name FROM users" --json
 ```
 
 | Flag | Description |
@@ -1293,7 +1316,7 @@ Show SQL execution history.
 ```bash
 noorm sql history
 noorm sql history -n 20
-noorm --json sql history
+noorm sql history --json
 noorm -c prod sql history
 ```
 
@@ -1350,7 +1373,7 @@ Project and database status overview.
 
 ```bash
 noorm info
-noorm --json info
+noorm info --json
 ```
 
 **JSON output:**
@@ -1387,7 +1410,7 @@ CLI version and diagnostic information.
 
 ```bash
 noorm version
-noorm --json version
+noorm version --json
 ```
 
 
@@ -1397,7 +1420,7 @@ Check for and install noorm updates.
 
 ```bash
 noorm update
-noorm --json update
+noorm update --json
 ```
 
 
@@ -1577,15 +1600,38 @@ noorm ci init --name prod
 noorm lock acquire
 trap "noorm lock release" EXIT
 noorm change ff
-noorm --json db explore
+noorm db explore --json
 ```
+
+
+## Output Streams
+
+A command's **result** — the human summary, or the `--json` payload — always goes to
+**stdout**. Everything else — progress lines, warnings, the logger's event stream — goes to
+**stderr**, in both text and `--json` mode. This holds regardless of whether the command
+succeeds or fails: a setup failure (bad config, no connection) prints nothing to stdout in
+text mode — the diagnostic goes to stderr — and a single JSON error document to stdout in
+`--json` mode, e.g. `{"success":false,"error":"..."}`.
+
+That means `--json` output is always exactly one parseable JSON document on stdout, with no
+log noise ahead of or after it — no `tail -1` needed:
+
+```bash
+noorm change history --json | jq '.[0].status'
+```
+
+A command that finds nothing to report still writes a result — never silence. `noorm change
+list` on a project with no changesets prints `No changes found.` on stdout in text mode and
+`[]` on stdout in `--json` mode; either way, a CI step can tell "ran and found nothing" from
+"didn't run" by checking the exit code and the (always-present) stdout line, rather than
+guessing from empty output.
 
 
 ## Scripting with JSON
 
 ```bash
 # Check for pending changes
-pending=$(noorm --json change list | jq '[.[] | select(.status == "pending")] | length')
+pending=$(noorm change list --json | jq '[.[] | select(.status == "pending")] | length')
 if [ "$pending" -gt 0 ]; then
     echo "Found $pending pending changes"
     noorm change ff
@@ -1594,13 +1640,13 @@ fi
 
 ```bash
 # Get table count
-tables=$(noorm --json db explore | jq '.tables')
+tables=$(noorm db explore --json | jq '.tables')
 echo "Database has $tables tables"
 ```
 
 ```bash
 # Verify vault access
-pending=$(noorm --json vault list | jq '.status.usersWithoutAccess')
+pending=$(noorm vault list --json | jq '.status.usersWithoutAccess')
 if [ "$pending" -gt 0 ]; then
     noorm vault propagate
 fi

@@ -48,12 +48,48 @@ The schema artifact this project implements lives at `tmp/llm-memory-db.pseudo` 
 ## Setup
 
 
-From inside `examples/llm-memory-db-pg/`:
+The actual order matters — `noorm db create` requires an active named config, so configs must be imported before the database can be created. From inside `examples/llm-memory-db-pg/`, create `dev.json`:
+
+```json
+{
+    "name": "dev",
+    "connection": {
+        "dialect": "postgres",
+        "host": "localhost",
+        "port": 15432,
+        "database": "noorm_llm_dev",
+        "user": "noorm_test",
+        "password": "noorm_test"
+    },
+    "isTest": false
+}
+```
+
+Then create `test.json`:
+
+```json
+{
+    "name": "test",
+    "connection": {
+        "dialect": "postgres",
+        "host": "localhost",
+        "port": 15432,
+        "database": "noorm_llm_test",
+        "user": "noorm_test",
+        "password": "noorm_test"
+    },
+    "isTest": true
+}
+```
+
+These values match `.noorm/settings.yml`'s `stages.dev` and `stages.test` defaults. Then:
 
 ```bash
 bun install
-noorm db create --name noorm_llm_dev
-noorm db create --name noorm_llm_test
+noorm config import dev.json
+noorm config import test.json
+noorm db create -c dev
+noorm db create -c test
 noorm config use dev
 noorm run build
 noorm change ff
@@ -158,7 +194,7 @@ examples/llm-memory-db-pg/
 
 Phase 1 used the noorm CLI to bootstrap `.noorm/`, declare two stages (`dev` + `test`), build the schema from SQL files, apply an evolutionary change, generate the SDK shape, and write the test suite. Phase 2 used the noorm MCP server to verify schema integrity, grade test quality, and add a meta-test that exercises the MCP itself.
 
-The full play-by-play is in `REPORT.md` (final deliverable) and `REPORT-PHASE-1.md` (intermediate report). Three real noorm SDK bugs surfaced during Phase 1 and were fixed at the source — see `../../postgres-problems.md` (monorepo root) for the full list of CLI/SDK/MCP issues encountered.
+The full play-by-play is in `REPORT.md` (final deliverable) and `REPORT-PHASE-1.md` (intermediate report). Three real noorm SDK bugs surfaced during Phase 1 and were fixed at the source — see `postgres-problems.md` (in this directory) for the full list of CLI/SDK/MCP issues encountered.
 
 
 ## What this is NOT

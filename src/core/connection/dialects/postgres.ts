@@ -6,6 +6,7 @@
  */
 import { Kysely, PostgresDialect } from 'kysely';
 import type { ConnectionConfig, ConnectionResult } from '../types.js';
+import { DEFAULT_PORTS } from '../defaults.js';
 
 /**
  * Create a PostgreSQL connection.
@@ -15,7 +16,6 @@ import type { ConnectionConfig, ConnectionResult } from '../types.js';
  * const conn = createPostgresConnection({
  *     dialect: 'postgres',
  *     host: 'localhost',
- *     port: 5432,
  *     database: 'myapp',
  *     user: 'postgres',
  *     password: 'secret',
@@ -32,7 +32,7 @@ export async function createPostgresConnection(
 
     const pool = new Pool({
         host: config.host ?? 'localhost',
-        port: config.port ?? 5432,
+        port: config.port ?? DEFAULT_PORTS.postgres,
         user: config.user,
         password: config.password,
         database: config.database,

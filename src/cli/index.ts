@@ -12,25 +12,6 @@ import { resolve } from 'node:path';
 import tab from '@bomb.sh/tab/citty';
 import { defineCommand, runMain, renderUsage, type CommandDef } from 'citty';
 
-import change from './change/index.js';
-import ci from './ci/index.js';
-import config from './config/index.js';
-import db from './db/index.js';
-import dev from './dev/index.js';
-import identity from './identity/index.js';
-import info from './info.js';
-import init from './init.js';
-import lock from './lock/index.js';
-import mcp from './mcp/index.js';
-import run from './run/index.js';
-import secret from './secret/index.js';
-import settings from './settings/index.js';
-import sql from './sql/index.js';
-import ui from './ui.js';
-import update from './update.js';
-import vault from './vault/index.js';
-import version from './version.js';
-
 import { initProjectContext, setOriginalCwd } from '../core/project.js';
 import { loadIdentityFromEnv } from '../core/identity/env.js';
 import { setKeyOverride, setIdentityOverride } from '../core/identity/storage.js';
@@ -41,31 +22,51 @@ import { setKeyOverride, setIdentityOverride } from '../core/identity/storage.js
  */
 export type CommandWithExamples = CommandDef & { examples?: string[] };
 
+/**
+ * Zero-cost stand-in for the `complete` subcommand that `@bomb.sh/tab`
+ * would otherwise register by walking the entire `subCommands` tree
+ * (forcing every lazy thunk below to resolve on every invocation, the
+ * exact cost this file exists to avoid). Same meta the adapter itself
+ * uses, so `noorm --help` / bare `noorm` list `complete` identically to
+ * before. Overwritten in place by the real `tab(main)` call below when
+ * the invocation actually is a completion request.
+ */
+const completeStub = defineCommand({
+    meta: {
+        name: 'complete',
+        description: 'Generate shell completion scripts',
+    },
+    run() {},
+});
+
+declare const __CLI_VERSION__: string;
+
 const main = defineCommand({
     meta: {
         name: 'noorm',
-        version: '0.0.0', // replaced at bundle time via --define __CLI_VERSION__
+        version: typeof __CLI_VERSION__ !== 'undefined' ? __CLI_VERSION__ : '0.0.0-dev',
         description: 'Database schema & changeset manager. Global: -c, --cwd <path> runs the subcommand in <path> (must precede the subcommand, like git -C).',
     },
     subCommands: {
-        change,
-        ci,
-        config,
-        db,
-        dev,
-        identity,
-        info,
-        init,
-        lock,
-        mcp,
-        run,
-        secret,
-        settings,
-        sql,
-        ui,
-        update,
-        vault,
-        version,
+        change: () => import('./change/index.js').then((m) => m.default),
+        ci: () => import('./ci/index.js').then((m) => m.default),
+        config: () => import('./config/index.js').then((m) => m.default),
+        db: () => import('./db/index.js').then((m) => m.default),
+        dev: () => import('./dev/index.js').then((m) => m.default),
+        identity: () => import('./identity/index.js').then((m) => m.default),
+        info: () => import('./info.js').then((m) => m.default),
+        init: () => import('./init.js').then((m) => m.default),
+        lock: () => import('./lock/index.js').then((m) => m.default),
+        mcp: () => import('./mcp/index.js').then((m) => m.default),
+        run: () => import('./run/index.js').then((m) => m.default),
+        secret: () => import('./secret/index.js').then((m) => m.default),
+        settings: () => import('./settings/index.js').then((m) => m.default),
+        sql: () => import('./sql/index.js').then((m) => m.default),
+        ui: () => import('./ui.js').then((m) => m.default),
+        update: () => import('./update.js').then((m) => m.default),
+        vault: () => import('./vault/index.js').then((m) => m.default),
+        version: () => import('./version.js').then((m) => m.default),
+        complete: completeStub,
     },
 });
 
@@ -73,11 +74,14 @@ const main = defineCommand({
  * Walk argv one positional at a time to find the target command.
  *
  * Stops at the first flag (token starting with `-`) or unknown subcommand.
- * Returns the resolved command definition object.
+ * Returns the resolved command definition plus the ordered chain of parent
+ * command names (root to immediate parent) walked to reach it, so callers
+ * can rebuild the full USAGE breadcrumb instead of citty's single-level one.
  */
-async function resolveCommand(rootDef: CommandDef, argv: string[]): Promise<CommandDef> {
+async function resolveCommand(rootDef: CommandDef, argv: string[]): Promise<{ cmd: CommandDef; parentNames: string[] }> {
 
     let current: unknown = rootDef;
+    const parentNames: string[] = [];
 
     for (const arg of argv) {
 
@@ -92,23 +96,58 @@ async function resolveCommand(rootDef: CommandDef, argv: string[]): Promise<Comm
             break;
 
         }
+
+        const meta = await (typeof resolved.meta === 'function' ? resolved.meta() : resolved.meta);
+        parentNames.push(meta?.name ?? arg);
         current = sub;
 
     }
 
-    return typeof current === 'function' ? await (current as () => Promise<CommandDef>)() : current as CommandDef;
+    const cmd = typeof current === 'function' ? await (current as () => Promise<CommandDef>)() : current as CommandDef;
+
+    return { cmd, parentNames };
 
 }
 
 /**
- * Strip `-c <path>` / `--cwd <path>` / `--cwd=<path>` that appear before
- * the first subcommand. Mirrors `git -C <path>` semantics: the flag is only
- * recognized as global when it precedes the subcommand, so per-command
- * aliases (like `--config -c`) keep working after the subcommand token.
- *
- * Returns the resolved cwd (or null) plus argv with global flags removed.
+ * `--help`/`-h`/`--version`/`-v` are already recognized at any position:
+ * `entry()` scans for `--help`/`-h` directly (below) and citty's own
+ * `runMain` handles a bare `--version`/`-v` before ever reaching
+ * `runCommand`. They must pass through `extractGlobalCwd` untouched
+ * rather than trip its "unrecognized flag" error.
  */
-function extractGlobalCwd(argv: string[]): { cwd: string | null; rest: string[] } {
+const BUILTIN_ROOT_FLAGS = new Set(['--help', '-h', '--version', '-v']);
+
+/**
+ * Strip `-c <path>` / `--cwd <path>` / `--cwd=<path>` from the argv that
+ * precedes the subcommand name — the sole flag with a genuine root-level
+ * meaning. Every other flag belongs on the command that uses it and is
+ * rejected outright if it appears before the subcommand, for two reasons:
+ *
+ * 1. `--cwd` is consumed before dispatch: it sets the working directory
+ *    everything else (project discovery, config resolution) resolves
+ *    against, so it is the CLI's own flag rather than any subcommand's.
+ * 2. `-c` already means `--config` after the subcommand (see the
+ *    "`--config` / `-c` overload" note in docs/cli/flags.md). Hoisting
+ *    any other flag to the root doesn't hit that collision, but it does
+ *    reintroduce the asymmetry this function used to have with
+ *    `--config`/`--force` — which were never hoisted — for no reason
+ *    beyond "why not". A flag goes on the command that uses it.
+ *
+ * citty forwards only `rawArgs.slice(subCommandArgIndex + 1)` to the
+ * resolved subcommand (`node_modules/citty/dist/index.mjs:217`), so any
+ * flag before that index is silently dropped before a leaf command's own
+ * arg parser ever sees it. Mirrors `git -C <path>` semantics: `--cwd` is
+ * only recognized as global when it precedes the subcommand, so a
+ * per-command flag of the same short name (`--config -c`) keeps working
+ * untouched once seen after it.
+ *
+ * Any other flag-looking token seen before the subcommand can't be
+ * honoured for the same reason an unrecognised flag couldn't — silently
+ * forwarding it would be the defect this function exists to avoid — so
+ * it is reported as an error instead of being dropped.
+ */
+function extractGlobalCwd(argv: string[]): { cwd: string | null; rest: string[]; error: null } | { cwd: null; rest: null; error: string } {
 
     const rest: string[] = [];
     let cwd: string | null = null;
@@ -119,7 +158,7 @@ function extractGlobalCwd(argv: string[]): { cwd: string | null; rest: string[] 
 
         const arg = argv[i]!;
 
-        if (seenSubcommand) {
+        if (seenSubcommand || BUILTIN_ROOT_FLAGS.has(arg)) {
 
             rest.push(arg);
             i++;
@@ -153,12 +192,17 @@ function extractGlobalCwd(argv: string[]): { cwd: string | null; rest: string[] 
 
         }
 
-        rest.push(arg);
-        i++;
+        return {
+            cwd: null,
+            rest: null,
+            error: `Unrecognized flag '${arg}' before the subcommand — noorm can't forward it there. `
+                + 'The only root-level flag is -c/--cwd <path>; every other flag goes on the command that uses it. '
+                + `Move '${arg}' after the subcommand instead, e.g. noorm <command> ... ${arg}.`,
+        };
 
     }
 
-    return { cwd, rest };
+    return { cwd, rest, error: null };
 
 }
 
@@ -223,10 +267,18 @@ function rewriteBareSqlArgv(argv: string[]): string[] {
 /**
  * Print citty's usage followed by a custom EXAMPLES block from
  * the command's top-level `examples` property (if present).
+ *
+ * citty's renderUsage only concatenates one level (`parent.meta.name + ' ' +
+ * cmd.meta.name`), so a synthetic parent joining the full breadcrumb is
+ * built here rather than always passing the absolute root command.
  */
-async function printHelpWithExamples(cmd: CommandWithExamples, rootDef: CommandDef): Promise<void> {
+async function printHelpWithExamples(cmd: CommandWithExamples, parentNames: string[]): Promise<void> {
 
-    const usage = await renderUsage(cmd, rootDef);
+    const parent: CommandDef | undefined = parentNames.length > 0
+        ? { meta: { name: parentNames.join(' ') } }
+        : undefined;
+
+    const usage = await renderUsage(cmd, parent);
     process.stdout.write(usage + '\n');
 
     if (cmd.examples && cmd.examples.length > 0) {
@@ -253,7 +305,16 @@ async function printHelpWithExamples(cmd: CommandWithExamples, rootDef: CommandD
 async function entry(): Promise<void> {
 
     const rawArgv = process.argv.slice(2);
-    const { cwd: explicitCwd, rest: cleanArgv } = extractGlobalCwd(rawArgv);
+    const parsedCwd = extractGlobalCwd(rawArgv);
+
+    if (parsedCwd.error !== null) {
+
+        process.stderr.write(`Error: ${parsedCwd.error}\n`);
+        process.exit(1);
+
+    }
+
+    const { cwd: explicitCwd, rest: cleanArgv } = parsedCwd;
 
     if (explicitCwd !== null) {
 
@@ -268,16 +329,19 @@ async function entry(): Promise<void> {
 
         setOriginalCwd(process.cwd());
         process.chdir(resolvedCwd);
-        process.argv = [process.argv[0]!, process.argv[1]!, ...rewriteBareSqlArgv(cleanArgv)];
 
     }
     else {
 
         initProjectContext();
-        const rewritten = rewriteBareSqlArgv(process.argv.slice(2));
-        process.argv = [process.argv[0]!, process.argv[1]!, ...rewritten];
 
     }
+
+    // Both branches funnel through the same reassignment. `cleanArgv` is
+    // rawArgv with only the -c/--cwd tokens (if any) removed, so this is
+    // a no-op rewrite when --cwd was absent — using it unconditionally
+    // keeps one code path instead of two that must stay in sync.
+    process.argv = [process.argv[0]!, process.argv[1]!, ...rewriteBareSqlArgv(cleanArgv)];
 
     // Install env-based identity overrides at process startup so that
     // every downstream loadPrivateKey() / loadIdentityMetadata() call
@@ -292,16 +356,24 @@ async function entry(): Promise<void> {
 
     }
 
-    // Register shell completion as the `complete` subcommand on main.
-    // The adapter walks main.subCommands to generate completions.
-    await tab(main);
-
     const rawArgs = process.argv.slice(2);
+
+    // Only walk the entire subCommands tree (resolving every lazy thunk
+    // above) when the invocation is actually a completion request. The
+    // always-present completeStub above keeps `complete` listed in every
+    // other help/usage output at zero resolution cost; tab(main) replaces
+    // it in place (same main.subCommands object reference) before runMain
+    // dispatches to it.
+    if (rawArgs[0] === 'complete') {
+
+        await tab(main);
+
+    }
 
     if (rawArgs.includes('--help') || rawArgs.includes('-h')) {
 
-        const cmd = await resolveCommand(main as CommandDef, rawArgs);
-        await printHelpWithExamples(cmd as CommandWithExamples, main as CommandDef);
+        const { cmd, parentNames } = await resolveCommand(main as CommandDef, rawArgs);
+        await printHelpWithExamples(cmd as CommandWithExamples, parentNames);
         process.exit(0);
 
     }

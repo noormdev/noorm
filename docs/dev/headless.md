@@ -30,7 +30,7 @@ Not every command accepts every flag — append `--help` to any command to see t
 
 **Example:**
 ```bash
-noorm --json --config prod change ff
+noorm change ff --config prod --json
 noorm change ff --help       # Per-command help, rendered by citty
 ```
 
@@ -51,7 +51,7 @@ If you've already set an active config (via `noorm config use <name>` or through
 ```bash
 # These are equivalent if 'dev' is the active config
 noorm change ff
-noorm --config dev change ff
+noorm change ff --config dev
 ```
 
 
@@ -61,7 +61,7 @@ Specify a config by name using `--config` or the `NOORM_CONFIG` env var:
 
 ```bash
 # Via flag
-noorm --config production change ff
+noorm change ff --config production
 
 # Via env var
 export NOORM_CONFIG=production
@@ -120,7 +120,7 @@ Execute all SQL files in the schema directory.
 
 ```bash
 noorm run build
-noorm --force run build  # Skip checksums
+noorm run build --force  # Skip checksums
 ```
 
 **JSON output:**
@@ -140,7 +140,6 @@ Execute a single SQL file.
 
 ```bash
 noorm run file sql/01_tables/001_users.sql
-noorm --path sql/01_tables/001_users.sql run file
 ```
 
 **JSON output:**
@@ -386,7 +385,7 @@ Colored console output with status icons:
 Use `--json` for machine-readable output:
 
 ```bash
-noorm --json change ff | jq '.executed'
+noorm change ff --json | jq '.executed'
 ```
 
 JSON mode disables colors and outputs structured data.
@@ -436,7 +435,7 @@ jobs:
               run: noorm change ff
 
             - name: Export schema (optional)
-              run: noorm --json -c prod db explore > schema.json
+              run: noorm -c prod db explore --json > schema.json
 ```
 
 
@@ -463,7 +462,7 @@ migrate:
     stage: deploy
     script:
         - npm ci
-        - noorm --config production change ff
+        - noorm change ff --config production
     only:
         - main
     environment:
@@ -480,7 +479,7 @@ set -e
 CONFIG="${1:-}"  # Optional, falls back to active config
 
 echo "Checking for pending changes..."
-PENDING=$(noorm --json ${CONFIG:+-c "$CONFIG"} change | jq '[.[] | select(.status=="pending")] | length')
+PENDING=$(noorm ${CONFIG:+-c "$CONFIG"} change --json | jq '[.[] | select(.status=="pending")] | length')
 
 if [ "$PENDING" -gt 0 ]; then
     echo "Applying $PENDING pending changes..."
@@ -516,7 +515,7 @@ noorm change ff
 
 2. **Use `--json` for scripting** - Easier to parse than text output
    ```bash
-   noorm --json change | jq '.[] | select(.status=="pending")'
+   noorm change --json | jq '.[] | select(.status=="pending")'
    ```
 
 3. **Check exit codes** - Non-zero means failure
@@ -533,7 +532,7 @@ noorm change ff
 
 6. **Test with `--dry-run`** - Preview operations before executing
    ```bash
-   noorm --dry-run change ff
+   noorm change ff --dry-run
    ```
 
 7. **Capture logs** - noorm appends to `.noorm/state/noorm.log` for debugging
@@ -692,7 +691,9 @@ Status listing previously lived on the bare `change` handler -- it was moved to 
 
 ### TUI-Only Wizards
 
-Some commands (`config add`, `config edit`, `config rm`) don't have a sensible headless equivalent — they exist to walk users through credential entry interactively. These commands `import { app } from '../../tui/app.js'` and route the user into the appropriate TUI screen, then exit. See `src/cli/config/add.ts` for the canonical pattern.
+Some commands (`config add`, `config edit`) don't have a sensible headless equivalent — they exist to walk users through credential entry interactively. Rather than importing the TUI, they print `Interactive only — run: noorm ui` to stderr and exit 1, leaving the user to launch the TUI themselves. See `src/cli/config/add.ts` for the canonical pattern.
+
+`config rm` used to live in this bucket but is now real and headless: bootstrap state (`initState`/`getStateManager`), gate the deletion through `checkConfigPolicy` (denies or requires `--yes`/`NOORM_YES` per the config's `user`-channel role for `config:rm`), then call `StateManager.deleteConfig()` — the same core path the TUI's removal screen uses, so the locked-stage guard applies identically. See `src/cli/config/rm.ts`.
 
 
 ### Registering Commands at the Root

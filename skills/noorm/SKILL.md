@@ -1,6 +1,6 @@
 ---
 name: noorm
-description: Guide for building applications and tests with the NoORM database SDK (@noormdev/sdk) and composing CLI headless commands for CI/CD pipelines. Use this skill whenever the user imports @noormdev/sdk, calls createContext(), writes Kysely queries in a noorm-managed project, writes database integration tests, sets up CI/CD with noorm commands, manages database schemas or migrations, runs SQL files through noorm, transfers data between databases, manages vault secrets, or discusses noorm in any development context. Also trigger when you see noorm environment variables (NOORM_*), .sql.tmpl template files, or change/revert directory structures. Trigger for any database task in a noorm-managed project — the SDK conventions (error tuples, no try-catch, test safety guards, Kysely patterns) and CLI flags are non-obvious and critical to get right.
+description: Guide for building applications and tests with the NoORM database SDK (@noormdev/sdk) and composing CLI headless commands for CI/CD pipelines. Use this skill whenever the user imports @noormdev/sdk, calls createContext(), writes Kysely queries in a noorm-managed project, writes database integration tests, sets up CI/CD with noorm commands, manages database schemas or migrations, runs SQL files through noorm, transfers data between databases, manages vault secrets, or discusses noorm in any development context. Also trigger when you see noorm environment variables (NOORM_*), .sql.tmpl template files, or change/revert directory structures. Trigger for any database task in a noorm-managed project — the SDK conventions (SDK methods throw named errors, `attempt()` wraps deliberately, no try-catch, test safety guards, Kysely patterns) and CLI flags are non-obvious and critical to get right.
 ---
 
 # NoORM
@@ -48,6 +48,23 @@ Priority chain (highest wins):
 
 Env-only mode (no stored config needed): set `NOORM_CONNECTION_DIALECT` + `NOORM_CONNECTION_DATABASE` as environment variables. This is the standard approach for CI/CD pipelines.
 
+### Error Handling
+
+SDK methods throw named errors and let them propagate — this is the primary contract, not an
+opt-in. Wrap a call in `attempt()`/`attemptSync()` only when you're going to do something with
+the error (translate it, recover, observe, or knowingly ignore it); if you'd just re-throw it
+unchanged, skip `attempt` and let it propagate.
+
+Carve-outs that don't follow the throw contract:
+
+- `ctx.noorm.utils.testConnection()` returns `{ ok, error? }` by design — a connection probe
+  reporting failure as data, not an exception.
+- Transaction callbacks (`ctx.transaction(...)`) must throw to roll back — that's Kysely's own
+  transaction contract.
+- Raw `ctx.kysely` queries throw like any Kysely call.
+
+Never wrap a `ctx.noorm.*` call in try-catch.
+
 ## Common Mistakes
 
 These are the patterns LLMs get wrong most often with noorm:
@@ -61,5 +78,5 @@ These are the patterns LLMs get wrong most often with noorm:
 | `ctx.proc()` on SQLite | Check `ctx.dialect` first | SQLite has no stored procedures, functions, or TVFs |
 | `ctx.tvf()` on MySQL | Check `ctx.dialect` first | MySQL doesn't support TVFs either |
 | `Procs = { name: ArgsType }` | `Procs = { name: [ArgsType, ReturnType] }` | Tuple format enables return type inference |
-| Forget to check error tuples | Always check `err` before using `result` | Silent failures otherwise |
+| Assume every `ctx.noorm.*` call returns a tuple | SDK methods throw named errors — wrap with `attempt()` only when you'll do something with the error | Unhandled throws stop the caller immediately; that's the contract |
 | Use raw Kysely without noorm | Use `ctx.kysely` from a noorm Context | Misses config resolution, checksums, change tracking |

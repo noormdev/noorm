@@ -1,14 +1,15 @@
 /**
  * Layer 3 — observer integration tests.
  *
- * Asserts that ctx.noorm.observer surfaces the cross-cutting events
- * emitted by the runner and template engine while the SDK executes
- * real SQL against the test MSSQL database.
+ * Asserts that noormObserver (the process-global event bus) surfaces the
+ * cross-cutting events emitted by the runner and template engine while the
+ * SDK executes real SQL against the test MSSQL database.
  */
 import { join } from 'node:path';
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
 import { attempt } from '@logosdx/utils';
+import { noormObserver } from '@noormdev/sdk';
 
 import { bootstrap, resetApplicationData } from '../helpers/test-context';
 
@@ -32,7 +33,7 @@ describe('observer: file:* events during run.file', () => {
 
         const events: { event: string; filepath: string }[] = [];
 
-        const cleanup = ctx.noorm.observer.on(/^file:/, (payload) => {
+        const cleanup = noormObserver.on(/^file:/, (payload) => {
 
             const evt = payload.event;
             const data: unknown = payload.data;
@@ -66,7 +67,7 @@ describe('observer: file:* events during run.file', () => {
 
         const captured: { status: string; durationMs: number; filepath: string }[] = [];
 
-        const cleanup = ctx.noorm.observer.on('file:after', (data) => {
+        const cleanup = noormObserver.on('file:after', (data) => {
 
             captured.push({
                 status: data.status,
@@ -95,7 +96,7 @@ describe('observer: template:* events during .sql.tmpl render', () => {
 
         const renders: { filepath: string; durationMs: number }[] = [];
 
-        const cleanup = ctx.noorm.observer.on('template:render', (data) => {
+        const cleanup = noormObserver.on('template:render', (data) => {
 
             renders.push({ filepath: data.filepath, durationMs: data.durationMs });
 
@@ -119,7 +120,7 @@ describe('observer: regex pattern matching across run.file', () => {
 
         const events: string[] = [];
 
-        const cleanup = ctx.noorm.observer.on(/^file:/, (payload) => {
+        const cleanup = noormObserver.on(/^file:/, (payload) => {
 
             const evt = payload.event;
             if (typeof evt === 'string') events.push(evt);
@@ -178,7 +179,7 @@ describe('observer: error path', () => {
 
         const captured: { filepath: string; status: string; error: string | undefined }[] = [];
 
-        const cleanup = ctx.noorm.observer.on('file:after', (data) => {
+        const cleanup = noormObserver.on('file:after', (data) => {
 
             captured.push({
                 filepath: data.filepath,

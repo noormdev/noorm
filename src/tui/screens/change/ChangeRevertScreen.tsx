@@ -35,12 +35,9 @@ import { checkConfigPolicy } from '../../../core/policy/index.js';
 import { useChangeProgress, useAsyncEffect } from '../../hooks/index.js';
 import { getErrorMessage,
     loadChangesWithStatus,
-    resolveScreenIdentity,
-    resolveChangesDir,
-    resolveSqlDir,
+    createChangeManager,
     isConfigGuarded,
 } from '../../utils/index.js';
-import { revertChange } from '../../../core/change/executor.js';
 import { createConnection } from '../../../core/connection/factory.js';
 
 /**
@@ -145,20 +142,16 @@ export function ChangeRevertScreen({ params }: ScreenProps): ReactElement {
             );
             const db = conn.db as Kysely<NoormDatabase>;
 
-            // Build context
-            const context = {
+            const manager = createChangeManager({
                 db,
                 configName: activeConfigName ?? '',
-                identity: resolveScreenIdentity(cryptoIdentity),
                 projectRoot,
-                changesDir: resolveChangesDir(projectRoot, settings),
-                sqlDir: resolveSqlDir(projectRoot, settings),
-                access: activeConfig.access,
-                channel: 'user' as const,
-            };
+                settings,
+                cryptoIdentity,
+                activeConfig,
+            });
 
-            // Execute revert
-            const result = await revertChange(context, change);
+            const result = await manager.revert(change.name);
 
             await conn.destroy();
 

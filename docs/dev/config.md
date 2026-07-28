@@ -112,7 +112,6 @@ NOORM_{PATH}_{TO}_{VALUE}  →  { path: { to: { value: '' } } }
 |----------|---------|
 | `NOORM_CONFIG` | Which config to use |
 | `NOORM_YES` | Skip confirmations |
-| `NOORM_JSON` | JSON output mode |
 
 ```bash
 # CI/CD example: use stored config with overridden host

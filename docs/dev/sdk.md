@@ -13,17 +13,17 @@ The noorm SDK provides programmatic access to noorm-managed databases. Use it fo
 
 ## Installation
 
-The SDK is part of the main noorm package:
+The SDK is published as a standalone `@noormdev/sdk` package:
 
-```typescript
-import { createContext } from 'noorm/sdk'
+```bash
+pnpm add @noormdev/sdk
 ```
 
 
 ## Quick Start
 
 ```typescript
-import { createContext } from 'noorm/sdk'
+import { createContext } from '@noormdev/sdk'
 
 // Create a typed context for the 'dev' config
 const ctx = await createContext<{ users: { id: number; name: string } }>({
@@ -90,11 +90,9 @@ interface CreateContextOptions {
 }
 ```
 
-> **Finding the project root**: Unlike the CLI, the SDK does not automatically walk up directories to find the project. Pass `projectRoot` explicitly, or use [Project Discovery](./project-discovery.md) to find it first:
+> **Finding the project root**: `projectRoot` defaults to `process.cwd()`. That's correct when your script runs from the project directory. When running from elsewhere (a monorepo tooling package, a CI step with a different working directory), pass the directory containing `.noorm/` explicitly:
 > ```typescript
-> import { findProjectRoot } from 'noorm/core'
-> const { projectRoot } = findProjectRoot()
-> const ctx = await createContext({ projectRoot })
+> const ctx = await createContext({ projectRoot: '/path/to/project' })
 > ```
 
 ```typescript
@@ -677,7 +675,7 @@ Encrypted team secrets stored in the database. All operations require a connecti
 Initialize the vault for this database.
 
 ```typescript
-const [vaultKey, err] = await ctx.noorm.vault.init()
+const vaultKey = await ctx.noorm.vault.init()
 ```
 
 ##### `vault.status()`
@@ -693,7 +691,7 @@ const status = await ctx.noorm.vault.status()
 Set a vault secret.
 
 ```typescript
-const [, err] = await ctx.noorm.vault.set('API_KEY', 'sk-live-...', privateKey)
+await ctx.noorm.vault.set('API_KEY', 'sk-live-...', privateKey)
 ```
 
 ##### `vault.get(key, privateKey)`
@@ -725,7 +723,7 @@ const keys = await ctx.noorm.vault.list()
 Delete a vault secret.
 
 ```typescript
-const [deleted, err] = await ctx.noorm.vault.delete('OLD_KEY')
+const deleted = await ctx.noorm.vault.delete('OLD_KEY')
 ```
 
 ##### `vault.exists(key)`
@@ -749,7 +747,7 @@ const result = await ctx.noorm.vault.propagate(privateKey)
 Copy vault secrets to another config's database.
 
 ```typescript
-const [result, err] = await ctx.noorm.vault.copy(destConfig, ['API_KEY'], privateKey)
+const result = await ctx.noorm.vault.copy(destConfig, ['API_KEY'], privateKey)
 ```
 
 
@@ -787,7 +785,7 @@ const dest = await createContext({ config: 'dev' })
 await source.connect()
 await dest.connect()
 
-const [result, err] = await source.noorm.transfer.to(dest.noorm.config, {
+const result = await source.noorm.transfer.to(dest.noorm.config, {
     tables: ['users', 'posts'],
     onConflict: 'skip',
 })
@@ -801,10 +799,8 @@ await dest.disconnect()
 Generate a transfer plan without executing.
 
 ```typescript
-const [plan, err] = await source.noorm.transfer.plan(dest.noorm.config)
-if (plan) {
-    console.log(`${plan.estimatedRows} rows across ${plan.tables.length} tables`)
-}
+const plan = await source.noorm.transfer.plan(dest.noorm.config)
+console.log(`${plan.estimatedRows} rows across ${plan.tables.length} tables`)
 ```
 
 
@@ -815,7 +811,7 @@ if (plan) {
 Export a table to a .dt file. Extension determines format: `.dt`, `.dtz` (gzipped), `.dtzx` (encrypted).
 
 ```typescript
-const [result, err] = await ctx.noorm.dt.exportTable('users', './exports/users.dtz')
+const result = await ctx.noorm.dt.exportTable('users', './exports/users.dtz')
 ```
 
 ##### `dt.importFile(filepath, options?)`
@@ -823,7 +819,7 @@ const [result, err] = await ctx.noorm.dt.exportTable('users', './exports/users.d
 Import a .dt file into the connected database.
 
 ```typescript
-const [result, err] = await ctx.noorm.dt.importFile('./exports/users.dtz', {
+const result = await ctx.noorm.dt.importFile('./exports/users.dtz', {
     onConflict: 'skip',
 })
 ```
@@ -831,14 +827,16 @@ const [result, err] = await ctx.noorm.dt.importFile('./exports/users.dtz', {
 
 #### Event Subscriptions
 
-Subscribe to core events via the observer:
+Subscribe to core events via the process-global `noormObserver` bus:
 
 ```typescript
-ctx.noorm.observer.on('file:after', (event) => {
+import { noormObserver } from 'noorm/sdk'
+
+noormObserver.on('file:after', (event) => {
     console.log(`Executed ${event.filepath} in ${event.durationMs}ms`)
 })
 
-ctx.noorm.observer.on('change:complete', (event) => {
+noormObserver.on('change:complete', (event) => {
     console.log(`Change ${event.name}: ${event.status}`)
 })
 ```
@@ -850,7 +848,7 @@ ctx.noorm.observer.on('change:complete', (event) => {
 ### Test Suites (Jest/Vitest)
 
 ```typescript
-import { createContext, Context } from 'noorm/sdk'
+import { createContext, Context } from '@noormdev/sdk'
 
 describe('User API', () => {
     let ctx: Context
@@ -887,7 +885,7 @@ describe('User API', () => {
 ### Scripts and Tooling
 
 ```typescript
-import { createContext } from 'noorm/sdk'
+import { createContext } from '@noormdev/sdk'
 
 // Data export script
 const ctx = await createContext({ config: 'prod' })
@@ -907,7 +905,7 @@ await ctx.disconnect()
 ### Type Generation
 
 ```typescript
-import { createContext } from 'noorm/sdk'
+import { createContext } from '@noormdev/sdk'
 
 const ctx = await createContext({ config: 'dev' })
 await ctx.connect()
@@ -925,7 +923,7 @@ await ctx.disconnect()
 ### CI/CD Pipeline
 
 ```typescript
-import { createContext } from 'noorm/sdk'
+import { createContext } from '@noormdev/sdk'
 
 const ctx = await createContext({ config: process.env.DB_CONFIG })
 await ctx.connect()
@@ -948,36 +946,36 @@ await ctx.disconnect()
 
 ## Error Handling
 
+SDK methods throw named, `instanceof`-matchable errors and let them propagate — no `[value, error]`
+tuples on the `ctx.noorm.*` surface. Wrap a call in `attempt()` (from `@logosdx/utils`) only when
+you'll do something with the error (translate, recover, observe, knowingly ignore); otherwise let it
+propagate. Never use try-catch. Carve-outs that don't follow that pattern:
+`ctx.noorm.utils.testConnection()` returns `{ ok, error? }` by design (failure as data, not an
+exception); `ctx.transaction(...)` callbacks must throw to trigger Kysely's rollback.
+
 ```typescript
+import { attempt } from '@logosdx/utils'
 import {
     createContext,
     RequireTestError,
     ProtectedConfigError,
     LockAcquireError,
-} from 'noorm/sdk'
+} from '@noormdev/sdk'
 
-try {
-    const ctx = await createContext({ config: 'prod', requireTest: true })
-} catch (err) {
-    if (err instanceof RequireTestError) {
-        console.error('Cannot use production config in tests')
-    }
+// attempt() used deliberately — inspect the named error and react.
+const [ctx, err] = await attempt(() => createContext({ config: 'prod', requireTest: true }))
+if (err instanceof RequireTestError) {
+    console.error('Cannot use production config in tests')
 }
 
-try {
-    await ctx.noorm.db.truncate()
-} catch (err) {
-    if (err instanceof ProtectedConfigError) {
-        console.error('Denied by the config\'s access role, or needs confirmation the SDK can\'t give')
-    }
+const [, truncateErr] = await attempt(() => ctx.noorm.db.truncate())
+if (truncateErr instanceof ProtectedConfigError) {
+    console.error('Denied by the config\'s access role, or needs confirmation the SDK can\'t give')
 }
 
-try {
-    await ctx.noorm.lock.acquire()
-} catch (err) {
-    if (err instanceof LockAcquireError) {
-        console.error(`Lock held by ${err.holder}`)
-    }
+const [, lockErr] = await attempt(() => ctx.noorm.lock.acquire())
+if (lockErr instanceof LockAcquireError) {
+    console.error(`Lock held by ${lockErr.holder}`)
 }
 ```
 
@@ -991,19 +989,19 @@ Every `noorm` subcommand runs as a non-interactive CLI by default — there is n
 
 ```bash
 # Build schema
-noorm --config dev run build
+noorm run build --config dev
 
 # Fast-forward changes
-noorm --config dev change ff
+noorm change ff --config dev
 
 # Apply single change
-noorm --config dev change run 2024-01-15-add-users
+noorm change run 2024-01-15-add-users --config dev
 
 # Truncate database
-noorm --config test db truncate
+noorm db truncate --config test
 
 # JSON output for scripting
-noorm --json --config dev change ff | jq '.status'
+noorm change ff --config dev --json | jq '.status'
 ```
 
 
@@ -1057,7 +1055,7 @@ jobs:
       - run: npm ci
       - name: Apply changes
         run: |
-          npx noorm --config ${{ vars.DB_CONFIG }} change ff
+          npx noorm change ff --config ${{ vars.DB_CONFIG }}
         env:
           DB_HOST: ${{ secrets.DB_HOST }}
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}

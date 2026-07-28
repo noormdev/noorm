@@ -182,6 +182,21 @@ describe('template: engine', () => {
 
         });
 
+        it('should fail loudly instead of rendering "undefined" when a secret is unresolved', async () => {
+
+            // Regression for noorm#50: a missing secret used to render as the
+            // literal SQL text 'undefined' and apply successfully.
+            const filepath = path.join(FIXTURES_DIR, 'secrets.sql.tmpl');
+
+            await expect(
+                processFile(filepath, {
+                    projectRoot: FIXTURES_DIR,
+                    secrets: {},
+                }),
+            ).rejects.toThrow(/API_KEY/);
+
+        });
+
         it('should provide built-in helpers', async () => {
 
             const filepath = path.join(FIXTURES_DIR, 'builtin.sql.tmpl');

@@ -49,29 +49,17 @@ beforeAll(async () => {
 
     privateKey = (await Bun.file(KEY_PATH).text()).trim();
 
-    // Initialize the vault for this database. init() is documented as
-    // returning [null, Error('Vault already initialized')] on a second
-    // call (see mssql-problems.md gap #11) — that's fine, treat it as
-    // idempotent. We wrap in attempt() because some failure paths
-    // (sync DER parse errors on exotic identity setups) throw rather
-    // than returning a tuple.
-    const [initResult, initThrew] = await attempt(() => ctx.noorm.vault.init());
-    if (initThrew) throw initThrew;
-
-    const [, initErr] = initResult;
-    if (initErr && !/already initialized/i.test(initErr.message)) {
-
-        throw initErr;
-
-    }
+    // Initialize the vault for this database. init() is idempotent — a
+    // second call returns null (not an error) because the vault already
+    // exists; real failures throw. If init() genuinely fails here (DB
+    // error, encryption error, exotic identity setup), letting it throw
+    // is correct — beforeAll failing surfaces a real regression instead
+    // of silently skipping.
+    await ctx.noorm.vault.init();
 
     // Probe: round-trip set/delete to surface state.enc-vs-key mismatch
     // immediately rather than during the first assertion.
-    const [, probeErr] = await attempt(
-        () => ctx.noorm.vault.set('__vault_probe__', 'ok', privateKey),
-    );
-    if (probeErr) throw probeErr;
-
+    await ctx.noorm.vault.set('__vault_probe__', 'ok', privateKey);
     await ctx.noorm.vault.delete('__vault_probe__');
 
 }, 15_000);
@@ -101,12 +89,10 @@ beforeEach(async () => {
 
 describe('vault: init is idempotent', () => {
 
-    it.skipIf(!HAS_IDENTITY_KEY)('a second init() on an already-initialized vault returns the already-initialized error and leaves status intact', async () => {
+    it.skipIf(!HAS_IDENTITY_KEY)('a second init() on an already-initialized vault returns null and leaves status intact', async () => {
 
-        const [result, err] = await ctx.noorm.vault.init();
+        const result = await ctx.noorm.vault.init();
         expect(result).toBeNull();
-        expect(err).toBeInstanceOf(Error);
-        expect(err?.message).toMatch(/already initialized/i);
 
         const status = await ctx.noorm.vault.status();
         expect(status.isInitialized).toBe(true);
@@ -120,8 +106,7 @@ describe('vault: set / get round-trip', () => {
 
     it.skipIf(!HAS_IDENTITY_KEY)('stores an encrypted value and decrypts it back via get()', async () => {
 
-        const [, setErr] = await ctx.noorm.vault.set(TEST_KEY, 'mssql-secret-value', privateKey);
-        expect(setErr).toBeNull();
+        await ctx.noorm.vault.set(TEST_KEY, 'mssql-secret-value', privateKey);
 
         const value = await ctx.noorm.vault.get(TEST_KEY, privateKey);
         expect(value).toBe('mssql-secret-value');
@@ -130,8 +115,7 @@ describe('vault: set / get round-trip', () => {
 
     it.skipIf(!HAS_IDENTITY_KEY)('list() reflects a key after set() and exists() agrees', async () => {
 
-        const [, setErr] = await ctx.noorm.vault.set(TEST_KEY, 'list-me', privateKey);
-        expect(setErr).toBeNull();
+        await ctx.noorm.vault.set(TEST_KEY, 'list-me', privateKey);
 
         const keys = await ctx.noorm.vault.list();
         expect(Array.isArray(keys)).toBe(true);
@@ -146,13 +130,11 @@ describe('vault: set / get round-trip', () => {
 
 describe('vault: delete removes the secret', () => {
 
-    it.skipIf(!HAS_IDENTITY_KEY)('returns [true, null] and exists() reports false after delete', async () => {
+    it.skipIf(!HAS_IDENTITY_KEY)('returns true and exists() reports false after delete', async () => {
 
-        const [, setErr] = await ctx.noorm.vault.set(TEST_KEY, 'delete-me', privateKey);
-        expect(setErr).toBeNull();
+        await ctx.noorm.vault.set(TEST_KEY, 'delete-me', privateKey);
 
-        const [deleted, delErr] = await ctx.noorm.vault.delete(TEST_KEY);
-        expect(delErr).toBeNull();
+        const deleted = await ctx.noorm.vault.delete(TEST_KEY);
         expect(deleted).toBe(true);
 
         const stillThere = await ctx.noorm.vault.exists(TEST_KEY);

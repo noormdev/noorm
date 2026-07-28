@@ -68,28 +68,6 @@ export class WorkerPool<TEvents extends { [K: string]: object }> {
     }
 
     /**
-     * Registers a listener on all workers for the given event.
-     *
-     * Useful for broadcast-style events that every worker may emit.
-     *
-     * @example
-     * pool.on('serialize:res', ({ data }) => console.log(data.values))
-     */
-    on<K extends keyof TEvents & string>(
-        event: K,
-        callback: (payload: { data: TEvents[K] }) => void,
-        options?: { signal?: AbortSignal },
-    ) {
-
-        for (const worker of this.#workers) {
-
-            worker.on(event, callback, options);
-
-        }
-
-    }
-
-    /**
      * Terminates all workers in the pool.
      *
      * Marks the pool as shut down and waits for every worker thread to exit

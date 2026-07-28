@@ -10,6 +10,36 @@ import type { ConnectionConfig } from '../../connection/types.js';
 import type { DialectDbOperations } from '../types.js';
 
 import { createConnection } from '../../connection/factory.js';
+import { createDialectQuoting } from '../../shared/index.js';
+
+const { quote } = createDialectQuoting({ open: '"', close: '"', escape: '""' });
+
+/**
+ * Builds the CREATE DATABASE statement.
+ *
+ * Quotes dbName as a single identifier so embedded double quotes can't
+ * break out of the DDL into arbitrary statements.
+ *
+ * @example
+ * buildCreateDatabaseSql('my"app'); // → 'CREATE DATABASE "my""app"'
+ */
+export function buildCreateDatabaseSql(dbName: string): string {
+
+    return `CREATE DATABASE ${quote(dbName)}`;
+
+}
+
+/**
+ * Builds the DROP DATABASE IF EXISTS statement.
+ *
+ * @example
+ * buildDropDatabaseSql('myapp'); // → 'DROP DATABASE IF EXISTS "myapp"'
+ */
+export function buildDropDatabaseSql(dbName: string): string {
+
+    return `DROP DATABASE IF EXISTS ${quote(dbName)}`;
+
+}
 
 /**
  * Execute a query against the system database.
@@ -67,7 +97,7 @@ export const postgresDbOperations: DialectDbOperations = {
 
         await withSystemDb(config, async (conn) => {
 
-            await sql.raw(`CREATE DATABASE "${dbName}"`).execute(conn.db);
+            await sql.raw(buildCreateDatabaseSql(dbName)).execute(conn.db);
 
         });
 
@@ -85,7 +115,7 @@ export const postgresDbOperations: DialectDbOperations = {
                 AND pid <> pg_backend_pid()
             `.execute(conn.db);
 
-            await sql.raw(`DROP DATABASE IF EXISTS "${dbName}"`).execute(conn.db);
+            await sql.raw(buildDropDatabaseSql(dbName)).execute(conn.db);
 
         });
 

@@ -383,7 +383,7 @@ describe('dt: integration', () => {
             const content = 'Sensitive article content. '.repeat(50);
 
             const rows = [{ id: 1, Content: content }];
-            const result = await roundTrip(schema, rows, '.dtzx', 'postgres', undefined, 'my-secret');
+            const result = await roundTrip(schema, rows, '.dtzx', 'postgres', undefined, 'my-secret-passphrase');
 
             expect(result).toHaveLength(1);
             expect(result[0]!.Content).toBe(content);

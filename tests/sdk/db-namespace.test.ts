@@ -256,4 +256,35 @@ describe('sdk: DbNamespace', () => {
 
     });
 
+    // ─────────────────────────────────────────────────────
+    // Build fn — constructor injection, no public setter
+    // ─────────────────────────────────────────────────────
+
+    describe('build fn injection', () => {
+
+        it('should not expose a public _buildFn setter', () => {
+
+            const descriptor = Object.getOwnPropertyDescriptor(DbNamespace.prototype, '_buildFn');
+
+            expect(descriptor).toBeUndefined();
+
+        });
+
+        it('should invoke the constructor-injected build fn on reset()', async () => {
+
+            const state = createState(
+                {},
+                [tableRow('users')],
+            );
+            const buildFnStub = vi.fn().mockResolvedValue(undefined);
+            const db = new DbNamespace(state, buildFnStub);
+
+            await db.reset();
+
+            expect(buildFnStub).toHaveBeenCalledWith({ force: true });
+
+        });
+
+    });
+
 });

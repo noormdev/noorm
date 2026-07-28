@@ -183,7 +183,7 @@ describe('dt: writer', () => {
         it('should write an encrypted payload', async () => {
 
             const filepath = path.join(testDir, 'test.dtzx');
-            const writer = new DtWriter({ filepath, schema, passphrase: 'secret' });
+            const writer = new DtWriter({ filepath, schema, passphrase: 'secret-min-12chars' });
 
             await writer.open();
             writer.writeRow([1, 'alice']);
@@ -206,7 +206,7 @@ describe('dt: writer', () => {
         it('should track bytesWritten', async () => {
 
             const filepath = path.join(testDir, 'test.dtzx');
-            const writer = new DtWriter({ filepath, schema, passphrase: 'secret' });
+            const writer = new DtWriter({ filepath, schema, passphrase: 'secret-min-12chars' });
 
             await writer.open();
             writer.writeRow([1, 'alice']);

@@ -126,11 +126,13 @@ If you're going to re-throw the error unchanged in every case, skip `attempt` an
 
 ## Error Handling (ZERO TOLERANCE)
 
-- **NEVER use try-catch** - This is a critical violation
-- **ALWAYS use @logosdx/utils utilities**: `attempt`, `attemptSync`, `batch`, `circuitBreaker`, `debounce`, `throttle`, `memo`, `rateLimit`, `retry`, `withTimeout`, `ObserverEngine`, `FetchEngine`
+- **NEVER use try-catch** - This is a critical violation. The zero tolerance targets try-catch specifically, not throwing or `attempt`/`attemptSync` - see Function Structure above for when to wrap deliberately vs. let errors propagate.
+- **Mandated `@logosdx/utils` utilities**: `attempt`/`attemptSync` (the convention actually in use - 553 call sites across 175 files) and `retry` (used at `src/core/connection/factory.ts:93`). Use `attempt`/`attemptSync` per the Function Structure guidance above - only when the function does something with the error.
+- **Available in `@logosdx/utils` but not currently used**: `batch`, `circuitBreaker`, `debounce`, `throttle`, `memo`/`memoize`, `rateLimit`, `withTimeout`, `FetchEngine`. Reach for them if a real need arises; they are not mandated because nothing in `src/` imports them today.
+- `ObserverEngine` is `@logosdx/observer`, not `@logosdx/utils`.
 
 ```typescript
-// CORRECT
+// CORRECT - attempt() used deliberately: observes the error, emits, then stops
 const [result, err] = await attempt(() => db.execute(sql));
 if (err) {
 
@@ -138,6 +140,9 @@ if (err) {
 
     return;
 }
+
+// ALSO CORRECT - nothing to add by wrapping; let the error propagate
+return db.execute(sql);
 
 // WRONG - Never do this
 try {
@@ -264,7 +269,7 @@ assert(condition, 'message', CustomError);
 
 ## Class Patterns
 
-Use private fields with `#` prefix. Namespace types under the class.
+Use private fields with `#` prefix.
 
 ```typescript
 export class StateManager {
@@ -278,15 +283,6 @@ export class StateManager {
 
         this.#state = state;
 
-    }
-
-}
-
-export namespace StateManager {
-
-    export interface Config {
-        name: string;
-        connection: ConnectionConfig;
     }
 
 }

@@ -19,26 +19,26 @@ import { relative, sep } from 'path';
  * 4. Exclude wins if both match (consistent with rule evaluation)
  *
  * @param files - Absolute file paths (e.g., from discoverFiles())
- * @param baseDir - Base directory for relative path matching
- * @param include - Relative paths to include (e.g., ['sql/tables', 'sql/views'])
- * @param exclude - Relative paths to exclude (e.g., ['sql/archive'])
+ * @param baseDir - Base directory for relative path matching (the resolved sql dir)
+ * @param include - Relative paths to include (e.g., ['01_tables', '02_views'])
+ * @param exclude - Relative paths to exclude (e.g., ['archive'])
  * @returns Filtered array of absolute file paths
  *
  * @example
  * ```typescript
  * const files = [
- *     '/project/sql/tables/users.sql',
- *     '/project/sql/views/active.sql',
+ *     '/project/sql/01_tables/users.sql',
+ *     '/project/sql/02_views/active.sql',
  *     '/project/sql/archive/old.sql',
  * ]
  *
  * const filtered = filterFilesByPaths(
  *     files,
- *     '/project',
- *     ['sql/tables', 'sql/views'],
- *     ['sql/archive']
+ *     '/project/sql',
+ *     ['01_tables', '02_views'],
+ *     ['archive']
  * )
- * // ['/project/sql/tables/users.sql', '/project/sql/views/active.sql']
+ * // ['/project/sql/01_tables/users.sql', '/project/sql/02_views/active.sql']
  * ```
  */
 export function filterFilesByPaths(
@@ -79,20 +79,5 @@ export function filterFilesByPaths(
         return matchesInclude && !matchesExclude;
 
     });
-
-}
-
-/**
- * Check if a file path matches a pattern prefix.
- *
- * @param filePath - Relative file path to check
- * @param pattern - Pattern prefix to match against
- * @returns True if the file path starts with the pattern
- */
-export function matchesPathPrefix(filePath: string, pattern: string): boolean {
-
-    const normalizedPattern = pattern.split(/[\\/]/).join(sep);
-
-    return filePath === normalizedPattern || filePath.startsWith(normalizedPattern + sep);
 
 }

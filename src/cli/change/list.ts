@@ -23,42 +23,21 @@ const listCommand = defineCommand({
 
         const [changes, error] = await withContext({
             args,
-            fn: (ctx, logger) => {
-
-                return ctx.noorm.changes.status().then((res) => {
-
-                    if (!args.json) {
-
-                        for (const cs of res) {
-
-                            logger.info(`${cs.name} (${cs.status})`);
-
-                        }
-
-                        const pending = res.filter((c) => c.status === 'pending').length;
-
-                        if (pending > 0) {
-
-                            logger.info(`${pending} pending change(s)`);
-
-                        }
-
-                    }
-
-                    return res;
-
-                });
-
-            },
+            fn: (ctx) => ctx.noorm.changes.status(),
         });
 
         if (error) process.exit(1);
 
-        if (args.json) {
+        const pending = changes.filter((c) => c.status === 'pending').length;
 
-            outputResult(args, changes, '');
+        const text = changes.length === 0
+            ? 'No changes found.'
+            : [
+                ...changes.map((cs) => `${cs.name} (${cs.status})`),
+                ...(pending > 0 ? [`${pending} pending change(s)`] : []),
+            ].join('\n');
 
-        }
+        outputResult(args, changes, text);
 
         process.exit(0);
 

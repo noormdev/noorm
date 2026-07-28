@@ -2,6 +2,7 @@ import { mkdir, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { beforeAll, beforeEach, describe, it, expect } from 'bun:test';
+import { noormObserver } from '@noormdev/sdk';
 
 import { bootstrap, truncateAll } from '../helpers/test-context';
 
@@ -19,13 +20,13 @@ beforeEach(async () => {
 
 });
 
-describe('ctx.noorm.observer file:after', () => {
+describe('noormObserver file:after', () => {
 
     it('fires with filepath, status, and durationMs when a file is run', async () => {
 
         const events: Array<{ filepath: string; status: string; durationMs: number }> = [];
 
-        const cleanup = ctx.noorm.observer.on('file:after', (data) => {
+        const cleanup = noormObserver.on('file:after', (data) => {
 
             events.push({
                 filepath:   data.filepath,
@@ -48,13 +49,13 @@ describe('ctx.noorm.observer file:after', () => {
 
 });
 
-describe('ctx.noorm.observer change:complete', () => {
+describe('noormObserver change:complete', () => {
 
     it('fires when a freshly created change is applied via the SDK', async () => {
 
         const events: Array<{ name: string; direction: string; status: string; durationMs: number }> = [];
 
-        const cleanup = ctx.noorm.observer.on('change:complete', (data) => {
+        const cleanup = noormObserver.on('change:complete', (data) => {
 
             events.push({
                 name:       data.name,
@@ -99,13 +100,13 @@ describe('ctx.noorm.observer change:complete', () => {
 
 });
 
-describe('ctx.noorm.observer regex pattern matching', () => {
+describe('noormObserver regex pattern matching', () => {
 
     it('routes multiple file:* events through a /^file:/ subscription during run.dir', async () => {
 
         const fileEvents: string[] = [];
 
-        const cleanup = ctx.noorm.observer.on(/^file:/, (payload) => {
+        const cleanup = noormObserver.on(/^file:/, (payload) => {
 
             // RegExp listeners receive { event, data }.
             const evt = payload.event;
@@ -140,13 +141,13 @@ describe('ctx.noorm.observer regex pattern matching', () => {
 
 });
 
-describe('ctx.noorm.observer file:after status=failed', () => {
+describe('noormObserver file:after status=failed', () => {
 
     it('emits file:after with status="failed" when the executed SQL throws', async () => {
 
         const events: Array<{ filepath: string; status: string; error?: string }> = [];
 
-        const cleanup = ctx.noorm.observer.on('file:after', (data) => {
+        const cleanup = noormObserver.on('file:after', (data) => {
 
             events.push({
                 filepath: data.filepath,

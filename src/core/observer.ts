@@ -27,6 +27,7 @@ import type { TransferEvents } from './transfer/events.js';
 import type { DtEvents } from './dt/events.js';
 import type { LogLevel } from './logger/types.js';
 import type { TruncateResult, TeardownResult } from './teardown/types.js';
+import { isDebug } from './environment.js';
 
 /**
  * All events emitted by noorm core modules.
@@ -160,7 +161,16 @@ export interface NoormEvents extends SettingsEvents, UpdateEvents, VaultEvents, 
     'identity:not-found': void;
 
     // Connection
-    'connection:open': { configName: string; dialect: string };
+    // host/port/database are carried so a log line names the database that was
+    // actually connected to — a config name alone cannot, since env vars can
+    // redirect it (see #51).
+    'connection:open': {
+        configName: string;
+        dialect: string;
+        host?: string;
+        port?: number;
+        database?: string;
+    };
     'connection:close': { configName: string };
     'connection:error': { configName: string; error: string };
 
@@ -244,7 +254,7 @@ export type NoormEventCallback<E extends NoormEventNames> = ObserverEngine.Event
  */
 export const observer = new ObserverEngine<NoormEvents>({
     name: 'noorm',
-    spy: process.env['NOORM_DEBUG']
+    spy: isDebug()
         ? (action) => console.error(`[noorm:${action.fn}] ${String(action.event)}`)
         : undefined,
 });

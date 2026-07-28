@@ -5,9 +5,7 @@ export {
     useOnEvent,
     useOnceEvent,
     useEmit,
-    useEventPromise,
     useOnScreenPopped,
-    type EventPromiseState,
 } from './useObserver.js';
 
 export {

@@ -7,15 +7,14 @@ description: Authoritative steering for the signals/wiki inferrer when operating
  the inferrer reads this and treats it as authoritative>
 
 ## Framework
-# NestJS monorepo (not plain Express)
+# Bun workspace monorepo — TypeScript, Ink/React TUI, Citty CLI, Kysely SQL layer
 
 ## Domains
-# - src/billing/ and src/payments/ are one domain ("payments")
-# - src/internal-tools/ is scratch code — not a real domain
+# - docs/wiki/index.md's Domains table is already correct; no override needed here
 
 ## Build
-# - Build: pnpm turbo build
-# - Test: pnpm test:ci (not pnpm test — that runs watch mode)
+# - Build: bun run build
+# - Test: bun run test (CI splits into 4 serial groups — see .claude/rules and docs/wiki/index.md)
 
 ## Ignore for domains
 # - vendor/

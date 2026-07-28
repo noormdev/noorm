@@ -35,9 +35,11 @@ import {
     ChangeManager,
 } from '../../core/change/index.js';
 import { getStateManager } from '../../core/state/index.js';
+import { resolveVaultKey, buildSecretsContext } from '../../core/vault/index.js';
 import { checkProtectedConfig } from '../guards.js';
 
 import type { ContextState } from '../state.js';
+import { requireConnection } from '../state.js';
 
 // ─────────────────────────────────────────────────────────────
 // ChangesNamespace
@@ -158,6 +160,8 @@ export class ChangesNamespace {
      */
     async delete(change: Change): Promise<void> {
 
+        checkProtectedConfig(this.#state.config, this.#state.options, 'change:rm', 'changes.delete');
+
         return coreDeleteChange(change);
 
     }
@@ -235,7 +239,7 @@ export class ChangesNamespace {
 
         checkProtectedConfig(this.#state.config, this.#state.options, 'change:run', 'changes.apply');
 
-        return this.#getManager().run(name, options);
+        return (await this.#getManager()).run(name, options);
 
     }
 
@@ -258,7 +262,7 @@ export class ChangesNamespace {
 
         checkProtectedConfig(this.#state.config, this.#state.options, 'change:revert', 'changes.revert');
 
-        return this.#getManager().revert(name, options);
+        return (await this.#getManager()).revert(name, options);
 
     }
 
@@ -281,7 +285,7 @@ export class ChangesNamespace {
 
         checkProtectedConfig(this.#state.config, this.#state.options, 'change:ff', 'changes.ff');
 
-        return this.#getManager().ff(options);
+        return (await this.#getManager()).ff(options);
 
     }
 
@@ -303,7 +307,7 @@ export class ChangesNamespace {
 
         checkProtectedConfig(this.#state.config, this.#state.options, 'change:run', 'changes.next');
 
-        return this.#getManager().next(count, options);
+        return (await this.#getManager()).next(count, options);
 
     }
 
@@ -321,7 +325,7 @@ export class ChangesNamespace {
      */
     async status(): Promise<ChangeListItem[]> {
 
-        return this.#getManager().list();
+        return (await this.#getManager()).list();
 
     }
 
@@ -353,7 +357,7 @@ export class ChangesNamespace {
      */
     async history(limit?: number): Promise<ChangeHistoryRecord[]> {
 
-        return this.#getManager().getHistory(undefined, limit);
+        return (await this.#getManager()).getHistory(undefined, limit);
 
     }
 
@@ -369,7 +373,7 @@ export class ChangesNamespace {
      */
     async historyForChange(name: string, limit?: number): Promise<ChangeHistoryRecord[]> {
 
-        return this.#getManager().getHistory(name, limit);
+        return (await this.#getManager()).getHistory(name, limit);
 
     }
 
@@ -389,7 +393,7 @@ export class ChangesNamespace {
 
         checkProtectedConfig(this.#state.config, this.#state.options, 'change:revert', 'changes.rewind');
 
-        return this.#getManager().rewind(target);
+        return (await this.#getManager()).rewind(target);
 
     }
 
@@ -407,7 +411,7 @@ export class ChangesNamespace {
      */
     async getFileHistory(operationId: number): Promise<FileHistoryRecord[]> {
 
-        return this.#getManager().getFileHistory(operationId);
+        return (await this.#getManager()).getFileHistory(operationId);
 
     }
 
@@ -435,29 +439,20 @@ export class ChangesNamespace {
 
     get #kysely(): Kysely<unknown> {
 
-        if (!this.#state.connection) {
-
-            throw new Error('Not connected. Call connect() first.');
-
-        }
-
-        return this.#state.connection.db;
+        return requireConnection(this.#state).db;
 
     }
 
-    #createChangeContext(): ChangeContext {
+    async #createChangeContext(): Promise<ChangeContext> {
 
         const state = getStateManager(this.#state.projectRoot);
-
-        if (!this.#state.connection) {
-
-            throw new Error('Not connected. Call connect() first.');
-
-        }
+        const conn = requireConnection(this.#state);
+        const db = this.#kysely as unknown as Kysely<NoormDatabase>;
+        const vaultKey = await resolveVaultKey(db, conn.dialect);
 
         return {
-            db: this.#kysely as unknown as Kysely<NoormDatabase>,
-            dialect: this.#state.connection.dialect,
+            db,
+            dialect: conn.dialect,
             configName: this.#state.config.name,
             identity: this.#state.identity,
             projectRoot: this.#state.projectRoot,
@@ -466,17 +461,17 @@ export class ChangesNamespace {
             access: this.#state.config.access,
             channel: this.#state.options.channel ?? 'user',
             config: this.#state.config as unknown as Record<string, unknown>,
-            secrets: state.getAllSecrets(this.#state.config.name),
+            secrets: await buildSecretsContext(state, this.#state.config.name, db, vaultKey, conn.dialect),
             globalSecrets: state.getAllGlobalSecrets(),
         };
 
     }
 
-    #getManager(): ChangeManager {
+    async #getManager(): Promise<ChangeManager> {
 
         if (!this.#manager) {
 
-            this.#manager = new ChangeManager(this.#createChangeContext());
+            this.#manager = new ChangeManager(await this.#createChangeContext());
 
         }
 

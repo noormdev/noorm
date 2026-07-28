@@ -11,6 +11,7 @@ import { getLockManager } from '../../core/lock/index.js';
 import { formatIdentity } from '../../core/identity/index.js';
 
 import type { ContextState } from '../state.js';
+import { requireConnection } from '../state.js';
 
 // ─────────────────────────────────────────────────────────────
 // LockNamespace
@@ -141,13 +142,7 @@ export class LockNamespace {
 
     get #kysely(): Kysely<unknown> {
 
-        if (!this.#state.connection) {
-
-            throw new Error('Not connected. Call connect() first.');
-
-        }
-
-        return this.#state.connection.db;
+        return requireConnection(this.#state).db;
 
     }
 

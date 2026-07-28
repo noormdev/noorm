@@ -19,7 +19,6 @@ Build pipeline, CI, binary release, package publishing, and reference examples. 
 - [`scripts/build.mjs`](../../scripts/build.mjs) — builds both `@noormdev/cli` and `@noormdev/sdk` packages via tsup
 - [`scripts/build-binary.mjs`](../../scripts/build-binary.mjs) — `bun build --compile` to produce standalone binary
 - [`scripts/Dockerfile`](../../scripts/Dockerfile) — Docker image for binary builds
-- [`scripts/install.sh`](../../scripts/install.sh) — shell installer for binary distribution
 - [`scripts/ralph-wiggum.sh`](../../scripts/ralph-wiggum.sh) — release automation helper
 - [`tsup.cli.config.ts`](../../tsup.cli.config.ts) — tsup config for CLI package build
 - [`tsup.sdk.config.ts`](../../tsup.sdk.config.ts) — tsup config for SDK package build
@@ -27,7 +26,7 @@ Build pipeline, CI, binary release, package publishing, and reference examples. 
 - [`tsconfig.sdk-types.json`](../../tsconfig.sdk-types.json) — SDK type extraction config
 - [`tsconfig.test.json`](../../tsconfig.test.json) — test TypeScript config
 - [`bunfig.toml`](../../bunfig.toml) — Bun runtime config
-- [`docker-compose.yml`](../../docker-compose.yml) — local dev databases: PostgreSQL (15432), MySQL (13306), MSSQL (11433)
+- [`docker-compose.test.yml`](../../docker-compose.test.yml) — local dev databases: PostgreSQL (15432), MySQL (13306), MSSQL (11433)
 
 ## Docs
 

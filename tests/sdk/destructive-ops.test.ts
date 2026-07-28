@@ -12,7 +12,11 @@
  * admin, matching the legacy protected:false behavior for open configs.
  * Read-only ops are never blocked regardless of access.
  */
-import { describe, it, expect } from 'bun:test';
+import { afterEach, describe, expect, it } from 'bun:test';
+import { existsSync } from 'node:fs';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import { DbNamespace } from '../../src/sdk/namespaces/db.js';
 import { DtNamespace } from '../../src/sdk/namespaces/dt.js';
@@ -24,6 +28,7 @@ import { ProtectedConfigError } from '../../src/sdk/guards.js';
 import type { ContextState } from '../../src/sdk/state.js';
 import type { Config } from '../../src/core/config/types.js';
 import type { ConfigAccess } from '../../src/core/policy/index.js';
+import type { Change } from '../../src/core/change/index.js';
 
 // ─────────────────────────────────────────────────────────────
 // Fixtures
@@ -50,7 +55,7 @@ function makeConfig(access: ConfigAccess): Config {
 
 }
 
-function makeState(access: ConfigAccess): ContextState {
+function makeState(access: ConfigAccess, options: ContextState['options'] = {}): ContextState {
 
     return {
         connection: null,
@@ -60,12 +65,39 @@ function makeState(access: ConfigAccess): ContextState {
             name: 'tester',
             source: 'system',
         },
-        options: {},
+        options,
         projectRoot: '/tmp',
         changeManager: null,
     };
 
 }
+
+/**
+ * Fake Change fixture for delete() gate tests. rm({ force: true }) on a
+ * nonexistent path silently no-ops, so a placeholder path is safe for every
+ * test except the dedicated disk-mutation block below.
+ */
+function makeFakeChange(changePath: string = join(tmpdir(), 'sample-change')): Change {
+
+    return {
+        name: 'sample-change',
+        path: changePath,
+        date: new Date(),
+        description: 'sample-change',
+        changeFiles: [],
+        revertFiles: [],
+        hasChangelog: false,
+    };
+
+}
+
+const tempDirs: string[] = [];
+
+afterEach(async () => {
+
+    await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
+
+});
 
 // ─────────────────────────────────────────────────────────────
 // Tests
@@ -101,6 +133,43 @@ describe('sdk: access-guarded destructive ops', () => {
             const db = new DbNamespace(makeState(OPERATOR_ACCESS));
 
             await expect(db.reset()).rejects.toThrow(ProtectedConfigError);
+
+        });
+
+    });
+
+    // ─────────────────────────────────────────────────────
+    // DbNamespace — options.yes: true (context created with the
+    // programmatic --yes equivalent) satisfies the db:reset confirm
+    // cell for operator role without NOORM_YES in the environment
+    // ─────────────────────────────────────────────────────
+
+    describe('DbNamespace on operator-role config with options.yes: true', () => {
+
+        it('should not throw ProtectedConfigError for truncate()', async () => {
+
+            const db = new DbNamespace(makeState(OPERATOR_ACCESS, { yes: true }));
+            const err = await db.truncate().catch((e: unknown) => e);
+
+            expect(err).not.toBeInstanceOf(ProtectedConfigError);
+
+        });
+
+        it('should not throw ProtectedConfigError for teardown()', async () => {
+
+            const db = new DbNamespace(makeState(OPERATOR_ACCESS, { yes: true }));
+            const err = await db.teardown().catch((e: unknown) => e);
+
+            expect(err).not.toBeInstanceOf(ProtectedConfigError);
+
+        });
+
+        it('should not throw ProtectedConfigError for reset()', async () => {
+
+            const db = new DbNamespace(makeState(OPERATOR_ACCESS, { yes: true }));
+            const err = await db.reset().catch((e: unknown) => e);
+
+            expect(err).not.toBeInstanceOf(ProtectedConfigError);
 
         });
 
@@ -404,6 +473,112 @@ describe('sdk: access-guarded destructive ops', () => {
             const err = await changes.ff().catch((e: unknown) => e);
 
             expect(err).not.toBeInstanceOf(ProtectedConfigError);
+
+        });
+
+    });
+
+    // ─────────────────────────────────────────────────────
+    // ChangesNamespace.delete() — deleting an applied change also
+    // deletes its DB tracking row, so admin gets `confirm` here
+    // (like config:rm/db:destroy), NOT the frictionless `allow`
+    // change:revert gives admin.
+    // ─────────────────────────────────────────────────────
+
+    describe('ChangesNamespace delete() on viewer-role config', () => {
+
+        it('should throw ProtectedConfigError', async () => {
+
+            const changes = new ChangesNamespace(makeState(VIEWER_ACCESS));
+
+            await expect(changes.delete(makeFakeChange())).rejects.toThrow(ProtectedConfigError);
+
+        });
+
+    });
+
+    describe('ChangesNamespace delete() on operator-role config', () => {
+
+        it('should throw ProtectedConfigError', async () => {
+
+            const changes = new ChangesNamespace(makeState(OPERATOR_ACCESS));
+
+            await expect(changes.delete(makeFakeChange())).rejects.toThrow(ProtectedConfigError);
+
+        });
+
+    });
+
+    describe('ChangesNamespace delete() on operator-role config with options.yes: true', () => {
+
+        it('should not throw ProtectedConfigError', async () => {
+
+            const changes = new ChangesNamespace(makeState(OPERATOR_ACCESS, { yes: true }));
+            const err = await changes.delete(makeFakeChange()).catch((e: unknown) => e);
+
+            expect(err).not.toBeInstanceOf(ProtectedConfigError);
+
+        });
+
+    });
+
+    describe('ChangesNamespace delete() on admin-role config', () => {
+
+        // Unlike change:revert (an `allow` cell for admin), change:rm stays
+        // `confirm` for admin too — deletion is irreversible and can drop
+        // the DB tracking row, so even admin needs options.yes.
+        it('should throw ProtectedConfigError', async () => {
+
+            const changes = new ChangesNamespace(makeState(ADMIN_ACCESS));
+
+            await expect(changes.delete(makeFakeChange())).rejects.toThrow(ProtectedConfigError);
+
+        });
+
+    });
+
+    describe('ChangesNamespace delete() on admin-role config with options.yes: true', () => {
+
+        it('should not throw ProtectedConfigError', async () => {
+
+            const changes = new ChangesNamespace(makeState(ADMIN_ACCESS, { yes: true }));
+            const err = await changes.delete(makeFakeChange()).catch((e: unknown) => e);
+
+            expect(err).not.toBeInstanceOf(ProtectedConfigError);
+
+        });
+
+    });
+
+    // ─────────────────────────────────────────────────────
+    // ChangesNamespace.delete() — disk-state proof: a denied call
+    // never touches the filesystem, an allowed call actually
+    // removes the change directory
+    // ─────────────────────────────────────────────────────
+
+    describe('ChangesNamespace delete() disk mutation', () => {
+
+        it('should leave the change directory intact when denied', async () => {
+
+            const dir = await mkdtemp(join(tmpdir(), 'noorm-change-rm-denied-'));
+            tempDirs.push(dir);
+
+            const changes = new ChangesNamespace(makeState(VIEWER_ACCESS));
+
+            await expect(changes.delete(makeFakeChange(dir))).rejects.toThrow(ProtectedConfigError);
+            expect(existsSync(dir)).toBe(true);
+
+        });
+
+        it('should remove the change directory when admin confirms with options.yes: true', async () => {
+
+            const dir = await mkdtemp(join(tmpdir(), 'noorm-change-rm-allowed-'));
+            tempDirs.push(dir);
+
+            const changes = new ChangesNamespace(makeState(ADMIN_ACCESS, { yes: true }));
+
+            await changes.delete(makeFakeChange(dir));
+            expect(existsSync(dir)).toBe(false);
 
         });
 

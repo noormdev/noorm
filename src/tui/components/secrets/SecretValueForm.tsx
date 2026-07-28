@@ -12,6 +12,7 @@ import type { FormField, FormValues } from '../forms/index.js';
 import type { StageSecret } from './types.js';
 
 import { Form } from '../forms/index.js';
+import { isValidSecretKey } from '../../../core/state/index.js';
 
 /**
  * Props for SecretValueForm.
@@ -112,7 +113,7 @@ export function SecretValueForm({
                     if (!val) return 'Key is required';
 
                     // Relaxed validation - allow lowercase but warn format
-                    if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(val)) {
+                    if (!isValidSecretKey(val)) {
 
                         return 'Key must start with letter, contain only letters, numbers, underscores';
 

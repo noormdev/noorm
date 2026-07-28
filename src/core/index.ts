@@ -97,7 +97,7 @@ export type {
 } from './lifecycle/index.js';
 
 // Shared (table types, constants, and utilities)
-export { NOORM_TABLES, filterFilesByPaths, matchesPathPrefix } from './shared/index.js';
+export { NOORM_TABLES, filterFilesByPaths } from './shared/index.js';
 export type {
     NoormTableName,
     NoormDatabase,

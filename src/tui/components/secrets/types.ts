@@ -2,6 +2,7 @@
  * Shared types and utilities for secret components.
  */
 import type { StageSecret, SecretType } from '../../../core/settings/types.js';
+import { isValidSecretKey } from '../../../core/state/index.js';
 
 // Re-export for convenience
 export type { StageSecret, SecretType };
@@ -17,14 +18,10 @@ export const SECRET_TYPE_OPTIONS = [
 ] as const;
 
 /**
- * Validation pattern for secret keys.
- * Must start with a letter, contain only letters, digits, and underscores.
- * Allows both uppercase and lowercase (e.g., DB_PASSWORD, db_password, DbPassword).
- */
-export const SECRET_KEY_PATTERN = /^[A-Za-z][A-Za-z0-9_]*$/;
-
-/**
  * Validate a secret key.
+ *
+ * Format check delegates to `isValidSecretKey` (the `StateManager.setSecret`
+ * seam) so this stays live-typing feedback, not a second source of truth.
  *
  * @returns Error message if invalid, undefined if valid
  */
@@ -38,7 +35,7 @@ export function validateSecretKey(key: string): string | undefined {
 
     }
 
-    if (!SECRET_KEY_PATTERN.test(trimmed)) {
+    if (!isValidSecretKey(trimmed)) {
 
         return 'Key must start with a letter, contain only letters, numbers, underscores';
 

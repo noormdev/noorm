@@ -119,7 +119,7 @@ noorm db transfer --to backup --no-identity
 ### JSON Output
 
 ```bash
-noorm --json db transfer --to backup
+noorm db transfer --to backup --json
 ```
 
 Transfer result:
@@ -223,7 +223,7 @@ Only transfers the specified tables. FK dependencies between selected tables are
 ### CI/CD test data setup
 
 ```bash
-noorm --json db transfer staging --to ci-test --truncate --on-conflict fail
+noorm db transfer staging --to ci-test --truncate --on-conflict fail --json
 ```
 
 Clean transfer for test environments. JSON output for pipeline integration. Fails fast if anything goes wrong.

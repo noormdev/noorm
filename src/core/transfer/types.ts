@@ -174,4 +174,15 @@ export interface TransferResult {
     /** Total duration in milliseconds */
     durationMs: number;
 
+    /**
+     * Whether FK checks were successfully re-enabled on the destination.
+     * `false` only when checks were disabled for this transfer and the
+     * re-enable attempt failed; `true` otherwise, including when
+     * `disableForeignKeys: false` meant checks were never touched. This
+     * is the only signal a caller has that referential integrity may
+     * still be off — `status` does not flip on a failed FK restore
+     * (QL-safe-05).
+     */
+    fkChecksRestored: boolean;
+
 }

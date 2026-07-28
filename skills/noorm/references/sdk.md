@@ -369,22 +369,22 @@ Lock options: `timeout` (lock duration, default 5min), `wait` (block until avail
 Team-shared encrypted secrets stored in the database.
 
 ```typescript
-await ctx.noorm.vault.init();
+await ctx.noorm.vault.init();               // Buffer | null — null when already initialized (idempotent, not an error)
 const status = await ctx.noorm.vault.status();
 
 // CRUD (requires private key for encryption/decryption)
-const [, err] = await ctx.noorm.vault.set('API_KEY', 'sk-live-...', privateKey);
+await ctx.noorm.vault.set('API_KEY', 'sk-live-...', privateKey);   // throws on failure
 const value = await ctx.noorm.vault.get('API_KEY', privateKey);     // string | null
 const all = await ctx.noorm.vault.getAll(privateKey);               // Record<string, VaultSecret>
 const keys = await ctx.noorm.vault.list();                          // string[]
-const [deleted, err] = await ctx.noorm.vault.delete('API_KEY');     // [boolean, Error | null]
+const deleted = await ctx.noorm.vault.delete('API_KEY');            // boolean — throws on failure
 const exists = await ctx.noorm.vault.exists('API_KEY');
 
 // Team access management
 await ctx.noorm.vault.propagate(privateKey);
 
 // Copy between configs
-const [result, err] = await ctx.noorm.vault.copy(destConfig, keys, privateKey, {
+const result = await ctx.noorm.vault.copy(destConfig, keys, privateKey, {
     force: true, // Overwrite existing
 });
 ```
@@ -413,15 +413,15 @@ const result = await ctx.noorm.templates.render('sql/001_users.sql.tmpl');
 Data transfer between database configurations.
 
 ```typescript
-// Execute transfer
-const [result, err] = await ctx.noorm.transfer.to(destConfig, {
+// Execute transfer — throws on failure
+const result = await ctx.noorm.transfer.to(destConfig, {
     tables: ['users', 'posts'],        // Specific tables (default: all)
     onConflict: 'skip',                // 'fail' | 'skip' | 'update' | 'replace'
     truncate: false,                   // Clear destination first?
 });
 
-// Plan without executing
-const [plan, err] = await ctx.noorm.transfer.plan(destConfig, options);
+// Plan without executing — throws on failure
+const plan = await ctx.noorm.transfer.plan(destConfig, options);
 ```
 
 ### dt
@@ -429,16 +429,16 @@ const [plan, err] = await ctx.noorm.transfer.plan(destConfig, options);
 Portable data files: `.dt` (plain), `.dtz` (compressed), `.dtzx` (encrypted).
 
 ```typescript
-// Export
-const [result, err] = await ctx.noorm.dt.exportTable('users', './exports/users.dtz', {
+// Export — throws on failure
+const result = await ctx.noorm.dt.exportTable('users', './exports/users.dtz', {
     passphrase: 'secret',   // Use .dtzx encryption
     schema: 'public',       // PostgreSQL schema
     batchSize: 5000,         // Rows per batch (default: 1000)
 });
 // result: { rowsWritten, bytesWritten }
 
-// Import
-const [result, err] = await ctx.noorm.dt.importFile('./exports/users.dtz', {
+// Import — throws on failure
+const result = await ctx.noorm.dt.importFile('./exports/users.dtz', {
     onConflict: 'skip',     // 'fail' | 'skip' | 'update' | 'replace'
     truncate: true,          // Clear table first
     batchSize: 1000,
@@ -610,35 +610,39 @@ import {
 
 ## Observer Events
 
-Subscribe to real-time progress events emitted by core operations:
+Subscribe to real-time progress events emitted by core operations via the
+process-global `noormObserver` bus — a singleton shared across every
+`Context` in the process, not scoped to one `ctx`:
 
 ```typescript
+import { noormObserver } from '@noormdev/sdk';
+
 // File execution progress
-ctx.noorm.observer.on('file:before', (data) => {
+noormObserver.on('file:before', (data) => {
     console.log('Running:', data.filepath);
 });
-ctx.noorm.observer.on('file:after', (data) => {
+noormObserver.on('file:after', (data) => {
     console.log(data.filepath, data.status, data.durationMs + 'ms');
 });
-ctx.noorm.observer.on('file:skip', (data) => {
+noormObserver.on('file:skip', (data) => {
     console.log('Skipped:', data.filepath, data.reason);
 });
 
 // Change lifecycle
-ctx.noorm.observer.on('change:start', (data) => {
+noormObserver.on('change:start', (data) => {
     console.log(`Applying ${data.name} (${data.files.length} files)`);
 });
-ctx.noorm.observer.on('change:complete', (data) => {
+noormObserver.on('change:complete', (data) => {
     console.log(data.name, data.direction, data.status);
 });
 
 // Build progress
-ctx.noorm.observer.on('build:start', (data) => {
+noormObserver.on('build:start', (data) => {
     console.log(`Building ${data.fileCount} files from ${data.sqlPath}`);
 });
 
 // Pattern matching for multiple events
-ctx.noorm.observer.on(/^file:/, ({ event, data }) => {
+noormObserver.on(/^file:/, ({ event, data }) => {
     console.log(`[${event}]`, data);
 });
 ```

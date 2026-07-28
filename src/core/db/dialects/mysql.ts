@@ -10,6 +10,36 @@ import type { ConnectionConfig } from '../../connection/types.js';
 import type { DialectDbOperations } from '../types.js';
 
 import { createConnection } from '../../connection/factory.js';
+import { createDialectQuoting } from '../../shared/index.js';
+
+const { quote } = createDialectQuoting({ open: '`', close: '`', escape: '``' });
+
+/**
+ * Builds the CREATE DATABASE IF NOT EXISTS statement.
+ *
+ * Quotes dbName as a single identifier so embedded backticks can't break
+ * out of the DDL into arbitrary statements.
+ *
+ * @example
+ * buildCreateDatabaseSql('my`app'); // → 'CREATE DATABASE IF NOT EXISTS `my``app`'
+ */
+export function buildCreateDatabaseSql(dbName: string): string {
+
+    return `CREATE DATABASE IF NOT EXISTS ${quote(dbName)}`;
+
+}
+
+/**
+ * Builds the DROP DATABASE IF EXISTS statement.
+ *
+ * @example
+ * buildDropDatabaseSql('myapp'); // → 'DROP DATABASE IF EXISTS `myapp`'
+ */
+export function buildDropDatabaseSql(dbName: string): string {
+
+    return `DROP DATABASE IF EXISTS ${quote(dbName)}`;
+
+}
 
 /**
  * Execute a query without a database (MySQL allows this).
@@ -63,7 +93,7 @@ export const mysqlDbOperations: DialectDbOperations = {
 
         await withoutDb(config, async (conn) => {
 
-            await sql.raw(`CREATE DATABASE IF NOT EXISTS \`${dbName}\``).execute(conn.db);
+            await sql.raw(buildCreateDatabaseSql(dbName)).execute(conn.db);
 
         });
 
@@ -73,7 +103,7 @@ export const mysqlDbOperations: DialectDbOperations = {
 
         await withoutDb(config, async (conn) => {
 
-            await sql.raw(`DROP DATABASE IF EXISTS \`${dbName}\``).execute(conn.db);
+            await sql.raw(buildDropDatabaseSql(dbName)).execute(conn.db);
 
         });
 

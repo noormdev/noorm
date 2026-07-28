@@ -200,6 +200,8 @@ Foreign key checks are disabled on the destination before transfer and re-enable
 | MySQL | `SET FOREIGN_KEY_CHECKS = 0` (session-wide) | `SET FOREIGN_KEY_CHECKS = 1` |
 | MSSQL | `ALTER TABLE ... NOCHECK CONSTRAINT ALL` (per table) | `ALTER TABLE ... CHECK CONSTRAINT ALL` |
 
+If the post-transfer re-enable fails, the transfer itself still completes, but `TransferResult.fkChecksRestored` is `false` and the CLI prints a warning. Re-enable FK checks manually before trusting referential integrity on the destination.
+
 
 ## Cross-Dialect Transfers
 
@@ -453,6 +455,14 @@ interface TransferResult {
     /** Total duration in milliseconds */
     durationMs: number
 
+    /**
+     * Whether FK checks were re-enabled on the destination.
+     * false only when checks were disabled for this transfer and the
+     * re-enable attempt failed. status does not flip on a failed
+     * FK restore, so check this field after every transfer.
+     */
+    fkChecksRestored: boolean
+
 }
 
 interface TransferTableResult {
@@ -569,7 +579,7 @@ noorm db transfer --to backup --dry-run
 noorm db transfer --to backup --truncate
 
 # JSON output for scripting
-noorm --json db transfer --to backup
+noorm db transfer --to backup --json
 
 # Export single table to .dt file
 noorm db transfer --export ./backup/users.dt --tables users

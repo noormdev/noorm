@@ -62,18 +62,32 @@ export function detectInstallMode(): InstallMode {
 const GITHUB_REPO = 'noormdev/noorm';
 
 /**
- * Get the download URL for a binary release.
+ * Release-tag URL base shared by every asset published for a version — the
+ * binary itself and its checksums.txt. Factored out so both stay in
+ * lockstep instead of two copies of the same URL-building logic drifting
+ * apart.
+ */
+function releaseBaseUrl(version: string): string {
+
+    return `https://github.com/${GITHUB_REPO}/releases/download/%40noormdev%2Fcli%40${version}`;
+
+}
+
+/**
+ * Get the platform-appropriate binary asset filename (no version, no URL).
  *
- * @param version - Semver version to download
- * @returns URL to the platform-appropriate binary asset
+ * Split out from `getBinaryDownloadUrl` so the download URL and the
+ * checksums.txt lookup key (the entry name checksum verification looks up)
+ * are always derived from the exact same platform/arch table — one place to
+ * update, not two that could silently drift apart.
  *
  * @example
  * ```typescript
- * const url = getBinaryDownloadUrl('1.2.0');
- * // → 'https://github.com/noormdev/noorm/releases/download/@noormdev/cli@1.2.0/noorm-darwin-arm64'
+ * const asset = getBinaryAssetName();
+ * // → 'noorm-darwin-arm64'
  * ```
  */
-export function getBinaryDownloadUrl(version: string): string {
+export function getBinaryAssetName(): string {
 
     const platform = process.platform;
     const arch = process.arch;
@@ -111,6 +125,43 @@ export function getBinaryDownloadUrl(version: string): string {
 
     }
 
-    return `https://github.com/${GITHUB_REPO}/releases/download/%40noormdev%2Fcli%40${version}/noorm-${suffix}`;
+    return `noorm-${suffix}`;
+
+}
+
+/**
+ * Get the download URL for a binary release.
+ *
+ * @param version - Semver version to download
+ * @returns URL to the platform-appropriate binary asset
+ *
+ * @example
+ * ```typescript
+ * const url = getBinaryDownloadUrl('1.2.0');
+ * // → 'https://github.com/noormdev/noorm/releases/download/@noormdev/cli@1.2.0/noorm-darwin-arm64'
+ * ```
+ */
+export function getBinaryDownloadUrl(version: string): string {
+
+    return `${releaseBaseUrl(version)}/${getBinaryAssetName()}`;
+
+}
+
+/**
+ * Get the URL to the checksums.txt published alongside the platform
+ * binaries at the same release tag.
+ *
+ * @param version - Semver version to download
+ * @returns URL to the release's checksums.txt
+ *
+ * @example
+ * ```typescript
+ * const url = getChecksumsUrl('1.2.0');
+ * // → 'https://github.com/noormdev/noorm/releases/download/@noormdev/cli@1.2.0/checksums.txt'
+ * ```
+ */
+export function getChecksumsUrl(version: string): string {
+
+    return `${releaseBaseUrl(version)}/checksums.txt`;
 
 }
