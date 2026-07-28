@@ -35,9 +35,21 @@ You can also override the install location:
 NOORM_INSTALL_DIR=~/my-tools curl -fsSL https://noorm.dev/install.sh | sh
 ```
 
+### npm
+
+If you already work in a Node project, npm installs the same binary and puts it on your PATH for you:
+
+```bash
+npm install -g @noormdev/cli
+```
+
+The package is a thin wrapper: installing it downloads the prebuilt binary for your platform and verifies it, exactly as the shell installer does. `npx @noormdev/cli` works too if you'd rather not install globally.
+
+This is the most convenient route on Windows, and the one to reach for when you want noorm pinned per-project rather than per-machine.
+
 ### Windows
 
-Download [noorm-windows-x64.exe](https://github.com/noormdev/noorm/releases) from the latest `@noormdev/cli` release, rename it to `noorm.exe`, and add it to your PATH.
+Use the npm install above, or download [noorm-windows-x64.exe](https://github.com/noormdev/noorm/releases) from the latest `@noormdev/cli` release, rename it to `noorm.exe`, and add it to your PATH.
 
 ### Integrity verification
 

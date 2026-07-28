@@ -14,7 +14,7 @@
     "postinstall": "node scripts/postinstall.js"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22.13"
   },
   "keywords": [
     "database",

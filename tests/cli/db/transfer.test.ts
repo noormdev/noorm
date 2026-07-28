@@ -113,11 +113,14 @@ describe('cli: noorm db transfer — passphrase floor', () => {
 
 /**
  * checkpoint 3 (v1-24-polish-batch): kebab-declared citty args (`on-conflict`,
- * `batch-size`, `no-fk`, `no-identity`) were renamed to camelCase. These tests
- * exercise citty's real `parseArgs` against the command's actual `args`
- * definition — the exact object citty hands to `run({ args })` — so a broken
- * rename (stale kebab key left in `args`, or an accessor that reads a name
- * citty never populates) fails here without needing a live DB connection.
+ * `batch-size`) were renamed to camelCase. These tests exercise citty's real
+ * `parseArgs` against the command's actual `args` definition — the exact object
+ * citty hands to `run({ args })` — so a broken rename (stale kebab key left in
+ * `args`, or an accessor that reads a name citty never populates) fails here
+ * without needing a live DB connection.
+ *
+ * `no-fk`/`no-identity` were part of that rename but could not survive it; they
+ * are covered by the negation suite below instead.
  */
 describe('cli: noorm db transfer — camelCase arg parsing (checkpoint 3)', () => {
 
@@ -133,22 +136,73 @@ describe('cli: noorm db transfer — camelCase arg parsing (checkpoint 3)', () =
 
     });
 
-    it('parses --no-fk and --no-identity without a CLI-arg-parsing error, matching the pre-existing citty negation bug', () => {
+});
+
+/**
+ * citty strips any `--no-<x>` token and negates a flag literally named `<x>`,
+ * so a boolean declared as `noFk` could never be set by the documented
+ * `--no-fk` — the token negated an undeclared `fk` and was discarded, leaving
+ * `noFk` undefined and the flag a silent no-op that still exited 0.
+ *
+ * The fix declares the positive names (`fk`, `identity`) defaulted to `true`
+ * and lets citty's own negation carry `--no-fk`/`--no-identity`, so the
+ * documented spelling is the one the parser actually implements.
+ */
+describe('cli: noorm db transfer — --no-fk / --no-identity negation', () => {
+
+    /** Parses argv against the real command definition, so a regression in the args block fails here. */
+    function parseTransfer(argv: string[]) {
 
         const argsDef = transferCommand.args;
         assertArgsDef(argsDef);
 
-        const parsed = parseArgs(['--to', 'backup', '--no-fk', '--no-identity'], argsDef);
+        return parseArgs(['--to', 'backup', ...argv], argsDef);
 
-        // Pre-existing bug (out of scope for this checkpoint, not fixed here): citty
-        // unconditionally strips any `--no-<x>` token and negates a flag literally
-        // named `<x>`, so `--no-fk`/`--no-identity` have never set `noFk`/`noIdentity` —
-        // they negate unrelated `fk`/`identity` flags instead. This asserts the rename
-        // left that behavior identically unchanged (still broken, not newly broken).
-        expect(parsed.noFk).toBeUndefined();
-        expect(parsed.noIdentity).toBeUndefined();
+    }
+
+    it('defaults fk and identity to true when neither flag is passed', () => {
+
+        const parsed = parseTransfer([]);
+
+        expect(parsed.fk).toBe(true);
+        expect(parsed.identity).toBe(true);
+
+    });
+
+    it('sets fk false on --no-fk, leaving identity untouched', () => {
+
+        const parsed = parseTransfer(['--no-fk']);
+
+        expect(parsed.fk).toBe(false);
+        expect(parsed.identity).toBe(true);
+
+    });
+
+    it('sets identity false on --no-identity, leaving fk untouched', () => {
+
+        const parsed = parseTransfer(['--no-identity']);
+
+        expect(parsed.fk).toBe(true);
+        expect(parsed.identity).toBe(false);
+
+    });
+
+    it('sets both false when both flags are passed', () => {
+
+        const parsed = parseTransfer(['--no-fk', '--no-identity']);
+
         expect(parsed.fk).toBe(false);
         expect(parsed.identity).toBe(false);
+
+    });
+
+    it('no longer exposes the unreachable noFk/noIdentity args', () => {
+
+        const argsDef = transferCommand.args;
+        assertArgsDef(argsDef);
+
+        expect(argsDef).not.toHaveProperty('noFk');
+        expect(argsDef).not.toHaveProperty('noIdentity');
 
     });
 
