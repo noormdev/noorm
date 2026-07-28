@@ -182,13 +182,20 @@ const transferCommand = defineCommand({
             type: 'boolean',
             description: 'Truncate destination tables before transfer',
         },
-        noFk: {
+        // Declared under their positive names so citty's own `--no-<x>` negation
+        // is what implements the documented `--no-fk`/`--no-identity`. Declaring
+        // `noFk`/`noIdentity` instead cannot work: citty strips the `--no-` token
+        // and negates a flag named `fk`, so the camelCase arg never received the
+        // value and both flags were silent no-ops.
+        fk: {
             type: 'boolean',
-            description: 'Do not disable foreign key checks',
+            default: true,
+            description: 'Disable foreign key checks during transfer (--no-fk to leave them enforced)',
         },
-        noIdentity: {
+        identity: {
             type: 'boolean',
-            description: 'Do not preserve identity/auto-increment values',
+            default: true,
+            description: 'Preserve identity/auto-increment values (--no-identity to let the destination assign them)',
         },
     },
     async run({ args }) {
@@ -302,8 +309,8 @@ const transferCommand = defineCommand({
             tables: tableList,
             onConflict,
             batchSize,
-            disableForeignKeys: args.noFk !== true,
-            preserveIdentity: args.noIdentity !== true,
+            disableForeignKeys: args.fk !== false,
+            preserveIdentity: args.identity !== false,
             truncateFirst: args.truncate === true,
             dryRun: args.dryRun === true,
         };
