@@ -421,7 +421,7 @@ jobs:
                   NOORM_IDENTITY: ci
               run: |
                   mkdir -p ./tmp
-                  node dist/cli/index.js -H run build
+                  node dist/cli/index.js run build -H
                   echo "Success: Valid SQL built successfully"
 
             # Test: Invalid SQL should fail (exit 2)
@@ -434,7 +434,7 @@ jobs:
               run: |
                   mkdir -p ./tmp
                   set +e
-                  node dist/cli/index.js -H run build
+                  node dist/cli/index.js run build -H
                   EXIT_CODE=$?
                   set -e
                   if [ $EXIT_CODE -eq 2 ]; then

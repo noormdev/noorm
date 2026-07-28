@@ -140,7 +140,6 @@ Execute a single SQL file.
 
 ```bash
 noorm run file sql/01_tables/001_users.sql
-noorm --path sql/01_tables/001_users.sql run file
 ```
 
 **JSON output:**
