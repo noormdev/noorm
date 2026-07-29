@@ -24,7 +24,7 @@ import { fetchList } from '../../../core/explore/operations.js';
 import type { ScreenProps } from '../../types.js';
 import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
-import { useAppContext, useSettings } from '../../app-context.js';
+import { useAppContext, useSettings, useGlobalModes } from '../../app-context.js';
 import { useToast, Panel, Spinner, ProtectedConfirm } from '../../components/index.js';
 import { useConnection, useAsyncEffect } from '../../hooks/index.js';
 import { getErrorMessage, withScreenConnection } from '../../utils/index.js';
@@ -40,6 +40,7 @@ export function DbTruncateScreen({ params: _params }: ScreenProps): ReactElement
     const { back } = useRouter();
     const { isFocused } = useFocusScope('DbTruncate');
     const { activeConfig, activeConfigName } = useAppContext();
+    const globalModes = useGlobalModes();
     const { settings } = useSettings();
     const { showToast } = useToast();
     const check = activeConfig ? checkConfigPolicy('user', activeConfig, 'db:reset') : null;
@@ -124,6 +125,7 @@ export function DbTruncateScreen({ params: _params }: ScreenProps): ReactElement
                 const truncateResult = await truncateData(db as Kysely<unknown>, activeConfig.connection.dialect, {
                     preserve: preserveTables,
                     restartIdentity: true,
+                    dryRun: globalModes.dryRun,
                 });
 
                 setResult(truncateResult);
@@ -142,7 +144,7 @@ export function DbTruncateScreen({ params: _params }: ScreenProps): ReactElement
 
         setPhase('done');
 
-    }, [activeConfig, activeConfigName, preserveTables]);
+    }, [activeConfig, activeConfigName, preserveTables, globalModes.dryRun]);
 
     // Keyboard handling
     useInput((input, key) => {
