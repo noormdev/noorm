@@ -7,7 +7,7 @@
 import { sql } from 'kysely';
 import { attempt } from '@logosdx/utils';
 
-import type { Kysely } from 'kysely';
+import type { InsertResult, Kysely } from 'kysely';
 import type { DualConnectionContext } from '../db/dual.js';
 import type { NoormDatabase } from '../shared/tables.js';
 import type { Dialect } from '../connection/types.js';
@@ -293,7 +293,7 @@ async function transferTableSameServer(
         plan.schema,
     );
 
-    const [, transferErr] = await attempt(() =>
+    const [transferResult, transferErr] = await attempt(() =>
         sql.raw(transferSql).execute(ctx.destination.db),
     );
 
@@ -329,7 +329,10 @@ async function transferTableSameServer(
 
     }
 
-    const rowsTransferred = plan.rowCount;
+    // plan.rowCount is a planner estimate (postgres reltuples, MySQL
+    // TABLE_ROWS) — reporting it as rowsTransferred meant the result never
+    // reflected what the statement actually wrote.
+    const rowsTransferred = Number(transferResult?.numAffectedRows ?? 0);
 
     observer.emit('transfer:table:progress', {
         table: plan.name,
@@ -732,6 +735,22 @@ interface BatchInsertResult {
 }
 
 /**
+ * How many rows a Kysely insert actually wrote.
+ *
+ * A conflict-handling insert can succeed without writing anything, so the
+ * absence of an exception says nothing about whether a row landed. Drivers
+ * that do not report affected rows leave the field undefined; assume the
+ * insert applied there rather than silently under-reporting.
+ */
+function countApplied(results: InsertResult[]): number {
+
+    const affected = results[0]?.numInsertedOrUpdatedRows;
+
+    return affected === undefined ? 1 : Number(affected);
+
+}
+
+/**
  * Insert a batch of rows to destination table.
  *
  * Uses dialect-specific SQL for MSSQL MERGE statements.
@@ -777,7 +796,7 @@ async function insertBatch(
         // Handle conflict based on strategy
         if (strategy === 'skip' && primaryKey.length > 0) {
 
-            const [, err] = await attempt(() =>
+            const [results, err] = await attempt(() =>
                 query
                     .onConflict((oc) => oc.columns(primaryKey as never[]).doNothing())
                     .execute(),
@@ -797,9 +816,17 @@ async function insertBatch(
                 }
 
             }
-            else {
+            else if (countApplied(results) > 0) {
 
                 inserted++;
+
+            }
+            else {
+
+                // DO NOTHING succeeds without writing. Counting the absence
+                // of an exception as an insert is what made rowsTransferred
+                // match the source while the destination was untouched.
+                skipped++;
 
             }
 
@@ -818,7 +845,7 @@ async function insertBatch(
 
             }
 
-            const [, err] = await attempt(() =>
+            const [results, err] = await attempt(() =>
                 query
                     .onConflict((oc) => oc.columns(primaryKey as never[]).doUpdateSet(updateSet as never))
                     .execute(),
@@ -838,9 +865,14 @@ async function insertBatch(
                 }
 
             }
-            else {
+            else if (countApplied(results) > 0) {
 
                 inserted++;
+
+            }
+            else {
+
+                skipped++;
 
             }
 
@@ -963,7 +995,7 @@ async function insertBatchRawSql(
             sql.raw(''),
         );
 
-        const [, err] = await attempt(() => finalSql.execute(db));
+        const [result, err] = await attempt(() => finalSql.execute(db));
 
         if (err) {
 
@@ -979,9 +1011,15 @@ async function insertBatchRawSql(
             }
 
         }
-        else {
+        else if (result.numAffectedRows === undefined || Number(result.numAffectedRows) > 0) {
 
             inserted++;
+
+        }
+        else {
+
+            // INSERT IGNORE and MERGE both report zero rows on a no-op.
+            skipped++;
 
         }
 

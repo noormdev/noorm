@@ -52,10 +52,17 @@ function startChurn(db: Kysely<unknown>, table: string): { stop: () => Promise<v
             const from = Math.floor(Math.random() * ROW_COUNT) + 1;
             const to = Math.min(from + 800, ROW_COUNT);
 
+            // Errors are ignored on purpose: the churn is the test's weather,
+            // not its subject. A lock timeout or a deadlock victim on a busy
+            // server should not fail the assertion about row identity.
             await sql
                 .raw(`UPDATE ${table} SET payload = payload || 'y' WHERE id BETWEEN ${from} AND ${to}`)
                 .execute(db)
                 .catch(() => undefined);
+
+            // Yield between statements so the loop perturbs the read without
+            // saturating a database this suite may be sharing.
+            await new Promise((resolve) => setTimeout(resolve, 2));
 
         }
 
