@@ -33,6 +33,7 @@ import {
     discoverChanges as coreDiscoverChanges,
     validateChange as coreValidateChange,
     ChangeManager,
+    isPendingChange,
 } from '../../core/change/index.js';
 import { getStateManager } from '../../core/state/index.js';
 import { resolveVaultKey, buildSecretsContext } from '../../core/vault/index.js';
@@ -341,9 +342,7 @@ export class ChangesNamespace {
 
         const all = await this.status();
 
-        return all.filter(
-            (cs) => !cs.orphaned && (cs.status === 'pending' || cs.status === 'reverted'),
-        );
+        return all.filter(isPendingChange);
 
     }
 

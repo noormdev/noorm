@@ -42,7 +42,7 @@ import type {
     ChangeHistoryRecord,
     FileHistoryRecord,
 } from './types.js';
-import { ChangeNotFoundError, ChangeOrphanedError } from './types.js';
+import { ChangeNotFoundError, ChangeOrphanedError, isPendingChange } from './types.js';
 
 // ─────────────────────────────────────────────────────────────
 // Default Options
@@ -257,7 +257,7 @@ export class ChangeManager {
         // Get pending changes
         const list = await this.list();
         const pending = list
-            .filter((cs) => !cs.orphaned && (cs.status === 'pending' || cs.status === 'reverted'))
+            .filter(isPendingChange)
             .slice(0, count);
 
         if (pending.length === 0) {
@@ -341,9 +341,7 @@ export class ChangeManager {
 
         // Get count of pending
         const list = await this.list();
-        const pendingCount = list.filter(
-            (cs) => !cs.orphaned && (cs.status === 'pending' || cs.status === 'reverted'),
-        ).length;
+        const pendingCount = list.filter(isPendingChange).length;
 
         return this.next(pendingCount, options);
 

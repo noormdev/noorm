@@ -240,6 +240,32 @@ export interface ChangeListItem {
     orphaned: boolean;
 }
 
+/**
+ * Whether a change is outstanding work that a forward run should pick up.
+ *
+ * WHY this is shared rather than inlined: every surface that lists "what
+ * still needs applying" — `ff`, `next`, the SDK's `pending()`, the CLI's
+ * interactive picker — has to agree. When `stale` was added for teardown
+ * the predicate was only updated in some of them, which left `db teardown`
+ * unrecoverable through supported commands: `ff` saw no work to do and
+ * reported success over an empty database.
+ *
+ * `stale` is set by teardown on changes that did apply but whose objects
+ * no longer exist, so it is pending work in the only sense that matters.
+ *
+ * @example
+ * const outstanding = list.filter(isPendingChange);
+ */
+export function isPendingChange(item: ChangeListItem): boolean {
+
+    return !item.orphaned && (
+        item.status === 'pending'
+        || item.status === 'reverted'
+        || item.status === 'stale'
+    );
+
+}
+
 // ─────────────────────────────────────────────────────────────
 // Execution Options
 // ─────────────────────────────────────────────────────────────

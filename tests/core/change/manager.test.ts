@@ -15,6 +15,7 @@ import { Kysely, SqliteDialect, sql } from 'kysely';
 import { BunSqliteDatabase } from '../../../src/core/connection/dialects/sqlite-bun.js';
 
 import { ChangeManager } from '../../../src/core/change/manager.js';
+import { ChangeTracker } from '../../../src/core/change/tracker.js';
 import { v1 } from '../../../src/core/version/schema/migrations/v1.js';
 import { resetLockManager } from '../../../src/core/lock/index.js';
 import { ChangeNotAppliedError } from '../../../src/core/change/types.js';
@@ -77,6 +78,21 @@ describe('change: manager', () => {
             channel: 'user',
             dialect: 'sqlite',
         };
+
+    }
+
+    /**
+     * Asks the database itself whether a table exists, rather than trusting
+     * the reported status. Every defect in this area reports success while
+     * leaving the schema untouched, so the schema is the only honest oracle.
+     */
+    async function tableExists(name: string): Promise<boolean> {
+
+        const rows = await sql<{ name: string }>`
+            SELECT name FROM sqlite_master WHERE type = 'table' AND name = ${name}
+        `.execute(db);
+
+        return rows.rows.length > 0;
 
     }
 
@@ -371,6 +387,146 @@ describe('change: manager', () => {
             expect(byName.get('2025-01-01-first')).toBe('success');
             expect(byName.get('2025-01-02-second')).toBe('success');
             expect(byName.get('2025-01-03-third')).toBe('pending');
+
+        });
+
+    });
+
+    describe('re-apply after revert', () => {
+
+        it('should re-run the change SQL when a reverted change is applied again', async () => {
+
+            await createTestChange(
+                'cycle',
+                [{ name: '001_create.sql', content: 'CREATE TABLE cycle_target (id INTEGER PRIMARY KEY)' }],
+                [{ name: '001_drop.sql', content: 'DROP TABLE cycle_target' }],
+            );
+
+            const manager = new ChangeManager(buildContext());
+
+            await manager.run('cycle');
+            expect(await tableExists('cycle_target')).toBe(true);
+
+            await manager.revert('cycle');
+            expect(await tableExists('cycle_target')).toBe(false);
+
+            const reapply = await manager.run('cycle');
+
+            expect(reapply.status).toBe('success');
+
+            // The point of the whole exercise: a change that reports success
+            // must have actually recreated the object it claims to manage.
+            expect(await tableExists('cycle_target')).toBe(true);
+
+        });
+
+        it('should re-run the revert SQL when a re-applied change is reverted again', async () => {
+
+            await createTestChange(
+                'cycle2',
+                [{ name: '001_create.sql', content: 'CREATE TABLE cycle2_target (id INTEGER PRIMARY KEY)' }],
+                [{ name: '001_drop.sql', content: 'DROP TABLE cycle2_target' }],
+            );
+
+            const manager = new ChangeManager(buildContext());
+
+            await manager.run('cycle2');
+            await manager.revert('cycle2');
+            await manager.run('cycle2', { force: true });
+
+            expect(await tableExists('cycle2_target')).toBe(true);
+
+            const second = await manager.revert('cycle2');
+
+            expect(second.status).toBe('success');
+            expect(await tableExists('cycle2_target')).toBe(false);
+
+        });
+
+        it('should still resume a failed change from the failed file, skipping files a prior attempt applied', async () => {
+
+            // Guards the per-file retry-resume feature (f27a67b): file 1 is
+            // non-idempotent, so re-running it on retry would fail the change.
+            await createTestChange('retry-resume', [
+                { name: '001_ok.sql', content: 'CREATE TABLE retry_first (id INTEGER PRIMARY KEY)' },
+                { name: '002_bad.sql', content: 'CREATE TABLE retry_second (id INTEGER PRIMARY KEY) BROKEN' },
+            ]);
+
+            const manager = new ChangeManager(buildContext());
+
+            const firstAttempt = await manager.run('retry-resume');
+            expect(firstAttempt.status).toBe('failed');
+            expect(await tableExists('retry_first')).toBe(true);
+
+            await writeFile(
+                join(changesDir, 'retry-resume', 'change', '002_bad.sql'),
+                'CREATE TABLE retry_second (id INTEGER PRIMARY KEY)',
+            );
+
+            const retry = await manager.run('retry-resume');
+
+            expect(retry.status).toBe('success');
+            expect(await tableExists('retry_second')).toBe(true);
+
+            const firstFile = retry.files.find((f) => f.filepath.endsWith('001_ok.sql'));
+            expect(firstFile?.status).toBe('skipped');
+
+        });
+
+    });
+
+    describe('recovery after teardown', () => {
+
+        /** Reproduces what `db teardown` does to the tracking table. */
+        async function markEverythingStale(): Promise<void> {
+
+            await new ChangeTracker(db, 'test', 'sqlite').markAllAsStale();
+
+        }
+
+        it('should re-apply stale changes on ff after a teardown', async () => {
+
+            await createTestChange('2025-02-01-stale-one', [
+                { name: '001.sql', content: 'CREATE TABLE stale_one (id INTEGER PRIMARY KEY)' },
+            ]);
+            await createTestChange('2025-02-02-stale-two', [
+                { name: '001.sql', content: 'CREATE TABLE stale_two (id INTEGER PRIMARY KEY)' },
+            ]);
+
+            const manager = new ChangeManager(buildContext());
+
+            expect((await manager.ff()).executed).toBe(2);
+
+            // Teardown drops the schema objects and marks every change stale.
+            await sql`DROP TABLE stale_one`.execute(db);
+            await sql`DROP TABLE stale_two`.execute(db);
+            await markEverythingStale();
+
+            const rebuild = await manager.ff();
+
+            expect(rebuild.executed).toBe(2);
+            expect(await tableExists('stale_one')).toBe(true);
+            expect(await tableExists('stale_two')).toBe(true);
+
+        });
+
+        it('should treat a stale change as pending work for next()', async () => {
+
+            await createTestChange('2025-03-01-stale-next', [
+                { name: '001.sql', content: 'CREATE TABLE stale_next (id INTEGER PRIMARY KEY)' },
+            ]);
+
+            const manager = new ChangeManager(buildContext());
+
+            await manager.run('2025-03-01-stale-next');
+
+            await sql`DROP TABLE stale_next`.execute(db);
+            await markEverythingStale();
+
+            const result = await manager.next(1);
+
+            expect(result.executed).toBe(1);
+            expect(await tableExists('stale_next')).toBe(true);
 
         });
 

@@ -8,6 +8,7 @@
 import * as p from '@clack/prompts';
 import { defineCommand } from 'citty';
 
+import { isPendingChange } from '../../core/change/index.js';
 import { withContext, outputResult, outputError, sharedArgs } from '../_utils.js';
 import { selectChangeFromStatus, requireTty } from './_prompt.js';
 
@@ -47,7 +48,7 @@ const runCommand = defineCommand({
                     const picked = await selectChangeFromStatus(status, {
                         message: 'Pick a change to apply',
                         emptyMessage: 'No pending changes to apply.',
-                        filter: (c) => !c.orphaned && (c.status === 'pending' || c.status === 'reverted'),
+                        filter: isPendingChange,
                     });
 
                     if (!picked) {
