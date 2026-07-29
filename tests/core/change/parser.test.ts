@@ -219,15 +219,18 @@ describe('change: parser', () => {
 
         });
 
-        it('should sort resolved paths alphabetically', async () => {
+        it('should preserve the order the manifest lists files in', async () => {
 
+            // A manifest is an authored execution order — a table before the
+            // view that selects from it. Sorting the resolved paths silently
+            // discarded that, which this test previously pinned as correct.
             const manifestPath = path.join(MANIFESTS_DIR, 'unsorted.txt');
 
             const paths = await resolveManifest(manifestPath, SCHEMA_DIR);
 
-            expect(paths[0]).toContain('a.sql');
-            expect(paths[1]).toContain('b.sql');
-            expect(paths[2]).toContain('c.sql');
+            expect(paths[0]).toContain('b.sql');
+            expect(paths[1]).toContain('c.sql');
+            expect(paths[2]).toContain('a.sql');
 
         });
 

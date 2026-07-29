@@ -223,9 +223,13 @@ export async function discoverChanges(
 /**
  * Resolve a .txt manifest file to actual SQL paths.
  *
+ * Returns paths in the order the manifest lists them: the file is an
+ * authored execution order, so it is the one ordering signal a change
+ * gives the user.
+ *
  * @param manifestPath - Path to the .txt manifest file
  * @param sqlDir - Schema directory for resolving relative paths
- * @returns Array of absolute paths to SQL files
+ * @returns Absolute paths to SQL files, in manifest line order
  * @throws ManifestReferenceError if any referenced file is missing
  *
  * @example
@@ -290,8 +294,10 @@ export async function resolveManifest(manifestPath: string, sqlDir: string): Pro
 
     }
 
-    // Sort alphabetically (as per plan: files executed in sorted order)
-    return resolvedPaths.sort();
+    // Line order is the author's execution order — a table before the view
+    // that selects from it. Sorting here reordered across directories and
+    // silently broke dependency order the manifest existed to express.
+    return resolvedPaths;
 
 }
 
