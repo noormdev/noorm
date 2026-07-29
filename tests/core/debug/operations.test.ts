@@ -2,7 +2,10 @@
  * Debug operations tests.
  *
  * `core/debug` reads and deletes rows in noorm's own bookkeeping tables —
- * including `vault` and `identities` — and nothing authorized those deletes.
+ * including `vault` and `identities`. These tests exist to pin three things
+ * the module previously got wrong: nothing authorized the deletes, a failed
+ * query was reported as an empty table, and an arbitrary string reached
+ * `orderBy()`.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import {
@@ -22,11 +25,11 @@ import {
     SqliteIntrospector,
     SqliteQueryCompiler,
 } from 'kysely';
-import { attempt } from '@logosdx/utils';
+import { attempt, attemptSync } from '@logosdx/utils';
 
 import { BunSqliteDatabase } from '../../../src/core/connection/dialects/sqlite-bun.js';
 import { createDebugOperations, type DebugPolicyContext } from '../../../src/core/debug/index.js';
-import { NOORM_TABLES, type NoormDatabase } from '../../../src/core/shared/index.js';
+import { NOORM_TABLES, type NoormDatabase, type NoormTableName } from '../../../src/core/shared/index.js';
 import { v1 } from '../../../src/core/version/schema/migrations/v1.js';
 import type { Dialect } from '../../../src/core/connection/types.js';
 import { observer } from '../../../src/core/observer.js';
@@ -357,9 +360,77 @@ describe('debug: createDebugOperations', () => {
 
         });
 
+        it('should reject an unknown table instead of silently claiming it has one id column', () => {
+
+            const ops = createDebugOperations(db, 'sqlite', ADMIN);
+
+            const [, err] = attemptSync(() => ops.getTableColumns('nope' as NoormTableName));
+
+            expect(err).toBeInstanceOf(Error);
+            expect(err?.message).toContain('nope');
+
+        });
+
     });
 
     describe('getTableRows', () => {
+
+        it('should reject a sortColumn that is not a column of the table', async () => {
+
+            await seedVault(db, 1);
+            const ops = createDebugOperations(db, 'sqlite', ADMIN);
+
+            const [, err] = await attempt(() =>
+                ops.getTableRows(NOORM_TABLES.vault, { sortColumn: 'created_at_typo' }),
+            );
+
+            expect(err).toBeInstanceOf(Error);
+            expect(err?.message).toContain('created_at_typo');
+
+        });
+
+        it('should reject SQL fragments in sortColumn without ever reaching the database', async () => {
+
+            await seedVault(db, 2);
+            const ops = createDebugOperations(db, 'sqlite', ADMIN);
+
+            const payloads = [
+                'id; drop table __noorm_vault__ --',
+                '1; DELETE FROM __noorm_vault__',
+                'id" ; drop table "__noorm_vault__" --',
+                'noorm.vault',
+                'id desc',
+            ];
+
+            for (const sortColumn of payloads) {
+
+                const [rows, err] = await attempt(() => ops.getTableRows(NOORM_TABLES.vault, { sortColumn }));
+
+                // A rejected payload must be an error, never an empty result set —
+                // those are indistinguishable to the caller.
+                expect(err).toBeInstanceOf(Error);
+                expect(rows).toBeNull();
+
+            }
+
+            const survivors = await db.selectFrom(NOORM_TABLES.vault).selectAll().execute();
+
+            expect(survivors).toHaveLength(2);
+
+        });
+
+        it('should reject an unknown sort direction', async () => {
+
+            const ops = createDebugOperations(db, 'sqlite', ADMIN);
+
+            const [, err] = await attempt(() =>
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                ops.getTableRows(NOORM_TABLES.vault, { sortDirection: 'asc; drop table x' as any }),
+            );
+
+            expect(err).toBeInstanceOf(Error);
+
+        });
 
         it('should honour limit and sort direction', async () => {
 
@@ -372,6 +443,19 @@ describe('debug: createDebugOperations', () => {
             expect(desc).toHaveLength(2);
             expect(desc[0]!['secret_key']).toBe('KEY_4');
             expect(asc[0]!['secret_key']).toBe('KEY_0');
+
+        });
+
+        it('should surface a query failure as an error rather than an empty table', async () => {
+
+            const ops = createDebugOperations(db, 'sqlite', ADMIN);
+
+            await db.schema.dropTable(NOORM_TABLES.vault).execute();
+
+            const [rows, err] = await attempt(() => ops.getTableRows(NOORM_TABLES.vault));
+
+            expect(err).toBeInstanceOf(Error);
+            expect(rows).toBeNull();
 
         });
 
@@ -406,6 +490,19 @@ describe('debug: createDebugOperations', () => {
 
         });
 
+        it('should surface a query failure as an error, not as a missing row', async () => {
+
+            const ops = createDebugOperations(db, 'sqlite', ADMIN);
+
+            await db.schema.dropTable(NOORM_TABLES.vault).execute();
+
+            const [row, err] = await attempt(() => ops.getRowById(NOORM_TABLES.vault, 1));
+
+            expect(err).toBeInstanceOf(Error);
+            expect(row).toBeNull();
+
+        });
+
     });
 
     describe('deleteRowById', () => {
@@ -415,6 +512,19 @@ describe('debug: createDebugOperations', () => {
             const ops = createDebugOperations(db, 'sqlite', ADMIN);
 
             expect(await ops.deleteRowById(NOORM_TABLES.vault, 9999)).toBe(false);
+
+        });
+
+        it('should surface a delete failure as an error, not as "row not found"', async () => {
+
+            const ops = createDebugOperations(db, 'sqlite', ADMIN);
+
+            await db.schema.dropTable(NOORM_TABLES.vault).execute();
+
+            const [ok, err] = await attempt(() => ops.deleteRowById(NOORM_TABLES.vault, 1));
+
+            expect(err).toBeInstanceOf(Error);
+            expect(ok).toBeNull();
 
         });
 
@@ -456,6 +566,19 @@ describe('debug: createDebugOperations', () => {
 
         });
 
+        it('should surface a bulk-delete failure as an error rather than 0 rows deleted', async () => {
+
+            const ops = createDebugOperations(db, 'sqlite', ADMIN);
+
+            await db.schema.dropTable(NOORM_TABLES.vault).execute();
+
+            const [count, err] = await attempt(() => ops.deleteRowsByIds(NOORM_TABLES.vault, [1, 2]));
+
+            expect(err).toBeInstanceOf(Error);
+            expect(count).toBeNull();
+
+        });
+
     });
 
     describe('getTableCounts', () => {
@@ -471,6 +594,25 @@ describe('debug: createDebugOperations', () => {
             expect(counts).toHaveLength(6);
             expect(vault?.count).toBe(3);
             expect(vault?.error).toBeUndefined();
+
+        });
+
+        it('should report a failed count as an error, not as an empty table', async () => {
+
+            const ops = createDebugOperations(db, 'sqlite', ADMIN);
+
+            await db.schema.dropTable(NOORM_TABLES.vault).execute();
+
+            const counts = await ops.getTableCounts();
+            const vault = counts.find((c) => c.table === NOORM_TABLES.vault);
+            const change = counts.find((c) => c.table === NOORM_TABLES.change);
+
+            // The distinction the UI depends on: a table that errored must not
+            // render identically to a table that is genuinely empty.
+            expect(vault?.count).toBeNull();
+            expect(vault?.error).toBeTruthy();
+            expect(change?.count).toBe(0);
+            expect(change?.error).toBeUndefined();
 
         });
 

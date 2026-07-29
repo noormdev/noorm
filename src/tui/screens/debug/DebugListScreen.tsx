@@ -288,7 +288,7 @@ export function DebugListScreen({ params }: ScreenProps): ReactElement {
             }
             else {
 
-                showToast({ message: 'Delete failed', variant: 'error' });
+                showToast({ message: `Row #${rowId} no longer exists`, variant: 'error' });
 
             }
 
@@ -312,7 +312,7 @@ export function DebugListScreen({ params }: ScreenProps): ReactElement {
             }
             else {
 
-                showToast({ message: 'Delete failed', variant: 'error' });
+                showToast({ message: 'No matching rows to delete', variant: 'error' });
 
             }
 

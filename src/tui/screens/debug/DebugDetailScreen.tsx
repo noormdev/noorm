@@ -132,7 +132,7 @@ export function DebugDetailScreen({ params }: ScreenProps): ReactElement {
         }
         else {
 
-            showToast({ message: 'Delete failed', variant: 'error' });
+            showToast({ message: `Row #${rowId} no longer exists`, variant: 'error' });
 
         }
 

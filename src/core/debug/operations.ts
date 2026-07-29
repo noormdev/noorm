@@ -40,13 +40,20 @@ export interface NoormTableInfo {
 
 /**
  * Table row count result.
+ *
+ * `count` is nullable because a table whose count query failed must not be
+ * reportable as a table with zero rows — the two render identically and the
+ * caller has no other way to tell them apart.
  */
 export interface TableCountResult {
     /** Table name */
     table: NoormTableName;
 
-    /** Number of rows */
-    count: number;
+    /** Number of rows, or `null` when the count query failed */
+    count: number | null;
+
+    /** Failure message; present only when `count` is `null` */
+    error?: string;
 }
 
 /**
@@ -91,22 +98,24 @@ export interface DebugPolicyContext {
 /**
  * Debug operations interface.
  *
- * Every method throws when the policy denies it.
+ * Every method throws when the policy denies it, when the table is not a
+ * noorm table, or when the query fails. Falsy return values mean only
+ * "not found" / "nothing deleted", never "something went wrong".
  */
 export interface DebugOperations {
-    /** Get row counts for all noorm tables */
+    /** Get row counts for all noorm tables; a per-table failure yields `count: null` */
     getTableCounts(): Promise<TableCountResult[]>;
 
     /** Get rows from a specific table */
     getTableRows(table: NoormTableName, options?: GetRowsOptions): Promise<NoormTableRow[]>;
 
-    /** Get a single row by ID */
+    /** Get a single row by ID; `null` means the row does not exist */
     getRowById(table: NoormTableName, id: number): Promise<NoormTableRow | null>;
 
-    /** Delete a single row by ID */
+    /** Delete a single row by ID; `false` means the row did not exist */
     deleteRowById(table: NoormTableName, id: number): Promise<boolean>;
 
-    /** Delete multiple rows by IDs */
+    /** Delete multiple rows by IDs; returns how many existed */
     deleteRowsByIds(table: NoormTableName, ids: number[]): Promise<number>;
 
     /** Get column names for a table */
@@ -282,7 +291,33 @@ export function createDebugOperations(
 
     };
 
-    const resolveTable = (table: NoormTableName): string => nameMap[table] ?? table;
+    const resolveTable = (table: NoormTableName): string => {
+
+        const resolved = nameMap[table];
+
+        if (!resolved) {
+
+            throw new Error(`"${table}" is not a noorm internal table.`);
+
+        }
+
+        return resolved;
+
+    };
+
+    const columnsFor = (table: NoormTableName): string[] => {
+
+        const columns = TABLE_COLUMNS[table];
+
+        if (!columns) {
+
+            throw new Error(`"${table}" is not a noorm internal table.`);
+
+        }
+
+        return columns;
+
+    };
 
     return {
 
@@ -312,7 +347,9 @@ export function createDebugOperations(
                         context: { table: info.name, operation: 'count' },
                     });
 
-                    results.push({ table: info.name, count: 0 });
+                    // One unreadable table must not abort the whole overview —
+                    // but it must not read as "empty" either.
+                    results.push({ table: info.name, count: null, error: err.message });
 
                 }
                 else {
@@ -340,6 +377,23 @@ export function createDebugOperations(
             const { limit = 100, sortColumn = 'id', sortDirection = 'desc' } = options;
 
             const queryTable = resolveTable(table);
+            const columns = columnsFor(table);
+
+            // `sortColumn` is caller-supplied and reaches orderBy() as an
+            // identifier. Kysely quotes it, so this is not an injection vector —
+            // but an unknown value produces a driver error that used to be
+            // swallowed into an empty result. Reject it by name instead.
+            if (!columns.includes(sortColumn)) {
+
+                throw new Error(`"${sortColumn}" is not a column of ${table}.`);
+
+            }
+
+            if (sortDirection !== 'asc' && sortDirection !== 'desc') {
+
+                throw new Error(`"${sortDirection}" is not a sort direction.`);
+
+            }
 
             const [rows, err] = await attempt(() =>
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -359,7 +413,7 @@ export function createDebugOperations(
                     context: { table, operation: 'get-rows' },
                 });
 
-                return [];
+                throw err;
 
             }
 
@@ -389,7 +443,7 @@ export function createDebugOperations(
                     context: { table, id, operation: 'get-row' },
                 });
 
-                return null;
+                throw err;
 
             }
 
@@ -418,7 +472,7 @@ export function createDebugOperations(
                     context: { table, id, operation: 'delete-row' },
                 });
 
-                return false;
+                throw err;
 
             }
 
@@ -455,7 +509,7 @@ export function createDebugOperations(
                     context: { table, ids, operation: 'delete-rows' },
                 });
 
-                return 0;
+                throw err;
 
             }
 
@@ -467,7 +521,7 @@ export function createDebugOperations(
 
             gate('debug:read');
 
-            return TABLE_COLUMNS[table] ?? ['id'];
+            return columnsFor(table);
 
         },
 

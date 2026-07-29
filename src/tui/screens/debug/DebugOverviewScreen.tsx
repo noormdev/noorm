@@ -177,15 +177,21 @@ export function DebugOverviewScreen({ params: _params }: ScreenProps): ReactElem
 
     }
 
-    // Get count for a table
-    const getCount = (table: NoormTableName): number => {
+    // Get count for a table. `null` means the count query failed — kept
+    // distinct from 0 so an unreadable table doesn't render as an empty one.
+    const getCount = (table: NoormTableName): number | null => {
 
-        return counts.find((c) => c.table === table)?.count ?? 0;
+        const result = counts.find((c) => c.table === table);
+
+        if (!result) return 0;
+
+        return result.count;
 
     };
 
-    // Calculate total rows
-    const totalRows = counts.reduce((sum, c) => sum + c.count, 0);
+    // Calculate total rows across the tables that could actually be counted
+    const totalRows = counts.reduce((sum, c) => sum + (c.count ?? 0), 0);
+    const failedCount = counts.filter((c) => c.count === null).length;
 
     return (
         <Box flexDirection="column" gap={1}>
@@ -206,6 +212,9 @@ export function DebugOverviewScreen({ params: _params }: ScreenProps): ReactElem
                     <Box gap={2}>
                         <Text>Total Rows:</Text>
                         <Text bold color="green">{totalRows}</Text>
+                        {failedCount > 0 && (
+                            <Text color="red">({failedCount} table{failedCount === 1 ? '' : 's'} unreadable)</Text>
+                        )}
                     </Box>
 
                     {/* Table list */}
@@ -213,7 +222,8 @@ export function DebugOverviewScreen({ params: _params }: ScreenProps): ReactElem
                         {NOORM_TABLE_INFO.map((info, index) => {
 
                             const count = getCount(info.name);
-                            const hasRows = count > 0;
+                            const failed = count === null;
+                            const hasRows = count !== null && count > 0;
 
                             return (
                                 <Box key={info.key} gap={2}>
@@ -228,9 +238,13 @@ export function DebugOverviewScreen({ params: _params }: ScreenProps): ReactElem
                                     <Box width={20}>
                                         <Text dimColor>{info.description}</Text>
                                     </Box>
-                                    <Text bold={hasRows} color={hasRows ? 'green' : 'gray'}>
-                                        {count} {count === 1 ? 'row' : 'rows'}
-                                    </Text>
+                                    {failed
+                                        ? <Text bold color="red">error</Text>
+                                        : (
+                                            <Text bold={hasRows} color={hasRows ? 'green' : 'gray'}>
+                                                {count} {count === 1 ? 'row' : 'rows'}
+                                            </Text>
+                                        )}
                                 </Box>
                             );
 
