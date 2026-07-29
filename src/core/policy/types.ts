@@ -37,8 +37,13 @@ export type Permission =
     | 'sql:read' | 'sql:write' | 'sql:ddl'
     | 'change:run' | 'change:ff' | 'change:revert' | 'change:rm'
     | 'run:build' | 'run:file' | 'run:dir'
-    | 'db:create' | 'db:reset' | 'db:destroy'
-    | 'config:rm';
+    | 'db:create' | 'db:reset' | 'db:destroy' | 'db:truncate' | 'db:teardown'
+    | 'config:rm' | 'config:write'
+    | 'vault:read' | 'vault:write' | 'vault:propagate'
+    | 'secret:read' | 'secret:write'
+    | 'transfer:plan'
+    | 'lock:force'
+    | 'debug:read' | 'debug:write';
 
 /**
  * The minimum shape `checkPolicy` and `guarded` need from a config.
