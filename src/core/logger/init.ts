@@ -16,17 +16,13 @@
  * // ... rest of CLI startup
  * ```
  */
-import { createWriteStream } from 'node:fs';
-import { join, dirname } from 'node:path';
-import { mkdir } from 'node:fs/promises';
 import type { Writable } from 'node:stream';
-
-import { attempt } from '@logosdx/utils';
 
 import { observer } from '../observer.js';
 import { isCi } from '../environment.js';
 import { Logger, getLogger, resetLogger } from './logger.js';
 import { addSettingsSecrets, listenForSecrets } from './redact.js';
+import { DEFAULT_LOGGER_CONFIG } from './types.js';
 import type { Settings } from '../settings/types.js';
 
 /**
@@ -99,30 +95,20 @@ export function enableAutoLoggerInit(projectRoot: string, options?: AutoLoggerOp
         // Add settings-defined secrets to redaction list
         addSettingsSecrets(settings);
 
-        // Create file stream (unless CI-only mode)
-        let fileStream: Writable | undefined;
-
-        if (!isCi()) {
-
-            const filePath = join(projectRoot, settings.logging.file ?? '.noorm/state/noorm.log');
-
-            // Ensure directory exists
-            const [, mkdirErr] = await attempt(() => mkdir(dirname(filePath), { recursive: true }));
-
-            if (!mkdirErr) {
-
-                fileStream = createWriteStream(filePath, { flags: 'a' });
-
-            }
-
-        }
-
-        // Create and start logger
+        // Opening the file is left to the Logger so there is exactly one place
+        // that creates it — the same place that applies 0600 and re-opens it
+        // after rotation. In CI the file is pointless (the runner captures the
+        // streams, the workspace is thrown away), and a blank path is how the
+        // Logger is told to stay console-only.
         logger = new Logger({
             projectRoot,
             settings,
-            config: settings.logging,
-            file: fileStream,
+            config: {
+                ...settings.logging,
+                file: isCi()
+                    ? ''
+                    : settings.logging.file ?? DEFAULT_LOGGER_CONFIG.file,
+            },
             console: initOptions.console,
             diagnostics: initOptions.diagnostics,
         });
