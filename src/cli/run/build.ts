@@ -51,6 +51,21 @@ const buildCommand = defineCommand({
 
                         }
 
+                        // Louder than the include case on purpose: an entry
+                        // that excluded nothing means the files the author
+                        // fenced off just ran against the target database.
+                        if (res.unmatchedExclude?.length) {
+
+                            logger.warn(
+                                `Ignored ${res.unmatchedExclude.length} build.exclude entr` +
+                                `${res.unmatchedExclude.length === 1 ? 'y that matched' : 'ies that matched'} no files: ` +
+                                res.unmatchedExclude.join(', ') +
+                                ' — nothing was excluded, so those files ran.',
+                            );
+                            logger.warn('Exclude paths are relative to paths.sql — use `10_seeds`, not `sql/10_seeds`.');
+
+                        }
+
                         for (const file of res.files) {
 
                             if (file.status === 'failed') {
