@@ -8,12 +8,12 @@
  */
 import { chmodSync, existsSync, mkdirSync, readFileSync } from 'fs';
 import { dirname, join } from 'path';
-import { attemptSync, attempt, clone } from '@logosdx/utils';
+import { attemptSync, attempt, clone, equals } from '@logosdx/utils';
 import type { Config } from '../config/types.js';
 import { assertCanDeleteConfig, type SettingsProvider } from '../config/resolver.js';
 import type { KnownUser } from '../identity/types.js';
 import { loadPrivateKey } from '../identity/storage.js';
-import { resolveLegacyAccess } from '../policy/index.js';
+import { repairConfigAccess } from './access.js';
 import {
     migrateState as migrateSchemaVersion,
     needsStateMigration,
@@ -228,38 +228,36 @@ export class StateManager {
         this.#state = migrateState(schemaMigratedState, currentVersion);
 
         // Raw-data-boundary invariant: migrations above guarantee every
-        // config carries `access`, but a hand-edited or corrupted state
-        // file can still reach this point without it. This is the single
-        // place that backfills it, so no downstream consumer
+        // config carries a well-formed `access`, but a hand-edited or
+        // corrupted state file can still reach this point without one. This
+        // is the single place that repairs it, so no downstream consumer
         // (setConfig/listConfigs/guarded) needs its own fallback. Tracking
         // whether it actually mutated anything (below) feeds the persist
-        // decision, so a config backfilled at an already-current schema
+        // decision, so a config repaired at an already-current schema
         // version still lands on disk instead of being re-healed forever.
         //
         // `config` is typed `Config`, but the object underneath is untyped
         // JSON that reached the current schema version without ever passing
         // through `parseConfig` (e.g. a legacy-shaped config saved directly
-        // via `setConfig`, bypassing the zod path). It can still carry a
-        // stray legacy `protected` key the type doesn't declare, so read it
-        // defensively rather than assuming `undefined` — fail-safe,
-        // consistent with the fail-closed default: `protected: true` maps
-        // to operator/viewer, never the admin/admin fallback.
+        // via `setConfig`, bypassing the zod path). It can carry a stray
+        // legacy `protected` key the type doesn't declare, or an `access`
+        // of any shape at all, so both are read as untrusted input.
         let backfilledAccess = false;
 
         for (const config of Object.values(this.#state.configs)) {
 
-            if (!config.access) {
+            const rawConfig: unknown = config;
+            const legacyProtected = isRecord(rawConfig) ? rawConfig['protected'] : undefined;
+
+            const repaired = repairConfigAccess(config.access, legacyProtected);
+
+            if (!config.access || !equals(config.access, repaired)) {
 
                 backfilledAccess = true;
 
             }
 
-            const rawConfig: unknown = config;
-            const legacyProtected = isRecord(rawConfig) && typeof rawConfig['protected'] === 'boolean'
-                ? rawConfig['protected']
-                : undefined;
-
-            config.access = resolveLegacyAccess(config.access, legacyProtected);
+            config.access = repaired;
 
         }
 
