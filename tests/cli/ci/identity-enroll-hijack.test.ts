@@ -37,6 +37,7 @@ import {
 import { generateVaultKey, encryptVaultKey, decryptVaultKey } from '../../../src/core/vault/key.js';
 import type { EncryptedVaultKey } from '../../../src/core/vault/types.js';
 import type { Config } from '../../../src/core/config/types.js';
+import type { ConfigAccess } from '../../../src/core/policy/index.js';
 
 const CLI = join(process.cwd(), 'dist/cli/index.js');
 const TMP_BASE = join(process.cwd(), 'tmp');
@@ -64,7 +65,9 @@ interface EnrollFixture {
  * an operator identity that already holds vault access (the precondition
  * `enroll` enforces before it will propagate anything).
  */
-async function setupEnrollFixture(): Promise<EnrollFixture> {
+async function setupEnrollFixture(
+    access: ConfigAccess = { user: 'admin', mcp: 'admin' },
+): Promise<EnrollFixture> {
 
     const testId = randomUUID().slice(0, 8);
     const dir = join(TMP_BASE, `cli-ci-enroll-${testId}`);
@@ -125,7 +128,7 @@ async function setupEnrollFixture(): Promise<EnrollFixture> {
         name: CONFIG_NAME,
         type: 'local',
         isTest: true,
-        access: { user: 'admin', mcp: 'admin' },
+        access,
         connection: { dialect: 'sqlite', database: dbPath },
     };
 
@@ -270,10 +273,109 @@ describe('cli: ci identity enroll — pre-planted key hijack (a08 F1)', () => {
         fx = await setupEnrollFixture();
         await plantRow(fx, fx.botPublicKey);
 
-        const result = runEnroll(fx, ['--public-key', fx.botPublicKey]);
+        // --yes because granting vault access is a `confirm` cell for every
+        // role that holds `vault:propagate`.
+        const result = runEnroll(fx, ['--public-key', fx.botPublicKey, '--yes']);
 
         expect(result.status).toBe(0);
         expect(result.stdout).toContain('"alreadyEnrolled":true');
+
+        const row = await readRow(fx, fx.botIdentityHash);
+
+        expect(row!.encrypted_vault_key).toBeTruthy();
+
+    });
+
+});
+
+/**
+ * `ci identity enroll` grants irrevocable vault access, so it is a
+ * config-scoped action and belongs behind the same `access` matrix as every
+ * other vault operation. It called the ungated `propagateVaultKeyTo`, so the
+ * config's role was never consulted: a `viewer` config — denied `vault:read`
+ * outright — could still hand the vault to a new identity, and no role was
+ * ever asked to confirm the grant.
+ */
+describe('cli: ci identity enroll — vault:propagate authorization', () => {
+
+    let fx: EnrollFixture | undefined;
+
+    afterEach(async () => {
+
+        if (fx) await rm(fx.dir, { recursive: true, force: true });
+        fx = undefined;
+
+    });
+
+    it('denies a viewer config outright', async () => {
+
+        fx = await setupEnrollFixture({ user: 'viewer', mcp: 'viewer' });
+
+        const result = runEnroll(fx, ['--public-key', fx.botPublicKey, '--yes']);
+
+        expect(result.status).not.toBe(0);
+
+    });
+
+    it('grants no vault access from a viewer config', async () => {
+
+        fx = await setupEnrollFixture({ user: 'viewer', mcp: 'viewer' });
+
+        runEnroll(fx, ['--public-key', fx.botPublicKey, '--yes']);
+
+        expect(await readRow(fx, fx.botIdentityHash)).toBeNull();
+
+    });
+
+    it('requires confirmation before granting, even as admin', async () => {
+
+        fx = await setupEnrollFixture();
+
+        const result = runEnroll(fx, ['--public-key', fx.botPublicKey]);
+
+        expect(result.status).not.toBe(0);
+        expect(`${result.stdout}${result.stderr}`).toMatch(/--yes/);
+
+    });
+
+    it('propagates nothing when confirmation is withheld', async () => {
+
+        fx = await setupEnrollFixture();
+
+        runEnroll(fx, ['--public-key', fx.botPublicKey]);
+
+        const row = await readRow(fx, fx.botIdentityHash);
+
+        // The row may be registered, but the vault key must not be sealed to
+        // it until the operator confirms.
+        expect(row?.encrypted_vault_key ?? null).toBeNull();
+
+    });
+
+    it('names the identity it is about to grant to, so the operator can check it', async () => {
+
+        fx = await setupEnrollFixture();
+
+        const result = runEnroll(fx, ['--public-key', fx.botPublicKey]);
+
+        // Must be the REFUSAL that names it — a success message mentioning the
+        // email would satisfy a bare `toContain` without any gate existing.
+        expect(result.status).not.toBe(0);
+
+        const output = `${result.stdout}${result.stderr}`;
+
+        expect(output).toContain(BOT_EMAIL);
+        expect(output).toContain(fx.botIdentityHash);
+
+    });
+
+    it('grants once confirmed', async () => {
+
+        fx = await setupEnrollFixture();
+
+        const result = runEnroll(fx, ['--public-key', fx.botPublicKey, '--yes']);
+
+        expect(result.status).toBe(0);
 
         const row = await readRow(fx, fx.botIdentityHash);
 
