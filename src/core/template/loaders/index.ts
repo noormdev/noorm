@@ -93,6 +93,16 @@ const loaders: LoaderRegistry = {
 };
 
 /**
+ * Extensions whose loader executes the file rather than parsing it.
+ *
+ * Kept beside the registry so that registering a new loader forces the
+ * author to answer "does this run code?" — the whole class of problem here
+ * was that `.js`/`.mjs`/`.ts` sat in the same map as `.csv` and inherited
+ * `.csv`'s auto-load-everything treatment.
+ */
+const EXECUTABLE_EXTENSIONS = new Set(['.js', '.mjs', '.ts']);
+
+/**
  * Check if a loader exists for the given extension.
  *
  * @param ext - File extension (e.g., '.json5')
@@ -101,6 +111,24 @@ const loaders: LoaderRegistry = {
 export function hasLoader(ext: string): boolean {
 
     return ext in loaders;
+
+}
+
+/**
+ * Whether loading a file with this extension runs arbitrary code in the
+ * current process.
+ *
+ * Callers use this to require an explicit opt-in before touching the file.
+ * Parsing a `.csv` cannot do anything; importing a `.ts` can read the
+ * identity key out of the environment.
+ *
+ * @example
+ * isExecutableExtension('.ts');   // true
+ * isExecutableExtension('.json'); // false
+ */
+export function isExecutableExtension(ext: string): boolean {
+
+    return EXECUTABLE_EXTENSIONS.has(ext);
 
 }
 

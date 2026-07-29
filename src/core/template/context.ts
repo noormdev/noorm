@@ -20,7 +20,7 @@
  * ```
  */
 import path from 'node:path';
-import { readdir } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 
 import { attempt } from '@logosdx/utils';
 
@@ -28,8 +28,8 @@ import { observer } from '../observer.js';
 import type { TemplateContext, RenderOptions } from './types.js';
 import { HELPER_FILENAME } from './types.js';
 import { loadHelpers } from './helpers.js';
-import { loadDataFile, hasLoader } from './loaders/index.js';
-import { toContextKey, sqlEscape, sqlQuote, generateUuid, isoNow } from './utils.js';
+import { loadDataFile, hasLoader, isExecutableExtension } from './loaders/index.js';
+import { toContextKey, sqlEscape, sqlQuote, generateUuid, isoNow, isWithinRoot } from './utils.js';
 
 /**
  * Tiers `$.secrets` actually resolves from, in priority order.
@@ -146,11 +146,16 @@ export async function buildContext(
     const templateDir = path.dirname(templatePath);
     const projectRoot = options.projectRoot ?? process.cwd();
 
+    // Read separately from the engine's own read: `run inspect` builds a
+    // context without ever rendering, and it needs the same reference gate.
+    // An unreadable template yields '' — no references, so no script runs.
+    const [templateSource] = await attempt(() => readFile(templatePath, 'utf-8'));
+
     // 1. Load inherited helpers
     const { helpers } = await loadHelpers(templateDir, projectRoot);
 
     // 2. Auto-load data files from template directory
-    const dataFiles = await loadDataFilesInDir(templateDir);
+    const dataFiles = await loadDataFilesInDir(templateDir, templateSource ?? '');
 
     // 3. Check if data files include a config file
     const hasLocalConfig = 'config' in dataFiles;
@@ -187,15 +192,49 @@ export async function buildContext(
 }
 
 /**
+ * Whether a template asks for a context key by name.
+ *
+ * Deliberately syntactic and narrow: `$.key` and `$['key']` are the two
+ * documented ways to reach a data file, and a false negative costs the
+ * author an explicit reference while a false positive re-opens the hole.
+ * Only consulted for files whose loader executes code.
+ *
+ * @example
+ * referencesContextKey("SELECT '{%~ $.seed.label %}'", 'seed'); // true
+ * referencesContextKey('SELECT 1;', 'seed');                    // false
+ */
+function referencesContextKey(templateSource: string, key: string): boolean {
+
+    const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+    const pattern = new RegExp(
+        `\\$\\s*(?:\\.\\s*${escaped}\\b|\\[\\s*(['"\`])${escaped}\\1\\s*\\])`,
+    );
+
+    return pattern.test(templateSource);
+
+}
+
+/**
  * Load all data files in a directory.
  *
  * Scans the directory for supported data file extensions and loads each one.
  * File names are converted to camelCase context keys.
  *
+ * Files whose loader *executes* them (`.js`, `.mjs`, `.ts`) are loaded only
+ * when `templateSource` references their key. Auto-loading them meant that
+ * dropping a script beside any SQL file got it run — with no mention in the
+ * template and no way for the user to know — during `preview`, `inspect`
+ * and `--dry-run`, the three commands whose whole point is not to act.
+ *
  * @param dir - Directory to scan
+ * @param templateSource - Raw text of the template being rendered
  * @returns Object with camelCased keys and loaded data
  */
-async function loadDataFilesInDir(dir: string): Promise<Record<string, unknown>> {
+async function loadDataFilesInDir(
+    dir: string,
+    templateSource: string,
+): Promise<Record<string, unknown>> {
 
     const data: Record<string, unknown> = {};
 
@@ -255,6 +294,12 @@ async function loadDataFilesInDir(dir: string): Promise<Record<string, unknown>>
         const filepath = path.join(dir, entry.name);
         const key = toContextKey(entry.name);
 
+        if (isExecutableExtension(ext) && !referencesContextKey(templateSource, key)) {
+
+            continue;
+
+        }
+
         const [loaded, loadErr] = await attempt(() => loadDataFile(filepath));
 
         if (loadErr) {
@@ -305,7 +350,7 @@ function createIncludeHelper(
         const resolved = path.resolve(templateDir, includePath);
 
         // Security: ensure we don't escape project root
-        if (!resolved.startsWith(projectRoot)) {
+        if (!isWithinRoot(resolved, path.resolve(projectRoot))) {
 
             throw new Error(`Include path escapes project root: ${includePath}`);
 

@@ -18,6 +18,29 @@ import path from 'node:path';
 import v from 'voca';
 
 /**
+ * Whether a resolved absolute path sits at or under a root directory.
+ *
+ * A bare `startsWith(root)` is a *string* test, not a path test: with a
+ * root of `/srv/app`, the sibling `/srv/app-evil` passes it. Requiring the
+ * separator makes containment path-segment aware, which is the only reading
+ * that matches what "cannot escape the project root" claims. Shared by
+ * `include()`'s guard and the `$helpers` tree walk so the two cannot drift.
+ *
+ * @example
+ * ```typescript
+ * isWithinRoot('/srv/app/sql/a.sql', '/srv/app')  // → true
+ * isWithinRoot('/srv/app-evil/a.sql', '/srv/app') // → false
+ * ```
+ */
+export function isWithinRoot(resolved: string, root: string): boolean {
+
+    const normalizedRoot = root.endsWith(path.sep) ? root.slice(0, -1) : root;
+
+    return resolved === normalizedRoot || resolved.startsWith(normalizedRoot + path.sep);
+
+}
+
+/**
  * Convert a filename to a camelCase context key.
  *
  * Strips the file extension and converts the base name to camelCase.
