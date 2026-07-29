@@ -3,6 +3,9 @@
  */
 import { defineCommand } from 'citty';
 
+import type { Kysely } from 'kysely';
+
+import { fetchList } from '../../core/explore/index.js';
 import { withContext, outputResult, outputError, sharedArgs } from '../_utils.js';
 
 const viewsCommand = defineCommand({
@@ -83,7 +86,9 @@ const viewsCommand = defineCommand({
             args,
             fn: (ctx, logger) => {
 
-                return ctx.noorm.db.listViews().then((res) => {
+                // Core rather than the SDK: the SDK's list methods take no
+                // options, so --schema cannot reach the query through them.
+                return fetchList(ctx.kysely as Kysely<unknown>, ctx.dialect, 'views', { schema: args.schema }).then((res) => {
 
                     if (!args.json) {
 
@@ -92,7 +97,8 @@ const viewsCommand = defineCommand({
                         for (const v of res) {
 
                             const updatable = v.isUpdatable ? ' [updatable]' : '';
-                            logger.info(`  ${v.name} (${v.columnCount} cols)${updatable}`);
+                            const qualified = v.schema ? `${v.schema}.${v.name}` : v.name;
+                            logger.info(`  ${qualified} (${v.columnCount} cols)${updatable}`);
 
                         }
 
@@ -121,6 +127,7 @@ const viewsCommand = defineCommand({
 (viewsCommand as typeof viewsCommand & { examples: string[] }).examples = [
     'noorm db explore views',
     'noorm db explore views --json',
+    'noorm db explore views --schema app',
     'noorm db explore views active_users',
     'noorm db explore views active_users --schema public',
 ];
