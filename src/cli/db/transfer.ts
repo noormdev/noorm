@@ -455,7 +455,12 @@ const transferCommand = defineCommand({
 
         }
 
-        process.exit(result?.status === 'success' ? 0 : 2);
+        // A partial transfer committed real rows and needs a different
+        // response than one that moved nothing — exit 2 for both left a
+        // pipeline unable to tell "retry" from "roll back".
+        if (result?.status === 'success') process.exit(0);
+
+        process.exit(result?.status === 'partial' ? 3 : 2);
 
     },
 });

@@ -141,6 +141,32 @@ describe('transfer: reported counts', () => {
 
     });
 
+    // `hasFailures ? (allSuccess ? 'partial' : 'failed')` — allSuccess is
+    // false by definition when hasFailures is true, so 'partial' could never
+    // be produced and a run that committed most of the data was reported
+    // identically to one that committed none.
+    it('should report partial when one table fails and another succeeds', async () => {
+
+        await sql.raw('DROP TABLE IF EXISTS countcheck_narrow').execute(sourceDb);
+        await sql.raw('DROP TABLE IF EXISTS countcheck_narrow').execute(destDb);
+        await sql.raw('CREATE TABLE countcheck_narrow (id int PRIMARY KEY, label text NOT NULL)').execute(sourceDb);
+        await sql.raw('CREATE TABLE countcheck_narrow (id int PRIMARY KEY, label varchar(3) NOT NULL)').execute(destDb);
+        await sql.raw('INSERT INTO countcheck_narrow (id, label) VALUES (1, \'far-too-long\')').execute(sourceDb);
+
+        const [result, err] = await transferData(sourceConfig, destConfig, {
+            tables: ['countcheck', 'countcheck_narrow'],
+        });
+
+        await sql.raw('DROP TABLE IF EXISTS countcheck_narrow').execute(sourceDb);
+        await sql.raw('DROP TABLE IF EXISTS countcheck_narrow').execute(destDb);
+
+        expect(err).toBeNull();
+        expect(result!.status).toBe('partial');
+        expect(result!.tables.find((t) => t.table === 'countcheck')!.status).toBe('success');
+        expect(result!.tables.find((t) => t.table === 'countcheck_narrow')!.status).toBe('failed');
+
+    });
+
     it('should count rewritten rows under onConflict update', async () => {
 
         const values = Array.from({ length: ROWS }, (_, i) => `(${i + 1}, 'stale')`).join(', ');

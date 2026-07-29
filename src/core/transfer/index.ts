@@ -179,6 +179,17 @@ export async function getTransferPlan(
     options: TransferOptions = {},
 ): Promise<[TransferPlan | null, Error | null]> {
 
+    // The plan is destination schema metadata: table names, row estimates and
+    // the FK graph. Ungated, a viewer denied `transferData` could still read
+    // all of it through `--dry-run` or `transfer.plan()`.
+    const [, policyErr] = attemptSync(() => assertPolicy(options.channel ?? 'user', destConfig, 'transfer:plan'));
+
+    if (policyErr) {
+
+        return [null, policyErr];
+
+    }
+
     // Validate dialects are supported
     const srcDialect = sourceConfig.connection.dialect;
     const dstDialect = destConfig.connection.dialect;

@@ -205,10 +205,14 @@ export async function executeTransfer(
     }
 
     const durationMs = Date.now() - startTime;
-    const allSuccess = tableResults.every((r) => r.status === 'success');
+
+    // `allSuccess` was false by definition whenever `hasFailures` was true,
+    // so 'partial' was unreachable and a run that moved most of the data
+    // looked identical to one that moved none.
+    const anySuccess = tableResults.some((r) => r.status === 'success');
 
     const result: TransferResult = {
-        status: hasFailures ? (allSuccess ? 'partial' : 'failed') : 'success',
+        status: hasFailures ? (anySuccess ? 'partial' : 'failed') : 'success',
         tables: tableResults,
         totalRows,
         durationMs,

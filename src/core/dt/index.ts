@@ -747,26 +747,19 @@ async function insertImportBatch(
 
             if (!isDuplicateError(err.message)) {
 
-                // Non-duplicate error — log first occurrence for diagnostics
-                if (skipped === 0 && inserted === 0) {
+                // Every failure is reported, not just the first: the old
+                // `skipped === 0 && inserted === 0` guard meant an import
+                // that broke after row one went entirely unobserved.
+                observer.emit('error', {
+                    source: 'dt:import',
+                    error: err,
+                    context: { table, operation: 'insert-row', onConflict, row: Object.keys(row).slice(0, 5).join(', ') },
+                });
 
-                    observer.emit('error', {
-                        source: 'dt:import',
-                        error: err,
-                        context: { table, operation: 'insert-row', onConflict, row: Object.keys(row).slice(0, 5).join(', ') },
-                    });
-
-                }
-
-                // Non-duplicate error
-                if (onConflict === 'fail') {
-
-                    return [{ inserted, skipped, updated }, new Error(`Row ${globalRowNum} (${rowSummary()}): ${err.message}`)];
-
-                }
-
-                skipped++;
-                continue;
+                // A row the destination rejected outright is not a conflict,
+                // so no conflict strategy makes it skippable. Counting it as
+                // skipped let a whole failed import report success.
+                return [{ inserted, skipped, updated }, new Error(`Row ${globalRowNum} (${rowSummary()}): ${err.message}`)];
 
             }
 
