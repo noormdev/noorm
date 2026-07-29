@@ -173,6 +173,27 @@ describe('integration: impersonate postgres (unprivileged connection)', () => {
     const LOWPRIV_ROLE = 'impersonate_lowpriv';
     const TARGET_ROLE = 'impersonate_target';
 
+    /**
+     * `DROP ROLE` refuses while any privilege still references the role, and
+     * this suite grants CONNECT — so a plain `DROP ROLE IF EXISTS` leaks the
+     * role on first teardown and then fails every later setup. `DROP OWNED BY`
+     * clears those grants, but errors on a role that does not exist, hence the
+     * existence check.
+     */
+    async function dropRoleCompletely(ctx: Context, role: string): Promise<void> {
+
+        await sql.raw(`
+            DO $$
+            BEGIN
+                IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${role}') THEN
+                    EXECUTE 'DROP OWNED BY ${role}';
+                    EXECUTE 'DROP ROLE ${role}';
+                END IF;
+            END $$;
+        `).execute(ctx.kysely);
+
+    }
+
     beforeAll(async () => {
 
         await skipIfNoContainer('postgres');
@@ -185,7 +206,7 @@ describe('integration: impersonate postgres (unprivileged connection)', () => {
 
         for (const role of [LOWPRIV_ROLE, TARGET_ROLE]) {
 
-            await sql.raw(`DROP ROLE IF EXISTS ${role}`).execute(admin.kysely);
+            await dropRoleCompletely(admin, role);
 
         }
 
@@ -220,7 +241,7 @@ describe('integration: impersonate postgres (unprivileged connection)', () => {
 
             for (const role of [LOWPRIV_ROLE, TARGET_ROLE]) {
 
-                await attempt(() => sql.raw(`DROP ROLE IF EXISTS ${role}`).execute(admin.kysely));
+                await attempt(() => dropRoleCompletely(admin, role));
 
             }
 
