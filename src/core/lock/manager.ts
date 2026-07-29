@@ -146,41 +146,24 @@ class LockManager {
         options: LockOptions = {},
     ): Promise<Lock> {
 
-        // Declaration
         const opts = { ...DEFAULT_LOCK_OPTIONS, ...options };
         const startTime = Date.now();
 
-        // Emit acquiring event
+        // Bounds the pathological case where the row we lost to is released
+        // before we can read who held it — without it, a wait:false caller
+        // could spin indefinitely against a churning lock.
+        let vanishedHolderRetries = 3;
+
         observer.emit('lock:acquiring', { configName, identity });
 
-        // Business Logic
         while (true) {
 
-            // Clean up expired locks first
             await this.#cleanupExpired(db, configName, opts.dialect);
 
-            // Try to get existing lock
             const existing = await this.#getLock(db, configName, opts.dialect);
 
-            if (!existing) {
+            if (existing?.lockedBy === identity) {
 
-                // No lock exists, create one
-                const lock = await this.#createLock(db, configName, identity, opts);
-                observer.emit('lock:acquired', {
-                    configName,
-                    identity,
-                    expiresAt: lock.expiresAt,
-                });
-
-                return lock;
-
-            }
-
-            // Lock exists and is not expired (cleanup already ran)
-            // Check if it's ours
-            if (existing.lockedBy === identity) {
-
-                // We already hold the lock - extend it
                 const lock = await this.#extendLock(db, configName, identity, opts);
                 observer.emit('lock:acquired', {
                     configName,
@@ -192,40 +175,71 @@ class LockManager {
 
             }
 
-            // Lock held by someone else
+            let holder = existing;
+
+            if (!holder) {
+
+                const created = await this.#tryCreateLock(db, configName, identity, opts);
+
+                if (created) {
+
+                    observer.emit('lock:acquired', {
+                        configName,
+                        identity,
+                        expiresAt: created.expiresAt,
+                    });
+
+                    return created;
+
+                }
+
+                // Lost the race — find out to whom.
+                holder = await this.#getLock(db, configName, opts.dialect);
+
+                if (!holder) {
+
+                    vanishedHolderRetries -= 1;
+
+                    if (vanishedHolderRetries <= 0) {
+
+                        throw new LockAcquireError(
+                            configName,
+                            'unknown',
+                            new Date(),
+                            new Date(),
+                            'repeatedly lost the acquire race to a lock that was released before it could be read',
+                        );
+
+                    }
+
+                    continue;
+
+                }
+
+                // The winner was another process running as us; the next
+                // iteration takes the extend branch.
+                if (holder.lockedBy === identity) continue;
+
+            }
+
             observer.emit('lock:blocked', {
                 configName,
-                holder: existing.lockedBy,
-                heldSince: existing.lockedAt,
+                holder: holder.lockedBy,
+                heldSince: holder.lockedAt,
             });
 
-            if (!opts.wait) {
+            if (!opts.wait || Date.now() - startTime >= opts.waitTimeout) {
 
                 throw new LockAcquireError(
                     configName,
-                    existing.lockedBy,
-                    existing.lockedAt,
-                    existing.expiresAt,
-                    existing.reason,
+                    holder.lockedBy,
+                    holder.lockedAt,
+                    holder.expiresAt,
+                    holder.reason,
                 );
 
             }
 
-            // Check wait timeout
-            const elapsed = Date.now() - startTime;
-            if (elapsed >= opts.waitTimeout) {
-
-                throw new LockAcquireError(
-                    configName,
-                    existing.lockedBy,
-                    existing.lockedAt,
-                    existing.expiresAt,
-                    existing.reason,
-                );
-
-            }
-
-            // Wait and retry
             await wait(opts.pollInterval);
 
         }
@@ -498,37 +512,74 @@ class LockManager {
     }
 
     /**
-     * Create a new lock in the database.
+     * Claim the lock with a single atomic statement.
+     *
+     * WHY one statement: a SELECT-then-INSERT leaves a window in which two
+     * processes both see "no lock" and both insert. The `config_name` UNIQUE
+     * constraint stops the second row, but only by surfacing a raw driver
+     * error to the caller instead of `LockAcquireError`. Letting the database
+     * arbitrate in one statement makes losing the race an ordinary, typed
+     * outcome rather than an exception.
+     *
+     * @returns the Lock when this caller won, or null when another caller's
+     * row landed first
      */
-    async #createLock(
+    async #tryCreateLock(
         db: Kysely<NoormDatabase>,
         configName: string,
         identity: string,
         opts: Required<Omit<LockOptions, 'reason'>> & { reason?: string },
-    ): Promise<Lock> {
+    ): Promise<Lock | null> {
 
         const ndb = noormDb(db, opts.dialect);
         const tables = getNoormTables(opts.dialect);
         const now = new Date();
         const expiresAt = new Date(now.getTime() + opts.timeout);
 
-        await ndb
-            .insertInto(tables.lock)
-            .values({
-                config_name: configName,
-                locked_by: identity,
-                locked_at: formatDateForDialect(now, opts.dialect) as Date,
-                expires_at: formatDateForDialect(expiresAt, opts.dialect) as Date,
-                reason: opts.reason ?? '',
-            })
-            .execute();
+        const values = {
+            config_name: configName,
+            locked_by: identity,
+            locked_at: formatDateForDialect(now, opts.dialect) as Date,
+            expires_at: formatDateForDialect(expiresAt, opts.dialect) as Date,
+            reason: opts.reason ?? '',
+        };
 
-        return {
+        const lock: Lock = {
             lockedBy: identity,
             lockedAt: now,
             expiresAt,
             reason: opts.reason,
         };
+
+        // MSSQL has no ON CONFLICT, so the UNIQUE constraint is the arbiter
+        // there: a failed insert with a row now present *is* contention.
+        // Anything else is a real failure and must propagate.
+        if (opts.dialect === 'mssql') {
+
+            const [, err] = await attempt(() =>
+                ndb.insertInto(tables.lock).values(values).execute(),
+            );
+
+            if (!err) return lock;
+
+            const holder = await this.#getLock(db, configName, opts.dialect);
+
+            if (holder) return null;
+
+            throw err;
+
+        }
+
+        const query = opts.dialect === 'mysql'
+            ? ndb.insertInto(tables.lock).values(values).ignore()
+            : ndb
+                .insertInto(tables.lock)
+                .values(values)
+                .onConflict((oc) => oc.column('config_name').doNothing());
+
+        const result = await query.executeTakeFirst();
+
+        return (result?.numInsertedOrUpdatedRows ?? 0n) > 0n ? lock : null;
 
     }
 
