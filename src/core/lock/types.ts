@@ -97,6 +97,22 @@ export interface LockOptions {
 }
 
 /**
+ * Outcome of a force-release.
+ *
+ * Carries the evicted holder because force-releasing is destructive to
+ * someone else's in-flight work: callers need to be able to say *whose*
+ * lock they broke, and to tell "evicted a live holder" apart from "there
+ * was nothing there" — which previously both reported success.
+ */
+export interface ForceReleaseResult {
+    /** Whether a lock row was actually deleted. */
+    released: boolean;
+
+    /** Identity that held the lock, or null when there was nothing to release. */
+    holder: string | null;
+}
+
+/**
  * Result of a lock status check.
  */
 export interface LockStatus {

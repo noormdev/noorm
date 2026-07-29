@@ -29,7 +29,7 @@ import type { Kysely } from 'kysely';
 import { observer } from '../observer.js';
 import { getNoormTables, noormDb, type NoormDatabase } from '../shared/index.js';
 import type { Dialect } from '../connection/types.js';
-import type { Lock, LockOptions, LockStatus } from './types.js';
+import type { ForceReleaseResult, Lock, LockOptions, LockStatus } from './types.js';
 import { DEFAULT_LOCK_OPTIONS } from './types.js';
 import {
     LockAcquireError,
@@ -43,10 +43,27 @@ import {
 // ─────────────────────────────────────────────────────────────
 
 /**
- * Format a Date for database storage based on dialect.
+ * Serialize a Date for the lock table's naive datetime columns.
  *
- * SQLite stores dates as TEXT (ISO strings), while other dialects
- * can bind Date objects directly.
+ * `locked_at` / `expires_at` are declared without a timezone
+ * (`version/schema/migrations/v1.ts`), so they carry no offset of their own.
+ * Expiry is only meaningful if writer and reader agree on the frame of
+ * reference, and that frame must never be the client's local timezone —
+ * otherwise a `lock status` run from another zone compares two unrelated wall
+ * clocks and deletes a live lock. Every branch below resolves to UTC:
+ *
+ * - **sqlite** stores TEXT, so an ISO-8601 UTC string is both the stored value
+ *   and the collation order used by the expiry comparison.
+ * - **postgres / mysql** drivers bind a JS `Date` using the *client's* local
+ *   offset — the defect. Hand them an explicit UTC wall clock instead:
+ *   postgres discards the offset on a naive column, and mysql applies its
+ *   session zone (server-side and stable across clients) symmetrically on
+ *   write and read, so both round-trip as identity.
+ * - **mssql** binds through tedious, whose `useUTC` default already
+ *   serializes and parses in UTC. Passing the Date through is correct;
+ *   stringifying it here would double-shift it.
+ *
+ * Mirror of {@link parseDateFromDialect} — change one, change both.
  */
 function formatDateForDialect(date: Date, dialect: Dialect): Date | string {
 
@@ -56,7 +73,51 @@ function formatDateForDialect(date: Date, dialect: Dialect): Date | string {
 
     }
 
-    return date;
+    if (dialect === 'mssql') {
+
+        return date;
+
+    }
+
+    return date.toISOString().replace('T', ' ').replace('Z', '');
+
+}
+
+/**
+ * Read a lock timestamp back, undoing whatever frame the driver applied.
+ *
+ * Mirror of {@link formatDateForDialect}. sqlite hands back the ISO-8601 UTC
+ * string it was given and tedious hands back a Date already parsed as UTC, so
+ * both need no correction. The postgres and mysql drivers parse a naive column
+ * in the *client's* local zone, producing a Date whose wall clock is right but
+ * whose instant is off by the local offset — re-read that wall clock as the
+ * UTC it actually is.
+ */
+function parseDateFromDialect(value: Date | string, dialect: Dialect): Date {
+
+    if (dialect === 'sqlite' || dialect === 'mssql') {
+
+        return new Date(value);
+
+    }
+
+    if (value instanceof Date) {
+
+        return new Date(Date.UTC(
+            value.getFullYear(),
+            value.getMonth(),
+            value.getDate(),
+            value.getHours(),
+            value.getMinutes(),
+            value.getSeconds(),
+            value.getMilliseconds(),
+        ));
+
+    }
+
+    const normalized = String(value).replace(' ', 'T');
+
+    return new Date(normalized.endsWith('Z') ? normalized : `${normalized}Z`);
 
 }
 
@@ -85,41 +146,24 @@ class LockManager {
         options: LockOptions = {},
     ): Promise<Lock> {
 
-        // Declaration
         const opts = { ...DEFAULT_LOCK_OPTIONS, ...options };
         const startTime = Date.now();
 
-        // Emit acquiring event
+        // Bounds the pathological case where the row we lost to is released
+        // before we can read who held it — without it, a wait:false caller
+        // could spin indefinitely against a churning lock.
+        let vanishedHolderRetries = 3;
+
         observer.emit('lock:acquiring', { configName, identity });
 
-        // Business Logic
         while (true) {
 
-            // Clean up expired locks first
             await this.#cleanupExpired(db, configName, opts.dialect);
 
-            // Try to get existing lock
             const existing = await this.#getLock(db, configName, opts.dialect);
 
-            if (!existing) {
+            if (existing?.lockedBy === identity) {
 
-                // No lock exists, create one
-                const lock = await this.#createLock(db, configName, identity, opts);
-                observer.emit('lock:acquired', {
-                    configName,
-                    identity,
-                    expiresAt: lock.expiresAt,
-                });
-
-                return lock;
-
-            }
-
-            // Lock exists and is not expired (cleanup already ran)
-            // Check if it's ours
-            if (existing.lockedBy === identity) {
-
-                // We already hold the lock - extend it
                 const lock = await this.#extendLock(db, configName, identity, opts);
                 observer.emit('lock:acquired', {
                     configName,
@@ -131,40 +175,71 @@ class LockManager {
 
             }
 
-            // Lock held by someone else
+            let holder = existing;
+
+            if (!holder) {
+
+                const created = await this.#tryCreateLock(db, configName, identity, opts);
+
+                if (created) {
+
+                    observer.emit('lock:acquired', {
+                        configName,
+                        identity,
+                        expiresAt: created.expiresAt,
+                    });
+
+                    return created;
+
+                }
+
+                // Lost the race — find out to whom.
+                holder = await this.#getLock(db, configName, opts.dialect);
+
+                if (!holder) {
+
+                    vanishedHolderRetries -= 1;
+
+                    if (vanishedHolderRetries <= 0) {
+
+                        throw new LockAcquireError(
+                            configName,
+                            'unknown',
+                            new Date(),
+                            new Date(),
+                            'repeatedly lost the acquire race to a lock that was released before it could be read',
+                        );
+
+                    }
+
+                    continue;
+
+                }
+
+                // The winner was another process running as us; the next
+                // iteration takes the extend branch.
+                if (holder.lockedBy === identity) continue;
+
+            }
+
             observer.emit('lock:blocked', {
                 configName,
-                holder: existing.lockedBy,
-                heldSince: existing.lockedAt,
+                holder: holder.lockedBy,
+                heldSince: holder.lockedAt,
             });
 
-            if (!opts.wait) {
+            if (!opts.wait || Date.now() - startTime >= opts.waitTimeout) {
 
                 throw new LockAcquireError(
                     configName,
-                    existing.lockedBy,
-                    existing.lockedAt,
-                    existing.expiresAt,
-                    existing.reason,
+                    holder.lockedBy,
+                    holder.lockedAt,
+                    holder.expiresAt,
+                    holder.reason,
                 );
 
             }
 
-            // Check wait timeout
-            const elapsed = Date.now() - startTime;
-            if (elapsed >= opts.waitTimeout) {
-
-                throw new LockAcquireError(
-                    configName,
-                    existing.lockedBy,
-                    existing.lockedAt,
-                    existing.expiresAt,
-                    existing.reason,
-                );
-
-            }
-
-            // Wait and retry
             await wait(opts.pollInterval);
 
         }
@@ -226,20 +301,21 @@ class LockManager {
      * @param db - Kysely database instance
      * @param configName - Config/database scope
      * @param dialect - Database dialect for schema-aware table resolution
-     * @returns true if a lock was released, false if none existed
+     * @returns whether a lock was released, and who held it
      */
     async forceRelease(
         db: Kysely<NoormDatabase>,
         configName: string,
         dialect: Dialect,
-    ): Promise<boolean> {
+    ): Promise<ForceReleaseResult> {
 
         const ndb = noormDb(db, dialect);
         const tables = getNoormTables(dialect);
         const existing = await this.#getLock(db, configName, dialect);
+
         if (!existing) {
 
-            return false;
+            return { released: false, holder: null };
 
         }
 
@@ -250,7 +326,7 @@ class LockManager {
             identity: existing.lockedBy,
         });
 
-        return true;
+        return { released: true, holder: existing.lockedBy };
 
     }
 
@@ -429,45 +505,82 @@ class LockManager {
 
         return {
             lockedBy: row.locked_by,
-            lockedAt: new Date(row.locked_at),
-            expiresAt: new Date(row.expires_at),
+            lockedAt: parseDateFromDialect(row.locked_at, dialect),
+            expiresAt: parseDateFromDialect(row.expires_at, dialect),
             reason: row.reason || undefined,
         };
 
     }
 
     /**
-     * Create a new lock in the database.
+     * Claim the lock with a single atomic statement.
+     *
+     * WHY one statement: a SELECT-then-INSERT leaves a window in which two
+     * processes both see "no lock" and both insert. The `config_name` UNIQUE
+     * constraint stops the second row, but only by surfacing a raw driver
+     * error to the caller instead of `LockAcquireError`. Letting the database
+     * arbitrate in one statement makes losing the race an ordinary, typed
+     * outcome rather than an exception.
+     *
+     * @returns the Lock when this caller won, or null when another caller's
+     * row landed first
      */
-    async #createLock(
+    async #tryCreateLock(
         db: Kysely<NoormDatabase>,
         configName: string,
         identity: string,
         opts: Required<Omit<LockOptions, 'reason'>> & { reason?: string },
-    ): Promise<Lock> {
+    ): Promise<Lock | null> {
 
         const ndb = noormDb(db, opts.dialect);
         const tables = getNoormTables(opts.dialect);
         const now = new Date();
         const expiresAt = new Date(now.getTime() + opts.timeout);
 
-        await ndb
-            .insertInto(tables.lock)
-            .values({
-                config_name: configName,
-                locked_by: identity,
-                locked_at: formatDateForDialect(now, opts.dialect) as Date,
-                expires_at: formatDateForDialect(expiresAt, opts.dialect) as Date,
-                reason: opts.reason ?? '',
-            })
-            .execute();
+        const values = {
+            config_name: configName,
+            locked_by: identity,
+            locked_at: formatDateForDialect(now, opts.dialect) as Date,
+            expires_at: formatDateForDialect(expiresAt, opts.dialect) as Date,
+            reason: opts.reason ?? '',
+        };
 
-        return {
+        const lock: Lock = {
             lockedBy: identity,
             lockedAt: now,
             expiresAt,
             reason: opts.reason,
         };
+
+        // MSSQL has no ON CONFLICT, so the UNIQUE constraint is the arbiter
+        // there: a failed insert with a row now present *is* contention.
+        // Anything else is a real failure and must propagate.
+        if (opts.dialect === 'mssql') {
+
+            const [, err] = await attempt(() =>
+                ndb.insertInto(tables.lock).values(values).execute(),
+            );
+
+            if (!err) return lock;
+
+            const holder = await this.#getLock(db, configName, opts.dialect);
+
+            if (holder) return null;
+
+            throw err;
+
+        }
+
+        const query = opts.dialect === 'mysql'
+            ? ndb.insertInto(tables.lock).values(values).ignore()
+            : ndb
+                .insertInto(tables.lock)
+                .values(values)
+                .onConflict((oc) => oc.column('config_name').doNothing());
+
+        const result = await query.executeTakeFirst();
+
+        return (result?.numInsertedOrUpdatedRows ?? 0n) > 0n ? lock : null;
 
     }
 
