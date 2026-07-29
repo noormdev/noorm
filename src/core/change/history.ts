@@ -53,6 +53,31 @@ import type { ChangeType } from '../shared/index.js';
 // ─────────────────────────────────────────────────────────────
 
 /**
+ * Coerce a driver's generated-key value into a usable operation id.
+ *
+ * WHY: the three id-retrieval strategies hand back three different
+ * shapes — postgres a number, mysql a `BigInt` on the insert result,
+ * mssql whatever the OUTPUT clause yields. Rejecting non-positive and
+ * unsafe values here stops a `0`, a `null` or a numeric string being
+ * written into a column that later rows join against.
+ *
+ * @example
+ * toOperationId(42n); // 42
+ * toOperationId(null); // undefined
+ */
+function toOperationId(value: unknown): number | undefined {
+
+    if (value === null || value === undefined) return undefined;
+
+    const asNumber = Number(value);
+
+    if (!Number.isSafeInteger(asNumber) || asNumber <= 0) return undefined;
+
+    return asNumber;
+
+}
+
+/**
  * Reserved change name recording a `db teardown`.
  *
  * Shares the `change` row shape so teardowns appear in the audit trail,
@@ -645,7 +670,14 @@ export class ChangeHistory {
                 cli_version: getCurrentVersion(),
             });
 
-        // MSSQL uses OUTPUT inserted.id (not RETURNING)
+        // Three id-retrieval strategies, one per driver capability:
+        //   mssql   OUTPUT inserted.id
+        //   mysql   no RETURNING clause exists — the driver reports the
+        //           generated key on the insert result itself. Read it from
+        //           there rather than issuing LAST_INSERT_ID() as a second
+        //           query: that function is per-connection, and Kysely
+        //           returns the connection to the pool between statements.
+        //   others  RETURNING for an atomic insert+get-id
         let id: number | undefined;
 
         if (this.#dialect === 'mssql') {
@@ -663,7 +695,20 @@ export class ChangeHistory {
             }
 
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            id = (result as any)?.id;
+            id = toOperationId((result as any)?.id);
+
+        }
+        else if (this.#dialect === 'mysql') {
+
+            const [result, err] = await attempt(() => insertQuery.executeTakeFirst());
+
+            if (err) {
+
+                throw new Error('Failed to create change operation record', { cause: err });
+
+            }
+
+            id = toOperationId(result?.insertId);
 
         }
         else {
@@ -678,7 +723,7 @@ export class ChangeHistory {
 
             }
 
-            id = result?.id ?? undefined;
+            id = toOperationId(result?.id);
 
             // SQLite with better-sqlite3 may return null for RETURNING
             if (id === null || id === undefined) {
@@ -688,7 +733,7 @@ export class ChangeHistory {
                 if (lastIdQuery) {
 
                     const [lastIdResult] = await attempt(() => lastIdQuery.execute(this.#db));
-                    id = lastIdResult?.rows?.[0]?.id;
+                    id = toOperationId(lastIdResult?.rows?.[0]?.id);
 
                 }
 
@@ -709,6 +754,14 @@ export class ChangeHistory {
     /**
      * Get dialect-specific last-insert-id query.
      *
+     * Only reached as a fallback when `RETURNING id` yielded nothing, so it
+     * covers just the dialects that take the RETURNING path.
+     *
+     * Deliberately has no mysql or mssql case: both retrieve their id from
+     * the insert itself. A second-statement `LAST_INSERT_ID()` would in fact
+     * be wrong on mysql — it is per-connection, and Kysely returns the
+     * connection to the pool between statements.
+     *
      * Returns null if the dialect should always use RETURNING/OUTPUT.
      */
     #lastInsertIdQuery(): ReturnType<typeof sql<{ id: number }>> | null {
@@ -717,12 +770,6 @@ export class ChangeHistory {
 
         case 'sqlite':
             return sql<{ id: number }>`SELECT last_insert_rowid() as id`;
-
-        case 'mysql':
-            return sql<{ id: number }>`SELECT LAST_INSERT_ID() as id`;
-
-        case 'mssql':
-            return sql<{ id: number }>`SELECT SCOPE_IDENTITY() as id`;
 
         case 'postgres':
             return sql<{ id: number }>`SELECT lastval() as id`;
@@ -978,6 +1025,8 @@ export class ChangeHistory {
                 checksum: '',
             });
 
+        // Same three id-retrieval strategies as createOperation — see the
+        // comment there for why mysql must not use LAST_INSERT_ID().
         if (this.#dialect === 'mssql') {
 
             const [result, insertErr] = await attempt(() =>
@@ -997,7 +1046,27 @@ export class ChangeHistory {
             }
 
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            return (result as any)?.id ?? 0;
+            return toOperationId((result as any)?.id) ?? 0;
+
+        }
+
+        if (this.#dialect === 'mysql') {
+
+            const [result, insertErr] = await attempt(() => insertQuery.executeTakeFirst());
+
+            if (insertErr) {
+
+                observer.emit('error', {
+                    source: 'change',
+                    error: insertErr,
+                    context: { operation: 'record-reset' },
+                });
+
+                return 0;
+
+            }
+
+            return toOperationId(result?.insertId) ?? 0;
 
         }
 
@@ -1017,7 +1086,7 @@ export class ChangeHistory {
 
         }
 
-        return result.id;
+        return toOperationId(result?.id) ?? 0;
 
     }
 
