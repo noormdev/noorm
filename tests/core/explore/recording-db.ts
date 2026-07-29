@@ -66,6 +66,15 @@ export interface ResponseRule {
     match: RegExp | string;
     rows?: unknown[];
 
+    /**
+     * Generated key the driver reports alongside the rows.
+     *
+     * MySQL has no RETURNING clause, so its id arrives here rather than in a
+     * row — replaying it is the only way to exercise that path without a
+     * live server.
+     */
+    insertId?: bigint;
+
     /** Reject instead of replaying rows, to exercise error paths. */
     error?: Error;
 
@@ -182,7 +191,7 @@ export function createRecordingDb(
 
             }
 
-            return { rows: (rule!.rows ?? []) as R[] };
+            return { rows: (rule!.rows ?? []) as R[], insertId: rule!.insertId };
 
         },
 
