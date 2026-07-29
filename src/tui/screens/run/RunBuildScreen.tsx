@@ -29,7 +29,7 @@ import { Panel, Spinner, SmartConfirm, useToast } from '../../components/index.j
 import { useRunProgress, useAsyncEffect } from '../../hooks/index.js';
 import { getEffectiveBuildPaths } from '../../../core/settings/rules.js';
 import { discoverFiles, runBuild } from '../../../core/runner/index.js';
-import { filterFilesByPaths } from '../../../core/shared/index.js';
+import { filterFilesByPaths, findUnmatchedIncludePatterns } from '../../../core/shared/index.js';
 import { checkConfigPolicy } from '../../../core/policy/index.js';
 import { getErrorMessage, resolveScreenIdentity, buildRunContext, withScreenConnection } from '../../utils/index.js';
 import { attempt } from '@logosdx/utils';
@@ -54,6 +54,7 @@ export function RunBuildScreen({ params: _params }: ScreenProps): ReactElement {
     const [files, setFiles] = useState<string[]>([]);
     const [sqlPath, setSqlPath] = useState<string>('');
     const [error, setError] = useState<string | null>(null);
+    const [unmatchedInclude, setUnmatchedInclude] = useState<string[]>([]);
 
     // Load settings and discover files
     useAsyncEffect(async (isCancelled) => {
@@ -111,6 +112,7 @@ export function RunBuildScreen({ params: _params }: ScreenProps): ReactElement {
         );
 
         setFiles(filteredFiles);
+        setUnmatchedInclude(findUnmatchedIncludePatterns(allFiles ?? [], schemaFullPath, effectivePaths.include));
         setPhase('confirm');
 
     }, [activeConfig, activeConfigName, settings]);
@@ -278,6 +280,20 @@ export function RunBuildScreen({ params: _params }: ScreenProps): ReactElement {
 
         return (
             <Box flexDirection="column" gap={1}>
+                {/* Without this a mistyped include renders as a bare "Run 0 SQL files?" prompt */}
+                {unmatchedInclude.length > 0 && (
+                    <Box flexDirection="column">
+                        <Text color="yellow" bold>
+                            Ignored {unmatchedInclude.length} build.include entr
+                            {unmatchedInclude.length === 1 ? 'y that matched' : 'ies that matched'} no files:{' '}
+                            {unmatchedInclude.join(', ')}
+                        </Text>
+                        <Text dimColor>
+                            Include paths are relative to paths.sql — use `01_tables`, not `sql/01_tables`.
+                        </Text>
+                    </Box>
+                )}
+
                 {/* Global mode warnings */}
                 {(globalModes.dryRun || globalModes.force) && (
                     <Box flexDirection="column">
