@@ -306,7 +306,7 @@ describe('cli: db truncate', () => {
 
     it('should return exit code 0 on success', async () => {
 
-        const result = await noorm(project, 'db', 'truncate');
+        const result = await noorm(project, 'db', 'truncate', '--yes');
 
         expect(result.exitCode).toBe(0);
         expect(result.ok).toBe(true);
@@ -319,7 +319,7 @@ describe('cli: db truncate', () => {
         await cleanupTestProject(project);
         project = await setupTestProject();
 
-        const result = await noormJson<TruncateResult>(project, 'db', 'truncate');
+        const result = await noormJson<TruncateResult>(project, 'db', 'truncate', '--yes');
 
         expect(result.ok).toBe(true);
         expect(result.data).not.toBeNull();
@@ -333,7 +333,7 @@ describe('cli: db truncate', () => {
         await cleanupTestProject(project);
         project = await setupTestProject();
 
-        const result = await noormJson<TruncateResult>(project, 'db', 'truncate');
+        const result = await noormJson<TruncateResult>(project, 'db', 'truncate', '--yes');
 
         expect(result.ok).toBe(true);
         expect(result.data!.truncated.length).toBeGreaterThan(0);
@@ -365,7 +365,7 @@ describe('cli: db teardown', () => {
 
     it('should return exit code 0 on success', async () => {
 
-        const result = await noorm(project, 'db', 'teardown');
+        const result = await noorm(project, 'db', 'teardown', '--yes');
 
         expect(result.exitCode).toBe(0);
         expect(result.ok).toBe(true);
@@ -379,7 +379,7 @@ describe('cli: db teardown', () => {
         await cleanupTestProject(project);
         project = await setupTestProject();
 
-        const result = await noormJson<TeardownResult>(project, 'db', 'teardown');
+        const result = await noormJson<TeardownResult>(project, 'db', 'teardown', '--yes');
 
         if (!result.ok) {
 
@@ -400,7 +400,7 @@ describe('cli: db teardown', () => {
         await cleanupTestProject(project);
         project = await setupTestProject();
 
-        const result = await noormJson<TeardownResult>(project, 'db', 'teardown');
+        const result = await noormJson<TeardownResult>(project, 'db', 'teardown', '--yes');
 
         expect(result.ok).toBe(true);
         expect(result.data!.dropped.tables.length).toBeGreaterThan(0);
@@ -416,7 +416,7 @@ describe('cli: db teardown', () => {
         project = await setupTestProject();
 
         // Teardown
-        await noorm(project, 'db', 'teardown');
+        await noorm(project, 'db', 'teardown', '--yes');
 
         // Check that overview shows 0 tables
         const overview = await noormJson<ExploreOverview>(project, 'db', 'explore');

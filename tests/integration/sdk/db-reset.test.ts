@@ -53,7 +53,11 @@ describe('integration: sdk DbNamespace reset vs preserveTables', () => {
             },
             settings: { teardown: { preserveTables: ['ev_keep'] } },
             identity: { name: 'tester', source: 'system' },
-            options: {},
+            // `db:teardown` and `db:reset` are confirm cells even for admin, and
+            // the SDK has no interactive prompt — `yes` is the programmatic
+            // equivalent of `--yes`. Without it these destructive calls are
+            // refused, which is the intended behaviour, not a test concern.
+            options: { yes: true },
             projectRoot: '/tmp',
             changeManager: null,
         };
