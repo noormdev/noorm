@@ -56,6 +56,13 @@ export function createChangeManager(options: CreateChangeManagerOptions): Change
 
     const context: ChangeContext = {
         db,
+        // Taken from the active config rather than defaulted. `dialect` selects
+        // the tracking table names and whether a schema is applied
+        // (core/shared/tables.ts), so omitting it made every TUI change
+        // operation query the postgres-shaped `noorm.change` on sqlite/mysql
+        // projects. That read fails, history.ts swallows it into an empty
+        // result, and the operation then reports success over zero changes.
+        dialect: activeConfig.connection.dialect,
         configName,
         identity: resolveScreenIdentity(cryptoIdentity),
         projectRoot,
@@ -63,6 +70,7 @@ export function createChangeManager(options: CreateChangeManagerOptions): Change
         sqlDir: resolveSqlDir(projectRoot, settings),
         access: activeConfig.access,
         channel: 'user',
+        config: activeConfig as unknown as Record<string, unknown>,
     };
 
     return new ChangeManager(context);
