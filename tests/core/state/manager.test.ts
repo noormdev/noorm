@@ -16,6 +16,7 @@ import { generateKeyPair } from '../../../src/core/identity/crypto.js';
 import { encrypt, decrypt } from '../../../src/core/state/encryption/index.js';
 import type { EncryptedPayload } from '../../../src/core/state/types.js';
 import { guarded } from '../../../src/core/policy/index.js';
+import { observer } from '../../../src/core/observer.js';
 import { CURRENT_VERSIONS } from '../../../src/core/version/types.js';
 
 /**
@@ -175,6 +176,35 @@ describe('state: manager', () => {
 
         }
 
+        /**
+         * Writes a state.enc already at the current schema version, so the
+         * schema migration is a no-op and the raw config shape reaches the
+         * load-time repair loop untouched.
+         */
+        function writeCurrentState(
+            statePath: string,
+            privateKey: string,
+            configs: Record<string, unknown>,
+        ): void {
+
+            const currentState = {
+                version: getPackageVersion(),
+                schemaVersion: CURRENT_VERSIONS.state,
+                knownUsers: {},
+                activeConfig: null,
+                configs,
+                secrets: {},
+                globalSecrets: {},
+            };
+
+            mkdirSync(dirname(statePath), { recursive: true });
+            writeFileSync(
+                statePath,
+                JSON.stringify(encrypt(JSON.stringify(currentState), privateKey), null, 2),
+            );
+
+        }
+
         it('should migrate a legacy protected:true config to guarded access', async () => {
 
             const statePath = state.getStatePath();
@@ -325,6 +355,102 @@ describe('state: manager', () => {
                 user: 'operator',
                 mcp: 'viewer',
             });
+
+        });
+
+        it('should guard a config whose legacy protected flag is a truthy non-boolean', async () => {
+
+            // The backfill only accepted a strict boolean, so `"true"` --
+            // which a config saved outside the zod path can carry -- took
+            // the admin/admin fallback and lost its protection entirely.
+            const statePath = state.getStatePath();
+
+            writeCurrentState(statePath, testPrivateKey, {
+                prod: {
+                    name: 'prod',
+                    type: 'local',
+                    isTest: false,
+                    protected: 'true',
+                    connection: { dialect: 'sqlite', database: ':memory:' },
+                },
+            });
+
+            await state.load();
+
+            expect(state.getConfig('prod')?.access).toEqual({ user: 'operator', mcp: 'viewer' });
+
+        });
+
+        it('should repair a malformed access found at the current schema version', async () => {
+
+            // `{}` is truthy, so the `if (!config.access)` guard skipped it
+            // and every later command failed zod validation instead.
+            const statePath = state.getStatePath();
+
+            writeCurrentState(statePath, testPrivateKey, {
+                broken: {
+                    name: 'broken',
+                    type: 'local',
+                    isTest: false,
+                    access: {},
+                    connection: { dialect: 'sqlite', database: ':memory:' },
+                },
+            });
+
+            await state.load();
+
+            expect(state.getConfig('broken')?.access).toEqual({ user: 'viewer', mcp: 'viewer' });
+
+            const raw = readFileSync(statePath, 'utf8');
+            const decrypted = JSON.parse(
+                decrypt(JSON.parse(raw) as EncryptedPayload, testPrivateKey),
+            ) as { configs: Record<string, Record<string, unknown>> };
+
+            expect(decrypted.configs['broken']?.['access']).toEqual({ user: 'viewer', mcp: 'viewer' });
+
+        });
+
+        it('should leave state.enc byte-identical when there is nothing to migrate', async () => {
+
+            // A load with no migration and no backfill must not write. When
+            // it does, every read-only command (`version`, `secret list`,
+            // `db explore`) becomes a full re-encrypt and rewrite, which
+            // both amplifies the window for a concurrent-write conflict and
+            // makes `state:persisted` meaningless as a change signal.
+            await state.load();
+            await state.setConfig('dev', createTestConfig('dev'));
+
+            const statePath = state.getStatePath();
+            const before = readFileSync(statePath, 'utf8');
+
+            const reader = new StateManager(tempDir, {
+                stateDir: '.test-state',
+                stateFile: 'state.enc',
+                privateKey: testPrivateKey,
+            });
+            await reader.load();
+
+            expect(readFileSync(statePath, 'utf8')).toBe(before);
+
+        });
+
+        it('should not emit state:persisted on a load with nothing to migrate', async () => {
+
+            await state.load();
+            await state.setConfig('dev', createTestConfig('dev'));
+
+            const persisted: unknown[] = [];
+            const off = observer.on('state:persisted', (data) => persisted.push(data));
+
+            const reader = new StateManager(tempDir, {
+                stateDir: '.test-state',
+                stateFile: 'state.enc',
+                privateKey: testPrivateKey,
+            });
+            await reader.load();
+            off();
+
+            expect(persisted).toHaveLength(0);
 
         });
 

@@ -10,6 +10,7 @@ export { InvalidSecretKeyError, isValidSecretKey } from './manager.js';
 export type { StateManagerOptions } from './manager.js';
 export * from './types.js';
 export { migrateState, needsMigration } from './migrations.js';
+export { BACKUP_SUFFIX, LOCK_SUFFIX, StateLockTimeoutError } from './persistence.js';
 export { getPackageVersion } from './version.js';
 
 let instance: StateManager | null = null;

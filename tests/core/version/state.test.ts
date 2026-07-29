@@ -172,6 +172,18 @@ describe('version: state', () => {
 
         });
 
+        it('should preserve unknown top-level fields through the v1 baseline', () => {
+
+            // v1 rebuilt the state object from a fixed field list, so any
+            // top-level field a newer build had added was destroyed the
+            // first time an older build opened the file -- and the result
+            // was persisted immediately.
+            const migrated = migrateState({ auditTrail: ['future-field'] });
+
+            expect(migrated['auditTrail']).toEqual(['future-field']);
+
+        });
+
         it('should return same state if already current version', () => {
 
             const state = { schemaVersion: CURRENT_VERSIONS.state };
@@ -390,6 +402,85 @@ describe('version: state', () => {
                 const migrated = migrateState(state);
 
                 expect(migrated['schemaVersion']).toBe(CURRENT_VERSIONS.state);
+
+            });
+
+            /**
+             * v2 drops `protected` permanently. Anything it gets wrong here
+             * cannot be reconstructed afterwards, so the binding rule is
+             * that a config must never come out of it less protected than
+             * it went in.
+             */
+            describe('fail-closed repair', () => {
+
+                function migrateConfig(rawConfig: Record<string, unknown>): Record<string, unknown> {
+
+                    const migrated = migrateState({ schemaVersion: 1, configs: { prod: rawConfig } });
+
+                    return (migrated['configs'] as Record<string, Record<string, unknown>>)['prod']!;
+
+                }
+
+                it('should guard a config whose protected flag is a truthy non-boolean', () => {
+
+                    // A state file written outside the zod path can hold a
+                    // string here. Requiring a strict `true` sent every one
+                    // of those to admin/admin — fully open.
+                    expect(migrateConfig({ name: 'prod', protected: 'true' })['access'])
+                        .toEqual({ user: 'operator', mcp: 'viewer' });
+
+                    expect(migrateConfig({ name: 'prod', protected: 1 })['access'])
+                        .toEqual({ user: 'operator', mcp: 'viewer' });
+
+                });
+
+                it('should not guard a config whose protected flag is falsy', () => {
+
+                    expect(migrateConfig({ name: 'prod', protected: false })['access'])
+                        .toEqual({ user: 'admin', mcp: 'admin' });
+
+                });
+
+                it('should repair an empty access instead of freezing it in', () => {
+
+                    // `{}` is truthy, so it used to pass straight through
+                    // while `protected` was discarded — leaving a config no
+                    // command could ever use again and no way back.
+                    expect(migrateConfig({ name: 'prod', protected: true, access: {} })['access'])
+                        .toEqual({ user: 'viewer', mcp: 'viewer' });
+
+                });
+
+                it('should fill a half-populated access rather than persisting it', () => {
+
+                    expect(migrateConfig({ name: 'prod', protected: true, access: { user: 'admin' } })['access'])
+                        .toEqual({ user: 'admin', mcp: 'viewer' });
+
+                });
+
+                it('should never produce an access zod would reject', () => {
+
+                    const malformed = [
+                        { name: 'prod', protected: true, access: {} },
+                        { name: 'prod', access: { user: 'admin' } },
+                        { name: 'prod', access: { mcp: 'admin' } },
+                        { name: 'prod', access: { user: 'superuser', mcp: 'admin' } },
+                        { name: 'prod', protected: 'yes' },
+                    ];
+
+                    for (const rawConfig of malformed) {
+
+                        const access = migrateConfig(rawConfig)['access'] as Record<string, unknown>;
+
+                        expect({ input: rawConfig, userValid: ['viewer', 'operator', 'admin'].includes(access['user'] as string) })
+                            .toEqual({ input: rawConfig, userValid: true });
+
+                        expect({ input: rawConfig, mcpValid: access['mcp'] === false || ['viewer', 'operator', 'admin'].includes(access['mcp'] as string) })
+                            .toEqual({ input: rawConfig, mcpValid: true });
+
+                    }
+
+                });
 
             });
 
