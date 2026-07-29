@@ -97,6 +97,8 @@ Config resolution and identity attribution work the same as the CLI. Access cont
 
 Every config declares a role per channel: `access: { user, mcp }`. The `mcp` role decides what an agent connected over this server can do to that config — independently of what a human gets in the CLI/TUI.
 
+A config that never declared `access` gets `{ user: 'admin', mcp: 'viewer' }`. Agents can explore and read on a fresh project without any setup; anything that writes needs you to raise the `mcp` role on purpose.
+
 | Role | What the agent can do |
 |------|------------------------|
 | `viewer` | Explore schema, run read-only SQL (`SELECT`, `EXPLAIN`, `SHOW`, `DESCRIBE`) |

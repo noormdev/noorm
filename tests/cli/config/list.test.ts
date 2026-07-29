@@ -122,14 +122,27 @@ describe('cli: noorm config list — access tag display', () => {
 
     });
 
-    it('renders no access tag for an admin/admin config', async () => {
+    it('renders no access tag for a config on the default access', async () => {
 
-        await seedConfig({ user: 'admin', mcp: 'admin' });
+        await seedConfig({ user: 'admin', mcp: 'viewer' });
 
         const result = runList();
 
         expect(result.status).toBe(0);
         expect(result.stdout).not.toContain('user:');
+
+    });
+
+    it('renders the tag for an mcp:admin escalation', async () => {
+
+        // The one config an agent can write to must not read as unremarkable
+        // just because the human channel is still admin.
+        await seedConfig({ user: 'admin', mcp: 'admin' });
+
+        const result = runList();
+
+        expect(result.status).toBe(0);
+        expect(result.stdout).toContain('user:admin mcp:admin');
 
     });
 

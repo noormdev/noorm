@@ -192,7 +192,7 @@ Raw SQL (`noorm sql`) is gated by what the statement actually does, not by a fla
 
 `confirm` means: type the phrase `yes-<config-name>` when prompted, or set `NOORM_YES=1` to skip the prompt in CI. There is no `--force` override for a denied permission — `--force` only skips file checksums (see [Common Flags](#common-flags)).
 
-**Migration note:** the old `Config.protected: boolean` maps automatically on first load — `protected: true` becomes `{ user: 'operator', mcp: 'viewer' }`, `protected: false` (or absent) becomes `{ user: 'admin', mcp: 'admin' }`. The legacy field is still accepted on `config import` for one version, then dropped.
+**Migration note:** the old `Config.protected: boolean` maps automatically on first load — `protected: true` becomes `{ user: 'operator', mcp: 'viewer' }`, `protected: false` (or absent) becomes the default `{ user: 'admin', mcp: 'viewer' }`. A config that already stores an explicit `access` keeps it untouched. The legacy field is still accepted on `config import` for one version, then dropped.
 
 
 ## Commands

@@ -255,7 +255,7 @@ export NOORM_YES=1
 noorm change run  # No prompt, even on an operator-role config
 ```
 
-**Migration:** a legacy `protected: true` maps to `{ user: 'operator', mcp: 'viewer' }`; `protected: false` or absent maps to `{ user: 'admin', mcp: 'admin' }`. The `protected` field is accepted on input for one version, then dropped — see the state migration in `core/version/state/migrations/`.
+**Migration:** a legacy `protected: true` maps to `{ user: 'operator', mcp: 'viewer' }`; `protected: false` or absent maps to the default `{ user: 'admin', mcp: 'viewer' }`. A config that already stores an explicit `access` is left as-is. The `protected` field is accepted on input for one version, then dropped — see the state migration in `core/version/state/migrations/`.
 
 
 ## Stages
