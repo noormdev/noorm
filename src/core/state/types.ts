@@ -56,6 +56,17 @@ export interface EncryptedPayload {
     /** Encryption algorithm (expected: AES-256-GCM, validated at runtime) */
     algorithm: string;
 
+    /**
+     * Key derivation used to turn the private key into the AES key.
+     *
+     * Absent on payloads written before this field existed, which are
+     * `hkdf-sha256` by definition. Recording it is what makes the
+     * derivation changeable later: without it, a build that changed the
+     * derivation would report every existing state file as "wrong key or
+     * corrupted", which is both wrong and unactionable.
+     */
+    kdf?: string;
+
     /** Initialization vector (base64) */
     iv: string;
 

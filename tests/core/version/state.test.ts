@@ -172,6 +172,18 @@ describe('version: state', () => {
 
         });
 
+        it('should preserve unknown top-level fields through the v1 baseline', () => {
+
+            // v1 rebuilt the state object from a fixed field list, so any
+            // top-level field a newer build had added was destroyed the
+            // first time an older build opened the file -- and the result
+            // was persisted immediately.
+            const migrated = migrateState({ auditTrail: ['future-field'] });
+
+            expect(migrated['auditTrail']).toEqual(['future-field']);
+
+        });
+
         it('should return same state if already current version', () => {
 
             const state = { schemaVersion: CURRENT_VERSIONS.state };
