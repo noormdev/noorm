@@ -169,7 +169,7 @@ export function ChangeRunScreen({ params }: ScreenProps): ReactElement {
 
         }
 
-    }, [activeConfig, activeConfigName, change, stateManager, globalModes]);
+    }, [activeConfig, activeConfigName, change, stateManager, cryptoIdentity, settings, globalModes]);
 
     // Handle cancel
     const handleCancel = useCallback(() => {

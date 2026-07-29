@@ -138,7 +138,7 @@ export function useLockStatus(
 
         };
 
-    }, [activeConfig, activeConfigName, cryptoIdentity, db, connLoading, connError, reloadCounter]);
+    }, [activeConfig, activeConfigName, cryptoIdentity, db, dialect, connLoading, connError, reloadCounter]);
 
     return { status, identityStr, loading, error, reload };
 

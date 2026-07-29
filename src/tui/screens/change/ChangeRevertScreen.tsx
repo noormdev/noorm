@@ -173,7 +173,7 @@ export function ChangeRevertScreen({ params }: ScreenProps): ReactElement {
 
         }
 
-    }, [activeConfig, activeConfigName, change, cryptoIdentity, globalModes]);
+    }, [activeConfig, activeConfigName, change, cryptoIdentity, settings, globalModes]);
 
     // Handle cancel
     const handleCancel = useCallback(() => {

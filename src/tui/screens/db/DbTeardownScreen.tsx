@@ -17,7 +17,7 @@ import type { ScreenProps } from '../../types.js';
 
 import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
-import { useAppContext, useSettings } from '../../app-context.js';
+import { useAppContext, useSettings, useGlobalModes } from '../../app-context.js';
 import { useToast, Panel, Spinner, ProtectedConfirm } from '../../components/index.js';
 import { previewTeardown, teardownSchema } from '../../../core/teardown/index.js';
 import { formatIdentity } from '../../../core/identity/index.js';
@@ -49,6 +49,7 @@ export function DbTeardownScreen({ params: _params }: ScreenProps): ReactElement
     const { back } = useRouter();
     const { isFocused } = useFocusScope('DbTeardown');
     const { activeConfig, activeConfigName, identity: cryptoIdentity } = useAppContext();
+    const globalModes = useGlobalModes();
     const { settings } = useSettings();
     const { showToast } = useToast();
     const check = activeConfig ? checkConfigPolicy('user', activeConfig, 'db:reset') : null;
@@ -144,6 +145,7 @@ export function DbTeardownScreen({ params: _params }: ScreenProps): ReactElement
                     postScript,
                     configName: activeConfigName,
                     executedBy: formatIdentity(identity),
+                    dryRun: globalModes.dryRun,
                 });
 
                 setResult(teardownResult);
@@ -162,7 +164,7 @@ export function DbTeardownScreen({ params: _params }: ScreenProps): ReactElement
 
         setPhase('done');
 
-    }, [activeConfig, activeConfigName, preserveTables, postScript, cryptoIdentity]);
+    }, [activeConfig, activeConfigName, preserveTables, postScript, cryptoIdentity, globalModes.dryRun]);
 
     // Get categories that have items
     const nonEmptyCategories = useMemo(() => {

@@ -38,7 +38,7 @@ import { getErrorMessage } from '../../utils/index.js';
 
 import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
-import { useAppContext } from '../../app-context.js';
+import { useAppContext, useGlobalModes } from '../../app-context.js';
 import { useTransferProgress, useLoadGuard, useAsyncEffect } from '../../hooks/index.js';
 import {
     useToast,
@@ -46,9 +46,12 @@ import {
     Spinner,
     SelectList,
     Confirm,
+    SmartConfirm,
     FilePicker,
     type SelectListItem,
 } from '../../components/index.js';
+
+import { checkConfigPolicy } from '../../../core/policy/index.js';
 
 import { transferData, getTransferPlan } from '../../../core/transfer/index.js';
 import {
@@ -85,6 +88,7 @@ export function DbTransferScreen({ params: _params }: ScreenProps): ReactElement
 
     const { back, navigate } = useRouter();
     const { activeConfig, activeConfigName, stateManager } = useAppContext();
+    const globalModes = useGlobalModes();
     const { showToast } = useToast();
     const { state: progress, reset: resetProgress } = useTransferProgress();
 
@@ -96,7 +100,7 @@ export function DbTransferScreen({ params: _params }: ScreenProps): ReactElement
     const [allTables, setAllTables] = useState<string[]>([]);
     const [selectAllTables, setSelectAllTables] = useState(true);
     const [conflictStrategy, setConflictStrategy] = useState<ConflictStrategy>('fail');
-    const [truncateFirst, _setTruncateFirst] = useState(false);
+    const [truncateFirst, setTruncateFirst] = useState(false);
     const [plan, setPlan] = useState<TransferPlan | null>(null);
 
     // Export/import state
@@ -113,6 +117,19 @@ export function DbTransferScreen({ params: _params }: ScreenProps): ReactElement
     const [loadingSchemas, setLoadingSchemas] = useState(false);
 
     const { tryAcquire, release } = useLoadGuard();
+
+    // The write target is the destination for db-to-db, but the active config
+    // for an import — gate whichever one is about to be written, matching
+    // `transfer.to()`/`dt.importFile()` in the SDK. `transferData`'s own
+    // `assertPolicy` only rejects `allowed: false`, so a `confirm` cell reaches
+    // here as a pass and the typed-phrase branch below is the only thing that
+    // holds it.
+    const writeTarget = transferMode === 'import' ? activeConfig : destConfig;
+
+    const writeCheck = useMemo(
+        () => (writeTarget ? checkConfigPolicy('user', writeTarget, 'db:reset') : null),
+        [writeTarget],
+    );
 
     // Get available configs (excluding active)
     const availableConfigs = useMemo(() => {
@@ -189,13 +206,22 @@ export function DbTransferScreen({ params: _params }: ScreenProps): ReactElement
 
     }, [allTables, selectedTables, selectAllTables]);
 
-    // Options items
-    const conflictItems: SelectListItem<ConflictStrategy>[] = [
+    // Options items. The truncate row is a toggle rather than a hidden hotkey
+    // so the flag the transfer actually runs with is visible on screen —
+    // `truncateFirst` previously had no control at all and was pinned false,
+    // while `--truncate` worked on the CLI.
+    const optionItems: SelectListItem<ConflictStrategy | '__truncate__'>[] = useMemo(() => [
+        {
+            key: '__truncate__',
+            label: `${truncateFirst ? '[x]' : '[ ]'} Truncate destination tables first`,
+            value: '__truncate__',
+            description: 'Delete all destination rows before inserting',
+        },
         { key: 'fail', label: 'Fail on conflict', value: 'fail', description: 'Abort transfer on first duplicate' },
         { key: 'skip', label: 'Skip conflicts', value: 'skip', description: 'Skip rows that already exist' },
         { key: 'update', label: 'Update existing', value: 'update', description: 'Update existing rows with source data' },
         { key: 'replace', label: 'Replace rows', value: 'replace', description: 'Delete and re-insert conflicting rows' },
-    ];
+    ], [truncateFirst]);
 
     // Load tables from active config for export mode
     useAsyncEffect(async (isCancelled) => {
@@ -249,6 +275,26 @@ export function DbTransferScreen({ params: _params }: ScreenProps): ReactElement
         }
 
         setDestConfig(config);
+
+        // Fail closed here rather than at the confirm step: a denied role
+        // should not be walked through table selection and a transfer plan
+        // only to be refused at the end.
+        const destCheck = checkConfigPolicy('user', config, 'db:reset');
+
+        if (!destCheck.allowed) {
+
+            if (!isCancelled()) {
+
+                setError(destCheck.blockedReason ?? `Transfer into "${config.name}" is not allowed.`);
+                setPhase('error');
+
+            }
+
+            release();
+
+            return;
+
+        }
 
         // Get transfer plan to list tables
         const [planResult, planErr] = await getTransferPlan(activeConfig, config, {});
@@ -351,6 +397,21 @@ export function DbTransferScreen({ params: _params }: ScreenProps): ReactElement
 
         if (item.value === '__import__') {
 
+            // Import writes into the active config, so it is gated against
+            // that one rather than a destination selection.
+            const importCheck = activeConfig
+                ? checkConfigPolicy('user', activeConfig, 'db:reset')
+                : null;
+
+            if (importCheck && !importCheck.allowed) {
+
+                setError(importCheck.blockedReason ?? `Import into "${activeConfigName}" is not allowed.`);
+                setPhase('error');
+
+                return;
+
+            }
+
             setTransferMode('import');
             setPhase('import-file');
 
@@ -369,7 +430,7 @@ export function DbTransferScreen({ params: _params }: ScreenProps): ReactElement
         setTransferMode('db-to-db');
         setDestConfigName(item.value);
 
-    }, []);
+    }, [activeConfig, activeConfigName, navigate]);
 
     // Handle table selection toggle
     const handleTableToggle = useCallback((item: SelectListItem<string>) => {
@@ -477,7 +538,16 @@ export function DbTransferScreen({ params: _params }: ScreenProps): ReactElement
     }, [activeConfig, destConfig, selectAllTables, selectedTables, conflictStrategy, truncateFirst]);
 
     // Handle conflict strategy selection
-    const handleConflictSelect = useCallback((item: SelectListItem<ConflictStrategy>) => {
+    const handleConflictSelect = useCallback((item: SelectListItem<ConflictStrategy | '__truncate__'>) => {
+
+        // Toggling stays on the options step; only a strategy advances.
+        if (item.value === '__truncate__') {
+
+            setTruncateFirst((prev) => !prev);
+
+            return;
+
+        }
 
         setConflictStrategy(item.value);
 
@@ -508,6 +578,7 @@ export function DbTransferScreen({ params: _params }: ScreenProps): ReactElement
             tables,
             onConflict: conflictStrategy,
             truncateFirst,
+            dryRun: globalModes.dryRun,
             channel: 'user',
         };
 
@@ -525,7 +596,7 @@ export function DbTransferScreen({ params: _params }: ScreenProps): ReactElement
 
         }
 
-    }, [activeConfig, destConfig, selectAllTables, selectedTables, conflictStrategy, truncateFirst, resetProgress]);
+    }, [activeConfig, destConfig, selectAllTables, selectedTables, conflictStrategy, truncateFirst, globalModes.dryRun, resetProgress]);
 
     // Execute export
     const executeExport = useCallback(async () => {
@@ -809,14 +880,19 @@ export function DbTransferScreen({ params: _params }: ScreenProps): ReactElement
             <Box flexDirection="column" gap={1}>
                 <Panel title="Data Transfer - Options" paddingX={1} paddingY={1}>
                     <Box flexDirection="column" gap={1}>
-                        <Text dimColor>How should conflicts be handled?</Text>
-                        <Box flexDirection="column" height={8}>
+                        <Text dimColor>Toggle truncate, then pick a conflict strategy to continue.</Text>
+                        {globalModes.dryRun && (
+                            <Text color="yellow" bold>
+                                DRY RUN MODE - the transfer will be validated, not executed
+                            </Text>
+                        )}
+                        <Box flexDirection="column" height={10}>
                             <SelectList
                                 focusLabel="DbTransferOptionsSelect"
-                                items={conflictItems}
+                                items={optionItems}
                                 onSelect={handleConflictSelect}
                                 onCancel={() => setPhase('select-tables')}
-                                visibleCount={4}
+                                visibleCount={5}
                             />
                         </Box>
                     </Box>
@@ -1128,8 +1204,12 @@ export function DbTransferScreen({ params: _params }: ScreenProps): ReactElement
                         </Box>
                     </Panel>
 
-                    <Confirm
+                    <SmartConfirm
                         focusLabel="DbTransferConfirm"
+                        requiresConfirmation={writeCheck?.requiresConfirmation ?? false}
+                        confirmationPhrase={writeCheck?.confirmationPhrase}
+                        configName={activeConfigName ?? 'unknown'}
+                        action="import data into"
                         message="Start import?"
                         onConfirm={executeImport}
                         onCancel={() => setPhase('import-preview')}
@@ -1157,8 +1237,12 @@ export function DbTransferScreen({ params: _params }: ScreenProps): ReactElement
                     </Box>
                 </Panel>
 
-                <Confirm
+                <SmartConfirm
                     focusLabel="DbTransferConfirm"
+                    requiresConfirmation={writeCheck?.requiresConfirmation ?? false}
+                    confirmationPhrase={writeCheck?.confirmationPhrase}
+                    configName={destConfigName ?? 'unknown'}
+                    action="transfer data into"
                     message="Start transfer?"
                     onConfirm={executeTransfer}
                     onCancel={() => setPhase('plan')}
