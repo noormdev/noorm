@@ -1,8 +1,48 @@
 /**
  * Access policy: classifyStatements.
+ *
+ * Tests whose name claims a classification path call `classifyVia`, which
+ * asserts the claim. They used to just call `classifyStatements` and trust
+ * the name — so a CST/fallback divergence, which is the shape of every
+ * classifier bypass the v1 audit found, could not fail any of them. The
+ * adversarial input set lives in `classify-corpus.test.ts`.
  */
 import { describe, it, expect } from 'bun:test';
+import { attemptSync } from '@logosdx/utils';
+import { parse } from 'sql-parser-cst';
+
 import { classifyStatements } from '../../../src/core/policy/index.js';
+import type { SqlClass } from '../../../src/core/policy/index.js';
+import type { Dialect } from '../../../src/core/connection/types.js';
+
+/** sql-parser-cst grammar per noorm dialect — mirrors `DIALECT_MAP` in classify.ts. */
+const CST_DIALECT: Record<Dialect, 'sqlite' | 'postgresql' | 'mysql'> = {
+    sqlite: 'sqlite',
+    postgres: 'postgresql',
+    mysql: 'mysql',
+    mssql: 'postgresql',
+};
+
+/**
+ * Classifies `sql`, first asserting it takes the `expectedPath`.
+ *
+ * @param expectedPath - `cst` when the parser accepts the input, `fallback`
+ * when it throws and keyword analysis takes over.
+ */
+function classifyVia(expectedPath: 'cst' | 'fallback', sql: string, dialect: Dialect): SqlClass {
+
+    const [, err] = attemptSync(() => parse(sql.trim(), {
+        dialect: CST_DIALECT[dialect],
+        includeComments: false,
+        includeSpaces: false,
+        includeNewlines: false,
+    }));
+
+    expect(err ? 'fallback' : 'cst').toBe(expectedPath);
+
+    return classifyStatements(sql, dialect);
+
+}
 
 describe('policy: classifyStatements', () => {
 
@@ -34,13 +74,13 @@ describe('policy: classifyStatements', () => {
 
         it('should classify DESCRIBE as read on mssql (keyword fallback)', () => {
 
-            expect(classifyStatements('DESCRIBE users', 'mssql')).toBe('read');
+            expect(classifyVia('fallback', 'DESCRIBE users', 'mssql')).toBe('read');
 
         });
 
         it('should classify DESC as read on mssql (keyword fallback)', () => {
 
-            expect(classifyStatements('DESC users', 'mssql')).toBe('read');
+            expect(classifyVia('fallback', 'DESC users', 'mssql')).toBe('read');
 
         });
 
@@ -123,9 +163,19 @@ describe('policy: classifyStatements', () => {
 
         });
 
-        it('should classify INSERT as write on mssql (keyword fallback)', () => {
+        // Named "(keyword fallback)" before `classifyVia` existed to check the
+        // claim: plain INSERT is valid postgres, so on mssql it takes the CST
+        // path like everywhere else. The OUTPUT clause below is the genuinely
+        // mssql-only form that reaches the fallback.
+        it('should classify INSERT as write on mssql (parses via CST)', () => {
 
-            expect(classifyStatements("INSERT INTO users (name) VALUES ('alice')", 'mssql')).toBe('write');
+            expect(classifyVia('cst', "INSERT INTO users (name) VALUES ('alice')", 'mssql')).toBe('write');
+
+        });
+
+        it('should classify INSERT ... OUTPUT as write on mssql (keyword fallback)', () => {
+
+            expect(classifyVia('fallback', "INSERT INTO users (name) OUTPUT INSERTED.id VALUES ('alice')", 'mssql')).toBe('write');
 
         });
 
@@ -177,19 +227,21 @@ describe('policy: classifyStatements', () => {
 
         it('should classify CALL as ddl (postgres, parses via CST)', () => {
 
-            expect(classifyStatements('CALL my_proc(1, 2)', 'postgres')).toBe('ddl');
+            expect(classifyVia('cst', 'CALL my_proc(1, 2)', 'postgres')).toBe('ddl');
 
         });
 
         it('should classify EXEC as ddl on mssql (keyword fallback)', () => {
 
-            expect(classifyStatements('EXEC sp_who2', 'mssql')).toBe('ddl');
+            expect(classifyVia('fallback', 'EXEC sp_who2', 'mssql')).toBe('ddl');
 
         });
 
-        it('should classify EXECUTE as ddl on mssql (keyword fallback)', () => {
+        // `EXECUTE` is postgres syntax too (for prepared statements), so this
+        // one parses; only the `EXEC` abbreviation above reaches the fallback.
+        it('should classify EXECUTE as ddl on mssql (parses via CST)', () => {
 
-            expect(classifyStatements('EXECUTE sp_help', 'mssql')).toBe('ddl');
+            expect(classifyVia('cst', 'EXECUTE sp_help', 'mssql')).toBe('ddl');
 
         });
 
@@ -210,19 +262,19 @@ describe('policy: classifyStatements', () => {
 
         it('should classify SELECT ... INTO new_table as ddl (postgres, CST path)', () => {
 
-            expect(classifyStatements('SELECT * INTO new_table FROM users', 'postgres')).toBe('ddl');
+            expect(classifyVia('cst', 'SELECT * INTO new_table FROM users', 'postgres')).toBe('ddl');
 
         });
 
         it('should classify SELECT ... INTO #tmp as ddl on mssql (keyword fallback)', () => {
 
-            expect(classifyStatements('SELECT * INTO #tmp FROM users', 'mssql')).toBe('ddl');
+            expect(classifyVia('fallback', 'SELECT * INTO #tmp FROM users', 'mssql')).toBe('ddl');
 
         });
 
         it('should classify SELECT ... INTO OUTFILE as ddl on mysql (CST path)', () => {
 
-            expect(classifyStatements("SELECT * FROM users INTO OUTFILE '/tmp/x'", 'mysql')).toBe('ddl');
+            expect(classifyVia('cst', "SELECT * FROM users INTO OUTFILE '/tmp/x'", 'mysql')).toBe('ddl');
 
         });
 
@@ -254,13 +306,13 @@ describe('policy: classifyStatements', () => {
 
         it('should classify WITH ... SELECT as read (CST, postgres)', () => {
 
-            expect(classifyStatements('WITH cte AS (SELECT 1) SELECT * FROM cte', 'postgres')).toBe('read');
+            expect(classifyVia('cst', 'WITH cte AS (SELECT 1) SELECT * FROM cte', 'postgres')).toBe('read');
 
         });
 
         it('should classify WITH ... INSERT as write (CST, postgres)', () => {
 
-            expect(classifyStatements(
+            expect(classifyVia('cst',
                 'WITH cte AS (SELECT 1) INSERT INTO t SELECT * FROM cte',
                 'postgres',
             )).toBe('write');
@@ -269,7 +321,7 @@ describe('policy: classifyStatements', () => {
 
         it('should classify WITH ... SELECT as read via keyword fallback (mssql-only syntax)', () => {
 
-            expect(classifyStatements(
+            expect(classifyVia('fallback',
                 'WITH cte AS (SELECT TOP 1 * FROM t) SELECT * FROM cte',
                 'mssql',
             )).toBe('read');
@@ -278,7 +330,7 @@ describe('policy: classifyStatements', () => {
 
         it('should classify WITH ... DELETE as write via keyword fallback (mssql-only syntax)', () => {
 
-            expect(classifyStatements(
+            expect(classifyVia('fallback',
                 'WITH cte AS (SELECT TOP 1 * FROM t) DELETE FROM cte',
                 'mssql',
             )).toBe('write');
@@ -291,7 +343,7 @@ describe('policy: classifyStatements', () => {
 
         it('should classify WITH t AS (DELETE ... RETURNING ...) SELECT as write (CST, postgres)', () => {
 
-            expect(classifyStatements(
+            expect(classifyVia('cst',
                 'WITH t AS (DELETE FROM users WHERE id=1 RETURNING id) SELECT * FROM t',
                 'postgres',
             )).toBe('write');
@@ -300,7 +352,7 @@ describe('policy: classifyStatements', () => {
 
         it('should classify WITH t AS (INSERT ... RETURNING ...) SELECT as write (CST, postgres)', () => {
 
-            expect(classifyStatements(
+            expect(classifyVia('cst',
                 "WITH t AS (INSERT INTO users(name) VALUES ('x') RETURNING id) SELECT * FROM t",
                 'postgres',
             )).toBe('write');
@@ -309,7 +361,7 @@ describe('policy: classifyStatements', () => {
 
         it('should classify WITH t AS (UPDATE ... RETURNING ...) SELECT as write (CST, postgres)', () => {
 
-            expect(classifyStatements(
+            expect(classifyVia('cst',
                 "WITH t AS (UPDATE users SET name='y' WHERE id=1 RETURNING id) SELECT * FROM t",
                 'postgres',
             )).toBe('write');
@@ -318,7 +370,7 @@ describe('policy: classifyStatements', () => {
 
         it('should classify WITH t AS (DELETE ...) SELECT as write via keyword fallback (mssql TOP forces fallback)', () => {
 
-            expect(classifyStatements(
+            expect(classifyVia('fallback',
                 'WITH t AS (DELETE TOP (1) FROM users) SELECT * FROM t',
                 'mssql',
             )).toBe('write');
@@ -327,13 +379,13 @@ describe('policy: classifyStatements', () => {
 
         it('should still classify a pure WITH t AS (SELECT ...) SELECT as read (CST, postgres — no false positive)', () => {
 
-            expect(classifyStatements('WITH t AS (SELECT 1) SELECT * FROM t', 'postgres')).toBe('read');
+            expect(classifyVia('cst', 'WITH t AS (SELECT 1) SELECT * FROM t', 'postgres')).toBe('read');
 
         });
 
         it('should still classify a pure WITH t AS (SELECT ...) SELECT as read via keyword fallback (mssql — no false positive)', () => {
 
-            expect(classifyStatements(
+            expect(classifyVia('fallback',
                 'WITH t AS (SELECT TOP 1 * FROM t) SELECT * FROM t',
                 'mssql',
             )).toBe('read');
@@ -346,13 +398,13 @@ describe('policy: classifyStatements', () => {
 
         it('should classify SELECT pg_terminate_backend(...) as write (CST, postgres)', () => {
 
-            expect(classifyStatements('SELECT pg_terminate_backend(123)', 'postgres')).toBe('write');
+            expect(classifyVia('cst', 'SELECT pg_terminate_backend(123)', 'postgres')).toBe('write');
 
         });
 
         it('should classify SELECT pg_terminate_backend(...) as write via keyword fallback (mssql TOP forces fallback)', () => {
 
-            expect(classifyStatements('SELECT TOP 1 pg_terminate_backend(123)', 'mssql')).toBe('write');
+            expect(classifyVia('fallback', 'SELECT TOP 1 pg_terminate_backend(123)', 'mssql')).toBe('write');
 
         });
 
@@ -425,7 +477,7 @@ describe('policy: classifyStatements', () => {
 
         it('should classify a CTE with a SELECT final statement containing a subquery as read via keyword fallback (mssql)', () => {
 
-            expect(classifyStatements(
+            expect(classifyVia('fallback',
                 'WITH t AS (SELECT TOP 1 * FROM x) SELECT * FROM users WHERE id IN (SELECT id FROM t)',
                 'mssql',
             )).toBe('read');
@@ -434,7 +486,7 @@ describe('policy: classifyStatements', () => {
 
         it('should classify a CTE with a DELETE final statement containing a subquery as write via keyword fallback (mssql), not over-denied to ddl', () => {
 
-            expect(classifyStatements(
+            expect(classifyVia('fallback',
                 'WITH t AS (SELECT TOP 1 * FROM x) DELETE FROM users WHERE id IN (SELECT id FROM t)',
                 'mssql',
             )).toBe('write');
