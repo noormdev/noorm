@@ -10,7 +10,7 @@ import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { attempt, clone, merge, makeNestedConfig } from '@logosdx/utils';
 
 import { observer } from '../observer.js';
-import { parseSettings } from './schema.js';
+import { parseSettings, validateSettings } from './schema.js';
 import {
     DEFAULT_SETTINGS,
     SETTINGS_DIR_PATH,
@@ -1037,7 +1037,16 @@ export class SettingsManager {
      */
     #refreshResolved(): void {
 
-        this.#settings = merge(clone(this.#document!), allSettingsEnv()) as Settings;
+        const merged = merge(clone(this.#document!), allSettingsEnv());
+
+        // Validated, not re-parsed: the overlay lands after the document was
+        // parsed, so env values arrive unchecked, and a scalar in an array
+        // field (NOORM_BUILD_INCLUDE=00_tables) used to be iterated character
+        // by character and silently match nothing. Asserting rather than
+        // transforming keeps the view shaped exactly like the document.
+        validateSettings(merged);
+
+        this.#settings = merged as Settings;
 
     }
 

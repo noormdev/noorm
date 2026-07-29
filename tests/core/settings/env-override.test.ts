@@ -26,6 +26,7 @@ describe('settings: env overrides', () => {
         'NOORM_DB_PASSWORD',
         'NOORM_API_KEY',
         'NOORM_FOO_BAR',
+        'NOORM_BUILD_INCLUDE',
     ];
 
     beforeEach(async () => {
@@ -117,6 +118,31 @@ describe('settings: env overrides', () => {
 
         expect((settings as Record<string, unknown>)['config']).toBeUndefined();
         expect((settings as Record<string, unknown>)['yes']).toBeUndefined();
+
+    });
+
+    /**
+     * The overlay is merged after parseSettings, so nothing type-checked it.
+     * A scalar landing in an array field was iterated character by character:
+     * `NOORM_BUILD_INCLUDE=00_tables` became ['0','0','_','t',...], matched
+     * no files, and still reported success with exit 0.
+     */
+    it('should reject a scalar env value where the schema wants an array', async () => {
+
+        process.env['NOORM_BUILD_INCLUDE'] = '00_tables';
+
+        const manager = new SettingsManager(testDir);
+
+        let caught: Error | null = null;
+
+        await manager.load().catch((err: Error) => {
+
+            caught = err;
+
+        });
+
+        expect(caught).not.toBeNull();
+        expect((caught as unknown as Error).message).toMatch(/array/i);
 
     });
 
