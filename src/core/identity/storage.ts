@@ -216,7 +216,16 @@ export async function loadIdentityMetadata(): Promise<CryptoIdentity | null> {
  *
  * Returns the in-memory override if set, otherwise reads from disk.
  *
+ * A missing file is "no identity yet" (null). A file that exists but does not
+ * hold well-formed key material is a hard error, not a null: silently passing
+ * corrupted bytes downstream lets `deriveStateKey` truncate them to a
+ * degenerate input and encrypt state under a publicly computable key. A
+ * partially-synced or truncated key file is otherwise undetectable, since
+ * nothing verifies `identity.key` against the sibling `identity.pub`.
+ *
  * @returns Private key as hex string, or null if not found
+ *
+ * @throws Error if the key file exists but is corrupted or has unsafe permissions
  *
  * @example
  * ```typescript
@@ -259,7 +268,18 @@ export async function loadPrivateKey(): Promise<string | null> {
 
     }
 
-    return content.trim();
+    const privateKey = content.trim();
+
+    if (!isValidKeyHex(privateKey)) {
+
+        throw new Error(
+            `Corrupted private key file (${PRIVATE_KEY_PATH}): contents are not hex-encoded X25519 key material. ` +
+            'Restore it from your backup — state encrypted under a different key cannot be recovered by regenerating one.',
+        );
+
+    }
+
+    return privateKey;
 
 }
 
@@ -454,8 +474,24 @@ let keyOverride: string | null = null;
  * Called once at process startup (in `cli/index.ts entry()`) when CI
  * env vars are detected. After this, `loadPrivateKey()` returns
  * the env key for the lifetime of the process.
+ *
+ * Validated for the same reason `loadPrivateKey()` validates the disk file:
+ * whatever lands here flows straight into `deriveStateKey`, and malformed
+ * key material silently derives a publicly computable encryption key. This
+ * is a public export, so the env loader's own check is not sufficient.
+ *
+ * @throws Error if the key is not well-formed hex key material
  */
 export function setKeyOverride(key: string): void {
+
+    if (!isValidKeyHex(key)) {
+
+        throw new Error(
+            'Invalid private key override: expected a hex-encoded X25519 key ' +
+            '(96 hex characters). Check NOORM_IDENTITY_PRIVATE_KEY.',
+        );
+
+    }
 
     keyOverride = key;
 
