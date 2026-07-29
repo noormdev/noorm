@@ -50,7 +50,11 @@ describe('integration: sdk truncate preserve', () => {
         await skipIfNoContainer('postgres');
 
         const config = makeTestConfig('pg_sdk_preserve', TEST_CONNECTIONS.postgres);
-        ctx = new Context(config, settingsWithPreserve, { name: 'tester', source: 'system' }, {}, '/tmp/test');
+
+        // Pre-confirmed: these cases are about preserve-list plumbing, and
+        // db:truncate/db:teardown are confirm cells even for admin, so
+        // without `yes` every one of them would stop at the access gate.
+        ctx = new Context(config, settingsWithPreserve, { name: 'tester', source: 'system' }, { yes: true }, '/tmp/test');
         await ctx.connect();
 
     }, 30_000);
