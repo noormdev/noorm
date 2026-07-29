@@ -5,13 +5,49 @@
  * path, discovers all matching SQL files, and executes them sequentially.
  */
 import path from 'node:path';
-import { stat } from 'node:fs/promises';
+import { glob as nodeGlob, stat } from 'node:fs/promises';
 
 import { defineCommand } from 'citty';
 import { attempt } from '@logosdx/utils';
 
-import { withContext, outputResult, sharedArgs } from '../_utils.js';
+import { withContext, outputResult, outputError, sharedArgs } from '../_utils.js';
+import { EXIT, exitCodeForStatus } from '../_exit.js';
 import { discoverFiles } from '../../core/runner/index.js';
+
+/**
+ * Expand a glob to absolute paths under `cwd`, on whichever runtime is hosting us.
+ *
+ * `run exec` was the only CLI command that hard-required the `Bun` global, so
+ * it died with `Bun is not defined` on the documented Node dev entry (and in
+ * the `tests/cli` harness, which spawns `node dist/cli/index.js`) before doing
+ * any work. Bun's own Glob stays the primary path so the compiled binary keeps
+ * its existing matching semantics exactly.
+ */
+async function expandGlob(pattern: string, cwd: string): Promise<string[]> {
+
+    const matches: string[] = [];
+
+    if (typeof Bun !== 'undefined') {
+
+        for await (const match of new Bun.Glob(pattern).scan({ cwd, absolute: true, onlyFiles: true })) {
+
+            matches.push(match);
+
+        }
+
+        return matches;
+
+    }
+
+    for await (const match of nodeGlob(pattern, { cwd })) {
+
+        matches.push(path.isAbsolute(match) ? match : path.join(cwd, match));
+
+    }
+
+    return matches;
+
+}
 
 /**
  * Resolve a path argument (directory or glob) to an array of absolute SQL file paths.
@@ -35,21 +71,11 @@ async function resolveInputPaths(input: string, cwd: string): Promise<string[]> 
 
     }
 
-    // Treat as glob pattern
-    const glob = new Bun.Glob(input);
-    const matches: string[] = [];
+    const matches = await expandGlob(input, cwd);
 
-    for await (const match of glob.scan({ cwd, absolute: true, onlyFiles: true })) {
-
-        if (match.endsWith('.sql') || match.endsWith('.sql.tmpl')) {
-
-            matches.push(match);
-
-        }
-
-    }
-
-    return matches.sort();
+    return matches
+        .filter((match) => match.endsWith('.sql') || match.endsWith('.sql.tmpl'))
+        .sort();
 
 }
 
@@ -75,17 +101,20 @@ const execCommand = defineCommand({
 
         const [filepaths, resolveErr] = await attempt(() => resolveInputPaths(args.path, cwd));
 
+        // outputError, not a bare stderr write: under `--json` these two exits
+        // used to produce an empty stdout, so a pipeline parsing the envelope
+        // got nothing to parse and no `success: false` to key off.
         if (resolveErr || !filepaths) {
 
-            process.stderr.write(`Error: Failed to resolve paths: ${resolveErr?.message ?? 'Unknown error'}\n`);
-            process.exit(1);
+            outputError(args, `Failed to resolve paths: ${resolveErr?.message ?? 'Unknown error'}`);
+            process.exit(EXIT.FAILURE);
 
         }
 
         if (filepaths.length === 0) {
 
-            process.stderr.write(`Error: No SQL files found matching: ${args.path}\n`);
-            process.exit(1);
+            outputError(args, `No SQL files found matching: ${args.path}`);
+            process.exit(EXIT.USAGE);
 
         }
 
@@ -153,7 +182,7 @@ const execCommand = defineCommand({
 
         }
 
-        process.exit(result.status === 'success' ? 0 : 2);
+        process.exit(exitCodeForStatus(result.status));
 
     },
 });
