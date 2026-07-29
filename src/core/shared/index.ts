@@ -9,7 +9,7 @@
 export { getSqlErrorMessage } from './errors.js';
 
 // Files
-export { filterFilesByPaths, findUnmatchedIncludePatterns } from './files.js';
+export { filterFilesByPaths, findUnmatchedIncludePatterns, findUnmatchedExcludePatterns } from './files.js';
 
 // Dialect quoting
 export { createDialectQuoting, type DialectQuoting } from './dialect-quoting.js';

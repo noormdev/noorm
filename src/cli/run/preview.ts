@@ -14,10 +14,11 @@
 import { join } from 'node:path';
 
 import { defineCommand } from 'citty';
-import { attempt } from '@logosdx/utils';
+import { attempt, attemptSync } from '@logosdx/utils';
 
 import { outputError, outputResult, sharedArgs } from '../_utils.js';
 import { processFile } from '../../core/template/engine.js';
+import { assertPolicy } from '../../core/policy/index.js';
 import { getStateManager } from '../../core/state/index.js';
 import { resolveRenderSecrets, RENDER_SECRETS_NOTICE } from './_render-secrets.js';
 
@@ -53,6 +54,25 @@ const previewCommand = defineCommand({
 
         const activeConfigName = args.config ?? stateManager.getActiveConfigName();
         const activeConfig = activeConfigName ? stateManager.getConfig(activeConfigName) : undefined;
+
+        // Before secrets are resolved and before the template is touched:
+        // the output is this config's secrets in plaintext, and producing it
+        // runs the template's helper and side-car scripts. With no config
+        // there is nothing config-scoped to protect — `resolveRenderSecrets`
+        // returns an empty set for that case.
+        if (activeConfig) {
+
+            const [, policyErr] = attemptSync(() => assertPolicy('user', activeConfig, 'run:file'));
+
+            if (policyErr) {
+
+                outputError(args, policyErr.message);
+                process.exit(1);
+
+            }
+
+        }
+
         const { secrets, vaultProbeFailed } = await resolveRenderSecrets(stateManager, activeConfigName);
 
         // Render the template

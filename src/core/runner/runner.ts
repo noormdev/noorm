@@ -348,6 +348,15 @@ export async function runFiles(
  *
  * Useful for debugging templates and verifying SQL before execution.
  *
+ * "Without executing" describes the *SQL*, not the render: producing the
+ * output resolves every secret tier into plaintext and runs whatever
+ * `$helpers` and referenced side-car scripts the template pulls in. Gated
+ * on `run:file` so the role denied every `run:*` permission cannot reach
+ * either. `run:file` is the closest existing cell — a dedicated
+ * `run:preview` row (viewer deny, operator/admin allow) belongs in the
+ * matrix so a read-only path stops inheriting `run:file`'s confirm
+ * semantics.
+ *
  * @param context - Run context
  * @param filepaths - Files to preview
  * @param output - Optional output file path
@@ -358,6 +367,8 @@ export async function preview(
     filepaths: string[],
     output?: string | null,
 ): Promise<FileResult[]> {
+
+    assertRunPolicy(context, 'run:file');
 
     const results: FileResult[] = [];
     const rendered: string[] = [];
@@ -447,6 +458,10 @@ export async function checkFilesStatus(
     context: RunContext,
     files: string[],
 ): Promise<FilesStatusResult> {
+
+    // Renders every file to compute its checksum, so it carries the same
+    // secret-resolution and script-execution exposure as `preview`.
+    assertRunPolicy(context, 'run:file');
 
     const tracker = new Tracker(context.db, context.configName, context.dialect ?? 'postgres');
     const results: FileStatusResult[] = [];
@@ -950,6 +965,10 @@ async function executeSingleFileWithUpdate(
                 skipReason: needsRunResult.skipReason,
             };
 
+            // The rendered checksum is written even on a skip: the pending
+            // row seeded by createFileRecords holds the raw file hash, and
+            // it is the newest row the *next* build will compare against.
+            // Leaving it raw makes the file re-run one build later.
             await tracker.updateFileExecution(
                 operationId,
                 relFilepath,
@@ -957,6 +976,7 @@ async function executeSingleFileWithUpdate(
                 0,
                 undefined,
                 needsRunResult.skipReason,
+                finalChecksum,
             );
 
             observer.emit('file:skip', {
@@ -993,6 +1013,8 @@ async function executeSingleFileWithUpdate(
             'failed',
             Math.round(durationMs),
             error,
+            undefined,
+            finalChecksum,
         );
 
         observer.emit('file:after', {
@@ -1019,6 +1041,9 @@ async function executeSingleFileWithUpdate(
         relFilepath,
         'success',
         Math.round(durationMs),
+        undefined,
+        undefined,
+        finalChecksum,
     );
 
     observer.emit('file:after', {
@@ -1333,6 +1358,7 @@ async function executeDryRun(context: RunContext, files: string[]): Promise<File
             status: 'success',
             durationMs,
             renderedSql: sqlContent,
+            outputPath,
         });
 
     }
@@ -1361,6 +1387,11 @@ function getDryRunOutputPath(projectRoot: string, filepath: string): string {
 
 /**
  * Write rendered SQL to tmp/ directory for dry run.
+ *
+ * Owner-only permissions on both the file and any directory created for
+ * it: the rendered output contains every secret the template resolved, in
+ * plaintext, and `noorm init` does not gitignore `tmp/`. Nothing about a
+ * dry run should be more readable than `.noorm/state/state.enc`.
  */
 async function writeDryRunOutput(
     projectRoot: string,
@@ -1372,10 +1403,10 @@ async function writeDryRunOutput(
 
     // Ensure directory exists
     const outputDir = path.dirname(outputPath);
-    await mkdir(outputDir, { recursive: true });
+    await mkdir(outputDir, { recursive: true, mode: 0o700 });
 
     // Write file
-    await fsWriteFile(outputPath, content, 'utf-8');
+    await fsWriteFile(outputPath, content, { encoding: 'utf-8', mode: 0o600 });
 
 }
 

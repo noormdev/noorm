@@ -115,9 +115,51 @@ export function findUnmatchedIncludePatterns(
     include: string[],
 ): string[] {
 
+    return findUnmatchedPatterns(files, baseDir, include);
+
+}
+
+/**
+ * Returns the exclude patterns that match none of the discovered files.
+ *
+ * The mirror of `findUnmatchedIncludePatterns`, and the more dangerous half.
+ * A mistyped `include` over-restricts and announces itself — the build runs
+ * nothing. A mistyped `exclude` under-restricts: the archived migrations,
+ * the seed data, the destructive DDL you fenced off all execute against the
+ * target database, and the build reports plain success.
+ *
+ * An empty `exclude` means "fence nothing off", so it never reports an entry.
+ *
+ * @example
+ * ```typescript
+ * findUnmatchedExcludePatterns(files, '/project/sql', ['sql/10_seeds'])
+ * // ['sql/10_seeds'] -- the sql/ prefix was repeated, so nothing was excluded
+ * ```
+ */
+export function findUnmatchedExcludePatterns(
+    files: string[],
+    baseDir: string,
+    exclude: string[],
+): string[] {
+
+    return findUnmatchedPatterns(files, baseDir, exclude);
+
+}
+
+/**
+ * Shared body for the include/exclude unmatched checks — the matching rule
+ * has to stay identical to `filterFilesByPaths`'s, and two copies of it
+ * would be two chances to drift.
+ */
+function findUnmatchedPatterns(
+    files: string[],
+    baseDir: string,
+    patterns: string[],
+): string[] {
+
     const relativePaths = files.map((file) => relative(baseDir, file));
 
-    return include.filter((pattern) => {
+    return patterns.filter((pattern) => {
 
         const normalized = normalizePattern(pattern);
 

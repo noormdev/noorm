@@ -9,7 +9,10 @@
  */
 import { describe, it, expect } from 'bun:test';
 import path from 'node:path';
+import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { buildContext } from '../../../src/core/template/context.js';
+import { findHelperFiles } from '../../../src/core/template/helpers.js';
 
 const FIXTURES_DIR = path.join(import.meta.dirname, 'fixtures/security');
 const PROJECT_ROOT = path.join(FIXTURES_DIR, 'project');
@@ -96,6 +99,51 @@ describe('template: security', () => {
             await expect(
                 ctx.include('./subdir/../../outside/secret.sql'),
             ).rejects.toThrow('Include path escapes project root');
+
+        });
+
+        it('should reject a sibling directory whose name shares the root prefix', async () => {
+
+            const ctx = await buildContext(TEMPLATE_PATH, {
+                projectRoot: PROJECT_ROOT,
+            });
+
+            // Every case above walks *up* past the root, which a plain
+            // string prefix compare catches. `<root>-evil` is outside the
+            // project by any reasonable reading and still satisfies
+            // `startsWith(root)` — the containment check has to be
+            // path-segment aware, not textual.
+            await expect(
+                ctx.include('../project-evil/secret.sql'),
+            ).rejects.toThrow('Include path escapes project root');
+
+        });
+
+    });
+
+    describe('$helpers tree walk containment', () => {
+
+        it('should not collect $helpers from a sibling sharing the root prefix', async () => {
+
+            // Same prefix-compare defect as include(), on the path that
+            // *executes* what it finds rather than inlining it.
+            const base = await mkdtemp(path.join(tmpdir(), 'noorm-helper-walk-'));
+            const root = path.join(base, 'project');
+            const sibling = path.join(base, 'project-evil');
+
+            await mkdir(path.join(root, 'sql'), { recursive: true });
+            await mkdir(path.join(sibling, 'sql'), { recursive: true });
+            await writeFile(
+                path.join(sibling, '$helpers.ts'),
+                'export const pwn = () => 1;\n',
+                'utf-8',
+            );
+
+            const found = await findHelperFiles(path.join(sibling, 'sql'), root);
+
+            expect(found).toEqual([]);
+
+            await rm(base, { recursive: true, force: true });
 
         });
 

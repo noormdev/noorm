@@ -13,11 +13,12 @@
 import { dirname, join, relative } from 'node:path';
 
 import { defineCommand } from 'citty';
-import { attempt } from '@logosdx/utils';
+import { attempt, attemptSync } from '@logosdx/utils';
 
 import { outputError, outputResult, sharedArgs } from '../_utils.js';
 import { buildContext } from '../../core/template/context.js';
 import { loadHelpers } from '../../core/template/helpers.js';
+import { assertPolicy } from '../../core/policy/index.js';
 import { getStateManager } from '../../core/state/index.js';
 import { resolveRenderSecrets, RENDER_SECRETS_NOTICE } from './_render-secrets.js';
 
@@ -90,6 +91,23 @@ const inspectCommand = defineCommand({
 
         const activeConfigName = args.config ?? stateManager.getActiveConfigName();
         const activeConfig = activeConfigName ? stateManager.getConfig(activeConfigName) : undefined;
+
+        // inspect reports counts rather than secret values, but building the
+        // context still executes the template's helper and side-car scripts,
+        // so it needs the same gate as preview.
+        if (activeConfig) {
+
+            const [, policyErr] = attemptSync(() => assertPolicy('user', activeConfig, 'run:file'));
+
+            if (policyErr) {
+
+                outputError(args, policyErr.message);
+                process.exit(1);
+
+            }
+
+        }
+
         const { secrets, vaultProbeFailed } = await resolveRenderSecrets(stateManager, activeConfigName);
 
         // Load context and helpers in parallel

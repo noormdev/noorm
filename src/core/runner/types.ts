@@ -162,6 +162,15 @@ export interface FileResult {
 
     /** Rendered SQL (only in preview mode) */
     renderedSql?: string;
+
+    /**
+     * Where a dry run wrote this file's rendered SQL.
+     *
+     * Carried on the result so `--json` consumers learn that plaintext —
+     * including every resolved secret — was written, and where. In human
+     * mode the same information reaches the user through `file:dry-run`.
+     */
+    outputPath?: string;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -222,6 +231,16 @@ export interface BatchResult {
      * was wrong instead of reporting a silent, empty success.
      */
     unmatchedInclude?: string[];
+
+    /**
+     * `build.exclude` / `rules[].exclude` entries that matched no file.
+     *
+     * The dangerous direction. A bad `include` runs nothing and announces
+     * itself; a bad `exclude` fences off nothing, so the files the author
+     * meant to hold back execute against the target and the build still
+     * reports success.
+     */
+    unmatchedExclude?: string[];
 }
 
 // ─────────────────────────────────────────────────────────────

@@ -30,7 +30,11 @@ const buildCommand = defineCommand({
 
                         if (dryRun) {
 
+                            // Named explicitly because the rendered files carry
+                            // every secret the templates resolved, and `tmp/` is
+                            // not gitignored by a project noorm scaffolds.
                             logger.info('Dry run: rendering files to tmp/ (no DB writes)');
+                            logger.warn('Rendered files contain resolved secrets in plaintext — written owner-only, not gitignored.');
 
                         }
 
@@ -44,6 +48,21 @@ const buildCommand = defineCommand({
                                 res.unmatchedInclude.join(', '),
                             );
                             logger.warn('Include paths are relative to paths.sql — use `01_tables`, not `sql/01_tables`.');
+
+                        }
+
+                        // Louder than the include case on purpose: an entry
+                        // that excluded nothing means the files the author
+                        // fenced off just ran against the target database.
+                        if (res.unmatchedExclude?.length) {
+
+                            logger.warn(
+                                `Ignored ${res.unmatchedExclude.length} build.exclude entr` +
+                                `${res.unmatchedExclude.length === 1 ? 'y that matched' : 'ies that matched'} no files: ` +
+                                res.unmatchedExclude.join(', ') +
+                                ' — nothing was excluded, so those files ran.',
+                            );
+                            logger.warn('Exclude paths are relative to paths.sql — use `10_seeds`, not `sql/10_seeds`.');
 
                         }
 
@@ -62,7 +81,8 @@ const buildCommand = defineCommand({
                             }
                             else if (dryRun) {
 
-                                logger.info(`${file.filepath} (${file.status}, dry-run)`);
+                                const destination = file.outputPath ? ` -> ${file.outputPath}` : '';
+                                logger.info(`${file.filepath} (${file.status}, dry-run)${destination}`);
 
                             }
 
