@@ -18,6 +18,7 @@ import { observer } from '../observer.js';
 import type { CryptoIdentity, Identity, IdentityOptions } from './types.js';
 import { resolveIdentity as resolve } from './resolver.js';
 import { loadExistingIdentity } from './factory.js';
+import { getIdentityOverride } from './storage.js';
 import { registerIdentity } from './sync.js';
 
 // =============================================================================
@@ -152,7 +153,18 @@ export function clearIdentityCache(): void {
 /**
  * Get audit identity with config awareness.
  *
- * Convenience function that extracts the identity override from a config.
+ * This is the live audit path — the SDK calls it to decide what lands in
+ * `noorm.change.executed_by`. It therefore has to see the cryptographic
+ * identity, not just the config's string override: passing only
+ * `configIdentity` meant the identity that actually authenticated to the vault
+ * never appeared in the audit trail, and an unauthenticated `NOORM_IDENTITY`
+ * env var outranked it. The TUI already passed a crypto identity, so the same
+ * command attributed differently depending on the surface it ran from.
+ *
+ * `getIdentityOverride()` is the process-wide CI identity installed at startup
+ * once `NOORM_IDENTITY_*` is validated. It is read here rather than loaded
+ * because this function is synchronous by contract; a disk identity still has
+ * to be supplied by the caller through `getIdentityWithCrypto`.
  *
  * @example
  * ```typescript
@@ -162,7 +174,10 @@ export function clearIdentityCache(): void {
  */
 export function getIdentityForConfig(config: { identity?: string }): Identity {
 
-    return resolveIdentity({ configIdentity: config.identity });
+    return resolveIdentity({
+        configIdentity: config.identity,
+        cryptoIdentity: getIdentityOverride(),
+    });
 
 }
 

@@ -9,6 +9,8 @@ import {
     identityToString,
     getIdentityForConfig,
     getIdentityWithCrypto,
+    setIdentityOverride,
+    clearIdentityOverride,
 } from '../../../src/core/identity/index.js';
 import type { CryptoIdentity } from '../../../src/core/identity/types.js';
 
@@ -436,6 +438,94 @@ describe('identity: resolver', () => {
             expect(identity.name).toBe('Crypto User');
 
         });
+
+    });
+
+});
+
+/**
+ * `getIdentityForConfig` is the live path — it is what src/sdk/index.ts calls,
+ * so it decides what lands in `noorm.change.executed_by`. It used to pass only
+ * `configIdentity`, which meant the identity that actually authenticated to the
+ * vault never reached the audit trail: an enrolled CI bot's changes were
+ * attributed to the runner's git user or OS username (a08 F4), and a bare
+ * `NOORM_IDENTITY` env var outranked the cryptographic identity entirely
+ * (a08 F3). The TUI passed `cryptoIdentity` and the CLI/SDK did not, so the
+ * same command attributed differently per surface.
+ */
+describe('identity: getIdentityForConfig binds the enrolled identity', () => {
+
+    const enrolled: CryptoIdentity = {
+        identityHash: 'a'.repeat(64),
+        name: 'Audit Bot',
+        email: 'bot@ci.local',
+        publicKey: 'b'.repeat(88),
+        machine: 'ci',
+        os: 'env',
+        createdAt: '2026-07-29T00:00:00Z',
+    };
+
+    let envBackup: string | undefined;
+
+    beforeEach(() => {
+
+        envBackup = process.env['NOORM_IDENTITY'];
+        delete process.env['NOORM_IDENTITY'];
+        clearIdentityOverride();
+        clearIdentityCache();
+
+    });
+
+    afterEach(() => {
+
+        clearIdentityOverride();
+        clearIdentityCache();
+
+        if (envBackup === undefined) delete process.env['NOORM_IDENTITY'];
+        else process.env['NOORM_IDENTITY'] = envBackup;
+
+    });
+
+    it('attributes to the enrolled identity, not the git or OS user', () => {
+
+        setIdentityOverride(enrolled);
+
+        const identity = getIdentityForConfig({});
+
+        expect(identity.name).toBe('Audit Bot');
+        expect(identity.email).toBe('bot@ci.local');
+        expect(identity.source).toBe('state');
+
+    });
+
+    it('outranks the unauthenticated NOORM_IDENTITY env var', () => {
+
+        process.env['NOORM_IDENTITY'] = 'Chief Security Officer <cso@corp.example>';
+        setIdentityOverride(enrolled);
+
+        const identity = getIdentityForConfig({});
+
+        expect(identity.name).toBe('Audit Bot');
+        expect(identity.source).toBe('state');
+
+    });
+
+    it('still lets an explicit config identity win, since that is a deliberate override', () => {
+
+        setIdentityOverride(enrolled);
+
+        const identity = getIdentityForConfig({ identity: 'Deploy Bot <deploy@example.com>' });
+
+        expect(identity.name).toBe('Deploy Bot');
+        expect(identity.source).toBe('config');
+
+    });
+
+    it('falls back to git or system when no identity is enrolled', () => {
+
+        const identity = getIdentityForConfig({});
+
+        expect(['git', 'system']).toContain(identity.source);
 
     });
 
