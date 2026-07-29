@@ -10,12 +10,14 @@
  * noorm run inspect sql/core/05_Cron/Crons.sql.tmpl --json
  * ```
  */
+import { stat } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
 
 import { defineCommand } from 'citty';
 import { attempt, attemptSync } from '@logosdx/utils';
 
 import { outputError, outputResult, sharedArgs } from '../_utils.js';
+import { EXIT } from '../_exit.js';
 import { buildContext } from '../../core/template/context.js';
 import { loadHelpers } from '../../core/template/helpers.js';
 import { assertPolicy } from '../../core/policy/index.js';
@@ -77,6 +79,19 @@ const inspectCommand = defineCommand({
         const projectRoot = process.cwd();
         const fullPath = join(projectRoot, args.path);
         const templateDir = dirname(fullPath);
+
+        // buildContext only reads the template's *directory* for side-cars, so
+        // a missing template produced a fully-populated context and exit 0 —
+        // the command reported on a file that was never there. `run preview`
+        // fails on the same path because it actually opens the file.
+        const [stats] = await attempt(() => stat(fullPath));
+
+        if (!stats?.isFile()) {
+
+            outputError(args, `Template not found: ${args.path}`);
+            process.exit(EXIT.USAGE);
+
+        }
 
         // Load state for config + secrets
         const stateManager = getStateManager(projectRoot);
