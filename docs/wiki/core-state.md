@@ -66,5 +66,5 @@ Each config carries `access: ConfigAccess` (per-channel role pair, replacing the
 - `observer` is a module-scope singleton; `resetConnectionManager`/`resetSettingsManager`/`resetStateManager` are test-only reset points.
 - Stages in settings allow per-environment config overrides; `evaluateRules` applies them at runtime.
 - `initProjectContext` is the canonical startup sequence called by CLI entry and SDK `createContext`.
-- `Config.access` defaults to `{ user: 'admin', mcp: 'admin' }` (`OPEN_ACCESS`) when absent; a legacy `protected: true` maps to `{ user: 'operator', mcp: 'viewer' }` (`GUARDED_ACCESS`) — both constants live in [`src/core/policy/legacy-access.ts`](../../src/core/policy/legacy-access.ts).
+- `Config.access` defaults to `{ user: 'admin', mcp: 'viewer' }` (`DEFAULT_ACCESS`) when absent; a legacy `protected: true` maps to `{ user: 'operator', mcp: 'viewer' }` (`GUARDED_ACCESS`) — both constants live in [`src/core/policy/legacy-access.ts`](../../src/core/policy/legacy-access.ts).
 - `src/core/config/protection.ts` (hard-block rules for protected configs) was deleted — access enforcement now runs entirely through `core/policy`.

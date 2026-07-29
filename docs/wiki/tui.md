@@ -55,7 +55,7 @@ Ink/React-based terminal UI launched by `noorm ui`. Full-screen interactive inte
 - TUI is launched by [`src/cli/ui.ts`](../../src/cli/ui.ts) — CLI dependency.
 - `SmartConfirm`/`ProtectedConfirm` ([`src/tui/components/dialogs/`](../../src/tui/components/dialogs)) take `requiresConfirmation`/`confirmationPhrase` from a `PolicyCheck` (`checkConfigPolicy`, `core/policy`) instead of a config's `protected` flag — every destructive-action screen (change run/revert/ff, db create/destroy/teardown/truncate, config rm) calls `checkConfigPolicy` directly to build these props.
 - [`src/tui/utils/config-validation.ts`](../../src/tui/utils/config-validation.ts) builds `ConfigAccess` from the Add/Edit config forms' `userRole`/`mcpRole` select fields (`buildAccessFromValues`) — `ConfigAddScreen`/`ConfigEditScreen` replaced the old single `protected` checkbox with these two role selects.
-- [`src/tui/app-context.tsx`](../../src/tui/app-context.tsx) derives placeholder stage configs' `access` from `stage.defaults.protected` via `GUARDED_ACCESS`/`OPEN_ACCESS` (`core/policy`).
+- [`src/tui/app-context.tsx`](../../src/tui/app-context.tsx) derives placeholder stage configs' `access` from `stage.defaults.protected` via `GUARDED_ACCESS`/`DEFAULT_ACCESS` (`core/policy`).
 
 ## Conventions worth knowing
 

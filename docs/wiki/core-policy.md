@@ -16,7 +16,7 @@ Also owns raw-SQL statement classification (`read`/`write`/`ddl`, with a destruc
 - [`src/core/policy/matrix.ts`](../../src/core/policy/matrix.ts) — `MATRIX`; the hard-coded `Permission × Role → PolicyCell` table (not user-extensible), mirroring [`docs/spec/config-access-roles.md`](../spec/config-access-roles.md)
 - [`src/core/policy/check.ts`](../../src/core/policy/check.ts) — `checkPolicy`, `checkConfigPolicy`, `assertPolicy`, `guarded`, `confirmationPhraseFor`; the enforcement entrypoints every caller reaches for
 - [`src/core/policy/classify.ts`](../../src/core/policy/classify.ts) — `classifyStatements`; SQL-parser-cst-based statement classifier with a keyword-based fallback, a CTE-DML upgrade rule, and `DESTRUCTIVE_FUNCTIONS` denylist (e.g. `pg_terminate_backend`, `lo_import`, `setval`)
-- [`src/core/policy/legacy-access.ts`](../../src/core/policy/legacy-access.ts) — `resolveLegacyAccess`, `OPEN_ACCESS` (`{ user: 'admin', mcp: 'admin' }`), `GUARDED_ACCESS` (`{ user: 'operator', mcp: 'viewer' }`)
+- [`src/core/policy/legacy-access.ts`](../../src/core/policy/legacy-access.ts) — `resolveLegacyAccess`, `DEFAULT_ACCESS` (`{ user: 'admin', mcp: 'viewer' }`), `GUARDED_ACCESS` (`{ user: 'operator', mcp: 'viewer' }`)
 - [`src/core/policy/index.ts`](../../src/core/policy/index.ts) — barrel export for all of the above
 
 ## Docs
