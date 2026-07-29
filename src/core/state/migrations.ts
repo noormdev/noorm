@@ -41,9 +41,17 @@ export function migrateState(state: unknown, currentVersion: string): State {
     // Falls back to 0 (unversioned) for callers that skip that stage.
     const schemaVersion = typeof obj['schemaVersion'] === 'number' ? obj['schemaVersion'] : 0;
 
-    // Build migrated state with defaults for missing fields
-    // Note: identity is now stored globally in ~/.noorm/, not in project state
+    // `identity` is the one field deliberately dropped rather than carried:
+    // it moved to ~/.noorm/ and pre-move state files hold key material in
+    // it, so re-persisting it would keep a private key in state.enc forever.
+    const { identity: _legacyIdentity, ...carried } = obj;
+
+    // Everything else unknown is carried through. Rebuilding from a fixed
+    // allowlist made an older binary silently destroy any top-level field a
+    // newer one had added, and the truncated object was persisted straight
+    // back — so the loss was permanent the first time a downgrade ran.
     const migrated: State = {
+        ...carried,
         version: currentVersion,
         schemaVersion,
         knownUsers: (obj['knownUsers'] as Record<string, KnownUser>) ?? {},
@@ -78,9 +86,11 @@ export function needsMigration(state: unknown, currentVersion: string): boolean 
     // Version mismatch
     if (obj['version'] !== currentVersion) return true;
 
-    // Missing required fields (add new fields here as they're added)
+    // Missing required fields (add new fields here as they're added).
+    // Only fields `migrateState` actually writes belong here — a field it
+    // never writes makes this predicate permanently true, turning every
+    // load into a full re-encrypt and rewrite of state.enc.
     if (!('globalSecrets' in obj)) return true;
-    if (!('identity' in obj)) return true;
     if (!('knownUsers' in obj)) return true;
 
     return false;

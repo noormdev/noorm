@@ -16,6 +16,7 @@ import { generateKeyPair } from '../../../src/core/identity/crypto.js';
 import { encrypt, decrypt } from '../../../src/core/state/encryption/index.js';
 import type { EncryptedPayload } from '../../../src/core/state/types.js';
 import { guarded } from '../../../src/core/policy/index.js';
+import { observer } from '../../../src/core/observer.js';
 import { CURRENT_VERSIONS } from '../../../src/core/version/types.js';
 
 /**
@@ -325,6 +326,50 @@ describe('state: manager', () => {
                 user: 'operator',
                 mcp: 'viewer',
             });
+
+        });
+
+        it('should leave state.enc byte-identical when there is nothing to migrate', async () => {
+
+            // A load with no migration and no backfill must not write. When
+            // it does, every read-only command (`version`, `secret list`,
+            // `db explore`) becomes a full re-encrypt and rewrite, which
+            // both amplifies the window for a concurrent-write conflict and
+            // makes `state:persisted` meaningless as a change signal.
+            await state.load();
+            await state.setConfig('dev', createTestConfig('dev'));
+
+            const statePath = state.getStatePath();
+            const before = readFileSync(statePath, 'utf8');
+
+            const reader = new StateManager(tempDir, {
+                stateDir: '.test-state',
+                stateFile: 'state.enc',
+                privateKey: testPrivateKey,
+            });
+            await reader.load();
+
+            expect(readFileSync(statePath, 'utf8')).toBe(before);
+
+        });
+
+        it('should not emit state:persisted on a load with nothing to migrate', async () => {
+
+            await state.load();
+            await state.setConfig('dev', createTestConfig('dev'));
+
+            const persisted: unknown[] = [];
+            const off = observer.on('state:persisted', (data) => persisted.push(data));
+
+            const reader = new StateManager(tempDir, {
+                stateDir: '.test-state',
+                stateFile: 'state.enc',
+                privateKey: testPrivateKey,
+            });
+            await reader.load();
+            off();
+
+            expect(persisted).toHaveLength(0);
 
         });
 
