@@ -11,6 +11,7 @@ import type { Kysely } from 'kysely';
 
 import { fetchList, fetchDetail } from '../../core/explore/index.js';
 import { withContext, outputResult, outputError, sharedArgs } from '../_utils.js';
+import { EXIT } from '../_exit.js';
 
 const triggersCommand = defineCommand({
     meta: {
@@ -73,7 +74,7 @@ const triggersCommand = defineCommand({
             if (!detail) {
 
                 outputError(args, `Trigger not found: ${args.name}`);
-                process.exit(1);
+                process.exit(EXIT.USAGE);
 
             }
 
@@ -117,7 +118,7 @@ const triggersCommand = defineCommand({
 
         if (args.json) {
 
-            outputResult(args, triggers, '');
+            outputResult(args, { triggers }, '');
 
         }
 

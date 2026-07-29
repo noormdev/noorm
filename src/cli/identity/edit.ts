@@ -18,6 +18,7 @@ import { defineCommand } from 'citty';
 import { createIdentityForExistingKeys } from '../../core/identity/factory.js';
 import { loadIdentityMetadata } from '../../core/identity/storage.js';
 import { outputResult, outputError, sharedArgs } from '../_utils.js';
+import { EXIT } from '../_exit.js';
 
 const editCommand = defineCommand({
     meta: { name: 'edit', description: 'Edit identity metadata (name, email)' },
@@ -31,7 +32,7 @@ const editCommand = defineCommand({
         if (!args.name && !args.email) {
 
             outputError(args, 'At least one of --name or --email must be provided.');
-            process.exit(1);
+            process.exit(EXIT.USAGE);
 
         }
 
@@ -47,7 +48,7 @@ const editCommand = defineCommand({
         if (!existing) {
 
             outputError(args, 'No identity found. Run `noorm identity init` first.');
-            process.exit(1);
+            process.exit(EXIT.USAGE);
 
         }
 

@@ -4,15 +4,13 @@
  * Breaking a lock interrupts whatever migration its holder is running, so the
  * config's `lock:force` access gates it (enforced at the SDK seam in
  * `lock.forceRelease`, shared with the TUI and MCP) and `--yes` is the
- * confirmation. Exits 2 when there was nothing to release, so a script can
- * tell "evicted a holder" apart from "no-op" without parsing text.
+ * confirmation. Exits `EXIT.USAGE` when there was nothing to release, so a
+ * script can tell "evicted a holder" apart from "no-op" without parsing text.
  */
 import { defineCommand } from 'citty';
 
 import { withContext, outputResult, sharedArgs } from '../_utils.js';
-
-/** Exit code for "command succeeded, but there was no lock to release". */
-const EXIT_NOTHING_TO_RELEASE = 2;
+import { EXIT } from '../_exit.js';
 
 const forceCommand = defineCommand({
     meta: {
@@ -49,15 +47,24 @@ const forceCommand = defineCommand({
             },
         });
 
-        if (error) process.exit(1);
+        if (error) process.exit(EXIT.FAILURE);
 
         if (args.json) {
 
-            outputResult(args, { released: result.released, holder: result.holder, forced: true }, '');
+            // `success` tracks whether a lock was actually broken, not whether
+            // the command ran — "released: false" is a no-op, and the envelope
+            // must not call a no-op a success.
+            outputResult(
+                args,
+                { success: result.released, released: result.released, holder: result.holder, forced: true },
+                '',
+            );
 
         }
 
-        process.exit(result.released ? 0 : EXIT_NOTHING_TO_RELEASE);
+        // Nothing to release is the "named target does not exist" case: the
+        // command changed nothing, so it reports USAGE rather than success.
+        process.exit(result.released ? EXIT.SUCCESS : EXIT.USAGE);
 
     },
 });

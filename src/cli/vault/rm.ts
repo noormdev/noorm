@@ -3,7 +3,8 @@
  */
 import { defineCommand } from 'citty';
 
-import { withVaultContext, sharedArgs, isYesMode } from '../_utils.js';
+import { withVaultContext, outputResult, sharedArgs, isYesMode } from '../_utils.js';
+import { EXIT } from '../_exit.js';
 import { getVaultKeyChecked, deleteVaultSecretChecked, vaultSecretExists, checkVaultPolicy } from '../../core/vault/index.js';
 import type { VaultPolicyGate } from '../../core/vault/index.js';
 
@@ -71,7 +72,7 @@ const rmCommand = defineCommand({
 
                 if (!exists) {
 
-                    return { success: false, error: `Secret "${args.key}" not found in vault` };
+                    return { success: false, notFound: true, error: `Secret "${args.key}" not found in vault` };
 
                 }
 
@@ -90,13 +91,13 @@ const rmCommand = defineCommand({
 
         if (err) {
 
-            process.exit(1);
+            process.exit(EXIT.FAILURE);
 
         }
 
         if (args.json) {
 
-            process.stdout.write(JSON.stringify(result) + '\n');
+            outputResult(args, result, '');
 
         }
         else if (result?.success) {
@@ -110,7 +111,11 @@ const rmCommand = defineCommand({
 
         }
 
-        process.exit(result?.success ? 0 : 1);
+        // Deleting a key that was never in the vault named a target that does
+        // not exist, which the contract separates from a delete that failed.
+        if (result?.success) process.exit(EXIT.SUCCESS);
+
+        process.exit(result?.notFound ? EXIT.USAGE : EXIT.FAILURE);
 
     },
 });

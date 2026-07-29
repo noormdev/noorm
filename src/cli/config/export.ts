@@ -12,7 +12,8 @@ import { defineCommand } from 'citty';
 
 import { checkConfigPolicy } from '../../core/policy/index.js';
 import { initState, getStateManager } from '../../core/state/index.js';
-import { outputError, sharedArgs } from '../_utils.js';
+import { outputError, outputResult, sharedArgs } from '../_utils.js';
+import { EXIT } from '../_exit.js';
 
 const exportCommand = defineCommand({
     meta: {
@@ -33,7 +34,7 @@ const exportCommand = defineCommand({
         if (initErr) {
 
             outputError(args, `Failed to load state: ${initErr.message}`);
-            process.exit(1);
+            process.exit(EXIT.FAILURE);
 
         }
 
@@ -43,7 +44,7 @@ const exportCommand = defineCommand({
         if (!config) {
 
             outputError(args, `Config not found: ${args.name}`);
-            process.exit(1);
+            process.exit(EXIT.USAGE);
 
         }
 
@@ -55,7 +56,7 @@ const exportCommand = defineCommand({
         if (!check.allowed) {
 
             outputError(args, check.blockedReason ?? `Config "${args.name}" cannot be exported.`);
-            process.exit(1);
+            process.exit(EXIT.FAILURE);
 
         }
 
@@ -70,14 +71,26 @@ const exportCommand = defineCommand({
             if (writeErr) {
 
                 outputError(args, `Failed to write file: ${writeErr.message}`);
-                process.exit(1);
+                process.exit(EXIT.FAILURE);
 
             }
 
             // Ensure permissions are correct (writeFile mode may not work on all platforms)
             await attempt(() => chmod(args.output as string, 0o600));
 
-            process.stdout.write(`Config '${args.name}' exported to ${args.output}\n`);
+            outputResult(
+                args,
+                { name: args.name, output: args.output },
+                `Config '${args.name}' exported to ${args.output}`,
+            );
+
+        }
+        else if (args.json) {
+
+            // `--json` gets the envelope like every other command. The bare
+            // artifact — the shape `config import` reads — stays on the
+            // default path, so `config export dev > dev.json` is unchanged.
+            outputResult(args, { name: args.name, config }, '');
 
         }
         else {
@@ -86,7 +99,7 @@ const exportCommand = defineCommand({
 
         }
 
-        process.exit(0);
+        process.exit(EXIT.SUCCESS);
 
     },
 });

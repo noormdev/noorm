@@ -32,6 +32,12 @@ interface TableSummary {
     schema?: string;
 }
 
+/** The `db explore tables --json` envelope. */
+interface TablesPayload {
+    success: boolean;
+    tables: TableSummary[];
+}
+
 interface TableDetail {
     name: string;
     schema?: string;
@@ -177,26 +183,29 @@ describe('cli: db explore tables', () => {
 
     it('should return valid JSON with --json flag', async () => {
 
-        const result = await noormJson<TableSummary[]>(project, 'db', 'explore', 'tables');
+        // Enveloped, not a bare array: `--json` carries a top-level `success`
+        // on every command, and the list lives under a named key.
+        const result = await noormJson<TablesPayload>(project, 'db', 'explore', 'tables');
 
         expect(result.ok).toBe(true);
-        expect(Array.isArray(result.data)).toBe(true);
+        expect(result.data!.success).toBe(true);
+        expect(Array.isArray(result.data!.tables)).toBe(true);
 
     });
 
     it('should list all tables with column counts', async () => {
 
-        const result = await noormJson<TableSummary[]>(project, 'db', 'explore', 'tables');
+        const result = await noormJson<TablesPayload>(project, 'db', 'explore', 'tables');
 
         expect(result.ok).toBe(true);
 
-        const tableNames = result.data!.map((t) => t.name);
+        const tableNames = result.data!.tables.map((t) => t.name);
         expect(tableNames).toContain('users');
         expect(tableNames).toContain('todo_lists');
         expect(tableNames).toContain('todo_items');
 
         // Each table should have a column count
-        for (const table of result.data!) {
+        for (const table of result.data!.tables) {
 
             expect(typeof table.columnCount).toBe('number');
             expect(table.columnCount).toBeGreaterThan(0);
@@ -261,12 +270,14 @@ describe('cli: db explore tables detail', () => {
 
     });
 
-    it('should fail with exit code 1 on missing table', async () => {
+    it('should fail with the usage exit code on a missing table', async () => {
 
         const result = await noorm(project, 'db', 'explore', 'tables', 'detail', 'nonexistent');
 
+        // 2, not 1: the caller named a table that does not exist, so nothing
+        // was attempted — distinct from a query that ran and failed.
         expect(result.ok).toBe(false);
-        expect(result.exitCode).toBe(1);
+        expect(result.exitCode).toBe(2);
 
     });
 

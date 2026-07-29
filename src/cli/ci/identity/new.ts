@@ -13,6 +13,7 @@ import { defineCommand } from 'citty';
 import { generateKeyPair } from '../../../core/identity/crypto.js';
 import { computeIdentityHash } from '../../../core/identity/hash.js';
 import { outputResult, outputError, sharedArgs } from '../../_utils.js';
+import { EXIT } from '../../_exit.js';
 
 const newCommand = defineCommand({
     meta: {
@@ -32,7 +33,7 @@ const newCommand = defineCommand({
         if (!name || !email) {
 
             outputError(args, 'Both --name and --email are required and must be non-empty.');
-            process.exit(1);
+            process.exit(EXIT.USAGE);
 
         }
 

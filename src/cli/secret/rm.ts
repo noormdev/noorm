@@ -9,6 +9,7 @@ import { defineCommand } from 'citty';
 import { initState, getStateManager } from '../../core/state/index.js';
 import { outputResult, outputError, sharedArgs, isYesMode } from '../_utils.js';
 import { resolveSecretPolicy } from './_policy.js';
+import { EXIT } from '../_exit.js';
 
 const rmCommand = defineCommand({
     meta: {
@@ -60,7 +61,7 @@ const rmCommand = defineCommand({
         if (!exists) {
 
             outputError(args, `Secret "${args.key}" not found in config "${configName}".`);
-            process.exit(1);
+            process.exit(EXIT.USAGE);
 
         }
 

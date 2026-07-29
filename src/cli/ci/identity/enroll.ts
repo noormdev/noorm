@@ -28,6 +28,7 @@ import { getNoormTables, noormDb } from '../../../core/shared/tables.js';
 import type { NoormDatabase } from '../../../core/shared/tables.js';
 import type { EncryptedVaultKey } from '../../../core/vault/types.js';
 import { outputResult, outputError, sharedArgs, isYesMode, withVaultContext } from '../../_utils.js';
+import { EXIT } from '../../_exit.js';
 
 const enrollCommand = defineCommand({
     meta: {
@@ -62,7 +63,7 @@ const enrollCommand = defineCommand({
         if (!name || !email || !args.config) {
 
             outputError(args, 'Missing required: --config, --name, --email');
-            process.exit(1);
+            process.exit(EXIT.USAGE);
 
         }
 

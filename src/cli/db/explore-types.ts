@@ -7,6 +7,7 @@ import type { Kysely } from 'kysely';
 
 import { fetchList } from '../../core/explore/index.js';
 import { withContext, outputResult, outputError, sharedArgs } from '../_utils.js';
+import { EXIT } from '../_exit.js';
 
 const typesCommand = defineCommand({
     meta: {
@@ -76,7 +77,7 @@ const typesCommand = defineCommand({
             if (!detail) {
 
                 outputError(args, `Type not found: ${args.name}`);
-                process.exit(1);
+                process.exit(EXIT.USAGE);
 
             }
 
@@ -123,7 +124,7 @@ const typesCommand = defineCommand({
 
         if (args.json) {
 
-            outputResult(args, types, '');
+            outputResult(args, { types }, '');
 
         }
 

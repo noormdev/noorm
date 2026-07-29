@@ -12,6 +12,7 @@ import { MIN_PASSPHRASE_LENGTH } from '../../core/dt/crypto.js';
 import { getStateManager } from '../../core/state/index.js';
 import type { TransferOptions, ConflictStrategy } from '../../core/transfer/index.js';
 import { withContext, outputResult, outputError, sharedArgs, type CliArgs } from '../_utils.js';
+import { EXIT, exitCodeForStatus } from '../_exit.js';
 
 // ---------------------------------------------------------------------------
 // Shared args type for this command
@@ -66,7 +67,7 @@ async function resolveExportPassphrase(passphrase: string | undefined, args: Tra
         if (passphrase.length < MIN_PASSPHRASE_LENGTH) {
 
             outputError(args, `Passphrase must be at least ${MIN_PASSPHRASE_LENGTH} characters`);
-            process.exit(1);
+            process.exit(EXIT.USAGE);
 
         }
 
@@ -77,7 +78,7 @@ async function resolveExportPassphrase(passphrase: string | undefined, args: Tra
     if (!process.stdin.isTTY || args.json) {
 
         outputError(args, '--passphrase required for .dtzx encrypted export (non-interactive session; pass --passphrase or run interactively for a masked prompt)');
-        process.exit(1);
+        process.exit(EXIT.USAGE);
 
     }
 
@@ -116,7 +117,7 @@ async function resolveImportPassphrase(passphrase: string | undefined, args: Tra
     if (!process.stdin.isTTY || args.json) {
 
         outputError(args, '--passphrase required for .dtzx encrypted import (non-interactive session; pass --passphrase or run interactively for a masked prompt)');
-        process.exit(1);
+        process.exit(EXIT.USAGE);
 
     }
 
@@ -143,7 +144,6 @@ const transferCommand = defineCommand({
     },
     args: {
         config: sharedArgs.config,
-        force: sharedArgs.force,
         dryRun: sharedArgs.dryRun,
         json: sharedArgs.json,
         to: {
@@ -209,7 +209,7 @@ const transferCommand = defineCommand({
         if (compress && !exportPath) {
 
             outputError(args, '--compress is only valid with --export');
-            process.exit(1);
+            process.exit(EXIT.USAGE);
 
         }
 
@@ -218,14 +218,14 @@ const transferCommand = defineCommand({
         if (modeCount > 1) {
 
             outputError(args, 'Flags --to, --export, and --import are mutually exclusive');
-            process.exit(1);
+            process.exit(EXIT.USAGE);
 
         }
 
         if (modeCount === 0) {
 
             outputError(args, 'One of --to, --export, or --import is required. Usage: noorm db transfer --to <config>');
-            process.exit(1);
+            process.exit(EXIT.USAGE);
 
         }
 
@@ -247,7 +247,7 @@ const transferCommand = defineCommand({
         if (!isConflictStrategy(rawConflict)) {
 
             outputError(args, `Invalid --on-conflict value: "${rawConflict}". Must be one of: fail, skip, update, replace`);
-            process.exit(1);
+            process.exit(EXIT.USAGE);
 
         }
 
@@ -301,7 +301,7 @@ const transferCommand = defineCommand({
         if (!destConfig) {
 
             outputError(args, `Destination config not found: ${destConfigName}`);
-            process.exit(1);
+            process.exit(EXIT.USAGE);
 
         }
 
@@ -456,11 +456,9 @@ const transferCommand = defineCommand({
         }
 
         // A partial transfer committed real rows and needs a different
-        // response than one that moved nothing — exit 2 for both left a
+        // response than one that moved nothing — one code for both left a
         // pipeline unable to tell "retry" from "roll back".
-        if (result?.status === 'success') process.exit(0);
-
-        process.exit(result?.status === 'partial' ? 3 : 2);
+        process.exit(exitCodeForStatus(result?.status));
 
     },
 });

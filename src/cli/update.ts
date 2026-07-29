@@ -11,6 +11,7 @@ import { observer } from '../core/observer.js';
 import { checkForUpdate, getCurrentVersion } from '../core/update/checker.js';
 import { installUpdate } from '../core/update/updater.js';
 import { isInsecureMode, outputError, outputResult, sharedArgs } from './_utils.js';
+import { EXIT } from './_exit.js';
 
 /** Render a byte count as MB with one decimal (e.g. 41.2). */
 function toMb(bytes: number): string {
@@ -44,21 +45,29 @@ const updateCommand = defineCommand({
 
             const errorMsg = checkErr?.message ?? 'Failed to check for updates (offline?)';
 
-            outputError(args, errorMsg);
-
+            // One document, not two: `outputError` already writes the
+            // `{success:false,error}` envelope under `--json`, so the extra
+            // `outputResult` put a second, success-shaped object on stdout for
+            // the same failure.
             if (args.json) {
 
                 outputResult(args, {
+                    success: false,
+                    error: errorMsg,
                     currentVersion,
                     latestVersion: null,
                     updateAvailable: false,
                     installed: false,
-                    error: errorMsg,
                 }, '');
 
             }
+            else {
 
-            process.exit(1);
+                outputError(args, errorMsg);
+
+            }
+
+            process.exit(EXIT.FAILURE);
 
         }
 
@@ -77,7 +86,7 @@ const updateCommand = defineCommand({
 
             }
 
-            process.exit(0);
+            process.exit(EXIT.SUCCESS);
 
         }
 
@@ -147,21 +156,25 @@ const updateCommand = defineCommand({
             // is unexpected (e.g. abort wiring) — surface it rather than hang.
             const errorMsg = installErr?.message ?? 'Update failed';
 
-            process.stderr.write(`Update failed: ${errorMsg}\n`);
-
             if (args.json) {
 
                 outputResult(args, {
+                    success: false,
+                    error: errorMsg,
                     currentVersion,
                     latestVersion: checkResult.latestVersion,
                     updateAvailable: true,
                     installed: false,
-                    error: errorMsg,
                 }, '');
 
             }
+            else {
 
-            process.exit(1);
+                outputError(args, `Update failed: ${errorMsg}`);
+
+            }
+
+            process.exit(EXIT.FAILURE);
 
         }
 
@@ -170,15 +183,19 @@ const updateCommand = defineCommand({
             process.stdout.write(`Updated to ${result.newVersion}. Restart noorm to use the new version.\n`);
 
         }
-        else {
+        else if (!args.json) {
 
-            process.stderr.write(`Update failed: ${result.error}\n`);
+            outputError(args, `Update failed: ${result.error}`);
 
         }
 
         if (args.json) {
 
+            // `success` is stated rather than inferred: the payload carries no
+            // `status`, so without it a failed install reported success:true
+            // while the process exited 1.
             outputResult(args, {
+                success: result.success,
                 currentVersion,
                 latestVersion: checkResult.latestVersion,
                 updateAvailable: true,
@@ -188,7 +205,7 @@ const updateCommand = defineCommand({
 
         }
 
-        process.exit(result.success ? 0 : 1);
+        process.exit(result.success ? EXIT.SUCCESS : EXIT.FAILURE);
 
     },
 });

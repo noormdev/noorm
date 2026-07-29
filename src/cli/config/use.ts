@@ -11,6 +11,7 @@ import { defineCommand } from 'citty';
 import { initState, getStateManager } from '../../core/state/index.js';
 import { syncIdentityWithConfig } from '../../core/identity/index.js';
 import { outputResult, outputError, sharedArgs } from '../_utils.js';
+import { EXIT } from '../_exit.js';
 
 const useCommand = defineCommand({
     meta: {
@@ -45,7 +46,7 @@ const useCommand = defineCommand({
         if (setErr) {
 
             outputError(args, setErr.message);
-            process.exit(1);
+            process.exit(EXIT.USAGE);
 
         }
 

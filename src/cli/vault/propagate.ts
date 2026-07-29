@@ -3,7 +3,8 @@
  */
 import { defineCommand } from 'citty';
 
-import { withVaultContext, sharedArgs, isYesMode } from '../_utils.js';
+import { withVaultContext, outputResult, sharedArgs, isYesMode } from '../_utils.js';
+import { EXIT } from '../_exit.js';
 import {
     getVaultKeyChecked,
     propagateVaultKeyChecked,
@@ -188,7 +189,7 @@ const propagateCommand = defineCommand({
 
         if (args.json) {
 
-            process.stdout.write(JSON.stringify(result) + '\n');
+            outputResult(args, result, '');
 
         }
         else if (result?.success) {
@@ -235,7 +236,11 @@ const propagateCommand = defineCommand({
 
         }
 
-        process.exit(result?.success ? 0 : 1);
+        // Some identities were granted and some were not: the vault is now in
+        // a mixed state, which a pipeline must not read as a clean failure.
+        if (result?.success) process.exit(EXIT.SUCCESS);
+
+        process.exit(result?.propagatedTo?.length ? EXIT.PARTIAL : EXIT.FAILURE);
 
     },
 });

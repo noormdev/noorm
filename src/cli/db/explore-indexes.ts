@@ -69,7 +69,7 @@ const indexesCommand = defineCommand({
 
         if (args.json) {
 
-            outputResult(args, indexes, '');
+            outputResult(args, { indexes }, '');
 
         }
 

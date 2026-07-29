@@ -21,6 +21,7 @@ import { observer } from '../../core/observer.js';
 import { enableAutoLoggerInit } from '../../core/logger/init.js';
 import { getStateManager } from '../../core/state/index.js';
 import { isYesMode, sharedArgs } from '../_utils.js';
+import { EXIT } from '../_exit.js';
 
 /**
  * No-op stream that discards all writes.
@@ -49,14 +50,14 @@ const replCommand = defineCommand({
                 '  noorm sql query "SELECT 1"            # one-shot\n' +
                 '  noorm sql --file query.sql            # from a file\n',
             );
-            process.exit(1);
+            process.exit(EXIT.USAGE);
 
         }
 
         if (!process.stdin.isTTY) {
 
             process.stderr.write('Error: noorm sql repl requires an interactive terminal.\n');
-            process.exit(1);
+            process.exit(EXIT.USAGE);
 
         }
 
@@ -78,7 +79,7 @@ const replCommand = defineCommand({
             if (!configExists) {
 
                 process.stderr.write(`Error: Config not found: ${args.config}\n`);
-                process.exit(1);
+                process.exit(EXIT.USAGE);
 
             }
 

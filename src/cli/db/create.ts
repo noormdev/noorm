@@ -17,6 +17,7 @@ import { resolveConfig, SettingsProvider } from '../../core/config/resolver.js';
 import { checkDbStatus, createDb } from '../../core/db/index.js';
 import { checkConfigPolicy } from '../../core/policy/index.js';
 import { isYesMode, outputResult, outputError, sharedArgs } from '../_utils.js';
+import { EXIT } from '../_exit.js';
 
 const createCommand = defineCommand({
     meta: {
@@ -64,14 +65,14 @@ const createCommand = defineCommand({
         if (resolveErr) {
 
             outputError(args, resolveErr.message);
-            process.exit(1);
+            process.exit(EXIT.USAGE);
 
         }
 
         if (!config) {
 
             outputError(args, 'No active configuration. Use: noorm config use <name>');
-            process.exit(1);
+            process.exit(EXIT.USAGE);
 
         }
 

@@ -9,6 +9,7 @@ import { defineCommand } from 'citty';
 
 import { loadIdentityMetadata, loadPublicKey } from '../../core/identity/storage.js';
 import { outputResult, outputError, sharedArgs } from '../_utils.js';
+import { EXIT } from '../_exit.js';
 
 const exportCommand = defineCommand({
     meta: { name: 'export', description: 'Display your public key' },
@@ -25,7 +26,7 @@ const exportCommand = defineCommand({
                 args,
                 'No identity found. Run `noorm identity init` to create one.',
             );
-            process.exit(1);
+            process.exit(EXIT.USAGE);
 
         }
 

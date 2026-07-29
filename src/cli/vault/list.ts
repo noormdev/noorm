@@ -3,7 +3,7 @@
  */
 import { defineCommand } from 'citty';
 
-import { withVaultContext, sharedArgs } from '../_utils.js';
+import { withVaultContext, outputResult, sharedArgs } from '../_utils.js';
 import { getVaultKeyChecked, getAllVaultSecrets, getVaultStatus, checkVaultPolicy } from '../../core/vault/index.js';
 import type { VaultPolicyGate } from '../../core/vault/index.js';
 
@@ -96,7 +96,7 @@ const listCommand = defineCommand({
 
         if (args.json) {
 
-            process.stdout.write(JSON.stringify(result) + '\n');
+            outputResult(args, result, '');
 
         }
         else if (result?.success) {

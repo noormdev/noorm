@@ -10,6 +10,7 @@ import { defineCommand } from 'citty';
 
 import { isPendingChange } from '../../core/change/index.js';
 import { withContext, outputResult, outputError, sharedArgs } from '../_utils.js';
+import { exitCodeForStatus } from '../_exit.js';
 import { selectChangeFromStatus, requireTty } from './_prompt.js';
 
 const runCommand = defineCommand({
@@ -119,7 +120,7 @@ const runCommand = defineCommand({
 
         }
 
-        process.exit(result.status === 'success' ? 0 : 2);
+        process.exit(exitCodeForStatus(result.status));
 
     },
 });

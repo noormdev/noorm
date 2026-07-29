@@ -6,7 +6,8 @@
  */
 import { defineCommand } from 'citty';
 
-import { withContext, outputResult, isYesMode, sharedArgs } from '../_utils.js';
+import { withContext, outputResult, outputError, isYesMode, sharedArgs } from '../_utils.js';
+import { EXIT } from '../_exit.js';
 
 const resetCommand = defineCommand({
     meta: {
@@ -22,8 +23,13 @@ const resetCommand = defineCommand({
 
         if (!isYesMode(args)) {
 
-            process.stderr.write('Error: This is a destructive operation. Pass --yes to confirm.\n');
-            process.exit(1);
+            // outputError, not a bare stderr write: `--json` callers got an
+            // empty stdout here and so had no envelope to key a failure off.
+            // Stays FAILURE, not USAGE: every other confirmation/`--force`
+            // refusal in the CLI exits 1, and splitting this one off would
+            // make the code mean two things depending on the command.
+            outputError(args, 'This is a destructive operation. Pass --yes to confirm.');
+            process.exit(EXIT.FAILURE);
 
         }
 

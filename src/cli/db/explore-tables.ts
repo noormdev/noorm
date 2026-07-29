@@ -58,7 +58,7 @@ const tablesCommand = defineCommand({
 
         if (args.json) {
 
-            outputResult(args, tables, '');
+            outputResult(args, { tables }, '');
 
         }
 

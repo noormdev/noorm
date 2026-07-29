@@ -29,6 +29,7 @@ import { initState, getStateManager } from '../../core/state/index.js';
 import { checkConfigPolicy } from '../../core/policy/index.js';
 import { outputResult, outputError, sharedArgs, isYesMode } from '../_utils.js';
 import { selectChangeFromFs, requireTty } from './_prompt.js';
+import { EXIT } from '../_exit.js';
 
 const rmCommand = defineCommand({
     meta: { name: 'rm', description: 'Delete a change directory' },
@@ -105,7 +106,7 @@ const rmCommand = defineCommand({
         if (statErr || !existingStats) {
 
             outputError(args, `Change not found: ${changeName}`);
-            process.exit(1);
+            process.exit(EXIT.USAGE);
 
         }
 

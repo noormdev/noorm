@@ -9,6 +9,7 @@ import type { Kysely } from 'kysely';
 
 import { executeRawSql } from '../../core/sql-terminal/executor.js';
 import { withContext, outputError, outputResult, sharedArgs } from '../_utils.js';
+import { EXIT } from '../_exit.js';
 
 const sqlCommand = defineCommand({
     meta: {
@@ -32,7 +33,7 @@ const sqlCommand = defineCommand({
             if (readErr) {
 
                 outputError(args, `Failed to read SQL file: ${args.file}: ${readErr.message}`);
-                process.exit(1);
+                process.exit(EXIT.USAGE);
 
             }
 
@@ -43,7 +44,7 @@ const sqlCommand = defineCommand({
         if (!query) {
 
             outputError(args, 'No query provided. Usage: noorm sql "SELECT ..."');
-            process.exit(1);
+            process.exit(EXIT.USAGE);
 
         }
 

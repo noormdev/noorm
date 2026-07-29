@@ -20,6 +20,7 @@ import { OrderBuffer } from '../../core/worker-bridge/order-buffer.js';
 import { resolveWorker } from '../../core/worker-bridge/paths.js';
 import type { ComputeEvents, ConnectionEvents } from '../../core/worker-bridge/types.js';
 import { outputResult } from '../_utils.js';
+import { EXIT } from '../_exit.js';
 
 interface TestResult {
     name: string;
@@ -238,7 +239,11 @@ const testWorkersCommand = defineCommand({
 
         }
 
-        process.exit(failed > 0 ? 1 : 0);
+        // A worker suite where some probes passed and some failed is a mixed
+        // result — the same distinction the run/change commands now report.
+        if (failed === 0) process.exit(EXIT.SUCCESS);
+
+        process.exit(passed > 0 ? EXIT.PARTIAL : EXIT.FAILURE);
 
     },
 });

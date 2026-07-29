@@ -7,6 +7,7 @@ import type { Kysely } from 'kysely';
 
 import { fetchList } from '../../core/explore/index.js';
 import { withContext, outputResult, outputError, sharedArgs } from '../_utils.js';
+import { EXIT } from '../_exit.js';
 
 const viewsCommand = defineCommand({
     meta: {
@@ -68,7 +69,7 @@ const viewsCommand = defineCommand({
             if (!detail) {
 
                 outputError(args, `View not found: ${args.name}`);
-                process.exit(1);
+                process.exit(EXIT.USAGE);
 
             }
 
@@ -115,7 +116,7 @@ const viewsCommand = defineCommand({
 
         if (args.json) {
 
-            outputResult(args, views, '');
+            outputResult(args, { views }, '');
 
         }
 

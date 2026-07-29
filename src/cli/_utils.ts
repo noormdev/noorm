@@ -18,6 +18,7 @@ import { loadPrivateKey, loadIdentityMetadata } from '../core/identity/storage.j
 import { registerIdentity } from '../core/identity/sync.js';
 import { isDev, isEnvTruthy } from '../core/environment.js';
 import { getConfig } from '../core/config/index.js';
+import { isSuccessStatus } from './_exit.js';
 
 /**
  * Minimal args shape expected by the helpers.
@@ -279,7 +280,10 @@ export async function withVaultContext<T>(opts: {
 
     }
 
-    const [ctx, ctxError] = await attempt(() => createContext<NoormDatabase>({ config: args.config }));
+    // `yes` matches withContext deliberately: without it a vault command can
+    // never satisfy a `confirm`-tier gate, so `--yes` / NOORM_YES would be
+    // silently inert in CI the moment a vault permission gains that tier.
+    const [ctx, ctxError] = await attempt(() => createContext<NoormDatabase>({ config: args.config, yes: isYesMode(args) }));
     if (ctxError) {
 
         outputError(args, `Failed to create context: ${ctxError.message}`, logger);
@@ -347,6 +351,42 @@ export async function withVaultContext<T>(opts: {
 }
 
 /**
+ * Normalize a command's `--json` payload into the shared envelope.
+ *
+ * The envelope contract: every `--json` payload is a JSON object carrying a
+ * top-level boolean `success`, never a bare array, so `jq -e '.success'`
+ * works against every command. Command-specific fields sit alongside it.
+ *
+ * `success` is derived rather than assumed. A payload carrying a core
+ * `status` string wins — `{ status: 'partial' }` must never be announced as
+ * `success: true`, which is precisely the class of defect this envelope
+ * exists to make impossible. A payload that already states `success`
+ * explicitly is left alone.
+ *
+ * The array branch is a safety net, not the intended path: list commands
+ * name their collection (`configs`, `changes`, `tables`) at the call site.
+ * It exists so a bare array can never reach stdout unenveloped.
+ */
+function toJsonEnvelope(payload: unknown): Record<string, unknown> {
+
+    if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) {
+
+        return { success: true, data: payload };
+
+    }
+
+    const obj = payload as Record<string, unknown>;
+
+    if (typeof obj['success'] === 'boolean') return obj;
+
+    const status = obj['status'];
+    const success = typeof status === 'string' ? isSuccessStatus(status) : true;
+
+    return { success, ...obj };
+
+}
+
+/**
  * Output a success result as either JSON or text.
  *
  * The result always goes to stdout, in every mode — that is what
@@ -355,6 +395,9 @@ export async function withVaultContext<T>(opts: {
  * through `logger.result()` when a logger is available (stdout + log
  * file); plain text writes directly to stdout, never through
  * `logger.info`, so it can't be pulled onto the diagnostics stream.
+ *
+ * JSON payloads pass through `toJsonEnvelope` so the `success` flag is
+ * applied in one place instead of at ~70 call sites that would drift.
  */
 export function outputResult(
     args: CliArgs,
@@ -365,14 +408,16 @@ export function outputResult(
 
     if (args.json) {
 
+        const payload = toJsonEnvelope(json);
+
         if (logger) {
 
-            logger.result(json);
+            logger.result(payload);
 
         }
         else {
 
-            process.stdout.write(JSON.stringify(json) + '\n');
+            process.stdout.write(JSON.stringify(payload) + '\n');
 
         }
 
@@ -444,7 +489,7 @@ export function handleVaultResult<T extends { success: boolean; error?: string; 
 
     if (args.json) {
 
-        logger.result(result);
+        outputResult(args, result ?? { success: false, error: 'Unknown error' }, '', logger);
 
     }
     else {
