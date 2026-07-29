@@ -149,7 +149,7 @@ export function useVaultSecretKeys(): VaultSecretKeysResult {
 
         };
 
-    }, [activeConfig, activeConfigName, identity, db, connLoading, connError]);
+    }, [activeConfig, activeConfigName, identity, db, dialect, connLoading, connError]);
 
     // Get required secrets (universal + stage-specific merged)
     const requiredSecrets = useMemo(() => {

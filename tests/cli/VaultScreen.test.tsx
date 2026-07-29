@@ -10,6 +10,17 @@
  * These pin the two halves of the fix: the keypress must not write anything on
  * its own, and the confirmation it opens must name the people being granted
  * access so the operator can see the blast radius before agreeing to it.
+ *
+ * LOCATION: this file lives at tests/cli/ rather than the tests/cli/screens/vault/
+ * it belongs in, and that is load-bearing. bun's `mock.module` registry is
+ * process-global, and tests/cli/hooks/useVaultSecretKeys.test.tsx also mocks
+ * core/vault -- restoring it to the real module in its afterAll. CI runs
+ * tests/cli as one process (.github/workflows/ci.yml), so whichever file bun
+ * loads first decides what the other one's subject binds to: from
+ * tests/cli/screens/vault/ these tests ran against the real, unmocked vault and
+ * failed only in the combined run, never standalone. Moving this file back
+ * under screens/ reintroduces that. The durable fix is a separate test process
+ * for the TUI screens, not a different mock arrangement -- several were tried.
  */
 import { describe, it, expect, vi, mock, beforeEach, afterEach, afterAll } from 'bun:test';
 import { render } from 'ink-testing-library';
@@ -18,19 +29,19 @@ import { mkdtemp, rm } from 'fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import type { CryptoIdentity } from '../../../../src/core/identity/types.js';
+import type { CryptoIdentity } from '../../src/core/identity/types.js';
 
-import { FocusProvider } from '../../../../src/tui/focus.js';
-import { RouterProvider } from '../../../../src/tui/router.js';
-import { AppContextProvider } from '../../../../src/tui/app-context.js';
-import { ConnectionProvider } from '../../../../src/tui/providers/ConnectionProvider.js';
-import { ToastProvider } from '../../../../src/tui/components/index.js';
-import { VaultScreen } from '../../../../src/tui/screens/vault/VaultScreen.js';
+import { FocusProvider } from '../../src/tui/focus.js';
+import { RouterProvider } from '../../src/tui/router.js';
+import { AppContextProvider } from '../../src/tui/app-context.js';
+import { ConnectionProvider } from '../../src/tui/providers/ConnectionProvider.js';
+import { ToastProvider } from '../../src/tui/components/index.js';
+import { VaultScreen } from '../../src/tui/screens/vault/VaultScreen.js';
 
-const actualCore = await import('../../../../src/core/index.js');
-const actualIdentity = await import('../../../../src/core/identity/index.js');
-const actualIdentityStorage = await import('../../../../src/core/identity/storage.js');
-const actualVault = await import('../../../../src/core/vault/index.js');
+const actualCore = await import('../../src/core/index.js');
+const actualIdentity = await import('../../src/core/identity/index.js');
+const actualIdentityStorage = await import('../../src/core/identity/storage.js');
+const actualVault = await import('../../src/core/vault/index.js');
 
 /** Every call to the real propagation entry point. */
 const propagateCalls: unknown[] = [];
@@ -51,7 +62,7 @@ const RECIPIENTS = [
     { identityHash: 'hash-b', publicKey: 'pub-b', name: 'Grace Hopper', email: 'grace@example.com' },
 ];
 
-mock.module('../../../../src/core/vault/index.js', () => ({
+mock.module('../../src/core/vault/index.js', () => ({
     ...actualVault,
     getVaultStatus: vi.fn(async () => ({
         isInitialized: true,
@@ -71,7 +82,7 @@ mock.module('../../../../src/core/vault/index.js', () => ({
     }),
 }));
 
-mock.module('../../../../src/core/identity/storage.js', () => ({
+mock.module('../../src/core/identity/storage.js', () => ({
     ...actualIdentityStorage,
     loadPrivateKey: vi.fn(async () => 'private-key'),
 }));
@@ -119,7 +130,7 @@ const createMockSettingsManager = () => ({
 let mockStateManager = createMockStateManager();
 let mockSettingsManager = createMockSettingsManager();
 
-mock.module('../../../../src/core/index.js', () => ({
+mock.module('../../src/core/index.js', () => ({
     observer: actualCore.observer,
     getStateManager: vi.fn(() => mockStateManager),
     getSettingsManager: vi.fn(() => mockSettingsManager),
@@ -127,7 +138,7 @@ mock.module('../../../../src/core/index.js', () => ({
     resetSettingsManager: vi.fn(),
 }));
 
-mock.module('../../../../src/core/identity/index.js', () => ({
+mock.module('../../src/core/identity/index.js', () => ({
     ...actualIdentity,
     loadExistingIdentity: vi.fn().mockResolvedValue(IDENTITY),
 }));
@@ -183,10 +194,10 @@ describe('cli: VaultScreen propagate', () => {
 
     afterAll(() => {
 
-        mock.module('../../../../src/core/index.js', () => actualCore);
-        mock.module('../../../../src/core/identity/index.js', () => actualIdentity);
-        mock.module('../../../../src/core/identity/storage.js', () => actualIdentityStorage);
-        mock.module('../../../../src/core/vault/index.js', () => actualVault);
+        mock.module('../../src/core/index.js', () => actualCore);
+        mock.module('../../src/core/identity/index.js', () => actualIdentity);
+        mock.module('../../src/core/identity/storage.js', () => actualIdentityStorage);
+        mock.module('../../src/core/vault/index.js', () => actualVault);
 
     });
 

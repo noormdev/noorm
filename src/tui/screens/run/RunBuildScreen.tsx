@@ -168,6 +168,7 @@ export function RunBuildScreen({ params: _params }: ScreenProps): ReactElement {
         activeConfig,
         activeConfigName,
         stateManager,
+        cryptoIdentity,
         files,
         sqlPath,
         globalModes,

@@ -183,7 +183,7 @@ export function ChangeFFScreen({ params: _params }: ScreenProps): ReactElement {
 
         }
 
-    }, [activeConfig, activeConfigName, stateManager, pendingChanges, globalModes]);
+    }, [activeConfig, activeConfigName, stateManager, cryptoIdentity, settings, pendingChanges, globalModes]);
 
     // Handle cancel
     const handleCancel = useCallback(() => {

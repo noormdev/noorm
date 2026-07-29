@@ -248,7 +248,7 @@ export function ChangeRewindScreen({ params }: ScreenProps): ReactElement {
 
         }
 
-    }, [activeConfig, activeConfigName, stateManager, changesToRevert, globalModes]);
+    }, [activeConfig, activeConfigName, stateManager, cryptoIdentity, settings, changesToRevert, globalModes]);
 
     // Handle cancel
     const handleCancel = useCallback(() => {

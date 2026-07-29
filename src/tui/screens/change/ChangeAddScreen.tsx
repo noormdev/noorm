@@ -153,7 +153,7 @@ export function ChangeAddScreen({ params }: ScreenProps): ReactElement {
             }
 
         },
-        [activeConfig, validateName],
+        [activeConfig, validateName, settings, projectRoot],
     );
 
     // Auto-create if name provided in params

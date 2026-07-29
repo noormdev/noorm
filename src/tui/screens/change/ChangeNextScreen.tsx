@@ -192,7 +192,7 @@ export function ChangeNextScreen({ params }: ScreenProps): ReactElement {
 
         }
 
-    }, [activeConfig, activeConfigName, stateManager, changesToApply, count, globalModes]);
+    }, [activeConfig, activeConfigName, stateManager, cryptoIdentity, settings, changesToApply, count, globalModes]);
 
     // Handle cancel
     const handleCancel = useCallback(() => {

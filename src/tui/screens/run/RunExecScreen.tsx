@@ -149,7 +149,7 @@ export function RunExecScreen({ params: _params }: ScreenProps): ReactElement {
 
         setPhase('complete');
 
-    }, [activeConfig, activeConfigName, stateManager, selectedFiles, globalModes, resetProgress, projectRoot]);
+    }, [activeConfig, activeConfigName, stateManager, cryptoIdentity, selectedFiles, globalModes, resetProgress, projectRoot]);
 
     // Submit selection (Enter in picker)
     const handleSubmit = useCallback(() => {

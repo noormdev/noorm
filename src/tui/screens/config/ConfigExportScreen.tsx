@@ -72,46 +72,6 @@ export function ConfigExportScreen({ params }: ScreenProps): ReactElement {
 
     }, [stateManager, configName]);
 
-    // Handle email submission
-    const handleEmailSubmit = useCallback(() => {
-
-        if (!stateManager || !email) return;
-
-        // Find known users with this email
-        const users = stateManager.findKnownUsersByEmail(email);
-
-        if (users.length === 0) {
-
-            setError(`No known users with email "${email}". Import their identity first.`);
-            setStep('error');
-
-            return;
-
-        }
-
-        if (users.length === 1) {
-
-            setSelectedUser(users[0]!);
-            handleExport(users[0]!);
-
-        }
-        else {
-
-            setMatchingUsers(users);
-            setStep('select-identity');
-
-        }
-
-    }, [stateManager, email]);
-
-    // Handle identity selection
-    const handleSelectIdentity = useCallback((item: SelectListItem<KnownUser>) => {
-
-        setSelectedUser(item.value);
-        handleExport(item.value);
-
-    }, []);
-
     // Handle export
     const handleExport = useCallback(
         async (recipient: KnownUser) => {
@@ -183,6 +143,46 @@ export function ConfigExportScreen({ params }: ScreenProps): ReactElement {
         },
         [stateManager, config, identity, configName],
     );
+
+    // Handle email submission
+    const handleEmailSubmit = useCallback(() => {
+
+        if (!stateManager || !email) return;
+
+        // Find known users with this email
+        const users = stateManager.findKnownUsersByEmail(email);
+
+        if (users.length === 0) {
+
+            setError(`No known users with email "${email}". Import their identity first.`);
+            setStep('error');
+
+            return;
+
+        }
+
+        if (users.length === 1) {
+
+            setSelectedUser(users[0]!);
+            handleExport(users[0]!);
+
+        }
+        else {
+
+            setMatchingUsers(users);
+            setStep('select-identity');
+
+        }
+
+    }, [stateManager, email, handleExport]);
+
+    // Handle identity selection
+    const handleSelectIdentity = useCallback((item: SelectListItem<KnownUser>) => {
+
+        setSelectedUser(item.value);
+        handleExport(item.value);
+
+    }, [handleExport]);
 
     // Keyboard handling
     useInput((input, key) => {
