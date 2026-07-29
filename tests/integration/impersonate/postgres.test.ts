@@ -141,6 +141,37 @@ describe('integration: impersonate postgres', () => {
 
     });
 
+    /**
+     * Explicit mode holds a pooled connection inside `.connection().execute()`
+     * until `revert()` resolves it. Nothing released that holder on teardown,
+     * so a caller who never reverted — an early return, a thrown error, a
+     * forgotten call — left `disconnect()` awaiting a pool drain that could
+     * never complete. The context hung forever rather than closing.
+     */
+    it('disconnects even when an explicit scope was never reverted', async () => {
+
+        const leaky = new Context(
+            makeTestConfig('pg_impersonate_leak', TEST_CONNECTIONS.postgres),
+            {}, { name: 'tester', source: 'system' }, {}, '/tmp/test',
+        );
+        await leaky.connect();
+
+        // Explicit mode, deliberately never reverted.
+        await leaky.impersonate(TEST_ROLE);
+
+        const [, err] = await attempt(() => Promise.race([
+            leaky.disconnect(),
+            new Promise((_, reject) => setTimeout(
+                () => reject(new Error('disconnect() hung')),
+                5000,
+            ).unref()),
+        ]));
+
+        expect(err).toBeNull();
+        expect(leaky.connected).toBe(false);
+
+    }, 15_000);
+
     it('rejects a username carrying SQL metacharacters before it reaches the server', async () => {
 
         const [, err] = await attempt(() =>
