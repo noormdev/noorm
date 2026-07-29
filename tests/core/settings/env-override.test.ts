@@ -6,7 +6,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { SettingsManager, resetSettingsManager } from '../../../src/core/settings/manager.js';
-import { writeFile, mkdir, rm } from 'node:fs/promises';
+import { writeFile, readFile, mkdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -22,6 +22,10 @@ describe('settings: env overrides', () => {
         'NOORM_CONFIG',
         'NOORM_YES',
         'NOORM_JSON',
+        'NOORM_VAULT_TOKEN',
+        'NOORM_DB_PASSWORD',
+        'NOORM_API_KEY',
+        'NOORM_FOO_BAR',
     ];
 
     beforeEach(async () => {
@@ -113,6 +117,97 @@ describe('settings: env overrides', () => {
 
         expect((settings as Record<string, unknown>)['config']).toBeUndefined();
         expect((settings as Record<string, unknown>)['yes']).toBeUndefined();
+
+    });
+
+    /**
+     * settings.yml is version controlled by design. The env overlay is a
+     * per-process view of settings — persisting it launders whatever the
+     * shell happened to export (vault tokens, DB passwords) into a file
+     * that gets committed. These assert the overlay never reaches disk,
+     * while staying readable at runtime.
+     */
+    describe('env overlay is never persisted', () => {
+
+        const settingsPath = () => join(testDir, '.noorm', 'settings.yml');
+
+        it('should not write ambient NOORM_* secrets to settings.yml on save', async () => {
+
+            await writeFile(settingsPath(), 'paths:\n    sql: ./sql\n');
+
+            process.env['NOORM_VAULT_TOKEN'] = 'hvs.SUPERSECRETVAULTTOKEN';
+            process.env['NOORM_DB_PASSWORD'] = 'pgpassword123';
+            process.env['NOORM_API_KEY'] = 'sk-live-abcdef';
+
+            const manager = new SettingsManager(testDir);
+            await manager.load();
+            await manager.save();
+
+            const onDisk = await readFile(settingsPath(), 'utf-8');
+
+            expect(onDisk).not.toContain('hvs.SUPERSECRETVAULTTOKEN');
+            expect(onDisk).not.toContain('pgpassword123');
+            expect(onDisk).not.toContain('sk-live-abcdef');
+
+        });
+
+        it('should not write env-derived keys when an unrelated section is mutated', async () => {
+
+            await writeFile(settingsPath(), 'paths:\n    sql: ./sql\n');
+
+            process.env['NOORM_DB_PASSWORD'] = 'pgpassword123';
+            process.env['NOORM_FOO_BAR'] = 'leaked';
+
+            const manager = new SettingsManager(testDir);
+            await manager.load();
+
+            // Every mutator calls save(); editing build must not drag env in.
+            await manager.setBuild({ include: ['schema'], exclude: [] });
+
+            const onDisk = await readFile(settingsPath(), 'utf-8');
+
+            expect(onDisk).not.toContain('pgpassword123');
+            expect(onDisk).not.toContain('leaked');
+            expect(onDisk).toContain('schema');
+
+        });
+
+        it('should keep the committed value on disk when env overrides it at runtime', async () => {
+
+            await writeFile(settingsPath(), 'paths:\n    sql: ./sql\n    changes: ./changes\n');
+
+            process.env['NOORM_PATHS_SQL'] = './ci-sql';
+
+            const manager = new SettingsManager(testDir);
+            await manager.load();
+
+            // The overlay is what callers execute against ...
+            expect(manager.getPaths().sql).toBe('./ci-sql');
+
+            await manager.setBuild({ include: ['schema'], exclude: [] });
+
+            // ... but the file keeps what a human put there.
+            const onDisk = await readFile(settingsPath(), 'utf-8');
+
+            expect(onDisk).toContain('./sql');
+            expect(onDisk).not.toContain('./ci-sql');
+
+        });
+
+        it('should still expose env overrides through accessors after a save', async () => {
+
+            await writeFile(settingsPath(), 'paths:\n    sql: ./sql\n');
+
+            process.env['NOORM_PATHS_SQL'] = './ci-sql';
+
+            const manager = new SettingsManager(testDir);
+            await manager.load();
+            await manager.setBuild({ include: ['schema'], exclude: [] });
+
+            expect(manager.getPaths().sql).toBe('./ci-sql');
+            expect(manager.getBuild().include).toEqual(['schema']);
+
+        });
 
     });
 

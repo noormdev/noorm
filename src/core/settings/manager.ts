@@ -7,7 +7,7 @@
 import { readFile, writeFile, mkdir, access } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
-import { attempt, merge, makeNestedConfig } from '@logosdx/utils';
+import { attempt, clone, merge, makeNestedConfig } from '@logosdx/utils';
 
 import { observer } from '../observer.js';
 import { parseSettings } from './schema.js';
@@ -94,7 +94,18 @@ export class SettingsManager {
     #projectRoot: string;
     #settingsDir: string;
     #settingsFile: string;
+
+    /**
+     * The persisted document — exactly what is on (or will be written to)
+     * disk. The env overlay is deliberately kept out of it: settings.yml is
+     * version controlled, so merging ambient NOORM_* vars in here would
+     * commit whatever the shell exported (vault tokens, DB passwords).
+     */
+    #document: Settings | null = null;
+
+    /** `#document` + the env overlay — the view every accessor returns. */
     #settings: Settings | null = null;
+
     #loaded = false;
 
     constructor(projectRoot: string, options: SettingsManagerOptions = {}) {
@@ -167,7 +178,7 @@ export class SettingsManager {
 
         if (!fileExists) {
 
-            this.#settings = createDefaultSettings();
+            this.#document = createDefaultSettings();
 
         }
         else {
@@ -193,12 +204,12 @@ export class SettingsManager {
             // Handle empty file or valid content
             if (parsed === null || parsed === undefined) {
 
-                this.#settings = createDefaultSettings();
+                this.#document = createDefaultSettings();
 
             }
             else {
 
-                this.#settings = parseSettings(parsed);
+                this.#document = parseSettings(parsed);
 
             }
 
@@ -206,18 +217,17 @@ export class SettingsManager {
 
         }
 
-        // Apply environment variable overrides (NOORM_* -> nested settings)
-        this.#settings = merge(this.#settings, allSettingsEnv()) as Settings;
+        this.#refreshResolved();
 
         this.#loaded = true;
 
         observer.emit('settings:loaded', {
             path: this.settingsFilePath,
-            settings: this.#settings,
+            settings: this.#settings!,
             fromFile,
         });
 
-        return this.#settings;
+        return this.#settings!;
 
     }
 
@@ -246,8 +256,8 @@ export class SettingsManager {
 
         }
 
-        // Stringify to YAML
-        const yaml = stringifyYaml(this.#settings, {
+        // The document, not the resolved view — see #document.
+        const yaml = stringifyYaml(this.#document, {
             indent: 4,
             lineWidth: 120,
         });
@@ -281,7 +291,8 @@ export class SettingsManager {
 
         }
 
-        this.#settings = createDefaultSettings();
+        this.#document = createDefaultSettings();
+        this.#refreshResolved();
         this.#loaded = true;
 
         await this.save();
@@ -600,15 +611,19 @@ export class SettingsManager {
 
         this.#assertLoaded();
 
-        if (!this.#settings!.stages) {
+        if (!this.#document!.stages) {
 
-            this.#settings!.stages = {};
+            this.#document!.stages = {};
 
         }
 
-        this.#settings!.stages[name] = stage;
+        // Cloned so the document never shares a reference with the resolved
+        // view, which the env overlay writes into.
+        this.#document!.stages[name] = clone(stage);
 
         await this.save();
+
+        this.#refreshResolved();
 
         observer.emit('settings:stage-set', { name, stage });
 
@@ -621,15 +636,17 @@ export class SettingsManager {
 
         this.#assertLoaded();
 
-        if (!this.#settings!.stages || !(name in this.#settings!.stages)) {
+        if (!this.#document!.stages || !(name in this.#document!.stages)) {
 
             return false;
 
         }
 
-        delete this.#settings!.stages[name];
+        delete this.#document!.stages[name];
 
         await this.save();
+
+        this.#refreshResolved();
 
         observer.emit('settings:stage-removed', { name });
 
@@ -644,15 +661,17 @@ export class SettingsManager {
 
         this.#assertLoaded();
 
-        if (!this.#settings!.rules) {
+        if (!this.#document!.rules) {
 
-            this.#settings!.rules = [];
+            this.#document!.rules = [];
 
         }
 
-        this.#settings!.rules.push(rule);
+        this.#document!.rules.push(clone(rule));
 
         await this.save();
+
+        this.#refreshResolved();
 
         observer.emit('settings:rule-added', { rule });
 
@@ -665,15 +684,17 @@ export class SettingsManager {
 
         this.#assertLoaded();
 
-        if (!this.#settings!.rules || index < 0 || index >= this.#settings!.rules.length) {
+        if (!this.#document!.rules || index < 0 || index >= this.#document!.rules.length) {
 
             return false;
 
         }
 
-        const [removed] = this.#settings!.rules.splice(index, 1);
+        const [removed] = this.#document!.rules.splice(index, 1);
 
         await this.save();
+
+        this.#refreshResolved();
 
         observer.emit('settings:rule-removed', { index, rule: removed! });
 
@@ -688,9 +709,11 @@ export class SettingsManager {
 
         this.#assertLoaded();
 
-        this.#settings!.build = build;
+        this.#document!.build = clone(build);
 
         await this.save();
+
+        this.#refreshResolved();
 
         observer.emit('settings:build-updated', { build });
 
@@ -703,9 +726,11 @@ export class SettingsManager {
 
         this.#assertLoaded();
 
-        this.#settings!.paths = paths;
+        this.#document!.paths = clone(paths);
 
         await this.save();
+
+        this.#refreshResolved();
 
         observer.emit('settings:paths-updated', { paths });
 
@@ -718,9 +743,11 @@ export class SettingsManager {
 
         this.#assertLoaded();
 
-        this.#settings!.strict = strict;
+        this.#document!.strict = clone(strict);
 
         await this.save();
+
+        this.#refreshResolved();
 
         observer.emit('settings:strict-updated', { strict });
 
@@ -733,9 +760,11 @@ export class SettingsManager {
 
         this.#assertLoaded();
 
-        this.#settings!.logging = logging;
+        this.#document!.logging = clone(logging);
 
         await this.save();
+
+        this.#refreshResolved();
 
         observer.emit('settings:logging-updated', { logging });
 
@@ -748,9 +777,11 @@ export class SettingsManager {
 
         this.#assertLoaded();
 
-        this.#settings!.teardown = teardown;
+        this.#document!.teardown = clone(teardown);
 
         await this.save();
+
+        this.#refreshResolved();
 
         observer.emit('settings:teardown-updated', { teardown });
 
@@ -778,14 +809,14 @@ export class SettingsManager {
 
         this.#assertLoaded();
 
-        if (!this.#settings!.secrets) {
+        if (!this.#document!.secrets) {
 
-            this.#settings!.secrets = [];
+            this.#document!.secrets = [];
 
         }
 
         // Check for duplicate key
-        const existing = this.#settings!.secrets.find((s) => s.key === secret.key);
+        const existing = this.#document!.secrets.find((s) => s.key === secret.key);
 
         if (existing) {
 
@@ -793,9 +824,11 @@ export class SettingsManager {
 
         }
 
-        this.#settings!.secrets.push(secret);
+        this.#document!.secrets.push(clone(secret));
 
         await this.save();
+
+        this.#refreshResolved();
 
         observer.emit('settings:secret-added', { secret, scope: 'universal' });
 
@@ -808,13 +841,13 @@ export class SettingsManager {
 
         this.#assertLoaded();
 
-        if (!this.#settings!.secrets) {
+        if (!this.#document!.secrets) {
 
             throw new Error(`Universal secret "${key}" not found`);
 
         }
 
-        const index = this.#settings!.secrets.findIndex((s) => s.key === key);
+        const index = this.#document!.secrets.findIndex((s) => s.key === key);
 
         if (index === -1) {
 
@@ -822,9 +855,11 @@ export class SettingsManager {
 
         }
 
-        this.#settings!.secrets[index] = secret;
+        this.#document!.secrets[index] = clone(secret);
 
         await this.save();
+
+        this.#refreshResolved();
 
         observer.emit('settings:secret-updated', { key, secret, scope: 'universal' });
 
@@ -837,13 +872,13 @@ export class SettingsManager {
 
         this.#assertLoaded();
 
-        if (!this.#settings!.secrets) {
+        if (!this.#document!.secrets) {
 
             return false;
 
         }
 
-        const index = this.#settings!.secrets.findIndex((s) => s.key === key);
+        const index = this.#document!.secrets.findIndex((s) => s.key === key);
 
         if (index === -1) {
 
@@ -851,9 +886,11 @@ export class SettingsManager {
 
         }
 
-        this.#settings!.secrets.splice(index, 1);
+        this.#document!.secrets.splice(index, 1);
 
         await this.save();
+
+        this.#refreshResolved();
 
         observer.emit('settings:secret-removed', { key, scope: 'universal' });
 
@@ -872,7 +909,7 @@ export class SettingsManager {
 
         this.#assertLoaded();
 
-        const stage = this.getStage(stageName);
+        const stage = this.#documentStage(stageName);
 
         if (!stage) {
 
@@ -910,7 +947,7 @@ export class SettingsManager {
 
         this.#assertLoaded();
 
-        const stage = this.getStage(stageName);
+        const stage = this.#documentStage(stageName);
 
         if (!stage) {
 
@@ -947,7 +984,7 @@ export class SettingsManager {
 
         this.#assertLoaded();
 
-        const stage = this.getStage(stageName);
+        const stage = this.#documentStage(stageName);
 
         if (!stage || !stage.secrets) {
 
@@ -982,11 +1019,37 @@ export class SettingsManager {
      */
     #assertLoaded(): void {
 
-        if (!this.#loaded || !this.#settings) {
+        if (!this.#loaded || !this.#document) {
 
             throw new Error('SettingsManager not loaded. Call load() first.');
 
         }
+
+    }
+
+    /**
+     * Recompute the resolved view from the document plus the env overlay.
+     *
+     * Called after every load and every mutation. `merge` mutates and
+     * returns its target, so the document is cloned first — otherwise the
+     * overlay would write straight back into what `save()` serialises,
+     * which is the leak this split exists to prevent.
+     */
+    #refreshResolved(): void {
+
+        this.#settings = merge(clone(this.#document!), allSettingsEnv()) as Settings;
+
+    }
+
+    /**
+     * The document's copy of a stage — the read side of a read-modify-write.
+     *
+     * Stage mutators must not start from the resolved view, or the env
+     * overlay riding on that stage would be written back to disk.
+     */
+    #documentStage(name: string): Stage | undefined {
+
+        return this.#document!.stages?.[name];
 
     }
 
