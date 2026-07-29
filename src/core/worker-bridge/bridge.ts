@@ -10,6 +10,8 @@ export class WorkerBridge<TEvents extends { [K: string]: object }> extends Obser
 
     #port: Port;
     #ownsWorker: boolean;
+    #deathError: Error | null = null;
+    #pendingRejects = new Set<(err: Error) => void>();
 
     constructor(script?: string | URL) {
 
@@ -27,6 +29,7 @@ export class WorkerBridge<TEvents extends { [K: string]: object }> extends Obser
                 if (!this.isShutdown && code !== 0) {
 
                     this.receive('worker:exit', { code, error: `Worker exited with code ${code}` }, {} as Record<string, never>);
+                    this.#failPending(new Error(`Worker exited with code ${code}`));
 
                 }
 
@@ -61,16 +64,59 @@ export class WorkerBridge<TEvents extends { [K: string]: object }> extends Obser
 
     }
 
+    /**
+     * Reject every outstanding request and refuse new ones.
+     *
+     * A worker that has exited will never post a response, so `request()`'s
+     * `once()` would wait forever — there is no timeout and no other signal
+     * that the thread is gone. Without this, a single crashed compute worker
+     * wedges the export/import pipeline permanently.
+     */
+    #failPending(err: Error): void {
+
+        this.#deathError = err;
+
+        for (const reject of this.#pendingRejects) {
+
+            reject(err);
+
+        }
+
+        this.#pendingRejects.clear();
+
+    }
+
     async request<K extends keyof TEvents & string>(
         event: K,
         data: TEvents[K],
         options?: { signal?: AbortSignal },
     ): Promise<ResKey<K> extends keyof TEvents ? TEvents[ResKey<K>] : unknown> {
 
+        if (this.#deathError) {
+
+            throw this.#deathError;
+
+        }
+
         const cid = randomUUID();
         const pending = this.once(new RegExp(`^${event}:res:${cid}$`), options);
+
+        let onDeath!: (err: Error) => void;
+        const death = new Promise<never>((_resolve, reject) => {
+
+            onDeath = reject;
+
+        });
+
+        this.#pendingRejects.add(onDeath);
         this.send(event, { ...data, __cid: cid });
-        const { data: { data: result } } = await pending;
+
+        // Losing the race is not an unhandled rejection: #failPending only
+        // rejects deferreds still in the set, and every settled request
+        // removes its own before returning.
+        const { data: { data: result } } = await Promise
+            .race([pending, death])
+            .finally(() => this.#pendingRejects.delete(onDeath));
 
         return result as ResKey<K> extends keyof TEvents ? TEvents[ResKey<K>] : unknown;
 
@@ -88,6 +134,8 @@ export class WorkerBridge<TEvents extends { [K: string]: object }> extends Obser
     override async shutdown(): Promise<void> {
 
         super.shutdown();
+        this.#failPending(new Error('WorkerBridge was shut down with requests in flight'));
+
         if (this.#ownsWorker && 'terminate' in this.#port) {
 
             await this.#port.terminate();
