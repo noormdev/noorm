@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterAll } from 'bun:test';
-import { readFile, writeFile, mkdir, readdir, rm } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, readdir, rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { gzip } from 'node:zlib';
 import { promisify } from 'node:util';
@@ -1003,6 +1003,64 @@ describe('sql-terminal: history', () => {
 
                 expect(parsed.version).toBe('1.0.0');
                 expect(parsed.entries).toHaveLength(1);
+
+            });
+
+        });
+
+        /**
+         * History is the one at-rest store noorm does not encrypt: it holds
+         * verbatim query text and every row those queries returned, right
+         * next to `state.enc`, which is AES-256-GCM at 0600. Encrypting it
+         * is a larger change; not leaving it world-readable is not.
+         */
+        describe('at-rest permissions', () => {
+
+            it('should write the history file readable only by its owner', async () => {
+
+                const manager = new SqlHistoryManager(TMP_DIR, 'test-config');
+
+                await manager.addEntry("SELECT * FROM vault WHERE token = 'ghp_SECRET'", {
+                    success: true,
+                    durationMs: 1,
+                    columns: ['token'],
+                    rows: [{ token: 'ghp_SECRET' }],
+                });
+
+                const historyPath = join(TMP_DIR, '.noorm', 'state', 'history', 'test-config.json');
+                const { mode } = await stat(historyPath);
+
+                expect(mode & 0o777).toBe(0o600);
+
+            });
+
+            it('should write result blobs readable only by their owner', async () => {
+
+                const manager = new SqlHistoryManager(TMP_DIR, 'test-config');
+
+                await manager.saveResults('abc-123', {
+                    success: true,
+                    durationMs: 1,
+                    columns: ['token'],
+                    rows: [{ token: 'ghp_SECRET' }],
+                });
+
+                const resultsPath = join(TMP_DIR, '.noorm', 'state', 'history', 'test-config', 'abc-123.results.gz');
+                const { mode } = await stat(resultsPath);
+
+                expect(mode & 0o777).toBe(0o600);
+
+            });
+
+            it('should not let anyone but the owner list the results directory', async () => {
+
+                const manager = new SqlHistoryManager(TMP_DIR, 'test-config');
+
+                await manager.saveResults('abc-123', { success: true, durationMs: 1, columns: [], rows: [] });
+
+                const { mode } = await stat(join(TMP_DIR, '.noorm', 'state', 'history', 'test-config'));
+
+                expect(mode & 0o777).toBe(0o700);
 
             });
 

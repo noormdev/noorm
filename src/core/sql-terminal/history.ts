@@ -6,7 +6,7 @@
  */
 import { gzip, gunzip } from 'node:zlib';
 import { promisify } from 'node:util';
-import { readFile, writeFile, mkdir, unlink, readdir, stat } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, unlink, readdir, stat, chmod } from 'node:fs/promises';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { attempt, attemptSync } from '@logosdx/utils';
@@ -24,6 +24,15 @@ const gunzipAsync = promisify(gunzip);
 
 const HISTORY_VERSION = '1.0.0';
 const HISTORY_DIR = 'state/history';
+
+/**
+ * History holds verbatim query text and every row those queries returned —
+ * whatever a `SELECT` pulled out of a credentials or PII table is in here in
+ * the clear. It sits beside `state.enc`, which is AES-256-GCM at 0600, so it
+ * gets at least the same permissions: owner-only, no group, no world.
+ */
+const HISTORY_FILE_MODE = 0o600;
+const HISTORY_DIR_MODE = 0o700;
 
 /**
  * SQL History Manager.
@@ -57,12 +66,22 @@ export class SqlHistoryManager {
     }
 
     /**
-     * Ensure the history and results directories exist.
+     * Ensure the history and results directories exist, owner-only.
+     *
+     * `mkdir`'s mode is masked by the process umask and skipped entirely for
+     * a directory that already exists, so an explicit `chmod` follows — the
+     * same belt-and-braces `StateManager` uses for `state.enc`, and what
+     * tightens directories left 0755 by an older version.
      */
     async #ensureDirs(): Promise<void> {
 
-        await mkdir(join(this.#projectRoot, '.noorm', HISTORY_DIR), { recursive: true });
-        await mkdir(this.#resultsDir, { recursive: true });
+        const historyDir = join(this.#projectRoot, '.noorm', HISTORY_DIR);
+
+        await mkdir(historyDir, { recursive: true, mode: HISTORY_DIR_MODE });
+        await mkdir(this.#resultsDir, { recursive: true, mode: HISTORY_DIR_MODE });
+
+        await attempt(() => chmod(historyDir, HISTORY_DIR_MODE));
+        await attempt(() => chmod(this.#resultsDir, HISTORY_DIR_MODE));
 
     }
 
@@ -158,7 +177,8 @@ export class SqlHistoryManager {
         const compressed = await gzipAsync(data);
         const filepath = join(this.#resultsDir, `${id}.results.gz`);
 
-        await writeFile(filepath, compressed);
+        await writeFile(filepath, compressed, { mode: HISTORY_FILE_MODE });
+        await attempt(() => chmod(filepath, HISTORY_FILE_MODE));
 
     }
 
@@ -364,7 +384,8 @@ export class SqlHistoryManager {
             entries: this.#serializeEntries(entries),
         };
 
-        await writeFile(this.#historyPath, JSON.stringify(file, null, 2));
+        await writeFile(this.#historyPath, JSON.stringify(file, null, 2), { mode: HISTORY_FILE_MODE });
+        await attempt(() => chmod(this.#historyPath, HISTORY_FILE_MODE));
 
     }
 

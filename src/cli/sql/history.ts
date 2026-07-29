@@ -4,11 +4,18 @@
  * Reads persisted history from `.noorm/state/history/` and displays
  * query text (truncated), timestamp, duration, and status.
  * No database connection required.
+ *
+ * Only the interactive SQL terminal records history. `sql query` does not,
+ * deliberately: it is the headless/CI path, and persisting query text plus
+ * every returned row to disk on a build agent is an exposure nobody asked
+ * for. So this command can never show a `sql query` invocation — the help
+ * text says so rather than leaving users to infer it from an empty list.
  */
 import { defineCommand } from 'citty';
 
 import { SqlHistoryManager } from '../../core/sql-terminal/history.js';
 import { outputResult, outputError, sharedArgs } from '../_utils.js';
+import { resolveHistoryConfigName } from './_config.js';
 
 /** Maximum characters of query text to display in non-JSON output. */
 const QUERY_TRUNCATE = 80;
@@ -49,7 +56,7 @@ function formatTimestamp(date: Date): string {
 const historyCommand = defineCommand({
     meta: {
         name: 'history',
-        description: 'Show SQL execution history',
+        description: 'Show SQL execution history (recorded by the interactive terminal, not by `sql query`)',
     },
     args: {
         config: sharedArgs.config,
@@ -63,12 +70,20 @@ const historyCommand = defineCommand({
     async run({ args }) {
 
         const projectRoot = process.cwd();
-        const configName = args.config ?? 'default';
         const limit = args.limit ? parseInt(args.limit, 10) : 50;
 
         if (isNaN(limit) || limit < 1) {
 
             outputError(args, `Invalid limit: ${args.limit}. Must be a positive integer.`);
+            process.exit(1);
+
+        }
+
+        const configName = await resolveHistoryConfigName(args.config, projectRoot);
+
+        if (!configName) {
+
+            outputError(args, 'No config specified and no active config set. Use --config or run "noorm config use <name>".');
             process.exit(1);
 
         }
