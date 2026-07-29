@@ -10,6 +10,7 @@ import { defineCommand } from 'citty';
 
 import { SqlHistoryManager } from '../../core/sql-terminal/history.js';
 import { outputResult, outputError, sharedArgs } from '../_utils.js';
+import { resolveHistoryConfigName } from './_config.js';
 
 const clearCommand = defineCommand({
     meta: {
@@ -28,7 +29,14 @@ const clearCommand = defineCommand({
     async run({ args }) {
 
         const projectRoot = process.cwd();
-        const configName = args.config ?? 'default';
+        const configName = await resolveHistoryConfigName(args.config, projectRoot);
+
+        if (!configName) {
+
+            outputError(args, 'No config specified and no active config set. Use --config or run "noorm config use <name>".');
+            process.exit(1);
+
+        }
 
         const manager = new SqlHistoryManager(projectRoot, configName);
 
