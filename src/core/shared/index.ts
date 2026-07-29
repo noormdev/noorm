@@ -17,6 +17,9 @@ export { createDialectQuoting, type DialectQuoting } from './dialect-quoting.js'
 // Tables
 export { NOORM_TABLES, getNoormTables, noormDb } from './tables.js';
 
+// Operation records
+export { toOperationId, insertOperationRecord } from './operation-id.js';
+
 export type {
     NoormTableNames,
     NoormTableName,
