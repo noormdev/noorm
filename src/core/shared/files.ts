@@ -48,13 +48,6 @@ export function filterFilesByPaths(
     exclude: string[],
 ): string[] {
 
-    // Normalize paths for consistent matching (handle Windows vs Unix)
-    const normalizePattern = (pattern: string): string => {
-
-        return pattern.split(/[\\/]/).join(sep);
-
-    };
-
     const normalizedInclude = include.map(normalizePattern);
     const normalizedExclude = exclude.map(normalizePattern);
 
@@ -62,21 +55,73 @@ export function filterFilesByPaths(
 
         const relativePath = relative(baseDir, file);
 
-        // Check if path matches any include pattern
+        // An empty include list means "everything under baseDir", not "nothing"
         const matchesInclude =
             normalizedInclude.length === 0 ||
-            normalizedInclude.some((pattern) =>
-                relativePath === pattern || relativePath.startsWith(pattern + sep),
-            );
+            normalizedInclude.some((pattern) => matchesPattern(relativePath, pattern));
 
-        // Check if path matches any exclude pattern
-        const matchesExclude = normalizedExclude.some(
-            (pattern) => relativePath === pattern || relativePath.startsWith(pattern + sep),
-        );
+        const matchesExclude = normalizedExclude.some((pattern) => matchesPattern(relativePath, pattern));
 
-        // Include if matches include AND doesn't match exclude
-        // (exclude wins if both match)
+        // Exclude wins if both match, consistent with rule evaluation
         return matchesInclude && !matchesExclude;
+
+    });
+
+}
+
+/**
+ * Normalizes a settings.yml path pattern to the host separator, so one
+ * settings file matches identically on Windows and Unix.
+ */
+function normalizePattern(pattern: string): string {
+
+    return pattern.split(/[\\/]/).join(sep);
+
+}
+
+/**
+ * True when a baseDir-relative path is the pattern itself or sits underneath it.
+ */
+function matchesPattern(relativePath: string, pattern: string): boolean {
+
+    return relativePath === pattern || relativePath.startsWith(pattern + sep);
+
+}
+
+/**
+ * Returns the include patterns that match none of the discovered files.
+ *
+ * A mistyped include entry is otherwise invisible. It filters every file out,
+ * and a build over zero files still reports success and exits 0 — so the
+ * common `sql/01_tables` mistake (patterns are relative to `paths.sql`, so
+ * that expands to `sql/sql/01_tables`) looks exactly like a working build
+ * until something downstream fails on a missing table.
+ *
+ * Callers use this to name the offending entry rather than leaving the user
+ * to infer it from an empty run.
+ *
+ * An empty `include` means "everything under baseDir" rather than a set of
+ * patterns, so it never reports an unmatched entry.
+ *
+ * @example
+ * ```typescript
+ * findUnmatchedIncludePatterns(files, '/project/sql', ['01_tables', 'sql/01_tables'])
+ * // ['sql/01_tables'] -- the sql/ prefix was repeated
+ * ```
+ */
+export function findUnmatchedIncludePatterns(
+    files: string[],
+    baseDir: string,
+    include: string[],
+): string[] {
+
+    const relativePaths = files.map((file) => relative(baseDir, file));
+
+    return include.filter((pattern) => {
+
+        const normalized = normalizePattern(pattern);
+
+        return !relativePaths.some((relativePath) => matchesPattern(relativePath, normalized));
 
     });
 

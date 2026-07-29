@@ -305,6 +305,39 @@ describe('sdk: RunNamespace.build() filtering', () => {
 
     });
 
+    it('should surface unmatchedInclude when a build.include entry matches nothing', async () => {
+
+        // Real-world case: include entries are relative to paths.sql, not the
+        // project root, so repeating the sql/ prefix (`sql/a` against a
+        // fixture rooted at <projectRoot>/sql) matches no discovered file.
+        const projectRoot = await makeSqlProject();
+        tempDirs.push(projectRoot);
+        await loadEmptyState(projectRoot);
+
+        const state = makeState(projectRoot, { build: { include: ['a', 'sql/a'] } });
+        const run = new RunNamespace(state);
+
+        const result = await run.build();
+
+        expect(result.unmatchedInclude).toEqual(['sql/a']);
+
+    });
+
+    it('should leave unmatchedInclude undefined when every include entry matches', async () => {
+
+        const projectRoot = await makeSqlProject();
+        tempDirs.push(projectRoot);
+        await loadEmptyState(projectRoot);
+
+        const state = makeState(projectRoot, { build: { include: ['a'] } });
+        const run = new RunNamespace(state);
+
+        const result = await run.build();
+
+        expect(result.unmatchedInclude).toBeUndefined();
+
+    });
+
     it('should throw NotConnectedError before any file-system access when disconnected', async () => {
 
         // Iteration 1 regression: #createRunContext() (which throws

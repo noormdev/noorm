@@ -11,7 +11,7 @@ import { attempt } from '@logosdx/utils';
 import type { Kysely } from 'kysely';
 
 import type { NoormDatabase } from '../../core/shared/index.js';
-import { filterFilesByPaths } from '../../core/shared/index.js';
+import { filterFilesByPaths, findUnmatchedIncludePatterns } from '../../core/shared/index.js';
 import type {
     RunContext,
     RunOptions,
@@ -218,7 +218,21 @@ export class RunNamespace {
             effectivePaths.exclude,
         );
 
-        return runBuild(context, sqlPath, { force: options?.force, dryRun: options?.dryRun }, filteredFiles);
+        const result = await runBuild(context, sqlPath, { force: options?.force, dryRun: options?.dryRun }, filteredFiles);
+
+        // Reported on the result rather than thrown: an unmatched entry is a
+        // misconfiguration, not an execution failure, and a build that legitimately
+        // matches nothing must keep succeeding. Surfacing it is what stops the
+        // `sql/`-prefix mistake from reading as a clean build.
+        const unmatchedInclude = findUnmatchedIncludePatterns(discoveredFiles, sqlPath, effectivePaths.include);
+
+        if (unmatchedInclude.length > 0) {
+
+            return { ...result, unmatchedInclude };
+
+        }
+
+        return result;
 
     }
 
