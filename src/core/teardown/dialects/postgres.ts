@@ -3,7 +3,7 @@
  *
  * PostgreSQL-specific SQL generation for teardown operations.
  */
-import type { TeardownDialectOperations } from '../types.js';
+import type { TeardownDialectOperations, TeardownTableRef } from '../types.js';
 import { createDialectQuoting } from '../../shared/index.js';
 
 const { quote, qualifiedName } = createDialectQuoting({
@@ -17,14 +17,14 @@ const { quote, qualifiedName } = createDialectQuoting({
  */
 export const postgresTeardownOperations: TeardownDialectOperations = {
 
-    disableForeignKeyChecks(_tables?: string[]): string {
+    disableForeignKeyChecks(_tables?: TeardownTableRef[]): string {
 
         // Session-level setting that disables FK triggers — tables ignored
         return 'SET session_replication_role = \'replica\'';
 
     },
 
-    enableForeignKeyChecks(_tables?: string[]): string {
+    enableForeignKeyChecks(_tables?: TeardownTableRef[]): string {
 
         return 'SET session_replication_role = \'origin\'';
 

@@ -24,7 +24,7 @@ describe('teardown: mssql dialect', () => {
 
         it('returns per-table ALTER NOCHECK array when tables provided (deadlock-safe path)', () => {
 
-            const stmts = mssqlTeardownOperations.disableForeignKeyChecks(['A', 'B']);
+            const stmts = mssqlTeardownOperations.disableForeignKeyChecks([{ name: 'A' }, { name: 'B' }]);
 
             expect(stmts).toEqual([
                 'ALTER TABLE [A] NOCHECK CONSTRAINT ALL',
@@ -35,7 +35,7 @@ describe('teardown: mssql dialect', () => {
 
         it('quotes table names with brackets in per-table mode', () => {
 
-            const stmts = mssqlTeardownOperations.disableForeignKeyChecks(['weird]name']);
+            const stmts = mssqlTeardownOperations.disableForeignKeyChecks([{ name: 'weird]name' }]);
 
             expect(stmts).toEqual([
                 'ALTER TABLE [weird]]name] NOCHECK CONSTRAINT ALL',
@@ -45,7 +45,7 @@ describe('teardown: mssql dialect', () => {
 
         it('never emits sp_MSforeachtable in per-table mode (regression guard for M-6)', () => {
 
-            const stmts = mssqlTeardownOperations.disableForeignKeyChecks(['x', 'y', 'z']);
+            const stmts = mssqlTeardownOperations.disableForeignKeyChecks([{ name: 'x' }, { name: 'y' }, { name: 'z' }]);
             const flat = Array.isArray(stmts) ? stmts.join('\n') : stmts;
 
             expect(flat).not.toContain('sp_MSforeachtable');
@@ -66,7 +66,7 @@ describe('teardown: mssql dialect', () => {
 
         it('returns per-table ALTER CHECK array when tables provided', () => {
 
-            const stmts = mssqlTeardownOperations.enableForeignKeyChecks(['A', 'B']);
+            const stmts = mssqlTeardownOperations.enableForeignKeyChecks([{ name: 'A' }, { name: 'B' }]);
 
             expect(stmts).toEqual([
                 'ALTER TABLE [A] CHECK CONSTRAINT ALL',
@@ -77,7 +77,7 @@ describe('teardown: mssql dialect', () => {
 
         it('never emits sp_MSforeachtable in per-table mode (regression guard for M-6)', () => {
 
-            const stmts = mssqlTeardownOperations.enableForeignKeyChecks(['x', 'y']);
+            const stmts = mssqlTeardownOperations.enableForeignKeyChecks([{ name: 'x' }, { name: 'y' }]);
             const flat = Array.isArray(stmts) ? stmts.join('\n') : stmts;
 
             expect(flat).not.toContain('sp_MSforeachtable');
