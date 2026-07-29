@@ -7,7 +7,7 @@
 export { assertPolicy, checkConfigPolicy, checkPolicy, confirmationPhraseFor, formatAccessTag, guarded, isVisibleToChannel } from './check.js';
 export { classifyStatements } from './classify.js';
 export type { SqlClass } from './classify.js';
-export { GUARDED_ACCESS, OPEN_ACCESS, resolveLegacyAccess } from './legacy-access.js';
+export { DEFAULT_ACCESS, GUARDED_ACCESS, resolveLegacyAccess } from './legacy-access.js';
 export { MATRIX } from './matrix.js';
 export type {
     Channel,

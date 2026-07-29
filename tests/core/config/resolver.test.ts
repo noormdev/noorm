@@ -374,7 +374,7 @@ describe('config: resolver', () => {
             const config = resolveConfig(state);
 
             expect(config!.type).toBe('local');
-            expect(config!.access).toEqual({ user: 'admin', mcp: 'admin' });
+            expect(config!.access).toEqual({ user: 'admin', mcp: 'viewer' });
 
         });
 

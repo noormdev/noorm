@@ -1,4 +1,5 @@
 import { shouldSkipConfirmations } from '../environment.js';
+import { DEFAULT_ACCESS } from './legacy-access.js';
 import { MATRIX } from './matrix.js';
 import type { Channel, ConfigAccess, Permission, PolicyCheck, PolicyTarget } from './types.js';
 
@@ -188,17 +189,23 @@ export function guarded(target: PolicyTarget): boolean {
 /**
  * Formats access as `user:<role> mcp:<role|off>` — the shared display
  * string for `noorm config list` and the TUI config list screen, so the
- * format can't drift between the two. Omitted entirely (`null`) for fully
- * open (admin/admin) configs, per `guarded()`.
+ * format can't drift between the two. Omitted entirely (`null`) only for
+ * configs sitting on `DEFAULT_ACCESS`, so the tag means "someone changed
+ * this" in either direction.
+ *
+ * Keyed to the default rather than `guarded()` because the default is no
+ * longer the loosest setting: `mcp: 'admin'` is now an opt-in escalation,
+ * and `guarded()` (which only reads the user channel) would render the one
+ * config an agent can write to as unremarkable.
  *
  * @example
  * formatAccessTag({ name: 'prod', access: { user: 'operator', mcp: false } }); // 'user:operator mcp:off'
  */
 export function formatAccessTag(config: { name: string; access: ConfigAccess }): string | null {
 
-    if (!guarded(config)) return null;
-
     const { access } = config;
+
+    if (access.user === DEFAULT_ACCESS.user && access.mcp === DEFAULT_ACCESS.mcp) return null;
 
     return `user:${access.user} mcp:${access.mcp === false ? 'off' : access.mcp}`;
 

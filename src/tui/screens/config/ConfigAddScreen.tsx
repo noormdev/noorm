@@ -27,7 +27,7 @@ import { useRouter } from '../../router.js';
 import { useAppContext, useSettings } from '../../app-context.js';
 import { Panel, Form, useToast } from '../../components/index.js';
 import { testConnection } from '../../../core/connection/factory.js';
-import { GUARDED_ACCESS, OPEN_ACCESS } from '../../../core/policy/index.js';
+import { DEFAULT_ACCESS, GUARDED_ACCESS } from '../../../core/policy/index.js';
 import {
     getErrorMessage,
     validateConfigName,
@@ -57,9 +57,10 @@ export function ConfigAddScreen({ params }: ScreenProps): ReactElement {
 
     // Default access for a brand-new config: the matched stage's `protected`
     // flag (guarded when true) if the caller navigated with a known stage
-    // name, otherwise fully open.
+    // name, otherwise the unrestricted-by-the-author default — which still
+    // holds the agent channel to `viewer`.
     const matchedStage = params.name ? settings?.stages?.[params.name] : undefined;
-    const defaultAccess = matchedStage?.defaults?.protected ? GUARDED_ACCESS : OPEN_ACCESS;
+    const defaultAccess = matchedStage?.defaults?.protected ? GUARDED_ACCESS : DEFAULT_ACCESS;
 
     // Form fields for config creation
     const fields: FormField[] = [
