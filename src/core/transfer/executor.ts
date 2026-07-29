@@ -21,9 +21,12 @@ import type {
     ConflictStrategy,
 } from './types.js';
 
+import type { KeysetPager } from '../dt/paging.js';
+
 import { observer } from '../observer.js';
 import { getTransferOperations } from './dialects/index.js';
 import { DtStreamer } from '../dt/streamer.js';
+import { createKeysetPager } from '../dt/paging.js';
 import { queryDatabaseVersion } from '../dt/version.js';
 
 /**
@@ -405,24 +408,14 @@ async function transferTableCrossServer(
 
     let rowsTransferred = 0;
     let rowsSkipped = 0;
-    let offset = 0;
     let transferError: Error | null = null;
+    const cursor = openSourceCursor(ctx, plan, batchSize);
 
     // Fetch and insert in batches
     while (true) {
 
         // Fetch batch from source
-        const [rows, fetchErr] = await attempt(() =>
-            fetchBatch(
-                ctx.source.db,
-                ctx.source.dialect,
-                plan.name,
-                plan.columns,
-                batchSize,
-                offset,
-                plan.schema,
-            ),
-        );
+        const [rows, fetchErr] = await attempt(() => cursor.next());
 
         if (fetchErr) {
 
@@ -458,7 +451,6 @@ async function transferTableCrossServer(
 
         rowsTransferred += batchResult.inserted;
         rowsSkipped += batchResult.skipped;
-        offset += rows.length;
 
         observer.emit('transfer:table:progress', {
             table: plan.name,
@@ -466,13 +458,6 @@ async function transferTableCrossServer(
             rowsTotal: plan.rowCount,
             rowsSkipped,
         });
-
-        // Check if we got fewer rows than batch size (end of data)
-        if (rows.length < batchSize) {
-
-            break;
-
-        }
 
     }
 
@@ -594,8 +579,8 @@ async function transferTableCrossDialect(
 
     let rowsTransferred = 0;
     let rowsSkipped = 0;
-    let offset = 0;
     let transferError: Error | null = null;
+    const cursor = openSourceCursor(ctx, plan, batchSize);
 
     observer.emit('dt:stream:start', {
         table: plan.name,
@@ -606,17 +591,7 @@ async function transferTableCrossDialect(
     while (true) {
 
         // Fetch batch from source
-        const [rows, fetchErr] = await attempt(() =>
-            fetchBatch(
-                ctx.source.db,
-                ctx.source.dialect,
-                plan.name,
-                plan.columns,
-                batchSize,
-                offset,
-                plan.schema,
-            ),
-        );
+        const [rows, fetchErr] = await attempt(() => cursor.next());
 
         if (fetchErr) {
 
@@ -670,8 +645,6 @@ async function transferTableCrossDialect(
 
         if (transferError) break;
 
-        offset += rows.length;
-
         observer.emit('transfer:table:progress', {
             table: plan.name,
             rowsTransferred,
@@ -683,8 +656,6 @@ async function transferTableCrossDialect(
             table: plan.name,
             rowsConverted: rowsTransferred + rowsSkipped,
         });
-
-        if (rows.length < batchSize) break;
 
     }
 
@@ -726,56 +697,27 @@ async function transferTableCrossDialect(
 }
 
 /**
- * Fetch a batch of rows from source table.
+ * Open a stable cursor over a source table.
  *
- * Uses dialect-specific syntax for column quoting and pagination.
+ * Pages by primary key rather than `OFFSET`: an `OFFSET` walk with no total
+ * order silently drops and duplicates rows whenever the source is written to
+ * mid-transfer, while still reporting the full row count. See
+ * `core/dt/paging.ts`.
  */
-async function fetchBatch(
-    db: Kysely<NoormDatabase>,
-    dialect: Dialect,
-    table: string,
-    columns: string[],
-    limit: number,
-    offset: number,
-    _schema?: string,
-): Promise<Record<string, unknown>[]> {
+function openSourceCursor(
+    ctx: DualConnectionContext,
+    plan: TransferTablePlan,
+    batchSize: number,
+): KeysetPager {
 
-    // Quote column names based on dialect
-    const quoteIdent = dialect === 'mssql'
-        ? (c: string) => `[${c}]`
-        : dialect === 'mysql'
-            ? (c: string) => `\`${c}\``
-            : (c: string) => `"${c}"`;
-
-    const columnList = columns.map(quoteIdent).join(', ');
-
-    // MSSQL uses different pagination syntax
-    if (dialect === 'mssql') {
-
-        // MSSQL requires ORDER BY for OFFSET/FETCH
-        // Use first column as default order (usually PK)
-        const orderCol = quoteIdent(columns[0]!);
-        const result = await sql<Record<string, unknown>>`
-            SELECT ${sql.raw(columnList)}
-            FROM ${sql.table(table)}
-            ORDER BY ${sql.raw(orderCol)}
-            OFFSET ${offset} ROWS
-            FETCH NEXT ${limit} ROWS ONLY
-        `.execute(db);
-
-        return result.rows;
-
-    }
-
-    // PostgreSQL and MySQL use LIMIT/OFFSET
-    const result = await sql<Record<string, unknown>>`
-        SELECT ${sql.raw(columnList)}
-        FROM ${sql.table(table)}
-        LIMIT ${limit}
-        OFFSET ${offset}
-    `.execute(db);
-
-    return result.rows;
+    return createKeysetPager({
+        db: ctx.source.db,
+        dialect: ctx.source.dialect,
+        table: plan.name,
+        columns: plan.columns,
+        keyColumns: plan.primaryKey,
+        batchSize,
+    });
 
 }
 
