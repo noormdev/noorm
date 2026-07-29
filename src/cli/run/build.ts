@@ -30,7 +30,11 @@ const buildCommand = defineCommand({
 
                         if (dryRun) {
 
+                            // Named explicitly because the rendered files carry
+                            // every secret the templates resolved, and `tmp/` is
+                            // not gitignored by a project noorm scaffolds.
                             logger.info('Dry run: rendering files to tmp/ (no DB writes)');
+                            logger.warn('Rendered files contain resolved secrets in plaintext — written owner-only, not gitignored.');
 
                         }
 
@@ -62,7 +66,8 @@ const buildCommand = defineCommand({
                             }
                             else if (dryRun) {
 
-                                logger.info(`${file.filepath} (${file.status}, dry-run)`);
+                                const destination = file.outputPath ? ` -> ${file.outputPath}` : '';
+                                logger.info(`${file.filepath} (${file.status}, dry-run)${destination}`);
 
                             }
 

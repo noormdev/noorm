@@ -162,6 +162,15 @@ export interface FileResult {
 
     /** Rendered SQL (only in preview mode) */
     renderedSql?: string;
+
+    /**
+     * Where a dry run wrote this file's rendered SQL.
+     *
+     * Carried on the result so `--json` consumers learn that plaintext —
+     * including every resolved secret — was written, and where. In human
+     * mode the same information reaches the user through `file:dry-run`.
+     */
+    outputPath?: string;
 }
 
 // ─────────────────────────────────────────────────────────────
