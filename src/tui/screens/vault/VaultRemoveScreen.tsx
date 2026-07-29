@@ -47,7 +47,16 @@ export function VaultRemoveScreen({ params }: ScreenProps): ReactElement {
         setPhase('deleting');
         setError(null);
 
-        const [privateKey] = await Promise.all([loadPrivateKey()]);
+        const [privateKey, privateKeyErr] = await attempt(() => loadPrivateKey());
+
+        if (privateKeyErr) {
+
+            setError(privateKeyErr.message);
+            setPhase('ready');
+
+            return;
+
+        }
 
         if (!privateKey) {
 

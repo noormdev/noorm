@@ -14,6 +14,7 @@
  */
 import { useCallback, useMemo, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
+import { attempt } from '@logosdx/utils';
 import type { Kysely } from 'kysely';
 
 import type { ReactElement } from 'react';
@@ -65,7 +66,7 @@ export function VaultScreen({ params: _params }: ScreenProps): ReactElement {
 
             if (vaultStatus.hasAccess) {
 
-                const [privateKey] = await Promise.all([loadPrivateKey()]);
+                const privateKey = await loadPrivateKey();
 
                 if (privateKey && !isCancelled()) {
 
@@ -152,7 +153,16 @@ export function VaultScreen({ params: _params }: ScreenProps): ReactElement {
 
         setPropagating(true);
 
-        const [privateKey] = await Promise.all([loadPrivateKey()]);
+        const [privateKey, privateKeyErr] = await attempt(() => loadPrivateKey());
+
+        if (privateKeyErr) {
+
+            showToast({ message: privateKeyErr.message, variant: 'error' });
+            setPropagating(false);
+
+            return;
+
+        }
 
         if (!privateKey) {
 
@@ -165,7 +175,17 @@ export function VaultScreen({ params: _params }: ScreenProps): ReactElement {
 
         const db = connRef.current.db;
         const connDialect = connRef.current.dialect;
-        const vaultKey = await getVaultKey(db as Kysely<NoormDatabase>, identity.identityHash, privateKey, connDialect);
+
+        const [vaultKey, vaultKeyErr] = await attempt(() => getVaultKey(db as Kysely<NoormDatabase>, identity.identityHash, privateKey, connDialect));
+
+        if (vaultKeyErr) {
+
+            showToast({ message: vaultKeyErr.message, variant: 'error' });
+            setPropagating(false);
+
+            return;
+
+        }
 
         if (!vaultKey) {
 
@@ -176,7 +196,16 @@ export function VaultScreen({ params: _params }: ScreenProps): ReactElement {
 
         }
 
-        const result = await propagateVaultKey(db as Kysely<NoormDatabase>, vaultKey, connDialect);
+        const [result, propagateErr] = await attempt(() => propagateVaultKey(db as Kysely<NoormDatabase>, vaultKey, connDialect));
+
+        if (propagateErr || !result) {
+
+            showToast({ message: propagateErr?.message ?? 'Failed to propagate vault key', variant: 'error' });
+            setPropagating(false);
+
+            return;
+
+        }
 
         if (result.propagatedTo.length > 0) {
 
@@ -193,7 +222,17 @@ export function VaultScreen({ params: _params }: ScreenProps): ReactElement {
         }
 
         // Refresh status
-        const newStatus = await getVaultStatus(db as Kysely<NoormDatabase>, identity.identityHash, connDialect);
+        const [newStatus, statusErr] = await attempt(() => getVaultStatus(db as Kysely<NoormDatabase>, identity.identityHash, connDialect));
+
+        if (statusErr) {
+
+            showToast({ message: statusErr.message, variant: 'error' });
+            setPropagating(false);
+
+            return;
+
+        }
+
         setStatus(newStatus);
         setPropagating(false);
 

@@ -46,7 +46,7 @@ export function SecretListScreen({ params: _params }: ScreenProps): ReactElement
     const { isFocused } = useFocusScope('SecretList');
     const { activeConfig, activeConfigName, stateManager, settingsManager } = useAppContext();
     const { showToast } = useToast();
-    const { vaultSecretKeys, requiredSecrets } = useVaultSecretKeys();
+    const { vaultSecretKeys, requiredSecrets, vaultError } = useVaultSecretKeys();
 
     // Get stored secrets for active config
     const storedSecretKeys = useMemo<string[]>(() => {
@@ -235,6 +235,9 @@ export function SecretListScreen({ params: _params }: ScreenProps): ReactElement
                 <Box flexDirection="column" gap={1}>
                     {/* Stage info */}
                     {activeConfigName && <Text dimColor>Stage: {activeConfigName}</Text>}
+
+                    {/* Vault-backed secrets are missing from the list below, not absent */}
+                    {vaultError && <Text color="yellow">Vault secrets unavailable: {vaultError}</Text>}
 
                     <SecretValueList
                         secrets={allSecrets}

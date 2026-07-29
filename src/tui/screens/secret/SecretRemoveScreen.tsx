@@ -33,7 +33,7 @@ export function SecretRemoveScreen({ params }: ScreenProps): ReactElement {
     const { activeConfig, activeConfigName, stateManager, refresh } =
         useAppContext();
     const { showToast } = useToast();
-    const { vaultSecretKeys, requiredSecrets } = useVaultSecretKeys();
+    const { vaultSecretKeys, requiredSecrets, vaultError } = useVaultSecretKeys();
 
     const secretKey = params.name;
 
@@ -215,6 +215,9 @@ export function SecretRemoveScreen({ params }: ScreenProps): ReactElement {
                         <Text dimColor>
                             Or set this secret in the vault to allow local deletion.
                         </Text>
+
+                        {/* The vault may in fact hold this key — we could not read it to find out */}
+                        {vaultError && <Text color="yellow">Vault secrets unavailable: {vaultError}</Text>}
                     </Box>
                 </Panel>
 
@@ -242,6 +245,8 @@ export function SecretRemoveScreen({ params }: ScreenProps): ReactElement {
         <Panel title={`Delete: ${secretKey}`} paddingX={2} paddingY={1} borderColor="yellow">
             <Box flexDirection="column" gap={1}>
                 <Text dimColor>Config: {activeConfigName}</Text>
+
+                {vaultError && <Text color="yellow">Vault secrets unavailable: {vaultError}</Text>}
 
                 {/* Show description if available */}
                 {secretDefinition?.description && (

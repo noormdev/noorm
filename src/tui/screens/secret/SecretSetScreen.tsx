@@ -77,7 +77,7 @@ export function SecretSetScreen({ params }: ScreenProps): ReactElement {
     const { activeConfig, activeConfigName, stateManager, refresh } =
         useAppContext();
     const { showToast } = useToast();
-    const { vaultSecretKeys, requiredSecrets: rawRequiredSecrets } = useVaultSecretKeys();
+    const { vaultSecretKeys, requiredSecrets: rawRequiredSecrets, vaultError } = useVaultSecretKeys();
 
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -225,7 +225,7 @@ export function SecretSetScreen({ params }: ScreenProps): ReactElement {
                         onSubmit={handleSubmit}
                         onCancel={handleCancel}
                         busy={saving}
-                        error={error}
+                        error={error ?? vaultError}
                         focusLabel="SecretSetForm"
                     />
                 </Box>
