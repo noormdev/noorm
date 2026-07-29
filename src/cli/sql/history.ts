@@ -4,6 +4,12 @@
  * Reads persisted history from `.noorm/state/history/` and displays
  * query text (truncated), timestamp, duration, and status.
  * No database connection required.
+ *
+ * Only the interactive SQL terminal records history. `sql query` does not,
+ * deliberately: it is the headless/CI path, and persisting query text plus
+ * every returned row to disk on a build agent is an exposure nobody asked
+ * for. So this command can never show a `sql query` invocation — the help
+ * text says so rather than leaving users to infer it from an empty list.
  */
 import { defineCommand } from 'citty';
 
@@ -50,7 +56,7 @@ function formatTimestamp(date: Date): string {
 const historyCommand = defineCommand({
     meta: {
         name: 'history',
-        description: 'Show SQL execution history',
+        description: 'Show SQL execution history (recorded by the interactive terminal, not by `sql query`)',
     },
     args: {
         config: sharedArgs.config,
