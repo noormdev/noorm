@@ -355,7 +355,16 @@ describe('integration: sqlite hostile identifiers', () => {
         await run(db, [
             'CREATE TABLE plain (id INTEGER PRIMARY KEY)',
             'CREATE TABLE canary (id INTEGER PRIMARY KEY)',
+            'CREATE TABLE audit_log (id INTEGER)',
             ...HOSTILE.map((name) => `CREATE TABLE "${name.replaceAll('"', '""')}" (id INTEGER PRIMARY KEY, val TEXT)`),
+
+            // Body contains INSERT; the trigger event is DELETE.
+            `CREATE TRIGGER cascade_delete AFTER DELETE ON plain
+             BEGIN INSERT INTO audit_log (id) VALUES (OLD.id); END`,
+
+            // Name contains "before"; the timing is AFTER.
+            `CREATE TRIGGER before_update_log AFTER UPDATE OF id ON plain
+             BEGIN INSERT INTO audit_log (id) VALUES (NEW.id); END`,
         ]);
 
     });
@@ -399,7 +408,32 @@ describe('integration: sqlite hostile identifiers', () => {
 
         const overview = await fetchOverview(db, 'sqlite');
 
-        expect(overview.tables).toBe(2 + HOSTILE.length);
+        expect(overview.tables).toBe(3 + HOSTILE.length);
+        expect(overview.triggers).toBe(2);
+
+    });
+
+    it('should read trigger events from the header, against real sqlite_master text', async () => {
+
+        const triggers = await fetchList(db, 'sqlite', 'triggers');
+        const cascade = triggers.find((t) => t.name === 'cascade_delete');
+        const named = triggers.find((t) => t.name === 'before_update_log');
+
+        expect(cascade?.events).toEqual(['DELETE']);
+        expect(cascade?.timing).toBe('AFTER');
+
+        // "before" appears in the trigger's own name, not as its timing.
+        expect(named?.timing).toBe('AFTER');
+        expect(named?.events).toEqual(['UPDATE']);
+
+    });
+
+    it('should describe a trigger without inventing events from its body', async () => {
+
+        const detail = await fetchDetail(db, 'sqlite', 'triggers', 'cascade_delete');
+
+        expect(detail?.events).toEqual(['DELETE']);
+        expect(detail?.tableName).toBe('plain');
 
     });
 
