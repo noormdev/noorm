@@ -5,15 +5,11 @@
  * Commands receive a plain `args` object from citty and call withContext
  * or withVaultContext to run work against a connected database context.
  */
-import { createWriteStream } from 'node:fs';
-import { mkdir } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
-
 import { attempt } from '@logosdx/utils';
 
 import type { Context } from '../sdk/context.js';
 import type { CryptoIdentity } from '../core/identity/types.js';
-import { Logger, type LoggerOptions, type LogLevel } from '../core/logger/index.js';
+import { Logger, DEFAULT_LOGGER_CONFIG, type LoggerOptions, type LogLevel } from '../core/logger/index.js';
 import { getSettingsManager } from '../core/settings/index.js';
 import { getSqlErrorMessage } from '../core/shared/index.js';
 import { createContext } from '../sdk/index.js';
@@ -125,41 +121,39 @@ export interface VaultContext {
  * The Logger subscribes to observer events so core module progress
  * reaches stdout automatically. Commands only need to call logger.info
  * or logger.result for explicit output not tied to events.
+ *
+ * `settings.logging.enabled: false` turns off the *file* only, never the
+ * Logger — `logger.result()` is how every headless command emits its `--json`
+ * payload, so switching the whole Logger off would silence the CLI rather than
+ * stop it writing a log. A blank `config.file` is how the Logger is told to
+ * stay console-only.
+ *
+ * Exported for tests: it is the single place the ~79 CLI commands get their
+ * logging configuration, and it had no coverage.
  */
-async function createCliLogger(projectRoot: string, json: boolean): Promise<Logger> {
+export async function createCliLogger(projectRoot: string, json: boolean): Promise<Logger> {
 
     const settingsManager = getSettingsManager(projectRoot);
     const [, settingsErr] = await attempt(() => settingsManager.load());
     const settings = settingsErr ? {} : settingsManager.settings;
+    const logging = settings.logging ?? {};
 
-    const logPath = join(projectRoot, '.noorm', 'state', 'noorm.log');
-    const [, mkdirErr] = await attempt(() => mkdir(dirname(logPath), { recursive: true }));
-
-    let fileStream: ReturnType<typeof createWriteStream> | undefined;
-    if (!mkdirErr) {
-
-        fileStream = createWriteStream(logPath, { flags: 'a' });
-        fileStream.on('error', () => {}); // best-effort file logging
-
-    }
-
-    let defaultLevel: LogLevel = 'info';
-    if (isDev()) {
-
-        defaultLevel = 'verbose';
-
-    }
+    const defaultLevel: LogLevel = isDev() ? 'verbose' : 'info';
 
     const options: LoggerOptions = {
         projectRoot,
         settings,
         config: {
             enabled: true,
-            level: getConfig('log.level', defaultLevel)!,
+            level: getConfig('log.level', logging.level ?? defaultLevel)!,
+            file: logging.enabled === false
+                ? ''
+                : logging.file ?? DEFAULT_LOGGER_CONFIG.file,
+            maxSize: logging.maxSize ?? DEFAULT_LOGGER_CONFIG.maxSize,
+            maxFiles: logging.maxFiles ?? DEFAULT_LOGGER_CONFIG.maxFiles,
         },
         console: process.stdout,
         diagnostics: process.stderr,
-        file: fileStream ?? undefined,
         json,
         color: !json,
     };
