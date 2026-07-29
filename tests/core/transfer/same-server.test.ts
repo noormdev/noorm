@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'bun:test';
 
 import { isSameServer, getDefaultPort } from '../../../src/core/transfer/same-server.js';
+import { postgresTransferOperations } from '../../../src/core/transfer/dialects/postgres.js';
 import type { ConnectionConfig } from '../../../src/core/connection/types.js';
 
 describe('transfer: same-server', () => {
@@ -220,25 +221,6 @@ describe('transfer: same-server', () => {
 
             });
 
-            it('should use default port when not specified (postgres)', () => {
-
-                const source: ConnectionConfig = {
-                    dialect: 'postgres',
-                    host: 'localhost',
-                    database: 'same_db',
-                };
-
-                const dest: ConnectionConfig = {
-                    dialect: 'postgres',
-                    host: 'localhost',
-                    port: 5432,
-                    database: 'same_db',
-                };
-
-                expect(isSameServer(source, dest)).toBe(true);
-
-            });
-
             it('should use default port when not specified (mysql)', () => {
 
                 const source: ConnectionConfig = {
@@ -302,7 +284,11 @@ describe('transfer: same-server', () => {
 
             });
 
-            it('should return true for postgres with same database', () => {
+            // The direct path builds `INSERT INTO t SELECT ... FROM t` when
+            // source and destination name the same database — it copies the
+            // destination into itself. Reporting same-server here is what let
+            // a 3-row PK-less table become 6 rows and report success.
+            it('should return false for postgres with the same database', () => {
 
                 const source: ConnectionConfig = {
                     dialect: 'postgres',
@@ -318,7 +304,15 @@ describe('transfer: same-server', () => {
                     database: 'same_db',
                 };
 
-                expect(isSameServer(source, dest)).toBe(true);
+                expect(isSameServer(source, dest)).toBe(false);
+
+            });
+
+            it('should refuse to build a direct postgres transfer', () => {
+
+                expect(() => postgresTransferOperations.buildDirectTransfer(
+                    'src_db', 'users', 'users', ['id'],
+                )).toThrow(/dblink or postgres_fdw/);
 
             });
 
