@@ -235,7 +235,16 @@ export function InitScreen({ params }: ScreenProps): ReactElement {
 
             mkdirSync(noormPath, { recursive: true });
             mkdirSync(statePath, { recursive: true });
-            writeFileSync(join(noormPath, '.gitignore'), 'state/\n');
+            // Only when absent, matching performProjectInit — an unconditional
+            // write clobbers whatever the user added to this file on every
+            // re-init.
+            const noormGitignorePath = join(noormPath, '.gitignore');
+
+            if (!existsSync(noormGitignorePath)) {
+
+                writeFileSync(noormGitignorePath, 'state/\n');
+
+            }
 
             updateItem(0, { status: 'success' });
 
