@@ -21,6 +21,35 @@ import {
     encryptSecret,
     decryptSecret,
 } from './key.js';
+import { assertVaultPolicy } from './policy.js';
+import type { VaultPolicyGate } from './policy.js';
+
+/**
+ * Secret key names accepted by the vault.
+ *
+ * Deliberately identical to `StateManager.setSecret`'s regex: the vault and
+ * local state feed the same `$.secrets` template namespace, so a key one
+ * writer accepts and the other rejects produces a secret that resolves in one
+ * environment and not the other.
+ */
+const SECRET_KEY_PATTERN = /^[A-Za-z][A-Za-z0-9_]*$/;
+
+/**
+ * Reject secret key names the template layer can't address.
+ *
+ * @throws Error naming the offending key when it doesn't match.
+ */
+function assertValidSecretKey(secretKey: string): void {
+
+    if (!SECRET_KEY_PATTERN.test(secretKey)) {
+
+        throw new Error(
+            `Invalid secret key "${secretKey}". Keys must start with a letter and contain only letters, numbers, and underscores.`,
+        );
+
+    }
+
+}
 
 /**
  * Initialize the vault for a database.
@@ -207,6 +236,10 @@ export async function setVaultSecret(
 
     const ndb = noormDb(db, dialect);
     const tables = getNoormTables(dialect);
+
+    const [, keyErr] = attemptSync(() => assertValidSecretKey(secretKey));
+
+    if (keyErr) return [undefined, keyErr];
 
     // Encrypt the value
     const encrypted = encryptSecret(value, vaultKey);
@@ -578,9 +611,11 @@ export async function getVaultStatus(
     const usersWithoutAccess = identities.filter((i) => i.encrypted_vault_key === null).length;
     const isInitialized = usersWithAccess > 0;
 
-    // Check if current user has access
+    // Check if current user has access. Truthiness rather than `!== null`:
+    // an identity with no row at all yields `undefined`, and `undefined !==
+    // null` reported an unregistered user as having vault access.
     const currentUser = identities.find((i) => i.identity_hash === identityHash);
-    const hasAccess = currentUser?.encrypted_vault_key !== null;
+    const hasAccess = !!currentUser?.encrypted_vault_key;
 
     return {
         isInitialized,
@@ -589,5 +624,134 @@ export async function getVaultStatus(
         usersWithAccess,
         usersWithoutAccess,
     };
+
+}
+
+// ─────────────────────────────────────────────────────────────
+// Policy-gated entrypoints
+// ─────────────────────────────────────────────────────────────
+//
+// The functions above take no config, so they cannot consult `access` — they
+// remain the ungated primitives the TUI still calls directly (see the vault
+// migration note in `policy.ts`). Every surface that has a config in hand
+// (CLI, SDK) must use the `*Checked` wrappers below, which is what closes the
+// hole where a `viewer` role denied `run build` could still write the vault.
+// `getVaultStatus` has no gated twin on purpose: it returns counts and
+// booleans, never key names or values, and callers need it to tell a user
+// *why* they have no access.
+
+/**
+ * `initializeVault` gated on `vault:write`.
+ *
+ * @throws Error carrying the policy's blockedReason when the gate denies.
+ *
+ * @example
+ * const [key, err] = await initializeVaultChecked(gate, db, hash, pubKey, 'postgres');
+ */
+export async function initializeVaultChecked(
+    gate: VaultPolicyGate,
+    db: Kysely<NoormDatabase>,
+    identityHash: string,
+    publicKey: string,
+    dialect: Dialect,
+): Promise<[Buffer | null, Error | null]> {
+
+    assertVaultPolicy(gate, 'vault:write');
+
+    return initializeVault(db, identityHash, publicKey, dialect);
+
+}
+
+/**
+ * `getVaultKey` gated on `vault:read`.
+ *
+ * Gating the key rather than each read is what makes the gate hard to route
+ * around: `getVaultSecret`/`getAllVaultSecrets` are useless without the key,
+ * so a denied caller cannot decrypt anything.
+ *
+ * @throws Error carrying the policy's blockedReason when the gate denies.
+ *
+ * @example
+ * const vaultKey = await getVaultKeyChecked(gate, db, hash, privateKey, 'postgres');
+ */
+export async function getVaultKeyChecked(
+    gate: VaultPolicyGate,
+    db: Kysely<NoormDatabase>,
+    identityHash: string,
+    privateKey: string,
+    dialect: Dialect,
+): Promise<Buffer | null> {
+
+    assertVaultPolicy(gate, 'vault:read');
+
+    return getVaultKey(db, identityHash, privateKey, dialect);
+
+}
+
+/**
+ * `setVaultSecret` gated on `vault:write`.
+ *
+ * @throws Error carrying the policy's blockedReason when the gate denies.
+ *
+ * @example
+ * const [, err] = await setVaultSecretChecked(gate, db, vaultKey, 'API_KEY', v, who, 'postgres');
+ */
+export async function setVaultSecretChecked(
+    gate: VaultPolicyGate,
+    db: Kysely<NoormDatabase>,
+    vaultKey: Buffer,
+    secretKey: string,
+    value: string,
+    setBy: string,
+    dialect: Dialect,
+): Promise<[void, Error | null]> {
+
+    assertVaultPolicy(gate, 'vault:write');
+
+    return setVaultSecret(db, vaultKey, secretKey, value, setBy, dialect);
+
+}
+
+/**
+ * `deleteVaultSecret` gated on `vault:write`.
+ *
+ * @throws Error carrying the policy's blockedReason when the gate denies.
+ *
+ * @example
+ * const [deleted, err] = await deleteVaultSecretChecked(gate, db, 'OLD_KEY', 'postgres');
+ */
+export async function deleteVaultSecretChecked(
+    gate: VaultPolicyGate,
+    db: Kysely<NoormDatabase>,
+    secretKey: string,
+    dialect: Dialect,
+): Promise<[boolean, Error | null]> {
+
+    assertVaultPolicy(gate, 'vault:write');
+
+    return deleteVaultSecret(db, secretKey, dialect);
+
+}
+
+/**
+ * `listVaultSecretKeys` gated on `vault:read`.
+ *
+ * Key names alone are disclosure — they enumerate which systems the team
+ * holds credentials for — so this is gated even though no value is decrypted.
+ *
+ * @throws Error carrying the policy's blockedReason when the gate denies.
+ *
+ * @example
+ * const keys = await listVaultSecretKeysChecked(gate, db, 'postgres');
+ */
+export async function listVaultSecretKeysChecked(
+    gate: VaultPolicyGate,
+    db: Kysely<NoormDatabase>,
+    dialect: Dialect,
+): Promise<string[]> {
+
+    assertVaultPolicy(gate, 'vault:read');
+
+    return listVaultSecretKeys(db, dialect);
 
 }

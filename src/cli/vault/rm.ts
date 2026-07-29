@@ -3,8 +3,9 @@
  */
 import { defineCommand } from 'citty';
 
-import { withVaultContext, sharedArgs } from '../_utils.js';
-import { getVaultKey, deleteVaultSecret, vaultSecretExists } from '../../core/vault/index.js';
+import { withVaultContext, sharedArgs, isYesMode } from '../_utils.js';
+import { getVaultKeyChecked, deleteVaultSecretChecked, vaultSecretExists, checkVaultPolicy } from '../../core/vault/index.js';
+import type { VaultPolicyGate } from '../../core/vault/index.js';
 
 const rmCommand = defineCommand({
     meta: {
@@ -15,6 +16,7 @@ const rmCommand = defineCommand({
         key: { type: 'positional', description: 'Secret key name to remove', required: true },
         config: sharedArgs.config,
         json: sharedArgs.json,
+        yes: sharedArgs.yes,
     },
     async run({ args }) {
 
@@ -23,7 +25,38 @@ const rmCommand = defineCommand({
             fn: async ({ ctx, cryptoIdentity, privateKey }) => {
 
                 const db = ctx.kysely;
-                const vaultKey = await getVaultKey(db, cryptoIdentity.identityHash, privateKey, ctx.dialect);
+                const config = ctx.noorm.config;
+                const gate: VaultPolicyGate = {
+                    configName: config.name,
+                    access: config.access,
+                    channel: 'user',
+                };
+
+                const check = checkVaultPolicy(gate, 'vault:write');
+
+                if (!check.allowed) {
+
+                    return {
+                        success: false,
+                        error: check.blockedReason ?? `Cannot write the vault on config "${config.name}".`,
+                    };
+
+                }
+
+                // The vault has no soft-delete and no history table, so this
+                // destroys the team's only copy. `secret rm` — which deletes
+                // a recoverable local copy — has always required --yes; the
+                // irrecoverable one required nothing.
+                if (!isYesMode(args)) {
+
+                    return {
+                        success: false,
+                        error: `Deleting vault secret "${args.key}" cannot be undone — the team's only copy is destroyed. Pass --yes to confirm.`,
+                    };
+
+                }
+
+                const vaultKey = await getVaultKeyChecked(gate, db, cryptoIdentity.identityHash, privateKey, ctx.dialect);
 
                 if (!vaultKey) {
 
@@ -42,7 +75,7 @@ const rmCommand = defineCommand({
 
                 }
 
-                const [deleted, deleteErr] = await deleteVaultSecret(db, args.key, ctx.dialect);
+                const [deleted, deleteErr] = await deleteVaultSecretChecked(gate, db, args.key, ctx.dialect);
 
                 if (deleteErr) {
 
@@ -83,9 +116,9 @@ const rmCommand = defineCommand({
 });
 
 (rmCommand as typeof rmCommand & { examples: string[] }).examples = [
-    'noorm vault rm OLD_API_KEY',
-    'noorm vault rm OLD_API_KEY --json',
-    'noorm vault rm OLD_API_KEY -c prod',
+    'noorm vault rm OLD_API_KEY --yes',
+    'noorm vault rm OLD_API_KEY --yes --json',
+    'noorm vault rm OLD_API_KEY --yes -c prod',
 ];
 
 export default rmCommand;

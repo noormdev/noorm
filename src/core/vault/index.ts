@@ -5,6 +5,7 @@
  */
 export * from './types.js';
 export * from './events.js';
+export * from './policy.js';
 export * from './key.js';
 export * from './storage.js';
 export * from './propagate.js';

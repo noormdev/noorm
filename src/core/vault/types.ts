@@ -78,6 +78,41 @@ export interface VaultCopyResult {
 }
 
 /**
+ * An identity awaiting vault access.
+ *
+ * Propagation grants a key that cannot be revoked, so the operator has to be
+ * able to see *who* they are about to grant to before it happens — the hash
+ * alone, printed after the fact, is not a decision they can make.
+ */
+export interface PendingVaultUser {
+    /** Identity hash — the stable handle used to target propagation */
+    identityHash: string;
+
+    /** X25519 public key the vault key is sealed to */
+    publicKey: string;
+
+    /** Display name recorded at enrollment */
+    name: string;
+
+    /** Email recorded at enrollment */
+    email: string;
+}
+
+/**
+ * A propagation target that could not be granted access.
+ */
+export interface FailedVaultPropagation {
+    /** Identity hash that was not granted access */
+    identityHash: string;
+
+    /** Email of the identity that was not granted access */
+    email: string;
+
+    /** Why the grant failed */
+    error: string;
+}
+
+/**
  * Result of vault propagation.
  */
 export interface VaultPropagationResult {
@@ -86,6 +121,13 @@ export interface VaultPropagationResult {
 
     /** Count of users who already had access */
     alreadyHadAccess: number;
+
+    /**
+     * Targets whose grant failed. Non-empty means the operation partially
+     * succeeded: some teammate believes they have access and does not.
+     * Callers must treat a non-empty `failed` as an error, not a warning.
+     */
+    failed: FailedVaultPropagation[];
 }
 
 /**

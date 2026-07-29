@@ -33,6 +33,8 @@ import type { CryptoIdentity } from '../../core/identity/types.js';
 
 import type { ContextState } from '../state.js';
 import { requireConnection } from '../state.js';
+import { checkProtectedConfig } from '../guards.js';
+import type { Permission } from '../../core/policy/index.js';
 
 // ─────────────────────────────────────────────────────────────
 // Errors
@@ -76,6 +78,23 @@ export class VaultNamespace {
     constructor(state: ContextState) {
 
         this.#state = state;
+
+    }
+
+    /**
+     * Gate a vault operation on the config's access policy.
+     *
+     * The vault holds the team's shared secrets, so it sits behind the same
+     * matrix as runs and raw SQL. Routed through `checkProtectedConfig` so
+     * `confirm` cells behave here exactly as they do for `db.truncate()`:
+     * blocked unless the context was created with `yes: true`.
+     *
+     * @throws ProtectedConfigError when the policy denies, or requires a
+     * confirmation `options.yes` doesn't supply.
+     */
+    #gate(permission: Permission, operation: string): void {
+
+        checkProtectedConfig(this.#state.config, this.#state.options, permission, operation);
 
     }
 
@@ -136,6 +155,8 @@ export class VaultNamespace {
      */
     async init(): Promise<Buffer | null> {
 
+        this.#gate('vault:write', 'vault.init');
+
         const crypto = await this.#getCryptoIdentity();
 
         const [vaultKey, err] = await initializeVault(
@@ -189,6 +210,8 @@ export class VaultNamespace {
         privateKey: string,
     ): Promise<void> {
 
+        this.#gate('vault:write', 'vault.set');
+
         const vaultKey = await this.#getVaultKey(privateKey);
 
         if (!vaultKey) throw new VaultAccessError(this.#state.config.name);
@@ -216,6 +239,8 @@ export class VaultNamespace {
      */
     async get(key: string, privateKey: string): Promise<string | null> {
 
+        this.#gate('vault:read', 'vault.get');
+
         const vaultKey = await this.#getVaultKey(privateKey);
 
         if (!vaultKey) return null;
@@ -239,6 +264,8 @@ export class VaultNamespace {
      */
     async getAll(privateKey: string): Promise<Record<string, VaultSecret>> {
 
+        this.#gate('vault:read', 'vault.getAll');
+
         const vaultKey = await this.#getVaultKey(privateKey);
 
         if (!vaultKey) return {};
@@ -261,6 +288,8 @@ export class VaultNamespace {
      */
     async list(): Promise<string[]> {
 
+        this.#gate('vault:read', 'vault.list');
+
         return listVaultSecretKeys(
             this.#kysely as unknown as Kysely<NoormDatabase>,
             this.#dialect,
@@ -277,6 +306,8 @@ export class VaultNamespace {
      * ```
      */
     async delete(key: string): Promise<boolean> {
+
+        this.#gate('vault:write', 'vault.delete');
 
         const [deleted, err] = await deleteVaultSecret(
             this.#kysely as unknown as Kysely<NoormDatabase>,
@@ -300,6 +331,8 @@ export class VaultNamespace {
      */
     async exists(key: string): Promise<boolean> {
 
+        this.#gate('vault:read', 'vault.exists');
+
         return vaultSecretExists(
             this.#kysely as unknown as Kysely<NoormDatabase>,
             key,
@@ -322,11 +355,13 @@ export class VaultNamespace {
      */
     async propagate(privateKey: string): Promise<VaultPropagationResult> {
 
+        this.#gate('vault:propagate', 'vault.propagate');
+
         const vaultKey = await this.#getVaultKey(privateKey);
 
         if (!vaultKey) {
 
-            return { propagatedTo: [], alreadyHadAccess: 0 };
+            return { propagatedTo: [], alreadyHadAccess: 0, failed: [] };
 
         }
 
@@ -355,6 +390,9 @@ export class VaultNamespace {
 
         const crypto = await this.#getCryptoIdentity();
 
+        // `copyVaultSecrets` gates itself on both configs — it is the only
+        // caller-visible seam holding source *and* destination access — so
+        // the channel has to reach it.
         const [result, err] = await copyVaultSecrets(
             this.#state.config,
             destConfig,
@@ -362,7 +400,7 @@ export class VaultNamespace {
             crypto.identityHash,
             privateKey,
             crypto.publicKey,
-            options,
+            { ...options, channel: this.#state.options.channel ?? 'user' },
         );
 
         if (err) throw err;

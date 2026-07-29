@@ -7,7 +7,8 @@ import { attempt } from '@logosdx/utils';
 import { defineCommand } from 'citty';
 
 import { initState, getStateManager } from '../../core/state/index.js';
-import { outputResult, outputError, sharedArgs } from '../_utils.js';
+import { outputResult, outputError, sharedArgs, isYesMode } from '../_utils.js';
+import { resolveSecretPolicy } from './_policy.js';
 
 const rmCommand = defineCommand({
     meta: {
@@ -33,16 +34,20 @@ const rmCommand = defineCommand({
         }
 
         const stateManager = getStateManager(projectRoot);
-        const configName = args.config ?? stateManager.getActiveConfigName();
+        const resolved = resolveSecretPolicy(stateManager, args.config, 'secret:write');
 
-        if (!configName) {
+        if (!resolved.ok) {
 
-            outputError(args, 'No config specified and no active config set. Use --config or run "noorm config use <name>".');
+            outputError(args, resolved.error);
             process.exit(1);
 
         }
 
-        if (!args.yes) {
+        const { configName } = resolved;
+
+        // `isYesMode`, not `args.yes`: the documented `NOORM_YES` escape
+        // hatch was ignored here while 14 other CLI sites honoured it.
+        if (!isYesMode(args)) {
 
             outputError(args, `Pass --yes to confirm deletion of secret "${args.key}" from config "${configName}".`);
             process.exit(1);

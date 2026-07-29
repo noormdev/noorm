@@ -8,6 +8,7 @@ import { defineCommand } from 'citty';
 
 import { initState, getStateManager } from '../../core/state/index.js';
 import { outputResult, outputError, sharedArgs } from '../_utils.js';
+import { resolveSecretPolicy } from './_policy.js';
 
 const listCommand = defineCommand({
     meta: {
@@ -31,15 +32,16 @@ const listCommand = defineCommand({
         }
 
         const stateManager = getStateManager(projectRoot);
-        const configName = args.config ?? stateManager.getActiveConfigName();
+        const resolved = resolveSecretPolicy(stateManager, args.config, 'secret:read');
 
-        if (!configName) {
+        if (!resolved.ok) {
 
-            outputError(args, 'No config specified and no active config set. Use --config or run "noorm config use <name>".');
+            outputError(args, resolved.error);
             process.exit(1);
 
         }
 
+        const { configName } = resolved;
         const keys = stateManager.listSecrets(configName);
 
         outputResult(
