@@ -72,7 +72,9 @@ mock.module('../../src/core/vault/index.js', () => ({
     })),
     getAllVaultSecrets: vi.fn(async () => []),
     getVaultKey: vi.fn(async () => 'vault-key'),
-    getUsersWithoutVaultAccess: vi.fn(async () => RECIPIENTS),
+    // Mirrors the real [users, err] tuple. Returning a bare array here let the
+    // screen and the mock agree on a shape the core stopped using.
+    getUsersWithoutVaultAccess: vi.fn(async () => [RECIPIENTS, null]),
     propagateVaultKey: vi.fn(async (...args: unknown[]) => {
 
         propagateCalls.push(args);

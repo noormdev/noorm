@@ -36,10 +36,11 @@ import {
     getUsersWithoutVaultAccess,
     type VaultStatus,
     type VaultSecret,
+    type PendingVaultUser,
 } from '../../../core/vault/index.js';
 
 /** Recipients of a propagation, as `getUsersWithoutVaultAccess` returns them. */
-type PropagationRecipient = Awaited<ReturnType<typeof getUsersWithoutVaultAccess>>[number];
+type PropagationRecipient = PendingVaultUser;
 
 
 type _Phase = 'connecting' | 'ready' | 'error';
@@ -181,8 +182,11 @@ export function VaultScreen({ params: _params }: ScreenProps): ReactElement {
         const db = connRef.current.db;
         const connDialect = connRef.current.dialect;
 
-        const [recipients, recipientsErr] = await attempt(
-            () => getUsersWithoutVaultAccess(db as Kysely<NoormDatabase>, connDialect),
+        // Returns its own [users, err] tuple — no attempt() wrapper, which
+        // would nest the tuple inside another one.
+        const [recipients, recipientsErr] = await getUsersWithoutVaultAccess(
+            db as Kysely<NoormDatabase>,
+            connDialect,
         );
 
         if (recipientsErr) {
