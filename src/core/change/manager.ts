@@ -24,6 +24,7 @@
  * ```
  */
 import path from 'node:path';
+import { stat } from 'node:fs/promises';
 
 import { attempt } from '@logosdx/utils';
 
@@ -42,7 +43,7 @@ import type {
     ChangeHistoryRecord,
     FileHistoryRecord,
 } from './types.js';
-import { ChangeNotFoundError, ChangeOrphanedError } from './types.js';
+import { ChangeNotFoundError, ChangeOrphanedError, isPendingChange } from './types.js';
 
 // ─────────────────────────────────────────────────────────────
 // Default Options
@@ -254,10 +255,12 @@ export class ChangeManager {
         const opts = { ...DEFAULT_BATCH, ...options };
         const start = performance.now();
 
+        const warnings = await this.#collectWarnings();
+
         // Get pending changes
         const list = await this.list();
         const pending = list
-            .filter((cs) => !cs.orphaned && (cs.status === 'pending' || cs.status === 'reverted'))
+            .filter(isPendingChange)
             .slice(0, count);
 
         if (pending.length === 0) {
@@ -269,6 +272,7 @@ export class ChangeManager {
                 skipped: 0,
                 failed: 0,
                 durationMs: performance.now() - start,
+                warnings,
             };
 
         }
@@ -327,7 +331,25 @@ export class ChangeManager {
             skipped: pending.length - executed - failed,
             failed,
             durationMs: performance.now() - start,
+            warnings,
         };
+
+    }
+
+    /**
+     * Report conditions that silently shrink a batch to nothing.
+     *
+     * Kept separate from `list()` because an empty list is a legitimate
+     * state ("nothing pending") while a missing directory is a mistake,
+     * and the two are otherwise indistinguishable to the caller.
+     */
+    async #collectWarnings(): Promise<string[] | undefined> {
+
+        const [dir] = await attempt(() => stat(this.#context.changesDir));
+
+        if (dir) return undefined;
+
+        return [`Changes directory not found: ${this.#context.changesDir}`];
 
     }
 
@@ -341,9 +363,7 @@ export class ChangeManager {
 
         // Get count of pending
         const list = await this.list();
-        const pendingCount = list.filter(
-            (cs) => !cs.orphaned && (cs.status === 'pending' || cs.status === 'reverted'),
-        ).length;
+        const pendingCount = list.filter(isPendingChange).length;
 
         return this.next(pendingCount, options);
 
@@ -413,6 +433,7 @@ export class ChangeManager {
                     skipped: 0,
                     failed: 1,
                     durationMs: performance.now() - start,
+                    error: `No applied change named "${target}" to rewind to`,
                 };
 
             }

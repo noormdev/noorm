@@ -33,6 +33,7 @@ import {
     discoverChanges as coreDiscoverChanges,
     validateChange as coreValidateChange,
     ChangeManager,
+    isPendingChange,
 } from '../../core/change/index.js';
 import { getStateManager } from '../../core/state/index.js';
 import { resolveVaultKey, buildSecretsContext } from '../../core/vault/index.js';
@@ -341,9 +342,7 @@ export class ChangesNamespace {
 
         const all = await this.status();
 
-        return all.filter(
-            (cs) => !cs.orphaned && (cs.status === 'pending' || cs.status === 'reverted'),
-        );
+        return all.filter(isPendingChange);
 
     }
 
@@ -383,17 +382,21 @@ export class ChangesNamespace {
      * When a string is passed, reverts until and including that change.
      * When a number is passed, reverts that many recent changes.
      *
+     * Pass `dryRun: true` to render the revert files to `tmp/` without
+     * touching the database.
+     *
      * @example
      * ```typescript
      * const result = await ctx.noorm.changes.rewind('2024-01-15-add-users')
      * const result = await ctx.noorm.changes.rewind(3)
+     * const dry = await ctx.noorm.changes.rewind(3, { dryRun: true })
      * ```
      */
-    async rewind(target: number | string): Promise<BatchChangeResult> {
+    async rewind(target: number | string, options?: BatchChangeOptions): Promise<BatchChangeResult> {
 
         checkProtectedConfig(this.#state.config, this.#state.options, 'change:revert', 'changes.rewind');
 
-        return (await this.#getManager()).rewind(target);
+        return (await this.#getManager()).rewind(target, options);
 
     }
 
