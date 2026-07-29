@@ -53,6 +53,16 @@ import type { ChangeType } from '../shared/index.js';
 // ─────────────────────────────────────────────────────────────
 
 /**
+ * Reserved change name recording a `db teardown`.
+ *
+ * Shares the `change` row shape so teardowns appear in the audit trail,
+ * which also made it show up in `change list` as a user change that is
+ * permanently orphaned — it has no folder on disk and never will.
+ * Status reads filter it out; history reads keep it.
+ */
+const RESET_MARKER = '__reset__';
+
+/**
  * Normalizes a change-tracking timestamp column to a real `Date`.
  *
  * WHY: postgres/mysql/mssql drivers parse `executed_at` into a `Date`
@@ -235,6 +245,7 @@ export class ChangeHistory {
                 .where('change_type', '=', 'change')
                 .where('direction', '=', 'change')
                 .where('config_name', '=', this.#configName)
+                .where('name', '!=', RESET_MARKER)
                 .orderBy('id', 'desc')
                 .execute(),
         );
@@ -955,7 +966,7 @@ export class ChangeHistory {
         const insertQuery = this.#ndb
             .insertInto(this.#tables.change)
             .values({
-                name: '__reset__',
+                name: RESET_MARKER,
                 change_type: 'change',
                 direction: 'change',
                 status: 'success',

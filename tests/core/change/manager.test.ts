@@ -16,6 +16,7 @@ import { Kysely, SqliteDialect, sql } from 'kysely';
 import { BunSqliteDatabase } from '../../../src/core/connection/dialects/sqlite-bun.js';
 
 import { ChangeManager } from '../../../src/core/change/manager.js';
+import { ChangeHistory } from '../../../src/core/change/history.js';
 import { ChangeTracker } from '../../../src/core/change/tracker.js';
 import { v1 } from '../../../src/core/version/schema/migrations/v1.js';
 import { resetLockManager } from '../../../src/core/lock/index.js';
@@ -472,6 +473,31 @@ describe('change: manager', () => {
 
             const firstFile = retry.files.find((f) => f.filepath.endsWith('001_ok.sql'));
             expect(firstFile?.status).toBe('skipped');
+
+        });
+
+    });
+
+    describe('reset marker', () => {
+
+        it('should keep the teardown marker out of the user-facing change list', async () => {
+
+            await createTestChange('2025-04-01-real', [
+                { name: '001.sql', content: 'CREATE TABLE reset_real (id INTEGER PRIMARY KEY)' },
+            ]);
+
+            const manager = new ChangeManager(buildContext());
+
+            await manager.run('2025-04-01-real');
+
+            await new ChangeHistory(db, 'test', 'sqlite').recordReset('tester', 'teardown');
+
+            const list = await manager.list();
+
+            // `__reset__` is an audit row, not a change anyone can apply or
+            // delete — listing it reports a permanent phantom orphan.
+            expect(list.map((cs) => cs.name)).not.toContain('__reset__');
+            expect(list.map((cs) => cs.name)).toContain('2025-04-01-real');
 
         });
 

@@ -174,6 +174,24 @@ describe('cli: noorm change rewind', () => {
 
     });
 
+    it('marks a change deleted from disk as orphaned in list output', async () => {
+
+        await seedConfig();
+        seedChange('2026-03-01-probe', 'rewind_probe');
+
+        expect(runCli(['run', '2026-03-01-probe', '--json']).status).toBe(0);
+
+        rmSync(join(tmpDir, 'changes', '2026-03-01-probe'), { recursive: true, force: true });
+
+        const result = runCli(['list']);
+
+        expect(result.status).toBe(0);
+
+        // Without the marker this prints identically to a live applied change.
+        expect(result.stdout).toContain('orphaned');
+
+    });
+
     it('reports why a rewind target that matches nothing failed', async () => {
 
         await seedConfig();
