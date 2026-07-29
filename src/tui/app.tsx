@@ -262,6 +262,23 @@ function AppShell(): ReactElement {
 
     }, [showToast]);
 
+    // Core reports failures it recovers from by emitting `error` and returning an
+    // empty result — history reads, status lookups, and lock checks all do this.
+    // `noorm ui` sends the logger's console and diagnostics streams to a null
+    // stream, so without this subscription those failures reached nothing but
+    // `.noorm/state/noorm.log`, and an operation that did nothing rendered as a
+    // green success. Surfaced app-wide rather than per screen so a screen that
+    // forgets to handle an error still cannot fail silently.
+    useOnEvent('error', (data) => {
+
+        showToast({
+            message: `${data.source}: ${data.error.message}`,
+            variant: 'error',
+            duration: 8000,
+        });
+
+    }, [showToast]);
+
     const handleHelp = useCallback(() => {
 
         setShowHelp(true);
