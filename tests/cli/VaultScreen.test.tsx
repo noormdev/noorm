@@ -72,7 +72,9 @@ mock.module('../../src/core/vault/index.js', () => ({
     })),
     getAllVaultSecrets: vi.fn(async () => []),
     getVaultKey: vi.fn(async () => 'vault-key'),
-    getUsersWithoutVaultAccess: vi.fn(async () => RECIPIENTS),
+    // Returns an `[users, error]` tuple, not a bare array — a failed lookup must
+    // not be indistinguishable from "nobody is missing access".
+    getUsersWithoutVaultAccess: vi.fn(async () => [RECIPIENTS, null]),
     propagateVaultKey: vi.fn(async (...args: unknown[]) => {
 
         propagateCalls.push(args);
