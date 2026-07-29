@@ -29,7 +29,7 @@ import type { Kysely } from 'kysely';
 import { observer } from '../observer.js';
 import { getNoormTables, noormDb, type NoormDatabase } from '../shared/index.js';
 import type { Dialect } from '../connection/types.js';
-import type { Lock, LockOptions, LockStatus } from './types.js';
+import type { ForceReleaseResult, Lock, LockOptions, LockStatus } from './types.js';
 import { DEFAULT_LOCK_OPTIONS } from './types.js';
 import {
     LockAcquireError,
@@ -301,20 +301,21 @@ class LockManager {
      * @param db - Kysely database instance
      * @param configName - Config/database scope
      * @param dialect - Database dialect for schema-aware table resolution
-     * @returns true if a lock was released, false if none existed
+     * @returns whether a lock was released, and who held it
      */
     async forceRelease(
         db: Kysely<NoormDatabase>,
         configName: string,
         dialect: Dialect,
-    ): Promise<boolean> {
+    ): Promise<ForceReleaseResult> {
 
         const ndb = noormDb(db, dialect);
         const tables = getNoormTables(dialect);
         const existing = await this.#getLock(db, configName, dialect);
+
         if (!existing) {
 
-            return false;
+            return { released: false, holder: null };
 
         }
 
@@ -325,7 +326,7 @@ class LockManager {
             identity: existing.lockedBy,
         });
 
-        return true;
+        return { released: true, holder: existing.lockedBy };
 
     }
 

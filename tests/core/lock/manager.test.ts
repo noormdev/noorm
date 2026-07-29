@@ -311,9 +311,9 @@ describe('lock: manager', () => {
 
             await manager.acquire(db, 'dev', 'alice@example.com', sqliteOpts);
 
-            const released = await manager.forceRelease(db, 'dev', 'sqlite');
+            const result = await manager.forceRelease(db, 'dev', 'sqlite');
 
-            expect(released).toBe(true);
+            expect(result.released).toBe(true);
 
             const row = await db
                 .selectFrom(NOORM_TABLES.lock)
@@ -325,13 +325,28 @@ describe('lock: manager', () => {
 
         });
 
-        it('should return false when no lock exists', async () => {
+        it('should name the holder it evicted', async () => {
 
             const manager = getLockManager();
 
-            const released = await manager.forceRelease(db, 'dev', 'sqlite');
+            await manager.acquire(db, 'dev', 'alice@example.com', sqliteOpts);
 
-            expect(released).toBe(false);
+            const result = await manager.forceRelease(db, 'dev', 'sqlite');
+
+            // Callers must be able to report whose work they interrupted.
+            expect(result.holder).toBe('alice@example.com');
+
+        });
+
+        it('should report released:false with no holder when no lock exists', async () => {
+
+            const manager = getLockManager();
+
+            const result = await manager.forceRelease(db, 'dev', 'sqlite');
+
+            // A no-op must not be indistinguishable from a successful eviction.
+            expect(result.released).toBe(false);
+            expect(result.holder).toBeNull();
 
         });
 
