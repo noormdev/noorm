@@ -24,41 +24,14 @@
  * ```
  */
 import type { Kysely } from 'kysely';
-import { sql } from 'kysely';
 
 import { attempt } from '@logosdx/utils';
 
 import { observer } from '../observer.js';
-import { getNoormTables, noormDb } from '../shared/index.js';
+import { getNoormTables, insertOperationRecord, noormDb } from '../shared/index.js';
 import type { NoormDatabase, ChangeType, ExecutionStatus, FileType } from '../shared/index.js';
 import type { Dialect } from '../connection/types.js';
 import type { NeedsRunResult, CreateOperationData, RecordExecutionData, Direction } from './types.js';
-
-/**
- * Coerce a driver-reported generated key into a plain positive integer.
- *
- * Every dialect reports it differently — mysql2 hands back a `bigint`,
- * node-postgres renders `lastval()`'s int8 as a string, mssql and sqlite
- * give a number. Returning `undefined` for anything unusable lets the caller
- * fall through to its next strategy instead of carrying a `bigint` or a
- * numeric string into a column that later rows join against.
- *
- * @example
- * toOperationId(42n); // 42
- * toOperationId('7'); // 7
- * toOperationId(null); // undefined
- */
-function toOperationId(value: unknown): number | undefined {
-
-    if (value === null || value === undefined) return undefined;
-
-    const asNumber = Number(value);
-
-    if (!Number.isSafeInteger(asNumber) || asNumber <= 0) return undefined;
-
-    return asNumber;
-
-}
 
 /**
  * Execution tracker for change detection and audit logging.
@@ -276,123 +249,34 @@ export class Tracker {
         // 'commit' is stored as 'change' for historical compatibility
         const dbDirection = direction === 'commit' ? 'change' : 'revert';
 
-        const insertQuery = this.#ndb
-            .insertInto(this.#tables.change)
-            .values({
+        const [id, insertErr] = await insertOperationRecord({
+            db: this.#db,
+            ndb: this.#ndb,
+            dialect: this.#dialect,
+            table: this.#tables.change,
+            values: {
                 name: data.name,
                 change_type: data.changeType as ChangeType,
                 direction: dbDirection,
                 status: 'pending',
                 config_name: data.configName,
                 executed_by: data.executedBy,
-            });
+            },
+        });
 
-        // Three id-retrieval strategies, one per driver capability:
-        //   mssql   OUTPUT inserted.id
-        //   mysql   no RETURNING clause exists — the driver reports the
-        //           generated key on the insert result itself. Read it from
-        //           there rather than issuing LAST_INSERT_ID() as a second
-        //           query: that function is per-connection, and Kysely
-        //           returns the connection to the pool between statements.
-        //   others  RETURNING for an atomic insert+get-id
-        let id: number | undefined;
+        if (insertErr) {
 
-        if (this.#dialect === 'mssql') {
-
-            const [result, insertErr] = await attempt(() =>
-                insertQuery
-                    .output('inserted.id as id')
-                    .executeTakeFirstOrThrow(),
-            );
-
-            if (insertErr) {
-
-                throw new Error('Failed to create operation record', { cause: insertErr });
-
-            }
-
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            id = toOperationId((result as any)?.id);
-
-        }
-        else if (this.#dialect === 'mysql') {
-
-            const [result, err] = await attempt(() => insertQuery.executeTakeFirst());
-
-            if (err) {
-
-                throw new Error('Failed to create operation record', { cause: err });
-
-            }
-
-            id = toOperationId(result?.insertId);
-
-        }
-        else {
-
-            const [result, err] = await attempt(() =>
-                insertQuery.returning('id').executeTakeFirstOrThrow(),
-            );
-
-            if (err) {
-
-                throw new Error('Failed to create operation record', { cause: err });
-
-            }
-
-            id = toOperationId(result?.id);
-
-            // SQLite with better-sqlite3 may return null for RETURNING
-            if (id === undefined) {
-
-                const lastIdQuery = this.#lastInsertIdQuery();
-
-                if (lastIdQuery) {
-
-                    const [lastIdResult] = await attempt(() => lastIdQuery.execute(this.#db));
-                    id = toOperationId(lastIdResult?.rows?.[0]?.id);
-
-                }
-
-            }
+            throw new Error('Failed to create operation record', { cause: insertErr });
 
         }
 
-        if (typeof id !== 'number' || !Number.isFinite(id) || id <= 0) {
+        if (id === undefined) {
 
             throw new Error(`Invalid operation ID returned: ${id}`);
 
         }
 
         return id;
-
-    }
-
-    /**
-     * Get dialect-specific last-insert-id query.
-     *
-     * Returns null if the dialect should always use RETURNING/OUTPUT.
-     */
-    #lastInsertIdQuery(): ReturnType<typeof sql<{ id: number }>> | null {
-
-        switch (this.#dialect) {
-
-        case 'sqlite':
-            return sql<{ id: number }>`SELECT last_insert_rowid() as id`;
-
-        case 'mysql':
-            return sql<{ id: number }>`SELECT LAST_INSERT_ID() as id`;
-
-        case 'mssql':
-            return sql<{ id: number }>`SELECT SCOPE_IDENTITY() as id`;
-
-        case 'postgres':
-            return sql<{ id: number }>`SELECT lastval() as id`;
-
-        default:
-            return null;
-
-        }
 
     }
 
