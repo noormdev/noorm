@@ -10,7 +10,7 @@
  * Fails fast: missing identity env → exit 1, missing connection → exit 1,
  * existing state.enc without --force → exit 1.
  */
-import { existsSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { attempt, attemptSync } from '@logosdx/utils';
@@ -19,11 +19,28 @@ import { defineCommand } from 'citty';
 import { loadIdentityFromEnv, CI_ENV_VARS } from '../../core/identity/env.js';
 import { setKeyOverride, setIdentityOverride } from '../../core/identity/storage.js';
 import { getEnvConfig } from '../../core/config/index.js';
+import { parseConfig } from '../../core/config/schema.js';
 import type { Config } from '../../core/config/types.js';
 import type { ConnectionConfig } from '../../core/connection/types.js';
 import { OPEN_ACCESS } from '../../core/policy/index.js';
 import { initState } from '../../core/state/index.js';
 import { outputResult, outputError, sharedArgs } from '../_utils.js';
+
+/**
+ * Coerce an env-derived value back to a string.
+ *
+ * `getEnvConfig()` runs env vars through a parser that converts
+ * numeric-looking values, so a database literally named `20240101` arrives as
+ * the number 20240101. Env vars are strings by definition, and the config
+ * schema requires strings, so the conversion is always an artifact.
+ */
+function asString(value: unknown): string | undefined {
+
+    if (value === undefined || value === null) return undefined;
+
+    return String(value);
+
+}
 
 const initCommand = defineCommand({
     meta: {
@@ -38,9 +55,10 @@ const initCommand = defineCommand({
         force: {
             type: 'boolean',
             alias: 'f',
-            description: 'Overwrite existing state.enc',
+            description: 'Overwrite existing state.enc (backs it up first)',
             default: false,
         },
+        yes: sharedArgs.yes,
         json: sharedArgs.json,
     },
     async run({ args }) {
@@ -98,6 +116,8 @@ const initCommand = defineCommand({
         }
 
         // 3. State.enc existence check
+        let backedUpTo: string | null = null;
+
         if (existsSync(stateFile)) {
 
             if (!args.force) {
@@ -109,6 +129,41 @@ const initCommand = defineCommand({
                 process.exit(1);
 
             }
+
+            // Destroying state.enc destroys every config and every
+            // config-scoped secret in this project. On an ephemeral runner
+            // that is the intent, so --force alone is enough there; at an
+            // interactive terminal it is far more likely to be a real project,
+            // so demand --yes as well rather than break documented pipelines.
+            if (process.stdin.isTTY && !args.yes) {
+
+                outputError(
+                    args,
+                    `Refusing to overwrite ${stateFile} from an interactive terminal. This deletes every `
+                    + 'config and config-scoped secret in this project. Pass --yes if you meant it.',
+                );
+                process.exit(1);
+
+            }
+
+            const backupPath = `${stateFile}.bak-${new Date().toISOString().replace(/[:.]/g, '-')}`;
+
+            const [, backupErr] = attemptSync(() =>
+                // Owner-only: the copy holds exactly what state.enc holds.
+                writeFileSync(backupPath, readFileSync(stateFile), { mode: 0o600 }),
+            );
+
+            if (backupErr) {
+
+                outputError(
+                    args,
+                    `Refusing to overwrite: could not back up existing state (${backupErr.message}).`,
+                );
+                process.exit(1);
+
+            }
+
+            backedUpTo = backupPath;
 
             const [, rmErr] = attemptSync(() => rmSync(stateFile));
 
@@ -137,23 +192,33 @@ const initCommand = defineCommand({
         // 5. Create config and activate
         const connection: ConnectionConfig = {
             dialect,
-            database,
-            host,
+            database: asString(database)!,
+            host: asString(host),
             port,
-            user,
-            password,
-            filename,
+            user: asString(user),
+            password: asString(password),
+            filename: asString(filename),
             pool,
             ssl,
         };
 
-        const config: Config = {
+        // Validated rather than hand-built and trusted: this is the one path
+        // that writes a config nobody reviewed, and it used to persist shapes
+        // the schema forbids for every later consumer to trip over.
+        const [config, parseErr] = attemptSync(() => parseConfig({
             name: configName,
             type: 'remote',
             isTest: true,
             access: OPEN_ACCESS,
             connection,
-        };
+        }) as Config);
+
+        if (parseErr || !config) {
+
+            outputError(args, `Invalid CI configuration: ${parseErr?.message ?? 'unknown error'}`);
+            process.exit(1);
+
+        }
 
         const [, setCfgErr] = await attempt(() => stateManager.setConfig(configName, config));
 
@@ -188,18 +253,20 @@ const initCommand = defineCommand({
                 config: {
                     name: configName,
                     dialect,
-                    database,
+                    database: connection.database,
                     isTest: true,
                 },
                 stateFile,
+                ...(backedUpTo ? { backedUpTo } : {}),
             },
             [
                 'CI runtime initialized.',
                 `  Identity:      ${envIdentity.identity.name} <${envIdentity.identity.email}>`,
                 `  Fingerprint:   ${envIdentity.identity.identityHash}`,
                 `  Config:        ${configName} (${dialect}, isTest=true)`,
-                `  Database:      ${database}`,
+                `  Database:      ${connection.database}`,
                 `  State file:    ${stateFile}`,
+                ...(backedUpTo ? [`  Previous state backed up to: ${backedUpTo}`] : []),
             ].join('\n'),
         );
 

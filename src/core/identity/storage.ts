@@ -120,6 +120,74 @@ export async function saveKeyPair(keypair: KeyPair): Promise<void> {
 }
 
 /**
+ * Copy the existing identity files aside before they are overwritten.
+ *
+ * `deriveStateKey` is HKDF over the private key, so replacing the keypair
+ * makes every `state.enc` on the machine undecryptable — configs, secrets and
+ * database passwords, with no recovery path. Nothing in noorm re-encrypts
+ * existing state under a new key, so the old key file is the only way back.
+ *
+ * Backups are written owner-only, including the public key and metadata, so a
+ * recovery copy never widens the permissions of what it copies.
+ *
+ * @returns Absolute paths of the backup files that were written
+ *
+ * @throws Error if the private key exists but cannot be backed up — the caller
+ * must not proceed with an overwrite it cannot undo
+ *
+ * @example
+ * ```typescript
+ * const backups = await backupKeyPair()
+ * console.log(`Previous identity saved to ${backups[0]}`)
+ * ```
+ */
+export async function backupKeyPair(): Promise<string[]> {
+
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const written: string[] = [];
+
+    for (const source of [PRIVATE_KEY_PATH, PUBLIC_KEY_PATH, IDENTITY_METADATA_PATH]) {
+
+        const [content, readErr] = await attempt(() => readFile(source, { encoding: 'utf8' }));
+
+        if (readErr) {
+
+            // A missing .pub or .json is survivable — both are derivable or
+            // re-creatable. A missing private key is not, and is the file worth
+            // aborting over.
+            if (source === PRIVATE_KEY_PATH) {
+
+                throw new Error(`Failed to read private key for backup: ${readErr.message}`);
+
+            }
+
+            continue;
+
+        }
+
+        const target = `${source}.bak-${stamp}`;
+
+        const [, writeErr] = await attempt(() =>
+            writeFile(target, content, { encoding: 'utf8', mode: PRIVATE_KEY_MODE }),
+        );
+
+        if (writeErr) {
+
+            throw new Error(`Failed to write backup ${target}: ${writeErr.message}`);
+
+        }
+
+        await attempt(() => chmod(target, PRIVATE_KEY_MODE));
+
+        written.push(target);
+
+    }
+
+    return written;
+
+}
+
+/**
  * Save identity metadata to disk.
  *
  * Stores name, email, machine, OS alongside key files so that
@@ -216,7 +284,16 @@ export async function loadIdentityMetadata(): Promise<CryptoIdentity | null> {
  *
  * Returns the in-memory override if set, otherwise reads from disk.
  *
+ * A missing file is "no identity yet" (null). A file that exists but does not
+ * hold well-formed key material is a hard error, not a null: silently passing
+ * corrupted bytes downstream lets `deriveStateKey` truncate them to a
+ * degenerate input and encrypt state under a publicly computable key. A
+ * partially-synced or truncated key file is otherwise undetectable, since
+ * nothing verifies `identity.key` against the sibling `identity.pub`.
+ *
  * @returns Private key as hex string, or null if not found
+ *
+ * @throws Error if the key file exists but is corrupted or has unsafe permissions
  *
  * @example
  * ```typescript
@@ -259,7 +336,18 @@ export async function loadPrivateKey(): Promise<string | null> {
 
     }
 
-    return content.trim();
+    const privateKey = content.trim();
+
+    if (!isValidKeyHex(privateKey)) {
+
+        throw new Error(
+            `Corrupted private key file (${PRIVATE_KEY_PATH}): contents are not hex-encoded X25519 key material. ` +
+            'Restore it from your backup — state encrypted under a different key cannot be recovered by regenerating one.',
+        );
+
+    }
+
+    return privateKey;
 
 }
 
@@ -454,8 +542,24 @@ let keyOverride: string | null = null;
  * Called once at process startup (in `cli/index.ts entry()`) when CI
  * env vars are detected. After this, `loadPrivateKey()` returns
  * the env key for the lifetime of the process.
+ *
+ * Validated for the same reason `loadPrivateKey()` validates the disk file:
+ * whatever lands here flows straight into `deriveStateKey`, and malformed
+ * key material silently derives a publicly computable encryption key. This
+ * is a public export, so the env loader's own check is not sufficient.
+ *
+ * @throws Error if the key is not well-formed hex key material
  */
 export function setKeyOverride(key: string): void {
+
+    if (!isValidKeyHex(key)) {
+
+        throw new Error(
+            'Invalid private key override: expected a hex-encoded X25519 key ' +
+            '(96 hex characters). Check NOORM_IDENTITY_PRIVATE_KEY.',
+        );
+
+    }
 
     keyOverride = key;
 

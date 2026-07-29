@@ -2,6 +2,7 @@
  * Cryptographic identity tests.
  */
 import { describe, it, expect } from 'bun:test';
+import { attemptSync } from '@logosdx/utils';
 import {
     generateKeyPair,
     encryptForRecipient,
@@ -259,6 +260,49 @@ describe('identity: crypto', () => {
 
         });
 
+        /**
+         * `Buffer.from(str, 'hex')` never throws — it stops at the first invalid
+         * pair and truncates odd lengths. Without a guard, every malformed key
+         * collapses to the same zero-length HKDF input, so the derived AES key is
+         * a constant anyone can recompute from the source. The assertion is that
+         * derivation REFUSES, not that the constants differ.
+         */
+        it('should reject non-hex key material rather than deriving a constant key', () => {
+
+            for (const badKey of ['', 'not-hex-at-all', 'zz', 'corrupted-not-hex-at-all']) {
+
+                const [key, err] = attemptSync(() => deriveStateKey(badKey));
+
+                expect(err).toBeInstanceOf(Error);
+                expect(key).toBeNull();
+
+            }
+
+        });
+
+        it('should reject a truncated private key', () => {
+
+            const { privateKey } = generateKeyPair();
+
+            const [key, err] = attemptSync(() => deriveStateKey(privateKey.slice(0, 40)));
+
+            expect(err).toBeInstanceOf(Error);
+            expect(key).toBeNull();
+
+        });
+
+        it('should never derive the same key from two different malformed inputs', () => {
+
+            const [k1] = attemptSync(() => deriveStateKey('zz'));
+            const [k2] = attemptSync(() => deriveStateKey('also-not-hex'));
+
+            // Both must be null (rejected). If either derived a buffer, the
+            // degenerate-IKM collapse is back.
+            expect(k1).toBeNull();
+            expect(k2).toBeNull();
+
+        });
+
     });
 
     describe('encryptState / decryptState', () => {
@@ -320,6 +364,35 @@ describe('identity: crypto', () => {
                 decryptState(tampered, keypair.privateKey);
 
             }).toThrow();
+
+        });
+
+        /**
+         * Reachability proof for the degenerate-key defect: a corrupted
+         * `identity.key` reaches `encryptState` directly via StateManager, so
+         * state written under it would be readable by anyone. Encryption must
+         * refuse rather than produce a decryptable-by-all artifact.
+         */
+        it('should refuse to encrypt state under malformed key material', () => {
+
+            const [encrypted, err] = attemptSync(() =>
+                encryptState('{"secrets":{"prod":{"STRIPE_KEY":"sk_live_x"}}}', 'corrupted-not-hex'),
+            );
+
+            expect(err).toBeInstanceOf(Error);
+            expect(encrypted).toBeNull();
+
+        });
+
+        it('should refuse to decrypt state under malformed key material', () => {
+
+            const keypair = generateKeyPair();
+            const encrypted = encryptState('secret', keypair.privateKey);
+
+            const [plaintext, err] = attemptSync(() => decryptState(encrypted, 'zz'));
+
+            expect(err).toBeInstanceOf(Error);
+            expect(plaintext).toBeNull();
 
         });
 

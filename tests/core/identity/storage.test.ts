@@ -5,12 +5,16 @@ import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { join } from 'path';
 import { mkdtemp, rm, readFile, stat, chmod, writeFile } from 'fs/promises';
 import { tmpdir, homedir } from 'os';
+import { attemptSync } from '@logosdx/utils';
 import {
     isValidKeyHex,
     getPrivateKeyPath,
     getPublicKeyPath,
     getNoormHomePath,
     validateKeyPermissions,
+    setKeyOverride,
+    clearKeyOverride,
+    getKeyOverride,
 } from '../../../src/core/identity/storage.js';
 import { generateKeyPair } from '../../../src/core/identity/crypto.js';
 
@@ -63,6 +67,51 @@ describe('identity: storage', () => {
             const key = 'aAbBcCdDeEfF0123456789' + 'a'.repeat(66);
 
             expect(isValidKeyHex(key)).toBe(true);
+
+        });
+
+    });
+
+    /**
+     * `setKeyOverride` is the CI in-memory key path. Anything it accepts flows
+     * straight into `deriveStateKey`, so an unvalidated override is the same
+     * degenerate-key hole as a corrupted `identity.key` file.
+     */
+    describe('setKeyOverride', () => {
+
+        afterEach(() => {
+
+            clearKeyOverride();
+
+        });
+
+        it('should reject key material that is not valid hex', () => {
+
+            const [, err] = attemptSync(() => setKeyOverride('not-hex-at-all'));
+
+            expect(err).toBeInstanceOf(Error);
+            expect(getKeyOverride()).toBeNull();
+
+        });
+
+        it('should reject a truncated key', () => {
+
+            const { privateKey } = generateKeyPair();
+
+            const [, err] = attemptSync(() => setKeyOverride(privateKey.slice(0, 40)));
+
+            expect(err).toBeInstanceOf(Error);
+            expect(getKeyOverride()).toBeNull();
+
+        });
+
+        it('should accept a well-formed private key', () => {
+
+            const { privateKey } = generateKeyPair();
+
+            setKeyOverride(privateKey);
+
+            expect(getKeyOverride()).toBe(privateKey);
 
         });
 

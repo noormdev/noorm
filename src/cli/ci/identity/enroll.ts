@@ -16,6 +16,7 @@ import { defineCommand } from 'citty';
 
 import { generateKeyPair } from '../../../core/identity/crypto.js';
 import { computeIdentityHash } from '../../../core/identity/hash.js';
+import { isValidKeyHex } from '../../../core/identity/storage.js';
 import { propagateVaultKeyTo } from '../../../core/vault/propagate.js';
 import { decryptVaultKey } from '../../../core/vault/key.js';
 import { getNoormTables, noormDb } from '../../../core/shared/tables.js';
@@ -67,6 +68,19 @@ const enrollCommand = defineCommand({
                 let newPrivateKey: string | null = null;
 
                 if (providedPublicKey) {
+
+                    // Validated before any write. An unchecked key used to be
+                    // INSERTed and only fail later at propagation, leaving a row
+                    // no retry could repair: the retry short-circuits on the
+                    // existing hash and registerIdentity never updates public_key.
+                    if (!isValidKeyHex(providedPublicKey)) {
+
+                        throw new Error(
+                            'Invalid --public-key: expected a hex-encoded X25519 public key ' +
+                            '(88 hex characters, as printed by `noorm ci identity new`).',
+                        );
+
+                    }
 
                     newPublicKey = providedPublicKey;
 
@@ -133,7 +147,7 @@ const enrollCommand = defineCommand({
                 const [existing, existingErr] = await attempt(() =>
                     ndb
                         .selectFrom(tables.identities as keyof NoormDatabase)
-                        .select(['identity_hash'])
+                        .select(['identity_hash', 'public_key'])
                         .where('identity_hash', '=', identityHash)
                         .executeTakeFirst(),
                 );
@@ -147,6 +161,25 @@ const enrollCommand = defineCommand({
                 let alreadyEnrolled = false;
 
                 if (existing) {
+
+                    // The hash's only secret input is the public key, which the
+                    // air-gapped flow tells you to circulate in the clear. Anyone
+                    // able to INSERT into the identities table — no vault access
+                    // needed — can therefore pre-register this hash carrying their
+                    // own key, and propagation below encrypts the vault key to
+                    // whatever the ROW holds, not to what was presented here.
+                    // Matching on hash alone is what made that a vault-theft
+                    // primitive; the presented key must match the stored one.
+                    if (existing.public_key !== newPublicKey) {
+
+                        throw new Error(
+                            `Refusing to enroll: an identity is already registered under this hash (${identityHash}) ` +
+                            'with a DIFFERENT public key. Enrolling would grant vault access to that key, not the one ' +
+                            'you supplied. This is what a pre-registration attack looks like — verify who created that ' +
+                            'row before removing it, and rotate the vault if you cannot account for it.',
+                        );
+
+                    }
 
                     alreadyEnrolled = true;
 
@@ -186,8 +219,9 @@ const enrollCommand = defineCommand({
                 if (!propagated) {
 
                     throw new Error(
-                        'Identity row present but vault propagation failed. ' +
-                        'Re-run this command to retry — enrollment is idempotent.',
+                        `Identity row for ${identityHash} is registered, but propagating the vault key to it failed. ` +
+                        'Re-running is safe and will retry the propagation; the identity row is not written twice. ' +
+                        'If it keeps failing, check that the row\'s public_key is the one you expect.',
                     );
 
                 }
