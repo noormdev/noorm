@@ -3,7 +3,10 @@
  *
  * Uses SQLite in-memory databases for testing (no external DB needed).
  */
-import { describe, it, expect, afterEach } from 'bun:test';
+import { describe, it, expect, afterEach, beforeEach } from 'bun:test';
+import { mkdtempSync, rmSync, existsSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { sql } from 'kysely';
 import { createConnection, testConnection } from '../../../src/core/connection/index.js';
 import type { ConnectionConfig } from '../../../src/core/connection/index.js';
@@ -204,6 +207,75 @@ describe('connection: factory', () => {
 
             expect(result.ok).toBe(false);
             expect(result.error).toBeDefined();
+
+        });
+
+    });
+
+    // ─────────────────────────────────────────────────────
+    // testServerOnly is documented as "verify credentials without
+    // requiring the target database" — the setup-wizard case. On SQLite
+    // there is no system database to swap to, so the probe used to open
+    // the target path, and the driver created it. A wizard's "Test
+    // Connection" button then left a zero-byte database behind and the
+    // user could no longer tell a fresh target from one testing made.
+    // ─────────────────────────────────────────────────────
+
+    describe('testConnection with testServerOnly on sqlite', () => {
+
+        let tmpDir: string;
+
+        beforeEach(() => {
+
+            tmpDir = mkdtempSync(join(tmpdir(), 'noorm-server-only-'));
+
+        });
+
+        afterEach(() => {
+
+            rmSync(tmpDir, { recursive: true, force: true });
+
+        });
+
+        it('does not create the target file when it does not exist yet', async () => {
+
+            const dbPath = join(tmpDir, 'fresh.db');
+
+            const config: ConnectionConfig = { dialect: 'sqlite', database: dbPath };
+
+            const result = await testConnection(config, { testServerOnly: true });
+
+            expect(result.ok).toBe(true);
+            expect(existsSync(dbPath)).toBe(false);
+
+        });
+
+        it('still reports failure when the target directory is not reachable', async () => {
+
+            const config: ConnectionConfig = {
+                dialect: 'sqlite',
+                database: '/nonexistent/path/that/does/not/exist/db.sqlite',
+            };
+
+            const result = await testConnection(config, { testServerOnly: true });
+
+            expect(result.ok).toBe(false);
+            expect(result.error).toBeDefined();
+
+        });
+
+        it('still opens and validates a target that already exists', async () => {
+
+            const dbPath = join(tmpDir, 'existing.db');
+            const seed = await createConnection({ dialect: 'sqlite', database: dbPath }, 'seed');
+            await seed.destroy();
+
+            expect(existsSync(dbPath)).toBe(true);
+
+            const result = await testConnection({ dialect: 'sqlite', database: dbPath }, { testServerOnly: true });
+
+            expect(result.ok).toBe(true);
+            expect(existsSync(dbPath)).toBe(true);
 
         });
 
