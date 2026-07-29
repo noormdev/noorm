@@ -54,7 +54,7 @@ export function DebugOverviewScreen({ params: _params }: ScreenProps): ReactElem
     // Load table counts when connection is ready
     useAsyncEffect(async (isCancelled) => {
 
-        if (!db) {
+        if (!db || !activeConfig) {
 
             if (!connLoading && !connError) setIsLoading(false);
 
@@ -67,7 +67,11 @@ export function DebugOverviewScreen({ params: _params }: ScreenProps): ReactElem
 
         const [result, err] = await attempt(async () => {
 
-            const ops = createDebugOperations(db as Kysely<NoormDatabase>, dialect ?? 'postgres');
+            const ops = createDebugOperations(
+                db as Kysely<NoormDatabase>,
+                dialect ?? 'postgres',
+                { channel: 'user', config: activeConfig },
+            );
 
             return await ops.getTableCounts();
 
@@ -88,7 +92,7 @@ export function DebugOverviewScreen({ params: _params }: ScreenProps): ReactElem
 
         setIsLoading(false);
 
-    }, [db]);
+    }, [db, activeConfig]);
 
     // Keyboard navigation
     useInput((input, key) => {

@@ -18,4 +18,5 @@ export type {
     SortDirection,
     GetRowsOptions,
     DebugOperations,
+    DebugPolicyContext,
 } from './operations.js';
