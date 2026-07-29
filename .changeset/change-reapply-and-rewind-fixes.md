@@ -3,8 +3,9 @@
 '@noormdev/sdk': patch
 ---
 
-Fix change apply/revert recovery and rewind flag handling
+Fix change apply/revert recovery, rewind flag handling, and MySQL support
 
+- Changes now run on MySQL at all. `ChangeHistory` retrieved insert ids with a `RETURNING` clause MySQL does not support, so no operation record was ever created and `change run`, `change ff`, `change revert` and `db teardown` were all inoperable.
 - A reverted or torn-down change can be applied again. Every file was previously skipped against a prior success, so `apply -> revert -> apply` and `db teardown -> change ff` reported success over an untouched database.
 - `ff` and `next` now treat `stale` changes as pending work, so teardown has a supported recovery path.
 - `change rewind` honours `--dry-run` and `--force`, and accepts the documented count form (`change rewind 3`). `changes.rewind()` takes an options argument.
