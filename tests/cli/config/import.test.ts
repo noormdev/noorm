@@ -166,4 +166,63 @@ describe('cli: noorm config import — legacy protected mapping', () => {
 
     });
 
+    /**
+     * Overwriting a config rewrites its `access` block, so import is an
+     * escalation vector: without a gate, one `--force` turns a viewer config
+     * (or one hidden from MCP with `mcp: false`) into admin/admin. The
+     * existing config's role decides, not the incoming file's.
+     */
+    describe('access escalation via --force', () => {
+
+        function importThenEscalate(access: Record<string, unknown>, escalateArgs: string[]) {
+
+            const original = writeConfigFile('original.json', {
+                name: 'locked',
+                access,
+                connection: { dialect: 'sqlite', database: ':memory:' },
+            });
+
+            expect(runImport(original).status).toBe(0);
+
+            const escalated = writeConfigFile('escalated.json', {
+                name: 'locked',
+                access: { user: 'admin', mcp: 'admin' },
+                connection: { dialect: 'sqlite', database: ':memory:' },
+            });
+
+            return runImport(escalated, escalateArgs);
+
+        }
+
+        it('denies overwriting a viewer config, leaving its access intact', () => {
+
+            const result = importThenEscalate({ user: 'viewer', mcp: false }, ['--force']);
+
+            expect(result.status).toBe(1);
+            expect(result.stdout + result.stderr).toContain('config:write');
+            expect(readPersistedAccess('locked')).toEqual({ user: 'viewer', mcp: false });
+
+        });
+
+        it('requires confirmation before overwriting an admin config', () => {
+
+            const result = importThenEscalate({ user: 'admin', mcp: 'viewer' }, ['--force']);
+
+            expect(result.status).toBe(1);
+            expect(result.stdout + result.stderr).toContain('confirmation');
+            expect(readPersistedAccess('locked')).toEqual({ user: 'admin', mcp: 'viewer' });
+
+        });
+
+        it('overwrites an admin config once confirmation is given', () => {
+
+            const result = importThenEscalate({ user: 'admin', mcp: 'viewer' }, ['--force', '--yes']);
+
+            expect(result.status).toBe(0);
+            expect(readPersistedAccess('locked')).toEqual({ user: 'admin', mcp: 'admin' });
+
+        });
+
+    });
+
 });

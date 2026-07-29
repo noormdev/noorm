@@ -33,6 +33,14 @@ import { SettingsManager } from './settings/manager.js';
 import { StateManager, getStateManager } from './state/index.js';
 import { observer } from './observer.js';
 
+/**
+ * What the project `.gitignore` block must exclude: `state.enc` holds every
+ * config and secret, and `noorm.log` sits beside it.
+ */
+const NOORM_IGNORE_ENTRY = '.noorm/state/';
+
+const NOORM_GITIGNORE_BLOCK = `\n# noorm\n${NOORM_IGNORE_ENTRY}\n`;
+
 export interface ProjectInitIdentityInfo {
     name: string;
     email: string;
@@ -59,7 +67,6 @@ export async function performProjectInit(
     opts: ProjectInitOptions,
 ): Promise<ProjectInitResult> {
 
-    // === Declaration block ===
     const { projectRoot, force, identityInfo } = opts;
 
     const sqlPath = join(projectRoot, 'sql');
@@ -70,7 +77,6 @@ export async function performProjectInit(
 
     const created: string[] = [];
 
-    // === Business logic block ===
     mkdirSync(sqlPath, { recursive: true });
     writeFileSync(join(sqlPath, '.gitkeep'), '', { flag: 'a' });
     created.push('sql/.gitkeep');
@@ -137,26 +143,28 @@ export async function performProjectInit(
     const singleton = getStateManager(projectRoot);
     await singleton.reloadPrivateKey();
 
-    const noormBlock = '\n# noorm\n';
     if (existsSync(gitignorePath)) {
 
         const existing = readFileSync(gitignorePath, 'utf-8');
-        if (!existing.includes('# noorm')) {
 
-            appendFileSync(gitignorePath, noormBlock);
+        // Keyed on the entry rather than the `# noorm` header: earlier
+        // versions wrote the header with nothing under it, and those
+        // projects would otherwise skip the append forever.
+        if (!existing.includes(NOORM_IGNORE_ENTRY)) {
+
+            appendFileSync(gitignorePath, NOORM_GITIGNORE_BLOCK);
 
         }
 
     }
     else {
 
-        writeFileSync(gitignorePath, noormBlock.trimStart());
+        writeFileSync(gitignorePath, NOORM_GITIGNORE_BLOCK.trimStart());
 
     }
 
     observer.emit('init:complete', { projectRoot, hasIdentity: createdIdentity });
 
-    // === Commit block ===
     return {
         success: true,
         createdIdentity,

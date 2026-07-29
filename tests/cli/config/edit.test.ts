@@ -59,4 +59,21 @@ describe('cli: noorm config edit — honest exit-1 stub', () => {
 
     });
 
+    /**
+     * See add.test.ts — the stub ignored --json, so the config group's
+     * headless contract had two holes in it.
+     */
+    it('emits a JSON error under --json and names the headless alternative', () => {
+
+        const result = runEdit(['myconfig', '--json']);
+
+        expect(result.status).toBe(1);
+
+        const parsed = JSON.parse((result.stdout as string).trim()) as { success: boolean; error: string };
+
+        expect(parsed.success).toBe(false);
+        expect(parsed.error).toContain('config import');
+
+    });
+
 });

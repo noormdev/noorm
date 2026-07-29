@@ -10,6 +10,7 @@ import { chmod, writeFile } from 'node:fs/promises';
 import { attempt } from '@logosdx/utils';
 import { defineCommand } from 'citty';
 
+import { checkConfigPolicy } from '../../core/policy/index.js';
 import { initState, getStateManager } from '../../core/state/index.js';
 import { outputError, sharedArgs } from '../_utils.js';
 
@@ -42,6 +43,18 @@ const exportCommand = defineCommand({
         if (!config) {
 
             outputError(args, `Config not found: ${args.name}`);
+            process.exit(1);
+
+        }
+
+        // The export carries the connection password in plaintext, so it is
+        // a secret read — a viewer role that is denied `config:rm` must not
+        // be able to walk away with the credential instead.
+        const check = checkConfigPolicy('user', config, 'secret:read');
+
+        if (!check.allowed) {
+
+            outputError(args, check.blockedReason ?? `Config "${args.name}" cannot be exported.`);
             process.exit(1);
 
         }
