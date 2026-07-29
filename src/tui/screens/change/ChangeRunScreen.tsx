@@ -58,7 +58,7 @@ export function ChangeRunScreen({ params }: ScreenProps): ReactElement {
 
     const { navigate: _navigate, back } = useRouter();
     const { isFocused } = useFocusScope('ChangeRun');
-    const { activeConfig, activeConfigName, projectRoot, settings, stateManager, identity: cryptoIdentity } = useAppContext();
+    const { activeConfig, activeConfigName, projectRoot, settings, stateManager, identity: cryptoIdentity, globalModes } = useAppContext();
     const check = activeConfig ? checkConfigPolicy('user', activeConfig, 'change:run') : null;
 
     const changeName = params.name;
@@ -147,7 +147,7 @@ export function ChangeRunScreen({ params }: ScreenProps): ReactElement {
                 activeConfig,
             });
 
-            const result = await manager.run(change.name);
+            const result = await manager.run(change.name, { dryRun: globalModes.dryRun, force: globalModes.force });
 
             await conn.destroy();
 
@@ -169,7 +169,7 @@ export function ChangeRunScreen({ params }: ScreenProps): ReactElement {
 
         }
 
-    }, [activeConfig, activeConfigName, change, stateManager]);
+    }, [activeConfig, activeConfigName, change, stateManager, globalModes]);
 
     // Handle cancel
     const handleCancel = useCallback(() => {

@@ -57,7 +57,7 @@ export function ChangeRevertScreen({ params }: ScreenProps): ReactElement {
 
     const { navigate: _navigate, back } = useRouter();
     const { isFocused } = useFocusScope('ChangeRevert');
-    const { activeConfig, activeConfigName, projectRoot, settings, identity: cryptoIdentity } = useAppContext();
+    const { activeConfig, activeConfigName, projectRoot, settings, identity: cryptoIdentity, globalModes } = useAppContext();
     const check = activeConfig ? checkConfigPolicy('user', activeConfig, 'change:revert') : null;
 
     const changeName = params.name;
@@ -151,7 +151,7 @@ export function ChangeRevertScreen({ params }: ScreenProps): ReactElement {
                 activeConfig,
             });
 
-            const result = await manager.revert(change.name);
+            const result = await manager.revert(change.name, { dryRun: globalModes.dryRun, force: globalModes.force });
 
             await conn.destroy();
 
@@ -173,7 +173,7 @@ export function ChangeRevertScreen({ params }: ScreenProps): ReactElement {
 
         }
 
-    }, [activeConfig, activeConfigName, change, cryptoIdentity]);
+    }, [activeConfig, activeConfigName, change, cryptoIdentity, globalModes]);
 
     // Handle cancel
     const handleCancel = useCallback(() => {
