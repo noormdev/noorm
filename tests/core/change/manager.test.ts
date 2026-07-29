@@ -66,7 +66,7 @@ describe('change: manager', () => {
     /**
      * Build a test context.
      */
-    function buildContext(): ChangeContext {
+    function buildContext(extra: Partial<ChangeContext> = {}): ChangeContext {
 
         return {
             db,
@@ -78,6 +78,7 @@ describe('change: manager', () => {
             access: { user: 'admin', mcp: 'admin' },
             channel: 'user',
             dialect: 'sqlite',
+            ...extra,
         };
 
     }
@@ -471,6 +472,42 @@ describe('change: manager', () => {
 
             const firstFile = retry.files.find((f) => f.filepath.endsWith('001_ok.sql'));
             expect(firstFile?.status).toBe('skipped');
+
+        });
+
+    });
+
+    describe('template context', () => {
+
+        it('should resolve $.secrets and $.config inside a change template', async () => {
+
+            await createTestChange('tmpl', [
+                {
+                    name: '001.sql.tmpl',
+                    content: 'CREATE TABLE tmpl_target (id INTEGER PRIMARY KEY,'
+                        + " secret TEXT DEFAULT '{%= $.secrets.PROBE %}',"
+                        + " cfg TEXT DEFAULT '{%= $.config.name %}')",
+                },
+            ]);
+
+            const manager = new ChangeManager(buildContext({
+                config: { name: 'audit' },
+                secrets: { PROBE: 'myvalue123' },
+                globalSecrets: {},
+            }));
+
+            const result = await manager.run('tmpl');
+
+            expect(result.status).toBe('success');
+
+            // The rendered values must have reached the executed SQL, not
+            // just rendered without throwing.
+            const ddl = await sql<{ sql: string }>`
+                SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'tmpl_target'
+            `.execute(db);
+
+            expect(ddl.rows[0]?.sql).toContain('myvalue123');
+            expect(ddl.rows[0]?.sql).toContain('audit');
 
         });
 

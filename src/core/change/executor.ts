@@ -1302,9 +1302,9 @@ async function loadAndRenderFile(context: ChangeContext, filepath: string): Prom
 
         const result = await processFile(filepath, {
             projectRoot: context.projectRoot,
-            config: undefined, // Change context doesn't have config
-            secrets: undefined,
-            globalSecrets: undefined,
+            config: context.config,
+            secrets: context.secrets,
+            globalSecrets: context.globalSecrets,
         });
 
         return result.sql;
