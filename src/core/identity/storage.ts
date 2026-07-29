@@ -120,6 +120,74 @@ export async function saveKeyPair(keypair: KeyPair): Promise<void> {
 }
 
 /**
+ * Copy the existing identity files aside before they are overwritten.
+ *
+ * `deriveStateKey` is HKDF over the private key, so replacing the keypair
+ * makes every `state.enc` on the machine undecryptable — configs, secrets and
+ * database passwords, with no recovery path. Nothing in noorm re-encrypts
+ * existing state under a new key, so the old key file is the only way back.
+ *
+ * Backups are written owner-only, including the public key and metadata, so a
+ * recovery copy never widens the permissions of what it copies.
+ *
+ * @returns Absolute paths of the backup files that were written
+ *
+ * @throws Error if the private key exists but cannot be backed up — the caller
+ * must not proceed with an overwrite it cannot undo
+ *
+ * @example
+ * ```typescript
+ * const backups = await backupKeyPair()
+ * console.log(`Previous identity saved to ${backups[0]}`)
+ * ```
+ */
+export async function backupKeyPair(): Promise<string[]> {
+
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const written: string[] = [];
+
+    for (const source of [PRIVATE_KEY_PATH, PUBLIC_KEY_PATH, IDENTITY_METADATA_PATH]) {
+
+        const [content, readErr] = await attempt(() => readFile(source, { encoding: 'utf8' }));
+
+        if (readErr) {
+
+            // A missing .pub or .json is survivable — both are derivable or
+            // re-creatable. A missing private key is not, and is the file worth
+            // aborting over.
+            if (source === PRIVATE_KEY_PATH) {
+
+                throw new Error(`Failed to read private key for backup: ${readErr.message}`);
+
+            }
+
+            continue;
+
+        }
+
+        const target = `${source}.bak-${stamp}`;
+
+        const [, writeErr] = await attempt(() =>
+            writeFile(target, content, { encoding: 'utf8', mode: PRIVATE_KEY_MODE }),
+        );
+
+        if (writeErr) {
+
+            throw new Error(`Failed to write backup ${target}: ${writeErr.message}`);
+
+        }
+
+        await attempt(() => chmod(target, PRIVATE_KEY_MODE));
+
+        written.push(target);
+
+    }
+
+    return written;
+
+}
+
+/**
  * Save identity metadata to disk.
  *
  * Stores name, email, machine, OS alongside key files so that
