@@ -3,7 +3,7 @@
  *
  * SQLite-specific SQL generation for teardown operations.
  */
-import type { TeardownDialectOperations } from '../types.js';
+import type { TeardownDialectOperations, TeardownTableRef } from '../types.js';
 import { createDialectQuoting } from '../../shared/index.js';
 
 const { quote } = createDialectQuoting({
@@ -23,14 +23,14 @@ const { quote } = createDialectQuoting({
  */
 export const sqliteTeardownOperations: TeardownDialectOperations = {
 
-    disableForeignKeyChecks(_tables?: string[]): string {
+    disableForeignKeyChecks(_tables?: TeardownTableRef[]): string {
 
         // Connection-level PRAGMA — tables ignored
         return 'PRAGMA foreign_keys = OFF';
 
     },
 
-    enableForeignKeyChecks(_tables?: string[]): string {
+    enableForeignKeyChecks(_tables?: TeardownTableRef[]): string {
 
         return 'PRAGMA foreign_keys = ON';
 

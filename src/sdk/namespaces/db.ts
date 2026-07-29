@@ -2,7 +2,9 @@
  * Db namespace — database exploration and schema operations.
  *
  * Mirrors [d] db in the TUI. All operations require a connection.
- * Destructive operations are gated by the config's `db:reset` access
+ * Destructive operations are gated per action — `db:truncate`, `db:teardown`
+ * and `db:reset` — rather than all sharing `db:reset`, which is `allow` for
+ * admin and so asked nothing of the default config
  * (see `checkProtectedConfig` in ../guards.ts).
  */
 import type { Kysely } from 'kysely';
@@ -28,10 +30,13 @@ import type { TruncateOptions, TruncateResult, TeardownOptions, TeardownResult, 
 import { truncateData, teardownSchema, previewTeardown } from '../../core/teardown/index.js';
 import { formatIdentity } from '../../core/identity/index.js';
 
+import { checkConfigPolicy } from '../../core/policy/index.js';
+import type { Permission } from '../../core/policy/index.js';
+
 import type { ContextState } from '../state.js';
 import { requireConnection } from '../state.js';
 import type { BuildOptions } from '../types.js';
-import { checkProtectedConfig } from '../guards.js';
+import { checkProtectedConfig, ProtectedConfigError } from '../guards.js';
 
 // ─────────────────────────────────────────────────────────────
 // DbNamespace
@@ -277,7 +282,20 @@ export class DbNamespace {
      */
     async truncate(options?: TruncateOptions): Promise<TruncateResult> {
 
-        checkProtectedConfig(this.#state.config, this.#state.options, 'db:reset', 'truncate');
+        // `db:truncate`, not `db:reset`: reset is `allow` for admin, so a
+        // default config wiped every table with nothing asked of it.
+        // A dry run is checked for permission but not for confirmation —
+        // see teardown() for why the preview must stay reachable.
+        if (options?.dryRun) {
+
+            this.#assertAllowed('db:truncate', 'truncate');
+
+        }
+        else {
+
+            checkProtectedConfig(this.#state.config, this.#state.options, 'db:truncate', 'truncate');
+
+        }
 
         const preserve = options?.preserve
             ?? this.#state.settings.teardown?.preserveTables;
@@ -304,12 +322,26 @@ export class DbNamespace {
      */
     async teardown(options?: TeardownOptions): Promise<TeardownResult> {
 
-        checkProtectedConfig(this.#state.config, this.#state.options, 'db:reset', 'teardown');
+        // A dry run destroys nothing, so it is checked for permission but
+        // never for confirmation — the preview is the safety mechanism, and
+        // requiring `--yes` to look first would remove it. Denial still
+        // applies, so a role that may not tear down may not preview either.
+        if (options?.dryRun) {
+
+            this.#assertAllowed('db:teardown', 'teardown');
+
+        }
+        else {
+
+            checkProtectedConfig(this.#state.config, this.#state.options, 'db:teardown', 'teardown');
+
+        }
 
         return teardownSchema(this.#kysely, this.#dialect, {
             configName: this.#state.config.name,
             executedBy: formatIdentity(this.#state.identity),
             preserveTables: this.#state.settings.teardown?.preserveTables,
+            preserveSchemas: options?.preserveSchemas,
             postScript: this.#state.settings.teardown?.postScript,
             dryRun: options?.dryRun,
         });
@@ -351,6 +383,24 @@ export class DbNamespace {
     // ─────────────────────────────────────────────────────
     // Private
     // ─────────────────────────────────────────────────────
+
+    /**
+     * Enforce the allow/deny half of a permission without its confirmation.
+     *
+     * Raises the same `ProtectedConfigError` SDK consumers already catch, so
+     * a preview that the role forbids fails identically to an execution.
+     */
+    #assertAllowed(permission: Permission, operation: string): void {
+
+        const check = checkConfigPolicy(this.#state.options.channel ?? 'user', this.#state.config, permission);
+
+        if (!check.allowed) {
+
+            throw new ProtectedConfigError(this.#state.config.name, operation, check.blockedReason);
+
+        }
+
+    }
 
     get #kysely(): Kysely<unknown> {
 

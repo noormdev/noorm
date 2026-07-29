@@ -6,16 +6,18 @@
  */
 import type { Kysely } from 'kysely';
 
+import { attempt, attemptSync } from '@logosdx/utils';
+
 import type { ConnectionConfig } from '../connection/types.js';
 import type { NoormDatabase } from '../shared/index.js';
-import { getNoormTables, noormDb } from '../shared/index.js';
+import { getNoormTables } from '../shared/index.js';
 import type { DbStatus, DbOperationResult, CreateDbOptions, DestroyDbOptions } from './types.js';
 
 import { createConnection, testConnection } from '../connection/factory.js';
 import { bootstrapSchema, tablesExist } from '../version/index.js';
 import { observer } from '../observer.js';
 import { getDialectOperations } from './dialects/index.js';
-import { attempt } from '@logosdx/utils';
+import { assertDbPolicy } from './policy.js';
 
 /**
  * Check database status.
@@ -140,6 +142,14 @@ export async function createDb(
     // Get dialect operations
     const ops = getDialectOperations(config.dialect);
 
+    const [, policyErr] = attemptSync(() => assertDbPolicy(options.policy, 'db:create', 'create the database'));
+
+    if (policyErr) {
+
+        return { ok: false, error: policyErr.message };
+
+    }
+
     // Reuse the caller's status when supplied, instead of re-deriving it —
     // a second checkDbStatus call for SQLite would see the caller's own
     // probe having already auto-created the target file.
@@ -220,16 +230,15 @@ export async function createDb(
 /**
  * Destroy a database.
  *
- * Drops the entire database by default. Use `trackingOnly: true`
- * to only reset tracking tables without dropping the database.
+ * Reports `dropped: false` when the target was already absent, mirroring
+ * `createDb`'s `created` contract. Every dialect's drop is `IF EXISTS`, so
+ * without the existence check a CI job that names the wrong database gets a
+ * green "dropped" and never learns its target was wrong.
  *
  * @example
  * ```typescript
- * // Drop entire database
- * await destroyDb(config, 'myconfig')
- *
- * // Reset tracking only (keep database)
- * await destroyDb(config, 'myconfig', { trackingOnly: true })
+ * const result = await destroyDb(config, 'myconfig')
+ * if (result.ok && !result.dropped) console.log('nothing to drop')
  * ```
  */
 export async function destroyDb(
@@ -238,72 +247,40 @@ export async function destroyDb(
     options: DestroyDbOptions = {},
 ): Promise<DbOperationResult> {
 
-    const { trackingOnly = false } = options;
-
     const dbName = config.database;
+    const ops = getDialectOperations(config.dialect);
 
-    // Emit start event
+    const [, policyErr] = attemptSync(() => assertDbPolicy(options.policy, 'db:destroy', 'drop the database'));
+
+    if (policyErr) {
+
+        return { ok: false, error: policyErr.message };
+
+    }
+
     observer.emit('db:destroying', { configName, database: dbName });
 
-    if (trackingOnly) {
+    // Existence is checked before the drop, not inferred from it — the drop
+    // itself is IF EXISTS on every dialect and so cannot tell the two apart.
+    // A probe failure is not fatal: fall through and let the drop decide.
+    const [existed] = await attempt(() => ops.databaseExists(config, dbName));
 
-        // Just reset tracking tables
-        const [, resetErr] = await attempt(async () => {
+    if (existed === false) {
 
-            const conn = await createConnection(config, configName);
-            const db = conn.db as Kysely<NoormDatabase>;
-            const ndb = noormDb(db, config.dialect);
-            const tables = getNoormTables(config.dialect);
-
-            // Clear tracking tables
-            const hasNoormTables = await tablesExist(db, config.dialect);
-
-            if (hasNoormTables) {
-
-                await ndb.deleteFrom(tables.executions as keyof NoormDatabase).execute();
-
-                // Try to clear change table (might not exist)
-                const [, changeErr] = await attempt(async () => {
-
-                    await ndb.deleteFrom(tables.change as keyof NoormDatabase).execute();
-
-                });
-
-                if (changeErr) {
-                    // Table might not exist — safe to ignore
-                }
-
-            }
-
-            await conn.destroy();
-
-        });
-
-        if (resetErr) {
-
-            return { ok: false, error: resetErr.message };
-
-        }
-
-    }
-    else {
-
-        // Drop the entire database
-        const ops = getDialectOperations(config.dialect);
-
-        const [, dropErr] = await attempt(() => ops.dropDatabase(config, dbName));
-
-        if (dropErr) {
-
-            return { ok: false, error: dropErr.message };
-
-        }
+        return { ok: true, dropped: false };
 
     }
 
-    // Emit completion event
+    const [, dropErr] = await attempt(() => ops.dropDatabase(config, dbName));
+
+    if (dropErr) {
+
+        return { ok: false, error: dropErr.message };
+
+    }
+
     observer.emit('db:destroyed', { configName, database: dbName });
 
-    return { ok: true };
+    return { ok: true, dropped: true };
 
 }

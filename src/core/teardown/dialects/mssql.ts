@@ -3,7 +3,7 @@
  *
  * Microsoft SQL Server-specific SQL generation for teardown operations.
  */
-import type { TeardownDialectOperations } from '../types.js';
+import type { TeardownDialectOperations, TeardownTableRef } from '../types.js';
 import { createDialectQuoting } from '../../shared/index.js';
 
 const { quote, qualifiedName } = createDialectQuoting({
@@ -20,7 +20,7 @@ const { quote, qualifiedName } = createDialectQuoting({
  */
 export const mssqlTeardownOperations: TeardownDialectOperations = {
 
-    disableForeignKeyChecks(tables?: string[]): string | string[] {
+    disableForeignKeyChecks(tables?: TeardownTableRef[]): string | string[] {
 
         // MSSQL has no session-level FK toggle. With a table list, emit
         // per-table NOCHECK statements (sequential, single connection).
@@ -30,7 +30,7 @@ export const mssqlTeardownOperations: TeardownDialectOperations = {
         // schema locks (see mssql-problems.md #6).
         if (tables && tables.length > 0) {
 
-            return tables.map((t) => `ALTER TABLE ${qualifiedName(t)} NOCHECK CONSTRAINT ALL`);
+            return tables.map((t) => `ALTER TABLE ${qualifiedName(t.name, t.schema)} NOCHECK CONSTRAINT ALL`);
 
         }
 
@@ -38,14 +38,14 @@ export const mssqlTeardownOperations: TeardownDialectOperations = {
 
     },
 
-    enableForeignKeyChecks(tables?: string[]): string | string[] {
+    enableForeignKeyChecks(tables?: TeardownTableRef[]): string | string[] {
 
         if (tables && tables.length > 0) {
 
             // WITH CHECK CHECK CONSTRAINT ALL re-validates existing rows.
             // Plain CHECK CONSTRAINT ALL marks the FK as trusted-only, which
             // matches the original sp_MSforeachtable behavior.
-            return tables.map((t) => `ALTER TABLE ${qualifiedName(t)} CHECK CONSTRAINT ALL`);
+            return tables.map((t) => `ALTER TABLE ${qualifiedName(t.name, t.schema)} CHECK CONSTRAINT ALL`);
 
         }
 
