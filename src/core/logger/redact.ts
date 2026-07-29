@@ -153,7 +153,45 @@ addMaskedFields([
     'bearer_token',
     'jwt_secret',
     'session_secret',
+
+    // This project's own credentials. `addMaskedFields` derives the `noorm_`
+    // prefix from the *bare* term only, so `password` yields `NOORM_PASSWORD`
+    // but never `NOORM_CONNECTION_PASSWORD` — the compound names the docs and
+    // CI actually tell users to set have to be listed in full.
+    'connection_password',
+    'identity_private_key',
+    'password_hash',
+    'user_password',
 ]);
+
+/**
+ * Credentials embedded in a URI's authority section.
+ *
+ * Name-based masking cannot catch these: a DSN is a secret carried in the
+ * *value*, under whatever key the caller happened to use (`url`, `dsn`,
+ * `connectionString`, or an error message). Only the password is replaced so
+ * the host and database stay readable — a redacted DSN is usually the most
+ * useful thing in a connection-failure log.
+ */
+const URI_CREDENTIALS = /([a-zA-Z][a-zA-Z0-9+.-]*:\/\/[^\s:/@]+):([^\s/@]+)@/g;
+
+/**
+ * Strip credentials from any URIs found in free text.
+ *
+ * @param text - Arbitrary string value or error message
+ * @returns The text with URI passwords replaced
+ *
+ * @example
+ * ```typescript
+ * redactCredentialsInText('postgres://user:hunter2@host/db');
+ * // => 'postgres://user:***@host/db'
+ * ```
+ */
+export function redactCredentialsInText(text: string): string {
+
+    return text.replace(URI_CREDENTIALS, '$1:***@');
+
+}
 
 /**
  * Check if a field name should be masked.
@@ -335,21 +373,50 @@ export function filterData(
 
     }
 
-    // Skip Error objects (non-enumerable properties like message/stack would be lost by spread)
+    // Errors can't be spread — message/stack are non-enumerable — so clone via
+    // property descriptors to keep the prototype, name and any custom fields
+    // intact, then scrub the two places a credential actually shows up. Cloning
+    // rather than mutating matters: the caller still owns this error and may
+    // rethrow it.
     if (entry instanceof Error) {
 
-        return entry;
+        const cloned = Object.create(
+            Object.getPrototypeOf(entry) as object,
+            Object.getOwnPropertyDescriptors(entry),
+        ) as Error;
+
+        cloned.message = redactCredentialsInText(entry.message);
+
+        if (typeof cloned.stack === 'string') {
+
+            cloned.stack = redactCredentialsInText(cloned.stack);
+
+        }
+
+        return cloned as unknown as Record<string, unknown>;
 
     }
 
     // Handle arrays
     if (Array.isArray(entry)) {
 
-        return entry.map((item) =>
-            typeof item === 'object' && item !== null
-                ? filterData(item as Record<string, unknown>, level)
-                : item,
-        ) as unknown as Record<string, unknown>;
+        return entry.map((item) => {
+
+            if (typeof item === 'object' && item !== null) {
+
+                return filterData(item as Record<string, unknown>, level);
+
+            }
+
+            if (typeof item === 'string') {
+
+                return redactCredentialsInText(item);
+
+            }
+
+            return item;
+
+        }) as unknown as Record<string, unknown>;
 
     }
 
@@ -373,6 +440,13 @@ export function filterData(
         if (MASKED_FIELDS.has(key) && typeof value === 'string') {
 
             filtered[key] = maskValue(value, key, level);
+
+        }
+        else if (typeof value === 'string') {
+
+            // The key says nothing, so inspect the value: a DSN under `url` or
+            // `dsn` is just as much a leak as one under `password`.
+            filtered[key] = redactCredentialsInText(value);
 
         }
         else if (typeof value === 'object' && value !== null) {
