@@ -61,11 +61,11 @@ Settings file lives in `.noorm/settings.yml`:
 # Build configuration
 build:
     include:
-        - sql/tables
-        - sql/views
-        - sql/functions
+        - tables
+        - views
+        - functions
     exclude:
-        - sql/archive
+        - archive
 
 # Path overrides
 paths:
@@ -77,7 +77,7 @@ rules:
     - match:
           isTest: true
       include:
-          - sql/seeds
+          - seeds
 
 # Team-defined templates
 stages:
@@ -129,8 +129,16 @@ Key behaviors:
 - `include` filters which folders are processed (not execution order)
 - `exclude` prevents folders from ever being processed
 - Execution order is always alphanumeric—use numeric prefixes to control sequence
-- Paths are relative to `paths.sql` directory
+- Paths are relative to the `paths.sql` directory, **not** the project root
 - Rules can dynamically modify these lists
+
+::: warning Include paths are relative to `paths.sql`
+With `paths.sql: ./sql`, an entry of `01_tables` resolves to `./sql/01_tables`. Writing `sql/01_tables` resolves to `./sql/sql/01_tables` and matches nothing.
+
+A non-matching entry is not an error — the build reports `status: success` with `filesRun: 0` and exits `0`. A misconfigured `include` is therefore indistinguishable from a successful build, and the missing schema only surfaces later. If a build succeeds having run zero files, check this first.
+
+A leading `./` or a trailing `/` are likewise not stripped, and match nothing for the same reason. Use bare segment names.
+:::
 
 ```typescript
 const build = settings.getBuild()
@@ -171,20 +179,20 @@ rules:
     - match:
           isTest: true
       include:
-          - sql/seeds
+          - seeds
 
     # Skip destructive scripts on protected configs
     - match:
           protected: true
       exclude:
-          - sql/dangerous
+          - dangerous
 
     # Complex match: remote test databases
     - match:
           isTest: true
           type: remote
       exclude:
-          - sql/heavy-seeds
+          - heavy-seeds
 ```
 
 
@@ -219,13 +227,13 @@ rules:
     - match:
           isTest: true
       include:
-          - sql/seeds
+          - seeds
 
     # Later: but exclude seeds for specific config
     - match:
           name: ci-test
       exclude:
-          - sql/seeds
+          - seeds
 ```
 
 For config `ci-test` with `isTest: true`, the second rule wins—seeds are excluded.

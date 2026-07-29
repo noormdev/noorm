@@ -9,17 +9,18 @@ Project settings live in `.noorm/settings.yml`. Configs (database connections) a
 # Controls which SQL folders are included and their execution order.
 
 build:
-    # Folders to include, executed in the order listed.
-    # Empty list means all files in the sql/ directory.
+    # Folders to include. Paths are relative to `paths.sql`, NOT the project
+    # root — with `paths.sql: ./sql`, `tables` means `./sql/tables`.
+    # Empty list means all files under `paths.sql`.
     include:
-        - sql/tables
-        - sql/views
-        - sql/functions
-        - sql/indexes
+        - tables
+        - views
+        - functions
+        - indexes
 
-    # Folders excluded from all builds.
+    # Folders excluded from all builds. Same `paths.sql`-relative rule.
     exclude:
-        - sql/archive
+        - archive
 
 # ── Paths ────────────────────────────────────────────────────
 # Override default directory locations (relative to project root).
@@ -37,13 +38,13 @@ rules:
       match:
           isTest: true
       include:
-          - sql/seeds
+          - seeds
 
     - description: "Exclude dangerous scripts from protected configs"
       match:
           protected: true
       exclude:
-          - sql/dangerous
+          - dangerous
 
 # ── Stages ───────────────────────────────────────────────────
 # Preconfigured templates for creating configs. Each stage provides
@@ -120,8 +121,35 @@ secrets:
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `include` | `string[]` | `[]` (all) | Folders to build, in execution order |
-| `exclude` | `string[]` | `[]` | Folders to always skip |
+| `include` | `string[]` | `[]` (all) | Folders to build, relative to `paths.sql` |
+| `exclude` | `string[]` | `[]` | Folders to always skip, relative to `paths.sql` |
+
+#### Include/exclude paths are relative to `paths.sql`
+
+This is the single most common misconfiguration, and it fails silently.
+
+Entries in `build.include`, `build.exclude`, and `rules[].include` / `rules[].exclude` are matched against each file's path **relative to `paths.sql`** — never the project root. With the default `paths.sql: ./sql`:
+
+```yaml
+paths:
+    sql: ./sql
+
+build:
+    include:
+        - 01_tables      # correct   -> ./sql/01_tables
+        - sql/01_tables  # WRONG     -> ./sql/sql/01_tables, matches nothing
+```
+
+A non-matching entry is not an error. The build reports `"status": "success"` with `"filesRun": 0` and exits `0`, so a misconfigured `include` looks exactly like a successful build — the schema is simply never created, and the failure surfaces later as a missing table.
+
+If `noorm run build` reports success but ran zero files, check this first.
+
+Two related forms also match nothing, for the same reason:
+
+- `./01_tables` — a leading `./` is not stripped
+- `01_tables/` — a trailing slash is not stripped
+
+Use bare, unprefixed segment names. Nested paths (`06_seeds/cron`) are supported and follow the same rule.
 
 ### `paths`
 
@@ -139,8 +167,8 @@ secrets:
 | `match.protected` | `boolean?` | Matches `guarded(config)` (`access.user !== 'admin'`) — legacy field name, current semantics |
 | `match.isTest` | `boolean?` | Match test configs |
 | `match.type` | `'local' \| 'remote'?` | Match connection type |
-| `include` | `string[]?` | Folders to add when matched |
-| `exclude` | `string[]?` | Folders to skip when matched |
+| `include` | `string[]?` | Folders to add when matched, relative to `paths.sql` |
+| `exclude` | `string[]?` | Folders to skip when matched, relative to `paths.sql` |
 
 All conditions within a rule are AND'd — every specified field must match.
 
@@ -268,5 +296,5 @@ rules:
     - match:
           isTest: true
       include:
-          - sql/seeds
+          - seeds
 ```

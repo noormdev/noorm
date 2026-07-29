@@ -141,6 +141,14 @@ build:
         - archive         # Never runs
 ```
 
+Folder names are relative to your `paths.sql` directory, not the project root. With the default `paths.sql: ./sql`, an entry of `01_tables` means `./sql/01_tables` — so you do **not** repeat the `sql/` prefix.
+
+::: warning A wrong include path fails silently
+`sql/01_tables` resolves to `./sql/sql/01_tables` and matches nothing. noorm does not treat that as an error: the build reports success, runs zero files, and exits `0`, leaving your schema uncreated until something downstream fails on a missing table.
+
+If `noorm run build` reports success but ran zero files, an include entry is almost certainly the cause. A leading `./` or trailing `/` matches nothing for the same reason.
+:::
+
 The `include` array is a **filter**—it controls which folders are included, not their order. Execution order is always alphanumeric. Use numeric prefixes to control the sequence:
 
 ```
@@ -165,14 +173,14 @@ rules:
     - match:
           isTest: true
       include:
-          - sql/04_seeds
-          - sql/05_test-fixtures
+          - 04_seeds
+          - 05_test-fixtures
 
     # Skip heavy seeds for CI
     - match:
           name: ci-test
       exclude:
-          - sql/04_seeds/003_large-dataset.sql
+          - 04_seeds/003_large-dataset.sql
 ```
 
 This means:
@@ -285,17 +293,17 @@ rules:
     - match:
           name: dev
       include:
-          - sql/03_seeds-dev
+          - 03_seeds-dev
 
     - match:
           name: staging
       include:
-          - sql/03_seeds-staging
+          - 03_seeds-staging
 
     - match:
           name: prod
       include:
-          - sql/03_seeds-prod
+          - 03_seeds-prod
 ```
 
 
