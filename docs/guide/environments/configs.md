@@ -184,7 +184,7 @@ Environment variables override stored config values. This is how you inject secr
 | Variable | Config Path |
 |----------|-------------|
 | `NOORM_PATHS_SQL` | `paths.sql` |
-| `NOORM_PATHS_CHANGESETS` | `paths.changes` |
+| `NOORM_PATHS_CHANGES` | `paths.changes` |
 
 **Behavior variables:**
 

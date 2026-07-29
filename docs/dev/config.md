@@ -92,7 +92,7 @@ NOORM_{PATH}_{TO}_{VALUE}  →  { path: { to: { value: '' } } }
 | Variable | Config Path |
 |----------|-------------|
 | `NOORM_PATHS_SQL` | `paths.sql` |
-| `NOORM_PATHS_CHANGESETS` | `paths.changes` |
+| `NOORM_PATHS_CHANGES` | `paths.changes` |
 
 **Top-level variables:**
 
