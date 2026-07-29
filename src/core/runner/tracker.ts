@@ -35,6 +35,32 @@ import type { Dialect } from '../connection/types.js';
 import type { NeedsRunResult, CreateOperationData, RecordExecutionData, Direction } from './types.js';
 
 /**
+ * Coerce a driver-reported generated key into a plain positive integer.
+ *
+ * Every dialect reports it differently — mysql2 hands back a `bigint`,
+ * node-postgres renders `lastval()`'s int8 as a string, mssql and sqlite
+ * give a number. Returning `undefined` for anything unusable lets the caller
+ * fall through to its next strategy instead of carrying a `bigint` or a
+ * numeric string into a column that later rows join against.
+ *
+ * @example
+ * toOperationId(42n); // 42
+ * toOperationId('7'); // 7
+ * toOperationId(null); // undefined
+ */
+function toOperationId(value: unknown): number | undefined {
+
+    if (value === null || value === undefined) return undefined;
+
+    const asNumber = Number(value);
+
+    if (!Number.isSafeInteger(asNumber) || asNumber <= 0) return undefined;
+
+    return asNumber;
+
+}
+
+/**
  * Execution tracker for change detection and audit logging.
  *
  * @example
@@ -261,8 +287,14 @@ export class Tracker {
                 executed_by: data.executedBy,
             });
 
-        // MSSQL uses OUTPUT inserted.id (not RETURNING)
-        // Other dialects use RETURNING for atomic insert+get-id
+        // Three id-retrieval strategies, one per driver capability:
+        //   mssql   OUTPUT inserted.id
+        //   mysql   no RETURNING clause exists — the driver reports the
+        //           generated key on the insert result itself. Read it from
+        //           there rather than issuing LAST_INSERT_ID() as a second
+        //           query: that function is per-connection, and Kysely
+        //           returns the connection to the pool between statements.
+        //   others  RETURNING for an atomic insert+get-id
         let id: number | undefined;
 
         if (this.#dialect === 'mssql') {
@@ -280,7 +312,20 @@ export class Tracker {
             }
 
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            id = (result as any)?.id;
+            id = toOperationId((result as any)?.id);
+
+        }
+        else if (this.#dialect === 'mysql') {
+
+            const [result, err] = await attempt(() => insertQuery.executeTakeFirst());
+
+            if (err) {
+
+                throw new Error('Failed to create operation record', { cause: err });
+
+            }
+
+            id = toOperationId(result?.insertId);
 
         }
         else {
@@ -295,17 +340,17 @@ export class Tracker {
 
             }
 
-            id = result?.id ?? undefined;
+            id = toOperationId(result?.id);
 
             // SQLite with better-sqlite3 may return null for RETURNING
-            if (id === null || id === undefined) {
+            if (id === undefined) {
 
                 const lastIdQuery = this.#lastInsertIdQuery();
 
                 if (lastIdQuery) {
 
                     const [lastIdResult] = await attempt(() => lastIdQuery.execute(this.#db));
-                    id = lastIdResult?.rows?.[0]?.id;
+                    id = toOperationId(lastIdResult?.rows?.[0]?.id);
 
                 }
 
