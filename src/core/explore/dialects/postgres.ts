@@ -9,7 +9,6 @@ import { sql } from 'kysely';
 import type { Kysely } from 'kysely';
 import type {
     DialectExploreOperations,
-    ExploreOverview,
     TableSummary,
     ViewSummary,
     ProcedureSummary,
@@ -36,102 +35,31 @@ import type {
 const EXCLUDED_SCHEMAS = ['pg_catalog', 'information_schema', 'pg_toast', 'noorm'];
 
 /**
+ * Comparison to append to a schema column so one query serves both
+ * "everything the user owns" and "just this schema".
+ *
+ * Callers interpolate it directly after the column name, which keeps the
+ * schema a bound parameter rather than string-concatenated SQL.
+ *
+ * @example
+ * ```typescript
+ * sql`... WHERE t.table_schema ${schemaFilter(schema)}`
+ * ```
+ */
+function schemaFilter(schema?: string) {
+
+    return schema
+        ? sql`= ${schema}`
+        : sql`NOT IN (${sql.join(EXCLUDED_SCHEMAS)})`;
+
+}
+
+/**
  * PostgreSQL explore operations.
  */
 export const postgresExploreOperations: DialectExploreOperations = {
 
-    async getOverview(db: Kysely<unknown>): Promise<ExploreOverview> {
-
-        // All counts exclude extension objects (pg_depend with deptype='e')
-        const [tables, views, procedures, functions, types, indexes, foreignKeys] =
-            await Promise.all([
-                sql<{ count: string }>`
-                    SELECT COUNT(*)::text as count
-                    FROM information_schema.tables
-                    WHERE table_schema NOT IN (${sql.join(EXCLUDED_SCHEMAS)})
-                    AND table_type = 'BASE TABLE'
-                `.execute(db),
-
-                sql<{ count: string }>`
-                    SELECT COUNT(*)::text as count
-                    FROM information_schema.views
-                    WHERE table_schema NOT IN (${sql.join(EXCLUDED_SCHEMAS)})
-                `.execute(db),
-
-                sql<{ count: string }>`
-                    SELECT COUNT(*)::text as count
-                    FROM pg_proc p
-                    JOIN pg_namespace n ON p.pronamespace = n.oid
-                    WHERE n.nspname NOT IN (${sql.join(EXCLUDED_SCHEMAS)})
-                    AND p.prokind = 'p'
-                    AND NOT EXISTS (
-                        SELECT 1 FROM pg_depend d
-                        WHERE d.objid = p.oid
-                        AND d.deptype = 'e'
-                    )
-                `.execute(db),
-
-                sql<{ count: string }>`
-                    SELECT COUNT(*)::text as count
-                    FROM pg_proc p
-                    JOIN pg_namespace n ON p.pronamespace = n.oid
-                    WHERE n.nspname NOT IN (${sql.join(EXCLUDED_SCHEMAS)})
-                    AND p.prokind = 'f'
-                    AND NOT EXISTS (
-                        SELECT 1 FROM pg_depend d
-                        WHERE d.objid = p.oid
-                        AND d.deptype = 'e'
-                    )
-                `.execute(db),
-
-                sql<{ count: string }>`
-                    SELECT COUNT(*)::text as count
-                    FROM pg_type t
-                    JOIN pg_namespace n ON t.typnamespace = n.oid
-                    WHERE n.nspname NOT IN (${sql.join(EXCLUDED_SCHEMAS)})
-                    AND t.typtype IN ('e', 'c', 'd')
-                    AND NOT EXISTS (
-                        SELECT 1 FROM pg_depend d
-                        WHERE d.objid = t.oid
-                        AND d.deptype = 'e'
-                    )
-                    AND NOT EXISTS (
-                        SELECT 1 FROM pg_class c
-                        WHERE c.reltype = t.oid
-                        AND c.relkind IN ('r', 'v', 'm', 'p')
-                    )
-                `.execute(db),
-
-                sql<{ count: string }>`
-                    SELECT COUNT(*)::text as count
-                    FROM pg_indexes
-                    WHERE schemaname NOT IN (${sql.join(EXCLUDED_SCHEMAS)})
-                `.execute(db),
-
-                sql<{ count: string }>`
-                    SELECT COUNT(*)::text as count
-                    FROM information_schema.table_constraints
-                    WHERE constraint_type = 'FOREIGN KEY'
-                    AND table_schema NOT IN (${sql.join(EXCLUDED_SCHEMAS)})
-                `.execute(db),
-            ]);
-
-        return {
-            tables: parseInt(tables.rows[0]?.count ?? '0', 10),
-            views: parseInt(views.rows[0]?.count ?? '0', 10),
-            procedures: parseInt(procedures.rows[0]?.count ?? '0', 10),
-            functions: parseInt(functions.rows[0]?.count ?? '0', 10),
-            types: parseInt(types.rows[0]?.count ?? '0', 10),
-            indexes: parseInt(indexes.rows[0]?.count ?? '0', 10),
-            foreignKeys: parseInt(foreignKeys.rows[0]?.count ?? '0', 10),
-            triggers: 0, // TODO: implement count
-            locks: 0,    // TODO: implement count
-            connections: 0, // TODO: implement count
-        };
-
-    },
-
-    async listTables(db: Kysely<unknown>): Promise<TableSummary[]> {
+    async listTables(db: Kysely<unknown>, schema?: string): Promise<TableSummary[]> {
 
         const result = await sql<{
             table_name: string;
@@ -159,7 +87,7 @@ export const postgresExploreOperations: DialectExploreOperations = {
                     '0'
                 ) as row_estimate
             FROM information_schema.tables t
-            WHERE t.table_schema NOT IN (${sql.join(EXCLUDED_SCHEMAS)})
+            WHERE t.table_schema ${schemaFilter(schema)}
             AND t.table_type = 'BASE TABLE'
             ORDER BY t.table_schema, t.table_name
         `.execute(db);
@@ -175,7 +103,7 @@ export const postgresExploreOperations: DialectExploreOperations = {
 
     },
 
-    async listViews(db: Kysely<unknown>): Promise<ViewSummary[]> {
+    async listViews(db: Kysely<unknown>, schema?: string): Promise<ViewSummary[]> {
 
         const result = await sql<{
             table_name: string;
@@ -194,7 +122,7 @@ export const postgresExploreOperations: DialectExploreOperations = {
                 ) as column_count,
                 v.is_updatable
             FROM information_schema.views v
-            WHERE v.table_schema NOT IN (${sql.join(EXCLUDED_SCHEMAS)})
+            WHERE v.table_schema ${schemaFilter(schema)}
             ORDER BY v.table_schema, v.table_name
         `.execute(db);
 
@@ -207,7 +135,7 @@ export const postgresExploreOperations: DialectExploreOperations = {
 
     },
 
-    async listProcedures(db: Kysely<unknown>): Promise<ProcedureSummary[]> {
+    async listProcedures(db: Kysely<unknown>, schema?: string): Promise<ProcedureSummary[]> {
 
         // Exclude procedures that belong to extensions (pg_depend with deptype='e')
         const result = await sql<{
@@ -221,7 +149,7 @@ export const postgresExploreOperations: DialectExploreOperations = {
                 p.pronargs::text as param_count
             FROM pg_proc p
             JOIN pg_namespace n ON p.pronamespace = n.oid
-            WHERE n.nspname NOT IN (${sql.join(EXCLUDED_SCHEMAS)})
+            WHERE n.nspname ${schemaFilter(schema)}
             AND p.prokind = 'p'
             AND NOT EXISTS (
                 SELECT 1 FROM pg_depend d
@@ -239,7 +167,7 @@ export const postgresExploreOperations: DialectExploreOperations = {
 
     },
 
-    async listFunctions(db: Kysely<unknown>): Promise<FunctionSummary[]> {
+    async listFunctions(db: Kysely<unknown>, schema?: string): Promise<FunctionSummary[]> {
 
         // Exclude functions that belong to extensions (pg_depend with deptype='e')
         const result = await sql<{
@@ -255,7 +183,7 @@ export const postgresExploreOperations: DialectExploreOperations = {
                 pg_get_function_result(p.oid) as return_type
             FROM pg_proc p
             JOIN pg_namespace n ON p.pronamespace = n.oid
-            WHERE n.nspname NOT IN (${sql.join(EXCLUDED_SCHEMAS)})
+            WHERE n.nspname ${schemaFilter(schema)}
             AND p.prokind = 'f'
             AND NOT EXISTS (
                 SELECT 1 FROM pg_depend d
@@ -274,7 +202,7 @@ export const postgresExploreOperations: DialectExploreOperations = {
 
     },
 
-    async listTypes(db: Kysely<unknown>): Promise<TypeSummary[]> {
+    async listTypes(db: Kysely<unknown>, schema?: string): Promise<TypeSummary[]> {
 
         // Exclude:
         // - Types that belong to extensions (pg_depend with deptype='e')
@@ -299,7 +227,7 @@ export const postgresExploreOperations: DialectExploreOperations = {
                 END as value_count
             FROM pg_type t
             JOIN pg_namespace n ON t.typnamespace = n.oid
-            WHERE n.nspname NOT IN (${sql.join(EXCLUDED_SCHEMAS)})
+            WHERE n.nspname ${schemaFilter(schema)}
             AND t.typtype IN ('e', 'c', 'd')
             AND NOT EXISTS (
                 SELECT 1 FROM pg_depend d
@@ -329,7 +257,7 @@ export const postgresExploreOperations: DialectExploreOperations = {
 
     },
 
-    async listIndexes(db: Kysely<unknown>): Promise<IndexSummary[]> {
+    async listIndexes(db: Kysely<unknown>, schema?: string): Promise<IndexSummary[]> {
 
         // Query indexes with primary key constraint info from pg_constraint
         const result = await sql<{
@@ -357,7 +285,7 @@ export const postgresExploreOperations: DialectExploreOperations = {
                     false
                 ) as is_primary
             FROM pg_indexes i
-            WHERE i.schemaname NOT IN (${sql.join(EXCLUDED_SCHEMAS)})
+            WHERE i.schemaname ${schemaFilter(schema)}
             ORDER BY i.schemaname, i.tablename, i.indexname
         `.execute(db);
 
@@ -386,7 +314,7 @@ export const postgresExploreOperations: DialectExploreOperations = {
 
     },
 
-    async listForeignKeys(db: Kysely<unknown>): Promise<ForeignKeySummary[]> {
+    async listForeignKeys(db: Kysely<unknown>, schema?: string): Promise<ForeignKeySummary[]> {
 
         const result = await sql<{
             constraint_name: string;
@@ -420,7 +348,7 @@ export const postgresExploreOperations: DialectExploreOperations = {
                 ON tc.constraint_name = rc.constraint_name
                 AND tc.table_schema = rc.constraint_schema
             WHERE tc.constraint_type = 'FOREIGN KEY'
-            AND tc.table_schema NOT IN (${sql.join(EXCLUDED_SCHEMAS)})
+            AND tc.table_schema ${schemaFilter(schema)}
             ORDER BY tc.table_schema, tc.table_name, tc.constraint_name
         `.execute(db);
 
@@ -528,13 +456,13 @@ export const postgresExploreOperations: DialectExploreOperations = {
         }));
 
         // Get indexes for this table
-        const allIndexes = await this.listIndexes(db);
+        const allIndexes = await this.listIndexes(db, schema);
         const indexes = allIndexes.filter(
             (idx) => idx.tableName === name && idx.tableSchema === schema,
         );
 
         // Get foreign keys for this table
-        const allFks = await this.listForeignKeys(db);
+        const allFks = await this.listForeignKeys(db, schema);
         const foreignKeys = allFks.filter(
             (fk) => fk.tableName === name && fk.tableSchema === schema,
         );
@@ -642,7 +570,8 @@ export const postgresExploreOperations: DialectExploreOperations = {
 
         const oid = procRow.oid;
 
-        // Get parameters
+        // information_schema.parameters keys on specific_name (`proname_oid`),
+        // not on the bare routine name — filtering on `name` matches nothing.
         const paramsResult = await sql<{
             parameter_name: string | null;
             data_type: string;
@@ -658,7 +587,7 @@ export const postgresExploreOperations: DialectExploreOperations = {
                 parameter_default
             FROM information_schema.parameters
             WHERE specific_schema = ${schema}
-            AND specific_name = ${name || sql.raw(`'_' || ${oid}`)}
+            AND specific_name = ${name + '_' + oid}
             ORDER BY ordinal_position
         `.execute(db);
 
@@ -851,7 +780,7 @@ export const postgresExploreOperations: DialectExploreOperations = {
 
     },
 
-    async listTriggers(db: Kysely<unknown>): Promise<TriggerSummary[]> {
+    async listTriggers(db: Kysely<unknown>, schema?: string): Promise<TriggerSummary[]> {
 
         const result = await sql<{
             trigger_name: string;
@@ -869,7 +798,7 @@ export const postgresExploreOperations: DialectExploreOperations = {
                 action_timing,
                 event_manipulation
             FROM information_schema.triggers
-            WHERE trigger_schema NOT IN (${sql.join(EXCLUDED_SCHEMAS)})
+            WHERE trigger_schema ${schemaFilter(schema)}
             ORDER BY trigger_schema, event_object_table, trigger_name
         `.execute(db);
 
@@ -922,6 +851,10 @@ export const postgresExploreOperations: DialectExploreOperations = {
                 l.granted
             FROM pg_locks l
             WHERE l.locktype != 'virtualxid'
+            AND (
+                l.database IS NULL
+                OR l.database = (SELECT oid FROM pg_database WHERE datname = current_database())
+            )
             ORDER BY l.pid, l.locktype
         `.execute(db);
 

@@ -39,6 +39,13 @@ export interface ExploreOptions {
     /** Include noorm internal tables (__noorm_*). Default: false */
     includeNoormTables?: boolean;
 
+    /**
+     * Restrict results to one schema. Rejected on SQLite, which has none —
+     * silently returning an empty list would be indistinguishable from
+     * "the schema is empty".
+     */
+    schema?: string;
+
 }
 
 /**
@@ -51,7 +58,30 @@ function isNoormTable(name: string | undefined | null): boolean {
 }
 
 /**
+ * Guard the `schema` option against dialects that have no schema level.
+ *
+ * @throws when a schema is requested on SQLite
+ */
+function assertSchemaSupported(dialect: Dialect, schema?: string): void {
+
+    if (schema && dialect === 'sqlite') {
+
+        throw new Error(
+            'SQLite has no schemas; drop the schema filter to explore this database',
+        );
+
+    }
+
+}
+
+/**
  * Fetch overview counts for all object categories.
+ *
+ * Counts come from the same listing calls the detail views use, so the
+ * overview cannot disagree with what drilling in shows. An earlier
+ * `getOverview()` fast path counted with separate `COUNT(*)` queries and
+ * hardcoded triggers/locks/connections to zero, which meant the numbers
+ * changed depending on an unrelated option.
  *
  * @param db - Kysely database instance
  * @param dialect - Database dialect
@@ -71,40 +101,22 @@ export async function fetchOverview(
 ): Promise<ExploreOverview> {
 
     const ops = getExploreOperations(dialect);
+    const { schema } = options;
 
-    // If excluding noorm tables, we need to fetch lists and count manually
-    if (!options.includeNoormTables) {
+    assertSchemaSupported(dialect, schema);
 
-        const [tables, views, procedures, functions, types, indexes, foreignKeys, triggers, locks, connections] =
-            await Promise.all([
-                ops.listTables(db),
-                ops.listViews(db),
-                ops.listProcedures(db),
-                ops.listFunctions(db),
-                ops.listTypes(db),
-                ops.listIndexes(db),
-                ops.listForeignKeys(db),
-                ops.listTriggers(db),
-                ops.listLocks(db),
-                ops.listConnections(db),
-            ]);
-
-        return {
-            tables: tables.filter((t) => !isNoormTable(t.name)).length,
-            views: views.length,
-            procedures: procedures.length,
-            functions: functions.length,
-            types: types.length,
-            indexes: indexes.filter((i) => !isNoormTable(i.tableName)).length,
-            foreignKeys: foreignKeys.filter((fk) => !isNoormTable(fk.tableName)).length,
-            triggers: triggers.filter((t) => !isNoormTable(t.tableName)).length,
-            locks: locks.length,
-            connections: connections.length,
-        };
-
-    }
-
-    const [result, err] = await attempt(() => ops.getOverview(db));
+    const [lists, err] = await attempt(() => Promise.all([
+        ops.listTables(db, schema),
+        ops.listViews(db, schema),
+        ops.listProcedures(db, schema),
+        ops.listFunctions(db, schema),
+        ops.listTypes(db, schema),
+        ops.listIndexes(db, schema),
+        ops.listForeignKeys(db, schema),
+        ops.listTriggers(db, schema),
+        ops.listLocks(db),
+        ops.listConnections(db),
+    ]));
 
     if (err) {
 
@@ -113,7 +125,21 @@ export async function fetchOverview(
 
     }
 
-    return result;
+    const [tables, views, procedures, functions, types, indexes, foreignKeys, triggers, locks, connections] = lists;
+    const keep = (name: string | undefined) => options.includeNoormTables || !isNoormTable(name);
+
+    return {
+        tables: tables.filter((t) => keep(t.name)).length,
+        views: views.length,
+        procedures: procedures.length,
+        functions: functions.length,
+        types: types.length,
+        indexes: indexes.filter((i) => keep(i.tableName)).length,
+        foreignKeys: foreignKeys.filter((fk) => keep(fk.tableName)).length,
+        triggers: triggers.filter((t) => keep(t.tableName)).length,
+        locks: locks.length,
+        connections: connections.length,
+    };
 
 }
 
@@ -158,16 +184,19 @@ export async function fetchList<C extends ExploreCategory>(
 ): Promise<ListMethodMap[C]> {
 
     const ops = getExploreOperations(dialect);
+    const { schema } = options;
+
+    assertSchemaSupported(dialect, schema);
 
     const methodMap: Record<ExploreCategory, () => Promise<unknown>> = {
-        tables: () => ops.listTables(db),
-        views: () => ops.listViews(db),
-        procedures: () => ops.listProcedures(db),
-        functions: () => ops.listFunctions(db),
-        types: () => ops.listTypes(db),
-        indexes: () => ops.listIndexes(db),
-        foreignKeys: () => ops.listForeignKeys(db),
-        triggers: () => ops.listTriggers(db),
+        tables: () => ops.listTables(db, schema),
+        views: () => ops.listViews(db, schema),
+        procedures: () => ops.listProcedures(db, schema),
+        functions: () => ops.listFunctions(db, schema),
+        types: () => ops.listTypes(db, schema),
+        indexes: () => ops.listIndexes(db, schema),
+        foreignKeys: () => ops.listForeignKeys(db, schema),
+        triggers: () => ops.listTriggers(db, schema),
         locks: () => ops.listLocks(db),
         connections: () => ops.listConnections(db),
     };

@@ -3,6 +3,9 @@
  */
 import { defineCommand } from 'citty';
 
+import type { Kysely } from 'kysely';
+
+import { fetchList } from '../../core/explore/index.js';
 import { withContext, outputResult, sharedArgs } from '../_utils.js';
 
 const indexesCommand = defineCommand({
@@ -11,6 +14,10 @@ const indexesCommand = defineCommand({
         description: 'List indexes in the database',
     },
     args: {
+        schema: {
+            type: 'string',
+            description: 'Restrict the listing to one schema',
+        },
         config: sharedArgs.config,
         json: sharedArgs.json,
     },
@@ -20,7 +27,9 @@ const indexesCommand = defineCommand({
             args,
             fn: (ctx, logger) => {
 
-                return ctx.noorm.db.listIndexes().then((res) => {
+                // Core rather than the SDK: the SDK's list methods take no
+                // options, so --schema cannot reach the query through them.
+                return fetchList(ctx.kysely as Kysely<unknown>, ctx.dialect, 'indexes', { schema: args.schema }).then((res) => {
 
                     if (!args.json) {
 
@@ -42,7 +51,8 @@ const indexesCommand = defineCommand({
                             }
 
                             const flagStr = flags.length > 0 ? ` [${flags.join(', ')}]` : '';
-                            logger.info(`  ${idx.name} on ${idx.tableName} (${idx.columns.join(', ')})${flagStr}`);
+                            const table = idx.tableSchema ? `${idx.tableSchema}.${idx.tableName}` : idx.tableName;
+                            logger.info(`  ${idx.name} on ${table} (${idx.columns.join(', ')})${flagStr}`);
 
                         }
 
@@ -71,6 +81,7 @@ const indexesCommand = defineCommand({
 (indexesCommand as typeof indexesCommand & { examples: string[] }).examples = [
     'noorm db explore indexes',
     'noorm db explore indexes --json',
+    'noorm db explore indexes --schema app',
 ];
 
 export default indexesCommand;

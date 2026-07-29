@@ -9,7 +9,6 @@ import { sql } from 'kysely';
 import type { Kysely } from 'kysely';
 import type {
     DialectExploreOperations,
-    ExploreOverview,
     TableSummary,
     ViewSummary,
     ProcedureSummary,
@@ -31,95 +30,43 @@ import type {
 } from '../types.js';
 
 /**
+ * Database to explore: the caller's `schema` when supplied, otherwise the one
+ * the connection currently points at.
+ *
+ * MySQL has no schema level below the database, so a `schema` argument names a
+ * *different database* - every catalog predicate has to bind it rather than
+ * fall back to `DATABASE()`, or the answer describes the wrong database.
+ *
+ * @example
+ * ```typescript
+ * const dbName = await resolveSchema(db, schema);
+ * ```
+ */
+async function resolveSchema(
+    db: Kysely<unknown>,
+    schema?: string,
+): Promise<string | undefined> {
+
+    if (schema) {
+
+        return schema;
+
+    }
+
+    const result = await sql<{ db: string }>`SELECT DATABASE() as db`.execute(db);
+
+    return result.rows[0]?.db;
+
+}
+
+/**
  * MySQL explore operations.
  */
 export const mysqlExploreOperations: DialectExploreOperations = {
 
-    async getOverview(db: Kysely<unknown>): Promise<ExploreOverview> {
+    async listTables(db: Kysely<unknown>, schema?: string): Promise<TableSummary[]> {
 
-        // Get current database name
-        const dbNameResult = await sql<{ db: string }>`SELECT DATABASE() as db`.execute(db);
-        const dbName = dbNameResult.rows[0]?.db;
-
-        if (!dbName) {
-
-            return {
-                tables: 0,
-                views: 0,
-                procedures: 0,
-                functions: 0,
-                types: 0,
-                indexes: 0,
-                foreignKeys: 0,
-                triggers: 0,
-                locks: 0,
-                connections: 0,
-            };
-
-        }
-
-        const [tables, views, procedures, functions, indexes, foreignKeys] =
-            await Promise.all([
-                sql<{ count: string }>`
-                    SELECT COUNT(*) as count
-                    FROM information_schema.tables
-                    WHERE table_schema = ${dbName}
-                    AND table_type = 'BASE TABLE'
-                `.execute(db),
-
-                sql<{ count: string }>`
-                    SELECT COUNT(*) as count
-                    FROM information_schema.views
-                    WHERE table_schema = ${dbName}
-                `.execute(db),
-
-                sql<{ count: string }>`
-                    SELECT COUNT(*) as count
-                    FROM information_schema.routines
-                    WHERE routine_schema = ${dbName}
-                    AND routine_type = 'PROCEDURE'
-                `.execute(db),
-
-                sql<{ count: string }>`
-                    SELECT COUNT(*) as count
-                    FROM information_schema.routines
-                    WHERE routine_schema = ${dbName}
-                    AND routine_type = 'FUNCTION'
-                `.execute(db),
-
-                sql<{ count: string }>`
-                    SELECT COUNT(DISTINCT index_name) as count
-                    FROM information_schema.statistics
-                    WHERE table_schema = ${dbName}
-                `.execute(db),
-
-                sql<{ count: string }>`
-                    SELECT COUNT(*) as count
-                    FROM information_schema.table_constraints
-                    WHERE constraint_schema = ${dbName}
-                    AND constraint_type = 'FOREIGN KEY'
-                `.execute(db),
-            ]);
-
-        return {
-            tables: parseInt(String(tables.rows[0]?.count ?? '0'), 10),
-            views: parseInt(String(views.rows[0]?.count ?? '0'), 10),
-            procedures: parseInt(String(procedures.rows[0]?.count ?? '0'), 10),
-            functions: parseInt(String(functions.rows[0]?.count ?? '0'), 10),
-            types: 0, // MySQL doesn't have custom types like PostgreSQL
-            indexes: parseInt(String(indexes.rows[0]?.count ?? '0'), 10),
-            foreignKeys: parseInt(String(foreignKeys.rows[0]?.count ?? '0'), 10),
-            triggers: 0, // TODO: implement count
-            locks: 0,    // TODO: implement count
-            connections: 0, // TODO: implement count
-        };
-
-    },
-
-    async listTables(db: Kysely<unknown>): Promise<TableSummary[]> {
-
-        const dbNameResult = await sql<{ db: string }>`SELECT DATABASE() as db`.execute(db);
-        const dbName = dbNameResult.rows[0]?.db;
+        const dbName = await resolveSchema(db, schema);
 
         if (!dbName) return [];
 
@@ -156,10 +103,9 @@ export const mysqlExploreOperations: DialectExploreOperations = {
 
     },
 
-    async listViews(db: Kysely<unknown>): Promise<ViewSummary[]> {
+    async listViews(db: Kysely<unknown>, schema?: string): Promise<ViewSummary[]> {
 
-        const dbNameResult = await sql<{ db: string }>`SELECT DATABASE() as db`.execute(db);
-        const dbName = dbNameResult.rows[0]?.db;
+        const dbName = await resolveSchema(db, schema);
 
         if (!dbName) return [];
 
@@ -193,10 +139,9 @@ export const mysqlExploreOperations: DialectExploreOperations = {
 
     },
 
-    async listProcedures(db: Kysely<unknown>): Promise<ProcedureSummary[]> {
+    async listProcedures(db: Kysely<unknown>, schema?: string): Promise<ProcedureSummary[]> {
 
-        const dbNameResult = await sql<{ db: string }>`SELECT DATABASE() as db`.execute(db);
-        const dbName = dbNameResult.rows[0]?.db;
+        const dbName = await resolveSchema(db, schema);
 
         if (!dbName) return [];
 
@@ -229,10 +174,9 @@ export const mysqlExploreOperations: DialectExploreOperations = {
 
     },
 
-    async listFunctions(db: Kysely<unknown>): Promise<FunctionSummary[]> {
+    async listFunctions(db: Kysely<unknown>, schema?: string): Promise<FunctionSummary[]> {
 
-        const dbNameResult = await sql<{ db: string }>`SELECT DATABASE() as db`.execute(db);
-        const dbName = dbNameResult.rows[0]?.db;
+        const dbName = await resolveSchema(db, schema);
 
         if (!dbName) return [];
 
@@ -275,10 +219,9 @@ export const mysqlExploreOperations: DialectExploreOperations = {
 
     },
 
-    async listIndexes(db: Kysely<unknown>): Promise<IndexSummary[]> {
+    async listIndexes(db: Kysely<unknown>, schema?: string): Promise<IndexSummary[]> {
 
-        const dbNameResult = await sql<{ db: string }>`SELECT DATABASE() as db`.execute(db);
-        const dbName = dbNameResult.rows[0]?.db;
+        const dbName = await resolveSchema(db, schema);
 
         if (!dbName) return [];
 
@@ -332,10 +275,9 @@ export const mysqlExploreOperations: DialectExploreOperations = {
 
     },
 
-    async listForeignKeys(db: Kysely<unknown>): Promise<ForeignKeySummary[]> {
+    async listForeignKeys(db: Kysely<unknown>, schema?: string): Promise<ForeignKeySummary[]> {
 
-        const dbNameResult = await sql<{ db: string }>`SELECT DATABASE() as db`.execute(db);
-        const dbName = dbNameResult.rows[0]?.db;
+        const dbName = await resolveSchema(db, schema);
 
         if (!dbName) return [];
 
@@ -408,8 +350,7 @@ export const mysqlExploreOperations: DialectExploreOperations = {
         schema?: string,
     ): Promise<TableDetail | null> {
 
-        const dbNameResult = await sql<{ db: string }>`SELECT DATABASE() as db`.execute(db);
-        const dbName = schema ?? dbNameResult.rows[0]?.db;
+        const dbName = await resolveSchema(db, schema);
 
         if (!dbName) return null;
 
@@ -462,12 +403,13 @@ export const mysqlExploreOperations: DialectExploreOperations = {
             ? parseInt(String(rowResult.rows[0].table_rows), 10)
             : undefined;
 
-        // Get indexes
-        const allIndexes = await this.listIndexes(db);
+        // Scope to dbName, not the connected database: without it a
+        // cross-database detail reports another database's indexes and FKs
+        // inside an object labelled with the schema that was asked for.
+        const allIndexes = await this.listIndexes(db, dbName);
         const indexes = allIndexes.filter((idx) => idx.tableName === name);
 
-        // Get foreign keys
-        const allFks = await this.listForeignKeys(db);
+        const allFks = await this.listForeignKeys(db, dbName);
         const foreignKeys = allFks.filter((fk) => fk.tableName === name);
 
         return {
@@ -487,8 +429,7 @@ export const mysqlExploreOperations: DialectExploreOperations = {
         schema?: string,
     ): Promise<ViewDetail | null> {
 
-        const dbNameResult = await sql<{ db: string }>`SELECT DATABASE() as db`.execute(db);
-        const dbName = schema ?? dbNameResult.rows[0]?.db;
+        const dbName = await resolveSchema(db, schema);
 
         if (!dbName) return null;
 
@@ -556,8 +497,7 @@ export const mysqlExploreOperations: DialectExploreOperations = {
         schema?: string,
     ): Promise<ProcedureDetail | null> {
 
-        const dbNameResult = await sql<{ db: string }>`SELECT DATABASE() as db`.execute(db);
-        const dbName = schema ?? dbNameResult.rows[0]?.db;
+        const dbName = await resolveSchema(db, schema);
 
         if (!dbName) return null;
 
@@ -621,8 +561,7 @@ export const mysqlExploreOperations: DialectExploreOperations = {
         schema?: string,
     ): Promise<FunctionDetail | null> {
 
-        const dbNameResult = await sql<{ db: string }>`SELECT DATABASE() as db`.execute(db);
-        const dbName = schema ?? dbNameResult.rows[0]?.db;
+        const dbName = await resolveSchema(db, schema);
 
         if (!dbName) return null;
 
@@ -693,7 +632,11 @@ export const mysqlExploreOperations: DialectExploreOperations = {
 
     },
 
-    async listTriggers(db: Kysely<unknown>): Promise<TriggerSummary[]> {
+    async listTriggers(db: Kysely<unknown>, schema?: string): Promise<TriggerSummary[]> {
+
+        const dbName = await resolveSchema(db, schema);
+
+        if (!dbName) return [];
 
         const result = await sql<{
             TRIGGER_NAME: string;
@@ -709,7 +652,7 @@ export const mysqlExploreOperations: DialectExploreOperations = {
                 ACTION_TIMING,
                 EVENT_MANIPULATION
             FROM information_schema.TRIGGERS
-            WHERE TRIGGER_SCHEMA = DATABASE()
+            WHERE TRIGGER_SCHEMA = ${dbName}
             ORDER BY EVENT_OBJECT_TABLE, TRIGGER_NAME
         `.execute(db);
 

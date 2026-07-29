@@ -3,6 +3,9 @@
  */
 import { defineCommand } from 'citty';
 
+import type { Kysely } from 'kysely';
+
+import { fetchList } from '../../core/explore/index.js';
 import { withContext, outputResult, sharedArgs } from '../_utils.js';
 
 import detail from './explore-tables-detail.js';
@@ -13,6 +16,10 @@ const tablesCommand = defineCommand({
         description: 'List tables in the database',
     },
     args: {
+        schema: {
+            type: 'string',
+            description: 'Restrict the listing to one schema',
+        },
         config: sharedArgs.config,
         json: sharedArgs.json,
     },
@@ -23,7 +30,9 @@ const tablesCommand = defineCommand({
             args,
             fn: (ctx, logger) => {
 
-                return ctx.noorm.db.listTables().then((res) => {
+                // Core rather than the SDK: the SDK's list methods take no
+                // options, so --schema cannot reach the query through them.
+                return fetchList(ctx.kysely as Kysely<unknown>, ctx.dialect, 'tables', { schema: args.schema }).then((res) => {
 
                     if (!args.json) {
 
@@ -31,7 +40,8 @@ const tablesCommand = defineCommand({
 
                         for (const t of res) {
 
-                            logger.info(`  ${t.name} (${t.columnCount} cols)`);
+                            const qualified = t.schema ? `${t.schema}.${t.name}` : t.name;
+                            logger.info(`  ${qualified} (${t.columnCount} cols)`);
 
                         }
 
@@ -60,6 +70,7 @@ const tablesCommand = defineCommand({
 (tablesCommand as typeof tablesCommand & { examples: string[] }).examples = [
     'noorm db explore tables',
     'noorm db explore tables --json',
+    'noorm db explore tables --schema app',
     'noorm db explore tables detail users',
 ];
 

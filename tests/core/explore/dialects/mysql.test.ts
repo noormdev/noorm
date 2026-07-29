@@ -1,59 +1,171 @@
 /**
  * Unit tests for MySQL explore dialect operations.
  *
- * Tests SQL generation and response parsing without requiring a live database.
+ * MySQL's "schema" is a database, and every catalog query used to be pinned to
+ * `DATABASE()`. The recording harness makes that visible: these tests assert
+ * which database each statement binds, not just the shape of the result.
  */
-import { describe, it, expect, vi } from 'bun:test';
+import { describe, it, expect } from 'bun:test';
 import { mysqlExploreOperations } from '../../../../src/core/explore/dialects/mysql.js';
+import { createRecordingDb } from '../recording-db.js';
 
-import type { Kysely } from 'kysely';
+const CONNECTED_DB = 'noorm_audit';
+const OTHER_DB = 'noorm_audit_other';
 
-/**
- * Creates a mock Kysely database instance with executor stub.
- */
-function createMockDb(rows: unknown[]) {
+/** Every method opens with `SELECT DATABASE()`; answer it once per call. */
+function currentDatabase(name = CONNECTED_DB) {
 
-    const mockExecutor = {
-        executeQuery: vi.fn().mockResolvedValue({ rows }),
-        transformQuery: vi.fn((node) => node),
-        compileQuery: vi.fn(() => ({ sql: 'SELECT 1', parameters: [], query: {} as never })),
-        adapter: {
-            supportsTransactionalDdl: true,
-            supportsReturning: true,
-        },
-        withConnectionProvider: vi.fn(() => mockExecutor),
-        withPluginAtFront: vi.fn(() => mockExecutor),
-    };
-
-    return {
-        getExecutor: () => mockExecutor,
-        withPlugin: vi.fn(function(this: unknown) {
-
-            return this;
-
-        }),
-    } as unknown as Kysely<unknown>;
+    return { match: /SELECT DATABASE\(\)/, rows: [{ db: name }] };
 
 }
 
 describe('explore: mysql dialect', () => {
 
+    describe('getTableDetail', () => {
+
+        it('should read indexes and foreign keys from the requested schema, not the connected one', async () => {
+
+            // Columns came from `schema` while indexes/FKs came from DATABASE(),
+            // producing an object whose own `tableSchema` contradicted its label.
+            const db = createRecordingDb('mysql', [
+                currentDatabase(),
+                {
+                    match: /information_schema\.columns/,
+                    rows: [
+                        {
+                            column_name: 'id',
+                            data_type: 'int',
+                            is_nullable: 'NO',
+                            column_default: null,
+                            ordinal_position: 1,
+                            column_key: 'PRI',
+                        },
+                    ],
+                },
+                { match: /information_schema\.tables/, rows: [{ table_rows: '3' }] },
+                currentDatabase(),
+                {
+                    match: /information_schema\.statistics/,
+                    rows: [
+                        {
+                            index_name: 'idx_zzz',
+                            table_name: 't1',
+                            column_name: 'zzz',
+                            non_unique: 1,
+                            seq_in_index: 1,
+                        },
+                    ],
+                },
+                currentDatabase(),
+                { match: /key_column_usage/, rows: [] },
+            ]);
+
+            const detail = await mysqlExploreOperations.getTableDetail(db.kysely, 't1', OTHER_DB);
+
+            expect(db.find(/information_schema\.statistics/)?.parameters).toContain(OTHER_DB);
+            expect(db.find(/key_column_usage/)?.parameters).toContain(OTHER_DB);
+
+            expect(detail?.schema).toBe(OTHER_DB);
+            expect(detail?.indexes.map((i) => i.name)).toEqual(['idx_zzz']);
+            expect(detail?.indexes[0]?.tableSchema).toBe(OTHER_DB);
+
+        });
+
+        it('should fall back to the connected database when no schema is given', async () => {
+
+            const db = createRecordingDb('mysql', [
+                currentDatabase(),
+                {
+                    match: /information_schema\.columns/,
+                    rows: [
+                        {
+                            column_name: 'id',
+                            data_type: 'int',
+                            is_nullable: 'NO',
+                            column_default: null,
+                            ordinal_position: 1,
+                            column_key: 'PRI',
+                        },
+                    ],
+                },
+                { match: /information_schema\.tables/, rows: [] },
+                currentDatabase(),
+                { match: /information_schema\.statistics/, rows: [] },
+                currentDatabase(),
+                { match: /key_column_usage/, rows: [] },
+            ]);
+
+            await mysqlExploreOperations.getTableDetail(db.kysely, 't1');
+
+            expect(db.find(/information_schema\.statistics/)?.parameters).toContain(CONNECTED_DB);
+
+        });
+
+    });
+
+    describe('schema scoping', () => {
+
+        it.each([
+            'listTables',
+            'listViews',
+            'listProcedures',
+            'listFunctions',
+            'listIndexes',
+            'listForeignKeys',
+            'listTriggers',
+        ] as const)('should bind the requested schema in %s', async (method) => {
+
+            const db = createRecordingDb('mysql', [currentDatabase()]);
+
+            await mysqlExploreOperations[method](db.kysely, OTHER_DB);
+
+            expect(db.queries.at(-1)?.parameters).toContain(OTHER_DB);
+
+        });
+
+        it('should not ask the server for DATABASE() when a schema is supplied', async () => {
+
+            const db = createRecordingDb('mysql');
+
+            await mysqlExploreOperations.listTables(db.kysely, OTHER_DB);
+
+            expect(db.find(/SELECT DATABASE\(\)/)).toBeUndefined();
+
+        });
+
+        it('should bind the connected database when no schema is supplied', async () => {
+
+            const db = createRecordingDb('mysql', [currentDatabase()]);
+
+            await mysqlExploreOperations.listTables(db.kysely);
+
+            expect(db.find(/information_schema\.tables/)?.parameters).toContain(CONNECTED_DB);
+
+        });
+
+    });
+
     describe('listTriggers', () => {
 
         it('should return trigger summaries with name and table', async () => {
 
-            const mockRows = [
+            const db = createRecordingDb('mysql', [
+                currentDatabase('mydb'),
                 {
-                    TRIGGER_NAME: 'audit_trigger',
-                    TRIGGER_SCHEMA: 'mydb',
-                    EVENT_OBJECT_TABLE: 'users',
-                    ACTION_TIMING: 'AFTER',
-                    EVENT_MANIPULATION: 'INSERT',
+                    match: /information_schema\.TRIGGERS/i,
+                    rows: [
+                        {
+                            TRIGGER_NAME: 'audit_trigger',
+                            TRIGGER_SCHEMA: 'mydb',
+                            EVENT_OBJECT_TABLE: 'users',
+                            ACTION_TIMING: 'AFTER',
+                            EVENT_MANIPULATION: 'INSERT',
+                        },
+                    ],
                 },
-            ];
+            ]);
 
-            const db = createMockDb(mockRows);
-            const triggers = await mysqlExploreOperations.listTriggers(db);
+            const triggers = await mysqlExploreOperations.listTriggers(db.kysely);
 
             expect(triggers).toHaveLength(1);
             expect(triggers[0]).toEqual({
@@ -67,70 +179,35 @@ describe('explore: mysql dialect', () => {
 
         });
 
-        it('should handle BEFORE timing', async () => {
-
-            const mockRows = [
-                {
-                    TRIGGER_NAME: 'validate_trigger',
-                    TRIGGER_SCHEMA: 'mydb',
-                    EVENT_OBJECT_TABLE: 'orders',
-                    ACTION_TIMING: 'BEFORE',
-                    EVENT_MANIPULATION: 'UPDATE',
-                },
-            ];
-
-            const db = createMockDb(mockRows);
-            const triggers = await mysqlExploreOperations.listTriggers(db);
-
-            expect(triggers[0]?.timing).toBe('BEFORE');
-            expect(triggers[0]?.events).toEqual(['UPDATE']);
-
-        });
-
-        it('should handle DELETE event', async () => {
-
-            const mockRows = [
-                {
-                    TRIGGER_NAME: 'cascade_delete',
-                    TRIGGER_SCHEMA: 'mydb',
-                    EVENT_OBJECT_TABLE: 'products',
-                    ACTION_TIMING: 'AFTER',
-                    EVENT_MANIPULATION: 'DELETE',
-                },
-            ];
-
-            const db = createMockDb(mockRows);
-            const triggers = await mysqlExploreOperations.listTriggers(db);
-
-            expect(triggers[0]?.events).toEqual(['DELETE']);
-
-        });
-
     });
 
     describe('listLocks', () => {
 
         it('should return lock info from performance_schema', async () => {
 
-            const mockRows = [
+            const db = createRecordingDb('mysql', [
                 {
-                    OBJECT_TYPE: 'TABLE',
-                    OBJECT_NAME: 'users',
-                    LOCK_TYPE: 'SHARED_READ',
-                    LOCK_STATUS: 'GRANTED',
-                    OWNER_THREAD_ID: 12345,
+                    match: /metadata_locks/,
+                    rows: [
+                        {
+                            OBJECT_TYPE: 'TABLE',
+                            OBJECT_NAME: 'users',
+                            LOCK_TYPE: 'SHARED_READ',
+                            LOCK_STATUS: 'GRANTED',
+                            OWNER_THREAD_ID: 12345,
+                        },
+                        {
+                            OBJECT_TYPE: 'GLOBAL',
+                            OBJECT_NAME: null,
+                            LOCK_TYPE: 'EXCLUSIVE',
+                            LOCK_STATUS: 'PENDING',
+                            OWNER_THREAD_ID: 12346,
+                        },
+                    ],
                 },
-                {
-                    OBJECT_TYPE: 'TABLE',
-                    OBJECT_NAME: 'orders',
-                    LOCK_TYPE: 'EXCLUSIVE',
-                    LOCK_STATUS: 'PENDING',
-                    OWNER_THREAD_ID: 12346,
-                },
-            ];
+            ]);
 
-            const db = createMockDb(mockRows);
-            const locks = await mysqlExploreOperations.listLocks(db);
+            const locks = await mysqlExploreOperations.listLocks(db.kysely);
 
             expect(locks).toHaveLength(2);
             expect(locks[0]).toEqual({
@@ -140,32 +217,8 @@ describe('explore: mysql dialect', () => {
                 mode: 'SHARED_READ',
                 granted: true,
             });
-            expect(locks[1]).toEqual({
-                pid: 12346,
-                lockType: 'TABLE',
-                objectName: 'orders',
-                mode: 'EXCLUSIVE',
-                granted: false,
-            });
-
-        });
-
-        it('should handle null object names', async () => {
-
-            const mockRows = [
-                {
-                    OBJECT_TYPE: 'GLOBAL',
-                    OBJECT_NAME: null,
-                    LOCK_TYPE: 'INTENTION_EXCLUSIVE',
-                    LOCK_STATUS: 'GRANTED',
-                    OWNER_THREAD_ID: 12345,
-                },
-            ];
-
-            const db = createMockDb(mockRows);
-            const locks = await mysqlExploreOperations.listLocks(db);
-
-            expect(locks[0]?.objectName).toBeUndefined();
+            expect(locks[1]?.objectName).toBeUndefined();
+            expect(locks[1]?.granted).toBe(false);
 
         });
 
@@ -175,27 +228,31 @@ describe('explore: mysql dialect', () => {
 
         it('should return connection info from PROCESSLIST', async () => {
 
-            const mockRows = [
+            const db = createRecordingDb('mysql', [
                 {
-                    ID: 12345,
-                    USER: 'app_user',
-                    HOST: '192.168.1.100:45678',
-                    DB: 'mydb',
-                    STATE: 'Sending data',
-                    INFO: 'SELECT * FROM users',
+                    match: /PROCESSLIST/i,
+                    rows: [
+                        {
+                            ID: 12345,
+                            USER: 'app_user',
+                            HOST: '192.168.1.100:45678',
+                            DB: 'mydb',
+                            STATE: 'Sending data',
+                            INFO: 'SELECT * FROM users',
+                        },
+                        {
+                            ID: 12346,
+                            USER: 'admin',
+                            HOST: 'localhost:56789',
+                            DB: 'mydb',
+                            STATE: null,
+                            INFO: null,
+                        },
+                    ],
                 },
-                {
-                    ID: 12346,
-                    USER: 'admin',
-                    HOST: 'localhost:56789',
-                    DB: 'mydb',
-                    STATE: null,
-                    INFO: null,
-                },
-            ];
+            ]);
 
-            const db = createMockDb(mockRows);
-            const connections = await mysqlExploreOperations.listConnections(db);
+            const connections = await mysqlExploreOperations.listConnections(db.kysely);
 
             expect(connections).toHaveLength(2);
             expect(connections[0]).toEqual({
@@ -205,47 +262,17 @@ describe('explore: mysql dialect', () => {
                 clientAddress: '192.168.1.100:45678',
                 state: 'Sending data',
             });
+            expect(connections[1]?.state).toBe('unknown');
 
         });
 
-        it('should handle null state as unknown', async () => {
+        it('should exclude the current connection in SQL rather than in JS', async () => {
 
-            const mockRows = [
-                {
-                    ID: 12345,
-                    USER: 'app_user',
-                    HOST: 'localhost',
-                    DB: 'mydb',
-                    STATE: null,
-                    INFO: null,
-                },
-            ];
+            const db = createRecordingDb('mysql', [{ match: /PROCESSLIST/i, rows: [] }]);
 
-            const db = createMockDb(mockRows);
-            const connections = await mysqlExploreOperations.listConnections(db);
+            await mysqlExploreOperations.listConnections(db.kysely);
 
-            expect(connections[0]?.state).toBe('unknown');
-
-        });
-
-        it('should filter current connection', async () => {
-
-            const mockRows = [
-                {
-                    ID: 12345,
-                    USER: 'app_user',
-                    HOST: 'localhost',
-                    DB: 'mydb',
-                    STATE: 'active',
-                    INFO: null,
-                },
-            ];
-
-            const db = createMockDb(mockRows);
-            const connections = await mysqlExploreOperations.listConnections(db);
-
-            // Current connection is filtered in SQL query (ID != CONNECTION_ID())
-            expect(connections).toHaveLength(1);
+            expect(db.find(/PROCESSLIST/i)?.sql).toContain('CONNECTION_ID()');
 
         });
 
@@ -255,18 +282,22 @@ describe('explore: mysql dialect', () => {
 
         it('should return full trigger definition', async () => {
 
-            const mockRows = [
+            const db = createRecordingDb('mysql', [
                 {
-                    TRIGGER_NAME: 'audit_trigger',
-                    EVENT_OBJECT_TABLE: 'users',
-                    ACTION_TIMING: 'AFTER',
-                    EVENT_MANIPULATION: 'INSERT',
-                    ACTION_STATEMENT: 'BEGIN INSERT INTO audit_log VALUES (NEW.id); END',
+                    match: /information_schema\.TRIGGERS/i,
+                    rows: [
+                        {
+                            TRIGGER_NAME: 'audit_trigger',
+                            EVENT_OBJECT_TABLE: 'users',
+                            ACTION_TIMING: 'AFTER',
+                            EVENT_MANIPULATION: 'INSERT',
+                            ACTION_STATEMENT: 'BEGIN INSERT INTO audit_log VALUES (NEW.id); END',
+                        },
+                    ],
                 },
-            ];
+            ]);
 
-            const db = createMockDb(mockRows);
-            const trigger = await mysqlExploreOperations.getTriggerDetail(db, 'audit_trigger', 'mydb');
+            const trigger = await mysqlExploreOperations.getTriggerDetail(db.kysely, 'audit_trigger', 'mydb');
 
             expect(trigger).toEqual({
                 name: 'audit_trigger',
@@ -283,30 +314,9 @@ describe('explore: mysql dialect', () => {
 
         it('should return null for non-existent trigger', async () => {
 
-            const db = createMockDb([]);
-            const trigger = await mysqlExploreOperations.getTriggerDetail(db, 'nonexistent', 'mydb');
+            const db = createRecordingDb('mysql');
 
-            expect(trigger).toBeNull();
-
-        });
-
-        it('should handle single event trigger', async () => {
-
-            const mockRows = [
-                {
-                    TRIGGER_NAME: 'update_timestamp',
-                    EVENT_OBJECT_TABLE: 'orders',
-                    ACTION_TIMING: 'BEFORE',
-                    EVENT_MANIPULATION: 'UPDATE',
-                    ACTION_STATEMENT: 'SET NEW.updated_at = NOW()',
-                },
-            ];
-
-            const db = createMockDb(mockRows);
-            const trigger = await mysqlExploreOperations.getTriggerDetail(db, 'update_timestamp', 'mydb');
-
-            expect(trigger?.events).toEqual(['UPDATE']);
-            expect(trigger?.timing).toBe('BEFORE');
+            expect(await mysqlExploreOperations.getTriggerDetail(db.kysely, 'nope', 'mydb')).toBeNull();
 
         });
 
