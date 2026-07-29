@@ -212,6 +212,16 @@ export interface BatchResult {
 
     /** Error message when batch fails before file execution (e.g. tracking setup failure) */
     error?: string;
+
+    /**
+     * `build.include` / `rules[].include` entries that matched no file.
+     *
+     * Present only on `run build`, and only when something failed to match.
+     * A mistyped entry filters every file out, and a build over zero files
+     * still succeeds — so callers surface this to tell the user which entry
+     * was wrong instead of reporting a silent, empty success.
+     */
+    unmatchedInclude?: string[];
 }
 
 // ─────────────────────────────────────────────────────────────

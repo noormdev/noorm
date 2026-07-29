@@ -34,6 +34,19 @@ const buildCommand = defineCommand({
 
                         }
 
+                        // Warned, not failed: matching nothing is a settings mistake, and
+                        // without this the build reports plain success over zero files.
+                        if (res.unmatchedInclude?.length) {
+
+                            logger.warn(
+                                `Ignored ${res.unmatchedInclude.length} build.include entr` +
+                                `${res.unmatchedInclude.length === 1 ? 'y that matched' : 'ies that matched'} no files: ` +
+                                res.unmatchedInclude.join(', '),
+                            );
+                            logger.warn('Include paths are relative to paths.sql — use `01_tables`, not `sql/01_tables`.');
+
+                        }
+
                         for (const file of res.files) {
 
                             if (file.status === 'failed') {
