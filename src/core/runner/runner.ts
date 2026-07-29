@@ -348,6 +348,15 @@ export async function runFiles(
  *
  * Useful for debugging templates and verifying SQL before execution.
  *
+ * "Without executing" describes the *SQL*, not the render: producing the
+ * output resolves every secret tier into plaintext and runs whatever
+ * `$helpers` and referenced side-car scripts the template pulls in. Gated
+ * on `run:file` so the role denied every `run:*` permission cannot reach
+ * either. `run:file` is the closest existing cell — a dedicated
+ * `run:preview` row (viewer deny, operator/admin allow) belongs in the
+ * matrix so a read-only path stops inheriting `run:file`'s confirm
+ * semantics.
+ *
  * @param context - Run context
  * @param filepaths - Files to preview
  * @param output - Optional output file path
@@ -358,6 +367,8 @@ export async function preview(
     filepaths: string[],
     output?: string | null,
 ): Promise<FileResult[]> {
+
+    assertRunPolicy(context, 'run:file');
 
     const results: FileResult[] = [];
     const rendered: string[] = [];
@@ -447,6 +458,10 @@ export async function checkFilesStatus(
     context: RunContext,
     files: string[],
 ): Promise<FilesStatusResult> {
+
+    // Renders every file to compute its checksum, so it carries the same
+    // secret-resolution and script-execution exposure as `preview`.
+    assertRunPolicy(context, 'run:file');
 
     const tracker = new Tracker(context.db, context.configName, context.dialect ?? 'postgres');
     const results: FileStatusResult[] = [];
