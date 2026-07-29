@@ -21,7 +21,7 @@
 import type { Writable } from 'node:stream';
 import { join, dirname } from 'node:path';
 import { createWriteStream } from 'node:fs';
-import { mkdir } from 'node:fs/promises';
+import { chmod, mkdir } from 'node:fs/promises';
 
 import { observer, type NoormEvents } from '../observer.js';
 import { isCi } from '../environment.js';
@@ -35,7 +35,13 @@ import type { LogLevel, LoggerConfig, LoggerState, EntryLevel } from './types.js
 import { DEFAULT_LOGGER_CONFIG } from './types.js';
 import type { Settings } from '../settings/types.js';
 import type { EventQueue, QueueOpts } from '@logosdx/observer';
-import { merge } from '@logosdx/utils';
+import { attempt, merge } from '@logosdx/utils';
+
+/**
+ * Log files are owner-only: they carry redacted-but-not-guaranteed-clean event
+ * data, and sit in the same directory as `state.enc`, which is already 0600.
+ */
+const LOG_FILE_MODE = 0o600;
 
 /**
  * Flatten object for JSON output with dot-notation keys.
@@ -310,23 +316,25 @@ export class Logger {
 
         }
 
-        // Create file stream if config.file is set but no explicit file option
-        if (!this.#writers.file && this.#config.file) {
+        if (this.#config.file) {
 
-            const filePath = this.filepath;
-            await mkdir(dirname(filePath), { recursive: true });
-            this.#writers.file = createWriteStream(filePath, { flags: 'a' });
-
-        }
-
-        // Check rotation before starting (if file logging)
-        if (this.#writers.file) {
-
+            // Rotate before opening, not after: rotation renames the log file,
+            // so a stream opened first would already be bound to the rotated
+            // inode by the time the rename lands.
             const rotationResult = await checkAndRotate(
                 this.filepath,
                 this.#config.maxSize,
                 this.#config.maxFiles,
             );
+
+            // A caller-supplied stream is kept as-is unless rotation just moved
+            // the file out from under it, in which case it points at the wrong
+            // inode and has to be replaced.
+            if (!this.#writers.file || rotationResult.rotated) {
+
+                await this.#openFileStream();
+
+            }
 
             if (rotationResult.rotated) {
 
@@ -340,7 +348,7 @@ export class Logger {
             // Start rotation check interval (every minute)
             this.#rotationInterval = setInterval(() => {
 
-                this.#checkRotation();
+                this.checkRotation();
 
             }, 60_000);
 
@@ -610,11 +618,57 @@ export class Logger {
     }
 
     /**
-     * Check if rotation is needed and perform it.
+     * Open (or re-open) the file writer at the current log path.
+     *
+     * The new stream is installed before the old one is closed so no entry can
+     * be written to a writer that is already gone.
      */
-    async #checkRotation(): Promise<void> {
+    async #openFileStream(): Promise<void> {
 
-        if (!this.#writers.file || this.#state !== 'running') {
+        const filePath = this.filepath;
+        const previous = this.#writers.file;
+
+        await mkdir(dirname(filePath), { recursive: true });
+
+        const stream = createWriteStream(filePath, { flags: 'a', mode: LOG_FILE_MODE });
+
+        stream.on('error', () => {}); // best-effort file logging
+
+        this.#writers.file = stream;
+
+        // `mode` only applies when the file is created, so a log left behind by
+        // an older build stays 0644 until it is explicitly narrowed.
+        await attempt(() => chmod(filePath, LOG_FILE_MODE));
+
+        if (previous && previous !== process.stdout && previous !== process.stderr) {
+
+            await new Promise<void>((resolve) => previous.end(() => resolve()));
+
+        }
+
+    }
+
+    /**
+     * Check if rotation is needed and perform it, re-opening the file writer
+     * when it fires.
+     *
+     * Rotation renames the live file. Without re-opening, the still-open fd
+     * follows the renamed inode: every later entry lands in the rotated file,
+     * the log path stays missing, and `needsRotation` on a missing path reports
+     * false forever — so rotation would fire exactly once per process and the
+     * rotated file would then grow unbounded.
+     *
+     * Public because the 60s interval is far too coarse to drive from a test,
+     * and callers that write in bursts may want to force the check.
+     *
+     * @example
+     * ```typescript
+     * await logger.checkRotation();
+     * ```
+     */
+    async checkRotation(): Promise<void> {
+
+        if (!this.#writers.file || this.#state !== 'running' || !this.#config.file) {
 
             return;
 
@@ -626,14 +680,18 @@ export class Logger {
             this.#config.maxFiles,
         );
 
-        if (result.rotated) {
+        if (!result.rotated) {
 
-            observer.emit('logger:rotated', {
-                oldFile: result.oldFile!,
-                newFile: result.newFile!,
-            });
+            return;
 
         }
+
+        await this.#openFileStream();
+
+        observer.emit('logger:rotated', {
+            oldFile: result.oldFile!,
+            newFile: result.newFile!,
+        });
 
     }
 
