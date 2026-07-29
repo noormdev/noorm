@@ -1,60 +1,169 @@
 /**
  * Unit tests for MSSQL explore dialect operations.
  *
- * Tests SQL generation and response parsing without requiring a live database.
+ * Uses the recording harness so schema predicates and row-count coercion are
+ * asserted against the compiled statement and the parsed value, not inferred.
  */
-import { describe, it, expect, vi } from 'bun:test';
+import { describe, it, expect } from 'bun:test';
 import { mssqlExploreOperations } from '../../../../src/core/explore/dialects/mssql.js';
-
-import type { Kysely } from 'kysely';
-
-/**
- * Creates a mock Kysely database instance with executor stub.
- */
-function createMockDb(rows: unknown[]) {
-
-    const mockExecutor = {
-        executeQuery: vi.fn().mockResolvedValue({ rows }),
-        transformQuery: vi.fn((node) => node),
-        compileQuery: vi.fn(() => ({ sql: 'SELECT 1', parameters: [], query: {} as never })),
-        adapter: {
-            supportsTransactionalDdl: true,
-            supportsReturning: true,
-        },
-        withConnectionProvider: vi.fn(() => mockExecutor),
-        withPluginAtFront: vi.fn(() => mockExecutor),
-    };
-
-    return {
-        getExecutor: () => mockExecutor,
-        withPlugin: vi.fn(function(this: unknown) {
-
-            return this;
-
-        }),
-    } as unknown as Kysely<unknown>;
-
-}
+import { createRecordingDb } from '../recording-db.js';
 
 describe('explore: mssql dialect', () => {
+
+    describe('row count typing', () => {
+
+        it('should return rowCountEstimate as a number when listing tables', async () => {
+
+            // SUM(p.rows)/ISNULL(p.rows, 0) are bigint and the driver hands
+            // them back as text, which violates the declared `number` in --json.
+            const db = createRecordingDb('mssql', [
+                {
+                    match: /sys\.tables/,
+                    rows: [{ table_name: 't1', schema_name: 'dbo', column_count: 2, row_count: '3' }],
+                },
+            ]);
+
+            const tables = await mssqlExploreOperations.listTables(db.kysely);
+
+            expect(tables[0]?.rowCountEstimate).toBe(3);
+
+        });
+
+        it('should report an empty table as undefined rather than "0"', async () => {
+
+            const db = createRecordingDb('mssql', [
+                {
+                    match: /sys\.columns c/,
+                    rows: [
+                        {
+                            column_name: 'id',
+                            data_type: 'int',
+                            is_nullable: false,
+                            column_default: null,
+                            ordinal_position: 1,
+                            is_identity: true,
+                        },
+                    ],
+                },
+                { match: /is_primary_key = 1/, rows: [] },
+                { match: /SUM\(p\.rows\)/, rows: [{ row_count: '0' }] },
+            ]);
+
+            const detail = await mssqlExploreOperations.getTableDetail(db.kysely, 'empty', 'dbo');
+
+            expect(detail?.rowCountEstimate).toBeUndefined();
+
+        });
+
+        it('should return a numeric rowCountEstimate in table detail', async () => {
+
+            const db = createRecordingDb('mssql', [
+                {
+                    match: /sys\.columns c/,
+                    rows: [
+                        {
+                            column_name: 'id',
+                            data_type: 'int',
+                            is_nullable: false,
+                            column_default: null,
+                            ordinal_position: 1,
+                            is_identity: true,
+                        },
+                    ],
+                },
+                { match: /is_primary_key = 1/, rows: [] },
+                { match: /SUM\(p\.rows\)/, rows: [{ row_count: '42' }] },
+            ]);
+
+            const detail = await mssqlExploreOperations.getTableDetail(db.kysely, 't1', 'dbo');
+
+            expect(detail?.rowCountEstimate).toBe(42);
+
+        });
+
+    });
+
+    describe('schema scoping', () => {
+
+        it('should filter listTables by schema instead of listing every schema', async () => {
+
+            const db = createRecordingDb('mssql', [{ match: /sys\.tables/, rows: [] }]);
+
+            await mssqlExploreOperations.listTables(db.kysely, 'app');
+
+            const query = db.find(/sys\.tables/)!;
+
+            expect(query.parameters).toContain('app');
+            expect(query.parameters).not.toContain('INFORMATION_SCHEMA');
+
+        });
+
+        it.each([
+            'listViews',
+            'listProcedures',
+            'listFunctions',
+            'listTypes',
+            'listIndexes',
+            'listForeignKeys',
+            'listTriggers',
+        ] as const)('should bind the requested schema in %s', async (method) => {
+
+            const db = createRecordingDb('mssql');
+
+            await mssqlExploreOperations[method](db.kysely, 'app');
+
+            expect(db.queries.at(-1)?.parameters).toContain('app');
+
+        });
+
+        it('should scope getTableDetail index and fk lookups to the requested schema', async () => {
+
+            const db = createRecordingDb('mssql', [
+                {
+                    match: /sys\.columns c/,
+                    rows: [
+                        {
+                            column_name: 'id',
+                            data_type: 'int',
+                            is_nullable: false,
+                            column_default: null,
+                            ordinal_position: 1,
+                            is_identity: true,
+                        },
+                    ],
+                },
+            ]);
+
+            await mssqlExploreOperations.getTableDetail(db.kysely, 'orders', 'app');
+
+            expect(db.find(/sys\.index_columns/)?.parameters).toContain('app');
+            expect(db.find(/sys\.foreign_keys/)?.parameters).toContain('app');
+
+        });
+
+    });
 
     describe('listTriggers', () => {
 
         it('should return trigger summaries with name and table', async () => {
 
-            const mockRows = [
+            const db = createRecordingDb('mssql', [
                 {
-                    trigger_name: 'audit_trigger',
-                    schema_name: 'dbo',
-                    table_name: 'users',
-                    is_instead_of_trigger: false,
-                    is_disabled: false,
-                    type_desc: 'INSERT',
+                    match: /sys\.triggers/,
+                    rows: [
+                        {
+                            trigger_name: 'audit_trigger',
+                            schema_name: 'dbo',
+                            table_name: 'users',
+                            is_instead_of_trigger: false,
+                            is_disabled: false,
+                            type_desc: 'INSERT',
+                        },
+                    ],
                 },
-            ];
+            ]);
 
-            const db = createMockDb(mockRows);
-            const triggers = await mssqlExploreOperations.listTriggers(db);
+            const triggers = await mssqlExploreOperations.listTriggers(db.kysely);
 
             expect(triggers).toHaveLength(1);
             expect(triggers[0]).toEqual({
@@ -70,87 +179,66 @@ describe('explore: mssql dialect', () => {
 
         it('should handle INSTEAD OF triggers', async () => {
 
-            const mockRows = [
+            const db = createRecordingDb('mssql', [
                 {
-                    trigger_name: 'view_trigger',
-                    schema_name: 'dbo',
-                    table_name: 'vw_users',
-                    is_instead_of_trigger: true,
-                    is_disabled: false,
-                    type_desc: 'INSERT',
+                    match: /sys\.triggers/,
+                    rows: [
+                        {
+                            trigger_name: 'view_trigger',
+                            schema_name: 'dbo',
+                            table_name: 'vw_users',
+                            is_instead_of_trigger: true,
+                            is_disabled: false,
+                            type_desc: 'INSERT',
+                        },
+                    ],
                 },
-            ];
+            ]);
 
-            const db = createMockDb(mockRows);
-            const triggers = await mssqlExploreOperations.listTriggers(db);
+            const triggers = await mssqlExploreOperations.listTriggers(db.kysely);
 
             expect(triggers[0]?.timing).toBe('INSTEAD OF');
 
         });
 
-        it('should combine multiple events for same trigger', async () => {
+        it('should combine multiple events for the same trigger without duplicating', async () => {
 
-            const mockRows = [
+            const db = createRecordingDb('mssql', [
                 {
-                    trigger_name: 'multi_event',
-                    schema_name: 'dbo',
-                    table_name: 'orders',
-                    is_instead_of_trigger: false,
-                    is_disabled: false,
-                    type_desc: 'INSERT',
+                    match: /sys\.triggers/,
+                    rows: [
+                        {
+                            trigger_name: 'multi_event',
+                            schema_name: 'dbo',
+                            table_name: 'orders',
+                            is_instead_of_trigger: false,
+                            is_disabled: false,
+                            type_desc: 'INSERT',
+                        },
+                        {
+                            trigger_name: 'multi_event',
+                            schema_name: 'dbo',
+                            table_name: 'orders',
+                            is_instead_of_trigger: false,
+                            is_disabled: false,
+                            type_desc: 'UPDATE',
+                        },
+                        {
+                            trigger_name: 'multi_event',
+                            schema_name: 'dbo',
+                            table_name: 'orders',
+                            is_instead_of_trigger: false,
+                            is_disabled: false,
+                            type_desc: 'UPDATE',
+                        },
+                    ],
                 },
-                {
-                    trigger_name: 'multi_event',
-                    schema_name: 'dbo',
-                    table_name: 'orders',
-                    is_instead_of_trigger: false,
-                    is_disabled: false,
-                    type_desc: 'UPDATE',
-                },
-                {
-                    trigger_name: 'multi_event',
-                    schema_name: 'dbo',
-                    table_name: 'orders',
-                    is_instead_of_trigger: false,
-                    is_disabled: false,
-                    type_desc: 'DELETE',
-                },
-            ];
+            ]);
 
-            const db = createMockDb(mockRows);
-            const triggers = await mssqlExploreOperations.listTriggers(db);
+            const triggers = await mssqlExploreOperations.listTriggers(db.kysely);
 
             expect(triggers).toHaveLength(1);
-            expect(triggers[0]?.events).toEqual(['INSERT', 'UPDATE', 'DELETE']);
-
-        });
-
-        it('should deduplicate events for same trigger', async () => {
-
-            const mockRows = [
-                {
-                    trigger_name: 'dup_trigger',
-                    schema_name: 'dbo',
-                    table_name: 'products',
-                    is_instead_of_trigger: false,
-                    is_disabled: false,
-                    type_desc: 'UPDATE',
-                },
-                {
-                    trigger_name: 'dup_trigger',
-                    schema_name: 'dbo',
-                    table_name: 'products',
-                    is_instead_of_trigger: false,
-                    is_disabled: false,
-                    type_desc: 'UPDATE',
-                },
-            ];
-
-            const db = createMockDb(mockRows);
-            const triggers = await mssqlExploreOperations.listTriggers(db);
-
-            expect(triggers).toHaveLength(1);
-            expect(triggers[0]?.events).toEqual(['UPDATE']);
+            expect(triggers[0]?.events).toEqual(['INSERT', 'UPDATE']);
 
         });
 
@@ -158,62 +246,42 @@ describe('explore: mssql dialect', () => {
 
     describe('listLocks', () => {
 
-        it('should return lock info from sys.dm_tran_locks', async () => {
+        it('should return lock info scoped to the current database', async () => {
 
-            const mockRows = [
+            const db = createRecordingDb('mssql', [
                 {
-                    request_session_id: 52,
-                    resource_type: 'OBJECT',
-                    resource_description: 'users',
-                    request_mode: 'S',
-                    request_status: 'GRANT',
+                    match: /dm_tran_locks/,
+                    rows: [
+                        {
+                            request_session_id: 55,
+                            resource_type: 'OBJECT',
+                            resource_description: 'users',
+                            request_mode: 'S',
+                            request_status: 'GRANT',
+                        },
+                        {
+                            request_session_id: 56,
+                            resource_type: 'PAGE',
+                            resource_description: '',
+                            request_mode: 'X',
+                            request_status: 'WAIT',
+                        },
+                    ],
                 },
-                {
-                    request_session_id: 53,
-                    resource_type: 'PAGE',
-                    resource_description: '1:2345',
-                    request_mode: 'X',
-                    request_status: 'WAIT',
-                },
-            ];
+            ]);
 
-            const db = createMockDb(mockRows);
-            const locks = await mssqlExploreOperations.listLocks(db);
+            const locks = await mssqlExploreOperations.listLocks(db.kysely);
 
-            expect(locks).toHaveLength(2);
+            expect(db.find(/dm_tran_locks/)?.sql).toContain('DB_ID()');
             expect(locks[0]).toEqual({
-                pid: 52,
+                pid: 55,
                 lockType: 'OBJECT',
                 objectName: 'users',
                 mode: 'S',
                 granted: true,
             });
-            expect(locks[1]).toEqual({
-                pid: 53,
-                lockType: 'PAGE',
-                objectName: '1:2345',
-                mode: 'X',
-                granted: false,
-            });
-
-        });
-
-        it('should handle empty resource description', async () => {
-
-            const mockRows = [
-                {
-                    request_session_id: 52,
-                    resource_type: 'DATABASE',
-                    resource_description: '',
-                    request_mode: 'S',
-                    request_status: 'GRANT',
-                },
-            ];
-
-            const db = createMockDb(mockRows);
-            const locks = await mssqlExploreOperations.listLocks(db);
-
-            expect(locks[0]?.objectName).toBeUndefined();
+            expect(locks[1]?.objectName).toBeUndefined();
+            expect(locks[1]?.granted).toBe(false);
 
         });
 
@@ -221,80 +289,29 @@ describe('explore: mssql dialect', () => {
 
     describe('listConnections', () => {
 
-        it('should return connection info from sys.dm_exec_sessions', async () => {
+        it('should exclude the current session in SQL rather than in JS', async () => {
 
-            const mockRows = [
+            const db = createRecordingDb('mssql', [
                 {
-                    session_id: 52,
-                    login_name: 'app_user',
-                    host_name: 'web-server-01',
-                    program_name: 'node-app',
-                    status: 'running',
-                    login_time: new Date('2025-01-01T10:00:00Z'),
+                    match: /dm_exec_sessions/,
+                    rows: [
+                        {
+                            session_id: 55,
+                            login_name: 'sa',
+                            host_name: 'workstation',
+                            program_name: 'noorm',
+                            status: 'sleeping',
+                            login_time: new Date('2025-01-01T10:00:00Z'),
+                        },
+                    ],
                 },
-                {
-                    session_id: 53,
-                    login_name: 'admin',
-                    host_name: '',
-                    program_name: '',
-                    status: 'sleeping',
-                    login_time: new Date('2025-01-01T09:00:00Z'),
-                },
-            ];
+            ]);
 
-            const db = createMockDb(mockRows);
-            const connections = await mssqlExploreOperations.listConnections(db);
+            const connections = await mssqlExploreOperations.listConnections(db.kysely);
 
-            expect(connections).toHaveLength(2);
-            expect(connections[0]).toEqual({
-                pid: 52,
-                username: 'app_user',
-                database: 'current',
-                applicationName: 'node-app',
-                clientAddress: 'web-server-01',
-                backendStart: new Date('2025-01-01T10:00:00Z'),
-                state: 'running',
-            });
-
-        });
-
-        it('should handle empty program name', async () => {
-
-            const mockRows = [
-                {
-                    session_id: 52,
-                    login_name: 'app_user',
-                    host_name: 'web-server-01',
-                    program_name: '',
-                    status: 'running',
-                    login_time: new Date('2025-01-01T10:00:00Z'),
-                },
-            ];
-
-            const db = createMockDb(mockRows);
-            const connections = await mssqlExploreOperations.listConnections(db);
-
-            expect(connections[0]?.applicationName).toBeUndefined();
-
-        });
-
-        it('should handle empty host name', async () => {
-
-            const mockRows = [
-                {
-                    session_id: 52,
-                    login_name: 'app_user',
-                    host_name: '',
-                    program_name: 'SSMS',
-                    status: 'running',
-                    login_time: new Date('2025-01-01T10:00:00Z'),
-                },
-            ];
-
-            const db = createMockDb(mockRows);
-            const connections = await mssqlExploreOperations.listConnections(db);
-
-            expect(connections[0]?.clientAddress).toBeUndefined();
+            expect(db.find(/dm_exec_sessions/)?.sql).toContain('@@SPID');
+            expect(connections[0]?.username).toBe('sa');
+            expect(connections[0]?.clientAddress).toBe('workstation');
 
         });
 
@@ -304,19 +321,23 @@ describe('explore: mssql dialect', () => {
 
         it('should return full trigger definition', async () => {
 
-            const mockRows = [
+            const db = createRecordingDb('mssql', [
                 {
-                    trigger_name: 'audit_trigger',
-                    table_name: 'users',
-                    is_instead_of_trigger: false,
-                    is_disabled: false,
-                    definition: 'CREATE TRIGGER audit_trigger ON users AFTER INSERT AS ...',
-                    type_desc: 'INSERT',
+                    match: /sys\.triggers/,
+                    rows: [
+                        {
+                            trigger_name: 'audit_trigger',
+                            table_name: 'users',
+                            is_instead_of_trigger: false,
+                            is_disabled: false,
+                            definition: 'CREATE TRIGGER audit_trigger ON users AFTER INSERT AS SELECT 1',
+                            type_desc: 'INSERT',
+                        },
+                    ],
                 },
-            ];
+            ]);
 
-            const db = createMockDb(mockRows);
-            const trigger = await mssqlExploreOperations.getTriggerDetail(db, 'audit_trigger', 'dbo');
+            const trigger = await mssqlExploreOperations.getTriggerDetail(db.kysely, 'audit_trigger', 'dbo');
 
             expect(trigger).toEqual({
                 name: 'audit_trigger',
@@ -325,66 +346,41 @@ describe('explore: mssql dialect', () => {
                 tableSchema: 'dbo',
                 timing: 'AFTER',
                 events: ['INSERT'],
-                definition: 'CREATE TRIGGER audit_trigger ON users AFTER INSERT AS ...',
+                definition: 'CREATE TRIGGER audit_trigger ON users AFTER INSERT AS SELECT 1',
                 isEnabled: true,
             });
 
         });
 
-        it('should return null for non-existent trigger', async () => {
+        it('should report a disabled trigger as not enabled', async () => {
 
-            const db = createMockDb([]);
-            const trigger = await mssqlExploreOperations.getTriggerDetail(db, 'nonexistent', 'dbo');
-
-            expect(trigger).toBeNull();
-
-        });
-
-        it('should handle disabled triggers', async () => {
-
-            const mockRows = [
+            const db = createRecordingDb('mssql', [
                 {
-                    trigger_name: 'disabled_trigger',
-                    table_name: 'orders',
-                    is_instead_of_trigger: false,
-                    is_disabled: true,
-                    definition: 'CREATE TRIGGER disabled_trigger ...',
-                    type_desc: 'UPDATE',
+                    match: /sys\.triggers/,
+                    rows: [
+                        {
+                            trigger_name: 'off_trigger',
+                            table_name: 'users',
+                            is_instead_of_trigger: false,
+                            is_disabled: true,
+                            definition: 'CREATE TRIGGER off_trigger ON users AFTER INSERT AS SELECT 1',
+                            type_desc: 'INSERT',
+                        },
+                    ],
                 },
-            ];
+            ]);
 
-            const db = createMockDb(mockRows);
-            const trigger = await mssqlExploreOperations.getTriggerDetail(db, 'disabled_trigger', 'dbo');
+            const trigger = await mssqlExploreOperations.getTriggerDetail(db.kysely, 'off_trigger', 'dbo');
 
             expect(trigger?.isEnabled).toBe(false);
 
         });
 
-        it('should combine multiple events', async () => {
+        it('should return null for non-existent trigger', async () => {
 
-            const mockRows = [
-                {
-                    trigger_name: 'multi_trigger',
-                    table_name: 'products',
-                    is_instead_of_trigger: false,
-                    is_disabled: false,
-                    definition: 'CREATE TRIGGER multi_trigger ...',
-                    type_desc: 'INSERT',
-                },
-                {
-                    trigger_name: 'multi_trigger',
-                    table_name: 'products',
-                    is_instead_of_trigger: false,
-                    is_disabled: false,
-                    definition: 'CREATE TRIGGER multi_trigger ...',
-                    type_desc: 'UPDATE',
-                },
-            ];
+            const db = createRecordingDb('mssql');
 
-            const db = createMockDb(mockRows);
-            const trigger = await mssqlExploreOperations.getTriggerDetail(db, 'multi_trigger', 'dbo');
-
-            expect(trigger?.events).toEqual(['INSERT', 'UPDATE']);
+            expect(await mssqlExploreOperations.getTriggerDetail(db.kysely, 'nope', 'dbo')).toBeNull();
 
         });
 

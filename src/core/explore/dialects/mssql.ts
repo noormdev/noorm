@@ -8,7 +8,6 @@ import { sql } from 'kysely';
 import type { Kysely } from 'kysely';
 import type {
     DialectExploreOperations,
-    ExploreOverview,
     TableSummary,
     ViewSummary,
     ProcedureSummary,
@@ -35,84 +34,50 @@ import type {
 const EXCLUDED_SCHEMAS = ['sys', 'INFORMATION_SCHEMA', 'guest', 'noorm'];
 
 /**
+ * Comparison to append to a schema column so one query serves both
+ * "everything the user owns" and "just this schema".
+ *
+ * Callers interpolate it directly after the column name, which keeps the
+ * schema a bound parameter rather than string-concatenated SQL.
+ *
+ * @example
+ * ```typescript
+ * sql`... WHERE s.name ${schemaFilter(schema)}`
+ * ```
+ */
+function schemaFilter(schema?: string) {
+
+    return schema
+        ? sql`= ${schema}`
+        : sql`NOT IN (${sql.join(EXCLUDED_SCHEMAS)})`;
+
+}
+
+/**
+ * `bigint` row counts arrive from the driver as text, so the declared
+ * `number` on the summary types only holds if they are parsed here.
+ * Zero is reported as "unknown" to match the other dialects.
+ */
+function toRowEstimate(value: unknown): number | undefined {
+
+    if (value === null || value === undefined) {
+
+        return undefined;
+
+    }
+
+    const parsed = parseInt(String(value), 10);
+
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+
+}
+
+/**
  * MSSQL explore operations.
  */
 export const mssqlExploreOperations: DialectExploreOperations = {
 
-    async getOverview(db: Kysely<unknown>): Promise<ExploreOverview> {
-
-        const [tables, views, procedures, functions, types, indexes, foreignKeys] =
-            await Promise.all([
-                sql<{ count: number }>`
-                    SELECT COUNT(*) as count
-                    FROM sys.tables t
-                    JOIN sys.schemas s ON t.schema_id = s.schema_id
-                    WHERE s.name NOT IN (${sql.join(EXCLUDED_SCHEMAS)})
-                `.execute(db),
-
-                sql<{ count: number }>`
-                    SELECT COUNT(*) as count
-                    FROM sys.views v
-                    JOIN sys.schemas s ON v.schema_id = s.schema_id
-                    WHERE s.name NOT IN (${sql.join(EXCLUDED_SCHEMAS)})
-                `.execute(db),
-
-                sql<{ count: number }>`
-                    SELECT COUNT(*) as count
-                    FROM sys.procedures p
-                    JOIN sys.schemas s ON p.schema_id = s.schema_id
-                    WHERE s.name NOT IN (${sql.join(EXCLUDED_SCHEMAS)})
-                `.execute(db),
-
-                sql<{ count: number }>`
-                    SELECT COUNT(*) as count
-                    FROM sys.objects o
-                    JOIN sys.schemas s ON o.schema_id = s.schema_id
-                    WHERE o.type IN ('FN', 'IF', 'TF')
-                    AND s.name NOT IN (${sql.join(EXCLUDED_SCHEMAS)})
-                `.execute(db),
-
-                sql<{ count: number }>`
-                    SELECT COUNT(*) as count
-                    FROM sys.types t
-                    JOIN sys.schemas s ON t.schema_id = s.schema_id
-                    WHERE t.is_user_defined = 1
-                    AND s.name NOT IN (${sql.join(EXCLUDED_SCHEMAS)})
-                `.execute(db),
-
-                sql<{ count: number }>`
-                    SELECT COUNT(*) as count
-                    FROM sys.indexes i
-                    JOIN sys.tables t ON i.object_id = t.object_id
-                    JOIN sys.schemas s ON t.schema_id = s.schema_id
-                    WHERE i.name IS NOT NULL
-                    AND s.name NOT IN (${sql.join(EXCLUDED_SCHEMAS)})
-                `.execute(db),
-
-                sql<{ count: number }>`
-                    SELECT COUNT(*) as count
-                    FROM sys.foreign_keys fk
-                    JOIN sys.schemas s ON fk.schema_id = s.schema_id
-                    WHERE s.name NOT IN (${sql.join(EXCLUDED_SCHEMAS)})
-                `.execute(db),
-            ]);
-
-        return {
-            tables: tables.rows[0]?.count ?? 0,
-            views: views.rows[0]?.count ?? 0,
-            procedures: procedures.rows[0]?.count ?? 0,
-            functions: functions.rows[0]?.count ?? 0,
-            types: types.rows[0]?.count ?? 0,
-            indexes: indexes.rows[0]?.count ?? 0,
-            foreignKeys: foreignKeys.rows[0]?.count ?? 0,
-            triggers: 0, // TODO: implement count
-            locks: 0,    // TODO: implement count
-            connections: 0, // TODO: implement count
-        };
-
-    },
-
-    async listTables(db: Kysely<unknown>): Promise<TableSummary[]> {
+    async listTables(db: Kysely<unknown>, schema?: string): Promise<TableSummary[]> {
 
         const result = await sql<{
             table_name: string;
@@ -132,7 +97,7 @@ export const mssqlExploreOperations: DialectExploreOperations = {
             FROM sys.tables t
             JOIN sys.schemas s ON t.schema_id = s.schema_id
             LEFT JOIN sys.partitions p ON t.object_id = p.object_id AND p.index_id IN (0, 1)
-            WHERE s.name NOT IN (${sql.join(EXCLUDED_SCHEMAS)})
+            WHERE s.name ${schemaFilter(schema)}
             ORDER BY s.name, t.name
         `.execute(db);
 
@@ -140,12 +105,12 @@ export const mssqlExploreOperations: DialectExploreOperations = {
             name: row.table_name,
             schema: row.schema_name,
             columnCount: row.column_count,
-            rowCountEstimate: row.row_count > 0 ? row.row_count : undefined,
+            rowCountEstimate: toRowEstimate(row.row_count),
         }));
 
     },
 
-    async listViews(db: Kysely<unknown>): Promise<ViewSummary[]> {
+    async listViews(db: Kysely<unknown>, schema?: string): Promise<ViewSummary[]> {
 
         const result = await sql<{
             view_name: string;
@@ -162,7 +127,7 @@ export const mssqlExploreOperations: DialectExploreOperations = {
                 ) as column_count
             FROM sys.views v
             JOIN sys.schemas s ON v.schema_id = s.schema_id
-            WHERE s.name NOT IN (${sql.join(EXCLUDED_SCHEMAS)})
+            WHERE s.name ${schemaFilter(schema)}
             ORDER BY s.name, v.name
         `.execute(db);
 
@@ -175,7 +140,7 @@ export const mssqlExploreOperations: DialectExploreOperations = {
 
     },
 
-    async listProcedures(db: Kysely<unknown>): Promise<ProcedureSummary[]> {
+    async listProcedures(db: Kysely<unknown>, schema?: string): Promise<ProcedureSummary[]> {
 
         const result = await sql<{
             proc_name: string;
@@ -193,7 +158,7 @@ export const mssqlExploreOperations: DialectExploreOperations = {
                 ) as param_count
             FROM sys.procedures p
             JOIN sys.schemas s ON p.schema_id = s.schema_id
-            WHERE s.name NOT IN (${sql.join(EXCLUDED_SCHEMAS)})
+            WHERE s.name ${schemaFilter(schema)}
             ORDER BY s.name, p.name
         `.execute(db);
 
@@ -205,7 +170,7 @@ export const mssqlExploreOperations: DialectExploreOperations = {
 
     },
 
-    async listFunctions(db: Kysely<unknown>): Promise<FunctionSummary[]> {
+    async listFunctions(db: Kysely<unknown>, schema?: string): Promise<FunctionSummary[]> {
 
         const result = await sql<{
             func_name: string;
@@ -231,7 +196,7 @@ export const mssqlExploreOperations: DialectExploreOperations = {
             FROM sys.objects o
             JOIN sys.schemas s ON o.schema_id = s.schema_id
             WHERE o.type IN ('FN', 'IF', 'TF')
-            AND s.name NOT IN (${sql.join(EXCLUDED_SCHEMAS)})
+            AND s.name ${schemaFilter(schema)}
             ORDER BY s.name, o.name
         `.execute(db);
 
@@ -244,7 +209,7 @@ export const mssqlExploreOperations: DialectExploreOperations = {
 
     },
 
-    async listTypes(db: Kysely<unknown>): Promise<TypeSummary[]> {
+    async listTypes(db: Kysely<unknown>, schema?: string): Promise<TypeSummary[]> {
 
         const result = await sql<{
             type_name: string;
@@ -258,7 +223,7 @@ export const mssqlExploreOperations: DialectExploreOperations = {
             FROM sys.types t
             JOIN sys.schemas s ON t.schema_id = s.schema_id
             WHERE t.is_user_defined = 1
-            AND s.name NOT IN (${sql.join(EXCLUDED_SCHEMAS)})
+            AND s.name ${schemaFilter(schema)}
             ORDER BY s.name, t.name
         `.execute(db);
 
@@ -270,7 +235,7 @@ export const mssqlExploreOperations: DialectExploreOperations = {
 
     },
 
-    async listIndexes(db: Kysely<unknown>): Promise<IndexSummary[]> {
+    async listIndexes(db: Kysely<unknown>, schema?: string): Promise<IndexSummary[]> {
 
         const result = await sql<{
             index_name: string;
@@ -293,7 +258,7 @@ export const mssqlExploreOperations: DialectExploreOperations = {
             JOIN sys.index_columns ic ON i.object_id = ic.object_id AND i.index_id = ic.index_id
             JOIN sys.columns c ON ic.object_id = c.object_id AND ic.column_id = c.column_id
             WHERE i.name IS NOT NULL
-            AND s.name NOT IN (${sql.join(EXCLUDED_SCHEMAS)})
+            AND s.name ${schemaFilter(schema)}
             GROUP BY i.name, s.name, t.name, i.is_unique, i.is_primary_key
             ORDER BY s.name, t.name, i.name
         `.execute(db);
@@ -310,7 +275,7 @@ export const mssqlExploreOperations: DialectExploreOperations = {
 
     },
 
-    async listForeignKeys(db: Kysely<unknown>): Promise<ForeignKeySummary[]> {
+    async listForeignKeys(db: Kysely<unknown>, schema?: string): Promise<ForeignKeySummary[]> {
 
         const result = await sql<{
             fk_name: string;
@@ -351,7 +316,7 @@ export const mssqlExploreOperations: DialectExploreOperations = {
             JOIN sys.tables rt ON fk.referenced_object_id = rt.object_id
             JOIN sys.schemas rs ON rt.schema_id = rs.schema_id
             JOIN sys.columns rc ON fkc.referenced_object_id = rc.object_id AND fkc.referenced_column_id = rc.column_id
-            WHERE s.name NOT IN (${sql.join(EXCLUDED_SCHEMAS)})
+            WHERE s.name ${schemaFilter(schema)}
             ORDER BY s.name, t.name, fk.name, fkc.constraint_column_id
         `.execute(db);
 
@@ -464,13 +429,13 @@ export const mssqlExploreOperations: DialectExploreOperations = {
         }));
 
         // Get indexes
-        const allIndexes = await this.listIndexes(db);
+        const allIndexes = await this.listIndexes(db, schema);
         const indexes = allIndexes.filter(
             (idx) => idx.tableName === name && idx.tableSchema === schema,
         );
 
         // Get foreign keys
-        const allFks = await this.listForeignKeys(db);
+        const allFks = await this.listForeignKeys(db, schema);
         const foreignKeys = allFks.filter(
             (fk) => fk.tableName === name && fk.tableSchema === schema,
         );
@@ -481,7 +446,7 @@ export const mssqlExploreOperations: DialectExploreOperations = {
             columns,
             indexes,
             foreignKeys,
-            rowCountEstimate: rowResult.rows[0]?.row_count ?? undefined,
+            rowCountEstimate: toRowEstimate(rowResult.rows[0]?.row_count),
         };
 
     },
@@ -755,7 +720,7 @@ export const mssqlExploreOperations: DialectExploreOperations = {
 
     },
 
-    async listTriggers(db: Kysely<unknown>): Promise<TriggerSummary[]> {
+    async listTriggers(db: Kysely<unknown>, schema?: string): Promise<TriggerSummary[]> {
 
         const result = await sql<{
             trigger_name: string;
@@ -776,7 +741,7 @@ export const mssqlExploreOperations: DialectExploreOperations = {
             INNER JOIN sys.trigger_events te ON t.object_id = te.object_id
             INNER JOIN sys.tables tab ON t.parent_id = tab.object_id
             INNER JOIN sys.schemas s ON tab.schema_id = s.schema_id
-            WHERE s.name NOT IN (${sql.join(EXCLUDED_SCHEMAS)})
+            WHERE s.name ${schemaFilter(schema)}
             ORDER BY s.name, table_name, t.name
         `.execute(db);
 

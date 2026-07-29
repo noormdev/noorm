@@ -1,57 +1,219 @@
 /**
  * Unit tests for SQLite explore dialect operations.
  *
- * Tests SQL generation and response parsing without requiring a live database.
+ * SQLite is the only dialect that concatenates identifiers into SQL text
+ * (PRAGMA and `FROM <table>` cannot take a bind parameter), so these tests
+ * assert the *compiled statement*, not just the parsed result.
  */
-import { describe, it, expect, vi } from 'bun:test';
+import { describe, it, expect } from 'bun:test';
 import { sqliteExploreOperations } from '../../../../src/core/explore/dialects/sqlite.js';
+import { createRecordingDb } from '../recording-db.js';
 
-import type { Kysely } from 'kysely';
-
-/**
- * Creates a mock Kysely database instance with executor stub.
- */
-function createMockDb(rows: unknown[]) {
-
-    const mockExecutor = {
-        executeQuery: vi.fn().mockResolvedValue({ rows }),
-        transformQuery: vi.fn((node) => node),
-        compileQuery: vi.fn(() => ({ sql: 'SELECT 1', parameters: [], query: {} as never })),
-        adapter: {
-            supportsTransactionalDdl: true,
-            supportsReturning: true,
-        },
-        withConnectionProvider: vi.fn(() => mockExecutor),
-        withPluginAtFront: vi.fn(() => mockExecutor),
-    };
-
-    return {
-        getExecutor: () => mockExecutor,
-        withPlugin: vi.fn(function(this: unknown) {
-
-            return this;
-
-        }),
-    } as unknown as Kysely<unknown>;
-
-}
+const HOSTILE = 'we"ird';
 
 describe('explore: sqlite dialect', () => {
 
+    describe('identifier quoting', () => {
+
+        it('should double embedded quotes when listing tables', async () => {
+
+            // A single table named `we"ird` used to abort the whole listing —
+            // and every unrelated table with it — with a syntax error.
+            const db = createRecordingDb('sqlite', [
+                { match: /type = 'table'/, rows: [{ name: HOSTILE }] },
+                { match: /PRAGMA table_info/, rows: [{ cid: 0 }] },
+                { match: /COUNT\(\*\)/, rows: [{ count: 3 }] },
+            ]);
+
+            const tables = await sqliteExploreOperations.listTables(db.kysely);
+
+            expect(db.find(/PRAGMA table_info/)?.sql).toContain('PRAGMA table_info("we""ird")');
+            expect(db.find(/FROM "we/)?.sql).toContain('FROM "we""ird"');
+            expect(tables[0]?.name).toBe(HOSTILE);
+
+        });
+
+        it('should double embedded quotes when listing views', async () => {
+
+            const db = createRecordingDb('sqlite', [
+                { match: /type = 'view'/, rows: [{ name: HOSTILE }] },
+                { match: /PRAGMA table_info/, rows: [{ cid: 0 }] },
+            ]);
+
+            await sqliteExploreOperations.listViews(db.kysely);
+
+            expect(db.find(/PRAGMA table_info/)?.sql).toContain('PRAGMA table_info("we""ird")');
+
+        });
+
+        it('should double embedded quotes when listing foreign keys', async () => {
+
+            const db = createRecordingDb('sqlite', [
+                { match: /type = 'table'/, rows: [{ name: HOSTILE }] },
+                { match: /PRAGMA foreign_key_list/, rows: [] },
+            ]);
+
+            await sqliteExploreOperations.listForeignKeys(db.kysely);
+
+            expect(db.find(/PRAGMA foreign_key_list/)?.sql)
+                .toContain('PRAGMA foreign_key_list("we""ird")');
+
+        });
+
+        it('should double embedded quotes when listing indexes', async () => {
+
+            const db = createRecordingDb('sqlite', [
+                { match: /type = 'index'/, rows: [{ name: HOSTILE, tbl_name: 't', sql: null }] },
+                { match: /PRAGMA index_info/, rows: [] },
+            ]);
+
+            await sqliteExploreOperations.listIndexes(db.kysely);
+
+            expect(db.find(/PRAGMA index_info/)?.sql).toContain('PRAGMA index_info("we""ird")');
+
+        });
+
+        it('should double embedded quotes in table detail', async () => {
+
+            const db = createRecordingDb('sqlite', [
+                { match: /type = 'table' and name =/i, rows: [{ name: HOSTILE }] },
+                { match: /PRAGMA table_info/, rows: [{ cid: 0, name: 'id', type: 'INTEGER', notnull: 1, dflt_value: null, pk: 1 }] },
+                { match: /COUNT\(\*\)/, rows: [{ count: 1 }] },
+            ]);
+
+            const detail = await sqliteExploreOperations.getTableDetail(db.kysely, HOSTILE);
+
+            expect(db.find(/PRAGMA table_info/)?.sql).toContain('PRAGMA table_info("we""ird")');
+            expect(db.find(/FROM "we/)?.sql).toContain('FROM "we""ird"');
+            expect(detail?.name).toBe(HOSTILE);
+
+        });
+
+        it('should double embedded quotes in view detail', async () => {
+
+            const db = createRecordingDb('sqlite', [
+                { match: /type = 'view' and name =/i, rows: [{ sql: 'CREATE VIEW ...' }] },
+                { match: /PRAGMA table_info/, rows: [] },
+            ]);
+
+            await sqliteExploreOperations.getViewDetail(db.kysely, HOSTILE);
+
+            expect(db.find(/PRAGMA table_info/)?.sql).toContain('PRAGMA table_info("we""ird")');
+
+        });
+
+        it('should double embedded quotes when counting foreign keys for the overview', async () => {
+
+            const db = createRecordingDb('sqlite', [
+                { match: /type = 'table'/, rows: [{ name: HOSTILE }] },
+                { match: /PRAGMA foreign_key_list/, rows: [] },
+            ]);
+
+            await sqliteExploreOperations.listForeignKeys(db.kysely);
+
+            expect(db.findAll(/PRAGMA/).every((q) => !/[^"]"[^"]*ird/.test(q.sql))).toBe(true);
+
+        });
+
+    });
+
+    describe('resilience', () => {
+
+        it('should keep listing views when one view has lost its base table', async () => {
+
+            // PRAGMA table_info on a view over a dropped table errors; that must
+            // not take down the listing of every other view.
+            const db = createRecordingDb('sqlite', [
+                { match: /type = 'view'/, rows: [{ name: 'broken' }, { name: 'fine' }] },
+            ]);
+
+            const original = db.kysely.getExecutor().executeQuery.bind(db.kysely.getExecutor());
+
+            db.kysely.getExecutor().executeQuery = ((compiled: { sql: string }, ...rest: unknown[]) => {
+
+                if (compiled.sql.includes('PRAGMA table_info("broken")')) {
+
+                    return Promise.reject(new Error('no such table: main.t'));
+
+                }
+
+                return original(compiled as never, ...rest as []);
+
+            }) as never;
+
+            const views = await sqliteExploreOperations.listViews(db.kysely);
+
+            expect(views.map((v) => v.name)).toEqual(['broken', 'fine']);
+            expect(views[0]?.columnCount).toBe(0);
+
+        });
+
+    });
+
     describe('listTriggers', () => {
+
+        it('should read timing and event from the trigger header, not the body', async () => {
+
+            // `AFTER DELETE ... BEGIN INSERT INTO audit_log` used to report both
+            // INSERT and DELETE because the whole statement was substring-matched.
+            const db = createRecordingDb('sqlite', [
+                {
+                    match: /type = 'trigger'/,
+                    rows: [
+                        {
+                            name: 'cascade_delete',
+                            tbl_name: 'products',
+                            sql: 'CREATE TRIGGER cascade_delete AFTER DELETE ON products BEGIN INSERT INTO audit_log VALUES (OLD.id); END',
+                        },
+                    ],
+                },
+            ]);
+
+            const triggers = await sqliteExploreOperations.listTriggers(db.kysely);
+
+            expect(triggers[0]?.events).toEqual(['DELETE']);
+            expect(triggers[0]?.timing).toBe('AFTER');
+
+        });
+
+        it('should not let the word BEFORE inside a string literal change the timing', async () => {
+
+            const db = createRecordingDb('sqlite', [
+                {
+                    match: /type = 'trigger'/,
+                    rows: [
+                        {
+                            name: 'note_trigger',
+                            tbl_name: 'orders',
+                            sql: "CREATE TRIGGER note_trigger AFTER UPDATE ON orders BEGIN INSERT INTO log VALUES ('state BEFORE change'); END",
+                        },
+                    ],
+                },
+            ]);
+
+            const triggers = await sqliteExploreOperations.listTriggers(db.kysely);
+
+            expect(triggers[0]?.timing).toBe('AFTER');
+            expect(triggers[0]?.events).toEqual(['UPDATE']);
+
+        });
 
         it('should return trigger summaries with name and table', async () => {
 
-            const mockRows = [
+            const db = createRecordingDb('sqlite', [
                 {
-                    name: 'audit_trigger',
-                    tbl_name: 'users',
-                    sql: 'CREATE TRIGGER audit_trigger AFTER INSERT ON users BEGIN INSERT INTO audit_log VALUES (NEW.id); END',
+                    match: /type = 'trigger'/,
+                    rows: [
+                        {
+                            name: 'audit_trigger',
+                            tbl_name: 'users',
+                            sql: 'CREATE TRIGGER audit_trigger AFTER INSERT ON users BEGIN SELECT 1; END',
+                        },
+                    ],
                 },
-            ];
+            ]);
 
-            const db = createMockDb(mockRows);
-            const triggers = await sqliteExploreOperations.listTriggers(db);
+            const triggers = await sqliteExploreOperations.listTriggers(db.kysely);
 
             expect(triggers).toHaveLength(1);
             expect(triggers[0]).toEqual({
@@ -63,91 +225,69 @@ describe('explore: sqlite dialect', () => {
 
         });
 
-        it('should parse BEFORE timing from SQL', async () => {
+        it('should parse BEFORE timing from the header', async () => {
 
-            const mockRows = [
+            const db = createRecordingDb('sqlite', [
                 {
-                    name: 'validate_trigger',
-                    tbl_name: 'orders',
-                    sql: 'CREATE TRIGGER validate_trigger BEFORE UPDATE ON orders BEGIN SELECT RAISE(ABORT, \'Invalid\'); END',
+                    match: /type = 'trigger'/,
+                    rows: [
+                        {
+                            name: 'validate_trigger',
+                            tbl_name: 'orders',
+                            sql: 'CREATE TRIGGER validate_trigger BEFORE UPDATE ON orders BEGIN SELECT RAISE(ABORT, \'Invalid\'); END',
+                        },
+                    ],
                 },
-            ];
+            ]);
 
-            const db = createMockDb(mockRows);
-            const triggers = await sqliteExploreOperations.listTriggers(db);
+            const triggers = await sqliteExploreOperations.listTriggers(db.kysely);
 
             expect(triggers[0]?.timing).toBe('BEFORE');
             expect(triggers[0]?.events).toEqual(['UPDATE']);
 
         });
 
-        it('should parse INSTEAD OF timing from SQL', async () => {
+        it('should parse INSTEAD OF timing from the header', async () => {
 
-            const mockRows = [
+            const db = createRecordingDb('sqlite', [
                 {
-                    name: 'view_trigger',
-                    tbl_name: 'vw_users',
-                    sql: 'CREATE TRIGGER view_trigger INSTEAD OF INSERT ON vw_users BEGIN SELECT NEW.name; END',
+                    match: /type = 'trigger'/,
+                    rows: [
+                        {
+                            name: 'view_trigger',
+                            tbl_name: 'vw_users',
+                            sql: 'CREATE TRIGGER view_trigger INSTEAD OF INSERT ON vw_users BEGIN SELECT NEW.name; END',
+                        },
+                    ],
                 },
-            ];
+            ]);
 
-            const db = createMockDb(mockRows);
-            const triggers = await sqliteExploreOperations.listTriggers(db);
+            const triggers = await sqliteExploreOperations.listTriggers(db.kysely);
 
             expect(triggers[0]?.timing).toBe('INSTEAD OF');
             expect(triggers[0]?.events).toEqual(['INSERT']);
 
         });
 
-        it('should parse DELETE event from SQL', async () => {
+        it('should handle UPDATE OF <columns> and lowercase keywords', async () => {
 
-            const mockRows = [
+            const db = createRecordingDb('sqlite', [
                 {
-                    name: 'cascade_delete',
-                    tbl_name: 'products',
-                    sql: 'CREATE TRIGGER cascade_delete AFTER DELETE ON products BEGIN DELETE FROM product_prices WHERE product_id = OLD.id; END',
+                    match: /type = 'trigger'/,
+                    rows: [
+                        {
+                            name: 'lowercase_trigger',
+                            tbl_name: 'users',
+                            sql: 'create trigger if not exists lowercase_trigger before update of email on users begin select 1; end',
+                        },
+                    ],
                 },
-            ];
+            ]);
 
-            const db = createMockDb(mockRows);
-            const triggers = await sqliteExploreOperations.listTriggers(db);
-
-            expect(triggers[0]?.events).toEqual(['DELETE']);
-
-        });
-
-        it('should parse multiple events from SQL', async () => {
-
-            const mockRows = [
-                {
-                    name: 'multi_event',
-                    tbl_name: 'orders',
-                    sql: 'CREATE TRIGGER multi_event AFTER INSERT OR UPDATE OR DELETE ON orders BEGIN SELECT 1; END',
-                },
-            ];
-
-            const db = createMockDb(mockRows);
-            const triggers = await sqliteExploreOperations.listTriggers(db);
-
-            expect(triggers[0]?.events).toEqual(['INSERT', 'UPDATE', 'DELETE']);
-
-        });
-
-        it('should handle lowercase SQL keywords', async () => {
-
-            const mockRows = [
-                {
-                    name: 'lowercase_trigger',
-                    tbl_name: 'users',
-                    sql: 'create trigger lowercase_trigger before insert on users begin select 1; end',
-                },
-            ];
-
-            const db = createMockDb(mockRows);
-            const triggers = await sqliteExploreOperations.listTriggers(db);
+            const triggers = await sqliteExploreOperations.listTriggers(db.kysely);
 
             expect(triggers[0]?.timing).toBe('BEFORE');
-            expect(triggers[0]?.events).toEqual(['INSERT']);
+            expect(triggers[0]?.events).toEqual(['UPDATE']);
 
         });
 
@@ -157,10 +297,9 @@ describe('explore: sqlite dialect', () => {
 
         it('should return empty array', async () => {
 
-            const db = createMockDb([]);
-            const locks = await sqliteExploreOperations.listLocks(db);
+            const db = createRecordingDb('sqlite');
 
-            expect(locks).toEqual([]);
+            expect(await sqliteExploreOperations.listLocks(db.kysely)).toEqual([]);
 
         });
 
@@ -170,10 +309,9 @@ describe('explore: sqlite dialect', () => {
 
         it('should return empty array', async () => {
 
-            const db = createMockDb([]);
-            const connections = await sqliteExploreOperations.listConnections(db);
+            const db = createRecordingDb('sqlite');
 
-            expect(connections).toEqual([]);
+            expect(await sqliteExploreOperations.listConnections(db.kysely)).toEqual([]);
 
         });
 
@@ -183,23 +321,23 @@ describe('explore: sqlite dialect', () => {
 
         it('should return full trigger definition', async () => {
 
-            const mockRows = [
-                {
-                    name: 'audit_trigger',
-                    tbl_name: 'users',
-                    sql: 'CREATE TRIGGER audit_trigger AFTER INSERT ON users BEGIN INSERT INTO audit_log VALUES (NEW.id); END',
-                },
-            ];
+            const definition = 'CREATE TRIGGER audit_trigger AFTER INSERT ON users BEGIN INSERT INTO audit_log VALUES (NEW.id); END';
 
-            const db = createMockDb(mockRows);
-            const trigger = await sqliteExploreOperations.getTriggerDetail(db, 'audit_trigger');
+            const db = createRecordingDb('sqlite', [
+                {
+                    match: /type = 'trigger'/,
+                    rows: [{ name: 'audit_trigger', tbl_name: 'users', sql: definition }],
+                },
+            ]);
+
+            const trigger = await sqliteExploreOperations.getTriggerDetail(db.kysely, 'audit_trigger');
 
             expect(trigger).toEqual({
                 name: 'audit_trigger',
                 tableName: 'users',
                 timing: 'AFTER',
                 events: ['INSERT'],
-                definition: 'CREATE TRIGGER audit_trigger AFTER INSERT ON users BEGIN INSERT INTO audit_log VALUES (NEW.id); END',
+                definition,
                 isEnabled: true,
             });
 
@@ -207,80 +345,46 @@ describe('explore: sqlite dialect', () => {
 
         it('should return null for non-existent trigger', async () => {
 
-            const db = createMockDb([]);
-            const trigger = await sqliteExploreOperations.getTriggerDetail(db, 'nonexistent');
+            const db = createRecordingDb('sqlite');
 
-            expect(trigger).toBeNull();
-
-        });
-
-        it('should parse BEFORE timing', async () => {
-
-            const mockRows = [
-                {
-                    name: 'validate_trigger',
-                    tbl_name: 'orders',
-                    sql: 'CREATE TRIGGER validate_trigger BEFORE UPDATE ON orders BEGIN SELECT RAISE(ABORT, \'Invalid\'); END',
-                },
-            ];
-
-            const db = createMockDb(mockRows);
-            const trigger = await sqliteExploreOperations.getTriggerDetail(db, 'validate_trigger');
-
-            expect(trigger?.timing).toBe('BEFORE');
-            expect(trigger?.events).toEqual(['UPDATE']);
+            expect(await sqliteExploreOperations.getTriggerDetail(db.kysely, 'nonexistent')).toBeNull();
 
         });
 
-        it('should parse INSTEAD OF timing', async () => {
+        it('should not report body statements as trigger events', async () => {
 
-            const mockRows = [
+            const db = createRecordingDb('sqlite', [
                 {
-                    name: 'view_trigger',
-                    tbl_name: 'vw_users',
-                    sql: 'CREATE TRIGGER view_trigger INSTEAD OF DELETE ON vw_users BEGIN DELETE FROM users WHERE id = OLD.id; END',
+                    match: /type = 'trigger'/,
+                    rows: [
+                        {
+                            name: 'touch',
+                            tbl_name: 'products',
+                            sql: 'CREATE TRIGGER touch AFTER INSERT ON products BEGIN UPDATE products SET updated_at = CURRENT_TIMESTAMP; DELETE FROM stale; END',
+                        },
+                    ],
                 },
-            ];
+            ]);
 
-            const db = createMockDb(mockRows);
-            const trigger = await sqliteExploreOperations.getTriggerDetail(db, 'view_trigger');
-
-            expect(trigger?.timing).toBe('INSTEAD OF');
-            expect(trigger?.events).toEqual(['DELETE']);
-
-        });
-
-        it('should parse multiple events', async () => {
-
-            const mockRows = [
-                {
-                    name: 'multi_event',
-                    tbl_name: 'products',
-                    sql: 'CREATE TRIGGER multi_event AFTER INSERT OR UPDATE ON products BEGIN UPDATE products SET updated_at = CURRENT_TIMESTAMP; END',
-                },
-            ];
-
-            const db = createMockDb(mockRows);
-            const trigger = await sqliteExploreOperations.getTriggerDetail(db, 'multi_event');
-
-            expect(trigger?.events).toEqual(['INSERT', 'UPDATE']);
-
-        });
-
-        it('should default to INSERT if no events found', async () => {
-
-            const mockRows = [
-                {
-                    name: 'malformed_trigger',
-                    tbl_name: 'test',
-                    sql: 'CREATE TRIGGER malformed_trigger AFTER ON test BEGIN SELECT 1; END',
-                },
-            ];
-
-            const db = createMockDb(mockRows);
-            const trigger = await sqliteExploreOperations.getTriggerDetail(db, 'malformed_trigger');
+            const trigger = await sqliteExploreOperations.getTriggerDetail(db.kysely, 'touch');
 
             expect(trigger?.events).toEqual(['INSERT']);
+
+        });
+
+        it('should default to INSERT when the header cannot be parsed', async () => {
+
+            const db = createRecordingDb('sqlite', [
+                {
+                    match: /type = 'trigger'/,
+                    rows: [{ name: 'malformed', tbl_name: 'test', sql: 'CREATE TRIGGER malformed' }],
+                },
+            ]);
+
+            const trigger = await sqliteExploreOperations.getTriggerDetail(db.kysely, 'malformed');
+
+            expect(trigger?.events).toEqual(['INSERT']);
+            expect(trigger?.timing).toBe('AFTER');
 
         });
 

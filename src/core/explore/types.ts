@@ -304,21 +304,22 @@ export interface TriggerDetail {
  */
 export interface DialectExploreOperations {
 
-    /**
-     * Get counts of all object types.
-     */
-    getOverview(db: Kysely<unknown>): Promise<ExploreOverview>;
+    // List methods (return summaries for list views).
+    //
+    // `schema` narrows the query to one schema; omitted, the dialect's own
+    // system-schema exclusions apply. It must reach the generated SQL rather
+    // than being filtered afterwards — on MySQL a "schema" is a whole other
+    // database, so post-filtering a `DATABASE()`-pinned result can only ever
+    // return nothing.
 
-    // List methods (return summaries for list views)
-
-    listTables(db: Kysely<unknown>): Promise<TableSummary[]>;
-    listViews(db: Kysely<unknown>): Promise<ViewSummary[]>;
-    listProcedures(db: Kysely<unknown>): Promise<ProcedureSummary[]>;
-    listFunctions(db: Kysely<unknown>): Promise<FunctionSummary[]>;
-    listTypes(db: Kysely<unknown>): Promise<TypeSummary[]>;
-    listIndexes(db: Kysely<unknown>): Promise<IndexSummary[]>;
-    listForeignKeys(db: Kysely<unknown>): Promise<ForeignKeySummary[]>;
-    listTriggers(db: Kysely<unknown>): Promise<TriggerSummary[]>;
+    listTables(db: Kysely<unknown>, schema?: string): Promise<TableSummary[]>;
+    listViews(db: Kysely<unknown>, schema?: string): Promise<ViewSummary[]>;
+    listProcedures(db: Kysely<unknown>, schema?: string): Promise<ProcedureSummary[]>;
+    listFunctions(db: Kysely<unknown>, schema?: string): Promise<FunctionSummary[]>;
+    listTypes(db: Kysely<unknown>, schema?: string): Promise<TypeSummary[]>;
+    listIndexes(db: Kysely<unknown>, schema?: string): Promise<IndexSummary[]>;
+    listForeignKeys(db: Kysely<unknown>, schema?: string): Promise<ForeignKeySummary[]>;
+    listTriggers(db: Kysely<unknown>, schema?: string): Promise<TriggerSummary[]>;
     listLocks(db: Kysely<unknown>): Promise<LockSummary[]>;
     listConnections(db: Kysely<unknown>): Promise<ConnectionSummary[]>;
 
