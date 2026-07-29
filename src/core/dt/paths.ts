@@ -70,6 +70,40 @@ export function resolveExportPath(opts: {
 }
 
 /**
+ * Resolve which tables an export should write.
+ *
+ * `--tables` is documented as "(default: all)". Omitting it resolved to an
+ * empty list, so the export wrote nothing, reported success and exited 0 — a
+ * silent empty backup. An explicit but empty selection is an error rather
+ * than a no-op for the same reason.
+ *
+ * @example
+ * ```typescript
+ * const tables = await resolveExportTables(args.tables, () => ctx.noorm.db.listTables());
+ * ```
+ */
+export async function resolveExportTables(
+    tables: string[] | undefined,
+    listTables: () => Promise<{ name: string }[]>,
+): Promise<string[]> {
+
+    const resolved = tables ?? (await listTables()).map((t) => t.name);
+
+    if (resolved.length === 0) {
+
+        throw new Error(
+            tables
+                ? 'No tables selected for export — --tables was empty'
+                : 'No tables found to export',
+        );
+
+    }
+
+    return resolved;
+
+}
+
+/**
  * Ensures the export directory exists for multi-table exports.
  *
  * For single-table exports, ensures the parent directory exists.

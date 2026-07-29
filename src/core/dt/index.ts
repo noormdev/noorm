@@ -941,7 +941,7 @@ export { serializeRow, serializeValue, encodeValue } from './serialize.js';
 export { deserializeRow, deserializeValue } from './deserialize.js';
 export { encryptWithPassphrase, decryptWithPassphrase } from './crypto.js';
 export { FORMAT_VERSION, GZIP_THRESHOLD, GZIP_RATIO_THRESHOLD, SIMPLE_TYPES, ENCODED_TYPES } from './constants.js';
-export { resolveExportExtension, resolveExportPath, ensureExportDirectory } from './paths.js';
+export { resolveExportExtension, resolveExportPath, resolveExportTables, ensureExportDirectory } from './paths.js';
 
 export { modifyDtFile, transformSchema, validateRecipe, buildRowProxy } from './modify.js';
 export type {

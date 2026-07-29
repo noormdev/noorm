@@ -7,7 +7,7 @@ import * as p from '@clack/prompts';
 import { attempt } from '@logosdx/utils';
 import { defineCommand } from 'citty';
 
-import { resolveExportExtension, resolveExportPath, ensureExportDirectory } from '../../core/dt/index.js';
+import { resolveExportExtension, resolveExportPath, resolveExportTables, ensureExportDirectory } from '../../core/dt/index.js';
 import { MIN_PASSPHRASE_LENGTH } from '../../core/dt/crypto.js';
 import { getStateManager } from '../../core/state/index.js';
 import type { TransferOptions, ConflictStrategy } from '../../core/transfer/index.js';
@@ -493,10 +493,6 @@ async function handleExport(opts: {
     const { exportPath, passphrase, compress, tables, batchSize, args } = opts;
 
     const ext = resolveExportExtension(compress, passphrase);
-    const tableList = tables ?? [];
-    const tableCount = tableList.length;
-
-    ensureExportDirectory(exportPath, tableCount);
 
     const [exportResults, error] = await withContext({
         args,
@@ -507,6 +503,11 @@ async function handleExport(opts: {
                 logger.info(`Exporting to ${exportPath}...`);
 
             }
+
+            const tableList = await resolveExportTables(tables, () => ctx.noorm.db.listTables());
+            const tableCount = tableList.length;
+
+            ensureExportDirectory(exportPath, tableCount);
 
             let totalRows = 0;
             let totalBytes = 0;
@@ -537,7 +538,7 @@ async function handleExport(opts: {
 
             }
 
-            return { totalRows, totalBytes, tableResults };
+            return { totalRows, totalBytes, tableCount, tableResults };
 
         },
     });
@@ -549,12 +550,17 @@ async function handleExport(opts: {
             outputResult(args, { success: false, error: error.message }, '');
 
         }
+        else {
+
+            process.stderr.write(`${error.message}\n`);
+
+        }
 
         return 1;
 
     }
 
-    const { totalRows, totalBytes, tableResults } = exportResults;
+    const { totalRows, totalBytes, tableCount, tableResults } = exportResults;
 
     if (args.json) {
 
