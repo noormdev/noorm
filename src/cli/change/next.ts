@@ -51,6 +51,14 @@ const nextCommand = defineCommand({
 
                         }
 
+                        // Warned, not failed: without this an absent changes/
+                        // directory reads exactly like an up-to-date database.
+                        for (const warning of res.warnings ?? []) {
+
+                            logger.warn(warning);
+
+                        }
+
                         if (res.executed === 0) {
 
                             logger.info('No pending changes to apply.');

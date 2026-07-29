@@ -35,6 +35,14 @@ const ffCommand = defineCommand({
 
                         }
 
+                        // Warned, not failed: without this an absent changes/
+                        // directory reads exactly like an up-to-date database.
+                        for (const warning of res.warnings ?? []) {
+
+                            logger.warn(warning);
+
+                        }
+
                         const summary = {
                             executed: res.executed,
                             skipped: res.skipped,

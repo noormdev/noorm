@@ -24,6 +24,7 @@
  * ```
  */
 import path from 'node:path';
+import { stat } from 'node:fs/promises';
 
 import { attempt } from '@logosdx/utils';
 
@@ -254,6 +255,8 @@ export class ChangeManager {
         const opts = { ...DEFAULT_BATCH, ...options };
         const start = performance.now();
 
+        const warnings = await this.#collectWarnings();
+
         // Get pending changes
         const list = await this.list();
         const pending = list
@@ -269,6 +272,7 @@ export class ChangeManager {
                 skipped: 0,
                 failed: 0,
                 durationMs: performance.now() - start,
+                warnings,
             };
 
         }
@@ -327,7 +331,25 @@ export class ChangeManager {
             skipped: pending.length - executed - failed,
             failed,
             durationMs: performance.now() - start,
+            warnings,
         };
+
+    }
+
+    /**
+     * Report conditions that silently shrink a batch to nothing.
+     *
+     * Kept separate from `list()` because an empty list is a legitimate
+     * state ("nothing pending") while a missing directory is a mistake,
+     * and the two are otherwise indistinguishable to the caller.
+     */
+    async #collectWarnings(): Promise<string[] | undefined> {
+
+        const [dir] = await attempt(() => stat(this.#context.changesDir));
+
+        if (dir) return undefined;
+
+        return [`Changes directory not found: ${this.#context.changesDir}`];
 
     }
 

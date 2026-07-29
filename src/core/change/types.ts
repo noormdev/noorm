@@ -484,6 +484,18 @@ export interface BatchChangeResult {
      * applied change. Absent when `changes` explains the outcome.
      */
     error?: string;
+
+    /**
+     * Non-fatal problems that made this batch smaller than intended —
+     * currently a missing changes directory.
+     *
+     * WHY: a mistyped `paths.changes`, or a CI checkout without its
+     * `changes/` folder, produced `executed: 0` and exit 0, which is
+     * indistinguishable from an already-up-to-date database. Surfaced
+     * rather than thrown for the same reason `build.include` warns:
+     * a project with genuinely nothing to apply must still succeed.
+     */
+    warnings?: string[];
 }
 
 // ─────────────────────────────────────────────────────────────

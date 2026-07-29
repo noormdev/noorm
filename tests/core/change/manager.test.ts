@@ -477,6 +477,26 @@ describe('change: manager', () => {
 
     });
 
+    describe('missing changes directory', () => {
+
+        it('should warn rather than report a clean run when the changes directory is absent', async () => {
+
+            await rm(changesDir, { recursive: true, force: true });
+
+            const manager = new ChangeManager(buildContext());
+
+            const result = await manager.ff();
+
+            // Warned, not failed — matching the `build.include` precedent.
+            // The point is that a CI job cannot mistake a missing checkout
+            // for a successful deployment.
+            expect(result.executed).toBe(0);
+            expect(result.warnings?.join(' ')).toContain(changesDir);
+
+        });
+
+    });
+
     describe('template context', () => {
 
         it('should resolve $.secrets and $.config inside a change template', async () => {
