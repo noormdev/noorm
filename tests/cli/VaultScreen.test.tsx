@@ -72,8 +72,10 @@ mock.module('../../src/core/vault/index.js', () => ({
     })),
     getAllVaultSecrets: vi.fn(async () => []),
     getVaultKey: vi.fn(async () => 'vault-key'),
-    // Returns an `[users, error]` tuple, not a bare array — a failed lookup must
-    // not be indistinguishable from "nobody is missing access".
+    // Mirrors the real `[users, error]` tuple: a failed lookup must not be
+    // indistinguishable from "nobody is missing access". Returning a bare array
+    // here let the screen and the mock agree on a shape the core had stopped
+    // using, so the suite stayed green over a real runtime bug.
     getUsersWithoutVaultAccess: vi.fn(async () => [RECIPIENTS, null]),
     propagateVaultKey: vi.fn(async (...args: unknown[]) => {
 

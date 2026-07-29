@@ -5,6 +5,7 @@
  * dedicated connection and that revert is idempotent.
  */
 import { describe, it, expect, vi } from 'bun:test';
+import { attempt } from '@logosdx/utils';
 import {
     Kysely,
     DummyDriver,
@@ -114,6 +115,71 @@ describe('sdk: impersonate buildScope', () => {
         await scope.revert();
         await scope.revert();
         await scope.revert();
+
+        expect(revertFn).toHaveBeenCalledTimes(1);
+
+    });
+
+    /**
+     * The idempotency above only covers a revert that SUCCEEDS. `reverted` was
+     * set before `revertFn` was awaited, so a revert that threw still marked
+     * the scope reverted: the caller's retry returned early, the revert SQL
+     * never ran, and the pooled connection the scope holds was never released
+     * — permanently, taking `disconnect()` down with it.
+     */
+    it('should stay revertible when revertFn fails, so a retry can succeed', async () => {
+
+        const { db } = createMockKysely();
+        const revertFn = vi.fn()
+            .mockRejectedValueOnce(new Error('connection error, not queryable'))
+            .mockResolvedValueOnce(undefined);
+
+        const scope = buildScope(db, revertFn, 'postgres');
+
+        const [, firstErr] = await attempt(() => scope.revert());
+
+        expect(firstErr).toBeInstanceOf(Error);
+
+        const [, secondErr] = await attempt(() => scope.revert());
+
+        expect(secondErr).toBeNull();
+        expect(revertFn).toHaveBeenCalledTimes(2);
+
+    });
+
+    it('should surface the revert failure rather than swallowing it', async () => {
+
+        const { db } = createMockKysely();
+        const revertFn = vi.fn().mockRejectedValue(new Error('revert blew up'));
+
+        const scope = buildScope(db, revertFn, 'postgres');
+
+        const [, err] = await attempt(() => scope.revert());
+
+        expect((err as Error).message).toContain('revert blew up');
+
+    });
+
+    it('should run revertFn once when revert() is called concurrently', async () => {
+
+        const { db } = createMockKysely();
+
+        let release!: () => void;
+        const gate = new Promise<void>((resolve) => {
+
+            release = resolve;
+
+        });
+
+        const revertFn = vi.fn().mockImplementation(() => gate);
+        const scope = buildScope(db, revertFn, 'postgres');
+
+        const first = scope.revert();
+        const second = scope.revert();
+
+        release();
+
+        await Promise.all([first, second]);
 
         expect(revertFn).toHaveBeenCalledTimes(1);
 

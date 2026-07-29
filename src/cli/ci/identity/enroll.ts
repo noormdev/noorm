@@ -10,6 +10,10 @@
  * identityHash uses `os: 'env'` + `machine: publicKey` so it matches
  * what `loadIdentityFromEnv` computes when the runner reads the same
  * private key from env at CI runtime.
+ *
+ * The grant is gated on `vault:propagate` against the target config's
+ * `access`, so a `viewer` config cannot enroll at all and every role that can
+ * must pass `--yes` — sealing the vault key to a public key is irreversible.
  */
 import { attempt, attemptSync } from '@logosdx/utils';
 import { defineCommand } from 'citty';
@@ -17,12 +21,13 @@ import { defineCommand } from 'citty';
 import { generateKeyPair } from '../../../core/identity/crypto.js';
 import { computeIdentityHash } from '../../../core/identity/hash.js';
 import { isValidKeyHex } from '../../../core/identity/storage.js';
-import { propagateVaultKeyTo } from '../../../core/vault/propagate.js';
+import { propagateVaultKeyToChecked, checkVaultPolicy } from '../../../core/vault/index.js';
+import type { VaultPolicyGate } from '../../../core/vault/index.js';
 import { decryptVaultKey } from '../../../core/vault/key.js';
 import { getNoormTables, noormDb } from '../../../core/shared/tables.js';
 import type { NoormDatabase } from '../../../core/shared/tables.js';
 import type { EncryptedVaultKey } from '../../../core/vault/types.js';
-import { outputResult, outputError, sharedArgs, withVaultContext } from '../../_utils.js';
+import { outputResult, outputError, sharedArgs, isYesMode, withVaultContext } from '../../_utils.js';
 
 const enrollCommand = defineCommand({
     meta: {
@@ -45,6 +50,7 @@ const enrollCommand = defineCommand({
             type: 'string',
             description: 'Pre-generated X25519 public key (hex). If omitted, a new keypair is generated.',
         },
+        yes: sharedArgs.yes,
         json: sharedArgs.json,
     },
     async run({ args }) {
@@ -63,6 +69,28 @@ const enrollCommand = defineCommand({
         const [result, err] = await withVaultContext({
             args,
             fn: async ({ ctx, cryptoIdentity, privateKey }) => {
+
+                // Enrollment ends in a vault grant, so it is a config-scoped
+                // action gated on `vault:propagate` like every other vault
+                // operation. Checked before any read or write: a role denied
+                // the vault should not get to probe the identities table.
+                const enrollConfig = ctx.noorm.config;
+                const gate: VaultPolicyGate = {
+                    configName: enrollConfig.name,
+                    access: enrollConfig.access,
+                    channel: 'user',
+                };
+
+                const policy = checkVaultPolicy(gate, 'vault:propagate');
+
+                if (!policy.allowed) {
+
+                    throw new Error(
+                        policy.blockedReason
+                        ?? `Config "${enrollConfig.name}" cannot grant vault access.`,
+                    );
+
+                }
 
                 let newPublicKey: string;
                 let newPrivateKey: string | null = null;
@@ -147,7 +175,7 @@ const enrollCommand = defineCommand({
                 const [existing, existingErr] = await attempt(() =>
                     ndb
                         .selectFrom(tables.identities as keyof NoormDatabase)
-                        .select(['identity_hash', 'public_key'])
+                        .select(['identity_hash', 'public_key', 'encrypted_vault_key'])
                         .where('identity_hash', '=', identityHash)
                         .executeTakeFirst(),
                 );
@@ -209,7 +237,29 @@ const enrollCommand = defineCommand({
 
                 }
 
-                const propagated = await propagateVaultKeyTo(
+                // Sealing the vault key to a public key cannot be undone, so
+                // `vault:propagate` is a `confirm` cell for every role that
+                // holds it. Asked here rather than up front so the operator is
+                // shown the identity they are about to grant to — and skipped
+                // when the target already holds access, since then confirming
+                // would be a prompt for a no-op.
+                const alreadyHasVaultAccess = !!existing?.encrypted_vault_key;
+
+                if (policy.requiresConfirmation && !alreadyHasVaultAccess && !isYesMode(args)) {
+
+                    throw new Error(
+                        `About to grant irrevocable vault access on config "${enrollConfig.name}" to:\n`
+                        + `    Name:        ${name}\n`
+                        + `    Email:       ${email}\n`
+                        + `    Public key:  ${newPublicKey}\n`
+                        + `    Fingerprint: ${identityHash}\n`
+                        + 'Verify this is the identity you intend, then re-run with --yes to grant.',
+                    );
+
+                }
+
+                const propagated = await propagateVaultKeyToChecked(
+                    gate,
                     ctx.kysely,
                     vaultKey,
                     identityHash,
@@ -308,8 +358,9 @@ const enrollCommand = defineCommand({
 
 (enrollCommand as typeof enrollCommand & { examples: string[] }).examples = [
     'noorm ci identity enroll --config prod --name "CI Bot" --email ci@example.com',
-    'noorm ci identity enroll --config prod --name "CI Bot" --email ci@example.com --public-key <hex>',
-    'noorm ci identity enroll --config prod --name "CI Bot" --email ci@example.com --json',
+    'noorm ci identity enroll --config prod --name "CI Bot" --email ci@example.com --yes',
+    'noorm ci identity enroll --config prod --name "CI Bot" --email ci@example.com --public-key <hex> --yes',
+    'noorm ci identity enroll --config prod --name "CI Bot" --email ci@example.com --json --yes',
 ];
 
 export default enrollCommand;
