@@ -178,7 +178,7 @@ noorm ci secrets --file ./ci-secrets.env
 rm ./ci-secrets.env
 ```
 
-Existing keys are skipped by default (so a rerun is safe). Pass `--overwrite` to replace them. Exit codes: `0` clean load, `1` precondition failure, `2` partial (some keys set, some errored).
+Existing keys are skipped by default (so a rerun is safe). Pass `--overwrite` to replace them. Exit codes: `0` clean load, `1` total failure, `2` bad invocation (unknown config, unreadable or malformed `--file`), `3` partial (some keys set, some errored).
 
 
 ### GitHub Actions (Prod CI)

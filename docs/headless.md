@@ -569,7 +569,7 @@ noorm ci secrets --file ./ci-secrets.env --config prod --json
 
 **File format:** `KEY=value` per line; blank lines and `#` comments ignored; surrounding quotes stripped.
 
-**Exit codes:** `0` all loaded; `1` precondition failure; `2` partial success.
+**Exit codes:** `0` all loaded; `1` total failure; `2` bad invocation (unknown config, unreadable or malformed `--file`); `3` partial (some keys set, some errored).
 
 **JSON output:**
 ```json
@@ -703,7 +703,7 @@ noorm run exec "seeds/*.sql" --force
 noorm run exec migrations/ --dry-run
 ```
 
-**Exit codes:** `0` success, `2` partial failure, `1` complete failure.
+**Exit codes:** `0` success, `1` complete failure, `2` bad invocation, `3` partial failure.
 
 
 #### `run files --paths <path,...>`
@@ -1439,9 +1439,24 @@ noorm ui
 
 | Code | Meaning |
 |------|---------|
-| `0` | Success |
-| `1` | Error (check stderr or JSON output) |
-| `2` | Partial failure (some operations succeeded, some failed) |
+| `0` | Success — everything you asked for happened |
+| `1` | Total failure — the operation ran and no unit of work succeeded |
+| `2` | Usage error — a bad or missing flag, a TTY-only command run non-interactively, or a named target (file, directory, config, change, secret key, glob) that does not exist. Nothing was attempted, so nothing changed |
+| `3` | Partial failure — some units succeeded and some failed. The target is in a mixed state and re-running is not automatically safe |
+
+The split between `1` and `3` is the one that matters in a pipeline: a total
+failure can be retried, a partial one needs a human. `2` says the command never
+got as far as touching the database.
+
+Policy denials currently exit `1`. They do not yet have a dedicated code.
+
+> **Changed in this release.** `2` previously meant "partial failure" on
+> `run build` / `run dir` / `run files` / `run exec` and the five `change`
+> execution commands, but the same `2` was also returned for a *total* failure
+> on those commands — the two were indistinguishable. Partial now has its own
+> code (`3`), total failure reports `1`, and `2` is reserved for a bad
+> invocation. A pipeline that tested `[ $? -eq 2 ]` to mean "partially applied"
+> must now test `-eq 3`. Checks of the form `if ! noorm …` are unaffected.
 
 
 ## CI/CD Examples
@@ -1617,24 +1632,69 @@ That means `--json` output is always exactly one parseable JSON document on stdo
 log noise ahead of or after it — no `tail -1` needed:
 
 ```bash
-noorm change history --json | jq '.[0].status'
+noorm change history --json | jq '.history[0].status'
 ```
 
 A command that finds nothing to report still writes a result — never silence. `noorm change
 list` on a project with no changesets prints `No changes found.` on stdout in text mode and
-`[]` on stdout in `--json` mode; either way, a CI step can tell "ran and found nothing" from
-"didn't run" by checking the exit code and the (always-present) stdout line, rather than
-guessing from empty output.
+`{"success":true,"changes":[],"pending":0}` in `--json` mode; either way, a CI step can tell
+"ran and found nothing" from "didn't run" by checking the exit code and the (always-present)
+stdout line, rather than guessing from empty output.
+
+
+## The `--json` Envelope
+
+Every `--json` payload is a **JSON object** carrying a top-level boolean `success`.
+It is never a bare array. Command-specific fields sit alongside `success`, and
+list results live under a key named for the resource:
+
+```json
+{ "success": true,  "changes": [ … ], "pending": 0 }
+{ "success": true,  "status": "success", "filesRun": 3, "filesSkipped": 0, "filesFailed": 0 }
+{ "success": false, "status": "partial", "filesRun": 1, "filesSkipped": 0, "filesFailed": 2 }
+{ "success": false, "error": "Template not found: sql/nope.sql.tmpl" }
+```
+
+Three guarantees hold across every command:
+
+1. `jq -e '.success'` works everywhere — success and failure alike.
+2. `success` and the exit code always agree: `success` is `true` if and only if
+   the process exits `0`. A partial result reports `success: false` alongside
+   `"status": "partial"` and exit `3`.
+3. An unsuccessful payload always carries `error` as a string. That string is a
+   message, never a stack trace — stack traces contain absolute filesystem
+   paths and stay out of machine-readable output.
+
+Commands that report per-unit outcomes also carry a `status` of `"success"`,
+`"partial"`, or `"failed"`, which is what `success` and the exit code are derived
+from.
+
+> **Changed in this release.** `--json` success payloads previously had four
+> incompatible shapes and no shared discriminator. Two changes are breaking:
+> `success` is now present on payloads that had no such key, and the commands
+> that returned a **top-level array** now return a named object instead —
+> `change list` → `.changes`, `change history` → `.history`, `db explore tables`
+> → `.tables`, `views` → `.views`, `indexes` → `.indexes`, `fks` →
+> `.foreignKeys`, `functions` → `.functions`, `procedures` → `.procedures`,
+> `types` → `.types`, `triggers` → `.triggers`. A script doing `jq '.[]'` on any
+> of those must now name the key. Everything else gained a field and lost none.
 
 
 ## Scripting with JSON
 
 ```bash
 # Check for pending changes
-pending=$(noorm change list --json | jq '[.[] | select(.status == "pending")] | length')
+pending=$(noorm change list --json | jq '.pending')
 if [ "$pending" -gt 0 ]; then
     echo "Found $pending pending changes"
     noorm change ff
+fi
+```
+
+```bash
+# One failure check that works against every command
+if ! noorm run build --json | jq -e '.success' > /dev/null; then
+    echo "build did not succeed"
 fi
 ```
 

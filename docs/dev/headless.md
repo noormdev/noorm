@@ -396,7 +396,9 @@ JSON mode disables colors and outputs structured data.
 | Code | Meaning |
 |------|---------|
 | 0 | Success |
-| 1 | Failure |
+| 1 | Total failure |
+| 2 | Usage error — bad invocation, or a named target that does not exist |
+| 3 | Partial failure — some units succeeded, some failed |
 
 Always check the exit code in scripts:
 
@@ -479,7 +481,7 @@ set -e
 CONFIG="${1:-}"  # Optional, falls back to active config
 
 echo "Checking for pending changes..."
-PENDING=$(noorm ${CONFIG:+-c "$CONFIG"} change --json | jq '[.[] | select(.status=="pending")] | length')
+PENDING=$(noorm ${CONFIG:+-c "$CONFIG"} change list --json | jq '.pending')
 
 if [ "$PENDING" -gt 0 ]; then
     echo "Applying $PENDING pending changes..."
@@ -515,7 +517,7 @@ noorm change ff
 
 2. **Use `--json` for scripting** - Easier to parse than text output
    ```bash
-   noorm change --json | jq '.[] | select(.status=="pending")'
+   noorm change list --json | jq '.changes[] | select(.status=="pending")'
    ```
 
 3. **Check exit codes** - Non-zero means failure
