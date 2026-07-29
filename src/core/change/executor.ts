@@ -315,6 +315,18 @@ export async function revertChange(
 
         if (!canRevertResult.canRevert) {
 
+            // A check that could not run is not a "nothing to do".
+            if (canRevertResult.error) {
+
+                return createFailedResult(
+                    change.name,
+                    'revert',
+                    `Could not determine revert state: ${canRevertResult.error.message}`,
+                    start,
+                );
+
+            }
+
             if (canRevertResult.reason === 'not applied') {
 
                 throw new ChangeNotAppliedError(change.name);

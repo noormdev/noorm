@@ -7,6 +7,7 @@
  * batch/mutation surface per QL-test-04's "at minimum" framing.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
+import { attempt } from '@logosdx/utils';
 import { existsSync } from 'node:fs';
 import { mkdtemp, rm, mkdir, writeFile } from 'fs/promises';
 import { tmpdir } from 'node:os';
@@ -470,6 +471,55 @@ describe('change: manager', () => {
 
             const firstFile = retry.files.find((f) => f.filepath.endsWith('001_ok.sql'));
             expect(firstFile?.status).toBe('skipped');
+
+        });
+
+    });
+
+    describe('history read failures', () => {
+
+        it('should not report a successful revert when the history read failed', async () => {
+
+            await createTestChange(
+                'unreadable',
+                [{ name: '001_create.sql', content: 'CREATE TABLE unreadable_target (id INTEGER PRIMARY KEY)' }],
+                [{ name: '001_drop.sql', content: 'DROP TABLE unreadable_target' }],
+            );
+
+            const manager = new ChangeManager(buildContext());
+
+            await manager.run('unreadable');
+
+            // Break reads only, leaving the table in place — the shape of a
+            // permissions change or a botched migration in the field.
+            await sql`ALTER TABLE __noorm_change__ RENAME COLUMN status TO status_x`.execute(db);
+
+            const [result, err] = await attempt(() => manager.revert('unreadable'));
+
+            // Either outcome is acceptable; silently claiming success is not.
+            expect(err ?? result?.status).not.toBe('success');
+            expect(await tableExists('unreadable_target')).toBe(true);
+
+        });
+
+        it('should not report a successful revert when the history table is gone', async () => {
+
+            await createTestChange(
+                'trackerless',
+                [{ name: '001_create.sql', content: 'CREATE TABLE trackerless_target (id INTEGER PRIMARY KEY)' }],
+                [{ name: '001_drop.sql', content: 'DROP TABLE trackerless_target' }],
+            );
+
+            const manager = new ChangeManager(buildContext());
+
+            await manager.run('trackerless');
+
+            await sql`DROP TABLE __noorm_change__`.execute(db);
+
+            const [result, err] = await attempt(() => manager.revert('trackerless'));
+
+            expect(err ?? result?.status).not.toBe('success');
+            expect(await tableExists('trackerless_target')).toBe(true);
 
         });
 

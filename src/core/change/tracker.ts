@@ -49,6 +49,23 @@ export interface CanRevertResult {
 
     /** Current status of the change */
     status?: OperationStatus;
+
+    /**
+     * Set when the change's state could not be established, as opposed to
+     * being established and answering "no".
+     *
+     * WHY: callers previously could not tell "this change is already
+     * reverted" from "the history table is unreadable", and treated both
+     * as a benign no-op — so a revert against a broken database reported
+     * success over an untouched schema.
+     *
+     * Covers an unrecognised status as well as an outright query failure.
+     * SQLite does not error on a missing column: a double-quoted
+     * identifier that resolves to nothing is re-read as a string literal,
+     * so a damaged tracking table yields a row whose status is garbage
+     * rather than a thrown error.
+     */
+    error?: Error;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -127,7 +144,7 @@ export class ChangeTracker extends Tracker {
                 context: { name, operation: 'can-revert' },
             });
 
-            return { canRevert: false, reason: 'database error' };
+            return { canRevert: false, reason: 'database error', error: err };
 
         }
 
@@ -161,7 +178,11 @@ export class ChangeTracker extends Tracker {
             return { canRevert: false, reason: 'schema was torn down', status: record.status };
 
         default:
-            return { canRevert: false, reason: 'unknown status' };
+            return {
+                canRevert: false,
+                reason: 'unknown status',
+                error: new Error(`Unrecognised change status "${record.status}" for "${name}"`),
+            };
 
         }
 
