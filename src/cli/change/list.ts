@@ -39,7 +39,7 @@ const listCommand = defineCommand({
                 ...(pending > 0 ? [`${pending} pending change(s)`] : []),
             ].join('\n');
 
-        outputResult(args, changes, text);
+        outputResult(args, { changes, pending }, text);
 
         process.exit(0);
 

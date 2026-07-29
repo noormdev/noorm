@@ -72,7 +72,7 @@ describe('cli: root-level flag placement', () => {
             const result = runCli(project, ['config', 'list', '--json']);
 
             expect(result.status).toBe(0);
-            expect(JSON.parse(result.stdout.trim())).toEqual({ configs: [] });
+            expect(JSON.parse(result.stdout.trim())).toEqual({ success: true, configs: [] });
 
         });
 
@@ -181,7 +181,7 @@ describe('cli: root-level flag placement', () => {
             });
 
             expect(result.status).toBe(0);
-            expect(JSON.parse((result.stdout ?? '').trim())).toEqual({ configs: [] });
+            expect(JSON.parse((result.stdout ?? '').trim())).toEqual({ success: true, configs: [] });
 
         });
 

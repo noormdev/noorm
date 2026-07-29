@@ -72,7 +72,7 @@ const fksCommand = defineCommand({
 
         if (args.json) {
 
-            outputResult(args, fks, '');
+            outputResult(args, { foreignKeys: fks }, '');
 
         }
 

@@ -8,10 +8,11 @@
 import { defineCommand } from 'citty';
 import { attempt } from '@logosdx/utils';
 
-import { sharedArgs } from '../_utils.js';
+import { outputResult, outputError, sharedArgs } from '../_utils.js';
 import { copyVaultSecrets } from '../../core/vault/index.js';
 import { loadPrivateKey, loadIdentityMetadata } from '../../core/identity/storage.js';
 import { getStateManager } from '../../core/state/index.js';
+import { EXIT } from '../_exit.js';
 
 const cpCommand = defineCommand({
     meta: {
@@ -37,8 +38,8 @@ const cpCommand = defineCommand({
 
         if (identityErr || !cryptoIdentity) {
 
-            process.stderr.write('Error: Identity not set up. Run: noorm identity init\n');
-            process.exit(1);
+            outputError(args, 'Identity not set up. Run: noorm identity init');
+            process.exit(EXIT.FAILURE);
 
         }
 
@@ -46,8 +47,8 @@ const cpCommand = defineCommand({
 
         if (keyErr || !privateKey) {
 
-            process.stderr.write('Error: Private key not found. Run: noorm identity init\n');
-            process.exit(1);
+            outputError(args, 'Private key not found. Run: noorm identity init');
+            process.exit(EXIT.FAILURE);
 
         }
 
@@ -56,8 +57,8 @@ const cpCommand = defineCommand({
 
         if (loadErr) {
 
-            process.stderr.write(`Error: ${loadErr.message}\n`);
-            process.exit(1);
+            outputError(args, loadErr.message);
+            process.exit(EXIT.FAILURE);
 
         }
 
@@ -66,15 +67,15 @@ const cpCommand = defineCommand({
 
         if (!sourceConfig) {
 
-            process.stderr.write(`Error: Source config not found: ${sourceConfigName}\n`);
-            process.exit(1);
+            outputError(args, `Source config not found: ${sourceConfigName}`);
+            process.exit(EXIT.USAGE);
 
         }
 
         if (!destConfig) {
 
-            process.stderr.write(`Error: Destination config not found: ${destConfigName}\n`);
-            process.exit(1);
+            outputError(args, `Destination config not found: ${destConfigName}`);
+            process.exit(EXIT.USAGE);
 
         }
 
@@ -94,18 +95,8 @@ const cpCommand = defineCommand({
 
         if (copyErr) {
 
-            if (args.json) {
-
-                process.stdout.write(JSON.stringify({ success: false, error: copyErr.message }) + '\n');
-
-            }
-            else {
-
-                process.stderr.write(`Error: ${copyErr.message}\n`);
-
-            }
-
-            process.exit(1);
+            outputError(args, copyErr.message);
+            process.exit(EXIT.FAILURE);
 
         }
 
@@ -116,13 +107,13 @@ const cpCommand = defineCommand({
 
         if (args.json) {
 
-            process.stdout.write(JSON.stringify({
+            outputResult(args, {
                 success: succeeded,
                 dryRun: !!args.dryRun,
                 copied: result?.copied ?? [],
                 skipped: result?.skipped ?? [],
                 errors: result?.errors ?? [],
-            }) + '\n');
+            }, '');
 
         }
         else {
