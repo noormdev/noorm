@@ -571,6 +571,13 @@ export class Tracker {
      * @param durationMs - Execution time
      * @param errorMessage - Error message if failed
      * @param skipReason - Skip reason if skipped
+     * @param checksum - Checksum of the SQL that actually reached the
+     * database. `createFileRecords` seeds the pending row with the *raw*
+     * file hash because rendering every template upfront would execute them
+     * twice; for a `.sql.tmpl` that hash is not what `needsRun` compares
+     * against, so leaving it in place made template dedup unreachable.
+     * Omitted leaves the seeded value alone — correct only where no render
+     * happened (e.g. the file could not be read).
      * @returns Error message if update failed, null on success
      */
     async updateFileExecution(
@@ -580,6 +587,7 @@ export class Tracker {
         durationMs: number,
         errorMessage?: string,
         skipReason?: string,
+        checksum?: string,
     ): Promise<string | null> {
 
         const [result, err] = await attempt(() =>
@@ -590,6 +598,7 @@ export class Tracker {
                     duration_ms: Math.round(durationMs),
                     error_message: errorMessage ?? '',
                     skip_reason: skipReason ?? '',
+                    ...(checksum === undefined ? {} : { checksum }),
                 })
                 .where('change_id', '=', operationId)
                 .where('filepath', '=', filepath)

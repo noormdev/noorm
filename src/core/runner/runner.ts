@@ -950,6 +950,10 @@ async function executeSingleFileWithUpdate(
                 skipReason: needsRunResult.skipReason,
             };
 
+            // The rendered checksum is written even on a skip: the pending
+            // row seeded by createFileRecords holds the raw file hash, and
+            // it is the newest row the *next* build will compare against.
+            // Leaving it raw makes the file re-run one build later.
             await tracker.updateFileExecution(
                 operationId,
                 relFilepath,
@@ -957,6 +961,7 @@ async function executeSingleFileWithUpdate(
                 0,
                 undefined,
                 needsRunResult.skipReason,
+                finalChecksum,
             );
 
             observer.emit('file:skip', {
@@ -993,6 +998,8 @@ async function executeSingleFileWithUpdate(
             'failed',
             Math.round(durationMs),
             error,
+            undefined,
+            finalChecksum,
         );
 
         observer.emit('file:after', {
@@ -1019,6 +1026,9 @@ async function executeSingleFileWithUpdate(
         relFilepath,
         'success',
         Math.round(durationMs),
+        undefined,
+        undefined,
+        finalChecksum,
     );
 
     observer.emit('file:after', {
