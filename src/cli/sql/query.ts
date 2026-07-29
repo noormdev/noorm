@@ -104,12 +104,18 @@ const sqlCommand = defineCommand({
     },
 });
 
+// The bare `noorm sql <SQL>` form works only when the first token after
+// `sql` is the query itself — the argv rewriter in `src/cli/index.ts` looks
+// for SQL there, and for `-c prod` / `-f file.sql` it finds the flag's value
+// instead, so no `query` subcommand is inserted and citty prints help. Those
+// two forms are shown explicitly rather than teaching a command that exits
+// on the help screen.
 (sqlCommand as typeof sqlCommand & { examples: string[] }).examples = [
     'noorm sql "SELECT 1"',
     'noorm sql "SELECT * FROM users LIMIT 10"',
-    'noorm sql -c prod "SELECT count(*) FROM orders"',
+    'noorm sql query -c prod "SELECT count(*) FROM orders"',
     'noorm sql --json "SELECT id, name FROM users"',
-    'noorm sql -f reports/monthly.sql',
+    'noorm sql query -f reports/monthly.sql',
 ];
 
 export default sqlCommand;
