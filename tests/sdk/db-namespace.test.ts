@@ -105,7 +105,10 @@ function createState(
         config: createMockConfig(),
         settings,
         identity: mockIdentity,
-        options: {},
+        // Pre-confirmed: these cases are about preserve-list plumbing, and
+        // `db:truncate`/`db:teardown` are confirm cells even for admin, so
+        // without `yes` every one of them would stop at the access gate.
+        options: { yes: true },
         projectRoot: '/tmp/test-project',
         changeManager: null,
     };

@@ -217,12 +217,15 @@ describe('cli: noorm db truncate/teardown/reset — operator-role --yes headless
 
     }
 
-    // truncate/teardown declare `yes: sharedArgs.yes` but have no CLI
-    // pre-gate of their own (spec C3) — they rely entirely on withContext
-    // threading `yes: isYesMode(args)` into createContext, which
-    // checkProtectedConfig then consults for the operator-role `confirm`
-    // cell. If that threading regresses, these fail closed (exit 1,
-    // ProtectedConfigError), not open.
+    // truncate/teardown have no CLI pre-gate of their own — they rely on
+    // withContext threading `yes: isYesMode(args)` into createContext, which
+    // checkProtectedConfig then consults. If that threading regresses, these
+    // fail closed (exit 1, ProtectedConfigError), not open.
+    //
+    // They now consult `db:truncate` and `db:teardown` rather than sharing
+    // `db:reset`, which was `allow` for admin and so asked nothing of the
+    // default config. `db:teardown` is `deny` below admin, so the operator
+    // case that used to pass for teardown is now a denial.
 
     it('noorm db truncate --yes succeeds headlessly for an operator-role config (no NOORM_YES)', async () => {
 
@@ -234,13 +237,14 @@ describe('cli: noorm db truncate/teardown/reset — operator-role --yes headless
 
     });
 
-    it('noorm db teardown --yes succeeds headlessly for an operator-role config (no NOORM_YES)', async () => {
+    it('noorm db teardown --yes is denied for an operator-role config, because db:teardown stops below admin', async () => {
 
         await seedConfig({ user: 'operator', mcp: 'admin' });
 
         const result = runDb('teardown', ['--yes']);
 
-        expect(result.status).toBe(0);
+        expect(result.status).toBe(1);
+        expect(result.stdout + result.stderr).toContain('db:teardown');
 
     });
 

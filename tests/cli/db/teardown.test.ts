@@ -116,7 +116,9 @@ describe('cli: noorm db teardown --dry-run', () => {
 
     it('should actually drop the table on a sibling non-dry-run teardown', async () => {
 
-        const result = runCli(project, ['db', 'teardown']);
+        // --yes is required now that `db:teardown` is a confirm cell for
+        // admin; the dry runs above deliberately need no such confirmation.
+        const result = runCli(project, ['db', 'teardown', '--yes']);
 
         expect(result.status).toBe(0);
         expect(await tableExists(project, 'noorm_teardown_dryrun')).toBe(false);

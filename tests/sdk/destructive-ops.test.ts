@@ -155,12 +155,14 @@ describe('sdk: access-guarded destructive ops', () => {
 
         });
 
-        it('should not throw ProtectedConfigError for teardown()', async () => {
+        it('should still throw ProtectedConfigError for teardown(), which stops below admin', async () => {
 
+            // teardown consults `db:teardown`, not `db:reset`. That cell is
+            // `deny` for operator, and a denial is not something `yes` can
+            // satisfy — only a confirm cell is.
             const db = new DbNamespace(makeState(OPERATOR_ACCESS, { yes: true }));
-            const err = await db.teardown().catch((e: unknown) => e);
 
-            expect(err).not.toBeInstanceOf(ProtectedConfigError);
+            await expect(db.teardown()).rejects.toThrow(ProtectedConfigError);
 
         });
 
@@ -276,9 +278,20 @@ describe('sdk: access-guarded destructive ops', () => {
 
     describe('DbNamespace on admin-role config', () => {
 
-        it('should not throw ProtectedConfigError for truncate()', async () => {
+        it('should throw ProtectedConfigError for an unconfirmed truncate()', async () => {
 
+            // The defect this encodes: truncate used to consult `db:reset`,
+            // which is `allow` for admin, so the default config wiped every
+            // table with nothing asked of it. `db:truncate` is `confirm`.
             const db = new DbNamespace(makeState(ADMIN_ACCESS));
+
+            await expect(db.truncate()).rejects.toThrow(ProtectedConfigError);
+
+        });
+
+        it('should not throw ProtectedConfigError for a pre-confirmed truncate()', async () => {
+
+            const db = new DbNamespace(makeState(ADMIN_ACCESS, { yes: true }));
             const err = await db.truncate().catch((e: unknown) => e);
 
             expect(err).not.toBeInstanceOf(ProtectedConfigError);

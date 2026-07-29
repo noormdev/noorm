@@ -4,6 +4,24 @@
  * Types for database reset and teardown operations.
  * Supports data wipe (truncate) and schema teardown (drop).
  */
+import type { DbPolicyContext } from '../db/policy.js';
+
+/**
+ * A table identified by both halves of its name.
+ *
+ * The schema half is not decoration: an unqualified `TRUNCATE TABLE
+ * "secrets"` resolves against `search_path`, so a table outside the default
+ * schema aborts the run after earlier truncates have already committed.
+ */
+export interface TeardownTableRef {
+
+    /** Bare table name. */
+    name: string;
+
+    /** Schema the table lives in, when the dialect has schemas. */
+    schema?: string;
+
+}
 
 /**
  * Options for truncating table data.
@@ -36,6 +54,13 @@ export interface TruncateOptions {
     /** Dry run - return SQL without executing */
     dryRun?: boolean;
 
+    /**
+     * Access policy to enforce before wiping. Omitted by callers that
+     * already ran an equivalent gate (the SDK raises its own typed error);
+     * supplied by every caller that owns none.
+     */
+    policy?: DbPolicyContext;
+
 }
 
 /**
@@ -59,6 +84,17 @@ export interface TeardownOptions {
 
     /** Additional tables to preserve beyond __noorm_* tables */
     preserveTables?: string[];
+
+    /**
+     * Schemas to leave untouched entirely.
+     *
+     * Teardown enumerates every non-system schema, so it reaches objects
+     * noorm never created — an application's own private schema, or another
+     * tool's bookkeeping. `preserveTables` cannot express this: it is a flat
+     * name list, so excluding `app_private.secrets` by name would also spare
+     * a `public.secrets`.
+     */
+    preserveSchemas?: string[];
 
     /** Keep views (default: false) */
     keepViews?: boolean;
@@ -90,6 +126,11 @@ export interface TeardownOptions {
      * Required when configName is provided.
      */
     executedBy?: string;
+
+    /**
+     * Access policy to enforce before dropping. See {@link TruncateOptions.policy}.
+     */
+    policy?: DbPolicyContext;
 
 }
 
@@ -188,10 +229,14 @@ export interface TeardownDialectOperations {
      * single connection, to avoid the `sp_MSforeachtable` parallel-worker
      * deadlock that plagues schemas with many cross-FK tables.
      *
+     * Tables arrive as {@link TeardownTableRef} rather than bare names so
+     * MSSQL's per-table `ALTER TABLE` can be schema-qualified — a NOCHECK
+     * against an unqualified name outside `dbo` fails to resolve.
+     *
      * @param tables - Optional list of tables to scope the disable to
      *                 (used by MSSQL; ignored by other dialects).
      */
-    disableForeignKeyChecks(tables?: string[]): string | string[];
+    disableForeignKeyChecks(tables?: TeardownTableRef[]): string | string[];
 
     /**
      * Generate SQL to re-enable FK checks.
@@ -201,7 +246,7 @@ export interface TeardownDialectOperations {
      * @param tables - Optional list of tables to scope the enable to
      *                 (used by MSSQL; ignored by other dialects).
      */
-    enableForeignKeyChecks(tables?: string[]): string | string[];
+    enableForeignKeyChecks(tables?: TeardownTableRef[]): string | string[];
 
     /**
      * Generate SQL to truncate a table.
