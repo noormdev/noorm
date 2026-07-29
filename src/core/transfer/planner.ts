@@ -150,8 +150,15 @@ export async function planTransfer(
 
     }
 
-    // Check destination schema compatibility
-    const [destTables, destErr] = await listUserTables(ctx.destination.db, dialect, { tables: options.tables });
+    // Check destination schema compatibility. Probing with the *source*
+    // dialect aborted every cross-dialect transfer here — postgres catalog
+    // SQL against MySQL and vice versa — so the whole crossDialect path was
+    // unreachable.
+    const [destTables, destErr] = await listUserTables(
+        ctx.destination.db,
+        ctx.destination.dialect,
+        { tables: options.tables },
+    );
 
     if (destErr) {
 

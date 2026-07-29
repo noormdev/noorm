@@ -221,6 +221,15 @@ export class DtStreamer {
 
         }
 
+        // MySQL's driver has no JSON codec — handing it the object postgres
+        // returned for a jsonb column sends "[object Object]" and the insert
+        // fails with "Invalid JSON text ... at position 1".
+        if (this.#targetDialect === 'mysql') {
+
+            return typeof value === 'string' ? value : JSON.stringify(value);
+
+        }
+
         // If source was MSSQL < 2025 (string), parse it for other targets
         if (this.#sourceDialect === 'mssql' && typeof value === 'string') {
 

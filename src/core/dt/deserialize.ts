@@ -22,9 +22,12 @@
  */
 import { gunzipSync } from 'node:zlib';
 
+import { attemptSync } from '@logosdx/utils';
+
 import type { Dialect } from '../connection/types.js';
 import type { DtColumn, DtValue, DatabaseVersion, Encoding } from './types.js';
 import { isEncodedType } from './type-map.js';
+import { MAX_DECOMPRESSED_VALUE_BYTES } from './constants.js';
 
 /**
  * Options for deserializing a row.
@@ -135,13 +138,50 @@ function decodeTuple(tuple: [unknown, Encoding, ...unknown[]]): unknown {
     case 'raw':
         return value;
 
-    case 'b64':
-        return Buffer.from(value as string, 'base64');
+    case 'b64': {
+
+        const encoded = value as string;
+
+        if (typeof encoded !== 'string') {
+
+            throw new Error(`Expected a base64 string for a b64-encoded value, got ${typeof encoded}`);
+
+        }
+
+        const decoded = Buffer.from(encoded, 'base64');
+
+        // Buffer.from silently discards every non-base64 character, so a
+        // corrupted payload decodes to an empty buffer and imports as a
+        // hollowed-out binary column. Round-tripping is the only way to see it.
+        if (decoded.toString('base64').replace(/=+$/, '') !== encoded.replace(/=+$/, '')) {
+
+            throw new Error('Invalid base64 payload in .dt value');
+
+        }
+
+        return decoded;
+
+    }
 
     case 'gz64': {
 
         const compressed = Buffer.from(value as string, 'base64');
-        const decompressed = gunzipSync(compressed);
+
+        // attempt() here because zlib's ERR_BUFFER_TOO_LARGE reads as an
+        // internal allocation failure; the operator needs to know the file
+        // asked for more than the limit allows.
+        const [decompressed, gunzipErr] = attemptSync(() =>
+            gunzipSync(compressed, { maxOutputLength: MAX_DECOMPRESSED_VALUE_BYTES }),
+        );
+
+        if (gunzipErr || !decompressed) {
+
+            throw new Error(
+                `Compressed value exceeds the ${MAX_DECOMPRESSED_VALUE_BYTES} byte decompression limit `
+                + `or is not valid gzip: ${gunzipErr?.message ?? 'unknown error'}`,
+            );
+
+        }
 
         // Try parsing as JSON; if it fails, return the buffer
         const str = decompressed.toString('utf8');
@@ -159,7 +199,9 @@ function decodeTuple(tuple: [unknown, Encoding, ...unknown[]]): unknown {
     }
 
     default:
-        return value;
+        // Passing an unrecognised tag through raw let a tampered .dt import
+        // "successfully" with the wrong value in the column.
+        throw new Error(`Unknown .dt value encoding: ${String(encoding)}`);
 
     }
 

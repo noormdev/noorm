@@ -34,10 +34,14 @@ function normalizeHost(host: string | undefined): string {
  * - Same dialect
  * - Same host (after normalization)
  * - Same port
- * - Same database (required for PostgreSQL, optional for MySQL/MSSQL)
+ * - A dialect that can name the source database in a query
  *
- * Note: PostgreSQL cannot do cross-database queries without extensions,
- * so different databases on the same host are NOT considered "same server".
+ * PostgreSQL is never "same server". Without dblink/postgres_fdw it cannot
+ * reach another database, and when both configs name the *same* database the
+ * direct statement degenerates to `INSERT INTO t SELECT ... FROM t` — copying
+ * the destination into itself. Neither outcome is a transfer, so postgres
+ * always takes the batch path.
+ *
  * MySQL and MSSQL can query across databases on the same server.
  *
  * SQLite is never considered "same server" since there's no server.
@@ -75,6 +79,13 @@ export function isSameServer(
 
     }
 
+    // PostgreSQL has no reachable source to select from — see the doc comment.
+    if (source.dialect === 'postgres') {
+
+        return false;
+
+    }
+
     const srcHost = normalizeHost(source.host);
     const dstHost = normalizeHost(dest.host);
 
@@ -85,14 +96,6 @@ export function isSameServer(
     if (srcHost !== dstHost || srcPort !== dstPort) {
 
         return false;
-
-    }
-
-    // PostgreSQL cannot do cross-database queries without extensions
-    // So different databases = not same server for optimization purposes
-    if (source.dialect === 'postgres') {
-
-        return source.database === dest.database;
 
     }
 

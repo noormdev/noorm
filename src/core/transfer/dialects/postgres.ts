@@ -136,23 +136,19 @@ export const postgresTransferOperations: TransferDialectOperations = {
     buildDirectTransfer(
         srcDb: string,
         srcTable: string,
-        dstTable: string,
-        columns: string[],
-        srcSchema = 'public',
-        dstSchema = 'public',
+        _dstTable: string,
+        _columns: string[],
     ): string {
 
-        const quotedCols = columns.map(quoteIdent).join(', ');
-
-        // PostgreSQL uses dblink or postgres_fdw for cross-database
-        // For same-server, we use the database name in the connection
-        // This assumes we're connected to the destination and source is accessible
-        // In practice, Kysely doesn't support cross-database queries directly
-        // So we use a simpler approach: assume same database, different schemas not applicable
-        const srcFull = `${quoteIdent(srcSchema)}.${quoteIdent(srcTable)}`;
-        const dstFull = `${quoteIdent(dstSchema)}.${quoteIdent(dstTable)}`;
-
-        return `INSERT INTO ${dstFull} (${quotedCols}) OVERRIDING SYSTEM VALUE SELECT ${quotedCols} FROM ${srcFull}`;
+        // Unreachable: isSameServer() never reports postgres as same-server,
+        // precisely because there is no statement to build. The old body
+        // dropped srcDb and emitted `INSERT INTO t SELECT ... FROM t`, which
+        // copied the destination into itself. Throwing keeps that from
+        // reappearing if the routing changes.
+        throw new Error(
+            `PostgreSQL has no direct cross-database transfer for ${srcDb}.${srcTable} `
+            + '— it needs dblink or postgres_fdw. Use the batch transfer path.',
+        );
 
     },
 

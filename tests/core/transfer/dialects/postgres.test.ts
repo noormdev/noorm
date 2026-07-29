@@ -175,49 +175,32 @@ describe('transfer: postgres dialect', () => {
 
     });
 
+    // These previously asserted the emitted INSERT...SELECT, which is exactly
+    // the defect: srcDb was discarded, so the statement read from and wrote to
+    // the same table. There is no correct statement to assert — postgres needs
+    // dblink/postgres_fdw to reach another database — so the contract is now
+    // "refuse loudly".
     describe('buildDirectTransfer', () => {
 
-        it('should generate INSERT...SELECT with OVERRIDING SYSTEM VALUE', () => {
+        it('should refuse rather than emit a self-copy', () => {
 
-            const sql = postgresTransferOperations.buildDirectTransfer(
+            expect(() => postgresTransferOperations.buildDirectTransfer(
                 'source_db',
                 'users',
                 'users',
                 ['id', 'name', 'email'],
-            );
-
-            expect(sql).toContain('INSERT INTO');
-            expect(sql).toContain('OVERRIDING SYSTEM VALUE');
-            expect(sql).toContain('SELECT "id", "name", "email"');
+            )).toThrow(/dblink or postgres_fdw/);
 
         });
 
-        it('should use schema prefixes', () => {
+        it('should name the source it could not reach', () => {
 
-            const sql = postgresTransferOperations.buildDirectTransfer(
-                'source_db',
-                'users',
-                'users',
-                ['id', 'name'],
-                'src_schema',
-                'dst_schema',
-            );
-
-            expect(sql).toContain('"dst_schema"."users"');
-            expect(sql).toContain('"src_schema"."users"');
-
-        });
-
-        it('should default to public schema', () => {
-
-            const sql = postgresTransferOperations.buildDirectTransfer(
+            expect(() => postgresTransferOperations.buildDirectTransfer(
                 'source_db',
                 'users',
                 'users',
                 ['id'],
-            );
-
-            expect(sql).toContain('"public"."users"');
+            )).toThrow(/source_db\.users/);
 
         });
 
