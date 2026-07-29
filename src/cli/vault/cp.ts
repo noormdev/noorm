@@ -78,35 +78,10 @@ const cpCommand = defineCommand({
 
         }
 
-        if (args.dryRun) {
-
-            if (args.json) {
-
-                process.stdout.write(JSON.stringify({
-                    success: true,
-                    dryRun: true,
-                    source: sourceConfigName,
-                    destination: destConfigName,
-                    keys,
-                    force: !!args.force,
-                }) + '\n');
-
-            }
-            else {
-
-                process.stdout.write(`Dry run: would copy ${keys.join(', ')} from "${sourceConfigName}" to "${destConfigName}"\n`);
-                if (args.force) {
-
-                    process.stdout.write('With --force: would overwrite existing secrets\n');
-
-                }
-
-            }
-
-            process.exit(0);
-
-        }
-
+        // A dry run goes through the same preflight as the real copy — vault
+        // access on both ends, source-key existence, destination collisions —
+        // and differs only in that nothing is written. Echoing the arguments
+        // back could not answer the question a dry run is asked.
         const [result, copyErr] = await copyVaultSecrets(
             sourceConfig,
             destConfig,
@@ -114,7 +89,7 @@ const cpCommand = defineCommand({
             cryptoIdentity.identityHash,
             privateKey,
             cryptoIdentity.publicKey,
-            { force: args.force },
+            { force: args.force, dryRun: !!args.dryRun },
         );
 
         if (copyErr) {
@@ -134,10 +109,16 @@ const cpCommand = defineCommand({
 
         }
 
+        // `success` tracks the exit code. Reporting true alongside a populated
+        // `errors` array made a CI script branching on `.success` read a
+        // failed copy as a success.
+        const succeeded = !result?.errors?.length;
+
         if (args.json) {
 
             process.stdout.write(JSON.stringify({
-                success: true,
+                success: succeeded,
+                dryRun: !!args.dryRun,
                 copied: result?.copied ?? [],
                 skipped: result?.skipped ?? [],
                 errors: result?.errors ?? [],
@@ -152,13 +133,17 @@ const cpCommand = defineCommand({
 
             if (copied.length > 0) {
 
-                process.stdout.write(`Copied ${copied.length} secrets: ${copied.join(', ')}\n`);
+                const verb = args.dryRun ? 'Would copy' : 'Copied';
+
+                process.stdout.write(`${verb} ${copied.length} secrets: ${copied.join(', ')}\n`);
 
             }
 
             if (skipped.length > 0) {
 
-                process.stdout.write(`Skipped ${skipped.length} existing secrets: ${skipped.join(', ')}\n`);
+                const verb = args.dryRun ? 'Would skip' : 'Skipped';
+
+                process.stdout.write(`${verb} ${skipped.length} existing secrets: ${skipped.join(', ')}\n`);
                 process.stdout.write('Use --force to overwrite\n');
 
             }
@@ -181,13 +166,14 @@ const cpCommand = defineCommand({
 
         }
 
-        process.exit(result?.errors?.length ? 1 : 0);
+        process.exit(succeeded ? 0 : 1);
 
     },
 });
 
 (cpCommand as typeof cpCommand & { examples: string[] }).examples = [
     'noorm vault cp API_KEY staging production',
+    'noorm vault cp API_KEY staging production --dry-run',
     'noorm vault cp DB_PASSWORD dev staging --force',
     'noorm vault cp API_KEY staging production --json',
 ];
