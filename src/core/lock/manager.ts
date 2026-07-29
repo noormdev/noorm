@@ -43,10 +43,27 @@ import {
 // ─────────────────────────────────────────────────────────────
 
 /**
- * Format a Date for database storage based on dialect.
+ * Serialize a Date for the lock table's naive datetime columns.
  *
- * SQLite stores dates as TEXT (ISO strings), while other dialects
- * can bind Date objects directly.
+ * `locked_at` / `expires_at` are declared without a timezone
+ * (`version/schema/migrations/v1.ts`), so they carry no offset of their own.
+ * Expiry is only meaningful if writer and reader agree on the frame of
+ * reference, and that frame must never be the client's local timezone —
+ * otherwise a `lock status` run from another zone compares two unrelated wall
+ * clocks and deletes a live lock. Every branch below resolves to UTC:
+ *
+ * - **sqlite** stores TEXT, so an ISO-8601 UTC string is both the stored value
+ *   and the collation order used by the expiry comparison.
+ * - **postgres / mysql** drivers bind a JS `Date` using the *client's* local
+ *   offset — the defect. Hand them an explicit UTC wall clock instead:
+ *   postgres discards the offset on a naive column, and mysql applies its
+ *   session zone (server-side and stable across clients) symmetrically on
+ *   write and read, so both round-trip as identity.
+ * - **mssql** binds through tedious, whose `useUTC` default already
+ *   serializes and parses in UTC. Passing the Date through is correct;
+ *   stringifying it here would double-shift it.
+ *
+ * Mirror of {@link parseDateFromDialect} — change one, change both.
  */
 function formatDateForDialect(date: Date, dialect: Dialect): Date | string {
 
@@ -56,7 +73,51 @@ function formatDateForDialect(date: Date, dialect: Dialect): Date | string {
 
     }
 
-    return date;
+    if (dialect === 'mssql') {
+
+        return date;
+
+    }
+
+    return date.toISOString().replace('T', ' ').replace('Z', '');
+
+}
+
+/**
+ * Read a lock timestamp back, undoing whatever frame the driver applied.
+ *
+ * Mirror of {@link formatDateForDialect}. sqlite hands back the ISO-8601 UTC
+ * string it was given and tedious hands back a Date already parsed as UTC, so
+ * both need no correction. The postgres and mysql drivers parse a naive column
+ * in the *client's* local zone, producing a Date whose wall clock is right but
+ * whose instant is off by the local offset — re-read that wall clock as the
+ * UTC it actually is.
+ */
+function parseDateFromDialect(value: Date | string, dialect: Dialect): Date {
+
+    if (dialect === 'sqlite' || dialect === 'mssql') {
+
+        return new Date(value);
+
+    }
+
+    if (value instanceof Date) {
+
+        return new Date(Date.UTC(
+            value.getFullYear(),
+            value.getMonth(),
+            value.getDate(),
+            value.getHours(),
+            value.getMinutes(),
+            value.getSeconds(),
+            value.getMilliseconds(),
+        ));
+
+    }
+
+    const normalized = String(value).replace(' ', 'T');
+
+    return new Date(normalized.endsWith('Z') ? normalized : `${normalized}Z`);
 
 }
 
@@ -429,8 +490,8 @@ class LockManager {
 
         return {
             lockedBy: row.locked_by,
-            lockedAt: new Date(row.locked_at),
-            expiresAt: new Date(row.expires_at),
+            lockedAt: parseDateFromDialect(row.locked_at, dialect),
+            expiresAt: parseDateFromDialect(row.expires_at, dialect),
             reason: row.reason || undefined,
         };
 
