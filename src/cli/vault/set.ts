@@ -1,10 +1,12 @@
 /**
- * noorm vault set <key> <value> — set a vault secret.
+ * noorm vault set <key> [value] — set a vault secret.
  */
 import { defineCommand } from 'citty';
 
-import { withVaultContext, sharedArgs } from '../_utils.js';
-import { getVaultKey, setVaultSecret } from '../../core/vault/index.js';
+import { withVaultContext, sharedArgs, isYesMode } from '../_utils.js';
+import { readSecretValue } from './_secret-value.js';
+import { getVaultKeyChecked, setVaultSecretChecked, checkVaultPolicy } from '../../core/vault/index.js';
+import type { VaultPolicyGate } from '../../core/vault/index.js';
 
 const setCommand = defineCommand({
     meta: {
@@ -13,18 +15,57 @@ const setCommand = defineCommand({
     },
     args: {
         key: { type: 'positional', description: 'Secret key name', required: true },
-        value: { type: 'positional', description: 'Secret value', required: true },
+        value: { type: 'positional', description: 'Secret value (omit with --stdin)', required: false },
+        stdin: { type: 'boolean', description: 'Read the value from stdin instead of argv' },
         config: sharedArgs.config,
         json: sharedArgs.json,
+        yes: sharedArgs.yes,
     },
     async run({ args }) {
+
+        const [value, valueErr] = await readSecretValue(args);
+
+        if (valueErr) {
+
+            process.stderr.write(`Error: ${valueErr.message}\n`);
+            process.exit(1);
+
+        }
 
         const [result, err] = await withVaultContext({
             args,
             fn: async ({ ctx, cryptoIdentity, privateKey }) => {
 
                 const db = ctx.kysely;
-                const vaultKey = await getVaultKey(db, cryptoIdentity.identityHash, privateKey, ctx.dialect);
+                const config = ctx.noorm.config;
+                const gate: VaultPolicyGate = {
+                    configName: config.name,
+                    access: config.access,
+                    channel: 'user',
+                };
+
+                const check = checkVaultPolicy(gate, 'vault:write');
+
+                if (!check.allowed) {
+
+                    return {
+                        success: false,
+                        error: check.blockedReason ?? `Cannot write the vault on config "${config.name}".`,
+                    };
+
+                }
+
+                if (check.requiresConfirmation && !isYesMode(args)) {
+
+                    return {
+                        success: false,
+                        error: `Writing the vault on config "${config.name}" requires confirmation `
+                            + `(${check.confirmationPhrase}). Pass --yes to confirm.`,
+                    };
+
+                }
+
+                const vaultKey = await getVaultKeyChecked(gate, db, cryptoIdentity.identityHash, privateKey, ctx.dialect);
 
                 if (!vaultKey) {
 
@@ -35,11 +76,12 @@ const setCommand = defineCommand({
 
                 }
 
-                const [, setErr] = await setVaultSecret(
+                const [, setErr] = await setVaultSecretChecked(
+                    gate,
                     db,
                     vaultKey,
                     args.key,
-                    args.value,
+                    value as string,
                     cryptoIdentity.email,
                     ctx.dialect,
                 );
@@ -84,7 +126,7 @@ const setCommand = defineCommand({
 
 (setCommand as typeof setCommand & { examples: string[] }).examples = [
     'noorm vault set API_KEY "sk-live-..."',
-    'noorm vault set DB_PASSWORD "secret123"',
+    'echo "$API_KEY" | noorm vault set API_KEY --stdin',
     'noorm vault set API_KEY "sk-live-..." --json',
 ];
 

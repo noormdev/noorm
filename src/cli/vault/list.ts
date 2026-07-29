@@ -4,7 +4,8 @@
 import { defineCommand } from 'citty';
 
 import { withVaultContext, sharedArgs } from '../_utils.js';
-import { getVaultKey, getAllVaultSecrets, getVaultStatus } from '../../core/vault/index.js';
+import { getVaultKeyChecked, getAllVaultSecrets, getVaultStatus, checkVaultPolicy } from '../../core/vault/index.js';
+import type { VaultPolicyGate } from '../../core/vault/index.js';
 
 const listCommand = defineCommand({
     meta: {
@@ -22,6 +23,24 @@ const listCommand = defineCommand({
             fn: async ({ ctx, cryptoIdentity, privateKey }) => {
 
                 const db = ctx.kysely;
+                const config = ctx.noorm.config;
+                const gate: VaultPolicyGate = {
+                    configName: config.name,
+                    access: config.access,
+                    channel: 'user',
+                };
+
+                const check = checkVaultPolicy(gate, 'vault:read');
+
+                if (!check.allowed) {
+
+                    return {
+                        success: false,
+                        error: check.blockedReason ?? `Cannot read the vault on config "${config.name}".`,
+                    };
+
+                }
+
                 const status = await getVaultStatus(db, cryptoIdentity.identityHash, ctx.dialect);
 
                 if (!status.isInitialized) {
@@ -42,7 +61,7 @@ const listCommand = defineCommand({
 
                 }
 
-                const vaultKey = await getVaultKey(db, cryptoIdentity.identityHash, privateKey, ctx.dialect);
+                const vaultKey = await getVaultKeyChecked(gate, db, cryptoIdentity.identityHash, privateKey, ctx.dialect);
 
                 if (!vaultKey) {
 
