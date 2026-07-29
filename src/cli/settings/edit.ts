@@ -21,6 +21,7 @@ import type {
     TeardownConfig,
 } from '../../core/settings/types.js';
 import { isYesMode, sharedArgs } from '../_utils.js';
+import { EXIT } from '../_exit.js';
 
 type Manager = ReturnType<typeof getSettingsManager>;
 
@@ -568,14 +569,14 @@ const editCommand = defineCommand({
                 'Error: noorm settings edit is interactive only.\n' +
                 "Edit settings.yml directly, or use 'noorm settings build' to validate after changes.\n",
             );
-            process.exit(1);
+            process.exit(EXIT.USAGE);
 
         }
 
         if (!process.stdin.isTTY) {
 
             process.stderr.write('Error: noorm settings edit requires an interactive terminal.\n');
-            process.exit(1);
+            process.exit(EXIT.USAGE);
 
         }
 
@@ -587,7 +588,7 @@ const editCommand = defineCommand({
         if (!fileExists) {
 
             process.stderr.write('Error: No settings.yml found. Run: noorm settings init\n');
-            process.exit(1);
+            process.exit(EXIT.USAGE);
 
         }
 

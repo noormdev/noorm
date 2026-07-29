@@ -25,6 +25,7 @@ import type { ConnectionConfig } from '../../core/connection/types.js';
 import { DEFAULT_ACCESS } from '../../core/policy/index.js';
 import { initState } from '../../core/state/index.js';
 import { outputResult, outputError, sharedArgs } from '../_utils.js';
+import { EXIT } from '../_exit.js';
 
 /**
  * Coerce an env-derived value back to a string.
@@ -84,7 +85,7 @@ const initCommand = defineCommand({
                     ? `Missing or invalid environment variables: ${missing.join(', ')}`
                     : `${CI_ENV_VARS.privateKey} is invalid (expected 96 hex characters of a valid X25519 PKCS8 key)`,
             );
-            process.exit(1);
+            process.exit(EXIT.USAGE);
 
         }
 
@@ -94,7 +95,7 @@ const initCommand = defineCommand({
         if (envConfigErr) {
 
             outputError(args, `Invalid NOORM_CONNECTION_* env vars: ${envConfigErr.message}`);
-            process.exit(1);
+            process.exit(EXIT.USAGE);
 
         }
 
@@ -104,14 +105,14 @@ const initCommand = defineCommand({
         if (!dialect) {
 
             outputError(args, 'NOORM_CONNECTION_DIALECT is required (postgres, mysql, sqlite, or mssql)');
-            process.exit(1);
+            process.exit(EXIT.USAGE);
 
         }
 
         if (!database) {
 
             outputError(args, 'NOORM_CONNECTION_DATABASE is required');
-            process.exit(1);
+            process.exit(EXIT.USAGE);
 
         }
 
@@ -216,7 +217,7 @@ const initCommand = defineCommand({
         if (parseErr || !config) {
 
             outputError(args, `Invalid CI configuration: ${parseErr?.message ?? 'unknown error'}`);
-            process.exit(1);
+            process.exit(EXIT.USAGE);
 
         }
 

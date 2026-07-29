@@ -23,6 +23,7 @@ import { defineCommand } from 'citty';
 import { getSettingsManager } from '../../core/settings/index.js';
 import { outputError } from '../_utils.js';
 import { selectChangeFromFs, requireTty } from './_prompt.js';
+import { EXIT } from '../_exit.js';
 
 /**
  * Spawn an editor against a target path and wait for it to exit.
@@ -100,7 +101,7 @@ const editCommand = defineCommand({
         if (statErr || !existing?.isDirectory()) {
 
             outputError(args, `Change not found: ${changeName}`);
-            process.exit(1);
+            process.exit(EXIT.USAGE);
 
         }
 

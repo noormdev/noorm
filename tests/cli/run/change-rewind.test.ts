@@ -59,7 +59,7 @@ describe('cli: noorm change rewind — exit code on partial failure', () => {
 
     });
 
-    it('should exit 2 and log the failure when a rewind partially fails', async () => {
+    it('should exit 3 and log the failure when a rewind partially fails', async () => {
 
         // Later-applied change reverts cleanly; earlier-applied change's
         // revert SQL errors. Rewind reverts most-recent-first, so the good
@@ -84,7 +84,7 @@ describe('cli: noorm change rewind — exit code on partial failure', () => {
         const result = runCli(project, ['change', 'rewind', '2025-01-01-first']);
         const out = result.stdout + result.stderr;
 
-        expect(result.status).toBe(2);
+        expect(result.status).toBe(3);
         expect(out.toLowerCase()).toContain('failed');
 
     });

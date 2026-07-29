@@ -33,7 +33,7 @@ describe('cli: noorm init', () => {
             encoding: 'utf-8',
         });
 
-        expect(result.status).toBe(1);
+        expect(result.status).toBe(2);
         expect(result.stderr + result.stdout).toContain('interactive terminal');
 
     });
@@ -84,7 +84,7 @@ describe('cli: noorm init', () => {
             input: '',
             encoding: 'utf-8',
         });
-        expect(withHere.status).toBe(1);
+        expect(withHere.status).toBe(2);
         expect(withHere.stderr + withHere.stdout).toContain('interactive terminal');
         expect(withHere.stderr + withHere.stdout).not.toContain('already initialized');
 
@@ -102,7 +102,7 @@ describe('cli: noorm init', () => {
             encoding: 'utf-8',
         });
 
-        expect(result.status).toBe(1);
+        expect(result.status).toBe(2);
         expect(result.stderr + result.stdout).toContain('interactive terminal');
         expect(result.stderr + result.stdout).not.toContain('already initialized');
 
@@ -116,7 +116,7 @@ describe('cli: noorm init', () => {
             encoding: 'utf-8',
         });
 
-        expect(result.status).toBe(1);
+        expect(result.status).toBe(2);
         expect(result.stderr + result.stdout).toContain('not a directory');
 
     });

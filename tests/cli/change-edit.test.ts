@@ -41,14 +41,14 @@ describe('cli: noorm change edit', () => {
 
     });
 
-    it('exits 1 when change does not exist', () => {
+    it('exits 2 when change does not exist', () => {
 
         const result = spawnSync('node', [CLI, 'change', 'edit', 'nope'], {
             cwd: tmpDir,
             encoding: 'utf-8',
         });
 
-        expect(result.status).toBe(1);
+        expect(result.status).toBe(2);
         expect(result.stderr + result.stdout).toContain('Change not found');
 
     });

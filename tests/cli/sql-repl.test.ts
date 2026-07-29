@@ -13,7 +13,7 @@ describe('cli: noorm sql repl', () => {
             encoding: 'utf-8',
         });
 
-        expect(result.status).toBe(1);
+        expect(result.status).toBe(2);
         expect(result.stderr + result.stdout).toContain('interactive terminal');
 
     });
@@ -25,7 +25,7 @@ describe('cli: noorm sql repl', () => {
             encoding: 'utf-8',
         });
 
-        expect(result.status).toBe(1);
+        expect(result.status).toBe(2);
 
     });
 

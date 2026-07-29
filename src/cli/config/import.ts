@@ -14,6 +14,7 @@ import { ConfigValidationError, parseConfig } from '../../core/config/schema.js'
 import { checkConfigPolicy } from '../../core/policy/index.js';
 import { initState, getStateManager } from '../../core/state/index.js';
 import { outputResult, outputError, sharedArgs, isYesMode } from '../_utils.js';
+import { EXIT } from '../_exit.js';
 
 const importCommand = defineCommand({
     meta: {
@@ -35,7 +36,7 @@ const importCommand = defineCommand({
         if (readErr || !raw) {
 
             outputError(args, `Failed to read file: ${readErr?.message ?? 'empty file'}`);
-            process.exit(1);
+            process.exit(EXIT.USAGE);
 
         }
 
@@ -44,7 +45,7 @@ const importCommand = defineCommand({
         if (parseErr) {
 
             outputError(args, `Invalid JSON: ${parseErr.message}`);
-            process.exit(1);
+            process.exit(EXIT.USAGE);
 
         }
 
@@ -57,7 +58,7 @@ const importCommand = defineCommand({
                 : 'Config JSON is missing required fields: name, connection';
 
             outputError(args, message);
-            process.exit(1);
+            process.exit(EXIT.USAGE);
 
         }
 

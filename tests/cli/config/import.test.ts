@@ -161,7 +161,7 @@ describe('cli: noorm config import — legacy protected mapping', () => {
 
         const result = runImport(path);
 
-        expect(result.status).toBe(1);
+        expect(result.status).toBe(2);
         expect(result.stdout + result.stderr).toContain('Error');
 
     });

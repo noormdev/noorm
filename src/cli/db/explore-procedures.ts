@@ -7,6 +7,7 @@ import type { Kysely } from 'kysely';
 
 import { fetchList } from '../../core/explore/index.js';
 import { withContext, outputResult, outputError, sharedArgs } from '../_utils.js';
+import { EXIT } from '../_exit.js';
 
 const proceduresCommand = defineCommand({
     meta: {
@@ -66,7 +67,7 @@ const proceduresCommand = defineCommand({
             if (!detail) {
 
                 outputError(args, `Procedure not found: ${args.name}`);
-                process.exit(1);
+                process.exit(EXIT.USAGE);
 
             }
 
@@ -112,7 +113,7 @@ const proceduresCommand = defineCommand({
 
         if (args.json) {
 
-            outputResult(args, procedures, '');
+            outputResult(args, { procedures }, '');
 
         }
 

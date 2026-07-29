@@ -16,6 +16,7 @@ import { defineCommand } from 'citty';
 import { SqlHistoryManager } from '../../core/sql-terminal/history.js';
 import { outputResult, outputError, sharedArgs } from '../_utils.js';
 import { resolveHistoryConfigName } from './_config.js';
+import { EXIT } from '../_exit.js';
 
 /** Maximum characters of query text to display in non-JSON output. */
 const QUERY_TRUNCATE = 80;
@@ -75,7 +76,7 @@ const historyCommand = defineCommand({
         if (isNaN(limit) || limit < 1) {
 
             outputError(args, `Invalid limit: ${args.limit}. Must be a positive integer.`);
-            process.exit(1);
+            process.exit(EXIT.USAGE);
 
         }
 
@@ -84,7 +85,7 @@ const historyCommand = defineCommand({
         if (!configName) {
 
             outputError(args, 'No config specified and no active config set. Use --config or run "noorm config use <name>".');
-            process.exit(1);
+            process.exit(EXIT.USAGE);
 
         }
 

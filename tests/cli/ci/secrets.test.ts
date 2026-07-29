@@ -182,7 +182,7 @@ describe('cli: noorm ci secrets', () => {
 
     });
 
-    it('exits 1 on malformed line', () => {
+    it('exits 2 on malformed line', () => {
 
         const { result: init, identityEnv } = initCi(tmpDir);
         expect(init.status).toBe(0);
@@ -191,12 +191,12 @@ describe('cli: noorm ci secrets', () => {
 
         const result = runSecrets(tmpDir, identityEnv, secretsFile, ['--json']);
 
-        expect(result.status).toBe(1);
+        expect(result.status).toBe(2);
         expect(result.stdout + result.stderr).toContain('Parse error');
 
     });
 
-    it('exits 1 when state.enc does not exist', () => {
+    it('exits 2 when state.enc does not exist', () => {
 
         writeFileSync(secretsFile, 'FOO=one\n');
 
@@ -208,7 +208,7 @@ describe('cli: noorm ci secrets', () => {
 
         const result = runSecrets(tmpDir, env, secretsFile, ['--json']);
 
-        expect(result.status).toBe(1);
+        expect(result.status).toBe(2);
         expect(result.stdout + result.stderr).toContain('ci init');
 
     });

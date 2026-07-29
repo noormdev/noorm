@@ -4,6 +4,7 @@
 import { defineCommand } from 'citty';
 
 import { withContext, outputResult, outputError, sharedArgs } from '../_utils.js';
+import { EXIT } from '../_exit.js';
 
 const detailCommand = defineCommand({
     meta: {
@@ -57,7 +58,7 @@ const detailCommand = defineCommand({
         if (!detail) {
 
             outputError(args, `Table not found: ${args.name}`);
-            process.exit(1);
+            process.exit(EXIT.USAGE);
 
         }
 

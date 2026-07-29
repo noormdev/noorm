@@ -9,6 +9,7 @@ import { defineCommand } from 'citty';
 
 import { initState, getStateManager } from '../../core/state/index.js';
 import { outputResult, outputError, sharedArgs } from '../_utils.js';
+import { EXIT } from '../_exit.js';
 
 const cpCommand = defineCommand({
     meta: {
@@ -39,7 +40,7 @@ const cpCommand = defineCommand({
         if (!source) {
 
             outputError(args, `Config not found: ${args.src}`);
-            process.exit(1);
+            process.exit(EXIT.USAGE);
 
         }
 

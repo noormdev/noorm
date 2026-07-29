@@ -159,11 +159,11 @@ describe('cli: noorm config delete command -- access policy gate', () => {
 
     });
 
-    it('exits 1 with a clear message for an unknown config name, mutating nothing', async () => {
+    it('exits 2 with a clear message for an unknown config name, mutating nothing', async () => {
 
         const result = runDelete(['does-not-exist', '--yes']);
 
-        expect(result.status).toBe(1);
+        expect(result.status).toBe(2);
         const out = result.stdout + result.stderr;
         expect(out).toContain('"does-not-exist" not found');
 

@@ -19,7 +19,8 @@ import { attempt } from '@logosdx/utils';
 
 import { loadHelpers, findHelperFiles } from '../../core/template/helpers.js';
 import { buildContext } from '../../core/template/context.js';
-import { outputResult } from '../_utils.js';
+import { outputResult, outputError } from '../_utils.js';
+import { EXIT } from '../_exit.js';
 
 const testHelpersCommand = defineCommand({
     meta: {
@@ -53,8 +54,8 @@ const testHelpersCommand = defineCommand({
 
         if (findErr) {
 
-            process.stderr.write(`  findHelperFiles failed: ${findErr.message}\n`);
-            process.exit(1);
+            outputError(args, `findHelperFiles failed: ${findErr.message}`);
+            process.exit(EXIT.FAILURE);
 
         }
 
@@ -73,8 +74,8 @@ const testHelpersCommand = defineCommand({
 
         if (loadErr) {
 
-            process.stderr.write(`  loadHelpers failed: ${loadErr.message}\n`);
-            process.exit(1);
+            outputError(args, `loadHelpers failed: ${loadErr.message}`);
+            process.exit(EXIT.FAILURE);
 
         }
 
@@ -109,8 +110,8 @@ const testHelpersCommand = defineCommand({
 
         if (ctxErr) {
 
-            process.stderr.write(`  buildContext failed: ${ctxErr.message}\n`);
-            process.exit(1);
+            outputError(args, `buildContext failed: ${ctxErr.message}`);
+            process.exit(EXIT.FAILURE);
 
         }
 
@@ -149,7 +150,11 @@ const testHelpersCommand = defineCommand({
 
         }
 
-        process.exit(errors.length > 0 ? 1 : 0);
+        // Some helpers loaded and some did not — a mixed result, not a
+        // clean failure the caller can retry.
+        if (errors.length === 0) process.exit(EXIT.SUCCESS);
+
+        process.exit(keys.length > 0 ? EXIT.PARTIAL : EXIT.FAILURE);
 
     },
 });

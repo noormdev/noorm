@@ -153,7 +153,7 @@ describe('cli: noorm ci init', () => {
 
         const result = runInit(tmpDir, validConnectionEnv());
 
-        expect(result.status).toBe(1);
+        expect(result.status).toBe(2);
         expect(result.stderr + result.stdout).toContain('NOORM_IDENTITY_PRIVATE_KEY');
 
     });
@@ -164,7 +164,7 @@ describe('cli: noorm ci init', () => {
 
         const result = runInit(tmpDir, { ...validIdentityEnv(), ...rest });
 
-        expect(result.status).toBe(1);
+        expect(result.status).toBe(2);
         expect(result.stderr + result.stdout).toContain('NOORM_CONNECTION_DIALECT');
 
     });

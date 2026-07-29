@@ -6,9 +6,10 @@
  * vault. Without --overwrite, existing keys are skipped so a rerun is
  * safe; with --overwrite, collisions are replaced.
  *
- * Exit codes: 0 all loaded, 1 nothing loaded (precondition or total
- * failure), 2 partial (some set, some errored) — lets CI distinguish
- * degraded state from clean failure.
+ * Exit codes follow the shared contract in `../_exit.ts`: 0 all loaded,
+ * 1 nothing loaded, 2 the invocation named something missing, 3 partial
+ * (some set, some errored) — lets CI distinguish degraded state from a
+ * clean failure it can safely retry.
  */
 import { readFile } from 'node:fs/promises';
 
@@ -17,6 +18,7 @@ import { defineCommand } from 'citty';
 
 import { initState, getStateManager } from '../../core/state/index.js';
 import { outputResult, outputError, sharedArgs } from '../_utils.js';
+import { EXIT } from '../_exit.js';
 
 interface DotenvLine {
     key: string;
@@ -114,7 +116,7 @@ const secretsCommand = defineCommand({
                 args,
                 `Failed to load state (did you run "noorm ci init"?): ${initErr.message}`,
             );
-            process.exit(1);
+            process.exit(EXIT.FAILURE);
 
         }
 
@@ -127,14 +129,14 @@ const secretsCommand = defineCommand({
                 args,
                 'No config specified and no active config. Run "noorm ci init" or pass --config.',
             );
-            process.exit(1);
+            process.exit(EXIT.USAGE);
 
         }
 
         if (!stateManager.getConfig(configName)) {
 
             outputError(args, `Config "${configName}" does not exist.`);
-            process.exit(1);
+            process.exit(EXIT.USAGE);
 
         }
 
@@ -143,7 +145,7 @@ const secretsCommand = defineCommand({
         if (readErr || content === null) {
 
             outputError(args, `Failed to read ${args.file}: ${readErr?.message ?? 'unknown error'}`);
-            process.exit(1);
+            process.exit(EXIT.USAGE);
 
         }
 
@@ -152,7 +154,7 @@ const secretsCommand = defineCommand({
         if (parseErr || !lines) {
 
             outputError(args, `Parse error in ${args.file}: ${parseErr?.message ?? 'unknown error'}`);
-            process.exit(1);
+            process.exit(EXIT.USAGE);
 
         }
 
@@ -213,11 +215,13 @@ const secretsCommand = defineCommand({
 
         if (errorCount === 0) {
 
-            process.exit(0);
+            process.exit(EXIT.SUCCESS);
 
         }
 
-        process.exit(setCount > 0 ? 2 : 1);
+        // Some keys landed and some did not: the config is now half-loaded,
+        // which a pipeline must not treat as a retryable clean failure.
+        process.exit(setCount > 0 ? EXIT.PARTIAL : EXIT.FAILURE);
 
     },
 });

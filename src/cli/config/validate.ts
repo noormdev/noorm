@@ -10,6 +10,7 @@ import { defineCommand } from 'citty';
 import { initState, getStateManager } from '../../core/state/index.js';
 import { validateConfigChecks } from '../../core/config/validate.js';
 import { outputResult, outputError, sharedArgs } from '../_utils.js';
+import { EXIT } from '../_exit.js';
 
 const validateCommand = defineCommand({
     meta: {
@@ -43,7 +44,7 @@ const validateCommand = defineCommand({
         if (!config) {
 
             outputError(args, `Config "${args.name}" not found.`);
-            process.exit(1);
+            process.exit(EXIT.USAGE);
 
         }
 

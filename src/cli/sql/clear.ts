@@ -11,6 +11,7 @@ import { defineCommand } from 'citty';
 import { SqlHistoryManager } from '../../core/sql-terminal/history.js';
 import { outputResult, outputError, sharedArgs } from '../_utils.js';
 import { resolveHistoryConfigName } from './_config.js';
+import { EXIT } from '../_exit.js';
 
 const clearCommand = defineCommand({
     meta: {
@@ -34,7 +35,7 @@ const clearCommand = defineCommand({
         if (!configName) {
 
             outputError(args, 'No config specified and no active config set. Use --config or run "noorm config use <name>".');
-            process.exit(1);
+            process.exit(EXIT.USAGE);
 
         }
 
@@ -49,7 +50,7 @@ const clearCommand = defineCommand({
             if (isNaN(months) || months < 1) {
 
                 outputError(args, `Invalid --older-than value: ${args.olderThan}. Must be a positive integer (months).`);
-                process.exit(1);
+                process.exit(EXIT.USAGE);
 
             }
 
