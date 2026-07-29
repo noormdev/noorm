@@ -117,6 +117,137 @@ describe('runner: tracker', () => {
 
     });
 
+    describe('needsRun — skipped means two different things', () => {
+
+        const filepath = 'sql/001.sql';
+
+        /**
+         * Replays the first two builds of the sequence that used to break:
+         * build 1 executes the file, build 2 correctly skips it as unchanged.
+         * What build 3 should do with that history is what each test asks.
+         */
+        const seedSuccessThenUnchangedSkip = async (checksum: string) => {
+
+            const firstOpId = await tracker.createOperation({ ...baseOp, name: 'build:1' });
+            await tracker.createFileRecords(firstOpId, [
+                { filepath, fileType: 'sql', checksum },
+            ]);
+            await tracker.updateFileExecution(firstOpId, filepath, 'success', 10);
+
+            const secondOpId = await tracker.createOperation({ ...baseOp, name: 'build:2' });
+            await tracker.createFileRecords(secondOpId, [
+                { filepath, fileType: 'sql', checksum },
+            ]);
+            await tracker.updateFileExecution(secondOpId, filepath, 'skipped', 0, undefined, 'unchanged');
+
+            return { firstOpId, secondOpId };
+
+        };
+
+        it('should not re-run a file whose newest record is an unchanged skip', async () => {
+
+            await seedSuccessThenUnchangedSkip('abc123');
+
+            // Build 3 inserts its own pending row upfront, then asks. Before
+            // the fix this returned `{ needsRun: true, reason: 'new' }` off
+            // build 2's skip and re-executed the file -- fatal for any DDL
+            // that isn't idempotent, and deterministic on every third build.
+            const thirdOpId = await tracker.createOperation({ ...baseOp, name: 'build:3' });
+            await tracker.createFileRecords(thirdOpId, [
+                { filepath, fileType: 'sql', checksum: 'abc123' },
+            ]);
+
+            const result = await tracker.needsRun(filepath, 'abc123', false, thirdOpId);
+
+            expect(result).toEqual({
+                needsRun: false,
+                skipReason: 'unchanged',
+                previousChecksum: 'abc123',
+            });
+
+        });
+
+        it('should re-run a file skipped because an earlier file in the batch failed', async () => {
+
+            const opId = await tracker.createOperation({ ...baseOp, name: 'build:aborted' });
+            await tracker.createFileRecords(opId, [
+                { filepath, fileType: 'sql', checksum: 'abc123' },
+            ]);
+
+            // The batch stopped before reaching this file, so its upfront
+            // pending row becomes a skip carrying a cascade reason. Unlike an
+            // 'unchanged' skip, nothing ever ran -- the file still owes a run.
+            await tracker.skipRemainingFiles(opId, 'Skipped: failure in 000_first.sql');
+
+            const result = await tracker.needsRun(filepath, 'abc123', false);
+
+            expect(result).toEqual({ needsRun: true, reason: 'new' });
+
+        });
+
+        it('should re-run a file whose only record is an upfront pending placeholder', async () => {
+
+            const opId = await tracker.createOperation({ ...baseOp, name: 'build:crashed' });
+            await tracker.createFileRecords(opId, [
+                { filepath, fileType: 'sql', checksum: 'abc123' },
+            ]);
+
+            const result = await tracker.needsRun(filepath, 'abc123', false);
+
+            expect(result).toEqual({ needsRun: true, reason: 'new' });
+
+        });
+
+        it('should re-run when the file changed after an unchanged skip was recorded', async () => {
+
+            await seedSuccessThenUnchangedSkip('abc123');
+
+            // Proves the unchanged skip falls through to the checksum
+            // comparison rather than short-circuiting into a blanket skip.
+            const result = await tracker.needsRun(filepath, 'def456', false);
+
+            expect(result).toEqual({
+                needsRun: true,
+                reason: 'changed',
+                previousChecksum: 'abc123',
+            });
+
+        });
+
+        it('should re-run when the change behind an unchanged skip went stale', async () => {
+
+            const { secondOpId } = await seedSuccessThenUnchangedSkip('abc123');
+
+            // A teardown marks the operation stale: its objects are gone, so
+            // the recorded skip no longer implies the database is current.
+            await db
+                .updateTable('__noorm_change__')
+                .set({ status: 'stale' })
+                .where('id', '=', secondOpId)
+                .execute();
+
+            const result = await tracker.needsRun(filepath, 'abc123', false);
+
+            expect(result).toEqual({
+                needsRun: true,
+                reason: 'stale',
+                previousChecksum: 'abc123',
+            });
+
+        });
+
+        it('should force re-run even when the newest record is an unchanged skip', async () => {
+
+            await seedSuccessThenUnchangedSkip('abc123');
+
+            const result = await tracker.needsRun(filepath, 'abc123', true);
+
+            expect(result).toEqual({ needsRun: true, reason: 'force' });
+
+        });
+
+    });
+
     describe('needsRun — DB error path (CP9.3)', () => {
 
         it('should distinguish a failed read from a genuinely new file', async () => {

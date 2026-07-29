@@ -130,6 +130,7 @@ export class Tracker {
             .select((eb: any) => [
                 eb.ref(`${this.#tables.executions}.checksum`).as('checksum'),
                 eb.ref(`${this.#tables.executions}.status`).as('exec_status'),
+                eb.ref(`${this.#tables.executions}.skip_reason`).as('skip_reason'),
                 eb.ref(`${this.#tables.change}.status`).as('change_status'),
             ])
             .where(`${this.#tables.executions}.filepath`, '=', filepath)
@@ -182,9 +183,19 @@ export class Tracker {
 
         }
 
-        // Previous execution is pending or skipped - needs to run
-        // This handles records created upfront for batch visibility
-        if (record.exec_status === 'pending' || record.exec_status === 'skipped') {
+        // A `pending` row is an upfront placeholder for batch visibility whose
+        // file never reached execution, so it carries no outcome to compare
+        // against and must run.
+        //
+        // `skipped` means two different things. A cascade skip (an earlier file
+        // in the batch failed) also never executed, so it must run too. But an
+        // `unchanged` skip is the recorded outcome of a correct decision, and
+        // treating it as "never ran" made the third consecutive build re-execute
+        // a file the second build had rightly skipped -- failing on any DDL that
+        // is not idempotent. Fall through and re-compare the checksum instead.
+        const isUnchangedSkip = record.exec_status === 'skipped' && record.skip_reason === 'unchanged';
+
+        if (record.exec_status === 'pending' || (record.exec_status === 'skipped' && !isUnchangedSkip)) {
 
             return { needsRun: true, reason: 'new' };
 
