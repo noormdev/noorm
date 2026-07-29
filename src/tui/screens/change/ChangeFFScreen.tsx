@@ -53,7 +53,7 @@ export function ChangeFFScreen({ params: _params }: ScreenProps): ReactElement {
 
     const { navigate: _navigate, back } = useRouter();
     const { isFocused } = useFocusScope('ChangeFF');
-    const { activeConfig, activeConfigName, projectRoot, settings, stateManager, identity: cryptoIdentity } = useAppContext();
+    const { activeConfig, activeConfigName, projectRoot, settings, stateManager, identity: cryptoIdentity, globalModes } = useAppContext();
     const check = activeConfig ? checkConfigPolicy('user', activeConfig, 'change:ff') : null;
 
     const { results, currentChange, progress, reset: resetProgress } = useChangeProgress();
@@ -158,7 +158,7 @@ export function ChangeFFScreen({ params: _params }: ScreenProps): ReactElement {
                 activeConfig,
             });
 
-            const result = await manager.ff();
+            const result = await manager.ff({ dryRun: globalModes.dryRun, force: globalModes.force });
 
             await conn.destroy();
 
@@ -183,7 +183,7 @@ export function ChangeFFScreen({ params: _params }: ScreenProps): ReactElement {
 
         }
 
-    }, [activeConfig, activeConfigName, stateManager, pendingChanges]);
+    }, [activeConfig, activeConfigName, stateManager, pendingChanges, globalModes]);
 
     // Handle cancel
     const handleCancel = useCallback(() => {

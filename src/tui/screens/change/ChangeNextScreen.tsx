@@ -54,7 +54,7 @@ export function ChangeNextScreen({ params }: ScreenProps): ReactElement {
 
     const { navigate: _navigate, back } = useRouter();
     const { isFocused } = useFocusScope('ChangeNext');
-    const { activeConfig, activeConfigName, projectRoot, settings, stateManager, identity: cryptoIdentity } = useAppContext();
+    const { activeConfig, activeConfigName, projectRoot, settings, stateManager, identity: cryptoIdentity, globalModes } = useAppContext();
     const check = activeConfig ? checkConfigPolicy('user', activeConfig, 'change:run') : null;
 
     // Pre-fill count from params
@@ -167,7 +167,7 @@ export function ChangeNextScreen({ params }: ScreenProps): ReactElement {
                 activeConfig,
             });
 
-            const result = await manager.next(count);
+            const result = await manager.next(count, { dryRun: globalModes.dryRun, force: globalModes.force });
 
             await conn.destroy();
 
@@ -192,7 +192,7 @@ export function ChangeNextScreen({ params }: ScreenProps): ReactElement {
 
         }
 
-    }, [activeConfig, activeConfigName, stateManager, changesToApply, count]);
+    }, [activeConfig, activeConfigName, stateManager, changesToApply, count, globalModes]);
 
     // Handle cancel
     const handleCancel = useCallback(() => {

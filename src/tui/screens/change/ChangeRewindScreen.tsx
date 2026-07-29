@@ -55,7 +55,7 @@ export function ChangeRewindScreen({ params }: ScreenProps): ReactElement {
 
     const { navigate: _navigate, back } = useRouter();
     const { isFocused } = useFocusScope('ChangeRewind');
-    const { activeConfig, activeConfigName, projectRoot, settings, stateManager, identity: cryptoIdentity } = useAppContext();
+    const { activeConfig, activeConfigName, projectRoot, settings, stateManager, identity: cryptoIdentity, globalModes } = useAppContext();
     const check = activeConfig ? checkConfigPolicy('user', activeConfig, 'change:revert') : null;
 
     // Pre-fill from params - can be count or change name
@@ -223,7 +223,7 @@ export function ChangeRewindScreen({ params }: ScreenProps): ReactElement {
                 activeConfig,
             });
 
-            const result = await manager.rewind(changesToRevert.length);
+            const result = await manager.rewind(changesToRevert.length, { dryRun: globalModes.dryRun, force: globalModes.force });
 
             await conn.destroy();
 
@@ -248,7 +248,7 @@ export function ChangeRewindScreen({ params }: ScreenProps): ReactElement {
 
         }
 
-    }, [activeConfig, activeConfigName, stateManager, changesToRevert]);
+    }, [activeConfig, activeConfigName, stateManager, changesToRevert, globalModes]);
 
     // Handle cancel
     const handleCancel = useCallback(() => {
