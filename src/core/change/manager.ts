@@ -411,6 +411,7 @@ export class ChangeManager {
                     skipped: 0,
                     failed: 1,
                     durationMs: performance.now() - start,
+                    error: `No applied change named "${target}" to rewind to`,
                 };
 
             }

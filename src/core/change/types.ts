@@ -477,6 +477,13 @@ export interface BatchChangeResult {
 
     /** Total execution time */
     durationMs: number;
+
+    /**
+     * Why the batch failed before running anything, when no per-change
+     * result can carry the reason — e.g. a rewind target matching no
+     * applied change. Absent when `changes` explains the outcome.
+     */
+    error?: string;
 }
 
 // ─────────────────────────────────────────────────────────────
