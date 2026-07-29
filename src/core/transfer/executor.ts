@@ -520,6 +520,7 @@ async function transferTableCrossDialect(
 
     const startTime = Date.now();
     const batchSize = options.batchSize ?? DEFAULT_BATCH_SIZE;
+    const strategy = options.onConflict ?? 'fail';
     const destOps = getTransferOperations(ctx.destination.dialect);
 
     if (!destOps || !plan.columnTypes) {
@@ -617,15 +618,12 @@ async function transferTableCrossDialect(
 
             if (insertErr) {
 
-                const lower = insertErr.message.toLowerCase();
-                const isDuplicate = lower.includes('duplicate') || lower.includes('unique') || lower.includes('primary key');
-
-                if (isDuplicate && options.onConflict === 'skip') {
-
-                    rowsSkipped++;
-
-                }
-                else if (options.onConflict !== 'fail') {
+                // Only a *conflict* is skippable. Testing the raw option
+                // against 'fail' meant the SDK default (undefined) swallowed
+                // every insert error — a type conversion the streamer got
+                // wrong counted as a skipped row and the transfer reported
+                // success with two thirds of the table missing.
+                if (isDuplicateKeyError(insertErr.message) && strategy !== 'fail') {
 
                     rowsSkipped++;
 
