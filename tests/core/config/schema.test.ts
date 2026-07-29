@@ -294,7 +294,7 @@ describe('config: schema validation', () => {
 
             expect(result.type).toBe('local');
             expect(result.isTest).toBe(false);
-            expect(result.access).toEqual({ user: 'admin', mcp: 'admin' });
+            expect(result.access).toEqual({ user: 'admin', mcp: 'viewer' });
 
         });
 
@@ -333,11 +333,11 @@ describe('config: schema validation', () => {
 
             }
 
-            it('should default access to admin/admin when neither access nor protected is given', () => {
+            it('should default access to admin on the user channel and viewer on the agent channel', () => {
 
                 const result = parseConfig(withoutAccess(createValidConfig()));
 
-                expect(result.access).toEqual({ user: 'admin', mcp: 'admin' });
+                expect(result.access).toEqual({ user: 'admin', mcp: 'viewer' });
                 expect(guarded(result)).toBe(false);
 
             });
@@ -353,13 +353,13 @@ describe('config: schema validation', () => {
 
             });
 
-            it('should map legacy protected: false to open access', () => {
+            it('should treat legacy protected: false as the default, not an agent-admin grant', () => {
 
                 const config = { ...withoutAccess(createValidConfig()), protected: false };
 
                 const result = parseConfig(config);
 
-                expect(result.access).toEqual({ user: 'admin', mcp: 'admin' });
+                expect(result.access).toEqual({ user: 'admin', mcp: 'viewer' });
                 expect(guarded(result)).toBe(false);
 
             });

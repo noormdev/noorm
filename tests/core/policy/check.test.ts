@@ -312,11 +312,22 @@ describe('policy: formatAccessTag', () => {
 
     });
 
-    it('should return null for an admin/admin (fully open) config', () => {
+    it('should return null for a config sitting on the default access', () => {
 
-        const config: PolicyTarget = { name: 'prod', access: { user: 'admin', mcp: 'admin' } };
+        const config: PolicyTarget = { name: 'prod', access: { user: 'admin', mcp: 'viewer' } };
 
         expect(formatAccessTag(config)).toBeNull();
+
+    });
+
+    it('should render the tag for an mcp:admin escalation rather than hiding it', () => {
+
+        // The user channel is admin either way, so `guarded()` cannot tell
+        // this apart from the default — yet this is the one config an agent
+        // can write to. It has to be visible in `noorm config list`.
+        const config: PolicyTarget = { name: 'prod', access: { user: 'admin', mcp: 'admin' } };
+
+        expect(formatAccessTag(config)).toBe('user:admin mcp:admin');
 
     });
 

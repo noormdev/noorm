@@ -168,7 +168,7 @@ describe('version: state', () => {
             expect(migrated['activeConfig']).toBe('dev');
             // v2 backfills access roles onto every config (see the "v2:
             // per-config access roles" tests below for the mapping itself).
-            expect(migrated['configs']).toEqual({ dev: { access: { user: 'admin', mcp: 'admin' } } });
+            expect(migrated['configs']).toEqual({ dev: { access: { user: 'admin', mcp: 'viewer' } } });
 
         });
 
@@ -295,7 +295,7 @@ describe('version: state', () => {
 
             });
 
-            it('should map protected: false to open access and drop protected', () => {
+            it('should map protected: false to the default access and drop protected', () => {
 
                 const state = {
                     schemaVersion: 1,
@@ -314,13 +314,13 @@ describe('version: state', () => {
                     dev: {
                         name: 'dev',
                         connection: { dialect: 'sqlite', database: ':memory:' },
-                        access: { user: 'admin', mcp: 'admin' },
+                        access: { user: 'admin', mcp: 'viewer' },
                     },
                 });
 
             });
 
-            it('should map absent protected to open access', () => {
+            it('should map absent protected to the default access', () => {
 
                 const state = {
                     schemaVersion: 1,
@@ -338,7 +338,7 @@ describe('version: state', () => {
                     dev: {
                         name: 'dev',
                         connection: { dialect: 'sqlite', database: ':memory:' },
-                        access: { user: 'admin', mcp: 'admin' },
+                        access: { user: 'admin', mcp: 'viewer' },
                     },
                 });
 
@@ -425,7 +425,7 @@ describe('version: state', () => {
 
                     // A state file written outside the zod path can hold a
                     // string here. Requiring a strict `true` sent every one
-                    // of those to admin/admin — fully open.
+                    // of those to the unrestricted default.
                     expect(migrateConfig({ name: 'prod', protected: 'true' })['access'])
                         .toEqual({ user: 'operator', mcp: 'viewer' });
 
@@ -437,7 +437,7 @@ describe('version: state', () => {
                 it('should not guard a config whose protected flag is falsy', () => {
 
                     expect(migrateConfig({ name: 'prod', protected: false })['access'])
-                        .toEqual({ user: 'admin', mcp: 'admin' });
+                        .toEqual({ user: 'admin', mcp: 'viewer' });
 
                 });
 

@@ -22,7 +22,7 @@ Replace `Config.protected: boolean` with config-scoped, channel-keyed roles enfo
         mcp: Role | false;
     }
 
-- `Config` gains `access?: ConfigAccess` — optional in the type until CP6 because CP4/CP5-owned files (`src/cli/ci/init.ts`, TUI config screens, app-context) construct `Config` literals without it; every config materialized through `parseConfig`/state load has it populated. **CP6 makes the field required** once those constructors are updated. Zod default when absent: `{ user: 'admin', mcp: 'admin' }`.
+- `Config` gains `access?: ConfigAccess` — optional in the type until CP6 because CP4/CP5-owned files (`src/cli/ci/init.ts`, TUI config screens, app-context) construct `Config` literals without it; every config materialized through `parseConfig`/state load has it populated. **CP6 makes the field required** once those constructors are updated. Zod default when absent: `{ user: 'admin', mcp: 'viewer' }` — the agent channel is never privileged without an explicit opt-in, because a stock project writes no `access` at all.
 - `ConfigSummary` gains required `access: ConfigAccess`.
 - Until CP6, `Config.protected` remains present and is **derived at load**: `protected = (access.user !== 'admin')`. It is never persisted (state `persist()` strips it; the zod schema never emits a stored value). No caller may write `protected` after CP2. CP6 deletes the field everywhere except the state migration parser.
 - Enforcement code must not trust the optionality: on the `mcp` channel, a config with absent `access` is **denied** (fail closed) — in practice unreachable, since configs reach enforcement via parse/migration.
@@ -70,7 +70,9 @@ Channel resolution of `confirm`:
 
 `mcp: false` is not a role: policy is never consulted for an invisible config — visibility is enforced before policy (see Enforcement).
 
-Helper: `guarded(config): boolean = config.access.user !== 'admin'` — used by TUI styling, `config list` display, and settings rule matching. Display-only; never an enforcement input.
+Helper: `guarded(config): boolean = config.access.user !== 'admin'` — used by TUI styling and settings rule matching. Display-only; never an enforcement input.
+
+The `config list` access tag is keyed to the default instead: `formatAccessTag` renders `user:<role> mcp:<role|off>` for any config whose access differs from the default, and `null` otherwise. `guarded` cannot drive it, because `mcp: 'admin'` is an escalation the user channel can't see.
 
 
 ## SQL classification
@@ -108,7 +110,8 @@ Lives in `src/core/policy/classify.ts` (moved and generalized from `src/rpc/prot
 New state migration in `src/core/version/state/migrations/` (registered in `src/core/version/state/index.ts`, bump `CURRENT_VERSIONS.state`):
 
 - `protected: true`  → `access: { user: 'operator', mcp: 'viewer' }`
-- `protected: false` or absent → `access: { user: 'admin', mcp: 'admin' }`
+- `protected: false` or absent → `access: { user: 'admin', mcp: 'viewer' }` (the default; `protected: false` said "no restriction requested", which is not a grant of agent admin)
+- A config that already stores an explicit `access` is left exactly as found, including `mcp: 'admin'`.
 - Stored `protected` field dropped from the persisted shape after migration.
 
 `ConfigSchema` (zod) accepts a legacy `protected` key on input for one version (feeding the same mapping) and never emits it.
@@ -153,3 +156,4 @@ Each checkpoint ends green: `bash tmp/run-test-groups.sh` (mirrors CI's four fre
 - 2026-07-07 — CP4: added `db:reset` permission (viewer deny / operator confirm / admin allow) for data-destructive-but-not-drop operations; the initial CP4 mapping of truncate/teardown/reset/importFile to `db:destroy` violated the migration section's behavior-preservation promise for open configs.
 - 2026-07-08 — CP8 (post challenge-swarm): classifier now catches CTE-wrapped DML and a destructive-function denylist (viewer write-bypass was confirmed critical). User-channel enforcement moved to the core seam so run/change/transfer/sql-terminal are gated for SDK+TUI+CLI (the earlier "same checkPolicy" claim was only partly delivered). Correctness + hygiene fixes per the swarm. Downgrade guard, state.enc durability/atomicity, and denial observability explicitly deferred (alpha; pre-existing; separate workstreams).
 - 2026-07-13 — `change:rm` added (viewer deny / operator confirm / admin confirm — admin gets confirm not allow because deleting an applied change also deletes its DB tracking row), refs `docs/spec/v1-44-change-rm-gate.md`.
+- 2026-07-29 — Default access is `{ user: 'admin', mcp: 'viewer' }`. **Superseded:** the default was `{ user: 'admin', mcp: 'admin' }`, so a config that never declared `access` — which is every config in a stock project — handed the agent channel admin, and no gate in the matrix constrained an MCP client. `viewer` keeps the agent's real job (explore, `sql:read`) while write, DDL, destructive, and credential permissions need an explicit opt-in; `mcp: false` was rejected because invisibility reports the same error as an unknown config and leaves an operator no way to diagnose it. Configs already storing an explicit `access` are untouched, including ones that stored `admin/admin` under the old default. `formatAccessTag` re-keyed from `guarded()` to "differs from the default" so `mcp: 'admin'` shows up in `config list` instead of reading as unremarkable.

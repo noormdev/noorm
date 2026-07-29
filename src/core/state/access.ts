@@ -6,7 +6,7 @@
  * accept whatever they found. A truthy-but-invalid `access` such as `{}`
  * passed through verbatim and bricked the config (every later command
  * failed zod validation), while a truthy-but-non-boolean legacy
- * `protected` such as `"true"` fell through to the admin/admin default and
+ * `protected` such as `"true"` fell through to the unrestricted default and
  * silently removed the protection it was asking for.
  *
  * The rule here is one-directional: an unrecognised shape may only make a
@@ -59,7 +59,7 @@ export function repairConfigAccess(rawAccess: unknown, rawProtected: unknown): C
 
     // Any truthy legacy value means the author asked for protection. Only
     // a strict `true` used to count, so `"true"` and `1` both resolved to
-    // fully open — the opposite of what they say.
+    // the unrestricted default — the opposite of what they say.
     const legacyProtected = Boolean(rawProtected);
 
     if (!isRecord(rawAccess)) {

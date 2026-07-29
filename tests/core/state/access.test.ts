@@ -7,7 +7,7 @@
  */
 import { describe, it, expect } from 'bun:test';
 import { repairConfigAccess } from '../../../src/core/state/access.js';
-import { GUARDED_ACCESS, OPEN_ACCESS } from '../../../src/core/policy/index.js';
+import { GUARDED_ACCESS, DEFAULT_ACCESS } from '../../../src/core/policy/index.js';
 
 describe('state: access repair', () => {
 
@@ -21,13 +21,13 @@ describe('state: access repair', () => {
 
         it('should map protected:false to open access', () => {
 
-            expect(repairConfigAccess(undefined, false)).toEqual(OPEN_ACCESS);
+            expect(repairConfigAccess(undefined, false)).toEqual(DEFAULT_ACCESS);
 
         });
 
         it('should map an absent protected flag to open access', () => {
 
-            expect(repairConfigAccess(undefined, undefined)).toEqual(OPEN_ACCESS);
+            expect(repairConfigAccess(undefined, undefined)).toEqual(DEFAULT_ACCESS);
 
         });
 
@@ -45,9 +45,9 @@ describe('state: access repair', () => {
 
         it('should treat a falsy non-boolean protected as open', () => {
 
-            expect(repairConfigAccess(undefined, 0)).toEqual(OPEN_ACCESS);
-            expect(repairConfigAccess(undefined, '')).toEqual(OPEN_ACCESS);
-            expect(repairConfigAccess(undefined, null)).toEqual(OPEN_ACCESS);
+            expect(repairConfigAccess(undefined, 0)).toEqual(DEFAULT_ACCESS);
+            expect(repairConfigAccess(undefined, '')).toEqual(DEFAULT_ACCESS);
+            expect(repairConfigAccess(undefined, null)).toEqual(DEFAULT_ACCESS);
 
         });
 
@@ -110,7 +110,7 @@ describe('state: access repair', () => {
                 const repaired = repairConfigAccess(malformed, undefined);
 
                 expect({ input: malformed, access: repaired })
-                    .not.toEqual({ input: malformed, access: OPEN_ACCESS });
+                    .not.toEqual({ input: malformed, access: DEFAULT_ACCESS });
 
             }
 
@@ -118,7 +118,7 @@ describe('state: access repair', () => {
 
         it('should restrict when access is present but not an object', () => {
 
-            expect(repairConfigAccess('admin', undefined)).toEqual(OPEN_ACCESS);
+            expect(repairConfigAccess('admin', undefined)).toEqual(DEFAULT_ACCESS);
             expect(repairConfigAccess(42, true)).toEqual(GUARDED_ACCESS);
 
         });

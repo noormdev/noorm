@@ -70,7 +70,7 @@ export class SettingsProvider {
  * by the time `parseConfig` runs, short-circuiting the legacy `protected`
  * fallback in `withResolvedAccess` and silently opening up any config that
  * only sets legacy `protected: true`. `parseConfig` still defaults absent
- * `access` to admin/admin (via `resolveLegacyAccess`) — just after the
+ * `access` to `DEFAULT_ACCESS` (via `resolveLegacyAccess`) — just after the
  * merge, from the real inputs, not before it.
  */
 const DEFAULTS: ConfigInput = {

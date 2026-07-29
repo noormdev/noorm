@@ -232,7 +232,7 @@ describe('state: manager', () => {
 
         });
 
-        it('should migrate a legacy protected:false config to open access', async () => {
+        it('should migrate a legacy protected:false config to the default access', async () => {
 
             const statePath = state.getStatePath();
             writeLegacyState(statePath, testPrivateKey, {
@@ -247,7 +247,7 @@ describe('state: manager', () => {
 
             await state.load();
 
-            expect(state.getConfig('dev')?.access).toEqual({ user: 'admin', mcp: 'admin' });
+            expect(state.getConfig('dev')?.access).toEqual({ user: 'admin', mcp: 'viewer' });
 
             const raw = readFileSync(statePath, 'utf8');
             const decrypted = JSON.parse(
@@ -290,7 +290,7 @@ describe('state: manager', () => {
 
             await state.load();
 
-            expect(state.getConfig('corrupt')?.access).toEqual({ user: 'admin', mcp: 'admin' });
+            expect(state.getConfig('corrupt')?.access).toEqual({ user: 'admin', mcp: 'viewer' });
 
             const raw = readFileSync(statePath, 'utf8');
             const decrypted = JSON.parse(
@@ -299,7 +299,7 @@ describe('state: manager', () => {
 
             expect(decrypted.configs['corrupt']?.['access']).toEqual({
                 user: 'admin',
-                mcp: 'admin',
+                mcp: 'viewer',
             });
 
         });
@@ -313,7 +313,7 @@ describe('state: manager', () => {
             // is a no-op at current version, so this raw shape survives
             // unchanged into the backfill loop; it must resolve per the
             // documented fail-closed mapping (protected:true -> operator/viewer),
-            // not the admin/admin open-access fallback.
+            // not the unrestricted default.
             const statePath = state.getStatePath();
             const currentVersion = getPackageVersion();
 
@@ -362,7 +362,7 @@ describe('state: manager', () => {
 
             // The backfill only accepted a strict boolean, so `"true"` --
             // which a config saved outside the zod path can carry -- took
-            // the admin/admin fallback and lost its protection entirely.
+            // the unrestricted default and lost its protection entirely.
             const statePath = state.getStatePath();
 
             writeCurrentState(statePath, testPrivateKey, {
