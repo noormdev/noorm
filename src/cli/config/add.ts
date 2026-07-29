@@ -7,14 +7,19 @@
  */
 import { defineCommand } from 'citty';
 
+import { outputError, sharedArgs } from '../_utils.js';
+
 const addCommand = defineCommand({
     meta: {
         name: 'add',
         description: 'Create a new configuration (interactive, via TUI)',
     },
-    async run() {
+    args: {
+        json: sharedArgs.json,
+    },
+    async run({ args }) {
 
-        process.stderr.write('Interactive only — run: noorm ui\n');
+        outputError(args, 'Interactive only — run: noorm ui. For headless creation use: noorm config import <file.json>');
         process.exit(1);
 
     },
@@ -22,6 +27,7 @@ const addCommand = defineCommand({
 
 (addCommand as typeof addCommand & { examples: string[] }).examples = [
     'noorm ui  # then navigate to config > add',
+    'noorm config import ./dev-config.json  # headless equivalent',
 ];
 
 export default addCommand;
