@@ -110,7 +110,7 @@ The CLI bundles all drivers — no extra installation needed. These are only req
 If you work with an AI coding agent — Claude Code, Codex, Cursor, Gemini CLI — install the noorm skill:
 
 ```bash
-npx skills add noormdev/noorm
+npx skills add noormdev/noorm/skills
 ```
 
 Agents otherwise guess at noorm's conventions, and several of them are non-obvious enough to guess wrong: SDK methods throw named errors rather than returning them, `attempt()` is used deliberately rather than everywhere, the codebase uses no `try`/`catch`, and test helpers carry safety guards that exist for a reason. The skill covers all of it, plus the headless CLI flags used in CI.

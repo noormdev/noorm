@@ -19,7 +19,7 @@ This writes (or extends) the agent's MCP configuration file. The agent picks up 
 Pair it with the skill, which teaches the agent noorm's conventions rather than its tools:
 
 ```bash
-npx skills add noormdev/noorm
+npx skills add noormdev/noorm/skills
 ```
 
 MCP and the skill solve different halves of the same problem — MCP is what the agent can *do*, the skill is what it *knows*. An agent with MCP but no skill can query your schema and still write SDK code that wraps everything in `try`/`catch` this codebase never uses. See [Installation](/getting-started/installation#install-the-agent-skill-optional).

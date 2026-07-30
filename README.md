@@ -28,7 +28,7 @@ The install script is [fully transparent and open source](https://github.com/noo
 If you use an AI coding agent, install the noorm skill so it writes against the real conventions instead of guessing:
 
 ```bash
-npx skills add noormdev/noorm
+npx skills add noormdev/noorm/skills
 ```
 
 It teaches the agent the SDK surface, the CLI's headless flags, template syntax, and config layout — the parts that are easy to get subtly wrong.
