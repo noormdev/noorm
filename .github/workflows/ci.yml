@@ -134,7 +134,23 @@ jobs:
               env:
                   CI: 'false'
                   FORCE_COLOR: 'true'
-              run: bun test --serial tests/cli
+              run: |
+                  bun test --serial $(find tests/cli \( -name '*.test.ts' -o -name '*.test.tsx' \) \
+                      ! -name 'cli-logger-settings.test.ts' | sort | tr '\n' ' ')
+            # Isolated for the same reason tests/core/transfer is: bun's
+            # `mock.module` registry is process-global and re-registering does
+            # not restore, so an `afterAll` cleanup is a no-op. Two init screen
+            # tests replace the `SettingsManager` class; `getSettingsManager`
+            # then constructs a mock instance, and `createCliLogger` reads
+            # `settings: {}` instead of settings.yml. Load order decides who
+            # wins — root files first on macOS, subdirectories first on Linux —
+            # so this passed locally and failed only here. A separate process
+            # is the only reliable isolation.
+            - name: Run CLI logger settings tests (isolated)
+              env:
+                  CI: 'false'
+                  FORCE_COLOR: 'true'
+              run: bun test --serial tests/cli/cli-logger-settings.test.ts
             - name: Run integration tests
               env:
                   CI: 'false'

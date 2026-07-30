@@ -23,23 +23,29 @@ bun run typecheck               # Type check
 
 ## Running Tests
 
-A single `bun test` (whole suite, one process) does **not** reflect CI. CI deliberately splits the suite into four independent `bun test --serial` invocations, each in a fresh process — see `.github/workflows/ci.yml:122-142`:
+A single `bun test` (whole suite, one process) does **not** reflect CI. CI deliberately splits the suite into five independent `bun test --serial` invocations, each in a fresh process — see `.github/workflows/ci.yml`:
 
 1. `tests/utils` + `tests/core` (excluding `tests/core/transfer`) + `tests/sdk`
 2. `tests/core/transfer` (isolated — comment cites a runner-image regression)
-3. `tests/cli`
-4. `tests/integration`
+3. `tests/cli` (excluding `cli-logger-settings.test.ts`)
+4. `tests/cli/cli-logger-settings.test.ts` (isolated — see below)
+5. `tests/integration`
 
 The split exists because cross-file pollution (module-scope `process.env` snapshots, shared DB state, singletons left dirty between files) produces hundreds of false failures in the unified run while CI is green. When triaging a "broken" test, **run the file in isolation first**; if it passes alone, the failure is contamination, not a regression.
 
-Known contamination source: `src/core/config/index.ts:34` calls `makeNestedConfig(process.env, …)` at module scope, snapshotting env at first import. The same bug was fixed for `SettingsManager` in commit `ec9ccc2` (`fix(settings): move makeNestedConfig to call-time`); the config module hasn't been moved yet.
+**`mock.module` never restores.** Bun's mock registry is process-global, and re-registering the real module does *not* undo a mock — measured directly. Every `afterAll(() => mock.module(..., () => actualX))` in this repo is therefore a no-op, despite the "restore mocked modules to prevent pollution" comments next to them. A file that mocks a module poisons every file loaded after it for the life of the process.
+
+That is what isolates group 4. Two init-screen tests replace the `SettingsManager` *class*; `getSettingsManager` then constructs a mock instance, so `createCliLogger` reads `settings: {}` instead of `settings.yml`. Which file wins depends on load order — root files before subdirectories on macOS, the reverse on Linux — so it passed locally and failed only on CI. When mocking a module other code also depends on, assume the mock is permanent.
+
+The previously documented contamination source — `src/core/config/index.ts:34` calling `makeNestedConfig(process.env, …)` at module scope — **does not reproduce**: the call passes `memoizeOpts: false`, so lookups re-read `process.env` rather than snapshotting at import.
 
 To reproduce CI locally, run the four invocations separately:
 
 ```bash
 bun test --serial $(find tests/utils tests/core tests/sdk -name '*.test.ts' | grep -v tests/core/transfer | sort | tr '\n' ' ')
 bun test --serial tests/core/transfer
-bun test --serial tests/cli
+bun test --serial $(find tests/cli \( -name '*.test.ts' -o -name '*.test.tsx' \) ! -name 'cli-logger-settings.test.ts' | sort | tr '\n' ' ')
+bun test --serial tests/cli/cli-logger-settings.test.ts
 bun test --serial tests/integration
 ```
 
