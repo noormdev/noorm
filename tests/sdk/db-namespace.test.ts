@@ -84,7 +84,7 @@ function createMockConfig(): Config {
         name: 'test',
         type: 'local',
         isTest: true,
-        access: { user: 'admin', mcp: 'admin' },
+        access: { user: 'admin', agent: 'admin' },
         connection: { dialect: 'postgres', database: 'testdb' },
     };
 

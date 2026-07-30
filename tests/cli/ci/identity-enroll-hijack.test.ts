@@ -66,7 +66,7 @@ interface EnrollFixture {
  * `enroll` enforces before it will propagate anything).
  */
 async function setupEnrollFixture(
-    access: ConfigAccess = { user: 'admin', mcp: 'admin' },
+    access: ConfigAccess = { user: 'admin', agent: 'admin' },
 ): Promise<EnrollFixture> {
 
     const testId = randomUUID().slice(0, 8);
@@ -309,7 +309,7 @@ describe('cli: ci identity enroll — vault:propagate authorization', () => {
 
     it('denies a viewer config outright', async () => {
 
-        fx = await setupEnrollFixture({ user: 'viewer', mcp: 'viewer' });
+        fx = await setupEnrollFixture({ user: 'viewer', agent: 'viewer' });
 
         const result = runEnroll(fx, ['--public-key', fx.botPublicKey, '--yes']);
 
@@ -319,7 +319,7 @@ describe('cli: ci identity enroll — vault:propagate authorization', () => {
 
     it('grants no vault access from a viewer config', async () => {
 
-        fx = await setupEnrollFixture({ user: 'viewer', mcp: 'viewer' });
+        fx = await setupEnrollFixture({ user: 'viewer', agent: 'viewer' });
 
         runEnroll(fx, ['--public-key', fx.botPublicKey, '--yes']);
 

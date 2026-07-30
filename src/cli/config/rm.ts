@@ -11,7 +11,7 @@ import { defineCommand } from 'citty';
 
 import { initState, getStateManager } from '../../core/state/index.js';
 import { getSettingsManager } from '../../core/settings/index.js';
-import { checkConfigPolicy } from '../../core/policy/index.js';
+import { checkConfigPolicy, resolveChannel } from '../../core/policy/index.js';
 import { SettingsProvider } from '../../core/config/resolver.js';
 import { outputResult, outputError, sharedArgs, isYesMode } from '../_utils.js';
 import { EXIT } from '../_exit.js';
@@ -63,7 +63,7 @@ const rmCommand = defineCommand({
 
         }
 
-        const check = checkConfigPolicy('user', config, 'config:rm');
+        const check = checkConfigPolicy(resolveChannel(), config, 'config:rm');
 
         if (!check.allowed) {
 

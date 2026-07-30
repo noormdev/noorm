@@ -27,8 +27,8 @@ const listConfigsCommand: RpcCommand<Record<string, never>, ConfigSummary[]> = {
 
         const summaries = manager.listConfigs();
 
-        // Invisibility: a config with access.mcp === false (or missing
-        // access) does not exist as far as the mcp channel is concerned.
+        // Invisibility: a config with access.agent === false (or missing
+        // access) does not exist as far as the agent channel is concerned.
         return summaries.filter((summary) => isVisibleToChannel(summary.access, session.channel));
 
     },

@@ -20,7 +20,7 @@ const mockContext: RunContext = {
     configName: 'test',
     identity: { name: 'Test User', email: 'test@example.com', source: 'config' },
     projectRoot: FIXTURES_DIR,
-    access: { user: 'admin', mcp: 'admin' },
+    access: { user: 'admin', agent: 'admin' },
     channel: 'user',
     config: { table: 'users' },
     secrets: { API_KEY: 'secret123' },
@@ -145,7 +145,7 @@ describe('runner: policy gate', () => {
     // proves it fires before any file I/O or DB access is attempted.
     const viewerContext: RunContext = {
         ...mockContext,
-        access: { user: 'viewer', mcp: false },
+        access: { user: 'viewer', agent: false },
     };
 
     it('should deny runBuild for a viewer role', async () => {
@@ -222,7 +222,7 @@ describe('runner: policy gate', () => {
         const filepath = path.join(FIXTURES_DIR, 'template.sql.tmpl');
 
         const results = await preview(
-            { ...mockContext, access: { user: 'operator', mcp: 'operator' } },
+            { ...mockContext, access: { user: 'operator', agent: 'operator' } },
             [filepath],
         );
 

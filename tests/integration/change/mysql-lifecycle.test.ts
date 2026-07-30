@@ -123,7 +123,7 @@ describe('change: lifecycle on live mysql', () => {
             projectRoot: tempDir,
             changesDir,
             sqlDir,
-            access: { user: 'admin', mcp: 'admin' },
+            access: { user: 'admin', agent: 'admin' },
             channel: 'user',
             dialect: 'mysql',
         };

@@ -77,7 +77,7 @@ export const DEFAULT_RUN_OPTIONS: Required<Omit<RunOptions, 'output'>> & { outpu
  *     configName: 'dev',
  *     identity: { name: 'Alice', email: 'alice@example.com' },
  *     projectRoot: '/project',
- *     access: { user: 'admin', mcp: 'admin' },
+ *     access: { user: 'admin', agent: 'admin' },
  *     channel: 'user',
  * }
  * ```
@@ -103,7 +103,7 @@ export interface RunContext {
      */
     access: ConfigAccess;
 
-    /** Caller channel for the policy gate — `user` for CLI/TUI/SDK, `mcp` for MCP. */
+    /** Caller channel for the policy gate — `user` for CLI/TUI/SDK, `agent` for an AI agent (MCP or CLI). */
     channel: Channel;
 
     /** Database dialect for schema-aware operations. Default: 'postgres' */

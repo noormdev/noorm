@@ -7,6 +7,7 @@ import { defineCommand } from 'citty';
 import { attempt } from '@logosdx/utils';
 import type { Kysely } from 'kysely';
 
+import { resolveChannel } from '../../core/policy/index.js';
 import { executeRawSql } from '../../core/sql-terminal/executor.js';
 import { withContext, outputError, outputResult, sharedArgs } from '../_utils.js';
 import { EXIT } from '../_exit.js';
@@ -52,7 +53,7 @@ const sqlCommand = defineCommand({
             args,
             fn: async (ctx) => executeRawSql(ctx.kysely as unknown as Kysely<unknown>, query!, ctx.noorm.config.name, {
                 access: ctx.noorm.config.access,
-                channel: 'user',
+                channel: resolveChannel(),
                 dialect: ctx.dialect,
             }),
         });

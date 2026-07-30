@@ -81,7 +81,7 @@ describe('cli: noorm db explore — output streams', () => {
             name: CONFIG_NAME,
             type: 'local',
             isTest: true,
-            access: { user: 'admin', mcp: 'admin' },
+            access: { user: 'admin', agent: 'admin' },
             connection: { dialect: 'sqlite', database: dbPath },
         };
 

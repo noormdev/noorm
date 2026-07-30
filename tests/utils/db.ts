@@ -919,7 +919,7 @@ export function makeTestConfig(name: string, connection: ConnectionConfig): Conf
         name,
         type: 'local',
         isTest: true,
-        access: { user: 'admin', mcp: 'admin' },
+        access: { user: 'admin', agent: 'admin' },
         connection,
     };
 

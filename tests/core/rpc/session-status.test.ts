@@ -3,7 +3,7 @@
  *
  * Uses a real StateManager (via the module singleton `status` reads through
  * `initState()`) rather than mocking state, so active-config resolution is
- * proven end-to-end the same way `list-configs.test.ts` proves mcp-channel
+ * proven end-to-end the same way `list-configs.test.ts` proves agent-channel
  * filtering. `setKeyOverride` supplies the encryption key in-memory so
  * persistence never touches the real `~/.noorm/identity.key`. Only
  * `RpcSession` (`channel`, `listConnections`, `hasConnection`) is mocked.
@@ -34,7 +34,7 @@ function testConfig(name: string, overrides: Partial<Config> = {}): Config {
         name,
         type: 'local',
         isTest: true,
-        access: { user: 'admin', mcp: 'admin' },
+        access: { user: 'admin', agent: 'admin' },
         connection: { dialect: 'sqlite', database: ':memory:' },
         ...overrides,
     };
@@ -190,13 +190,13 @@ describe('rpc commands: status', () => {
 
     });
 
-    it('should hide the active config name on the mcp channel when access.mcp === false', async () => {
+    it('should hide the active config name on the agent channel when access.agent === false', async () => {
 
         const manager = await initState(tempDir);
-        await manager.setConfig('hidden', testConfig('hidden', { access: { user: 'admin', mcp: false } }));
+        await manager.setConfig('hidden', testConfig('hidden', { access: { user: 'admin', agent: false } }));
         await manager.setActiveConfig('hidden');
 
-        const result = await cmd.handler({}, sessionFor({ channel: 'mcp' }));
+        const result = await cmd.handler({}, sessionFor({ channel: 'agent' }));
 
         if (!isSessionStatus(result)) throw new Error('expected a SessionStatus');
 
@@ -208,7 +208,7 @@ describe('rpc commands: status', () => {
     it('should report the active config name unfiltered on the user channel for the same hidden config', async () => {
 
         const manager = await initState(tempDir);
-        await manager.setConfig('hidden', testConfig('hidden', { access: { user: 'admin', mcp: false } }));
+        await manager.setConfig('hidden', testConfig('hidden', { access: { user: 'admin', agent: false } }));
         await manager.setActiveConfig('hidden');
 
         const result = await cmd.handler({}, sessionFor({ channel: 'user' }));

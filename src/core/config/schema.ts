@@ -22,7 +22,7 @@ const RoleSchema = z.enum(['viewer', 'operator', 'admin']);
 
 const AccessSchema = z.object({
     user: RoleSchema,
-    mcp: z.union([RoleSchema, z.literal(false)]),
+    agent: z.union([RoleSchema, z.literal(false)]),
 });
 
 /**
@@ -322,7 +322,7 @@ export function validateConfigInput(input: unknown): asserts input is ConfigInpu
  * const config = parseConfig(minimal)
  * // config.type === 'local' (default)
  * // config.isTest === false (default)
- * // config.access === { user: 'admin', mcp: 'admin' } (default)
+ * // config.access === { user: 'admin', agent: 'viewer' } (default)
  * ```
  */
 export function parseConfig(config: unknown): ConfigSchemaType {

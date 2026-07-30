@@ -27,7 +27,7 @@ export const CURRENT_VERSIONS = Object.freeze({
     schema: 2,
 
     /** State file (state.enc) schema version */
-    state: 2,
+    state: 3,
 
     /** Settings file (settings.yml) schema version */
     settings: 1,

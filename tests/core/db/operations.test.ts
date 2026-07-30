@@ -16,9 +16,9 @@ import { createDb, destroyDb } from '../../../src/core/db/index.js';
 import type { ConnectionConfig } from '../../../src/core/connection/index.js';
 import type { ConfigAccess } from '../../../src/core/policy/index.js';
 
-const VIEWER: ConfigAccess = { user: 'viewer', mcp: 'viewer' };
-const OPERATOR: ConfigAccess = { user: 'operator', mcp: 'operator' };
-const ADMIN: ConfigAccess = { user: 'admin', mcp: 'admin' };
+const VIEWER: ConfigAccess = { user: 'viewer', agent: 'viewer' };
+const OPERATOR: ConfigAccess = { user: 'operator', agent: 'operator' };
+const ADMIN: ConfigAccess = { user: 'admin', agent: 'admin' };
 
 describe('db: lifecycle operations', () => {
 

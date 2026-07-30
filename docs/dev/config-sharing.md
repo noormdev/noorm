@@ -74,7 +74,7 @@ The exported data includes everything needed to recreate the config except crede
         name: 'production',
         type: 'remote',
         isTest: false,
-        access: { user: 'operator', mcp: 'viewer' },
+        access: { user: 'operator', agent: 'viewer' },
         connection: {
             dialect: 'postgres',
             host: 'db.example.com',

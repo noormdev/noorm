@@ -95,7 +95,7 @@ function makeConfig(name: string, connectionOverrides: Record<string, unknown> =
         name,
         type: 'local',
         isTest: false,
-        access: { user: 'admin', mcp: 'admin' },
+        access: { user: 'admin', agent: 'admin' },
         connection: { dialect: 'sqlite', database: ':memory:', ...connectionOverrides },
     };
 

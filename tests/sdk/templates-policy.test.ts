@@ -31,7 +31,7 @@ function makeState(projectRoot: string, userRole: Role): ContextState {
         name: 'dev',
         type: 'local',
         isTest: false,
-        access: { user: userRole, mcp: userRole },
+        access: { user: userRole, agent: userRole },
         connection: { dialect: 'postgres', database: 'testdb' },
     };
 

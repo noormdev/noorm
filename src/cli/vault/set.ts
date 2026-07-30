@@ -7,6 +7,7 @@ import { withVaultContext, outputResult, sharedArgs, isYesMode } from '../_utils
 import { readSecretValue } from './_secret-value.js';
 import { getVaultKeyChecked, setVaultSecretChecked, checkVaultPolicy } from '../../core/vault/index.js';
 import type { VaultPolicyGate } from '../../core/vault/index.js';
+import { resolveChannel } from '../../core/policy/index.js';
 
 const setCommand = defineCommand({
     meta: {
@@ -41,7 +42,7 @@ const setCommand = defineCommand({
                 const gate: VaultPolicyGate = {
                     configName: config.name,
                     access: config.access,
-                    channel: 'user',
+                    channel: resolveChannel(),
                 };
 
                 const check = checkVaultPolicy(gate, 'vault:write');

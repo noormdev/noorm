@@ -17,8 +17,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 /**
  * Migration v2: per-config access roles.
  *
- * - `protected: true` -> `{ user: 'operator', mcp: 'viewer' }`
- * - `protected: false` or absent -> `{ user: 'admin', mcp: 'admin' }`
+ * - `protected: true` -> `{ user: 'operator', agent: 'viewer' }`
+ * - `protected: false` or absent -> `{ user: 'admin', agent: 'viewer' }`
  *
  * The stored `protected` field is dropped — `access` becomes the sole
  * source of truth for a config's roles. Because `protected` does not

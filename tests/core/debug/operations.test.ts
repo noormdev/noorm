@@ -40,17 +40,17 @@ import { observer } from '../../../src/core/observer.js';
 
 const ADMIN: DebugPolicyContext = {
     channel: 'user',
-    config: { name: 'test', access: { user: 'admin', mcp: 'admin' } },
+    config: { name: 'test', access: { user: 'admin', agent: 'admin' } },
 };
 
 const OPERATOR: DebugPolicyContext = {
     channel: 'user',
-    config: { name: 'test', access: { user: 'operator', mcp: 'operator' } },
+    config: { name: 'test', access: { user: 'operator', agent: 'operator' } },
 };
 
 const VIEWER: DebugPolicyContext = {
     channel: 'user',
-    config: { name: 'test', access: { user: 'viewer', mcp: 'viewer' } },
+    config: { name: 'test', access: { user: 'viewer', agent: 'viewer' } },
 };
 
 const NO_ACCESS: DebugPolicyContext = {
@@ -58,9 +58,9 @@ const NO_ACCESS: DebugPolicyContext = {
     config: { name: 'test' },
 };
 
-const MCP_ADMIN: DebugPolicyContext = {
-    channel: 'mcp',
-    config: { name: 'test', access: { user: 'admin', mcp: 'admin' } },
+const AGENT_ADMIN: DebugPolicyContext = {
+    channel: 'agent',
+    config: { name: 'test', access: { user: 'admin', agent: 'admin' } },
 };
 
 /**
@@ -244,10 +244,10 @@ describe('debug: createDebugOperations', () => {
 
         });
 
-        it('should deny writes on the mcp channel even for an admin role', async () => {
+        it('should deny writes on the agent channel even for an admin role', async () => {
 
             const ids = await seedVault(db, 1);
-            const ops = createDebugOperations(db, 'sqlite', MCP_ADMIN);
+            const ops = createDebugOperations(db, 'sqlite', AGENT_ADMIN);
 
             const [, err] = await attempt(() => ops.deleteRowById(NOORM_TABLES.vault, ids[0]!));
 

@@ -76,7 +76,7 @@ describe('change: manager', () => {
             projectRoot: tempDir,
             changesDir,
             sqlDir,
-            access: { user: 'admin', mcp: 'admin' },
+            access: { user: 'admin', agent: 'admin' },
             channel: 'user',
             dialect: 'sqlite',
             ...extra,

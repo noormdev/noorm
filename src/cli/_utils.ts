@@ -18,6 +18,7 @@ import { loadPrivateKey, loadIdentityMetadata } from '../core/identity/storage.j
 import { registerIdentity } from '../core/identity/sync.js';
 import { isDev, isEnvTruthy } from '../core/environment.js';
 import { getConfig } from '../core/config/index.js';
+import { resolveChannel } from '../core/policy/index.js';
 import { isSuccessStatus } from './_exit.js';
 
 /**
@@ -189,7 +190,9 @@ export async function withContext<T>(opts: {
     const logger = await createCliLogger(projectRoot, !!args.json);
     await logger.start();
 
-    const [ctx, ctxError] = await attempt(() => createContext<NoormDatabase>({ config: args.config, yes: isYesMode(args) }));
+    const [ctx, ctxError] = await attempt(
+        () => createContext<NoormDatabase>({ config: args.config, yes: isYesMode(args), channel: resolveChannel() }),
+    );
     if (ctxError) {
 
         outputError(args, `Failed to create context: ${ctxError.message}`, logger);
@@ -283,7 +286,9 @@ export async function withVaultContext<T>(opts: {
     // `yes` matches withContext deliberately: without it a vault command can
     // never satisfy a `confirm`-tier gate, so `--yes` / NOORM_YES would be
     // silently inert in CI the moment a vault permission gains that tier.
-    const [ctx, ctxError] = await attempt(() => createContext<NoormDatabase>({ config: args.config, yes: isYesMode(args) }));
+    const [ctx, ctxError] = await attempt(
+        () => createContext<NoormDatabase>({ config: args.config, yes: isYesMode(args), channel: resolveChannel() }),
+    );
     if (ctxError) {
 
         outputError(args, `Failed to create context: ${ctxError.message}`, logger);

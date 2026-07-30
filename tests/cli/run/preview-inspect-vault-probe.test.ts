@@ -38,7 +38,7 @@ async function setupUnreachableProject(): Promise<TestProject> {
         name: 'unreachable',
         type: 'local',
         isTest: true,
-        access: { user: 'admin', mcp: 'admin' },
+        access: { user: 'admin', agent: 'admin' },
         connection: {
             dialect: 'postgres',
             host: '127.0.0.1',

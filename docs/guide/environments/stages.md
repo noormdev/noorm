@@ -96,7 +96,7 @@ Some defaults are **enforced** and cannot be overridden in the TUI:
 
 | Default | Behavior |
 |---------|----------|
-| `protected: true` | Acts as an access ceiling: whatever `access` the config or the developer sets, the *resolved* access is clamped to at most `{ user: 'operator', mcp: 'viewer' }` |
+| `protected: true` | Acts as an access ceiling: whatever `access` the config or the developer sets, the *resolved* access is clamped to at most `{ user: 'operator', agent: 'viewer' }` |
 | `isTest: true` | Cannot be set to false in the TUI |
 | `dialect` | Cannot be changed after config creation |
 

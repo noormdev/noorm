@@ -19,7 +19,7 @@ import type { ConfigAccess } from '../policy/index.js';
  *     name: 'dev',
  *     type: 'local',
  *     isTest: false,
- *     access: { user: 'admin', mcp: 'admin' },
+ *     access: { user: 'admin', agent: 'admin' },
  *     connection: {
  *         dialect: 'postgres',
  *         host: 'localhost',

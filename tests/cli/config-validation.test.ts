@@ -8,29 +8,29 @@ import {
 
 describe('config-validation: buildAccessFromValues', () => {
 
-    it('maps valid userRole/mcpRole values to the matching ConfigAccess', () => {
+    it('maps valid userRole/agentRole values to the matching ConfigAccess', () => {
 
-        expect(buildAccessFromValues({ userRole: 'operator', mcpRole: 'off' }))
-            .toEqual({ user: 'operator', mcp: false });
+        expect(buildAccessFromValues({ userRole: 'operator', agentRole: 'off' }))
+            .toEqual({ user: 'operator', agent: false });
 
-        expect(buildAccessFromValues({ userRole: 'admin', mcpRole: 'admin' }))
-            .toEqual({ user: 'admin', mcp: 'admin' });
+        expect(buildAccessFromValues({ userRole: 'admin', agentRole: 'admin' }))
+            .toEqual({ user: 'admin', agent: 'admin' });
 
-        expect(buildAccessFromValues({ userRole: 'viewer', mcpRole: 'viewer' }))
-            .toEqual({ user: 'viewer', mcp: 'viewer' });
+        expect(buildAccessFromValues({ userRole: 'viewer', agentRole: 'viewer' }))
+            .toEqual({ user: 'viewer', agent: 'viewer' });
 
     });
 
     it('fails closed to viewer/false when fields are missing', () => {
 
-        expect(buildAccessFromValues({})).toEqual({ user: 'viewer', mcp: false });
+        expect(buildAccessFromValues({})).toEqual({ user: 'viewer', agent: false });
 
     });
 
     it('fails closed to viewer/false on unrecognized/garbage values', () => {
 
-        expect(buildAccessFromValues({ userRole: 'superuser', mcpRole: 'root' }))
-            .toEqual({ user: 'viewer', mcp: false });
+        expect(buildAccessFromValues({ userRole: 'superuser', agentRole: 'root' }))
+            .toEqual({ user: 'viewer', agent: false });
 
     });
 

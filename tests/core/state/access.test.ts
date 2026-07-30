@@ -57,22 +57,22 @@ describe('state: access repair', () => {
 
         it('should keep a fully valid access untouched', () => {
 
-            expect(repairConfigAccess({ user: 'operator', mcp: 'viewer' }, true))
-                .toEqual({ user: 'operator', mcp: 'viewer' });
+            expect(repairConfigAccess({ user: 'operator', agent: 'viewer' }, true))
+                .toEqual({ user: 'operator', agent: 'viewer' });
 
         });
 
-        it('should keep mcp:false, which hides the config rather than widening it', () => {
+        it('should keep agent:false, which hides the config rather than widening it', () => {
 
-            expect(repairConfigAccess({ user: 'viewer', mcp: false }, undefined))
-                .toEqual({ user: 'viewer', mcp: false });
+            expect(repairConfigAccess({ user: 'viewer', agent: false }, undefined))
+                .toEqual({ user: 'viewer', agent: false });
 
         });
 
         it('should let a valid access win over the legacy flag', () => {
 
-            expect(repairConfigAccess({ user: 'admin', mcp: 'admin' }, true))
-                .toEqual({ user: 'admin', mcp: 'admin' });
+            expect(repairConfigAccess({ user: 'admin', agent: 'admin' }, true))
+                .toEqual({ user: 'admin', agent: 'admin' });
 
         });
 
@@ -85,27 +85,27 @@ describe('state: access repair', () => {
             // `{}` is truthy, so it used to pass straight through and brick
             // the config: every later command failed zod validation with
             // `expected one of "viewer"|"operator"|"admin"`.
-            expect(repairConfigAccess({}, true)).toEqual({ user: 'viewer', mcp: 'viewer' });
+            expect(repairConfigAccess({}, true)).toEqual({ user: 'viewer', agent: 'viewer' });
 
         });
 
         it('should fill a missing channel with the most restrictive role', () => {
 
             expect(repairConfigAccess({ user: 'admin' }, undefined))
-                .toEqual({ user: 'admin', mcp: 'viewer' });
+                .toEqual({ user: 'admin', agent: 'viewer' });
 
         });
 
         it('should replace an unrecognised role with the most restrictive one', () => {
 
-            expect(repairConfigAccess({ user: 'superuser', mcp: 'admin' }, undefined))
-                .toEqual({ user: 'viewer', mcp: 'admin' });
+            expect(repairConfigAccess({ user: 'superuser', agent: 'admin' }, undefined))
+                .toEqual({ user: 'viewer', agent: 'admin' });
 
         });
 
         it('should never widen a config whose access is malformed', () => {
 
-            for (const malformed of [{}, { user: 'nope' }, { mcp: 'nope' }, { user: null }]) {
+            for (const malformed of [{}, { user: 'nope' }, { agent: 'nope' }, { user: null }]) {
 
                 const repaired = repairConfigAccess(malformed, undefined);
 

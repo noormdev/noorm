@@ -13,7 +13,7 @@ import { initState, getStateManager } from '../../core/state/index.js';
 import { getSettingsManager } from '../../core/settings/index.js';
 import { resolveConfig, SettingsProvider } from '../../core/config/resolver.js';
 import { destroyDb } from '../../core/db/index.js';
-import { checkConfigPolicy } from '../../core/policy/index.js';
+import { checkConfigPolicy, resolveChannel } from '../../core/policy/index.js';
 import { outputResult, outputError, sharedArgs } from '../_utils.js';
 import { EXIT } from '../_exit.js';
 
@@ -95,7 +95,7 @@ const dropCommand = defineCommand({
 
         }
 
-        const check = checkConfigPolicy('user', config, 'db:destroy');
+        const check = checkConfigPolicy(resolveChannel(), config, 'db:destroy');
 
         if (!check.allowed) {
 

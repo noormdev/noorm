@@ -10,6 +10,7 @@ import { join } from 'node:path';
 import { sql } from 'kysely';
 
 import { createConnection, testConnection } from '../src/core/connection/factory.js';
+import { AGENT_HARNESSES } from '../src/core/policy/index.js';
 import { TEST_CONNECTIONS } from './utils/db.js';
 
 /**
@@ -58,6 +59,24 @@ async function ensureMssqlDatabase(): Promise<void> {
 }
 
 // === Setup ===
+
+// Pin the policy channel for the whole suite, including the CLI subprocesses
+// tests/cli spawns (they inherit this env). Without it, `resolveChannel()`
+// sniffs the agent-harness markers of whoever ran `bun test` — so the same
+// suite would deny vault:propagate for a developer inside Claude Code and
+// allow it on CI, which is a coin flip, not a test.
+//
+// Both halves are needed: several CLI fixtures build a subprocess env that
+// strips every NOORM_* var, so pinning NOORM_CHANNEL alone would not survive
+// into them — the inherited harness markers have to go too. Tests that want
+// the agent channel opt in explicitly, in the env they hand to the spawn.
+process.env['NOORM_CHANNEL'] ??= 'user';
+
+for (const harness of AGENT_HARNESSES) {
+
+    for (const marker of harness.markers) delete process.env[marker];
+
+}
 
 const tmpDir = join(process.cwd(), 'tmp');
 

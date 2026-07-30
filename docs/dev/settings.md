@@ -46,7 +46,7 @@ const paths = settings.getEffectiveBuildPaths({
     name: 'dev',
     type: 'local',
     isTest: false,
-    access: { user: 'admin', mcp: 'admin' },
+    access: { user: 'admin', agent: 'admin' },
 })
 console.log('Effective include:', paths.include)
 console.log('Effective exclude:', paths.exclude)
@@ -211,7 +211,7 @@ All conditions in a rule are AND'd together—every specified condition must be 
 import { ruleMatches } from './core/settings'
 
 const match = { isTest: true, type: 'local' }
-const config = { name: 'test', type: 'local', isTest: true, access: { user: 'admin', mcp: 'admin' } }
+const config = { name: 'test', type: 'local', isTest: true, access: { user: 'admin', agent: 'admin' } }
 
 ruleMatches(match, config)  // true - both conditions match
 ```
@@ -259,7 +259,7 @@ const { include, exclude } = settings.getEffectiveBuildPaths({
     name: 'dev',
     type: 'local',
     isTest: false,
-    access: { user: 'admin', mcp: 'admin' },
+    access: { user: 'admin', agent: 'admin' },
 })
 
 // Build only these paths
@@ -315,7 +315,7 @@ Defaults provide initial values when creating a config. Users can override most 
 
 | Default | Behavior |
 |---------|----------|
-| `protected: true` | Enforced as an access **ceiling** at config resolution (`resolveConfig`), not a value check here: resolved `access` is clamped to at most `{ user: 'operator', mcp: 'viewer' }` no matter what the config or the TUI sets |
+| `protected: true` | Enforced as an access **ceiling** at config resolution (`resolveConfig`), not a value check here: resolved `access` is clamped to at most `{ user: 'operator', agent: 'viewer' }` no matter what the config or the TUI sets |
 | `isTest: true` | Cannot be overridden to false |
 | `dialect` | Cannot be changed after creation |
 
@@ -593,7 +593,7 @@ const result = settings.evaluateRules({
     name: 'dev',
     type: 'local',
     isTest: true,
-    access: { user: 'admin', mcp: 'admin' }
+    access: { user: 'admin', agent: 'admin' }
 })
 // { matchedRules: [...], include: [...], exclude: [...] }
 ```
