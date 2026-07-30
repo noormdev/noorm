@@ -23,6 +23,17 @@ The install script is [fully transparent and open source](https://github.com/noo
 > `curl -fsSL https://raw.githubusercontent.com/noormdev/noorm/master/install.sh | sh`
 
 
+### Coding agents
+
+If you use an AI coding agent, install the noorm skill so it writes against the real conventions instead of guessing:
+
+```bash
+npx skills add noormdev/noorm
+```
+
+It teaches the agent the SDK surface, the CLI's headless flags, template syntax, and config layout — the parts that are easy to get subtly wrong.
+
+
 ## What It Does
 
 - **SQL files** define your current schema — no migration archaeology
