@@ -25,6 +25,8 @@ import { sql } from 'kysely';
 import { attempt } from '@logosdx/utils';
 
 import type { Dialect } from '../connection/types.js';
+import { withAgentProvenance } from '../identity/provenance.js';
+import { detectAgentHarness } from '../policy/harness.js';
 import { getNoormTables } from './tables.js';
 import type { NewNoormChange, NoormDatabase } from './tables.js';
 
@@ -108,6 +110,11 @@ function lastInsertIdQuery(dialect: Dialect): ReturnType<typeof sql<{ id: number
  * reports nothing usable — that is not an error here, it is the caller's to
  * classify.
  *
+ * Agent provenance is stamped here rather than at the three call sites because
+ * this is the one seam every operation record already passes through, so no
+ * caller can write a record that omits it — and a future fourth caller inherits
+ * it without knowing it exists.
+ *
  * @example
  * const [id, err] = await insertOperationRecord({ db, ndb, dialect, table, values });
  */
@@ -117,9 +124,27 @@ export async function insertOperationRecord(opts: {
     dialect: Dialect;
     table: ChangeTableName;
     values: NewNoormChange;
+
+    /**
+     * Environment to detect the harness from. Defaults to the real one; tests
+     * pass their own because Bun caches some `process.env` reads for the life
+     * of the process, so mutating it leaks into every file that runs after.
+     */
+    env?: Record<string, string | undefined>;
 }): Promise<[number | undefined, Error | null]> {
 
-    const { db, ndb, dialect, table, values } = opts;
+    const { db, ndb, dialect, table } = opts;
+
+    const harness = detectAgentHarness(opts.env);
+
+    // Left strictly untouched when no harness is detected, so a human-driven
+    // record is byte-for-byte what it was before provenance existed.
+    const values: NewNoormChange = harness === null
+        ? opts.values
+        : {
+            ...opts.values,
+            executed_by: withAgentProvenance(opts.values.executed_by ?? '', harness),
+        };
 
     const insertQuery = ndb.insertInto(table).values(values);
 
