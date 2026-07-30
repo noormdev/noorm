@@ -105,6 +105,30 @@ The CLI bundles all drivers — no extra installation needed. These are only req
 :::
 
 
+## Install the Agent Skill (Optional)
+
+If you work with an AI coding agent — Claude Code, Codex, Cursor, Gemini CLI — install the noorm skill:
+
+```bash
+npx skills add noormdev/noorm
+```
+
+Agents otherwise guess at noorm's conventions, and several of them are non-obvious enough to guess wrong: SDK methods throw named errors rather than returning them, `attempt()` is used deliberately rather than everywhere, the codebase uses no `try`/`catch`, and test helpers carry safety guards that exist for a reason. The skill covers all of it, plus the headless CLI flags used in CI.
+
+It installs four references the agent reads on demand:
+
+| Reference | Covers |
+|-----------|--------|
+| `sdk.md` | `createContext()`, Kysely patterns, error handling, testing |
+| `cli.md` | Headless commands, flags, exit codes, CI usage |
+| `templates.md` | `.sql.tmpl` syntax and data loaders |
+| `config.md` | `settings.yml`, paths, stages, secrets |
+
+::: tip Include paths are relative to `paths.sql`
+The single most common mistake — by people and agents alike — is writing `build.include` entries relative to the project root. They resolve against `paths.sql`. The skill states this explicitly; `noorm run build` also warns when an include entry matches nothing.
+:::
+
+
 ## Initialize a Project
 
 After installation, launch the TUI in your project root — it detects the missing `.noorm/` directory and walks you through identity setup, project structure, and the first config:
