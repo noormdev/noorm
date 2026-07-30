@@ -33,7 +33,7 @@ describe('runner: executeFiles — duplicate and exactly-once guards', () => {
             configName: 'test',
             identity: { name: 'Test User', email: 'test@example.com', source: 'config' },
             projectRoot: tempDir,
-            access: { user: 'admin', mcp: 'admin' },
+            access: { user: 'admin', agent: 'admin' },
             channel: 'user',
             dialect: 'sqlite',
         };

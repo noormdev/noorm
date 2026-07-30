@@ -47,7 +47,7 @@ async function setupRoleProject(role: Role): Promise<TestProject> {
         name: 'guarded',
         type: 'local',
         isTest: true,
-        access: { user: role, mcp: role },
+        access: { user: role, agent: role },
         connection: {
             dialect: 'sqlite',
             database: join(dir, '.noorm', 'test.db'),

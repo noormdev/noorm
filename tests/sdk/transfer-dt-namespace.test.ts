@@ -30,7 +30,7 @@ function makeConfig(dialect: Config['connection']['dialect']): Config {
         name: 'dev',
         type: 'local',
         isTest: false,
-        access: { user: 'admin', mcp: 'admin' },
+        access: { user: 'admin', agent: 'admin' },
         connection: { dialect, database: 'testdb' },
     };
 

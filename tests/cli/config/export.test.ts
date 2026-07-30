@@ -77,7 +77,7 @@ describe('cli: noorm config export — output file mode', () => {
             name: CONFIG_NAME,
             type: 'local',
             isTest: true,
-            access: { user: 'admin', mcp: 'admin' },
+            access: { user: 'admin', agent: 'admin' },
             connection: { dialect: 'sqlite', database: join(tmpDir, 'target.db') },
         };
 
@@ -142,7 +142,7 @@ describe('cli: noorm config export — output file mode', () => {
                 name: CONFIG_NAME,
                 type: 'local',
                 isTest: true,
-                access: { user: 'viewer', mcp: false },
+                access: { user: 'viewer', agent: false },
                 connection: {
                     dialect: 'sqlite',
                     database: join(tmpDir, 'target.db'),

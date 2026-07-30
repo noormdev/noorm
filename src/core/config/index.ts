@@ -16,6 +16,7 @@ const META_ENV_VARS = new Set([
     'NOORM_DEV', // Dev mode detection
     'NOORM_CI_CONFIG_NAME', // ci init config name override
     'NOORM_LOGGER_DEBUG', // Logger-internal debug
+    'NOORM_CHANNEL', // Policy channel override (resolveChannel)
 ]);
 
 /**

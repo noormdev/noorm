@@ -20,7 +20,7 @@ import { outputError, outputResult, sharedArgs } from '../_utils.js';
 import { EXIT } from '../_exit.js';
 import { buildContext } from '../../core/template/context.js';
 import { loadHelpers } from '../../core/template/helpers.js';
-import { assertPolicy } from '../../core/policy/index.js';
+import { assertPolicy, resolveChannel } from '../../core/policy/index.js';
 import { getStateManager } from '../../core/state/index.js';
 import { resolveRenderSecrets, RENDER_SECRETS_NOTICE } from './_render-secrets.js';
 
@@ -112,7 +112,7 @@ const inspectCommand = defineCommand({
         // so it needs the same gate as preview.
         if (activeConfig) {
 
-            const [, policyErr] = attemptSync(() => assertPolicy('user', activeConfig, 'run:file'));
+            const [, policyErr] = attemptSync(() => assertPolicy(resolveChannel(), activeConfig, 'run:file'));
 
             if (policyErr) {
 

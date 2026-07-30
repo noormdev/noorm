@@ -114,7 +114,7 @@ function makeConfig(name: string, role: Role): Config {
         name,
         type: 'local',
         isTest: true,
-        access: { user: role, mcp: role },
+        access: { user: role, agent: role },
         connection: {
             dialect: 'sqlite',
             database: ':memory:',

@@ -188,7 +188,7 @@ describe('integration: mssql runner GO batch splitter', () => {
             configName: 'integration-test',
             identity: { name: 'test', email: 'test@example.com', source: 'config' },
             projectRoot: tempDir,
-            access: { user: 'admin', mcp: 'admin' },
+            access: { user: 'admin', agent: 'admin' },
             channel: 'user',
             dialect: 'mssql',
         };
@@ -241,7 +241,7 @@ describe('integration: mssql runner GO batch splitter', () => {
             configName: 'integration-test',
             identity: { name: 'test', email: 'test@example.com', source: 'config' },
             projectRoot: tempDir,
-            access: { user: 'admin', mcp: 'admin' },
+            access: { user: 'admin', agent: 'admin' },
             channel: 'user',
             dialect: 'mssql',
         };

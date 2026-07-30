@@ -30,7 +30,7 @@ export interface DbPolicyContext {
     /** Per-channel roles from the config. Absent access denies (fail closed). */
     access?: ConfigAccess;
 
-    /** Caller channel — `user` for CLI/TUI/SDK, `mcp` for the MCP server. */
+    /** Caller channel — `user` for CLI/TUI/SDK, `agent` for an AI agent (MCP or CLI). */
     channel?: Channel;
 
     /** Caller pre-confirmed the operation (CLI `--yes`, SDK `options.yes`). */

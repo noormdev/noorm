@@ -100,31 +100,31 @@ describe('cli: noorm config list — access tag display', () => {
 
     }
 
-    it('renders "user:<role> mcp:<role>" for a guarded config', async () => {
+    it('renders "user:<role> agent:<role>" for a guarded config', async () => {
 
-        await seedConfig({ user: 'operator', mcp: 'viewer' });
+        await seedConfig({ user: 'operator', agent: 'viewer' });
 
         const result = runList();
 
         expect(result.status).toBe(0);
-        expect(result.stdout).toContain('user:operator mcp:viewer');
+        expect(result.stdout).toContain('user:operator agent:viewer');
 
     });
 
-    it('renders "mcp:off" when access.mcp is false', async () => {
+    it('renders "agent:off" when access.agent is false', async () => {
 
-        await seedConfig({ user: 'viewer', mcp: false });
+        await seedConfig({ user: 'viewer', agent: false });
 
         const result = runList();
 
         expect(result.status).toBe(0);
-        expect(result.stdout).toContain('user:viewer mcp:off');
+        expect(result.stdout).toContain('user:viewer agent:off');
 
     });
 
     it('renders no access tag for a config on the default access', async () => {
 
-        await seedConfig({ user: 'admin', mcp: 'viewer' });
+        await seedConfig({ user: 'admin', agent: 'viewer' });
 
         const result = runList();
 
@@ -133,16 +133,66 @@ describe('cli: noorm config list — access tag display', () => {
 
     });
 
-    it('renders the tag for an mcp:admin escalation', async () => {
+    it('renders the tag for an agent:admin escalation', async () => {
 
         // The one config an agent can write to must not read as unremarkable
         // just because the human channel is still admin.
-        await seedConfig({ user: 'admin', mcp: 'admin' });
+        await seedConfig({ user: 'admin', agent: 'admin' });
 
         const result = runList();
 
         expect(result.status).toBe(0);
-        expect(result.stdout).toContain('user:admin mcp:admin');
+        expect(result.stdout).toContain('user:admin agent:admin');
+
+    });
+
+    describe('agent: false invisibility', () => {
+
+        /** Runs `config list` from inside an agent harness. */
+        function runListAsAgent(): ReturnType<typeof spawnSync> {
+
+            return spawnSync('node', [CLI, 'config', 'list'], {
+                cwd: tmpDir,
+                encoding: 'utf-8',
+                env: { ...identityEnv, CLAUDECODE: '1' },
+            });
+
+        }
+
+        it('hides the config from an agent on the CLI, as it already does over MCP', async () => {
+
+            // `list_configs` filtered on the mcp channel from the start.
+            // Filtering only there made the setting worthless the moment the
+            // agent ran `noorm config list` instead of the RPC command.
+            await seedConfig({ user: 'admin', agent: false });
+
+            const result = runListAsAgent();
+
+            expect(result.stdout).not.toContain(CONFIG_NAME);
+            expect(result.stdout).toContain('No configurations found');
+
+        });
+
+        it('still shows it to the human', async () => {
+
+            await seedConfig({ user: 'admin', agent: false });
+
+            const result = runList();
+
+            expect(result.status).toBe(0);
+            expect(result.stdout).toContain(CONFIG_NAME);
+
+        });
+
+        it('does not hide a config that merely restricts the agent role', async () => {
+
+            await seedConfig({ user: 'admin', agent: 'viewer' });
+
+            const result = runListAsAgent();
+
+            expect(result.stdout).toContain(CONFIG_NAME);
+
+        });
 
     });
 

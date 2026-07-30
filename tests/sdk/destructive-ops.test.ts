@@ -35,13 +35,13 @@ import type { Change } from '../../src/core/change/index.js';
 // ─────────────────────────────────────────────────────────────
 
 /** Mirrors the legacy `protected: true` migration mapping. */
-const OPERATOR_ACCESS: ConfigAccess = { user: 'operator', mcp: 'viewer' };
+const OPERATOR_ACCESS: ConfigAccess = { user: 'operator', agent: 'viewer' };
 
 /** Denies everything but explore/sql:read on the user channel. */
-const VIEWER_ACCESS: ConfigAccess = { user: 'viewer', mcp: false };
+const VIEWER_ACCESS: ConfigAccess = { user: 'viewer', agent: false };
 
 /** Mirrors the legacy `protected: false` migration mapping. */
-const ADMIN_ACCESS: ConfigAccess = { user: 'admin', mcp: 'admin' };
+const ADMIN_ACCESS: ConfigAccess = { user: 'admin', agent: 'admin' };
 
 function makeConfig(access: ConfigAccess): Config {
 

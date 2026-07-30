@@ -21,7 +21,7 @@ function createValidConfig(overrides: Partial<Config> = {}): Config {
         name: 'test',
         type: 'local',
         isTest: true,
-        access: { user: 'admin', mcp: 'admin' },
+        access: { user: 'admin', agent: 'admin' },
         connection: {
             dialect: 'sqlite',
             database: ':memory:',
@@ -294,7 +294,7 @@ describe('config: schema validation', () => {
 
             expect(result.type).toBe('local');
             expect(result.isTest).toBe(false);
-            expect(result.access).toEqual({ user: 'admin', mcp: 'viewer' });
+            expect(result.access).toEqual({ user: 'admin', agent: 'viewer' });
 
         });
 
@@ -303,14 +303,14 @@ describe('config: schema validation', () => {
             const config = createValidConfig({
                 type: 'remote',
                 isTest: true,
-                access: { user: 'operator', mcp: 'viewer' },
+                access: { user: 'operator', agent: 'viewer' },
             });
 
             const result = parseConfig(config);
 
             expect(result.type).toBe('remote');
             expect(result.isTest).toBe(true);
-            expect(result.access).toEqual({ user: 'operator', mcp: 'viewer' });
+            expect(result.access).toEqual({ user: 'operator', agent: 'viewer' });
 
         });
 
@@ -337,7 +337,7 @@ describe('config: schema validation', () => {
 
                 const result = parseConfig(withoutAccess(createValidConfig()));
 
-                expect(result.access).toEqual({ user: 'admin', mcp: 'viewer' });
+                expect(result.access).toEqual({ user: 'admin', agent: 'viewer' });
                 expect(guarded(result)).toBe(false);
 
             });
@@ -348,7 +348,7 @@ describe('config: schema validation', () => {
 
                 const result = parseConfig(config);
 
-                expect(result.access).toEqual({ user: 'operator', mcp: 'viewer' });
+                expect(result.access).toEqual({ user: 'operator', agent: 'viewer' });
                 expect(guarded(result)).toBe(true);
 
             });
@@ -359,7 +359,7 @@ describe('config: schema validation', () => {
 
                 const result = parseConfig(config);
 
-                expect(result.access).toEqual({ user: 'admin', mcp: 'viewer' });
+                expect(result.access).toEqual({ user: 'admin', agent: 'viewer' });
                 expect(guarded(result)).toBe(false);
 
             });
@@ -369,12 +369,12 @@ describe('config: schema validation', () => {
                 const config = {
                     ...createValidConfig(),
                     protected: true,
-                    access: { user: 'viewer' as const, mcp: false as const },
+                    access: { user: 'viewer' as const, agent: false as const },
                 };
 
                 const result = parseConfig(config);
 
-                expect(result.access).toEqual({ user: 'viewer', mcp: false });
+                expect(result.access).toEqual({ user: 'viewer', agent: false });
 
             });
 
@@ -386,7 +386,7 @@ describe('config: schema validation', () => {
                 const config = {
                     ...createValidConfig(),
                     protected: true,
-                    access: { user: 'admin' as const, mcp: 'admin' as const },
+                    access: { user: 'admin' as const, agent: 'admin' as const },
                 };
 
                 const result = parseConfig(config);

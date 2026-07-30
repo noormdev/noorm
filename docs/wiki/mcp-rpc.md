@@ -16,9 +16,9 @@ Every `RpcCommand` declares a `permission: Permission | 'open'` (`core/policy` p
 - [`src/mcp/init.ts`](../../src/mcp/init.ts) — `initMcpServer`; initializes RPC registry, registers all commands, wires session
 - [`src/mcp/index.ts`](../../src/mcp/index.ts) — barrel export
 - [`src/rpc/registry.ts`](../../src/rpc/registry.ts) — `RpcRegistry`; flat `Map<name, RpcCommand>` with register/get/list
-- [`src/rpc/session.ts`](../../src/rpc/session.ts) — `SessionManager`; tracks active Kysely connections per config name. Carries the session's `channel` (`user`/`mcp`, default `'user'`) and enforces mcp-channel invisibility in `connect()` — a config with `access.mcp === false` (or no `access`) throws the same not-found error as an unknown config name
+- [`src/rpc/session.ts`](../../src/rpc/session.ts) — `SessionManager`; tracks active Kysely connections per config name. Carries the session's `channel` (`user`/`agent`, default `'user'`) and enforces agent-channel invisibility in `connect()` — a config with `access.agent === false` (or no `access`) throws the same not-found error as an unknown config name
 - [`src/rpc/commands/changes.ts`](../../src/rpc/commands/changes.ts) — RPC commands: `list_changes`, `run_change`, `revert_change`, `ff_changes`
-- [`src/rpc/commands/config.ts`](../../src/rpc/commands/config.ts) — RPC commands: `list_configs` (`permission: 'open'`; filters out `access.mcp === false` configs for the mcp channel), `get_active_config`
+- [`src/rpc/commands/config.ts`](../../src/rpc/commands/config.ts) — RPC commands: `list_configs` (`permission: 'open'`; filters out `access.agent === false` configs for the agent channel), `get_active_config`
 - [`src/rpc/commands/explore.ts`](../../src/rpc/commands/explore.ts) — RPC commands: `list_tables`, `describe_table`, `list_views`, `list_functions`
 - [`src/rpc/commands/query.ts`](../../src/rpc/commands/query.ts) — RPC commands: `sql` (dispatch-gates on `'sql:read'`; `executeRawSql` itself checks the classified statement class against the config's role), `run_sql`
 - [`src/rpc/commands/run.ts`](../../src/rpc/commands/run.ts) — RPC commands: `run_file`, `run_build`
@@ -50,5 +50,5 @@ Every `RpcCommand` declares a `permission: Permission | 'open'` (`core/policy` p
 - `mcp init` writes `.mcp.json` with the `noorm mcp serve` invocation for Claude Desktop / IDE integration.
 - Zod schemas on each RPC command define the `payload` shape validated at dispatch time.
 - Tests in [`tests/core/mcp/`](../../tests/core/mcp) cover server init and command dispatch; [`tests/core/rpc/`](../../tests/core/rpc) covers registry, permissions, session.
-- `connect()` on the mcp channel throws the identical `configNotFoundMessage` error (`core/config/resolver.ts`) for an unknown config and an invisible one (`access.mcp === false`) — an mcp caller cannot distinguish "doesn't exist" from "not permitted".
-- `SessionInfo.protected: boolean` was replaced by `SessionInfo.role: Role` — the resolved role for the session's channel (`mcp` resolves `access.mcp`, `user` resolves `access.user`).
+- `connect()` on the agent channel throws the identical `configNotFoundMessage` error (`core/config/resolver.ts`) for an unknown config and an invisible one (`access.agent === false`) — an agent cannot distinguish "doesn't exist" from "not permitted".
+- `SessionInfo.protected: boolean` was replaced by `SessionInfo.role: Role` — the resolved role for the session's channel (`agent` resolves `access.agent`, `user` resolves `access.user`).

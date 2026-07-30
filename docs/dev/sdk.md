@@ -85,7 +85,7 @@ interface CreateContextOptions {
     config?: string          // Config name (or use NOORM_CONFIG env var)
     projectRoot?: string     // Project root path (see note below)
     requireTest?: boolean    // Refuse if config.isTest !== true
-    channel?: Channel        // 'user' (default) or 'mcp' — which access role applies
+    channel?: Channel        // 'user' (default) or 'agent' — which access role applies
     stage?: string           // Stage name for stage defaults
 }
 ```
@@ -107,7 +107,7 @@ const ctx = await createContext<MyDatabase>({
 
 - `requireTest: true` - Throws `RequireTestError` if the config doesn't have `isTest: true`. Use this in test suites to prevent accidentally running against production.
 
-- `channel: 'mcp'` - Enforces the config's `access.mcp` role instead of `access.user` for destructive operations (`truncate`, `teardown`, `reset`, `changes.revert`). Use this when embedding the SDK behind an MCP-like surface. Defaults to `'user'`. A denied or unconfirmable operation throws `ProtectedConfigError` — the SDK has no prompt, so a `confirm`-tier permission needs `NOORM_YES=1` or the CLI/TUI. See [Access Roles](./config.md#access-roles).
+- `channel: 'agent'` - Enforces the config's `access.agent` role instead of `access.user` for destructive operations (`truncate`, `teardown`, `reset`, `changes.revert`). Use this when embedding the SDK behind an MCP-like surface. Defaults to `'user'`. A denied or unconfirmable operation throws `ProtectedConfigError` — the SDK has no prompt, so a `confirm`-tier permission needs `NOORM_YES=1` or the CLI/TUI. See [Access Roles](./config.md#access-roles).
 
 
 ### Environment Variable Support

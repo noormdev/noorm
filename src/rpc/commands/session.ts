@@ -69,8 +69,8 @@ export interface SessionStatus {
  *
  * Active-config resolution mirrors `resolveConfig`'s no-name path
  * (`src/core/config/resolver.ts:214`) so `status` reports exactly what a
- * bare `connect` would target. On the mcp channel, a config hidden via
- * `access.mcp === false` (or unknown to state) is reported as no active
+ * bare `connect` would target. On the agent channel, a config hidden via
+ * `access.agent === false` (or unknown to state) is reported as no active
  * config, same invisibility `list_configs` applies — `status` must not leak
  * a hidden config's name through the active-config field.
  *
@@ -98,11 +98,11 @@ const statusCommand: RpcCommand<Record<string, never>, SessionStatus> = {
         const connections = session.listConnections();
         let activeConfig = getEnvConfigName() ?? manager.getActiveConfigName() ?? null;
 
-        if (activeConfig && session.channel === 'mcp') {
+        if (activeConfig && session.channel === 'agent') {
 
             const config = manager.getConfig(activeConfig);
 
-            if (!config || config.access.mcp === false) {
+            if (!config || config.access.agent === false) {
 
                 activeConfig = null;
 

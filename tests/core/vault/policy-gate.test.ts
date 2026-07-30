@@ -49,8 +49,8 @@ const gateFor = (access: ConfigAccess): VaultPolicyGate => ({
     channel: 'user',
 });
 
-const VIEWER = gateFor({ user: 'viewer', mcp: 'viewer' });
-const ADMIN = gateFor({ user: 'admin', mcp: 'admin' });
+const VIEWER = gateFor({ user: 'viewer', agent: 'viewer' });
+const ADMIN = gateFor({ user: 'admin', agent: 'admin' });
 
 async function createTestDb(): Promise<Kysely<NoormDatabase>> {
 

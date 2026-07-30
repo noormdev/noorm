@@ -7,9 +7,9 @@ import type { ConfigAccess } from '../../../src/core/policy/index.js';
 
 describe('policy: isVisibleToChannel', () => {
 
-    it('should deny the mcp channel when access is undefined', () => {
+    it('should deny the agent channel when access is undefined', () => {
 
-        expect(isVisibleToChannel(undefined, 'mcp')).toBe(false);
+        expect(isVisibleToChannel(undefined, 'agent')).toBe(false);
 
     });
 
@@ -19,19 +19,19 @@ describe('policy: isVisibleToChannel', () => {
 
     });
 
-    it('should deny the mcp channel when access.mcp is false', () => {
+    it('should deny the agent channel when access.agent is false', () => {
 
-        const access: ConfigAccess = { user: 'admin', mcp: false };
+        const access: ConfigAccess = { user: 'admin', agent: false };
 
-        expect(isVisibleToChannel(access, 'mcp')).toBe(false);
+        expect(isVisibleToChannel(access, 'agent')).toBe(false);
 
     });
 
-    it('should allow the mcp channel when access.mcp is a real role', () => {
+    it('should allow the agent channel when access.agent is a real role', () => {
 
-        const access: ConfigAccess = { user: 'admin', mcp: 'viewer' };
+        const access: ConfigAccess = { user: 'admin', agent: 'viewer' };
 
-        expect(isVisibleToChannel(access, 'mcp')).toBe(true);
+        expect(isVisibleToChannel(access, 'agent')).toBe(true);
 
     });
 

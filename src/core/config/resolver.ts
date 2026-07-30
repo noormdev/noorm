@@ -87,9 +87,9 @@ const DEFAULTS: ConfigInput = {
 
 /**
  * Ceiling a `protected: true` stage caps a config's access to. A config can
- * still be stricter than this (e.g. `mcp: false`); it just can't be looser.
+ * still be stricter than this (e.g. `agent: false`); it just can't be looser.
  */
-const PROTECTED_STAGE_CEILING: ConfigAccess = { user: 'operator', mcp: 'viewer' };
+const PROTECTED_STAGE_CEILING: ConfigAccess = { user: 'operator', agent: 'viewer' };
 
 /**
  * Strictness rank for comparing roles: `false` (invisible) is stricter than
@@ -114,7 +114,7 @@ function clampToCeiling(access: ConfigAccess, ceiling: ConfigAccess): ConfigAcce
 
     return {
         user: roleRank(access.user) <= roleRank(ceiling.user) ? access.user : ceiling.user,
-        mcp: roleRank(access.mcp) <= roleRank(ceiling.mcp) ? access.mcp : ceiling.mcp,
+        agent: roleRank(access.agent) <= roleRank(ceiling.agent) ? access.agent : ceiling.agent,
     };
 
 }
@@ -159,7 +159,7 @@ export interface ResolveOptions {
 /**
  * Message for a config name that has no stored config.
  *
- * Single source of truth: `SessionManager`'s mcp-channel invisibility deny
+ * Single source of truth: `SessionManager`'s agent-channel invisibility deny
  * (`src/rpc/session.ts`) reuses this so a hidden config's connect error is
  * byte-identical to an unknown config's, rather than hand-copying the string.
  *

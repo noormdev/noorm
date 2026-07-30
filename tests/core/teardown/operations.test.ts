@@ -798,8 +798,8 @@ describe('teardown: teardownSchema foreign schemas', () => {
 
 describe('teardown: core-seam policy gate', () => {
 
-    const viewer = { configName: 'prod', access: { user: 'viewer', mcp: 'viewer' } } as const;
-    const admin = { configName: 'prod', access: { user: 'admin', mcp: 'admin' } } as const;
+    const viewer = { configName: 'prod', access: { user: 'viewer', agent: 'viewer' } } as const;
+    const admin = { configName: 'prod', access: { user: 'admin', agent: 'admin' } } as const;
 
     it('refuses a truncate the role denies', async () => {
 

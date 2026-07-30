@@ -113,7 +113,7 @@ describe('cli: noorm db drop — access policy gate', () => {
 
     it('denies a viewer with the policy blockedReason and leaves the database intact', async () => {
 
-        await seedConfig({ user: 'viewer', mcp: 'admin' });
+        await seedConfig({ user: 'viewer', agent: 'admin' });
 
         const result = runDrop();
 
@@ -127,7 +127,7 @@ describe('cli: noorm db drop — access policy gate', () => {
 
     it('denies an operator with the policy blockedReason and leaves the database intact', async () => {
 
-        await seedConfig({ user: 'operator', mcp: 'admin' });
+        await seedConfig({ user: 'operator', agent: 'admin' });
 
         const result = runDrop();
 
@@ -141,7 +141,7 @@ describe('cli: noorm db drop — access policy gate', () => {
 
     it('blocks an admin without --yes or NOORM_YES, naming the confirmation phrase', async () => {
 
-        await seedConfig({ user: 'admin', mcp: 'admin' });
+        await seedConfig({ user: 'admin', agent: 'admin' });
 
         const result = runDrop();
 
@@ -155,7 +155,7 @@ describe('cli: noorm db drop — access policy gate', () => {
 
     it('proceeds to the real drop when an admin passes --yes', async () => {
 
-        await seedConfig({ user: 'admin', mcp: 'admin' });
+        await seedConfig({ user: 'admin', agent: 'admin' });
 
         const result = runDrop(['--yes']);
 
@@ -166,7 +166,7 @@ describe('cli: noorm db drop — access policy gate', () => {
 
     it('proceeds to the real drop when NOORM_YES=1 is set without --yes', async () => {
 
-        await seedConfig({ user: 'admin', mcp: 'admin' });
+        await seedConfig({ user: 'admin', agent: 'admin' });
 
         const result = runDrop([], { NOORM_YES: '1' });
 
@@ -177,7 +177,7 @@ describe('cli: noorm db drop — access policy gate', () => {
 
     it('targets the NOORM_CONNECTION_* database instead of the persisted config when both are set (#51)', async () => {
 
-        await seedConfig({ user: 'admin', mcp: 'admin' });
+        await seedConfig({ user: 'admin', agent: 'admin' });
 
         const envDbPath = join(tmpDir, 'env-target.db');
         writeFileSync(envDbPath, '');

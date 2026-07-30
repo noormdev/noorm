@@ -12,6 +12,7 @@ import {
     checkVaultPolicy,
 } from '../../core/vault/index.js';
 import type { PendingVaultUser, VaultPolicyGate } from '../../core/vault/index.js';
+import { resolveChannel } from '../../core/policy/index.js';
 
 /**
  * Shape of a pending identity as reported to the operator.
@@ -57,7 +58,7 @@ const propagateCommand = defineCommand({
                 const gate: VaultPolicyGate = {
                     configName: config.name,
                     access: config.access,
-                    channel: 'user',
+                    channel: resolveChannel(),
                 };
 
                 const check = checkVaultPolicy(gate, 'vault:propagate');

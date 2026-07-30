@@ -88,7 +88,7 @@ export interface GetRowsOptions {
  * otherwise inherit the tables without inheriting the check.
  */
 export interface DebugPolicyContext {
-    /** CLI/TUI/SDK callers are `user`; the MCP server is `mcp` */
+    /** CLI/TUI/SDK callers are `user`; an AI agent is `agent` (MCP or CLI) */
     channel: Channel;
 
     /** Config being inspected; missing `access` denies every operation */

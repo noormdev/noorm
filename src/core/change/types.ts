@@ -342,7 +342,7 @@ export const DEFAULT_BATCH_OPTIONS: Required<Omit<BatchChangeOptions, 'output'>>
  *     projectRoot: '/project',
  *     changesDir: '/project/changes',
  *     sqlDir: '/project/sql',
- *     access: { user: 'admin', mcp: 'admin' },
+ *     access: { user: 'admin', agent: 'admin' },
  *     channel: 'user',
  * }
  * ```
@@ -373,7 +373,7 @@ export interface ChangeContext {
      */
     access: ConfigAccess;
 
-    /** Caller channel for the policy gate — `user` for CLI/TUI/SDK, `mcp` for MCP. */
+    /** Caller channel for the policy gate — `user` for CLI/TUI/SDK, `agent` for an AI agent (MCP or CLI). */
     channel: Channel;
 
     /** Config object for template context */

@@ -143,7 +143,7 @@ Home > Configurations
 - `●` indicates active config
 - `○` indicates inactive config
 - `>` indicates cursor position
-- `[user:<role> mcp:<role|off>]` tag shows access roles for any config whose access differs from the default (`user: admin`, `mcp: viewer`) — omitted entirely for configs still on the default
+- `[user:<role> agent:<role|off>]` tag shows access roles for any config whose access differs from the default (`user: admin`, `agent: viewer`) — omitted entirely for configs still on the default
 - `[test]` tag shows test configs
 - Press `Enter` on a config to activate it
 

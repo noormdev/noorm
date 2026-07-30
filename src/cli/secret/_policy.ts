@@ -7,7 +7,7 @@
  * which is why the check lives in one helper rather than being re-typed in
  * three command files.
  */
-import { checkConfigPolicy } from '../../core/policy/index.js';
+import { checkConfigPolicy, resolveChannel } from '../../core/policy/index.js';
 import type { Permission, PolicyCheck } from '../../core/policy/index.js';
 import type { StateManager } from '../../core/state/index.js';
 
@@ -54,7 +54,7 @@ export function resolveSecretPolicy(
 
     }
 
-    const check = checkConfigPolicy('user', config, permission);
+    const check = checkConfigPolicy(resolveChannel(), config, permission);
 
     if (!check.allowed) {
 

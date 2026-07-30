@@ -149,6 +149,7 @@ All `NOORM_*` environment variables are processed through a nesting convention t
 |----------|---------|
 | `NOORM_CONFIG` | Select which stored config to use |
 | `NOORM_YES` | Skip confirmations (`1` or `true`) |
+| `NOORM_CHANNEL` | Force the policy channel: `user` or `agent` (default: detected from the environment) |
 
 These are excluded from config nesting and consumed directly by the CLI.
 
@@ -175,7 +176,7 @@ NOORM_PATHS_CHANGES         → paths.changes
 
 ## Access Roles
 
-Each config carries a per-channel access grant: `access: { user, mcp }`. The `user` role governs the CLI, TUI, and SDK; `mcp` governs the MCP server (see [MCP](./guide/automation/mcp.md)). Roles are fixed — `viewer`, `operator`, `admin` — and hard-coded to this matrix (cells: allow / confirm / deny):
+Each config carries a per-channel access grant: `access: { user, agent }`. The `user` role governs a human at the CLI, TUI, or SDK; `agent` governs an AI agent, over MCP or the CLI (see [MCP](./guide/automation/mcp.md)). Roles are fixed — `viewer`, `operator`, `admin` — and hard-coded to this matrix (cells: allow / confirm / deny):
 
 | Command class | viewer | operator | admin |
 |---|---|---|---|
@@ -192,7 +193,7 @@ Raw SQL (`noorm sql`) is gated by what the statement actually does, not by a fla
 
 `confirm` means: type the phrase `yes-<config-name>` when prompted, or set `NOORM_YES=1` to skip the prompt in CI. There is no `--force` override for a denied permission — `--force` only skips file checksums (see [Common Flags](#common-flags)).
 
-**Migration note:** the old `Config.protected: boolean` maps automatically on first load — `protected: true` becomes `{ user: 'operator', mcp: 'viewer' }`, `protected: false` (or absent) becomes the default `{ user: 'admin', mcp: 'viewer' }`. A config that already stores an explicit `access` keeps it untouched. The legacy field is still accepted on `config import` for one version, then dropped.
+**Migration note:** the old `Config.protected: boolean` maps automatically on first load — `protected: true` becomes `{ user: 'operator', agent: 'viewer' }`, `protected: false` (or absent) becomes the default `{ user: 'admin', agent: 'viewer' }`. A config that already stores an explicit `access` keeps it untouched. The legacy field is still accepted on `config import` for one version, then dropped.
 
 
 ## Commands

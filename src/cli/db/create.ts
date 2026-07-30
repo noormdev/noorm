@@ -15,7 +15,7 @@ import { initState, getStateManager } from '../../core/state/index.js';
 import { getSettingsManager } from '../../core/settings/index.js';
 import { resolveConfig, SettingsProvider } from '../../core/config/resolver.js';
 import { checkDbStatus, createDb } from '../../core/db/index.js';
-import { checkConfigPolicy } from '../../core/policy/index.js';
+import { checkConfigPolicy, resolveChannel } from '../../core/policy/index.js';
 import { isYesMode, outputResult, outputError, sharedArgs } from '../_utils.js';
 import { EXIT } from '../_exit.js';
 
@@ -81,7 +81,7 @@ const createCommand = defineCommand({
         // Gate before any probe touches the server: for SQLite, checkDbStatus
         // opens the target and so creates the file, which would hand a denied
         // role a database anyway.
-        const check = checkConfigPolicy('user', config, 'db:create');
+        const check = checkConfigPolicy(resolveChannel(), config, 'db:create');
 
         if (!check.allowed) {
 

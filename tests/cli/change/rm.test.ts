@@ -120,7 +120,7 @@ describe('cli: noorm change rm — role gate + isYesMode confirm', () => {
 
     it('viewer-role active config denies deletion, disk untouched, even with --yes passed', async () => {
 
-        await seedConfig({ user: 'viewer', mcp: 'admin' });
+        await seedConfig({ user: 'viewer', agent: 'admin' });
 
         const result = runRm(['--yes']);
 
@@ -132,7 +132,7 @@ describe('cli: noorm change rm — role gate + isYesMode confirm', () => {
 
     it('operator-role plus --yes succeeds, change directory deleted', async () => {
 
-        await seedConfig({ user: 'operator', mcp: 'admin' });
+        await seedConfig({ user: 'operator', agent: 'admin' });
 
         const result = runRm(['--yes']);
 
@@ -143,7 +143,7 @@ describe('cli: noorm change rm — role gate + isYesMode confirm', () => {
 
     it('operator-role without --yes and without NOORM_YES is blocked, disk untouched', async () => {
 
-        await seedConfig({ user: 'operator', mcp: 'admin' });
+        await seedConfig({ user: 'operator', agent: 'admin' });
 
         const result = runRm();
 
@@ -155,7 +155,7 @@ describe('cli: noorm change rm — role gate + isYesMode confirm', () => {
 
     it('admin-role plus NOORM_YES=1, no --yes flag, succeeds — proves the isYesMode fix', async () => {
 
-        await seedConfig({ user: 'admin', mcp: 'admin' });
+        await seedConfig({ user: 'admin', agent: 'admin' });
 
         const result = runRm([], { NOORM_YES: '1' });
 

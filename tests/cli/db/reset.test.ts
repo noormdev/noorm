@@ -116,7 +116,7 @@ describe('cli: noorm db reset — pre-gate + yes threading', () => {
 
     it('blocks with the destructive-operation pre-gate when neither --yes nor NOORM_YES is set', async () => {
 
-        await seedConfig({ user: 'admin', mcp: 'admin' });
+        await seedConfig({ user: 'admin', agent: 'admin' });
 
         const result = runReset();
 
@@ -127,7 +127,7 @@ describe('cli: noorm db reset — pre-gate + yes threading', () => {
 
     it('passes the pre-gate and completes headlessly for an operator-role config with --yes', async () => {
 
-        await seedConfig({ user: 'operator', mcp: 'admin' });
+        await seedConfig({ user: 'operator', agent: 'admin' });
 
         const result = runReset(['--yes']);
 
@@ -143,7 +143,7 @@ describe('cli: noorm db reset — pre-gate + yes threading', () => {
         // used to fail at this exact pre-gate. Reverting reset.ts's
         // `isYesMode(args)` back to `args.yes` makes this fail (status 1,
         // "Pass --yes to confirm").
-        await seedConfig({ user: 'operator', mcp: 'admin' });
+        await seedConfig({ user: 'operator', agent: 'admin' });
 
         const result = runReset([], { NOORM_YES: '1' });
 
@@ -229,7 +229,7 @@ describe('cli: noorm db truncate/teardown/reset — operator-role --yes headless
 
     it('noorm db truncate --yes succeeds headlessly for an operator-role config (no NOORM_YES)', async () => {
 
-        await seedConfig({ user: 'operator', mcp: 'admin' });
+        await seedConfig({ user: 'operator', agent: 'admin' });
 
         const result = runDb('truncate', ['--yes']);
 
@@ -239,7 +239,7 @@ describe('cli: noorm db truncate/teardown/reset — operator-role --yes headless
 
     it('noorm db teardown --yes is denied for an operator-role config, because db:teardown stops below admin', async () => {
 
-        await seedConfig({ user: 'operator', mcp: 'admin' });
+        await seedConfig({ user: 'operator', agent: 'admin' });
 
         const result = runDb('teardown', ['--yes']);
 
@@ -250,7 +250,7 @@ describe('cli: noorm db truncate/teardown/reset — operator-role --yes headless
 
     it('noorm db reset --yes succeeds headlessly for an operator-role config (no NOORM_YES)', async () => {
 
-        await seedConfig({ user: 'operator', mcp: 'admin' });
+        await seedConfig({ user: 'operator', agent: 'admin' });
 
         const result = runDb('reset', ['--yes']);
 
