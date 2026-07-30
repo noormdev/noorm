@@ -63,6 +63,17 @@ export interface ConnectionConfig {
               cert?: string;
               key?: string;
           };
+
+    /**
+     * Hostname the server's TLS certificate is issued for (its CN or a DNS
+     * entry in the Subject Alternative Name).
+     *
+     * Only needed when `host` is an IP address: TLS carries the requested
+     * hostname in the SNI extension, which RFC 6066 forbids from being an IP
+     * literal, so the certificate has no name to be checked against. MSSQL is
+     * the only dialect that reads this today.
+     */
+    tlsServerName?: string;
 }
 
 /**
