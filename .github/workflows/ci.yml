@@ -440,7 +440,11 @@ jobs:
                   node dist/cli/index.js run build -H
                   echo "Success: Valid SQL built successfully"
 
-            # Test: Invalid SQL should fail (exit 2)
+            # Test: invalid SQL must not report success (exit 3 = partial).
+            # The fixture has two files; the first applies and the second is a
+            # parse error, so this is a partial build, not a total one. Exit 2
+            # is now reserved for usage errors — see docs/headless.md for the
+            # full scheme (0 success, 1 total failure, 2 usage, 3 partial).
             - name: Test invalid SQL build (expect failure)
               env:
                   NOORM_CONNECTION_DIALECT: sqlite
@@ -453,9 +457,9 @@ jobs:
                   node dist/cli/index.js run build -H
                   EXIT_CODE=$?
                   set -e
-                  if [ $EXIT_CODE -eq 2 ]; then
-                      echo "Success: CLI correctly returned exit code 2 for failed build"
+                  if [ $EXIT_CODE -eq 3 ]; then
+                      echo "Success: CLI correctly returned exit code 3 (partial) for a build with a failing file"
                   else
-                      echo "Failure: Expected exit code 2, got $EXIT_CODE"
+                      echo "Failure: Expected exit code 3, got $EXIT_CODE"
                       exit 1
                   fi

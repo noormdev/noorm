@@ -1,12 +1,18 @@
--- SQLite Views with INTENTIONAL SYNTAX ERROR for CI failure testing
--- This file is designed to cause a parse error when executed
-
-DROP VIEW IF EXISTS v_active_users;
-CREATE VIEW v_active_users AS
-SELECT
-    id,
-    email,
-    username
-    display_name  -- INTENTIONAL ERROR: missing comma above
-FROM users
-WHERE deleted_at IS NULL;
+-- SQLite view with an INTENTIONAL SYNTAX ERROR, for the CI failure-path check.
+--
+-- `SELECT FROM` has no column list, so SQLite rejects it at prepare time:
+--   near "FROM": syntax error
+--
+-- The previous version claimed its error was the missing comma in
+-- `username display_name`. That is valid SQL — an implicit column alias — and
+-- SQLite accepts it. It also selected a `deleted_at` column that does not
+-- exist, which SQLite accepts too, since it does not resolve a view's columns
+-- until the view is queried. Both were verified against bun:sqlite.
+--
+-- So the file never contained invalid SQL. It failed only because it held two
+-- statements and SQLite's prepare rejects the trailing one. Once the runner
+-- learned to split statements properly, both ran cleanly, the build passed,
+-- and the CI step that asserts a failure began failing instead.
+--
+-- Keep this one statement, and keep the error a real parse error.
+CREATE VIEW v_active_users AS SELECT FROM users
