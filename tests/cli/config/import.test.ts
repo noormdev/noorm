@@ -134,7 +134,7 @@ describe('cli: noorm config import — legacy protected mapping', () => {
         expect(result.status).toBe(0);
 
         const access = readPersistedAccess('legacy-guarded');
-        expect(access).toEqual({ user: 'operator', mcp: 'viewer' });
+        expect(access).toEqual({ user: 'operator', agent: 'viewer' });
 
     });
 
@@ -142,7 +142,7 @@ describe('cli: noorm config import — legacy protected mapping', () => {
 
         const path = writeConfigFile('modern.json', {
             name: 'modern-viewer',
-            access: { user: 'viewer', mcp: false },
+            access: { user: 'viewer', agent: false },
             connection: { dialect: 'sqlite', database: ':memory:' },
         });
 
@@ -151,7 +151,7 @@ describe('cli: noorm config import — legacy protected mapping', () => {
         expect(result.status).toBe(0);
 
         const access = readPersistedAccess('modern-viewer');
-        expect(access).toEqual({ user: 'viewer', mcp: false });
+        expect(access).toEqual({ user: 'viewer', agent: false });
 
     });
 
@@ -161,8 +161,67 @@ describe('cli: noorm config import — legacy protected mapping', () => {
 
         const result = runImport(path);
 
-        expect(result.status).toBe(1);
+        expect(result.status).toBe(2);
         expect(result.stdout + result.stderr).toContain('Error');
+
+    });
+
+    /**
+     * Overwriting a config rewrites its `access` block, so import is an
+     * escalation vector: without a gate, one `--force` turns a viewer config
+     * (or one hidden from agents with `agent: false`) into admin/admin. The
+     * existing config's role decides, not the incoming file's.
+     */
+    describe('access escalation via --force', () => {
+
+        function importThenEscalate(access: Record<string, unknown>, escalateArgs: string[]) {
+
+            const original = writeConfigFile('original.json', {
+                name: 'locked',
+                access,
+                connection: { dialect: 'sqlite', database: ':memory:' },
+            });
+
+            expect(runImport(original).status).toBe(0);
+
+            const escalated = writeConfigFile('escalated.json', {
+                name: 'locked',
+                access: { user: 'admin', agent: 'admin' },
+                connection: { dialect: 'sqlite', database: ':memory:' },
+            });
+
+            return runImport(escalated, escalateArgs);
+
+        }
+
+        it('denies overwriting a viewer config, leaving its access intact', () => {
+
+            const result = importThenEscalate({ user: 'viewer', agent: false }, ['--force']);
+
+            expect(result.status).toBe(1);
+            expect(result.stdout + result.stderr).toContain('config:write');
+            expect(readPersistedAccess('locked')).toEqual({ user: 'viewer', agent: false });
+
+        });
+
+        it('requires confirmation before overwriting an admin config', () => {
+
+            const result = importThenEscalate({ user: 'admin', agent: 'viewer' }, ['--force']);
+
+            expect(result.status).toBe(1);
+            expect(result.stdout + result.stderr).toContain('confirmation');
+            expect(readPersistedAccess('locked')).toEqual({ user: 'admin', agent: 'viewer' });
+
+        });
+
+        it('overwrites an admin config once confirmation is given', () => {
+
+            const result = importThenEscalate({ user: 'admin', agent: 'viewer' }, ['--force', '--yes']);
+
+            expect(result.status).toBe(0);
+            expect(readPersistedAccess('locked')).toEqual({ user: 'admin', agent: 'admin' });
+
+        });
 
     });
 

@@ -4,6 +4,7 @@
  * Types for database creation, destruction, and status checking.
  */
 import type { ConnectionConfig } from '../connection/types.js';
+import type { DbPolicyContext } from './policy.js';
 
 /**
  * Result of checking database status.
@@ -35,6 +36,9 @@ export interface DbOperationResult {
     /** Whether the database was created (vs already existed) */
     created?: boolean;
 
+    /** Whether the database was dropped (vs never having existed) */
+    dropped?: boolean;
+
     /** Whether tracking was initialized (vs already existed) */
     trackingInitialized?: boolean;
 }
@@ -56,17 +60,23 @@ export interface CreateDbOptions {
      * it), so a second internal check would see a false "already exists".
      */
     precheckedStatus?: DbStatus;
+
+    /**
+     * Access policy to enforce before creating. Omitted by callers that
+     * already ran an equivalent gate; supplied by every caller that owns
+     * none, so the check cannot be forgotten per surface.
+     */
+    policy?: DbPolicyContext;
 }
 
 /**
  * Options for database destruction.
  */
 export interface DestroyDbOptions {
-    /** Only reset tracking, don't drop database (default: true) */
-    trackingOnly?: boolean;
-
-    /** Force drop even if database has data (default: false) */
-    force?: boolean;
+    /**
+     * Access policy to enforce before dropping. See {@link CreateDbOptions.policy}.
+     */
+    policy?: DbPolicyContext;
 }
 
 /**

@@ -14,6 +14,7 @@ import { defineCommand } from 'citty';
 import { getSettingsManager } from '../../core/settings/index.js';
 import type { SecretType, Stage, StageSecret } from '../../core/settings/types.js';
 import { isYesMode, sharedArgs } from '../_utils.js';
+import { EXIT } from '../_exit.js';
 
 type Manager = ReturnType<typeof getSettingsManager>;
 
@@ -314,14 +315,14 @@ const secretCommand = defineCommand({
                 "Edit the 'secrets' section of settings.yml directly to add/remove requirements.\n" +
                 'To set actual secret values, use: noorm secret set <key> <value>\n',
             );
-            process.exit(1);
+            process.exit(EXIT.USAGE);
 
         }
 
         if (!process.stdin.isTTY) {
 
             process.stderr.write('Error: noorm settings secret requires an interactive terminal.\n');
-            process.exit(1);
+            process.exit(EXIT.USAGE);
 
         }
 
@@ -333,7 +334,7 @@ const secretCommand = defineCommand({
         if (!fileExists) {
 
             process.stderr.write('Error: No settings.yml found. Run: noorm settings init\n');
-            process.exit(1);
+            process.exit(EXIT.USAGE);
 
         }
 

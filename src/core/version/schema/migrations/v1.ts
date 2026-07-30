@@ -42,6 +42,16 @@ function addIdColumn<TB extends string, C extends string>(
  *
  * MSSQL's 'timestamp' is a binary rowversion counter, not a datetime.
  * Use 'datetime2' for MSSQL via raw SQL, 'timestamp' for all others.
+ *
+ * IMPORTANT: every type here is *naive* — it stores a wall clock with no
+ * offset. Any code writing these columns must serialize UTC and parse back as
+ * UTC, or two clients in different timezones will disagree about what an
+ * instant means. The postgres and mysql drivers bind and parse a JS `Date`
+ * using the client's local offset, so passing a `Date` straight through is
+ * what breaks; see `formatDateForDialect`/`parseDateFromDialect` in
+ * `core/lock/manager.ts` for the dialect-by-dialect treatment. This applies
+ * equally to `change.executed_at`, `executions`, `identities` and `vault`,
+ * which share these columns.
  */
 function timestampType(dialect: Dialect) {
 

@@ -92,7 +92,7 @@ NOORM_{PATH}_{TO}_{VALUE}  →  { path: { to: { value: '' } } }
 | Variable | Config Path |
 |----------|-------------|
 | `NOORM_PATHS_SQL` | `paths.sql` |
-| `NOORM_PATHS_CHANGESETS` | `paths.changes` |
+| `NOORM_PATHS_CHANGES` | `paths.changes` |
 
 **Top-level variables:**
 
@@ -198,14 +198,14 @@ const full = parseConfig(partial)
 
 ## Access Roles
 
-`Config.protected: boolean` was replaced by per-channel access roles. Roles live on the config, not the caller — the caller is a **channel**: `user` (CLI/TUI/SDK) or `mcp` (the MCP server). Each config declares a role per channel:
+`Config.protected: boolean` was replaced by per-channel access roles. Roles live on the config, not the caller — the caller is a **channel**: `user` (a human) or `agent` (an AI agent, over MCP or the CLI). Each config declares a role per channel:
 
 ```typescript
 const config = {
     name: 'prod',
     access: {
         user: 'operator',   // what a human at the CLI/TUI gets
-        mcp: 'viewer',       // what a connected AI agent gets — can differ from user
+        agent: 'viewer',       // what a connected AI agent gets — can differ from user
     },
     // ...
 }
@@ -224,7 +224,7 @@ Three roles, hard-coded, not user-extensible:
 | `db:destroy` | deny | deny | confirm |
 | `config:rm` | deny | confirm | confirm |
 
-`mcp: false` is not a role — it makes the config invisible on the MCP channel (absent from `list_configs`, `connect` fails with the byte-identical error an unknown config produces).
+`agent: false` is not a role — it makes the config invisible to agents on both MCP and the CLI (absent from `list_configs`, `connect` fails with the byte-identical error an unknown config produces).
 
 Check policy before executing:
 
@@ -248,14 +248,14 @@ if (check.requiresConfirmation) {
 // Proceed with action
 ```
 
-`confirm` resolves per channel: on `user` it prompts for `yes-<config>` (skippable with `NOORM_YES=1`); on `mcp` it collapses straight to deny — there's no human on the other end of stdio to type a phrase.
+`confirm` resolves per channel: on `user` it prompts for `yes-<config>` (skippable with `NOORM_YES=1`); on `agent` it collapses straight to deny — an agent confirming its own destructive action is theater, and on the CLI it would need only `--yes`.
 
 ```bash
 export NOORM_YES=1
 noorm change run  # No prompt, even on an operator-role config
 ```
 
-**Migration:** a legacy `protected: true` maps to `{ user: 'operator', mcp: 'viewer' }`; `protected: false` or absent maps to `{ user: 'admin', mcp: 'admin' }`. The `protected` field is accepted on input for one version, then dropped — see the state migration in `core/version/state/migrations/`.
+**Migration:** a legacy `protected: true` maps to `{ user: 'operator', agent: 'viewer' }`; `protected: false` or absent maps to the default `{ user: 'admin', agent: 'viewer' }`. A config that already stores an explicit `access` is left as-is. The `protected` field is accepted on input for one version, then dropped — see the state migration in `core/version/state/migrations/`.
 
 
 ## Stages
@@ -331,7 +331,7 @@ Stage constraints that can't be violated:
 
 | Constraint | Behavior |
 |------------|----------|
-| `protected: true` in defaults | Clamps resolved `access` to at most `{ user: 'operator', mcp: 'viewer' }` — stricter survives, looser is clamped down (see [Access Roles](#access-roles)) |
+| `protected: true` in defaults | Clamps resolved `access` to at most `{ user: 'operator', agent: 'viewer' }` — stricter survives, looser is clamped down (see [Access Roles](#access-roles)) |
 | `isTest: true` in defaults | Cannot set `isTest: false` |
 | `locked: true` | Config cannot be deleted |
 
@@ -416,8 +416,8 @@ For listings, use `ConfigSummary` which omits sensitive connection details:
 ```typescript
 const summaries = state.listConfigs()
 // [
-//     { name: 'dev', type: 'local', isTest: false, access: { user: 'admin', mcp: 'admin' }, isActive: true, dialect: 'postgres', database: 'dev_db' },
-//     { name: 'prod', type: 'remote', isTest: false, access: { user: 'operator', mcp: 'viewer' }, isActive: false, dialect: 'postgres', database: 'prod_db' },
+//     { name: 'dev', type: 'local', isTest: false, access: { user: 'admin', agent: 'admin' }, isActive: true, dialect: 'postgres', database: 'dev_db' },
+//     { name: 'prod', type: 'remote', isTest: false, access: { user: 'operator', agent: 'viewer' }, isActive: false, dialect: 'postgres', database: 'prod_db' },
 // ]
 ```
 

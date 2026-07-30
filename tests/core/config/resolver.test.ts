@@ -79,7 +79,7 @@ function createConfig(overrides: Partial<Config> = {}): Config {
         name: 'test',
         type: 'local',
         isTest: true,
-        access: { user: 'admin', mcp: 'admin' },
+        access: { user: 'admin', agent: 'admin' },
         connection: {
             dialect: 'sqlite',
             database: ':memory:',
@@ -374,7 +374,7 @@ describe('config: resolver', () => {
             const config = resolveConfig(state);
 
             expect(config!.type).toBe('local');
-            expect(config!.access).toEqual({ user: 'admin', mcp: 'admin' });
+            expect(config!.access).toEqual({ user: 'admin', agent: 'viewer' });
 
         });
 
@@ -446,7 +446,7 @@ describe('config: resolver', () => {
             // explicit access (defaults to admin/admin), which is looser
             // than the operator/viewer ceiling, so it gets clamped down.
             expect(guarded(config!)).toBe(true);
-            expect(config!.access).toEqual({ user: 'operator', mcp: 'viewer' });
+            expect(config!.access).toEqual({ user: 'operator', agent: 'viewer' });
             expect(config!.connection.host).toBe('localhost'); // stored overrides stage
 
         });
@@ -508,7 +508,7 @@ describe('config: resolver', () => {
             // Stage `protected: true` clamps the stored config's (looser,
             // default admin/admin) access down to the ceiling.
             expect(guarded(config!)).toBe(true);
-            expect(config!.access).toEqual({ user: 'operator', mcp: 'viewer' });
+            expect(config!.access).toEqual({ user: 'operator', agent: 'viewer' });
 
         });
 
@@ -554,7 +554,7 @@ describe('config: resolver', () => {
     describe('stage access ceiling', () => {
 
         function resolveWithStageProtected(
-            access: { user: 'viewer' | 'operator' | 'admin'; mcp: 'viewer' | 'operator' | 'admin' | false },
+            access: { user: 'viewer' | 'operator' | 'admin'; agent: 'viewer' | 'operator' | 'admin' | false },
             stageProtected: boolean,
         ) {
 
@@ -578,44 +578,44 @@ describe('config: resolver', () => {
 
         it('should not clamp when the stage is not protected', () => {
 
-            const config = resolveWithStageProtected({ user: 'admin', mcp: 'admin' }, false);
+            const config = resolveWithStageProtected({ user: 'admin', agent: 'admin' }, false);
 
-            expect(config!.access).toEqual({ user: 'admin', mcp: 'admin' });
+            expect(config!.access).toEqual({ user: 'admin', agent: 'admin' });
 
         });
 
-        it('should clamp a looser user+mcp access down to the ceiling', () => {
+        it('should clamp a looser user+agent access down to the ceiling', () => {
 
-            const config = resolveWithStageProtected({ user: 'admin', mcp: 'admin' }, true);
+            const config = resolveWithStageProtected({ user: 'admin', agent: 'admin' }, true);
 
-            expect(config!.access).toEqual({ user: 'operator', mcp: 'viewer' });
+            expect(config!.access).toEqual({ user: 'operator', agent: 'viewer' });
             expect(guarded(config!)).toBe(true);
 
         });
 
         it('should leave access exactly at the ceiling unchanged', () => {
 
-            const config = resolveWithStageProtected({ user: 'operator', mcp: 'viewer' }, true);
+            const config = resolveWithStageProtected({ user: 'operator', agent: 'viewer' }, true);
 
-            expect(config!.access).toEqual({ user: 'operator', mcp: 'viewer' });
+            expect(config!.access).toEqual({ user: 'operator', agent: 'viewer' });
 
         });
 
         it('should let a stricter access survive the ceiling untouched', () => {
 
-            const config = resolveWithStageProtected({ user: 'viewer', mcp: false }, true);
+            const config = resolveWithStageProtected({ user: 'viewer', agent: false }, true);
 
-            expect(config!.access).toEqual({ user: 'viewer', mcp: false });
+            expect(config!.access).toEqual({ user: 'viewer', agent: false });
             expect(guarded(config!)).toBe(true);
 
         });
 
         it('should clamp each channel independently', () => {
 
-            // user is looser than the ceiling, mcp is already stricter
-            const config = resolveWithStageProtected({ user: 'admin', mcp: false }, true);
+            // user is looser than the ceiling, agent is already stricter
+            const config = resolveWithStageProtected({ user: 'admin', agent: false }, true);
 
-            expect(config!.access).toEqual({ user: 'operator', mcp: false });
+            expect(config!.access).toEqual({ user: 'operator', agent: false });
 
         });
 
@@ -690,7 +690,7 @@ describe('config: resolver', () => {
             // longer duplicates that enforcement as a violation.
             const config = createConfig({
                 name: 'prod',
-                access: { user: 'admin', mcp: 'admin' },
+                access: { user: 'admin', agent: 'admin' },
             });
             const state = createMockState();
 
@@ -739,7 +739,7 @@ describe('config: resolver', () => {
 
             const config = createConfig({
                 name: 'prod',
-                access: { user: 'operator', mcp: 'viewer' },
+                access: { user: 'operator', agent: 'viewer' },
             });
             const state = createMockState({
                 secrets: { prod: ['DB_PASSWORD', 'API_KEY'] },

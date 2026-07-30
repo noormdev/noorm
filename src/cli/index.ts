@@ -15,6 +15,7 @@ import { defineCommand, runMain, renderUsage, type CommandDef } from 'citty';
 import { initProjectContext, setOriginalCwd } from '../core/project.js';
 import { loadIdentityFromEnv } from '../core/identity/env.js';
 import { setKeyOverride, setIdentityOverride } from '../core/identity/storage.js';
+import { EXIT } from './_exit.js';
 
 /**
  * Commands opt into examples by attaching a top-level `examples: string[]`
@@ -310,7 +311,7 @@ async function entry(): Promise<void> {
     if (parsedCwd.error !== null) {
 
         process.stderr.write(`Error: ${parsedCwd.error}\n`);
-        process.exit(1);
+        process.exit(EXIT.USAGE);
 
     }
 
@@ -323,7 +324,7 @@ async function entry(): Promise<void> {
         if (!existsSync(resolvedCwd) || !statSync(resolvedCwd).isDirectory()) {
 
             process.stderr.write(`Error: --cwd path is not a directory: ${resolvedCwd}\n`);
-            process.exit(1);
+            process.exit(EXIT.USAGE);
 
         }
 

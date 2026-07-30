@@ -42,6 +42,7 @@ describe('config: env', () => {
             'NOORM_CONFIG',
             'NOORM_YES',
             'NOORM_JSON',
+            'NOORM_CHANNEL',
             'CI',
         ];
 
@@ -248,6 +249,9 @@ describe('config: env', () => {
             process.env['NOORM_CONFIG'] = 'staging';
             process.env['NOORM_YES'] = 'true';
             process.env['NOORM_JSON'] = 'true';
+            // Selects the policy channel; it is not a field on any config,
+            // and forwarding it would invent a `channel` key on every one.
+            process.env['NOORM_CHANNEL'] = 'agent';
 
             const config = getEnvConfig() as unknown as Record<string, unknown>;
 
@@ -256,6 +260,7 @@ describe('config: env', () => {
             expect(config['config']).toBeUndefined();
             expect(config['yes']).toBeUndefined();
             expect(config['json']).toBeUndefined();
+            expect(config['channel']).toBeUndefined();
 
         });
 

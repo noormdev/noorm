@@ -12,6 +12,7 @@ import * as p from '@clack/prompts';
 import { defineCommand } from 'citty';
 
 import { withContext, outputResult, outputError, sharedArgs } from '../_utils.js';
+import { exitCodeForStatus } from '../_exit.js';
 import { selectChangeFromStatus, requireTty } from './_prompt.js';
 
 const rewindCommand = defineCommand({
@@ -33,6 +34,9 @@ const rewindCommand = defineCommand({
     async run({ args }) {
 
         if (!args.name && !requireTty('Change name')) process.exit(1);
+
+        const dryRun = Boolean(args.dryRun);
+        const force = Boolean(args.force);
 
         const [result, error] = await withContext({
             args,
@@ -61,7 +65,12 @@ const rewindCommand = defineCommand({
 
                 }
 
-                const res = await ctx.noorm.changes.rewind(changeName);
+                // A bare integer is the documented count form ("revert the
+                // last N"); citty hands every positional back as a string,
+                // so without this the count is looked up as a change name.
+                const target = /^\d+$/.test(changeName) ? Number(changeName) : changeName;
+
+                const res = await ctx.noorm.changes.rewind(target, { dryRun, force });
 
                 if (!args.json) {
 
@@ -70,6 +79,7 @@ const rewindCommand = defineCommand({
                     if (res.status !== 'success') {
 
                         logger.error(summaryMsg);
+                        if (res.error) logger.error(`  ${res.error}`);
 
                     }
                     else {
@@ -116,13 +126,14 @@ const rewindCommand = defineCommand({
 
         }
 
-        process.exit(result.status === 'success' ? 0 : 2);
+        process.exit(exitCodeForStatus(result.status));
 
     },
 });
 
 (rewindCommand as typeof rewindCommand & { examples: string[] }).examples = [
     'noorm change rewind',
+    'noorm change rewind 3',
     'noorm change rewind 001_init',
     'noorm change rewind 2024-02-01-notifications -c prod',
     'noorm change rewind 002_users --json',

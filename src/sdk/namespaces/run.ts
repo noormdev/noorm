@@ -11,7 +11,11 @@ import { attempt } from '@logosdx/utils';
 import type { Kysely } from 'kysely';
 
 import type { NoormDatabase } from '../../core/shared/index.js';
-import { filterFilesByPaths, findUnmatchedIncludePatterns } from '../../core/shared/index.js';
+import {
+    filterFilesByPaths,
+    findUnmatchedIncludePatterns,
+    findUnmatchedExcludePatterns,
+} from '../../core/shared/index.js';
 import type {
     RunContext,
     RunOptions,
@@ -224,15 +228,17 @@ export class RunNamespace {
         // misconfiguration, not an execution failure, and a build that legitimately
         // matches nothing must keep succeeding. Surfacing it is what stops the
         // `sql/`-prefix mistake from reading as a clean build.
+        //
+        // Both directions, because the exclude side is the one that fails
+        // dangerously: it fences off nothing and the held-back files run.
         const unmatchedInclude = findUnmatchedIncludePatterns(discoveredFiles, sqlPath, effectivePaths.include);
+        const unmatchedExclude = findUnmatchedExcludePatterns(discoveredFiles, sqlPath, effectivePaths.exclude);
 
-        if (unmatchedInclude.length > 0) {
-
-            return { ...result, unmatchedInclude };
-
-        }
-
-        return result;
+        return {
+            ...result,
+            ...(unmatchedInclude.length > 0 ? { unmatchedInclude } : {}),
+            ...(unmatchedExclude.length > 0 ? { unmatchedExclude } : {}),
+        };
 
     }
 

@@ -11,8 +11,10 @@ import { attempt, attemptSync } from '@logosdx/utils';
 import { defineCommand } from 'citty';
 
 import { ConfigValidationError, parseConfig } from '../../core/config/schema.js';
+import { checkConfigPolicy, resolveChannel } from '../../core/policy/index.js';
 import { initState, getStateManager } from '../../core/state/index.js';
-import { outputResult, outputError, sharedArgs } from '../_utils.js';
+import { outputResult, outputError, sharedArgs, isYesMode } from '../_utils.js';
+import { EXIT } from '../_exit.js';
 
 const importCommand = defineCommand({
     meta: {
@@ -22,6 +24,7 @@ const importCommand = defineCommand({
     args: {
         path: { type: 'positional', description: 'Path to JSON config file', required: true },
         force: sharedArgs.force,
+        yes: sharedArgs.yes,
         json: sharedArgs.json,
     },
     async run({ args }) {
@@ -33,7 +36,7 @@ const importCommand = defineCommand({
         if (readErr || !raw) {
 
             outputError(args, `Failed to read file: ${readErr?.message ?? 'empty file'}`);
-            process.exit(1);
+            process.exit(EXIT.USAGE);
 
         }
 
@@ -42,7 +45,7 @@ const importCommand = defineCommand({
         if (parseErr) {
 
             outputError(args, `Invalid JSON: ${parseErr.message}`);
-            process.exit(1);
+            process.exit(EXIT.USAGE);
 
         }
 
@@ -55,7 +58,7 @@ const importCommand = defineCommand({
                 : 'Config JSON is missing required fields: name, connection';
 
             outputError(args, message);
-            process.exit(1);
+            process.exit(EXIT.USAGE);
 
         }
 
@@ -71,10 +74,38 @@ const importCommand = defineCommand({
         const stateManager = getStateManager(projectRoot);
         const existing = stateManager.getConfig(config.name);
 
-        if (existing && !args.force) {
+        if (existing) {
 
-            outputError(args, `Config '${config.name}' already exists. Use --force to overwrite.`);
-            process.exit(1);
+            if (!args.force) {
+
+                outputError(args, `Config '${config.name}' already exists. Use --force to overwrite.`);
+                process.exit(1);
+
+            }
+
+            // An overwrite rewrites `access` wholesale, so the config being
+            // replaced decides — not the incoming file. Without this, one
+            // --force promotes a viewer config to admin, or flips the
+            // `agent: false` invisibility an operator set deliberately.
+            const check = checkConfigPolicy(resolveChannel(), existing, 'config:write');
+
+            if (!check.allowed) {
+
+                outputError(args, check.blockedReason ?? `Config '${config.name}' cannot be overwritten.`);
+                process.exit(1);
+
+            }
+
+            if (check.requiresConfirmation && !isYesMode(args)) {
+
+                outputError(
+                    args,
+                    `Overwriting '${config.name}' rewrites its access roles and requires confirmation `
+                    + `(${check.confirmationPhrase}). Pass --yes to confirm.`,
+                );
+                process.exit(1);
+
+            }
 
         }
 
@@ -99,7 +130,7 @@ const importCommand = defineCommand({
 
 (importCommand as typeof importCommand & { examples: string[] }).examples = [
     'noorm config import ./dev-config.json',
-    'noorm config import ./staging-config.json --force',
+    'noorm config import ./staging-config.json --force --yes',
 ];
 
 export default importCommand;

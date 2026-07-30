@@ -4,6 +4,7 @@
 import { defineCommand } from 'citty';
 
 import { withContext, outputResult, sharedArgs } from '../_utils.js';
+import { exitCodeForStatus } from '../_exit.js';
 
 const ffCommand = defineCommand({
     meta: {
@@ -32,6 +33,14 @@ const ffCommand = defineCommand({
                         if (dryRun) {
 
                             logger.info('Dry run: rendering changes to tmp/ (no DB writes)');
+
+                        }
+
+                        // Warned, not failed: without this an absent changes/
+                        // directory reads exactly like an up-to-date database.
+                        for (const warning of res.warnings ?? []) {
+
+                            logger.warn(warning);
 
                         }
 
@@ -93,7 +102,7 @@ const ffCommand = defineCommand({
 
         }
 
-        process.exit(result.status === 'success' ? 0 : 2);
+        process.exit(exitCodeForStatus(result.status));
 
     },
 });

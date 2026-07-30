@@ -43,6 +43,80 @@ export function getCurrentVersion(): string {
 }
 
 // =============================================================================
+// Version Validation
+// =============================================================================
+
+/**
+ * The official semver.org grammar, anchored.
+ *
+ * Deliberately strict because this is the ONLY thing standing between a
+ * registry-supplied string and both a download URL and a shell command.
+ * `compareVersions` parses loosely enough that junk still compares greater
+ * than the installed version, so a poisoned `dist-tags.latest` would otherwise
+ * reach `getBinaryDownloadUrl` — where `fetch` normalises `..` and relocates
+ * the binary *and* its checksums.txt to an attacker-controlled repo, at which
+ * point verification passes against the attacker's own checksums file.
+ */
+const SEMVER_IDENTIFIER = '(?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*)';
+const SEMVER_PATTERN = new RegExp(
+    '^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)'
+    + `(?:-(${SEMVER_IDENTIFIER}(?:\\.${SEMVER_IDENTIFIER})*))?`
+    + '(?:\\+([0-9a-zA-Z-]+(?:\\.[0-9a-zA-Z-]+)*))?$',
+);
+
+/**
+ * A version string that failed strict semver validation.
+ *
+ * Thrown rather than returned by the URL builders because a caller that has
+ * reached the point of constructing a release URL from an unvalidated string
+ * has no safe fallback — there is no "best effort" download.
+ */
+export class InvalidVersionError extends Error {
+
+    override readonly name = 'InvalidVersionError' as const;
+
+    constructor(readonly version: string) {
+
+        super(`invalid version string: ${JSON.stringify(version)}`);
+
+    }
+
+}
+
+/**
+ * Check whether a string is a strict semver version.
+ *
+ * @param version - Candidate version string, typically from the npm registry
+ * @returns true when the string is valid semver and safe to interpolate
+ *
+ * @example
+ * ```typescript
+ * isValidVersion('1.0.0-alpha.39');            // true
+ * isValidVersion('99.0.0; touch /tmp/pwned');  // false
+ * ```
+ */
+export function isValidVersion(version: string): boolean {
+
+    return typeof version === 'string' && SEMVER_PATTERN.test(version);
+
+}
+
+/**
+ * Throw unless `version` is strict semver.
+ *
+ * @throws InvalidVersionError when the string is not valid semver.
+ */
+export function assertValidVersion(version: string): void {
+
+    if (!isValidVersion(version)) {
+
+        throw new InvalidVersionError(version);
+
+    }
+
+}
+
+// =============================================================================
 // Version Parsing
 // =============================================================================
 
@@ -302,6 +376,19 @@ export async function checkForUpdate(): Promise<UpdateCheckResult | null> {
 
         // Current is stable - check 'latest' tag
         latestVersion = getLatestForChannel(packageInfo, 'latest') ?? currentVersion;
+
+    }
+
+    // The registry is the trust boundary: everything downstream (release URL,
+    // checksums URL, npm install argument) interpolates this string. A poisoned
+    // dist-tag is treated as "no update", not as an update to a junk version.
+    if (!isValidVersion(latestVersion)) {
+
+        observer.emit('update:check-failed', {
+            error: `registry returned an invalid version: ${JSON.stringify(latestVersion)}`,
+        });
+
+        return null;
 
     }
 

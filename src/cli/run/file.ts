@@ -4,6 +4,7 @@
 import { defineCommand } from 'citty';
 
 import { withContext, outputResult, sharedArgs } from '../_utils.js';
+import { EXIT, exitCodeForStatus } from '../_exit.js';
 
 const fileCommand = defineCommand({
     meta: {
@@ -57,7 +58,7 @@ const fileCommand = defineCommand({
             },
         });
 
-        if (error) process.exit(1);
+        if (error) process.exit(EXIT.FAILURE);
 
         if (args.json) {
 
@@ -65,7 +66,7 @@ const fileCommand = defineCommand({
 
         }
 
-        process.exit(result.status === 'success' || result.status === 'skipped' ? 0 : 1);
+        process.exit(exitCodeForStatus(result.status));
 
     },
 });

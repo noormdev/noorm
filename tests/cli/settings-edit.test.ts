@@ -36,7 +36,7 @@ describe('cli: noorm settings edit', () => {
             encoding: 'utf-8',
         });
 
-        expect(result.status).toBe(1);
+        expect(result.status).toBe(2);
         expect(result.stderr + result.stdout).toContain('interactive terminal');
 
     });
@@ -49,7 +49,7 @@ describe('cli: noorm settings edit', () => {
             encoding: 'utf-8',
         });
 
-        expect(result.status).toBe(1);
+        expect(result.status).toBe(2);
 
     });
 

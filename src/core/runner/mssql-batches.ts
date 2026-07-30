@@ -16,6 +16,7 @@ import { attempt } from '@logosdx/utils';
 
 import { getSqlErrorMessage } from '../shared/index.js';
 
+import { splitSqliteStatements } from './sqlite-statements.js';
 import type { RunContext } from './types.js';
 
 
@@ -88,17 +89,25 @@ function isCommentOnly(batch: string): boolean {
 }
 
 /**
- * Execute a SQL file's body against the driver, handling MSSQL `GO` batches.
+ * Execute a SQL file's body against the driver, dialect by dialect.
  *
- * Non-MSSQL dialects execute the whole content in one statement (matching the
- * historical behavior). MSSQL splits on `GO` and runs each batch sequentially,
- * short-circuiting on the first failure and prefixing the error with
- * `[batch N of M]` so callers can identify the offending batch when reading
- * the error in a `FileResult`.
+ * Three behaviors, because the drivers genuinely differ:
  *
- * A zero-batch MSSQL file (empty or comment-only after stripping `GO`) is
- * treated as success — the file ran, it just had nothing to execute. That
- * matches what `psql /dev/null` would do.
+ * - **mssql** splits on `GO` and runs each batch sequentially.
+ * - **sqlite** splits on statement boundaries. Its `prepare()` compiles only
+ *   the first statement of a string and drops the rest without erroring, so
+ *   without this every statement after the first in a file was silently
+ *   discarded while the runner reported success.
+ * - **postgres / mysql** execute the body whole, as before. Postgres runs
+ *   all statements in one implicit transaction — splitting would quietly
+ *   change that guarantee — and mysql rejects a multi-statement string
+ *   outright, which is already loud.
+ *
+ * Failures short-circuit and are prefixed with `[batch N of M]` /
+ * `[statement N of M]` so a `FileResult.error` identifies which fragment
+ * failed. A file with nothing executable (empty, or only comments) is
+ * success — the file ran, it just had nothing to do, matching
+ * `psql /dev/null`.
  *
  * @returns `null` on success, or a user-facing error string on failure
  *
@@ -113,49 +122,54 @@ export async function executeSqlBody(
     sqlContent: string,
 ): Promise<string | null> {
 
-    if (context.dialect !== 'mssql') {
+    if (context.dialect === 'mssql') {
 
-        const [, execErr] = await attempt(() => sql.raw(sqlContent).execute(context.db));
-
-        if (execErr) {
-
-            return getSqlErrorMessage(execErr);
-
-        }
-
-        return null;
+        return executeFragments(context, splitMssqlBatches(sqlContent), 'batch');
 
     }
 
-    const batches = splitMssqlBatches(sqlContent);
+    if (context.dialect === 'sqlite') {
 
-    if (batches.length === 0) {
-
-        return null;
+        return executeFragments(context, splitSqliteStatements(sqlContent), 'statement');
 
     }
 
-    if (batches.length === 1) {
+    const [, execErr] = await attempt(() => sql.raw(sqlContent).execute(context.db));
 
-        const [, execErr] = await attempt(() => sql.raw(batches[0]!).execute(context.db));
+    if (execErr) {
 
-        if (execErr) {
-
-            return getSqlErrorMessage(execErr);
-
-        }
-
-        return null;
+        return getSqlErrorMessage(execErr);
 
     }
 
-    for (let i = 0; i < batches.length; i++) {
+    return null;
 
-        const [, execErr] = await attempt(() => sql.raw(batches[i]!).execute(context.db));
+}
+
+/**
+ * Run pre-split fragments in order, stopping at the first failure.
+ *
+ * A single fragment reports its error unprefixed: there is nothing to
+ * disambiguate, and the position marker would only add noise to what is
+ * usually the whole file.
+ */
+async function executeFragments(
+    context: RunContext,
+    fragments: string[],
+    label: 'batch' | 'statement',
+): Promise<string | null> {
+
+    for (let i = 0; i < fragments.length; i++) {
+
+        const [, execErr] = await attempt(() => sql.raw(fragments[i]!).execute(context.db));
 
         if (execErr) {
 
-            return `[batch ${i + 1} of ${batches.length}] ${getSqlErrorMessage(execErr)}`;
+            const message = getSqlErrorMessage(execErr);
+
+            return fragments.length === 1
+                ? message
+                : `[${label} ${i + 1} of ${fragments.length}] ${message}`;
 
         }
 

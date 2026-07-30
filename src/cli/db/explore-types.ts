@@ -3,7 +3,11 @@
  */
 import { defineCommand } from 'citty';
 
+import type { Kysely } from 'kysely';
+
+import { fetchList } from '../../core/explore/index.js';
 import { withContext, outputResult, outputError, sharedArgs } from '../_utils.js';
+import { EXIT } from '../_exit.js';
 
 const typesCommand = defineCommand({
     meta: {
@@ -73,7 +77,7 @@ const typesCommand = defineCommand({
             if (!detail) {
 
                 outputError(args, `Type not found: ${args.name}`);
-                process.exit(1);
+                process.exit(EXIT.USAGE);
 
             }
 
@@ -91,7 +95,9 @@ const typesCommand = defineCommand({
             args,
             fn: (ctx, logger) => {
 
-                return ctx.noorm.db.listTypes().then((res) => {
+                // Core rather than the SDK: the SDK's list methods take no
+                // options, so --schema cannot reach the query through them.
+                return fetchList(ctx.kysely as Kysely<unknown>, ctx.dialect, 'types', { schema: args.schema }).then((res) => {
 
                     if (!args.json) {
 
@@ -100,7 +106,8 @@ const typesCommand = defineCommand({
                         for (const t of res) {
 
                             const extra = t.valueCount !== undefined ? ` (${t.valueCount} values)` : '';
-                            logger.info(`  ${t.name} [${t.kind}]${extra}`);
+                            const qualified = t.schema ? `${t.schema}.${t.name}` : t.name;
+                            logger.info(`  ${qualified} [${t.kind}]${extra}`);
 
                         }
 
@@ -117,7 +124,7 @@ const typesCommand = defineCommand({
 
         if (args.json) {
 
-            outputResult(args, types, '');
+            outputResult(args, { types }, '');
 
         }
 
@@ -129,6 +136,7 @@ const typesCommand = defineCommand({
 (typesCommand as typeof typesCommand & { examples: string[] }).examples = [
     'noorm db explore types',
     'noorm db explore types --json',
+    'noorm db explore types --schema app',
     'noorm db explore types user_status',
     'noorm db explore types user_status --schema public',
 ];

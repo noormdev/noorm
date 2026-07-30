@@ -3,6 +3,9 @@
  */
 import { defineCommand } from 'citty';
 
+import type { Kysely } from 'kysely';
+
+import { fetchList } from '../../core/explore/index.js';
 import { withContext, outputResult, sharedArgs } from '../_utils.js';
 
 const fksCommand = defineCommand({
@@ -11,6 +14,10 @@ const fksCommand = defineCommand({
         description: 'List foreign keys in the database',
     },
     args: {
+        schema: {
+            type: 'string',
+            description: 'Restrict the listing to one schema',
+        },
         config: sharedArgs.config,
         json: sharedArgs.json,
     },
@@ -20,7 +27,9 @@ const fksCommand = defineCommand({
             args,
             fn: (ctx, logger) => {
 
-                return ctx.noorm.db.listForeignKeys().then((res) => {
+                // Core rather than the SDK: the SDK's list methods take no
+                // options, so --schema cannot reach the query through them.
+                return fetchList(ctx.kysely as Kysely<unknown>, ctx.dialect, 'foreignKeys', { schema: args.schema }).then((res) => {
 
                     if (!args.json) {
 
@@ -28,7 +37,8 @@ const fksCommand = defineCommand({
 
                         for (const fk of res) {
 
-                            const src = `${fk.tableName}(${fk.columns.join(', ')})`;
+                            const table = fk.tableSchema ? `${fk.tableSchema}.${fk.tableName}` : fk.tableName;
+                            const src = `${table}(${fk.columns.join(', ')})`;
                             const ref = `${fk.referencedTable}(${fk.referencedColumns.join(', ')})`;
                             const actions: string[] = [];
 
@@ -62,7 +72,7 @@ const fksCommand = defineCommand({
 
         if (args.json) {
 
-            outputResult(args, fks, '');
+            outputResult(args, { foreignKeys: fks }, '');
 
         }
 
@@ -74,6 +84,7 @@ const fksCommand = defineCommand({
 (fksCommand as typeof fksCommand & { examples: string[] }).examples = [
     'noorm db explore fks',
     'noorm db explore fks --json',
+    'noorm db explore fks --schema app',
 ];
 
 export default fksCommand;

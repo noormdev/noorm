@@ -11,13 +11,16 @@
  * noorm run preview sql/migrations/002.sql.tmpl > rendered.sql
  * ```
  */
+import { stat } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { defineCommand } from 'citty';
-import { attempt } from '@logosdx/utils';
+import { attempt, attemptSync } from '@logosdx/utils';
 
 import { outputError, outputResult, sharedArgs } from '../_utils.js';
+import { EXIT } from '../_exit.js';
 import { processFile } from '../../core/template/engine.js';
+import { assertPolicy, resolveChannel } from '../../core/policy/index.js';
 import { getStateManager } from '../../core/state/index.js';
 import { resolveRenderSecrets, RENDER_SECRETS_NOTICE } from './_render-secrets.js';
 
@@ -40,6 +43,18 @@ const previewCommand = defineCommand({
         const projectRoot = process.cwd();
         const fullPath = join(projectRoot, args.path);
 
+        // Named up front so a missing template reports "not found" instead of
+        // an ENOENT surfacing from deep inside the template engine, and lands
+        // on the same exit code `run inspect` uses for the same mistake.
+        const [stats] = await attempt(() => stat(fullPath));
+
+        if (!stats?.isFile()) {
+
+            outputError(args, `Template not found: ${args.path}`);
+            process.exit(EXIT.USAGE);
+
+        }
+
         // Load state for config + secrets
         const stateManager = getStateManager(projectRoot);
         const [, loadErr] = await attempt(() => stateManager.load());
@@ -53,6 +68,25 @@ const previewCommand = defineCommand({
 
         const activeConfigName = args.config ?? stateManager.getActiveConfigName();
         const activeConfig = activeConfigName ? stateManager.getConfig(activeConfigName) : undefined;
+
+        // Before secrets are resolved and before the template is touched:
+        // the output is this config's secrets in plaintext, and producing it
+        // runs the template's helper and side-car scripts. With no config
+        // there is nothing config-scoped to protect — `resolveRenderSecrets`
+        // returns an empty set for that case.
+        if (activeConfig) {
+
+            const [, policyErr] = attemptSync(() => assertPolicy(resolveChannel(), activeConfig, 'run:file'));
+
+            if (policyErr) {
+
+                outputError(args, policyErr.message);
+                process.exit(1);
+
+            }
+
+        }
+
         const { secrets, vaultProbeFailed } = await resolveRenderSecrets(stateManager, activeConfigName);
 
         // Render the template
@@ -65,8 +99,12 @@ const previewCommand = defineCommand({
 
         if (err) {
 
-            outputError(args, err.stack ?? err.message);
-            process.exit(1);
+            // `--json` carries the message only: the stack embeds absolute
+            // filesystem paths, and the error field is what CI pipelines log
+            // and surface publicly. The stack still reaches the operator on
+            // stderr in human mode.
+            outputError(args, args.json ? err.message : err.stack ?? err.message);
+            process.exit(EXIT.FAILURE);
 
         }
 

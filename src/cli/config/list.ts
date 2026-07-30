@@ -8,7 +8,7 @@ import { attempt } from '@logosdx/utils';
 import { defineCommand } from 'citty';
 
 import { initState, getStateManager } from '../../core/state/index.js';
-import { formatAccessTag } from '../../core/policy/index.js';
+import { formatAccessTag, isVisibleToChannel, resolveChannel } from '../../core/policy/index.js';
 import { outputResult, outputError, sharedArgs } from '../_utils.js';
 
 const listCommand = defineCommand({
@@ -33,7 +33,13 @@ const listCommand = defineCommand({
         }
 
         const stateManager = getStateManager(projectRoot);
-        const configs = stateManager.listConfigs();
+
+        // Mirrors the `list_configs` RPC command: `access.agent === false`
+        // means the config does not exist as far as an agent is concerned.
+        // Filtering only over MCP would have made the setting worthless the
+        // moment the agent ran `noorm config list` instead.
+        const channel = resolveChannel();
+        const configs = stateManager.listConfigs().filter((c) => isVisibleToChannel(c.access, channel));
 
         if (configs.length === 0) {
 

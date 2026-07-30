@@ -3,7 +3,11 @@
  */
 import { defineCommand } from 'citty';
 
+import type { Kysely } from 'kysely';
+
+import { fetchList } from '../../core/explore/index.js';
 import { withContext, outputResult, outputError, sharedArgs } from '../_utils.js';
+import { EXIT } from '../_exit.js';
 
 const functionsCommand = defineCommand({
     meta: {
@@ -70,7 +74,7 @@ const functionsCommand = defineCommand({
             if (!detail) {
 
                 outputError(args, `Function not found: ${args.name}`);
-                process.exit(1);
+                process.exit(EXIT.USAGE);
 
             }
 
@@ -88,7 +92,9 @@ const functionsCommand = defineCommand({
             args,
             fn: (ctx, logger) => {
 
-                return ctx.noorm.db.listFunctions().then((res) => {
+                // Core rather than the SDK: the SDK's list methods take no
+                // options, so --schema cannot reach the query through them.
+                return fetchList(ctx.kysely as Kysely<unknown>, ctx.dialect, 'functions', { schema: args.schema }).then((res) => {
 
                     if (!args.json) {
 
@@ -96,7 +102,8 @@ const functionsCommand = defineCommand({
 
                         for (const f of res) {
 
-                            logger.info(`  ${f.name} (${f.parameterCount} params) → ${f.returnType}`);
+                            const qualified = f.schema ? `${f.schema}.${f.name}` : f.name;
+                            logger.info(`  ${qualified} (${f.parameterCount} params) → ${f.returnType}`);
 
                         }
 
@@ -113,7 +120,7 @@ const functionsCommand = defineCommand({
 
         if (args.json) {
 
-            outputResult(args, functions, '');
+            outputResult(args, { functions }, '');
 
         }
 
@@ -125,6 +132,7 @@ const functionsCommand = defineCommand({
 (functionsCommand as typeof functionsCommand & { examples: string[] }).examples = [
     'noorm db explore functions',
     'noorm db explore functions --json',
+    'noorm db explore functions --schema app',
     'noorm db explore functions fn_get_user',
     'noorm db explore functions fn_get_user --schema public',
 ];

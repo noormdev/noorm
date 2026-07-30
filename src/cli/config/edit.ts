@@ -7,6 +7,8 @@
  */
 import { defineCommand } from 'citty';
 
+import { outputError, sharedArgs } from '../_utils.js';
+
 const editCommand = defineCommand({
     meta: {
         name: 'edit',
@@ -18,10 +20,14 @@ const editCommand = defineCommand({
             description: 'Configuration name',
             required: false,
         },
+        json: sharedArgs.json,
     },
-    async run() {
+    async run({ args }) {
 
-        process.stderr.write('Interactive only — run: noorm ui\n');
+        outputError(
+            args,
+            'Interactive only — run: noorm ui. For headless edits use: noorm config import <file.json> --force --yes',
+        );
         process.exit(1);
 
     },
@@ -29,6 +35,7 @@ const editCommand = defineCommand({
 
 (editCommand as typeof editCommand & { examples: string[] }).examples = [
     'noorm ui  # then navigate to config > edit',
+    'noorm config import ./dev-config.json --force --yes  # headless equivalent',
 ];
 
 export default editCommand;

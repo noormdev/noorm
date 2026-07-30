@@ -7,11 +7,13 @@ When you run SQL files with noorm, every file goes through a checksum-based chan
 
 Here's what happens under the hood:
 
-1. noorm computes a SHA-256 checksum of the file contents
+1. noorm computes a SHA-256 checksum of the SQL that will actually run — for a `.sql.tmpl`, that is the *rendered* output, not the file on disk
 2. It checks the tracking database for a previous execution record
 3. If the file is new, changed, or previously failed, it runs
 4. If unchanged and successful, it's skipped
 5. After execution, the result and new checksum are recorded
+
+Hashing the rendered output is what makes a template re-run when its data file, config, or secrets change even though its own bytes did not. The flip side: a template whose render is genuinely non-deterministic — one calling `$.now()` or `$.uuid()` — produces new SQL every time and therefore re-runs every build. That is the correct answer for a file whose output really is different each time; use a fixed value if you want it to settle.
 
 This makes builds idempotent. Run the same command twice—unchanged files won't re-execute.
 
@@ -223,7 +225,7 @@ Three related procedures, one file. If batch 2 fails, noorm reports `[batch 2 of
 `GO` recognition is line-oriented: the literal token `GO` must be the entire trimmed content of a line (case-insensitive). `GO;`, `GOLANG`, or `GO` mid-line do not split. Keep `GO` tokens out of string literals and `/* ... */` block comments — the splitter does not parse SQL, so an inadvertent `GO` inside a string on its own line will still be treated as a separator. This matches sqlcmd behavior.
 
 
-PostgreSQL, MySQL, and SQLite do not need this — their drivers accept multiple statements separated by `;` (with the caveats covered in [Organization](/guide/sql-files/organization)). The splitter only engages when the active config's dialect is `mssql`.
+PostgreSQL runs a multi-statement file as-is, in one implicit transaction. SQLite gets its own splitter: its driver compiles the first statement of a string and discards the rest, so noorm splits on statement boundaries before handing anything over — semicolons inside string literals, quoted identifiers, comments, and trigger bodies are not treated as boundaries. MySQL's driver rejects multi-statement strings outright; put each statement in its own file, or use a dialect that supports them.
 
 
 For the gory details on what the runner does under the hood, see [MSSQL Batch Handling](/dev/runner#mssql-batch-handling).

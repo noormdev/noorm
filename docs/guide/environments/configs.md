@@ -111,7 +111,7 @@ Every config has these fields:
 | `user` | No | Authentication username |
 | `password` | No | Authentication password (stored encrypted) |
 | `access.user` | No | CLI/TUI/SDK role: `viewer`, `operator`, or `admin` (default: `admin`) |
-| `access.mcp` | No | MCP role: `viewer`, `operator`, `admin`, or `false` to hide from MCP (default: `admin`) |
+| `access.agent` | No | AI agent role, over MCP and the CLI alike: `viewer`, `operator`, `admin`, or `false` to hide the config from agents (default: `viewer`) |
 | `isTest` | No | Marks as test database (default: false) |
 | `ssl` | No | SSL/TLS configuration |
 | `pool` | No | Connection pool settings |
@@ -129,7 +129,9 @@ Every config has these fields:
 
 ## Access Roles
 
-Production databases need safeguards. Every config carries an access role per **channel** — who's asking. `noorm ui` → Config → Edit sets `access.user` (the CLI/TUI/SDK) and `access.mcp` (an AI agent connected via MCP) independently, so a config can be wide open to you at the terminal while showing an agent only read access.
+Production databases need safeguards. Every config carries an access role per **channel** — who's *driving*. `noorm ui` → Config → Edit sets `access.user` (a human) and `access.agent` (an AI agent) independently, so a config can be wide open to you at the terminal while showing an agent only read access.
+
+The channel is the caller, not the transport. An agent reaches noorm over MCP or by running `noorm` on the command line, and both get the `agent` role — the CLI recognizes the agent harness it was spawned from, so an agent that is refused over MCP cannot route around it by shelling out.
 
 | Role | Behavior |
 |------|----------|
@@ -156,10 +158,26 @@ export NOORM_YES=1
 noorm -c prod change run
 ```
 
-There is no equivalent skip on the MCP channel — an agent hitting a `confirm` cell always gets denied, redirected to the CLI. See [MCP](/guide/automation/mcp#access-roles) for the agent-facing side of this.
+There is no equivalent skip on the `agent` channel — an agent hitting a `confirm` cell is always denied, and `NOORM_YES` / `--yes` do not change that. Otherwise the confirmation would be one flag away from meaningless. See [MCP](/guide/automation/mcp#access-roles) for the agent-facing side of this.
+
+**Which channel am I on?**
+
+noorm resolves the channel from the environment it was started in, in this order:
+
+1. `NOORM_CHANNEL=user` or `NOORM_CHANNEL=agent`, if set.
+2. The variables agent harnesses export for their child processes — Claude Code, OpenAI Codex, Cursor, Gemini CLI, or the generic `AI_AGENT` / `NOORM_AGENT`. Any of those means `agent`.
+3. Otherwise `user`.
+
+`TERM_PROGRAM`, `CI`, and whether stdout is a TTY are deliberately ignored: they describe the terminal or the pipeline, not the caller, and keying on them would lock a human out of their own CLI.
+
+Set `NOORM_CHANNEL=user` when *you* are scripting from inside an agent session and want your own role:
+
+```bash
+NOORM_CHANNEL=user noorm -c prod change run
+```
 
 ::: warning Access Roles Are Not Security
-Roles prevent accidents, not attacks. They won't stop a determined user or malicious script. Use proper database permissions for real security.
+Roles prevent accidents, not attacks. They won't stop a determined user or malicious script — an agent can set `NOORM_CHANNEL` too. The channel defends against an agent routing around a refusal, which is the realistic case, not one setting out to evade the check. Use proper database permissions for real security.
 :::
 
 
@@ -184,7 +202,7 @@ Environment variables override stored config values. This is how you inject secr
 | Variable | Config Path |
 |----------|-------------|
 | `NOORM_PATHS_SQL` | `paths.sql` |
-| `NOORM_PATHS_CHANGESETS` | `paths.changes` |
+| `NOORM_PATHS_CHANGES` | `paths.changes` |
 
 **Behavior variables:**
 
@@ -192,6 +210,7 @@ Environment variables override stored config values. This is how you inject secr
 |----------|---------|
 | `NOORM_CONFIG` | Which config to use |
 | `NOORM_YES` | Skip confirmations (set to `1`) |
+| `NOORM_CHANNEL` | Force the policy channel: `user` or `agent` (default: detected from the environment) |
 
 **Example: Override host for CI runner**
 

@@ -3,6 +3,10 @@
  *
  * Creates the database and bootstraps noorm tracking tables.
  * Uses server-level connection so the target database need not exist yet.
+ *
+ * Gated by the config's `db:create` access: viewer is denied outright;
+ * operator requires --yes to satisfy the matrix's confirmation requirement;
+ * admin runs unconfirmed.
  */
 import { attempt, attemptSync } from '@logosdx/utils';
 import { defineCommand } from 'citty';
@@ -11,7 +15,9 @@ import { initState, getStateManager } from '../../core/state/index.js';
 import { getSettingsManager } from '../../core/settings/index.js';
 import { resolveConfig, SettingsProvider } from '../../core/config/resolver.js';
 import { checkDbStatus, createDb } from '../../core/db/index.js';
-import { outputResult, outputError, sharedArgs } from '../_utils.js';
+import { checkConfigPolicy, resolveChannel } from '../../core/policy/index.js';
+import { isYesMode, outputResult, outputError, sharedArgs } from '../_utils.js';
+import { EXIT } from '../_exit.js';
 
 const createCommand = defineCommand({
     meta: {
@@ -20,6 +26,7 @@ const createCommand = defineCommand({
     },
     args: {
         config: sharedArgs.config,
+        yes: sharedArgs.yes,
         json: sharedArgs.json,
     },
     async run({ args }) {
@@ -58,18 +65,40 @@ const createCommand = defineCommand({
         if (resolveErr) {
 
             outputError(args, resolveErr.message);
-            process.exit(1);
+            process.exit(EXIT.USAGE);
 
         }
 
         if (!config) {
 
             outputError(args, 'No active configuration. Use: noorm config use <name>');
-            process.exit(1);
+            process.exit(EXIT.USAGE);
 
         }
 
         const configName = config.name;
+
+        // Gate before any probe touches the server: for SQLite, checkDbStatus
+        // opens the target and so creates the file, which would hand a denied
+        // role a database anyway.
+        const check = checkConfigPolicy(resolveChannel(), config, 'db:create');
+
+        if (!check.allowed) {
+
+            outputError(args, check.blockedReason ?? `Config "${configName}" cannot be created.`);
+            process.exit(1);
+
+        }
+
+        if (check.requiresConfirmation && !isYesMode(args)) {
+
+            outputError(
+                args,
+                `This is a destructive operation requiring confirmation (${check.confirmationPhrase}). Pass --yes to confirm.`,
+            );
+            process.exit(1);
+
+        }
 
         // Check current status
         const status = await checkDbStatus(config.connection);
@@ -93,7 +122,10 @@ const createCommand = defineCommand({
         }
 
         // Create database
-        const result = await createDb(config.connection, configName, { precheckedStatus: status });
+        const result = await createDb(config.connection, configName, {
+            precheckedStatus: status,
+            policy: { configName, access: config.access, yes: isYesMode(args) },
+        });
 
         if (!result.ok) {
 
@@ -120,6 +152,7 @@ const createCommand = defineCommand({
 (createCommand as typeof createCommand & { examples: string[] }).examples = [
     'noorm db create',
     'noorm db create -c dev',
+    'noorm db create --yes',
     'noorm db create --json',
 ];
 

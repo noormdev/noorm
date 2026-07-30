@@ -5,6 +5,7 @@
  * to a dedicated connection-bound Kysely instance. The revert
  * callback is provided by the caller (Context.impersonate).
  */
+import { attempt } from '@logosdx/utils';
 import { sql } from 'kysely';
 
 import type { Kysely, Transaction } from 'kysely';
@@ -44,6 +45,10 @@ export function buildScope<DB = unknown, Procs = object, Funcs = object, Tvfs = 
 
     // === Declaration block ===
     let reverted = false;
+
+    // Shared across concurrent callers so `revertFn` runs once, and cleared on
+    // failure so a retry genuinely re-attempts instead of returning early.
+    let reverting: Promise<void> | null = null;
 
     // === Business logic block ===
     return {
@@ -89,12 +94,34 @@ export function buildScope<DB = unknown, Procs = object, Funcs = object, Tvfs = 
 
         },
 
+        /**
+         * Revert the impersonation and release the held connection.
+         *
+         * Idempotent once it has SUCCEEDED. It deliberately is not idempotent
+         * after a failure: `reverted` used to be set before `revertFn` was
+         * awaited, so a failed revert still marked the scope done — the
+         * caller's retry returned early, the revert SQL never ran, and the
+         * pooled connection was never released, which also hung `disconnect()`.
+         * A revert that throws leaves the scope revertible so the retry the
+         * error invites can actually work.
+         */
         async revert() {
 
             if (reverted) return;
-            reverted = true;
 
-            await revertFn();
+            if (!reverting) {
+
+                reverting = revertFn();
+
+            }
+
+            const [, err] = await attempt(() => reverting!);
+
+            reverting = null;
+
+            if (err) throw err;
+
+            reverted = true;
 
         },
 

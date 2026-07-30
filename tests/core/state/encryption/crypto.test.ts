@@ -5,6 +5,7 @@
  * Validates security properties: random IVs, auth tags, tampering detection.
  */
 import { describe, it, expect } from 'bun:test';
+import { attemptSync } from '@logosdx/utils';
 import { generateKeyPair } from '../../../../src/core/identity/crypto.js';
 import { encrypt, decrypt } from '../../../../src/core/state/encryption/crypto.js';
 import type { EncryptedPayload } from '../../../../src/core/state/types.js';
@@ -222,6 +223,31 @@ describe('encryption: crypto', () => {
 
         });
 
+        it('should never reuse a nonce across encryptions', () => {
+
+            // The length above is a format detail; this is the property
+            // that actually matters. A repeated GCM nonce under one key
+            // makes the keystream trivially recoverable, and state.enc is
+            // re-encrypted from scratch on every mutation.
+            const keypair = generateKeyPair();
+            const plaintext = 'identical every time';
+
+            const ivs = new Set<string>();
+            const ciphertexts = new Set<string>();
+
+            for (let i = 0; i < 2_000; i++) {
+
+                const payload = encrypt(plaintext, keypair.privateKey);
+                ivs.add(payload.iv);
+                ciphertexts.add(payload.ciphertext);
+
+            }
+
+            expect(ivs.size).toBe(2_000);
+            expect(ciphertexts.size).toBe(2_000);
+
+        });
+
         it('should use 16-byte auth tag', () => {
 
             const keypair = generateKeyPair();
@@ -282,6 +308,84 @@ describe('encryption: crypto', () => {
             const decrypted = decrypt(payload, keypair.privateKey);
 
             expect(decrypted).toBe(plaintext);
+
+        });
+
+    });
+
+    describe('malformed key material', () => {
+
+        // `Buffer.from(str, 'hex')` never throws -- it stops at the first
+        // invalid pair. Every non-hex string therefore collapsed to a
+        // zero-length HKDF input, and the resulting AES key is a constant
+        // anyone can compute from the source. State written under it is
+        // readable by a third party holding no key material at all.
+        const malformed = [
+            ['empty', ''],
+            ['non-hex', 'not-hex-at-all'],
+            ['non-hex pair', 'zz'],
+            ['odd length', 'abc'],
+            ['truncated key', '302e020100'],
+            ['hex but wrong length', 'ab'.repeat(20)],
+        ] as const;
+
+        for (const [label, key] of malformed) {
+
+            it(`should refuse to encrypt with a ${label} key`, () => {
+
+                expect(() => encrypt('secret', key)).toThrow(/[Ii]nvalid private key/);
+
+            });
+
+            it(`should refuse to decrypt with a ${label} key`, () => {
+
+                const keypair = generateKeyPair();
+                const payload = encrypt('secret', keypair.privateKey);
+
+                expect(() => decrypt(payload, key)).toThrow(/[Ii]nvalid private key/);
+
+            });
+
+        }
+
+        it('should not leak the rejected key into the error message', () => {
+
+            const [, err] = attemptSync(() => encrypt('secret', 'deadbeefdeadbeef'));
+
+            expect((err as Error).message).not.toContain('deadbeef');
+
+        });
+
+    });
+
+    describe('payload format version', () => {
+
+        it('should stamp the key derivation it used', () => {
+
+            const keypair = generateKeyPair();
+
+            expect(encrypt('secret', keypair.privateKey).kdf).toBe('hkdf-sha256');
+
+        });
+
+        it('should still read a payload written before the field existed', () => {
+
+            const keypair = generateKeyPair();
+            const { kdf: _kdf, ...legacy } = encrypt('secret', keypair.privateKey);
+
+            expect(decrypt(legacy, keypair.privateKey)).toBe('secret');
+
+        });
+
+        it('should refuse a payload claiming a derivation it cannot perform', () => {
+
+            // Without this the derivation can never be changed: an old
+            // build meeting a new payload would report "wrong key or
+            // corrupted file" and send the user hunting for the wrong bug.
+            const keypair = generateKeyPair();
+            const payload = { ...encrypt('secret', keypair.privateKey), kdf: 'argon2id' };
+
+            expect(() => decrypt(payload, keypair.privateKey)).toThrow(/[Uu]nsupported key derivation/);
 
         });
 

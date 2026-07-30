@@ -15,6 +15,7 @@ import { hasKeyFiles, loadIdentityMetadata } from '../core/identity/index.js';
 import { getOriginalCwd } from '../core/project.js';
 import { performProjectInit, type ProjectInitIdentityInfo } from '../core/project-init.js';
 import { isYesMode, sharedArgs } from './_utils.js';
+import { EXIT } from './_exit.js';
 
 /**
  * Exit with cancellation message.
@@ -108,7 +109,7 @@ const initCommand = defineCommand({
                 'Run: noorm identity init --name "Your Name" --email "you@example.com"\n' +
                 'Then re-run: noorm init --yes\n',
             );
-            process.exit(1);
+            process.exit(EXIT.USAGE);
 
         }
 
@@ -117,7 +118,7 @@ const initCommand = defineCommand({
         if (!process.stdin.isTTY && !yesMode) {
 
             process.stderr.write('Error: noorm init requires an interactive terminal.\n');
-            process.exit(1);
+            process.exit(EXIT.USAGE);
 
         }
 

@@ -30,7 +30,7 @@
  */
 
 // Types
-export type { Lock, LockOptions, LockStatus } from './types.js';
+export type { ForceReleaseResult, Lock, LockOptions, LockStatus } from './types.js';
 
 export { DEFAULT_LOCK_OPTIONS } from './types.js';
 

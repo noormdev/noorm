@@ -66,6 +66,9 @@ export {
     DEFAULT_CHANGE_OPTIONS,
     DEFAULT_BATCH_OPTIONS,
 
+    // Predicates
+    isPendingChange,
+
     // Errors
     ChangeValidationError,
     ChangeNotFoundError,

@@ -7,7 +7,7 @@
 import { sql } from 'kysely';
 import { attempt } from '@logosdx/utils';
 
-import type { Kysely } from 'kysely';
+import type { InsertResult, Kysely } from 'kysely';
 import type { DualConnectionContext } from '../db/dual.js';
 import type { NoormDatabase } from '../shared/tables.js';
 import type { Dialect } from '../connection/types.js';
@@ -21,9 +21,12 @@ import type {
     ConflictStrategy,
 } from './types.js';
 
+import type { KeysetPager } from '../dt/paging.js';
+
 import { observer } from '../observer.js';
 import { getTransferOperations } from './dialects/index.js';
 import { DtStreamer } from '../dt/streamer.js';
+import { createKeysetPager } from '../dt/paging.js';
 import { queryDatabaseVersion } from '../dt/version.js';
 
 /**
@@ -202,10 +205,14 @@ export async function executeTransfer(
     }
 
     const durationMs = Date.now() - startTime;
-    const allSuccess = tableResults.every((r) => r.status === 'success');
+
+    // `allSuccess` was false by definition whenever `hasFailures` was true,
+    // so 'partial' was unreachable and a run that moved most of the data
+    // looked identical to one that moved none.
+    const anySuccess = tableResults.some((r) => r.status === 'success');
 
     const result: TransferResult = {
-        status: hasFailures ? (allSuccess ? 'partial' : 'failed') : 'success',
+        status: hasFailures ? (anySuccess ? 'partial' : 'failed') : 'success',
         tables: tableResults,
         totalRows,
         durationMs,
@@ -290,7 +297,7 @@ async function transferTableSameServer(
         plan.schema,
     );
 
-    const [, transferErr] = await attempt(() =>
+    const [transferResult, transferErr] = await attempt(() =>
         sql.raw(transferSql).execute(ctx.destination.db),
     );
 
@@ -326,7 +333,10 @@ async function transferTableSameServer(
 
     }
 
-    const rowsTransferred = plan.rowCount;
+    // plan.rowCount is a planner estimate (postgres reltuples, MySQL
+    // TABLE_ROWS) — reporting it as rowsTransferred meant the result never
+    // reflected what the statement actually wrote.
+    const rowsTransferred = Number(transferResult?.numAffectedRows ?? 0);
 
     observer.emit('transfer:table:progress', {
         table: plan.name,
@@ -405,24 +415,14 @@ async function transferTableCrossServer(
 
     let rowsTransferred = 0;
     let rowsSkipped = 0;
-    let offset = 0;
     let transferError: Error | null = null;
+    const cursor = openSourceCursor(ctx, plan, batchSize);
 
     // Fetch and insert in batches
     while (true) {
 
         // Fetch batch from source
-        const [rows, fetchErr] = await attempt(() =>
-            fetchBatch(
-                ctx.source.db,
-                ctx.source.dialect,
-                plan.name,
-                plan.columns,
-                batchSize,
-                offset,
-                plan.schema,
-            ),
-        );
+        const [rows, fetchErr] = await attempt(() => cursor.next());
 
         if (fetchErr) {
 
@@ -458,7 +458,6 @@ async function transferTableCrossServer(
 
         rowsTransferred += batchResult.inserted;
         rowsSkipped += batchResult.skipped;
-        offset += rows.length;
 
         observer.emit('transfer:table:progress', {
             table: plan.name,
@@ -466,13 +465,6 @@ async function transferTableCrossServer(
             rowsTotal: plan.rowCount,
             rowsSkipped,
         });
-
-        // Check if we got fewer rows than batch size (end of data)
-        if (rows.length < batchSize) {
-
-            break;
-
-        }
 
     }
 
@@ -532,6 +524,7 @@ async function transferTableCrossDialect(
 
     const startTime = Date.now();
     const batchSize = options.batchSize ?? DEFAULT_BATCH_SIZE;
+    const strategy = options.onConflict ?? 'fail';
     const destOps = getTransferOperations(ctx.destination.dialect);
 
     if (!destOps || !plan.columnTypes) {
@@ -594,8 +587,8 @@ async function transferTableCrossDialect(
 
     let rowsTransferred = 0;
     let rowsSkipped = 0;
-    let offset = 0;
     let transferError: Error | null = null;
+    const cursor = openSourceCursor(ctx, plan, batchSize);
 
     observer.emit('dt:stream:start', {
         table: plan.name,
@@ -606,17 +599,7 @@ async function transferTableCrossDialect(
     while (true) {
 
         // Fetch batch from source
-        const [rows, fetchErr] = await attempt(() =>
-            fetchBatch(
-                ctx.source.db,
-                ctx.source.dialect,
-                plan.name,
-                plan.columns,
-                batchSize,
-                offset,
-                plan.schema,
-            ),
-        );
+        const [rows, fetchErr] = await attempt(() => cursor.next());
 
         if (fetchErr) {
 
@@ -639,15 +622,12 @@ async function transferTableCrossDialect(
 
             if (insertErr) {
 
-                const lower = insertErr.message.toLowerCase();
-                const isDuplicate = lower.includes('duplicate') || lower.includes('unique') || lower.includes('primary key');
-
-                if (isDuplicate && options.onConflict === 'skip') {
-
-                    rowsSkipped++;
-
-                }
-                else if (options.onConflict !== 'fail') {
+                // Only a *conflict* is skippable. Testing the raw option
+                // against 'fail' meant the SDK default (undefined) swallowed
+                // every insert error — a type conversion the streamer got
+                // wrong counted as a skipped row and the transfer reported
+                // success with two thirds of the table missing.
+                if (isDuplicateKeyError(insertErr.message) && strategy !== 'fail') {
 
                     rowsSkipped++;
 
@@ -670,8 +650,6 @@ async function transferTableCrossDialect(
 
         if (transferError) break;
 
-        offset += rows.length;
-
         observer.emit('transfer:table:progress', {
             table: plan.name,
             rowsTransferred,
@@ -683,8 +661,6 @@ async function transferTableCrossDialect(
             table: plan.name,
             rowsConverted: rowsTransferred + rowsSkipped,
         });
-
-        if (rows.length < batchSize) break;
 
     }
 
@@ -726,56 +702,27 @@ async function transferTableCrossDialect(
 }
 
 /**
- * Fetch a batch of rows from source table.
+ * Open a stable cursor over a source table.
  *
- * Uses dialect-specific syntax for column quoting and pagination.
+ * Pages by primary key rather than `OFFSET`: an `OFFSET` walk with no total
+ * order silently drops and duplicates rows whenever the source is written to
+ * mid-transfer, while still reporting the full row count. See
+ * `core/dt/paging.ts`.
  */
-async function fetchBatch(
-    db: Kysely<NoormDatabase>,
-    dialect: Dialect,
-    table: string,
-    columns: string[],
-    limit: number,
-    offset: number,
-    _schema?: string,
-): Promise<Record<string, unknown>[]> {
+function openSourceCursor(
+    ctx: DualConnectionContext,
+    plan: TransferTablePlan,
+    batchSize: number,
+): KeysetPager {
 
-    // Quote column names based on dialect
-    const quoteIdent = dialect === 'mssql'
-        ? (c: string) => `[${c}]`
-        : dialect === 'mysql'
-            ? (c: string) => `\`${c}\``
-            : (c: string) => `"${c}"`;
-
-    const columnList = columns.map(quoteIdent).join(', ');
-
-    // MSSQL uses different pagination syntax
-    if (dialect === 'mssql') {
-
-        // MSSQL requires ORDER BY for OFFSET/FETCH
-        // Use first column as default order (usually PK)
-        const orderCol = quoteIdent(columns[0]!);
-        const result = await sql<Record<string, unknown>>`
-            SELECT ${sql.raw(columnList)}
-            FROM ${sql.table(table)}
-            ORDER BY ${sql.raw(orderCol)}
-            OFFSET ${offset} ROWS
-            FETCH NEXT ${limit} ROWS ONLY
-        `.execute(db);
-
-        return result.rows;
-
-    }
-
-    // PostgreSQL and MySQL use LIMIT/OFFSET
-    const result = await sql<Record<string, unknown>>`
-        SELECT ${sql.raw(columnList)}
-        FROM ${sql.table(table)}
-        LIMIT ${limit}
-        OFFSET ${offset}
-    `.execute(db);
-
-    return result.rows;
+    return createKeysetPager({
+        db: ctx.source.db,
+        dialect: ctx.source.dialect,
+        table: plan.name,
+        columns: plan.columns,
+        keyColumns: plan.primaryKey,
+        batchSize,
+    });
 
 }
 
@@ -786,6 +733,22 @@ interface BatchInsertResult {
 
     inserted: number;
     skipped: number;
+
+}
+
+/**
+ * How many rows a Kysely insert actually wrote.
+ *
+ * A conflict-handling insert can succeed without writing anything, so the
+ * absence of an exception says nothing about whether a row landed. Drivers
+ * that do not report affected rows leave the field undefined; assume the
+ * insert applied there rather than silently under-reporting.
+ */
+function countApplied(results: InsertResult[]): number {
+
+    const affected = results[0]?.numInsertedOrUpdatedRows;
+
+    return affected === undefined ? 1 : Number(affected);
 
 }
 
@@ -835,7 +798,7 @@ async function insertBatch(
         // Handle conflict based on strategy
         if (strategy === 'skip' && primaryKey.length > 0) {
 
-            const [, err] = await attempt(() =>
+            const [results, err] = await attempt(() =>
                 query
                     .onConflict((oc) => oc.columns(primaryKey as never[]).doNothing())
                     .execute(),
@@ -855,9 +818,17 @@ async function insertBatch(
                 }
 
             }
-            else {
+            else if (countApplied(results) > 0) {
 
                 inserted++;
+
+            }
+            else {
+
+                // DO NOTHING succeeds without writing. Counting the absence
+                // of an exception as an insert is what made rowsTransferred
+                // match the source while the destination was untouched.
+                skipped++;
 
             }
 
@@ -876,7 +847,7 @@ async function insertBatch(
 
             }
 
-            const [, err] = await attempt(() =>
+            const [results, err] = await attempt(() =>
                 query
                     .onConflict((oc) => oc.columns(primaryKey as never[]).doUpdateSet(updateSet as never))
                     .execute(),
@@ -896,9 +867,14 @@ async function insertBatch(
                 }
 
             }
-            else {
+            else if (countApplied(results) > 0) {
 
                 inserted++;
+
+            }
+            else {
+
+                skipped++;
 
             }
 
@@ -1021,7 +997,7 @@ async function insertBatchRawSql(
             sql.raw(''),
         );
 
-        const [, err] = await attempt(() => finalSql.execute(db));
+        const [result, err] = await attempt(() => finalSql.execute(db));
 
         if (err) {
 
@@ -1037,9 +1013,15 @@ async function insertBatchRawSql(
             }
 
         }
-        else {
+        else if (result.numAffectedRows === undefined || Number(result.numAffectedRows) > 0) {
 
             inserted++;
+
+        }
+        else {
+
+            // INSERT IGNORE and MERGE both report zero rows on a no-op.
+            skipped++;
 
         }
 

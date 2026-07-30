@@ -21,10 +21,16 @@ const DIALECT_MAP: Record<Dialect, 'sqlite' | 'postgresql' | 'mysql' | 'bigquery
 
 /**
  * CST statement types that are read-only.
+ *
+ * `explain_stmt` is deliberately absent: an EXPLAIN inherits the class of the
+ * statement it wraps (see `classifyStmtType`), because postgres `EXPLAIN
+ * ANALYZE` *executes* that statement. `compound_select_stmt` is the node for
+ * UNION/INTERSECT/EXCEPT and appears nested inside ordinary subqueries, so
+ * omitting it denied plain reads.
  */
 const READ_STMT_TYPES: Record<string, true> = {
     select_stmt: true,
-    explain_stmt: true,
+    compound_select_stmt: true,
     show_stmt: true,
     describe_stmt: true,
 };
@@ -41,10 +47,13 @@ const WRITE_STMT_TYPES: Record<string, true> = {
 
 /**
  * Keywords that indicate a read-only statement (uppercase).
+ *
+ * `EXPLAIN` is deliberately absent — see `classifyExplained`. It used to sit
+ * here, which made `EXPLAIN (ANALYZE) DELETE FROM t` a `read` and let a
+ * `viewer` role delete rows on postgres.
  */
 const READ_KEYWORDS: Record<string, true> = {
     SELECT: true,
-    EXPLAIN: true,
     SHOW: true,
     DESCRIBE: true,
     DESC: true,
@@ -61,14 +70,59 @@ const WRITE_KEYWORDS: Record<string, true> = {
 };
 
 /**
+ * Every keyword that can legitimately start a statement. Used to tell an
+ * EXPLAIN's wrapped statement apart from MySQL's `EXPLAIN <table>` form,
+ * which is a synonym for DESCRIBE and carries no statement at all.
+ */
+const STATEMENT_KEYWORDS: Record<string, true> = {
+    ...READ_KEYWORDS,
+    ...WRITE_KEYWORDS,
+    EXPLAIN: true,
+    WITH: true,
+};
+
+/**
+ * Words that may appear between `EXPLAIN` and the statement it wraps, across
+ * postgres/mysql/sqlite. Skipped when locating the wrapped statement.
+ *
+ * An explicit list, not "skip anything unrecognised": skipping unknown words
+ * would walk straight past an unrecognised *verb* (`EXPLAIN ANALYZE REFRESH
+ * MATERIALIZED VIEW ...`) and report the whole thing as a read.
+ */
+const EXPLAIN_OPTION_KEYWORDS: Record<string, true> = {
+    ANALYZE: true,
+    ANALYSE: true,
+    VERBOSE: true,
+    EXTENDED: true,
+    PARTITIONS: true,
+    QUERY: true,
+    PLAN: true,
+    FORMAT: true,
+    TEXT: true,
+    XML: true,
+    JSON: true,
+    YAML: true,
+    TREE: true,
+    TRADITIONAL: true,
+    FOR: true,
+    CONNECTION: true,
+};
+
+/**
  * Ordering used to resolve the highest class across a multi-statement input.
  */
 const CLASS_RANK: Record<SqlClass, number> = { read: 0, write: 1, ddl: 2 };
 
 /**
- * Side-effecting builtins that must not be treated as read-only just because
+ * Builtins that must not be reachable from a `viewer` role just because
  * they're invoked from a SELECT. Guardrail against a `viewer` config running
  * `SELECT pg_terminate_backend(...)` through the read-allowed `sql` path.
+ *
+ * Covers two families: side-effecting builtins, and builtins that read the
+ * *database server's* filesystem. The second family is not a write, but
+ * "viewer" promises read-only access to the data, not to the host — and
+ * `SELECT pg_read_file('postgresql.conf')` is exfiltration wearing a SELECT.
+ * Both escalate to `write`, which is the lowest class that denies `viewer`.
  *
  * Deliberately a denylist, not an allowlist: `SELECT f()` is statically
  * undecidable, so pure helpers (`count`, `now`, `coalesce`, ...) stay `read`
@@ -96,6 +150,12 @@ export const DESTRUCTIVE_FUNCTIONS: ReadonlySet<string> = new Set([
     'query_to_xml_and_xmlschema',
     'cursor_to_xml',
     'cursor_to_xmlschema',
+    'pg_read_file',
+    'pg_read_binary_file',
+    'pg_stat_file',
+    'pg_ls_dir',
+    'pg_ls_logdir',
+    'pg_ls_waldir',
 ]);
 
 /**
@@ -141,59 +201,69 @@ export function classifyStatements(sql: string, dialect: Dialect): SqlClass {
     }
 
     // Parser failed — fall back to keyword-based
-    return classifyKeyword(trimmed);
+    return classifyKeyword(trimmed, dialect);
 
 }
 
 /**
- * Classify via CST. Highest class among all parsed statements wins.
+ * Classify via CST. Highest class of any statement node anywhere in the tree
+ * wins, plus `write` for a denylisted function call anywhere.
  *
- * A data-modifying CTE definition (`WITH t AS (DELETE ... ) SELECT ...`) or
- * a denylisted function call anywhere in the tree upgrades the result to at
- * least `write`, even when the outer/final statement is a plain SELECT.
+ * Scanning the *whole* tree rather than just `program.statements` is the
+ * point: a statement's real impact is routinely carried by a nested node —
+ * a data-modifying CTE body (`WITH t AS (DELETE ...) SELECT ...`), or the
+ * statement an `EXPLAIN ANALYZE` executes. The previous version enumerated
+ * the nested node types it cared about and had no DDL entry, so
+ * `EXPLAIN ANALYZE CREATE TABLE x AS SELECT 1` classified as `read` and
+ * created the table under a `viewer` role. Walking generically inverts the
+ * default: an unrecognised nested statement escalates instead of hiding.
  */
 function classifyCst(program: Program): SqlClass {
 
-    let highest: SqlClass = 'read';
+    const highest = nestedStatementClass(program);
 
-    for (const stmt of program.statements) {
-
-        highest = maxClass(highest, classifyStmtType(stmt));
-
-    }
-
-    if (containsWriteSignal(program)) {
-
-        highest = maxClass(highest, 'write');
-
-    }
-
-    return highest;
+    return containsDestructiveCall(program) ? maxClass(highest, 'write') : highest;
 
 }
 
 /**
- * True when the tree contains a data-modifying statement nested inside
- * another statement (only possible via a CTE definition body — see
- * `CommonTableExpr.expr` in sql-parser-cst's types) or a call to a
- * `DESTRUCTIVE_FUNCTIONS` builtin anywhere. Either signals at least `write`
- * regardless of what the outer/final statement looks like.
+ * Highest class of every `*_stmt` node reachable in the tree.
+ *
+ * Deliberately structural rather than type-driven: any node whose `type`
+ * ends in `_stmt` is a statement, and `classifyStmtType` already fails
+ * closed on statement types it does not recognise. That means a grammar
+ * upgrade adding new DDL node types is covered on arrival, with no list to
+ * keep in sync.
  */
-function containsWriteSignal(program: Program): boolean {
+function nestedStatementClass(node: unknown): SqlClass {
+
+    if (Array.isArray(node)) {
+
+        return node.reduce<SqlClass>((highest, item) => maxClass(highest, nestedStatementClass(item)), 'read');
+
+    }
+
+    if (node === null || typeof node !== 'object') return 'read';
+
+    const { type } = node as { type?: unknown };
+    const own = typeof type === 'string' && type.endsWith('_stmt')
+        ? classifyStmtType(node as CstStatement)
+        : 'read';
+
+    return Object.values(node).reduce<SqlClass>((highest, value) => maxClass(highest, nestedStatementClass(value)), own);
+
+}
+
+/**
+ * True when the tree contains a call to a `DESTRUCTIVE_FUNCTIONS` builtin
+ * anywhere. Signals at least `write` regardless of what the outer/final
+ * statement looks like.
+ */
+function containsDestructiveCall(program: Program): boolean {
 
     let found = false;
 
-    const markWrite = () => {
-
-        found = true;
-
-    };
-
     const visit = cstVisitor({
-        insert_stmt: markWrite,
-        update_stmt: markWrite,
-        delete_stmt: markWrite,
-        merge_stmt: markWrite,
         func_call: (node) => {
 
             // A schema-qualified call (`pg_catalog.pg_terminate_backend(...)`) parses to a
@@ -217,9 +287,22 @@ function containsWriteSignal(program: Program): boolean {
 
 }
 
+/** The shape `classifyStmtType` needs from a CST statement node. */
+interface CstStatement {
+    type: string;
+    clauses?: Array<{ type: string }>;
+    /** Present on `explain_stmt`: the statement being explained. */
+    statement?: unknown;
+}
+
 /**
  * Map a single CST statement to a class. `empty` covers comment-only
  * or whitespace-only input that still parses successfully.
+ *
+ * An `explain_stmt` takes the class of the statement it wraps rather than a
+ * class of its own. Postgres `EXPLAIN ANALYZE` executes the wrapped
+ * statement — planning a DELETE deletes rows — so the wrapper cannot be the
+ * verdict. An EXPLAIN with nothing recognisable inside fails closed.
  *
  * A `select_stmt` carrying an INTO clause (`into_table_clause`,
  * `into_outfile_clause`, `into_variables_clause`, `into_dumpfile_clause`)
@@ -228,7 +311,15 @@ function containsWriteSignal(program: Program): boolean {
  * to `ddl` for any INTO variant rather than special-casing which ones
  * actually touch schema.
  */
-function classifyStmtType(stmt: { type: string; clauses?: Array<{ type: string }> }): SqlClass {
+function classifyStmtType(stmt: CstStatement): SqlClass {
+
+    if (stmt.type === 'explain_stmt') {
+
+        const inner = stmt.statement as CstStatement | undefined;
+
+        return inner && typeof inner.type === 'string' ? classifyStmtType(inner) : 'ddl';
+
+    }
 
     if (stmt.type === 'select_stmt' && stmt.clauses?.some((clause) => clause.type.startsWith('into_'))) {
 
@@ -246,13 +337,17 @@ function classifyStmtType(stmt: { type: string; clauses?: Array<{ type: string }
 /**
  * Classify via keyword analysis.
  *
- * Strips comments, splits on semicolons, checks the leading keyword of each
+ * Masks everything that isn't code (string literals, quoted identifiers,
+ * comments), splits on semicolons, checks the leading keyword of each
  * statement, takes the highest class present.
+ *
+ * This is not a rare backstop: `mssql` has no grammar of its own here and
+ * maps to the postgres parser, so MSSQL syntax lands on this path routinely.
  */
-function classifyKeyword(sql: string): SqlClass {
+function classifyKeyword(sql: string, dialect: Dialect): SqlClass {
 
-    const stripped = stripComments(sql);
-    const statements = splitStatements(stripped);
+    const masked = maskNonCode(sql, dialect);
+    const statements = splitStatements(masked);
 
     if (statements.length === 0) return 'read';
 
@@ -264,7 +359,7 @@ function classifyKeyword(sql: string): SqlClass {
 
     }
 
-    if (hasDestructiveFunctionCall(stripped)) {
+    if (DESTRUCTIVE_FUNCTION_PATTERN.test(masked)) {
 
         highest = maxClass(highest, 'write');
 
@@ -275,20 +370,42 @@ function classifyKeyword(sql: string): SqlClass {
 }
 
 /**
- * Classify a single statement (no comments, no semicolons) by its leading
+ * Leading keyword of a statement, ignoring wrapping parens
+ * (`(SELECT 1) UNION (SELECT 2)`). `undefined` when the statement does not
+ * begin with a word character at all — a leading control byte, say — which
+ * callers must treat as unrecognised rather than harmless.
+ */
+function leadingKeyword(upper: string): string | undefined {
+
+    return upper.replace(/^[\s(]+/, '').match(/^(\w+)/)?.[1];
+
+}
+
+/**
+ * Classify a single statement (already masked, no semicolons) by its leading
  * keyword. Handles CTEs via paren-depth tracking for the WITH keyword.
  *
  * A leading SELECT carrying a top-level INTO (MSSQL `INTO #temp`, MySQL
  * `INTO OUTFILE`/`INTO @var`) is checked before the generic READ_KEYWORDS
  * lookup — the CST parser can reject dialect-specific INTO targets (e.g.
  * `#temp`), so this fallback must catch them too. Fail closed to `ddl`.
+ *
+ * A statement with no leading word character is unrecognised input, not an
+ * empty one (`splitStatements` already drops those), so it fails closed.
+ * Answering `read` there let a leading NUL byte carry a DROP past the gate.
  */
 function classifyKeywordStatement(stmt: string): SqlClass {
 
     const upper = stmt.toUpperCase();
-    const firstWord = upper.match(/^(\w+)/)?.[1];
+    const firstWord = leadingKeyword(upper);
 
-    if (!firstWord) return 'read';
+    if (!firstWord) return 'ddl';
+
+    if (firstWord === 'EXPLAIN') {
+
+        return classifyExplained(upper);
+
+    }
 
     if (firstWord === 'SELECT') {
 
@@ -308,6 +425,74 @@ function classifyKeywordStatement(stmt: string): SqlClass {
     if (WRITE_KEYWORDS[firstWord]) return 'write';
 
     return 'ddl';
+
+}
+
+/**
+ * Classify an `EXPLAIN` by the statement it wraps.
+ *
+ * `EXPLAIN` is never a verdict of its own. Postgres executes the wrapped
+ * statement when ANALYZE is on, and the parenthesised option form the
+ * postgres docs lead with — `EXPLAIN (ANALYZE) DELETE FROM t` — is rejected
+ * by the CST parser, so it lands here. Treating the keyword as read let a
+ * `viewer` role run arbitrary DML through the CLI and over MCP.
+ *
+ * The one thing an EXPLAIN can wrap that is not a statement is MySQL's
+ * `EXPLAIN <table>` (a synonym for DESCRIBE). That is recognised narrowly —
+ * a single bare identifier and nothing else — so it cannot be stretched to
+ * cover a real verb.
+ */
+function classifyExplained(upper: string): SqlClass {
+
+    const wrapped = stripExplainOptions(upper);
+
+    if (wrapped === '') return 'read';
+
+    const keyword = leadingKeyword(wrapped);
+
+    if (keyword && !STATEMENT_KEYWORDS[keyword] && /^[\w.$]+$/.test(wrapped)) return 'read';
+
+    return classifyKeywordStatement(wrapped);
+
+}
+
+/**
+ * Everything after `EXPLAIN` and its options — the statement being explained.
+ *
+ * Consumes a parenthesised option list (`(ANALYZE, FORMAT JSON)`), bare
+ * option keywords (`ANALYZE VERBOSE`, sqlite's `QUERY PLAN`), and MySQL's
+ * `FORMAT=JSON` punctuation. Stops at the first word that is not a known
+ * option, which is the wrapped statement's own verb.
+ */
+function stripExplainOptions(upper: string): string {
+
+    let rest = upper.replace(/^[\s(]*EXPLAIN/, '').trimStart();
+
+    while (rest !== '') {
+
+        if (rest.startsWith('(')) {
+
+            rest = rest.slice(findMatchingParen(rest, 0) + 1).trimStart();
+            continue;
+
+        }
+
+        if (rest.startsWith('=') || rest.startsWith(',')) {
+
+            rest = rest.slice(1).trimStart();
+            continue;
+
+        }
+
+        const word = rest.match(/^(\w+)/)?.[1];
+
+        if (!word || !EXPLAIN_OPTION_KEYWORDS[word]) break;
+
+        rest = rest.slice(word.length).trimStart();
+
+    }
+
+    return rest;
 
 }
 
@@ -522,140 +707,47 @@ function classifyCteBodyKeyword(body: string): SqlClass {
 }
 
 /**
- * True when a top-level ` INTO ` keyword appears outside string literals
- * and outside parentheses. Mirrors the string/paren-depth tracking used
- * elsewhere in this file (`stripComments`, `classifyCte`) so a quoted
- * value like `'INTO table'` or an INTO nested inside a subquery's parens
- * doesn't trip the check — only a real SELECT ... INTO target does.
+ * True when a top-level ` INTO ` keyword appears outside parentheses.
+ *
+ * Operates on masked input, so an INTO inside a string literal
+ * (`'INTO table'`) or a quoted identifier (`[INTO]`) is already blanked and
+ * only paren depth is left to track — an INTO nested in a subquery is not a
+ * SELECT ... INTO target.
  */
-function hasTopLevelInto(sql: string): boolean {
+function hasTopLevelInto(masked: string): boolean {
 
     let depth = 0;
-    let inString = false;
-    let i = 0;
 
-    while (i < sql.length) {
+    for (let i = 0; i < masked.length; i++) {
 
-        if (sql[i] === "'" && !inString) {
-
-            inString = true;
-            i++;
-
-        }
-        else if (sql[i] === "'" && inString) {
-
-            if (sql[i + 1] === "'") {
-
-                i += 2;
-
-            }
-            else {
-
-                inString = false;
-                i++;
-
-            }
-
-        }
-        else if (inString) {
-
-            i++;
-
-        }
-        else if (sql[i] === '(') {
+        if (masked[i] === '(') {
 
             depth++;
-            i++;
+            continue;
 
         }
-        else if (sql[i] === ')') {
+
+        if (masked[i] === ')') {
 
             depth--;
-            i++;
+            continue;
 
         }
-        else if (
+
+        if (
             depth === 0 &&
-            sql.slice(i, i + 4) === 'INTO' &&
-            !/\w/.test(sql[i - 1] ?? ' ') &&
-            !/\w/.test(sql[i + 4] ?? ' ')
+            masked.startsWith('INTO', i) &&
+            !/\w/.test(masked[i - 1] ?? ' ') &&
+            !/\w/.test(masked[i + 4] ?? ' ')
         ) {
 
             return true;
-
-        }
-        else {
-
-            i++;
 
         }
 
     }
 
     return false;
-
-}
-
-/**
- * True when the SQL invokes a `DESTRUCTIVE_FUNCTIONS` builtin outside a
- * string literal. Used by the keyword fallback, where there's no CST to
- * walk for `func_call` nodes.
- */
-function hasDestructiveFunctionCall(sql: string): boolean {
-
-    return DESTRUCTIVE_FUNCTION_PATTERN.test(blankStringLiterals(sql));
-
-}
-
-/**
- * Replace the contents of single-quoted string literals with spaces,
- * preserving overall length. Mirrors the quote-tracking used elsewhere in
- * this file (`stripComments`, `hasTopLevelInto`) so a denylisted function
- * name embedded in a quoted value can't spoof a match.
- */
-function blankStringLiterals(sql: string): string {
-
-    let result = '';
-    let i = 0;
-
-    while (i < sql.length) {
-
-        if (sql[i] !== "'") {
-
-            result += sql[i++];
-            continue;
-
-        }
-
-        result += ' ';
-        i++;
-
-        while (i < sql.length) {
-
-            if (sql[i] === "'" && sql[i + 1] === "'") {
-
-                result += '  ';
-                i += 2;
-                continue;
-
-            }
-
-            if (sql[i] === "'") {
-
-                result += ' ';
-                i++;
-                break;
-
-            }
-
-            result += ' ';
-            i++;
-
-        }
-
-    }
-
-    return result;
 
 }
 
@@ -669,153 +761,173 @@ function maxClass(a: SqlClass, b: SqlClass): SqlClass {
 }
 
 /**
- * Split SQL on semicolons while respecting string literals.
+ * Split masked SQL on semicolons.
  *
- * Naive split(';') mishandles semicolons inside quoted strings.
- * This walks the string tracking quote state to split correctly.
+ * Safe as a plain split because `maskNonCode` has already blanked every
+ * region a semicolon could be hiding in. The previous version tracked `'`
+ * inline and nothing else, so an MSSQL bracket identifier holding an odd
+ * number of apostrophes (`SELECT 1 AS [a'b]; DROP TABLE x`) desynced it into
+ * a phantom string literal that swallowed the separator — and the DROP was
+ * never classified at all.
  */
-function splitStatements(sql: string): string[] {
+function splitStatements(masked: string): string[] {
 
-    const statements: string[] = [];
-    let current = '';
-    let inString = false;
+    return masked
+        .split(';')
+        .map((statement) => statement.trim())
+        .filter((statement) => statement.length > 0);
+
+}
+
+/** A paired delimiter whose contents are data rather than code. */
+interface QuoteForm {
+    open: string;
+    close: string;
+}
+
+const SINGLE_QUOTE: QuoteForm = { open: "'", close: "'" };
+const DOUBLE_QUOTE: QuoteForm = { open: '"', close: '"' };
+const BACKTICK: QuoteForm = { open: '`', close: '`' };
+const BRACKET: QuoteForm = { open: '[', close: ']' };
+
+/**
+ * Quoting forms recognised per dialect, in match order.
+ *
+ * Dialect-scoped rather than universal because the same character means
+ * different things: `[...]` delimits an identifier on MSSQL and SQLite but
+ * subscripts an array on postgres, so masking it everywhere would blank real
+ * code — including parens, which would desync the depth tracking that CTE
+ * boundary detection depends on.
+ */
+const QUOTE_FORMS: Record<Dialect, readonly QuoteForm[]> = {
+    postgres: [SINGLE_QUOTE, DOUBLE_QUOTE],
+    mysql: [SINGLE_QUOTE, DOUBLE_QUOTE, BACKTICK],
+    sqlite: [SINGLE_QUOTE, DOUBLE_QUOTE, BACKTICK, BRACKET],
+    mssql: [SINGLE_QUOTE, DOUBLE_QUOTE, BRACKET],
+};
+
+/**
+ * Blank every non-code region — string literals, quoted identifiers, and
+ * comments — replacing each character with a space so offsets are preserved.
+ *
+ * One scanner instead of the four that used to track quotes independently
+ * (`splitStatements`, `stripComments`, `hasTopLevelInto`,
+ * `blankStringLiterals`), each modelling only `'`. Everything downstream can
+ * then treat `;`, `(`, `)` and keywords as unambiguously structural, and a
+ * new quoting form is fixed in one place rather than four.
+ *
+ * An unterminated quote or comment masks to end of input, which hides
+ * whatever follows it — safe, because the database will reject the input
+ * before executing any of it.
+ */
+function maskNonCode(sql: string, dialect: Dialect): string {
+
+    const forms = QUOTE_FORMS[dialect];
+    const hashComments = dialect === 'mysql';
+    const dollarQuotes = dialect === 'postgres';
+
+    let masked = '';
     let i = 0;
 
     while (i < sql.length) {
 
-        if (sql[i] === "'" && !inString) {
+        const form = forms.find((candidate) => sql.startsWith(candidate.open, i));
+        const dollarTag = dollarQuotes ? dollarQuoteTag(sql, i) : undefined;
+        const end = form
+            ? quotedRegionEnd(sql, i, form)
+            : dollarTag
+                ? dollarRegionEnd(sql, i, dollarTag)
+                : commentRegionEnd(sql, i, hashComments);
 
-            inString = true;
-            current += sql[i++];
+        if (end === -1) {
 
-        }
-        else if (sql[i] === "'" && inString) {
-
-            if (sql[i + 1] === "'") {
-
-                current += "''";
-                i += 2;
-
-            }
-            else {
-
-                inString = false;
-                current += sql[i++];
-
-            }
-
-        }
-        else if (sql[i] === ';' && !inString) {
-
-            const trimmed = current.trim();
-
-            if (trimmed.length > 0) {
-
-                statements.push(trimmed);
-
-            }
-
-            current = '';
+            masked += sql[i];
             i++;
-
-        }
-        else {
-
-            current += sql[i++];
+            continue;
 
         }
 
-    }
-
-    const trimmed = current.trim();
-
-    if (trimmed.length > 0) {
-
-        statements.push(trimmed);
+        masked += ' '.repeat(end - i);
+        i = end;
 
     }
 
-    return statements;
+    return masked;
 
 }
 
 /**
- * Strip SQL comments while respecting string literals.
- *
- * Uses a state machine to avoid stripping comment markers that
- * appear inside single-quoted strings. This prevents crafted inputs
- * from hiding destructive SQL behind comment markers embedded in
- * string literals.
+ * Index just past a quoted region opened at `openIdx`. A doubled closing
+ * delimiter (`''`, `""`, `` `` ``, `]]`) is an escaped literal, not the end.
  */
-function stripComments(sql: string): string {
+function quotedRegionEnd(sql: string, openIdx: number, form: QuoteForm): number {
 
-    let result = '';
-    let i = 0;
+    let i = openIdx + form.open.length;
 
     while (i < sql.length) {
 
-        // Single-quoted string — copy verbatim (handles '' escapes)
-        if (sql[i] === "'") {
+        if (sql.startsWith(form.close + form.close, i)) {
 
-            result += sql[i++];
-
-            while (i < sql.length) {
-
-                if (sql[i] === "'" && sql[i + 1] === "'") {
-
-                    result += "''";
-                    i += 2;
-
-                }
-                else if (sql[i] === "'") {
-
-                    result += sql[i++];
-                    break;
-
-                }
-                else {
-
-                    result += sql[i++];
-
-                }
-
-            }
+            i += form.close.length * 2;
+            continue;
 
         }
-        // Block comment — skip
-        else if (sql[i] === '/' && sql[i + 1] === '*') {
 
-            i += 2;
+        if (sql.startsWith(form.close, i)) return i + form.close.length;
 
-            while (i < sql.length && !(sql[i] === '*' && sql[i + 1] === '/')) {
-
-                i++;
-
-            }
-
-            i += 2; // skip closing */
-
-        }
-        // Line comment — skip to end of line
-        else if (sql[i] === '-' && sql[i + 1] === '-') {
-
-            i += 2;
-
-            while (i < sql.length && sql[i] !== '\n') {
-
-                i++;
-
-            }
-
-        }
-        else {
-
-            result += sql[i++];
-
-        }
+        i++;
 
     }
 
-    return result;
+    return sql.length;
+
+}
+
+/**
+ * The postgres dollar-quote tag opening at `i` (`$$` or `$tag$`), or
+ * `undefined`. Tags must start with a letter or underscore, which is what
+ * keeps a parameter placeholder pair like `$1$2` from reading as one.
+ */
+function dollarQuoteTag(sql: string, i: number): string | undefined {
+
+    if (sql[i] !== '$') return undefined;
+
+    return sql.slice(i).match(/^\$(?:[A-Za-z_]\w*)?\$/)?.[0];
+
+}
+
+/** Index just past a dollar-quoted body opened at `openIdx` with `tag`. */
+function dollarRegionEnd(sql: string, openIdx: number, tag: string): number {
+
+    const close = sql.indexOf(tag, openIdx + tag.length);
+
+    return close === -1 ? sql.length : close + tag.length;
+
+}
+
+/**
+ * Index just past a comment starting at `i`, or `-1` when `i` does not open
+ * one. A line comment stops at (and preserves) its newline. `#` is a comment
+ * introducer only on MySQL — on MSSQL it prefixes temp-table names.
+ */
+function commentRegionEnd(sql: string, i: number, hashComments: boolean): number {
+
+    if (sql.startsWith('/*', i)) {
+
+        const close = sql.indexOf('*/', i + 2);
+
+        return close === -1 ? sql.length : close + 2;
+
+    }
+
+    if (sql.startsWith('--', i) || (hashComments && sql[i] === '#')) {
+
+        const newline = sql.indexOf('\n', i);
+
+        return newline === -1 ? sql.length : newline;
+
+    }
+
+    return -1;
 
 }

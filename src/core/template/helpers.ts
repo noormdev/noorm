@@ -26,6 +26,7 @@ import { attempt } from '@logosdx/utils';
 
 import { observer } from '../observer.js';
 import { HELPER_FILENAME, HELPER_EXTENSIONS } from './types.js';
+import { isWithinRoot } from './utils.js';
 import { loadJs } from './loaders/js.js';
 
 /**
@@ -43,8 +44,10 @@ export async function findHelperFiles(fromDir: string, projectRoot: string): Pro
     let currentDir = path.resolve(fromDir);
     const root = path.resolve(projectRoot);
 
-    // Walk up until we reach or pass the project root
-    while (currentDir.startsWith(root)) {
+    // Walk up until we reach or pass the project root. Segment-aware
+    // containment, not a string prefix: a template under `<root>-evil`
+    // would otherwise walk into that sibling and execute its $helpers.
+    while (isWithinRoot(currentDir, root)) {
 
         const helperPath = await findHelperInDir(currentDir);
 

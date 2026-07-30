@@ -8,10 +8,11 @@
 import { defineCommand } from 'citty';
 import { attempt } from '@logosdx/utils';
 
-import { sharedArgs } from '../_utils.js';
+import { outputResult, outputError, sharedArgs } from '../_utils.js';
 import { copyVaultSecrets } from '../../core/vault/index.js';
 import { loadPrivateKey, loadIdentityMetadata } from '../../core/identity/storage.js';
 import { getStateManager } from '../../core/state/index.js';
+import { EXIT } from '../_exit.js';
 
 const cpCommand = defineCommand({
     meta: {
@@ -37,8 +38,8 @@ const cpCommand = defineCommand({
 
         if (identityErr || !cryptoIdentity) {
 
-            process.stderr.write('Error: Identity not set up. Run: noorm identity init\n');
-            process.exit(1);
+            outputError(args, 'Identity not set up. Run: noorm identity init');
+            process.exit(EXIT.FAILURE);
 
         }
 
@@ -46,8 +47,8 @@ const cpCommand = defineCommand({
 
         if (keyErr || !privateKey) {
 
-            process.stderr.write('Error: Private key not found. Run: noorm identity init\n');
-            process.exit(1);
+            outputError(args, 'Private key not found. Run: noorm identity init');
+            process.exit(EXIT.FAILURE);
 
         }
 
@@ -56,8 +57,8 @@ const cpCommand = defineCommand({
 
         if (loadErr) {
 
-            process.stderr.write(`Error: ${loadErr.message}\n`);
-            process.exit(1);
+            outputError(args, loadErr.message);
+            process.exit(EXIT.FAILURE);
 
         }
 
@@ -66,47 +67,22 @@ const cpCommand = defineCommand({
 
         if (!sourceConfig) {
 
-            process.stderr.write(`Error: Source config not found: ${sourceConfigName}\n`);
-            process.exit(1);
+            outputError(args, `Source config not found: ${sourceConfigName}`);
+            process.exit(EXIT.USAGE);
 
         }
 
         if (!destConfig) {
 
-            process.stderr.write(`Error: Destination config not found: ${destConfigName}\n`);
-            process.exit(1);
+            outputError(args, `Destination config not found: ${destConfigName}`);
+            process.exit(EXIT.USAGE);
 
         }
 
-        if (args.dryRun) {
-
-            if (args.json) {
-
-                process.stdout.write(JSON.stringify({
-                    success: true,
-                    dryRun: true,
-                    source: sourceConfigName,
-                    destination: destConfigName,
-                    keys,
-                    force: !!args.force,
-                }) + '\n');
-
-            }
-            else {
-
-                process.stdout.write(`Dry run: would copy ${keys.join(', ')} from "${sourceConfigName}" to "${destConfigName}"\n`);
-                if (args.force) {
-
-                    process.stdout.write('With --force: would overwrite existing secrets\n');
-
-                }
-
-            }
-
-            process.exit(0);
-
-        }
-
+        // A dry run goes through the same preflight as the real copy — vault
+        // access on both ends, source-key existence, destination collisions —
+        // and differs only in that nothing is written. Echoing the arguments
+        // back could not answer the question a dry run is asked.
         const [result, copyErr] = await copyVaultSecrets(
             sourceConfig,
             destConfig,
@@ -114,34 +90,30 @@ const cpCommand = defineCommand({
             cryptoIdentity.identityHash,
             privateKey,
             cryptoIdentity.publicKey,
-            { force: args.force },
+            { force: args.force, dryRun: !!args.dryRun },
         );
 
         if (copyErr) {
 
-            if (args.json) {
-
-                process.stdout.write(JSON.stringify({ success: false, error: copyErr.message }) + '\n');
-
-            }
-            else {
-
-                process.stderr.write(`Error: ${copyErr.message}\n`);
-
-            }
-
-            process.exit(1);
+            outputError(args, copyErr.message);
+            process.exit(EXIT.FAILURE);
 
         }
 
+        // `success` tracks the exit code. Reporting true alongside a populated
+        // `errors` array made a CI script branching on `.success` read a
+        // failed copy as a success.
+        const succeeded = !result?.errors?.length;
+
         if (args.json) {
 
-            process.stdout.write(JSON.stringify({
-                success: true,
+            outputResult(args, {
+                success: succeeded,
+                dryRun: !!args.dryRun,
                 copied: result?.copied ?? [],
                 skipped: result?.skipped ?? [],
                 errors: result?.errors ?? [],
-            }) + '\n');
+            }, '');
 
         }
         else {
@@ -152,13 +124,17 @@ const cpCommand = defineCommand({
 
             if (copied.length > 0) {
 
-                process.stdout.write(`Copied ${copied.length} secrets: ${copied.join(', ')}\n`);
+                const verb = args.dryRun ? 'Would copy' : 'Copied';
+
+                process.stdout.write(`${verb} ${copied.length} secrets: ${copied.join(', ')}\n`);
 
             }
 
             if (skipped.length > 0) {
 
-                process.stdout.write(`Skipped ${skipped.length} existing secrets: ${skipped.join(', ')}\n`);
+                const verb = args.dryRun ? 'Would skip' : 'Skipped';
+
+                process.stdout.write(`${verb} ${skipped.length} existing secrets: ${skipped.join(', ')}\n`);
                 process.stdout.write('Use --force to overwrite\n');
 
             }
@@ -181,13 +157,14 @@ const cpCommand = defineCommand({
 
         }
 
-        process.exit(result?.errors?.length ? 1 : 0);
+        process.exit(succeeded ? 0 : 1);
 
     },
 });
 
 (cpCommand as typeof cpCommand & { examples: string[] }).examples = [
     'noorm vault cp API_KEY staging production',
+    'noorm vault cp API_KEY staging production --dry-run',
     'noorm vault cp DB_PASSWORD dev staging --force',
     'noorm vault cp API_KEY staging production --json',
 ];

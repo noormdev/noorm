@@ -1,6 +1,10 @@
 import { describe, it, expect } from 'bun:test';
 
-import { filterFilesByPaths, findUnmatchedIncludePatterns } from '../../../src/core/shared/files.js';
+import {
+    filterFilesByPaths,
+    findUnmatchedIncludePatterns,
+    findUnmatchedExcludePatterns,
+} from '../../../src/core/shared/files.js';
 
 describe('shared: filterFilesByPaths', () => {
 
@@ -151,6 +155,78 @@ describe('shared: findUnmatchedIncludePatterns', () => {
         const result = findUnmatchedIncludePatterns(files, '/project/sql', ['01_tables/users.sql']);
 
         expect(result).toEqual([]);
+
+    });
+
+});
+
+/**
+ * The unmatched-*exclude* case is the dangerous direction. A bad `include`
+ * over-restricts and you notice, because nothing ran. A bad `exclude`
+ * under-restricts: the seeds, fixtures or destructive DDL you fenced off
+ * execute against the target database, and the build reports success.
+ */
+describe('shared: findUnmatchedExcludePatterns', () => {
+
+    it('should name an exclude entry that matched nothing', () => {
+
+        const files = [
+            '/project/sql/01_tables/users.sql',
+            '/project/sql/10_seeds/data.sql',
+        ];
+
+        // The same `sql/` prefix mistake the include warning exists for:
+        // patterns are relative to paths.sql, so this means sql/sql/10_seeds.
+        const result = findUnmatchedExcludePatterns(files, '/project/sql', ['sql/10_seeds']);
+
+        expect(result).toEqual(['sql/10_seeds']);
+
+    });
+
+    it('should report nothing when every exclude entry matched', () => {
+
+        const files = [
+            '/project/sql/01_tables/users.sql',
+            '/project/sql/10_seeds/data.sql',
+        ];
+
+        const result = findUnmatchedExcludePatterns(files, '/project/sql', ['10_seeds']);
+
+        expect(result).toEqual([]);
+
+    });
+
+    it('should report only the entries that matched nothing', () => {
+
+        const files = [
+            '/project/sql/01_tables/users.sql',
+            '/project/sql/10_seeds/data.sql',
+        ];
+
+        const result = findUnmatchedExcludePatterns(
+            files,
+            '/project/sql',
+            ['10_seeds', '99_archive'],
+        );
+
+        expect(result).toEqual(['99_archive']);
+
+    });
+
+    it('should report nothing for an empty exclude list', () => {
+
+        const files = ['/project/sql/01_tables/users.sql'];
+
+        expect(findUnmatchedExcludePatterns(files, '/project/sql', [])).toEqual([]);
+
+    });
+
+    it('should report every entry when no files were discovered at all', () => {
+
+        // Nothing to fence off, so nothing is at risk — but the entry is
+        // still wrong, and staying silent is how it survives to the build
+        // where files do exist.
+        expect(findUnmatchedExcludePatterns([], '/project/sql', ['10_seeds'])).toEqual(['10_seeds']);
 
     });
 

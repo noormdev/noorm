@@ -5,9 +5,12 @@
  * config-scoped action.
  */
 export { assertPolicy, checkConfigPolicy, checkPolicy, confirmationPhraseFor, formatAccessTag, guarded, isVisibleToChannel } from './check.js';
+export { resolveChannel } from './channel.js';
 export { classifyStatements } from './classify.js';
+export { AGENT_HARNESSES, detectAgentHarness, isAgentSession } from './harness.js';
+export type { AgentHarness } from './harness.js';
 export type { SqlClass } from './classify.js';
-export { GUARDED_ACCESS, OPEN_ACCESS, resolveLegacyAccess } from './legacy-access.js';
+export { DEFAULT_ACCESS, GUARDED_ACCESS, resolveLegacyAccess } from './legacy-access.js';
 export { MATRIX } from './matrix.js';
 export type {
     Channel,

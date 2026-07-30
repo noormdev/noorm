@@ -7,7 +7,8 @@
 import { describe, it, expect, afterAll } from 'bun:test';
 import path from 'node:path';
 import { rm } from 'node:fs/promises';
-import { preview, runBuild, runFile, runDir, runFiles } from '../../../src/core/runner/runner.js';
+import { attempt } from '@logosdx/utils';
+import { preview, runBuild, runFile, runDir, runFiles, checkFilesStatus } from '../../../src/core/runner/runner.js';
 import type { RunContext } from '../../../src/core/runner/types.js';
 
 const FIXTURES_DIR = path.join(import.meta.dirname, 'fixtures');
@@ -19,7 +20,7 @@ const mockContext: RunContext = {
     configName: 'test',
     identity: { name: 'Test User', email: 'test@example.com', source: 'config' },
     projectRoot: FIXTURES_DIR,
-    access: { user: 'admin', mcp: 'admin' },
+    access: { user: 'admin', agent: 'admin' },
     channel: 'user',
     config: { table: 'users' },
     secrets: { API_KEY: 'secret123' },
@@ -144,7 +145,7 @@ describe('runner: policy gate', () => {
     // proves it fires before any file I/O or DB access is attempted.
     const viewerContext: RunContext = {
         ...mockContext,
-        access: { user: 'viewer', mcp: false },
+        access: { user: 'viewer', agent: false },
     };
 
     it('should deny runBuild for a viewer role', async () => {
@@ -180,6 +181,52 @@ describe('runner: policy gate', () => {
         const filepath = path.join(FIXTURES_DIR, 'raw.sql');
 
         await expect(runFile(viewerContext, filepath)).rejects.toThrow(/"test"/);
+
+    });
+
+    // `preview` and `checkFilesStatus` render templates: they resolve every
+    // secret tier by design and they execute referenced `$helpers`/side-car
+    // scripts. Leaving them ungated meant the one role denied every `run:*`
+    // permission could still dump plaintext secrets and run code.
+    it('should deny preview for a viewer role', async () => {
+
+        const filepath = path.join(FIXTURES_DIR, 'template.sql.tmpl');
+
+        await expect(preview(viewerContext, [filepath])).rejects.toThrow(/run:file/);
+
+    });
+
+    it('should deny checkFilesStatus for a viewer role', async () => {
+
+        const filepath = path.join(FIXTURES_DIR, 'raw.sql');
+
+        await expect(checkFilesStatus(viewerContext, [filepath])).rejects.toThrow(/run:file/);
+
+    });
+
+    it('should not render anything before denying preview', async () => {
+
+        const filepath = path.join(FIXTURES_DIR, 'template.sql.tmpl');
+
+        const [results, err] = await attempt(() => preview(viewerContext, [filepath]));
+
+        // A per-file failure result would mean the loop was entered and the
+        // template was reached; the gate has to reject the whole call.
+        expect(Array.isArray(results)).toBe(false);
+        expect(err).toBeInstanceOf(Error);
+
+    });
+
+    it('should still allow preview for an operator role', async () => {
+
+        const filepath = path.join(FIXTURES_DIR, 'template.sql.tmpl');
+
+        const results = await preview(
+            { ...mockContext, access: { user: 'operator', agent: 'operator' } },
+            [filepath],
+        );
+
+        expect(results[0]!.status).toBe('success');
 
     });
 

@@ -186,7 +186,7 @@ All conditions within a rule are AND'd — every specified field must match.
 | `defaults.password` | `string?` | Password |
 | `defaults.ssl` | `boolean?` | Enable SSL |
 | `defaults.isTest` | `boolean?` | Test flag (if `true`, cannot be overridden to `false`) |
-| `defaults.protected` | `boolean?` | If `true`, acts as an access ceiling: resolved config `access` is clamped to at most `{ user: 'operator', mcp: 'viewer' }` |
+| `defaults.protected` | `boolean?` | If `true`, acts as an access ceiling: resolved config `access` is clamped to at most `{ user: 'operator', agent: 'viewer' }` |
 | `secrets[]` | array | Secrets required for this stage |
 
 ### `secrets[]` (stage or universal)
@@ -238,7 +238,7 @@ interface Config {
     isTest: boolean;                // Test database flag (default: false)
     access: {                       // Per-channel access roles (replaces the legacy `protected` boolean)
         user: 'viewer' | 'operator' | 'admin';           // CLI/TUI/SDK role (default: 'admin')
-        mcp: 'viewer' | 'operator' | 'admin' | false;    // MCP role; `false` hides the config from MCP (default: 'admin')
+        agent: 'viewer' | 'operator' | 'admin' | false;    // AI agent role (MCP and CLI); `false` hides the config from agents (default: 'viewer')
     };
     connection: {
         dialect: 'postgres' | 'mysql' | 'sqlite' | 'mssql';
@@ -265,9 +265,9 @@ interface Config {
 
 ## Stage Constraints
 
-`defaults.isTest: true` cannot be overridden to `false` for configs created from that stage. `defaults.protected: true` works differently: it is an access **ceiling** applied at config resolution — a config linked to that stage gets its resolved `access` clamped to at most `{ user: 'operator', mcp: 'viewer' }`, no matter what `access` the config itself declares. This enforces safety invariants — a production stage stays guarded, a test stage stays flagged as test.
+`defaults.isTest: true` cannot be overridden to `false` for configs created from that stage. `defaults.protected: true` works differently: it is an access **ceiling** applied at config resolution — a config linked to that stage gets its resolved `access` clamped to at most `{ user: 'operator', agent: 'viewer' }`, no matter what `access` the config itself declares. This enforces safety invariants — a production stage stays guarded, a test stage stays flagged as test.
 
-See `docs/spec/config-access-roles.md` for the full per-channel access model (`viewer`/`operator`/`admin` roles, the permission matrix, and MCP's `access.mcp: false` invisibility).
+See `docs/spec/config-access-roles.md` for the full per-channel access model (`viewer`/`operator`/`admin` roles, the permission matrix, and MCP's `access.agent: false` invisibility).
 
 ## Minimal Settings Example
 

@@ -62,6 +62,51 @@ describe('worker-bridge: OrderBuffer', () => {
 
     });
 
+    // A duplicate, negative or already-flushed index can never drain. Left
+    // in the map it silently strands every later item behind it, which is
+    // the memory half of the pipeline hang.
+    it('should reject a duplicate index rather than strand later items', () => {
+
+        const flushed: string[] = [];
+        const buffer = new OrderBuffer<string>(item => {
+
+            flushed.push(item);
+
+        });
+
+        buffer.add(1, 'b');
+
+        expect(() => buffer.add(1, 'B')).toThrow('duplicate index 1');
+        expect(buffer.pending).toBe(1);
+
+    });
+
+    it('should reject an index that has already been flushed', () => {
+
+        const buffer = new OrderBuffer<string>(() => {});
+
+        buffer.add(0, 'a');
+
+        expect(() => buffer.add(0, 'A')).toThrow('can never flush');
+
+    });
+
+    it('should reject a negative index', () => {
+
+        const buffer = new OrderBuffer<string>(() => {});
+
+        expect(() => buffer.add(-1, 'x')).toThrow('can never flush');
+
+    });
+
+    it('should reject a non-integer index', () => {
+
+        const buffer = new OrderBuffer<string>(() => {});
+
+        expect(() => buffer.add(1.5, 'x')).toThrow('can never flush');
+
+    });
+
     it('should handle large gaps', () => {
 
         const flushed: number[] = [];

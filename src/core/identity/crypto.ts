@@ -28,6 +28,7 @@ import {
 } from 'crypto';
 
 import type { KeyPair, SharedConfigPayload } from './types.js';
+import { isValidKeyHex } from './storage.js';
 
 // =============================================================================
 // Key Generation
@@ -269,8 +270,18 @@ export function decryptWithPrivateKey(payload: SharedConfigPayload, privateKey: 
  * This is used to encrypt the local state file. The key is derived
  * directly from the identity's private key (no shared secret needed).
  *
- * @param privateKey - X25519 private key (hex)
+ * Validation is not optional here. `Buffer.from(str, 'hex')` never throws —
+ * it stops at the first invalid pair and truncates odd lengths — so every
+ * malformed key would otherwise collapse to a zero-length HKDF input and
+ * derive the SAME 32 bytes, a constant any third party can recompute from
+ * this source file. State encrypted under it is effectively plaintext. This
+ * function is the single chokepoint every state read and write passes
+ * through, so the guard belongs here rather than at each call site.
+ *
+ * @param privateKey - X25519 private key (hex-encoded PKCS8 DER)
  * @returns 32-byte key for AES-256
+ *
+ * @throws Error if the key is not well-formed hex key material
  *
  * @example
  * ```typescript
@@ -279,6 +290,17 @@ export function decryptWithPrivateKey(payload: SharedConfigPayload, privateKey: 
  * ```
  */
 export function deriveStateKey(privateKey: string): Buffer {
+
+    if (!isValidKeyHex(privateKey)) {
+
+        throw new Error(
+            'Invalid identity key material: expected a hex-encoded X25519 key. ' +
+            'Refusing to derive a state encryption key from malformed input — doing so ' +
+            'would produce a key that anyone can compute. Check ~/.noorm/identity.key ' +
+            'or NOORM_IDENTITY_PRIVATE_KEY for corruption or truncation.',
+        );
+
+    }
 
     const privateKeyBuffer = Buffer.from(privateKey, 'hex');
 

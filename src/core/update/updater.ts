@@ -19,7 +19,7 @@ import { open, rename, unlink, chmod, stat } from 'fs/promises';
 import { attempt, retry, wait } from '@logosdx/utils';
 
 import { observer } from '../observer.js';
-import { getCurrentVersion } from './checker.js';
+import { getCurrentVersion, isValidVersion } from './checker.js';
 import { verifyChecksum } from './checksum.js';
 import { detectInstallMode, getBinaryDownloadUrl, getChecksumsUrl, getBinaryAssetName } from './install-mode.js';
 import type { UpdateResult } from './types.js';
@@ -508,6 +508,26 @@ async function installViaBinary(version: string, previousVersion: string, insecu
 export function installUpdate(version: string, options: { insecure?: boolean } = {}): Promise<UpdateResult> {
 
     const previousVersion = getCurrentVersion();
+
+    // Re-checked here even though `checkForUpdate` already validates: this is a
+    // public entry point the TUI and CLI call with a caller-supplied string, and
+    // both downstream paths interpolate it into something dangerous — a release
+    // URL (binary mode) or a `shell: true` command line (npm mode).
+    if (!isValidVersion(version)) {
+
+        const error = `refusing to install invalid version string: ${JSON.stringify(version)}`;
+
+        observer.emit('update:failed', { version, error });
+
+        return Promise.resolve({
+            success: false,
+            previousVersion,
+            newVersion: version,
+            error,
+        });
+
+    }
+
     const mode = detectInstallMode();
 
     observer.emit('update:installing', { version });

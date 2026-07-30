@@ -87,7 +87,7 @@ describe('cli: noorm change history — output streams', () => {
             name: CONFIG_NAME,
             type: 'local',
             isTest: true,
-            access: { user: 'admin', mcp: 'admin' },
+            access: { user: 'admin', agent: 'admin' },
             connection: { dialect: 'sqlite', database: dbPath },
         };
 
@@ -128,9 +128,12 @@ describe('cli: noorm change history — output streams', () => {
 
         expect(result.status).toBe(0);
 
+        // The envelope, not a bare array: `--json` is a contract, and a
+        // top-level array leaves a consumer nowhere to read `success` from.
         const parsed = JSON.parse(result.stdout);
-        expect(Array.isArray(parsed)).toBe(true);
-        expect(parsed).toEqual([]);
+        expect(parsed.success).toBe(true);
+        expect(Array.isArray(parsed.history)).toBe(true);
+        expect(parsed.history).toEqual([]);
 
     });
 

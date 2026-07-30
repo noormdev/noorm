@@ -191,7 +191,7 @@ describe('change: scaffold', () => {
                 projectRoot: runDir,
                 changesDir: runDir,
                 sqlDir: runDir,
-                access: { user: 'admin', mcp: 'admin' },
+                access: { user: 'admin', agent: 'admin' },
                 channel: 'user',
                 dialect: 'sqlite',
             };

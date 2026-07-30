@@ -28,7 +28,7 @@ const testConfig = {
     name: 'dev',
     type: 'local' as const,
     isTest: false,
-    access: { user: 'admin' as const, mcp: 'admin' as const },
+    access: { user: 'admin' as const, agent: 'admin' as const },
     connection: {
         dialect: 'postgres' as const,
         host: 'localhost',

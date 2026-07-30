@@ -24,12 +24,11 @@
  * ```
  */
 import type { Kysely } from 'kysely';
-import { sql } from 'kysely';
 
 import { attempt } from '@logosdx/utils';
 
 import { observer } from '../observer.js';
-import { getNoormTables, noormDb } from '../shared/index.js';
+import { getNoormTables, insertOperationRecord, noormDb } from '../shared/index.js';
 import { getCurrentVersion } from '../update/checker.js';
 import type {
     NoormDatabase,
@@ -51,6 +50,16 @@ import type { ChangeType } from '../shared/index.js';
 // ─────────────────────────────────────────────────────────────
 // Date Hydration
 // ─────────────────────────────────────────────────────────────
+
+/**
+ * Reserved change name recording a `db teardown`.
+ *
+ * Shares the `change` row shape so teardowns appear in the audit trail,
+ * which also made it show up in `change list` as a user change that is
+ * permanently orphaned — it has no folder on disk and never will.
+ * Status reads filter it out; history reads keep it.
+ */
+const RESET_MARKER = '__reset__';
 
 /**
  * Normalizes a change-tracking timestamp column to a real `Date`.
@@ -235,6 +244,7 @@ export class ChangeHistory {
                 .where('change_type', '=', 'change')
                 .where('direction', '=', 'change')
                 .where('config_name', '=', this.#configName)
+                .where('name', '!=', RESET_MARKER)
                 .orderBy('id', 'desc')
                 .execute(),
         );
@@ -446,6 +456,23 @@ export class ChangeHistory {
      * consulting the ambiguous row — excluding it here is what prevents a
      * third attempt from re-running a file a prior success already covered.
      *
+     * A prior success only licenses a skip while it is still *standing*.
+     * Two things retire it, and neither is visible on the execution row
+     * itself, so both are filtered on the parent operation:
+     *
+     * 1. The operation was reverted or torn down. `markAsReverted` and
+     *    `markAllAsStale` flip the forward operation's status to
+     *    `reverted`/`stale`, so its file successes no longer describe
+     *    anything that exists in the database.
+     * 2. An operation in the opposite direction has run since. A revert
+     *    undoes a prior apply and an apply undoes a prior revert, but
+     *    neither rewrites the other's rows — only their relative order
+     *    says which one is still in effect. Hence the `id` boundary.
+     *
+     * Without both, each file executes at most once per direction for the
+     * lifetime of the tracking table and every apply->revert->apply cycle
+     * silently no-ops.
+     *
      * @param name - Change name
      * @param direction - 'change' or 'revert'
      * @param filepath - Relative filepath as stored in execution records
@@ -468,10 +495,42 @@ export class ChangeHistory {
 
         }
 
+        const opposite: Direction = direction === 'change' ? 'revert' : 'change';
+
+        // Newest operation that ran the other way; anything at or before it
+        // has since been undone.
+        const [boundary, boundaryErr] = await attempt(() =>
+            this.#ndb
+                .selectFrom(this.#tables.change)
+                .select(['id'])
+                .where('name', '=', name)
+                .where('change_type', '=', 'change')
+                .where('direction', '=', opposite)
+                .where('config_name', '=', this.#configName)
+                .orderBy('id', 'desc')
+                .limit(1)
+                .executeTakeFirst(),
+        );
+
+        if (boundaryErr) {
+
+            observer.emit('error', {
+                source: 'change',
+                error: boundaryErr,
+                context: { name, filepath, operation: 'needs-run-file-boundary' },
+            });
+
+            // Can't prove the prior success still stands, so re-run rather
+            // than skip: a redundant run is recoverable, a skipped one is not.
+            return { needsRun: true, reason: 'new' };
+
+        }
+
         // Get most recent completed execution record for this file, scoped
         // to this change's name+direction+config
-        const [record, err] = await attempt(() =>
-            (this.#ndb
+        const [record, err] = await attempt(() => {
+
+            let query = (this.#ndb
                 .selectFrom(this.#tables.executions)
                 .innerJoin(
                     this.#tables.change,
@@ -487,12 +546,22 @@ export class ChangeHistory {
                 .where(`${this.#tables.change}.name`, '=', name)
                 .where(`${this.#tables.change}.direction`, '=', direction)
                 .where(`${this.#tables.change}.config_name`, '=', this.#configName)
+                .where(`${this.#tables.change}.status`, 'not in', ['reverted', 'stale'])
                 .where(`${this.#tables.executions}.filepath`, '=', filepath)
-                .where(`${this.#tables.executions}.status`, 'not in', ['pending', 'skipped'])
+                .where(`${this.#tables.executions}.status`, 'not in', ['pending', 'skipped']);
+
+            if (boundary) {
+
+                query = query.where(`${this.#tables.change}.id`, '>', boundary.id);
+
+            }
+
+            return query
                 .orderBy(`${this.#tables.executions}.id`, 'desc')
                 .limit(1)
-                .executeTakeFirst(),
-        );
+                .executeTakeFirst();
+
+        });
 
         if (err) {
 
@@ -563,9 +632,12 @@ export class ChangeHistory {
         executedBy: string;
     }): Promise<number> {
 
-        const insertQuery = this.#ndb
-            .insertInto(this.#tables.change)
-            .values({
+        const [id, insertErr] = await insertOperationRecord({
+            db: this.#db,
+            ndb: this.#ndb,
+            dialect: this.#dialect,
+            table: this.#tables.change,
+            values: {
                 name: data.name,
                 change_type: 'change',
                 direction: data.direction,
@@ -573,94 +645,22 @@ export class ChangeHistory {
                 config_name: this.#configName,
                 executed_by: data.executedBy,
                 cli_version: getCurrentVersion(),
-            });
+            },
+        });
 
-        // MSSQL uses OUTPUT inserted.id (not RETURNING)
-        let id: number | undefined;
+        if (insertErr) {
 
-        if (this.#dialect === 'mssql') {
-
-            const [result, insertErr] = await attempt(() =>
-                insertQuery
-                    .output('inserted.id as id')
-                    .executeTakeFirstOrThrow(),
-            );
-
-            if (insertErr) {
-
-                throw new Error('Failed to create change operation record', { cause: insertErr });
-
-            }
-
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            id = (result as any)?.id;
-
-        }
-        else {
-
-            const [result, err] = await attempt(() =>
-                insertQuery.returning('id').executeTakeFirstOrThrow(),
-            );
-
-            if (err) {
-
-                throw new Error('Failed to create change operation record', { cause: err });
-
-            }
-
-            id = result?.id ?? undefined;
-
-            // SQLite with better-sqlite3 may return null for RETURNING
-            if (id === null || id === undefined) {
-
-                const lastIdQuery = this.#lastInsertIdQuery();
-
-                if (lastIdQuery) {
-
-                    const [lastIdResult] = await attempt(() => lastIdQuery.execute(this.#db));
-                    id = lastIdResult?.rows?.[0]?.id;
-
-                }
-
-            }
+            throw new Error('Failed to create change operation record', { cause: insertErr });
 
         }
 
-        if (typeof id !== 'number' || !Number.isFinite(id) || id <= 0) {
+        if (id === undefined) {
 
             throw new Error(`Invalid operation ID returned: ${id}`);
 
         }
 
         return id;
-
-    }
-
-    /**
-     * Get dialect-specific last-insert-id query.
-     *
-     * Returns null if the dialect should always use RETURNING/OUTPUT.
-     */
-    #lastInsertIdQuery(): ReturnType<typeof sql<{ id: number }>> | null {
-
-        switch (this.#dialect) {
-
-        case 'sqlite':
-            return sql<{ id: number }>`SELECT last_insert_rowid() as id`;
-
-        case 'mysql':
-            return sql<{ id: number }>`SELECT LAST_INSERT_ID() as id`;
-
-        case 'mssql':
-            return sql<{ id: number }>`SELECT SCOPE_IDENTITY() as id`;
-
-        case 'postgres':
-            return sql<{ id: number }>`SELECT lastval() as id`;
-
-        default:
-            return null;
-
-        }
 
     }
 
@@ -893,10 +893,13 @@ export class ChangeHistory {
      */
     async recordReset(executedBy: string, reason?: string): Promise<number> {
 
-        const insertQuery = this.#ndb
-            .insertInto(this.#tables.change)
-            .values({
-                name: '__reset__',
+        const [id, insertErr] = await insertOperationRecord({
+            db: this.#db,
+            ndb: this.#ndb,
+            dialect: this.#dialect,
+            table: this.#tables.change,
+            values: {
+                name: RESET_MARKER,
                 change_type: 'change',
                 direction: 'change',
                 status: 'success',
@@ -906,40 +909,16 @@ export class ChangeHistory {
                 error_message: reason ?? '',
                 duration_ms: 0,
                 checksum: '',
-            });
+            },
+        });
 
-        if (this.#dialect === 'mssql') {
-
-            const [result, insertErr] = await attempt(() =>
-                insertQuery.output('inserted.id as id').executeTakeFirstOrThrow(),
-            );
-
-            if (insertErr) {
-
-                observer.emit('error', {
-                    source: 'change',
-                    error: insertErr,
-                    context: { operation: 'record-reset' },
-                });
-
-                return 0;
-
-            }
-
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            return (result as any)?.id ?? 0;
-
-        }
-
-        const [result, err] = await attempt(() =>
-            insertQuery.returning('id').executeTakeFirstOrThrow(),
-        );
-
-        if (err) {
+        // A teardown that happened must not be undone by a failure to write
+        // its audit row, so this degrades to 0 rather than throwing.
+        if (insertErr) {
 
             observer.emit('error', {
                 source: 'change',
-                error: err,
+                error: insertErr,
                 context: { operation: 'record-reset' },
             });
 
@@ -947,7 +926,7 @@ export class ChangeHistory {
 
         }
 
-        return result.id;
+        return id ?? 0;
 
     }
 

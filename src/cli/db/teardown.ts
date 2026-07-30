@@ -1,9 +1,12 @@
 /**
  * noorm db teardown — drop all database objects.
+ *
+ * Gated by the config's `db:teardown` access, enforced at the SDK seam that
+ * `withContext` threads `--yes` into.
  */
 import { defineCommand } from 'citty';
 
-import { withContext, outputResult, sharedArgs } from '../_utils.js';
+import { withContext, outputResult, outputError, sharedArgs } from '../_utils.js';
 
 const teardownCommand = defineCommand({
     meta: {
@@ -12,20 +15,24 @@ const teardownCommand = defineCommand({
     },
     args: {
         config: sharedArgs.config,
-        force: sharedArgs.force,
         dryRun: sharedArgs.dryRun,
+        preserveSchemas: {
+            type: 'string',
+            description: 'Comma-separated schemas to leave untouched (teardown reaches every non-system schema)',
+        },
         yes: sharedArgs.yes,
         json: sharedArgs.json,
     },
     async run({ args }) {
 
         const dryRun = Boolean(args.dryRun);
+        const preserveSchemas = splitList(args.preserveSchemas);
 
         const [result, error] = await withContext({
             args,
             fn: (ctx, logger) => {
 
-                return ctx.noorm.db.teardown({ dryRun }).then((res) => {
+                return ctx.noorm.db.teardown({ dryRun, preserveSchemas }).then((res) => {
 
                     const droppedCount = res.dropped.tables.length +
                         res.dropped.views.length +
@@ -58,13 +65,31 @@ const teardownCommand = defineCommand({
             result.dropped.functions.length +
             result.dropped.types.length;
 
+        const postScript = result.postScriptResult;
+
         if (args.json) {
 
             outputResult(args, {
                 dropped: result.dropped,
                 count: droppedCount,
+                ...(postScript ? { postScriptResult: postScript } : {}),
                 ...(dryRun ? { dryRun: true } : {}),
             }, '');
+
+        }
+
+        // The objects are already gone, so this is not a rollback — but a
+        // teardown whose post-script never ran is half-finished, and exiting
+        // 0 told every pipeline it was complete.
+        if (postScript && !postScript.executed) {
+
+            if (!args.json) {
+
+                outputError(args, `Post-teardown script failed: ${postScript.error ?? 'Unknown error'}`);
+
+            }
+
+            process.exit(1);
 
         }
 
@@ -73,11 +98,19 @@ const teardownCommand = defineCommand({
     },
 });
 
+/** Parses a comma-separated CLI list, returning undefined for an absent flag. */
+function splitList(value: unknown): string[] | undefined {
+
+    if (typeof value !== 'string' || value.trim().length === 0) return undefined;
+
+    return value.split(',').map((s) => s.trim()).filter((s) => s.length > 0);
+
+}
+
 (teardownCommand as typeof teardownCommand & { examples: string[] }).examples = [
-    'noorm db teardown',
     'noorm db teardown --yes',
     'noorm db teardown --dry-run',
-    'noorm db teardown --force --yes',
+    'noorm db teardown --preserve-schemas app_private --yes',
     'noorm db teardown --json --yes',
 ];
 

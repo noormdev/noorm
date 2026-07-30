@@ -82,7 +82,7 @@ describe('cli: noorm lock status — output streams', () => {
             name: CONFIG_NAME,
             type: 'local',
             isTest: true,
-            access: { user: 'admin', mcp: 'admin' },
+            access: { user: 'admin', agent: 'admin' },
             connection: { dialect: 'sqlite', database: dbPath },
         };
 
@@ -123,7 +123,7 @@ describe('cli: noorm lock status — output streams', () => {
         expect(result.status).toBe(0);
 
         const parsed = JSON.parse(result.stdout);
-        expect(parsed).toEqual({ isLocked: false, lock: null });
+        expect(parsed).toEqual({ success: true, isLocked: false, lock: null });
 
     });
 

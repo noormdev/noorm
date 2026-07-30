@@ -6,12 +6,13 @@
 import type { Kysely } from 'kysely';
 
 import type { NoormDatabase } from '../../core/shared/index.js';
-import type { Lock, LockStatus, LockOptions } from '../../core/lock/index.js';
+import type { ForceReleaseResult, Lock, LockStatus, LockOptions } from '../../core/lock/index.js';
 import { getLockManager } from '../../core/lock/index.js';
 import { formatIdentity } from '../../core/identity/index.js';
 
 import type { ContextState } from '../state.js';
 import { requireConnection } from '../state.js';
+import { checkProtectedConfig } from '../guards.js';
 
 // ─────────────────────────────────────────────────────────────
 // LockNamespace
@@ -119,12 +120,26 @@ export class LockNamespace {
     /**
      * Force release any database lock regardless of ownership.
      *
+     * Gated by the config's `lock:force` access: breaking someone else's lock
+     * interrupts their in-flight migration, so `viewer` is denied outright and
+     * `operator`/`admin` must pre-confirm. Gating here rather than in each
+     * command means CLI, TUI and MCP inherit one enforcement path.
+     *
+     * @returns whether a lock was released, and who held it
+     *
      * @example
      * ```typescript
-     * await ctx.noorm.lock.forceRelease()
+     * const { released, holder } = await ctx.noorm.lock.forceRelease()
      * ```
      */
-    async forceRelease(): Promise<boolean> {
+    async forceRelease(): Promise<ForceReleaseResult> {
+
+        checkProtectedConfig(
+            this.#state.config,
+            this.#state.options,
+            'lock:force',
+            'lock.forceRelease',
+        );
 
         const lockManager = getLockManager();
 

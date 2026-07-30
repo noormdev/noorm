@@ -116,7 +116,7 @@ function buildMockSession(overrides: Partial<RpcSession> = {}): RpcSession & {
     const getContextCalls: string[] = [];
 
     return {
-        channel: 'mcp',
+        channel: 'agent',
         getContextCalls,
         getContext(config?: string) {
 
@@ -414,7 +414,7 @@ describe('mcp: server dispatch — policy gate (CP3)', () => {
 
     it('should deny and never invoke the handler when the resolved role denies the permission (viewer)', async () => {
 
-        const { client, cleanup, called } = await setup('change:run', { user: 'admin', mcp: 'viewer' });
+        const { client, cleanup, called } = await setup('change:run', { user: 'admin', agent: 'viewer' });
 
         const { isError, parsed } = await callJson(client, 'run_noorm_cmd', { command: 'gated_cmd', payload: {} });
 
@@ -428,9 +428,9 @@ describe('mcp: server dispatch — policy gate (CP3)', () => {
 
     });
 
-    it('should collapse an operator confirm cell to deny on the mcp channel', async () => {
+    it('should collapse an operator confirm cell to deny on the agent channel', async () => {
 
-        const { client, cleanup, called } = await setup('change:run', { user: 'admin', mcp: 'operator' });
+        const { client, cleanup, called } = await setup('change:run', { user: 'admin', agent: 'operator' });
 
         const { isError, parsed } = await callJson(client, 'run_noorm_cmd', { command: 'gated_cmd', payload: {} });
 
@@ -439,14 +439,18 @@ describe('mcp: server dispatch — policy gate (CP3)', () => {
         const body = parsed as { error: string };
 
         expect(isError).toBe(true);
-        expect(body.error.toLowerCase()).toContain('cli');
+
+        // Not "use the CLI" — the CLI now resolves the same agent channel,
+        // so pointing there would be both wrong and an escalation hint.
+        expect(body.error.toLowerCase()).not.toContain('use the cli');
+        expect(body.error).toContain('change:run');
         expect(called.value).toBe(false);
 
     });
 
     it('should allow and invoke the handler when the resolved role allows the permission (admin)', async () => {
 
-        const { client, cleanup, called } = await setup('change:run', { user: 'admin', mcp: 'admin' });
+        const { client, cleanup, called } = await setup('change:run', { user: 'admin', agent: 'admin' });
 
         const { isError } = await callJson(client, 'run_noorm_cmd', { command: 'gated_cmd', payload: {} });
 

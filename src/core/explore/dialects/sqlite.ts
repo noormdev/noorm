@@ -4,12 +4,12 @@
  * Queries SQLite system tables (sqlite_master) and PRAGMAs
  * to retrieve database object metadata.
  */
+import { attempt } from '@logosdx/utils';
 import { sql } from 'kysely';
 
 import type { Kysely } from 'kysely';
 import type {
     DialectExploreOperations,
-    ExploreOverview,
     TableSummary,
     ViewSummary,
     ProcedureSummary,
@@ -30,6 +30,57 @@ import type {
 } from '../types.js';
 
 /**
+ * Quote an identifier for interpolation into SQLite statement text.
+ *
+ * PRAGMA arguments and `FROM <table>` cannot be bound as parameters, so the
+ * name has to be concatenated. Doubling embedded `"` is what keeps it an
+ * identifier rather than a fragment of SQL: a table named `we"ird` otherwise
+ * aborts the statement, and with it every unrelated object in the same listing.
+ *
+ * @example
+ * ```typescript
+ * sql`PRAGMA table_info(${sql.raw(quoteIdent(name))})`
+ * ```
+ */
+function quoteIdent(name: string): string {
+
+    return `"${name.replaceAll('"', '""')}"`;
+
+}
+
+/**
+ * Timing and event as written in a `CREATE TRIGGER` header.
+ *
+ * Everything from `BEGIN` onward is the trigger body; scanning it for keywords
+ * reports the body's own statements as trigger events and lets a `BEFORE`
+ * inside a string literal override the real timing.
+ */
+function parseTriggerHeader(definition: string): {
+    timing: 'BEFORE' | 'AFTER' | 'INSTEAD OF';
+    events: ('INSERT' | 'UPDATE' | 'DELETE')[];
+} {
+
+    const header = /\bTRIGGER\s+(?:IF\s+NOT\s+EXISTS\s+)?\S+\s+(?:(BEFORE|AFTER|INSTEAD\s+OF)\s+)?(DELETE|INSERT|UPDATE)\b/i
+        .exec(definition);
+
+    if (!header) {
+
+        return { timing: 'AFTER', events: ['INSERT'] };
+
+    }
+
+    const timing = header[1]
+        ? header[1].toUpperCase().replace(/\s+/, ' ') as 'BEFORE' | 'AFTER' | 'INSTEAD OF'
+        : 'AFTER';
+
+    return {
+        timing,
+        events: [header[2]!.toUpperCase() as 'INSERT' | 'UPDATE' | 'DELETE'],
+    };
+
+}
+
+/**
  * SQLite explore operations.
  *
  * Note: SQLite has limited metadata compared to other databases:
@@ -38,64 +89,6 @@ import type {
  * - No schemas (single schema per database)
  */
 export const sqliteExploreOperations: DialectExploreOperations = {
-
-    async getOverview(db: Kysely<unknown>): Promise<ExploreOverview> {
-
-        const [tables, views, indexes] = await Promise.all([
-            sql<{ count: number }>`
-                SELECT COUNT(*) as count
-                FROM sqlite_master
-                WHERE type = 'table'
-                AND name NOT LIKE 'sqlite_%'
-            `.execute(db),
-
-            sql<{ count: number }>`
-                SELECT COUNT(*) as count
-                FROM sqlite_master
-                WHERE type = 'view'
-            `.execute(db),
-
-            sql<{ count: number }>`
-                SELECT COUNT(*) as count
-                FROM sqlite_master
-                WHERE type = 'index'
-                AND name NOT LIKE 'sqlite_%'
-            `.execute(db),
-        ]);
-
-        // Count foreign keys by parsing all tables
-        const tablesResult = await sql<{ name: string }>`
-            SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
-        `.execute(db);
-
-        let fkCount = 0;
-
-        for (const table of tablesResult.rows) {
-
-            const fks = await sql<{ id: number }>`
-                PRAGMA foreign_key_list(${sql.raw(`"${table.name}"`)})
-            `.execute(db);
-
-            // Count unique FK ids
-            const uniqueIds = new Set(fks.rows.map((r) => r.id));
-            fkCount += uniqueIds.size;
-
-        }
-
-        return {
-            tables: tables.rows[0]?.count ?? 0,
-            views: views.rows[0]?.count ?? 0,
-            procedures: 0, // SQLite doesn't support stored procedures
-            functions: 0,  // SQLite doesn't support user-defined functions via SQL
-            types: 0,      // SQLite doesn't support custom types
-            indexes: indexes.rows[0]?.count ?? 0,
-            foreignKeys: fkCount,
-            triggers: 0,   // TODO: implement count
-            locks: 0,      // SQLite doesn't expose lock information
-            connections: 0, // SQLite doesn't have connection tracking
-        };
-
-    },
 
     async listTables(db: Kysely<unknown>): Promise<TableSummary[]> {
 
@@ -113,12 +106,12 @@ export const sqliteExploreOperations: DialectExploreOperations = {
 
             // Get column count
             const colsResult = await sql<{ cid: number }>`
-                PRAGMA table_info(${sql.raw(`"${row.name}"`)})
+                PRAGMA table_info(${sql.raw(quoteIdent(row.name))})
             `.execute(db);
 
             // Get row count estimate
             const countResult = await sql<{ count: number }>`
-                SELECT COUNT(*) as count FROM ${sql.raw(`"${row.name}"`)}
+                SELECT COUNT(*) as count FROM ${sql.raw(quoteIdent(row.name))}
             `.execute(db);
 
             tables.push({
@@ -146,14 +139,15 @@ export const sqliteExploreOperations: DialectExploreOperations = {
 
         for (const row of result.rows) {
 
-            // Get column count by querying the view
-            const colsResult = await sql<{ cid: number }>`
-                PRAGMA table_info(${sql.raw(`"${row.name}"`)})
-            `.execute(db);
+            // A view whose base table was dropped makes PRAGMA table_info fail.
+            // Report it with no columns rather than losing the whole listing.
+            const [colsResult] = await attempt(() => sql<{ cid: number }>`
+                PRAGMA table_info(${sql.raw(quoteIdent(row.name))})
+            `.execute(db));
 
             views.push({
                 name: row.name,
-                columnCount: colsResult.rows.length,
+                columnCount: colsResult?.rows.length ?? 0,
                 isUpdatable: false, // SQLite views are generally not updatable
             });
 
@@ -208,7 +202,7 @@ export const sqliteExploreOperations: DialectExploreOperations = {
                 cid: number;
                 name: string;
             }>`
-                PRAGMA index_info(${sql.raw(`"${row.name}"`)})
+                PRAGMA index_info(${sql.raw(quoteIdent(row.name))})
             `.execute(db);
 
             const columns = infoResult.rows.map((r) => r.name);
@@ -248,7 +242,7 @@ export const sqliteExploreOperations: DialectExploreOperations = {
                 on_update: string;
                 on_delete: string;
             }>`
-                PRAGMA foreign_key_list(${sql.raw(`"${table.name}"`)})
+                PRAGMA foreign_key_list(${sql.raw(quoteIdent(table.name))})
             `.execute(db);
 
             // Group by FK id
@@ -313,7 +307,7 @@ export const sqliteExploreOperations: DialectExploreOperations = {
             dflt_value: string | null;
             pk: number;
         }>`
-            PRAGMA table_info(${sql.raw(`"${name}"`)})
+            PRAGMA table_info(${sql.raw(quoteIdent(name))})
         `.execute(db);
 
         const columns: ColumnDetail[] = colsResult.rows.map((row) => ({
@@ -327,7 +321,7 @@ export const sqliteExploreOperations: DialectExploreOperations = {
 
         // Get row count
         const countResult = await sql<{ count: number }>`
-            SELECT COUNT(*) as count FROM ${sql.raw(`"${name}"`)}
+            SELECT COUNT(*) as count FROM ${sql.raw(quoteIdent(name))}
         `.execute(db);
 
         // Get indexes for this table
@@ -375,7 +369,7 @@ export const sqliteExploreOperations: DialectExploreOperations = {
             notnull: number;
             dflt_value: string | null;
         }>`
-            PRAGMA table_info(${sql.raw(`"${name}"`)})
+            PRAGMA table_info(${sql.raw(quoteIdent(name))})
         `.execute(db);
 
         const columns: ColumnDetail[] = colsResult.rows.map((row) => ({
@@ -444,46 +438,13 @@ export const sqliteExploreOperations: DialectExploreOperations = {
 
         return result.rows.map((row) => {
 
-            // Parse timing and events from SQL
-            const sqlUpper = row.sql.toUpperCase();
-            let timing: 'BEFORE' | 'AFTER' | 'INSTEAD OF' = 'AFTER';
-
-            if (sqlUpper.includes('BEFORE')) {
-
-                timing = 'BEFORE';
-
-            }
-            else if (sqlUpper.includes('INSTEAD OF')) {
-
-                timing = 'INSTEAD OF';
-
-            }
-
-            const events: ('INSERT' | 'UPDATE' | 'DELETE')[] = [];
-
-            if (sqlUpper.includes('INSERT')) {
-
-                events.push('INSERT');
-
-            }
-
-            if (sqlUpper.includes('UPDATE')) {
-
-                events.push('UPDATE');
-
-            }
-
-            if (sqlUpper.includes('DELETE')) {
-
-                events.push('DELETE');
-
-            }
+            const { timing, events } = parseTriggerHeader(row.sql);
 
             return {
                 name: row.name,
                 tableName: row.tbl_name,
                 timing,
-                events: events.length > 0 ? events : ['INSERT'],
+                events,
             };
 
         });
@@ -527,46 +488,13 @@ export const sqliteExploreOperations: DialectExploreOperations = {
         }
 
         const row = result.rows[0]!;
-
-        const sqlUpper = row.sql.toUpperCase();
-        let timing = 'AFTER';
-
-        if (sqlUpper.includes('BEFORE')) {
-
-            timing = 'BEFORE';
-
-        }
-        else if (sqlUpper.includes('INSTEAD OF')) {
-
-            timing = 'INSTEAD OF';
-
-        }
-
-        const events: string[] = [];
-
-        if (sqlUpper.includes('INSERT')) {
-
-            events.push('INSERT');
-
-        }
-
-        if (sqlUpper.includes('UPDATE')) {
-
-            events.push('UPDATE');
-
-        }
-
-        if (sqlUpper.includes('DELETE')) {
-
-            events.push('DELETE');
-
-        }
+        const { timing, events } = parseTriggerHeader(row.sql);
 
         return {
             name: row.name,
             tableName: row.tbl_name,
             timing,
-            events: events.length > 0 ? events : ['INSERT'],
+            events,
             definition: row.sql,
             isEnabled: true, // SQLite triggers are always enabled
         };

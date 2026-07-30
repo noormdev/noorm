@@ -24,17 +24,23 @@ import type { NoormDatabase } from '../../../core/shared/index.js';
 import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
-import { Panel, SelectList, Spinner, useToast, type SelectListItem } from '../../components/index.js';
+import { Panel, SelectList, Spinner, SmartConfirm, useToast, type SelectListItem } from '../../components/index.js';
 import { useVaultConnection } from '../../hooks/index.js';
 import { loadPrivateKey } from '../../../core/identity/storage.js';
+import { checkConfigPolicy } from '../../../core/policy/index.js';
 import {
     getVaultStatus,
     getVaultKey,
     getAllVaultSecrets,
     propagateVaultKey,
+    getUsersWithoutVaultAccess,
     type VaultStatus,
     type VaultSecret,
+    type PendingVaultUser,
 } from '../../../core/vault/index.js';
+
+/** Recipients of a propagation, as `getUsersWithoutVaultAccess` returns them. */
+type PropagationRecipient = PendingVaultUser;
 
 
 type _Phase = 'connecting' | 'ready' | 'error';
@@ -46,12 +52,22 @@ export function VaultScreen({ params: _params }: ScreenProps): ReactElement {
 
     const { navigate, back } = useRouter();
     const { isFocused } = useFocusScope('Vault');
-    const { activeConfigName, identity, settings } = useAppContext();
+    const { activeConfig, activeConfigName, identity, settings } = useAppContext();
     const { showToast } = useToast();
 
     const [status, setStatus] = useState<VaultStatus | null>(null);
     const [secrets, setSecrets] = useState<VaultSecret[]>([]);
     const [propagating, setPropagating] = useState(false);
+
+    // Non-null while awaiting confirmation, and holds exactly who would be
+    // granted the vault key — propagation used to run on the bare `p`
+    // keypress, which named nobody.
+    const [pendingRecipients, setPendingRecipients] = useState<PropagationRecipient[] | null>(null);
+
+    const propagateCheck = useMemo(
+        () => (activeConfig ? checkConfigPolicy('user', activeConfig, 'vault:propagate') : null),
+        [activeConfig],
+    );
 
     const { phase, error, connRef } = useVaultConnection({
         onReady: async (db, isCancelled, dialect) => {
@@ -145,6 +161,54 @@ export function VaultScreen({ params: _params }: ScreenProps): ReactElement {
         },
         [navigate],
     );
+
+    // Resolve who would be granted access, then hand off to the confirmation.
+    // Nothing is written here.
+    const beginPropagate = useCallback(async () => {
+
+        if (!connRef.current) return;
+
+        if (propagateCheck && !propagateCheck.allowed) {
+
+            showToast({
+                message: propagateCheck.blockedReason ?? 'Propagating vault access is not allowed',
+                variant: 'error',
+            });
+
+            return;
+
+        }
+
+        const db = connRef.current.db;
+        const connDialect = connRef.current.dialect;
+
+        // Returns its own `[users, error]` tuple rather than throwing, so that a
+        // failed lookup cannot be mistaken for "nobody is missing access". Calling
+        // it through `attempt` would nest that tuple inside another one.
+        const [recipients, recipientsErr] = await getUsersWithoutVaultAccess(
+            db as Kysely<NoormDatabase>,
+            connDialect,
+        );
+
+        if (recipientsErr) {
+
+            showToast({ message: recipientsErr.message, variant: 'error' });
+
+            return;
+
+        }
+
+        if (!recipients || recipients.length === 0) {
+
+            showToast({ message: 'All users already have vault access', variant: 'info' });
+
+            return;
+
+        }
+
+        setPendingRecipients(recipients);
+
+    }, [connRef, propagateCheck, showToast]);
 
     // Handle propagate
     const handlePropagate = useCallback(async () => {
@@ -259,9 +323,9 @@ export function VaultScreen({ params: _params }: ScreenProps): ReactElement {
 
         }
 
-        if (input === 'p' && status?.hasAccess && !propagating) {
+        if (input === 'p' && status?.hasAccess && !propagating && !pendingRecipients) {
 
-            handlePropagate();
+            beginPropagate();
 
             return;
 
@@ -362,6 +426,48 @@ export function VaultScreen({ params: _params }: ScreenProps): ReactElement {
                 <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[Esc] Back</Text>
                 </Box>
+            </Box>
+        );
+
+    }
+
+    // Confirm propagation. Propagation hands the vault key to every enrolled
+    // identity at once, so the recipients are named before it runs.
+    if (pendingRecipients) {
+
+        return (
+            <Box flexDirection="column" gap={1}>
+                <Panel title="Grant Vault Access" borderColor="yellow" paddingX={2} paddingY={1}>
+                    <Box flexDirection="column" gap={1}>
+                        <Text>
+                            This grants the vault key for{' '}
+                            <Text bold color="cyan">{activeConfigName}</Text> to{' '}
+                            <Text bold>{pendingRecipients.length}</Text> user(s):
+                        </Text>
+                        {pendingRecipients.map((u) => (
+                            <Text key={u.identityHash} dimColor>
+                                {'  '}{u.name} &lt;{u.email}&gt;
+                            </Text>
+                        ))}
+                        <Text dimColor>They will be able to read every secret in this vault.</Text>
+                    </Box>
+                </Panel>
+
+                <SmartConfirm
+                    focusLabel="VaultPropagateConfirm"
+                    requiresConfirmation={propagateCheck?.requiresConfirmation ?? false}
+                    confirmationPhrase={propagateCheck?.confirmationPhrase}
+                    configName={activeConfigName ?? 'unknown'}
+                    action="grant vault access for"
+                    message={`Grant vault access to ${pendingRecipients.length} user(s)?`}
+                    onConfirm={() => {
+
+                        setPendingRecipients(null);
+                        handlePropagate();
+
+                    }}
+                    onCancel={() => setPendingRecipients(null)}
+                />
             </Box>
         );
 

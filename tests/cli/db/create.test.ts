@@ -126,7 +126,7 @@ describe('cli: noorm db create — fresh vs already-exists', () => {
 
     it('creates the database and initializes tracking when the target does not exist yet', async () => {
 
-        const config = await seedConfig({ user: 'admin', mcp: 'admin' });
+        const config = await seedConfig({ user: 'admin', agent: 'admin' });
 
         expect(existsSync(dbPath)).toBe(false);
 
@@ -145,7 +145,7 @@ describe('cli: noorm db create — fresh vs already-exists', () => {
 
     it('created is true when the JSON output reports a genuinely fresh create', async () => {
 
-        await seedConfig({ user: 'admin', mcp: 'admin' });
+        await seedConfig({ user: 'admin', agent: 'admin' });
 
         expect(existsSync(dbPath)).toBe(false);
 
@@ -160,7 +160,7 @@ describe('cli: noorm db create — fresh vs already-exists', () => {
 
     it('created is false when the SQLite target file already existed before create ran', async () => {
 
-        await seedConfig({ user: 'admin', mcp: 'admin' });
+        await seedConfig({ user: 'admin', agent: 'admin' });
 
         writeFileSync(dbPath, '');
 
@@ -175,7 +175,7 @@ describe('cli: noorm db create — fresh vs already-exists', () => {
 
     it('short-circuits without re-running createDb when the target already exists and is initialized', async () => {
 
-        const config = await seedConfig({ user: 'admin', mcp: 'admin' });
+        const config = await seedConfig({ user: 'admin', agent: 'admin' });
 
         const first = runCreate(['--json']);
         expect(first.status).toBe(0);
@@ -200,7 +200,7 @@ describe('cli: noorm db create — fresh vs already-exists', () => {
 
     it('targets the NOORM_CONNECTION_* database instead of the persisted config when both are set (#51)', async () => {
 
-        await seedConfig({ user: 'admin', mcp: 'admin' });
+        await seedConfig({ user: 'admin', agent: 'admin' });
 
         const envDbPath = join(tmpDir, 'env-target.db');
 

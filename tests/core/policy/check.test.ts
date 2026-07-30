@@ -42,7 +42,7 @@ const PERMISSIONS: Permission[] = [
     'config:rm',
 ];
 const ROLES: Role[] = ['viewer', 'operator', 'admin'];
-const CHANNELS: Channel[] = ['user', 'mcp'];
+const CHANNELS: Channel[] = ['user', 'agent'];
 
 /**
  * Build a target where both channels carry the given role, so the channel
@@ -50,7 +50,7 @@ const CHANNELS: Channel[] = ['user', 'mcp'];
  */
 function targetFor(role: Role, name = 'acme'): PolicyTarget {
 
-    return { name, access: { user: role, mcp: role } };
+    return { name, access: { user: role, agent: role } };
 
 }
 
@@ -125,7 +125,12 @@ describe('policy: checkPolicy', () => {
                         expect(check.allowed).toBe(false);
                         expect(check.requiresConfirmation).toBe(false);
                         expect(check.blockedReason).toBeDefined();
-                        expect(check.blockedReason?.toLowerCase()).toContain('cli');
+
+                        // The message must not offer the agent another route.
+                        // It used to say "use the CLI", which was accurate
+                        // when the CLI ran as the human and is now both wrong
+                        // and an invitation to escalate.
+                        expect(check.blockedReason?.toLowerCase()).not.toContain('use the cli');
 
                     }
 
@@ -149,11 +154,11 @@ describe('policy: checkPolicy', () => {
 
     });
 
-    it('should not let NOORM_YES affect the mcp channel', () => {
+    it('should not let NOORM_YES affect the agent channel', () => {
 
         process.env['NOORM_YES'] = '1';
 
-        const check = checkPolicy('mcp', targetFor('operator', 'prod'), 'change:run');
+        const check = checkPolicy('agent', targetFor('operator', 'prod'), 'change:run');
 
         expect(check.allowed).toBe(false);
         expect(check.blockedReason).toBeDefined();
@@ -184,11 +189,11 @@ describe('policy: checkPolicy', () => {
 
     });
 
-    it('should deny with a blockedReason when access.mcp is false', () => {
+    it('should deny with a blockedReason when access.agent is false', () => {
 
-        const target: PolicyTarget = { name: 'invisible', access: { user: 'admin', mcp: false } };
+        const target: PolicyTarget = { name: 'invisible', access: { user: 'admin', agent: false } };
 
-        const check = checkPolicy('mcp', target, 'explore');
+        const check = checkPolicy('agent', target, 'explore');
 
         expect(check.allowed).toBe(false);
         expect(check.requiresConfirmation).toBe(false);
@@ -210,9 +215,9 @@ describe('policy: checkConfigPolicy', () => {
 
     });
 
-    it('should deny on the mcp channel with the same shared message when access is absent', () => {
+    it('should deny on the agent channel with the same shared message when access is absent', () => {
 
-        const check = checkConfigPolicy('mcp', { name: 'legacy' }, 'explore');
+        const check = checkConfigPolicy('agent', { name: 'legacy' }, 'explore');
 
         expect(check.allowed).toBe(false);
         expect(check.requiresConfirmation).toBe(false);
@@ -296,27 +301,38 @@ describe('policy: guarded', () => {
 
 describe('policy: formatAccessTag', () => {
 
-    it('should render "user:<role> mcp:<role>" for a guarded config', () => {
+    it('should render "user:<role> agent:<role>" for a guarded config', () => {
 
-        const config: PolicyTarget = { name: 'prod', access: { user: 'operator', mcp: 'viewer' } };
+        const config: PolicyTarget = { name: 'prod', access: { user: 'operator', agent: 'viewer' } };
 
-        expect(formatAccessTag(config)).toBe('user:operator mcp:viewer');
-
-    });
-
-    it('should render "mcp:off" when access.mcp is false', () => {
-
-        const config: PolicyTarget = { name: 'prod', access: { user: 'viewer', mcp: false } };
-
-        expect(formatAccessTag(config)).toBe('user:viewer mcp:off');
+        expect(formatAccessTag(config)).toBe('user:operator agent:viewer');
 
     });
 
-    it('should return null for an admin/admin (fully open) config', () => {
+    it('should render "agent:off" when access.agent is false', () => {
 
-        const config: PolicyTarget = { name: 'prod', access: { user: 'admin', mcp: 'admin' } };
+        const config: PolicyTarget = { name: 'prod', access: { user: 'viewer', agent: false } };
+
+        expect(formatAccessTag(config)).toBe('user:viewer agent:off');
+
+    });
+
+    it('should return null for a config sitting on the default access', () => {
+
+        const config: PolicyTarget = { name: 'prod', access: { user: 'admin', agent: 'viewer' } };
 
         expect(formatAccessTag(config)).toBeNull();
+
+    });
+
+    it('should render the tag for an agent:admin escalation rather than hiding it', () => {
+
+        // The user channel is admin either way, so `guarded()` cannot tell
+        // this apart from the default — yet this is the one config an agent
+        // can write to. It has to be visible in `noorm config list`.
+        const config: PolicyTarget = { name: 'prod', access: { user: 'admin', agent: 'admin' } };
+
+        expect(formatAccessTag(config)).toBe('user:admin agent:admin');
 
     });
 

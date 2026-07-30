@@ -35,7 +35,7 @@ const historyCommand = defineCommand({
             ...history.map((record) => `  ${record.name} - ${record.status} (${new Date(record.executedAt).toLocaleString()})`),
         ].join('\n');
 
-        outputResult(args, history, text);
+        outputResult(args, { history }, text);
 
         process.exit(0);
 

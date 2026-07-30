@@ -4,8 +4,11 @@
  * Creates database connections with automatic retry for transient failures.
  * Uses lazy imports to avoid requiring all database drivers.
  */
+import { accessSync, constants as fsConstants, existsSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+
 import { sql } from 'kysely';
-import { retry, attempt } from '@logosdx/utils';
+import { retry, attempt, attemptSync } from '@logosdx/utils';
 import type { ConnectionConfig, ConnectionResult, Dialect } from './types.js';
 import { observer } from '../observer.js';
 import { getConnectionManager } from './manager.js';
@@ -265,6 +268,31 @@ export async function testConnection(
             ...config,
             database: systemDb ?? config.database,
         };
+
+    }
+
+    // SQLite has no system database to swap to, so the probe would open the
+    // target — and the driver creates the file. Probe the directory that
+    // would hold it instead: that is the SQLite equivalent of "can I reach
+    // the server", and it leaves nothing behind. An existing target still
+    // gets opened, so a corrupt or unreadable file is still reported.
+    if (options.testServerOnly && config.dialect === 'sqlite') {
+
+        const filename = config.filename ?? config.database;
+
+        if (filename !== ':memory:' && !existsSync(filename)) {
+
+            const [, dirErr] = attemptSync(() => accessSync(dirname(resolve(filename)), fsConstants.W_OK));
+
+            if (dirErr) {
+
+                return { ok: false, error: `Cannot reach SQLite target directory: ${dirErr.message}` };
+
+            }
+
+            return { ok: true };
+
+        }
 
     }
 

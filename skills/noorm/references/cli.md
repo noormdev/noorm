@@ -244,7 +244,7 @@ noorm ci secrets --file ./ci-secrets.env --config prod --json
 }
 ```
 
-**Exit codes:** `0` all loaded (or all skipped); `1` precondition failure (no `state.enc`, missing config, parse error, total failure); `2` partial success (some set, some errored).
+**Exit codes:** `0` all loaded (or all skipped); `1` total failure (no `state.enc`); `2` bad invocation (missing/unknown config, unreadable or malformed `--file`); `3` partial (some set, some errored).
 
 ---
 
@@ -955,7 +955,7 @@ noorm db explore --json
 ### Check for pending changes before deploying
 
 ```bash
-pending=$(noorm change --json | jq '[.[] | select(.status == "pending")] | length')
+pending=$(noorm change list --json | jq '.pending')
 if [ "$pending" -gt 0 ]; then
     echo "Found $pending pending changes"
     noorm change ff
@@ -972,7 +972,7 @@ echo "Database has $tables tables"
 ### Check for failures in change history
 
 ```bash
-failures=$(noorm change history --json | jq '[.[] | select(.status == "failed")] | length')
+failures=$(noorm change history --json | jq '[.history[] | select(.status == "failed")] | length')
 if [ "$failures" -gt 0 ]; then
     echo "WARNING: $failures failed changes in history"
     exit 1
@@ -1005,5 +1005,9 @@ fi
 
 | Code | Meaning |
 |---|---|
-| `0` | Success |
-| `1` | Error (check stderr or `--json` output) |
+| `0` | Success — everything asked for happened |
+| `1` | Total failure — the operation ran and nothing succeeded |
+| `2` | Usage error — bad/missing flag, TTY-only command run non-interactively, or a named target (file, directory, config, change, secret key, glob) that does not exist. Nothing was attempted |
+| `3` | Partial failure — some units succeeded, some failed. Mixed state; re-running is not automatically safe |
+
+Every `--json` payload is an object carrying a top-level boolean `success`, and `success` is `true` if and only if the exit code is `0`. List results live under a named key (`.changes`, `.history`, `.tables`, …), never a bare top-level array.

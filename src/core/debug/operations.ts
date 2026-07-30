@@ -12,7 +12,9 @@ import type { Kysely } from 'kysely';
 import { attempt } from '@logosdx/utils';
 
 import { observer } from '../observer.js';
+import { assertPolicy } from '../policy/index.js';
 import { NOORM_TABLES, getNoormTables, noormDb, type NoormDatabase, type NoormTableName } from '../shared/index.js';
+import type { Channel, ConfigAccess } from '../policy/index.js';
 import type { Dialect } from '../connection/types.js';
 
 // ─────────────────────────────────────────────────────────────
@@ -38,13 +40,20 @@ export interface NoormTableInfo {
 
 /**
  * Table row count result.
+ *
+ * `count` is nullable because a table whose count query failed must not be
+ * reportable as a table with zero rows — the two render identically and the
+ * caller has no other way to tell them apart.
  */
 export interface TableCountResult {
     /** Table name */
     table: NoormTableName;
 
-    /** Number of rows */
-    count: number;
+    /** Number of rows, or `null` when the count query failed */
+    count: number | null;
+
+    /** Failure message; present only when `count` is `null` */
+    error?: string;
 }
 
 /**
@@ -72,22 +81,41 @@ export interface GetRowsOptions {
 }
 
 /**
+ * Who is asking and which config's access roles gate the request.
+ *
+ * These operations delete from `vault` and `identities`, so the gate belongs
+ * at this seam rather than in the TUI screens — a second surface would
+ * otherwise inherit the tables without inheriting the check.
+ */
+export interface DebugPolicyContext {
+    /** CLI/TUI/SDK callers are `user`; an AI agent is `agent` (MCP or CLI) */
+    channel: Channel;
+
+    /** Config being inspected; missing `access` denies every operation */
+    config: { name: string; access?: ConfigAccess };
+}
+
+/**
  * Debug operations interface.
+ *
+ * Every method throws when the policy denies it, when the table is not a
+ * noorm table, or when the query fails. Falsy return values mean only
+ * "not found" / "nothing deleted", never "something went wrong".
  */
 export interface DebugOperations {
-    /** Get row counts for all noorm tables */
+    /** Get row counts for all noorm tables; a per-table failure yields `count: null` */
     getTableCounts(): Promise<TableCountResult[]>;
 
     /** Get rows from a specific table */
     getTableRows(table: NoormTableName, options?: GetRowsOptions): Promise<NoormTableRow[]>;
 
-    /** Get a single row by ID */
+    /** Get a single row by ID; `null` means the row does not exist */
     getRowById(table: NoormTableName, id: number): Promise<NoormTableRow | null>;
 
-    /** Delete a single row by ID */
+    /** Delete a single row by ID; `false` means the row did not exist */
     deleteRowById(table: NoormTableName, id: number): Promise<boolean>;
 
-    /** Delete multiple rows by IDs */
+    /** Delete multiple rows by IDs; returns how many existed */
     deleteRowsByIds(table: NoormTableName, ids: number[]): Promise<number>;
 
     /** Get column names for a table */
@@ -221,19 +249,28 @@ const TABLE_COLUMNS: Record<NoormTableName, string[]> = {
  * sqlite/mysql. The table names passed as parameters (`NoormTableName`)
  * are already the correct names from the caller.
  *
+ * `policy` is required rather than optional: these operations delete from
+ * `vault` and `identities`, and an omitted gate is exactly the defect this
+ * parameter closes.
+ *
  * @param db - Kysely database instance
  * @param dialect - Database dialect for schema scoping
+ * @param policy - Channel and config whose access roles gate every operation
  *
  * @example
  * ```typescript
  * const conn = await createConnection(config, '__debug__');
- * const ops = createDebugOperations(conn.db, 'postgres');
+ * const ops = createDebugOperations(conn.db, 'postgres', { channel: 'user', config });
  *
  * const counts = await ops.getTableCounts();
  * const rows = await ops.getTableRows(NOORM_TABLES.change, { limit: 50 });
  * ```
  */
-export function createDebugOperations(db: Kysely<NoormDatabase>, dialect: Dialect): DebugOperations {
+export function createDebugOperations(
+    db: Kysely<NoormDatabase>,
+    dialect: Dialect,
+    policy: DebugPolicyContext,
+): DebugOperations {
 
     const ndb = noormDb(db, dialect);
     const tables = getNoormTables(dialect);
@@ -248,11 +285,45 @@ export function createDebugOperations(db: Kysely<NoormDatabase>, dialect: Dialec
 
     }
 
-    const resolveTable = (table: NoormTableName): string => nameMap[table] ?? table;
+    const gate = (permission: 'debug:read' | 'debug:write'): void => {
+
+        assertPolicy(policy.channel, policy.config, permission);
+
+    };
+
+    const resolveTable = (table: NoormTableName): string => {
+
+        const resolved = nameMap[table];
+
+        if (!resolved) {
+
+            throw new Error(`"${table}" is not a noorm internal table.`);
+
+        }
+
+        return resolved;
+
+    };
+
+    const columnsFor = (table: NoormTableName): string[] => {
+
+        const columns = TABLE_COLUMNS[table];
+
+        if (!columns) {
+
+            throw new Error(`"${table}" is not a noorm internal table.`);
+
+        }
+
+        return columns;
+
+    };
 
     return {
 
         async getTableCounts(): Promise<TableCountResult[]> {
+
+            gate('debug:read');
 
             const results: TableCountResult[] = [];
 
@@ -276,7 +347,9 @@ export function createDebugOperations(db: Kysely<NoormDatabase>, dialect: Dialec
                         context: { table: info.name, operation: 'count' },
                     });
 
-                    results.push({ table: info.name, count: 0 });
+                    // One unreadable table must not abort the whole overview —
+                    // but it must not read as "empty" either.
+                    results.push({ table: info.name, count: null, error: err.message });
 
                 }
                 else {
@@ -299,9 +372,28 @@ export function createDebugOperations(db: Kysely<NoormDatabase>, dialect: Dialec
             options: GetRowsOptions = {},
         ): Promise<NoormTableRow[]> {
 
+            gate('debug:read');
+
             const { limit = 100, sortColumn = 'id', sortDirection = 'desc' } = options;
 
             const queryTable = resolveTable(table);
+            const columns = columnsFor(table);
+
+            // `sortColumn` is caller-supplied and reaches orderBy() as an
+            // identifier. Kysely quotes it, so this is not an injection vector —
+            // but an unknown value produces a driver error that used to be
+            // swallowed into an empty result. Reject it by name instead.
+            if (!columns.includes(sortColumn)) {
+
+                throw new Error(`"${sortColumn}" is not a column of ${table}.`);
+
+            }
+
+            if (sortDirection !== 'asc' && sortDirection !== 'desc') {
+
+                throw new Error(`"${sortDirection}" is not a sort direction.`);
+
+            }
 
             const [rows, err] = await attempt(() =>
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -321,7 +413,7 @@ export function createDebugOperations(db: Kysely<NoormDatabase>, dialect: Dialec
                     context: { table, operation: 'get-rows' },
                 });
 
-                return [];
+                throw err;
 
             }
 
@@ -330,6 +422,8 @@ export function createDebugOperations(db: Kysely<NoormDatabase>, dialect: Dialec
         },
 
         async getRowById(table: NoormTableName, id: number): Promise<NoormTableRow | null> {
+
+            gate('debug:read');
 
             const queryTable = resolveTable(table);
 
@@ -349,7 +443,7 @@ export function createDebugOperations(db: Kysely<NoormDatabase>, dialect: Dialec
                     context: { table, id, operation: 'get-row' },
                 });
 
-                return null;
+                throw err;
 
             }
 
@@ -358,6 +452,8 @@ export function createDebugOperations(db: Kysely<NoormDatabase>, dialect: Dialec
         },
 
         async deleteRowById(table: NoormTableName, id: number): Promise<boolean> {
+
+            gate('debug:write');
 
             const queryTable = resolveTable(table);
 
@@ -376,7 +472,7 @@ export function createDebugOperations(db: Kysely<NoormDatabase>, dialect: Dialec
                     context: { table, id, operation: 'delete-row' },
                 });
 
-                return false;
+                throw err;
 
             }
 
@@ -385,6 +481,10 @@ export function createDebugOperations(db: Kysely<NoormDatabase>, dialect: Dialec
         },
 
         async deleteRowsByIds(table: NoormTableName, ids: number[]): Promise<number> {
+
+            // Authorize before the empty-list short circuit — a denied caller
+            // must be told so, not handed a plausible-looking 0.
+            gate('debug:write');
 
             if (ids.length === 0) {
 
@@ -409,7 +509,7 @@ export function createDebugOperations(db: Kysely<NoormDatabase>, dialect: Dialec
                     context: { table, ids, operation: 'delete-rows' },
                 });
 
-                return 0;
+                throw err;
 
             }
 
@@ -419,7 +519,9 @@ export function createDebugOperations(db: Kysely<NoormDatabase>, dialect: Dialec
 
         getTableColumns(table: NoormTableName): string[] {
 
-            return TABLE_COLUMNS[table] ?? ['id'];
+            gate('debug:read');
+
+            return columnsFor(table);
 
         },
 

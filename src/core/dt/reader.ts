@@ -26,14 +26,133 @@ import { createReadStream, readFileSync } from 'node:fs';
 import { createGunzip } from 'node:zlib';
 import { gunzipSync } from 'node:zlib';
 import { createInterface } from 'node:readline';
-import { PassThrough } from 'node:stream';
+import { PassThrough, Transform } from 'node:stream';
 import path from 'node:path';
 import JSON5 from 'json5';
+import { attemptSync } from '@logosdx/utils';
 
 import type { Readable } from 'node:stream';
 import type { DtSchema, DtValue, DtReaderOptions } from './types.js';
-import { DT_EXTENSIONS } from './constants.js';
+import { DT_EXTENSIONS, FORMAT_VERSION, MAX_DECOMPRESSED_ARCHIVE_BYTES, MAX_ROW_BYTES } from './constants.js';
 import { decryptWithPassphrase } from './crypto.js';
+
+/**
+ * Fail the stream when a single line grows past `MAX_ROW_BYTES`.
+ *
+ * readline buffers until it sees a newline, so newline-free input makes that
+ * buffer the whole file regardless of how little the stream itself holds.
+ * Capping the line rather than the stream keeps arbitrarily large `.dt` files
+ * importable while bounding resident memory.
+ */
+function createRowLengthGuard(): Transform {
+
+    let sinceNewline = 0;
+
+    return new Transform({
+        transform(chunk: Buffer, _encoding, callback) {
+
+            const lastNewline = chunk.lastIndexOf(0x0a);
+
+            sinceNewline = lastNewline === -1
+                ? sinceNewline + chunk.length
+                : chunk.length - lastNewline - 1;
+
+            if (sinceNewline > MAX_ROW_BYTES) {
+
+                callback(new Error(`.dt row exceeds the ${MAX_ROW_BYTES} byte limit without a line break`));
+
+                return;
+
+            }
+
+            callback(null, chunk);
+
+        },
+    });
+
+}
+
+/**
+ * Validate the shape of a parsed `.dt` header.
+ *
+ * Only `v` was ever checked, so a header missing `columns` surfaced to the
+ * operator as a minified internal TypeError, and a header with malformed
+ * column entries corrupted every row that followed.
+ */
+function assertDtSchema(parsed: unknown): DtSchema {
+
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+
+        throw new Error('.dt schema line is not an object');
+
+    }
+
+    const schema = parsed as Partial<DtSchema>;
+
+    if (schema.v !== FORMAT_VERSION) {
+
+        throw new Error(`Unsupported .dt format version: ${String(schema.v)}`);
+
+    }
+
+    if (!Array.isArray(schema.columns) || schema.columns.length === 0) {
+
+        throw new Error('.dt schema is missing a non-empty "columns" array');
+
+    }
+
+    schema.columns.forEach((column, i) => {
+
+        if (typeof column !== 'object' || column === null) {
+
+            throw new Error(`.dt schema column ${i} is not an object`);
+
+        }
+
+        if (typeof column.name !== 'string' || column.name.length === 0) {
+
+            throw new Error(`.dt schema column ${i} is missing a "name"`);
+
+        }
+
+        if (typeof column.type !== 'string' || column.type.length === 0) {
+
+            throw new Error(`.dt schema column "${column.name}" is missing a "type"`);
+
+        }
+
+    });
+
+    return schema as DtSchema;
+
+}
+
+/**
+ * Pipe `source` through the row-length guard, forwarding errors and teardown.
+ *
+ * `.pipe()` propagates neither, so without this an upstream ENOENT would go
+ * unhandled and `close()` on the returned stream would leave the file
+ * descriptor open.
+ */
+function guardRows(source: Readable, ...upstream: Readable[]): Readable {
+
+    const guard = createRowLengthGuard();
+
+    source.on('error', (err) => guard.destroy(err));
+
+    guard.on('close', () => {
+
+        for (const stream of [source, ...upstream]) {
+
+            stream.destroy();
+
+        }
+
+    });
+
+    return source.pipe(guard);
+
+}
 
 /**
  * Streaming .dt file reader.
@@ -91,14 +210,15 @@ export class DtReader {
 
         }
 
-        this.#schema = JSON5.parse(firstLine.value) as DtSchema;
+        const [parsed, parseErr] = attemptSync(() => JSON5.parse(firstLine.value) as unknown);
 
-        // Validate version
-        if (this.#schema.v !== 1) {
+        if (parseErr) {
 
-            throw new Error(`Unsupported .dt format version: ${this.#schema.v}`);
+            throw new Error(`.dt schema line is not valid JSON5: ${parseErr.message}`);
 
         }
+
+        this.#schema = assertDtSchema(parsed);
 
         // Store iterator for rows
         this.#lineReader = this.#createRowIterator(lines);
@@ -160,12 +280,27 @@ export class DtReader {
             const encrypted = readFileSync(this.#filepath, 'utf8');
             const payload = JSON.parse(encrypted);
             const compressed = decryptWithPassphrase(payload, this.#passphrase);
-            const raw = gunzipSync(compressed);
+
+            // attempt() here because zlib reports the cap as an internal
+            // allocation failure; the operator needs to know the archive
+            // asked for more than the limit allows.
+            const [raw, gunzipErr] = attemptSync(() =>
+                gunzipSync(compressed, { maxOutputLength: MAX_DECOMPRESSED_ARCHIVE_BYTES }),
+            );
+
+            if (gunzipErr || !raw) {
+
+                throw new Error(
+                    `.dtzx archive exceeds the ${MAX_DECOMPRESSED_ARCHIVE_BYTES} byte decompression limit `
+                    + `or is not valid gzip: ${gunzipErr?.message ?? 'unknown error'}`,
+                );
+
+            }
 
             const stream = new PassThrough();
             stream.end(raw);
 
-            return stream;
+            return guardRows(stream);
 
         }
 
@@ -181,12 +316,13 @@ export class DtReader {
             fileStream.on('error', (err) => gunzip.destroy(err));
             fileStream.pipe(gunzip);
 
-            return gunzip;
+            return guardRows(gunzip, fileStream);
 
         }
 
-        // .dt: raw file stream
-        return createReadStream(this.#filepath, { encoding: 'utf8' });
+        // .dt: raw file stream. No encoding — the guard inspects bytes and
+        // readline decodes utf8 for itself.
+        return guardRows(createReadStream(this.#filepath));
 
     }
 
@@ -197,13 +333,43 @@ export class DtReader {
         lines: AsyncIterableIterator<string>,
     ): AsyncGenerator<DtValue[], void, undefined> {
 
+        const expected = this.#schema!.columns.length;
+        let rowNumber = 0;
+
         for await (const line of { [Symbol.asyncIterator]: () => lines }) {
 
             const trimmed = line.trim();
 
             if (trimmed.length === 0) continue;
 
-            yield JSON5.parse(trimmed) as DtValue[];
+            rowNumber++;
+
+            const [values, parseErr] = attemptSync(() => JSON5.parse(trimmed) as unknown);
+
+            if (parseErr) {
+
+                throw new Error(`.dt row ${rowNumber} is not valid JSON5: ${parseErr.message}`);
+
+            }
+
+            // An object row, or one whose arity does not match the header,
+            // used to be accepted and inserted — producing columns silently
+            // filled with the wrong value or with undefined.
+            if (!Array.isArray(values)) {
+
+                throw new Error(`.dt row ${rowNumber} is not an array of values`);
+
+            }
+
+            if (values.length !== expected) {
+
+                throw new Error(
+                    `.dt row ${rowNumber} has ${values.length} values but the schema declares ${expected} columns`,
+                );
+
+            }
+
+            yield values as DtValue[];
 
         }
 

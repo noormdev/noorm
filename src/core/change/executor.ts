@@ -315,6 +315,18 @@ export async function revertChange(
 
         if (!canRevertResult.canRevert) {
 
+            // A check that could not run is not a "nothing to do".
+            if (canRevertResult.error) {
+
+                return createFailedResult(
+                    change.name,
+                    'revert',
+                    `Could not determine revert state: ${canRevertResult.error.message}`,
+                    start,
+                );
+
+            }
+
             if (canRevertResult.reason === 'not applied') {
 
                 throw new ChangeNotAppliedError(change.name);
@@ -1290,9 +1302,9 @@ async function loadAndRenderFile(context: ChangeContext, filepath: string): Prom
 
         const result = await processFile(filepath, {
             projectRoot: context.projectRoot,
-            config: undefined, // Change context doesn't have config
-            secrets: undefined,
-            globalSecrets: undefined,
+            config: context.config,
+            secrets: context.secrets,
+            globalSecrets: context.globalSecrets,
         });
 
         return result.sql;

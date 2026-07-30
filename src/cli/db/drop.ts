@@ -13,8 +13,9 @@ import { initState, getStateManager } from '../../core/state/index.js';
 import { getSettingsManager } from '../../core/settings/index.js';
 import { resolveConfig, SettingsProvider } from '../../core/config/resolver.js';
 import { destroyDb } from '../../core/db/index.js';
-import { checkConfigPolicy } from '../../core/policy/index.js';
+import { checkConfigPolicy, resolveChannel } from '../../core/policy/index.js';
 import { outputResult, outputError, sharedArgs } from '../_utils.js';
+import { EXIT } from '../_exit.js';
 
 const dropCommand = defineCommand({
     meta: {
@@ -62,20 +63,39 @@ const dropCommand = defineCommand({
         if (resolveErr) {
 
             outputError(args, resolveErr.message);
-            process.exit(1);
+            process.exit(EXIT.USAGE);
 
         }
 
         if (!config) {
 
             outputError(args, 'No active configuration. Use: noorm config use <name>');
-            process.exit(1);
+            process.exit(EXIT.USAGE);
 
         }
 
         const configName = config.name;
 
-        const check = checkConfigPolicy('user', config, 'db:destroy');
+        // The role is a statement about a *config*; NOORM_CONNECTION_* can
+        // repoint that config at any database the credentials reach, so the
+        // thing being authorised and the thing being destroyed can differ.
+        // The retargeting is deliberate (#51) — going silent about it is not.
+        const stored = stateManager.getConfig(configName);
+        const storedDatabase = stored?.connection?.database;
+        const target = config.connection.database;
+
+        const targetOverridden = Boolean(storedDatabase && storedDatabase !== target);
+
+        if (targetOverridden) {
+
+            // stderr, so a --json consumer's stdout stays parseable.
+            process.stderr.write(
+                `Warning: config "${configName}" stores database "${storedDatabase}", but "${target}" is what will be dropped.\n`,
+            );
+
+        }
+
+        const check = checkConfigPolicy(resolveChannel(), config, 'db:destroy');
 
         if (!check.allowed) {
 
@@ -94,7 +114,12 @@ const dropCommand = defineCommand({
 
         }
 
-        const result = await destroyDb(config.connection, configName);
+        // The gate above produces the operator-facing message; passing the
+        // policy on re-checks it at the core seam, so a future caller that
+        // forgets its own gate still cannot drop a database.
+        const result = await destroyDb(config.connection, configName, {
+            policy: { configName, access: config.access, yes: args.yes },
+        });
 
         if (!result.ok) {
 
@@ -103,10 +128,19 @@ const dropCommand = defineCommand({
 
         }
 
+        const dropped = result.dropped ?? false;
+
         outputResult(
             args,
-            { config: configName, database: config.connection.database, dropped: true },
-            `Database "${config.connection.database}" dropped.`,
+            {
+                config: configName,
+                database: config.connection.database,
+                dropped,
+                ...(targetOverridden ? { targetOverridden, storedDatabase } : {}),
+            },
+            dropped
+                ? `Database "${config.connection.database}" dropped.`
+                : `Database "${config.connection.database}" did not exist — nothing to drop.`,
         );
         process.exit(0);
 

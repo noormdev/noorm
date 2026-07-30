@@ -1,9 +1,14 @@
 /**
  * noorm run dir <path> — execute all SQL files in a directory.
  */
-import { defineCommand } from 'citty';
+import { stat } from 'node:fs/promises';
+import { isAbsolute, join } from 'node:path';
 
-import { withContext, outputResult, sharedArgs } from '../_utils.js';
+import { defineCommand } from 'citty';
+import { attempt } from '@logosdx/utils';
+
+import { withContext, outputResult, outputError, sharedArgs } from '../_utils.js';
+import { EXIT, exitCodeForStatus } from '../_exit.js';
 
 const dirCommand = defineCommand({
     meta: {
@@ -22,6 +27,21 @@ const dirCommand = defineCommand({
         json: sharedArgs.json,
     },
     async run({ args }) {
+
+        const cwd = process.cwd();
+        const dirpath = isAbsolute(args.path) ? args.path : join(cwd, args.path);
+
+        // Core turns a missing directory into a generic failed batch, which
+        // read as "the SQL failed" rather than "you named a directory that
+        // isn't there". Checked here so the message and the code both say so.
+        const [stats] = await attempt(() => stat(dirpath));
+
+        if (!stats?.isDirectory()) {
+
+            outputError(args, `Directory not found: ${args.path}`);
+            process.exit(EXIT.USAGE);
+
+        }
 
         const [result, error] = await withContext({
             args,
@@ -73,15 +93,29 @@ const dirCommand = defineCommand({
             },
         });
 
-        if (error) process.exit(1);
+        if (error) process.exit(EXIT.FAILURE);
+
+        // A directory with no SQL files in it is a no-op, and core reports a
+        // no-op as `status: 'success'`. Announcing success over zero files is
+        // how a mistyped path silently passes a pipeline.
+        const nothingDiscovered = result.files.length === 0;
 
         if (args.json) {
 
-            outputResult(args, result, '');
+            outputResult(
+                args,
+                nothingDiscovered ? { ...result, success: false, error: `No SQL files found in: ${args.path}` } : result,
+                '',
+            );
+
+        }
+        else if (nothingDiscovered) {
+
+            outputError(args, `No SQL files found in: ${args.path}`);
 
         }
 
-        process.exit(result.status === 'success' ? 0 : 2);
+        process.exit(nothingDiscovered ? EXIT.USAGE : exitCodeForStatus(result.status));
 
     },
 });

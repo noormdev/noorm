@@ -8,6 +8,7 @@
  * Requires docker-compose.test.yml containers to be running.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
+import { attempt } from '@logosdx/utils';
 import { sql } from 'kysely';
 
 import { Context } from '../../../src/sdk/context.js';
@@ -107,6 +108,205 @@ describe('integration: impersonate postgres', () => {
         const row = (result.rows as Array<{ username: string }>)[0];
 
         expect(row!.username).toBe('noorm_test');
+
+    });
+
+    it('refuses to impersonate a principal that does not exist', async () => {
+
+        let callbackRan = false;
+
+        const [, err] = await attempt(() =>
+            ctx.impersonate('impersonate_no_such_role', async () => {
+
+                callbackRan = true;
+
+            }),
+        );
+
+        expect(err).toBeInstanceOf(Error);
+        expect(callbackRan).toBe(false);
+
+    });
+
+    it('leaves the session identity intact after a failed impersonation', async () => {
+
+        await attempt(() => ctx.impersonate('impersonate_no_such_role', async () => undefined));
+
+        // A failed SET ROLE must not leave the pooled connection carrying a
+        // half-applied identity for the next unrelated query to inherit.
+        const result = await sql.raw('SELECT current_user AS username').execute(ctx.kysely);
+        const row = (result.rows as Array<{ username: string }>)[0];
+
+        expect(row!.username).toBe('noorm_test');
+
+    });
+
+    /**
+     * Explicit mode holds a pooled connection inside `.connection().execute()`
+     * until `revert()` resolves it. Nothing released that holder on teardown,
+     * so a caller who never reverted — an early return, a thrown error, a
+     * forgotten call — left `disconnect()` awaiting a pool drain that could
+     * never complete. The context hung forever rather than closing.
+     */
+    it('disconnects even when an explicit scope was never reverted', async () => {
+
+        const leaky = new Context(
+            makeTestConfig('pg_impersonate_leak', TEST_CONNECTIONS.postgres),
+            {}, { name: 'tester', source: 'system' }, {}, '/tmp/test',
+        );
+        await leaky.connect();
+
+        // Explicit mode, deliberately never reverted.
+        await leaky.impersonate(TEST_ROLE);
+
+        const [, err] = await attempt(() => Promise.race([
+            leaky.disconnect(),
+            new Promise((_, reject) => setTimeout(
+                () => reject(new Error('disconnect() hung')),
+                5000,
+            ).unref()),
+        ]));
+
+        expect(err).toBeNull();
+        expect(leaky.connected).toBe(false);
+
+    }, 15_000);
+
+    it('rejects a username carrying SQL metacharacters before it reaches the server', async () => {
+
+        const [, err] = await attempt(() =>
+            ctx.impersonate("postgres'; DROP TABLE users; --", async () => undefined),
+        );
+
+        expect(err).toBeInstanceOf(Error);
+        expect((err as Error).message).toMatch(/invalid username/i);
+
+    });
+
+});
+
+/**
+ * The authorization boundary proper.
+ *
+ * `impersonate()` is a testing affordance rather than a privilege boundary —
+ * the scope hands the caller arbitrary SQL on the same connection, so `RESET
+ * ROLE` is one query away. What it must never be is a privilege ESCALATION
+ * path. The main suite above cannot prove that: its connection user is a
+ * superuser in the test container, and postgres correctly lets a superuser
+ * SET ROLE to anything. This block connects as a deliberately unprivileged
+ * login role so a real membership check is exercised.
+ */
+describe('integration: impersonate postgres (unprivileged connection)', () => {
+
+    let admin: Context;
+    let lowPriv: Context;
+
+    const LOWPRIV_ROLE = 'impersonate_lowpriv';
+    const TARGET_ROLE = 'impersonate_target';
+
+    /**
+     * `DROP ROLE` refuses while any privilege still references the role, and
+     * this suite grants CONNECT — so a plain `DROP ROLE IF EXISTS` leaks the
+     * role on first teardown and then fails every later setup. `DROP OWNED BY`
+     * clears those grants, but errors on a role that does not exist, hence the
+     * existence check.
+     */
+    async function dropRoleCompletely(ctx: Context, role: string): Promise<void> {
+
+        await sql.raw(`
+            DO $$
+            BEGIN
+                IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${role}') THEN
+                    EXECUTE 'DROP OWNED BY ${role}';
+                    EXECUTE 'DROP ROLE ${role}';
+                END IF;
+            END $$;
+        `).execute(ctx.kysely);
+
+    }
+
+    beforeAll(async () => {
+
+        await skipIfNoContainer('postgres');
+
+        admin = new Context(
+            makeTestConfig('pg_impersonate_admin', TEST_CONNECTIONS.postgres),
+            {}, { name: 'tester', source: 'system' }, {}, '/tmp/test',
+        );
+        await admin.connect();
+
+        for (const role of [LOWPRIV_ROLE, TARGET_ROLE]) {
+
+            await dropRoleCompletely(admin, role);
+
+        }
+
+        await sql.raw(
+            `CREATE ROLE ${LOWPRIV_ROLE} LOGIN PASSWORD 'lowpriv123'`,
+        ).execute(admin.kysely);
+        await sql.raw(
+            `CREATE ROLE ${TARGET_ROLE} LOGIN PASSWORD 'target123'`,
+        ).execute(admin.kysely);
+        await sql.raw(
+            `GRANT CONNECT ON DATABASE ${TEST_CONNECTIONS.postgres.database} TO ${LOWPRIV_ROLE}`,
+        ).execute(admin.kysely);
+
+        // Deliberately no `GRANT ${TARGET_ROLE} TO ${LOWPRIV_ROLE}`.
+        lowPriv = new Context(
+            makeTestConfig('pg_impersonate_lowpriv', {
+                ...TEST_CONNECTIONS.postgres,
+                user: LOWPRIV_ROLE,
+                password: 'lowpriv123',
+            }),
+            {}, { name: 'lowpriv', source: 'system' }, {}, '/tmp/test',
+        );
+        await lowPriv.connect();
+
+    }, 30_000);
+
+    afterAll(async () => {
+
+        if (lowPriv?.connected) await lowPriv.disconnect();
+
+        if (admin?.connected) {
+
+            for (const role of [LOWPRIV_ROLE, TARGET_ROLE]) {
+
+                await attempt(() => dropRoleCompletely(admin, role));
+
+            }
+
+            await admin.disconnect();
+
+        }
+
+    });
+
+    it('refuses to impersonate a role the connection is not a member of', async () => {
+
+        let callbackRan = false;
+
+        const [, err] = await attempt(() =>
+            lowPriv.impersonate(TARGET_ROLE, async () => {
+
+                callbackRan = true;
+
+            }),
+        );
+
+        expect(err).toBeInstanceOf(Error);
+        expect(callbackRan).toBe(false);
+
+    });
+
+    it('leaves the unprivileged session as itself after the refused attempt', async () => {
+
+        await attempt(() => lowPriv.impersonate(TARGET_ROLE, async () => undefined));
+
+        const result = await sql.raw('SELECT current_user AS username').execute(lowPriv.kysely);
+        const row = (result.rows as Array<{ username: string }>)[0];
+
+        expect(row!.username).toBe(LOWPRIV_ROLE);
 
     });
 

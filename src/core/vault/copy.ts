@@ -8,6 +8,8 @@ import { withDualConnection } from '../db/dual.js';
 import type { Config } from '../config/types.js';
 import { observer } from '../observer.js';
 
+import type { Channel } from '../policy/index.js';
+
 import type { VaultCopyResult } from './types.js';
 import {
     getVaultKey,
@@ -17,6 +19,7 @@ import {
     initializeVault,
     getVaultStatus,
 } from './storage.js';
+import { assertVaultPolicy } from './policy.js';
 
 /**
  * Options for vault copy operation.
@@ -24,6 +27,20 @@ import {
 export interface VaultCopyOptions {
     /** Overwrite existing secrets in destination (default: false) */
     force?: boolean;
+
+    /** Who is asking. Defaults to `user`; gates source read and dest write. */
+    channel?: Channel;
+
+    /**
+     * Resolve what would happen and report it without writing anything.
+     *
+     * Runs the full preflight — vault access on both ends, source-key
+     * existence, destination collisions — so the reported `copied`/`skipped`/
+     * `errors` are the same answers the real run would produce. A dry run
+     * that only echoed its arguments could not tell you the one thing you
+     * asked it: whether the copy would work.
+     */
+    dryRun?: boolean;
 }
 
 /**
@@ -74,7 +91,17 @@ export async function copyVaultSecrets(
     options: VaultCopyOptions = {},
 ): Promise<[VaultCopyResult | null, Error | null]> {
 
-    const { force = false } = options;
+    const { force = false, channel = 'user', dryRun = false } = options;
+
+    // Gated here rather than in `vault cp`: this function already holds both
+    // configs, so every surface that reaches it inherits the check.
+    assertVaultPolicy({ configName: sourceConfig.name, access: sourceConfig.access, channel }, 'vault:read');
+
+    if (!dryRun) {
+
+        assertVaultPolicy({ configName: destConfig.name, access: destConfig.access, channel }, 'vault:write');
+
+    }
 
     observer.emit('vault:copy:starting', {
         source: sourceConfig.name,
@@ -106,21 +133,32 @@ export async function copyVaultSecrets(
 
             if (!destStatus.isInitialized) {
 
-                // Initialize vault on destination
-                const [newKey, initErr] = await initializeVault(
-                    ctx.destination.db,
-                    identityHash,
-                    publicKey,
-                    ctx.destination.dialect,
-                );
+                if (dryRun) {
 
-                if (initErr) {
-
-                    throw new Error(`Failed to initialize vault on destination: ${initErr.message}`);
+                    // A dry run must not create a vault. Report the intent and
+                    // carry on with the source-side checks the caller wants.
+                    destVaultKey = null;
 
                 }
+                else {
 
-                destVaultKey = newKey;
+                    // Initialize vault on destination
+                    const [newKey, initErr] = await initializeVault(
+                        ctx.destination.db,
+                        identityHash,
+                        publicKey,
+                        ctx.destination.dialect,
+                    );
+
+                    if (initErr) {
+
+                        throw new Error(`Failed to initialize vault on destination: ${initErr.message}`);
+
+                    }
+
+                    destVaultKey = newKey;
+
+                }
 
             }
             else if (!destStatus.hasAccess) {
@@ -139,7 +177,9 @@ export async function copyVaultSecrets(
 
             }
 
-            if (!destVaultKey) {
+            // A dry run against an uninitialized destination has no key and
+            // needs none — nothing is encrypted. Every other path does.
+            if (!destVaultKey && !(dryRun && !destStatus.isInitialized)) {
 
                 throw new Error('Failed to get vault key for destination');
 
@@ -178,7 +218,9 @@ export async function copyVaultSecrets(
             // Copy each secret to destination
             for (const [key, secret] of secretsToCopy) {
 
-                const exists = await vaultSecretExists(ctx.destination.db, key, ctx.destination.dialect);
+                const exists = destStatus.isInitialized
+                    ? await vaultSecretExists(ctx.destination.db, key, ctx.destination.dialect)
+                    : false;
 
                 if (exists && !force) {
 
@@ -187,10 +229,17 @@ export async function copyVaultSecrets(
 
                 }
 
+                if (dryRun) {
+
+                    result.copied.push(key);
+                    continue;
+
+                }
+
                 const setBy = `copied from ${sourceConfig.name}`;
                 const [, setErr] = await setVaultSecret(
                     ctx.destination.db,
-                    destVaultKey,
+                    destVaultKey as Buffer,
                     key,
                     secret.value,
                     setBy,

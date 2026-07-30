@@ -6,14 +6,14 @@
  *
  * Encryption uses the user's private key from ~/.noorm/identity.key
  */
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync } from 'fs';
 import { dirname, join } from 'path';
-import { attemptSync, attempt } from '@logosdx/utils';
+import { attemptSync, attempt, clone, equals } from '@logosdx/utils';
 import type { Config } from '../config/types.js';
 import { assertCanDeleteConfig, type SettingsProvider } from '../config/resolver.js';
 import type { KnownUser } from '../identity/types.js';
 import { loadPrivateKey } from '../identity/storage.js';
-import { resolveLegacyAccess } from '../policy/index.js';
+import { repairConfigAccess } from './access.js';
 import {
     migrateState as migrateSchemaVersion,
     needsStateMigration,
@@ -21,12 +21,21 @@ import {
 import { encrypt, decrypt } from './encryption/index.js';
 import type { State, ConfigSummary, EncryptedPayload } from './types.js';
 import { createEmptyState } from './types.js';
+import { mergeState } from './merge.js';
+import {
+    acquireWriteLock,
+    backupExisting,
+    fingerprintContents,
+    LOCK_SUFFIX,
+    writeFileAtomicSync,
+} from './persistence.js';
 import { migrateState, needsMigration } from './migrations.js';
 import { getPackageVersion } from './version.js';
 import { observer } from '../observer.js';
 
 const DEFAULT_STATE_DIR = '.noorm/state';
 const DEFAULT_STATE_FILE = 'state.enc';
+const STATE_FILE_MODE = 0o600;
 
 /**
  * Narrows freshly-parsed JSON to a plain record so the schema-version
@@ -81,9 +90,20 @@ export class StateManager {
     #state: State | null = null;
     #privateKey: string | undefined;
     #statePath: string;
+    #lockPath: string;
     #loaded = false;
     // eslint-disable-next-line no-unused-private-class-members
     #projectRoot: string;
+
+    /**
+     * The state exactly as we last saw it on disk. Diffing the in-memory
+     * state against this is what lets a concurrent write be reconciled
+     * instead of overwritten.
+     */
+    #baseline: State | null = null;
+
+    /** Fingerprint of the raw file we last read or wrote; null if absent. */
+    #diskFingerprint: string | null = null;
 
     constructor(
         projectRoot: string,
@@ -95,6 +115,7 @@ export class StateManager {
         const stateDir = options.stateDir ?? DEFAULT_STATE_DIR;
         const stateFile = options.stateFile ?? DEFAULT_STATE_FILE;
         this.#statePath = join(projectRoot, stateDir, stateFile);
+        this.#lockPath = `${this.#statePath}${LOCK_SUFFIX}`;
 
     }
 
@@ -131,6 +152,8 @@ export class StateManager {
         if (!existsSync(this.#statePath)) {
 
             this.#state = createEmptyState(currentVersion);
+            this.#baseline = clone(this.#state);
+            this.#diskFingerprint = null;
             this.#loaded = true;
             observer.emit('state:loaded', {
                 configCount: 0,
@@ -158,6 +181,10 @@ export class StateManager {
             throw readErr;
 
         }
+
+        // Recorded before any migration runs so a later persist can tell
+        // "the file is as I left it" from "someone else wrote it".
+        this.#diskFingerprint = fingerprintContents(raw!);
 
         const [payload, parseErr] = attemptSync(() => JSON.parse(raw!) as EncryptedPayload);
         if (parseErr) {
@@ -201,47 +228,46 @@ export class StateManager {
         this.#state = migrateState(schemaMigratedState, currentVersion);
 
         // Raw-data-boundary invariant: migrations above guarantee every
-        // config carries `access`, but a hand-edited or corrupted state
-        // file can still reach this point without it. This is the single
-        // place that backfills it, so no downstream consumer
+        // config carries a well-formed `access`, but a hand-edited or
+        // corrupted state file can still reach this point without one. This
+        // is the single place that repairs it, so no downstream consumer
         // (setConfig/listConfigs/guarded) needs its own fallback. Tracking
         // whether it actually mutated anything (below) feeds the persist
-        // decision, so a config backfilled at an already-current schema
+        // decision, so a config repaired at an already-current schema
         // version still lands on disk instead of being re-healed forever.
         //
         // `config` is typed `Config`, but the object underneath is untyped
         // JSON that reached the current schema version without ever passing
         // through `parseConfig` (e.g. a legacy-shaped config saved directly
-        // via `setConfig`, bypassing the zod path). It can still carry a
-        // stray legacy `protected` key the type doesn't declare, so read it
-        // defensively rather than assuming `undefined` — fail-safe,
-        // consistent with the fail-closed default: `protected: true` maps
-        // to operator/viewer, never the admin/admin fallback.
+        // via `setConfig`, bypassing the zod path). It can carry a stray
+        // legacy `protected` key the type doesn't declare, or an `access`
+        // of any shape at all, so both are read as untrusted input.
         let backfilledAccess = false;
 
         for (const config of Object.values(this.#state.configs)) {
 
-            if (!config.access) {
+            const rawConfig: unknown = config;
+            const legacyProtected = isRecord(rawConfig) ? rawConfig['protected'] : undefined;
+
+            const repaired = repairConfigAccess(config.access, legacyProtected);
+
+            if (!config.access || !equals(config.access, repaired)) {
 
                 backfilledAccess = true;
 
             }
 
-            const rawConfig: unknown = config;
-            const legacyProtected = isRecord(rawConfig) && typeof rawConfig['protected'] === 'boolean'
-                ? rawConfig['protected']
-                : undefined;
-
-            config.access = resolveLegacyAccess(config.access, legacyProtected);
+            config.access = repaired;
 
         }
 
         this.#loaded = true;
+        this.#baseline = clone(this.#state);
 
         // Persist if migrations were applied or the backfill above mutated a config
         if (needsVersionMigration || backfilledAccess) {
 
-            this.#persist();
+            await this.#persist();
 
         }
 
@@ -280,9 +306,13 @@ export class StateManager {
     /**
      * Persist current state to disk (encrypted).
      *
+     * Serialized against other processes and reconciled against whatever is
+     * actually on disk, because every mutation rewrites the whole file from
+     * a snapshot that may already be stale.
+     *
      * Requires private key to be set.
      */
-    #persist(): void {
+    async #persist(): Promise<void> {
 
         if (!this.#privateKey) {
 
@@ -292,7 +322,7 @@ export class StateManager {
 
         }
 
-        const state = this.#getState();
+        this.#getState();
 
         const dir = dirname(this.#statePath);
         if (!existsSync(dir)) {
@@ -301,12 +331,11 @@ export class StateManager {
 
         }
 
-        const json = JSON.stringify(state);
-        const payload = encrypt(json, this.#privateKey);
+        const release = await acquireWriteLock(this.#lockPath);
 
-        const [, writeErr] = attemptSync(() =>
-            writeFileSync(this.#statePath, JSON.stringify(payload, null, 2), { mode: 0o600 }),
-        );
+        const [, writeErr] = attemptSync(() => this.#writeLocked());
+
+        release();
 
         if (writeErr) {
 
@@ -315,12 +344,73 @@ export class StateManager {
 
         }
 
-        // Ensure permissions are correct (writeFile mode may not work on all platforms)
-        attemptSync(() => chmodSync(this.#statePath, 0o600));
-
         observer.emit('state:persisted', {
-            configCount: Object.keys(state.configs).length,
+            configCount: Object.keys(this.#getState().configs).length,
         });
+
+    }
+
+    /**
+     * The body of a persist, run while holding the write lock.
+     */
+    #writeLocked(): void {
+
+        const state = this.#reconcileWithDisk();
+
+        const payload = encrypt(JSON.stringify(state), this.#privateKey!);
+        const contents = JSON.stringify(payload, null, 2);
+
+        backupExisting(this.#statePath, STATE_FILE_MODE);
+        writeFileAtomicSync(this.#statePath, contents, STATE_FILE_MODE);
+
+        // Ensure permissions are correct (open mode is masked by umask on
+        // some platforms, and the file may pre-date this write).
+        attemptSync(() => chmodSync(this.#statePath, STATE_FILE_MODE));
+
+        this.#diskFingerprint = fingerprintContents(contents);
+        this.#baseline = clone(state);
+
+    }
+
+    /**
+     * Fold in any write that landed after we loaded, so this write adds to
+     * it instead of replacing it.
+     *
+     * Returns the state to write, which is also adopted in memory — the
+     * caller's own view must not silently diverge from what went to disk.
+     */
+    #reconcileWithDisk(): State {
+
+        const state = this.#getState();
+
+        if (!existsSync(this.#statePath)) return state;
+
+        const [raw] = attemptSync(() => readFileSync(this.#statePath, 'utf8'));
+
+        if (raw === null || raw === undefined) return state;
+
+        if (fingerprintContents(raw) === this.#diskFingerprint) return state;
+
+        const [onDisk, err] = attemptSync(() =>
+            JSON.parse(decrypt(JSON.parse(raw) as EncryptedPayload, this.#privateKey!)) as State,
+        );
+
+        // Someone replaced the file with something this key cannot read.
+        // Overwriting it would destroy data we cannot even inspect.
+        if (err || !onDisk) {
+
+            throw new Error(
+                'State file changed on disk and cannot be read with the current key. ' +
+                'Refusing to overwrite it.',
+            );
+
+        }
+
+        const merged = mergeState(this.#baseline ?? createEmptyState(state.version), state, onDisk);
+
+        this.#state = merged;
+
+        return merged;
 
     }
 
@@ -363,7 +453,7 @@ export class StateManager {
         const isNew = !state.configs[name];
 
         state.configs[name] = { ...config };
-        this.#persist();
+        await this.#persist();
 
         observer.emit(isNew ? 'config:created' : 'config:updated', {
             name,
@@ -391,7 +481,7 @@ export class StateManager {
 
         }
 
-        this.#persist();
+        await this.#persist();
         observer.emit('config:deleted', { name });
 
     }
@@ -452,7 +542,7 @@ export class StateManager {
 
         const previous = state.activeConfig;
         state.activeConfig = name;
-        this.#persist();
+        await this.#persist();
 
         observer.emit('config:activated', { name, previous });
 
@@ -510,7 +600,7 @@ export class StateManager {
         }
 
         state.secrets[configName][key] = value;
-        this.#persist();
+        await this.#persist();
 
         observer.emit('secret:set', { configName, key });
 
@@ -526,7 +616,7 @@ export class StateManager {
         if (state.secrets[configName]) {
 
             delete state.secrets[configName][key];
-            this.#persist();
+            await this.#persist();
 
             observer.emit('secret:deleted', { configName, key });
 
@@ -588,7 +678,7 @@ export class StateManager {
 
         const state = this.#getState();
         state.globalSecrets[key] = value;
-        this.#persist();
+        await this.#persist();
 
         observer.emit('global-secret:set', { key });
 
@@ -604,7 +694,7 @@ export class StateManager {
         if (key in state.globalSecrets) {
 
             delete state.globalSecrets[key];
-            this.#persist();
+            await this.#persist();
 
             observer.emit('global-secret:deleted', { key });
 
@@ -671,7 +761,7 @@ export class StateManager {
 
         const state = this.#getState();
         state.knownUsers[user.identityHash] = user;
-        this.#persist();
+        await this.#persist();
 
         observer.emit('known-user:added', {
             email: user.email,
@@ -693,7 +783,7 @@ export class StateManager {
 
         }
 
-        this.#persist();
+        await this.#persist();
 
     }
 
@@ -766,10 +856,22 @@ export class StateManager {
 
         }
 
-        writeFileSync(this.#statePath, encrypted, { mode: 0o600 });
+        const release = await acquireWriteLock(this.#lockPath);
 
-        // Ensure permissions are correct (writeFile mode may not work on all platforms)
-        attemptSync(() => chmodSync(this.#statePath, 0o600));
+        const [, writeErr] = attemptSync(() => {
+
+            backupExisting(this.#statePath, STATE_FILE_MODE);
+            writeFileAtomicSync(this.#statePath, encrypted, STATE_FILE_MODE);
+
+            // Ensure permissions are correct (open mode is masked by umask
+            // on some platforms).
+            attemptSync(() => chmodSync(this.#statePath, STATE_FILE_MODE));
+
+        });
+
+        release();
+
+        if (writeErr) throw writeErr;
 
         this.#loaded = false;
         await this.load();

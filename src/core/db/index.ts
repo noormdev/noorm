@@ -14,16 +14,17 @@
  * // Create database and tracking tables
  * await createDb(config, 'myconfig')
  *
- * // Reset tracking only
- * await destroyDb(config, 'myconfig')
- *
  * // Drop entire database
- * await destroyDb(config, 'myconfig', { trackingOnly: false })
+ * await destroyDb(config, 'myconfig')
  * ```
  */
 
 // Main operations
 export { checkDbStatus, createDb, destroyDb } from './operations.js';
+
+// Lifecycle policy gate
+export { assertDbPolicy } from './policy.js';
+export type { DbPolicyContext } from './policy.js';
 
 // Dual connection infrastructure
 export { withDualConnection } from './dual.js';

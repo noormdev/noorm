@@ -6,7 +6,7 @@
  * - binary: standalone compiled binary → update via GitHub release download
  * - development: running from source → no updates
  */
-import { getCurrentVersion } from './checker.js';
+import { assertValidVersion, getCurrentVersion } from './checker.js';
 
 /**
  * How noorm was installed on this machine.
@@ -68,6 +68,12 @@ const GITHUB_REPO = 'noormdev/noorm';
  * apart.
  */
 function releaseBaseUrl(version: string): string {
+
+    // Validating here — rather than in each caller — means no URL in this
+    // module can be built from an unvalidated version. `fetch` normalises
+    // `..`, so an unchecked string does not merely produce a broken URL, it
+    // silently retargets the download at a different GitHub repo.
+    assertValidVersion(version);
 
     return `https://github.com/${GITHUB_REPO}/releases/download/%40noormdev%2Fcli%40${version}`;
 

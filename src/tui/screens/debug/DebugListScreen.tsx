@@ -87,7 +87,7 @@ export function DebugListScreen({ params }: ScreenProps): ReactElement {
     // Load table data when connection is ready
     useAsyncEffect(async (isCancelled) => {
 
-        if (!db || !tableName) {
+        if (!db || !tableName || !activeConfig) {
 
             if (!connLoading && !connError) setIsLoading(false);
 
@@ -100,7 +100,11 @@ export function DebugListScreen({ params }: ScreenProps): ReactElement {
 
         const [result, err] = await attempt(async () => {
 
-            const ops = createDebugOperations(db as Kysely<NoormDatabase>, dialect ?? 'postgres');
+            const ops = createDebugOperations(
+                db as Kysely<NoormDatabase>,
+                dialect ?? 'postgres',
+                { channel: 'user', config: activeConfig },
+            );
 
             const cols = ops.getTableColumns(tableName);
             const data = await ops.getTableRows(tableName, {
@@ -132,7 +136,7 @@ export function DebugListScreen({ params }: ScreenProps): ReactElement {
 
         setIsLoading(false);
 
-    }, [db, tableName, sortColumn, sortDirection]);
+    }, [db, tableName, activeConfig, sortColumn, sortDirection]);
 
     // Sort rows locally (already sorted from DB, but this handles re-sort)
     const sortedRows = useMemo(() => {
@@ -267,9 +271,16 @@ export function DebugListScreen({ params }: ScreenProps): ReactElement {
 
             if (rowId === undefined) return;
 
-            const success = await operations.deleteRowById(tableName, rowId);
+            // The core seam throws when policy denies the delete or the
+            // statement fails; both carry a message worth showing verbatim.
+            const [success, err] = await attempt(() => operations.deleteRowById(tableName, rowId));
 
-            if (success) {
+            if (err) {
+
+                showToast({ message: err.message, variant: 'error' });
+
+            }
+            else if (success) {
 
                 setRows((prev) => prev.filter((r) => r['id'] !== rowId));
                 showToast({ message: `Deleted row #${rowId}`, variant: 'success' });
@@ -277,16 +288,21 @@ export function DebugListScreen({ params }: ScreenProps): ReactElement {
             }
             else {
 
-                showToast({ message: 'Delete failed', variant: 'error' });
+                showToast({ message: `Row #${rowId} no longer exists`, variant: 'error' });
 
             }
 
         }
         else {
 
-            const count = await operations.deleteRowsByIds(tableName, ids);
+            const [count, err] = await attempt(() => operations.deleteRowsByIds(tableName, ids));
 
-            if (count > 0) {
+            if (err) {
+
+                showToast({ message: err.message, variant: 'error' });
+
+            }
+            else if (count > 0) {
 
                 const idSet = new Set(ids);
 
@@ -296,7 +312,7 @@ export function DebugListScreen({ params }: ScreenProps): ReactElement {
             }
             else {
 
-                showToast({ message: 'Delete failed', variant: 'error' });
+                showToast({ message: 'No matching rows to delete', variant: 'error' });
 
             }
 

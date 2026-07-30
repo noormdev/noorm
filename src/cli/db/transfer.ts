@@ -7,11 +7,12 @@ import * as p from '@clack/prompts';
 import { attempt } from '@logosdx/utils';
 import { defineCommand } from 'citty';
 
-import { resolveExportExtension, resolveExportPath, ensureExportDirectory } from '../../core/dt/index.js';
+import { resolveExportExtension, resolveExportPath, resolveExportTables, ensureExportDirectory } from '../../core/dt/index.js';
 import { MIN_PASSPHRASE_LENGTH } from '../../core/dt/crypto.js';
 import { getStateManager } from '../../core/state/index.js';
 import type { TransferOptions, ConflictStrategy } from '../../core/transfer/index.js';
 import { withContext, outputResult, outputError, sharedArgs, type CliArgs } from '../_utils.js';
+import { EXIT, exitCodeForStatus } from '../_exit.js';
 
 // ---------------------------------------------------------------------------
 // Shared args type for this command
@@ -66,7 +67,7 @@ async function resolveExportPassphrase(passphrase: string | undefined, args: Tra
         if (passphrase.length < MIN_PASSPHRASE_LENGTH) {
 
             outputError(args, `Passphrase must be at least ${MIN_PASSPHRASE_LENGTH} characters`);
-            process.exit(1);
+            process.exit(EXIT.USAGE);
 
         }
 
@@ -77,7 +78,7 @@ async function resolveExportPassphrase(passphrase: string | undefined, args: Tra
     if (!process.stdin.isTTY || args.json) {
 
         outputError(args, '--passphrase required for .dtzx encrypted export (non-interactive session; pass --passphrase or run interactively for a masked prompt)');
-        process.exit(1);
+        process.exit(EXIT.USAGE);
 
     }
 
@@ -116,7 +117,7 @@ async function resolveImportPassphrase(passphrase: string | undefined, args: Tra
     if (!process.stdin.isTTY || args.json) {
 
         outputError(args, '--passphrase required for .dtzx encrypted import (non-interactive session; pass --passphrase or run interactively for a masked prompt)');
-        process.exit(1);
+        process.exit(EXIT.USAGE);
 
     }
 
@@ -143,7 +144,6 @@ const transferCommand = defineCommand({
     },
     args: {
         config: sharedArgs.config,
-        force: sharedArgs.force,
         dryRun: sharedArgs.dryRun,
         json: sharedArgs.json,
         to: {
@@ -209,7 +209,7 @@ const transferCommand = defineCommand({
         if (compress && !exportPath) {
 
             outputError(args, '--compress is only valid with --export');
-            process.exit(1);
+            process.exit(EXIT.USAGE);
 
         }
 
@@ -218,14 +218,14 @@ const transferCommand = defineCommand({
         if (modeCount > 1) {
 
             outputError(args, 'Flags --to, --export, and --import are mutually exclusive');
-            process.exit(1);
+            process.exit(EXIT.USAGE);
 
         }
 
         if (modeCount === 0) {
 
             outputError(args, 'One of --to, --export, or --import is required. Usage: noorm db transfer --to <config>');
-            process.exit(1);
+            process.exit(EXIT.USAGE);
 
         }
 
@@ -247,7 +247,7 @@ const transferCommand = defineCommand({
         if (!isConflictStrategy(rawConflict)) {
 
             outputError(args, `Invalid --on-conflict value: "${rawConflict}". Must be one of: fail, skip, update, replace`);
-            process.exit(1);
+            process.exit(EXIT.USAGE);
 
         }
 
@@ -301,7 +301,7 @@ const transferCommand = defineCommand({
         if (!destConfig) {
 
             outputError(args, `Destination config not found: ${destConfigName}`);
-            process.exit(1);
+            process.exit(EXIT.USAGE);
 
         }
 
@@ -455,7 +455,10 @@ const transferCommand = defineCommand({
 
         }
 
-        process.exit(result?.status === 'success' ? 0 : 2);
+        // A partial transfer committed real rows and needs a different
+        // response than one that moved nothing — one code for both left a
+        // pipeline unable to tell "retry" from "roll back".
+        process.exit(exitCodeForStatus(result?.status));
 
     },
 });
@@ -493,10 +496,6 @@ async function handleExport(opts: {
     const { exportPath, passphrase, compress, tables, batchSize, args } = opts;
 
     const ext = resolveExportExtension(compress, passphrase);
-    const tableList = tables ?? [];
-    const tableCount = tableList.length;
-
-    ensureExportDirectory(exportPath, tableCount);
 
     const [exportResults, error] = await withContext({
         args,
@@ -507,6 +506,11 @@ async function handleExport(opts: {
                 logger.info(`Exporting to ${exportPath}...`);
 
             }
+
+            const tableList = await resolveExportTables(tables, () => ctx.noorm.db.listTables());
+            const tableCount = tableList.length;
+
+            ensureExportDirectory(exportPath, tableCount);
 
             let totalRows = 0;
             let totalBytes = 0;
@@ -537,7 +541,7 @@ async function handleExport(opts: {
 
             }
 
-            return { totalRows, totalBytes, tableResults };
+            return { totalRows, totalBytes, tableCount, tableResults };
 
         },
     });
@@ -549,12 +553,17 @@ async function handleExport(opts: {
             outputResult(args, { success: false, error: error.message }, '');
 
         }
+        else {
+
+            process.stderr.write(`${error.message}\n`);
+
+        }
 
         return 1;
 
     }
 
-    const { totalRows, totalBytes, tableResults } = exportResults;
+    const { totalRows, totalBytes, tableCount, tableResults } = exportResults;
 
     if (args.json) {
 

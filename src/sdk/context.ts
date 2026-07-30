@@ -59,6 +59,14 @@ export class Context<DB = unknown, Procs = object, Funcs = object, Tvfs = object
     #state: ContextState;
     #noorm: NoormOps | null = null;
 
+    /**
+     * Release callbacks for explicit-mode impersonation scopes still holding a
+     * pooled connection. `disconnect()` drains these first — otherwise a
+     * caller who never reverted leaves `destroy()` awaiting a connection the
+     * pool can never reclaim, and the context never closes.
+     */
+    #heldConnections = new Set<() => void>();
+
     constructor(
         config: Config,
         settings: Settings,
@@ -156,6 +164,14 @@ export class Context<DB = unknown, Procs = object, Funcs = object, Tvfs = object
     async disconnect(): Promise<void> {
 
         if (!this.#state.connection) return;
+
+        // Release before destroy, not after: destroy() waits for the pool to
+        // drain, and an un-reverted scope holds a connection out of it
+        // indefinitely. The revert SQL is skipped deliberately — the pool is
+        // being torn down, so there is no later query to inherit the identity.
+        for (const release of this.#heldConnections) release();
+
+        this.#heldConnections.clear();
 
         await this.#state.connection.destroy();
         this.#state.connection = null;
@@ -479,6 +495,13 @@ export class Context<DB = unknown, Procs = object, Funcs = object, Tvfs = object
 
         });
 
+        // Registered so disconnect() can release a scope the caller never
+        // reverted. Removed on a successful revert so the set only ever holds
+        // connections that are genuinely still out.
+        const release = () => resolveHolder();
+
+        this.#heldConnections.add(release);
+
         // === Business logic block ===
         const connectionDone = this.kysely.connection().execute(async (db) => {
 
@@ -487,6 +510,7 @@ export class Context<DB = unknown, Procs = object, Funcs = object, Tvfs = object
             const scope = buildScope<DB, Procs, Funcs, Tvfs>(db, async () => {
 
                 await sql.raw(revertSql).execute(db);
+                this.#heldConnections.delete(release);
                 resolveHolder();
 
             }, this.dialect);
@@ -497,7 +521,14 @@ export class Context<DB = unknown, Procs = object, Funcs = object, Tvfs = object
 
         });
 
-        connectionDone.catch(err => rejectReady(err));
+        connectionDone.catch(err => {
+
+            // The connection never became a usable scope, so there is nothing
+            // for disconnect() to release.
+            this.#heldConnections.delete(release);
+            rejectReady(err);
+
+        });
 
         // === Commit block ===
         return ready;

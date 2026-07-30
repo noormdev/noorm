@@ -143,7 +143,7 @@ describe('cli: noorm sql repl --yes / NOORM_YES', () => {
             env: { ...process.env, NOORM_YES: '' },
         });
 
-        expect(result.status).toBe(1);
+        expect(result.status).toBe(2);
 
         const out = result.stderr + result.stdout;
 
@@ -160,7 +160,7 @@ describe('cli: noorm sql repl --yes / NOORM_YES', () => {
             env: { ...process.env, NOORM_YES: '1' },
         });
 
-        expect(result.status).toBe(1);
+        expect(result.status).toBe(2);
 
         const out = result.stderr + result.stdout;
 
@@ -176,7 +176,7 @@ describe('cli: noorm sql repl --yes / NOORM_YES', () => {
             env: { ...process.env, NOORM_YES: '' },
         });
 
-        expect(result.status).toBe(1);
+        expect(result.status).toBe(2);
         expect(result.stderr + result.stdout).toContain('interactive terminal');
 
     });
@@ -189,7 +189,7 @@ describe('cli: noorm sql repl --yes / NOORM_YES', () => {
             env: { ...process.env, NOORM_YES: '0' },
         });
 
-        expect(result.status).toBe(1);
+        expect(result.status).toBe(2);
 
         const out = result.stderr + result.stdout;
 
@@ -230,7 +230,7 @@ describe('cli: noorm settings edit --yes / NOORM_YES', () => {
             env: { ...process.env, NOORM_YES: '' },
         });
 
-        expect(result.status).toBe(1);
+        expect(result.status).toBe(2);
 
         const out = result.stderr + result.stdout;
 
@@ -248,7 +248,7 @@ describe('cli: noorm settings edit --yes / NOORM_YES', () => {
             env: { ...process.env, NOORM_YES: '1' },
         });
 
-        expect(result.status).toBe(1);
+        expect(result.status).toBe(2);
         expect(result.stderr + result.stdout).toContain('interactive only');
 
     });
@@ -262,7 +262,7 @@ describe('cli: noorm settings edit --yes / NOORM_YES', () => {
             env: { ...process.env, NOORM_YES: '0' },
         });
 
-        expect(result.status).toBe(1);
+        expect(result.status).toBe(2);
 
         const out = result.stderr + result.stdout;
 
@@ -303,7 +303,7 @@ describe('cli: noorm settings secret --yes / NOORM_YES', () => {
             env: { ...process.env, NOORM_YES: '' },
         });
 
-        expect(result.status).toBe(1);
+        expect(result.status).toBe(2);
 
         const out = result.stderr + result.stdout;
 
@@ -321,7 +321,7 @@ describe('cli: noorm settings secret --yes / NOORM_YES', () => {
             env: { ...process.env, NOORM_YES: '1' },
         });
 
-        expect(result.status).toBe(1);
+        expect(result.status).toBe(2);
 
         const out = result.stderr + result.stdout;
 
@@ -339,7 +339,7 @@ describe('cli: noorm settings secret --yes / NOORM_YES', () => {
             env: { ...process.env, NOORM_YES: '0' },
         });
 
-        expect(result.status).toBe(1);
+        expect(result.status).toBe(2);
 
         const out = result.stderr + result.stdout;
 
@@ -393,7 +393,7 @@ describe('cli: noorm init --yes / NOORM_YES', () => {
 
         const result = runInit(['--yes']);
 
-        expect(result.status).toBe(1);
+        expect(result.status).toBe(2);
 
         const out = result.stderr + result.stdout;
 
@@ -407,7 +407,7 @@ describe('cli: noorm init --yes / NOORM_YES', () => {
 
         const result = runInit([], { NOORM_YES: '1' });
 
-        expect(result.status).toBe(1);
+        expect(result.status).toBe(2);
         expect(result.stderr + result.stdout).toContain('requires an existing identity');
 
     });
@@ -416,7 +416,7 @@ describe('cli: noorm init --yes / NOORM_YES', () => {
 
         const result = runInit([]);
 
-        expect(result.status).toBe(1);
+        expect(result.status).toBe(2);
 
         const out = result.stderr + result.stdout;
 
@@ -429,7 +429,7 @@ describe('cli: noorm init --yes / NOORM_YES', () => {
 
         const result = runInit([], { NOORM_YES: '0' });
 
-        expect(result.status).toBe(1);
+        expect(result.status).toBe(2);
 
         const out = result.stderr + result.stdout;
 

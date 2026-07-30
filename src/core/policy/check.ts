@@ -1,4 +1,5 @@
 import { shouldSkipConfirmations } from '../environment.js';
+import { DEFAULT_ACCESS } from './legacy-access.js';
 import { MATRIX } from './matrix.js';
 import type { Channel, ConfigAccess, Permission, PolicyCheck, PolicyTarget } from './types.js';
 
@@ -21,11 +22,11 @@ export function confirmationPhraseFor(name: string): string {
  *
  * The matrix cell is channel-agnostic (`allow`/`confirm`/`deny`); only
  * `confirm` resolves differently per channel: the `user` channel prompts for
- * `yes-<config>` (skippable via `NOORM_YES`), while `mcp` collapses confirm
- * to deny — there's no human on the other end of stdio to type a phrase, and
- * an agent confirming its own destructive action is theater.
+ * `yes-<config>` (skippable via `NOORM_YES`), while `agent` collapses confirm
+ * to deny — an agent confirming its own destructive action is theater, and on
+ * the CLI it would need only `--yes` to do it.
  *
- * `mcp: false` (invisible config) is never a role and is not expected to
+ * `agent: false` (invisible config) is never a role and is not expected to
  * reach this function — visibility is enforced upstream. If it does, this
  * fails closed rather than crashing.
  *
@@ -66,12 +67,12 @@ export function checkPolicy(channel: Channel, target: PolicyTarget, permission: 
 
     }
 
-    if (channel === 'mcp') {
+    if (channel === 'agent') {
 
         return {
             allowed: false,
             requiresConfirmation: false,
-            blockedReason: `"${permission}" on config "${target.name}" requires confirmation — use the CLI.`,
+            blockedReason: `"${permission}" on config "${target.name}" requires confirmation from a human.`,
         };
 
     }
@@ -102,7 +103,7 @@ export function checkPolicy(channel: Channel, target: PolicyTarget, permission: 
  * populates `access`.
  *
  * @example
- * const check = checkConfigPolicy('mcp', ctx.noorm.config, 'sql:write');
+ * const check = checkConfigPolicy('agent', ctx.noorm.config, 'sql:write');
  * if (!check.allowed) throw new RpcError(check.blockedReason ?? 'denied');
  */
 export function checkConfigPolicy(
@@ -155,19 +156,19 @@ export function assertPolicy(
 }
 
 /**
- * Whether a config is visible on a channel — the mcp-channel invisibility
+ * Whether a config is visible on a channel — the agent-channel invisibility
  * rule, extracted so `list_configs` and `session.ts`'s `connect()` share one
  * fail-closed implementation instead of two independently drifting copies.
  *
- * Fails closed: missing `access` is treated the same as `access.mcp ===
- * false`. The `user` channel is always visible; only `mcp` can be hidden.
+ * Fails closed: missing `access` is treated the same as `access.agent ===
+ * false`. The `user` channel is always visible; only `agent` can be hidden.
  *
  * @example
- * isVisibleToChannel(config.access, 'mcp'); // false when access.mcp === false or access is missing
+ * isVisibleToChannel(config.access, 'agent'); // false when access.agent === false or access is missing
  */
 export function isVisibleToChannel(access: ConfigAccess | undefined, channel: Channel): boolean {
 
-    return !(channel === 'mcp' && (!access || access.mcp === false));
+    return !(channel === 'agent' && (!access || access.agent === false));
 
 }
 
@@ -177,7 +178,7 @@ export function isVisibleToChannel(access: ConfigAccess | undefined, channel: Ch
  * input; `checkPolicy` is the only gate.
  *
  * @example
- * guarded({ name: 'prod', access: { user: 'operator', mcp: 'viewer' } }); // true
+ * guarded({ name: 'prod', access: { user: 'operator', agent: 'viewer' } }); // true
  */
 export function guarded(target: PolicyTarget): boolean {
 
@@ -186,20 +187,26 @@ export function guarded(target: PolicyTarget): boolean {
 }
 
 /**
- * Formats access as `user:<role> mcp:<role|off>` — the shared display
+ * Formats access as `user:<role> agent:<role|off>` — the shared display
  * string for `noorm config list` and the TUI config list screen, so the
- * format can't drift between the two. Omitted entirely (`null`) for fully
- * open (admin/admin) configs, per `guarded()`.
+ * format can't drift between the two. Omitted entirely (`null`) only for
+ * configs sitting on `DEFAULT_ACCESS`, so the tag means "someone changed
+ * this" in either direction.
+ *
+ * Keyed to the default rather than `guarded()` because the default is no
+ * longer the loosest setting: `agent: 'admin'` is now an opt-in escalation,
+ * and `guarded()` (which only reads the user channel) would render the one
+ * config an agent can write to as unremarkable.
  *
  * @example
- * formatAccessTag({ name: 'prod', access: { user: 'operator', mcp: false } }); // 'user:operator mcp:off'
+ * formatAccessTag({ name: 'prod', access: { user: 'operator', agent: false } }); // 'user:operator agent:off'
  */
 export function formatAccessTag(config: { name: string; access: ConfigAccess }): string | null {
 
-    if (!guarded(config)) return null;
-
     const { access } = config;
 
-    return `user:${access.user} mcp:${access.mcp === false ? 'off' : access.mcp}`;
+    if (access.user === DEFAULT_ACCESS.user && access.agent === DEFAULT_ACCESS.agent) return null;
+
+    return `user:${access.user} agent:${access.agent === false ? 'off' : access.agent}`;
 
 }

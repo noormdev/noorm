@@ -5,15 +5,11 @@
  * Commands receive a plain `args` object from citty and call withContext
  * or withVaultContext to run work against a connected database context.
  */
-import { createWriteStream } from 'node:fs';
-import { mkdir } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
-
 import { attempt } from '@logosdx/utils';
 
 import type { Context } from '../sdk/context.js';
 import type { CryptoIdentity } from '../core/identity/types.js';
-import { Logger, type LoggerOptions, type LogLevel } from '../core/logger/index.js';
+import { Logger, DEFAULT_LOGGER_CONFIG, type LoggerOptions, type LogLevel } from '../core/logger/index.js';
 import { getSettingsManager } from '../core/settings/index.js';
 import { getSqlErrorMessage } from '../core/shared/index.js';
 import { createContext } from '../sdk/index.js';
@@ -22,6 +18,8 @@ import { loadPrivateKey, loadIdentityMetadata } from '../core/identity/storage.j
 import { registerIdentity } from '../core/identity/sync.js';
 import { isDev, isEnvTruthy } from '../core/environment.js';
 import { getConfig } from '../core/config/index.js';
+import { resolveChannel } from '../core/policy/index.js';
+import { isSuccessStatus } from './_exit.js';
 
 /**
  * Minimal args shape expected by the helpers.
@@ -125,41 +123,39 @@ export interface VaultContext {
  * The Logger subscribes to observer events so core module progress
  * reaches stdout automatically. Commands only need to call logger.info
  * or logger.result for explicit output not tied to events.
+ *
+ * `settings.logging.enabled: false` turns off the *file* only, never the
+ * Logger — `logger.result()` is how every headless command emits its `--json`
+ * payload, so switching the whole Logger off would silence the CLI rather than
+ * stop it writing a log. A blank `config.file` is how the Logger is told to
+ * stay console-only.
+ *
+ * Exported for tests: it is the single place the ~79 CLI commands get their
+ * logging configuration, and it had no coverage.
  */
-async function createCliLogger(projectRoot: string, json: boolean): Promise<Logger> {
+export async function createCliLogger(projectRoot: string, json: boolean): Promise<Logger> {
 
     const settingsManager = getSettingsManager(projectRoot);
     const [, settingsErr] = await attempt(() => settingsManager.load());
     const settings = settingsErr ? {} : settingsManager.settings;
+    const logging = settings.logging ?? {};
 
-    const logPath = join(projectRoot, '.noorm', 'state', 'noorm.log');
-    const [, mkdirErr] = await attempt(() => mkdir(dirname(logPath), { recursive: true }));
-
-    let fileStream: ReturnType<typeof createWriteStream> | undefined;
-    if (!mkdirErr) {
-
-        fileStream = createWriteStream(logPath, { flags: 'a' });
-        fileStream.on('error', () => {}); // best-effort file logging
-
-    }
-
-    let defaultLevel: LogLevel = 'info';
-    if (isDev()) {
-
-        defaultLevel = 'verbose';
-
-    }
+    const defaultLevel: LogLevel = isDev() ? 'verbose' : 'info';
 
     const options: LoggerOptions = {
         projectRoot,
         settings,
         config: {
             enabled: true,
-            level: getConfig('log.level', defaultLevel)!,
+            level: getConfig('log.level', logging.level ?? defaultLevel)!,
+            file: logging.enabled === false
+                ? ''
+                : logging.file ?? DEFAULT_LOGGER_CONFIG.file,
+            maxSize: logging.maxSize ?? DEFAULT_LOGGER_CONFIG.maxSize,
+            maxFiles: logging.maxFiles ?? DEFAULT_LOGGER_CONFIG.maxFiles,
         },
         console: process.stdout,
         diagnostics: process.stderr,
-        file: fileStream ?? undefined,
         json,
         color: !json,
     };
@@ -194,7 +190,9 @@ export async function withContext<T>(opts: {
     const logger = await createCliLogger(projectRoot, !!args.json);
     await logger.start();
 
-    const [ctx, ctxError] = await attempt(() => createContext<NoormDatabase>({ config: args.config, yes: isYesMode(args) }));
+    const [ctx, ctxError] = await attempt(
+        () => createContext<NoormDatabase>({ config: args.config, yes: isYesMode(args), channel: resolveChannel() }),
+    );
     if (ctxError) {
 
         outputError(args, `Failed to create context: ${ctxError.message}`, logger);
@@ -285,7 +283,12 @@ export async function withVaultContext<T>(opts: {
 
     }
 
-    const [ctx, ctxError] = await attempt(() => createContext<NoormDatabase>({ config: args.config }));
+    // `yes` matches withContext deliberately: without it a vault command can
+    // never satisfy a `confirm`-tier gate, so `--yes` / NOORM_YES would be
+    // silently inert in CI the moment a vault permission gains that tier.
+    const [ctx, ctxError] = await attempt(
+        () => createContext<NoormDatabase>({ config: args.config, yes: isYesMode(args), channel: resolveChannel() }),
+    );
     if (ctxError) {
 
         outputError(args, `Failed to create context: ${ctxError.message}`, logger);
@@ -353,6 +356,42 @@ export async function withVaultContext<T>(opts: {
 }
 
 /**
+ * Normalize a command's `--json` payload into the shared envelope.
+ *
+ * The envelope contract: every `--json` payload is a JSON object carrying a
+ * top-level boolean `success`, never a bare array, so `jq -e '.success'`
+ * works against every command. Command-specific fields sit alongside it.
+ *
+ * `success` is derived rather than assumed. A payload carrying a core
+ * `status` string wins — `{ status: 'partial' }` must never be announced as
+ * `success: true`, which is precisely the class of defect this envelope
+ * exists to make impossible. A payload that already states `success`
+ * explicitly is left alone.
+ *
+ * The array branch is a safety net, not the intended path: list commands
+ * name their collection (`configs`, `changes`, `tables`) at the call site.
+ * It exists so a bare array can never reach stdout unenveloped.
+ */
+function toJsonEnvelope(payload: unknown): Record<string, unknown> {
+
+    if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) {
+
+        return { success: true, data: payload };
+
+    }
+
+    const obj = payload as Record<string, unknown>;
+
+    if (typeof obj['success'] === 'boolean') return obj;
+
+    const status = obj['status'];
+    const success = typeof status === 'string' ? isSuccessStatus(status) : true;
+
+    return { success, ...obj };
+
+}
+
+/**
  * Output a success result as either JSON or text.
  *
  * The result always goes to stdout, in every mode — that is what
@@ -361,6 +400,9 @@ export async function withVaultContext<T>(opts: {
  * through `logger.result()` when a logger is available (stdout + log
  * file); plain text writes directly to stdout, never through
  * `logger.info`, so it can't be pulled onto the diagnostics stream.
+ *
+ * JSON payloads pass through `toJsonEnvelope` so the `success` flag is
+ * applied in one place instead of at ~70 call sites that would drift.
  */
 export function outputResult(
     args: CliArgs,
@@ -371,14 +413,16 @@ export function outputResult(
 
     if (args.json) {
 
+        const payload = toJsonEnvelope(json);
+
         if (logger) {
 
-            logger.result(json);
+            logger.result(payload);
 
         }
         else {
 
-            process.stdout.write(JSON.stringify(json) + '\n');
+            process.stdout.write(JSON.stringify(payload) + '\n');
 
         }
 
@@ -450,7 +494,7 @@ export function handleVaultResult<T extends { success: boolean; error?: string; 
 
     if (args.json) {
 
-        logger.result(result);
+        outputResult(args, result ?? { success: false, error: 'Unknown error' }, '', logger);
 
     }
     else {

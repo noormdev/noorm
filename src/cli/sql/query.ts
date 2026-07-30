@@ -7,8 +7,10 @@ import { defineCommand } from 'citty';
 import { attempt } from '@logosdx/utils';
 import type { Kysely } from 'kysely';
 
+import { resolveChannel } from '../../core/policy/index.js';
 import { executeRawSql } from '../../core/sql-terminal/executor.js';
 import { withContext, outputError, outputResult, sharedArgs } from '../_utils.js';
+import { EXIT } from '../_exit.js';
 
 const sqlCommand = defineCommand({
     meta: {
@@ -32,7 +34,7 @@ const sqlCommand = defineCommand({
             if (readErr) {
 
                 outputError(args, `Failed to read SQL file: ${args.file}: ${readErr.message}`);
-                process.exit(1);
+                process.exit(EXIT.USAGE);
 
             }
 
@@ -43,7 +45,7 @@ const sqlCommand = defineCommand({
         if (!query) {
 
             outputError(args, 'No query provided. Usage: noorm sql "SELECT ..."');
-            process.exit(1);
+            process.exit(EXIT.USAGE);
 
         }
 
@@ -51,7 +53,7 @@ const sqlCommand = defineCommand({
             args,
             fn: async (ctx) => executeRawSql(ctx.kysely as unknown as Kysely<unknown>, query!, ctx.noorm.config.name, {
                 access: ctx.noorm.config.access,
-                channel: 'user',
+                channel: resolveChannel(),
                 dialect: ctx.dialect,
             }),
         });
@@ -104,12 +106,18 @@ const sqlCommand = defineCommand({
     },
 });
 
+// The bare `noorm sql <SQL>` form works only when the first token after
+// `sql` is the query itself — the argv rewriter in `src/cli/index.ts` looks
+// for SQL there, and for `-c prod` / `-f file.sql` it finds the flag's value
+// instead, so no `query` subcommand is inserted and citty prints help. Those
+// two forms are shown explicitly rather than teaching a command that exits
+// on the help screen.
 (sqlCommand as typeof sqlCommand & { examples: string[] }).examples = [
     'noorm sql "SELECT 1"',
     'noorm sql "SELECT * FROM users LIMIT 10"',
-    'noorm sql -c prod "SELECT count(*) FROM orders"',
+    'noorm sql query -c prod "SELECT count(*) FROM orders"',
     'noorm sql --json "SELECT id, name FROM users"',
-    'noorm sql -f reports/monthly.sql',
+    'noorm sql query -f reports/monthly.sql',
 ];
 
 export default sqlCommand;

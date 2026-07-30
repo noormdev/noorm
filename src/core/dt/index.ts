@@ -50,11 +50,13 @@ import { observer } from '../observer.js';
 import { WorkerBridge } from '../worker-bridge/bridge.js';
 import { WorkerPool } from '../worker-bridge/pool.js';
 import { OrderBuffer } from '../worker-bridge/order-buffer.js';
+import { PendingSet } from '../worker-bridge/pending-set.js';
 import { resolveWorker } from '../worker-bridge/paths.js';
 import { DtWriter } from './writer.js';
 import { DtReader } from './reader.js';
 import { DtStreamer } from './streamer.js';
-import { buildDtSchema, validateSchema } from './schema.js';
+import { createKeysetPager } from './paging.js';
+import { buildDtSchema, validateSchema, queryPrimaryKeyColumns } from './schema.js';
 
 const COMPUTE_WORKER = resolveWorker('compute');
 
@@ -140,6 +142,18 @@ export async function exportTable(
     // this file) is the rebuild recipe if a real caller shows up.
     const computePool = createDefaultComputePool();
 
+    // Pages are keyed on the primary key — see core/dt/paging.ts for why an
+    // OFFSET walk is not safe here.
+    const [keyColumns, pkErr] = await queryPrimaryKeyColumns(kyselyDb, dialect, tableName, schemaName);
+
+    if (pkErr) {
+
+        await attempt(() => computePool.shutdown());
+
+        return [null, pkErr];
+
+    }
+
     // Worker pipeline: offload fetching and serialization to worker threads
     const [result, workerErr] = await exportTableWithWorkers({
         writer,
@@ -147,6 +161,7 @@ export async function exportTable(
         tableName,
         filepath,
         dialect,
+        keyColumns,
         batchSize,
         computePool,
         kyselyDb,
@@ -175,22 +190,10 @@ export async function exportTable(
 }
 
 /**
- * Build a dialect-appropriate SQL identifier quoting function.
- */
-function getQuoteIdent(dialect: string): (c: string) => string {
-
-    if (dialect === 'mssql') return (c: string) => `[${c}]`;
-    if (dialect === 'mysql') return (c: string) => `\`${c}\``;
-
-    return (c: string) => `"${c}"`;
-
-}
-
-/**
  * Worker-based export pipeline — offload fetching and serialization to worker threads.
  *
  * Uses a three-stage pipeline:
- * 1. Connection worker fetches batches via paginated SQL queries
+ * 1. A keyset pager fetches batches in primary key order
  * 2. Compute pool serializes individual rows in parallel
  * 3. OrderBuffer reassembles rows in order and writes to DtWriter
  *
@@ -201,13 +204,14 @@ async function exportTableWithWorkers(ctx: {
     dtSchema: DtSchema;
     tableName: string;
     filepath: string;
-    dialect: string;
+    dialect: Dialect;
+    keyColumns: string[];
     batchSize: number;
     computePool: WorkerPool<ComputeEvents>;
     kyselyDb: Kysely<NoormDatabase>;
 }): Promise<[{ rowsWritten: number; bytesWritten: number } | null, Error | null]> {
 
-    const { writer, dtSchema, tableName, filepath, dialect, batchSize } = ctx;
+    const { writer, dtSchema, tableName, filepath, dialect, keyColumns, batchSize } = ctx;
     const { computePool, kyselyDb } = ctx;
     const backpressureLimit = batchSize * 3;
 
@@ -216,15 +220,20 @@ async function exportTableWithWorkers(ctx: {
 
     // --- Stage 1-3: Fetch → Serialize → Write ---
     const columns = dtSchema.columns.map((c) => c.name);
-    const quoteIdent = getQuoteIdent(dialect);
-    const columnList = columns.map(quoteIdent).join(', ');
-    const orderCol = quoteIdent(columns[0]!);
+
+    const pager = createKeysetPager({
+        db: kyselyDb,
+        dialect,
+        table: tableName,
+        columns,
+        keyColumns,
+        batchSize,
+    });
 
     let globalIndex = 0;
     let loaded = 0;
     let processed = 0;
     let saved = 0;
-    let inFlight = 0;
     let pipelineError: Error | null = null;
 
     // OrderBuffer: flush in-order to writer
@@ -232,47 +241,26 @@ async function exportTableWithWorkers(ctx: {
 
         writer.writeRow(values);
         saved++;
-        inFlight--;
 
         observer.emit('dt:export:saved', { table: tableName, saved, totalRows });
 
     });
 
-    // Fetch loop
-    let offset = 0;
+    const inFlight = new PendingSet();
 
     while (true) {
 
-        // Backpressure: wait until in-flight drops below limit
-        while (inFlight >= backpressureLimit) {
+        // Backpressure: wait until in-flight drops below limit. Bails on a
+        // pipeline error so a dead worker cannot stall the producer here.
+        while (inFlight.size >= backpressureLimit && !pipelineError) {
 
-            await new Promise((resolve) => setTimeout(resolve, 1));
+            await inFlight.settleAny();
 
         }
 
-        // Fetch a batch
-        const [rows, fetchErr] = await attempt(() => {
+        if (pipelineError) break;
 
-            if (dialect === 'mssql') {
-
-                return sql<Record<string, unknown>>`
-                    SELECT ${sql.raw(columnList)}
-                    FROM ${sql.table(tableName)}
-                    ORDER BY ${sql.raw(orderCol)}
-                    OFFSET ${offset} ROWS
-                    FETCH NEXT ${batchSize} ROWS ONLY
-                `.execute(kyselyDb);
-
-            }
-
-            return sql<Record<string, unknown>>`
-                SELECT ${sql.raw(columnList)}
-                FROM ${sql.table(tableName)}
-                LIMIT ${batchSize}
-                OFFSET ${offset}
-            `.execute(kyselyDb);
-
-        });
+        const [batchRows, fetchErr] = await attempt(() => pager.next());
 
         if (fetchErr) {
 
@@ -280,8 +268,6 @@ async function exportTableWithWorkers(ctx: {
             break;
 
         }
-
-        const batchRows = rows.rows;
 
         if (batchRows.length === 0) break;
 
@@ -293,34 +279,38 @@ async function exportTableWithWorkers(ctx: {
         for (const row of batchRows) {
 
             const rowIndex = globalIndex++;
-            inFlight++;
 
-            // Fire-and-forget — result handled asynchronously
-            computePool.request('serialize', {
-                row,
-                columns: dtSchema.columns,
-                index: rowIndex,
-            }).then((result) => {
+            inFlight.track(
+                computePool.request('serialize', {
+                    row,
+                    columns: dtSchema.columns,
+                    index: rowIndex,
+                }).then((result) => {
 
-                processed++;
+                    processed++;
 
-                observer.emit('dt:export:processed', { table: tableName, processed, totalRows });
+                    observer.emit('dt:export:processed', { table: tableName, processed, totalRows });
 
-                if (result.error) {
+                    if (result.error) {
 
-                    pipelineError = pipelineError ?? new Error(result.error);
+                        pipelineError = pipelineError ?? new Error(result.error);
 
-                    return;
+                        return;
 
-                }
+                    }
 
-                orderBuffer.add(result.index, result.values);
+                    orderBuffer.add(result.index, result.values);
 
-            });
+                }).catch((err: Error) => {
+
+                    // Covers a rejected request (dead worker) and a rejected
+                    // OrderBuffer.add — neither used to reach the pipeline.
+                    pipelineError = pipelineError ?? err;
+
+                }),
+            );
 
         }
-
-        offset += batchRows.length;
 
         observer.emit('dt:export:progress', {
             filepath,
@@ -329,16 +319,10 @@ async function exportTableWithWorkers(ctx: {
             bytesWritten: writer.bytesWritten,
         });
 
-        if (batchRows.length < batchSize) break;
-
     }
 
     // Wait for all in-flight compute to drain
-    while (inFlight > 0) {
-
-        await new Promise((resolve) => setTimeout(resolve, 1));
-
-    }
+    await inFlight.settleAll();
 
     if (pipelineError) {
 
@@ -565,7 +549,6 @@ async function importFileWithWorkers(ctx: {
     let processed = 0;
     let saved = 0;
     let globalIndex = 0;
-    let inFlight = 0;
     let pipelineError: Error | null = null;
 
     // Count total rows by iterating (we'll re-read). For .dt files,
@@ -619,31 +602,28 @@ async function importFileWithWorkers(ctx: {
 
         insertBatch.push(record);
         saved++;
-        inFlight--;
 
         observer.emit('dt:import:saved', { table: tableName, saved, totalRows });
 
     });
 
-    // Read rows in batches from DtReader
-    let readBatch: DtValue[][] = [];
+    const inFlight = new PendingSet();
 
-    for await (const values of reader.rows()) {
+    /**
+     * Deserialize one read batch in the compute pool, then insert it.
+     *
+     * Returns the first pipeline error rather than throwing so both call
+     * sites drain identically.
+     */
+    const processReadBatch = async (batch: DtValue[][]): Promise<Error | null> => {
 
-        readBatch.push(values);
-        loaded++;
-        totalRows = Math.max(totalRows, loaded);
+        observer.emit('dt:import:loaded', { table: tableName, loaded, totalRows });
 
-        if (readBatch.length >= batchSize) {
+        for (const rowValues of batch) {
 
-            observer.emit('dt:import:loaded', { table: tableName, loaded, totalRows });
+            const rowIndex = globalIndex++;
 
-            // Dispatch batch to compute pool
-            for (const rowValues of readBatch) {
-
-                const rowIndex = globalIndex++;
-                inFlight++;
-
+            inFlight.track(
                 computePool.request('deserialize', {
                     values: rowValues,
                     columns: dtSchema.columns,
@@ -666,31 +646,43 @@ async function importFileWithWorkers(ctx: {
 
                     orderBuffer.add(result.index, result.record);
 
-                });
+                }).catch((err: Error) => {
 
-            }
+                    // Covers a rejected request (dead worker) and a rejected
+                    // OrderBuffer.add — neither used to reach the pipeline.
+                    pipelineError = pipelineError ?? err;
+
+                }),
+            );
+
+        }
+
+        await inFlight.settleAll();
+
+        if (pipelineError) return pipelineError;
+
+        return flushInsertBatch();
+
+    };
+
+    // Read rows in batches from DtReader
+    let readBatch: DtValue[][] = [];
+
+    for await (const values of reader.rows()) {
+
+        readBatch.push(values);
+        loaded++;
+        totalRows = Math.max(totalRows, loaded);
+
+        if (readBatch.length >= batchSize) {
+
+            const batchErr = await processReadBatch(readBatch);
 
             readBatch = [];
 
-            // Wait for all in-flight to drain before reading next batch
-            while (inFlight > 0) {
+            if (batchErr) {
 
-                await new Promise((resolve) => setTimeout(resolve, 1));
-
-            }
-
-            if (pipelineError) {
-
-                return [null, pipelineError];
-
-            }
-
-            // Flush accumulated insert batch
-            const flushErr = await flushInsertBatch();
-
-            if (flushErr) {
-
-                return [null, flushErr];
+                return [null, batchErr];
 
             }
 
@@ -698,61 +690,13 @@ async function importFileWithWorkers(ctx: {
 
     }
 
-    // Process remaining rows
     if (readBatch.length > 0) {
 
-        observer.emit('dt:import:loaded', { table: tableName, loaded, totalRows });
+        const batchErr = await processReadBatch(readBatch);
 
-        for (const rowValues of readBatch) {
+        if (batchErr) {
 
-            const rowIndex = globalIndex++;
-            inFlight++;
-
-            computePool.request('deserialize', {
-                values: rowValues,
-                columns: dtSchema.columns,
-                targetDialect: dialect,
-                targetVersion: version ? `${version.major}.${version.minor}` : undefined,
-                index: rowIndex,
-            }).then((result) => {
-
-                processed++;
-
-                observer.emit('dt:import:processed', { table: tableName, processed, totalRows });
-
-                if (result.error) {
-
-                    pipelineError = pipelineError ?? new Error(result.error);
-
-                    return;
-
-                }
-
-                orderBuffer.add(result.index, result.record);
-
-            });
-
-        }
-
-        // Wait for drain
-        while (inFlight > 0) {
-
-            await new Promise((resolve) => setTimeout(resolve, 1));
-
-        }
-
-        if (pipelineError) {
-
-            return [null, pipelineError];
-
-        }
-
-        // Flush remaining
-        const flushErr = await flushInsertBatch();
-
-        if (flushErr) {
-
-            return [null, flushErr];
+            return [null, batchErr];
 
         }
 
@@ -803,26 +747,19 @@ async function insertImportBatch(
 
             if (!isDuplicateError(err.message)) {
 
-                // Non-duplicate error — log first occurrence for diagnostics
-                if (skipped === 0 && inserted === 0) {
+                // Every failure is reported, not just the first: the old
+                // `skipped === 0 && inserted === 0` guard meant an import
+                // that broke after row one went entirely unobserved.
+                observer.emit('error', {
+                    source: 'dt:import',
+                    error: err,
+                    context: { table, operation: 'insert-row', onConflict, row: Object.keys(row).slice(0, 5).join(', ') },
+                });
 
-                    observer.emit('error', {
-                        source: 'dt:import',
-                        error: err,
-                        context: { table, operation: 'insert-row', onConflict, row: Object.keys(row).slice(0, 5).join(', ') },
-                    });
-
-                }
-
-                // Non-duplicate error
-                if (onConflict === 'fail') {
-
-                    return [{ inserted, skipped, updated }, new Error(`Row ${globalRowNum} (${rowSummary()}): ${err.message}`)];
-
-                }
-
-                skipped++;
-                continue;
+                // A row the destination rejected outright is not a conflict,
+                // so no conflict strategy makes it skippable. Counting it as
+                // skipped let a whole failed import report success.
+                return [{ inserted, skipped, updated }, new Error(`Row ${globalRowNum} (${rowSummary()}): ${err.message}`)];
 
             }
 
@@ -997,7 +934,7 @@ export { serializeRow, serializeValue, encodeValue } from './serialize.js';
 export { deserializeRow, deserializeValue } from './deserialize.js';
 export { encryptWithPassphrase, decryptWithPassphrase } from './crypto.js';
 export { FORMAT_VERSION, GZIP_THRESHOLD, GZIP_RATIO_THRESHOLD, SIMPLE_TYPES, ENCODED_TYPES } from './constants.js';
-export { resolveExportExtension, resolveExportPath, ensureExportDirectory } from './paths.js';
+export { resolveExportExtension, resolveExportPath, resolveExportTables, ensureExportDirectory } from './paths.js';
 
 export { modifyDtFile, transformSchema, validateRecipe, buildRowProxy } from './modify.js';
 export type {

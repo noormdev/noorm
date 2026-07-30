@@ -10,9 +10,9 @@ import type { Config } from '../../src/core/config/types.js';
 import type { ConfigAccess } from '../../src/core/policy/index.js';
 import type { CreateContextOptions } from '../../src/sdk/types.js';
 
-const ADMIN_ACCESS: ConfigAccess = { user: 'admin', mcp: 'admin' };
-const OPERATOR_ACCESS: ConfigAccess = { user: 'operator', mcp: 'viewer' };
-const VIEWER_ACCESS: ConfigAccess = { user: 'viewer', mcp: false };
+const ADMIN_ACCESS: ConfigAccess = { user: 'admin', agent: 'admin' };
+const OPERATOR_ACCESS: ConfigAccess = { user: 'operator', agent: 'viewer' };
+const VIEWER_ACCESS: ConfigAccess = { user: 'viewer', agent: false };
 
 function makeConfig(access: ConfigAccess, overrides: Partial<Config> = {}): Config {
 
@@ -283,11 +283,11 @@ describe('checkProtectedConfig', () => {
     it('defaults the channel to user when options.channel is omitted', () => {
 
         // change:revert is a confirm cell for operator — allowed on `user`
-        // once NOORM_YES skips the prompt, but OPERATOR_ACCESS.mcp is
-        // 'viewer', a deny cell, so the `mcp` channel is always blocked.
-        // (VIEWER_ACCESS.mcp === false would deny on both channels
+        // once NOORM_YES skips the prompt, but OPERATOR_ACCESS.agent is
+        // 'viewer', a deny cell, so the `agent` channel is always blocked.
+        // (VIEWER_ACCESS.agent === false would deny on both channels
         // regardless of the default, proving nothing about which one ran.)
-        // If the default silently fell through to `mcp` this would throw,
+        // If the default silently fell through to `agent` this would throw,
         // so this pins the CreateContextOptions.channel default to `user`.
         process.env['NOORM_YES'] = '1';
 
@@ -301,14 +301,14 @@ describe('checkProtectedConfig', () => {
 
     });
 
-    it('respects an explicit mcp channel, where NOORM_YES has no effect on confirm cells', () => {
+    it('respects an explicit agent channel, where NOORM_YES has no effect on confirm cells', () => {
 
         process.env['NOORM_YES'] = '1';
 
         const config = makeConfig(ADMIN_ACCESS);
 
         expect(
-            () => checkProtectedConfig(config, { channel: 'mcp' }, 'db:destroy', 'drop'),
+            () => checkProtectedConfig(config, { channel: 'agent' }, 'db:destroy', 'drop'),
         ).toThrow(ProtectedConfigError);
 
         delete process.env['NOORM_YES'];
@@ -333,27 +333,27 @@ describe('checkProtectedConfig', () => {
 
     });
 
-    it('denies db:reset on the mcp channel even when options.yes is true (operator config, mcp resolves to viewer -> deny)', () => {
+    it('denies db:reset on the agent channel even when options.yes is true (operator config, agent resolves to viewer -> deny)', () => {
 
         const config = makeConfig(OPERATOR_ACCESS, { name: 'prod' });
 
-        expect(() => checkProtectedConfig(config, { channel: 'mcp', yes: true }, 'db:reset', 'truncate')).toThrow(ProtectedConfigError);
+        expect(() => checkProtectedConfig(config, { channel: 'agent', yes: true }, 'db:reset', 'truncate')).toThrow(ProtectedConfigError);
 
     });
 
-    it('denies db:reset on the mcp channel via the confirm-to-deny collapse, even when options.yes is true (mcp:operator hits a confirm cell, not a plain deny)', () => {
+    it('denies db:reset on the agent channel via the confirm-to-deny collapse, even when options.yes is true (agent:operator hits a confirm cell, not a plain deny)', () => {
 
-        // mcp:'viewer' above hits db:reset's deny cell directly and never
-        // reaches checkPolicy's mcp-collapse branch (check.ts ~68-75). Here
-        // mcp:'operator' resolves db:reset to the same 'confirm' cell as the
-        // user channel, so this only denies if the mcp channel collapses
+        // agent:'viewer' above hits db:reset's deny cell directly and never
+        // reaches checkPolicy's agent-collapse branch (check.ts ~68-75). Here
+        // agent:'operator' resolves db:reset to the same 'confirm' cell as the
+        // user channel, so this only denies if the agent channel collapses
         // confirm-to-deny before options.yes is ever consulted -- the
         // invariant spec C2 pins. If that collapse branch were removed,
         // options.yes: true would satisfy requiresConfirmation and this
         // would NOT throw.
-        const config = makeConfig({ user: 'operator', mcp: 'operator' }, { name: 'prod' });
+        const config = makeConfig({ user: 'operator', agent: 'operator' }, { name: 'prod' });
 
-        expect(() => checkProtectedConfig(config, { channel: 'mcp', yes: true }, 'db:reset', 'truncate')).toThrow(ProtectedConfigError);
+        expect(() => checkProtectedConfig(config, { channel: 'agent', yes: true }, 'db:reset', 'truncate')).toThrow(ProtectedConfigError);
 
     });
 

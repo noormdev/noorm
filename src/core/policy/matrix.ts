@@ -23,6 +23,27 @@ export const MATRIX: Record<Permission, Record<Role, PolicyCell>> = {
     'db:create': { viewer: 'deny', operator: 'confirm', admin: 'allow' },
     'db:reset': { viewer: 'deny', operator: 'confirm', admin: 'allow' },
     'db:destroy': { viewer: 'deny', operator: 'deny', admin: 'confirm' },
+    'db:truncate': { viewer: 'deny', operator: 'confirm', admin: 'confirm' },
+    'db:teardown': { viewer: 'deny', operator: 'deny', admin: 'confirm' },
 
     'config:rm': { viewer: 'deny', operator: 'confirm', admin: 'confirm' },
+    // Rewrites `access` itself, so it is an escalation vector: confirm even for admin.
+    'config:write': { viewer: 'deny', operator: 'confirm', admin: 'confirm' },
+
+    'vault:read': { viewer: 'deny', operator: 'allow', admin: 'allow' },
+    'vault:write': { viewer: 'deny', operator: 'confirm', admin: 'allow' },
+    // Grants the vault key to every enrolled identity — a fan-out no one can undo.
+    'vault:propagate': { viewer: 'deny', operator: 'confirm', admin: 'confirm' },
+
+    'secret:read': { viewer: 'deny', operator: 'allow', admin: 'allow' },
+    'secret:write': { viewer: 'deny', operator: 'confirm', admin: 'allow' },
+
+    // Dry-run planning still reads destination schema and row estimates.
+    'transfer:plan': { viewer: 'deny', operator: 'allow', admin: 'allow' },
+
+    'lock:force': { viewer: 'deny', operator: 'confirm', admin: 'confirm' },
+
+    'debug:read': { viewer: 'allow', operator: 'allow', admin: 'allow' },
+    // Deletes arbitrary rows from noorm.vault / noorm.identities.
+    'debug:write': { viewer: 'deny', operator: 'deny', admin: 'confirm' },
 };

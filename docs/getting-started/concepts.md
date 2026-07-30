@@ -217,7 +217,7 @@ noorm -c prod run build
 
 ## Access Roles
 
-Every config declares an access role — `viewer`, `operator`, or `admin` — separately for two **channels**: `user` (you, at the CLI or TUI) and `mcp` (an AI agent connected over MCP). This is how you prevent accidental destructive operations:
+Every config declares an access role — `viewer`, `operator`, or `admin` — separately for two **channels**: `user` (you, at the CLI or TUI) and `agent` (an AI agent, whether it reaches noorm over MCP or by running the CLI). This is how you prevent accidental destructive operations:
 
 - `viewer` - Read-only. `db teardown`, writes, and changes are all blocked.
 - `operator` - Reads and writes are fine; `db teardown` and applying changes require typing a confirmation phrase.

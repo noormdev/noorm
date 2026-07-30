@@ -26,7 +26,12 @@ export const v1: StateMigration = {
 
     up(state: Record<string, unknown>): Record<string, unknown> {
 
+        // Spread rather than rebuild: this migration runs on any
+        // pre-versioned state, including one written by a newer build, and
+        // an allowlist rebuild would silently destroy whatever that build
+        // had added at the top level.
         return {
+            ...state,
             schemaVersion: 1,
             identity: state['identity'] ?? null,
             knownUsers: state['knownUsers'] ?? {},

@@ -71,6 +71,6 @@ Published as `@noormdev/cli` from [`packages/cli/`](../../packages/cli).
 - `--yes` / `-y` flag suppresses all confirmation prompts (headless mode).
 - `--json` flag formats output as machine-readable JSON.
 - Build produces a standalone binary via `bun build --compile` — worker paths must use `resolveWorker()`.
-- `config list` ([`src/cli/config/list.ts`](../../src/cli/config/list.ts)) prints an access tag (`user:<role> mcp:<role|off>`) instead of a `protected` flag, shown only when `guarded(config)` is true.
+- `config list` ([`src/cli/config/list.ts`](../../src/cli/config/list.ts)) prints an access tag (`user:<role> agent:<role|off>`) instead of a `protected` flag, shown only when `guarded(config)` is true.
 - `db drop` ([`src/cli/db/drop.ts`](../../src/cli/db/drop.ts)) no longer requires `--yes` unconditionally — it's only required when the resolved `db:destroy` policy check returns `requiresConfirmation`.
 - Workspace package `@noormdev/cli` publishes the pre-built binary; `postinstall.js` extracts it.

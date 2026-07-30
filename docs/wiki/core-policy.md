@@ -6,17 +6,17 @@ type: Domain
 
 ## What it does
 
-Single access-control layer for every config-scoped action across every caller channel (CLI, TUI, SDK, MCP). Roles live on the config (`ConfigAccess`), not the actor — the actor is a `Channel` (`user` or `mcp`) — and a hard-coded permission × role matrix (`MATRIX`) resolves `allow`/`confirm`/`deny` per action. Replaces the removed `Config.protected: boolean` and the deleted `src/core/config/protection.ts` / `src/rpc/protection.ts` rule checkers.
+Single access-control layer for every config-scoped action across every caller channel (CLI, TUI, SDK, MCP). Roles live on the config (`ConfigAccess`), not the actor — the actor is a `Channel` (`user` or `agent`) — and a hard-coded permission × role matrix (`MATRIX`) resolves `allow`/`confirm`/`deny` per action. Replaces the removed `Config.protected: boolean` and the deleted `src/core/config/protection.ts` / `src/rpc/protection.ts` rule checkers.
 
 Also owns raw-SQL statement classification (`read`/`write`/`ddl`, with a destructive-function denylist) used to gate ad-hoc SQL, and the one-version `protected` boolean → `access` migration path (`resolveLegacyAccess`).
 
 ## CLI code
 
-- [`src/core/policy/types.ts`](../../src/core/policy/types.ts) — `Role` (`viewer`/`operator`/`admin`), `Channel` (`user`/`mcp`), `ConfigAccess` (`{ user: Role; mcp: Role | false }`), `Permission`, `PolicyTarget`, `PolicyCell` (`allow`/`confirm`/`deny`), `PolicyCheck`
+- [`src/core/policy/types.ts`](../../src/core/policy/types.ts) — `Role` (`viewer`/`operator`/`admin`), `Channel` (`user`/`agent`), `ConfigAccess` (`{ user: Role; agent: Role | false }`), `Permission`, `PolicyTarget`, `PolicyCell` (`allow`/`confirm`/`deny`), `PolicyCheck`
 - [`src/core/policy/matrix.ts`](../../src/core/policy/matrix.ts) — `MATRIX`; the hard-coded `Permission × Role → PolicyCell` table (not user-extensible), mirroring [`docs/spec/config-access-roles.md`](../spec/config-access-roles.md)
 - [`src/core/policy/check.ts`](../../src/core/policy/check.ts) — `checkPolicy`, `checkConfigPolicy`, `assertPolicy`, `guarded`, `confirmationPhraseFor`; the enforcement entrypoints every caller reaches for
 - [`src/core/policy/classify.ts`](../../src/core/policy/classify.ts) — `classifyStatements`; SQL-parser-cst-based statement classifier with a keyword-based fallback, a CTE-DML upgrade rule, and `DESTRUCTIVE_FUNCTIONS` denylist (e.g. `pg_terminate_backend`, `lo_import`, `setval`)
-- [`src/core/policy/legacy-access.ts`](../../src/core/policy/legacy-access.ts) — `resolveLegacyAccess`, `OPEN_ACCESS` (`{ user: 'admin', mcp: 'admin' }`), `GUARDED_ACCESS` (`{ user: 'operator', mcp: 'viewer' }`)
+- [`src/core/policy/legacy-access.ts`](../../src/core/policy/legacy-access.ts) — `resolveLegacyAccess`, `DEFAULT_ACCESS` (`{ user: 'admin', agent: 'viewer' }`), `GUARDED_ACCESS` (`{ user: 'operator', agent: 'viewer' }`)
 - [`src/core/policy/index.ts`](../../src/core/policy/index.ts) — barrel export for all of the above
 
 ## Docs
@@ -38,8 +38,8 @@ Also owns raw-SQL statement classification (`read`/`write`/`ddl`, with a destruc
 
 ## Conventions worth knowing
 
-- `checkPolicy`'s `confirm` cell resolves differently per channel: `user` prompts for `yes-<config>` (`confirmationPhraseFor`, skippable via `NOORM_YES`), `mcp` collapses `confirm` to `deny` — there's no human on the other end of MCP stdio to type a phrase.
-- `mcp: false` (invisible config) is never a role and is not expected to reach `checkPolicy` — visibility is enforced upstream (`SessionManager.connect`, `list_configs`).
+- `checkPolicy`'s `confirm` cell resolves differently per channel: `user` prompts for `yes-<config>` (`confirmationPhraseFor`, skippable via `NOORM_YES`), `agent` collapses `confirm` to `deny` — an agent confirming its own destructive action is theater.
+- `agent: false` (invisible config) is never a role and is not expected to reach `checkPolicy` — visibility is enforced upstream (`SessionManager.connect`, `list_configs`).
 - `checkConfigPolicy` fails closed: a config with no `access` at all is denied on every channel.
 - `classifyStatements` fails closed to `ddl` for anything it can't positively classify as `read` or `write` — an unrecognized statement could do anything.
 - `DESTRUCTIVE_FUNCTIONS` is a denylist, not an allowlist, by design: `SELECT f()` is statically undecidable, so only known-dangerous builtins upgrade a `SELECT` to `write`.

@@ -1,5 +1,5 @@
 /**
- * rpc commands: list_configs mcp-channel invisibility.
+ * rpc commands: list_configs agent-channel invisibility.
  *
  * Uses a real StateManager (via the module singleton `list_configs` reads
  * through `initState()`) rather than mocking state, so the test proves the
@@ -32,7 +32,7 @@ function testConfig(name: string, overrides: Partial<Config> = {}): Config {
         name,
         type: 'local',
         isTest: true,
-        access: { user: 'admin', mcp: 'admin' },
+        access: { user: 'admin', agent: 'admin' },
         connection: { dialect: 'sqlite', database: ':memory:' },
         ...overrides,
     };
@@ -74,7 +74,7 @@ describe('rpc commands: list_configs', () => {
         const manager = await initState(tempDir);
 
         await manager.setConfig('visible', testConfig('visible'));
-        await manager.setConfig('hidden', testConfig('hidden', { access: { user: 'admin', mcp: false } }));
+        await manager.setConfig('hidden', testConfig('hidden', { access: { user: 'admin', agent: false } }));
 
     });
 
@@ -86,9 +86,9 @@ describe('rpc commands: list_configs', () => {
 
     });
 
-    it('should omit configs with access.mcp === false on the mcp channel', async () => {
+    it('should omit configs with access.agent === false on the agent channel', async () => {
 
-        const result = await cmd.handler({}, sessionFor('mcp'));
+        const result = await cmd.handler({}, sessionFor('agent'));
 
         if (!isConfigSummaryArray(result)) throw new Error('expected an array of ConfigSummary');
 

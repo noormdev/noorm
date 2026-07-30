@@ -86,7 +86,7 @@ describe('cli: noorm db transfer — passphrase floor', () => {
 
         const result = runTransfer(['--export', 'backup.dtzx', '--tables', 'users', '--passphrase', 'x']);
 
-        expect(result.status).toBe(1);
+        expect(result.status).toBe(2);
         expect(result.stdout + result.stderr).toContain('12 characters');
 
     });
@@ -95,7 +95,7 @@ describe('cli: noorm db transfer — passphrase floor', () => {
 
         const result = runTransfer(['--export', 'backup.dtzx', '--tables', 'users']);
 
-        expect(result.status).toBe(1);
+        expect(result.status).toBe(2);
         expect(result.stdout + result.stderr).toContain('--passphrase');
 
     });
@@ -104,7 +104,7 @@ describe('cli: noorm db transfer — passphrase floor', () => {
 
         const result = runTransfer(['--export', 'backup.dt', '--tables', 'users', '--on-conflict', 'bogus']);
 
-        expect(result.status).toBe(1);
+        expect(result.status).toBe(2);
         expect(result.stdout + result.stderr).toContain('Invalid --on-conflict value: "bogus"');
 
     });

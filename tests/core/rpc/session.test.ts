@@ -7,7 +7,7 @@ import type { Config } from '../../../src/core/config/types.js';
 
 // The real `createContext` resolves configs through on-disk state, which
 // session.connect() would otherwise need a live project + identity key for.
-// Mocking it lets these tests drive the mcp-channel invisibility and
+// Mocking it lets these tests drive the agent-channel invisibility and
 // fail-closed rules directly, with a plain in-memory config registry.
 const actualSdk = await import('../../../src/sdk/index.js');
 
@@ -43,7 +43,7 @@ function testConfig(name: string, overrides: Partial<Config> = {}): Config {
         name,
         type: 'local',
         isTest: true,
-        access: { user: 'admin', mcp: 'admin' },
+        access: { user: 'admin', agent: 'admin' },
         connection: { dialect: 'sqlite', database: ':memory:' },
         ...overrides,
     };
@@ -119,23 +119,23 @@ describe('rpc: session manager', () => {
 
         it('should expose the channel passed to the constructor', () => {
 
-            expect(new SessionManager('mcp').channel).toBe('mcp');
+            expect(new SessionManager('agent').channel).toBe('agent');
 
         });
 
     });
 
-    describe('connect: mcp invisibility', () => {
+    describe('connect: agent invisibility', () => {
 
-        it('should throw the byte-identical error for a hidden config (access.mcp: false) and an unknown config', async () => {
+        it('should throw the byte-identical error for a hidden config (access.agent: false) and an unknown config', async () => {
 
-            const mcpSession = new SessionManager('mcp');
+            const agentSession = new SessionManager('agent');
 
-            const [, unknownErr] = await attempt(() => mcpSession.connect('does-not-exist'));
+            const [, unknownErr] = await attempt(() => agentSession.connect('does-not-exist'));
 
-            configs.set('secret', testConfig('secret', { access: { user: 'admin', mcp: false } }));
+            configs.set('secret', testConfig('secret', { access: { user: 'admin', agent: false } }));
 
-            const [, hiddenErr] = await attempt(() => mcpSession.connect('secret'));
+            const [, hiddenErr] = await attempt(() => agentSession.connect('secret'));
 
             expect(unknownErr).toBeDefined();
             expect(hiddenErr).toBeDefined();
@@ -144,21 +144,21 @@ describe('rpc: session manager', () => {
 
         });
 
-        it('should allow a visible config through on the mcp channel and report its mcp role', async () => {
+        it('should allow a visible config through on the agent channel and report its agent role', async () => {
 
-            const mcpSession = new SessionManager('mcp');
+            const agentSession = new SessionManager('agent');
 
-            configs.set('reporting', testConfig('reporting', { access: { user: 'admin', mcp: 'viewer' } }));
+            configs.set('reporting', testConfig('reporting', { access: { user: 'admin', agent: 'viewer' } }));
 
-            const info = await mcpSession.connect('reporting');
+            const info = await agentSession.connect('reporting');
 
             expect(info.role).toBe('viewer');
 
         });
 
-        it('should not apply mcp invisibility on the user channel', async () => {
+        it('should not apply agent invisibility on the user channel', async () => {
 
-            configs.set('secret', testConfig('secret', { access: { user: 'operator', mcp: false } }));
+            configs.set('secret', testConfig('secret', { access: { user: 'operator', agent: false } }));
 
             const info = await session.connect('secret');
 
@@ -166,11 +166,11 @@ describe('rpc: session manager', () => {
 
         });
 
-        it('should deny an mcp-channel config that reaches connect with no `access` at all, identically to an unknown config', async () => {
+        it('should deny an agent-channel config that reaches connect with no `access` at all, identically to an unknown config', async () => {
 
-            const mcpSession = new SessionManager('mcp');
+            const agentSession = new SessionManager('agent');
 
-            const [, unknownErr] = await attempt(() => mcpSession.connect('does-not-exist'));
+            const [, unknownErr] = await attempt(() => agentSession.connect('does-not-exist'));
 
             // `Config.access` is required at compile time; this hand-built
             // double simulates a runtime boundary that bypasses it (a
@@ -181,7 +181,7 @@ describe('rpc: session manager', () => {
             Reflect.deleteProperty(noAccessConfig, 'access');
             configs.set('no-access', noAccessConfig);
 
-            const [, noAccessErr] = await attempt(() => mcpSession.connect('no-access'));
+            const [, noAccessErr] = await attempt(() => agentSession.connect('no-access'));
 
             expect(unknownErr).toBeDefined();
             expect(noAccessErr).toBeDefined();

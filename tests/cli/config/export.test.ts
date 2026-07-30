@@ -15,7 +15,7 @@
  * readable. `export --output` must write at 0600.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync, statSync, readFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync, statSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -77,7 +77,7 @@ describe('cli: noorm config export — output file mode', () => {
             name: CONFIG_NAME,
             type: 'local',
             isTest: true,
-            access: { user: 'admin', mcp: 'admin' },
+            access: { user: 'admin', agent: 'admin' },
             connection: { dialect: 'sqlite', database: join(tmpDir, 'target.db') },
         };
 
@@ -123,6 +123,61 @@ describe('cli: noorm config export — output file mode', () => {
 
         const content = readFileSync(outputPath, 'utf8');
         expect(content).toContain(CONFIG_NAME);
+
+    });
+
+    /**
+     * Export hands over the connection password in plaintext, so it is a
+     * secret read — but it was the one config operation with no gate at all.
+     * A viewer config would refuse `config rm` and then export its own
+     * password to stdout, exit 0.
+     */
+    describe('policy gate', () => {
+
+        async function reseedWithViewerAccess() {
+
+            const manager = new StateManager(tmpDir, { privateKey });
+            await manager.load();
+            await manager.setConfig(CONFIG_NAME, {
+                name: CONFIG_NAME,
+                type: 'local',
+                isTest: true,
+                access: { user: 'viewer', agent: false },
+                connection: {
+                    dialect: 'sqlite',
+                    database: join(tmpDir, 'target.db'),
+                    password: 'TOPSECRETPROD',
+                },
+            } as Config);
+
+        }
+
+        it('refuses to write an export file for a viewer config', async () => {
+
+            await reseedWithViewerAccess();
+
+            const result = runExport();
+
+            expect(result.status).toBe(1);
+            expect(result.stdout + result.stderr).toContain('secret:read');
+            expect(existsSync(outputPath)).toBe(false);
+
+        });
+
+        it('does not print a viewer config password to stdout', async () => {
+
+            await reseedWithViewerAccess();
+
+            const result = spawnSync('node', [CLI, 'config', 'export', CONFIG_NAME], {
+                cwd: tmpDir,
+                encoding: 'utf-8',
+                env: identityEnv,
+            });
+
+            expect(result.status).toBe(1);
+            expect(result.stdout).not.toContain('TOPSECRETPROD');
+
+        });
 
     });
 

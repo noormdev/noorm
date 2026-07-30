@@ -240,6 +240,32 @@ export interface ChangeListItem {
     orphaned: boolean;
 }
 
+/**
+ * Whether a change is outstanding work that a forward run should pick up.
+ *
+ * WHY this is shared rather than inlined: every surface that lists "what
+ * still needs applying" — `ff`, `next`, the SDK's `pending()`, the CLI's
+ * interactive picker — has to agree. When `stale` was added for teardown
+ * the predicate was only updated in some of them, which left `db teardown`
+ * unrecoverable through supported commands: `ff` saw no work to do and
+ * reported success over an empty database.
+ *
+ * `stale` is set by teardown on changes that did apply but whose objects
+ * no longer exist, so it is pending work in the only sense that matters.
+ *
+ * @example
+ * const outstanding = list.filter(isPendingChange);
+ */
+export function isPendingChange(item: ChangeListItem): boolean {
+
+    return !item.orphaned && (
+        item.status === 'pending'
+        || item.status === 'reverted'
+        || item.status === 'stale'
+    );
+
+}
+
 // ─────────────────────────────────────────────────────────────
 // Execution Options
 // ─────────────────────────────────────────────────────────────
@@ -316,7 +342,7 @@ export const DEFAULT_BATCH_OPTIONS: Required<Omit<BatchChangeOptions, 'output'>>
  *     projectRoot: '/project',
  *     changesDir: '/project/changes',
  *     sqlDir: '/project/sql',
- *     access: { user: 'admin', mcp: 'admin' },
+ *     access: { user: 'admin', agent: 'admin' },
  *     channel: 'user',
  * }
  * ```
@@ -347,7 +373,7 @@ export interface ChangeContext {
      */
     access: ConfigAccess;
 
-    /** Caller channel for the policy gate — `user` for CLI/TUI/SDK, `mcp` for MCP. */
+    /** Caller channel for the policy gate — `user` for CLI/TUI/SDK, `agent` for an AI agent (MCP or CLI). */
     channel: Channel;
 
     /** Config object for template context */
@@ -451,6 +477,25 @@ export interface BatchChangeResult {
 
     /** Total execution time */
     durationMs: number;
+
+    /**
+     * Why the batch failed before running anything, when no per-change
+     * result can carry the reason — e.g. a rewind target matching no
+     * applied change. Absent when `changes` explains the outcome.
+     */
+    error?: string;
+
+    /**
+     * Non-fatal problems that made this batch smaller than intended —
+     * currently a missing changes directory.
+     *
+     * WHY: a mistyped `paths.changes`, or a CI checkout without its
+     * `changes/` folder, produced `executed: 0` and exit 0, which is
+     * indistinguishable from an already-up-to-date database. Surfaced
+     * rather than thrown for the same reason `build.include` warns:
+     * a project with genuinely nothing to apply must still succeed.
+     */
+    warnings?: string[];
 }
 
 // ─────────────────────────────────────────────────────────────

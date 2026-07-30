@@ -21,6 +21,7 @@ import { attempt } from '@logosdx/utils';
 
 import { createContext } from '../../sdk/index.js';
 import { resolveVaultKey, buildSecretsContext } from '../../core/vault/index.js';
+import { resolveChannel } from '../../core/policy/index.js';
 import type { StateManager } from '../../core/state/index.js';
 import type { NoormDatabase } from '../../core/shared/index.js';
 
@@ -60,7 +61,7 @@ export async function resolveRenderSecrets(
 
     if (!configName) return { secrets: {}, vaultProbeFailed: false };
 
-    const [vault, connErr] = await attempt(() => createContext<NoormDatabase>({ config: configName }));
+    const [vault, connErr] = await attempt(() => createContext<NoormDatabase>({ config: configName, channel: resolveChannel() }));
 
     if (connErr) {
 

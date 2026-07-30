@@ -3,7 +3,11 @@
  */
 import { defineCommand } from 'citty';
 
+import type { Kysely } from 'kysely';
+
+import { fetchList } from '../../core/explore/index.js';
 import { withContext, outputResult, outputError, sharedArgs } from '../_utils.js';
+import { EXIT } from '../_exit.js';
 
 const proceduresCommand = defineCommand({
     meta: {
@@ -63,7 +67,7 @@ const proceduresCommand = defineCommand({
             if (!detail) {
 
                 outputError(args, `Procedure not found: ${args.name}`);
-                process.exit(1);
+                process.exit(EXIT.USAGE);
 
             }
 
@@ -81,7 +85,9 @@ const proceduresCommand = defineCommand({
             args,
             fn: (ctx, logger) => {
 
-                return ctx.noorm.db.listProcedures().then((res) => {
+                // Core rather than the SDK: the SDK's list methods take no
+                // options, so --schema cannot reach the query through them.
+                return fetchList(ctx.kysely as Kysely<unknown>, ctx.dialect, 'procedures', { schema: args.schema }).then((res) => {
 
                     if (!args.json) {
 
@@ -89,7 +95,8 @@ const proceduresCommand = defineCommand({
 
                         for (const p of res) {
 
-                            logger.info(`  ${p.name} (${p.parameterCount} params)`);
+                            const qualified = p.schema ? `${p.schema}.${p.name}` : p.name;
+                            logger.info(`  ${qualified} (${p.parameterCount} params)`);
 
                         }
 
@@ -106,7 +113,7 @@ const proceduresCommand = defineCommand({
 
         if (args.json) {
 
-            outputResult(args, procedures, '');
+            outputResult(args, { procedures }, '');
 
         }
 
@@ -118,6 +125,7 @@ const proceduresCommand = defineCommand({
 (proceduresCommand as typeof proceduresCommand & { examples: string[] }).examples = [
     'noorm db explore procedures',
     'noorm db explore procedures --json',
+    'noorm db explore procedures --schema app',
     'noorm db explore procedures sp_update_user',
     'noorm db explore procedures sp_update_user --schema dbo',
 ];

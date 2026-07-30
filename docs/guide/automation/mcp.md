@@ -98,12 +98,16 @@ Once connected, your agent can:
 - **Build schemas** — execute SQL files
 - **Inspect templates** — see available context before rendering
 
-Config resolution and identity attribution work the same as the CLI. Access control does not: every command is gated by the config's **`mcp` role** before its handler ever runs, and there is no confirmation flow — the agent gets an answer, not a prompt.
+Config resolution and identity attribution work the same as the CLI. Access control does not: every command is gated by the config's **`agent` role** before its handler ever runs, and there is no confirmation flow — the agent gets an answer, not a prompt.
 
 
 ## Access Roles
 
-Every config declares a role per channel: `access: { user, mcp }`. The `mcp` role decides what an agent connected over this server can do to that config — independently of what a human gets in the CLI/TUI.
+Every config declares a role per channel: `access: { user, agent }`. The `agent` role decides what an AI agent can do to that config — independently of what a human gets in the CLI/TUI.
+
+The channel names *who is driving*, not which binary was invoked. An agent that gets refused here and shells out to `noorm` on the command line is still an agent, and gets the same `agent` role: the CLI detects the harness it was spawned from. Raising or lowering `agent` therefore governs both routes at once. See [Access Roles](/guide/environments/configs#access-roles) for the detection rules and the `NOORM_CHANNEL` override.
+
+A config that never declared `access` gets `{ user: 'admin', agent: 'viewer' }`. Agents can explore and read on a fresh project without any setup; anything that writes needs you to raise the `agent` role on purpose.
 
 | Role | What the agent can do |
 |------|------------------------|
@@ -112,24 +116,24 @@ Every config declares a role per channel: `access: { user, mcp }`. The `mcp` rol
 | `admin` | Full access: writes, DDL, changes, builds — frictionless, no confirmation |
 | `false` | Invisible — the config does not exist on this channel |
 
-Raw SQL is classified by what the statement actually does (`sql:read` / `sql:write` / `sql:ddl`), not by which command the agent called — an agent with `mcp: viewer` gets a `SELECT` through but a same-shaped `INSERT` denied.
+Raw SQL is classified by what the statement actually does (`sql:read` / `sql:write` / `sql:ddl`), not by which command the agent called — an agent with `agent: viewer` gets a `SELECT` through but a same-shaped `INSERT` denied.
 
-There is no human on the other end of stdio, so the matrix's `confirm` cells never prompt on this channel — they resolve straight to **deny**, with a message pointing at the CLI. An agent typing its own confirmation phrase would be theater, not a safeguard. If an agent legitimately needs to run changes on a database, give that config `mcp: 'admin'` — reserve it for configs where that's an acceptable risk (a disposable dev database, say), not production.
+The matrix's `confirm` cells never prompt on this channel — they resolve straight to **deny**. An agent typing its own confirmation phrase would be theater, not a safeguard, and on the CLI it would need only `--yes`. If an agent legitimately needs to run changes on a database, give that config `agent: 'admin'` — reserve it for configs where that's an acceptable risk (a disposable dev database, say), not production.
 
 ```yaml
 # Shape of the config's `access` field — set via `noorm ui` → Config → Edit,
 # or by editing the JSON before `config import` (see Config Sharing)
 access:
     user: admin      # what you get in the CLI/TUI
-    mcp: viewer      # what any connected agent gets
+    agent: viewer    # what any connected agent gets
 ```
 
 
 ## Invisible Configs
 
-Set `access.mcp: false` to hide a config from MCP entirely — it never appears in `list_configs`, and `connect`/`getContext` fail with the same error an unknown config name would produce. An agent enumerating configs cannot tell the difference between "doesn't exist" and "exists but is off-limits."
+Set `access.agent: false` to hide a config from agents entirely — over MCP it never appears in `list_configs`, and `connect`/`getContext` fail with the same error an unknown config name would produce. `noorm config list` filters it the same way when an agent runs it. An agent enumerating configs cannot tell the difference between "doesn't exist" and "exists but is off-limits."
 
 
 ## Security
 
-The MCP server uses the identity and config of the shell session that spawned it. It has no way to escalate privileges beyond what `noorm` itself can do, and it cannot escalate past the `mcp` role a config was given — there is no `--force` override on this channel.
+The MCP server uses the identity and config of the shell session that spawned it. It has no way to escalate privileges beyond what `noorm` itself can do, and it cannot escalate past the `agent` role a config was given — there is no `--force` override on this channel, and shelling out to the CLI reaches the same role rather than the human's.

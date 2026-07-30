@@ -18,12 +18,44 @@ import type {
     TeardownOptions,
     TeardownResult,
     TeardownPreview,
+    TeardownTableRef,
 } from './types.js';
 import type { NoormDatabase } from '../shared/tables.js';
 import { fetchList } from '../explore/operations.js';
 import { getTeardownOperations } from './dialects/index.js';
 import { observer } from '../observer.js';
+import { assertDbPolicy } from '../db/policy.js';
 import { ChangeHistory, ChangeTracker } from '../change/index.js';
+
+/**
+ * Schema each dialect resolves an unqualified name against.
+ *
+ * MySQL's "schema" is the database itself and SQLite has none, so neither
+ * appears here — an object in those dialects is never reported qualified.
+ */
+const DEFAULT_SCHEMAS: Partial<Record<Dialect, string>> = {
+    postgres: 'public',
+    mssql: 'dbo',
+};
+
+/**
+ * The name to report for an object.
+ *
+ * Qualified whenever the object sits outside the dialect's default schema.
+ * Teardown enumerates every non-system schema, so a bare `secrets` in a
+ * dry-run is indistinguishable from `public.secrets` — an operator reading
+ * the preview cannot tell that a schema noorm never created is about to be
+ * dropped. Execution has always qualified correctly; only the report was lossy.
+ */
+function displayName(name: string, schema: string | undefined, dialect: Dialect): string {
+
+    const defaultSchema = DEFAULT_SCHEMAS[dialect];
+
+    if (!schema || !defaultSchema || schema === defaultSchema) return name;
+
+    return `${schema}.${name}`;
+
+}
 
 /**
  * Check if a table name is a noorm internal table.
@@ -162,6 +194,8 @@ export async function truncateData(
     const truncated: string[] = [];
     const preserved: string[] = [];
 
+    assertDbPolicy(options.policy, 'db:truncate', 'wipe data', options.dryRun);
+
     observer.emit('teardown:start', { type: 'truncate' });
 
     // Fetch all tables (including noorm tables so we can preserve them)
@@ -174,17 +208,21 @@ export async function truncateData(
 
     }
 
-    // Determine which tables to truncate
+    // Determine which tables to truncate. Both halves of each name are kept:
+    // preserve/only match on the bare name the user wrote, while the SQL and
+    // the report need the schema.
     const preserveSet = new Set(options.preserve ?? []);
+    const targets: TeardownTableRef[] = [];
 
     for (const table of tables) {
 
         const tableName = table.name;
+        const label = displayName(tableName, table.schema, dialect);
 
         // Always preserve noorm tables
         if (isNoormTable(tableName)) {
 
-            preserved.push(tableName);
+            preserved.push(label);
             continue;
 
         }
@@ -192,7 +230,7 @@ export async function truncateData(
         // Check if table should be preserved
         if (preserveSet.has(tableName)) {
 
-            preserved.push(tableName);
+            preserved.push(label);
             continue;
 
         }
@@ -200,12 +238,13 @@ export async function truncateData(
         // If 'only' is specified, check if table is in the list
         if (options.only && !options.only.includes(tableName)) {
 
-            preserved.push(tableName);
+            preserved.push(label);
             continue;
 
         }
 
-        truncated.push(tableName);
+        targets.push({ name: tableName, schema: table.schema });
+        truncated.push(label);
 
     }
 
@@ -219,17 +258,17 @@ export async function truncateData(
     const truncateStatements: string[] = [];
     const enableStatements: string[] = [];
 
-    if (truncated.length > 0) {
+    if (targets.length > 0) {
 
-        pushFlat(disableStatements, ops.disableForeignKeyChecks(truncated));
+        pushFlat(disableStatements, ops.disableForeignKeyChecks(targets));
 
-        for (const tableName of truncated) {
+        for (const target of targets) {
 
-            truncateStatements.push(ops.truncateTable(tableName, undefined, options.restartIdentity ?? true));
+            truncateStatements.push(ops.truncateTable(target.name, target.schema, options.restartIdentity ?? true));
 
         }
 
-        pushFlat(enableStatements, ops.enableForeignKeyChecks(truncated));
+        pushFlat(enableStatements, ops.enableForeignKeyChecks(targets));
 
         statements.push(...disableStatements, ...truncateStatements, ...enableStatements);
 
@@ -314,9 +353,15 @@ export async function teardownSchema(
         foreignKeys: [],
     };
 
+    assertDbPolicy(options.policy, 'db:teardown', 'tear down the schema', options.dryRun);
+
     observer.emit('teardown:start', { type: 'schema' });
 
     const preserveSet = new Set(options.preserveTables ?? []);
+    const preserveSchemaSet = new Set(options.preserveSchemas ?? []);
+
+    /** Whether an object belongs to a schema the caller asked to leave alone. */
+    const inPreservedSchema = (schema?: string): boolean => Boolean(schema && preserveSchemaSet.has(schema));
 
     // Fetch all objects in parallel (include noorm tables so we can preserve them)
     const [
@@ -353,7 +398,9 @@ export async function teardownSchema(
         // Skip preserved tables
         if (preserveSet.has(tableName)) continue;
 
-        dropped.foreignKeys.push(fk.name);
+        if (inPreservedSchema(fk.schema)) continue;
+
+        dropped.foreignKeys.push(displayName(fk.name, fk.schema, dialect));
         statements.push(ops.dropForeignKey(fk.name, tableName, fk.schema));
 
     }
@@ -375,7 +422,9 @@ export async function teardownSchema(
 
         for (const proc of procedures) {
 
-            dropped.procedures.push(proc.name);
+            if (inPreservedSchema(proc.schema)) continue;
+
+            dropped.procedures.push(displayName(proc.name, proc.schema, dialect));
             statements.push(ops.dropProcedure(proc.name, proc.schema));
 
         }
@@ -388,7 +437,9 @@ export async function teardownSchema(
 
         for (const fn of functions) {
 
-            dropped.functions.push(fn.name);
+            if (inPreservedSchema(fn.schema)) continue;
+
+            dropped.functions.push(displayName(fn.name, fn.schema, dialect));
             statements.push(ops.dropFunction(fn.name, fn.schema));
 
         }
@@ -401,7 +452,9 @@ export async function teardownSchema(
 
         for (const view of views) {
 
-            dropped.views.push(view.name);
+            if (inPreservedSchema(view.schema)) continue;
+
+            dropped.views.push(displayName(view.name, view.schema, dialect));
             statements.push(ops.dropView(view.name, view.schema));
 
         }
@@ -412,11 +465,12 @@ export async function teardownSchema(
     for (const table of tables) {
 
         const tableName = table.name;
+        const label = displayName(tableName, table.schema, dialect);
 
         // Always preserve noorm tables
         if (isNoormTable(tableName)) {
 
-            preserved.push(tableName);
+            preserved.push(label);
             continue;
 
         }
@@ -424,12 +478,19 @@ export async function teardownSchema(
         // Skip preserved tables
         if (preserveSet.has(tableName)) {
 
-            preserved.push(tableName);
+            preserved.push(label);
             continue;
 
         }
 
-        dropped.tables.push(tableName);
+        if (inPreservedSchema(table.schema)) {
+
+            preserved.push(label);
+            continue;
+
+        }
+
+        dropped.tables.push(label);
         statements.push(ops.dropTable(tableName, table.schema));
 
     }
@@ -456,7 +517,9 @@ export async function teardownSchema(
 
         for (const type of sortedTypes) {
 
-            dropped.types.push(type.name);
+            if (inPreservedSchema(type.schema)) continue;
+
+            dropped.types.push(displayName(type.name, type.schema, dialect));
             statements.push(ops.dropType(type.name, type.schema));
 
         }
@@ -572,6 +635,12 @@ export async function previewTeardown(
 
 /**
  * Execute a post-teardown SQL script.
+ *
+ * Returns the outcome rather than throwing, because a post-script failure
+ * must not undo a teardown that already succeeded — but it emits
+ * `teardown:error` on the way out so the failure is observable. Previously
+ * it was neither thrown nor emitted, and every surface except the TUI
+ * reported a green teardown over a post-script that never ran.
  */
 async function executePostScript(
     db: Kysely<unknown>,
@@ -584,7 +653,11 @@ async function executePostScript(
 
     if (readErr) {
 
-        return { executed: false, error: `Failed to read script: ${readErr.message}` };
+        const error = `Failed to read script: ${readErr.message}`;
+
+        observer.emit('teardown:error', { error: new Error(error), object: scriptPath });
+
+        return { executed: false, error };
 
     }
 
@@ -600,7 +673,11 @@ async function executePostScript(
 
         if (execErr) {
 
-            return { executed: false, error: `Script failed: ${execErr.message}` };
+            const error = `Script failed: ${execErr.message}`;
+
+            observer.emit('teardown:error', { error: execErr, object: stmt });
+
+            return { executed: false, error };
 
         }
 

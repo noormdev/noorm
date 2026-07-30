@@ -2,11 +2,52 @@
  * Tests for export path resolution utilities.
  */
 import { describe, it, expect } from 'bun:test';
+import { attempt } from '@logosdx/utils';
 
 import {
     resolveExportExtension,
     resolveExportPath,
+    resolveExportTables,
 } from '../../../src/core/dt/paths.js';
+
+describe('resolveExportTables', () => {
+
+    const listTables = async () => [{ name: 'users' }, { name: 'posts' }];
+
+    // `--tables` describes itself as "(default: all)". Omitting it resolved
+    // to [], so `--export ./out` wrote no files, printed {"success":true} and
+    // exited 0 — a backup that looks like it happened.
+    it('should default to every table when no selection is given', async () => {
+
+        expect(await resolveExportTables(undefined, listTables)).toEqual(['users', 'posts']);
+
+    });
+
+    it('should honour an explicit selection', async () => {
+
+        expect(await resolveExportTables(['posts'], listTables)).toEqual(['posts']);
+
+    });
+
+    it('should fail rather than export nothing from an empty database', async () => {
+
+        const [tables, err] = await attempt(() => resolveExportTables(undefined, async () => []));
+
+        expect(tables).toBeNull();
+        expect(err!.message).toMatch(/No tables found/);
+
+    });
+
+    it('should fail on an explicitly empty selection', async () => {
+
+        const [tables, err] = await attempt(() => resolveExportTables([], listTables));
+
+        expect(tables).toBeNull();
+        expect(err!.message).toMatch(/--tables was empty/);
+
+    });
+
+});
 
 describe('resolveExportExtension', () => {
 

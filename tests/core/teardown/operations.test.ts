@@ -384,8 +384,10 @@ describe('teardown: truncateData preserve filtering', () => {
             dryRun: true,
         });
 
+        // Schema-qualified: the statement must not depend on search_path
+        // being what it was when fetchList ran.
         const truncateStmts = result.statements.filter(s => s.includes('TRUNCATE'));
-        expect(truncateStmts).toEqual(['TRUNCATE TABLE "users" RESTART IDENTITY CASCADE']);
+        expect(truncateStmts).toEqual(['TRUNCATE TABLE "public"."users" RESTART IDENTITY CASCADE']);
 
     });
 
@@ -430,19 +432,45 @@ describe('teardown: truncateData mssql NOCHECK strategy (M-6)', () => {
         const checks = result.statements.filter((s) => s.includes('CHECK CONSTRAINT ALL') && !s.includes('NOCHECK'));
         const deletes = result.statements.filter((s) => s.includes('DELETE FROM'));
 
-        // truncateData passes only table names (no schema) to the dialect ops,
-        // so the emitted ALTER/DELETE statements are unqualified.
+        // Every statement carries the schema fetchList reported. An
+        // unqualified name resolves against the session's default schema,
+        // which is only ever right by luck.
         expect(nocheck).toEqual([
-            'ALTER TABLE [users] NOCHECK CONSTRAINT ALL',
-            'ALTER TABLE [posts] NOCHECK CONSTRAINT ALL',
+            'ALTER TABLE [dbo].[users] NOCHECK CONSTRAINT ALL',
+            'ALTER TABLE [dbo].[posts] NOCHECK CONSTRAINT ALL',
         ]);
         expect(deletes.length).toBe(2);
-        expect(deletes[0]).toContain('DELETE FROM [users]');
-        expect(deletes[1]).toContain('DELETE FROM [posts]');
+        expect(deletes[0]).toContain('DELETE FROM [dbo].[users]');
+        expect(deletes[1]).toContain('DELETE FROM [dbo].[posts]');
         expect(checks).toEqual([
-            'ALTER TABLE [users] CHECK CONSTRAINT ALL',
-            'ALTER TABLE [posts] CHECK CONSTRAINT ALL',
+            'ALTER TABLE [dbo].[users] CHECK CONSTRAINT ALL',
+            'ALTER TABLE [dbo].[posts] CHECK CONSTRAINT ALL',
         ]);
+
+    });
+
+    it('qualifies every statement for a table outside the default schema', async () => {
+
+        // The finding this suite used to pin: a table in a non-default
+        // schema was truncated as a bare name, so the statement resolved
+        // against the wrong schema — or nothing at all — after earlier
+        // truncates had already committed.
+        const db = createMockKysely([
+            { table_name: 'users', schema_name: 'dbo', column_count: 3, row_count: 0 },
+            { table_name: 'secrets', schema_name: 'app_private', column_count: 2, row_count: 0 },
+        ]);
+
+        const result = await truncateData(db, 'mssql', { dryRun: true });
+
+        const nocheck = result.statements.filter((s) => s.includes('NOCHECK CONSTRAINT ALL'));
+        const deletes = result.statements.filter((s) => s.includes('DELETE FROM'));
+
+        expect(nocheck).toContain('ALTER TABLE [app_private].[secrets] NOCHECK CONSTRAINT ALL');
+        expect(deletes.some((s) => s.includes('DELETE FROM [app_private].[secrets]'))).toBe(true);
+
+        // ...and the report names the schema, so an operator can tell which
+        // `secrets` was emptied.
+        expect(result.truncated).toEqual(['users', 'app_private.secrets']);
 
     });
 
@@ -539,18 +567,18 @@ describe('teardown: truncateData FK re-enable guarantee (v1-03)', () => {
                 { table_name: 'users', schema_name: 'dbo', column_count: 1, row_count: 0 },
                 { table_name: 'posts', schema_name: 'dbo', column_count: 1, row_count: 0 },
             ],
-            (stmt) => stmt.includes('DELETE FROM [users]'),
+            (stmt) => stmt.includes('DELETE FROM [dbo].[users]'),
         );
 
         const [, err] = await attempt(() => truncateData(db, 'mssql'));
 
         expect(err).toBeInstanceOf(Error);
-        expect(err?.message).toContain('DELETE FROM [users]');
+        expect(err?.message).toContain('DELETE FROM [dbo].[users]');
 
         const checks = executed.filter((s) => s.includes('CHECK CONSTRAINT ALL') && !s.includes('NOCHECK'));
         expect(checks).toEqual([
-            'ALTER TABLE [users] CHECK CONSTRAINT ALL',
-            'ALTER TABLE [posts] CHECK CONSTRAINT ALL',
+            'ALTER TABLE [dbo].[users] CHECK CONSTRAINT ALL',
+            'ALTER TABLE [dbo].[posts] CHECK CONSTRAINT ALL',
         ]);
 
     });
@@ -578,18 +606,18 @@ describe('teardown: truncateData FK re-enable guarantee (v1-03)', () => {
                 { table_name: 'users', schema_name: 'dbo', column_count: 1, row_count: 0 },
                 { table_name: 'posts', schema_name: 'dbo', column_count: 1, row_count: 0 },
             ],
-            (stmt) => stmt === 'ALTER TABLE [users] CHECK CONSTRAINT ALL',
+            (stmt) => stmt === 'ALTER TABLE [dbo].[users] CHECK CONSTRAINT ALL',
         );
 
         const [, err] = await attempt(() => truncateData(db, 'mssql'));
 
         expect(err).toBeInstanceOf(Error);
-        expect(err?.message).toContain('ALTER TABLE [users] CHECK CONSTRAINT ALL');
+        expect(err?.message).toContain('ALTER TABLE [dbo].[users] CHECK CONSTRAINT ALL');
 
         const checks = executed.filter((s) => s.includes('CHECK CONSTRAINT ALL') && !s.includes('NOCHECK'));
         expect(checks).toEqual([
-            'ALTER TABLE [users] CHECK CONSTRAINT ALL',
-            'ALTER TABLE [posts] CHECK CONSTRAINT ALL',
+            'ALTER TABLE [dbo].[users] CHECK CONSTRAINT ALL',
+            'ALTER TABLE [dbo].[posts] CHECK CONSTRAINT ALL',
         ]);
 
     });
@@ -600,7 +628,7 @@ describe('teardown: truncateData FK re-enable guarantee (v1-03)', () => {
             [
                 { table_name: 'users', schema_name: 'dbo', column_count: 1, row_count: 0 },
             ],
-            (stmt) => stmt.includes('DELETE FROM [users]') || stmt === 'ALTER TABLE [users] CHECK CONSTRAINT ALL',
+            (stmt) => stmt.includes('DELETE FROM [dbo].[users]') || stmt === 'ALTER TABLE [dbo].[users] CHECK CONSTRAINT ALL',
         );
 
         const [, err] = await attempt(() => truncateData(db, 'mssql'));
@@ -609,12 +637,12 @@ describe('teardown: truncateData FK re-enable guarantee (v1-03)', () => {
         // The DELETE failure is captured first and takes priority over the
         // later CHECK CONSTRAINT ALL failure — the caller needs to know why
         // the truncate itself broke.
-        expect(err?.message).toContain('DELETE FROM [users]');
+        expect(err?.message).toContain('DELETE FROM [dbo].[users]');
         expect(err?.message).not.toContain('CHECK CONSTRAINT ALL');
 
         // The enable phase must still have been attempted despite the
         // earlier truncate failure, even though it also failed.
-        expect(executed).toContain('ALTER TABLE [users] CHECK CONSTRAINT ALL');
+        expect(executed).toContain('ALTER TABLE [dbo].[users] CHECK CONSTRAINT ALL');
 
     });
 
@@ -642,8 +670,8 @@ describe('teardown: truncateData FK re-enable guarantee (v1-03)', () => {
             // Both tables' CHECK CONSTRAINT ALL fail — each must emit its own
             // teardown:error, proving the loop doesn't stop after the first.
             expect(enableErrorEvents.length).toBe(2);
-            expect(enableErrorEvents[0]!.object).toBe('ALTER TABLE [users] CHECK CONSTRAINT ALL');
-            expect(enableErrorEvents[1]!.object).toBe('ALTER TABLE [posts] CHECK CONSTRAINT ALL');
+            expect(enableErrorEvents[0]!.object).toBe('ALTER TABLE [dbo].[users] CHECK CONSTRAINT ALL');
+            expect(enableErrorEvents[1]!.object).toBe('ALTER TABLE [dbo].[posts] CHECK CONSTRAINT ALL');
 
         }
         finally {
@@ -691,6 +719,162 @@ describe('teardown: teardownSchema preserveTables filtering', () => {
 
         expect(result.dropped.tables).toEqual(['users']);
         expect(result.preserved).toEqual(['__noorm_changes']);
+
+    });
+
+});
+
+// ─────────────────────────────────────────────────────────────
+// teardownSchema — foreign schemas
+//
+// Teardown enumerates every non-system schema, so it reaches objects
+// noorm never created. Two separate problems: the operator could not
+// see them coming (the preview reported bare names), and had no way to
+// opt them out (preserveTables is a flat list with no schema half, so
+// excluding `app_private.secrets` would also spare `public.secrets`).
+// ─────────────────────────────────────────────────────────────
+
+describe('teardown: teardownSchema foreign schemas', () => {
+
+    it('qualifies objects outside the default schema so the preview shows the blast radius', async () => {
+
+        const db = createMockKysely([
+            tableRow('users'),
+            tableRow('secrets', 'app_private'),
+        ]);
+
+        const result = await teardownSchema(db, 'postgres', { dryRun: true });
+
+        expect(result.dropped.tables).toEqual(['users', 'app_private.secrets']);
+
+    });
+
+    it('leaves a schema listed in preserveSchemas entirely alone', async () => {
+
+        const db = createMockKysely([
+            tableRow('users'),
+            tableRow('secrets', 'app_private'),
+        ]);
+
+        const result = await teardownSchema(db, 'postgres', {
+            preserveSchemas: ['app_private'],
+            dryRun: true,
+        });
+
+        expect(result.dropped.tables).toEqual(['users']);
+        expect(result.preserved).toEqual(['app_private.secrets']);
+        expect(result.statements.join('\n')).not.toContain('app_private');
+
+    });
+
+    it('does not spare a same-named table in the default schema', async () => {
+
+        // preserveSchemas is schema-scoped, unlike preserveTables — a
+        // public.secrets must still be dropped when app_private is spared.
+        const db = createMockKysely([
+            tableRow('secrets'),
+            tableRow('secrets', 'app_private'),
+        ]);
+
+        const result = await teardownSchema(db, 'postgres', {
+            preserveSchemas: ['app_private'],
+            dryRun: true,
+        });
+
+        expect(result.dropped.tables).toEqual(['secrets']);
+        expect(result.preserved).toEqual(['app_private.secrets']);
+
+    });
+
+});
+
+// ─────────────────────────────────────────────────────────────
+// Core-seam policy gate
+//
+// core/db and core/teardown held zero policy calls, unlike core/runner,
+// core/change, core/transfer and core/sql-terminal. Every surface
+// re-implemented the check and two cells came out empty.
+// ─────────────────────────────────────────────────────────────
+
+describe('teardown: core-seam policy gate', () => {
+
+    const viewer = { configName: 'prod', access: { user: 'viewer', agent: 'viewer' } } as const;
+    const admin = { configName: 'prod', access: { user: 'admin', agent: 'admin' } } as const;
+
+    it('refuses a truncate the role denies', async () => {
+
+        const db = createMockKysely([tableRow('users')]);
+
+        const [, err] = await attempt(() => truncateData(db, 'postgres', { policy: viewer, dryRun: true }));
+
+        expect(err).toBeInstanceOf(Error);
+        expect(err?.message).toContain('db:truncate');
+
+    });
+
+    it('refuses an unconfirmed truncate the role marks confirm', async () => {
+
+        const db = createMockKysely([tableRow('users')]);
+
+        const [, err] = await attempt(() => truncateData(db, 'postgres', { policy: admin }));
+
+        expect(err).toBeInstanceOf(Error);
+        expect(err?.message).toContain('requiring confirmation');
+
+    });
+
+    it('allows a truncate the caller pre-confirmed', async () => {
+
+        const db = createMockKysely([tableRow('users')]);
+
+        const [result, err] = await attempt(() => truncateData(db, 'postgres', {
+            policy: { ...admin, yes: true },
+            dryRun: true,
+        }));
+
+        expect(err).toBeNull();
+        expect(result?.truncated).toEqual(['users']);
+
+    });
+
+    it('refuses a teardown the role denies', async () => {
+
+        const db = createMockKysely([tableRow('users')]);
+
+        const [, err] = await attempt(() => teardownSchema(db, 'postgres', { policy: viewer, dryRun: true }));
+
+        expect(err).toBeInstanceOf(Error);
+        expect(err?.message).toContain('db:teardown');
+
+    });
+
+    it('lets an allowed role preview without the confirmation an execution needs', async () => {
+
+        const db = createMockKysely([tableRow('users')]);
+
+        const [preview, previewErr] = await attempt(() => teardownSchema(db, 'postgres', {
+            policy: admin,
+            dryRun: true,
+        }));
+
+        expect(previewErr).toBeNull();
+        expect(preview?.dropped.tables).toEqual(['users']);
+
+        const [, execErr] = await attempt(() => teardownSchema(db, 'postgres', { policy: admin }));
+
+        expect(execErr).toBeInstanceOf(Error);
+        expect(execErr?.message).toContain('requiring confirmation');
+
+    });
+
+    it('runs ungated when no policy is supplied, for callers that own their own gate', async () => {
+
+        const db = createMockKysely([tableRow('users')]);
+
+        const [result, err] = await attempt(() => truncateData(db, 'postgres', { dryRun: true }));
+
+        expect(err).toBeNull();
+        expect(result?.truncated).toEqual(['users']);
 
     });
 

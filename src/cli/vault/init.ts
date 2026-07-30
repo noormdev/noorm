@@ -3,8 +3,10 @@
  */
 import { defineCommand } from 'citty';
 
-import { withVaultContext, sharedArgs } from '../_utils.js';
-import { initializeVault, getVaultStatus } from '../../core/vault/index.js';
+import { withVaultContext, outputResult, sharedArgs, isYesMode } from '../_utils.js';
+import { initializeVaultChecked, getVaultStatus, checkVaultPolicy } from '../../core/vault/index.js';
+import type { VaultPolicyGate } from '../../core/vault/index.js';
+import { resolveChannel } from '../../core/policy/index.js';
 
 const initCommand = defineCommand({
     meta: {
@@ -14,6 +16,7 @@ const initCommand = defineCommand({
     args: {
         config: sharedArgs.config,
         json: sharedArgs.json,
+        yes: sharedArgs.yes,
     },
     async run({ args }) {
 
@@ -22,6 +25,24 @@ const initCommand = defineCommand({
             fn: async ({ ctx, cryptoIdentity }) => {
 
                 const db = ctx.kysely;
+                const config = ctx.noorm.config;
+                const gate: VaultPolicyGate = {
+                    configName: config.name,
+                    access: config.access,
+                    channel: resolveChannel(),
+                };
+
+                const check = checkVaultPolicy(gate, 'vault:write');
+
+                if (!check.allowed) {
+
+                    return {
+                        success: false,
+                        message: check.blockedReason ?? `Cannot initialize the vault on config "${config.name}".`,
+                    };
+
+                }
+
                 const status = await getVaultStatus(db, cryptoIdentity.identityHash, ctx.dialect);
 
                 if (status.isInitialized) {
@@ -39,7 +60,18 @@ const initCommand = defineCommand({
 
                 }
 
-                const [, initErr] = await initializeVault(
+                if (check.requiresConfirmation && !isYesMode(args)) {
+
+                    return {
+                        success: false,
+                        message: `Initializing the vault on config "${config.name}" requires confirmation `
+                            + `(${check.confirmationPhrase}). Pass --yes to confirm.`,
+                    };
+
+                }
+
+                const [, initErr] = await initializeVaultChecked(
+                    gate,
                     db,
                     cryptoIdentity.identityHash,
                     cryptoIdentity.publicKey,
@@ -65,7 +97,7 @@ const initCommand = defineCommand({
 
         if (args.json) {
 
-            process.stdout.write(JSON.stringify(result) + '\n');
+            outputResult(args, result, '');
 
         }
         else if (result?.success) {

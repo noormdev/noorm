@@ -63,7 +63,7 @@ export function DebugDetailScreen({ params }: ScreenProps): ReactElement {
     // Load row data when connection is ready
     useAsyncEffect(async (isCancelled) => {
 
-        if (!db || !tableName || rowId == null) {
+        if (!db || !tableName || rowId == null || !activeConfig) {
 
             if (!connLoading && !connError) setIsLoading(false);
 
@@ -76,7 +76,11 @@ export function DebugDetailScreen({ params }: ScreenProps): ReactElement {
 
         const [result, err] = await attempt(async () => {
 
-            const ops = createDebugOperations(db as Kysely<NoormDatabase>, dialect ?? 'postgres');
+            const ops = createDebugOperations(
+                db as Kysely<NoormDatabase>,
+                dialect ?? 'postgres',
+                { channel: 'user', config: activeConfig },
+            );
             const cols = ops.getTableColumns(tableName);
             const data = await ops.getRowById(tableName, rowId);
 
@@ -102,7 +106,7 @@ export function DebugDetailScreen({ params }: ScreenProps): ReactElement {
 
         setIsLoading(false);
 
-    }, [db, tableName, rowId]);
+    }, [db, tableName, rowId, activeConfig]);
 
     // Perform delete
     const performDelete = useCallback(async () => {
@@ -111,9 +115,16 @@ export function DebugDetailScreen({ params }: ScreenProps): ReactElement {
 
         setShowConfirm(false);
 
-        const success = await operations.deleteRowById(tableName, rowId);
+        // The core seam throws when policy denies the delete or the statement
+        // fails; both carry a message worth showing verbatim.
+        const [success, err] = await attempt(() => operations.deleteRowById(tableName, rowId));
 
-        if (success) {
+        if (err) {
+
+            showToast({ message: err.message, variant: 'error' });
+
+        }
+        else if (success) {
 
             showToast({ message: `Deleted row #${rowId}`, variant: 'success' });
             back();
@@ -121,7 +132,7 @@ export function DebugDetailScreen({ params }: ScreenProps): ReactElement {
         }
         else {
 
-            showToast({ message: 'Delete failed', variant: 'error' });
+            showToast({ message: `Row #${rowId} no longer exists`, variant: 'error' });
 
         }
 

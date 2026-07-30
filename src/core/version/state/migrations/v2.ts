@@ -5,7 +5,7 @@
  * access roles. For state schema documentation, see
  * docs/spec/config-access-roles.md#migration.
  */
-import { resolveLegacyAccess } from '../../../policy/index.js';
+import { repairConfigAccess } from '../../../state/access.js';
 import type { StateMigration } from '../../types.js';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -17,11 +17,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 /**
  * Migration v2: per-config access roles.
  *
- * - `protected: true` -> `{ user: 'operator', mcp: 'viewer' }`
- * - `protected: false` or absent -> `{ user: 'admin', mcp: 'admin' }`
+ * - `protected: true` -> `{ user: 'operator', agent: 'viewer' }`
+ * - `protected: false` or absent -> `{ user: 'admin', agent: 'viewer' }`
  *
  * The stored `protected` field is dropped — `access` becomes the sole
- * source of truth for a config's roles.
+ * source of truth for a config's roles. Because `protected` does not
+ * survive this migration, an `access` written here that later turns out to
+ * be wrong cannot be reconstructed; `repairConfigAccess` is what keeps a
+ * malformed one from being frozen in permanently.
  */
 export const v2: StateMigration = {
     version: 2,
@@ -47,7 +50,7 @@ export const v2: StateMigration = {
 
             migratedConfigs[name] = {
                 ...rest,
-                access: access ?? resolveLegacyAccess(undefined, legacyProtected === true),
+                access: repairConfigAccess(access, legacyProtected),
             };
 
         }

@@ -23,7 +23,7 @@ export {
     isConfigGuarded,
     DEFAULT_PORTS,
     USER_ROLE_OPTIONS,
-    MCP_ROLE_OPTIONS,
+    AGENT_ROLE_OPTIONS,
     type ConnectionDefaults,
 } from './config-validation.js';
 export { getErrorMessage } from './error.js';

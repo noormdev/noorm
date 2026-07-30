@@ -35,7 +35,7 @@ function createMockConfig(dialect: Config['connection']['dialect'] = 'postgres')
         name: 'test',
         type: 'local',
         isTest: true,
-        access: { user: 'admin', mcp: 'admin' },
+        access: { user: 'admin', agent: 'admin' },
         connection: { dialect, database: 'testdb' },
     };
 
@@ -48,13 +48,16 @@ const mockIdentity: Identity = {
     source: 'system',
 };
 
-function createContext(dialect: Config['connection']['dialect'] = 'postgres') {
+function createContext(
+    dialect: Config['connection']['dialect'] = 'postgres',
+    options: ConstructorParameters<typeof Context>[3] = {},
+) {
 
     return new Context(
         createMockConfig(dialect),
         mockSettings,
         mockIdentity,
-        {},
+        options,
         '/tmp/test-project',
     );
 
@@ -254,9 +257,13 @@ describe('sdk: NoormOps', () => {
 
         });
 
+        // Pre-confirmed: the access gate now runs before the connection
+        // check (authorization is decided before anything is opened), so
+        // without `yes` these would fail on the policy rather than reach
+        // the NotConnectedError this case is about.
         it('should throw on db.truncate when not connected', async () => {
 
-            const ctx = createContext();
+            const ctx = createContext('postgres', { yes: true });
 
             await expect(ctx.noorm.db.truncate()).rejects.toThrow('Not connected');
 
@@ -264,7 +271,7 @@ describe('sdk: NoormOps', () => {
 
         it('should throw on db.teardown when not connected', async () => {
 
-            const ctx = createContext();
+            const ctx = createContext('postgres', { yes: true });
 
             await expect(ctx.noorm.db.teardown()).rejects.toThrow('Not connected');
 

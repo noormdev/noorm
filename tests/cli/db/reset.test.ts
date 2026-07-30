@@ -116,7 +116,7 @@ describe('cli: noorm db reset — pre-gate + yes threading', () => {
 
     it('blocks with the destructive-operation pre-gate when neither --yes nor NOORM_YES is set', async () => {
 
-        await seedConfig({ user: 'admin', mcp: 'admin' });
+        await seedConfig({ user: 'admin', agent: 'admin' });
 
         const result = runReset();
 
@@ -127,7 +127,7 @@ describe('cli: noorm db reset — pre-gate + yes threading', () => {
 
     it('passes the pre-gate and completes headlessly for an operator-role config with --yes', async () => {
 
-        await seedConfig({ user: 'operator', mcp: 'admin' });
+        await seedConfig({ user: 'operator', agent: 'admin' });
 
         const result = runReset(['--yes']);
 
@@ -143,7 +143,7 @@ describe('cli: noorm db reset — pre-gate + yes threading', () => {
         // used to fail at this exact pre-gate. Reverting reset.ts's
         // `isYesMode(args)` back to `args.yes` makes this fail (status 1,
         // "Pass --yes to confirm").
-        await seedConfig({ user: 'operator', mcp: 'admin' });
+        await seedConfig({ user: 'operator', agent: 'admin' });
 
         const result = runReset([], { NOORM_YES: '1' });
 
@@ -217,16 +217,19 @@ describe('cli: noorm db truncate/teardown/reset — operator-role --yes headless
 
     }
 
-    // truncate/teardown declare `yes: sharedArgs.yes` but have no CLI
-    // pre-gate of their own (spec C3) — they rely entirely on withContext
-    // threading `yes: isYesMode(args)` into createContext, which
-    // checkProtectedConfig then consults for the operator-role `confirm`
-    // cell. If that threading regresses, these fail closed (exit 1,
-    // ProtectedConfigError), not open.
+    // truncate/teardown have no CLI pre-gate of their own — they rely on
+    // withContext threading `yes: isYesMode(args)` into createContext, which
+    // checkProtectedConfig then consults. If that threading regresses, these
+    // fail closed (exit 1, ProtectedConfigError), not open.
+    //
+    // They now consult `db:truncate` and `db:teardown` rather than sharing
+    // `db:reset`, which was `allow` for admin and so asked nothing of the
+    // default config. `db:teardown` is `deny` below admin, so the operator
+    // case that used to pass for teardown is now a denial.
 
     it('noorm db truncate --yes succeeds headlessly for an operator-role config (no NOORM_YES)', async () => {
 
-        await seedConfig({ user: 'operator', mcp: 'admin' });
+        await seedConfig({ user: 'operator', agent: 'admin' });
 
         const result = runDb('truncate', ['--yes']);
 
@@ -234,19 +237,20 @@ describe('cli: noorm db truncate/teardown/reset — operator-role --yes headless
 
     });
 
-    it('noorm db teardown --yes succeeds headlessly for an operator-role config (no NOORM_YES)', async () => {
+    it('noorm db teardown --yes is denied for an operator-role config, because db:teardown stops below admin', async () => {
 
-        await seedConfig({ user: 'operator', mcp: 'admin' });
+        await seedConfig({ user: 'operator', agent: 'admin' });
 
         const result = runDb('teardown', ['--yes']);
 
-        expect(result.status).toBe(0);
+        expect(result.status).toBe(1);
+        expect(result.stdout + result.stderr).toContain('db:teardown');
 
     });
 
     it('noorm db reset --yes succeeds headlessly for an operator-role config (no NOORM_YES)', async () => {
 
-        await seedConfig({ user: 'operator', mcp: 'admin' });
+        await seedConfig({ user: 'operator', agent: 'admin' });
 
         const result = runDb('reset', ['--yes']);
 
