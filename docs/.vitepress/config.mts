@@ -7,6 +7,14 @@ export default withMermaid(
         title: 'noorm',
         description: 'Database Schema & Change Manager',
         base: process.env.VITEPRESS_BASE || '/',
+
+        // `docs/wiki/` is generated repo-analysis output for tooling and
+        // contributors, not published documentation. VitePress compiles every
+        // markdown file it finds as a Vue SFC, so its angle-bracket prose
+        // (`<steering note: ...>`) is parsed as a tag with an illegal
+        // attribute and fails the build — which is why the site stopped
+        // deploying after 2026-07-04.
+        srcExclude: ['wiki/**'],
         head: [
             ['link', { rel: 'icon', href: '/image/logo.svg', type: 'image/svg+xml' }],
             ['link', { rel: 'preconnect', href: 'https://fonts.googleapis.com' }],
