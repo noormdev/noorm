@@ -3,8 +3,10 @@ import { mkdir, rm, writeFile, stat, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
+import { attempt } from '@logosdx/utils';
+
 import { createCliLogger } from '../../src/cli/_utils.js';
-import { resetSettingsManager } from '../../src/core/settings/index.js';
+import { getSettingsManager, resetSettingsManager } from '../../src/core/settings/index.js';
 import { resetLogger } from '../../src/core/logger/index.js';
 
 /**
@@ -26,6 +28,34 @@ describe('cli: createCliLogger settings', () => {
     };
 
     const exists = async (path: string) => stat(path).then(() => true, () => false);
+
+    /**
+     * Describe what the settings layer actually resolved.
+     *
+     * These assertions all reduce to "did `createCliLogger` read settings.yml",
+     * and a bare `expected true, received false` cannot distinguish a missing
+     * file from a stale singleton from a load that threw. Every one of those
+     * has looked identical while chasing a failure that reproduces only on CI.
+     */
+    const diagnose = async () => {
+
+        const file = join(projectRoot, '.noorm', 'settings.yml');
+        const onDisk = await exists(file);
+        const raw = onDisk ? await readFile(file, 'utf-8') : '<absent>';
+
+        const manager = getSettingsManager(projectRoot);
+        const [, loadErr] = await attempt(() => manager.load());
+
+        return [
+            `projectRoot=${projectRoot}`,
+            `settings.yml on disk=${onDisk}`,
+            `raw=${JSON.stringify(raw)}`,
+            `manager.settingsFilePath=${manager.settingsFilePath}`,
+            `load error=${loadErr ? loadErr.message : 'none'}`,
+            `resolved logging=${JSON.stringify(manager.settings?.logging ?? null)}`,
+        ].join(' | ');
+
+    };
 
     beforeEach(async () => {
 
@@ -63,7 +93,7 @@ describe('cli: createCliLogger settings', () => {
         await logger.flush();
         await logger.stop();
 
-        expect(await exists(join(projectRoot, '.noorm', 'state', 'noorm.log'))).toBe(false);
+        expect(await exists(join(projectRoot, '.noorm', 'state', 'noorm.log')), await diagnose()).toBe(false);
 
     });
 
@@ -96,7 +126,7 @@ describe('cli: createCliLogger settings', () => {
 
         const custom = join(projectRoot, '.noorm', 'state', 'custom.log');
 
-        expect(await exists(custom)).toBe(true);
+        expect(await exists(custom), await diagnose()).toBe(true);
         expect(await readFile(custom, 'utf-8')).toContain('custom path entry');
 
         expect(await exists(join(projectRoot, '.noorm', 'state', 'noorm.log'))).toBe(false);
@@ -109,7 +139,7 @@ describe('cli: createCliLogger settings', () => {
 
         const logger = await createCliLogger(projectRoot, false);
 
-        expect(logger.level).toBe('error');
+        expect(logger.level, await diagnose()).toBe('error');
 
     });
 
@@ -129,7 +159,7 @@ describe('cli: createCliLogger settings', () => {
         const rotated = (await readdir(join(projectRoot, '.noorm', 'state')))
             .filter((f) => f !== 'noorm.log');
 
-        expect(rotated.length).toBe(1);
+        expect(rotated.length, await diagnose()).toBe(1);
 
     });
 
