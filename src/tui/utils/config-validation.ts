@@ -151,7 +151,7 @@ export function buildConnectionConfig(
 
 /**
  * Select options for the `userRole` field — the `user` channel has no
- * `false`/off state, unlike `mcp`.
+ * `false`/off state, unlike `agent`.
  */
 export const USER_ROLE_OPTIONS: SelectOption[] = [
     { label: 'Viewer', value: 'viewer' },
@@ -160,11 +160,12 @@ export const USER_ROLE_OPTIONS: SelectOption[] = [
 ];
 
 /**
- * Select options for the `mcpRole` field — `off` maps to `access.mcp: false`
- * (invisible to the MCP channel), the one state the `user` channel lacks.
+ * Select options for the `agentRole` field — `off` maps to `access.agent: false`
+ * (invisible to agents over MCP *and* the CLI), the one state the `user`
+ * channel lacks.
  */
-export const MCP_ROLE_OPTIONS: SelectOption[] = [
-    { label: 'Off (hidden from MCP)', value: 'off' },
+export const AGENT_ROLE_OPTIONS: SelectOption[] = [
+    { label: 'Off (hidden from agents)', value: 'off' },
     { label: 'Viewer', value: 'viewer' },
     { label: 'Operator', value: 'operator' },
     { label: 'Admin', value: 'admin' },
@@ -177,7 +178,7 @@ function isRole(value: string): value is Role {
 }
 
 /**
- * Builds a `ConfigAccess` from the `userRole`/`mcpRole` select fields shared
+ * Builds a `ConfigAccess` from the `userRole`/`agentRole` select fields shared
  * by ConfigAdd/ConfigEdit. The select only ever offers valid options, so an
  * unrecognized/missing value should never happen in practice — the fallback
  * is defense-in-depth and fails closed (`viewer`/`false`) rather than
@@ -185,18 +186,18 @@ function isRole(value: string): value is Role {
  *
  * @example
  * ```typescript
- * buildAccessFromValues({ userRole: 'operator', mcpRole: 'off' });
- * // { user: 'operator', mcp: false }
+ * buildAccessFromValues({ userRole: 'operator', agentRole: 'off' });
+ * // { user: 'operator', agent: false }
  * ```
  */
 export function buildAccessFromValues(values: FormValues): ConfigAccess {
 
     const userRoleValue = String(values['userRole'] ?? 'viewer');
-    const mcpRoleValue = String(values['mcpRole'] ?? 'off');
+    const agentRoleValue = String(values['agentRole'] ?? 'off');
 
     return {
         user: isRole(userRoleValue) ? userRoleValue : 'viewer',
-        mcp: mcpRoleValue === 'off' ? false : (isRole(mcpRoleValue) ? mcpRoleValue : false),
+        agent: agentRoleValue === 'off' ? false : (isRole(agentRoleValue) ? agentRoleValue : false),
     };
 
 }

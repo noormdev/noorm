@@ -28,7 +28,7 @@ function createTestConfig(name: string, overrides: Partial<Config> = {}): Config
         name,
         type: 'local',
         isTest: true,
-        access: { user: 'admin', mcp: 'admin' },
+        access: { user: 'admin', agent: 'admin' },
         connection: {
             dialect: 'sqlite',
             database: ':memory:',
@@ -220,7 +220,7 @@ describe('state: manager', () => {
 
             await state.load();
 
-            expect(state.getConfig('prod')?.access).toEqual({ user: 'operator', mcp: 'viewer' });
+            expect(state.getConfig('prod')?.access).toEqual({ user: 'operator', agent: 'viewer' });
 
             const raw = readFileSync(statePath, 'utf8');
             const decrypted = JSON.parse(
@@ -247,7 +247,7 @@ describe('state: manager', () => {
 
             await state.load();
 
-            expect(state.getConfig('dev')?.access).toEqual({ user: 'admin', mcp: 'viewer' });
+            expect(state.getConfig('dev')?.access).toEqual({ user: 'admin', agent: 'viewer' });
 
             const raw = readFileSync(statePath, 'utf8');
             const decrypted = JSON.parse(
@@ -290,7 +290,7 @@ describe('state: manager', () => {
 
             await state.load();
 
-            expect(state.getConfig('corrupt')?.access).toEqual({ user: 'admin', mcp: 'viewer' });
+            expect(state.getConfig('corrupt')?.access).toEqual({ user: 'admin', agent: 'viewer' });
 
             const raw = readFileSync(statePath, 'utf8');
             const decrypted = JSON.parse(
@@ -299,7 +299,7 @@ describe('state: manager', () => {
 
             expect(decrypted.configs['corrupt']?.['access']).toEqual({
                 user: 'admin',
-                mcp: 'viewer',
+                agent: 'viewer',
             });
 
         });
@@ -344,7 +344,7 @@ describe('state: manager', () => {
 
             await state.load();
 
-            expect(state.getConfig('guarded')?.access).toEqual({ user: 'operator', mcp: 'viewer' });
+            expect(state.getConfig('guarded')?.access).toEqual({ user: 'operator', agent: 'viewer' });
 
             const raw = readFileSync(statePath, 'utf8');
             const decrypted = JSON.parse(
@@ -353,7 +353,7 @@ describe('state: manager', () => {
 
             expect(decrypted.configs['guarded']?.['access']).toEqual({
                 user: 'operator',
-                mcp: 'viewer',
+                agent: 'viewer',
             });
 
         });
@@ -377,7 +377,7 @@ describe('state: manager', () => {
 
             await state.load();
 
-            expect(state.getConfig('prod')?.access).toEqual({ user: 'operator', mcp: 'viewer' });
+            expect(state.getConfig('prod')?.access).toEqual({ user: 'operator', agent: 'viewer' });
 
         });
 
@@ -399,14 +399,14 @@ describe('state: manager', () => {
 
             await state.load();
 
-            expect(state.getConfig('broken')?.access).toEqual({ user: 'viewer', mcp: 'viewer' });
+            expect(state.getConfig('broken')?.access).toEqual({ user: 'viewer', agent: 'viewer' });
 
             const raw = readFileSync(statePath, 'utf8');
             const decrypted = JSON.parse(
                 decrypt(JSON.parse(raw) as EncryptedPayload, testPrivateKey),
             ) as { configs: Record<string, Record<string, unknown>> };
 
-            expect(decrypted.configs['broken']?.['access']).toEqual({ user: 'viewer', mcp: 'viewer' });
+            expect(decrypted.configs['broken']?.['access']).toEqual({ user: 'viewer', agent: 'viewer' });
 
         });
 
@@ -488,7 +488,7 @@ describe('state: manager', () => {
         it('should update existing config', async () => {
 
             await state.setConfig('dev', createTestConfig('dev'));
-            await state.setConfig('dev', createTestConfig('dev', { access: { user: 'operator', mcp: 'viewer' } }));
+            await state.setConfig('dev', createTestConfig('dev', { access: { user: 'operator', agent: 'viewer' } }));
 
             const config = state.getConfig('dev');
             expect(guarded(config!)).toBe(true);
@@ -510,7 +510,7 @@ describe('state: manager', () => {
             const initialCount = state.listConfigs().length;
 
             await state.setConfig('dev', createTestConfig('dev'));
-            await state.setConfig('prod', createTestConfig('prod', { access: { user: 'operator', mcp: 'viewer' } }));
+            await state.setConfig('prod', createTestConfig('prod', { access: { user: 'operator', agent: 'viewer' } }));
 
             const list = state.listConfigs();
             expect(list).toHaveLength(initialCount + 2);
@@ -522,24 +522,24 @@ describe('state: manager', () => {
         it('should include access in config summaries', async () => {
 
             await state.setConfig('dev', createTestConfig('dev'));
-            await state.setConfig('prod', createTestConfig('prod', { access: { user: 'operator', mcp: 'viewer' } }));
+            await state.setConfig('prod', createTestConfig('prod', { access: { user: 'operator', agent: 'viewer' } }));
 
             const list = state.listConfigs();
 
             expect(list.find((c) => c.name === 'dev')?.access).toEqual({
                 user: 'admin',
-                mcp: 'admin',
+                agent: 'admin',
             });
             expect(list.find((c) => c.name === 'prod')?.access).toEqual({
                 user: 'operator',
-                mcp: 'viewer',
+                agent: 'viewer',
             });
 
         });
 
         it('should not persist a stored protected field on disk', async () => {
 
-            await state.setConfig('dev', createTestConfig('dev', { access: { user: 'operator', mcp: 'viewer' } }));
+            await state.setConfig('dev', createTestConfig('dev', { access: { user: 'operator', agent: 'viewer' } }));
 
             const raw = readFileSync(state.getStatePath(), 'utf8');
             const payload = JSON.parse(raw) as EncryptedPayload;
@@ -550,7 +550,7 @@ describe('state: manager', () => {
             expect(decrypted.configs['dev']).not.toHaveProperty('protected');
             expect(decrypted.configs['dev']?.['access']).toEqual({
                 user: 'operator',
-                mcp: 'viewer',
+                agent: 'viewer',
             });
 
         });

@@ -125,7 +125,7 @@ describe('cli: noorm config delete command -- access policy gate', () => {
 
     it('deletes an admin config when --yes is passed', async () => {
 
-        await seedConfig(CONFIG_NAME, { user: 'admin', mcp: 'admin' });
+        await seedConfig(CONFIG_NAME, { user: 'admin', agent: 'admin' });
 
         const result = runDelete([CONFIG_NAME, '--yes']);
 
@@ -136,7 +136,7 @@ describe('cli: noorm config delete command -- access policy gate', () => {
 
     it('refuses an admin config without --yes or NOORM_YES, naming the confirmation phrase', async () => {
 
-        await seedConfig(CONFIG_NAME, { user: 'admin', mcp: 'admin' });
+        await seedConfig(CONFIG_NAME, { user: 'admin', agent: 'admin' });
 
         const result = runDelete([CONFIG_NAME]);
 
@@ -150,7 +150,7 @@ describe('cli: noorm config delete command -- access policy gate', () => {
 
     it('deletes when NOORM_YES=1 is set without --yes', async () => {
 
-        await seedConfig(CONFIG_NAME, { user: 'admin', mcp: 'admin' });
+        await seedConfig(CONFIG_NAME, { user: 'admin', agent: 'admin' });
 
         const result = runDelete([CONFIG_NAME], { NOORM_YES: '1' });
 
@@ -171,7 +171,7 @@ describe('cli: noorm config delete command -- access policy gate', () => {
 
     it('refuses to delete a config linked to a locked stage even with --yes, and leaves it intact', async () => {
 
-        await seedConfig(LOCKED_CONFIG_NAME, { user: 'admin', mcp: 'admin' });
+        await seedConfig(LOCKED_CONFIG_NAME, { user: 'admin', agent: 'admin' });
         writeLockedStage(LOCKED_CONFIG_NAME);
 
         const result = runDelete([LOCKED_CONFIG_NAME, '--yes']);
@@ -186,7 +186,7 @@ describe('cli: noorm config delete command -- access policy gate', () => {
 
     it('denies a viewer with the policy blockedReason and leaves the config intact', async () => {
 
-        await seedConfig(CONFIG_NAME, { user: 'viewer', mcp: 'admin' });
+        await seedConfig(CONFIG_NAME, { user: 'viewer', agent: 'admin' });
 
         const result = runDelete([CONFIG_NAME, '--yes']);
 

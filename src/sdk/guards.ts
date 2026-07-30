@@ -121,7 +121,7 @@ export function checkRequireTest(
  * `options.yes` (the programmatic equivalent of the CLI's `--yes`) —
  * mirrors `db drop`'s CLI gate (`check.requiresConfirmation && !args.yes`).
  * `options.yes` is only consulted once `checkConfigPolicy` has already
- * resolved the channel: on `mcp`, `confirm` collapses to deny before this
+ * resolved the channel: on `agent`, `confirm` collapses to deny before this
  * function ever sees a `requiresConfirmation` result, so `yes: true` never
  * unblocks an MCP-channel context.
  *

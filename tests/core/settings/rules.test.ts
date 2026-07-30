@@ -17,28 +17,28 @@ describe('settings: rule evaluation', () => {
         name: 'dev',
         type: 'local',
         isTest: false,
-        access: { user: 'admin', mcp: 'admin' },
+        access: { user: 'admin', agent: 'admin' },
     };
 
     const testConfig: ConfigForRuleMatch = {
         name: 'test',
         type: 'local',
         isTest: true,
-        access: { user: 'admin', mcp: 'admin' },
+        access: { user: 'admin', agent: 'admin' },
     };
 
     const prodConfig: ConfigForRuleMatch = {
         name: 'prod',
         type: 'remote',
         isTest: false,
-        access: { user: 'operator', mcp: 'viewer' },
+        access: { user: 'operator', agent: 'viewer' },
     };
 
     const stagingConfig: ConfigForRuleMatch = {
         name: 'staging',
         type: 'remote',
         isTest: true,
-        access: { user: 'admin', mcp: 'admin' },
+        access: { user: 'admin', agent: 'admin' },
     };
 
     describe('ruleMatches', () => {

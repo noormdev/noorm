@@ -11,7 +11,7 @@ import { attempt, attemptSync } from '@logosdx/utils';
 import { defineCommand } from 'citty';
 
 import { ConfigValidationError, parseConfig } from '../../core/config/schema.js';
-import { checkConfigPolicy } from '../../core/policy/index.js';
+import { checkConfigPolicy, resolveChannel } from '../../core/policy/index.js';
 import { initState, getStateManager } from '../../core/state/index.js';
 import { outputResult, outputError, sharedArgs, isYesMode } from '../_utils.js';
 import { EXIT } from '../_exit.js';
@@ -86,8 +86,8 @@ const importCommand = defineCommand({
             // An overwrite rewrites `access` wholesale, so the config being
             // replaced decides — not the incoming file. Without this, one
             // --force promotes a viewer config to admin, or flips the
-            // `mcp: false` invisibility an operator set deliberately.
-            const check = checkConfigPolicy('user', existing, 'config:write');
+            // `agent: false` invisibility an operator set deliberately.
+            const check = checkConfigPolicy(resolveChannel(), existing, 'config:write');
 
             if (!check.allowed) {
 

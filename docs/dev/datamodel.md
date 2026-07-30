@@ -92,7 +92,7 @@ A database connection profile stored in encrypted state.
 | name | string | Yes | Unique identifier (e.g., `dev`, `staging`, `prod`) |
 | type | enum | Yes | `local` or `remote` |
 | isTest | boolean | Yes | Marks database as disposable for testing |
-| access | ConfigAccess | Yes | Per-channel access roles (`{ user, mcp }`) — replaces the legacy `protected` boolean |
+| access | ConfigAccess | Yes | Per-channel access roles (`{ user, agent }`) — replaces the legacy `protected` boolean |
 | connection | ConnectionConfig | Yes | Database connection details |
 | paths | PathConfig | Yes | File system paths for schema and changes |
 | identity | string | No | Override identity for `executed_by` field |
@@ -107,7 +107,7 @@ Per-channel access grant. `Role` is `'viewer' | 'operator' | 'admin'`.
 | user | Role | Access for the CLI, TUI, and SDK |
 | mcp | Role \| `false` | Access for the MCP server. `false` hides the config entirely on this channel |
 
-`checkPolicy(channel, config, permission)` resolves a `ConfigAccess` + `Permission` into `allow`/`confirm`/`deny`, channel-aware (`confirm` prompts on `user`, collapses to `deny` on `mcp`). See `docs/spec/config-access-roles.md` for the full permission matrix.
+`checkPolicy(channel, config, permission)` resolves a `ConfigAccess` + `Permission` into `allow`/`confirm`/`deny`, channel-aware (`confirm` prompts on `user`, collapses to `deny` on `agent`). See `docs/spec/config-access-roles.md` for the full permission matrix.
 
 
 ### ConnectionConfig
@@ -280,7 +280,7 @@ Initial values when creating a config from a stage.
 | password | string? | Default password |
 | ssl | boolean? | Default SSL setting |
 | isTest | boolean? | Default test flag |
-| protected | boolean? | `true` becomes an access **ceiling** at resolution: resolved `access` is clamped to at most `{ user: 'operator', mcp: 'viewer' }` — a stricter config-level `access` survives unchanged |
+| protected | boolean? | `true` becomes an access **ceiling** at resolution: resolved `access` is clamped to at most `{ user: 'operator', agent: 'viewer' }` — a stricter config-level `access` survives unchanged |
 
 
 ### StageSecret

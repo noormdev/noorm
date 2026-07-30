@@ -1,5 +1,5 @@
 /**
- * rpc session: real unknown-config vs mcp-invisibility error parity.
+ * rpc session: real unknown-config vs agent-invisibility error parity.
  *
  * Runs `SessionManager.connect()` against a real `createContext` /
  * `StateManager` (no sdk mock — `session.test.ts` mocks `createContext` to
@@ -26,7 +26,7 @@ function testConfig(name: string, overrides: Partial<Config> = {}): Config {
         name,
         type: 'local',
         isTest: true,
-        access: { user: 'admin', mcp: 'admin' },
+        access: { user: 'admin', agent: 'admin' },
         connection: { dialect: 'sqlite', database: ':memory:' },
         ...overrides,
     };
@@ -47,7 +47,7 @@ describe('rpc: session manager (real createContext)', () => {
         setKeyOverride(privateKey);
 
         const manager = await initState(tempDir);
-        await manager.setConfig('hidden', testConfig('hidden', { access: { user: 'admin', mcp: false } }));
+        await manager.setConfig('hidden', testConfig('hidden', { access: { user: 'admin', agent: false } }));
 
     });
 
@@ -62,10 +62,10 @@ describe('rpc: session manager (real createContext)', () => {
 
     it('should throw the byte-identical error for a real hidden config and a real unknown config', async () => {
 
-        const mcpSession = new SessionManager('mcp');
+        const agentSession = new SessionManager('agent');
 
-        const [, unknownErr] = await attempt(() => mcpSession.connect('ghost'));
-        const [, hiddenErr] = await attempt(() => mcpSession.connect('hidden'));
+        const [, unknownErr] = await attempt(() => agentSession.connect('ghost'));
+        const [, hiddenErr] = await attempt(() => agentSession.connect('hidden'));
 
         expect(unknownErr).toBeDefined();
         expect(hiddenErr).toBeDefined();

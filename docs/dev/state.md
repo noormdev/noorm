@@ -77,7 +77,7 @@ await state.setConfig('dev', {
     name: 'dev',
     type: 'local',
     isTest: false,
-    access: { user: 'admin', mcp: 'admin' },
+    access: { user: 'admin', agent: 'admin' },
     connection: {
         dialect: 'postgres',
         host: 'localhost',
@@ -97,7 +97,7 @@ const dev = state.getConfig('dev')
 
 // List all configs with summary info
 const configs = state.listConfigs()
-// [{ name: 'dev', type: 'local', isTest: false, access: { user: 'admin', mcp: 'admin' }, isActive: true }]
+// [{ name: 'dev', type: 'local', isTest: false, access: { user: 'admin', agent: 'admin' }, isActive: true }]
 
 // Delete a config (also removes its secrets)
 await state.deleteConfig('dev')

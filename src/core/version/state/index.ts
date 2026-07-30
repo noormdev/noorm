@@ -23,12 +23,13 @@ import {
 // Import migrations
 import { v1 } from './migrations/v1.js';
 import { v2 } from './migrations/v2.js';
+import { v3 } from './migrations/v3.js';
 
 /**
  * All state migrations in order.
  * Add new migrations here as they're created.
  */
-const MIGRATIONS: StateMigration[] = [v1, v2];
+const MIGRATIONS: StateMigration[] = [v1, v2, v3];
 
 /**
  * Get state version from state object.

@@ -20,7 +20,7 @@ import { attempt, attemptSync } from '@logosdx/utils';
 import { outputError, outputResult, sharedArgs } from '../_utils.js';
 import { EXIT } from '../_exit.js';
 import { processFile } from '../../core/template/engine.js';
-import { assertPolicy } from '../../core/policy/index.js';
+import { assertPolicy, resolveChannel } from '../../core/policy/index.js';
 import { getStateManager } from '../../core/state/index.js';
 import { resolveRenderSecrets, RENDER_SECRETS_NOTICE } from './_render-secrets.js';
 
@@ -76,7 +76,7 @@ const previewCommand = defineCommand({
         // returns an empty set for that case.
         if (activeConfig) {
 
-            const [, policyErr] = attemptSync(() => assertPolicy('user', activeConfig, 'run:file'));
+            const [, policyErr] = attemptSync(() => assertPolicy(resolveChannel(), activeConfig, 'run:file'));
 
             if (policyErr) {
 

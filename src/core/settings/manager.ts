@@ -42,6 +42,7 @@ const META_SETTINGS_ENV_VARS = new Set([
     'NOORM_CI_CONFIG_NAME',
     'NOORM_LOGGER_DEBUG',
     'NOORM_IDENTITY',
+    'NOORM_CHANNEL',
 ]);
 
 /**

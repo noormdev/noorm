@@ -17,6 +17,7 @@ import type { FullVersionRecord } from '../core/version/schema/index.js';
 import { fetchOverview } from '../core/explore/index.js';
 import type { ExploreOverview } from '../core/explore/index.js';
 import { loadIdentityMetadata } from '../core/identity/storage.js';
+import { detectAgentHarness } from '../core/policy/harness.js';
 import { getStateManager } from '../core/state/index.js';
 import { findProjectRoot } from '../core/project.js';
 import { createConnection } from '../core/connection/index.js';
@@ -49,6 +50,20 @@ interface InfoResult {
         machine: string;
         registered_at: string | null;
         last_seen_at: string | null;
+    } | null;
+
+    /**
+     * The agent harness noorm believes is driving this session, if any.
+     *
+     * Reported because detection silently changes the channel an operation is
+     * authorised on, and a permission denial with no visible cause is a bad
+     * thing to debug. `markers` names the variables actually set, which is what
+     * an operator would unset to be treated as human.
+     */
+    agent: {
+        id: string;
+        name: string;
+        markers: string[];
     } | null;
     objects: {
         tables: number;
@@ -116,6 +131,8 @@ async function gatherInfo(): Promise<InfoResult> {
 
     // === Validation block ===
     const [identityMeta] = await attempt(() => loadIdentityMetadata());
+
+    const harness = detectAgentHarness();
 
     const projectResult = findProjectRoot();
 
@@ -232,6 +249,11 @@ async function gatherInfo(): Promise<InfoResult> {
             registered_at: identityDbInfo?.registeredAt ?? null,
             last_seen_at: identityDbInfo?.lastSeenAt ?? null,
         } : null,
+        agent: harness ? {
+            id: harness.id,
+            name: harness.name,
+            markers: harness.markers.filter((marker) => !!process.env[marker]),
+        } : null,
         objects: overview ? {
             tables: overview.tables,
             views: overview.views,
@@ -292,6 +314,17 @@ function formatInfoOutput(info: InfoResult): string {
     else {
 
         lines.push('Identity:   Not configured');
+
+    }
+
+    if (info.agent) {
+
+        lines.push(`Agent:      ${info.agent.name} (${info.agent.markers.join(', ')})`);
+
+    }
+    else {
+
+        lines.push('Agent:      none detected');
 
     }
 

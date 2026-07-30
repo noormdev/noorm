@@ -26,7 +26,7 @@ import { defineCommand } from 'citty';
 import { deleteChange } from '../../core/change/index.js';
 import { getSettingsManager } from '../../core/settings/index.js';
 import { initState, getStateManager } from '../../core/state/index.js';
-import { checkConfigPolicy } from '../../core/policy/index.js';
+import { checkConfigPolicy, resolveChannel } from '../../core/policy/index.js';
 import { outputResult, outputError, sharedArgs, isYesMode } from '../_utils.js';
 import { selectChangeFromFs, requireTty } from './_prompt.js';
 import { EXIT } from '../_exit.js';
@@ -60,7 +60,7 @@ const rmCommand = defineCommand({
         const configName = args.config ?? stateManager.getActiveConfigName();
         const config = configName ? stateManager.getConfig(configName) : null;
 
-        const check = config ? checkConfigPolicy('user', config, 'change:rm') : null;
+        const check = config ? checkConfigPolicy(resolveChannel(), config, 'change:rm') : null;
 
         if (check && !check.allowed) {
 

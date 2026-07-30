@@ -45,7 +45,7 @@ const ctx = await createContext<DB, Procs, Funcs, Tvfs>(options);
 | `config` | `string` | — | Config name from stored state. Falls back to `NOORM_CONFIG` env, then env-only mode |
 | `projectRoot` | `string` | `process.cwd()` | Project root directory |
 | `requireTest` | `boolean` | `false` | Refuse if `config.isTest` is not `true`. Throws `RequireTestError` |
-| `channel` | `Channel` | `'user'` | Which caller channel this context represents for access-policy checks (`'user'` or `'mcp'`). Destructive ops throw `ProtectedConfigError` when the config's role for this channel denies or can't confirm the action |
+| `channel` | `Channel` | `'user'` | Which caller channel this context represents for access-policy checks (`'user'` or `'agent'`). Destructive ops throw `ProtectedConfigError` when the config's role for this channel denies or can't confirm the action |
 | `stage` | `string` | — | Stage name for stage defaults from `settings.yml` |
 
 ### Env-Only Mode (CI/CD)

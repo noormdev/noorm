@@ -33,11 +33,11 @@ function isRole(value: unknown): value is Role {
 }
 
 /**
- * `mcp: false` is not a role — it hides the config from the MCP channel
- * entirely, which is strictly more restrictive than any role. It must
- * survive repair untouched.
+ * `agent: false` is not a role — it hides the config from agents entirely,
+ * which is strictly more restrictive than any role. It must survive repair
+ * untouched.
  */
-function isMcpAccess(value: unknown): value is Role | false {
+function isAgentAccess(value: unknown): value is Role | false {
 
     return value === false || isRole(value);
 
@@ -51,8 +51,8 @@ function isMcpAccess(value: unknown): value is Role | false {
  *
  * @example
  * ```typescript
- * repairConfigAccess({ user: 'admin' }, undefined); // { user: 'admin', mcp: 'viewer' }
- * repairConfigAccess(undefined, 'true');            // { user: 'operator', mcp: 'viewer' }
+ * repairConfigAccess({ user: 'admin' }, undefined); // { user: 'admin', agent: 'viewer' }
+ * repairConfigAccess(undefined, 'true');            // { user: 'operator', agent: 'viewer' }
  * ```
  */
 export function repairConfigAccess(rawAccess: unknown, rawProtected: unknown): ConfigAccess {
@@ -70,7 +70,7 @@ export function repairConfigAccess(rawAccess: unknown, rawProtected: unknown): C
 
     return {
         user: isRole(rawAccess['user']) ? rawAccess['user'] : MOST_RESTRICTIVE_ROLE,
-        mcp: isMcpAccess(rawAccess['mcp']) ? rawAccess['mcp'] : MOST_RESTRICTIVE_ROLE,
+        agent: isAgentAccess(rawAccess['agent']) ? rawAccess['agent'] : MOST_RESTRICTIVE_ROLE,
     };
 
 }

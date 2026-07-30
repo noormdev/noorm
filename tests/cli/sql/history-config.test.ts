@@ -84,7 +84,7 @@ describe('cli: noorm sql history/clear — config resolution', () => {
                 name,
                 type: 'local',
                 isTest: true,
-                access: { user: 'admin', mcp: 'admin' },
+                access: { user: 'admin', agent: 'admin' },
                 connection: { dialect: 'sqlite', database: join(tmpDir, `${name}.db`) },
             };
 

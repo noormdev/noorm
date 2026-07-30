@@ -78,7 +78,7 @@ describe('change: executor', () => {
             projectRoot: tempDir,
             changesDir,
             sqlDir,
-            access: { user: 'admin', mcp: 'admin' },
+            access: { user: 'admin', agent: 'admin' },
             channel: 'user',
             dialect: 'sqlite',
         };
@@ -353,7 +353,7 @@ describe('change: executor', () => {
                 { name: '001.sql', content: 'CREATE TABLE gate_test (id INTEGER)' },
             ]);
 
-            const context: ChangeContext = { ...buildContext(), access: { user: 'viewer', mcp: false } };
+            const context: ChangeContext = { ...buildContext(), access: { user: 'viewer', agent: false } };
 
             await expect(executeChange(context, change)).rejects.toThrow(/change:run/);
 
@@ -365,7 +365,7 @@ describe('change: executor', () => {
                 { name: '001.sql', content: 'CREATE TABLE gate_test2 (id INTEGER)' },
             ]);
 
-            const context: ChangeContext = { ...buildContext(), access: { user: 'viewer', mcp: false } };
+            const context: ChangeContext = { ...buildContext(), access: { user: 'viewer', agent: false } };
 
             await expect(revertChange(context, change)).rejects.toThrow(/change:revert/);
 
@@ -377,7 +377,7 @@ describe('change: executor', () => {
                 { name: '001.sql', content: 'CREATE TABLE gate_test3 (id INTEGER)' },
             ]);
 
-            const context: ChangeContext = { ...buildContext(), access: { user: 'viewer', mcp: false } };
+            const context: ChangeContext = { ...buildContext(), access: { user: 'viewer', agent: false } };
 
             await expect(executeChange(context, change)).rejects.toThrow(/"test"/);
 

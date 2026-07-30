@@ -139,7 +139,7 @@ describe('cli: db lifecycle access policy', () => {
 
         it('denies a viewer and does not create the database', async () => {
 
-            await seedConfig({ user: 'viewer', mcp: 'admin' });
+            await seedConfig({ user: 'viewer', agent: 'admin' });
 
             const result = runDb('create');
 
@@ -153,7 +153,7 @@ describe('cli: db lifecycle access policy', () => {
 
         it('blocks an operator without --yes, naming the confirmation phrase, and does not create the database', async () => {
 
-            await seedConfig({ user: 'operator', mcp: 'admin' });
+            await seedConfig({ user: 'operator', agent: 'admin' });
 
             const result = runDb('create');
 
@@ -165,7 +165,7 @@ describe('cli: db lifecycle access policy', () => {
 
         it('creates for an operator that passes --yes', async () => {
 
-            await seedConfig({ user: 'operator', mcp: 'admin' });
+            await seedConfig({ user: 'operator', agent: 'admin' });
 
             const result = runDb('create', ['--json', '--yes']);
 
@@ -176,7 +176,7 @@ describe('cli: db lifecycle access policy', () => {
 
         it('creates for an admin without --yes, because db:create is allow for admin', async () => {
 
-            await seedConfig({ user: 'admin', mcp: 'admin' });
+            await seedConfig({ user: 'admin', agent: 'admin' });
 
             const result = runDb('create', ['--json']);
 
@@ -195,7 +195,7 @@ describe('cli: db lifecycle access policy', () => {
 
         it('refuses to wipe data for an admin that passed no --yes, and leaves every row in place', async () => {
 
-            await seedConfig({ user: 'admin', mcp: 'admin' });
+            await seedConfig({ user: 'admin', agent: 'admin' });
             seedData();
 
             const result = runDb('truncate');
@@ -208,7 +208,7 @@ describe('cli: db lifecycle access policy', () => {
 
         it('wipes data for an admin that passed --yes', async () => {
 
-            await seedConfig({ user: 'admin', mcp: 'admin' });
+            await seedConfig({ user: 'admin', agent: 'admin' });
             seedData();
 
             const result = runDb('truncate', ['--yes']);
@@ -220,7 +220,7 @@ describe('cli: db lifecycle access policy', () => {
 
         it('wipes data when NOORM_YES=1 is set without --yes', async () => {
 
-            await seedConfig({ user: 'admin', mcp: 'admin' });
+            await seedConfig({ user: 'admin', agent: 'admin' });
             seedData();
 
             const result = runDb('truncate', [], { NOORM_YES: '1' });
@@ -232,7 +232,7 @@ describe('cli: db lifecycle access policy', () => {
 
         it('denies a viewer outright and leaves every row in place', async () => {
 
-            await seedConfig({ user: 'viewer', mcp: 'admin' });
+            await seedConfig({ user: 'viewer', agent: 'admin' });
             seedData();
 
             const result = runDb('truncate', ['--yes']);
@@ -253,7 +253,7 @@ describe('cli: db lifecycle access policy', () => {
 
         it('refuses to drop objects for an admin that passed no --yes, and leaves the table standing', async () => {
 
-            await seedConfig({ user: 'admin', mcp: 'admin' });
+            await seedConfig({ user: 'admin', agent: 'admin' });
             seedData();
 
             const result = runDb('teardown');
@@ -266,7 +266,7 @@ describe('cli: db lifecycle access policy', () => {
 
         it('drops objects for an admin that passed --yes', async () => {
 
-            await seedConfig({ user: 'admin', mcp: 'admin' });
+            await seedConfig({ user: 'admin', agent: 'admin' });
             seedData();
 
             const result = runDb('teardown', ['--yes']);
@@ -283,7 +283,7 @@ describe('cli: db lifecycle access policy', () => {
 
         it('denies an operator even with --yes, because db:teardown is deny below admin', async () => {
 
-            await seedConfig({ user: 'operator', mcp: 'admin' });
+            await seedConfig({ user: 'operator', agent: 'admin' });
             seedData();
 
             const result = runDb('teardown', ['--yes']);
@@ -296,7 +296,7 @@ describe('cli: db lifecycle access policy', () => {
 
         it('allows a dry run to preview without the confirmation an execution would need', async () => {
 
-            await seedConfig({ user: 'admin', mcp: 'admin' });
+            await seedConfig({ user: 'admin', agent: 'admin' });
             seedData();
 
             const result = runDb('teardown', ['--dry-run', '--json']);

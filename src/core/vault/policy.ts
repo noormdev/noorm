@@ -25,7 +25,7 @@ export interface VaultPolicyGate {
     /** The config's access declaration. Absent denies. */
     access?: ConfigAccess;
 
-    /** Who is asking — CLI/TUI/SDK are `user`, the MCP server is `mcp`. */
+    /** Who is asking — CLI/TUI/SDK are `user`, an AI agent is `agent` (MCP or CLI). */
     channel: Channel;
 }
 

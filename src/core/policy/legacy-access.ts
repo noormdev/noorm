@@ -13,20 +13,24 @@ import type { ConfigAccess } from './types.js';
  * Access for a config with no explicit role and no legacy `protected` flag.
  *
  * The agent channel is deliberately *not* admin here. A stock project never
- * writes `access`, so this is what an MCP client holds against essentially
+ * writes `access`, so this is what every agent holds against essentially
  * every config in the wild — granting it admin made the rest of the matrix
  * decorative on that channel. `viewer` keeps the agent's real job (schema
  * exploration and read queries) working while write, DDL, destructive, and
  * credential permissions all require an explicit opt-in.
  *
- * Not `mcp: false`: invisibility reports the same error as an unknown
+ * `viewer` rather than `operator` also means the destructive cells resolve to
+ * `deny`, not `confirm`. That distinction is load-bearing on the CLI, where
+ * `--yes` satisfies a confirm.
+ *
+ * Not `agent: false`: invisibility reports the same error as an unknown
  * config, so an operator whose agent stopped working would have no way to
  * tell a restricted default from a typo.
  */
-export const DEFAULT_ACCESS: ConfigAccess = { user: 'admin', mcp: 'viewer' };
+export const DEFAULT_ACCESS: ConfigAccess = { user: 'admin', agent: 'viewer' };
 
 /** Access a legacy `protected: true` boolean maps to. */
-export const GUARDED_ACCESS: ConfigAccess = { user: 'operator', mcp: 'viewer' };
+export const GUARDED_ACCESS: ConfigAccess = { user: 'operator', agent: 'viewer' };
 
 /**
  * Resolves the access a config should have from its raw inputs.
@@ -36,8 +40,8 @@ export const GUARDED_ACCESS: ConfigAccess = { user: 'operator', mcp: 'viewer' };
  * for no restriction, which is the default — not a grant of agent admin.
  *
  * @example
- * resolveLegacyAccess(undefined, true); // { user: 'operator', mcp: 'viewer' }
- * resolveLegacyAccess(undefined, undefined); // { user: 'admin', mcp: 'viewer' }
+ * resolveLegacyAccess(undefined, true); // { user: 'operator', agent: 'viewer' }
+ * resolveLegacyAccess(undefined, undefined); // { user: 'admin', agent: 'viewer' }
  */
 export function resolveLegacyAccess(
     access: ConfigAccess | undefined,

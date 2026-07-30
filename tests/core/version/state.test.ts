@@ -13,6 +13,7 @@ import {
     createEmptyVersionedState,
     ensureStateVersion,
 } from '../../../src/core/version/state/index.js';
+import { v3 } from '../../../src/core/version/state/migrations/v3.js';
 
 describe('version: state', () => {
 
@@ -168,7 +169,7 @@ describe('version: state', () => {
             expect(migrated['activeConfig']).toBe('dev');
             // v2 backfills access roles onto every config (see the "v2:
             // per-config access roles" tests below for the mapping itself).
-            expect(migrated['configs']).toEqual({ dev: { access: { user: 'admin', mcp: 'viewer' } } });
+            expect(migrated['configs']).toEqual({ dev: { access: { user: 'admin', agent: 'viewer' } } });
 
         });
 
@@ -289,7 +290,7 @@ describe('version: state', () => {
                     prod: {
                         name: 'prod',
                         connection: { dialect: 'sqlite', database: ':memory:' },
-                        access: { user: 'operator', mcp: 'viewer' },
+                        access: { user: 'operator', agent: 'viewer' },
                     },
                 });
 
@@ -314,7 +315,7 @@ describe('version: state', () => {
                     dev: {
                         name: 'dev',
                         connection: { dialect: 'sqlite', database: ':memory:' },
-                        access: { user: 'admin', mcp: 'viewer' },
+                        access: { user: 'admin', agent: 'viewer' },
                     },
                 });
 
@@ -338,7 +339,7 @@ describe('version: state', () => {
                     dev: {
                         name: 'dev',
                         connection: { dialect: 'sqlite', database: ':memory:' },
-                        access: { user: 'admin', mcp: 'viewer' },
+                        access: { user: 'admin', agent: 'viewer' },
                     },
                 });
 
@@ -351,7 +352,7 @@ describe('version: state', () => {
                     configs: {
                         staging: {
                             name: 'staging',
-                            access: { user: 'viewer', mcp: false },
+                            access: { user: 'viewer', agent: false },
                             connection: { dialect: 'sqlite', database: ':memory:' },
                         },
                     },
@@ -363,7 +364,7 @@ describe('version: state', () => {
                     staging: {
                         name: 'staging',
                         connection: { dialect: 'sqlite', database: ':memory:' },
-                        access: { user: 'viewer', mcp: false },
+                        access: { user: 'viewer', agent: false },
                     },
                 });
 
@@ -376,7 +377,7 @@ describe('version: state', () => {
                     configs: {
                         prod: {
                             name: 'prod',
-                            access: { user: 'admin', mcp: 'admin' },
+                            access: { user: 'admin', agent: 'admin' },
                             protected: true,
                             connection: { dialect: 'sqlite', database: ':memory:' },
                         },
@@ -389,7 +390,7 @@ describe('version: state', () => {
                     prod: {
                         name: 'prod',
                         connection: { dialect: 'sqlite', database: ':memory:' },
-                        access: { user: 'admin', mcp: 'admin' },
+                        access: { user: 'admin', agent: 'admin' },
                     },
                 });
 
@@ -427,17 +428,17 @@ describe('version: state', () => {
                     // string here. Requiring a strict `true` sent every one
                     // of those to the unrestricted default.
                     expect(migrateConfig({ name: 'prod', protected: 'true' })['access'])
-                        .toEqual({ user: 'operator', mcp: 'viewer' });
+                        .toEqual({ user: 'operator', agent: 'viewer' });
 
                     expect(migrateConfig({ name: 'prod', protected: 1 })['access'])
-                        .toEqual({ user: 'operator', mcp: 'viewer' });
+                        .toEqual({ user: 'operator', agent: 'viewer' });
 
                 });
 
                 it('should not guard a config whose protected flag is falsy', () => {
 
                     expect(migrateConfig({ name: 'prod', protected: false })['access'])
-                        .toEqual({ user: 'admin', mcp: 'viewer' });
+                        .toEqual({ user: 'admin', agent: 'viewer' });
 
                 });
 
@@ -447,14 +448,14 @@ describe('version: state', () => {
                     // while `protected` was discarded — leaving a config no
                     // command could ever use again and no way back.
                     expect(migrateConfig({ name: 'prod', protected: true, access: {} })['access'])
-                        .toEqual({ user: 'viewer', mcp: 'viewer' });
+                        .toEqual({ user: 'viewer', agent: 'viewer' });
 
                 });
 
                 it('should fill a half-populated access rather than persisting it', () => {
 
                     expect(migrateConfig({ name: 'prod', protected: true, access: { user: 'admin' } })['access'])
-                        .toEqual({ user: 'admin', mcp: 'viewer' });
+                        .toEqual({ user: 'admin', agent: 'viewer' });
 
                 });
 
@@ -463,8 +464,8 @@ describe('version: state', () => {
                     const malformed = [
                         { name: 'prod', protected: true, access: {} },
                         { name: 'prod', access: { user: 'admin' } },
-                        { name: 'prod', access: { mcp: 'admin' } },
-                        { name: 'prod', access: { user: 'superuser', mcp: 'admin' } },
+                        { name: 'prod', access: { agent: 'admin' } },
+                        { name: 'prod', access: { user: 'superuser', agent: 'admin' } },
                         { name: 'prod', protected: 'yes' },
                     ];
 
@@ -475,12 +476,121 @@ describe('version: state', () => {
                         expect({ input: rawConfig, userValid: ['viewer', 'operator', 'admin'].includes(access['user'] as string) })
                             .toEqual({ input: rawConfig, userValid: true });
 
-                        expect({ input: rawConfig, mcpValid: access['mcp'] === false || ['viewer', 'operator', 'admin'].includes(access['mcp'] as string) })
-                            .toEqual({ input: rawConfig, mcpValid: true });
+                        expect({ input: rawConfig, agentValid: access['agent'] === false || ['viewer', 'operator', 'admin'].includes(access['agent'] as string) })
+                            .toEqual({ input: rawConfig, agentValid: true });
 
                     }
 
                 });
+
+            });
+
+        });
+
+        /**
+         * v3 renames `access.mcp` to `access.agent`. The channel stopped
+         * naming the transport and started naming the caller, so a config
+         * that granted an MCP client `operator` now grants any agent
+         * `operator` — including one shelling out to the CLI. The stored
+         * value must survive verbatim: silently downgrading a deliberate
+         * grant would look like the fix breaking someone's setup, and
+         * silently upgrading one would re-open the hole.
+         */
+        describe('v3: access.mcp renamed to access.agent', () => {
+
+            function migrateFromV2(access: unknown): Record<string, unknown> {
+
+                const migrated = migrateState({
+                    schemaVersion: 2,
+                    configs: { prod: { name: 'prod', access } },
+                });
+
+                const configs = migrated['configs'] as Record<string, Record<string, unknown>>;
+
+                return configs['prod']!['access'] as Record<string, unknown>;
+
+            }
+
+            it('should carry an explicit role over verbatim', () => {
+
+                expect(migrateFromV2({ user: 'operator', mcp: 'operator' }))
+                    .toEqual({ user: 'operator', agent: 'operator' });
+
+            });
+
+            it('should carry mcp:false over as agent:false', () => {
+
+                // Invisibility is stricter than any role — losing it would
+                // expose a config its owner deliberately hid.
+                expect(migrateFromV2({ user: 'admin', mcp: false }))
+                    .toEqual({ user: 'admin', agent: false });
+
+            });
+
+            it('should not leave the old key behind', () => {
+
+                expect(migrateFromV2({ user: 'admin', mcp: 'viewer' })).not.toHaveProperty('mcp');
+
+            });
+
+            it('should leave a config already on the new key alone', () => {
+
+                expect(migrateFromV2({ user: 'operator', agent: 'admin' }))
+                    .toEqual({ user: 'operator', agent: 'admin' });
+
+            });
+
+            it('should keep failing closed on a shape it cannot read', () => {
+
+                // Same one-directional rule v2 established: an unrecognised
+                // stored access may only make a config more restrictive.
+                expect(migrateFromV2({ user: 'admin', mcp: 'superuser' }))
+                    .toEqual({ user: 'admin', agent: 'viewer' });
+
+                expect(migrateFromV2({})).toEqual({ user: 'viewer', agent: 'viewer' });
+
+            });
+
+            it('should be a no-op for state coming up through v2, which already emits the new key', () => {
+
+                const migrated = migrateState({
+                    schemaVersion: 1,
+                    configs: { prod: { name: 'prod', protected: true } },
+                });
+
+                const configs = migrated['configs'] as Record<string, Record<string, unknown>>;
+
+                expect(configs['prod']!['access']).toEqual({ user: 'operator', agent: 'viewer' });
+
+            });
+
+            it('should reverse the rename on the way down', () => {
+
+                const reverted = v3.down!({
+                    schemaVersion: 3,
+                    configs: {
+                        prod: { name: 'prod', access: { user: 'operator', agent: 'admin' } },
+                        hidden: { name: 'hidden', access: { user: 'admin', agent: false } },
+                    },
+                });
+
+                expect(reverted['configs']).toEqual({
+                    prod: { name: 'prod', access: { user: 'operator', mcp: 'admin' } },
+                    hidden: { name: 'hidden', access: { user: 'admin', mcp: false } },
+                });
+
+            });
+
+            it('should round-trip a config through down and back up', () => {
+
+                const original = { user: 'operator', agent: false };
+
+                const down = v3.down!({ configs: { prod: { name: 'prod', access: original } } });
+                const up = v3.up(down);
+
+                const configs = up['configs'] as Record<string, Record<string, unknown>>;
+
+                expect(configs['prod']!['access']).toEqual(original);
 
             });
 

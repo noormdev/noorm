@@ -401,12 +401,12 @@ describe('sql-terminal: executor', () => {
         describe('policy gate', () => {
 
             const VIEWER_GATE = {
-                access: { user: 'admin' as const, mcp: 'viewer' as const },
-                channel: 'mcp' as const,
+                access: { user: 'admin' as const, agent: 'viewer' as const },
+                channel: 'agent' as const,
                 dialect: 'postgres' as const,
             };
             const ADMIN_GATE = {
-                access: { user: 'admin' as const, mcp: 'admin' as const },
+                access: { user: 'admin' as const, agent: 'admin' as const },
                 channel: 'user' as const,
                 dialect: 'postgres' as const,
             };

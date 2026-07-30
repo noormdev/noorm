@@ -25,9 +25,9 @@ import { LockNamespace } from '../../../src/sdk/namespaces/lock.js';
 import { ProtectedConfigError } from '../../../src/sdk/guards.js';
 import type { ContextState } from '../../../src/sdk/state.js';
 
-const VIEWER: ConfigAccess = { user: 'viewer', mcp: false };
-const OPERATOR: ConfigAccess = { user: 'operator', mcp: 'viewer' };
-const ADMIN: ConfigAccess = { user: 'admin', mcp: 'admin' };
+const VIEWER: ConfigAccess = { user: 'viewer', agent: false };
+const OPERATOR: ConfigAccess = { user: 'operator', agent: 'viewer' };
+const ADMIN: ConfigAccess = { user: 'admin', agent: 'admin' };
 
 const CONFIG_NAME = 'dev';
 
@@ -160,13 +160,13 @@ describe('lock: force authorization', () => {
 
     });
 
-    it('should deny the mcp channel even when pre-confirmed', async () => {
+    it('should deny the agent channel even when pre-confirmed', async () => {
 
-        const lock = makeNamespace(ADMIN, { yes: true, channel: 'mcp' });
+        const lock = makeNamespace(ADMIN, { yes: true, channel: 'agent' });
 
         const [, err] = await attempt(() => lock.forceRelease());
 
-        // `confirm` collapses to deny on mcp, so `yes` can never unblock it.
+        // `confirm` collapses to deny on agent, so `yes` can never unblock it.
         expect(err).toBeInstanceOf(ProtectedConfigError);
 
     });

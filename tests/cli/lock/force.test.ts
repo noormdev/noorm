@@ -81,7 +81,7 @@ describe('cli: noorm lock force', () => {
 
     });
 
-    async function seedConfig(access: ConfigAccess = { user: 'admin', mcp: 'admin' }): Promise<void> {
+    async function seedConfig(access: ConfigAccess = { user: 'admin', agent: 'admin' }): Promise<void> {
 
         const config: Config = {
             name: CONFIG_NAME,
@@ -169,7 +169,7 @@ describe('cli: noorm lock force', () => {
 
     it('denies a viewer config even with --yes', async () => {
 
-        await seedConfig({ user: 'viewer', mcp: false });
+        await seedConfig({ user: 'viewer', agent: false });
 
         const result = run(['lock', 'force'], ['--yes', '--json']);
 

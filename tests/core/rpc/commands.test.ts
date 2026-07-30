@@ -26,7 +26,7 @@ interface MockContextOptions {
  *
  * Provides full mock noorm operations so handlers can reach the policy
  * check and session delegation logic without needing a real database.
- * Defaults to the `mcp` channel since that's what CP3 gates; individual
+ * Defaults to the `agent` channel since that's what CP3 gates; individual
  * tests override `channel` to prove the same handler logic is channel-generic.
  */
 function createMockSession(options: MockContextOptions = {}): RpcSession {
@@ -37,7 +37,7 @@ function createMockSession(options: MockContextOptions = {}): RpcSession {
         noorm: {
             config: {
                 name: options.configName ?? 'test',
-                access: options.access ?? { user: 'admin', mcp: 'admin' },
+                access: options.access ?? { user: 'admin', agent: 'admin' },
                 connection: { database: options.database ?? 'testdb' },
             },
             changes: {
@@ -54,7 +54,7 @@ function createMockSession(options: MockContextOptions = {}): RpcSession {
     } as unknown as Context;
 
     return {
-        channel: options.channel ?? 'mcp',
+        channel: options.channel ?? 'agent',
         getContext: () => mockContext,
         connect: async (config?: string) => ({
             name: config ?? 'test',
@@ -80,7 +80,7 @@ function createMockSession(options: MockContextOptions = {}): RpcSession {
 function createDisconnectedSession(): RpcSession {
 
     return {
-        channel: 'mcp',
+        channel: 'agent',
         getContext: () => {
 
             throw new RpcError('Not connected — call connect first');
@@ -103,7 +103,7 @@ describe('rpc commands: sql', () => {
 
     it('should deny INSERT (sql:write) for a viewer role', async () => {
 
-        const session = createMockSession({ access: { user: 'admin', mcp: 'viewer' } });
+        const session = createMockSession({ access: { user: 'admin', agent: 'viewer' } });
         const input = cmd.inputSchema.parse({ query: 'INSERT INTO t VALUES (1)' });
 
         await expect(cmd.handler(input, session)).rejects.toThrow(/sql:write/i);
@@ -112,7 +112,7 @@ describe('rpc commands: sql', () => {
 
     it('should deny DROP (sql:ddl) for a viewer role', async () => {
 
-        const session = createMockSession({ access: { user: 'admin', mcp: 'viewer' } });
+        const session = createMockSession({ access: { user: 'admin', agent: 'viewer' } });
         const input = cmd.inputSchema.parse({ query: 'DROP TABLE users' });
 
         await expect(cmd.handler(input, session)).rejects.toThrow(/sql:ddl/i);
@@ -121,7 +121,7 @@ describe('rpc commands: sql', () => {
 
     it('should deny UPDATE (sql:write) for a viewer role', async () => {
 
-        const session = createMockSession({ access: { user: 'admin', mcp: 'viewer' } });
+        const session = createMockSession({ access: { user: 'admin', agent: 'viewer' } });
         const input = cmd.inputSchema.parse({ query: 'UPDATE users SET name = \'bob\'' });
 
         await expect(cmd.handler(input, session)).rejects.toThrow(/sql:write/i);
@@ -130,7 +130,7 @@ describe('rpc commands: sql', () => {
 
     it('should deny DELETE (sql:write) for a viewer role', async () => {
 
-        const session = createMockSession({ access: { user: 'admin', mcp: 'viewer' } });
+        const session = createMockSession({ access: { user: 'admin', agent: 'viewer' } });
         const input = cmd.inputSchema.parse({ query: 'DELETE FROM users' });
 
         await expect(cmd.handler(input, session)).rejects.toThrow(/sql:write/i);
@@ -139,7 +139,7 @@ describe('rpc commands: sql', () => {
 
     it('should allow SELECT for a viewer role (policy passes, execution reached)', async () => {
 
-        const session = createMockSession({ access: { user: 'admin', mcp: 'viewer' } });
+        const session = createMockSession({ access: { user: 'admin', agent: 'viewer' } });
         const input = cmd.inputSchema.parse({ query: 'SELECT * FROM users LIMIT 10' });
 
         // The policy gate is the only thing in this call chain that rejects
@@ -153,7 +153,7 @@ describe('rpc commands: sql', () => {
 
     it('should allow INSERT (sql:write) for an operator role (policy passes, execution reached)', async () => {
 
-        const session = createMockSession({ access: { user: 'admin', mcp: 'operator' } });
+        const session = createMockSession({ access: { user: 'admin', agent: 'operator' } });
         const input = cmd.inputSchema.parse({ query: 'INSERT INTO t VALUES (1)' });
 
         await expect(cmd.handler(input, session)).resolves.toBeDefined();
@@ -162,7 +162,7 @@ describe('rpc commands: sql', () => {
 
     it('should deny DROP (sql:ddl) for an operator role', async () => {
 
-        const session = createMockSession({ access: { user: 'admin', mcp: 'operator' } });
+        const session = createMockSession({ access: { user: 'admin', agent: 'operator' } });
         const input = cmd.inputSchema.parse({ query: 'DROP TABLE users' });
 
         await expect(cmd.handler(input, session)).rejects.toThrow(/sql:ddl/i);
@@ -171,7 +171,7 @@ describe('rpc commands: sql', () => {
 
     it('should allow DROP (sql:ddl) for an admin role (policy passes, execution reached)', async () => {
 
-        const session = createMockSession({ access: { user: 'admin', mcp: 'admin' } });
+        const session = createMockSession({ access: { user: 'admin', agent: 'admin' } });
         const input = cmd.inputSchema.parse({ query: 'DROP TABLE users' });
 
         await expect(cmd.handler(input, session)).resolves.toBeDefined();
@@ -180,7 +180,7 @@ describe('rpc commands: sql', () => {
 
     it('should include config name in the denial reason', async () => {
 
-        const session = createMockSession({ access: { user: 'admin', mcp: 'viewer' }, configName: 'prod' });
+        const session = createMockSession({ access: { user: 'admin', agent: 'viewer' }, configName: 'prod' });
         const input = cmd.inputSchema.parse({ query: 'DROP TABLE secrets' });
 
         const [, err] = await attempt(() => cmd.handler(input, session));
@@ -201,7 +201,7 @@ describe('rpc commands: sql', () => {
 
     it('should apply the same escalation on the user channel', async () => {
 
-        const session = createMockSession({ access: { user: 'viewer', mcp: 'admin' }, channel: 'user' });
+        const session = createMockSession({ access: { user: 'viewer', agent: 'admin' }, channel: 'user' });
         const input = cmd.inputSchema.parse({ query: 'INSERT INTO t VALUES (1)' });
 
         await expect(cmd.handler(input, session)).rejects.toThrow(/sql:write/i);

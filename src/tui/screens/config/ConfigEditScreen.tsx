@@ -31,7 +31,7 @@ import {
     buildConnectionConfig,
     buildAccessFromValues,
     USER_ROLE_OPTIONS,
-    MCP_ROLE_OPTIONS,
+    AGENT_ROLE_OPTIONS,
 } from '../../utils/index.js';
 
 /**
@@ -133,11 +133,11 @@ export function ConfigEditScreen({ params }: ScreenProps): ReactElement {
                 defaultValue: access.user,
             },
             {
-                key: 'mcpRole',
-                label: 'MCP Role (agent access)',
+                key: 'agentRole',
+                label: 'Agent Role (MCP/CLI access)',
                 type: 'select',
-                options: MCP_ROLE_OPTIONS,
-                defaultValue: access.mcp === false ? 'off' : access.mcp,
+                options: AGENT_ROLE_OPTIONS,
+                defaultValue: access.agent === false ? 'off' : access.agent,
             },
             {
                 key: 'isTest',

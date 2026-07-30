@@ -27,10 +27,11 @@ export class SessionManager implements RpcSession {
     #contexts = new Map<string, Context>();
 
     /**
-     * The channel this session was opened on. Drives policy checks
-     * (`checkConfigPolicy`) and mcp-channel invisibility in `connect`/
-     * `getContext`. Defaults to `'user'` so pre-existing `new SessionManager()`
-     * call sites keep working; `mcp serve` passes `'mcp'` explicitly.
+     * Who this session acts for. Drives policy checks (`checkConfigPolicy`)
+     * and agent-channel invisibility in `connect`/`getContext`. Defaults to
+     * `'user'` so pre-existing `new SessionManager()` call sites keep
+     * working; `mcp serve` passes `'agent'` explicitly, because everything
+     * reaching it over stdio is an agent by construction.
      */
     readonly channel: Channel;
 
@@ -46,7 +47,7 @@ export class SessionManager implements RpcSession {
      * Creates a Context, connects, and stores it.
      * If config is omitted, resolves the active config from state.
      *
-     * On the `mcp` channel, a config with `access.mcp === false` (or no
+     * On the `agent` channel, a config with `access.agent === false` (or no
      * `access` at all — fail closed per docs/spec/config-access-roles.md)
      * is invisible: this throws the byte-identical error an unknown config
      * name produces, rather than surfacing that the config exists but is
@@ -85,9 +86,9 @@ export class SessionManager implements RpcSession {
             name: resolvedName,
             dialect: ctx.dialect,
             database: ctx.noorm.config.connection.database,
-            // access.mcp === false is unreachable here — the invisibility
+            // access.agent === false is unreachable here — the invisibility
             // guard above already denies before a context is ever stored.
-            role: this.channel === 'mcp' ? (rawAccess.mcp === false ? 'viewer' : rawAccess.mcp) : rawAccess.user,
+            role: this.channel === 'agent' ? (rawAccess.agent === false ? 'viewer' : rawAccess.agent) : rawAccess.user,
         };
 
     }

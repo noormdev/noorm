@@ -59,7 +59,7 @@ function isConfigGuarded(config: ConfigForRuleMatch): boolean {
  * @example
  * ```typescript
  * const rule = { match: { isTest: true, type: 'local' } }
- * const config = { name: 'dev', isTest: true, type: 'local', access: { user: 'admin', mcp: 'admin' } }
+ * const config = { name: 'dev', isTest: true, type: 'local', access: { user: 'admin', agent: 'admin' } }
  *
  * ruleMatches(rule.match, config)  // true
  * ```

@@ -80,7 +80,7 @@ describe('change: executor retry', () => {
             projectRoot: tempDir,
             changesDir,
             sqlDir,
-            access: { user: 'admin', mcp: 'admin' },
+            access: { user: 'admin', agent: 'admin' },
             channel: 'user',
             dialect: 'sqlite',
         };

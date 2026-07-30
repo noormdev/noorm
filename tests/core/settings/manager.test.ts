@@ -1022,7 +1022,7 @@ stages:
                     name: 'test',
                     type: 'local' as const,
                     isTest: true,
-                    access: { user: 'admin' as const, mcp: 'admin' as const },
+                    access: { user: 'admin' as const, agent: 'admin' as const },
                 };
 
                 const result = manager.evaluateRules(testConfig);
@@ -1060,7 +1060,7 @@ stages:
                     name: 'test',
                     type: 'local' as const,
                     isTest: true,
-                    access: { user: 'admin' as const, mcp: 'admin' as const },
+                    access: { user: 'admin' as const, agent: 'admin' as const },
                 };
 
                 const result = manager.getEffectiveBuildPaths(testConfig);

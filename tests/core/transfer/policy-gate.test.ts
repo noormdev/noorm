@@ -11,8 +11,8 @@ import { transferData, getTransferPlan } from '../../../src/core/transfer/index.
 import { makeTestConfig } from '../../utils/db.js';
 import type { ConfigAccess } from '../../../src/core/policy/index.js';
 
-const VIEWER: ConfigAccess = { user: 'viewer', mcp: false };
-const ADMIN: ConfigAccess = { user: 'admin', mcp: 'admin' };
+const VIEWER: ConfigAccess = { user: 'viewer', agent: false };
+const ADMIN: ConfigAccess = { user: 'admin', agent: 'admin' };
 
 describe('transfer: policy gate', () => {
 

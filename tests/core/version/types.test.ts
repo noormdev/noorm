@@ -21,7 +21,7 @@ describe('version: types', () => {
 
         it('should have state version', () => {
 
-            expect(CURRENT_VERSIONS.state).toBe(2);
+            expect(CURRENT_VERSIONS.state).toBe(3);
 
         });
 

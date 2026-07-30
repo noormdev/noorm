@@ -50,7 +50,7 @@ interface CreateContextOptions {
     config?: string;          // Config name (or use NOORM_CONFIG env var)
     projectRoot?: string;     // Defaults to process.cwd()
     requireTest?: boolean;    // Refuse if config.isTest !== true
-    channel?: Channel;        // 'user' (default) or 'mcp' — which access role applies
+    channel?: Channel;        // 'user' (default) or 'agent' — which access role applies
     stage?: string;           // Stage name for stage defaults
 }
 
@@ -70,7 +70,7 @@ const ctx = await createContext<MyDatabase>({
 | `channel`        | `Channel` | Which caller channel this context represents for access-policy checks. Defaults to `'user'`. A destructive operation the config's role denies — or that resolves to "requires confirmation," which the SDK can't prompt for — throws `ProtectedConfigError`. |
 | `stage`          | `string`  | Stage name for inheriting stage defaults.                        |
 
-> Access is per-config, not per-context: each config declares `access: { user, mcp }` (roles `viewer`/`operator`/`admin`, or `mcp: false` to hide the config from the `mcp` channel entirely). `channel` tells `createContext` which half of that grant to enforce — see [Access Roles](/guide/environments/configs#access-roles).
+> Access is per-config, not per-context: each config declares `access: { user, agent }` (roles `viewer`/`operator`/`admin`, or `agent: false` to hide the config from agents entirely, over MCP and the CLI alike). `channel` tells `createContext` which half of that grant to enforce — see [Access Roles](/guide/environments/configs#access-roles).
 
 
 ## Top-Level Context Properties

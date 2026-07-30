@@ -56,17 +56,19 @@ export interface CreateContextOptions {
     stage?: string;
 
     /**
-     * Which caller channel this context represents for access-policy checks
-     * (`checkPolicy` in `src/sdk/guards.ts`). SDK/CLI/TUI callers are `user`;
-     * pass `'mcp'` when the context backs an MCP session. Default: `'user'`.
+     * Who this context acts for, for access-policy checks (`checkPolicy` in
+     * `src/sdk/guards.ts`). A human driving the SDK/CLI/TUI is `user`; pass
+     * `'agent'` when an AI agent is driving, whichever transport it reached
+     * for. Default: `'user'`.
      */
     channel?: Channel;
 
     /**
      * Pre-confirm operations that a policy `confirm` cell would otherwise
      * block — the programmatic equivalent of the CLI's --yes. Only
-     * meaningful on the user channel; mcp collapses confirm to deny
-     * before this is consulted. Default: false.
+     * meaningful on the user channel; `agent` collapses confirm to deny
+     * before this is consulted, so an agent cannot use it to walk through
+     * a gate a human was meant to answer. Default: false.
      */
     yes?: boolean;
 

@@ -25,7 +25,7 @@ export interface RpcCommand<TInput = unknown, TOutput = unknown> {
 /**
  * Session interface for RPC command handlers.
  *
- * Provides access to database connections and the channel (`user`/`mcp`)
+ * Provides access to database connections and the channel (`user`/`agent`)
  * the session was opened on, so handlers can run channel-aware policy
  * checks (e.g. the `sql` command's statement-class escalation).
  * Implemented by SessionManager in session.ts.

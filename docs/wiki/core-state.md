@@ -23,7 +23,7 @@ Each config carries `access: ConfigAccess` (per-channel role pair, replacing the
 - [`src/core/settings/defaults.ts`](../../src/core/settings/defaults.ts) — `DEFAULT_SETTINGS`
 - [`src/core/settings/events.ts`](../../src/core/settings/events.ts) — settings-related observer event types
 - [`src/core/config/index.ts`](../../src/core/config/index.ts) — `makeNestedConfig`; builds config object from env at module scope (known contamination source — see CLAUDE.md)
-- [`src/core/config/resolver.ts`](../../src/core/config/resolver.ts) — `resolveConfig`, `SettingsProvider`; picks active config from state + settings. `applyStageCeiling` clamps a resolved config's `access` down to `{ user: 'operator', mcp: 'viewer' }` when the linked stage sets `protected: true` — replaces the old hard-violation check in `checkConfigCompleteness`
+- [`src/core/config/resolver.ts`](../../src/core/config/resolver.ts) — `resolveConfig`, `SettingsProvider`; picks active config from state + settings. `applyStageCeiling` clamps a resolved config's `access` down to `{ user: 'operator', agent: 'viewer' }` when the linked stage sets `protected: true` — replaces the old hard-violation check in `checkConfigCompleteness`
 - [`src/core/config/schema.ts`](../../src/core/config/schema.ts) — config schema validation; `withResolvedAccess` maps a legacy `protected: boolean` input to `access: ConfigAccess` via `resolveLegacyAccess` (`core/policy`)
 - [`src/core/lifecycle/manager.ts`](../../src/core/lifecycle/manager.ts) — `LifecycleManager`; shutdown phase orchestration, signal handlers
 - [`src/core/lifecycle/handlers.ts`](../../src/core/lifecycle/handlers.ts) — signal/exception handler registration
@@ -66,5 +66,5 @@ Each config carries `access: ConfigAccess` (per-channel role pair, replacing the
 - `observer` is a module-scope singleton; `resetConnectionManager`/`resetSettingsManager`/`resetStateManager` are test-only reset points.
 - Stages in settings allow per-environment config overrides; `evaluateRules` applies them at runtime.
 - `initProjectContext` is the canonical startup sequence called by CLI entry and SDK `createContext`.
-- `Config.access` defaults to `{ user: 'admin', mcp: 'viewer' }` (`DEFAULT_ACCESS`) when absent; a legacy `protected: true` maps to `{ user: 'operator', mcp: 'viewer' }` (`GUARDED_ACCESS`) — both constants live in [`src/core/policy/legacy-access.ts`](../../src/core/policy/legacy-access.ts).
+- `Config.access` defaults to `{ user: 'admin', agent: 'viewer' }` (`DEFAULT_ACCESS`) when absent; a legacy `protected: true` maps to `{ user: 'operator', agent: 'viewer' }` (`GUARDED_ACCESS`) — both constants live in [`src/core/policy/legacy-access.ts`](../../src/core/policy/legacy-access.ts).
 - `src/core/config/protection.ts` (hard-block rules for protected configs) was deleted — access enforcement now runs entirely through `core/policy`.

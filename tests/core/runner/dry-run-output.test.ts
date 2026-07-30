@@ -34,7 +34,7 @@ describe('runner: dry-run output', () => {
             configName: 'test',
             identity: { name: 'Test User', email: 'test@example.com', source: 'config' },
             projectRoot: tempDir,
-            access: { user: 'admin', mcp: 'admin' },
+            access: { user: 'admin', agent: 'admin' },
             channel: 'user',
             dialect: 'sqlite',
             secrets: { API_TOKEN: 'sk-live-not-a-real-token' },

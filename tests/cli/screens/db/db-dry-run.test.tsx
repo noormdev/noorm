@@ -72,7 +72,7 @@ function makeConfig() {
         name: 'test',
         type: 'local' as const,
         isTest: true,
-        access: { user: 'admin' as const, mcp: 'admin' as const },
+        access: { user: 'admin' as const, agent: 'admin' as const },
         connection: {
             dialect: 'sqlite' as const,
             database: ':memory:',

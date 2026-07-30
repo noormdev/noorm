@@ -10,7 +10,7 @@ import { chmod, writeFile } from 'node:fs/promises';
 import { attempt } from '@logosdx/utils';
 import { defineCommand } from 'citty';
 
-import { checkConfigPolicy } from '../../core/policy/index.js';
+import { checkConfigPolicy, resolveChannel } from '../../core/policy/index.js';
 import { initState, getStateManager } from '../../core/state/index.js';
 import { outputError, outputResult, sharedArgs } from '../_utils.js';
 import { EXIT } from '../_exit.js';
@@ -51,7 +51,7 @@ const exportCommand = defineCommand({
         // The export carries the connection password in plaintext, so it is
         // a secret read — a viewer role that is denied `config:rm` must not
         // be able to walk away with the credential instead.
-        const check = checkConfigPolicy('user', config, 'secret:read');
+        const check = checkConfigPolicy(resolveChannel(), config, 'secret:read');
 
         if (!check.allowed) {
 

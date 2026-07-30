@@ -6,6 +6,7 @@ import { defineCommand } from 'citty';
 import { withVaultContext, outputResult, sharedArgs, isYesMode } from '../_utils.js';
 import { initializeVaultChecked, getVaultStatus, checkVaultPolicy } from '../../core/vault/index.js';
 import type { VaultPolicyGate } from '../../core/vault/index.js';
+import { resolveChannel } from '../../core/policy/index.js';
 
 const initCommand = defineCommand({
     meta: {
@@ -28,7 +29,7 @@ const initCommand = defineCommand({
                 const gate: VaultPolicyGate = {
                     configName: config.name,
                     access: config.access,
-                    channel: 'user',
+                    channel: resolveChannel(),
                 };
 
                 const check = checkVaultPolicy(gate, 'vault:write');

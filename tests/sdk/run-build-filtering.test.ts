@@ -134,7 +134,7 @@ function makeConfig(overrides: Partial<Config> = {}): Config {
         name: 'dev',
         type: 'local',
         isTest: false,
-        access: { user: 'admin', mcp: 'admin' },
+        access: { user: 'admin', agent: 'admin' },
         connection: { dialect: 'postgres', database: 'testdb' },
         ...overrides,
     };

@@ -40,7 +40,11 @@ const VALUES: NewNoormChange = {
  * Run the helper against a dialect's real query compiler, recording every
  * statement the driver would have sent.
  */
-async function compileFor(dialect: Dialect, rules: ResponseRule[] = []) {
+async function compileFor(
+    dialect: Dialect,
+    rules: ResponseRule[] = [],
+    env: Record<string, string | undefined> = {},
+) {
 
     const recording = createRecordingDb(dialect, rules);
     const db = recording.kysely as unknown as Kysely<NoormDatabase>;
@@ -51,6 +55,7 @@ async function compileFor(dialect: Dialect, rules: ResponseRule[] = []) {
         dialect,
         table: getNoormTables(dialect).change,
         values: VALUES,
+        env,
     });
 
     return { id, err, recording };
@@ -234,6 +239,85 @@ describe('shared: insertOperationRecord', () => {
         ]);
 
         expect(recording.queries[0]!.sql).toContain('"noorm"."change"');
+
+    });
+
+    it('should stamp the driving harness onto executed_by', async () => {
+
+        // Every operation record funnels through this helper, so stamping here
+        // is what makes it impossible for a call site to write a row that hides
+        // the agent behind it.
+        const { recording } = await compileFor(
+            'postgres',
+            [{ match: /insert into/i, rows: [{ id: 1 }] }],
+            { CLAUDECODE: '1' },
+        );
+
+        expect(recording.queries[0]!.parameters).toContain('test@example.com (via Claude Code)');
+
+    });
+
+    it('should leave executed_by alone when no harness is driving', async () => {
+
+        // The absence of a suffix is what makes its presence meaningful; a
+        // human-driven row must stay exactly what it was.
+        const { recording } = await compileFor(
+            'postgres',
+            [{ match: /insert into/i, rows: [{ id: 1 }] }],
+            { TERM_PROGRAM: 'iTerm.app', CI: 'true' },
+        );
+
+        expect(recording.queries[0]!.parameters).toContain('test@example.com');
+        expect(recording.queries[0]!.parameters.join(' ')).not.toContain('(via');
+
+    });
+
+    it('should stamp provenance on every dialect', async () => {
+
+        // The suffix rides in the identity string precisely so it needs no
+        // per-dialect support; this asserts that claim rather than assuming it.
+        for (const dialect of ['postgres', 'sqlite', 'mysql', 'mssql'] as const) {
+
+            const { recording } = await compileFor(
+                dialect,
+                [{ match: /insert into/i, rows: [{ id: 1 }], insertId: 1n }],
+                { CURSOR_AGENT: '1' },
+            );
+
+            expect(recording.queries[0]!.parameters).toContain('test@example.com (via Cursor)');
+
+        }
+
+    });
+
+    it('should persist provenance to a real database, not just the bound parameters', async () => {
+
+        const db = new Kysely<NoormDatabase>({
+            dialect: new SqliteDialect({
+                database: new BunSqliteDatabase(':memory:') as never,
+            }),
+        });
+
+        await v1.up(db as Kysely<unknown>, 'sqlite');
+
+        const [id] = await insertOperationRecord({
+            db,
+            ndb: noormDb(db, 'sqlite'),
+            dialect: 'sqlite',
+            table: getNoormTables('sqlite').change,
+            values: VALUES,
+            env: { CLAUDECODE: '1' },
+        });
+
+        const row = await db
+            .selectFrom('__noorm_change__')
+            .select(['executed_by'])
+            .where('id', '=', id!)
+            .executeTakeFirst();
+
+        expect(row?.executed_by).toBe('test@example.com (via Claude Code)');
+
+        await db.destroy();
 
     });
 

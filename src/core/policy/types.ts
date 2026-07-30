@@ -13,19 +13,22 @@
 export type Role = 'viewer' | 'operator' | 'admin';
 
 /**
- * Who is asking — CLI/TUI/SDK callers are `user`, the MCP server is `mcp`.
+ * Who is *driving* — a human at the keyboard is `user`, an AI agent is
+ * `agent`, whichever binary it reached for. Deliberately not "which
+ * transport was used": an agent that shells out to the CLI after an MCP
+ * refusal is still an agent. Resolved from provenance by `resolveChannel`.
  * Not an identity system; there are no user accounts.
  */
-export type Channel = 'user' | 'mcp';
+export type Channel = 'user' | 'agent';
 
 /**
- * Per-channel access for a config. `mcp: false` means the config is
- * invisible on the MCP channel — not a role, and never consulted by
- * `checkPolicy` (visibility is enforced upstream of policy).
+ * Per-channel access for a config. `agent: false` means the config is
+ * invisible to agents on *both* transports — not a role, and never consulted
+ * by `checkPolicy` (visibility is enforced upstream of policy).
  */
 export interface ConfigAccess {
     user: Role;
-    mcp: Role | false;
+    agent: Role | false;
 }
 
 /**
