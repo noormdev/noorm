@@ -119,6 +119,26 @@ Commit the model folder in the repository whose schema it describes. It diffs cl
 A model that lives in a wiki or a drawing tool drifts within a quarter. One that lives in the repo and gates CI does not.
 
 
+## A model that follows all of this
+
+
+Reading a finished model beats reading rules about one. [`models/llm-memory-db-mssql`](https://github.com/noormdev/ignatius/tree/main/models/llm-memory-db-mssql) in the ignatius repo is the memory database an AI coding agent writes to, and it is the model in the [demo recording](/modeling/#information-modeling).
+
+```bash
+git clone https://github.com/noormdev/ignatius.git
+ignatius serve ignatius/models/llm-memory-db-mssql -o
+```
+
+It runs 38 entities across 8 groups, 27 processes in 6 diagrams, and one external actor, and `ignatius validate` reports no findings. Things worth looking at while it is open:
+
+- **Every entity and every process carries examples.** All 38 and all 27, with no exceptions, which is what the practice above asks for and what most models skip first.
+- **The key conventions are mixed on purpose.** `Agent` and `Artifact` are surrogate roots, while `Milestone` → `Task` (`milestone_id, task_no`) → `Task_Artifact` (`milestone_id, task_no, artifact_id`) inherits the whole way down. The transactional spine inherits; the things with independent identity do not.
+- **Classification is visible, not declared.** Reference tables, associatives like `Memory_Tag`, and the `StateTransition` subtype cluster all get their shape from their keys.
+- **The bodies carry business rules.** `Agent` explains why rows default `agent_id` to a sentinel: memories written before an agent existed, or after one is deleted, stay intact instead of being orphaned. No schema records that.
+
+Two practices it does not exercise, because the domain has no occasion for them: it has no non-`db` stores and no sub-diagrams. For those, read [`models/key-inherited`](https://github.com/noormdev/ignatius/tree/main/models/key-inherited), which validates clean at 24 entities and has both a `file:` store with a retention policy in its body and a decomposed process with a balanced child diagram.
+
+
 ## Related
 
 
