@@ -143,6 +143,7 @@ gtag('config', 'G-Y69K95866J');`],
                     {
                         text: 'Getting Started',
                         items: [
+                            { text: 'Why noorm', link: '/why-noorm' },
                             { text: 'Installation', link: '/getting-started/installation' },
                             { text: 'First Build', link: '/getting-started/first-build' },
                             { text: 'Building Your SDK', link: '/getting-started/building-your-sdk' },

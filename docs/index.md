@@ -69,6 +69,8 @@ Everything else follows from that split:
 - **The SDK** wraps it all in a type-safe client — Kysely queries, stored procedures, and TVFs
 - **Headless mode** makes every command scriptable, with `--json` on anything worth parsing
 
+noorm is the fifth attempt at this problem, and every feature in it exists because working without an ORM was worse without it. [Why noorm](/why-noorm) is the longer version of that story.
+
 
 ## Quick start
 
