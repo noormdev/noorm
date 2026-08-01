@@ -13,6 +13,26 @@ You do not have to model that by hand. noorm exposes the schema to a coding agen
 The result is an ignatius model of the system you already run: a diagram to hand to people, a dictionary of what every table is for, and a base to plan the next change against.
 
 
+## Where this sits in IDEF1X
+
+
+Extraction is not a detour around the methodology. It is a recognized path inside it. IDEF1X calls this the **bottom-up** approach, inferring a logical model from the physical artifacts that already exist, and the full round trip of reverse-engineer, adjust for new requirements, then forward-engineer is **re-engineering**.
+
+The discipline is also specific about how far bottom-up gets you, which is worth knowing before you start rather than after. A *data model* describes a physical database. An *information model* describes the logical requirements a system satisfies. Reverse-engineering climbs from the first toward the second in levels:
+
+| Level | What you get | What it is worth |
+|---|---|---|
+| 1 | Current-system documentation, a physical model | Guaranteed only to show what **is** |
+| 2 | Application-level logical model | The requirements the system currently satisfies, with no claim about whether they are right |
+| 3 | Business-level model | A basis for future design, and unreachable without the business participating directly |
+
+An agent with schema access reaches level 1 quickly and gets a good way into level 2. It cannot reach level 3 on its own, because the information at that level was never in the database. It is in the heads of the people who run the business, and the only way out is to ask them.
+
+The IDEF1X literature is blunt about the risk, and the warning is the reason this page ends with a review step rather than a success message: **a model of what you have is not a model of what you want.** Assumptions compound as you climb the levels, and their source is the past, mistakes included. That is also why the skill records anti-patterns instead of quietly correcting them. Faithful first, better second, with the "better" being a conversation you have afterward rather than something extraction decides for you.
+
+The [`idef1x` skill](https://www.skills.sh/damusix/skills/idef1x) carries the methodology itself if you want an agent applying it alongside you.
+
+
 ## What you need
 
 - noorm installed, with a config that connects to the database ([installation](/getting-started/installation))
@@ -153,6 +173,8 @@ ignatius serve models/legacy -o
 `validate` exits `1` on errors and `0` otherwise, so it works as a gate. A clean run means the model is internally consistent. It does not mean the model is right, and the two failures worth hunting are ones no linter catches: a table the agent could not see, and a purpose it invented because the schema could not tell it one.
 
 Read the entity bodies with that in mind. Any entity whose description restates its columns rather than explaining what it is for is a question the agent could not answer from the schema, and the answer is in your head or nobody's. Those paragraphs are the part of the model worth the most later, and the part only you can supply.
+
+This is the climb from level 2 to level 3, and it is the work reverse-engineering cannot do for you. An extracted model tells you what the database is. Turning that into what the business means, and then into what it should be, takes the people who run it. Serve the model, walk them through it, and let the arguments start.
 
 
 ## Related
