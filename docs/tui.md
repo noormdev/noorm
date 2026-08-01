@@ -137,7 +137,7 @@ Press `a` to add one. Adding a config is the one operation that is interactive o
 
 ![The add-config form: name, dialect, connection details, and per-channel access roles](/image/tui/config-add.png)
 
-The two role fields set access per **channel**: `User Role` covers the CLI, TUI, and SDK, while `MCP Role` covers an AI agent connected over MCP. They are independent, so a config can be wide open at your terminal and read-only — or invisible — to an agent. See [Configs](/guide/environments/configs#access-roles) for what each role permits.
+The two role fields set access per **channel** — who is *driving*. `User Role` covers a human on the CLI, TUI, or SDK; `Agent Role` covers an AI agent, over MCP and the CLI alike. They are independent, so a config can be wide open at your terminal and read-only — or invisible — to an agent. New configs default to `admin` for you and `viewer` for the agent. See [Configs](/guide/environments/configs#access-roles) for what each role permits.
 
 
 ### Changes List

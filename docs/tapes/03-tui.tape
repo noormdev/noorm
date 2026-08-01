@@ -97,12 +97,14 @@ Sleep 1s
 Enter
 Sleep 1200ms
 
-# MCP Role — step up from Admin to Viewer, so an agent connected over MCP gets
-# read-only against this config. That access split is worth showing.
-Up
-Sleep 500ms
-Up
-Sleep 800ms
+# Agent Role — already Viewer: DEFAULT_ACCESS is { user: 'admin', agent:
+# 'viewer' }, so an agent gets read-only against this config out of the box.
+# That access split is the point, so just confirm it.
+#
+# Do not "helpfully" arrow to Viewer here. This tape used to press Up twice to
+# get there from Admin, which was correct until the default changed; the same
+# two presses now wrap round to Admin and hand an agent full access while the
+# recording still claims read-only. Selects follow the default, not a position.
 Enter
 Sleep 1200ms
 
