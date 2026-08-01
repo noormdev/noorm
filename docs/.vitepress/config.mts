@@ -264,7 +264,9 @@ gtag('config', 'G-Y69K95866J');`],
 
             footer: {
                 message: 'Database Schema & Change Manager',
-                copyright: `© ${new Date().getFullYear()} <a href="https://github.com/noormdev">noorm</a> · <a href="https://github.com/noormdev/noorm">GitHub</a> · <a href="https://www.npmjs.com/org/noormdev">npm</a> · ISC License`,
+                // MIT to match LICENSE and every package.json in the repo. This
+                // read "ISC" until 2026-08 and matched nothing that ships.
+                copyright: `© ${new Date().getFullYear()} <a href="https://github.com/noormdev">noorm</a> · <a href="https://github.com/noormdev/noorm">GitHub</a> · <a href="https://www.npmjs.com/org/noormdev">npm</a> · <a href="https://github.com/noormdev/noorm/blob/master/LICENSE">MIT License</a>`,
             },
         },
     }),

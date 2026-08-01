@@ -1,5 +1,7 @@
 <template>
-    <div class="hero-eyebrow">V1.0 · ISC · POSTGRES · MYSQL · SQLITE · MSSQL</div>
+    <!-- MIT to match LICENSE and every package.json. This said ISC until
+         2026-08 and was the most visible license claim on the site. -->
+    <div class="hero-eyebrow">V1.0 · MIT · POSTGRES · MYSQL · SQLITE · MSSQL</div>
 </template>
 
 <style scoped>
