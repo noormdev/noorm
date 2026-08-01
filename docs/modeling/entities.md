@@ -10,6 +10,18 @@ IDEF1X is the premise ignatius is built on. In IDEF1X an entity is defined by ho
 
 You can still model an ORM-style schema where every table has one surrogate `id`. ignatius draws that correctly too. It is not what the tool optimizes for.
 
+::: tip Modeling IDEF1X with an agent
+IDEF1X is a methodology, not a file format. The calls it asks you to make (what counts as an entity, where identity comes from, which relationships are identifying) are the ones no tool can make for you.
+
+If you want an agent reasoning in those terms alongside you, there is a separate [`idef1x` skill](https://www.skills.sh/damusix/skills/idef1x) that installs with the same `skills` CLI as the modeling skill:
+
+```bash
+npx skills add https://github.com/damusix/skills --skill idef1x
+```
+
+It advises on method. The [`noorm-modeling` skill](/modeling/modeling-skill) writes the files. Neither is required to use ignatius, and the rest of this page assumes neither.
+:::
+
 
 ## The folder format
 
@@ -279,4 +291,5 @@ Groups set a border color and a pastel fill for their entities. They do not affe
 
 - [Data flows](/modeling/data-flows) puts these entities to work as data stores in process diagrams.
 - [The case for proper relational design](/guide/relational-design) makes the argument for inherited keys in the database itself.
+- The [`idef1x` skill](https://www.skills.sh/damusix/skills/idef1x) coaches an agent through the methodology itself, separately from ignatius.
 - The [derivation guide](https://github.com/noormdev/ignatius/blob/main/docs/guides/derivation.md) and the [folder format reference](https://github.com/noormdev/ignatius/blob/main/docs/guides/folder-format.md) carry the exhaustive rules.
