@@ -1,69 +1,59 @@
 ---
 type: Domain
+description: Ink/React TUI launched by `noorm ui` — a custom focus-stack keyboard router, per-domain screen registry, and shared providers for state, connection, and shutdown lifecycle.
 ---
 
 # tui
 
 ## What it does
 
-Ink/React-based terminal UI launched by `noorm ui`. Full-screen interactive interface with a home screen, keyboard-driven navigation, and per-domain screens for all noorm operations. Focus management, keyboard routing, and observer-based state updates are core TUI concerns.
+- Renders the interactive terminal UI launched via `noorm ui` ([`src/cli/ui.ts`](../../src/cli/ui.ts)), the only CLI subcommand that mounts Ink.
+- Routes navigation through a 109-member string-union `Route` type ([`src/tui/types.ts`](../../src/tui/types.ts)); the flat `SCREENS` registry ([`src/tui/screens.tsx`](../../src/tui/screens.tsx)), keyed by route, registers 94 of those routes to screens — unregistered routes fall through to `NotFoundScreen`.
+- Owns a custom focus stack ([`src/tui/focus.tsx`](../../src/tui/focus.tsx)) that gates which component receives keyboard input, used instead of `@inkjs/ui`'s incompatible internal focus system.
+- Bridges core managers (`StateManager`, `SettingsManager`) and the `@logosdx/observer` event bus into React state via `AppContextProvider` ([`src/tui/app-context.tsx`](../../src/tui/app-context.tsx)).
+
+## Artifacts
+
+- [`.claude/rules/tui-development.md`](../../.claude/rules/tui-development.md) — path-scoped rules for this domain: focus system, `@inkjs/ui` boundary, keyboard handling, screen focus ownership, UI patterns (toast + `back()`), Ink layout, observer hooks, and testing conventions. Frontmatter scopes it to `src/tui/**/*.{ts,tsx}, tests/tui/**/*.{ts,tsx}`.
+- [`tests/cli/components/`](../../tests/cli/components) — component tests (`dialogs`, `DismissableAlert`, `form-navigation`, `forms`, `layout`, `lists`, `status`) using `ink-testing-library`.
+- [`tests/cli/hooks/`](../../tests/cli/hooks) — hook tests (`useObserver`, `useTransferProgress`, `useUpdateChecker`, `useVaultSecretKeys`).
+- [`tests/cli/screens/`](../../tests/cli/screens) — screen tests, mirroring [`src/tui/screens/`](../../src/tui/screens) subdirectories (`change/`, `config/`, `db/`, `init/`).
 
 ## CLI code
 
-- [`src/tui/app.tsx`](../../src/tui/app.tsx) — root component; mounts `AppContext`, `ObserverContext`, focus/keyboard providers
-- [`src/tui/app-context.tsx`](../../src/tui/app-context.tsx) — `AppContext` (1196L); global state: active config, settings, lock status, update check, screen routing
-- [`src/tui/screens.tsx`](../../src/tui/screens.tsx) — `ScreenRegistry`; maps screen IDs to components (664L)
-- [`src/tui/screens/home.tsx`](../../src/tui/screens/home.tsx) — home screen; keyboard shortcuts for all domains (635L)
-- [`src/tui/router.tsx`](../../src/tui/router.tsx) — `Router`; screen stack push/pop navigation
-- [`src/tui/focus.tsx`](../../src/tui/focus.tsx) — `FocusManager`; focus stack for nested interactive components
-- [`src/tui/keyboard.tsx`](../../src/tui/keyboard.tsx) — `KeyboardManager`; global key event routing with priority stacking (401L)
-- [`src/tui/observer-context.ts`](../../src/tui/observer-context.ts) — `ObserverContext`; provides observer singleton to React tree
-- [`src/tui/shutdown.tsx`](../../src/tui/shutdown.tsx) — graceful shutdown sequence with progress display
-- [`src/tui/types.ts`](../../src/tui/types.ts) — TUI type contracts (Screen, ScreenProps, etc.) (470L)
-- [`src/tui/components/`](../../src/tui/components) — shared UI components: dialogs, feedback, forms, layout, lists, overlays, secrets, status, terminal
-- [`src/tui/hooks/`](../../src/tui/hooks) — 14 hooks: `useObserver`, `useConnection`, `useChangeProgress`, `useRunProgress`, `useTransferProgress`, `useLockStatus`, `useVaultConnection`, `useVaultSecretKeys`, `useSettingsOperation`, `useUpdateChecker`, `useSecretSource`, `useAsyncEffect`, `useLoadGuard`
-- [`src/tui/providers/ConnectionProvider.tsx`](../../src/tui/providers/ConnectionProvider.tsx) — `ConnectionProvider`; DB connection lifecycle for TUI screens
-- [`src/tui/utils/`](../../src/tui/utils) — 12 utilities: path resolution, connection helpers, config validation, clipboard, change-loader
-- [`src/tui/screens/change/`](../../src/tui/screens/change) — 12 change-related screens
-- [`src/tui/screens/config/`](../../src/tui/screens/config) — 11 config screens
-- [`src/tui/screens/db/`](../../src/tui/screens/db) — 11 DB screens + 1 subdir
-- [`src/tui/screens/debug/`](../../src/tui/screens/debug) — 4 debug screens
-- [`src/tui/screens/identity/`](../../src/tui/screens/identity) — 6 identity screens
-- [`src/tui/screens/init/`](../../src/tui/screens/init) — 4 init wizard screens
-- [`src/tui/screens/lock/`](../../src/tui/screens/lock) — 6 lock screens
-- [`src/tui/screens/run/`](../../src/tui/screens/run) — 7 run screens
-- [`src/tui/screens/secret/`](../../src/tui/screens/secret) — 4 secret screens
-- [`src/tui/screens/settings/`](../../src/tui/screens/settings) — 17 settings screens
-- [`src/tui/screens/vault/`](../../src/tui/screens/vault) — 5 vault screens
-- [`src/tui/screens/UpdateScreen.tsx`](../../src/tui/screens/UpdateScreen.tsx) — update available prompt
-- [`src/tui/screens/MoreScreen.tsx`](../../src/tui/screens/MoreScreen.tsx) — extended help screen
-
-## Docs
-
-- [`docs/tui.md`](../tui.md) — TUI user guide (407L)
-- [`docs/dev/ink-cheatsheet.md`](../dev/ink-cheatsheet.md) — Ink layout reference for developers (1427L)
-- [`docs/dev/ink-testing-library-cheatsheet.md`](../dev/ink-testing-library-cheatsheet.md) — testing cheatsheet (737L)
-- [`.claude/rules/tui-development.md`](../../.claude/rules/tui-development.md) — TUI development rules (focus system, UI patterns, layout)
-- [`.claude/skills/noorm-design/`](../../.claude/skills/noorm-design) — design system assets and colors
+- [`src/tui/app.tsx`](../../src/tui/app.tsx) — root `App` component; wires the provider hierarchy (`ShutdownProvider` → `NoormObserver` → `AppContextProvider` → `ConnectionProvider` → `ToastProvider` → `FocusProvider` → `RouterProvider` → `AppShell`) and renders the header/breadcrumb, `ScreenRenderer`, and status bar.
+- [`src/tui/app-context.tsx`](../../src/tui/app-context.tsx) — `AppContextProvider`/`useAppContext` and derived hooks (`useActiveConfig`, `useLockStatus`, `useGlobalModes`, `useDryRunMode`, `useForceMode`, `useExploreFilters`); also exports `LoadingGuard`, `ConfigGuard`, `IdentityGuard`.
+- [`src/tui/focus.tsx`](../../src/tui/focus.tsx) — `FocusProvider`, `useFocusScope`, `useIsFocused`, `useActiveFocus`; stack-based, last-pushed-wins.
+- [`src/tui/keyboard.tsx`](../../src/tui/keyboard.tsx) — `GlobalKeyboard` (Ctrl+C, Shift+L log viewer, Shift+Q SQL terminal, `?` help / 4-press-within-750ms debug-mode easter egg, `D`/`F` dry-run/force toggles); `useFocusedInput`, `useListKeys`, `useQuitHandler`.
+- [`src/tui/router.tsx`](../../src/tui/router.tsx) — `RouterProvider`/`useRouter` with `navigate`/`back`/`replace`/`reset`, a history stack, and `router:navigated`/`router:popped` observer events.
+- [`src/tui/screens.tsx`](../../src/tui/screens.tsx) — the `SCREENS` route registry and `ScreenRenderer`; `getRouteLabel`, `getRegisteredRoutes`, `isRouteRegistered`, `registerScreen`.
+- [`src/tui/types.ts`](../../src/tui/types.ts) — `Route` union, `RouteParams`, `RouterContextValue`, `FocusContextValue`, `ScreenProps`/`ScreenEntry`, `getSection`/`getParentRoute`/`isNumericString`.
+- [`src/tui/shutdown.tsx`](../../src/tui/shutdown.tsx) — `ShutdownProvider`/`useShutdown`; `gracefulExit()` drives `LifecycleManager.shutdown()` and shows a phased `ShutdownScreen` before emitting the `app:exit` observer event.
+- [`src/tui/observer-context.ts`](../../src/tui/observer-context.ts) — `NoormObserver`/`useNoormObserver`, built via `@logosdx/react`'s `createObserverContext` over the shared `observer` singleton.
+- [`src/tui/components/`](../../src/tui/components) — shared UI: `layout/` (`Panel`, `Divider`, `MissingParamPanel`, `NotFoundPanel`), `lists/` (`SelectList`, `SearchableList`, `ActionList`, `StatusList`), `forms/` (`Form`, `TextInput`), `feedback/` (`Toast`/`ToastProvider`, `DismissableAlert`, plus re-exports of `@inkjs/ui`'s `Spinner`/`ProgressBar`/`Alert`/`StatusMessage`/`Badge`), `dialogs/` (`Confirm`, `ProtectedConfirm`, `SmartConfirm`, `FilePicker`, `KeyHandler`), `status/` (`ConnectionStatus`, `LockStatus`), `secrets/` (definition/value forms and lists shared by settings and stage-secret screens), `overlays/` (`LogViewerOverlay`), `terminal/` (`SqlInput`, `ResultTable` for the SQL REPL). `components/index.ts` is the primary re-export surface consumed by screens, though some screens import subdirectory barrels (or files) directly instead — e.g. [`src/tui/screens/db/SqlTerminalScreen.tsx`](../../src/tui/screens/db/SqlTerminalScreen.tsx) and `SqlHistoryScreen.tsx` from `components/terminal/`, [`src/tui/screens/debug/DebugListScreen.tsx`](../../src/tui/screens/debug/DebugListScreen.tsx) from `components/lists/`, [`src/tui/screens/init/ProjectSetup.tsx`](../../src/tui/screens/init/ProjectSetup.tsx), `IdentitySetup.tsx`, `InitScreen.tsx` from multiple subdirectory barrels, and [`src/tui/screens/identity/IdentityEditScreen.tsx`](../../src/tui/screens/identity/IdentityEditScreen.tsx) from `components/forms/`.
+- [`src/tui/hooks/`](../../src/tui/hooks) — `useObserver.ts` (`useOnEvent`, `useOnceEvent`, `useEmit`, `useOnScreenPopped`), plus `useConnection.ts`, `useVaultConnection.ts`, `useVaultSecretKeys.ts`, `useLockStatus.ts`, `useLoadGuard.ts`, `useRunProgress.ts`, `useTransferProgress.ts`, `useChangeProgress.ts`, `useUpdateChecker.ts`, `useSettingsOperation.ts`, `useSecretSource.ts`, `useAsyncEffect.ts`; re-exported from `hooks/index.ts`.
+- [`src/tui/providers/ConnectionProvider.tsx`](../../src/tui/providers/ConnectionProvider.tsx) — `ConnectionProvider`/`useConnectionContext`; holds one lazily-created Kysely connection keyed by `activeConfigName`, destroyed on config change or unmount.
+- [`src/tui/utils/`](../../src/tui/utils) — screen-facing helpers: `change-context.ts`, `change-loader.ts`, `clipboard.ts`, `config-validation.ts`, `connection.ts`, `date.ts`, `error.ts`, `identity.ts`, `paths.ts`, `run-context.ts`, `settings-validation.ts`, `string.ts`. All but `date.ts` are re-exported from `utils/index.ts`; `date.ts` is not in the barrel — consumers (`home.tsx`, `ChangeHistoryScreen.tsx`, `ChangeListScreen.tsx`, `identity/KnownUsersScreen.tsx`) import `relativeTimeAgo` directly from `../utils/date.js`.
+- [`src/tui/screens/`](../../src/tui/screens) — per-domain screen components: `change/`, `config/`, `db/` (including `db/explore/`), `debug/`, `identity/`, `init/`, `lock/`, `run/`, `secret/`, `settings/`, `vault/`, plus top-level `home.tsx`, `MoreScreen.tsx`, `not-found.tsx`, `UpdateScreen.tsx`. Each multi-screen subdirectory exports its screens through a local `index.ts` (e.g. [`src/tui/screens/config/index.ts`](../../src/tui/screens/config/index.ts)) that `screens.tsx` imports from.
 
 ## Coupling
 
-- All TUI screens consume observer events from [`src/core/observer.ts`](../../src/core/observer.ts) — observer event shape changes break TUI hooks.
-- `useConnection` and `ConnectionProvider` use [`src/core/connection/manager.ts`](../../src/core/connection/manager.ts) — connection manager resets affect TUI session.
-- [`src/tui/utils/paths.ts`](../../src/tui/utils/paths.ts) uses `settings.paths.sql`/`settings.paths.changes` from SettingsManager — not per-config paths (see project CLAUDE.md).
-- Lifecycle shutdown ([`src/core/lifecycle/`](../../src/core/lifecycle)) drives [`src/tui/shutdown.tsx`](../../src/tui/shutdown.tsx) — shutdown phase changes affect TUI teardown.
-- TUI is launched by [`src/cli/ui.ts`](../../src/cli/ui.ts) — CLI dependency.
-- `SmartConfirm`/`ProtectedConfirm` ([`src/tui/components/dialogs/`](../../src/tui/components/dialogs)) take `requiresConfirmation`/`confirmationPhrase` from a `PolicyCheck` (`checkConfigPolicy`, `core/policy`) instead of a config's `protected` flag — every destructive-action screen (change run/revert/ff, db create/destroy/teardown/truncate, config rm) calls `checkConfigPolicy` directly to build these props.
-- [`src/tui/utils/config-validation.ts`](../../src/tui/utils/config-validation.ts) builds `ConfigAccess` from the Add/Edit config forms' `userRole`/`mcpRole` select fields (`buildAccessFromValues`) — `ConfigAddScreen`/`ConfigEditScreen` replaced the old single `protected` checkbox with these two role selects.
-- [`src/tui/app-context.tsx`](../../src/tui/app-context.tsx) derives placeholder stage configs' `access` from `stage.defaults.protected` via `GUARDED_ACCESS`/`DEFAULT_ACCESS` (`core/policy`).
+- **core-change**: screens under [`src/tui/screens/change/`](../../src/tui/screens/change) import `ChangeHistory`, `discoverChanges`, and change types directly from [`src/core/change/`](../../src/core/change); `home.tsx` also reads `ChangeHistory` for the recent-activity panel. Changes to `ChangeHistory`'s or `UnifiedHistoryRecord`'s shape force edits here.
+- **core-config / core-state**: `app-context.tsx` instantiates `StateManager`/`SettingsManager` from [`src/core/state/`](../../src/core/state) and [`src/core/settings/`](../../src/core/settings) and mirrors their `Config`/`Settings` types; `SettingsProvider` from [`src/core/config/resolver.ts`](../../src/core/config/resolver.ts) is used by config screens (e.g. `ConfigEditScreen.tsx`).
+- **core-db** (connection/explore/transfer/teardown): `ConnectionProvider` calls `createConnection` from [`src/core/connection/`](../../src/core/connection); `testConnection` is called separately, by `ConfigAddScreen.tsx`, `ConfigEditScreen.tsx`, `SqlTerminalScreen.tsx`, and `LockForceScreen.tsx`. `db/` screens import `fetchOverview` from [`src/core/explore/`](../../src/core/explore), plus transfer/teardown/dt types from [`src/core/transfer/`](../../src/core/transfer), [`src/core/teardown/`](../../src/core/teardown), [`src/core/dt/`](../../src/core/dt).
+- **core-identity**: `identity/` screens and `app-context.tsx` use `loadExistingIdentity`/`CryptoIdentity` from [`src/core/identity/`](../../src/core/identity); `vault/` screens use [`src/core/vault/`](../../src/core/vault).
+- **core-policy**: `SmartConfirm`, `ConfigRemoveScreen`, `DbCreateScreen`, `DbDestroyScreen`, `DbTruncateScreen`, `DbTeardownScreen`, `DbTransferScreen`, `LockForceScreen`, `RunBuildScreen`, `VaultScreen`, and all `change/*` mutation screens (`ChangeFFScreen`, `ChangeNextScreen`, `ChangeRemoveScreen`, `ChangeRevertScreen`, `ChangeRewindScreen`, `ChangeRunScreen`) call `checkConfigPolicy`/`confirmationPhraseFor` from [`src/core/policy/`](../../src/core/policy) to decide plain `Confirm` vs. typed-phrase `ProtectedConfirm`; a change to `PolicyCheck`'s shape forces edits in `SmartConfirm.tsx` and every caller listed above. `app-context.tsx` also derives placeholder stage configs' `access` from `GUARDED_ACCESS`/`DEFAULT_ACCESS`.
+- **core-identity** (lock): `home.tsx` and `lock/` screens call `getLockManager()` from [`src/core/lock/`](../../src/core/lock).
+- **core-state** (observer): `app-context.tsx` subscribes to the shared `observer` singleton ([`src/core/observer.ts`](../../src/core/observer.ts)) directly via `observer.on(...)` (`state:loaded`, `config:activated`, `connection:*`, `lock:*`, etc.) and mirrors it into context state. No screen calls `useOnEvent`/`useOnceEvent`/`observer.on(...)` directly; screens instead consume domain-specific wrapper hooks — `useLockStatus`, `useConnection`, `useRunProgress`, `useTransferProgress`, `useChangeProgress`, `useVaultConnection`, `useVaultSecretKeys`, `useLoadGuard`, `useUpdateChecker` — some of which (`useRunProgress`, `useTransferProgress`, `useChangeProgress`) wrap `useOnEvent` internally, others of which derive from `app-context.tsx`'s state or don't touch the observer at all. Event-contract changes still ripple across this whole domain.
+- **cli**: [`src/cli/ui.ts`](../../src/cli/ui.ts) and [`src/cli/sql/repl.ts`](../../src/cli/sql/repl.ts) are the only entry points that mount `App`; both independently (not centrally) own suppressing logger output (an identical null `Writable` stream) so Ink's rendering isn't corrupted, and own the `app:exit` → `clear()`/`unmount()` teardown sequence.
 
 ## Conventions worth knowing
 
-- Tests use `ink-testing-library`: `render()` → `await new Promise(r => setTimeout(r, 50))` → `stdin.write()` → `lastFrame()` → `unmount()`.
-- Key codes for tests: Tab=`\t`, Shift+Tab=`\x1b[Z`, Down=`\x1b[B`, Up=`\x1b[A`, Enter=`\r`, Esc=`\x1b`.
-- Focus stack initialized in `useEffect` — must wait 50ms after render before sending input in tests.
-- `numberNav` prop on `SelectList` enables 1-9 quick selection.
-- Home screen hotkeys: `c`=config, `g`=changes, `r`=run, `d`=db, `l`=lock, `s`=settings, `k`=secrets, `i`=identity, `q`=quit.
-- Sub-screen hotkeys: `a`=add, `e`=edit, `d`=delete, `x`=export, `i`=import, `u`=use/activate, `v`=validate, `k`=secrets.
-- `Shift+L` toggles log viewer overlay globally.
-- `guarded()` (re-exported for the TUI as `isConfigGuarded` in [`src/tui/utils/config-validation.ts`](../../src/tui/utils/config-validation.ts)) is display-only styling, never an enforcement input — `checkConfigPolicy` is the only gate.
+- Focus routing is stack-based, not DOM-based: `useFocusScope(label)` pushes an ID on mount and pops on unmount; only the top-of-stack ID is `isFocused`. Check `isFocused` inside the `useInput` handler body — never via `useInput`'s `isActive` option — because the option skips handler registration and `isFocused` is still `false` during the first render.
+- `@inkjs/ui`'s `Select`, `MultiSelect`, and `ConfirmInput` are not used because they drive their own internal focus, invisible to this app's stack; `SelectList`, `Form`, `Confirm`/`SmartConfirm` are the custom replacements. `TextInput`, `Spinner`, `Badge`, `ProgressBar` from `@inkjs/ui` are used directly since they're display-only or externally controlled.
+- A screen whose primary content is a `Form` (or other self-focusing component) does not call `useFocusScope` at the screen level — the two scopes would compete for the same stack slot. `ConfigEditScreen.tsx` follows this: no screen-level `useFocusScope`; `Form` owns focus via its own `focusLabel` prop.
+- Global hotkeys route through `GlobalKeyboard` in [`src/tui/keyboard.tsx`](../../src/tui/keyboard.tsx); screen/component-local hotkeys are declared inside each screen's own `useInput` (e.g. `HomeScreen`'s single-letter navigation block). `?`/`D`/`F` are suppressed once `stack.length > 1` (once something below the root has claimed focus, treated as "likely a text input").
+- Route params (`RouteParams` in [`src/tui/types.ts`](../../src/tui/types.ts)) are one shared shape reused across all screens (`name`, `count`, `path`, `stage`, `schema`, `operationId`, `query`, `topic`, `table`, `rowId`, `force`, `fromInit`) rather than per-route param types.
+- Screens with multiple named exports live in a subdirectory with a local `index.ts` re-exporting each screen ([`src/tui/screens/config/index.ts`](../../src/tui/screens/config/index.ts), [`src/tui/screens/db/index.ts`](../../src/tui/screens/db/index.ts), etc.); `screens.tsx` imports only from these subdirectory index files, never individual screen files directly.
+- Success/error feedback uses `useToast().showToast(...)` followed by `back()` to pop router history, rather than a dedicated confirmation screen — exercised in `ConfigEditScreen.tsx`'s submit handler.
+- Tests wrap components in `<FocusProvider>`/`<NoormObserver>` (and `RouterProvider`/`AppContextProvider` for screen-level tests) using `ink-testing-library`'s `render`, wait ~50ms after render for the focus stack's `useEffect` to run before sending `stdin.write(...)` keystrokes, and call `unmount()` afterward to release stdin handlers.

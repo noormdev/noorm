@@ -1,76 +1,88 @@
 ---
 type: Domain
+description: Citty CLI entry point, command-group orchestration, help system, headless output contract, and binary packaging for `noorm`
 ---
 
 # cli
 
 ## What it does
 
-Citty-based CLI with 17 top-level command groups. Each command group maps to a subdirectory under [`src/cli/`](../../src/cli). Commands emit events via the observer and delegate to core modules. Headless mode (`--yes`, `--json`) suppresses interactive prompts and formats output as JSON.
+[`src/cli/index.ts`](../../src/cli/index.ts) is the citty entry point: it registers 19 top-level `subCommands` (13 command groups that each carry their own subcommands — `change`, `ci`, `config`, `db`, `dev`, `identity`, `lock`, `mcp`, `run`, `secret`, `settings`, `sql`, `vault` — plus 6 standalone leaf commands — `info`, `init`, `ui`, `update`, `version`, `complete`), each lazily imported via a thunk, except `complete` which is a directly-assigned zero-cost stub to avoid forcing every other thunk to resolve during tab-completion registration.
 
-Published as `@noormdev/cli` from [`packages/cli/`](../../packages/cli).
+Every subcommand except `noorm ui`, `noorm sql repl`, `noorm settings edit`, `noorm settings secret`, and `noorm init` is non-interactive by default; commands accept `--json`/`--yes`/`-y`/`--config`/`-c`/`--force`/`-f`/`--dry-run` from the shared `sharedArgs` in [`src/cli/_utils.ts`](../../src/cli/_utils.ts) and print a JSON envelope or plain text.
+
+Published to npm as `@noormdev/cli` from [`packages/cli/`](../../packages/cli); the npm package is a thin `noorm.js` shim that execs a separately-downloaded, `bun build --compile`-produced platform binary, verified against a checksum before use.
 
 ## Artifacts
 
-- [`packages/cli/package.json`](../../packages/cli/package.json) — published package `@noormdev/cli`, version `1.0.0-alpha.35`; entry `noorm.js`
-- [`packages/cli/noorm.js`](../../packages/cli/noorm.js) — thin wrapper that runs the compiled binary
-- [`packages/cli/scripts/postinstall.js`](../../packages/cli/scripts/postinstall.js) — postinstall script for binary extraction
-- [`packages/cli/CHANGELOG.md`](../../packages/cli/CHANGELOG.md) — CLI release history
-- [`skills/noorm/SKILL.md`](../../skills/noorm/SKILL.md) — Claude Code skill for noorm CLI usage
-- [`skills/noorm/references/cli.md`](../../skills/noorm/references/cli.md) — comprehensive CLI command reference (1011L)
-- [`skills/noorm/references/config.md`](../../skills/noorm/references/config.md) — config management reference
-- [`skills/noorm/references/sdk.md`](../../skills/noorm/references/sdk.md) — SDK reference for skill use
-- [`skills/noorm/references/templates.md`](../../skills/noorm/references/templates.md) — template reference for skill use
+- [`packages/cli/package.json`](../../packages/cli/package.json) — publishes `@noormdev/cli`, currently version `1.0.0`; declares `bin.noorm -> ./noorm.js`, `postinstall` script, `engines.node >=22.13`
+- [`packages/cli/noorm.js`](../../packages/cli/noorm.js) — ESM shim; resolves `bin/noorm` (or `bin/noorm.exe` on `win32`) next to itself and `execFileSync`s it with `stdio: 'inherit'`, forwarding the child's exit code
+- [`packages/cli/scripts/postinstall.js`](../../packages/cli/scripts/postinstall.js) — downloads the platform/arch-matched binary from `https://github.com/noormdev/noorm/releases/download/@noormdev/cli@<version>/noorm-<os>-<arch>`, verifies its SHA-256 against the release's `checksums.txt`, and only then `chmod`s and renames it into `bin/`; skips entirely when it detects the noorm monorepo source checkout (root [`package.json`](../../package.json) name `@noormdev/main` two directories up)
+- [`packages/cli/bin/`](../../packages/cli/bin) — gitignored (`.gitignore:35`); holds the platform binaries either downloaded by postinstall or built locally by `bun run build:binary`
+- [`packages/cli/README.md`](../../packages/cli/README.md), [`packages/cli/CHANGELOG.md`](../../packages/cli/CHANGELOG.md), [`packages/cli/LICENSE`](../../packages/cli/LICENSE) — published package metadata
+- [`skills/noorm/SKILL.md`](../../skills/noorm/SKILL.md) — Claude Code skill front matter and routing table (SDK vs CLI vs config vs templates reference)
+- [`skills/noorm/references/cli.md`](../../skills/noorm/references/cli.md) — CLI command reference consumed by the skill (activation, global flags, env vars, per-command usage, CI/CD examples, exit codes)
+- [`skills/noorm/references/sdk.md`](../../skills/noorm/references/sdk.md), [`skills/noorm/references/config.md`](../../skills/noorm/references/config.md), [`skills/noorm/references/templates.md`](../../skills/noorm/references/templates.md) — the skill's other three reference files
+- [`skills/noorm/evals/evals.json`](../../skills/noorm/evals/evals.json) — skill benchmark eval definitions
+- [`skills/noorm/workspace/iteration-1/`](../../skills/noorm/workspace/iteration-1) — recorded with/without-skill benchmark outputs (`cicd-pipeline`, `sdk-application-code`, `sdk-test-bootstrap`) used to grade the skill
 
 ## CLI code
 
-- [`src/cli/index.ts`](../../src/cli/index.ts) — citty entry point; registers all subcommands, help interceptor, `--cwd` global flag
-- [`src/cli/_utils.ts`](../../src/cli/_utils.ts) — shared CLI utilities: headless detection, output formatting, flag parsing
-- [`src/cli/change/`](../../src/cli/change) — `change add|edit|ff|history|list|next|revert|rewind|rm|run` (13 files)
-- [`src/cli/ci/`](../../src/cli/ci) — `ci init|secrets|identity/*` — CI automation commands
-- [`src/cli/config/`](../../src/cli/config) — `config add|cp|edit|export|import|list|rm|use|validate` (10 files)
-- [`src/cli/db/`](../../src/cli/db) — `db create|drop|explore*|reset|teardown|transfer|truncate` (16 files)
-- [`src/cli/dev/`](../../src/cli/dev) — `dev test-helpers|test-workers` — internal diagnostics
-- [`src/cli/identity/`](../../src/cli/identity) — `identity edit|export|init|list`
-- [`src/cli/lock/`](../../src/cli/lock) — `lock acquire|force|release|status`
-- [`src/cli/mcp/`](../../src/cli/mcp) — `mcp init|serve`
-- [`src/cli/run/`](../../src/cli/run) — `run build|dir|exec|file|files|inspect|preview` (8 files)
-- [`src/cli/secret/`](../../src/cli/secret) — `secret list|rm|set`
-- [`src/cli/settings/`](../../src/cli/settings) — `settings build|edit|init|secret` (5 files)
-- [`src/cli/sql/`](../../src/cli/sql) — `sql clear|history|query|repl`
-- [`src/cli/vault/`](../../src/cli/vault) — `vault cp|init|list|propagate|rm|set`
-- [`src/cli/init.ts`](../../src/cli/init.ts) — `noorm init` — project initialization wizard
-- [`src/cli/info.ts`](../../src/cli/info.ts) — `noorm info` — display project + env info
-- [`src/cli/ui.ts`](../../src/cli/ui.ts) — `noorm ui` — launch TUI
-- [`src/cli/update.ts`](../../src/cli/update.ts) — `noorm update` — self-update
-- [`src/cli/version.ts`](../../src/cli/version.ts) — `noorm version` — print version info
+- [`src/cli/index.ts`](../../src/cli/index.ts) — citty root command; `resolveCommand` walks argv to find the target command for the `--help` interceptor; `extractGlobalCwd` strips `-c`/`--cwd <path>` (and rejects any other flag) before the subcommand name, the only root-level flag; `rewriteBareSqlArgv` inserts a synthetic `query` token when `noorm sql "<SQL-looking text>"` is invoked bare, matched against a `SQL_VERBS` allowlist regex; `printHelpWithExamples` renders citty's usage plus an [`EXAMPLES`](../../EXAMPLES) block; `entry()` wires cwd resolution, env-based identity override installation (`loadIdentityFromEnv`/`setKeyOverride`/`setIdentityOverride`), the `complete` fast path, the `--help`/`-h` interceptor, and `runMain`
+- [`src/cli/_utils.ts`](../../src/cli/_utils.ts) — `sharedArgs` (`config`/`json`/`force`/`dryRun`/`yes`), `isYesMode`/`isInsecureMode` (flag-or-env truthy parsing, `NOORM_YES`/`NOORM_INSECURE`), `createCliLogger` (builds the `Logger` every CLI command runs under, reading `settings.logging.*`), `withContext`/`withVaultContext` (context create → connect → `ensureSchemaVersion` → run → disconnect → logger stop, returning `[result, null] | [null, Error]`), `outputResult`/`outputError` (stdout-only result output; `toJsonEnvelope` derives the envelope's `success` boolean from a payload's `status` field when `success` isn't already present), `handleVaultResult`
+- [`src/cli/_exit.ts`](../../src/cli/_exit.ts) — `EXIT` map (`SUCCESS: 0`, `FAILURE: 1`, `USAGE: 2`, `PARTIAL: 3`), `exitCodeForStatus` (unknown status collapses to `FAILURE`, never `SUCCESS`), `isSuccessStatus`
+- [`src/cli/info.ts`](../../src/cli/info.ts) — `noorm info`; gathers CLI/schema/state/settings versions, active config + connection details, identity + DB registration timestamps, detected agent harness (`detectAgentHarness`), and DB object counts into one report, tolerating partial failures at each step
+- [`src/cli/init.ts`](../../src/cli/init.ts) — `noorm init`; TTY-only unless `--yes` and a full identity already exist at `~/.noorm/identity.{key,pub,json}`; `--here` inits in the original cwd instead of a discovered parent [`.noorm`](../../.noorm); prompts for identity name/email via `@clack/prompts` when no identity exists, then calls `performProjectInit`
+- [`src/cli/ui.ts`](../../src/cli/ui.ts) — `noorm ui`; the only subcommand that renders the Ink/React TUI; `ink`/`react`/`../tui/app.js` are imported inside `run()` so no other command pays their load cost; installs a no-op `Writable` as the logger's console/diagnostics streams to keep Logger output from corrupting Ink's rendering
+- [`src/cli/update.ts`](../../src/cli/update.ts) — `noorm update`; checks GitHub for a newer release, shows a live download-progress line on a TTY (carriage-return in place) or periodic text otherwise, supports `--insecure`/`NOORM_INSECURE` to downgrade an unreachable-checksum failure to a warning (never a confirmed mismatch)
+- [`src/cli/version.ts`](../../src/cli/version.ts) — `noorm version`; reports Node/platform/arch, identity key paths and existence, and project/config detection — no DB connection required
+- [`src/cli/dev/index.ts`](../../src/cli/dev/index.ts) — `noorm dev`; internal diagnostics subcommand group (`test-helpers`, `test-workers`), not part of the 12 domain-owning command groups
+- [`src/cli/change/`](../../src/cli/change), [`src/cli/ci/`](../../src/cli/ci), [`src/cli/config/`](../../src/cli/config), [`src/cli/db/`](../../src/cli/db), [`src/cli/identity/`](../../src/cli/identity), [`src/cli/lock/`](../../src/cli/lock), [`src/cli/mcp/`](../../src/cli/mcp), [`src/cli/run/`](../../src/cli/run), [`src/cli/secret/`](../../src/cli/secret), [`src/cli/settings/`](../../src/cli/settings), [`src/cli/sql/`](../../src/cli/sql), [`src/cli/vault/`](../../src/cli/vault) — the 12 command groups registered by `index.ts` and covered in depth by `core-change`, `core-db`, `core-state`, `core-identity`, `mcp-rpc`, and `core-runner` respectively (see Coupling)
+
+### Tests (top-level, framework-scoped)
+
+- [`tests/cli/citty-args.ts`](../../tests/cli/citty-args.ts) — `assertArgsDef`; shared type-guard helper for driving citty's real `parseArgs` against a command's resolved `args` in tests
+- [`tests/cli/citty-help.test.ts`](../../tests/cli/citty-help.test.ts) — subprocess-driven; asserts the `--help` interceptor prints citty's `USAGE`/`COMMANDS` plus the [`EXAMPLES`](../../EXAMPLES) block, and that the breadcrumb (`USAGE noorm change add`, `USAGE noorm db explore tables`) is never doubled at any nesting depth
+- [`tests/cli/global-flags.test.ts`](../../tests/cli/global-flags.test.ts) — asserts `-c`/`--cwd` is the only flag honored before the subcommand; `--json`/`--yes`/`--dry-run`/an unrecognized flag placed before the subcommand all exit non-zero naming the flag and the fix, rather than being silently dropped
+- [`tests/cli/exit-codes.test.ts`](../../tests/cli/exit-codes.test.ts) and [`tests/cli/json-envelope.test.ts`](../../tests/cli/json-envelope.test.ts) — subprocess tests against the compiled CLI (`dist/cli/index.js` via `run/_setup.js` helpers) pinning `EXIT`/`toJsonEnvelope`: `run dir` with mixed file outcomes exits `PARTIAL` (3), all-fail exits `FAILURE` (1), a missing/empty target exits `USAGE` (2) rather than a false `success:true`; every sampled `--json` command across 24 invocations returns an object (never a bare array) whose `success` boolean agrees with the process exit code
+- [`tests/cli/lazy-startup.test.ts`](../../tests/cli/lazy-startup.test.ts) — walks the TypeScript AST of top-level static imports/exports from [`src/cli/index.ts`](../../src/cli/index.ts); asserts the headless entry point never statically reaches `ink`, `react`, or any file under [`src/tui/`](../../src/tui), and that [`src/cli/ui.ts`](../../src/cli/ui.ts)/[`src/cli/sql/repl.ts`](../../src/cli/sql/repl.ts) don't statically import `ink`/`react` either
+- [`tests/cli/postinstall-source-checkout.test.ts`](../../tests/cli/postinstall-source-checkout.test.ts) — spawns a copy of the real `postinstall.js` against fabricated directory trees; confirms it skips the download (exit 0, no `bin/noorm`) only when the root package two levels up is named `@noormdev/main`, and still downloads for both a real npm consumer and an unrelated monorepo with the same directory shape
+- [`tests/cli/yes-flag.test.ts`](../../tests/cli/yes-flag.test.ts) / [`tests/cli/insecure-flag.test.ts`](../../tests/cli/insecure-flag.test.ts) — unit-test `isYesMode`/`isInsecureMode` truthy/falsy parsing directly, plus subprocess coverage of the four TTY-gated commands (`sql repl`, `settings edit`, `settings secret`, `init`) refusing `--yes`/`NOORM_YES` on a non-TTY with a redirect hint, distinct from the plain TTY-refusal message
+- [`tests/cli/cli-logger-settings.test.ts`](../../tests/cli/cli-logger-settings.test.ts) — exercises `createCliLogger` against real `settings.yml` files: `logging.enabled: false` suppresses the log file but not console/`--json` output, `logging.file`/`level`/`maxSize`/`maxFiles` are honored; isolated into its own CI group (see project [`CLAUDE.md`](../../CLAUDE.md)) because it uses the real `getSettingsManager`/`resetSettingsManager` and is the victim, not the source, of a permanent mock — [`tests/cli/screens/init/init-screen.test.tsx`](../../tests/cli/screens/init/init-screen.test.tsx) and [`tests/cli/screens/init/init-flow.test.tsx`](../../tests/cli/screens/init/init-flow.test.tsx) replace the `SettingsManager` class via `mock.module`, which no later `mock.module` call actually undoes in Bun's process-global mock registry, so load order decides whether this file sees the real class or a leaked mock
+- [`tests/cli/env-bootstrap.test.ts`](../../tests/cli/env-bootstrap.test.ts) — confirms `NOORM_IDENTITY_PRIVATE_KEY`/`_NAME`/`_EMAIL` let `noorm info` report identity with no `~/.noorm/` files present, and that unset env vars fall through to disk
+- [`tests/cli/init.test.ts`](../../tests/cli/init.test.ts) — subprocess coverage of `noorm init`'s TTY gate, `--force` re-init guard, `--here` vs. parent-[`.noorm`](../../.noorm) walk-up, and global `-c <path>` (including rejecting a non-directory path)
+- [`tests/cli/agent-channel-escalation.test.ts`](../../tests/cli/agent-channel-escalation.test.ts), [`tests/cli/change-edit.test.ts`](../../tests/cli/change-edit.test.ts), [`tests/cli/change-prompts.test.ts`](../../tests/cli/change-prompts.test.ts), [`tests/cli/settings-edit.test.ts`](../../tests/cli/settings-edit.test.ts), [`tests/cli/settings-secret.test.ts`](../../tests/cli/settings-secret.test.ts), [`tests/cli/sql-repl.test.ts`](../../tests/cli/sql-repl.test.ts) — subprocess tests of individual TTY-gated or channel-sensitive commands; deeper command semantics belong to `core-change`/`core-state`/`core-identity`, but the TTY-refusal and channel-resolution mechanics they exercise are CLI-framework behavior
+- [`tests/cli/app.test.tsx`](../../tests/cli/app.test.tsx), [`tests/cli/app-context.test.tsx`](../../tests/cli/app-context.test.tsx), [`tests/cli/router.test.tsx`](../../tests/cli/router.test.tsx), [`tests/cli/screens.test.tsx`](../../tests/cli/screens.test.tsx), [`tests/cli/keyboard.test.tsx`](../../tests/cli/keyboard.test.tsx), [`tests/cli/focus.test.tsx`](../../tests/cli/focus.test.tsx), [`tests/cli/types.test.ts`](../../tests/cli/types.test.ts), [`tests/cli/debug-pid.test.tsx`](../../tests/cli/debug-pid.test.tsx) — test `src/tui/*` (App, router, screens registry, keyboard hooks, focus stack, route-parsing utilities); there is no `tests/tui/` directory, so these TUI-domain tests live under [`tests/cli/`](../../tests/cli) top level rather than a subdirectory
+- [`tests/cli/VaultScreen.test.tsx`](../../tests/cli/VaultScreen.test.tsx) — deliberately located at [`tests/cli/`](../../tests/cli) rather than `tests/cli/screens/vault/` (stated in the file's own header comment): CI runs [`tests/cli`](../../tests/cli) as one Bun process, [`tests/cli/hooks/useVaultSecretKeys.test.tsx`](../../tests/cli/hooks/useVaultSecretKeys.test.tsx) mocks `core/vault` and Bun's `mock.module` never actually restores the real module, so load order between the two files decides which one runs against the real vault — placement here is load-bearing, not incidental
+- [`tests/cli/config-validation.test.ts`](../../tests/cli/config-validation.test.ts), [`tests/cli/settings-validation.test.ts`](../../tests/cli/settings-validation.test.ts) — unit test [`src/tui/utils/config-validation.ts`](../../src/tui/utils/config-validation.ts)/`settings-validation.ts` directly (TUI-domain source, top-level test file location)
 
 ## Docs
 
-- [`docs/cli/`](../cli) — 9 user-facing CLI reference pages
-- [`docs/dev/headless.md`](../dev/headless.md) — headless mode internals
-- [`docs/guide/automation/non-interactive.md`](../guide/automation/non-interactive.md) — non-interactive usage
-- [`docs/guide/automation/ci.md`](../guide/automation/ci.md) — CI usage
-- [`docs/guide/automation/mcp.md`](../guide/automation/mcp.md) — MCP usage
-- [`docs/headless.md`](../headless.md) — public headless reference (1592L)
+- [`docs/cli/flags.md`](../cli/flags.md) — global (`-c`/`--cwd`) vs. per-subcommand flag rules, the `--config`/`-c` overload
+- [`docs/cli/help.md`](../cli/help.md) — `--help`/`-h` discovery, why there's no `noorm help <sub>`
+- [`docs/cli/init.md`](../cli/init.md), [`docs/cli/run.md`](../cli/run.md), [`docs/cli/secret.md`](../cli/secret.md), [`docs/cli/identity.md`](../cli/identity.md), [`docs/cli/sql.md`](../cli/sql.md), [`docs/cli/sql-repl.md`](../cli/sql-repl.md), [`docs/cli/settings-edit.md`](../cli/settings-edit.md), [`docs/cli/settings-secret.md`](../cli/settings-secret.md) — per-command reference pages (8 files total alongside `flags.md`/`help.md`)
+- [`docs/headless.md`](../headless.md) — public headless-mode reference
+- [`docs/dev/headless.md`](../dev/headless.md) — internal headless/CI/MCP usage notes
 
 ## Coupling
 
-- Every CLI command imports from [`src/core/`](../../src/core) — any core API change may require CLI command updates.
-- [`src/cli/ui.ts`](../../src/cli/ui.ts) launches the TUI ([`src/tui/app.tsx`](../../src/tui/app.tsx)) — TUI startup is a CLI concern.
-- [`src/cli/mcp/serve.ts`](../../src/cli/mcp/serve.ts) starts the MCP server from [`src/mcp/server.ts`](../../src/mcp/server.ts) — MCP domain depends on CLI entry.
-- Headless mode output shape is consumed by CI pipelines and SDK integration tests.
-- [`src/cli/db/drop.ts`](../../src/cli/db/drop.ts) and [`src/cli/sql/query.ts`](../../src/cli/sql/query.ts) call `checkConfigPolicy`/`executeRawSql` from [`src/core/policy/`](../../src/core/policy)/[`src/core/sql-terminal/executor.ts`](../../src/core/sql-terminal/executor.ts) — CLI destructive and raw-SQL commands gate through the same policy checks as MCP and TUI.
-- [`src/cli/config/import.ts`](../../src/cli/config/import.ts) validates imported JSON via `parseConfig` ([`src/core/config/schema.ts`](../../src/core/config/schema.ts)) instead of a hand-rolled shape check — validation errors surface as `ConfigValidationError`.
-- `settings.paths.sql` and `settings.paths.changes` from `settings.yml` are the correct path sources (not per-config `paths` fields) — several run-related screens use `settings?.paths?.changes ?? 'changes'` pattern.
+- [`src/cli/index.ts`](../../src/cli/index.ts) lazily imports [`src/cli/change/index.ts`](../../src/cli/change/index.ts), [`src/cli/db/index.ts`](../../src/cli/db/index.ts), [`src/cli/identity/index.ts`](../../src/cli/identity/index.ts), [`src/cli/mcp/index.ts`](../../src/cli/mcp/index.ts), [`src/cli/run/index.ts`](../../src/cli/run/index.ts), [`src/cli/config/index.ts`](../../src/cli/config/index.ts), [`src/cli/settings/index.ts`](../../src/cli/settings/index.ts) — these command groups are documented in depth by the **core-change**, **core-db**, **core-identity**, **mcp-rpc**, **core-runner**, and **core-state** domains respectively (`config`/`settings`/`ci` fold into **core-state**, `identity`/`secret`/`vault`/`sql`/`lock` into **core-identity**); a change to any of those core modules can require a matching CLI command update here.
+- [`src/cli/ui.ts`](../../src/cli/ui.ts) dynamically imports `../tui/app.js` — TUI startup is invoked from the CLI, but the TUI's own framework code and tests live in the **tui** domain (including most of its test coverage, physically inside [`tests/cli/`](../../tests/cli) — see Tests above).
+- [`src/cli/mcp/serve.ts`](../../src/cli/mcp/serve.ts) (in [`src/cli/mcp/`](../../src/cli/mcp), covered by **mcp-rpc**) calls `startServer()` from [`src/mcp/index.ts`](../../src/mcp/index.ts), which in turn calls `createMcpServer` from [`src/mcp/server.ts`](../../src/mcp/server.ts) — the MCP domain's entry point is a CLI command.
+- [`src/cli/_utils.ts`](../../src/cli/_utils.ts)'s `withContext`/`withVaultContext` call `createContext` (**sdk** domain, [`src/sdk/index.ts`](../../src/sdk/index.ts)), `loadPrivateKey`/`loadIdentityMetadata`/`registerIdentity` (**core-identity**), `ensureSchemaVersion` (**core-state**, [`src/core/version/`](../../src/core/version)), and `resolveChannel` (**core-policy**) — every headless command's context lifecycle depends on all four domains.
+- `postinstall.js` mirrors `isInsecureMode`'s truthy-string parsing from [`src/cli/_utils.ts`](../../src/cli/_utils.ts) by hand (comment: "Mirrors the TS `isInsecureMode`... so the escape hatch behaves identically") because the script runs before the workspace is built and cannot import TypeScript sources.
+- [`packages/cli`](../../packages/cli)/[`packages/sdk`](../../packages/sdk) are a Changesets **fixed** version group ([`.changeset/config.json`](../../.changeset/config.json): `"fixed": [["@noormdev/cli", "@noormdev/sdk"]]`) — they always bump together on release.
+- [`.github/workflows/release-binary.yml`](../../.github/workflows/release-binary.yml) reads [`packages/cli/package.json`](../../packages/cli/package.json)'s `version` to build the GitHub Release tag (`@noormdev/cli@<version>`) that both [`scripts/build-binary.mjs`](../../scripts/build-binary.mjs) (infra domain) and [`packages/cli/scripts/postinstall.js`](../../packages/cli/scripts/postinstall.js) (this domain) target — the two must resolve to the same tag.
 
 ## Conventions worth knowing
 
-- Commands attach `examples: string[]` to their `defineCommand` result; the help interceptor in [`src/cli/index.ts`](../../src/cli/index.ts) appends them after citty's auto-generated usage.
-- `--cwd <path>` global flag (like `git -C`) must precede the subcommand.
-- `--yes` / `-y` flag suppresses all confirmation prompts (headless mode).
-- `--json` flag formats output as machine-readable JSON.
-- Build produces a standalone binary via `bun build --compile` — worker paths must use `resolveWorker()`.
-- `config list` ([`src/cli/config/list.ts`](../../src/cli/config/list.ts)) prints an access tag (`user:<role> agent:<role|off>`) instead of a `protected` flag, shown only when `guarded(config)` is true.
-- `db drop` ([`src/cli/db/drop.ts`](../../src/cli/db/drop.ts)) no longer requires `--yes` unconditionally — it's only required when the resolved `db:destroy` policy check returns `requiresConfirmation`.
-- Workspace package `@noormdev/cli` publishes the pre-built binary; `postinstall.js` extracts it.
+- Commands opt into an [`EXAMPLES`](../../EXAMPLES) block by assigning `(command as typeof command & { examples: string[] }).examples = [...]` after `defineCommand`; the interceptor in `index.ts` reads that top-level [`examples`](../../examples) property, not a citty-native field.
+- `-c`/`--cwd <path>` must precede the subcommand (`git -C` semantics); every other flag, including `-c` meaning `--config` on many subcommands, only works after the subcommand — an unrecognized flag before the subcommand is a hard error, not a silent drop.
+- `noorm sql "SELECT ..."` (a bare SQL string with no explicit `query` subcommand) is rewritten to `noorm sql query "SELECT ..."` by `rewriteBareSqlArgv`, gated on a `SQL_VERBS` regex so `sql history`/`sql clear`/`sql repl` are untouched.
+- Exit codes are a 4-value contract shared by ~235 call sites: `0` success, `1` total failure, `2` usage error (nothing attempted), `3` partial (mixed state, unsafe to blindly retry) — `exitCodeForStatus` treats an unrecognized status string as `FAILURE`, never `SUCCESS`.
+- Every `--json` payload is a JSON object with a top-level boolean `success` that always agrees with the process exit code; list results live under a named key (`configs`, `changes`, `tables`, …), never as a bare top-level array — enforced by `toJsonEnvelope` in `_utils.ts` and pinned by [`tests/cli/json-envelope.test.ts`](../../tests/cli/json-envelope.test.ts).
+- TTY-gated commands (`noorm init`, `noorm sql repl`, `noorm settings edit`, `noorm settings secret`) refuse to run on a non-TTY; passing `--yes`/`NOORM_YES` on a non-TTY still refuses but with a different, redirect-hinting message than the bare TTY refusal.
+- `--yes`/`-y` (`isYesMode`) and `--insecure` (`isInsecureMode`) both parse `NOORM_YES`/`NOORM_INSECURE` the same way: any non-empty value except `0` or a case-insensitive `false` is truthy; the CLI flag always wins over a `0`/`false` env value.
+- The compiled/lazy-loaded CLI never statically imports `ink`, `react`, or anything under [`src/tui/`](../../src/tui) except through `noorm ui`'s dynamic `import()` — verified by an AST walk in [`tests/cli/lazy-startup.test.ts`](../../tests/cli/lazy-startup.test.ts), not a runtime check.
+- `noorm` binaries are built via `bun build --compile`; worker thread paths inside the binary must resolve through `resolveWorker()` (see project [`CLAUDE.md`](../../CLAUDE.md) / **worker-bridge** domain), not hardcoded strings, because `bun build --compile` strips [`src/`](../../src) and rewrites `.ts` to `.js` in the embedded binary.
+- A confirmed checksum mismatch on `noorm update` or npm postinstall is always a hard failure; `NOORM_INSECURE`/`--insecure` can only downgrade an *unreachable* `checksums.txt` (or a missing entry) into a warning, never override a confirmed bad hash.

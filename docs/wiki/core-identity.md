@@ -1,64 +1,107 @@
 ---
 type: Domain
+description: Cryptographic identity, team vault secrets, structured logging, and ad-hoc SQL terminal execution.
 ---
 
 # core-identity
 
 ## What it does
 
-Two-tier identity system: (1) audit identity — name/email for execution provenance tracking; (2) cryptographic identity — Ed25519-like keypair for config sharing and state encryption. Also owns the vault (per-database encrypted secret store), the logger (structured log output with redaction), and the SQL terminal history.
+Manages X25519 cryptographic identity (keypair generation, key storage, CI env bootstrap, audit-identity resolution) used to authenticate users and to encrypt shared secrets. Stores team-shared vault secrets in the database, encrypted with a vault key individually sealed to each user's public key. Captures observer events into a structured, redacted, rotating log file. Executes ad-hoc SQL through Kysely behind an access-policy gate and persists gzip-compressed query history per config.
 
 ## CLI code
 
-- [`src/core/identity/crypto.ts`](../../src/core/identity/crypto.ts) — keypair generation, `encryptForRecipient`, `decryptWithPrivateKey`, `deriveStateKey`, `encryptState`, `decryptState`
-- [`src/core/identity/factory.ts`](../../src/core/identity/factory.ts) — `loadExistingIdentity`; load keypair from disk
-- [`src/core/identity/resolver.ts`](../../src/core/identity/resolver.ts) — `resolveIdentity`, `formatIdentity`, `identityToString`; audit identity resolution with caching
-- [`src/core/identity/storage.ts`](../../src/core/identity/storage.ts) — `saveKeyPair`, `loadPrivateKey`, `loadPublicKey`; disk persistence at `~/.noorm/`
-- [`src/core/identity/sync.ts`](../../src/core/identity/sync.ts) — `registerIdentity`; syncs identity record to `__noorm_identities__` table
-- [`src/core/identity/env.ts`](../../src/core/identity/env.ts) — `loadIdentityFromEnv`; CI override via `NOORM_IDENTITY_*` env vars
-- [`src/core/identity/hash.ts`](../../src/core/identity/hash.ts) — identity hash derivation
-- [`src/core/identity/types.ts`](../../src/core/identity/types.ts) — `Identity`, `CryptoIdentity`, `KnownUser`, `IdentityOptions`
-- [`src/core/vault/storage.ts`](../../src/core/vault/storage.ts) — vault CRUD (`initVault`, `getSecret`, `setSecret`, `removeSecret`, `listSecrets`)
-- [`src/core/vault/key.ts`](../../src/core/vault/key.ts) — `generateVaultKey`, `encryptVaultKey`, `decryptVaultKey`, `encryptSecret`, `decryptSecret`
-- [`src/core/vault/copy.ts`](../../src/core/vault/copy.ts) — `copyVaultKey`; share vault access with another identity
-- [`src/core/vault/propagate.ts`](../../src/core/vault/propagate.ts) — `propagateVault`; push vault data across configs
-- [`src/core/vault/resolve.ts`](../../src/core/vault/resolve.ts) — `resolveVaultSecret`; read a secret at runtime for template context injection
-- [`src/core/vault/events.ts`](../../src/core/vault/events.ts) — vault observer event types
-- [`src/core/logger/logger.ts`](../../src/core/logger/logger.ts) — `Logger`; structured logging with levels, rotation, redaction
-- [`src/core/logger/redact.ts`](../../src/core/logger/redact.ts) — pattern-based redaction of sensitive values
-- [`src/core/logger/formatter.ts`](../../src/core/logger/formatter.ts) — log line formatting
-- [`src/core/logger/rotation.ts`](../../src/core/logger/rotation.ts) — log file rotation
-- [`src/core/logger/queue.ts`](../../src/core/logger/queue.ts) — async write queue to prevent I/O blocking
-- [`src/core/logger/classifier.ts`](../../src/core/logger/classifier.ts) — log level classification
-- [`src/core/sql-terminal/executor.ts`](../../src/core/sql-terminal/executor.ts) — `executeRawSql`; classifies the query (`classifyStatements` from `core/policy`) and gates it via `assertPolicy` against a `SqlPolicyGate` (access/channel/dialect) before delegating to `executeRawSqlUnchecked`, the ungated execution path reserved for tests
-- [`src/core/sql-terminal/history.ts`](../../src/core/sql-terminal/history.ts) — `SqlHistoryManager`; persistent SQL REPL history
+- [`src/core/identity/types.ts`](../../src/core/identity/types.ts) — `Identity` (audit identity: name/email/source), `CryptoIdentity` (keypair + identityHash), `KnownUser`, `SharedConfigPayload`
+- [`src/core/identity/crypto.ts`](../../src/core/identity/crypto.ts) — `generateKeyPair`, `derivePublicKeyFromPrivate`, `encryptForRecipient`/`decryptWithPrivateKey` (ephemeral X25519 ECDH + HKDF + AES-256-GCM for config sharing), `deriveStateKey`/`encryptState`/`decryptState` (state-file encryption keyed directly off the identity private key)
+- [`src/core/identity/hash.ts`](../../src/core/identity/hash.ts) — `computeIdentityHash` (SHA-256 of `email\0name\0machine\0os`), `isValidIdentityHash`, `truncateHash`
+- [`src/core/identity/storage.ts`](../../src/core/identity/storage.ts) — reads/writes `~/.noorm/identity.key`, `identity.pub`, `identity.json`; `isValidKeyHex` (88/96 hex-char length check), `validateKeyPermissions` (0600 enforcement, always `true` on win32), `backupKeyPair`; in-memory `setKeyOverride`/`setIdentityOverride` for CI
+- [`src/core/identity/factory.ts`](../../src/core/identity/factory.ts) — `detectIdentityDefaults` (git config / OS user), `createCryptoIdentity`, `regenerateKeyPair`, `createIdentityForExistingKeys`, `loadExistingIdentity`
+- [`src/core/identity/env.ts`](../../src/core/identity/env.ts) — `loadIdentityFromEnv`; builds a `CryptoIdentity` from `NOORM_IDENTITY_PRIVATE_KEY`/`NOORM_IDENTITY_NAME`/`NOORM_IDENTITY_EMAIL` without touching disk
+- [`src/core/identity/resolver.ts`](../../src/core/identity/resolver.ts) — `resolveIdentity` (audit identity priority chain: config override → crypto identity → `NOORM_IDENTITY` env → git → system user), `formatIdentity`/`identityToString`
+- [`src/core/identity/provenance.ts`](../../src/core/identity/provenance.ts) — `withAgentProvenance`; appends `(via <harness>)` to `executed_by`, truncated to fit the 255-char DB column
+- [`src/core/identity/sync.ts`](../../src/core/identity/sync.ts) — `registerIdentity`, `fetchKnownUsers`, `syncIdentity`, `syncIdentityWithConfig`; upserts the current identity into the `identities` table and pulls known users
+- [`src/core/identity/index.ts`](../../src/core/identity/index.ts) — barrel export plus `resolveIdentity`'s process-level cache (`cachedIdentity`), `getIdentityForConfig`, `getIdentityWithCrypto`, `waitForIdentityToLoad`
+- [`src/core/vault/types.ts`](../../src/core/vault/types.ts) — `EncryptedVaultKey`, `VaultSecret`, `VaultStatus`, `VaultCopyResult`, `VaultPropagationResult`, `PendingVaultUser`
+- [`src/core/vault/key.ts`](../../src/core/vault/key.ts) — `generateVaultKey`, `encryptVaultKey`/`decryptVaultKey` (ephemeral X25519 ECDH sealed per-recipient), `encryptSecret`/`decryptSecret` (AES-256-GCM with the vault key)
+- [`src/core/vault/storage.ts`](../../src/core/vault/storage.ts) — `initializeVault` (idempotent), `getVaultKey`, `setVaultSecret`/`getVaultSecret`/`getAllVaultSecrets`/`listVaultSecretKeys`/`deleteVaultSecret`/`vaultSecretExists`, `getVaultStatus`; only `initializeVault`/`getVaultKey`/`setVaultSecret`/`listVaultSecretKeys`/`deleteVaultSecret` have `*Checked` policy-gated twins — `getVaultSecret`/`getAllVaultSecrets` are gated indirectly (useless without the key `getVaultKeyChecked` gates, per its doc comment) and are called ungated in production (e.g. [`src/cli/vault/list.ts`](../../src/cli/vault/list.ts)'s `getAllVaultSecrets`); `vaultSecretExists` takes no vault key at all (just checks row existence by key name) and relies instead on a caller-level policy check ([`src/cli/vault/rm.ts`](../../src/cli/vault/rm.ts) gates the surrounding command via `checkVaultPolicy`); `getVaultStatus` has no twin and needs none
+- [`src/core/vault/policy.ts`](../../src/core/vault/policy.ts) — `VaultPolicyGate`, `checkVaultPolicy`/`assertVaultPolicy`; wraps `core/policy`'s `checkConfigPolicy`/`assertPolicy` for vault permissions
+- [`src/core/vault/propagate.ts`](../../src/core/vault/propagate.ts) — `getUsersWithoutVaultAccess`, `propagateVaultKey`/`propagateVaultKeyTo` (+ `*Checked` twins); per-user failures land in `result.failed` rather than being dropped
+- [`src/core/vault/resolve.ts`](../../src/core/vault/resolve.ts) — `resolveVaultKey`, `resolveSecret`/`resolveSecrets` (priority: config-specific local → global local → vault), `buildSecretsContext` (merges vault → global → config-specific for template rendering)
+- [`src/core/vault/copy.ts`](../../src/core/vault/copy.ts) — `copyVaultSecrets`; cross-config secret copy over `withDualConnection`, supports `dryRun` and `force`
+- [`src/core/vault/events.ts`](../../src/core/vault/events.ts) — `VaultEvents`, merged into `NoormEvents`
+- [`src/core/vault/index.ts`](../../src/core/vault/index.ts) — barrel export for the vault module
+- [`src/core/logger/types.ts`](../../src/core/logger/types.ts) — `LogLevel`, `EntryLevel`, `LogEntry`, `LoggerConfig`, `DEFAULT_LOGGER_CONFIG` (default file [`.noorm/state/noorm.log`](../../.noorm/state/noorm.log))
+- [`src/core/logger/classifier.ts`](../../src/core/logger/classifier.ts) — `classifyEvent` (regex-pattern event-name → level classification), `shouldLog`
+- [`src/core/logger/formatter.ts`](../../src/core/logger/formatter.ts) — `generateMessage` (per-event message templates), `formatEntry`, `serializeEntry`, `sanitizeData`
+- [`src/core/logger/color.ts`](../../src/core/logger/color.ts) — `formatColorLine`, `STATUS_ICONS`, `formatDuration`; uses [`src/core/theme.ts`](../../src/core/theme.ts)
+- [`src/core/logger/timestamp.ts`](../../src/core/logger/timestamp.ts) — `formatLogTimestamp`/`formatLogTimestampIso`; hand-rolled `Date` formatting to avoid a dayjs dependency on the per-line hot path
+- [`src/core/logger/redact.ts`](../../src/core/logger/redact.ts) — `filterData`, `maskValue`, `addMaskedFields`, `redactCredentialsInText` (strips credentials embedded in URIs), `listenForSecrets` (subscribes to `secret:set`/`global-secret:set`)
+- [`src/core/logger/rotation.ts`](../../src/core/logger/rotation.ts) — `checkAndRotate`, `parseSize`, `rotateFile`, `cleanupRotatedFiles`
+- [`src/core/logger/queue.ts`](../../src/core/logger/queue.ts) — `WriteQueue`; ordered, non-blocking file writes
+- [`src/core/logger/logger.ts`](../../src/core/logger/logger.ts) — `Logger` class; subscribes via `observer.queue(/./)`, writes console (JSON/color/plain) and file (always JSON) output, owns the rotation interval and `app:shutdown` cleanup
+- [`src/core/logger/init.ts`](../../src/core/logger/init.ts) — `enableAutoLoggerInit`/`disableAutoLoggerInit`/`getInitializedLogger`; defers `Logger` construction until `settings:loaded` fires, forces file logging off (`file: ''`) under `isCi()`
+- [`src/core/logger/reader.ts`](../../src/core/logger/reader.ts) — `readLogFile`; parses JSON-Lines log file newest-first, skipping malformed lines
+- [`src/core/logger/index.ts`](../../src/core/logger/index.ts) — barrel export for the logger module
+- [`src/core/sql-terminal/types.ts`](../../src/core/sql-terminal/types.ts) — `SqlExecutionResult`, `SqlHistoryEntry`, `SqlHistoryFile(Serialized)`, `ClearResult`
+- [`src/core/sql-terminal/executor.ts`](../../src/core/sql-terminal/executor.ts) — `executeRawSqlUnchecked` (ungated Kysely `sql.raw()` execution), `executeRawSql` (classifies the statement via `classifyStatements` and gates it via `assertPolicy` before delegating), `SqlPolicyGate`
+- [`src/core/sql-terminal/history.ts`](../../src/core/sql-terminal/history.ts) — `SqlHistoryManager`; per-config history at `.noorm/state/history/<config>.json` plus gzipped per-query results under `.noorm/state/history/<config>/`
+- [`src/core/sql-terminal/index.ts`](../../src/core/sql-terminal/index.ts) — barrel export; deliberately omits `executeRawSqlUnchecked` so the ungated primitive is never one autocomplete away from a production call site
+- [`src/cli/identity/index.ts`](../../src/cli/identity/index.ts) — `noorm identity` command group: `init`, `edit`, `export`, `list`
+- [`src/cli/identity/init.ts`](../../src/cli/identity/init.ts) — creates a new identity; `--force --yes` backs up and replaces existing keys and warns that existing `state.enc` is not re-encrypted under the new key
+- [`src/cli/identity/edit.ts`](../../src/cli/identity/edit.ts) — updates name/email via `createIdentityForExistingKeys` (recomputes `identityHash`, warns when it changes)
+- [`src/cli/identity/export.ts`](../../src/cli/identity/export.ts) — prints the public key for sharing
+- [`src/cli/identity/list.ts`](../../src/cli/identity/list.ts) — lists known users synced from connected databases (reads local state, not the vault)
+- [`src/cli/secret/index.ts`](../../src/cli/secret/index.ts) — `noorm secret` command group: `list`, `rm`, `set` (config-scoped local secrets, stored in `state.enc`)
+- [`src/cli/secret/_policy.ts`](../../src/cli/secret/_policy.ts) — `resolveSecretPolicy`; resolves the target config name and gates it via `checkConfigPolicy`, since `StateManager` itself takes no config object
+- [`src/cli/secret/list.ts`](../../src/cli/secret/list.ts), [`src/cli/secret/rm.ts`](../../src/cli/secret/rm.ts), [`src/cli/secret/set.ts`](../../src/cli/secret/set.ts) — list/remove/set a config-scoped secret; `rm`/`set` require `secret:write` and honor `NOORM_YES` via `isYesMode`
+- [`src/cli/vault/index.ts`](../../src/cli/vault/index.ts) — `noorm vault` command group: `cp`, `init`, `list`, `propagate`, `rm`, `set`
+- [`src/cli/vault/_secret-value.ts`](../../src/cli/vault/_secret-value.ts) — `readSecretValue`; shared `--stdin`-or-positional secret input for `vault set` and `secret set`, strips one trailing newline
+- [`src/cli/vault/init.ts`](../../src/cli/vault/init.ts), [`src/cli/vault/list.ts`](../../src/cli/vault/list.ts), [`src/cli/vault/set.ts`](../../src/cli/vault/set.ts), [`src/cli/vault/rm.ts`](../../src/cli/vault/rm.ts) — initialize/list/set/remove vault secrets through `withVaultContext` plus the `*Checked` core entrypoints
+- [`src/cli/vault/propagate.ts`](../../src/cli/vault/propagate.ts) — grants vault access to pending identities; shows the pending list before requiring `--yes`, treats any per-user failure as `EXIT.PARTIAL`
+- [`src/cli/vault/cp.ts`](../../src/cli/vault/cp.ts) — copies vault secrets between two configs via `copyVaultSecrets`, loading identity/private key directly rather than through `withVaultContext` because the core function manages its own dual connection
+- [`src/cli/sql/index.ts`](../../src/cli/sql/index.ts) — `noorm sql` command group: `query`, `history`, `clear`, `repl`
+- [`src/cli/sql/_config.ts`](../../src/cli/sql/_config.ts) — `resolveHistoryConfigName`; resolves the config name for history-only commands, decrypting state only when no explicit name or `NOORM_CONFIG` is set
+- [`src/cli/sql/query.ts`](../../src/cli/sql/query.ts) — executes one SQL statement (or `--file`) via `executeRawSql`; does not record history
+- [`src/cli/sql/history.ts`](../../src/cli/sql/history.ts) — shows persisted history recorded by the interactive terminal only
+- [`src/cli/sql/clear.ts`](../../src/cli/sql/clear.ts) — clears history, optionally `--older-than <months>`
+- [`src/cli/sql/repl.ts`](../../src/cli/sql/repl.ts) — launches the Ink TUI directly at the SQL Terminal screen; requires a TTY, rejects `--yes`/`NOORM_YES`
 
 ## Docs
 
-- [`docs/dev/identity.md`](../dev/identity.md) — cryptographic identity internals
+- [`docs/cli/identity.md`](../cli/identity.md) — `noorm identity` command reference
+- [`docs/cli/secret.md`](../cli/secret.md) — `noorm secret` command reference
+- [`docs/cli/sql.md`](../cli/sql.md) — `noorm sql` command reference
+- [`docs/cli/sql-repl.md`](../cli/sql-repl.md) — `noorm sql repl` command reference
+- [`docs/dev/identity.md`](../dev/identity.md) — identity system internals
 - [`docs/dev/vault.md`](../dev/vault.md) — vault internals
-- [`docs/dev/secrets.md`](../dev/secrets.md) — secret management
+- [`docs/dev/secrets.md`](../dev/secrets.md) — local secrets internals
 - [`docs/dev/logger.md`](../dev/logger.md) — logger internals
 - [`docs/dev/sql-terminal.md`](../dev/sql-terminal.md) — SQL terminal internals
 - [`docs/guide/environments/vault.md`](../guide/environments/vault.md) — user guide: vault
-- [`docs/guide/environments/secrets.md`](../guide/environments/secrets.md) — user guide: secrets
-- [`docs/cli/identity.md`](../cli/identity.md) — identity CLI reference
-- [`docs/dev/headless.md`](../dev/headless.md) — headless/CI identity override docs
+- [`docs/guide/environments/secrets.md`](../guide/environments/secrets.md) — user guide: local secrets
+- [`docs/guide/database/terminal.md`](../guide/database/terminal.md) — user guide: SQL terminal
 
 ## Coupling
 
-- Identity keypair is used by [`src/core/state/manager.ts`](../../src/core/state/manager.ts) for state encryption/decryption — identity must initialize before StateManager loads.
-- Vault uses the identity hash for per-user encryption key derivation — identity + vault are tightly coupled.
-- Logger uses [`src/core/observer.ts`](../../src/core/observer.ts) events to capture log lines from all modules.
-- SQL terminal history writes to `~/.noorm/sql-history/` — path convention separate from project `.noorm/`.
-- CI environment loads identity from env vars (`NOORM_IDENTITY_NAME`, `NOORM_IDENTITY_EMAIL`, `NOORM_IDENTITY_KEY`) via `loadIdentityFromEnv` — CLI init reads from keychain by default.
-- `__noorm_identities__` table (defined in [`src/core/shared/tables.ts`](../../src/core/shared/tables.ts)) stores registered identities — `sync.ts` writes to it.
-- `executeRawSql` imports `assertPolicy`/`classifyStatements` from [`src/core/policy/`](../../src/core/policy) — the read/write/ddl classification and the destructive-function denylist live in the policy domain, not here.
+- core-policy: [`src/core/vault/policy.ts`](../../src/core/vault/policy.ts) and [`src/core/sql-terminal/executor.ts`](../../src/core/sql-terminal/executor.ts) gate every operation through `assertPolicy`/`checkConfigPolicy`/`classifyStatements` from [`src/core/policy/`](../../src/core/policy); [`src/core/identity/provenance.ts`](../../src/core/identity/provenance.ts) reads `AgentHarness` from [`src/core/policy/harness.ts`](../../src/core/policy/harness.ts). Changes to `Permission`, `ConfigAccess`, or the SQL classifier ripple into all four submodules here.
+- core-state: [`src/core/vault/resolve.ts`](../../src/core/vault/resolve.ts) takes a `StateManager` for local-secret resolution; [`src/core/logger/init.ts`](../../src/core/logger/init.ts) waits on the `settings:loaded` event and reads the `Settings` type from [`src/core/settings/`](../../src/core/settings); [`src/core/identity/sync.ts`](../../src/core/identity/sync.ts) calls `tablesExist`/`ensureSchemaVersion` from [`src/core/version/`](../../src/core/version); [`src/cli/sql/_config.ts`](../../src/cli/sql/_config.ts) and [`src/cli/secret/_policy.ts`](../../src/cli/secret/_policy.ts) resolve the active config through `initState`/`getStateManager`. `StateManager`'s own encryption key is derived from the identity private key (`deriveStateKey`), so `core-state` cannot decrypt state until this domain has an identity available.
+- core-db: [`src/core/identity/sync.ts`](../../src/core/identity/sync.ts) and [`src/core/vault/copy.ts`](../../src/core/vault/copy.ts) open connections via `createConnection`/`withDualConnection` from [`src/core/connection/`](../../src/core/connection) and [`src/core/db/dual.ts`](../../src/core/db/dual.ts); vault and identity storage share the `NoormDatabase`/`noormDb`/`getNoormTables` helpers in [`src/core/shared/tables.ts`](../../src/core/shared/tables.ts).
+- sdk: [`src/sdk/namespaces/vault.ts`](../../src/sdk/namespaces/vault.ts), [`src/sdk/namespaces/db.ts`](../../src/sdk/namespaces/db.ts), [`src/sdk/namespaces/lock.ts`](../../src/sdk/namespaces/lock.ts), [`src/sdk/state.ts`](../../src/sdk/state.ts), [`src/sdk/context.ts`](../../src/sdk/context.ts), and [`src/sdk/noorm-ops.ts`](../../src/sdk/noorm-ops.ts) import `core/identity` and `core/vault` directly and re-export a subset as the public `@noormdev/sdk` surface — renaming or reshaping any `*Checked` export here is a breaking SDK change.
+- mcp-rpc: [`src/rpc/commands/query.ts`](../../src/rpc/commands/query.ts) calls `executeRawSql` directly, sharing the same `SqlPolicyGate` contract used by `noorm sql query` and the TUI SQL terminal.
+- tui: [`src/tui/screens/identity/`](../../src/tui/screens/identity), [`src/tui/screens/vault/`](../../src/tui/screens/vault), [`src/tui/screens/db/SqlTerminalScreen.tsx`](../../src/tui/screens/db/SqlTerminalScreen.tsx) (and sibling Sql*Screen files), and [`src/tui/components/overlays/LogViewerOverlay.tsx`](../../src/tui/components/overlays/LogViewerOverlay.tsx) import these core modules directly and re-implement the CLI's policy-gate pattern in Ink screens.
+- cli (shared plumbing): `withContext`/`withVaultContext`, `outputResult`/`outputError`, `sharedArgs`, `isYesMode`, `resolveChannel` used throughout [`src/cli/identity/`](../../src/cli/identity), [`src/cli/secret/`](../../src/cli/secret), [`src/cli/vault/`](../../src/cli/vault), [`src/cli/sql/`](../../src/cli/sql) live in [`src/cli/_utils.ts`](../../src/cli/_utils.ts); exit codes come from [`src/cli/_exit.ts`](../../src/cli/_exit.ts) — both owned by the `cli` domain, not this one.
 
 ## Conventions worth knowing
 
-- Cryptographic identity stored at `~/.noorm/identity.key` (private) and `~/.noorm/identity.pub` (public).
-- Vault secrets encrypted per-database with a vault key; vault key encrypted per-user with their public key.
-- Logger redaction patterns are configurable; `redact.ts` uses regex matching against log line text.
-- `loadIdentityFromEnv` checks `NOORM_IDENTITY_*` vars — used by `noorm ci identity` command for CI injection.
-- Audit identity resolution caches result for duration of command execution.
+- Policy-gate pattern: raw vault primitives (`getVaultKey`, `setVaultSecret`, `deleteVaultSecret`, `listVaultSecretKeys`, `propagateVaultKey`, `propagateVaultKeyTo`, `initializeVault`) are ungated; every production caller must use the `*Checked` wrapper instead. `executeRawSqlUnchecked` is the SQL-terminal equivalent and is deliberately excluded from [`src/core/sql-terminal/index.ts`](../../src/core/sql-terminal/index.ts)'s barrel export.
+- Two distinct identity concepts: `Identity` (audit identity — name/email/source, used for `executed_by` tracking, resolution priority config → crypto → `NOORM_IDENTITY` env → git → system user, process-cached in [`src/core/identity/index.ts`](../../src/core/identity/index.ts) unless overrides are passed) versus `CryptoIdentity` (keypair + `identityHash`, used for vault/config-sharing encryption).
+- Ephemeral-key encryption pattern is repeated, not shared: config sharing ([`src/core/identity/crypto.ts`](../../src/core/identity/crypto.ts)) and vault key sealing ([`src/core/vault/key.ts`](../../src/core/vault/key.ts)) each implement their own `deriveSharedSecret`/`deriveEncryptionKey` — generate an ephemeral X25519 keypair, ECDH with the recipient's public key, HKDF-SHA256 to a 32-byte key, AES-256-GCM — with a distinct HKDF `info` string per use (`'noorm-config-share'`, `'noorm-state-encryption'`, `'noorm-vault-key'`).
+- Key material validation: `isValidKeyHex` requires exactly 88 (SPKI public) or 96 (PKCS8 private) hex characters. A key that fails validation is a hard error everywhere it's read (`loadPrivateKey`, `setKeyOverride`, `deriveStateKey`) — never silently truncated, because `Buffer.from(str, 'hex')` truncates at the first invalid pair and a truncated key still HKDFs to a deterministic, publicly-computable output.
+- Key file permissions: `~/.noorm/identity.key` is written 0600, `identity.pub` 0644; `validateKeyPermissions` checks `mode & 0o077 === 0` (rejects any group/other bit) and always returns `true` on `win32`, since Windows `stat` doesn't reliably report POSIX modes.
+- CI identity bootstrap: `NOORM_IDENTITY_PRIVATE_KEY`/`NOORM_IDENTITY_NAME`/`NOORM_IDENTITY_EMAIL` are read once by `loadIdentityFromEnv`; the CLI entrypoint installs the result via `setKeyOverride`/`setIdentityOverride`, in-memory overrides that make `loadPrivateKey`/`loadIdentityMetadata` skip disk reads for the rest of the process. `computeIdentityHash` deliberately omits `os.hostname()` for the env-loaded case so every CI runner sharing the same private key resolves to the same identity.
+- Secret key names: `SECRET_KEY_PATTERN` in [`src/core/vault/storage.ts`](../../src/core/vault/storage.ts) (`/^[A-Za-z][A-Za-z0-9_]*$/`) is deliberately identical to `StateManager.setSecret`'s validation — both feed the same `$.secrets` template namespace.
+- Observer event typing is inconsistent across the four submodules: `identity:*`, `sql-terminal:*`, and `logger:*` events are declared inline in `NoormEvents` ([`src/core/observer.ts`](../../src/core/observer.ts)), while `vault:*` gets its own `VaultEvents` interface ([`src/core/vault/events.ts`](../../src/core/vault/events.ts)) merged into `NoormEvents` — vault is the only one of the four with a dedicated events file.
+- Log event classification ([`src/core/logger/classifier.ts`](../../src/core/logger/classifier.ts)) is regex-pattern-based on event-name prefix/suffix, not a registry — a new `xyz:` event namespace defaults to `debug` level unless added to `INFO_PATTERNS`/`WARN_PATTERNS`/`ERROR_PATTERNS`/`DEBUG_PATTERNS`.
+- SQL history and results are gzip-compressed (`SqlHistoryManager`, [`src/core/sql-terminal/history.ts`](../../src/core/sql-terminal/history.ts)) and written 0600 (files) / 0700 (dirs) — the same permission discipline as `state.enc`. `sql query` (headless/CI) never writes history; only `sql repl` and the TUI SQL terminal do. Vault has no local-disk history file — vault secrets live in DB rows only.
+- `sql history`/`sql clear` resolve their target config via `resolveHistoryConfigName` (explicit flag → `NOORM_CONFIG` → active config), decrypting state only when neither of the first two is set — these are the only two SQL-terminal commands that don't require a database connection.
+- Test coverage includes dedicated edge-case files beyond the mirrored happy-path tests: [`tests/core/identity/key-file-corruption.test.ts`](../../tests/core/identity/key-file-corruption.test.ts) and [`tests/core/identity/storage-key-permission-guard.test.ts`](../../tests/core/identity/storage-key-permission-guard.test.ts) target malformed-key rejection and the 0600 permission guard; [`tests/core/vault/idempotent-init.test.ts`](../../tests/core/vault/idempotent-init.test.ts) and [`tests/core/vault/policy-gate.test.ts`](../../tests/core/vault/policy-gate.test.ts) cover `initializeVault`'s idempotency and the `*Checked` gate; [`tests/core/logger/redact-coverage.test.ts`](../../tests/core/logger/redact-coverage.test.ts) and [`tests/core/logger/rotation-reopen.test.ts`](../../tests/core/logger/rotation-reopen.test.ts) target redaction field coverage and the re-open-after-rotation behavior in `logger.ts`.
