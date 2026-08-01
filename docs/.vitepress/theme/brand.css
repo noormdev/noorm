@@ -529,3 +529,45 @@ html.dark {
         font-family: var(--vp-font-family-mono);
     }
 }
+
+/* ─────────────────────────────────────────────
+   Social links
+   ───────────────────────────────────────────── */
+
+/* Two GitHub icons sit here, one per repo, so each needs a caption to be
+   told apart. VPSocialLink renders its icon with v-html, which discards
+   any child node, so the caption has to be a pseudo-element.
+   Doubled container class beats the component's own scoped rule, which
+   carries a data-v attribute and so lands at specificity (0,2,0). */
+.VPNavBarSocialLinks .VPSocialLink.no-icon,
+.VPNavScreenSocialLinks .VPSocialLink.no-icon {
+    flex-direction: column;
+    gap: 3px;
+    width: auto;
+    min-width: 36px;
+    padding: 0 6px;
+}
+
+.VPNavBarSocialLinks .VPSocialLink.no-icon::after,
+.VPNavScreenSocialLinks .VPSocialLink.no-icon::after {
+    font-size: 0.5rem;
+    line-height: 1;
+    letter-spacing: 0.02em;
+    color: var(--vp-c-text-3);
+    transition: color 0.25s;
+}
+
+.VPNavBarSocialLinks .VPSocialLink.no-icon:hover::after,
+.VPNavScreenSocialLinks .VPSocialLink.no-icon:hover::after {
+    color: var(--vp-c-text-1);
+}
+
+/* Matched on the repo path rather than the full URL so a trailing slash or
+   a protocol change does not silently drop the caption. */
+.VPSocialLink[href*="noormdev/noorm"]::after {
+    content: 'noorm';
+}
+
+.VPSocialLink[href*="noormdev/ignatius"]::after {
+    content: 'ignatius';
+}

@@ -237,8 +237,12 @@ gtag('config', 'G-Y69K95866J');`],
                 ],
             },
 
+            // Two GitHub repos, so both need an explicit ariaLabel: the default
+            // is the icon name, which would announce both as just "github".
+            // brand.css captions them so they are told apart visually too.
             socialLinks: [
-                { icon: 'github', link: 'https://github.com/noormdev/noorm' },
+                { icon: 'github', link: 'https://github.com/noormdev/noorm', ariaLabel: 'noorm on GitHub' },
+                { icon: 'github', link: 'https://github.com/noormdev/ignatius', ariaLabel: 'ignatius on GitHub' },
             ],
 
             search: {
