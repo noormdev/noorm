@@ -10,6 +10,15 @@ Most schemas get designed while they are being built. A table appears because a 
 
 [ignatius](https://github.com/noormdev/ignatius) moves that work earlier. It is a planning tool for information modeling: you describe entities, keys, and relationships in markdown files, and it renders them as an interactive diagram you can hand to another person. The binary never connects to a database and never generates DDL. Its output is a picture of what you intend to build, precise enough to argue about before anyone writes SQL.
 
+<!-- Wrapped in a div because `video` is not a CommonMark block-level tag:
+     left bare, markdown-it splits the multi-line element across paragraphs and
+     Vue's SFC parser then rejects the orphaned closing tag. -->
+<div class="demo-video">
+<video src="/video/ignatius.mp4" poster="/video/ignatius-poster.jpg" width="1316" height="858" controls muted playsinline preload="none"></video>
+</div>
+
+Above: a model of an LLM memory database, walked through all three views. The entity dialog, the searchable dictionary with its key-inheritance lineage, and a decomposed process flow where an external LLM agent creates and files artifacts.
+
 
 ## What it produces
 

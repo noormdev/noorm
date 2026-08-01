@@ -214,9 +214,13 @@ code, kbd, samp, pre {
    Terminal recordings and TUI stills (docs/tapes/)
    ───────────────────────────────────────────── */
 .vp-doc img[src$=".gif"],
-.vp-doc img[src*="/image/tui/"] {
+.vp-doc img[src*="/image/tui/"],
+.vp-doc video {
     display: block;
     width: 100%;
+    /* The <video> carries intrinsic width/height so the poster reserves its
+       box before load; height:auto keeps that from fighting width:100%. */
+    height: auto;
     margin: 24px 0;
     /* Same treatment as the code blocks these sit next to — the recordings are
        terminal output, so they should read as the same kind of surface. */
