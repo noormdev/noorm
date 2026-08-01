@@ -1,59 +1,79 @@
 ---
 type: Domain
+description: Database lifecycle, connection factory, schema exploration, teardown, and cross-database transfer across postgres/mysql/mssql/sqlite
 ---
 
 # core-db
 
 ## What it does
 
-Database lifecycle operations: create/drop databases, schema exploration (tables, views, functions, indexes, FKs, stored procedures, types), data transfer between databases, and schema teardown (truncate data, drop all objects). All operations are dialect-aware (PostgreSQL, MySQL, MSSQL, SQLite).
+- Owns everything that touches a live database connection: creating/dropping databases ([`src/core/db/`](../../src/core/db)), opening connections per dialect ([`src/core/connection/`](../../src/core/connection)), reading schema metadata ([`src/core/explore/`](../../src/core/explore)), wiping data or dropping objects ([`src/core/teardown/`](../../src/core/teardown)), and moving rows between two databases ([`src/core/transfer/`](../../src/core/transfer)).
+- Each of the four operational modules (`db`, `explore`, `teardown`, `transfer`) follows the same dialect-dispatch shape: a `dialects/index.ts` maps `Dialect` (`'postgres' | 'mysql' | 'sqlite' | 'mssql'`) to a per-dialect implementation of a shared `DialectXOperations`/`TeardownDialectOperations`/`TransferDialectOperations` interface.
+- [`src/core/transfer/`](../../src/core/transfer) only supports `postgres`, `mysql`, `mssql` (`TRANSFER_SUPPORTED_DIALECTS` in [`src/core/transfer/dialects/index.ts`](../../src/core/transfer/dialects/index.ts)) — sqlite has no dialect module there.
+- [`src/cli/db/`](../../src/cli/db) exposes these operations as `noorm db <create|drop|explore|reset|teardown|transfer|truncate>` via Citty subcommands.
+
+## Artifacts
+
+- [`src/core/db/operations.ts`](../../src/core/db/operations.ts) — `checkDbStatus`, `createDb`, `destroyDb`; SQLite's `checkDbStatus` pre-probes existence before `testConnection` because opening a connection to a missing SQLite file auto-creates it.
+- [`src/core/db/policy.ts`](../../src/core/db/policy.ts) — `assertDbPolicy`, the shared destructive-lifecycle gate used by `core/db` and `core/teardown` (both reached directly by the TUI and indirectly by the CLI via the SDK).
+- [`src/core/db/dual.ts`](../../src/core/db/dual.ts) — `withDualConnection`, generic two-connection lifecycle (connect both, run fn, always cleanup both) used by `transfer` and vault-copy.
+- [`src/core/db/dialects/postgres.ts`](../../src/core/db/dialects/postgres.ts), `mysql.ts`, `mssql.ts`, `sqlite.ts` — per-dialect `databaseExists`/`createDatabase`/`dropDatabase`/`getSystemDatabase`.
+- [`src/core/connection/factory.ts`](../../src/core/connection/factory.ts) — `createConnection` (retry/backoff via `@logosdx/utils` `retry`, `shouldRetry` skips auth/config failures), `testConnection` (`testServerOnly` swaps to the dialect's system database: `postgres`, `master`, none for mysql/sqlite).
+- [`src/core/connection/manager.ts`](../../src/core/connection/manager.ts) — `ConnectionManager` singleton (`getConnectionManager`); tracks cached (by config name) and ephemeral connections plus `WorkerBridge` instances, closes everything on the `app:shutdown` observer event.
+- [`src/core/connection/defaults.ts`](../../src/core/connection/defaults.ts) — `DEFAULT_PORTS` per dialect and the shared `PortSchema` (1-65535) used by `core/config` and `core/settings`.
+- [`src/core/connection/dialects/mssql.ts`](../../src/core/connection/dialects/mssql.ts) — `resolveTlsServerName`/`buildTediousOptions`; connecting to MSSQL by IP address needs a synthetic SNI ServerName (`UNVERIFIED_TLS_SERVER_NAME`) because RFC 6066 forbids an IP literal as SNI, and `verifyDatabaseExists` probes `sys.databases` on `master` before opening the real pool to avoid a cryptic tedious/tarn ECONNRESET hang.
+- [`src/core/connection/dialects/mssql-limit-plugin.ts`](../../src/core/connection/dialects/mssql-limit-plugin.ts) — `MssqlLimitPlugin`, a Kysely `OperationNodeTransformer` that rewrites `LimitNode` → `TopNode` because Kysely 0.28.x's `MssqlQueryCompiler` doesn't override `visitLimit()`.
+- [`src/core/connection/dialects/sqlite.ts`](../../src/core/connection/dialects/sqlite.ts) / `sqlite-bun.ts` — `better-sqlite3` vs `bun:sqlite` adapters; `factory.ts` picks the Bun one when `globalThis.Bun` is defined.
+- [`src/core/connection/dialects/bun-sqlite.d.ts`](../../src/core/connection/dialects/bun-sqlite.d.ts) — hand-written minimal `bun:sqlite` type declarations, to avoid depending on full `bun-types`.
+- [`src/core/explore/operations.ts`](../../src/core/explore/operations.ts) — `fetchOverview`, `fetchList`, `fetchDetail`; overview counts are derived from the same listing calls the detail views use (not separate `COUNT(*)` queries) so the two can't disagree; `__noorm_*` tables are filtered out of `tables`/`indexes`/`foreignKeys`/`triggers` unless `includeNoormTables` is set.
+- [`src/core/explore/dialects/postgres.ts`](../../src/core/explore/dialects/postgres.ts), `mysql.ts`, `mssql.ts`, `sqlite.ts` — system-catalog queries per dialect (`information_schema`/`pg_catalog` for postgres, `INFORMATION_SCHEMA` for mysql, `sys.*` for mssql); postgres and mssql each define an `EXCLUDED_SCHEMAS` negative filter, mysql instead scopes every query to `TABLE_SCHEMA = <resolved db>` via `resolveSchema()` (a positive single-database match, since MySQL has no schema level below the database), sqlite has neither (`assertSchemaSupported` in `operations.ts` rejects a `schema` option on sqlite).
+- [`src/core/teardown/operations.ts`](../../src/core/teardown/operations.ts) — `truncateData` (disable FK → truncate → re-enable FK, three separate statement groups so FK re-enable still runs even if truncate fails), `teardownSchema` (drop order: FK constraints → CHECK constraints (mssql only) → procedures → functions → views → tables → types, because MSSQL schema-bound objects hold dependency locks on their tables), `previewTeardown` (dry-run wrapper).
+- [`src/core/teardown/dialects/postgres.ts`](../../src/core/teardown/dialects/postgres.ts), `mysql.ts`, `mssql.ts`, `sqlite.ts` — per-dialect DDL generation (`truncateTable`, `dropTable`, `dropView`, `dropFunction`, `dropProcedure`, `dropType`, `dropForeignKey`); only MSSQL implements `dropCheckConstraints` (a CHECK constraint referencing a scalar UDF blocks dropping that function while the table exists — MSSQL error 3729).
+- [`src/core/transfer/planner.ts`](../../src/core/transfer/planner.ts) — `planTransfer`; queries source table metadata + FK relations per dialect, topologically sorts tables into dependency order, probes destination schema for missing tables, and (for cross-dialect transfers) builds per-table `columnTypes` via `buildDtSchema` from `core/dt`; `queryMysqlTables` detects the identity column via `INFORMATION_SCHEMA.COLUMNS.EXTRA LIKE '%auto_increment%'`.
+- [`src/core/transfer/executor.ts`](../../src/core/transfer/executor.ts) — `executeTransfer`; three per-table strategies picked in `executeTransfer`: `transferTableSameServer` (direct SQL, same dialect + same server + `onConflict: 'fail'` + not cross-dialect), `transferTableCrossDialect` (routes through `DtStreamer`/`createKeysetPager`/`queryDatabaseVersion` from `core/dt`), `transferTableCrossServer` (batched INSERT).
+- [`src/core/transfer/same-server.ts`](../../src/core/transfer/same-server.ts) — `isSameServer`; PostgreSQL is *never* same-server (no `dblink`/`postgres_fdw`, so a same-database same-server statement would degenerate to `INSERT INTO t SELECT ... FROM t`); MySQL/MSSQL can query cross-database on one server; SQLite is never same-server.
+- [`src/core/transfer/dialects/postgres.ts`](../../src/core/transfer/dialects/postgres.ts), `mysql.ts`, `mssql.ts` — per-dialect FK toggle, identity-insert toggle, sequence reset, conflict-aware INSERT, and direct-transfer SQL builders (no sqlite module — transfer excludes sqlite).
+- [`src/core/transfer/events.ts`](../../src/core/transfer/events.ts) — `TransferEvents` observer contract (`transfer:planning`, `transfer:plan:ready`, `transfer:starting`, `transfer:table:before/progress/after`, `transfer:complete`).
 
 ## CLI code
 
-- [`src/core/db/index.ts`](../../src/core/db/index.ts) — `checkDbStatus`, `createDb`, `destroyDb`, `getDialectOperations`
-- [`src/core/db/dual.ts`](../../src/core/db/dual.ts) — `withDualConnection`; opens source + destination connections for transfer
-- [`src/core/db/dialects/`](../../src/core/db/dialects) — dialect-specific create/drop implementations
-- [`src/core/explore/operations.ts`](../../src/core/explore/operations.ts) — `queryTables`, `queryViews`, `queryFunctions`, `queryIndexes`, `queryForeignKeys`, `queryProcedures`, `queryTypes`
-- [`src/core/explore/dialects/`](../../src/core/explore/dialects) — per-dialect SQL for introspection queries
-- [`src/core/explore/types.ts`](../../src/core/explore/types.ts) — `TableInfo`, `ColumnInfo`, `ViewInfo`, `IndexInfo`, `ForeignKeyInfo`, etc.
-- [`src/core/teardown/operations.ts`](../../src/core/teardown/operations.ts) — `truncateData`, `teardownSchema`, `previewTeardown`
-- [`src/core/teardown/dialects/`](../../src/core/teardown/dialects) — dialect-specific truncate/drop implementations
-- [`src/core/teardown/types.ts`](../../src/core/teardown/types.ts) — `TruncateOptions`, `TeardownOptions`, `TeardownResult`
-- [`src/core/transfer/index.ts`](../../src/core/transfer/index.ts) — `transferData`; gates via `assertPolicy` (`core/policy`, `db:reset` permission) against the destination config before opening any connection, then orchestrates plan + execute
-- [`src/core/transfer/executor.ts`](../../src/core/transfer/executor.ts) — `executeTransfer`; batch row copy with FK ordering
-- [`src/core/transfer/planner.ts`](../../src/core/transfer/planner.ts) — `planTransfer`; dependency-sorted transfer plan
-- [`src/core/transfer/same-server.ts`](../../src/core/transfer/same-server.ts) — `sameServerTransfer`; direct SQL shortcut when source + dest are on same server
-- [`src/core/transfer/dialects/`](../../src/core/transfer/dialects) — per-dialect identity-column and conflict-resolution strategies
-- [`src/core/transfer/types.ts`](../../src/core/transfer/types.ts) — `TransferOptions`, `TransferResult`, `TransferPlan`
-- [`src/core/connection/factory.ts`](../../src/core/connection/factory.ts) — `createConnection`, `testConnection`; Kysely instance factory
-- [`src/core/connection/manager.ts`](../../src/core/connection/manager.ts) — `ConnectionManager`; singleton connection lifecycle
-- [`src/core/connection/dialects/`](../../src/core/connection/dialects) — dialect drivers (pg, mysql2, tedious, better-sqlite3)
+- [`src/cli/db/index.ts`](../../src/cli/db/index.ts) — registers the `db` command group: `create`, `drop`, `explore`, `reset`, `teardown`, `transfer`, `truncate`.
+- [`src/cli/db/create.ts`](../../src/cli/db/create.ts) — `noorm db create`; gates via `checkConfigPolicy(..., 'db:create')` before any status probe (SQLite's probe would otherwise auto-create the file for a denied role).
+- [`src/cli/db/drop.ts`](../../src/cli/db/drop.ts) — `noorm db drop`; warns to stderr when `NOORM_CONNECTION_*` env overrides retarget the config's stored database away from what will actually be dropped, gated on `db:destroy`.
+- [`src/cli/db/reset.ts`](../../src/cli/db/reset.ts) — `noorm db reset`; thin wrapper requiring `--yes`, delegates to `ctx.noorm.db.reset()` (SDK teardown + build).
+- [`src/cli/db/teardown.ts`](../../src/cli/db/teardown.ts) — `noorm db teardown`; `--dry-run`, `--preserve-schemas`; exits 1 (after already dropping objects) if `postScript` was configured but failed to execute.
+- [`src/cli/db/truncate.ts`](../../src/cli/db/truncate.ts) — `noorm db truncate`; `--dry-run`, `--preserve`, `--only`.
+- [`src/cli/db/transfer.ts`](../../src/cli/db/transfer.ts) — `noorm db transfer`; three mutually-exclusive modes (`--to <config>`, `--export <path>`, `--import <path>`); `.dtzx` export/import prompts for a masked passphrase on an interactive TTY, requires `--passphrase` non-interactively; `fk`/`identity` flags are declared under their positive names so citty's built-in `--no-fk`/`--no-identity` negation works (a `noFk`/`noIdentity` declaration would silently no-op).
+- [`src/cli/db/explore.ts`](../../src/cli/db/explore.ts) — `noorm db explore`; bare invocation prints overview counts, subcommands drill into each category.
+- [`src/cli/db/explore-tables.ts`](../../src/cli/db/explore-tables.ts), `explore-views.ts`, `explore-procedures.ts`, `explore-functions.ts`, `explore-types.ts`, `explore-indexes.ts`, `explore-fks.ts`, `explore-triggers.ts` — one Citty subcommand per `ExploreCategory`; `views`/`procedures`/`functions`/`types`/`triggers` accept a positional `name` directly for detail view, `tables` instead reaches detail view only via a nested `detail` subcommand (`noorm db explore tables detail <name>`, in `explore-tables-detail.ts`), `indexes`/`fks` are list-only.
+- [`src/cli/db/explore-tables-detail.ts`](../../src/cli/db/explore-tables-detail.ts) — `noorm db explore tables detail <name>`, registered as a subcommand of `explore-tables.ts`.
 
 ## Docs
 
-- [`docs/dev/explore.md`](../dev/explore.md) — explore internals
-- [`docs/dev/teardown.md`](../dev/teardown.md) — teardown internals
-- [`docs/dev/transfer.md`](../dev/transfer.md) — transfer internals
-- [`docs/guide/database/create.md`](../guide/database/create.md) — create database guide
-- [`docs/guide/database/teardown.md`](../guide/database/teardown.md) — teardown guide
-- [`docs/guide/database/transfer.md`](../guide/database/transfer.md) — transfer guide
-- [`docs/guide/database/explore.md`](../guide/database/explore.md) — explore guide
-- [`docs/guide/database/terminal.md`](../guide/database/terminal.md) — SQL terminal guide
+- [`docs/guide/database/create.md`](../guide/database/create.md) — `noorm db create` walkthrough.
+- [`docs/guide/database/explore.md`](../guide/database/explore.md) — `noorm db explore` walkthrough.
+- [`docs/guide/database/teardown.md`](../guide/database/teardown.md) — teardown/truncate walkthrough.
+- [`docs/guide/database/transfer.md`](../guide/database/transfer.md) — transfer walkthrough.
+- [`docs/dev/transfer.md`](../dev/transfer.md) — transfer module design notes (FK ordering, identity preservation, same-server optimization, conflict resolution).
 
 ## Coupling
 
-- Transfer calls `withDualConnection` from [`src/core/db/dual.ts`](../../src/core/db/dual.ts) — dual-connection semantics shared with other DB ops.
-- Teardown must skip `__noorm_*` tables (defined in [`src/core/shared/tables.ts`](../../src/core/shared/tables.ts)) — `isNoormTable` guard in `teardown/operations.ts`.
-- Connection manager ([`src/core/connection/manager.ts`](../../src/core/connection/manager.ts)) is used by runner, change executor, SQL terminal, vault ops — reset-manager pattern coordinates with lifecycle domain.
-- CLI commands in [`src/cli/db/`](../../src/cli/db) surface all these ops — explore query shapes flow through to CLI output formatters.
-- [`src/cli/db/drop.ts`](../../src/cli/db/drop.ts) calls `checkConfigPolicy` from [`src/core/policy/`](../../src/core/policy) (`db:destroy` permission) — `--yes` now satisfies the matrix's confirmation requirement rather than gating on a `protected` boolean.
-- `transferData` ([`src/core/transfer/index.ts`](../../src/core/transfer/index.ts)) calls `assertPolicy` from [`src/core/policy/`](../../src/core/policy) — transfer and drop both route through the same policy domain as runner/change/sql-terminal.
-- DT module ([`src/core/dt/`](../../src/core/dt)) reads rows from transfer context — transfer and DT share the row-fetch pattern.
+- **core-policy**: every destructive entry point (`assertDbPolicy` in [`src/core/db/policy.ts`](../../src/core/db/policy.ts), `assertPolicy`/`checkConfigPolicy` calls in [`src/core/transfer/index.ts`](../../src/core/transfer/index.ts) and `src/cli/db/*.ts`) resolves against `Permission` values (`db:create`, `db:reset`, `db:destroy`, `db:truncate`, `db:teardown`, `transfer:plan`) and the role matrix defined in [`src/core/policy/matrix.ts`](../../src/core/policy/matrix.ts) and [`src/core/policy/types.ts`](../../src/core/policy/types.ts). Adding a new destructive db operation means adding its permission there first.
+- **core-state**: [`src/core/db/operations.ts`](../../src/core/db/operations.ts) and [`src/core/db/dual.ts`](../../src/core/db/dual.ts) call `bootstrapSchema`/`tablesExist`/`ensureSchemaVersion` from [`src/core/version/`](../../src/core/version); [`src/core/connection/manager.ts`](../../src/core/connection/manager.ts) subscribes to the `app:shutdown` event from [`src/core/observer.ts`](../../src/core/observer.ts); connection config types come from [`src/core/config/types.ts`](../../src/core/config/types.ts).
+- **core-change**: [`src/core/teardown/operations.ts`](../../src/core/teardown/operations.ts) imports `ChangeHistory`/`ChangeTracker` from [`src/core/change/`](../../src/core/change) to mark changes stale and record a reset event when `teardownSchema` is called with `configName`/`executedBy`.
+- **sdk** ([`src/core/dt/`](../../src/core/dt)): [`src/core/transfer/planner.ts`](../../src/core/transfer/planner.ts) and `executor.ts` depend on `buildDtSchema`, `DtStreamer`, `createKeysetPager`, `queryDatabaseVersion` from [`src/core/dt/`](../../src/core/dt) for cross-dialect type conversion and streaming — a change to the DT column-type model can break cross-dialect transfer.
+- **worker-bridge**: [`src/core/connection/manager.ts`](../../src/core/connection/manager.ts) tracks `WorkerBridge<ConnectionEvents>` instances (type from [`src/core/worker-bridge/types.ts`](../../src/core/worker-bridge/types.ts)) so they shut down alongside regular connections; [`src/workers/connection.ts`](../../src/workers/connection.ts) (the persistent DB worker) imports `core/connection` to own the actual Kysely instance off the main thread.
+- **sdk namespaces** ([`src/sdk/namespaces/db.ts`](../../src/sdk/namespaces/db.ts), `dt.ts`, `transfer.ts`) wrap `core/explore`, `core/teardown`, `core/transfer`, `core/dt` directly; `core/db` is reached only transitively, via `core/transfer/index.ts`'s use of `core/db/dual.ts`'s `withDualConnection` — `db.ts` itself has no `core/db` import. [`src/cli/db/create.ts`](../../src/cli/db/create.ts) and `drop.ts` call `checkDbStatus`/`createDb`/`destroyDb` from `core/db` directly, bypassing the SDK/`withContext` layer entirely. The SDK is otherwise the primary consumer surface for the CLI's `withContext`-based commands (`ctx.noorm.db.*`, `ctx.noorm.transfer.*`).
+- **tui**: [`src/tui/hooks/useConnection.ts`](../../src/tui/hooks/useConnection.ts), `useVaultConnection.ts`, and [`src/tui/utils/connection.ts`](../../src/tui/utils/connection.ts), `run-context.ts`, `config-validation.ts`, `change-loader.ts` import `core/connection` directly for the TUI's own connect/validate flows.
+- **mcp-rpc**: [`src/rpc/commands/explore.ts`](../../src/rpc/commands/explore.ts) calls into `core/explore` directly.
 
 ## Conventions worth knowing
 
-- `testConnection(config, { testServerOnly: true })` connects to the dialect's system database without requiring the target DB — used in setup wizards.
-- All dialects tested in integration: [`tests/integration/explore/`](../../tests/integration/explore), [`tests/integration/teardown/`](../../tests/integration/teardown), [`tests/integration/transfer/`](../../tests/integration/transfer).
-- Transfer supports PostgreSQL, MySQL, MSSQL only (not SQLite) — `TRANSFER_SUPPORTED_DIALECTS` in [`src/core/transfer/dialects/index.ts`](../../src/core/transfer/dialects/index.ts).
-- Same-server transfer skips batch loop and uses direct `INSERT … SELECT` SQL.
-- Teardown skips noorm internal tables by name; `previewTeardown` returns a dry-run list without executing.
+- Every dialect-dispatch module (`db`, `explore`, `teardown`, `transfer`) follows the same shape: a `types.ts` interface (`DialectDbOperations`, `DialectExploreOperations`, `TeardownDialectOperations`, `TransferDialectOperations`), one implementation file per dialect under `dialects/`, and a `dialects/index.ts` with a `Record<Dialect, ...>` (or `Partial<Record<Dialect, ...>>` for transfer) lookup plus a `getXOperations(dialect)` accessor.
+- `__noorm_*` table names are the universal marker for noorm-internal tracking tables; `isNoormTable()` is defined separately in [`src/core/teardown/operations.ts`](../../src/core/teardown/operations.ts) (exported for tests) and [`src/core/explore/operations.ts`](../../src/core/explore/operations.ts) (private), both checking the same prefix.
+- Dialect-specific default schemas are centralized in [`src/core/teardown/operations.ts`](../../src/core/teardown/operations.ts)'s `DEFAULT_SCHEMAS` (`postgres: 'public'`, `mssql: 'dbo'`) for display-name qualification; MySQL and SQLite have no entry because MySQL's "schema" is the database itself and SQLite has none.
+- `CreateDbOptions.precheckedStatus` and `TruncateOptions`/`TeardownOptions`/`DestroyDbOptions.policy` are both optional-but-load-bearing: callers that already ran an equivalent gate (the SDK) omit `policy`; every caller with no gate of its own must supply it.
+- `attempt`/`attemptSync` from `@logosdx/utils` wrap operations only where the result is inspected/translated (per [`.claude/rules/typescript.md`](../../.claude/rules/typescript.md)); errors that would just propagate are left unwrapped.
+- Tests under [`tests/core/explore/dialects/`](../../tests/core/explore/dialects) use a shared recording harness ([`tests/core/explore/recording-db.ts`](../../tests/core/explore/recording-db.ts), `createRecordingDb`) that builds a real Kysely instance with the dialect's actual adapter/compiler/introspector but a driver that records compiled SQL and replays canned rows per regex-matched rule — this exists because an earlier stub returning `SELECT 1` made wrong `WHERE` predicates structurally undetectable.
+- [`tests/integration/`](../../tests/integration) (12 subdirectories: `change`, `cli`, `connection`, `error-diagnostics`, `explore`, `impersonate`, `runner`, `sdk`, `sql-terminal`, `teardown`, `transfer`, `version`) requires live database services and is organized per-dialect within most subdirectories (`postgres.test.ts`, `mysql.test.ts`, `mssql.test.ts`, `sqlite.test.ts` where applicable); several subdirectories (`change`, `runner`, `sdk`, `sql-terminal`, `version`) exercise other domains' code but need a live connection to do so. [`tests/integration/cli/setup.ts`](../../tests/integration/cli/setup.ts) is the shared CLI-integration harness (`noorm()`/`noormJson()` run the built CLI binary via `zx`, `setupTestProject()`/`cleanupTestProject()` manage a per-test SQLite project directory).
+- `skipIfNoContainer(dialect)` / `TEST_CONNECTIONS` / `makeTestConfig` / `createTestConnection` / `deployTestSchema` / `seedTestData` (from [`tests/utils/db.ts`](../../tests/utils/db.ts), outside this domain's paths) are the shared fixtures every integration test in this domain uses to skip gracefully when postgres/mysql/mssql containers aren't reachable.

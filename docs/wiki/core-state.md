@@ -1,70 +1,62 @@
 ---
 type: Domain
+description: Encrypted project state, settings.yml, config resolution, app lifecycle, and schema/state/settings version migration
 ---
 
 # core-state
 
 ## What it does
 
-Manages encrypted application state (configs, secrets, active config pointer), project settings (`settings.yml`), config resolution, and version migration across three layers (schema, state, settings). Also owns lifecycle (shutdown orchestration) and the project-discovery bootstrap.
+Persists project data across three files with different trust levels: [`.noorm/state/state.enc`](../../.noorm/state/state.enc) (encrypted configs, secrets, known users), `.noorm/settings.yml` (version-controlled build/stage/rule config), and process-lifetime app startup/shutdown coordination. [`src/core/version/`](../../src/core/version) runs three independent migration tracks (schema, state, settings), each keyed on its own integer version number in `CURRENT_VERSIONS` ([`src/core/version/types.ts`](../../src/core/version/types.ts)), separate from the CLI's semver package version. [`src/core/observer.ts`](../../src/core/observer.ts) is the central `ObserverEngine` instance (`@logosdx/observer`) that every domain in the repo emits events through, and whose `NoormEvents` interface aggregates event types from `settings`, `lifecycle`, `update`, `vault`, `transfer`, `dt`, `logger`, and `teardown`.
 
-Configs are stored encrypted in `.noorm/state/state.enc` using AES-256-GCM. Settings live in `.noorm/settings.yml` (plaintext YAML). Version migration runs at startup across all three layers.
+## Artifacts
 
-Each config carries `access: ConfigAccess` (per-channel role pair, replacing the removed `protected: boolean`), resolved via `resolveLegacyAccess` from [`src/core/policy/`](../../src/core/policy). [`src/core/config/schema.ts`](../../src/core/config/schema.ts) maps a legacy `protected` boolean input to `access` at parse time; `StateManager.load()` backfills `access` on any config that reaches the current schema version without it.
-
-## CLI code
-
-- [`src/core/state/manager.ts`](../../src/core/state/manager.ts) — `StateManager`; encrypt/decrypt state, CRUD for configs and secrets. `load()` runs the schemaVersion-keyed migration (`migrateState`/`needsStateMigration` from `core/version/state/`, e.g. v2's `protected`→`access` mapping) ahead of the package-semver migration in `state/migrations.ts`, then backfills `access` on any config still missing it
-- [`src/core/state/encryption/`](../../src/core/state/encryption) — AES-256-GCM encrypt/decrypt primitives
-- [`src/core/state/migrations.ts`](../../src/core/state/migrations.ts) — `migrateState`, `needsMigration`; package-semver-keyed, distinct from the schemaVersion-keyed migrations in `core/version/state/`
-- [`src/core/settings/manager.ts`](../../src/core/settings/manager.ts) — `SettingsManager`; loads/saves `settings.yml`, validates against schema, stage merging
-- [`src/core/settings/schema.ts`](../../src/core/settings/schema.ts) — Zod schema for settings file
-- [`src/core/settings/rules.ts`](../../src/core/settings/rules.ts) — `ruleMatches`, `evaluateRule`, `evaluateRules`; config-based conditional overrides. The rule's `protected` match key checks `guarded(config)` (`core/policy`), not a config field
-- [`src/core/settings/defaults.ts`](../../src/core/settings/defaults.ts) — `DEFAULT_SETTINGS`
-- [`src/core/settings/events.ts`](../../src/core/settings/events.ts) — settings-related observer event types
-- [`src/core/config/index.ts`](../../src/core/config/index.ts) — `makeNestedConfig`; builds config object from env at module scope (known contamination source — see CLAUDE.md)
-- [`src/core/config/resolver.ts`](../../src/core/config/resolver.ts) — `resolveConfig`, `SettingsProvider`; picks active config from state + settings. `applyStageCeiling` clamps a resolved config's `access` down to `{ user: 'operator', agent: 'viewer' }` when the linked stage sets `protected: true` — replaces the old hard-violation check in `checkConfigCompleteness`
-- [`src/core/config/schema.ts`](../../src/core/config/schema.ts) — config schema validation; `withResolvedAccess` maps a legacy `protected: boolean` input to `access: ConfigAccess` via `resolveLegacyAccess` (`core/policy`)
-- [`src/core/lifecycle/manager.ts`](../../src/core/lifecycle/manager.ts) — `LifecycleManager`; shutdown phase orchestration, signal handlers
-- [`src/core/lifecycle/handlers.ts`](../../src/core/lifecycle/handlers.ts) — signal/exception handler registration
-- [`src/core/lifecycle/types.ts`](../../src/core/lifecycle/types.ts) — `ShutdownPhase`, `AppMode`, lifecycle state types
-- [`src/core/version/index.ts`](../../src/core/version/index.ts) — `VersionManager`, `checkSchemaVersion`, `migrateSchema`, `ensureSchemaVersion`, `bootstrapSchema`
-- [`src/core/version/schema/`](../../src/core/version/schema), [`src/core/version/state/`](../../src/core/version/state), [`src/core/version/settings/`](../../src/core/version/settings) — per-layer migrations (`version/state/migrations/v2.ts` maps the removed `protected` boolean to `access`)
-- [`src/core/project.ts`](../../src/core/project.ts) — `findProjectRoot`, `initProjectContext`, `isNoormProject`, `getGlobalNoormPath`
-- [`src/core/project-init.ts`](../../src/core/project-init.ts) — `initProjectContext` bootstrap: loads state, settings, lifecycle, runs version migrations
-- [`src/core/environment.ts`](../../src/core/environment.ts) — env variable detection and normalization
-- [`src/core/observer.ts`](../../src/core/observer.ts) — singleton `observer` (ObserverEngine from `@logosdx/observer`); event bus for all modules
+- [`.noorm/state/state.enc`](../../.noorm/state/state.enc) — AES-256-GCM encrypted JSON ([`src/core/state/manager.ts`](../../src/core/state/manager.ts)), mode `0o600`; holds `configs`, `secrets`, `globalSecrets`, `knownUsers`, `activeConfig`, `version`, `schemaVersion`.
+- `.noorm/state/state.enc.bak` — previous-generation backup written by `backupExisting` ([`src/core/state/persistence.ts`](../../src/core/state/persistence.ts)) before every overwrite.
+- `.noorm/state/state.enc.lock` — advisory `O_EXCL` lock file ([`src/core/state/persistence.ts`](../../src/core/state/persistence.ts)), 5s acquire timeout, 30s staleness threshold.
+- `.noorm/settings.yml` — YAML, version controlled, parsed/written by [`src/core/settings/manager.ts`](../../src/core/settings/manager.ts) via the `yaml` package.
+- [`.noorm/`](../../.noorm), [`.noorm/state/`](../../.noorm/state), `.noorm/.gitignore`, `sql/`, `changes/`, and the root [`.gitignore`](../../.gitignore) `# noorm` block — created by `src/core/project-init.ts:performProjectInit`.
 
 ## Docs
 
-- [`docs/dev/config.md`](../dev/config.md) — config internals
-- [`docs/dev/config-sharing.md`](../dev/config-sharing.md) — multi-user config sharing
-- [`docs/dev/settings.md`](../dev/settings.md) — settings file reference
-- [`docs/dev/state.md`](../dev/state.md) — state file internals
-- [`docs/dev/version.md`](../dev/version.md) — version migration internals
-- [`docs/dev/project-discovery.md`](../dev/project-discovery.md) — project root detection
-- [`docs/dev/logger.md`](../dev/logger.md) — logger internals (uses observer)
-- [`docs/guide/environments/configs.md`](../guide/environments/configs.md) — user guide: configs
-- [`docs/guide/environments/stages.md`](../guide/environments/stages.md) — user guide: stages
-- [`docs/guide/environments/secrets.md`](../guide/environments/secrets.md) — user guide: secrets
+- [`docs/dev/config.md`](../dev/config.md) — config internals.
+- [`docs/dev/settings.md`](../dev/settings.md) — settings file reference.
+- [`docs/dev/state.md`](../dev/state.md) — state file internals.
+- [`docs/dev/version.md`](../dev/version.md) — version migration internals.
+- [`docs/dev/project-discovery.md`](../dev/project-discovery.md) — project root detection.
+- [`docs/guide/environments/configs.md`](../guide/environments/configs.md) — user guide: configs.
+- [`docs/guide/environments/stages.md`](../guide/environments/stages.md) — user guide: stages.
+- [`docs/guide/environments/secrets.md`](../guide/environments/secrets.md) — user guide: config-scoped secrets stored in `state.enc`.
 
 ## Coupling
 
-- `src/core/config/index.ts:34` calls `makeNestedConfig(process.env, …)` at module scope — snapshots env at first import. Same bug was fixed for `SettingsManager` in commit `ec9ccc2`. Not yet migrated to call-time.
-- Observer ([`src/core/observer.ts`](../../src/core/observer.ts)) is imported by virtually every core module — it is the event bus; all `observer.emit()` calls couple to TUI hooks.
-- VersionManager runs migrations at startup via `project-init.ts` — schema + state + settings must all be at CURRENT_VERSIONS before app proceeds.
-- StateManager uses identity key from [`src/core/identity/storage.ts`](../../src/core/identity/storage.ts) for encryption — identity domain must initialize before state loads.
-- LifecycleManager coordinates connection teardown — `ConnectionManager.reset()` is called in lifecycle shutdown handlers.
-- RPC session layer ([`src/rpc/session.ts`](../../src/rpc/session.ts)) reads state via StateManager for active config lookup.
-- [`src/core/config/schema.ts`](../../src/core/config/schema.ts), [`src/core/config/resolver.ts`](../../src/core/config/resolver.ts), [`src/core/state/manager.ts`](../../src/core/state/manager.ts), and [`src/core/settings/rules.ts`](../../src/core/settings/rules.ts) all import `ConfigAccess`/`resolveLegacyAccess`/`guarded` from [`src/core/policy/`](../../src/core/policy) — the `core-policy` domain owns the role matrix and channel checks; shape changes to `ConfigAccess` propagate to all four.
+- Imports `resolveLegacyAccess`, `ConfigAccess`, `Role` from **core-policy** ([`src/core/state/access.ts`](../../src/core/state/access.ts), [`src/core/config/schema.ts`](../../src/core/config/schema.ts), [`src/core/config/resolver.ts`](../../src/core/config/resolver.ts)) to resolve and clamp per-config access roles — data resolution, not enforcement.
+- Imports `guarded` from **core-policy** (`src/core/settings/rules.ts:isConfigGuarded`) so rule matching on `match.protected` reflects actual access state rather than a stored flag.
+- [`src/core/state/manager.ts`](../../src/core/state/manager.ts) imports `KnownUser` ([`src/core/identity/types.ts`](../../src/core/identity/types.ts)) and `loadPrivateKey` ([`src/core/identity/storage.ts`](../../src/core/identity/storage.ts)) from **core-identity**; [`src/core/state/encryption/crypto.ts`](../../src/core/state/encryption/crypto.ts) imports `deriveStateKey` ([`src/core/identity/crypto.ts`](../../src/core/identity/crypto.ts)) and `isValidKeyHex` ([`src/core/identity/storage.ts`](../../src/core/identity/storage.ts)) — state encryption is keyed off the user's identity private key.
+- [`src/core/config/types.ts`](../../src/core/config/types.ts) imports `ConnectionConfig`/`Dialect` from [`src/core/connection/types.ts`](../../src/core/connection/types.ts); [`src/core/config/validate.ts`](../../src/core/config/validate.ts) imports `testConnection` from [`src/core/connection/factory.ts`](../../src/core/connection/factory.ts); [`src/core/config/schema.ts`](../../src/core/config/schema.ts) and [`src/core/settings/schema.ts`](../../src/core/settings/schema.ts) both import `PortSchema` from [`src/core/connection/defaults.ts`](../../src/core/connection/defaults.ts) — all **core-db**.
+- [`src/core/config/types.ts`](../../src/core/config/types.ts) imports `LogLevel` from [`src/core/logger/types.ts`](../../src/core/logger/types.ts) (**core-identity**).
+- [`src/core/lifecycle/manager.ts`](../../src/core/lifecycle/manager.ts) registers a default shutdown resource that calls `getConnectionManager().closeAll()` from [`src/core/connection/manager.ts`](../../src/core/connection/manager.ts) (**core-db**).
+- [`src/core/version/schema/index.ts`](../../src/core/version/schema/index.ts) calls `waitForIdentityToLoad` from [`src/core/identity/index.ts`](../../src/core/identity/index.ts) (**core-identity**) after bootstrapping or migrating tracking tables.
+- [`src/core/observer.ts`](../../src/core/observer.ts)'s `NoormEvents` interface extends `SettingsEvents` (this domain) and imports event-payload types from [`src/core/update/`](../../src/core/update), [`src/core/vault/events.ts`](../../src/core/vault/events.ts), [`src/core/transfer/events.ts`](../../src/core/transfer/events.ts), [`src/core/dt/events.ts`](../../src/core/dt/events.ts), [`src/core/logger/types.ts`](../../src/core/logger/types.ts), [`src/core/teardown/types.ts`](../../src/core/teardown/types.ts) — every domain that emits events depends on this file, and this file's type surface depends on those domains' event shapes.
 
 ## Conventions worth knowing
 
-- State file path: `.noorm/state/state.enc` (configurable via `StateManagerOptions`).
-- Settings file path: `.noorm/settings.yml`; `SETTINGS_FILE_PATH` constant exported from [`src/core/settings/index.ts`](../../src/core/settings/index.ts).
-- `CURRENT_VERSIONS` in [`src/core/version/index.ts`](../../src/core/version/index.ts) is the version triple that must match after migration.
-- `observer` is a module-scope singleton; `resetConnectionManager`/`resetSettingsManager`/`resetStateManager` are test-only reset points.
-- Stages in settings allow per-environment config overrides; `evaluateRules` applies them at runtime.
-- `initProjectContext` is the canonical startup sequence called by CLI entry and SDK `createContext`.
-- `Config.access` defaults to `{ user: 'admin', agent: 'viewer' }` (`DEFAULT_ACCESS`) when absent; a legacy `protected: true` maps to `{ user: 'operator', agent: 'viewer' }` (`GUARDED_ACCESS`) — both constants live in [`src/core/policy/legacy-access.ts`](../../src/core/policy/legacy-access.ts).
-- `src/core/config/protection.ts` (hard-block rules for protected configs) was deleted — access enforcement now runs entirely through `core/policy`.
+- `StateManager` ([`src/core/state/manager.ts`](../../src/core/state/manager.ts)) keeps three snapshots: `#state` (working copy), `#baseline` (state as loaded, cloned), and `#diskFingerprint` (SHA-256 of the last-read/written raw file contents). Every `#persist()` re-reads the file, compares its fingerprint to `#diskFingerprint`, and if changed, three-way merges via `mergeState` ([`src/core/state/merge.ts`](../../src/core/state/merge.ts)) using `#baseline` to distinguish "we never touched this key" from "we deleted this key".
+- `mergeState`'s per-field rules: `schemaVersion` takes `Math.max(ours, theirs)` (never steps backward), `activeConfig` keeps `ours` only if it changed from baseline, `secrets` is merged two levels deep (`mergeSecrets`) so a concurrent `secret set` on a sibling key isn't dropped, and any top-level field not in `KNOWN_FIELDS` (written by a newer build this one doesn't model) is carried through under the same equals-baseline rule.
+- `StateManager.load()` runs two independent migration systems in a fixed order: `migrateSchemaVersion` ([`src/core/version/state/index.ts`](../../src/core/version/state/index.ts), keyed on the `schemaVersion` int field) runs first on the raw untyped record, then the package-semver `migrateState` ([`src/core/state/migrations.ts`](../../src/core/state/migrations.ts), keyed on the `version` string field) runs second. Reversing the order would drop `schemaVersion` and anything else the semver migration doesn't know about, since it only knows `State`'s seven top-level fields.
+- After both migrations, `StateManager.load()` calls `repairConfigAccess` ([`src/core/state/access.ts`](../../src/core/state/access.ts)) on every config's `access` field unconditionally — the single point that backfills a missing/malformed `access`, so no downstream consumer (`setConfig`, `listConfigs`, `guarded`) needs its own fallback. It is fail-closed: an unrecognized shape can only make a config *more* restrictive (falls back to `MOST_RESTRICTIVE_ROLE = 'viewer'`), never less.
+- `src/core/state/migrations.ts:migrateState` deliberately drops the legacy `identity` field (moved to `~/.noorm/`) rather than carrying it through, so a private key once stored in `state.enc` doesn't get re-persisted forever. Everything else unknown is spread through rather than rebuilt from an allowlist.
+- `isValidSecretKey`/`InvalidSecretKeyError` ([`src/core/state/manager.ts`](../../src/core/state/manager.ts)) are the single declaration of the secret-key identifier regex (`/^[A-Za-z][A-Za-z0-9_]*$/`); `setSecret` enforces it, and TUI live-typing validators call the same predicate instead of hand-copying the pattern.
+- `writeFileAtomicSync` ([`src/core/state/persistence.ts`](../../src/core/state/persistence.ts)) stages to a sibling `.<pid>.<random>.tmp` file, `fsyncSync`s it, then `renameSync`s over the target, and fsyncs the containing directory afterward (best-effort). `acquireWriteLock` uses `open(..., 'wx')` (`O_EXCL`) rather than `flock` because `flock` silently no-ops on some network filesystems.
+- `EncryptedPayload.kdf` is optional; absent means `hkdf-sha256` (the only derivation ever shipped) so old payloads keep decrypting if a future build changes the derivation. `IV_LENGTH` is 16 bytes, not the NIST-recommended 12 — a deliberate deviation noted in [`src/core/state/encryption/crypto.ts`](../../src/core/state/encryption/crypto.ts).
+- `SettingsManager` ([`src/core/settings/manager.ts`](../../src/core/settings/manager.ts)) keeps `#document` (exactly what's on/will be written to disk) separate from `#settings` (`#document` merged with a `NOORM_*` env-var overlay via `allSettingsEnv`/`makeNestedConfig`). Stage/rule mutators (`setStage`, `addRule`, etc.) read and write `#document`, never `#settings` — merging the env overlay into the persisted document would commit ambient shell values (vault tokens, DB passwords) into version-controlled `settings.yml`.
+- `allSettingsEnv()` ([`src/core/settings/manager.ts`](../../src/core/settings/manager.ts)) calls `makeNestedConfig` fresh per-call; `getEnvConfig()`'s `makeNestedConfig` call is at module scope, but `memoizeOpts: false` keeps its returned `allConfigs()` accessor reading `process.env` live on every invocation — both avoid the same env-snapshot staleness by different means, sidestepping a Bun test-runner edge case where a module-scope closure over `process.env` misses later mutations.
+- `resolveConfig` ([`src/core/config/resolver.ts`](../../src/core/config/resolver.ts)) merges five layers in ascending priority — `DEFAULTS` → stage defaults → stored config → env vars → CLI flags — via `merge`/`clone` from `@logosdx/utils`, then runs `parseConfig` and `applyStageCeiling`. `DEFAULTS` deliberately omits `access` so a merged-in stored/env/flag `access` (or legacy `protected`) is what `parseConfig`'s `resolveLegacyAccess` fallback actually sees.
+- `applyStageCeiling` ([`src/core/config/resolver.ts`](../../src/core/config/resolver.ts)) only clamps access *down*: a stage with `defaults.protected: true` caps resolved access at `{ user: 'operator', agent: 'viewer' }` (`PROTECTED_STAGE_CEILING`) via `roleRank`/`clampToCeiling`, but never loosens a config that was already stricter than the ceiling.
+- `ConfigSchema` ([`src/core/config/schema.ts`](../../src/core/config/schema.ts)) is a `.transform(withResolvedAccess)` — parsing a config always resolves `access` from either the new `access` field or the legacy `protected` boolean, and never echoes `protected` back into the output; `access` is the only stored source of truth after parse.
+- Database names are validated against `DANGEROUS_DB_NAME_CHARS` ([`src/core/config/schema.ts`](../../src/core/config/schema.ts)) — quotes, backticks, brackets, semicolons, and control characters — because `database` is interpolated into raw DDL (`CREATE`/`DROP DATABASE`) as a quoted dialect-specific identifier. SQLite is exempt since its `database` is a file path.
+- `LifecycleManager` ([`src/core/lifecycle/manager.ts`](../../src/core/lifecycle/manager.ts)) runs shutdown in a fixed phase order (`stopping` → `completing` → `releasing` → `flushing` → `exiting`), each phase running its registered `LifecycleResource`s sorted by `priority` under a per-phase timeout via `runWithTimeout`; a second `SIGINT`/`SIGTERM`/`SIGHUP` during `shutting_down` forces `process.exit(128 + signalCode)` rather than re-entering shutdown.
+- [`src/core/version/`](../../src/core/version) has three parallel, near-identical migration engines (schema in `version/schema/`, state in `version/state/`, settings in `version/settings/`), each with its own `MIGRATIONS` array, `getXVersion`, `checkXVersion`, and `migrateX` following the same `up(data)`/`down(data)` migration-interface shape from [`src/core/version/types.ts`](../../src/core/version/types.ts).
+- [`src/core/version/state/migrations/v3.ts`](../../src/core/version/state/migrations/v3.ts) renames `access.mcp` → `access.agent` (the channel key), reusing `repairConfigAccess` so an unrecognized value downgrades to `viewer` rather than being dropped — the same fail-closed rule v2 established.
+- `findProjectRoot` ([`src/core/project.ts`](../../src/core/project.ts)) walks up from cwd looking for a [`.noorm`](../../.noorm) directory, stopping at (and not treating as a project) the user's home directory — `~/.noorm/` is global identity storage, not a project. `getOriginalCwd`/`setOriginalCwd` capture the pre-chdir cwd exactly once (first call wins) so commands like `init --here` can still reach it after `initProjectContext` has already `chdir`'d.
+- `performProjectInit` ([`src/core/project-init.ts`](../../src/core/project-init.ts)) only creates/updates identity when `identityInfo` is non-null; when null, it assumes a global identity already exists in `~/.noorm/`. It keys the [`.gitignore`](../../.gitignore) append-check on the literal entry string [`.noorm/state/`](../../.noorm/state) rather than the `# noorm` header comment, because earlier versions wrote the header with nothing under it.
