@@ -87,6 +87,7 @@ gtag('config', 'G-Y69K95866J');`],
                 { text: 'Guide', link: '/guide/sql-files/organization' },
                 { text: 'CLI', link: '/headless' },
                 { text: 'TUI', link: '/tui' },
+                { text: 'Modeling', link: '/modeling/' },
                 {
                     text: 'Dev Docs',
                     link: '/dev/',
@@ -156,6 +157,21 @@ gtag('config', 'G-Y69K95866J');`],
                             { text: 'CLI Reference', link: '/headless' },
                             { text: 'Terminal UI', link: '/tui' },
                             { text: 'Relational Design', link: '/guide/relational-design' },
+                        ],
+                    },
+                    {
+                        // ignatius is a separate binary with its own release
+                        // cadence, so these pages carry the narrative and link
+                        // out to the ignatius repo for the exhaustive rule
+                        // catalogs rather than duplicating them here.
+                        text: 'Information Modeling',
+                        items: [
+                            { text: 'Overview', link: '/modeling/' },
+                            { text: 'Installation', link: '/modeling/installation' },
+                            { text: 'Entities & Key Inheritance', link: '/modeling/entities' },
+                            { text: 'Data Flows', link: '/modeling/data-flows' },
+                            { text: 'Modeling Skill', link: '/modeling/modeling-skill' },
+                            { text: 'Best Practices', link: '/modeling/best-practices' },
                         ],
                     },
                     {

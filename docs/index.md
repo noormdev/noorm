@@ -131,6 +131,20 @@ noorm vault set API_KEY ... # Push a team secret to the encrypted vault
 ```
 
 
+## Plan it before you build it
+
+Most schemas get designed while they are being built, one migration at a time, and nobody outside the code can see the shape until it is already in production.
+
+[ignatius](/modeling/) is the planning half. Describe your entities and processes in markdown and it renders an IDEF1X entity diagram, a searchable data dictionary, and SSADM data flow diagrams that show how data moves between people, the database, caches, files, and paper. Export it to a single HTML file, get agreement from the people who care, then hand the same markdown to your agent as the specification for the SQL.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/noormdev/ignatius/main/install.sh | sh
+ignatius serve ./models -o
+```
+
+ignatius decides what the data is. noorm builds it. Both keep the source of truth in files you own. See [Information modeling](/modeling/).
+
+
 ## Next steps
 
 <div class="next-steps">
@@ -143,5 +157,8 @@ Complete the tutorial and see the core value.
 
 [**Building Your SDK**](/getting-started/building-your-sdk)
 Create a type-safe database package for your apps.
+
+[**Information Modeling**](/modeling/)
+Design the data model before you write the schema.
 
 </div>
