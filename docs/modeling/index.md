@@ -90,6 +90,9 @@ The entity format, what gets derived, and the two key conventions.
 [**Data flows**](/modeling/data-flows)
 Processes, externals, stores, and sub-diagrams.
 
+[**Reverse-engineering**](/modeling/reverse-engineering)
+Extract a model from a database you already run.
+
 [**Best practices**](/modeling/best-practices)
 How to get a model worth showing to a stakeholder.
 

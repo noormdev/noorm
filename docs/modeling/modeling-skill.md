@@ -42,7 +42,7 @@ That adds `noorm-modeling` to the current project's `.claude/skills/`. Add `-g` 
 
 Pick `flow` when you can already name your processes. It walks the structure step by step: processes as verbs, externals, the decision between a `db:` store and a `kind:` store, the data each flow carries, sample rows, and the business narrative.
 
-Pick `discover` when you know what the business does but have not decomposed it yet. The skill interviews you in plain language, derives the entities your processes require, writes those first, then writes the flows that reference them. When a real system already exists, whether a database, a schema dump, a codebase, or an API, `discover` reads it instead of interviewing you and then walks you through the judgment calls it cannot infer.
+Pick `discover` when you know what the business does but have not decomposed it yet. The skill interviews you in plain language, derives the entities your processes require, writes those first, then writes the flows that reference them. When a real system already exists, whether a database, a schema dump, a codebase, or an API, `discover` reads it instead of interviewing you and then walks you through the judgment calls it cannot infer. To point it at a live database, see [Reverse-engineering an existing database](/modeling/reverse-engineering).
 
 Both modes always produce example data. Every entity gets sample rows and every process gets input and output tables, because concrete instances expose wrong rules that pass every structural check.
 
