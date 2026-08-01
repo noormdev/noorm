@@ -56,17 +56,43 @@ describe('change: history — hydrateDate', () => {
         // parses SQLite offset-less CURRENT_TIMESTAMP text as local time,
         // silently shifting the result by the host UTC offset. Empirically
         // verified pair from the spec (host TZ America/New_York, -240min).
-        const hydrated = hydrateDate('2026-07-12 09:02:59');
+        const hydrated = hydrateDate('2026-07-12 09:02:59', 'sqlite');
 
         expect(hydrated).toBeInstanceOf(Date);
         expect(hydrated?.toISOString()).toBe('2026-07-12T09:02:59.000Z');
 
     });
 
-    it('should pass a Date through unchanged (pg/mysql/mssql shape)', () => {
+    it('should reinterpret a pg Date as UTC, not local time', () => {
 
+        // `executed_at` is `timestamp` (no zone) and noorm writes UTC into it,
+        // but `pg` reads that text back through the host zone. A row stored at
+        // 09:02:59 UTC therefore arrives as a Date meaning 09:02:59 LOCAL --
+        // four hours off on this block's pinned America/New_York. Constructed
+        // the same way the driver does, from local calendar fields.
+        const asDriverReturnsIt = new Date(2026, 6, 12, 9, 2, 59);
+        const hydrated = hydrateDate(asDriverReturnsIt, 'postgres');
+
+        expect(hydrated?.toISOString()).toBe('2026-07-12T09:02:59.000Z');
+
+    });
+
+    it('should reinterpret a mysql Date as UTC, not local time', () => {
+
+        // mysql2 was measured to have the identical skew as pg.
+        const asDriverReturnsIt = new Date(2026, 6, 12, 9, 2, 59);
+        const hydrated = hydrateDate(asDriverReturnsIt, 'mysql');
+
+        expect(hydrated?.toISOString()).toBe('2026-07-12T09:02:59.000Z');
+
+    });
+
+    it('should pass an mssql Date through unchanged', () => {
+
+        // tedious was never measured, so mssql keeps its existing behavior
+        // rather than risking a correction in the wrong direction.
         const original = new Date('2026-07-12T09:02:59.000Z');
-        const hydrated = hydrateDate(original);
+        const hydrated = hydrateDate(original, 'mssql');
 
         expect(hydrated).toBe(original);
 
@@ -74,13 +100,13 @@ describe('change: history — hydrateDate', () => {
 
     it('should return null for null input', () => {
 
-        expect(hydrateDate(null)).toBeNull();
+        expect(hydrateDate(null, 'postgres')).toBeNull();
 
     });
 
     it('should return null for undefined input', () => {
 
-        expect(hydrateDate(undefined)).toBeNull();
+        expect(hydrateDate(undefined, 'postgres')).toBeNull();
 
     });
 

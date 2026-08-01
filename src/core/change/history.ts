@@ -62,21 +62,43 @@ import type { ChangeType } from '../shared/index.js';
 const RESET_MARKER = '__reset__';
 
 /**
- * Normalizes a change-tracking timestamp column to a real `Date`.
+ * Dialects whose driver parses an offset-less timestamp column in the host's
+ * local zone rather than as UTC.
  *
- * WHY: postgres/mysql/mssql drivers parse `executed_at` into a `Date`
- * automatically, but SQLite (both `bun:sqlite` and `better-sqlite3`)
- * hands back the raw `CURRENT_TIMESTAMP` text (`'YYYY-MM-DD HH:MM:SS'`,
- * always UTC, no offset marker). Parsing that string with `new Date(str)`
- * directly reads it as local time, silently shifting the result by the
- * host's UTC offset — so the string must be marked UTC explicitly first.
+ * WHY: `executed_at` is `timestamp`/`datetime2` — no time zone — and noorm
+ * always writes UTC into it. `pg` and `mysql2` both read that naive text back
+ * through the local zone, so a row stored at 05:10:57 UTC comes back as a
+ * `Date` meaning 05:10:57 local. On a UTC-4 host that is four hours in the
+ * future, which surfaces as "in 4 hours" wherever the TUI renders relative
+ * time. Both were measured, not assumed.
+ *
+ * MSSQL is deliberately absent: `tedious` was not measured, and leaving it out
+ * keeps its current behavior rather than risking a correction in the wrong
+ * direction. SQLite is absent because it returns text and takes the string
+ * path below.
+ */
+const LOCAL_PARSED_TIMESTAMP_DIALECTS: ReadonlySet<Dialect> = new Set(['postgres', 'mysql']);
+
+/**
+ * Normalizes a change-tracking timestamp column to a real `Date` in UTC.
+ *
+ * WHY: the column carries no time zone and noorm writes UTC into it, but every
+ * driver disagrees about how to read that back. SQLite (both `bun:sqlite` and
+ * `better-sqlite3`) hands back raw `CURRENT_TIMESTAMP` text; `pg` and `mysql2`
+ * hand back a `Date` they already misread as local. Both roads lead to the
+ * same silent shift by the host's UTC offset, so both are corrected here —
+ * the string by marking it UTC, the `Date` by reinterpreting the local
+ * calendar fields the driver produced as the UTC fields they actually were.
  *
  * @example
- * hydrateDate('2026-07-12 09:02:59') // -> 2026-07-12T09:02:59.000Z
- * hydrateDate(new Date('2026-07-12T09:02:59.000Z')) // -> unchanged
- * hydrateDate(null) // -> null
+ * hydrateDate('2026-07-12 09:02:59', 'sqlite')   // -> 2026-07-12T09:02:59.000Z
+ * hydrateDate(pgDateFor09_02_59, 'postgres')     // -> 2026-07-12T09:02:59.000Z
+ * hydrateDate(null, 'postgres')                  // -> null
  */
-export function hydrateDate(value: Date | string | null | undefined): Date | null {
+export function hydrateDate(
+    value: Date | string | null | undefined,
+    dialect: Dialect,
+): Date | null {
 
     if (value === null || value === undefined) {
 
@@ -86,7 +108,21 @@ export function hydrateDate(value: Date | string | null | undefined): Date | nul
 
     if (value instanceof Date) {
 
-        return value;
+        if (!LOCAL_PARSED_TIMESTAMP_DIALECTS.has(dialect)) {
+
+            return value;
+
+        }
+
+        return new Date(Date.UTC(
+            value.getFullYear(),
+            value.getMonth(),
+            value.getDate(),
+            value.getHours(),
+            value.getMinutes(),
+            value.getSeconds(),
+            value.getMilliseconds(),
+        ));
 
     }
 
@@ -216,9 +252,9 @@ export class ChangeHistory {
         return {
             name: record.name,
             status: record.status,
-            appliedAt: hydrateDate(record.executed_at),
+            appliedAt: hydrateDate(record.executed_at, this.#dialect),
             appliedBy: record.executed_by,
-            revertedAt: hydrateDate(revertRecord?.executed_at),
+            revertedAt: hydrateDate(revertRecord?.executed_at, this.#dialect),
             errorMessage: record.error_message || null,
             appliedHistoryId: record.id,
         };
@@ -269,7 +305,7 @@ export class ChangeHistory {
                 statuses.set(record.name, {
                     name: record.name,
                     status: record.status,
-                    appliedAt: hydrateDate(record.executed_at),
+                    appliedAt: hydrateDate(record.executed_at, this.#dialect),
                     appliedBy: record.executed_by,
                     revertedAt: null, // Will be filled in below
                     errorMessage: record.error_message || null,
@@ -303,7 +339,7 @@ export class ChangeHistory {
                 if (!seenReverts.has(revert.name) && statuses.has(revert.name)) {
 
                     const status = statuses.get(revert.name)!;
-                    status.revertedAt = hydrateDate(revert.executed_at);
+                    status.revertedAt = hydrateDate(revert.executed_at, this.#dialect);
                     seenReverts.add(revert.name);
 
                 }
@@ -1055,7 +1091,7 @@ export class ChangeHistory {
             status: r.status,
             // Non-null: executed_at is NOT NULL with a CURRENT_TIMESTAMP
             // default, always populated on write (see createOperation).
-            executedAt: hydrateDate(r.executed_at)!,
+            executedAt: hydrateDate(r.executed_at, this.#dialect)!,
             executedBy: r.executed_by,
             durationMs: r.duration_ms,
             errorMessage: r.error_message || null,
@@ -1130,7 +1166,7 @@ export class ChangeHistory {
             status: r.status,
             // Non-null: executed_at is NOT NULL with a CURRENT_TIMESTAMP
             // default, always populated on write (see createOperation).
-            executedAt: hydrateDate(r.executed_at)!,
+            executedAt: hydrateDate(r.executed_at, this.#dialect)!,
             executedBy: r.executed_by,
             durationMs: r.duration_ms,
             errorMessage: r.error_message || null,
