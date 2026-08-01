@@ -138,6 +138,68 @@ relationships:
 A predicate can carry both reading directions with `{ fwd, rev }`, so the edge reads correctly whichever way you traverse it.
 
 
+#### Lazy predicates and real ones
+
+
+In IDEF1X, entities are nouns and relationships are verbs. The predicate is where that verb goes, and it is the part of the model a tool cannot derive for you. Everything else on the edge comes from the keys.
+
+`has many`, `belongs to`, and `has one` are the reflex answers, and they are all restatements of something already on the diagram. "Party has many SalesOrders" tells you the cardinality the crow's-foot marker is already showing. It says nothing about the business. The relationship exists because a party **places** orders, and that is the fact the schema is there to record.
+
+| Lazy | What it restates | What the business actually says |
+|---|---|---|
+| `belongs to` | the foreign key | `is placed by`, `is owed by`, `is part of` |
+| `has many` | the cardinality marker | `contains`, `journals`, `is broken down into` |
+| `has one` | the key shape | `is realized as`, `is settled via` |
+
+The replacements are not synonyms for the lazy versions. `contains` and `is part of` assert composition, that the child is a constituent of the parent rather than merely pointing at it. `is sold via` and `is realized as` assert that one thing is the concrete form another takes. Those are different claims about the world, and picking between them is modeling work.
+
+
+#### The sentence has to ring true
+
+
+Read the relationship aloud as a sentence, in both directions. If it is not something a person who runs the business would say, and nod at, then either the predicate is wrong or the relationship is.
+
+This is the cheapest correctness check in the model, and it catches things no structural rule can. A predicate you cannot phrase truthfully is usually a relationship that does not belong, or an entity whose purpose you have not settled. When the sentence does ring true, it *is* the business case for the entity carrying it: the reason that table exists, stated in one line, in the language of the people who asked for it.
+
+The reference model reads like this in both directions:
+
+| Relationship | Forward, parent to child | Reverse, child to parent |
+|---|---|---|
+| `SI_Line → SalesInvoice` | SalesInvoice **contains** SI_Line | SI_Line **is part of** SalesInvoice |
+| `SalesOrder → Party` | Party **places** SalesOrder | SalesOrder **is placed by** Party |
+| `SalesInvoice → Party` | Party **owes on** SalesInvoice | SalesInvoice **is owed by** Party |
+| `Business → Party` | Party **is realized as** Business | Business **is a** Party |
+| `SOL_Subscription → Subscription` | Subscription **is sold via** SOL_Subscription | SOL_Subscription **sells** Subscription |
+
+Read the whole diagram with predicates like those and it narrates the business. Read it with `has many` everywhere and it narrates the foreign keys, which you could have got from the DDL.
+
+
+#### Both directions are authored, neither is derived
+
+
+`fwd` reads parent to child. `rev` reads child to parent. ignatius does not invent one from the other, because English does not work that way: the inverse of "is realized as" is "is a", not "is realized as by".
+
+```yaml
+relationships:
+    - target: Identity
+      on:
+          party_id: party_id
+      predicate: { fwd: is realized as, rev: is a }
+```
+
+A plain string sets both directions to the same phrase, which is fine when one reading works both ways (`is a`) and is the right first move when you have not settled the reverse yet.
+
+```yaml
+predicate: is a
+```
+
+Supply only one key of the object form and the other defaults to empty.
+
+The graph draws edges parent to child and labels them with the forward predicate, so the label matches the direction of the line. Hover an entity and every edge touching it re-reads outward from that entity: edges where it is the child flip to the reverse predicate, and edges where it is the parent stay forward. The dictionary, which has no hover, shows the forward predicate and appends the reverse in a muted style when the two differ.
+
+One thing worth carrying past the diagram: once a relationship has a real verb, the foreign key can take its name. A column named for the sentence documents itself, and the schema, the dictionary, and the application code end up speaking the same language as the people who asked for the feature.
+
+
 ### Example rows
 
 
