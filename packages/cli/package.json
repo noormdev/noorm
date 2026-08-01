@@ -26,6 +26,6 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/noormdev/noorm"
+    "url": "git+https://github.com/noormdev/noorm.git"
   }
 }
