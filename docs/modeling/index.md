@@ -90,6 +90,20 @@ ignatius answers a different question in each of its diagram views.
 **SSADM data flow diagrams** answer "who touches the data, and where does it live". Processes, external actors, and data stores. Stores are not only tables. A cache, a log file, a queue, a paper form, and a document all appear as first-class stores, so the diagram shows where data rests rather than only the part of it that reached a database. See [Data flows](/modeling/data-flows).
 
 
+## Where the name comes from
+
+
+ignatius is named for Derek Ignatius Asirvadem, who mentored me for a couple of years and introduced me to IDEF1X.
+
+Studying it and then practising it convinced me there is no higher standard for modeling data. The industry mostly skips modeling and goes straight to building. Modeling first solves something like 80% of the problems up front, and it produces months of valid programming work before anyone opens an editor.
+
+The other 20% is real and worth naming: once you start building, you **do** find problems in the model. That is the part that drifts. What matters is when you find it. While nothing is physically committed to the system yet, changing the model is cheap. Once it is code, it is not. Modeling holds that cheap window open longer, and an agent working from a written model holds it open longer still.
+
+Before ignatius I drew models in OmniGraffle, on Derek's recommendation. Two things broke that. My own obsession with perfect lines and perfect names turned drawing into the bottleneck, and there was no way to tell an LLM "this is the relationship between these two entities" from a picture. So the model moved into markdown, where both problems go away. The layout is generated rather than drawn, and the source is text an agent can read and write.
+
+None of these tools would exist without his guidance. ignatius is a tribute to him.
+
+
 ## Next steps
 
 
