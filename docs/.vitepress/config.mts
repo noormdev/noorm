@@ -201,6 +201,7 @@ gtag('config', 'G-Y69K95866J');`],
                         collapsed: true,
                         items: [
                             { text: 'CI/CD', link: '/guide/automation/ci' },
+                            { text: 'Deployment', link: '/guide/deployment' },
                             { text: 'MCP (AI Agents)', link: '/guide/automation/mcp' },
                         ],
                     },

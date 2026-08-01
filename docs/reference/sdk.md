@@ -70,6 +70,8 @@ const ctx = await createContext<MyDatabase>({
 | `channel`        | `Channel` | Which caller channel this context represents for access-policy checks. Defaults to `'user'`. A destructive operation the config's role denies — or that resolves to "requires confirmation," which the SDK can't prompt for — throws `ProtectedConfigError`. |
 | `stage`          | `string`  | Stage name for inheriting stage defaults.                        |
 
+There is no `connection` option. Connection details come either from a stored config or, when `NOORM_CONNECTION_DIALECT` and `NOORM_CONNECTION_DATABASE` are set, from the environment — in which case `createContext()` needs no `.noorm/` directory and no identity at all. That is the mode to use in production; see [Deploying an Application](/guide/deployment).
+
 > Access is per-config, not per-context: each config declares `access: { user, agent }` (roles `viewer`/`operator`/`admin`, or `agent: false` to hide the config from agents entirely, over MCP and the CLI alike). `channel` tells `createContext` which half of that grant to enforce — see [Access Roles](/guide/environments/configs#access-roles).
 
 
