@@ -7,7 +7,8 @@
 A SQL-first schema and change manager for **PostgreSQL**, **MySQL**, **SQLite**, and **SQL Server**.<br>
 Your schema lives in SQL files. noorm builds it, versions it, and keeps every environment in sync.
 
-[![npm](https://img.shields.io/npm/v/@noormdev/cli?color=E05742&label=%40noormdev%2Fcli)](https://www.npmjs.com/package/@noormdev/cli)
+[![@noormdev/cli](https://img.shields.io/npm/v/@noormdev/cli?color=E05742&label=%40noormdev%2Fcli)](https://www.npmjs.com/package/@noormdev/cli)
+[![@noormdev/sdk](https://img.shields.io/npm/v/@noormdev/sdk?color=916336&label=%40noormdev%2Fsdk)](https://www.npmjs.com/package/@noormdev/sdk)
 [![CI](https://github.com/noormdev/noorm/actions/workflows/ci.yml/badge.svg)](https://github.com/noormdev/noorm/actions/workflows/ci.yml)
 [![license](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)
 
