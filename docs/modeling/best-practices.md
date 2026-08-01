@@ -108,6 +108,8 @@ ignatius export ./models -o model.html
 
 One self-contained HTML file with the graph, the dictionary, and the flows, working offline with nothing installed. Attach it to the ticket, mail it to the stakeholder, or commit it beside the model.
 
+Put your own name on it first. The default logo, title, and copyright line are placeholders, and a document going to a client or an approver should carry your organization rather than the tool's. See [Branding your model](/modeling/branding).
+
 This is the step the whole tool exists for. A wrong entity boundary costs a conversation now and a migration later. Get the disagreement out of people before the schema is real, then hand the agreed model to your agent as the specification for the SQL.
 
 

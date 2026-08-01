@@ -71,7 +71,11 @@ Every config carries a role per channel, `access: { user, agent }`, and the `age
 Raw SQL is classified by what the statement does rather than which command asked, so an agent on `viewer` gets a `SELECT` through and a same-shaped `INSERT` denied.
 
 ::: warning Roles prevent accidents, not attacks
-The `agent` role is a guardrail against a mistake, not a security boundary. An agent can set `NOORM_CHANNEL` too. For a database you actually care about, connect noorm with a database user that holds only `SELECT` and catalog permissions, and let the role be the second line rather than the only one.
+The `agent` role is a guardrail against a mistake, not a security boundary. It stops an agent from doing damage it never meant to do, which is the realistic failure. It does not stop one that has been talked into it: `NOORM_CHANNEL` is an environment variable, so anything able to influence the agent's instructions or its environment can reach around the role.
+
+That is worth weighing here specifically, because reverse-engineering points an agent at a large amount of text you did not write. Table comments, column descriptions, and stored procedure bodies are all content a prompt injection can ride in on.
+
+So for a database you care about, connect noorm with a database user that holds only `SELECT` and catalog permissions. Then the role is the second line of defense rather than the only one, and an instruction that gets past it still cannot write anything.
 :::
 
 

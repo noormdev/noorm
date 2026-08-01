@@ -56,7 +56,7 @@ Entities live under `data/`. The subdirectory is organizational convenience only
 name: My Schema
 ```
 
-Add `version`, `description`, and `updated` for model metadata, a `theme` block to override colors and spacing, and a `branding` block for a logo, title, or copyright line.
+Add `version`, `description`, and `updated` for model metadata, a `theme` block to override colors and spacing, and a `branding` block for a logo, title, or copyright line. The model is yours, and the default chrome is a placeholder you are meant to replace. See [Branding your model](/modeling/branding).
 
 
 ## An entity file
