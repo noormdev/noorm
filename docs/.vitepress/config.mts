@@ -149,8 +149,13 @@ gtag('config', 'G-Y69K95866J');`],
                             { text: 'Concepts', link: '/getting-started/concepts' },
                         ],
                     },
+                    // Only Getting Started and Reference omit `collapsed`, which
+                    // is what pins them open with no toggle. Every other group
+                    // is collapsible and starts closed, so the sidebar opens as
+                    // a short list of topics rather than a wall of links.
                     {
                         text: 'Features',
+                        collapsed: true,
                         items: [
                             { text: 'CLI Reference', link: '/headless' },
                             { text: 'Terminal UI', link: '/tui' },
@@ -163,6 +168,7 @@ gtag('config', 'G-Y69K95866J');`],
                         // out to the ignatius repo for the exhaustive rule
                         // catalogs rather than duplicating them here.
                         text: 'Information Modeling',
+                        collapsed: true,
                         items: [
                             { text: 'Overview', link: '/modeling/' },
                             { text: 'Installation', link: '/modeling/installation' },
