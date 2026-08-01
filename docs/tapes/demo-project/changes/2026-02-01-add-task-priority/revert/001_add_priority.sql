@@ -1,0 +1,2 @@
+ALTER TABLE task DROP CONSTRAINT IF EXISTS task_priority_range;
+ALTER TABLE task DROP COLUMN IF EXISTS priority;

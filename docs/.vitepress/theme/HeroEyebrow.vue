@@ -9,7 +9,13 @@
     font-weight: 500;
     letter-spacing: 0.12em;
     text-transform: uppercase;
-    color: var(--vp-c-brand-1);
+    /* Bronze, not ember: the brand keeps ember for signal (primary CTA, cursor,
+       errors) and gives editorial lines like this one the bronze register. */
+    color: #6E4A22;
     margin-bottom: 20px;
+}
+
+.dark .hero-eyebrow {
+    color: #D2A47A;
 }
 </style>

@@ -12,7 +12,7 @@
             <div class="line"><span class="prompt">$</span> curl -fsSL <span class="url">https://noorm.dev/install.sh</span> | sh</div>
             <div class="line spacer"></div>
             <div class="line"><span class="prompt">$</span> cd /my/project &amp;&amp; noorm init</div>
-            <div class="line"><span class="prompt">$</span> npm i <span class="arg">@noorm/sdk</span></div>
+            <div class="line"><span class="prompt">$</span> npm i <span class="arg">@noormdev/sdk</span></div>
             <div class="line spacer"></div>
             <div class="line"><span class="prompt">$</span> noorm run build<span class="cursor"></span></div>
         </div>
@@ -25,7 +25,7 @@ import { ref } from 'vue'
 const copied = ref(false)
 
 function copy() {
-    const text = `curl -fsSL https://noorm.dev/install.sh | sh\ncd /my/project && noorm init\nnpm i @noorm/sdk\nnoorm run build`
+    const text = `curl -fsSL https://noorm.dev/install.sh | sh\ncd /my/project && noorm init\nnpm i @noormdev/sdk\nnoorm run build`
     navigator.clipboard.writeText(text)
     copied.value = true
     setTimeout(() => { copied.value = false }, 2000)
@@ -36,6 +36,9 @@ function copy() {
 .hero-terminal {
     width: 100%;
     max-width: 520px;
+    margin: 0 auto;
+    /* The hero container centers its text below 960px; a terminal has to stay flush left. */
+    text-align: left;
     border-radius: 10px;
     border: 1px solid var(--vp-c-border);
     background: var(--vp-code-block-bg, var(--vp-c-bg-alt));
@@ -83,6 +86,19 @@ function copy() {
 
 .terminal-body {
     padding: 16px 20px;
+}
+
+/* Phone widths: shrink the type so the longest command still lands on one line,
+   and let the body scroll rather than spill past the card border. */
+@media (max-width: 639px) {
+    .hero-terminal {
+        font-size: clamp(0.625rem, 2.7vw, 0.8125rem);
+    }
+
+    .terminal-body {
+        padding: 14px 16px;
+        overflow-x: auto;
+    }
 }
 
 .line {

@@ -2,10 +2,14 @@ import { defineConfig } from 'vitepress';
 import { withMermaid } from 'vitepress-plugin-mermaid';
 
 // https://vitepress.dev/reference/site-config
+const SITE_URL = 'https://noorm.dev';
+const TITLE = 'noorm — Write SQL. Skip the ORM.';
+const DESCRIPTION = 'A SQL-first schema and change manager for Postgres, MySQL, SQLite, and MSSQL. Your schema lives in SQL files. noorm builds it, versions it, and keeps every environment in sync.';
+
 export default withMermaid(
     defineConfig({
         title: 'noorm',
-        description: 'Database Schema & Change Manager',
+        description: DESCRIPTION,
         base: process.env.VITEPRESS_BASE || '/',
 
         // `docs/wiki/` is generated repo-analysis output for tooling and
@@ -14,9 +18,45 @@ export default withMermaid(
         // (`<steering note: ...>`) is parsed as a tag with an illegal
         // attribute and fails the build — which is why the site stopped
         // deploying after 2026-07-04.
-        srcExclude: ['wiki/**'],
+        //
+        // The rest are the same class of thing: specs, design notes, scratch
+        // output, and the tape sources, none of which are published pages.
+        srcExclude: ['wiki/**', 'spec/**', 'design/**', 'superpowers/**', 'tmp/**', 'tapes/**'],
+
+        markdown: {
+            // The terminal recordings are the heaviest assets on the site
+            // (tui.gif alone is ~1.6 MB) and none of them sit above the fold.
+            image: { lazyLoading: true },
+        },
+
+        // `title` above only sets the <title> suffix; titleTemplate gives the home
+        // page a real headline instead of the bare word "noorm".
+        titleTemplate: ':title · noorm',
+
+        // Crawlers and chat apps do not run JS, so og:* must be static and absolute.
+        // The `title`/`description` config fields cover <title> and <meta name>;
+        // everything social has to be spelled out here.
         head: [
             ['link', { rel: 'icon', href: '/image/logo.svg', type: 'image/svg+xml' }],
+            ['link', { rel: 'apple-touch-icon', href: '/image/logo.png' }],
+            ['link', { rel: 'canonical', href: `${SITE_URL}/` }],
+            ['meta', { name: 'theme-color', content: '#E05742' }],
+
+            ['meta', { property: 'og:type', content: 'website' }],
+            ['meta', { property: 'og:site_name', content: 'noorm' }],
+            ['meta', { property: 'og:url', content: `${SITE_URL}/` }],
+            ['meta', { property: 'og:title', content: TITLE }],
+            ['meta', { property: 'og:description', content: DESCRIPTION }],
+            ['meta', { property: 'og:image', content: `${SITE_URL}/image/og.png` }],
+            ['meta', { property: 'og:image:width', content: '1200' }],
+            ['meta', { property: 'og:image:height', content: '630' }],
+            ['meta', { property: 'og:image:alt', content: 'noorm — Write SQL. Skip the ORM.' }],
+
+            ['meta', { name: 'twitter:card', content: 'summary_large_image' }],
+            ['meta', { name: 'twitter:title', content: TITLE }],
+            ['meta', { name: 'twitter:description', content: DESCRIPTION }],
+            ['meta', { name: 'twitter:image', content: `${SITE_URL}/image/og.png` }],
+
             ['link', { rel: 'preconnect', href: 'https://fonts.googleapis.com' }],
             ['link', { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' }],
             ['script', { async: '', src: 'https://www.googletagmanager.com/gtag/js?id=G-Y69K95866J' }],
@@ -115,6 +155,7 @@ gtag('config', 'G-Y69K95866J');`],
                         items: [
                             { text: 'CLI Reference', link: '/headless' },
                             { text: 'Terminal UI', link: '/tui' },
+                            { text: 'Relational Design', link: '/guide/relational-design' },
                         ],
                     },
                     {
@@ -150,6 +191,7 @@ gtag('config', 'G-Y69K95866J');`],
                         collapsed: true,
                         items: [
                             { text: 'Explorer', link: '/guide/database/explore' },
+                            { text: 'Transfer', link: '/guide/database/transfer' },
                             { text: 'Teardown', link: '/guide/database/teardown' },
                             { text: 'Terminal', link: '/guide/database/terminal' },
                         ],

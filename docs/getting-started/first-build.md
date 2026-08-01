@@ -3,6 +3,10 @@
 
 This tutorial takes about 5 minutes. By the end, you'll understand how noorm separates **schema definition** from **schema evolution**.
 
+![Building a schema from SQL files, then fast-forwarding two pending changes](/image/build-and-change.gif)
+
+That is the whole loop: `run build` applies the SQL files, `change ff` walks an existing database forward, and `change history` records what ran. The rest of this page does it step by step.
+
 
 ## What You'll Do
 

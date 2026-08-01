@@ -1,0 +1,135 @@
+<!doctype html>
+<!--
+    Source for public/image/og.png (the social-card image). Not built or served —
+    VitePress only publishes public/ and .vitepress/dist. Regenerate after editing:
+
+    cd docs && "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+        --headless --disable-gpu --screenshot=public/image/og.png \
+        --window-size=1200,630 --hide-scrollbars --virtual-time-budget=4000 \
+        --allow-file-access-from-files .vitepress/og-source.html
+
+    --virtual-time-budget gives the Geist webfonts time to land; without it the
+    card renders in the fallback face.
+-->
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;800&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+        width: 1200px;
+        height: 630px;
+        background: #161A20;
+        font-family: "Geist", system-ui, sans-serif;
+        color: #F2ECE0;
+        -webkit-font-smoothing: antialiased;
+        overflow: hidden;
+        position: relative;
+    }
+
+    /* Hairline rule instead of a glow — the brand forbids glow effects and
+       treats a single 1px border as the only divider. */
+    .edge {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 4px;
+        background: #E05742;
+    }
+
+    .frame {
+        position: relative;
+        height: 100%;
+        padding: 72px 80px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+    }
+
+    /* Bronze: ember is reserved for signal, eyebrows are the editorial register. */
+    .eyebrow {
+        font-family: "Geist Mono", monospace;
+        font-size: 20px;
+        font-weight: 500;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: #D2A47A;
+    }
+
+    .mark {
+        display: flex;
+        align-items: center;
+        gap: 20px;
+        margin-bottom: 26px;
+    }
+
+    .mark img { width: 84px; }
+
+    .wordmark {
+        font-family: "Geist Mono", monospace;
+        font-size: 56px;
+        font-weight: 500;
+        letter-spacing: -0.04em;
+        background: linear-gradient(135deg, #E05742 0%, #B47A45 100%);
+        -webkit-background-clip: text;
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
+    }
+
+    h1 {
+        font-size: 76px;
+        font-weight: 800;
+        letter-spacing: -0.035em;
+        line-height: 1.05;
+    }
+
+    p {
+        margin-top: 22px;
+        font-size: 30px;
+        font-weight: 400;
+        line-height: 1.4;
+        color: #B8B3A8;
+        max-width: 830px;
+    }
+
+    .footer {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        font-family: "Geist Mono", monospace;
+        font-size: 21px;
+        color: #7E8590;
+    }
+
+    .sep { opacity: 0.45; }
+</style>
+</head>
+<body>
+    <div class="edge"></div>
+    <div class="frame">
+        <div class="eyebrow">Postgres · MySQL · SQLite · MSSQL</div>
+
+        <div>
+            <div class="mark">
+                <img src="../public/image/logo.svg" alt="">
+                <span class="wordmark">noorm</span>
+            </div>
+            <h1>Write SQL. Skip the ORM.</h1>
+            <p>Your schema lives in SQL files. noorm builds it, versions it, and keeps every environment in sync.</p>
+        </div>
+
+        <div class="footer">
+            <span>single binary</span>
+            <span class="sep">·</span>
+            <span>type-safe SDK</span>
+            <span class="sep">·</span>
+            <span>noorm.dev</span>
+        </div>
+    </div>
+</body>
+</html>

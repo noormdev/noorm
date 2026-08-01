@@ -1,0 +1,5 @@
+ALTER TABLE task ADD COLUMN IF NOT EXISTS priority INT NOT NULL DEFAULT 3;
+
+ALTER TABLE task DROP CONSTRAINT IF EXISTS task_priority_range;
+ALTER TABLE task ADD CONSTRAINT task_priority_range
+    CHECK (priority BETWEEN 1 AND 5);
