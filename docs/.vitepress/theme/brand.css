@@ -211,6 +211,21 @@ code, kbd, samp, pre {
 }
 
 /* ─────────────────────────────────────────────
+   Terminal recordings and TUI stills (docs/tapes/)
+   ───────────────────────────────────────────── */
+.vp-doc img[src$=".gif"],
+.vp-doc img[src*="/image/tui/"] {
+    display: block;
+    width: 100%;
+    margin: 24px 0;
+    /* Same treatment as the code blocks these sit next to — the recordings are
+       terminal output, so they should read as the same kind of surface. */
+    border-radius: 10px;
+    border: 1px solid var(--vp-c-border);
+    background: var(--vp-code-block-bg);
+}
+
+/* ─────────────────────────────────────────────
    Custom blocks — left border accent
    ───────────────────────────────────────────── */
 .vp-doc .custom-block {
@@ -232,6 +247,36 @@ code, kbd, samp, pre {
 
 .VPNavBar .divider {
     visibility: hidden;
+}
+
+/* The default theme only pins the nav at >=960px, so it scrolls away on phones.
+   Pin it here and pay back the height the fixed nav no longer occupies:
+   .VPContent gets the padding the theme adds above 960px, and .VPLocalNav's
+   sticky offset moves down to sit under the bar instead of behind it.
+
+   The selectors are doubled on purpose. VitePress ships these as scoped styles
+   (`.VPNav[data-v-604a0865]`), which is specificity (0,2,0) — a bare `.VPNav`
+   is (0,1,0) and silently loses no matter what order the bundle lands in.
+   Doubling the class buys (0,2,0) and wins on source order, which brand.css
+   is guaranteed since theme/index.ts imports it after the default theme. */
+@media (max-width: 959px) {
+    .VPNav.VPNav {
+        position: fixed;
+    }
+
+    .VPContent.VPContent {
+        padding-top: var(--vp-nav-height);
+    }
+
+    .VPLocalNav.VPLocalNav {
+        top: var(--vp-nav-height);
+    }
+
+    /* The home nav bar is transparent by design; once content scrolls under it,
+       it needs a surface. `.top` keeps the hero clean at rest. */
+    .VPNavBar.home:not(.top) {
+        background-color: var(--vp-nav-bg-color);
+    }
 }
 
 .VPNavBarTitle.has-sidebar .title {
@@ -319,6 +364,29 @@ code, kbd, samp, pre {
     border: 1px solid var(--vp-c-border);
 }
 
+/* Below 960px the theme sizes the image slot as a fixed 320/392px square and
+   bleeds it upward under the nav — sized for a floating logo, not the terminal
+   card we render there. Size it to content and move it below the pitch. */
+/* Doubled selectors for the same reason as the nav block above — the theme's
+   scoped `.image[data-v-…]` would otherwise tie or win. */
+@media (max-width: 959px) {
+    .VPHero .image.image {
+        order: 3;
+        margin: 40px 0 0;
+        /* Flex items default to min-width:auto, so the terminal's `white-space: pre`
+           lines would set the slot's floor. Zeroing it lets the card shrink and
+           its own overflow-x take over. */
+        min-width: 0;
+    }
+
+    .VPHero .image-container.image-container {
+        width: 100%;
+        max-width: 100%;
+        height: auto;
+        min-width: 0;
+    }
+}
+
 .dark .VPHero .VPImage {
     box-shadow: 0 18px 40px -12px rgba(0, 0, 0, 0.35), 0 6px 12px rgba(0, 0, 0, 0.15);
 }
@@ -344,6 +412,40 @@ code, kbd, samp, pre {
 .VPFeature .details {
     line-height: 1.65;
     color: var(--vp-c-text-2);
+}
+
+/* ─────────────────────────────────────────────
+   Next steps — 3-up card row on the home page
+   ───────────────────────────────────────────── */
+.next-steps {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
+    margin-top: 24px;
+}
+
+.next-steps p {
+    margin: 0;
+    padding: 20px;
+    height: 100%;
+    border: 1px solid var(--vp-c-border);
+    border-radius: 10px;
+    background: var(--vp-c-bg-soft);
+    font-size: 0.9375rem;
+    line-height: 1.6;
+    color: var(--vp-c-text-2);
+    transition: border-color 180ms ease-out;
+}
+
+.next-steps p:hover {
+    border-color: var(--vp-c-brand-1);
+}
+
+.next-steps a {
+    display: block;
+    margin-bottom: 4px;
+    font-size: 1rem;
+    text-decoration: none;
 }
 
 /* ─────────────────────────────────────────────

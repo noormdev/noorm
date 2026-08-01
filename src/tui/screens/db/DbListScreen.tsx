@@ -323,7 +323,7 @@ export function DbListScreen({ params: _params }: ScreenProps): ReactElement {
             <Panel title="Available Actions" paddingX={1} paddingY={1}>
                 <Box flexDirection="column" gap={1}>
                     <Text>
-                        <Text color="cyan">[c]</Text> Create - Build database from SQL files
+                        <Text color="cyan">[c]</Text> Create - Create database and tracking tables
                     </Text>
                     <Text>
                         <Text color="cyan">[d]</Text> Destroy - Drop all managed objects

@@ -1,6 +1,9 @@
 # Installation
 
 
+![Installing noorm: the install script, creating an identity, and bootstrapping a project](/image/install.gif)
+
+
 ## Requirements
 
 - A supported database:
