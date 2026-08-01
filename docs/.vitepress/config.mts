@@ -81,17 +81,15 @@ gtag('config', 'G-Y69K95866J');`],
             // https://vitepress.dev/reference/default-theme-config
             logo: '/image/logo.svg',
             siteTitle: 'noorm',
+            // No Home entry: the logo already links to `/`. Dev docs are not a
+            // top-bar concern either — they live in the Reference group of the
+            // main sidebar as "Contributor Documentation".
             nav: [
-                { text: 'Home', link: '/' },
                 { text: 'Getting Started', link: '/getting-started/installation' },
                 { text: 'Guide', link: '/guide/sql-files/organization' },
                 { text: 'CLI', link: '/headless' },
                 { text: 'TUI', link: '/tui' },
                 { text: 'Modeling', link: '/modeling/' },
-                {
-                    text: 'Dev Docs',
-                    link: '/dev/',
-                },
             ],
 
             sidebar: {
@@ -224,6 +222,7 @@ gtag('config', 'G-Y69K95866J');`],
                         text: 'Reference',
                         items: [
                             { text: 'SDK', link: '/reference/sdk' },
+                            { text: 'Contributor Documentation', link: '/dev/' },
                         ],
                     },
                 ],
