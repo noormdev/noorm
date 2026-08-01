@@ -58,6 +58,8 @@ mkdir -p models/legacy && echo "name: Legacy Schema" > models/legacy/ignatius.ym
 
 Put it in the repository whose schema it describes, so the model and the code stay in one history.
 
+The rest of this page refers to that folder as `models/legacy`. Substitute wherever yours actually landed, or leave the path off entirely: `serve`, `export`, and `validate` all take the model root as an optional argument and find it by searching up and down from the current directory when you omit it.
+
 
 ## 2. Connect noorm over MCP
 
@@ -166,7 +168,7 @@ The skill's method is worth knowing, because it is what you review against.
 
 
 ```bash
-ignatius validate models/legacy
+ignatius validate models/legacy      # or just `ignatius validate` from inside the project
 ignatius serve models/legacy -o
 ```
 
