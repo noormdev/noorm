@@ -8,7 +8,8 @@
   },
   "files": [
     "noorm.js",
-    "scripts"
+    "scripts",
+    "NOTICE"
   ],
   "scripts": {
     "postinstall": "node scripts/postinstall.js"
@@ -23,7 +24,7 @@
     "cli",
     "noorm"
   ],
-  "license": "MIT",
+  "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/noormdev/noorm.git"

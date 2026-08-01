@@ -1,7 +1,7 @@
 <template>
-    <!-- MIT to match LICENSE and every package.json. This said ISC until
+    <!-- Apache-2.0 to match LICENSE and every package.json. This said ISC until
          2026-08 and was the most visible license claim on the site. -->
-    <div class="hero-eyebrow">V1.0 · MIT · POSTGRES · MYSQL · SQLITE · MSSQL</div>
+    <div class="hero-eyebrow">V1.0 · APACHE 2.0 · POSTGRES · MYSQL · SQLITE · MSSQL</div>
 </template>
 
 <style scoped>
