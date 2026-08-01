@@ -66,6 +66,20 @@ Model first, get agreement, then build.
 noorm is the other half of that last step. ignatius describes what you intend to build. noorm builds it, versions it, and keeps every environment in sync. The two share a bias: your schema belongs in files you own, not in an object model a tool derived for you.
 
 
+## Why a separate tool
+
+
+noorm already explores schemas and runs SQL, so it is fair to ask why modeling is a second binary instead of a `noorm model` subcommand. Three reasons, and they all come back to ignatius being useful at a moment when noorm is not.
+
+**It never touches a database.** ignatius carries no driver and emits no DDL. Its value is being usable before the database exists, which is exactly the moment a tool that requires a connection has nothing to offer. Putting the planning step inside noorm would gate it behind the thing you have not built yet.
+
+**It does not need noorm.** Nothing in the format is noorm-specific: markdown in, IDEF1X and SSADM diagrams out, with no dialect anywhere in the pipeline. A team on Prisma, ActiveRecord, or hand-written migrations gets the same thing from it. Making it a subcommand would shrink its audience to noorm users and buy nothing.
+
+**The audiences differ.** `ignatius export` produces a file for the person approving a design, not the person deploying a schema. That reader is not going to install a schema and change manager to look at a diagram.
+
+There is a practical consequence worth knowing as you read: the two ship on their own cadences from their own repositories. That is why these pages carry the narrative and link out to the ignatius repo for the exhaustive rule catalogs rather than copying them here, where they would drift out of date.
+
+
 ## Two notations, two questions
 
 
