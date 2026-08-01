@@ -81,16 +81,15 @@ gtag('config', 'G-Y69K95866J');`],
             // https://vitepress.dev/reference/default-theme-config
             logo: '/image/logo.svg',
             siteTitle: 'noorm',
+            // No Home entry: the logo already links to `/`. Dev docs are not a
+            // top-bar concern either — they live in the Reference group of the
+            // main sidebar as "Contributor Documentation".
             nav: [
-                { text: 'Home', link: '/' },
                 { text: 'Getting Started', link: '/getting-started/installation' },
                 { text: 'Guide', link: '/guide/sql-files/organization' },
                 { text: 'CLI', link: '/headless' },
                 { text: 'TUI', link: '/tui' },
-                {
-                    text: 'Dev Docs',
-                    link: '/dev/',
-                },
+                { text: 'Modeling', link: '/modeling/' },
             ],
 
             sidebar: {
@@ -159,6 +158,21 @@ gtag('config', 'G-Y69K95866J');`],
                         ],
                     },
                     {
+                        // ignatius is a separate binary with its own release
+                        // cadence, so these pages carry the narrative and link
+                        // out to the ignatius repo for the exhaustive rule
+                        // catalogs rather than duplicating them here.
+                        text: 'Information Modeling',
+                        items: [
+                            { text: 'Overview', link: '/modeling/' },
+                            { text: 'Installation', link: '/modeling/installation' },
+                            { text: 'Entities & Key Inheritance', link: '/modeling/entities' },
+                            { text: 'Data Flows', link: '/modeling/data-flows' },
+                            { text: 'Modeling Skill', link: '/modeling/modeling-skill' },
+                            { text: 'Best Practices', link: '/modeling/best-practices' },
+                        ],
+                    },
+                    {
                         text: 'SQL Files',
                         collapsed: true,
                         items: [
@@ -209,6 +223,7 @@ gtag('config', 'G-Y69K95866J');`],
                         text: 'Reference',
                         items: [
                             { text: 'SDK', link: '/reference/sdk' },
+                            { text: 'Contributor Documentation', link: '/dev/' },
                         ],
                     },
                 ],
