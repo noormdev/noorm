@@ -571,3 +571,45 @@ html.dark {
 .VPSocialLink[href*="noormdev/ignatius"]::after {
     content: 'ignatius';
 }
+
+/* ─────────────────────────────────────────────
+   Embedded ignatius models
+   ───────────────────────────────────────────── */
+
+/* Same framing as the terminal recordings above: an embedded model is
+   another generated surface, not page furniture. The export is ~4 MB, so
+   the iframe is lazy — it costs nothing until someone scrolls to it. */
+.model-embed {
+    margin: 24px 0;
+    border-radius: 10px;
+    border: 1px solid var(--vp-c-border);
+    background: var(--vp-code-block-bg);
+    overflow: hidden;
+}
+
+.model-embed iframe {
+    display: block;
+    width: 100%;
+    /* Tall enough that the three-node graph and its toolbar both fit without
+       the inner canvas fighting the page for scroll. */
+    height: 520px;
+    border: 0;
+}
+
+/* The subtype cluster is a taller graph than the key chain, and ignatius fits
+   the canvas without reserving the toolbar's height, so a short frame tucks
+   the top row of nodes under it. */
+.model-embed.tall iframe {
+    height: 680px;
+}
+
+@media (max-width: 639px) {
+
+    .model-embed iframe {
+        height: 380px;
+    }
+
+    .model-embed.tall iframe {
+        height: 460px;
+    }
+}

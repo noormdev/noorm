@@ -1,0 +1,8 @@
+name: Polymorphic Associations — The Same Domain
+description: The ORM shape of the model in "The case for proper relational design"
+
+branding:
+  title: Polymorphic associations
+  subtitle: the same domain, fewer tables
+  copyright:
+    holder: noorm

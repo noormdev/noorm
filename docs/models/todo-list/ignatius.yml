@@ -1,0 +1,8 @@
+name: Inherited Keys — A Todo List
+description: The worked example from "The case for proper relational design" on noorm.dev
+
+branding:
+  title: Inherited keys
+  subtitle: a worked example
+  copyright:
+    holder: noorm

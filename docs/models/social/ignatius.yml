@@ -1,0 +1,12 @@
+name: Basetype-Subtypes — A Social Graph
+description: The exhaustive example from "The case for proper relational design" on noorm.dev
+
+branding:
+  title: Basetype-subtypes
+  subtitle: what polymorphism hides
+  copyright:
+    holder: noorm
+
+theme:
+  spacing:
+    nodeSep: 26
