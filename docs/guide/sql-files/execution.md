@@ -122,9 +122,9 @@ Templates are fully rendered with your current config context. The `.tmpl` exten
 
 ## What Gets Tracked
 
-noorm maintains two tables in your database to track execution history:
+noorm maintains two tables in your database to track execution history. On PostgreSQL and SQL Server they live in a dedicated `noorm` schema; MySQL and SQLite have no schemas, so they keep prefixed names in the default schema.
 
-**`__noorm_change__`** - Operation records:
+**`noorm.change`** (`__noorm_change__` on MySQL and SQLite) - Operation records:
 
 | Field | Description |
 |-------|-------------|
@@ -134,7 +134,7 @@ noorm maintains two tables in your database to track execution history:
 | `config_name` | Which config was used |
 | `status` | `'pending'`, `'success'`, `'failed'` |
 
-**`__noorm_executions__`** - Individual file records:
+**`noorm.executions`** (`__noorm_executions__` on MySQL and SQLite) - Individual file records:
 
 | Field | Description |
 |-------|-------------|

@@ -41,7 +41,7 @@ noorm db truncate -y
 
 - Table definitions and indexes
 - Views, functions, stored procedures
-- noorm internal tables (`__noorm_*`)
+- noorm internal tracking tables (the `noorm` schema, or `__noorm_*__` tables)
 
 
 ## Teardown: Drop Everything
@@ -72,9 +72,11 @@ You do not need to manage this ordering. noorm handles it automatically.
 
 noorm internal tables are always preserved:
 
-- `__noorm_change__` - Change execution history
-- `__noorm_executions__` - File execution records
-- `__noorm_locks__` - Active operation locks
+- `change` - Change execution history
+- `executions` - File execution records
+- `lock` - Active operation locks
+
+On PostgreSQL and SQL Server these live in a dedicated `noorm` schema, so they read as `noorm.change`, `noorm.executions`, and `noorm.lock`. MySQL and SQLite have no schemas, so they keep the prefixed forms in the default schema: `__noorm_change__`, `__noorm_executions__`, `__noorm_lock__`.
 
 After teardown, noorm can still track what was applied previously. Changes are marked as `stale`, meaning they'll re-run on the next [fast-forward](/guide/changes/forward-revert). See [History](/guide/changes/history) for how this affects your execution log.
 

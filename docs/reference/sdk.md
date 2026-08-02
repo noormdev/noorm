@@ -739,7 +739,7 @@ Apply a specific change. Pass `{ dryRun: true }` to render rendered SQL to `tmp/
 ```typescript
 const result = await ctx.noorm.changes.apply('2024-01-15-add-users');
 
-// Dry run — does not touch __noorm_change__ or __noorm_executions__.
+// Dry run — does not touch the change tracking tables.
 const dry = await ctx.noorm.changes.apply(
     '2024-01-15-add-users',
     { dryRun: true },
@@ -766,7 +766,7 @@ const dry = await ctx.noorm.changes.revert(
 
 #### changes.ff(options?)
 
-Apply all pending changes. Accepts `BatchChangeOptions` — the same fields as `ChangeOptions` plus `abortOnError`. Pass `{ dryRun: true }` to render every pending change to `tmp/` without writing to the database; the tracking tables (`__noorm_change__`, `__noorm_executions__`) are left untouched.
+Apply all pending changes. Accepts `BatchChangeOptions` — the same fields as `ChangeOptions` plus `abortOnError`. Pass `{ dryRun: true }` to render every pending change to `tmp/` without writing to the database; the change tracking tables are left untouched.
 
 ```typescript
 const result = await ctx.noorm.changes.ff();

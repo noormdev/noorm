@@ -20,7 +20,7 @@ When a template references `secrets.API_KEY`, noorm checks three sources in orde
 ├─────────────────────────────────────────────────────────────┤
 │  3. Vault secret                          (lowest priority) │
 │     Team-shared value from the database                     │
-│     Location: __noorm_vault__ table                         │
+│     Location: the vault table                               │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -79,7 +79,7 @@ Individual secrets are encrypted with the shared vault key:
 
 - AES-256-GCM authenticated encryption
 - Random IV per secret
-- Stored as JSON in `__noorm_vault__` table
+- Stored as JSON in the vault table
 
 This design means: compromising the database alone doesn't expose secrets. An attacker needs both database access AND a team member's private key.
 
@@ -228,9 +228,9 @@ Limitations to understand:
 
 ## Database Schema
 
-The vault uses two database structures:
+The vault uses two database structures. Their names depend on the dialect: PostgreSQL and SQL Server put noorm's tracking tables in a dedicated `noorm` schema (`noorm.vault`, `noorm.identities`), while MySQL and SQLite have no schemas and keep the prefixed forms (`__noorm_vault__`, `__noorm_identities__`) in the default schema.
 
-**`__noorm_vault__` table:**
+**The vault table:**
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -241,7 +241,7 @@ The vault uses two database structures:
 | `created_at` | timestamp | Creation time |
 | `updated_at` | timestamp | Last update time |
 
-**`__noorm_identities__` extension:**
+**The identities table extension:**
 
 | Column | Type | Description |
 |--------|------|-------------|

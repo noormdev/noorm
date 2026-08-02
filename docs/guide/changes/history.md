@@ -302,7 +302,7 @@ After fixing the issue:
 
 ## History Retention
 
-History is stored in the noorm tracking tables (`__noorm_change__` and `__noorm_executions__`). These tables grow with usage.
+History is stored in noorm’s change tracking tables, described in [Execution](/guide/sql-files/execution#what-gets-tracked). These tables grow with usage.
 
 For long-running projects, consider:
 

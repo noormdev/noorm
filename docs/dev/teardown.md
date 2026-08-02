@@ -311,7 +311,7 @@ The CLI shows a preview of affected objects before execution and requires explic
 **Always Preserved:**
 - `__noorm_change__` - Change execution history
 - `__noorm_executions__` - File execution records
-- `__noorm_locks__` - Active operation locks
+- `__noorm_lock__` - Active operation locks
 
 **Confirmation Required:**
 - Teardown is gated by the config's access role: `viewer`/`operator` is denied or requires confirmation, `admin` runs unconfirmed

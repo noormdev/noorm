@@ -148,7 +148,7 @@ Preview what would happen without touching the database:
     noorm change revert 2024-02-01-add-notifications --dry-run
     noorm change next --dry-run
 
-Dry run writes rendered SQL to a `tmp/` folder so you can inspect exactly what would execute. Templates are processed, manifests are resolved, but no SQL hits the database — `__noorm_change__` and `__noorm_executions__` are left untouched.
+Dry run writes rendered SQL to a `tmp/` folder so you can inspect exactly what would execute. Templates are processed, manifests are resolved, but no SQL hits the database, and the change tracking tables are left untouched.
 
 The CLI marks dry-run output with a clear `(dry-run)` header so log scrapers and operators can distinguish it from a real apply. With `--json`, the result payload includes a `dryRun: true` field:
 

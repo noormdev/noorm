@@ -467,7 +467,9 @@ The decrypted contents of a shared config.
 
 ## Database Tables
 
-noorm creates five tracking tables in the target database. All table names are prefixed with `__noorm_` to avoid conflicts.
+noorm creates six tracking tables in the target database: the five below plus the vault (see [Vault](/dev/vault)).
+
+Their names depend on the dialect. PostgreSQL and SQL Server get a dedicated `noorm` schema with clean names (`noorm.version`, `noorm.change`, and so on). MySQL and SQLite have no schemas, so they keep the `__noorm_*__` prefixed forms in the default schema, which is what the headings below use.
 
 
 ### `__noorm_version__`

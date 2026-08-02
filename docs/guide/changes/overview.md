@@ -320,7 +320,7 @@ Render files to a temporary directory without executing. Available on every appl
     noorm change run 2025-02-01-migrate-user-roles --dry-run
     noorm change ff --dry-run
 
-Files are written to `tmp/` so you can inspect them. The dry-run branch does **not** consult the tracking tables (`__noorm_change__`, `__noorm_executions__`) and never writes to them — making it safe to run repeatedly in production. The CLI tags human output with `(dry-run)` and adds `dryRun: true` to the JSON payload so CI pipelines can verify the result didn't touch the database.
+Files are written to `tmp/` so you can inspect them. The dry-run branch does **not** consult the change tracking tables and never writes to them — making it safe to run repeatedly in production. The CLI tags human output with `(dry-run)` and adds `dryRun: true` to the JSON payload so CI pipelines can verify the result didn't touch the database.
 
 
 ## When Changes Re-Run
