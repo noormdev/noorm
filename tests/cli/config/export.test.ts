@@ -104,6 +104,40 @@ describe('cli: noorm config export — output file mode', () => {
 
     }
 
+    /** Export to stdout (no --output), which is what `export dev > dev.json` does. */
+    function runExportToStdout() {
+
+        return spawnSync('node', [CLI, 'config', 'export', CONFIG_NAME], {
+            cwd: tmpDir,
+            encoding: 'utf-8',
+            env: identityEnv,
+        });
+
+    }
+
+    it('still writes the config to a redirected stdout', () => {
+
+        const result = runExportToStdout();
+
+        // `config export dev > dev.json` is the documented scripting path and
+        // must keep working; the guard only refuses an interactive terminal.
+        expect(result.status).toBe(0);
+        expect(JSON.parse(result.stdout).name).toBe(CONFIG_NAME);
+
+    });
+
+    it('warns on stderr that a redirected export is not permission-protected', () => {
+
+        const result = runExportToStdout();
+
+        // --output chmods 0600; a shell redirect cannot, so it lands at the
+        // caller's umask. The payload carries a plaintext password either way,
+        // and stdout must stay clean JSON, so the warning goes to stderr.
+        expect(result.stderr).toContain('password');
+        expect(result.stdout).not.toContain('Warning');
+
+    });
+
     it('writes the exported config file at mode 0600', () => {
 
         const result = runExport();

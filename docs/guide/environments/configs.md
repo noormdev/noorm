@@ -270,12 +270,16 @@ There are two export paths, and they produce different files.
 
 **TUI, for sharing with a teammate:** `noorm ui` → Config → `+` for More → `x` exports the highlighted config, `i` imports one. This path encrypts the config and its local secrets for a single recipient, using an ephemeral X25519 key exchange and AES-256-GCM, and writes `<name>.noorm.enc`. It leaves `user` and `password` out on purpose, so the recipient connects with their own credentials. You need the recipient's identity locally before you can export to them, and only their private key can decrypt the file. On import, noorm decrypts with your private key and prompts for your database credentials.
 
-**CLI, for backup and cross-machine transfer:** `noorm config export` writes plain JSON, and that JSON carries the connection password. Treat the file as a credential. noorm writes it with `0600` permissions and requires a role that can read secrets, so a `viewer` is refused.
+**CLI, for backup and cross-machine transfer:** `noorm config export` writes plain JSON, and that JSON carries the connection password. Treat the output as a credential. It requires a role that can read secrets, so a `viewer` is refused.
+
+`--output` writes the file at `0600`. Without it the command refuses to print to a terminal, since a plaintext password in your scrollback is not something you can take back. Redirecting or piping still works and warns on stderr, because a shell redirect lands at your umask and cannot make the `0600` guarantee that `--output` does.
 
 ```bash
-# Export to stdout or file
-noorm config export dev
+# Safest: the file is written 0600
 noorm config export dev --output ./dev-config.json
+
+# Allowed, warns on stderr, and the file inherits your umask
+noorm config export dev > ./dev-config.json
 
 # Import from file
 noorm config import ./dev-config.json
