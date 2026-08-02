@@ -25,24 +25,29 @@ The TUI is a dedicated subcommand — every other `noorm` command runs as a non-
                               ┌─────────┐
                               │  Home   │
                               └────┬────┘
-        ┌──────────┬──────────┬────┴────┬──────────┬──────────┐
-        │          │          │         │          │          │
-     [c]│       [g]│       [r]│      [d]│       [s]│       [k]│
-        ▼          ▼          ▼         ▼          ▼          ▼
-   ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐
-   │ Config │ │ Change │ │  Run   │ │Database│ │Settings│ │Secrets │
-   │  List  │ │  List  │ │  Menu  │ │  Menu  │ │  Menu  │ │  List  │
-   └────────┘ └────────┘ └────────┘ └────────┘ └────────┘ └────────┘
+        ┌──────────┬──────────┬────┴────┬──────────┐
+        │          │          │         │          │
+     [c]│       [g]│       [r]│      [d]│       [s]│
+        ▼          ▼          ▼         ▼          ▼
+   ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐
+   │ Config │ │ Change │ │  Run   │ │Database│ │Settings│
+   │  List  │ │  List  │ │  Menu  │ │  Menu  │ │  Menu  │
+   └────────┘ └────────┘ └────────┘ └────────┘ └────────┘
         │          │          │         │
         │          │          │         ├── Explore (tables, views...)
         │          │          │         └── Terminal (SQL REPL)
         │          │          │
-        │          │          └── Build, File, Directory
+        │          │          └── Build, File, Directory, Exec, Inspect
         │          │
-        │          └── FF, Run, Revert, History
+        │          └── FF, Next, Run, Revert, Rewind, History
         │
-        └── Add, Edit, Delete, Use, Validate, Export, Import
+        ├── Add, Edit, Delete, Copy, Use
+        │
+        └──[k]── Secrets List
 ```
+
+Secrets hang off a config, so `k` opens them from the Config List, not from
+Home. Export, import, and validate sit behind `[+] More` on the Config List.
 
 
 ## Keyboard Shortcuts
@@ -267,11 +272,14 @@ See [Locking](/dev/lock).
 
 ### Quick Config Switching
 
-From home, press `c` then the number of the config you want, then `Enter` to activate:
+From home, press `c`, arrow to the config you want, then `Enter` to activate it.
+The config list is not numbered, so the digits do nothing there:
 
 ```
-c → 2 → Enter
+c → ↓ → Enter
 ```
+
+`Enter` on the config that is *already* active opens its edit form instead.
 
 
 ### Fast Forward All Changes
@@ -290,8 +298,10 @@ r → b
 
 ### Check Connection
 
+Validate lives behind `[+] More` on the config list:
+
 ```
-c → v (validate current config)
+c → + → v (validate highlighted config)
 ```
 
 

@@ -35,6 +35,13 @@ The shorter `noorm sql "<SQL>"` form is also supported. Internally, the CLI insp
 
 The rewrite is purely positional — it never modifies the actual SQL string or flags. The real subcommands (`query`, `history`, `clear`, `repl`) are reserved words that never trigger the rewriter.
 
+The rewriter reads the *first non-flag token* after `sql`, so a flag that takes a value puts something else there and no rewrite happens:
+
+    noorm sql -f reports/monthly.sql       # → "Unknown command reports/monthly.sql"
+    noorm sql -c prod "SELECT 1"           # → "Unknown command prod"
+
+Both need the explicit form (`noorm sql query -f …`, `noorm sql query -c prod "…"`). A leading `--json`, which takes no value, is fine: `noorm sql --json "SELECT 1"` still rewrites.
+
 
 ### Flags (on `query`)
 
@@ -51,8 +58,8 @@ The rewrite is purely positional — it never modifies the actual SQL string or 
 For interactive use and history management:
 
 - [`noorm sql repl`](./sql-repl.md) — launch the TUI on the SQL terminal screen
-- `noorm sql history` — list recent queries
-- `noorm sql clear` — wipe the saved history
+- `noorm sql history` — list recent queries (`-n`/`--limit`, default 50). Only the interactive SQL terminal records history; `sql query` deliberately writes none.
+- `noorm sql clear --yes` — wipe the saved history (`--older-than <months>` to keep recent entries). Without `--yes` it prints what it would clear and exits without clearing.
 
 
 ## Examples

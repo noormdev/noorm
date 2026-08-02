@@ -30,14 +30,17 @@ The SQL terminal provides an interactive REPL for running arbitrary SQL queries.
 
 The terminal executes queries via Kysely's `sql.raw()` and stores history per-config in `.noorm/state/history/`.
 
+Every query passes an access-policy gate first. `executeRawSql` classifies the statement as `read`, `write`, or `ddl` and checks that class against the config's `access` role for the calling channel, so the SDK, CLI, and TUI all inherit one enforcement path.
+
 
 ## Quick Start
 
 ```typescript
 import { executeRawSql, SqlHistoryManager } from './core/sql-terminal'
 
-// Execute a query
-const result = await executeRawSql(db, 'SELECT * FROM users LIMIT 10', 'production')
+// Execute a query — the gate is mandatory
+const gate = { access: config.access, channel: 'user', dialect: 'postgres' }
+const result = await executeRawSql(db, 'SELECT * FROM users LIMIT 10', 'production', gate)
 
 if (result.success) {
     console.log('Columns:', result.columns)
@@ -61,19 +64,26 @@ const savedResult = await history.loadResults(entryId)
 
 ## Executing Queries
 
-The `executeRawSql` function handles any SQL statement:
+The `executeRawSql` function handles any SQL statement. The fourth argument is the `SqlPolicyGate` — `{ access, channel, dialect }` — and it is required:
 
 ```typescript
 import { executeRawSql } from './core/sql-terminal'
+import type { SqlPolicyGate } from './core/sql-terminal'
 
-// SELECT query
+const gate: SqlPolicyGate = {
+    access: config.access,
+    channel: 'user',
+    dialect: 'postgres',
+}
+
+// SELECT query — gated by `sql:read`
 const selectResult = await executeRawSql(db, `
     SELECT id, email, created_at
     FROM users
     WHERE active = true
     ORDER BY created_at DESC
     LIMIT 20
-`, 'production')
+`, 'production', gate)
 
 // {
 //     success: true,
@@ -82,10 +92,10 @@ const selectResult = await executeRawSql(db, `
 //     durationMs: 12
 // }
 
-// INSERT/UPDATE/DELETE
+// INSERT/UPDATE/DELETE — gated by `sql:write`
 const dmlResult = await executeRawSql(db, `
     UPDATE users SET last_login = NOW() WHERE id = 1
-`, 'production')
+`, 'production', gate)
 
 // {
 //     success: true,
@@ -93,10 +103,10 @@ const dmlResult = await executeRawSql(db, `
 //     durationMs: 5
 // }
 
-// DDL statements work too
+// DDL statements work too — gated by `sql:ddl`
 const ddlResult = await executeRawSql(db, `
     CREATE INDEX users_email_idx ON users(email)
-`, 'production')
+`, 'production', gate)
 ```
 
 ### Error Handling
@@ -104,13 +114,19 @@ const ddlResult = await executeRawSql(db, `
 Failed queries return structured error information:
 
 ```typescript
-const result = await executeRawSql(db, 'SELECT * FROM nonexistent', 'dev')
+const result = await executeRawSql(db, 'SELECT * FROM nonexistent', 'dev', gate)
 
 if (!result.success) {
     console.error(result.errorMessage)
     // "relation \"nonexistent\" does not exist"
 }
 ```
+
+A policy denial is different: `executeRawSql` **throws** with the policy's blocked reason rather than returning `{ success: false }`. Only the query itself failing produces a result object.
+
+### `executeRawSqlUnchecked`
+
+`src/core/sql-terminal/executor.ts:52` exports an ungated variant that skips classification and runs the SQL directly. It is deliberately left out of the module barrel — import it from `./executor.js` only, and only from tests exercising the Kysely plumbing. No production surface may call it.
 
 
 ## History Management
@@ -127,25 +143,27 @@ const history = new SqlHistoryManager('/project', 'production')
 
 ```
 .noorm/
-└── sql-history/
-    ├── production.json                    # History index
-    └── production/
-        ├── abc123-def456.results.gz       # Gzipped results
-        ├── ghi789-jkl012.results.gz
-        └── ...
+└── state/
+    └── history/
+        ├── production.json                # History index
+        └── production/
+            ├── <uuid>.results.gz          # Gzipped results
+            ├── <uuid>.results.gz
+            └── ...
 ```
 
-History entries are stored in JSON. Query results are gzipped separately to keep the index file small.
+History entries are stored in JSON. Query results are gzipped separately to keep the index file small. Both the index and the result files hold verbatim query text and every returned row in the clear, so the manager writes files `0600` and directories `0700` — and re-`chmod`s them on every write, to tighten anything an older version left world-readable.
 
 ### Adding Entries
 
 ```typescript
 // Execute and store
-const result = await executeRawSql(db, 'SELECT * FROM users', 'production')
+const result = await executeRawSql(db, 'SELECT * FROM users', 'production', gate)
 const entryId = await history.addEntry('SELECT * FROM users', result)
 
-// Results are automatically saved to gzipped file
-console.log(entryId)  // "abc123-def456-..."
+// Results are saved to a gzipped file only when the query succeeded and
+// returned at least one row. Otherwise the entry has no `resultsFile`.
+console.log(entryId)  // a UUID v4
 ```
 
 ### Browsing History
@@ -233,7 +251,7 @@ interface ClearResult {
 | Event | Payload | When |
 |-------|---------|------|
 | `sql-terminal:execute:before` | `{ query, configName }` | Before query execution |
-| `sql-terminal:execute:after` | `{ query, configName, success, durationMs, rowCount?, error? }` | After execution |
+| `sql-terminal:execute:after` | success: `{ query, configName, success: true, durationMs, rowCount, rowsAffected }`<br>failure: `{ query, configName, success: false, durationMs, error }` | After execution |
 
 ```typescript
 import { observer } from './core/observer'
@@ -252,12 +270,11 @@ observer.on('sql-terminal:execute:after', ({ success, durationMs, rowCount }) =>
 
 ## CLI Integration
 
-Access the SQL terminal through the database menu:
+`Shift+Q` opens the SQL terminal from anywhere in the TUI — it is a global shortcut, not an entry on the database menu (`d` on the database screen is destroy, `t` is teardown).
 
-1. Press `d` from home to enter database menu
-2. Select a config with an active connection
-3. Press `t` to enter SQL terminal
-4. Type queries and press Enter to execute
+1. Select a config with an active connection
+2. Press `Shift+Q`
+3. Type queries and press Enter to execute
 
 Keyboard shortcuts in terminal:
 
@@ -303,19 +320,21 @@ Long values are truncated with ellipsis. Use the detail view to see full cell co
 
 4. **Clear old history** - Periodically run `clearOlderThan()` to manage storage.
 
-5. **Don't store secrets** - Avoid queries containing sensitive data—history is stored in plaintext (gzipped but not encrypted).
+5. **Don't store secrets** - Avoid queries containing sensitive data—history is stored in plaintext (gzipped and owner-only at `0600`, but not encrypted).
 
 ```typescript
 // Good - verify before delete
 const preview = await executeRawSql(db,
     'SELECT id, email FROM users WHERE last_login < NOW() - INTERVAL 1 YEAR',
-    'production'
+    'production',
+    gate
 )
 console.log(`Would delete ${preview.rows?.length} users`)
 
 // Then execute
 await executeRawSql(db,
     'DELETE FROM users WHERE last_login < NOW() - INTERVAL 1 YEAR',
-    'production'
+    'production',
+    gate
 )
 ```

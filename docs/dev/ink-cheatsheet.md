@@ -1,7 +1,9 @@
 # Ink Cheatsheet
 
 
-A comprehensive reference for building CLI applications with Ink (React for the terminal).
+A reference for building CLI applications with Ink (React for the terminal).
+
+This page documents the upstream Ink API, not noorm's own TUI. Where the two diverge, noorm's rules win—see `.claude/rules/tui-development.md`. The divergences are called out inline below. Installed here: `ink@^6.8.0`, `react@^19.2.4`, `@inkjs/ui@^2.0.0`.
 
 
 ## Table of Contents
@@ -20,16 +22,20 @@ A comprehensive reference for building CLI applications with Ink (React for the 
 ## Installation
 
 
+Already installed in this repo—`bun install` is enough. For a new project:
+
 ```bash
-npm install ink react
-npm install --save-dev @types/react @types/node typescript
+bun add ink react
+bun add -d @types/react @types/node typescript
 ```
 
 For Ink UI components:
 
 ```bash
-npm install @inkjs/ui
+bun add @inkjs/ui
 ```
+
+This repo is Bun-managed (`bun.lockb`, `bunfig.toml`, `engines.bun >= 1.2`). Running `npm install` here creates a conflicting lockfile.
 
 
 ## Core Concepts
@@ -118,6 +124,8 @@ import { Box, Text } from "ink";
 
 
 #### Box Props Reference
+
+Layout props only. `borderStyle`, `borderColor`, the individual `borderTop`/`borderBottom`/`borderLeft`/`borderRight` booleans, and `backgroundColor` are covered in the two sections that follow.
 
 | Prop | Type | Description |
 |------|------|-------------|
@@ -424,6 +432,10 @@ useInput(
 
 ### useFocus
 
+::: danger Not used in noorm
+`useFocus` and `useFocusManager` drive Ink's *internal* focus registry, which does not communicate with noorm's. Mixing the two loses keyboard input. In `src/tui/`, use `useFocusScope` from `src/tui/focus.tsx`, inside a `FocusProvider`. The rest of this section is upstream reference only.
+:::
+
 Make components focusable (Tab/Shift+Tab navigation).
 
 ```tsx
@@ -579,7 +591,7 @@ function App() {
 ## Ink UI Components
 
 
-Install: `npm install @inkjs/ui`
+Install: `bun add @inkjs/ui` (already a dependency here)
 
 ```tsx
 import {
@@ -595,9 +607,12 @@ import {
     Alert,
     UnorderedList,
     OrderedList,
-    ThemeProvider,
 } from "@inkjs/ui";
 ```
+
+::: warning Only four are usable in noorm
+`TextInput` (with `isDisabled`), `Spinner`, `Badge`, and `ProgressBar` are display-only or properly controlled, so they compose with noorm's focus system. `Select`, `MultiSelect`, and `ConfirmInput` drive Ink's internal focus and are **incompatible**—build the equivalent from `useFocusScope` + `useInput` instead. Their sections below are upstream reference only.
+:::
 
 
 ### TextInput
@@ -757,7 +772,11 @@ import {
 ## Meow (Argument Parsing)
 
 
-Meow is the recommended argument parser for Ink CLI apps. It handles `--help`, `--version`, flags, and positional arguments.
+::: warning noorm does not use Meow
+noorm parses arguments with **citty** (`src/cli/`), and `meow` is not a dependency. This section is kept as general Ink-ecosystem reference; do not add Meow to this repo. For how noorm's commands are defined, see [CLI](/dev/headless).
+:::
+
+Meow is a common argument parser for Ink CLI apps. It handles `--help`, `--version`, flags, and positional arguments.
 
 ```bash
 npm install meow
@@ -1377,7 +1396,7 @@ useInput(handler, { isActive: isFocused });
 Use `ink-testing-library`:
 
 ```bash
-npm install --save-dev ink-testing-library
+bun add -d ink-testing-library
 ```
 
 ```tsx
@@ -1395,7 +1414,7 @@ Colors may not display in CI environments. Check `process.stdout.isTTY`.
 
 ### Argument Parsing
 
-Use `meow` or `yargs` for CLI arguments:
+In noorm, use **citty** — see `src/cli/`. Outside this repo, `meow` and `yargs` are the common choices:
 
 ```bash
 npm install meow

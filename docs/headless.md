@@ -22,7 +22,7 @@ noorm change --help          # Subcommands of `change`
 noorm change ff --help       # Args, options, and examples for `change ff`
 ```
 
-For shell completion, run `noorm complete` and follow the printed instructions for your shell.
+For shell completion, run `noorm complete <shell>` and source the script it prints. Supported shells: `zsh`, `bash`, `fish`, `powershell`, `fig`. A bare `noorm complete` is the runtime completion hook, not a generator, and errors without `--`.
 
 
 ## Global Flags
@@ -184,10 +184,16 @@ Each config carries a per-channel access grant: `access: { user, agent }`. The `
 | `sql` writes (INSERT/UPDATE/DELETE) | deny | allow | allow |
 | `sql` DDL (CREATE/ALTER/DROP/...) | deny | deny | allow |
 | `change run`/`ff`/`revert`, `run build`/`file`/`dir` | deny | confirm | allow |
-| `db create`, `db reset` (truncate/teardown/reset) | deny | confirm | allow |
+| `db create`, `db reset`, `db transfer --to` | deny | confirm | allow |
+| `db truncate` | deny | confirm | confirm |
+| `db teardown` | deny | deny | confirm |
 | `db drop` | deny | deny | confirm |
-| `config rm` | deny | confirm | confirm |
+| `config rm`, `config import --force` | deny | confirm | confirm |
 | `change rm` | deny | confirm | confirm |
+| `vault list`, `secret list`/`config export` | deny | allow | allow |
+| `vault set`/`rm`, `secret set`/`rm` | deny | confirm | allow |
+| `vault propagate` | deny | confirm | confirm |
+| `lock force` | deny | confirm | confirm |
 
 Raw SQL (`noorm sql`) is gated by what the statement actually does, not by a flag — a multi-statement input is classified by its highest class (a `SELECT` plus a `DROP` classifies as DDL). Unparseable or unrecognized statements classify as DDL, fail closed.
 
@@ -211,7 +217,7 @@ noorm init --force      # Reinitialize an existing .noorm/
 noorm init --yes        # Non-interactive, requires existing identity
 ```
 
-**TTY required by default.** Fails with exit code 1 in CI or when stdin is piped. For scripted bootstrap, set up the identity with `noorm identity init --name ... --email ...` then run `noorm init --yes` (or set `NOORM_YES=1`). For the full non-interactive matrix across all TTY-gated commands, see [Non-interactive operation](./guide/automation/non-interactive.md). For ephemeral CI runners, use `noorm ci init` instead.
+**TTY required by default.** Fails with exit code 2 (usage error) in CI or when stdin is piped. For scripted bootstrap, set up the identity with `noorm identity init --name ... --email ...` then run `noorm init --yes` (or set `NOORM_YES=1`). For the full non-interactive matrix across all TTY-gated commands, see [Non-interactive operation](./guide/automation/non-interactive.md). For ephemeral CI runners, use `noorm ci init` instead.
 
 
 ### Configuration
@@ -227,11 +233,16 @@ noorm config list --json
 
 **JSON output:**
 ```json
-[
-    {"name": "dev", "dialect": "postgres", "active": true},
-    {"name": "staging", "dialect": "postgres", "active": false}
-]
+{
+    "success": true,
+    "configs": [
+        {"name": "dev", "type": "local", "dialect": "postgres", "database": "app", "isActive": true, "isTest": false, "access": {"user": "admin", "agent": "viewer"}},
+        {"name": "staging", "type": "remote", "dialect": "postgres", "database": "app", "isActive": false, "isTest": false, "access": {"user": "admin", "agent": "viewer"}}
+    ]
+}
 ```
+
+Configs whose `access.agent` is `false` are omitted when the caller resolves to the `agent` channel — the same filtering the `list_configs` MCP command applies.
 
 
 #### `config use <name>`
@@ -246,6 +257,7 @@ noorm config use production --json
 **JSON output:**
 ```json
 {
+    "success": true,
     "activeConfig": "production"
 }
 ```
@@ -285,13 +297,14 @@ noorm config rm staging --yes --json
 **JSON output:**
 ```json
 {
+    "success": true,
     "name": "staging",
     "deleted": true
 }
 ```
 
 ::: danger Destructive
-Requires `--yes` (or `NOORM_YES=1`) — there is no TTY confirmation prompt, so the flag is mandatory even at an interactive terminal. An unknown config name fails with exit 1. Gated by the config's `config:rm` access (see [Access Roles](#access-roles) above); a config linked to a locked stage cannot be removed until the stage is unlocked.
+Requires `--yes` (or `NOORM_YES=1`) — there is no TTY confirmation prompt, so the flag is mandatory even at an interactive terminal. An unknown config name fails with exit 2. Gated by the config's `config:rm` access (see [Access Roles](#access-roles) above); a config linked to a locked stage cannot be removed until the stage is unlocked.
 :::
 
 
@@ -308,10 +321,12 @@ noorm config cp dev prod --json
 ```json
 {
     "success": true,
-    "source": "dev",
-    "destination": "staging"
+    "src": "dev",
+    "dest": "staging"
 }
 ```
+
+A destination name that already exists fails with exit 1; `config cp` has no `--force`.
 
 
 #### `config export <name>`
@@ -325,7 +340,11 @@ noorm config export dev --output ./dev-config.json
 
 | Flag | Description |
 |------|-------------|
-| `-o, --output` | Write to file instead of stdout |
+| `-o, --output` | Write to file instead of stdout (mode `0600`) |
+
+Plain `config export dev` writes the bare config object — the exact shape `config import` reads — so `noorm config export dev > dev.json` round-trips. `--json` wraps it in the envelope instead (`{"success": true, "name": "dev", "config": {…}}`), which is not importable as-is.
+
+The export carries the connection password in plaintext, so it is gated by `secret:read`: a `viewer` is denied.
 
 
 #### `config import <path>`
@@ -334,12 +353,13 @@ Import a configuration from a JSON file.
 
 ```bash
 noorm config import ./dev-config.json
-noorm config import ./staging-config.json --force
+noorm config import ./staging-config.json --force --yes
 ```
 
 | Flag | Description |
 |------|-------------|
-| `--force` | Overwrite existing config with the same name |
+| `--force` / `-f` | Overwrite existing config with the same name |
+| `--yes` / `-y` | Confirm the overwrite. Required with `--force`, because replacing a config rewrites its `access` roles — a `config:write` confirm cell for every role that holds it |
 
 
 #### `config validate <name>`
@@ -356,12 +376,15 @@ noorm config validate production --json
 {
     "success": true,
     "config": "dev",
-    "dialect": "postgres",
-    "durationMs": 120
+    "valid": true,
+    "checks": [
+        {"label": "Connection", "status": "success", "detail": "Connection successful"},
+        {"label": "Name", "status": "success", "detail": "dev"}
+    ]
 }
 ```
 
-Exit code 0 if valid, 1 if connection fails.
+Exit code 0 if valid, 1 if any check fails, 2 if the config name is unknown.
 
 
 ### Identity
@@ -374,7 +397,7 @@ Create a new cryptographic identity. Generates an X25519 keypair and stores it a
 
 ```bash
 noorm identity init --name "Alice" --email "alice@example.com"
-noorm identity init --name "Alice" --email "alice@example.com" --force
+noorm identity init --name "Alice" --email "alice@example.com" --force --yes
 noorm identity init --name "Alice" --email "alice@example.com" --json
 ```
 
@@ -382,11 +405,17 @@ noorm identity init --name "Alice" --email "alice@example.com" --json
 |------|-------------|
 | `--name` | Display name (required) |
 | `--email` | Email address (required) |
-| `--force` | Overwrite existing identity |
+| `--force` | Replace an existing identity. Requires `--yes` |
+| `--yes` / `-y` | Confirm the replacement. The flag is read literally here, so an ambient `NOORM_YES` does not satisfy it |
+
+::: danger Destructive
+The state encryption key derives from the private key, so replacing an identity orphans every `state.enc` on the machine — configs, secrets, and database passwords become permanently undecryptable. Nothing re-encrypts existing state under the new key. The old keypair is backed up first, and its path lands in `backedUpTo` on the result; restoring `identity.key` from it is the only way back.
+:::
 
 **JSON output:**
 ```json
 {
+    "success": true,
     "name": "Alice",
     "email": "alice@example.com",
     "fingerprint": "...",
@@ -653,13 +682,19 @@ noorm run build --dry-run  # Preview without executing
 **JSON output:**
 ```json
 {
+    "success": true,
     "status": "success",
+    "files": [
+        {"filepath": "sql/01_tables/users.sql", "status": "success", "checksum": "…", "durationMs": 12}
+    ],
     "filesRun": 2,
     "filesSkipped": 1,
     "filesFailed": 0,
     "durationMs": 234
 }
 ```
+
+**Exit codes:** `0` success, `1` complete failure, `3` partial failure (some files ran, some failed).
 
 
 #### `run file <path>`
@@ -675,8 +710,10 @@ noorm run file sql/init.sql --json
 **JSON output:**
 ```json
 {
+    "success": true,
     "filepath": "seed.sql",
     "status": "success",
+    "checksum": "…",
     "durationMs": 45
 }
 ```
@@ -691,6 +728,8 @@ noorm run dir sql/01_tables/
 noorm run dir seeds/
 noorm run dir migrations/ --json
 ```
+
+A directory that does not exist, or that holds no SQL files, exits `2` — a directory with nothing in it is a mistyped path, not a successful no-op.
 
 
 #### `run exec <path>`
@@ -729,6 +768,7 @@ noorm run inspect sql/core/Crons.sql.tmpl --json
 **JSON output:**
 ```json
 {
+    "success": true,
     "filepath": "sql/users/001_create.sql.tmpl",
     "context": {
         "dataFiles": [{"key": "roles", "type": "Array [3]"}],
@@ -757,11 +797,14 @@ noorm run preview sql/migrations/002.sql.tmpl --config staging
 **JSON output:**
 ```json
 {
+    "success": true,
     "filepath": "sql/schema.sql.tmpl",
     "sql": "CREATE TABLE ...",
     "durationMs": 12
 }
 ```
+
+A missing template exits `2`. In text mode the rendered SQL is the only thing on stdout, so `noorm run preview x.sql.tmpl > rendered.sql` stays pipeable; warnings go to stderr.
 
 
 ### Change Operations
@@ -772,7 +815,7 @@ Bare `noorm change` renders citty's help output and does not connect to the data
 
 | Command | Picker includes |
 |---------|-----------------|
-| `change run` | pending + reverted (not orphaned) |
+| `change run` | pending + reverted + stale (not orphaned) |
 | `change revert` | success |
 | `change rewind` | success |
 | `change edit` | every directory under `changes/` (filesystem) |
@@ -794,10 +837,14 @@ noorm change list -c staging
 
 **JSON output:**
 ```json
-[
-    {"name": "2024-01-15-init-schema", "status": "success"},
-    {"name": "2024-02-01-notifications", "status": "pending"}
-]
+{
+    "success": true,
+    "changes": [
+        {"name": "2024-01-15-init-schema", "status": "success"},
+        {"name": "2024-02-01-notifications", "status": "pending"}
+    ],
+    "pending": 1
+}
 ```
 
 
@@ -814,23 +861,28 @@ noorm change ff --force
 **JSON output:**
 ```json
 {
+    "success": true,
     "status": "success",
-    "applied": 2,
+    "executed": 2,
     "skipped": 0,
     "failed": 0,
+    "durationMs": 90,
     "changes": [
         {"name": "2024-02-01-notifications", "status": "success", "durationMs": 45}
     ]
 }
 ```
 
+`--dry-run` adds `"dryRun": true` to the payload. A missing `changes/` directory is a warning, not a failure: it lands in `warnings` rather than making the batch fail.
+
 
 #### `change next`
 
-Apply the next pending change only.
+Apply the next pending change. An optional positional count applies the next `n` instead of one.
 
 ```bash
 noorm change next
+noorm change next 3
 noorm change next --json
 ```
 
@@ -848,15 +900,18 @@ noorm change run 2024-02-01-notifications --json
 **JSON output:**
 ```json
 {
+    "success": true,
     "name": "2024-02-01-notifications",
     "direction": "change",
     "status": "success",
     "files": [
-        {"filepath": "change/001_create-table.sql", "checksum": "a1b2c3", "status": "executed", "durationMs": 23}
+        {"filepath": "change/001_create-table.sql", "checksum": "a1b2c3", "status": "success", "durationMs": 23}
     ],
     "durationMs": 45
 }
 ```
+
+`direction` is `change` or `revert`. Per-file `status` is one of `pending`, `success`, `failed`, `skipped`; the change-level `status` adds `reverted` and `stale`.
 
 
 #### `change revert [name]`
@@ -927,23 +982,31 @@ View execution history with timestamps, direction, and duration.
 ```bash
 noorm change history
 noorm change history --json
+noorm change history --count 50
 ```
+
+| Flag | Description |
+|------|-------------|
+| `--count` | Show the last N records (default: 20) |
 
 **JSON output:**
 ```json
-[
-    {
-        "id": 1,
-        "name": "001_init",
-        "direction": "change",
-        "status": "success",
-        "executedAt": "2024-01-15T10:30:00Z",
-        "executedBy": "Alice <alice@example.com>",
-        "durationMs": 45,
-        "errorMessage": null,
-        "checksum": "abc123def456"
-    }
-]
+{
+    "success": true,
+    "history": [
+        {
+            "id": 1,
+            "name": "001_init",
+            "direction": "change",
+            "status": "success",
+            "executedAt": "2024-01-15T10:30:00Z",
+            "executedBy": "Alice <alice@example.com>",
+            "durationMs": 45,
+            "errorMessage": null,
+            "checksum": "abc123def456"
+        }
+    ]
+}
 ```
 
 
@@ -967,8 +1030,11 @@ Create the target database if it does not exist. Connects to the dialect's syste
 ```bash
 noorm db create
 noorm db create -c dev
+noorm db create --yes
 noorm db create --json
 ```
+
+Gated by the config's `db:create` access: `viewer` is denied, `operator` needs `--yes` (or `NOORM_YES=1`), `admin` runs unconfirmed. The gate fires before any probe touches the server, so a denied role never gets a SQLite file created as a side effect of the existence check.
 
 
 #### `db drop`
@@ -1013,19 +1079,28 @@ noorm db explore procedures             # List all procedures
 noorm db explore indexes                # List all indexes
 noorm db explore types                  # List custom types
 noorm db explore fks                    # List foreign keys
+noorm db explore triggers               # List triggers
 noorm db explore --json                 # JSON overview
 ```
 
 **JSON output (overview):**
 ```json
 {
+    "success": true,
     "tables": 12,
     "views": 3,
-    "indexes": 8,
+    "procedures": 0,
     "functions": 2,
-    "procedures": 0
+    "types": 4,
+    "indexes": 8,
+    "foreignKeys": 6,
+    "triggers": 1,
+    "locks": 0,
+    "connections": 3
 }
 ```
+
+`locks` and `connections` are runtime state, not schema, so they appear only in `--json` — the text overview lists the eight counters that have a drill-down subcommand.
 
 
 #### `db truncate`
@@ -1034,7 +1109,20 @@ Wipe all data from application tables. Schema and noorm tracking tables are pres
 
 ```bash
 noorm db truncate -y
+noorm db truncate --dry-run
+noorm db truncate --preserve seeds,lookups --yes
+noorm db truncate --only users,posts --yes
 ```
+
+| Flag | Description |
+|------|-------------|
+| `--preserve` | Comma-separated tables to leave untouched |
+| `--only` | Comma-separated tables to truncate, to the exclusion of all others |
+| `--dry-run` | List the statements without executing them |
+
+::: warning Access Roles
+Gated by the config's `db:truncate` access: `viewer` is denied, `operator` and `admin` both confirm (`--yes`, or `NOORM_YES=1` in CI). There is no `--force` override — see [Access Roles](#access-roles) above.
+:::
 
 
 #### `db teardown`
@@ -1043,10 +1131,19 @@ Drop all database objects.
 
 ```bash
 noorm db teardown -y
+noorm db teardown --dry-run
+noorm db teardown --preserve-schemas app_private --yes
 ```
 
+| Flag | Description |
+|------|-------------|
+| `--preserve-schemas` | Comma-separated schemas to leave untouched (teardown otherwise reaches every non-system schema) |
+| `--dry-run` | Report what would be dropped without dropping it |
+
+A teardown whose post-teardown script failed exits `1` even though the objects are already gone — a half-finished teardown must not report success.
+
 ::: warning Access Roles
-`db teardown` is gated by the config's `db:reset` access: `viewer` is denied, `operator` must confirm (`yes-<config>`, or `NOORM_YES=1` in CI), `admin` runs unconfirmed. There is no `--force` override — see [Access Roles](#access-roles) above.
+Gated by the config's `db:teardown` access: `viewer` and `operator` are denied outright, `admin` confirms (`--yes`, or `NOORM_YES=1` in CI). There is no `--force` override — see [Access Roles](#access-roles) above.
 :::
 
 
@@ -1067,15 +1164,17 @@ noorm db transfer --to backup --dry-run
 ```bash
 noorm db transfer --export ./backup/
 noorm db transfer --export ./backup/ --compress
-noorm db transfer --export ./backup/ --passphrase secret
+noorm db transfer --export ./backup/ --passphrase "correct-horse-battery"
 noorm db transfer --export ./backup/users.dt --tables users
 ```
 
 **Import from files:**
 ```bash
 noorm db transfer --import ./backup/users.dt
-noorm db transfer --import ./backup/users.dtzx --passphrase secret --on-conflict skip
+noorm db transfer --import ./backup/users.dtzx --passphrase "correct-horse-battery" --on-conflict skip
 ```
+
+`--passphrase` implies encryption, so the export lands as `.dtzx` whether or not you also pass `--compress`. On export it must be at least 12 characters; on import there is no floor, so archives encrypted with an older, shorter passphrase still open. Omit it on a TTY and noorm prompts with masked input; in a non-interactive session or under `--json`, omitting it exits `2`.
 
 **Transfer flags:**
 
@@ -1127,8 +1226,14 @@ Acquire an exclusive lock.
 
 ```bash
 noorm lock acquire
+noorm lock acquire --timeout 600000 --reason "nightly migration"
 noorm lock acquire --json
 ```
+
+| Flag | Description |
+|------|-------------|
+| `--timeout` | Lock duration in milliseconds before it expires (default: 300000) |
+| `--reason` | Text shown to anyone this lock blocks |
 
 **CI/CD pattern with cleanup:**
 ```bash
@@ -1149,11 +1254,14 @@ noorm lock release
 
 #### `lock force`
 
-Force release any lock regardless of ownership.
+Force release any lock regardless of ownership. Gated by the config's `lock:force` access, which is a confirm cell for both `operator` and `admin`, so `--yes` (or `NOORM_YES=1`) is required.
 
 ```bash
-noorm lock force
+noorm lock force --yes
+noorm lock force -c prod --yes --json
 ```
+
+Exits `0` when a lock was actually broken and `2` when there was nothing to release, so a script can tell "evicted a holder" from "no-op" without parsing text. The `--json` payload reports `success` as whether a lock was broken, not whether the command ran.
 
 ::: warning
 Force releasing a lock can cause data corruption if the original holder is still running.
@@ -1180,14 +1288,20 @@ noorm vault init --json
 ```
 
 
-#### `vault set <key> <value>`
+#### `vault set <key> [value]`
 
 Store an encrypted secret in the vault.
 
 ```bash
 noorm vault set API_KEY "sk-live-abc123"
+echo "$API_KEY" | noorm vault set API_KEY --stdin
 noorm vault set API_KEY "sk-live-abc123" --json
 ```
+
+| Flag | Description |
+|------|-------------|
+| `--stdin` | Read the value from stdin instead of argv, so it never reaches the process table, shell history, or a `set -x` trace. Omit the positional value when you pass it |
+| `--yes` / `-y` | Confirm the write on a config whose `vault:write` access is a confirm cell (an `operator` user role) |
 
 Upserts: creates if new, updates if the key exists.
 
@@ -1218,51 +1332,68 @@ noorm vault list --json
 
 #### `vault rm <key>`
 
-Remove a secret from the vault.
+Remove a secret from the vault. `--yes` (or `NOORM_YES=1`) is mandatory: the vault has no soft-delete and no history table, so this destroys the team's only copy.
 
 ```bash
-noorm vault rm OLD_API_KEY
-noorm vault rm OLD_API_KEY --json
+noorm vault rm OLD_API_KEY --yes
+noorm vault rm OLD_API_KEY --yes --json
 ```
 
+A key that was never in the vault exits `2`, which is distinct from a delete that failed (`1`).
 
-#### `vault cp`
 
-Copy secrets between config vaults.
+#### `vault cp <key> <source> <destination>`
+
+Copy one secret from one config's vault to another's. All three arguments are positional and required — there is no bulk mode.
 
 ```bash
 noorm vault cp API_KEY staging production
-noorm vault cp --all staging production
-noorm vault cp --all --force staging production
-noorm vault cp --all --dry-run staging production
+noorm vault cp API_KEY staging production --dry-run
+noorm vault cp DB_PASSWORD dev staging --force
+noorm vault cp API_KEY staging production --json
 ```
 
 | Flag | Description |
 |------|-------------|
-| `--all` | Copy all secrets from source |
-| `--force` | Overwrite existing secrets in destination |
+| `--force` / `-f` | Overwrite the key if it already exists in the destination |
 | `--dry-run` | Preview without executing |
 
-Without `--force`, existing secrets in the destination are skipped.
+Without `--force`, a key that already exists in the destination is skipped. An unknown source or destination config exits `2`.
 
 
 #### `vault propagate`
 
 Grant vault access to team members who don't have it yet. Encrypts the vault key with each pending user's public key.
 
+Propagation seals the vault key to a public key and cannot be revoked, so a bare `noorm vault propagate` only *lists* the identities awaiting access and exits `1`. Re-run with `--yes` to grant, or `--to <hash>` to grant to specific identities.
+
 ```bash
-noorm vault propagate
+noorm vault propagate                        # review the pending list
+noorm vault propagate --yes                  # grant to everyone pending
+noorm vault propagate --to 4a5c14af... --yes # grant to one identity
 noorm vault propagate --json
 ```
+
+| Flag | Description |
+|------|-------------|
+| `--to` | Comma-separated identity hashes to grant to (default: every pending identity) |
+| `--yes` / `-y` | Perform the grant. Without it the command reports and stops |
 
 **JSON output:**
 ```json
 {
     "success": true,
-    "propagatedTo": ["alice@example.com"],
-    "alreadyHadAccess": 3
+    "granted": true,
+    "propagatedTo": ["4a5c14af…"],
+    "alreadyHadAccess": 3,
+    "failed": [],
+    "pending": [
+        {"identityHash": "4a5c14af…", "name": "Alice", "email": "alice@example.com"}
+    ]
 }
 ```
+
+`propagatedTo` holds identity hashes; `pending` is what maps them back to a name and email. A grant that lands for some identities and not others exits `3` with `success: false` — the vault is in a mixed state, and the teammate whose update did not land believes they have access.
 
 
 ### SQL Operations
@@ -1273,8 +1404,8 @@ Execute a raw SQL query.
 
 ```bash
 noorm sql "SELECT * FROM users LIMIT 10"
-noorm sql -f query.sql
-noorm -c prod sql "SELECT count(*) FROM orders"
+noorm sql query -f query.sql
+noorm sql query -c prod "SELECT count(*) FROM orders"
 noorm sql "SELECT id, name FROM users" --json
 ```
 
@@ -1282,6 +1413,8 @@ noorm sql "SELECT id, name FROM users" --json
 |------|-------------|
 | `-f, --file` | Read SQL from a file |
 | `-c, --config` | Use specific configuration |
+
+The bare `noorm sql "<SQL>"` form works by rewriting argv to `noorm sql query "<SQL>"`, and it only fires when the first non-flag token after `sql` looks like SQL. A flag that takes a value puts something else there, so `noorm sql -f query.sql` and `noorm sql -c prod "SELECT 1"` print help instead — spell out `query` with either. See [`noorm sql`](./cli/sql.md).
 
 **JSON output:**
 ```json
@@ -1292,10 +1425,11 @@ noorm sql "SELECT id, name FROM users" --json
         {"id": 1, "name": "Alice"},
         {"id": 2, "name": "Bob"}
     ],
-    "rowsAffected": null,
     "durationMs": 12.5
 }
 ```
+
+`rowsAffected` replaces the row payload for INSERT/UPDATE/DELETE and is absent (not `null`) on a SELECT.
 
 
 #### `sql repl`
@@ -1312,13 +1446,13 @@ noorm sql repl --config dev
 
 #### `sql history`
 
-Show SQL execution history.
+Show SQL execution history. Only the interactive SQL terminal records history — `sql query` deliberately writes none, so persisting query text and returned rows on a build agent never happens.
 
 ```bash
 noorm sql history
 noorm sql history -n 20
 noorm sql history --json
-noorm -c prod sql history
+noorm sql history -c prod
 ```
 
 | Flag | Description |
@@ -1333,13 +1467,15 @@ Clear SQL execution history.
 ```bash
 noorm sql clear --yes
 noorm sql clear --older-than 3 --yes
-noorm -c prod sql clear --yes
+noorm sql clear -c prod --yes
 ```
 
 | Flag | Description |
 |------|-------------|
 | `--older-than` | Only clear entries older than N months |
-| `--yes` | Confirm without prompt (required) |
+| `--yes` / `-y` | Confirm. Without it the command reports what it would clear and exits 0 without clearing |
+
+`--json` also counts as a confirmation, since it is only used non-interactively.
 
 
 ### MCP (AI Agent Integration)
@@ -1380,20 +1516,29 @@ noorm info --json
 **JSON output:**
 ```json
 {
+    "success": true,
     "cli_version": "1.0.0-alpha.34",
-    "schema_version": 1,
+    "schema_version": 2,
+    "state_version": 3,
+    "settings_version": 1,
+    "installed_at": "2024-01-15T10:30:00.000Z",
+    "upgraded_at": null,
     "active_config": "dev",
     "config_count": 2,
     "connection": {
         "host": "localhost",
         "port": 5432,
         "database": "mydb",
-        "dialect": "postgresql"
+        "dialect": "postgres"
     },
     "identity": {
         "name": "Your Name",
-        "email": "you@example.com"
+        "email": "you@example.com",
+        "machine": "laptop",
+        "registered_at": "2024-01-15T10:30:00.000Z",
+        "last_seen_at": "2024-02-01T09:00:00.000Z"
     },
+    "agent": null,
     "objects": {
         "tables": 5,
         "views": 12,
@@ -1403,6 +1548,8 @@ noorm info --json
     }
 }
 ```
+
+`connection` is `null` and `connection_error` carries the message when the active config can't be reached. `agent` names the AI harness noorm detected, if any, along with the env markers that gave it away — worth checking first when a permission denial has no visible cause, since harness detection is what flips the policy channel from `user` to `agent`.
 
 
 #### `version`
@@ -1423,6 +1570,10 @@ Check for and install noorm updates.
 noorm update
 noorm update --json
 ```
+
+| Flag | Description |
+|------|-------------|
+| `--insecure` | Downgrade an unreachable `checksums.txt` from a failure to a warning. Also settable as `NOORM_INSECURE=1`. It never bypasses a confirmed checksum mismatch, which always fails |
 
 
 #### `ui`
@@ -1709,7 +1860,7 @@ echo "Database has $tables tables"
 # Verify vault access
 pending=$(noorm vault list --json | jq '.status.usersWithoutAccess')
 if [ "$pending" -gt 0 ]; then
-    noorm vault propagate
+    noorm vault propagate --yes
 fi
 ```
 

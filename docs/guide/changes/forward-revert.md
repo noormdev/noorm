@@ -21,21 +21,25 @@ noorm change ff
 noorm change ff --json
 ```
 
-Fast-forward is the workhorse for deployments. It finds all unapplied changes, sorts them by date, and executes each one in sequence. If any change fails, execution stops immediately.
+Fast-forward is the workhorse for deployments. It finds every outstanding change (`pending`, `reverted`, or `stale` after a teardown), sorts them by folder name so the `YYYY-MM-DD` prefix puts them in chronological order, and executes each one in sequence. If any change fails, execution stops immediately.
 
 **JSON output:**
 ```json
 {
+    "success": true,
     "status": "success",
-    "applied": 2,
+    "executed": 2,
     "skipped": 0,
     "failed": 0,
+    "durationMs": 77,
     "changes": [
-        {"name": "2024-02-01-add-notifications", "status": "success", "durationMs": 45},
-        {"name": "2024-02-15-user-preferences", "status": "success", "durationMs": 32}
+        {"name": "2024-02-01-add-notifications", "direction": "change", "status": "success", "durationMs": 45},
+        {"name": "2024-02-15-user-preferences", "direction": "change", "status": "success", "durationMs": 32}
     ]
 }
 ```
+
+Each entry in `changes` also carries a `files` array with one record per SQL file: relative path, checksum, status, duration, and the error message when the file failed. If the `changes/` directory is missing, the payload gains a `warnings` array saying so, because an absent directory otherwise looks identical to an up-to-date database.
 
 
 ### Apply a Specific Change
@@ -96,7 +100,13 @@ Revert the last N applied changes:
 noorm change rewind 3
 ```
 
-Rewind walks through your applied changes starting with the newest, reverting each one before moving to the next oldest.
+Rewind walks through your applied changes starting with the newest, reverting each one before moving to the next oldest. It considers only changes currently recorded as `success`, and orders them by when they were applied. Changes applied in the same second, which is everything a single `change ff` applies, tie on that timestamp, so the tracking table's row id breaks the tie and preserves true apply order.
+
+Pass a change name instead of a count to rewind back to and including that change:
+
+```bash
+noorm change rewind 2024-02-01-add-notifications
+```
 
 
 ## What Happens During Apply
@@ -109,28 +119,30 @@ When you apply a change, noorm:
 
 3. **Checks the database record** - Looks up this change's status to determine if it should run.
 
-4. **Resolves manifest references** - For `.txt` files, replaces file references with actual SQL content from your schema directory.
+4. **Acquires the config lock** - Stops a second operation on the same config from running concurrently. The lock is released when the change finishes, whatever the outcome.
 
-5. **Processes templates** - For `.sql.tmpl` files, runs them through the Eta templating engine.
+5. **Resolves manifest references** - For `.txt` files, replaces file references with actual SQL content from your schema directory.
 
-6. **Executes SQL in sequence** - Runs each file in order (`001_`, `002_`, etc.) against the database.
+6. **Processes templates** - For `.sql.tmpl` files, runs them through the Eta templating engine.
 
-7. **Records the result** - Stores the execution status, checksum, and timestamp in the tracking table.
+7. **Executes SQL in sequence** - Runs each file in order (`001_`, `002_`, etc.) against the database. A file whose checksum matches a still-standing success from an earlier attempt is skipped, so a retry only re-runs what actually needs re-running.
 
-If any file fails, execution stops. The change is marked as `failed`, and subsequent files in that change are not executed.
+8. **Records the result** - Stores the execution status, checksum, and timestamp in the change tracking tables.
+
+If any file fails, execution stops, and the files that were never reached are recorded as skipped. On PostgreSQL the whole change runs inside one transaction, so the failure rolls back the DDL and the history rows together and the change leaves no record at all. On MySQL, SQL Server, and SQLite there is no wrapping transaction: whatever already committed stays committed, and the change is recorded as `failed`.
 
 
 ## What Happens During Revert
 
 Reverting follows a similar process but with key differences:
 
-1. **Verifies the change is applied** - You cannot revert a change that was never applied or has already been reverted.
+1. **Verifies the change can be reverted** - A change recorded as `success` or `failed` can be reverted. One that was never applied, is already `reverted`, or went `stale` after a teardown cannot. `--force` skips this check.
 
 2. **Reads the revert folder** - Loads files from `revert/` instead of `change/`.
 
 3. **Executes in sequence order** - Files run from lowest to highest (`001_`, `002_`, etc.), same as change scripts.
 
-4. **Updates the record** - Marks the change as `reverted` with a timestamp.
+4. **Updates the records** - Writes its own history record with direction `revert`, then flips the original forward record's status to `reverted`. The revert record's timestamp is what surfaces as `revertedAt`.
 
 After reverting, the change returns to a state where it can be applied again. This is the `reverted` status, which noorm treats as "needs to run" during the next fast-forward.
 
@@ -139,7 +151,7 @@ After reverting, the change returns to a state where it can be applied again. Th
 
 Preview what would happen without touching the database:
 
-**TUI:** In any run dialog, enable the dry-run toggle before confirming.
+**TUI:** Press `Shift+D` to turn on dry-run mode. It is a global toggle, so every apply and revert stays a dry run until you press it again.
 
 **Headless:**
 
@@ -147,19 +159,21 @@ Preview what would happen without touching the database:
     noorm change run 2024-02-01-add-notifications --dry-run
     noorm change revert 2024-02-01-add-notifications --dry-run
     noorm change next --dry-run
+    noorm change rewind 3 --dry-run
 
-Dry run writes rendered SQL to a `tmp/` folder so you can inspect exactly what would execute. Templates are processed, manifests are resolved, but no SQL hits the database — `__noorm_change__` and `__noorm_executions__` are left untouched.
+Dry run writes rendered SQL to a `tmp/` folder so you can inspect exactly what would execute. Templates are processed and manifests are resolved, but nothing from your change files runs against the database and nothing is written to the change tracking tables: the dry-run path skips the status lookup, takes no lock, and creates no history record. `ff`, `next`, and `rewind` still read the tracking tables to decide which changes to render.
 
-The CLI marks dry-run output with a clear `(dry-run)` header so log scrapers and operators can distinguish it from a real apply. With `--json`, the result payload includes a `dryRun: true` field:
+In human mode the CLI opens with `Dry run: rendering changes to tmp/ (no DB writes)`, labels the summary line `(dry-run)`, and tags each change `dry-run`, so log scrapers and operators can tell it apart from a real apply. With `--json` those lines are suppressed and the result payload carries a `dryRun: true` field instead (`rewind --json` is the exception and omits it):
 
     $ noorm change ff --dry-run --json
-    Dry run: rendering changes to tmp/ (no DB writes)
     {
+      "success": true,
       "status": "success",
       "executed": 2,
       "skipped": 0,
       "failed": 0,
-      "changes": [ /* ... */ ],
+      "durationMs": 12,
+      "changes": [],
       "dryRun": true
     }
 
@@ -170,13 +184,15 @@ This is essential for production deployments. Always preview before applying.
 
 When a change fails:
 
-1. **Execution stops immediately** - No further files in the change execute.
+1. **Execution stops immediately** - No further files in the change execute. The ones never reached are recorded as `skipped`, with the failing file named as the reason.
 
 2. **Status is recorded as failed** - The change shows `failed` in the list.
 
-3. **Error details are captured** - The specific error message is stored for debugging.
+3. **Error details are captured** - The failing file name and the database's error message are stored on both the change record and that file's record.
 
-4. **Next fast-forward will retry** - Failed changes are automatically included in the next `ff` attempt.
+4. **Next fast-forward will retry** - Failed changes are outstanding work, so the next `ff` attempt includes them.
+
+On PostgreSQL, steps 2 and 3 do not survive the failure. The change runs inside one transaction, DDL and history rows alike, so a failure rolls all of it back and leaves no record behind. You still see the error in the command's output and exit code, and the next `ff` reruns the change because the tracking tables show it as never applied. MySQL, SQL Server, and SQLite have no wrapping transaction and keep the `failed` record.
 
 
 ### Investigating Failures
@@ -188,7 +204,7 @@ When a change fails:
 noorm change history
 ```
 
-The history shows which specific file failed and includes the error message from the database. See [History](/guide/changes/history) for detailed debugging workflows.
+The history shows which specific file failed and includes the error message from the database. On PostgreSQL there is nothing to show, since a failed change rolls its history rows back with the DDL; read the error off the failing command instead. See [History](/guide/changes/history) for detailed debugging workflows.
 
 
 ### Recovering from Failures

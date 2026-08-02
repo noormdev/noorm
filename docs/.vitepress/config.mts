@@ -81,16 +81,15 @@ gtag('config', 'G-Y69K95866J');`],
             // https://vitepress.dev/reference/default-theme-config
             logo: '/image/logo.svg',
             siteTitle: 'noorm',
+            // No Home entry: the logo already links to `/`. Dev docs are not a
+            // top-bar concern either — they live in the Reference group of the
+            // main sidebar as "Contributor Documentation".
             nav: [
-                { text: 'Home', link: '/' },
                 { text: 'Getting Started', link: '/getting-started/installation' },
                 { text: 'Guide', link: '/guide/sql-files/organization' },
                 { text: 'CLI', link: '/headless' },
                 { text: 'TUI', link: '/tui' },
-                {
-                    text: 'Dev Docs',
-                    link: '/dev/',
-                },
+                { text: 'Modeling', link: '/modeling/' },
             ],
 
             sidebar: {
@@ -105,6 +104,7 @@ gtag('config', 'G-Y69K95866J');`],
                             { text: 'Runner', link: '/dev/runner' },
                             { text: 'Settings', link: '/dev/settings' },
                             { text: 'State', link: '/dev/state' },
+                            { text: 'Project Discovery', link: '/dev/project-discovery' },
                         ],
                     },
                     {
@@ -118,6 +118,7 @@ gtag('config', 'G-Y69K95866J');`],
                             { text: 'Locking', link: '/dev/lock' },
                             { text: 'Teardown', link: '/dev/teardown' },
                             { text: 'Config Sharing', link: '/dev/config-sharing' },
+                            { text: 'Data Transfer', link: '/dev/transfer' },
                         ],
                     },
                     {
@@ -144,18 +145,42 @@ gtag('config', 'G-Y69K95866J');`],
                     {
                         text: 'Getting Started',
                         items: [
+                            { text: 'Why noorm', link: '/why-noorm' },
                             { text: 'Installation', link: '/getting-started/installation' },
                             { text: 'First Build', link: '/getting-started/first-build' },
                             { text: 'Building Your SDK', link: '/getting-started/building-your-sdk' },
                             { text: 'Concepts', link: '/getting-started/concepts' },
                         ],
                     },
+                    // Only Getting Started and Reference omit `collapsed`, which
+                    // is what pins them open with no toggle. Every other group
+                    // is collapsible and starts closed, so the sidebar opens as
+                    // a short list of topics rather than a wall of links.
                     {
                         text: 'Features',
+                        collapsed: true,
                         items: [
                             { text: 'CLI Reference', link: '/headless' },
                             { text: 'Terminal UI', link: '/tui' },
                             { text: 'Relational Design', link: '/guide/relational-design' },
+                        ],
+                    },
+                    {
+                        // ignatius is a separate binary with its own release
+                        // cadence, so these pages carry the narrative and link
+                        // out to the ignatius repo for the exhaustive rule
+                        // catalogs rather than duplicating them here.
+                        text: 'Information Modeling',
+                        collapsed: true,
+                        items: [
+                            { text: 'Overview', link: '/modeling/' },
+                            { text: 'Installation', link: '/modeling/installation' },
+                            { text: 'Entities & Key Inheritance', link: '/modeling/entities' },
+                            { text: 'Data Flows', link: '/modeling/data-flows' },
+                            { text: 'Modeling Skill', link: '/modeling/modeling-skill' },
+                            { text: 'Reverse-Engineering', link: '/modeling/reverse-engineering' },
+                            { text: 'Branding', link: '/modeling/branding' },
+                            { text: 'Best Practices', link: '/modeling/best-practices' },
                         ],
                     },
                     {
@@ -175,6 +200,10 @@ gtag('config', 'G-Y69K95866J');`],
                             { text: 'Stages', link: '/guide/environments/stages' },
                             { text: 'Secrets', link: '/guide/environments/secrets' },
                             { text: 'Vault', link: '/guide/environments/vault' },
+                            // Identity is what makes vault sharing and config
+                            // export work, so it belongs beside them even though
+                            // the page lives under /cli/.
+                            { text: 'Identity', link: '/cli/identity' },
                         ],
                     },
                     {
@@ -201,6 +230,7 @@ gtag('config', 'G-Y69K95866J');`],
                         collapsed: true,
                         items: [
                             { text: 'CI/CD', link: '/guide/automation/ci' },
+                            { text: 'Deployment', link: '/guide/deployment' },
                             { text: 'MCP (AI Agents)', link: '/guide/automation/mcp' },
                         ],
                     },
@@ -208,13 +238,18 @@ gtag('config', 'G-Y69K95866J');`],
                         text: 'Reference',
                         items: [
                             { text: 'SDK', link: '/reference/sdk' },
+                            { text: 'Contributor Documentation', link: '/dev/' },
                         ],
                     },
                 ],
             },
 
+            // Two GitHub repos, so both need an explicit ariaLabel: the default
+            // is the icon name, which would announce both as just "github".
+            // brand.css captions them so they are told apart visually too.
             socialLinks: [
-                { icon: 'github', link: 'https://github.com/noormdev/noorm' },
+                { icon: 'github', link: 'https://github.com/noormdev/noorm', ariaLabel: 'noorm on GitHub' },
+                { icon: 'github', link: 'https://github.com/noormdev/ignatius', ariaLabel: 'ignatius on GitHub' },
             ],
 
             search: {
@@ -235,7 +270,9 @@ gtag('config', 'G-Y69K95866J');`],
 
             footer: {
                 message: 'Database Schema & Change Manager',
-                copyright: `© ${new Date().getFullYear()} <a href="https://github.com/noormdev">noorm</a> · <a href="https://github.com/noormdev/noorm">GitHub</a> · <a href="https://www.npmjs.com/org/noormdev">npm</a> · ISC License`,
+                // Apache-2.0 to match LICENSE and every package.json in the repo. This
+                // read "ISC" until 2026-08 and matched nothing that ships.
+                copyright: `© ${new Date().getFullYear()} <a href="https://github.com/noormdev">noorm</a> · <a href="https://github.com/noormdev/noorm">GitHub</a> · <a href="https://www.npmjs.com/org/noormdev">npm</a> · <a href="https://github.com/noormdev/noorm/blob/master/LICENSE">Apache 2.0</a>`,
             },
         },
     }),

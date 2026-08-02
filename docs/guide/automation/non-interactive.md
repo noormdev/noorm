@@ -61,8 +61,9 @@ errors fast and points at the headless alternative.
 | `noorm settings edit` | Edit `settings.yml` directly; run `noorm settings build` to validate. |
 | `noorm settings secret` | Edit the `secrets:` section of `settings.yml` directly. For values, use `noorm secret set <key> <value>`. |
 
-These commands exit 1 with the redirect message on stderr. Same exit
-code as the TTY refusal, so existing CI checks don't change behavior.
+These commands exit 2 (bad invocation) with the redirect message on
+stderr. Same exit code as their TTY refusal, so a pipeline sees one
+code whichever way it hit the gate.
 
 
 ### Already non-interactive (no `--yes` needed)
@@ -71,7 +72,12 @@ These accept explicit flags and don't gate on a TTY:
 
 - `noorm identity init --name "..." --email "..."` — bootstraps the identity used by `noorm init --yes`.
 - `noorm config import <path>` — wizard-free config setup.
-- `noorm ci init` / `ci secrets` / `ci identity new` / `ci identity enroll` — the dedicated CI bootstrap surface.
+- `noorm ci init` / `ci secrets` / `ci identity new` — the dedicated CI bootstrap surface.
+
+One exception inside that surface: `noorm ci identity enroll` **does** need
+`--yes` (or `NOORM_YES=1`). It ends in a `vault:propagate` grant, which the
+matrix marks `confirm` for every role that holds it, and sealing the vault
+key to a public key cannot be undone.
 
 
 ## CI bootstrap pipeline
@@ -82,7 +88,7 @@ with no prompts:
     #!/usr/bin/env bash
     set -euo pipefail
 
-    # 1. Identity (once per machine; idempotent if files exist + --force).
+    # 1. Identity (once per machine; exits 1 if one already exists).
     noorm identity init \
       --name "$CI_USER" \
       --email "$CI_EMAIL"
@@ -102,6 +108,17 @@ with no prompts:
     noorm run build
     noorm change ff
 
+Step 1 is not idempotent, and under `set -e` it aborts the script if an
+identity already exists. Replacing one takes `--force --yes` together,
+mints a fresh keypair, and leaves any state encrypted under the old key
+unreadable. Guard it instead of passing `--force` blind:
+
+    [ -f ~/.noorm/identity.key ] || noorm identity init \
+      --name "$CI_USER" --email "$CI_EMAIL"
+
+The raw `--yes` flag is required for a replacement; an ambient
+`NOORM_YES` deliberately does not satisfy it.
+
 If you need a stored config (rather than env-only), use `noorm config
 import <path>` with a pre-built JSON file. See
 [`docs/headless.md`](../../headless.md) for the full env-only matrix.
@@ -112,8 +129,8 @@ import <path>` with a pre-built JSON file. See
 `--yes` covers prompts. It does NOT relax safety gates that exist for
 destructive operations:
 
-- `noorm db drop`, `noorm db reset`, `noorm db teardown` still require `--yes` *or* `--force` per their own contracts. `NOORM_YES=1` does count toward those gates.
-- Every destructive command is also gated by the config's access role (`viewer`/`operator`/`admin` — see [Access Roles](../../headless.md#access-roles)). `--yes`/`NOORM_YES=1` only skips an `operator` confirmation prompt; it cannot open a `deny` cell. A `viewer`-role config still refuses `db teardown` no matter how many flags you pass.
+- `noorm db drop`, `noorm db reset`, `noorm db teardown` still require `--yes` per their own contracts. `NOORM_YES=1` does count toward those gates.
+- Every destructive command is also gated by the config's access role (`viewer`/`operator`/`admin` — see [Access Roles](../../headless.md#access-roles)). `--yes`/`NOORM_YES=1` only satisfies a `confirm` cell; it cannot open a `deny` cell. A `viewer`- or `operator`-role config still refuses `db teardown` no matter how many flags you pass.
 - Vault and identity operations that need a private key still need the key — either on disk at `~/.noorm/identity.key` or in `$NOORM_IDENTITY_PRIVATE_KEY`.
 
 If a command refuses with a useful error in interactive mode, it refuses

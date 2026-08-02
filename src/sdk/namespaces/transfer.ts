@@ -73,7 +73,13 @@ export class TransferNamespace {
         options?: TransferOptions,
     ): Promise<TransferPlan> {
 
-        const [plan, err] = await getTransferPlan(this.#state.config, destConfig, options);
+        // Same channel injection as to(): getTransferPlan gates on
+        // options.channel ?? 'user', so without this an agent-channel context
+        // has its plan authorised with human permissions.
+        const [plan, err] = await getTransferPlan(this.#state.config, destConfig, {
+            ...options,
+            channel: this.#state.options.channel ?? 'user',
+        });
 
         if (err) throw err;
 

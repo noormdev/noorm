@@ -49,6 +49,8 @@ import {
     isNoormProject,
     getGlobalNoormPath,
     hasGlobalNoorm,
+    getOriginalCwd,
+    setOriginalCwd,
 } from './core/project.js'
 
 // Find project root without side effects
@@ -57,6 +59,9 @@ const result = findProjectRoot()
 // result.hasProject: true/false
 // result.homeNoorm: '/Users/me/.noorm' or null
 // result.originalCwd: where the user actually ran the command
+
+// Start the walk somewhere other than process.cwd()
+const fromDir = findProjectRoot('/Users/me/projects/myapp/packages/db')
 
 // Find and chdir to project root (default behavior)
 const result = initProjectContext()
@@ -69,21 +74,38 @@ const result = initProjectContext({ chdir: false })
 isNoormProject('/path/to/dir')    // checks if dir has .noorm/
 getGlobalNoormPath()               // returns ~/.noorm path
 hasGlobalNoorm()                   // checks if ~/.noorm exists
+getOriginalCwd()                   // cwd captured before any chdir
+setOriginalCwd(dir)                // records it; first call wins
 ```
+
+`initProjectContext()` calls `setOriginalCwd()` for you. Commands that must
+operate on where the user actually stood — `init --here`, for example — read
+`getOriginalCwd()` rather than `process.cwd()`.
 
 
 ## CLI Integration
 
-The CLI calls `initProjectContext()` at the very start of `main()`:
+The CLI resolves the working directory first thing in `entry()`
+(`src/cli/index.ts`). A `--cwd` flag wins outright; otherwise discovery runs:
 
 ```typescript
-async function main(): Promise<void> {
-    // First thing: find project and chdir
-    const projectDiscovery = initProjectContext()
+async function entry(): Promise<void> {
 
-    // Now process.cwd() is the project root
-    enableAutoLoggerInit(process.cwd())
+    const { cwd: explicitCwd, rest: cleanArgv } = extractGlobalCwd(process.argv.slice(2))
 
+    if (explicitCwd !== null) {
+
+        setOriginalCwd(process.cwd())
+        process.chdir(resolve(process.cwd(), explicitCwd))
+
+    }
+    else {
+
+        initProjectContext()
+
+    }
+
+    // Now process.cwd() is the project root (or the explicit --cwd)
     // ... rest of CLI initialization
 }
 ```

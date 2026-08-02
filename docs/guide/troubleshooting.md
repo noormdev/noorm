@@ -71,8 +71,10 @@ See [SDK reference — Parameter handling and NULL semantics](../reference/sdk.m
 ## `noorm sql "SELECT ..."` errors with "Unknown command"
 
 The bare `noorm sql "<SQL>"` form is supported, but only when the
-first token of the query is one of citty's recognized SQL keywords
-(`SELECT`, `INSERT`, `UPDATE`, `DELETE`, `WITH`, etc.). For anything
+first token of the query is one of the SQL verbs noorm rewrites on
+(`SELECT`, `INSERT`, `UPDATE`, `DELETE`, `WITH`, etc.). Citty resolves
+`sql`'s subcommands first, so noorm rewrites `sql <verb> …` to
+`sql query <verb> …` before citty ever sees it. For anything
 that starts with a leading comment, a CTE-style preamble, or a
 non-recognized verb, use the explicit subcommand:
 
@@ -83,12 +85,21 @@ See [`noorm sql`](../cli/sql.md) for the full list of recognized
 keywords and when each form fires.
 
 
-## `noorm change ff --dry-run` still commits
+## `noorm change ff --dry-run` wrote files I didn't expect
 
-Some commands accept `--dry-run` and some don't — `change ff` is one
-of the ones that doesn't (as of this writing). When you need a
-preview, use the SDK's `changes.apply(name, { dryRun: true })` or
-inspect rendered SQL via `noorm run preview <path>`.
+`change ff` does accept `--dry-run`, and it does not touch the
+database. What it does do is *render* every pending change to `tmp/`
+so you can read the SQL that would have run, including any secrets
+the templates resolved, in plaintext. `tmp/` is not gitignored by a
+project noorm scaffolds, so clean it up.
+
+    noorm change ff --dry-run
+    noorm run build --dry-run
+
+To render a single template without the change machinery, use
+`noorm run preview <path>`. From the SDK the same preview is
+`changes.apply(name, { dryRun: true })` or
+`changes.ff({ dryRun: true })`.
 
 
 ## `noorm init` errors in CI with "requires an interactive terminal"

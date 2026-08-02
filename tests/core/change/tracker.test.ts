@@ -54,7 +54,7 @@ describe('change: tracker', () => {
 
         await v1.up(db as Kysely<unknown>, 'sqlite');
 
-        tracker = new ChangeTracker(db, 'test');
+        tracker = new ChangeTracker(db, 'test', 'sqlite');
 
     });
 

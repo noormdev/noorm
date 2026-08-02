@@ -22,7 +22,9 @@ Secrets integrate directly with SQL templates, so you can reference them without
 
 You can manage local secrets through the TUI (masked input, nothing in shell history) or the CLI.
 
-**TUI:** Launch `noorm ui`, press `s` for Settings → Secrets. The form masks password input, validates connection strings as URIs, and writes the encrypted result to `.noorm/state/state.enc`. The same screen lists secrets for the active config: which are set, which are missing, and their declared types. Values stay hidden.
+**TUI:** Launch `noorm ui`, press `c` for configs, highlight a config, and press `k` for its secrets. The list groups required secrets (declared in `settings.yml`) above optional ones and shows which are set, which are missing, and their declared types. Values stay hidden. Press `a` to add one; the form masks `password` and `api_key` input, validates `connection_string` values as URIs, and writes the encrypted result to `.noorm/state/state.enc`.
+
+Settings → Secrets is a different screen. It edits the secret *declarations* in `settings.yml` (key, type, description, required), not the encrypted values.
 
 **CLI:** The `noorm secret` namespace manages config-scoped local secrets headlessly:
 
@@ -157,8 +159,8 @@ The local secret store exists for per-developer overrides — `noorm secret set`
 # Write a secret to the vault
 noorm vault set DB_PASSWORD "$DB_PASSWORD"
 
-# Pipe a secret to avoid process listings
-echo "$DB_PASSWORD" | noorm vault set DB_PASSWORD
+# Pipe a secret to keep it out of the process table and shell history
+echo "$DB_PASSWORD" | noorm vault set DB_PASSWORD --stdin
 
 # List vault secrets as JSON
 noorm vault list --json
@@ -182,15 +184,15 @@ noorm takes several measures to protect your secrets:
 6. **Automatic redaction** - The logger masks secret fields if they appear in event data
 
 ::: warning Don't Commit state.enc
-Add `.noorm/state/state.enc` to your `.gitignore`. The file is encrypted with machine-specific keys and won't work on other machines.
+Add `.noorm/state/state.enc` to your `.gitignore`. Its encryption key is derived from your private identity key in `~/.noorm/identity.key`, so nobody else can read the file, and neither can you on a machine that does not have that key.
 :::
 
 
 ## Deleting Secrets
 
-Remove optional local secrets through the TUI: `noorm ui` → Settings → Secrets → highlight the entry and press `d`. For team-shared values stored in the vault, use `noorm vault rm <KEY>`.
+Remove a local secret through the TUI: Config → highlight the config → `k` → highlight the entry and press `d`. Headlessly, `noorm secret rm <KEY> --yes`. For team-shared values stored in the vault, use `noorm vault rm <KEY>`.
 
-Required secrets (those declared in `settings.yml`) cannot be deleted, only updated. The TUI tells you whether a secret is universal or stage-specific when you try to delete a required one.
+A required secret (one declared in `settings.yml`) cannot be deleted outright, only updated. The exception is a required secret that also exists in the vault: deleting the local copy is allowed there, because the vault value takes over. To retire the requirement itself, edit `settings.yml`.
 
 
 ## What's Next?

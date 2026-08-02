@@ -245,8 +245,16 @@ async function listUserTables(
 
     }
 
-    // Filter to requested tables
-    let filtered = tables.filter((t) => !t.name.startsWith('__noorm_'));
+    // Drop noorm's own tracking tables, both spellings. MySQL and SQLite keep
+    // the `__noorm_` prefix in the default schema; on PostgreSQL and SQL Server
+    // schema migration v2 moved them into a dedicated `noorm` schema under
+    // clean names (`change`, `vault`, `identities`), where the prefix test
+    // matches nothing. Missing the schema let a transfer copy the encrypted
+    // vault and the identity table into the destination. Explore and teardown
+    // already exclude the schema at the dialect layer.
+    let filtered = tables.filter(
+        (t) => !t.name.startsWith('__noorm_') && t.schema !== 'noorm',
+    );
 
     if (options.tables && options.tables.length > 0) {
 

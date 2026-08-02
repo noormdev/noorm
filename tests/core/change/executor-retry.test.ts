@@ -178,7 +178,7 @@ describe('change: executor retry', () => {
         expect(aExecutions[1]?.status).toBe('skipped');
 
         // Cross-check via ChangeHistory's own query surface
-        const history = new ChangeHistory(db, 'test');
+        const history = new ChangeHistory(db, 'test', 'sqlite');
 
         const op1Files = await history.getFileHistory(result1.operationId!);
         expect(op1Files.find((f) => f.filepath === relA)?.status).toBe('success');

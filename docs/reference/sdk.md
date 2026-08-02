@@ -52,6 +52,7 @@ interface CreateContextOptions {
     requireTest?: boolean;    // Refuse if config.isTest !== true
     channel?: Channel;        // 'user' (default) or 'agent' — which access role applies
     stage?: string;           // Stage name for stage defaults
+    yes?: boolean;            // Pre-confirm operations a policy 'confirm' cell would block
 }
 
 const ctx = await createContext<MyDatabase>({
@@ -69,8 +70,13 @@ const ctx = await createContext<MyDatabase>({
 | `requireTest`    | `boolean` | Throws `RequireTestError` if config doesn't have `isTest: true`. |
 | `channel`        | `Channel` | Which caller channel this context represents for access-policy checks. Defaults to `'user'`. A destructive operation the config's role denies — or that resolves to "requires confirmation," which the SDK can't prompt for — throws `ProtectedConfigError`. |
 | `stage`          | `string`  | Stage name for inheriting stage defaults.                        |
+| `yes`            | `boolean` | Pre-confirms operations that a policy "requires confirmation" cell would otherwise block, the programmatic equivalent of the CLI's `--yes`. Defaults to `false`. Only meaningful on the `user` channel: on `agent`, confirmation collapses to denial before `yes` is read, so an agent cannot use it to pass a gate meant for a human. |
+
+There is no `connection` option. Connection details come either from a stored config or, when `NOORM_CONNECTION_DIALECT` and `NOORM_CONNECTION_DATABASE` are set, from the environment — in which case `createContext()` needs no `.noorm/` directory and no identity at all. That is the mode to use in production; see [Deploying an Application](/guide/deployment).
 
 > Access is per-config, not per-context: each config declares `access: { user, agent }` (roles `viewer`/`operator`/`admin`, or `agent: false` to hide the config from agents entirely, over MCP and the CLI alike). `channel` tells `createContext` which half of that grant to enforce — see [Access Roles](/guide/environments/configs#access-roles).
+
+The gate sits at the core seam, so it applies to every method on `ctx.noorm.run`, `.db`, `.changes`, `.lock.forceRelease`, `.vault`, `.secrets`, `.templates`, `.transfer`, and `.dt.importFile`. Raw `ctx.kysely` queries are not gated. Four permissions require confirmation even for `admin` (`db:truncate`, `db:teardown`, `vault:propagate`, `lock:force`), so `ctx.noorm.db.truncate()` on an admin config still throws `ProtectedConfigError` unless the context was created with `yes: true`.
 
 
 ## Top-Level Context Properties
@@ -86,13 +92,18 @@ const ctx = await createContext<MyDatabase>({
 ## Lifecycle Methods
 
 
-### connect()
+### connect(retryOptions?)
 
-Establishes the database connection.
+Establishes the database connection. Calling it on an already-connected context is a no-op.
 
 ```typescript
 await ctx.connect();
+
+// Fail fast instead of hanging on an unreachable database.
+await ctx.connect({ retries: 1, delay: 0 });
 ```
+
+`retryOptions` is `ConnectionRetryOptions`: `{ retries?: number; delay?: number; backoff?: number }`, defaulting to `3` attempts, `1000`ms delay, and a `2x` backoff multiplier. Retries cover transient failures (`ECONNREFUSED`, `ETIMEDOUT`); authentication failures and missing drivers fail on the first attempt.
 
 
 ### disconnect()
@@ -128,6 +139,34 @@ const result = await ctx.transaction(async (trx) => {
     return { transferred: amount };
 });
 ```
+
+
+## Impersonation
+
+
+### impersonate(username, fn?)
+
+Run queries as a different database principal. The SDK borrows one connection from the pool, switches identity on it, and hands you a scope whose `kysely`, `proc`, `func`, `tvf`, and `transaction` all route through that connection.
+
+Supported on MSSQL (`EXECUTE AS USER` / `REVERT`) and PostgreSQL (`SET ROLE` / `RESET ROLE`). MySQL and SQLite throw `ImpersonationError`, as does a username containing anything outside alphanumerics, `_`, `@`, `.`, `-`, and `\`.
+
+```typescript
+import { ImpersonationError, type ImpersonatedScope } from '@noormdev/sdk';
+
+// Callback mode: reverts on the way out, including when the callback throws.
+const rows = await ctx.impersonate('app_readonly', async (scope) => {
+    return scope.kysely.selectFrom('users').selectAll().execute();
+});
+
+// Explicit mode: you own the lifecycle.
+const scope = await ctx.impersonate('app_readonly');
+const users = await scope.kysely.selectFrom('users').selectAll().execute();
+await scope.revert();
+```
+
+Explicit mode holds a pooled connection until you call `revert()`. `ctx.disconnect()` releases any scope you never reverted, so a forgotten `revert()` cannot deadlock shutdown, but it does keep a connection out of the pool until then. Prefer callback mode unless you need the scope to outlive one function.
+
+An `ImpersonatedScope` carries no `noorm` namespace and no lifecycle methods. Management operations stay on `ctx.noorm`, running as the context's own principal.
 
 
 ## Stored Procedures, Functions & TVFs
@@ -189,6 +228,10 @@ const custom = await ctx.proc<'get_users', CustomUser>('get_users', { department
 **Returns:** `Promise<T[]>` — the result set rows. `T` is inferred from the `[Args, ReturnType]` tuple, or overridden via the second generic.
 
 **Throws** on SQLite (no stored procedure support).
+
+Procedure, function, and column names are quoted per dialect (`"name"` on PostgreSQL, `[name]` on MSSQL, `` `name` `` on MySQL), so mixed-case and reserved-word names survive. A schema-qualified name splits on the first `.` and each half is quoted separately.
+
+On PostgreSQL, `proc()` falls back to a function call when `CALL` reports the target is not a procedure (SQLSTATE `42809` or `42883`). The SDK retries as `SELECT * FROM name(...)`, so `proc()` reaches both `CREATE PROCEDURE` and `CREATE FUNCTION` objects.
 
 
 ### Parameter handling and NULL semantics
@@ -381,13 +424,15 @@ The SQL builders validate before generating SQL:
 
 ### func(name, params?, column)
 
-Call a database function and return the scalar result. Generates `SELECT name(...) AS column`. Named params are only supported on PostgreSQL; other dialects fall back to positional.
+Call a database function and return the scalar result. Generates `SELECT name(...) AS column`, except on MSSQL with named params, where T-SQL has no named-argument form for `SELECT` and the SDK uses `EXEC @var = name` instead. MySQL rejects named params outright.
 
 | Dialect    | Named Params                                   | Positional               | No Params              |
 | ---------- | ---------------------------------------------- | ------------------------ | ---------------------- |
 | MSSQL      | `EXEC @var = name @k = $1; SELECT @var AS col` | `SELECT name($1) AS col` | `SELECT name() AS col` |
 | PostgreSQL | `SELECT name(k => $1) AS col`                  | `SELECT name($1) AS col` | `SELECT name() AS col` |
-| MySQL      | `SELECT name($1) AS col` (positional fallback) | `SELECT name($1) AS col` | `SELECT name() AS col` |
+| MySQL      | throws (pass an array instead)                 | `SELECT name($1) AS col` | `SELECT name() AS col` |
+
+Passing an object to `func()` on MySQL throws `MySQL does not support named parameters in function calls. Use positional parameters (array) instead.` This is the one place where a params object is not silently reordered into positional form: `proc()` on MySQL does flatten an object to `Object.values()` order, which is why `func()` refuses rather than guessing.
 
 ```typescript
 // Named params + column alias — return type inferred from tuple
@@ -415,10 +460,12 @@ const custom = await ctx.func<'calc_total', { amount: number }>('calc_total', { 
 
 Call a table-valued function and return the result set rows. Supported on MSSQL and PostgreSQL only.
 
-| Dialect    | Named Params                         | Positional                | No Params               |
-| ---------- | ------------------------------------ | ------------------------- | ----------------------- |
-| MSSQL      | `SELECT * FROM name(@k = $1)`       | `SELECT * FROM name($1)` | `SELECT * FROM name()`  |
-| PostgreSQL | `SELECT * FROM name(k => $1)`       | `SELECT * FROM name($1)` | `SELECT * FROM name()`  |
+| Dialect    | Named Params                              | Positional                | No Params               |
+| ---------- | ----------------------------------------- | ------------------------- | ----------------------- |
+| MSSQL      | `SELECT * FROM name($1)` (flattened)      | `SELECT * FROM name($1)` | `SELECT * FROM name()`  |
+| PostgreSQL | `SELECT * FROM name(k => $1)`             | `SELECT * FROM name($1)` | `SELECT * FROM name()`  |
+
+A T-SQL `FROM` clause takes only positional arguments, so on MSSQL a params object is flattened to its values in key order. Declare MSSQL TVF params as an array when the order matters to you rather than relying on object key order.
 
 ```typescript
 // Named params — return type inferred from tuple
@@ -449,7 +496,8 @@ const custom = await ctx.tvf<'get_team_members', CustomMember>('get_team_members
 | `config`   | `Config`         | The resolved config object              |
 | `settings` | `Settings`       | Project settings (paths, rules, stages) |
 | `identity` | `Identity`       | Current operator identity               |
-| `observer` | `ObserverEngine` | Event observer for subscriptions        |
+
+There is no `ctx.noorm.observer`. Events come off the process-global `noormObserver` export instead. See [Event Subscriptions](#event-subscriptions).
 
 
 ### ctx.noorm.run — Run Operations
@@ -464,7 +512,11 @@ const result = await ctx.noorm.run.build({ force: true });
 console.log(`Ran ${result.filesRun} files`);
 ```
 
+**Options (`BuildOptions`):** `{ force?: boolean; dryRun?: boolean }`.
+
 **Returns:** `Promise<BatchResult>`. See [Result shape](#run-result-shape) for the `error` and `skipReason` fields you'll find on each entry of `result.files`.
+
+`build()` is the one run method that applies `settings.build.include` / `exclude` and `settings.rules`, so headless callers see the same file set the TUI's Run Build screen shows. Include or exclude entries that matched no file come back as `result.unmatchedInclude` / `result.unmatchedExclude` rather than as a failure: a build over zero files still succeeds, so these arrays are how a mistyped pattern surfaces.
 
 
 #### run.file(filepath, options?)
@@ -515,6 +567,8 @@ await ctx.noorm.run.dir('seeds/');
 | `error` | `string` | Only when `status === 'failed'` |
 | `skipReason` | `'unchanged' \| 'already-run'` | Only when `status === 'skipped'` |
 | `durationMs` | `number` | Set for executed and failed files |
+| `renderedSql` | `string` | Only in preview mode (`run.preview`) |
+| `outputPath` | `string` | Only on a dry run that wrote rendered SQL to disk |
 
 Example handling a failed build:
 
@@ -558,35 +612,70 @@ Render SQL files (including templates) without executing. Useful for reviewing w
 ```typescript
 const results = await ctx.noorm.run.preview(['sql/001.sql', 'sql/002.sql']);
 for (const r of results) {
-    console.log(`${r.filepath}:\n${r.sql}`);
+    console.log(`${r.filepath}:\n${r.renderedSql}`);
 }
 ```
 
-**Returns:** `Promise<FileResult[]>` — rendered SQL for each file.
+**Returns:** `Promise<FileResult[]>` — the rendered SQL for each file lands in `renderedSql`, not `sql`. A file that failed to load or render comes back with `status: 'failed'` and an `error` message instead of throwing.
+
+Pass a second argument to write the combined output to a file: `run.preview(paths, 'tmp/preview.sql')`. Rendering resolves every secret into the returned string, so treat preview output as plaintext secrets.
 
 
 ### ctx.noorm.db — Database Operations
 
 
-#### db.truncate()
+#### db.truncate(options?)
 
 Wipe all data, keeping the schema intact.
 
 ```typescript
 const result = await ctx.noorm.db.truncate();
 console.log(`Truncated ${result.truncated.length} tables`);
+
+// Keep a reference table standing.
+await ctx.noorm.db.truncate({ preserve: ['countries'] });
+
+// Or restrict the wipe to a few tables.
+await ctx.noorm.db.truncate({ only: ['users', 'posts'] });
 ```
+
+**Options (`TruncateOptions`):**
+
+| Option            | Type       | Default | Description                                                                |
+| ----------------- | ---------- | ------- | -------------------------------------------------------------------------- |
+| `preserve`        | `string[]` | —       | Tables to leave alone. Falls back to `settings.teardown.preserveTables`.   |
+| `only`            | `string[]` | —       | Truncate only these tables. Inverse of `preserve`.                          |
+| `restartIdentity` | `boolean`  | `true`  | Restart identity / auto-increment sequences.                                |
+| `dryRun`          | `boolean`  | `false` | Return the SQL in `result.statements` without executing it.                 |
+
+**Returns:** `Promise<TruncateResult>` — `{ truncated, preserved, statements, durationMs }`.
+
+A `dryRun` is checked against the config's role but never against a confirmation gate, so a role that may truncate can always look first. A role that may not truncate cannot preview either.
 
 **Implementation notes.** FK constraints are disabled first, every targeted table is `DELETE`d (or `TRUNCATE`d, where the dialect supports it), then constraints are re-enabled. PG/MySQL/SQLite flip a session- or connection-level switch once. MSSQL, which has no session-level toggle, emits one `ALTER TABLE [name] NOCHECK CONSTRAINT ALL` per truncated table on a single connection — replacing the older `sp_MSforeachtable` call that spawned parallel workers and could deadlock. See [dev/teardown.md](../dev/teardown.md#mssql-truncate-strategy) for the full reasoning.
 
 
-#### db.teardown()
+#### db.teardown(options?)
 
-Drop all database objects except noorm tracking tables.
+Drop all database objects except noorm's own internal tables, which cover change tracking, locks, vault, and identities.
 
 ```typescript
 const result = await ctx.noorm.db.teardown();
+
+// Compute the drop plan without executing it.
+const plan = await ctx.noorm.db.teardown({ dryRun: true });
+
+// Leave an application-owned schema untouched.
+await ctx.noorm.db.teardown({ preserveSchemas: ['app_private'] });
 ```
+
+**Options (`TeardownOptions`):** the SDK reads two fields off what you pass, `dryRun` and `preserveSchemas`. It fills `preserveTables` and `postScript` from `settings.teardown` in `settings.yml`. The remaining `TeardownOptions` fields (`keepViews`, `keepFunctions`, `keepProcedures`, `keepTypes`, and a caller-supplied `preserveTables`) are dropped on the way through and have no effect from the SDK.
+
+`preserveSchemas` exists because `preserveTables` is a flat name list: excluding `app_private.secrets` by name would also spare `public.secrets`.
+
+**Returns:** `Promise<TeardownResult>` — `{ dropped: { tables, views, functions, procedures, types, foreignKeys }, preserved, statements, durationMs }`, plus `postScriptResult`, `staleCount`, and `resetRecordId` when they apply.
+
+As with `truncate`, a `dryRun` is gated on the role but not on confirmation.
 
 
 #### db.previewTeardown()
@@ -595,12 +684,12 @@ Preview what teardown would drop without executing. Useful for confirming destru
 
 ```typescript
 const preview = await ctx.noorm.db.previewTeardown();
-for (const obj of preview.objects) {
-    console.log(`Would drop ${obj.type}: ${obj.name}`);
+for (const [kind, names] of Object.entries(preview.toDrop)) {
+    console.log(`Would drop ${names.length} ${kind}`);
 }
 ```
 
-**Returns:** `Promise<TeardownPreview>` — list of objects that would be dropped.
+**Returns:** `Promise<TeardownPreview>` — `{ toDrop, toPreserve, statements }`. `toDrop` groups names by object kind (`tables`, `views`, `functions`, `procedures`, `types`, `foreignKeys`); there is no flat `objects` array.
 
 
 #### db.reset()
@@ -610,6 +699,8 @@ Full rebuild: teardown + build.
 ```typescript
 await ctx.noorm.db.reset();
 ```
+
+**Returns:** `Promise<void>`. Unlike `teardown()` and `truncate()`, `reset()` takes no options and deliberately ignores `settings.teardown.preserveTables`: it rebuilds the whole schema from `sql/`, so any preserved table would collide with the build's `CREATE TABLE` and abort the rebuild.
 
 **Implementation notes.** Objects are dropped in `FK → Procedures → Functions → Views → Tables → Types` order. Procs/funcs/views go before tables because MSSQL schema-bound objects (`WITH SCHEMABINDING`) hold dependency locks on the tables they reference — dropping the table first fails with `Cannot DROP TABLE ... because it is being referenced by object ...`. Types drop last because TVPs may still be referenced by procs/funcs earlier in the chain. See [dev/teardown.md](../dev/teardown.md#drop-order) for the full reasoning.
 
@@ -732,12 +823,12 @@ ctx.noorm.changes.validate(change);
 
 #### changes.apply(name, options?)
 
-Apply a specific change. Pass `{ dryRun: true }` to render rendered SQL to `tmp/` without touching the database, or `{ preview: true }` to emit rendered SQL without writing. `{ force: true }` bypasses the checksum/already-applied check.
+Apply a specific change. Pass `{ dryRun: true }` to render the change to `tmp/` without touching the database, or `{ preview: true }` to emit rendered SQL without writing. `{ force: true }` bypasses the already-applied check.
 
 ```typescript
 const result = await ctx.noorm.changes.apply('2024-01-15-add-users');
 
-// Dry run — does not touch __noorm_change__ or __noorm_executions__.
+// Dry run — does not touch the change tracking tables.
 const dry = await ctx.noorm.changes.apply(
     '2024-01-15-add-users',
     { dryRun: true },
@@ -745,6 +836,8 @@ const dry = await ctx.noorm.changes.apply(
 ```
 
 **Options:** `ChangeOptions` — `{ force?: boolean; dryRun?: boolean; preview?: boolean; output?: string | null }`.
+
+**Returns:** `Promise<ChangeResult>`.
 
 
 #### changes.revert(name, options?)
@@ -764,7 +857,7 @@ const dry = await ctx.noorm.changes.revert(
 
 #### changes.ff(options?)
 
-Apply all pending changes. Accepts `BatchChangeOptions` — the same fields as `ChangeOptions` plus `abortOnError`. Pass `{ dryRun: true }` to render every pending change to `tmp/` without writing to the database; the tracking tables (`__noorm_change__`, `__noorm_executions__`) are left untouched.
+Apply all pending changes. Accepts `BatchChangeOptions` — the same fields as `ChangeOptions` plus `abortOnError`. Pass `{ dryRun: true }` to render every pending change to `tmp/` without writing to the database; the change tracking tables are left untouched.
 
 ```typescript
 const result = await ctx.noorm.changes.ff();
@@ -786,6 +879,24 @@ const three = await ctx.noorm.changes.next(3);
 // Render the next two without touching the database.
 const dry = await ctx.noorm.changes.next(2, { dryRun: true });
 ```
+
+
+#### changes.rewind(target, options?)
+
+Revert applied changes in reverse order. Pass a change name to revert back to and including that change, or a number to revert that many of the most recent ones. Accepts the same `BatchChangeOptions` as `ff()`.
+
+```typescript
+// Back out everything applied after (and including) this change.
+const result = await ctx.noorm.changes.rewind('2024-01-15-add-users');
+
+// Or back out the last three.
+const three = await ctx.noorm.changes.rewind(3);
+
+// Render the revert files without touching the database.
+const dry = await ctx.noorm.changes.rewind(3, { dryRun: true });
+```
+
+**Returns:** `Promise<BatchChangeResult>`. A name matching no applied change comes back as a failed batch carrying `result.error` (`No applied change named "..." to rewind to`), not a throw.
 
 
 #### changes.status()
@@ -847,6 +958,26 @@ const overview = await ctx.noorm.db.overview();
 console.log(`Tables: ${overview.tables}, Views: ${overview.views}`);
 ```
 
+**Returns:** `Promise<ExploreOverview>` — counts for `tables`, `views`, `procedures`, `functions`, `types`, `indexes`, `foreignKeys`, `triggers`, `locks`, and `connections`.
+
+
+#### Other explore methods
+
+Tables are not the only object kind. Every `list*` method returns a summary array, and every `describe*` method takes `(name, schema?)` and returns the detail object or `null` when the object does not exist.
+
+| Method                             | Returns                       |
+| ---------------------------------- | ----------------------------- |
+| `db.listViews()`                   | `ViewSummary[]`               |
+| `db.describeView(name, schema?)`   | `ViewDetail \| null`          |
+| `db.listProcedures()`              | `ProcedureSummary[]`          |
+| `db.describeProcedure(name, schema?)` | `ProcedureDetail \| null`  |
+| `db.listFunctions()`               | `FunctionSummary[]`           |
+| `db.describeFunction(name, schema?)` | `FunctionDetail \| null`    |
+| `db.listTypes()`                   | `TypeSummary[]`               |
+| `db.describeType(name, schema?)`   | `TypeDetail \| null`          |
+| `db.listIndexes()`                 | `IndexSummary[]`              |
+| `db.listForeignKeys()`             | `ForeignKeySummary[]`         |
+
 
 ### ctx.noorm.lock — Lock Management
 
@@ -898,13 +1029,15 @@ await ctx.noorm.lock.withLock(async () => {
 Force release any database lock regardless of ownership. Use when a lock is stuck due to a crashed process or stale session.
 
 ```typescript
-const released = await ctx.noorm.lock.forceRelease();
+const { released, holder } = await ctx.noorm.lock.forceRelease();
 if (released) {
-    console.log('Stale lock cleared');
+    console.log(`Stale lock cleared (was held by ${holder})`);
 }
 ```
 
-**Returns:** `Promise<boolean>` — `true` if a lock was released, `false` if none existed.
+**Returns:** `Promise<ForceReleaseResult>` — `{ released: boolean; holder: string | null }`. `holder` is `null` when there was nothing to release. The result object is always truthy, so branch on `released`, not on the return value.
+
+This is the one lock method behind the access policy. Breaking someone else's lock interrupts their in-flight migration, so `viewer` is denied outright and `operator`/`admin` need `yes: true` on the context. Denial throws `ProtectedConfigError`.
 
 
 ### ctx.noorm.templates — Template Operations
@@ -958,6 +1091,10 @@ await dest.disconnect();
 | `dryRun`             | `boolean`          | `false`  | Validate only, don't execute.                |
 | `exportPath`         | `string`           | —        | Export to .dt file instead of DB insert.     |
 | `passphrase`         | `string`           | —        | Passphrase for .dtzx export encryption.      |
+
+**Returns:** `Promise<TransferResult>` — `{ status, tables, totalRows, durationMs, fkChecksRestored }`. Check `fkChecksRestored`: it is the only signal that referential integrity may still be off, because `status` does not flip when the FK re-enable fails.
+
+The policy gate runs against the **destination** config, not the source, since the destination is the write target. `transfer.plan()` is gated separately on `transfer:plan`, which `operator` and `admin` both hold outright, so planning stays available to a role that may not execute the transfer.
 
 
 #### transfer.plan(destConfig, options?)
@@ -1019,6 +1156,8 @@ console.log(`Imported ${result.rowsImported} rows, skipped ${result.rowsSkipped}
 | `onConflict` | `ConflictStrategy` | `'fail'` | Conflict strategy.                   |
 | `truncate`   | `boolean`          | `false`  | Truncate target table before import. |
 
+`importFile` writes to the database, so it is gated on `db:reset`, which requires confirmation for `operator`. `exportTable` only reads and is not gated.
+
 
 ### ctx.noorm.changes — History
 
@@ -1034,17 +1173,71 @@ for (const record of history) {
 }
 ```
 
+**Returns:** `Promise<ChangeHistoryRecord[]>` — one record per operation, each with `id`, `name`, `direction`, `status`, `executedAt`, `executedBy`, `durationMs`, `errorMessage`, and `checksum`.
+
+
+#### changes.historyForChange(name, limit?)
+
+Get execution history for one change, most recent first.
+
+```typescript
+const records = await ctx.noorm.changes.historyForChange('2024-01-15-add-users');
+```
+
+**Returns:** `Promise<ChangeHistoryRecord[]>`.
+
+
+#### changes.getFileHistory(operationId)
+
+Drill into the per-file records behind a single operation. Pass the `id` from a `ChangeHistoryRecord`.
+
+```typescript
+const records = await ctx.noorm.changes.historyForChange('2024-01-15-add-users');
+const files = await ctx.noorm.changes.getFileHistory(records[0].id);
+
+for (const file of files) {
+    console.log(`${file.filepath}: ${file.status}`);
+}
+```
+
+**Returns:** `Promise<FileHistoryRecord[]>` — `id`, `changeId`, `filepath`, `fileType`, `checksum`, `status`, `skipReason`, and the error message when the file failed.
+
 
 ### ctx.noorm.secrets — Secrets
 
 
 #### secrets.get(key)
 
-Get a config-scoped secret.
+Get a config-scoped secret. Synchronous, and needs no connection: these live in local encrypted state, not the database.
 
 ```typescript
 const apiKey = ctx.noorm.secrets.get('API_KEY');
 ```
+
+**Returns:** `string | undefined` — not a promise, and `undefined` rather than `null` when the key is unset.
+
+
+#### secrets.list()
+
+List the config's secret key names. Values are never returned, so a caller that only needs to know which secrets exist never handles them.
+
+```typescript
+const keys = ctx.noorm.secrets.list();
+```
+
+**Returns:** `string[]` — synchronous.
+
+
+#### secrets.set(key, value) / secrets.delete(key)
+
+Write and remove config-scoped secrets. Both are async and both need `secret:write`, which is `confirm` for `operator`.
+
+```typescript
+await ctx.noorm.secrets.set('API_KEY', 'sk-live-...');
+await ctx.noorm.secrets.delete('OLD_KEY');
+```
+
+**Returns:** `Promise<void>` for both.
 
 
 ### ctx.noorm.vault — Vault (Encrypted Team Secrets)
@@ -1094,7 +1287,7 @@ Set a vault secret. Requires the caller's private key for vault key decryption. 
 await ctx.noorm.vault.set('API_KEY', 'sk-live-...', privateKey);
 ```
 
-**Returns:** `Promise<void>` — throws on failure.
+**Returns:** `Promise<void>`. Throws `VaultAccessError` when the private key yields no usable vault key: either the vault was never propagated to this identity, or the key does not match. The two causes are deliberately indistinguishable.
 
 
 #### vault.get(key, privateKey)
@@ -1119,7 +1312,7 @@ for (const [key, secret] of Object.entries(all)) {
 }
 ```
 
-**Returns:** `Promise<Record<string, VaultSecret>>`
+**Returns:** `Promise<Record<string, VaultSecret>>` — an empty object when the caller has no vault access, mirroring `get()` returning `null`. Neither read throws on missing access.
 
 
 #### vault.list()
@@ -1168,12 +1361,14 @@ const result = await ctx.noorm.vault.propagate(privateKey);
 console.log(`Propagated to ${result.propagatedTo.length} new users`);
 ```
 
-**Returns:** `Promise<VaultPropagationResult>`
+**Returns:** `Promise<VaultPropagationResult>` — `{ propagatedTo, alreadyHadAccess, failed }`. A non-empty `failed` means the operation partially succeeded: a teammate believes they have access and does not. Treat it as an error, not a warning.
 
 
 #### vault.copy(destConfig, keys, privateKey, options?)
 
 Copy vault secrets to another config's database. Useful for seeding a new environment with secrets from an existing one. Throws on failure.
+
+`keys` takes either an explicit list or the literal `'all'`.
 
 ```typescript
 const result = await ctx.noorm.vault.copy(
@@ -1181,10 +1376,15 @@ const result = await ctx.noorm.vault.copy(
     ['API_KEY', 'DB_TOKEN'],
     privateKey,
 );
-console.log(`Copied ${result.copied} secrets`);
+console.log(`Copied ${result.copied.length} secrets`);
+
+// Or copy everything.
+await ctx.noorm.vault.copy(destConfig, 'all', privateKey);
 ```
 
-**Returns:** `Promise<VaultCopyResult>` — throws on failure.
+**Options (`VaultCopyOptions`):** `force` (overwrite existing destination secrets, default `false`) and `dryRun` (run the full preflight and report what would happen without writing).
+
+**Returns:** `Promise<VaultCopyResult>` — `{ copied: string[]; skipped: string[]; errors: Array<{ key, error }> }`. All three are key lists, not counts. `skipped` holds keys that already exist on the destination and were not forced. This is the one vault method that checks the access policy on both the source and the destination config.
 
 
 ### ctx.noorm.utils — Utilities
@@ -1226,6 +1426,8 @@ noormObserver.on('change:complete', (event) => {
     console.log(`Change ${event.name}: ${event.status}`);
 });
 ```
+
+`noormObserver` is a process-global singleton, not a per-context bus. A process that calls `createContext()` more than once (a server juggling several tenant databases, say) sees every context's events on this one stream. Config-scoped events carry `configName` so you can filter, but not every event does: `file:after` and `change:complete` do not, while `file:before`, `run:file`, `lock:*`, `secret:*`, and `db:*` do. Check the payload type before relying on it.
 
 
 ## Environment Variables
@@ -1275,9 +1477,17 @@ skip `attempt` and let it propagate. Never wrap an SDK call in try-catch.
 
 Carve-outs that don't follow that plain throw-and-`attempt` pattern:
 `ctx.noorm.utils.testConnection()` returns `{ ok, error? }` by design — a probe reporting failure as
-data, not an exception. `ctx.transaction(...)` callbacks must throw to trigger Kysely's rollback —
-throwing is the rollback signal, so don't swallow it inside the callback. Raw `ctx.kysely` queries
-throw whatever the driver throws.
+data, not an exception. `ctx.noorm.vault.get()` and `.getAll()` return `null` and `{}` on missing
+vault access rather than throwing, and `ctx.noorm.vault.init()` returns `null` when the vault already
+exists. `ctx.noorm.run.*` and `ctx.noorm.changes.ff/next/rewind` report per-item failures on the
+result (`result.files[].error`, `result.error`) instead of throwing, so a non-throwing call is not
+proof of success; check `status`. `ctx.transaction(...)` callbacks must throw to trigger Kysely's
+rollback — throwing is the rollback signal, so don't swallow it inside the callback. Raw `ctx.kysely`
+queries throw whatever the driver throws.
+
+One gap in the "named errors" rule: a policy denial caught at the SDK seam throws `ProtectedConfigError`,
+but a denial caught deeper, inside the runner or the transfer module, throws a plain `Error` carrying the
+same message. Match on `ProtectedConfigError` where you can, and fall back to the message otherwise.
 
 ```typescript
 import { attempt } from '@logosdx/utils';
@@ -1286,6 +1496,9 @@ import {
     tvp,
     RequireTestError,
     ProtectedConfigError,
+    NotConnectedError,
+    VaultAccessError,
+    ImpersonationError,
     LockAcquireError,
 } from '@noormdev/sdk';
 
@@ -1305,6 +1518,19 @@ if (lockErr instanceof LockAcquireError) {
     console.error(`Lock held by ${lockErr.holder}`);
 }
 ```
+
+The full set of `instanceof`-matchable errors exported from `@noormdev/sdk`:
+
+| Error | Thrown when |
+| --- | --- |
+| `RequireTestError` | `requireTest: true` and the config lacks `isTest: true`. Carries `configName`. |
+| `NotConnectedError` | A namespace method needing a live connection ran before `connect()` or after `disconnect()`. |
+| `ProtectedConfigError` | The config's access policy denied the operation, or requires a confirmation `yes: true` did not supply. Carries `configName` and `operation`. |
+| `VaultAccessError` | `vault.set()` got a private key that yields no usable vault key. Carries `configName`. |
+| `ImpersonationError` | `impersonate()` on MySQL or SQLite, or with an invalid username. |
+| `LockAcquireError` | The lock is held by someone else. Carries `holder`, `heldSince`, `expiresAt`, `configName`, `reason`. |
+| `LockExpiredError` | The lock expired mid-operation. Carries `configName`, `identity`, `expiredAt`. |
+| `ChangeValidationError`, `ChangeNotFoundError`, `ChangeAlreadyAppliedError`, `ChangeNotAppliedError`, `ChangeOrphanedError`, `ManifestReferenceError` | Change parsing and execution problems. |
 
 
 ## TypeScript Support
@@ -1377,6 +1603,7 @@ import type {
     ExploreOverview,
 
     // Operations
+    TruncateOptions,
     TruncateResult,
     TeardownResult,
     TeardownPreview,
@@ -1411,8 +1638,20 @@ import type {
     // TVP
     TvpValue,
 
+    // Impersonation
+    ImpersonatedScope,
+
+    // Proc/func/tvf tuple helpers
+    ExtractArgs,
+    ExtractReturn,
+
     // Events
     NoormEvents,
     NoormEventNames,
 } from '@noormdev/sdk';
 ```
+
+Four shapes named by public method signatures are not re-exported from the package: `BatchChangeOptions`
+(`changes.ff` / `next` / `rewind`), `TeardownOptions` (`db.teardown`), `ForceReleaseResult`
+(`lock.forceRelease`'s return), and `ConnectionRetryOptions` (`connect`'s parameter). Declare those
+inline until they are exported.

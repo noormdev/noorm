@@ -16,7 +16,7 @@ Stages solve this. They're templates defined in your project's `settings.yml` th
 
 ## What Stages Are
 
-A **stage** is a named template for database configs. When you create a config and assign it to a stage, the config inherits the stage's defaults and requirements.
+A **stage** is a named template for database configs. A config whose name matches a stage inherits that stage's defaults and requirements.
 
 Think of stages as blueprints:
 
@@ -60,10 +60,10 @@ stages:
             protected: true
 ```
 
-When a developer creates a config from the `staging` stage, it automatically:
-- Uses postgres dialect
-- Is not protected (staging data is expendable)
-- Requires a `STRIPE_TEST_KEY` secret before builds can run
+A config named `staging` then automatically:
+- Defaults to the postgres dialect
+- Keeps its own access roles, with no ceiling applied (staging data is expendable)
+- Declares `STRIPE_TEST_KEY` as required, so the TUI lists it as missing until it is set and any template that reads it fails until then
 
 
 ## Stage Properties
@@ -97,10 +97,11 @@ Some defaults are **enforced** and cannot be overridden in the TUI:
 | Default | Behavior |
 |---------|----------|
 | `protected: true` | Acts as an access ceiling: whatever `access` the config or the developer sets, the *resolved* access is clamped to at most `{ user: 'operator', agent: 'viewer' }` |
-| `isTest: true` | Cannot be set to false in the TUI |
-| `dialect` | Cannot be changed after config creation |
+| `dialect` | Cannot be changed after config creation. The TUI edit screen shows it read-only |
 
-This means if your `prod` stage sets `protected: true`, developers cannot create a fully-open production config through the normal workflow — even picking `admin` in the TUI's access editor gets clamped back down at resolution time.
+This means if your `prod` stage sets `protected: true`, developers cannot create a fully-open production config through the normal workflow. Even picking `admin` in the TUI's access editor gets clamped back down at resolution time.
+
+`isTest` is a seed value, not a ceiling. A stage that sets `isTest: true` supplies the default, but a stored config's own `isTest` wins at resolution, and the TUI edit screen lets a developer uncheck it.
 
 ::: tip Manual Override
 The ceiling is enforced every time the config is resolved, so it survives even a manually edited state file — there's no stored value to hand-edit around. The protection is against accidents, not an attempt at real security.
@@ -119,21 +120,14 @@ stages:
             protected: true
 ```
 
-A locked production config cannot be accidentally removed. The developer must first change the config's stage assignment.
+A locked production config cannot be accidentally removed. Deletion stays blocked until someone edits `settings.yml` or the config stops matching the stage name.
 
 
 ## Assigning a Config to a Stage
 
-When you create a new config in the TUI, noorm asks which stage to use:
+There is no stage picker. A config links to a stage when their names match: a config named `prod` picks up the `prod` stage's defaults, secrets, and lock. Name your configs after your stages and the link happens on its own.
 
-```
-? Select stage for new config:
-  dev        Local development database
-  staging    Staging environment
-  prod       Production database
-```
-
-The config inherits that stage's defaults. The stage selection happens during config creation through the TUI.
+`settings.yml` is the only place that link is defined, so a config's stage is not stored on the config and cannot drift per developer. The SDK can override the lookup with `createContext({ stage: 'prod' })` when a config's name does not match the stage you want.
 
 
 ## Stage-Specific Secrets
@@ -164,9 +158,9 @@ Secret types control how the TUI handles input:
 | `api_key` | Masked input, no echo |
 | `connection_string` | Plain text, URI validation |
 
-**Required secrets** must be set before builds can run. If a template references a missing required secret, the build fails with a clear error.
+**Required secrets** show as missing in the TUI secret list until you set them, and the enforcement point is the template render. Reading `$.secrets.STRIPE_TEST_KEY` when nothing resolved it throws `Secret "STRIPE_TEST_KEY" not found (searched: config-local, global-local, vault)` and the build stops. It never renders as the literal text `undefined`.
 
-**Optional secrets** are prompted but can be skipped. Templates that reference them should handle the undefined case.
+**Optional secrets** work the same way at render time, so a template that may run without one should probe first with `{% if ('DEBUG_KEY' in $.secrets) { %}`. The `in` check does not throw.
 
 
 ### Universal Secrets

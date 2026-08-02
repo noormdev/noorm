@@ -21,7 +21,10 @@ Templates use [Eta](https://eta.js.org/) with custom delimiters designed to avoi
 |--------|---------|---------|
 | `{% %}` | JavaScript code block | `{% for (const x of $.items) { %}` |
 | `{%~ %}` | Output a value | `{%~ user.name %}` |
+| `-- {% %}` | Code block on a line of its own, disguised as a SQL comment | `-- {% for (const x of $.items) { %}` |
 | `$` | Context variable | `$.config`, `$.secrets`, `$.uuid()` |
+
+A line whose entire content is `-- {% ... %}` gets its `-- ` prefix and its newline stripped before Eta parses the file, so the directive produces no output. Writing loops and conditionals that way keeps the `.sql.tmpl` file valid SQL, which means your editor still highlights it and a SQL linter still reads it. Inline tags and real `--` comments are untouched.
 
 Here's a simple example:
 
@@ -45,7 +48,7 @@ INSERT INTO roles (name) VALUES ('viewer');
 
 When noorm encounters a `.sql.tmpl` file:
 
-1. Scans the template's directory for data files (JSON, YAML, CSV)
+1. Scans the template's directory for data files (JSON5, YAML, CSV, `.dt`, and referenced JS/TS modules)
 2. Walks up the directory tree collecting `$helpers.ts` files
 3. Builds a context object (`$`) with helpers, data, config, and secrets
 4. Renders the template with Eta
@@ -63,7 +66,9 @@ Everything available in your template lives on the `$` object:
 | `$.config` | Active database configuration |
 | `$.secrets` | Decrypted secrets for active config |
 | `$.globalSecrets` | Decrypted global secrets |
-| `$.env` | Environment variables |
+| `$.env` | `process.env` |
+
+Data files win the name: a `config.json` or `config.yml` sitting beside the template claims the `config` key, and `$.config` then holds that file instead of the active database configuration. Helpers lose to data files the same way, so keep helper exports and data file base names distinct.
 
 
 ## Built-in Helpers
@@ -79,6 +84,8 @@ INSERT INTO users (name) VALUES ({%~ $.quote(user.name) %});
 -- Input: O'Reilly
 -- Output: INSERT INTO users (name) VALUES ('O''Reilly');
 ```
+
+`null` renders as the SQL keyword `NULL`. `undefined` throws, because no rendering of it is correct and the old behavior wrote the literal six-character string `undefined` into the database. Pass `null` when you mean SQL `NULL`.
 
 ### $.escape(value)
 
@@ -130,6 +137,8 @@ Includes another SQL file. The path is relative to the current template:
 {%~ await $.include('../lib/audit_triggers.sql') %}
 ```
 
+An included `.sql` file is inserted verbatim. An included `.sql.tmpl` file is rendered first, with the same config and secrets, and its output is inserted.
+
 
 ## Auto-Loading Data Files
 
@@ -150,6 +159,23 @@ File names are converted to camelCase:
 | `my-config.json` | `$.myConfig` |
 | `seed_data.yml` | `$.seedData` |
 | `API_KEYS.json` | `$.apiKeys` |
+
+Subdirectories are not scanned, and neither are `.sql` files (those are for `$.include()`), dotfiles, `$helpers.*`, or other `.tmpl` files.
+
+
+### Executable Side-Cars Load Only When Referenced
+
+`.js`, `.mjs`, and `.ts` data files are an exception to auto-loading. Parsing a `.csv` cannot do anything, but importing a `.ts` runs whatever is in it. So noorm loads an executable side-car only when the template text actually names its key, as `$.key` or `$['key']`:
+
+```sql
+-- 001_seed.sql.tmpl, sitting next to build-rows.ts
+-- The mention of $.buildRows is what makes build-rows.ts load and run.
+{% for (const row of $.buildRows) { %}
+INSERT INTO rows (label) VALUES ({%~ $.quote(row.label) %});
+{% } %}
+```
+
+A `build-rows.ts` that no template mentions is skipped, including during `run preview`, `run inspect`, and `--dry-run`, the three commands whose whole point is not to act. The check is syntactic, so a key you reach some other way (a computed lookup, a helper that reads it) will not trigger the load. Reference it by name once and it works.
 
 
 ### Naming Collisions
@@ -468,7 +494,7 @@ Each fragment is plain SQL that could run on its own. The template just stitches
 
 **Secret Exposure**: The rendered SQL may contain sensitive values from `$.secrets`. Don't log rendered templates in production.
 
-**Code Execution**: `$helpers.ts` files and `.js` data files execute arbitrary code. Only use trusted sources.
+**Code Execution**: `$helpers.ts` files execute arbitrary code whenever a template in or under their directory renders. `.js`, `.mjs`, and `.ts` data files execute only when a template names their key. Both run in the noorm process with your environment. Only use trusted sources.
 
 **Path Traversal**: `$.include()` resolves relative paths and cannot escape the project root.
 

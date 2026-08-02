@@ -1,9 +1,10 @@
 # noorm run
 
 
-Execute SQL files against the active database. There are five subcommands —
+Execute SQL files against the active database. Five subcommands execute SQL —
 `build`, `file`, `dir`, `files`, and `exec` — and they all share the same
-result shape and exit-code semantics.
+result shape and exit-code semantics. Two more, `inspect` and `preview`, read a
+`.sql.tmpl` file without touching the database.
 
 
 ## Subcommands
@@ -15,16 +16,21 @@ result shape and exit-code semantics.
 | `noorm run dir <path>` | Execute every file in a directory |
 | `noorm run files --paths a.sql,b.sql` | Execute an explicit, ordered list |
 | `noorm run exec <dir-or-glob>` | Discover files by glob, then execute |
+| `noorm run inspect <path>` | Show the template context for a `.sql.tmpl` file |
+| `noorm run preview <path>` | Render a `.sql.tmpl` file and print the SQL |
 
 
 ## Flags
 
-Common to every subcommand:
+Common to the five executing subcommands:
 
 - `--config <name>` / `-c <name>` — use a named config from `state.enc`
 - `--force` / `-f` — re-run even if the file's checksum matches a prior success
 - `--dry-run` — render templates and write to `tmp/` without executing
 - `--json` — emit machine-readable JSON on stdout
+
+`inspect` and `preview` take `--config` and `--json` only. Neither executes, so
+`--force` and `--dry-run` have nothing to act on.
 
 
 ## Exit codes
@@ -32,8 +38,9 @@ Common to every subcommand:
 | Code | Meaning |
 |------|---------|
 | `0` | Every file succeeded or was skipped |
-| `1` | Setup failed (could not connect, project not initialized, bad args) |
-| `2` | The runner ran but at least one file failed |
+| `1` | Total failure — setup failed (could not connect, project not initialized), or the runner ran and nothing succeeded |
+| `2` | Usage error — a missing flag, a directory or glob that matched no SQL files (`dir`, `exec`), or a template that isn't there (`inspect`, `preview`). Nothing was attempted |
+| `3` | Partial failure — some files succeeded and some failed. Re-running is not automatically safe |
 
 
 ## Output: failure
@@ -44,15 +51,19 @@ looking for the cause:
 
     sql/02_tables/Memory.sql (failed)
       error: relation "memory" does not exist
-    Build completed  status=failed filesRun=12 filesSkipped=0 filesFailed=1 durationMs=84
+    Build completed  status=partial filesRun=12 filesSkipped=0 filesFailed=1 durationMs=84
+
+A batch where some files ran and some failed reports `partial` and exits `3`.
+Only a batch where nothing succeeded reports `failed` and exits `1`.
 
 The same information lives on the JSON output's per-file entries. The
-`--json` payload is the unmodified `BatchResult` (or `FileResult` for
-`noorm run file`) returned by the SDK, so `files[].error` is populated
-for every failed file:
+`--json` payload is the `BatchResult` (or `FileResult` for `noorm run file`)
+returned by the SDK plus the envelope's `success` flag, so `files[].error` is
+populated for every failed file:
 
     {
-        "status": "failed",
+        "success": false,
+        "status": "partial",
         "files": [
             {
                 "filepath": "sql/02_tables/Memory.sql",

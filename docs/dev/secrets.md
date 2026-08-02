@@ -108,14 +108,17 @@ Config-scoped local secret values are managed two ways:
   secrets as suggestions, accepts any key name (UPPER_SNAKE_CASE recommended), masks input
   for password/api_key types, validates connection_string as a URI, and warns before
   overwriting an existing value.
-- **CLI** — `noorm secret set <key> <value>` (`src/cli/secret/set.ts`) writes the same
-  encrypted record headlessly, scoped to the active or `--config`-named config. The value is
-  a positional argument, so unlike the TUI it does land in shell history — reach for the
-  vault instead (below) if that's a concern.
+- **CLI** — `noorm secret set <key> [value]` (`src/cli/secret/set.ts`) writes the same
+  encrypted record headlessly, scoped to the active or `--config`-named config. Passing the
+  value as a positional puts it in shell history *and* in the process table (`ps -ww -eo
+  args`) and in `set -x` CI traces — use `--stdin` instead, which is mutually exclusive with
+  the positional and strips one trailing newline so the `echo` idiom stores the right value.
 
 ```bash
 noorm secret set API_KEY "sk-live-..."
 noorm secret set DB_PASSWORD "secret123" --config prod
+
+echo "$API_KEY" | noorm secret set API_KEY --stdin
 ```
 
 
@@ -167,8 +170,8 @@ instead — team-shared, stored in the database, and reachable from a clean chec
 
 ```bash
 noorm vault set DB_PASSWORD "$DB_PASSWORD"
-echo "$API_KEY" | noorm vault set API_KEY      # Pipe to avoid process listings
-noorm vault list --json                        # Inspect what's stored
+echo "$API_KEY" | noorm vault set API_KEY --stdin      # --stdin is required to read the pipe
+noorm vault list --json                                # Inspect what's stored
 noorm vault rm OLD_API_KEY
 ```
 
@@ -179,22 +182,24 @@ The vault sits below local secrets in the resolution hierarchy (`$.secrets.KEY` 
 
 Secrets inject into SQL templates via the `$` context:
 
+noorm's Eta instance uses `{% %}` / `{%~ %}`, not the stock `<% %>` delimiters:
+
 ```sql
 -- sql/users/create-readonly.sql.tmpl
-CREATE USER <%= $.secrets.READONLY_USER %>
-WITH PASSWORD '<%= $.secrets.READONLY_PASSWORD %>';
+CREATE USER {%~ $.secrets.READONLY_USER %}
+WITH PASSWORD '{%~ $.secrets.READONLY_PASSWORD %}';
 
-GRANT SELECT ON ALL TABLES TO <%= $.secrets.READONLY_USER %>;
+GRANT SELECT ON ALL TABLES TO {%~ $.secrets.READONLY_USER %};
 ```
 
 Global secrets use `$.globalSecrets`:
 
 ```sql
 -- Reference app-level secrets
--- API key: <%= $.globalSecrets.SHARED_API_KEY %>
+-- API key: {%~ $.globalSecrets.SHARED_API_KEY %}
 ```
 
-Missing secrets cause template errors at runtime—another reason to set required secrets upfront.
+Reading an unresolved key on `$.secrets` throws `MissingSecretError` naming the key and the tiers searched — it does not render as `undefined`. `$.globalSecrets` is a plain object and does *not* throw. To read an optional secret, probe first: `'KEY' in $.secrets ? $.secrets.KEY : fallback`. See [Template › Secret Access](./template.md#secret-access).
 
 
 ## Stage Matching
@@ -218,10 +223,10 @@ stages:
 ```
 
 ```bash
-noorm config:use prod               # Activates 'prod' config
+noorm config use prod               # Activates 'prod' config
 noorm secret                        # Shows DB_PASSWORD as required
 
-noorm config:use staging            # Activates 'staging' config
+noorm config use staging            # Activates 'staging' config
 noorm secret                        # Shows DB_PASSWORD, DEBUG_KEY as required
 ```
 
@@ -299,12 +304,18 @@ Before running operations, verify a config has all required secrets:
 ```typescript
 import { checkConfigCompleteness } from './core/config'
 
-const check = checkConfigCompleteness(config, state, settings)
+// A required secret satisfied by the vault still counts as set — pass the
+// vault's key names, or a CI runner with no local store reports incomplete.
+const check = checkConfigCompleteness(config, state, settings, {
+    vaultSecretKeys: await listVaultSecretKeys(db, dialect),
+})
 
 if (!check.complete) {
-    console.log('Missing secrets:', check.missingSecrets)
-    // ['DB_PASSWORD', 'READONLY_PASSWORD']
+    console.log('Missing secrets:', check.missingSecrets)  // ['DB_PASSWORD', ...]
+    console.log('Stage violations:', check.violations)
 }
 ```
+
+The fourth argument is optional: `{ stageName?, vaultSecretKeys? }`. `stageName` overrides the stage that would otherwise be inferred from the config name.
 
 The CLI runs this check and prompts users to set missing secrets before proceeding with operations.

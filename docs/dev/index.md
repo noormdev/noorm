@@ -22,9 +22,11 @@ For user-facing documentation, see the [main docs](/).
 - [SQL Terminal](./sql-terminal.md) - Interactive REPL
 - [Templates](./template.md) - Eta templating engine
 - [Secrets](./secrets.md) - Encrypted secret storage
+- [Vault](./vault.md) - Team-shared encrypted secrets
 - [Locking](./lock.md) - Concurrency control
 - [Teardown](./teardown.md) - Database reset operations
 - [Data Transfer](./transfer.md) - Cross-database data transfer
+- [Config Sharing](./config-sharing.md) - Exporting and importing configs
 
 
 ## Integration

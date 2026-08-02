@@ -55,20 +55,25 @@ The Context API is split into two levels:
 - `kysely`, `dialect`, `connected` — properties
 - `connect()`, `disconnect()` — lifecycle
 - `transaction()`, `proc()`, `func()`, `tvf()` — SQL execution
+- `impersonate()` — run queries as another database principal (callback or explicit scope)
 - `noorm` — namespace for management operations
 
 **ctx.noorm** — noorm management operations, organized by namespace:
 - `run`: `build()`, `file()`, `files()`, `dir()`, `discover()`, `preview()`
-- `db`: `truncate()`, `teardown()`, `previewTeardown()`, `reset()`, `listTables()`, `describeTable()`, `overview()`
-- `changes`: `apply()`, `revert()`, `ff()`, `status()`, `pending()`, `history()`, `create()`, `addFile()`, `removeFile()`, `renameFile()`, `reorderFiles()`, `delete()`, `discover()`, `parse()`, `validate()`
+- `db`: `truncate()`, `teardown()`, `previewTeardown()`, `reset()`, `overview()`, `listTables()`, `describeTable()`, `listViews()`, `describeView()`, `listProcedures()`, `describeProcedure()`, `listFunctions()`, `describeFunction()`, `listTypes()`, `describeType()`, `listIndexes()`, `listForeignKeys()`
+- `changes`: `apply()`, `revert()`, `ff()`, `next()`, `rewind()`, `status()`, `pending()`, `history()`, `historyForChange()`, `getFileHistory()`, `create()`, `addFile()`, `removeFile()`, `renameFile()`, `reorderFiles()`, `delete()`, `discover()`, `parse()`, `validate()`
 - `lock`: `acquire()`, `release()`, `status()`, `withLock()`, `forceRelease()`
 - `dt`: `exportTable()`, `importFile()`
 - `transfer`: `to()`, `plan()`
 - `templates`: `render()`
-- `secrets`: `get()`
+- `secrets`: `get()`, `list()`, `set()`, `delete()`
 - `vault`: `init()`, `status()`, `set()`, `get()`, `getAll()`, `list()`, `delete()`, `exists()`, `propagate()`, `copy()`
 - `utils`: `checksum()`, `testConnection()`
-- Properties: `config`, `settings`, `identity`, `observer`
+- Properties: `config`, `settings`, `identity`
+
+The event bus is **not** on the context. It is a process-global singleton exported
+as `noormObserver` from the package root — one `ObserverEngine` shared by every
+context in the process. See [Event Subscriptions](#event-subscriptions).
 
 
 ## API Reference
@@ -86,6 +91,7 @@ interface CreateContextOptions {
     projectRoot?: string     // Project root path (see note below)
     requireTest?: boolean    // Refuse if config.isTest !== true
     channel?: Channel        // 'user' (default) or 'agent' — which access role applies
+    yes?: boolean            // Pre-confirm 'confirm'-tier permissions (default: false)
     stage?: string           // Stage name for stage defaults
 }
 ```
@@ -107,7 +113,9 @@ const ctx = await createContext<MyDatabase>({
 
 - `requireTest: true` - Throws `RequireTestError` if the config doesn't have `isTest: true`. Use this in test suites to prevent accidentally running against production.
 
-- `channel: 'agent'` - Enforces the config's `access.agent` role instead of `access.user` for destructive operations (`truncate`, `teardown`, `reset`, `changes.revert`). Use this when embedding the SDK behind an MCP-like surface. Defaults to `'user'`. A denied or unconfirmable operation throws `ProtectedConfigError` — the SDK has no prompt, so a `confirm`-tier permission needs `NOORM_YES=1` or the CLI/TUI. See [Access Roles](./config.md#access-roles).
+- `channel: 'agent'` - Enforces the config's `access.agent` role instead of `access.user` for destructive operations (`truncate`, `teardown`, `reset`, `changes.revert`). Use this when embedding the SDK behind an MCP-like surface. Defaults to `'user'`. A denied or unconfirmable operation throws `ProtectedConfigError`. See [Access Roles](./config.md#access-roles).
+
+- `yes: true` - Pre-confirms `confirm`-tier permissions, the programmatic equivalent of the CLI's `--yes`. The SDK has no prompt, so without it a `confirm` cell blocks like an outright denial. Setting `NOORM_YES` in the environment has the same effect (`checkPolicy` consults it before returning `requiresConfirmation`). Both are **user-channel only**: on `agent`, `confirm` collapses to deny before either is read, so an agent cannot walk through a gate meant for a human.
 
 
 ### Environment Variable Support
@@ -326,7 +334,10 @@ for the consumer-side narrative.
 | `config`   | `Config`         | The resolved config object              |
 | `settings` | `Settings`       | Project settings (paths, rules, stages) |
 | `identity` | `Identity`       | Current operator identity               |
-| `observer` | `ObserverEngine` | Event observer for subscriptions        |
+
+All three are read-only getters over the shared `ContextState`. There is no
+`ctx.noorm.observer` — event subscription goes through the package-level
+`noormObserver` export.
 
 
 #### Schema Operations
@@ -636,10 +647,13 @@ await ctx.noorm.lock.withLock(async () => {
 
 ##### `lock.forceRelease()`
 
-Force release any database lock regardless of ownership. Returns `true` if a lock was released.
+Force release any database lock regardless of ownership. Returns a
+`ForceReleaseResult` — whether a lock was released, and who held it. Gated on the
+config's `lock:force` permission: `viewer` is denied outright, and
+`operator`/`admin` need `yes: true` (or `NOORM_YES`).
 
 ```typescript
-await ctx.noorm.lock.forceRelease()
+const { released, holder } = await ctx.noorm.lock.forceRelease()
 ```
 
 
@@ -763,7 +777,9 @@ const checksum = await ctx.noorm.utils.checksum('sql/001_users.sql')
 
 ##### `utils.testConnection()`
 
-Tests if the connection can be established without actually connecting.
+Opens a throwaway connection to the target database and immediately tears it
+down. Returns `{ ok, error? }` — failure as data, not an exception, which is a
+deliberate carve-out from the SDK's throwing convention.
 
 ```typescript
 const result = await ctx.noorm.utils.testConnection()
@@ -771,6 +787,12 @@ if (!result.ok) {
     console.error('Connection failed:', result.error)
 }
 ```
+
+This probes the *target* database, so it fails when the database does not exist
+yet. Setup flows that only need to verify credentials call the core
+`testConnection(config, { testServerOnly: true })` from
+`src/core/connection/factory.ts` directly — the namespace method takes no
+options.
 
 
 #### Transfer
@@ -827,19 +849,30 @@ const result = await ctx.noorm.dt.importFile('./exports/users.dtz', {
 
 #### Event Subscriptions
 
-Subscribe to core events via the process-global `noormObserver` bus:
+Subscribe to core events via the process-global `noormObserver` bus. It is a
+singleton, not per-context: if a process calls `createContext()` more than once,
+every context's events flow through it.
 
 ```typescript
-import { noormObserver } from 'noorm/sdk'
+import { noormObserver } from '@noormdev/sdk'
 
 noormObserver.on('file:after', (event) => {
     console.log(`Executed ${event.filepath} in ${event.durationMs}ms`)
 })
 
 noormObserver.on('change:complete', (event) => {
-    console.log(`Change ${event.name}: ${event.status}`)
+    console.log(`Change ${event.name} (${event.direction}): ${event.status}`)
 })
 ```
+
+Event names and payload types are exported as `NoormEventNames` and `NoormEvents`
+(both from `src/core/observer.ts`, which is the authoritative payload list).
+
+Multi-context filtering is only possible on the events that actually carry
+`configName` — `file:before`, `run:*`, `lock:*`, `db:*`, `secret:*`,
+`connection:*`, `sql-terminal:*`, `identity:synced`. Notably `file:after`,
+`change:*`, and `build:*` do **not**, so a process juggling several configs
+cannot attribute those to one of them.
 
 
 ## Use Cases
@@ -1020,8 +1053,10 @@ noorm change ff --config dev --json | jq '.status'
 | `db explore tables` | List tables |
 | `db explore tables detail <name>` | Describe a table |
 | `db transfer` | DB-to-DB / export / import (`--to`, `--export`, `--import`) |
-| `change` | List change status |
+| `change list` | List change status (bare `noorm change` renders help) |
 | `change ff` | Apply pending changes |
+| `change next` | Apply the next pending change(s) |
+| `change rewind <name>` | Revert applied changes back to and including `<name>` |
 | `change run <name>` | Apply single change |
 | `change revert <name>` | Revert single change |
 | `change history` | Execution history |
@@ -1057,9 +1092,12 @@ jobs:
         run: |
           npx noorm change ff --config ${{ vars.DB_CONFIG }}
         env:
-          DB_HOST: ${{ secrets.DB_HOST }}
-          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          NOORM_CONNECTION_HOST: ${{ secrets.DB_HOST }}
+          NOORM_CONNECTION_PASSWORD: ${{ secrets.DB_PASSWORD }}
 ```
+
+Only `NOORM_*` variables are read — a bare `DB_HOST` is ignored. See
+[CI/CD Integration](./ci.md) for the full variable list.
 
 
 ## TypeScript Support

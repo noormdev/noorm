@@ -169,6 +169,26 @@ const paths = settings.getPaths()
 ```
 
 
+### Environment overlay
+
+Every accessor returns the **resolved view**: the parsed `settings.yml` document
+plus an overlay of `NOORM_*` environment variables, recomputed after each load
+and each mutation. `NOORM_PATHS_SQL=./ci/sql` therefore changes what
+`getPaths()` returns without touching the file.
+
+The overlay is deliberately kept out of the persisted document — `settings.yml`
+is version controlled, so merging ambient env vars into it would commit whatever
+the shell exported. `save()` writes the document, never the resolved view.
+`NOORM_CONNECTION_*`, `NOORM_IDENTITY_*`, and the behavior variables
+(`NOORM_CONFIG`, `NOORM_YES`, `NOORM_JSON`, `NOORM_HEADLESS`, `NOORM_DEBUG`,
+`NOORM_DEV`, `NOORM_CI_CONFIG_NAME`, `NOORM_LOGGER_DEBUG`, `NOORM_IDENTITY`,
+`NOORM_CHANNEL`) are excluded from it.
+
+The overlay is validated, not re-parsed, so an env value must already have the
+shape the field expects — a scalar where an array is required
+(`NOORM_BUILD_INCLUDE=00_tables`) fails validation rather than being coerced.
+
+
 ## Stage-Based Rules
 
 Rules conditionally include or exclude folders based on the active config's properties. This enables environment-specific behavior without maintaining separate build scripts.
@@ -320,14 +340,20 @@ Defaults provide initial values when creating a config. Users can override most 
 | `dialect` | Cannot be changed after creation |
 
 ```typescript
-// Check if stage sets the protected default (the ceiling is applied later, at resolution)
-if (settings.stageEnforcesProtected('prod')) {
-    // This stage's configs get clamped to at most operator/viewer access
-}
-
 // Get stage defaults
 const defaults = settings.getStageDefaults('prod')
 // { dialect: 'postgres', protected: true }
+
+// Read the protected default directly — the ceiling itself is applied later,
+// by resolveConfig. There is no stageEnforcesProtected() helper.
+if (defaults.protected === true) {
+    // This stage's configs get clamped to at most operator/viewer access
+}
+
+// The isTest constraint does have a helper
+if (settings.stageEnforcesIsTest('prod')) {
+    // Configs linked to this stage cannot set isTest: false
+}
 ```
 
 
@@ -479,14 +505,18 @@ These settings are applied automatically when using teardown operations:
 ```typescript
 import { truncateData, teardownSchema } from './core/teardown'
 
+// There is no getTeardown() accessor — read it off the resolved settings object
+const teardown = settings.settings.teardown
+
 // preserveTables from settings are automatically included
 const result = await truncateData(db, dialect, {
-    preserve: settings.getTeardown()?.preserveTables,
+    preserve: teardown?.preserveTables,
 })
 
 // postScript runs after teardown
 const teardownResult = await teardownSchema(db, dialect, {
-    postScript: settings.getTeardown()?.postScript,
+    preserveTables: teardown?.preserveTables,
+    postScript: teardown?.postScript,
 })
 ```
 
@@ -578,8 +608,15 @@ await settings.setLogging({
     file: '.noorm/debug.log'
 })
 
-// Manage universal secrets (required by all stages)
-await settings.addUniversalSecret({ key: 'API_KEY', type: 'env' })
+// Update teardown config
+await settings.setTeardown({
+    preserveTables: ['AppSettings'],
+    postScript: 'sql/teardown/cleanup.sql'
+})
+
+// Manage universal secrets (required by all stages).
+// `type` must be a SecretType: 'string' | 'password' | 'api_key' | 'connection_string'
+await settings.addUniversalSecret({ key: 'API_KEY', type: 'api_key' })
 await settings.updateUniversalSecret('API_KEY', { key: 'API_KEY', type: 'password' })
 await settings.removeUniversalSecret('API_KEY')
 
@@ -624,14 +661,14 @@ import { DEFAULT_SETTINGS, createDefaultSettings } from './core/settings'
 // Read-only reference
 console.log(DEFAULT_SETTINGS)
 // {
-//     build: { include: ['schema'], exclude: [] },
+//     build: { include: [], exclude: [] },   // empty include = all files under paths.sql
 //     paths: { sql: './sql', changes: './changes' },
 //     rules: [],
 //     stages: {},
 //     strict: { enabled: false, stages: [] },
-//     logging: { enabled: true, level: 'info', ... },
-//     teardown: { preserveTables: [], postScript: undefined }
+//     logging: { enabled: true, level: 'info', file: '.noorm/state/noorm.log', maxSize: '10mb', maxFiles: 5 },
 // }
+// No `teardown` key: TeardownConfig is optional and has no defaults.
 
 // Create fresh copy (avoids shared references)
 const fresh = createDefaultSettings()
@@ -724,6 +761,15 @@ observer.on('settings:strict-updated', ({ strict }) => {
 observer.on('settings:logging-updated', ({ logging }) => {
     console.log('Updated logging config')
 })
+
+observer.on('settings:teardown-updated', ({ teardown }) => {
+    console.log('Updated teardown config')
+})
+
+// Secret mutations carry their scope, and the stage name when scope is 'stage'
+observer.on('settings:secret-added', ({ secret, scope, stageName }) => { ... })
+observer.on('settings:secret-updated', ({ key, secret, scope, stageName }) => { ... })
+observer.on('settings:secret-removed', ({ key, scope, stageName }) => { ... })
 ```
 
 
@@ -739,16 +785,16 @@ Settings affect config operations:
 6. **Strict mode** - Requires configs for specified stages
 
 ```typescript
-import { resolveConfig } from './core/config'
+import { resolveConfig, SettingsProvider } from './core/config/resolver'
 import { getSettingsManager } from './core/settings'
 
 const settings = getSettingsManager(process.cwd())
 await settings.load()
 
-// Resolve config with stage defaults
+// resolveConfig takes a SettingsProvider, not the SettingsManager itself.
+// Omit `stage` to auto-link a stage whose name matches the config name.
 const config = resolveConfig(state, {
     name: 'prod',
-    stage: 'prod',
-    settings
+    settings: new SettingsProvider(settings),
 })
 ```

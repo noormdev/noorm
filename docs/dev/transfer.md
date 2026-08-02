@@ -24,14 +24,18 @@ Transfer operates in two phases:
 | Cross-server | Different hosts, same dialect | Batched read from source, write to destination |
 | Cross-dialect | Different dialects | Batched read → type conversion via DtStreamer → write |
 
-Same-server detection varies by dialect:
+Same-server detection varies by dialect (`src/core/transfer/same-server.ts`):
 
 | Dialect | Same-server criteria |
 |---------|---------------------|
-| PostgreSQL | Same host + port + database (no cross-database queries without extensions) |
+| PostgreSQL | **Never** — always takes the batch path |
 | MySQL | Same host + port (cross-database queries supported) |
 | MSSQL | Same host + port (cross-database queries supported) |
 | SQLite | Never (no server concept) |
+
+PostgreSQL is never same-server, and the reason is not just the missing `dblink` / `postgres_fdw`. When both configs name the *same* database, the direct statement degenerates to `INSERT INTO t SELECT ... FROM t` — copying the destination into itself. Neither outcome is a transfer, so postgres has no direct path at all.
+
+Host comparison normalizes `127.0.0.1`, `::1`, and `localhost.localdomain` to `localhost`. An unset port falls back to the dialect's default before comparison, so `host: 'db'` and `host: 'db', port: 3306` are the same server on MySQL.
 
 
 ## Quick Start
@@ -90,8 +94,22 @@ interface TransferOptions {
     /** Passphrase for .dtzx export encryption. */
     passphrase?: string
 
+    /** Caller channel for the policy gate. Default: 'user' */
+    channel?: Channel
+
 }
 ```
+
+### Policy gates
+
+Both entry points are gated against the **destination** config — the write target is the destructive side, not the source:
+
+| Function | Permission | Notes |
+|----------|-----------|-------|
+| `transferData` | `db:reset` | Checked before any connection opens. Dry runs are gated too — the matrix has no carve-out |
+| `getTransferPlan` | `transfer:plan` | The plan is destination schema metadata (table names, row estimates, the FK graph). Ungated, a viewer denied `transferData` could read all of it through `--dry-run` |
+
+A denial is returned as the error half of the tuple, not thrown.
 
 
 ## Conflict Strategies
@@ -100,12 +118,16 @@ When the destination already has rows with matching primary keys:
 
 | Strategy | Behavior | PostgreSQL | MySQL | MSSQL |
 |----------|----------|------------|-------|-------|
-| `fail` | Abort on first conflict | Default insert | Default insert | Default insert |
-| `skip` | Skip conflicting rows | `ON CONFLICT DO NOTHING` | `INSERT IGNORE` | `MERGE ... WHEN NOT MATCHED` |
-| `update` | Update existing rows | `ON CONFLICT DO UPDATE` | `ON DUPLICATE KEY UPDATE` | `MERGE ... WHEN MATCHED UPDATE` |
-| `replace` | Delete and re-insert | Row-by-row fallback | `REPLACE INTO` | `MERGE ... DELETE + INSERT` |
+| `fail` | Abort on first conflict | Plain insert | Plain insert | Plain insert |
+| `skip` | Skip conflicting rows | `ON CONFLICT (pk) DO NOTHING` | `INSERT IGNORE` | `MERGE ... WHEN NOT MATCHED INSERT` |
+| `update` | Update non-PK columns | `ON CONFLICT (pk) DO UPDATE SET` | `ON DUPLICATE KEY UPDATE` | `MERGE ... WHEN MATCHED UPDATE / WHEN NOT MATCHED INSERT` |
+| `replace` | Overwrite the whole row | `ON CONFLICT (pk) DO UPDATE SET` (all columns) | `REPLACE INTO` | `MERGE`, updating all columns when matched |
 
-The `fail` strategy uses the same-server direct path when available. Other strategies always use the cross-server batch path, even on the same server, because conflict handling requires row-level control.
+`replace` only literally deletes and re-inserts on MySQL, where `REPLACE INTO` is defined that way — with the side effects that implies (`ON DELETE CASCADE` fires, unlisted columns reset to defaults). PostgreSQL and MSSQL implement it as an upsert over every column, so the row is overwritten in place.
+
+When *all* columns are part of the primary key there is nothing to update, so `update` degrades to `DO NOTHING` on PostgreSQL and `INSERT IGNORE` on MySQL.
+
+The `fail` strategy uses the same-server direct path when available. Other strategies always use the cross-server batch path, even on the same server, because conflict handling requires row-level control. A cross-dialect transfer never uses the direct path regardless of strategy.
 
 
 ## Planning
@@ -126,7 +148,9 @@ For each table, the planner collects:
 - Foreign key relationships
 - Estimated row count
 
-Internal tables (`__noorm_*`) are automatically excluded.
+Internal tables are excluded by **name prefix only** — `listUserTables` drops anything starting with `__noorm_` (`src/core/transfer/planner.ts:249`).
+
+> **Caveat on PostgreSQL and SQL Server.** Those dialects keep their tracking tables in a dedicated `noorm` schema under clean names (`noorm.change`, `noorm.lock`, …), which the `__noorm_` prefix test does not match. Unlike the explore and teardown paths, the transfer planner's catalog queries exclude only the true system schemas (`pg_catalog` / `information_schema` / `pg_toast`, and `is_ms_shipped = 0` on MSSQL), so noorm's own tracking tables can appear in a plan. Check the dry-run table list, or pass `--tables` explicitly, before transferring a whole PostgreSQL or SQL Server database.
 
 ### FK Dependency Ordering
 
@@ -176,7 +200,7 @@ When `preserveIdentity` is true (default):
 
 | Dialect | Enable | Disable | Sequence Reset |
 |---------|--------|---------|----------------|
-| PostgreSQL | Not needed (SERIAL/GENERATED BY DEFAULT) | — | `SELECT setval(pg_get_serial_sequence(...), MAX(col))` |
+| PostgreSQL | Not needed — every insert carries `OVERRIDING SYSTEM VALUE`, which is what lets `GENERATED ALWAYS AS IDENTITY` accept an explicit value | — | `SELECT setval(pg_get_serial_sequence(...), MAX(col))` |
 | MySQL | Not needed (AUTO_INCREMENT allows explicit values) | — | `ALTER TABLE ... AUTO_INCREMENT = MAX(col) + 1` |
 | MSSQL | `SET IDENTITY_INSERT table ON` | `SET IDENTITY_INSERT table OFF` | `DBCC CHECKIDENT(table, RESEED)` |
 
@@ -196,9 +220,13 @@ Foreign key checks are disabled on the destination before transfer and re-enable
 
 | Dialect | Disable | Enable |
 |---------|---------|--------|
-| PostgreSQL | `ALTER TABLE ... DISABLE TRIGGER ALL` (per table) | `ALTER TABLE ... ENABLE TRIGGER ALL` |
+| PostgreSQL | `SET session_replication_role = replica` (session-wide) | `SET session_replication_role = DEFAULT` |
 | MySQL | `SET FOREIGN_KEY_CHECKS = 0` (session-wide) | `SET FOREIGN_KEY_CHECKS = 1` |
-| MSSQL | `ALTER TABLE ... NOCHECK CONSTRAINT ALL` (per table) | `ALTER TABLE ... CHECK CONSTRAINT ALL` |
+| MSSQL | `ALTER TABLE ... NOCHECK CONSTRAINT ALL` (per table) | `ALTER TABLE ... WITH CHECK CHECK CONSTRAINT ALL` (per table) |
+
+PostgreSQL's `session_replication_role` suppresses all trigger-based constraint checking, foreign keys included, for the session — it is not a per-table `DISABLE TRIGGER`. It requires superuser (or an equivalent grant); on a locked-down role the transfer will fail at the disable step rather than silently proceeding unprotected.
+
+MSSQL's re-enable uses `WITH CHECK CHECK`, not a bare `CHECK` — the extra `WITH CHECK` re-validates the rows inserted while the constraint was off, so the constraint comes back trusted instead of merely enabled.
 
 If the post-transfer re-enable fails, the transfer itself still completes, but `TransferResult.fkChecksRestored` is `false` and the CLI prints a warning. Re-enable FK checks manually before trusting referential integrity on the destination.
 
@@ -225,8 +253,8 @@ The `DtStreamer` converts between dialect types through a universal intermediate
 
 | Category | Universal Types |
 |----------|-----------------|
-| Simple | `string`, `int`, `bigint`, `float`, `decimal`, `bool`, `timestamp`, `date`, `uuid` |
-| Encoded | `json`, `binary`, `vector`, `array`, `custom` |
+| Simple (native JSON values) | `string`, `int`, `bigint`, `float`, `decimal`, `bool`, `timestamp`, `date`, `uuid` |
+| Encoded (`[value, encoding]` tuples) | `json`, `binary`, `vector`, `array`, `text`, `custom` |
 
 Version-aware mappings handle dialect differences:
 
@@ -320,23 +348,43 @@ const [importResult, importErr] = await importDtFile({
 
 `.dtzx` files use passphrase-based encryption:
 
-- Key derivation: PBKDF2 with random salt
-- Cipher: AES-256-GCM with random IV
+- Key derivation: PBKDF2-SHA256, 100,000 iterations, 32-byte random salt, 32-byte key
+- Cipher: AES-256-GCM, 16-byte random IV, 16-byte auth tag
 - Format: `{ salt, iv, authTag, ciphertext }` (all base64)
+- Minimum passphrase length: 12 characters, enforced on **encryption only** — a floor on decryption would brick archives written by older versions, and a wrong passphrase already fails at the GCM tag
 
 The encryption is self-contained—no dependency on noorm's identity system. Files can be shared and decrypted anywhere with the passphrase.
 
+### Decompression bounds
+
+`.dt` content is untrusted — it arrives from a colleague, a bucket, or a CI artifact — and gzip reaches roughly 1000:1 on repetitive input. The reader caps expansion rather than discovering the problem as an OOM:
+
+| Limit | Value | Applies to |
+|-------|-------|------------|
+| `MAX_DECOMPRESSED_VALUE_BYTES` | 64 MB | A single gzipped column value |
+| `MAX_DECOMPRESSED_ARCHIVE_BYTES` | 1 GB | A whole `.dtzx` archive — it is decrypted and inflated before any row is read, so the entire thing is resident |
+| `MAX_ROW_BYTES` | 256 MB | One line in a `.dt` stream — readline buffers until it finds a newline, so a file with no newlines is the same exhaustion vector by another route |
+
+`.dt` and `.dtz` stream, so only the per-value and per-line caps apply to them.
+
 ### Template Loader Integration
 
-`.dt` and `.dtz` files work as seed data in templates:
+`.dt` and `.dtz` files work as seed data in templates. There is no `load()` helper — the file is auto-loaded by filename into the `$` context like any other data file, as an array of row objects:
+
+```
+seeds/
+├── users.sql.tmpl
+└── users.dt        → $.users
+```
 
 ```sql
--- seeds/users.sql
-<% const users = await load('./users.dt') %>
-<% for (const row of users) { %>
-INSERT INTO users (id, email) VALUES (<%= row.id %>, '<%= row.email %>');
-<% } %>
+-- seeds/users.sql.tmpl
+{% for (const row of $.users) { %}
+INSERT INTO users (id, email) VALUES ({%~ row.id %}, {%~ $.quote(row.email) %});
+{% } %}
 ```
+
+The loader reads the schema header for column names and maps each row's positional values to named fields, so `$.users[0].email` works without you naming the columns.
 
 Note: `.dtzx` files are not supported in templates—there's no secure way to provide the passphrase.
 
@@ -347,6 +395,12 @@ Each dialect implements the `TransferDialectOperations` interface:
 
 ```typescript
 interface TransferDialectOperations {
+
+    /** Session-level SQL to disable FK checks (PG/MySQL; MSSQL works per table) */
+    getDisableFKSql(): string
+
+    /** Session-level SQL to re-enable FK checks */
+    getEnableFKSql(): string
 
     /** SQL to enable identity insert for a table */
     getEnableIdentityInsertSql(table: string): string | null
@@ -490,7 +544,7 @@ interface TransferTableResult {
 | `transfer:table:before` | `{ table, index, total, rowCount }` | Before each table |
 | `transfer:table:progress` | `{ table, rowsTransferred, rowsTotal, rowsSkipped }` | During batch transfers |
 | `transfer:table:after` | `{ table, status, rowsTransferred, rowsSkipped, durationMs, error? }` | After each table |
-| `transfer:complete` | `{ status, totalRows, tableCount, durationMs }` | Transfer finished |
+| `transfer:complete` | `{ status, totalRows, tableCount, durationMs, fkChecksRestored }` | Transfer finished |
 
 ### Export/Import Events
 
@@ -503,6 +557,29 @@ interface TransferTableResult {
 | `dt:import:schema` | `{ filepath, table, columns, validation }` | Schema parsed and validated |
 | `dt:import:progress` | `{ filepath, table, rowsImported, rowsSkipped }` | After each batch insert |
 | `dt:import:complete` | `{ filepath, table, rowsImported, rowsSkipped, durationMs }` | Import finished |
+
+`dt:import:schema` reports `columns` as a **count**, not the column list.
+
+### Worker Pipeline Events
+
+Export and import run through the three-tier worker pipeline (connection worker → compute pool → order buffer), which emits its own per-stage counters:
+
+| Event | Payload | When |
+|-------|---------|------|
+| `dt:export:loaded` | `{ table, loaded, totalRows }` | A batch arrived from the connection worker |
+| `dt:export:processed` | `{ table, processed, totalRows }` | A compute worker finished serializing rows |
+| `dt:export:saved` | `{ table, saved, totalRows }` | The order buffer flushed consecutive rows to `DtWriter` |
+| `dt:import:loaded` | `{ table, loaded, totalRows }` | A batch of lines was read by `DtReader` |
+| `dt:import:processed` | `{ table, processed, totalRows }` | A compute worker finished deserializing rows |
+| `dt:import:saved` | `{ table, saved, totalRows }` | Deserialized rows were inserted |
+
+### Modify Events
+
+| Event | Payload | When |
+|-------|---------|------|
+| `dt:modify:start` | `{ inputPath, outputPath, recipeLength }` | Modify begins |
+| `dt:modify:progress` | `{ rowsRead, rowsWritten, rowsFiltered }` | After each row |
+| `dt:modify:complete` | `{ result }` | Modify finished |
 
 ### Cross-Dialect Stream Events
 
@@ -558,7 +635,7 @@ From the database menu, the transfer screen provides a wizard with three modes:
 5. Set conflict strategy
 6. Execute with progress
 
-Access via: Home → `d` (database) → select config → transfer option
+Access via: Home → `d` (database) → select config → `r` (transfer)
 
 ### Headless Mode
 
@@ -584,7 +661,10 @@ noorm db transfer --to backup --json
 # Export single table to .dt file
 noorm db transfer --export ./backup/users.dt --tables users
 
-# Export multiple tables to directory (compressed)
+# Export every table to a directory (compressed) — --tables defaults to all
+noorm db transfer --export ./backup/ --compress
+
+# Export multiple named tables to a directory
 noorm db transfer --export ./backup/ --tables users,posts --compress
 
 # Export with encryption
@@ -602,20 +682,25 @@ noorm db transfer --import ./backup.dt --dry-run
 
 ### Export Path Rules
 
-The `--tables` flag is required for export. The `--export` path is interpreted based on table count:
+`--tables` defaults to every user table. Passing it *explicitly empty* is an error rather than a no-op — an export that wrote nothing, reported success, and exited 0 is a silent empty backup.
+
+The `--export` path is interpreted based on how many tables resolve:
 
 | Scenario | Path | Result |
 |----------|------|--------|
 | Single table | `./data/users.dt` | Writes to that exact path |
-| Multiple tables | `./data/backup/` | Creates `<table>.dt` per table |
+| Single table | `./data/users` | Appends the flag-derived extension |
+| Multiple tables | `./data/backup/` | Creates `<table><ext>` per table |
 
-Extension determines format when specified explicitly. Otherwise:
+An explicit `.dt` / `.dtz` / `.dtzx` suffix is honoured only in the single-table case. In multi-table mode the extension always comes from the flags:
 
 | Flags | Output Extension |
 |-------|------------------|
 | (none) | `.dt` |
 | `--compress` | `.dtz` |
 | `--passphrase` | `.dtzx` |
+
+Exporting to `.dtzx` without `--passphrase` prompts for one (masked, minimum 12 characters). In a non-TTY session or with `--json`, the prompt is impossible and the command exits with a usage error instead — pass `--passphrase` in CI.
 
 
 ## Module Structure
@@ -649,7 +734,9 @@ src/core/dt/
 ├── schema.ts           # buildDtSchema(), validateSchema()
 ├── version.ts          # queryDatabaseVersion()
 ├── crypto.ts           # encryptWithPassphrase(), decryptWithPassphrase()
-├── paths.ts            # resolveExportPath(), resolveExportExtension()
+├── modify.ts           # modifyDtFile(), transformSchema(), validateRecipe()
+├── paging.ts           # Paged row reads for large files
+├── paths.ts            # resolveExportPath(), resolveExportExtension(), resolveExportTables()
 └── dialects/
     ├── index.ts        # Dialect registry
     ├── postgres.ts     # PostgreSQL type mappings
@@ -666,7 +753,7 @@ src/core/dt/
 
 3. **Row-by-row conflict handling** — Cross-server and cross-dialect transfers with conflict strategies insert rows individually rather than in bulk, which is slower for large datasets with many conflicts.
 
-4. **PostgreSQL cross-database** — PostgreSQL cannot query across databases without the `dblink` or `postgres_fdw` extensions. Same-server optimization only applies when both configs point to the same database.
+4. **No same-server path on PostgreSQL** — PostgreSQL cannot query across databases without `dblink` / `postgres_fdw`, and pointing both configs at the *same* database would make the direct statement copy a table into itself. Every PostgreSQL transfer therefore uses the batched path, even between two databases on one server.
 
 5. **Type conversion fidelity** — Cross-dialect transfers convert through universal types. Some dialect-specific features may be lost (e.g., PostgreSQL arrays become JSON in MySQL, custom types become strings). The schema validation warns about potential issues before transfer begins.
 

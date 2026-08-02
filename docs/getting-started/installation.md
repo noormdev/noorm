@@ -134,18 +134,20 @@ The single most common mistake — by people and agents alike — is writing `bu
 
 ## Initialize a Project
 
-After installation, launch the TUI in your project root — it detects the missing `.noorm/` directory and walks you through identity setup, project structure, and the first config:
+Run `noorm init` in your project root. It prompts for the identity to create (skipped if you already have one) and scaffolds the project:
 
 ```bash
 cd your-project
-noorm ui
+noorm init
 ```
 
 The init wizard creates:
 
 ```
 your-project/
+├── .gitignore                 # gets a .noorm/state/ entry appended
 ├── .noorm/
+│   ├── .gitignore             # ignores state/
 │   ├── settings.yml           # Project settings (commit this)
 │   └── state/
 │       └── state.enc          # Encrypted state (don't commit)
@@ -155,8 +157,12 @@ your-project/
     └── .gitkeep
 ```
 
+`noorm init` is strictly interactive and exits with an error on a non-TTY unless you pass `--yes` and already have an identity at `~/.noorm/identity.{key,pub,json}`.
+
+Adding the first database config comes next, from the TUI (`noorm ui`, then `c` for config and `a` to add).
+
 ::: warning Git Ignore
-Add `.noorm/state/` to your `.gitignore`. This folder contains encrypted configs and secrets specific to each developer's machine. The `.noorm/settings.yml` should be committed — it's the shared project configuration.
+`noorm init` adds `.noorm/state/` to your `.gitignore` for you. That folder holds encrypted configs and secrets specific to each developer's machine. The `.noorm/settings.yml` should be committed — it's the shared project configuration.
 :::
 
 

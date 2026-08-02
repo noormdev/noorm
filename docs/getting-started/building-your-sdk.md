@@ -336,6 +336,7 @@ export interface ClientOptions {
     config?: string;
     requireTest?: boolean;
     projectRoot?: string;
+    yes?: boolean;
 }
 
 export class Client {
@@ -399,6 +400,7 @@ export async function createClient(options: ClientOptions = {}): Promise<Client>
         config: options.config,
         requireTest: options.requireTest,
         projectRoot: options.projectRoot,
+        yes: options.yes,
     });
 
     return new Client(ctx);
@@ -457,7 +459,10 @@ export interface TestClientOptions {
 /**
  * Create a test database client.
  *
- * Uses requireTest: true to prevent accidentally running against production.
+ * requireTest: true refuses any config that isn't marked as a test database.
+ * yes: true pre-confirms the operations noorm would otherwise stop on.
+ * db:truncate needs confirmation even on an admin config, so without it
+ * every truncate() throws ProtectedConfigError.
  *
  * @example
  * const db = await createTestClient();
@@ -471,6 +476,7 @@ export async function createTestClient(
     return createClient({
         config: 'test',
         requireTest: true,
+        yes: true,
         projectRoot: options.projectRoot,
     });
 
@@ -592,17 +598,19 @@ describe('User Queries', () => {
 
 ## Step 9: Configure Test Database
 
-The SDK uses noorm configs. You'll need a `test` config that points to your test database. Add one via noorm TUI wherever your noorm project lives:
+The SDK uses noorm configs. You'll need a `test` config that points to your test database. Add one via the noorm TUI wherever your noorm project lives:
 
 ```bash
-noorm
+noorm ui
 ```
 
 Press `c` for config, `a` to add:
 
-- **Name**: `test`
+- **Config Name**: `test`
 - **Database**: `my_project_test`
-- **Is Test Database**: Yes
+- **Test Database (skipped in production builds)**: checked
+
+The checkbox is what `requireTest: true` reads. A context created with `requireTest: true` against a config without it throws `RequireTestError` before it ever connects.
 
 
 ## Using Your SDK
@@ -710,14 +718,31 @@ jobs:
                   cache: 'pnpm'
 
             - run: pnpm install
-            - run: pnpm --filter @my-project/db test
+
+            # createTestClient asks for a stored config named `test`, and a
+            # fresh runner has no .noorm/state/state.enc. `ci init` writes one
+            # from the env vars and marks the config active and isTest.
+            # -c runs it in packages/db, which is where vitest's cwd will be,
+            # and createContext resolves state against cwd.
+            - run: npx noorm -c packages/db ci init --name test
               env:
+                  NOORM_IDENTITY_PRIVATE_KEY: ${{ secrets.NOORM_CI_KEY }}
+                  NOORM_IDENTITY_NAME: "GitHub CI"
+                  NOORM_IDENTITY_EMAIL: "ci@example.com"
                   NOORM_CONNECTION_DIALECT: postgres
                   NOORM_CONNECTION_HOST: localhost
                   NOORM_CONNECTION_DATABASE: test
                   NOORM_CONNECTION_USER: postgres
                   NOORM_CONNECTION_PASSWORD: postgres
+
+            - run: pnpm --filter @my-project/db test
+              env:
+                  NOORM_IDENTITY_PRIVATE_KEY: ${{ secrets.NOORM_CI_KEY }}
+                  NOORM_IDENTITY_NAME: "GitHub CI"
+                  NOORM_IDENTITY_EMAIL: "ci@example.com"
 ```
+
+Generate `NOORM_CI_KEY` once with `noorm ci identity new --name "GitHub CI" --email ci@example.com`, which prints the env block to stdout, then paste it into your provider's secret store. If your templates read vault secrets, use `noorm ci identity enroll` instead so the key also gets vault access. See [CI/CD](/guide/automation/ci) for the full walkthrough.
 
 
 ## Final Structure

@@ -7,7 +7,7 @@ You've run your schema builds and changes. The database says "success." But did 
 
 Connecting via pgAdmin, MySQL Workbench, or Azure Data Studio works, but it breaks your flow. You're in the terminal. You want to stay there.
 
-noorm's explore module gives you read-only schema introspection directly from the CLI. Browse tables, views, procedures, functions, types, indexes, and foreign keys across PostgreSQL, MySQL, MSSQL, and SQLite—all without leaving your workflow.
+noorm's explore module gives you read-only schema introspection directly from the CLI. Browse tables, views, procedures, functions, types, indexes, foreign keys, triggers, locks, and connections across PostgreSQL, MySQL, MSSQL, and SQLite—all without leaving your workflow.
 
 
 ## How It Works
@@ -56,7 +56,7 @@ if (detail) {
 
 ## Object Categories
 
-Seven categories of database objects can be explored:
+Ten categories of database objects can be explored (`ExploreCategory` in `src/core/explore/types.ts:12`):
 
 | Category | Summary Info | Detail Info |
 |----------|--------------|-------------|
@@ -67,6 +67,11 @@ Seven categories of database objects can be explored:
 | `types` | Kind (enum/composite/domain), value count | Values, attributes, base type |
 | `indexes` | Table, columns, unique/primary flags | — (list only) |
 | `foreignKeys` | Source → target table, columns | — (list only) |
+| `triggers` | Table, timing, events | Timing, events, definition, enabled flag |
+| `locks` | PID, lock type, mode, granted flag | — (list only) |
+| `connections` | PID, user, database, state | — (list only) |
+
+`locks` and `connections` describe the live server session, not the schema. They take no `schema` filter — `listLocks(db)` / `listConnections(db)` are the only dialect methods without one.
 
 
 ## Overview
@@ -83,14 +88,27 @@ const overview = await fetchOverview(db, 'postgres')
 //     functions: 12,
 //     types: 8,
 //     indexes: 47,
-//     foreignKeys: 18
+//     foreignKeys: 18,
+//     triggers: 4,
+//     locks: 2,
+//     connections: 6
 // }
 ```
+
+Counts come from the same list calls the detail views use, so the overview can never disagree with what drilling in shows.
 
 By default, noorm internal tables (`__noorm_*`) are excluded from counts. Include them with:
 
 ```typescript
 const overview = await fetchOverview(db, 'postgres', { includeNoormTables: true })
+```
+
+`includeNoormTables` only affects the prefixed `__noorm_*` names used on MySQL and SQLite. On PostgreSQL and SQL Server the tracking tables live in a dedicated `noorm` schema, which every dialect query excludes outright — the flag cannot bring them back.
+
+Both `fetchOverview` and `fetchList` also accept `schema` to narrow results to one schema. It reaches the generated SQL rather than filtering afterwards, and it throws on SQLite, which has no schemas.
+
+```typescript
+const overview = await fetchOverview(db, 'postgres', { schema: 'reporting' })
 ```
 
 
@@ -208,7 +226,9 @@ interface FunctionSummary {
 
 interface IndexSummary {
     name: string
+    schema?: string
     tableName: string
+    tableSchema?: string
     columns: string[]
     isUnique: boolean
     isPrimary: boolean
@@ -216,12 +236,24 @@ interface IndexSummary {
 
 interface ForeignKeySummary {
     name: string
+    schema?: string
     tableName: string
+    tableSchema?: string
     columns: string[]
     referencedTable: string
+    referencedSchema?: string
     referencedColumns: string[]
     onDelete?: string
     onUpdate?: string
+}
+
+interface TriggerSummary {
+    name: string
+    schema?: string
+    tableName: string
+    tableSchema?: string
+    timing: 'BEFORE' | 'AFTER' | 'INSTEAD OF'
+    events: ('INSERT' | 'UPDATE' | 'DELETE')[]
 }
 ```
 
@@ -276,7 +308,7 @@ formatSummaryDescription('indexes', { name: 'idx', tableName: 'users', isPrimary
 
 ## Dialect Support
 
-All seven categories work across supported dialects with appropriate translations:
+Categories translate per dialect; unsupported ones return an empty array rather than throwing:
 
 | Feature | PostgreSQL | MySQL | MSSQL | SQLite |
 |---------|------------|-------|-------|--------|
@@ -287,8 +319,11 @@ All seven categories work across supported dialects with appropriate translation
 | Types | ✓ (enum, composite, domain) | — | ✓ (alias, table types) | — |
 | Indexes | ✓ | ✓ | ✓ | ✓ |
 | Foreign Keys | ✓ | ✓ | ✓ | ✓ |
+| Triggers | ✓ | ✓ | ✓ | ✓ |
+| Locks | ✓ | ✓ (`performance_schema`) | ✓ | — |
+| Connections | ✓ | ✓ | ✓ | — |
 
-SQLite doesn't support stored procedures, functions, or user-defined types. MySQL doesn't support user-defined types. These categories return empty arrays for unsupported dialects.
+SQLite doesn't support stored procedures, functions, or user-defined types, and has no server-side lock or connection views. MySQL doesn't support user-defined types, and its lock listing needs `SELECT` on `performance_schema` — without the grant it degrades to an empty list rather than failing the call.
 
 
 ## CLI Integration
@@ -306,7 +341,7 @@ Keyboard shortcuts:
 
 | Key | Action |
 |-----|--------|
-| `e` | Enter explore mode |
+| `x` | Enter explore mode (from the database screen) |
 | `↑/↓` | Navigate lists |
 | `Enter` | View detail |
 | `Esc` | Go back |

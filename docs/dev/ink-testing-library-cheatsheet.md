@@ -1,7 +1,12 @@
 # Ink Testing Library Cheatsheet
 
 
-A comprehensive reference for testing Ink CLI applications with ink-testing-library.
+A reference for testing Ink CLI applications with ink-testing-library (`^4.0.0` here).
+
+Two things differ in this repo, and they apply to every example below:
+
+- **The runner is `bun:test`, not Jest.** Import `describe`/`it`/`expect`/`vi` from `bun:test`. There is no `jest` or `@jest/globals` dependency.
+- **Describe blocks are named `'module: feature'`** per `.claude/rules/testing.md`—e.g. `describe('cli: focus', ...)`, not `describe('FocusItem', ...)`. The bare-component-name form used in the examples is illustrative only.
 
 
 ## Table of Contents
@@ -20,7 +25,7 @@ A comprehensive reference for testing Ink CLI applications with ink-testing-libr
 
 
 ```bash
-npm install --save-dev ink-testing-library
+bun add -d ink-testing-library
 ```
 
 
@@ -481,28 +486,22 @@ describe("AsyncLoader", () => {
 
 ### Testing with Fake Timers
 
+::: warning Not the pattern used here
+No test in this repo uses fake timers, and `jest`/`@jest/globals` are not installed. Timing-dependent TUI tests wait on real timers instead (see the focus example below). Keep this section as generic reference; if you need it, reach for `bun:test`'s own timer mocking, not Jest's.
+:::
+
 ```tsx
-import { jest } from "@jest/globals";
+import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 
-describe("AsyncLoader with fake timers", () => {
+describe("cli: async loader", () => {
 
-    beforeEach(() => {
-
-        jest.useFakeTimers();
-    });
-
-    afterEach(() => {
-
-        jest.useRealTimers();
-    });
-
-    it("should transition states", () => {
+    it("should transition states", async () => {
 
         const { lastFrame } = render(<AsyncLoader />);
 
         expect(lastFrame()).toBe("Loading...");
 
-        jest.advanceTimersByTime(150);
+        await new Promise((r) => setTimeout(r, 150));
 
         expect(lastFrame()).toBe("Loaded!");
     });
@@ -534,7 +533,7 @@ describe("DataFetcher", () => {
 
     it("should display fetched data", async () => {
 
-        const mockFetch = jest.fn().mockResolvedValue("Fetched data");
+        const mockFetch = vi.fn().mockResolvedValue("Fetched data");
         const { lastFrame } = render(<DataFetcher fetchFn={mockFetch} />);
 
         expect(lastFrame()).toBe("Loading...");
@@ -546,7 +545,7 @@ describe("DataFetcher", () => {
 
     it("should display error on failure", async () => {
 
-        const mockFetch = jest.fn().mockRejectedValue(new Error("Network error"));
+        const mockFetch = vi.fn().mockRejectedValue(new Error("Network error"));
         const { lastFrame } = render(<DataFetcher fetchFn={mockFetch} />);
 
         await new Promise(process.nextTick);
@@ -606,7 +605,7 @@ function TestWrapper({ onInput }: { onInput: (input: string) => void }) {
 
 it("should capture input", () => {
 
-    const onInput = jest.fn();
+    const onInput = vi.fn();
     const { stdin } = render(<TestWrapper onInput={onInput} />);
 
     stdin.write("x");
@@ -654,45 +653,72 @@ describe("ExitOnQ", () => {
 
 ### Testing Focus
 
+noorm does not use Ink's `useFocus`. Components take focus through `useFocusScope` inside a `FocusProvider` (`src/tui/focus.tsx`).
+
+Two things follow from how that provider works, and both shape the test:
+
+- Focus is a **stack**, not a Tab ring. `useFocusScope` pushes on mount and pops on unmount; whichever scope is on top is focused. Tab does not cycle between siblings—mounting and unmounting is what moves focus.
+- The push happens in `useEffect`, so `isFocused` is false on the first frame. Wait before asserting, and again after any `stdin.write`.
+
 ```tsx
-import { useFocus, Text } from "ink";
+import { describe, it, expect } from "bun:test";
+import { render } from "ink-testing-library";
+import { Box, Text } from "ink";
 
-function FocusableItem({ id }: { id: string }) {
+import { FocusProvider, useFocusScope } from "../../src/tui/focus.js";
 
-    const { isFocused } = useFocus({ id });
+function Panel({ label }: { label: string }) {
+
+    const { isFocused } = useFocusScope(label);
 
     return (
         <Text color={isFocused ? "green" : "white"}>
-            {isFocused ? "> " : "  "}Item {id}
+            {isFocused ? "> " : "  "}{label}
         </Text>
     );
 }
 
-describe("FocusableItem", () => {
+describe("cli: panel focus", () => {
 
-    it("should show focus indicator when focused", () => {
+    it("should hand focus back when the top scope unmounts", async () => {
 
-        const { lastFrame, stdin } = render(
-            <Box flexDirection="column">
-                <FocusableItem id="1" />
-                <FocusableItem id="2" />
-            </Box>
+        const { lastFrame, rerender, unmount } = render(
+            <FocusProvider>
+                <Box flexDirection="column">
+                    <Panel label="list" />
+                    <Panel label="detail" />
+                </Box>
+            </FocusProvider>
         );
 
-        // First item focused by default (if autoFocus)
-        expect(lastFrame()).toContain("> Item 1");
+        // Focus stack initializes in useEffect — wait before asserting
+        await new Promise((r) => setTimeout(r, 50));
+        expect(lastFrame()).toContain("> detail");   // last pushed wins
 
-        // Tab to next item
-        stdin.write("\t");
-        expect(lastFrame()).toContain("> Item 2");
+        rerender(
+            <FocusProvider>
+                <Box flexDirection="column">
+                    <Panel label="list" />
+                </Box>
+            </FocusProvider>
+        );
+
+        await new Promise((r) => setTimeout(r, 50));
+        expect(lastFrame()).toContain("> list");
+
+        unmount();  // Clean up stdin handlers
     });
 });
 ```
 
+Real examples live in `tests/cli/focus.test.tsx`, which also sets `IS_REACT_ACT_ENVIRONMENT = true`—React 19 needs it for `act()` to flush effects outside a browser.
+
+When a test does send keys, the codes are `\x1b[B` (down), `\x1b[A` (up), `\r` (enter), `\x1b` (escape), with a wait on either side of the write.
+
 
 ### Cleanup Between Tests
 
-Always unmount or let jest handle cleanup:
+Always unmount when the test is done:
 
 ```tsx
 describe("MyComponent", () => {

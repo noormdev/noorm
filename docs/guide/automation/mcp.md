@@ -77,12 +77,14 @@ If you need to configure the server manually (e.g., for a custom agent), add thi
 {
     "mcpServers": {
         "noorm": {
-            "command": "npx",
-            "args": ["noorm", "mcp", "serve"]
+            "command": "noorm",
+            "args": ["mcp", "serve"]
         }
     }
 }
 ```
+
+This is the exact entry `noorm mcp init` writes, so the two routes produce the same server.
 
 The server uses stdio transport — no ports, no HTTP.
 
@@ -91,14 +93,13 @@ The server uses stdio transport — no ports, no HTTP.
 
 Once connected, your agent can:
 
-- **Explore schemas** — list tables, columns, foreign keys, indexes
-- **Run SQL** — execute queries and get structured results
-- **Manage configs** — list, switch, and validate connections
-- **Apply changes** — run forward/revert migrations
-- **Build schemas** — execute SQL files
-- **Inspect templates** — see available context before rendering
+- **Explore schemas** — `overview`, `list`, `detail` for tables, columns, foreign keys, indexes
+- **Run SQL** — `sql` executes a query and returns structured results
+- **Manage connections** — `list_configs`, `connect`, `disconnect`, `status`
+- **Apply changes** — `change_run`, `change_ff`, `change_revert`, `change_history`
+- **Build schemas** — `run_build`, `run_file`
 
-Config resolution and identity attribution work the same as the CLI. Access control does not: every command is gated by the config's **`agent` role** before its handler ever runs, and there is no confirmation flow — the agent gets an answer, not a prompt.
+Config resolution and identity attribution work the same as the CLI. Access control does not: every config-scoped command is gated by the config's **`agent` role** before its handler ever runs, and there is no confirmation flow — the agent gets an answer, not a prompt.
 
 
 ## Access Roles
@@ -111,12 +112,12 @@ A config that never declared `access` gets `{ user: 'admin', agent: 'viewer' }`.
 
 | Role | What the agent can do |
 |------|------------------------|
-| `viewer` | Explore schema, run read-only SQL (`SELECT`, `EXPLAIN`, `SHOW`, `DESCRIBE`) |
-| `operator` | Everything `viewer` can, plus SQL writes (`INSERT`/`UPDATE`/`DELETE`) — destructive commands (`change_run`, `run_build`, etc.) are still out of reach |
-| `admin` | Full access: writes, DDL, changes, builds — frictionless, no confirmation |
+| `viewer` | Explore schema, run read-only SQL (`SELECT`, `SHOW`, `DESCRIBE`) |
+| `operator` | Everything `viewer` can, plus SQL writes (`INSERT`/`UPDATE`/`DELETE`) — DDL and destructive commands (`change_run`, `run_build`, etc.) are still out of reach |
+| `admin` | Writes, DDL, changes, builds, all frictionless. Permissions the matrix marks `confirm` even for `admin` (`db:teardown`, `db:destroy`, `config:write`) still deny on this channel |
 | `false` | Invisible — the config does not exist on this channel |
 
-Raw SQL is classified by what the statement actually does (`sql:read` / `sql:write` / `sql:ddl`), not by which command the agent called — an agent with `agent: viewer` gets a `SELECT` through but a same-shaped `INSERT` denied.
+Raw SQL is classified by what the statement actually does (`sql:read` / `sql:write` / `sql:ddl`), not by which command the agent called — an agent with `agent: viewer` gets a `SELECT` through but a same-shaped `INSERT` denied. `EXPLAIN` takes the class of the statement it wraps, because `EXPLAIN ANALYZE` runs that statement: `EXPLAIN SELECT` is a read, `EXPLAIN DELETE` is a write.
 
 The matrix's `confirm` cells never prompt on this channel — they resolve straight to **deny**. An agent typing its own confirmation phrase would be theater, not a safeguard, and on the CLI it would need only `--yes`. If an agent legitimately needs to run changes on a database, give that config `agent: 'admin'` — reserve it for configs where that's an acceptable risk (a disposable dev database, say), not production.
 
@@ -131,7 +132,7 @@ access:
 
 ## Invisible Configs
 
-Set `access.agent: false` to hide a config from agents entirely — over MCP it never appears in `list_configs`, and `connect`/`getContext` fail with the same error an unknown config name would produce. `noorm config list` filters it the same way when an agent runs it. An agent enumerating configs cannot tell the difference between "doesn't exist" and "exists but is off-limits."
+Set `access.agent: false` to hide a config from agents entirely — over MCP it never appears in `list_configs` or `status`, and `connect` fails with the same error an unknown config name would produce. `noorm config list` filters it the same way when an agent runs it. An agent enumerating configs cannot tell the difference between "doesn't exist" and "exists but is off-limits."
 
 
 ## Security

@@ -15,12 +15,14 @@ The databases share the same schema—same tables, same columns. You need the da
 
 | Dialect | Supported | Same-server optimization | Cross-dialect |
 |---------|-----------|--------------------------|---------------|
-| PostgreSQL | Yes | Only within same database | Yes |
+| PostgreSQL | Yes | No | Yes |
 | MySQL | Yes | Yes (cross-database on same host) | Yes |
 | MSSQL | Yes | Yes (cross-database on same host) | Yes |
 | SQLite | No | — | — |
 
-Same-server optimization uses direct `INSERT...SELECT` SQL instead of reading data into the application and writing it back. Significantly faster for large datasets.
+Same-server optimization uses direct `INSERT...SELECT` SQL instead of reading data into the application and writing it back. Faster for large datasets.
+
+PostgreSQL never takes that path. Without `dblink` or `postgres_fdw` it cannot reach another database, and when both configs name the same database the statement degenerates into copying a table into itself. PostgreSQL transfers always run through the batch path instead.
 
 Cross-dialect transfers convert data types automatically through a universal type system. Most common types map cleanly; some dialect-specific features (like PostgreSQL arrays) become JSON in dialects that don't support them natively.
 
@@ -48,18 +50,20 @@ The TUI shows live progress per table with row counts and batch completion.
 
 ## Headless Mode
 
-The `--to` flag is required. Source defaults to the active config.
+Exactly one of `--to`, `--export`, or `--import` is required; they are mutually exclusive. The source is the active config unless `-c` names another.
 
 ```bash
 # Transfer all tables from active config to backup
 noorm db transfer --to backup
 
-# Specify source explicitly
-noorm db transfer staging --to production
+# Specify source explicitly with -c
+noorm db transfer -c staging --to production
 
 # Transfer specific tables only
 noorm db transfer --to backup --tables users,posts,comments
 ```
+
+There is no positional source argument. `noorm db transfer staging --to production` does not name `staging` as the source; use `-c staging` (or `--config staging`).
 
 ### Dry Run
 
@@ -138,9 +142,12 @@ Transfer result:
         }
     ],
     "totalRows": 1500,
-    "durationMs": 1234
+    "durationMs": 1234,
+    "fkChecksRestored": true
 }
 ```
+
+Check `fkChecksRestored`. When it is `false`, the transfer finished but foreign key enforcement could not be turned back on at the destination, and referential integrity is still disabled there until you re-enable it by hand. The CLI also writes a warning to stderr in that case.
 
 Dry run result:
 
@@ -166,7 +173,7 @@ Dry run result:
 
 ## What Happens During a Transfer
 
-1. **Planning** — noorm reads the source schema, builds a foreign key dependency graph, and sorts tables so parents are transferred before children.
+1. **Planning** — noorm reads the source schema, builds a foreign key dependency graph, and sorts tables so parents are transferred before children. A circular foreign key relationship cannot be sorted, so noorm falls back to the source's own table order and records a warning in the plan.
 
 2. **FK checks disabled** — Foreign key constraints are temporarily disabled on the destination to avoid ordering issues within batches.
 
@@ -183,7 +190,10 @@ Dry run result:
 
 - Destination tables must **already exist** with compatible column structure
 - The noorm project must have configs for both source and destination databases
+- The destination config's access role must permit `db:reset`: `viewer` is denied, `operator` and `admin` may write. From the SDK, an `operator` destination needs `yes: true` on the context (or `NOORM_YES=1`), since there is no prompt to answer
 - For cross-dialect transfers, column types must be convertible (most are; check the dry-run output for warnings)
+
+noorm's own tracking tables are never transferred. They are filtered out of the plan on both ends.
 
 
 ## Common Patterns
@@ -191,7 +201,7 @@ Dry run result:
 ### Seed a dev database from staging
 
 ```bash
-noorm db transfer staging --to local --truncate
+noorm db transfer -c staging --to local --truncate
 ```
 
 Clears the local database first, then copies everything from staging.
@@ -223,7 +233,7 @@ Only transfers the specified tables. FK dependencies between selected tables are
 ### CI/CD test data setup
 
 ```bash
-noorm db transfer staging --to ci-test --truncate --on-conflict fail --json
+noorm db transfer -c staging --to ci-test --truncate --on-conflict fail --json
 ```
 
 Clean transfer for test environments. JSON output for pipeline integration. Fails fast if anything goes wrong.
@@ -231,8 +241,8 @@ Clean transfer for test environments. JSON output for pipeline integration. Fail
 ### Cross-dialect migration
 
 ```bash
-noorm db transfer postgres-legacy --to mysql-new --dry-run
-noorm db transfer postgres-legacy --to mysql-new
+noorm db transfer -c postgres-legacy --to mysql-new --dry-run
+noorm db transfer -c postgres-legacy --to mysql-new
 ```
 
 Migrate from PostgreSQL to MySQL. Run `--dry-run` first to check for type conversion warnings.
@@ -246,15 +256,20 @@ Export data to portable `.dt` files for backup, sharing, or migration without a 
 
 | Extension | Description |
 |-----------|-------------|
-| `.dt` | Plain text (human-readable) |
-| `.dtz` | Compressed (gzip) |
-| `.dtzx` | Encrypted + compressed (requires passphrase) |
+| `.dt` | Line-delimited JSON5, uncompressed and human-readable |
+| `.dtz` | The same content, gzipped |
+| `.dtzx` | Gzipped and AES-256-GCM encrypted (requires passphrase) |
+
+`.dt` and `.dtz` stream row by row on import. `.dtzx` is decrypted and inflated whole before the first row is read, so it carries a size ceiling the other two do not.
 
 ### Export to Files
 
-The `--tables` flag is required for export.
+`--tables` defaults to every table in the source. Pass it to narrow the export.
 
 ```bash
+# Export every table to a directory
+noorm db transfer --export ./backup/
+
 # Export single table
 noorm db transfer --export ./backup/users.dt --tables users
 
@@ -268,8 +283,12 @@ noorm db transfer --export ./backup/ --tables users,posts --compress
 noorm db transfer --export ./backup/ --tables users --passphrase "my-secret"
 ```
 
+An export that would write nothing is an error, not a silent success: both an empty `--tables` list and a source with no tables fail rather than leaving you with an empty backup you believe is good.
+
+On an interactive terminal, omitting `--passphrase` for a `.dtzx` path prompts for it with masked input, which keeps the secret out of your shell history. Non-interactive runs need the flag.
+
 **Path rules:**
-- Single table → path is the output file
+- Single table → path is the output file, with the extension appended if missing
 - Multiple tables → path is a directory, noorm creates `<table>.dt` per table
 
 ### Import from Files

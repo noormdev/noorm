@@ -112,10 +112,32 @@ describe('cli: noorm ci init', () => {
         expect(json.success).toBe(true);
         expect(json.config.name).toBe('ci');
         expect(json.config.dialect).toBe('postgres');
-        expect(json.config.isTest).toBe(true);
         expect(json.identity.source).toBe('env');
 
         expect(existsSync(join(tmpDir, '.noorm', 'state', 'state.enc'))).toBe(true);
+
+    });
+
+    it('does not mark the config as a test database by default', () => {
+
+        const result = runInit(tmpDir, { ...validIdentityEnv(), ...validConnectionEnv() }, ['--json']);
+
+        expect(result.status).toBe(0);
+
+        // isTest is what the SDK's requireTest guard checks before letting a
+        // suite truncate or teardown. Stamping it on every config this command
+        // creates made that guard pass against a production database
+        // bootstrapped by the documented prod-CI flow.
+        expect(JSON.parse(result.stdout.trim()).config.isTest).toBe(false);
+
+    });
+
+    it('marks the config as a test database when --test is passed', () => {
+
+        const result = runInit(tmpDir, { ...validIdentityEnv(), ...validConnectionEnv() }, ['--json', '--test']);
+
+        expect(result.status).toBe(0);
+        expect(JSON.parse(result.stdout.trim()).config.isTest).toBe(true);
 
     });
 

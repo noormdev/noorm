@@ -25,6 +25,9 @@ Both operations:
 - Preserve noorm internal tables (`__noorm_*`)
 - Support dry-run mode for preview
 - Generate dialect-specific SQL
+- Take an optional `policy` context, enforced before anything is written
+
+`truncateData` always re-enables FK checks, even when the truncate itself fails partway. A mid-truncate error must never leave enforcement off — MSSQL's per-table `NOCHECK` survives reconnects until manually repaired. When both phases fail, the truncate error is the one thrown; the caller needs to know why the truncate broke, not just that re-enabling also failed.
 
 In SDK terms, `db.truncate()` is the data wipe and `db.reset()` is the schema teardown plus re-run of changes. Reach for `truncate()` between tests when the schema is stable; reach for `reset()` when you want a from-scratch rebuild. See [reference/sdk.md](../reference/sdk.md) for the surface.
 
@@ -91,7 +94,9 @@ console.log('Dropped:')
 console.log(`  Tables: ${result.dropped.tables.length}`)
 console.log(`  Views: ${result.dropped.views.length}`)
 console.log(`  Functions: ${result.dropped.functions.length}`)
+console.log(`  Procedures: ${result.dropped.procedures.length}`)
 console.log(`  Types: ${result.dropped.types.length}`)
+console.log(`  Foreign keys: ${result.dropped.foreignKeys.length}`)
 console.log(`Preserved: ${result.preserved.join(', ')}`)
 ```
 
@@ -100,11 +105,12 @@ console.log(`Preserved: ${result.preserved.join(', ')}`)
 Objects are dropped in dependency-safe order:
 
 1. **Foreign key constraints** - Released first so tables can be dropped later
-2. **Procedures** - Dropped before functions/views/tables they call
-3. **Functions** - Dropped before tables, because schema-bound UDFs (e.g. MSSQL `WITH SCHEMABINDING`) hold dependency locks on the tables they reference. Drop the table first and you get `Cannot DROP TABLE ... because it is being referenced by object 'fn_X'`
-4. **Views** - Same reason as functions; schema-bound views block table drops until they are gone
-5. **Tables** - Safe now that all schema-bound dependents have been removed
-6. **Types** - Enums, composites, and table types (TVPs) drop last
+2. **CHECK constraints** - MSSQL only, and only when `keepFunctions` is false. A scalar UDF referenced by a CHECK constraint cannot be dropped while its table still exists (MSSQL error 3729), and functions are dropped before tables at step 4, so the CHECK dependency has to be severed first. Other dialects omit this step entirely
+3. **Procedures** - Dropped before functions/views/tables they call
+4. **Functions** - Dropped before tables, because schema-bound UDFs (e.g. MSSQL `WITH SCHEMABINDING`) hold dependency locks on the tables they reference. Drop the table first and you get `Cannot DROP TABLE ... because it is being referenced by object 'fn_X'`
+5. **Views** - Same reason as functions; schema-bound views block table drops until they are gone
+6. **Tables** - Safe now that all schema-bound dependents have been removed
+7. **Types** - Enums, composites, and table types (TVPs) drop last. Composites sort ahead of the rest, since they can be referenced by other types and MSSQL's `DROP TYPE` has no `CASCADE`. On MSSQL, types are skipped entirely when `keepFunctions` or `keepProcedures` is set — the dependency chain functions → TVPs → domain types cannot be unwound without `CASCADE`
 
 The order is identical across all dialects. PostgreSQL/MySQL don't strictly require procs/funcs/views to drop before tables — `DROP TABLE ... CASCADE` would handle it — but the same order is correct and harmless, so noorm uses it everywhere for consistency. MSSQL is the dialect that breaks under any other ordering, because it has no `CASCADE` for `DROP TABLE` and schema-bound objects hold real dependency locks.
 
@@ -114,11 +120,14 @@ Keep certain object types:
 
 ```typescript
 const result = await teardownSchema(db, 'postgres', {
-    keepViews: true,      // Preserve all views
-    keepFunctions: true,  // Preserve procedures and functions
-    keepTypes: true,      // Preserve enum and composite types
+    keepViews: true,       // Preserve all views
+    keepFunctions: true,   // Preserve functions only
+    keepProcedures: true,  // Preserve stored procedures — a separate flag
+    keepTypes: true,       // Preserve enum and composite types
 })
 ```
+
+`keepFunctions` and `keepProcedures` are independent. Setting only `keepFunctions` still drops every stored procedure.
 
 Preserve specific tables:
 
@@ -126,6 +135,25 @@ Preserve specific tables:
 const result = await teardownSchema(db, 'postgres', {
     preserveTables: ['audit_log', 'system_config'],
 })
+```
+
+Preserve whole schemas. `preserveTables` is a flat name list, so excluding `app_private.secrets` by name would also spare a `public.secrets` — `preserveSchemas` is the way to say "leave this schema alone":
+
+```typescript
+const result = await teardownSchema(db, 'postgres', {
+    preserveSchemas: ['app_private', 'analytics'],
+})
+```
+
+Record the teardown in change history. When both are supplied and this is not a dry run, teardown marks every successful change as `stale` and writes a reset record:
+
+```typescript
+const result = await teardownSchema(db, 'postgres', {
+    configName: 'dev',
+    executedBy: 'alice@example.com',
+})
+
+console.log(`Marked ${result.staleCount} changes stale (record ${result.resetRecordId})`)
 ```
 
 ### Post-Teardown Script
@@ -184,6 +212,12 @@ interface TruncateOptions {
 
     /** Dry run - return SQL without executing */
     dryRun?: boolean
+
+    /**
+     * Access policy enforced before wiping (`db:truncate`). Omitted by callers
+     * that already ran an equivalent gate; supplied by every caller that owns none.
+     */
+    policy?: DbPolicyContext
 }
 ```
 
@@ -194,11 +228,17 @@ interface TeardownOptions {
     /** Additional tables to preserve beyond __noorm_* */
     preserveTables?: string[]
 
+    /** Schemas to leave untouched entirely */
+    preserveSchemas?: string[]
+
     /** Keep views (default: false) */
     keepViews?: boolean
 
-    /** Keep functions/procedures (default: false) */
+    /** Keep functions (default: false) */
     keepFunctions?: boolean
+
+    /** Keep stored procedures (default: false) */
+    keepProcedures?: boolean
 
     /** Keep types/enums (default: false) */
     keepTypes?: boolean
@@ -208,6 +248,15 @@ interface TeardownOptions {
 
     /** Dry run - return SQL without executing */
     dryRun?: boolean
+
+    /** Marks changes stale and records a reset event when set */
+    configName?: string
+
+    /** Identity of who tore down. Required when configName is provided */
+    executedBy?: string
+
+    /** Access policy enforced before dropping (`db:teardown`) */
+    policy?: DbPolicyContext
 }
 ```
 
@@ -226,6 +275,7 @@ interface TeardownResult {
         tables: string[]
         views: string[]
         functions: string[]
+        procedures: string[]
         types: string[]
         foreignKeys: string[]
     }
@@ -236,8 +286,18 @@ interface TeardownResult {
         executed: boolean
         error?: string
     }
+    staleCount?: number       // set when configName + executedBy provided
+    resetRecordId?: number    // set when configName + executedBy provided
+}
+
+interface TeardownPreview {
+    toDrop: TeardownResult['dropped']
+    toPreserve: string[]
+    statements: string[]
 }
 ```
+
+Object names in `dropped` / `preserved` are schema-qualified whenever the object sits outside the dialect's default schema (`public` on PostgreSQL, `dbo` on SQL Server). A bare `secrets` in a dry run would otherwise be indistinguishable from `public.secrets`, hiding the fact that a schema noorm never created is about to be dropped.
 
 
 ## Dialect Support
@@ -298,9 +358,9 @@ observer.on('teardown:complete', ({ result }) => {
 
 Access teardown from the database menu:
 
-1. Press `d` from home to enter database menu
+1. Press `d` from home to enter the database screen
 2. Select a config with an active connection
-3. Choose truncate or teardown operation
+3. Press `w` to wipe data (truncate) or `t` to tear down the schema
 4. Confirm the destructive action
 
 The CLI shows a preview of affected objects before execution and requires explicit confirmation for non-dry-run operations.
@@ -309,9 +369,17 @@ The CLI shows a preview of affected objects before execution and requires explic
 ## Safety Features
 
 **Always Preserved:**
+
+Every table whose name starts with `__noorm_` is preserved — that is the whole `isNoormTable` rule, not a fixed list:
+
+- `__noorm_version__` - Schema version tracking
 - `__noorm_change__` - Change execution history
 - `__noorm_executions__` - File execution records
-- `__noorm_locks__` - Active operation locks
+- `__noorm_lock__` - Active operation locks
+- `__noorm_identities__` - Team identities and wrapped vault keys
+- `__noorm_vault__` - Encrypted team secrets
+
+Those are the MySQL/SQLite prefixed names. PostgreSQL and SQL Server keep the same tables in a dedicated `noorm` schema with clean names (`noorm.change`, `noorm.lock`, …), where the prefix rule would never match — they are safe for a different reason: the explore dialects exclude the `noorm` schema from every listing, so teardown never enumerates them in the first place.
 
 **Confirmation Required:**
 - Teardown is gated by the config's access role: `viewer`/`operator` is denied or requires confirmation, `admin` runs unconfirmed

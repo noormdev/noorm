@@ -20,10 +20,12 @@ State holds secrets and credentials. Settings holds team-shared rules. Database 
 
 ```mermaid
 erDiagram
-    STATE ||--o| CRYPTO_IDENTITY : has
     STATE ||--o{ KNOWN_USER : contains
     STATE ||--o{ CONFIG : stores
     STATE ||--o{ SECRET : encrypts
+
+    KEY_FILES ||--|| CRYPTO_IDENTITY : holds
+    CRYPTO_IDENTITY ||--o{ KNOWN_USER : discovers
 
     CONFIG ||--|| CONNECTION_CONFIG : contains
     CONFIG ||--o{ SECRET : scoped_to
@@ -54,13 +56,15 @@ The encrypted state file at `.noorm/state/state.enc` contains all sensitive conf
 
 | Field | Type | Description |
 |-------|------|-------------|
-| version | string | noorm version for migrations |
-| identity | CryptoIdentity? | User's cryptographic identity |
-| knownUsers | Map | Known users discovered from databases |
-| activeConfig | string? | Currently selected config name |
+| version | string | Package version that last saved this state |
+| schemaVersion | number | State schema version, driving the `core/version/state` migrations |
+| knownUsers | Map | Known users discovered from databases (identityHash → KnownUser) |
+| activeConfig | string \| null | Currently selected config name |
 | configs | Map | Database configurations by name |
 | secrets | Map | Config-scoped secrets (configName → key → value) |
 | globalSecrets | Map | App-level secrets shared across configs |
+
+The cryptographic identity is **not** in state—it lives in `~/.noorm/` (see [Key Files](#key-files)). State migration v1 still writes a vestigial `identity: null` key onto older files; nothing reads it.
 
 
 ### Encrypted Payload
@@ -69,12 +73,13 @@ On-disk format for the state file.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| algorithm | string | Always `aes-256-gcm` |
+| algorithm | string | Always `aes-256-gcm`; rejected at decrypt if anything else |
+| kdf | string? | Key derivation used. Absent on payloads written before the field existed, which are `hkdf-sha256` by definition |
 | iv | string | Initialization vector (base64) |
 | authTag | string | Authentication tag (base64) |
 | ciphertext | string | Encrypted state JSON (base64) |
 
-The encryption key derives from machine-specific identifiers or the user's cryptographic identity passphrase.
+The AES key derives from the user's private key (`~/.noorm/identity.key`) via HKDF-SHA256. Recording `kdf` is what makes the derivation changeable later—without it, a build that changed the derivation would report every existing state file as "wrong key or corrupted".
 
 
 ---
@@ -94,18 +99,21 @@ A database connection profile stored in encrypted state.
 | isTest | boolean | Yes | Marks database as disposable for testing |
 | access | ConfigAccess | Yes | Per-channel access roles (`{ user, agent }`) — replaces the legacy `protected` boolean |
 | connection | ConnectionConfig | Yes | Database connection details |
-| paths | PathConfig | Yes | File system paths for schema and changes |
 | identity | string | No | Override identity for `executed_by` field |
+
+File system paths are **not** on the config—they come from settings (`paths.sql`, `paths.changes`; see [PathConfig](#pathconfig-settings)).
 
 
 ### ConfigAccess
 
-Per-channel access grant. `Role` is `'viewer' | 'operator' | 'admin'`.
+Per-channel access grant. `Role` is `'viewer' | 'operator' | 'admin'`; `Channel` is `'user' | 'agent'`.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| user | Role | Access for the CLI, TUI, and SDK |
-| mcp | Role \| `false` | Access for the MCP server. `false` hides the config entirely on this channel |
+| user | Role | A human at the keyboard—CLI, TUI, or SDK |
+| agent | Role \| `false` | An AI agent, whichever binary it reached for. `false` hides the config entirely on this channel |
+
+The channel describes *who is driving*, not which transport was used: an agent that shells out to the CLI after an MCP refusal is still `agent`. The field was named `mcp` until state migration v3 renamed it to `agent`.
 
 `checkPolicy(channel, config, permission)` resolves a `ConfigAccess` + `Permission` into `allow`/`confirm`/`deny`, channel-aware (`confirm` prompts on `user`, collapses to `deny` on `agent`). See `docs/spec/config-access-roles.md` for the full permission matrix.
 
@@ -123,8 +131,9 @@ Database connection parameters.
 | filename | string | SQLite | File path for SQLite databases |
 | user | string | No | Database username |
 | password | string | No | Database password |
-| ssl | boolean or object | No | SSL/TLS configuration |
+| ssl | boolean or object | No | SSL/TLS configuration (`rejectUnauthorized`, `ca`, `cert`, `key`) |
 | pool | object | No | Connection pool settings (`min`, `max`) |
+| tlsServerName | string | No | Hostname the server's TLS certificate is issued for. Needed only when `host` is an IP address, since SNI cannot carry an IP literal. MSSQL is the only dialect that reads it |
 
 **Default ports by dialect:**
 
@@ -136,19 +145,9 @@ Database connection parameters.
 | sqlite | N/A |
 
 
-### PathConfig
-
-File system paths for schema and changes.
-
-| Field | Type | Description |
-|-------|------|-------------|
-| schema | string | Path to schema directory |
-| changes | string | Path to changes directory |
-
-
 ### ConfigSummary
 
-Lightweight config view for listings. Omits sensitive connection details.
+Lightweight config view for listings. Omits credentials.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -157,6 +156,8 @@ Lightweight config view for listings. Omits sensitive connection details.
 | isTest | boolean | Test database flag |
 | access | ConfigAccess | Per-channel access roles |
 | isActive | boolean | Currently selected config |
+| dialect | Dialect | `postgres`, `mysql`, `sqlite`, or `mssql` |
+| database | string | Database name |
 
 
 ### Config Resolution Order
@@ -246,12 +247,12 @@ Include acts as a filter, not an ordering mechanism. Files are executed in alpha
 
 ### PathConfig (Settings)
 
-Override default file locations.
+Override default file locations. This is the only place paths are configured—configs do not carry their own.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| schema | string | `schema` | Path to schema files |
-| changes | string | `changes` | Path to change directories |
+| sql | string | `./sql` | Path to SQL files |
+| changes | string | `./changes` | Path to change directories |
 
 
 ### Stage
@@ -301,6 +302,7 @@ Conditional file inclusion/exclusion based on config properties.
 
 | Field | Type | Description |
 |-------|------|-------------|
+| description | string? | Human-readable label (e.g. "test seeds") |
 | match | RuleMatch | Conditions that trigger this rule |
 | include | string[]? | Additional glob patterns to include |
 | exclude | string[]? | Additional glob patterns to exclude |
@@ -341,6 +343,21 @@ File logging configuration.
 | file | string | `.noorm/state/noorm.log` | Log file path |
 | maxSize | string | `10mb` | Maximum file size before rotation |
 | maxFiles | number | `5` | Maximum rotated files to keep |
+
+
+### TeardownConfig
+
+Controls database reset and teardown behavior. See [Teardown](/dev/teardown).
+
+| Field | Type | Description |
+|-------|------|-------------|
+| preserveTables | string[]? | Tables always preserved during truncate operations |
+| postScript | string? | SQL script run after schema teardown (relative to project root) |
+
+
+### Universal Secrets
+
+Top-level `secrets: StageSecret[]` on the settings file declares secrets required by **all** stages, using the same [StageSecret](#stagesecret) shape.
 
 
 ---
@@ -418,10 +435,11 @@ Cryptographic keys are stored outside the project directory.
 ```
 ~/.noorm/
 ├── identity.key        # X25519 private key (hex, mode 600)
-└── identity.pub        # X25519 public key (hex, mode 644)
+├── identity.pub        # X25519 public key (hex, mode 644)
+└── identity.json       # CryptoIdentity metadata (name, email, machine, os, hash)
 ```
 
-The private key never leaves the user's machine. The public key is shared via database identity tables.
+The private key never leaves the user's machine. The public key is shared via database identity tables. The permission check on `identity.key` is a threat-model check, not strict equality—it passes when no group or other bits are set, so `0400` is accepted too.
 
 
 ---
@@ -445,21 +463,21 @@ Format for encrypted config export files (`*.noorm.enc`).
 | ciphertext | string | Encrypted config (hex) |
 
 
-### ExportedConfig
+### Exported Config Payload
 
-The decrypted contents of a shared config.
+The decrypted `ciphertext` is JSON of the shape `{ config, secrets }`. There is no named type for it—it is built inline in `src/tui/screens/config/ConfigExportScreen.tsx`.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| name | string | Config name |
-| dialect | string | Database dialect |
-| connection | object | Host, port, database, ssl, pool (no user/password) |
-| paths | object | Schema and change directories |
-| isTest | boolean | Test database flag |
-| access | ConfigAccess | Per-channel access roles |
+| config.name | string | Config name |
+| config.type | enum | `local` or `remote` |
+| config.isTest | boolean | Test database flag |
+| config.access | ConfigAccess | Per-channel access roles |
+| config.protected | boolean | Compatibility echo of `guarded(config)`, so an older importer still makes a safe (if coarser) access decision |
+| config.connection | object | `dialect`, `host`, `port`, `database`, `ssl` only |
 | secrets | Map | Config-scoped secrets |
 
-**Note:** `user` and `password` are intentionally omitted. Recipients provide their own credentials on import.
+**Note:** `user` and `password` are intentionally omitted. Recipients provide their own credentials on import. `pool` and file system paths are not exported either.
 
 
 ---
@@ -467,7 +485,18 @@ The decrypted contents of a shared config.
 
 ## Database Tables
 
-noorm creates five tracking tables in the target database. All table names are prefixed with `__noorm_` to avoid conflicts.
+noorm creates six tracking tables in the target database, all in schema migration v1.
+
+Their names depend on the dialect. PostgreSQL and SQL Server get a dedicated `noorm` schema with clean names (`noorm.version`, `noorm.change`, and so on). MySQL and SQLite have no schemas, so they keep the `__noorm_*__` prefixed forms in the default schema, which is what the headings below use.
+
+Two column types are also dialect-dependent, and the tables below name the PostgreSQL form:
+
+| Doc type | postgres | mssql | mysql / sqlite |
+|----------|----------|-------|----------------|
+| serial (PK) | `serial` | `int identity(1,1)` | `integer` + `autoIncrement()` |
+| timestamp | `timestamp` | `datetime2` | `timestamp` |
+
+Every timestamp type here is **naive**—it stores a wall clock with no offset. Code writing these columns must serialize UTC and parse back as UTC, or two clients in different timezones will disagree about what an instant means. The postgres and mysql drivers bind and parse a JS `Date` using the client's local offset, so passing a `Date` straight through is what breaks; see `formatDateForDialect`/`parseDateFromDialect` in `src/core/lock/manager.ts`.
 
 
 ### `__noorm_version__`
@@ -481,10 +510,10 @@ Tracks noorm CLI version for internal schema migrations.
 | noorm_version | integer | NOT NULL | Tracking table schema version |
 | state_version | integer | NOT NULL | State file format version |
 | settings_version | integer | NOT NULL | Settings file format version |
-| installed_at | timestamp | NOT NULL, DEFAULT NOW() | First installation |
-| upgraded_at | timestamp | NOT NULL, DEFAULT NOW() | Last upgrade |
+| installed_at | timestamp | NOT NULL, DEFAULT CURRENT_TIMESTAMP | First installation |
+| upgraded_at | timestamp | NOT NULL, DEFAULT CURRENT_TIMESTAMP | Last upgrade |
 
-This table tracks noorm's internal schema, not the user's database schema.
+This table tracks noorm's internal schema, not the user's database schema. It is append-only: every migration and version-record update inserts a new row, so `installed_at` comes from the first row and everything else from the latest.
 
 
 ### `__noorm_change__`
@@ -496,23 +525,27 @@ Tracks all operation batches—changes, builds, and ad-hoc runs.
 | id | serial | PK | Primary key |
 | name | varchar(255) | NOT NULL | Operation identifier |
 | change_type | varchar(50) | NOT NULL | `build`, `run`, or `change` |
-| direction | varchar(50) | NOT NULL | `change` or `revert` |
-| checksum | varchar(64) | NOT NULL | SHA-256 of sorted file checksums |
-| executed_at | timestamp | NOT NULL, DEFAULT NOW() | When executed |
-| executed_by | varchar(255) | NOT NULL | Identity string |
-| config_name | varchar(255) | NOT NULL | Which config was used |
-| cli_version | varchar(50) | NOT NULL | noorm version |
-| status | varchar(50) | NOT NULL | `pending`, `success`, `failed`, `reverted` |
-| error_message | text | NOT NULL | Error details (empty = no error) |
-| duration_ms | integer | NOT NULL | Execution time (0 = never ran) |
+| direction | varchar(50) | NOT NULL | `change` or `revert` (see note below) |
+| checksum | varchar(64) | NOT NULL, DEFAULT `''` | SHA-256 of sorted file checksums |
+| executed_at | timestamp | NOT NULL, DEFAULT CURRENT_TIMESTAMP | When executed |
+| executed_by | varchar(255) | NOT NULL, DEFAULT `''` | Identity string |
+| config_name | varchar(255) | NOT NULL, DEFAULT `''` | Which config was used |
+| cli_version | varchar(50) | NOT NULL, DEFAULT `''` | noorm version |
+| status | varchar(50) | NOT NULL | `pending`, `success`, `failed`, `reverted`, `stale` |
+| error_message | varchar(2000) | NOT NULL, DEFAULT `''` | Error details (empty = no error) |
+| duration_ms | integer | NOT NULL, DEFAULT 0 | Execution time (0 = never ran) |
+
+**Index:** `idx_change_name_config` on (`name`, `config_name`).
+
+**Two `Direction` types exist.** The runner's in-memory `Direction` is `'commit' | 'revert'`; the column's is `'change' | 'revert'`. `Tracker` maps `commit` → `change` on write, so the database only ever holds `change` or `revert`. Query on those.
 
 **Name formats by change type:**
 
 | Change Type | Format | Example |
 |-------------|--------|---------|
-| change | Folder name | `2024-01-15_add-users` |
-| build | `build:{timestamp}` | `build:2024-01-15T10:30:00` |
-| run | `run:{timestamp}` | `run:2024-01-15T10:30:00` |
+| change | Folder name | `2024-01-15-add-users` |
+| build | `build:{ISO timestamp}` | `build:2024-01-15T10:30:00.000Z` |
+| run | `run:{ISO timestamp}` | `run:2024-01-15T10:30:00.000Z` |
 
 
 ### `__noorm_executions__`
@@ -522,15 +555,17 @@ Tracks individual file executions within an operation.
 | Column | Type | Constraints | Description |
 |--------|------|-------------|-------------|
 | id | serial | PK | Primary key |
-| change_id | integer | FK, NOT NULL | Parent operation |
+| change_id | integer | FK → change(id) ON DELETE CASCADE, NOT NULL | Parent operation |
 | filepath | varchar(500) | NOT NULL | Executed file path |
 | file_type | varchar(10) | NOT NULL | `sql` or `txt` |
-| checksum | varchar(64) | NOT NULL | SHA-256 of file contents |
-| cli_version | varchar(50) | NOT NULL | noorm version |
+| checksum | varchar(64) | NOT NULL, DEFAULT `''` | SHA-256 of file contents |
+| cli_version | varchar(50) | NOT NULL, DEFAULT `''` | noorm version |
 | status | varchar(50) | NOT NULL | `pending`, `success`, `failed`, `skipped` |
-| error_message | text | NOT NULL | Error details (empty = no error) |
-| skip_reason | varchar(100) | NOT NULL | Why skipped (empty = not skipped) |
-| duration_ms | integer | NOT NULL | Execution time (0 = never ran) |
+| error_message | varchar(2000) | NOT NULL, DEFAULT `''` | Error details (empty = no error) |
+| skip_reason | varchar(100) | NOT NULL, DEFAULT `''` | Why skipped (empty = not skipped); truncated to 100 chars on write |
+| duration_ms | integer | NOT NULL, DEFAULT 0 | Execution time (0 = never ran) |
+
+**Index:** `idx_executions_change_id` on (`change_id`).
 
 
 ### `__noorm_lock__`
@@ -542,9 +577,9 @@ Prevents concurrent operations on the same database.
 | id | serial | PK | Primary key |
 | config_name | varchar(255) | UNIQUE, NOT NULL | Lock scope |
 | locked_by | varchar(255) | NOT NULL | Identity of holder |
-| locked_at | timestamp | NOT NULL, DEFAULT NOW() | When acquired |
+| locked_at | timestamp | NOT NULL, DEFAULT CURRENT_TIMESTAMP | When acquired |
 | expires_at | timestamp | NOT NULL | Auto-expiry time |
-| reason | varchar(255) | NOT NULL | Lock reason (empty = none) |
+| reason | varchar(255) | NOT NULL, DEFAULT `''` | Lock reason (empty = none) |
 
 Locks automatically expire to prevent deadlocks from crashed processes.
 
@@ -562,10 +597,27 @@ Stores user identities for team discovery.
 | machine | varchar(255) | NOT NULL | Machine hostname |
 | os | varchar(255) | NOT NULL | OS platform and version |
 | public_key | text | NOT NULL | X25519 public key (hex) |
-| registered_at | timestamp | NOT NULL, DEFAULT NOW() | First registration |
-| last_seen_at | timestamp | NOT NULL, DEFAULT NOW() | Last activity |
+| encrypted_vault_key | text | NULL | Vault key encrypted with this user's public key. NULL for users without vault access |
+| registered_at | timestamp | NOT NULL, DEFAULT CURRENT_TIMESTAMP | First registration |
+| last_seen_at | timestamp | NOT NULL, DEFAULT CURRENT_TIMESTAMP | Last activity |
 
-Auto-populated on first database connection when cryptographic identity is configured.
+Auto-populated on first database connection when cryptographic identity is configured. `encrypted_vault_key` is the only nullable column in any tracking table.
+
+
+### `__noorm_vault__`
+
+Team-shared secrets, encrypted with a vault key distributed via each member's public key. Full lifecycle in [Vault](/dev/vault).
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| id | serial | PK | Primary key |
+| secret_key | varchar(255) | UNIQUE, NOT NULL | Secret key name (e.g. `API_KEY`) |
+| encrypted_value | text | NOT NULL | AES-256-GCM encrypted value, JSON `{iv, authTag, ciphertext}` |
+| set_by | varchar(255) | NOT NULL | Identity that set this secret |
+| created_at | timestamp | NOT NULL, DEFAULT CURRENT_TIMESTAMP | When created |
+| updated_at | timestamp | NOT NULL, DEFAULT CURRENT_TIMESTAMP | When last updated |
+
+**Index:** `idx_vault_secret_key` on (`secret_key`).
 
 
 ---
@@ -580,7 +632,7 @@ Changes live on disk as directories with a specific structure.
 
 ```
 changes/
-└── 2024-01-15_add-email-verification/
+└── 2024-01-15-add-email-verification/
     ├── change/
     │   ├── 001_add-column.sql
     │   ├── 002_update-data.sql
@@ -598,9 +650,9 @@ When read from disk, changes are parsed into:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| name | string | Folder name (e.g., `2024-01-15_add-email-verification`) |
+| name | string | Folder name (e.g., `2024-01-15-add-email-verification`) |
 | path | string | Absolute path to directory |
-| date | Date? | Parsed from name prefix (YYYY-MM-DD) |
+| date | Date \| null | Parsed from name prefix (YYYY-MM-DD), null if no date prefix |
 | description | string | Human-readable, derived from name |
 | changeFiles | ChangeFile[] | Files in `change/` subdirectory |
 | revertFiles | ChangeFile[] | Files in `revert/` subdirectory |
@@ -633,15 +685,17 @@ Individual file within a change.
 Change folder names follow a convention:
 
 ```
-{date}_{description}
+{date}-{description}
 ```
 
 | Component | Format | Example |
 |-----------|--------|---------|
 | date | `YYYY-MM-DD` | `2024-01-15` |
-| description | kebab-case | `add-email-verification` |
+| description | kebab-case (slugified) | `add-email-verification` |
 
-The date prefix ensures chronological ordering. The description provides context.
+The date prefix ensures chronological ordering. The description provides context. The separator is a hyphen, matching the date's own separators—the parser's prefix regex is `/^(\d{4}-\d{2}-\d{2})-(.+)$/`.
+
+Files *inside* `change/` and `revert/` use a different convention: `{sequence}_{slug}.{ext}`, with an underscore (e.g. `001_add-column.sql`).
 
 
 ---
@@ -660,6 +714,7 @@ Used in `__noorm_change__` and change results.
 | success | Completed successfully |
 | failed | Execution failed |
 | reverted | Was applied, then rolled back |
+| stale | Schema objects were torn down; needs re-run |
 
 
 ### Execution Status
@@ -676,11 +731,15 @@ Used in `__noorm_executions__` and file results.
 
 ### Skip Reasons
 
+Free-form text, not an enum. The values emitted today:
+
 | Reason | Meaning |
 |--------|---------|
 | unchanged | File checksum matches previous run |
 | already-run | File was already executed successfully |
-| change failed | Parent change failed |
+| already applied | The change as a whole was already applied |
+| change failed | Parent change failed with no single culprit file |
+| `{file} failed: {error}` | Parent change failed at a named file; remaining files skipped |
 
 
 ### Lock
@@ -701,6 +760,7 @@ Options for lock acquisition.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
+| dialect | enum | `postgres` | Dialect, used to pick the date format written to `locked_at`/`expires_at` |
 | timeout | number | 300,000 (5 min) | Lock duration in ms |
 | wait | boolean | false | Block until available |
 | waitTimeout | number | 30,000 (30 sec) | Maximum wait time in ms |
@@ -717,9 +777,9 @@ Options for file execution.
 | force | boolean | false | Re-run even if unchanged |
 | concurrency | number | 1 | Parallel file execution |
 | abortOnError | boolean | true | Stop on first failure |
-| dryRun | boolean | false | Render to temp without executing |
-| preview | boolean | false | Output SQL without executing |
-| output | string? | — | Write rendered SQL to file |
+| dryRun | boolean | false | Report what would run without executing |
+| preview | boolean | false | Output rendered SQL without executing |
+| output | string \| null | null | Write preview output to file instead of stdout |
 
 **Note:** Concurrency defaults to 1 (sequential) because DDL operations often cannot run in parallel.
 
@@ -736,8 +796,8 @@ Available in `.sql.tmpl` templates via Eta.
 
 | Property | Type | Description |
 |----------|------|-------------|
-| `$.<filename>` | any | Auto-loaded data from co-located files |
-| `$.config` | object | Active config values |
+| `$.<filename>` | any | Auto-loaded data from co-located files (key is the camelCased filename) |
+| `$.config` | object? | Active config values. Present only when no `config.*` data file exists in the template directory—a co-located file wins |
 | `$.secrets` | Map | Config-scoped secrets |
 | `$.globalSecrets` | Map | App-level secrets |
 | `$.env` | Map | Environment variables |
@@ -761,11 +821,14 @@ Files co-located with templates are automatically loaded.
 
 | Extension | Loader | Result |
 |-----------|--------|--------|
-| .json, .json5 | JSON parser | Object |
+| .json, .json5 | JSON5 parser | Object |
 | .yaml, .yml | YAML parser | Object |
 | .csv | CSV parser | Array of objects |
 | .js, .mjs, .ts | Dynamic import | Default export |
 | .sql | File read | String |
+| .dt, .dtz | DT deserializer | Array of rows |
+
+`.dtzx` is deliberately absent—there is no way to supply its passphrase from template context. The `.js`/`.mjs`/`.ts` loaders *execute* the file; the rest only parse.
 
 Data files are available on `$` by filename without extension:
 
@@ -800,9 +863,11 @@ Each layer has independent migrations that run automatically when version mismat
 
 | Layer | Current Version |
 |-------|-----------------|
-| schema | 1 |
-| state | 1 |
+| schema | 2 |
+| state | 3 |
 | settings | 1 |
+
+Source of truth: `CURRENT_VERSIONS` in `src/core/version/types.ts`. See [Version](/dev/version).
 
 
 ---
@@ -1029,7 +1094,7 @@ noorm's data model spans three tiers with clear separation of concerns:
 
 1. **Encrypted State** - Secrets, credentials, configs (`.noorm/state/state.enc`)
 2. **Settings** - Team rules, stages, build config (`.noorm/settings.yml`)
-3. **Database Tables** - Execution history, locks, identities (`__noorm_*`)
+3. **Database Tables** - Execution history, locks, identities, vault (`noorm.*` on postgres/mssql, `__noorm_*__` on mysql/sqlite)
 
 The change file system provides versioned changes, while runtime types enable flexible execution modes (dry run, preview, force).
 

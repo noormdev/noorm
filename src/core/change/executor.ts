@@ -1275,6 +1275,13 @@ function getDryRunOutputPath(projectRoot: string, filepath: string): string {
 
 /**
  * Write rendered SQL to tmp/ directory for dry run.
+ *
+ * Owner-only on both the file and any directory created for it, matching
+ * the runner's `writeDryRunOutput`. The rendered output holds every secret
+ * the template resolved, in plaintext, and `noorm init` does not gitignore
+ * `tmp/`. This path used to write with default permissions, so a change
+ * dry run left secrets group- and world-readable while an identical run
+ * through the runner did not.
  */
 async function writeDryRunOutput(
     projectRoot: string,
@@ -1286,10 +1293,10 @@ async function writeDryRunOutput(
 
     // Ensure directory exists
     const outputDir = path.dirname(outputPath);
-    await mkdir(outputDir, { recursive: true });
+    await mkdir(outputDir, { recursive: true, mode: 0o700 });
 
     // Write file
-    await fsWriteFile(outputPath, content, 'utf-8');
+    await fsWriteFile(outputPath, content, { encoding: 'utf-8', mode: 0o600 });
 
 }
 
