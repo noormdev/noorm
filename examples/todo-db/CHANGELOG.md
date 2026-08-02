@@ -1,5 +1,12 @@
 # @noormdev/example-todo-db
 
+## 0.0.3
+
+### Patch Changes
+
+- Updated dependencies [38d7c73]
+  - @noormdev/sdk@1.0.2
+
 ## 0.0.2
 
 ### Patch Changes
