@@ -244,7 +244,7 @@ This loads your existing public key from `~/.noorm/identity.pub` and creates the
 
 When you activate a database config (`noorm config use <name>`), noorm automatically syncs identities:
 
-1. Registers your identity to the database's `__noorm_identities__` table
+1. Registers your identity to the identities table (`__noorm_identities__` on MySQL and SQLite, `noorm.identities` on PostgreSQL and SQL Server)
 2. Fetches other team members' identities from the database
 3. Caches discovered users locally as "known users"
 

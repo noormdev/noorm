@@ -232,7 +232,7 @@ interface ChangeListItem {
 
 ## Tracking Tables
 
-Change execution is recorded in the same tables as the runner:
+Change execution is recorded in the same tables as the runner. Names below are the MySQL/SQLite prefixed form; PostgreSQL and SQL Server use `noorm.change` and `noorm.executions` in a dedicated schema instead.
 
 **`__noorm_change__`** - Operation record:
 

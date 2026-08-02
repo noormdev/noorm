@@ -335,7 +335,7 @@ await db.selectFrom(NOORM_TABLES.change).where('status', '=', 'success').execute
 
 ## Version Record Tracking
 
-The `__noorm_version__` table tracks all three version numbers—not just schema, but also state and settings:
+The version table (`__noorm_version__` on MySQL/SQLite, `noorm.version` on PostgreSQL/SQL Server) tracks all three version numbers—not just schema, but also state and settings:
 
 | Column | Description |
 |--------|-------------|

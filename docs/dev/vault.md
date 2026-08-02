@@ -107,7 +107,9 @@ Stored as JSON in the `encrypted_value` column. Each secret has its own random I
 
 Two database changes support the vault:
 
-### `__noorm_vault__` Table
+Table names below are the MySQL/SQLite prefixed form. PostgreSQL and SQL Server store these in a dedicated `noorm` schema instead (`noorm.vault`, `noorm.identities`), with no prefix.
+
+### Vault Table (`__noorm_vault__`)
 
 ```sql
 CREATE TABLE __noorm_vault__ (
@@ -122,7 +124,7 @@ CREATE TABLE __noorm_vault__ (
 
 The `encrypted_value` column stores JSON: `{ iv, authTag, ciphertext }`.
 
-### `__noorm_identities__` Extension
+### Identities Table Extension (`__noorm_identities__`)
 
 ```sql
 ALTER TABLE __noorm_identities__

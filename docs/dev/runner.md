@@ -122,7 +122,7 @@ The runner passes config, secrets, and project root to the template context. See
 
 ## Tracking Tables
 
-Every execution is recorded in two tables:
+Every execution is recorded in two tables. Names below are the MySQL/SQLite prefixed form; PostgreSQL and SQL Server use `noorm.change` and `noorm.executions` in a dedicated schema instead.
 
 **`__noorm_change__`** - Parent operation record:
 

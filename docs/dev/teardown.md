@@ -309,6 +309,9 @@ The CLI shows a preview of affected objects before execution and requires explic
 ## Safety Features
 
 **Always Preserved:**
+
+Names below are the MySQL/SQLite prefixed form. PostgreSQL and SQL Server use `noorm.change`, `noorm.executions`, and `noorm.lock` in a dedicated schema instead.
+
 - `__noorm_change__` - Change execution history
 - `__noorm_executions__` - File execution records
 - `__noorm_lock__` - Active operation locks

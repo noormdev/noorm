@@ -62,11 +62,7 @@ noorm identity list --json
 
 When `NOORM_IDENTITY_PRIVATE_KEY`, `NOORM_IDENTITY_NAME`, and `NOORM_IDENTITY_EMAIL` are set at process startup, every `noorm` command in that process uses the env-derived identity without touching `~/.noorm/`.
 
-**Bootstrap order:**
-
-1. At startup (`entry()` in `src/cli/index.ts`), the CLI calls `loadIdentityFromEnv()`.
-2. If the three vars are present and valid, the key and metadata are installed as in-memory overrides.
-3. Every later call to `loadPrivateKey()` / `loadIdentityMetadata()` checks the override first — if set, it returns the env-derived values without reading disk.
+The variables are read once when the process starts, so they apply to every command that process runs.
 
 **Guarantees:**
 

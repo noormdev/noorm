@@ -14,7 +14,7 @@ noorm solves this with table-based locking. Before any operation touches the dat
 
 ## How It Works
 
-All locking happens through a single table: `__noorm_lock__`. Each config gets its own lock scope - two developers can work on different configs simultaneously, but not the same one.
+All locking happens through a single table: `__noorm_lock__` on MySQL and SQLite, or `noorm.lock` in the dedicated schema on PostgreSQL and SQL Server. Each config gets its own lock scope - two developers can work on different configs simultaneously, but not the same one.
 
 ```
 __noorm_lock__
