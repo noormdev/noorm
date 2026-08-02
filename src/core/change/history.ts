@@ -14,7 +14,7 @@
  * ```typescript
  * import { ChangeHistory } from './history'
  *
- * const history = new ChangeHistory(db, 'production')
+ * const history = new ChangeHistory(db, 'production', 'postgres')
  *
  * // Check if change needs to run
  * const result = await history.needsRun('2024-01-15-add-users', 'abc123...')
@@ -141,7 +141,7 @@ export function hydrateDate(
  *
  * @example
  * ```typescript
- * const history = new ChangeHistory(db, 'production')
+ * const history = new ChangeHistory(db, 'production', 'postgres')
  *
  * // Create operation record
  * const opId = await history.createOperation({
@@ -170,7 +170,7 @@ export class ChangeHistory {
     readonly #configName: string;
     readonly #dialect: Dialect;
 
-    constructor(db: Kysely<NoormDatabase>, configName: string, dialect: Dialect = 'sqlite') {
+    constructor(db: Kysely<NoormDatabase>, configName: string, dialect: Dialect) {
 
         this.#db = db;
         this.#ndb = noormDb(db, dialect);

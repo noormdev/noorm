@@ -173,7 +173,7 @@ describe('change: executor', () => {
             expect(result.error).toBeUndefined();
 
             // Verify database record is marked as success
-            const history = new ChangeHistory(db, 'test');
+            const history = new ChangeHistory(db, 'test', 'sqlite');
             const statuses = await history.getAllStatuses();
             const status = statuses.get('test-add-table');
 
@@ -206,7 +206,7 @@ describe('change: executor', () => {
             expect(result.files[1]?.status).toBe('failed');
 
             // Verify database records
-            const history = new ChangeHistory(db, 'test');
+            const history = new ChangeHistory(db, 'test', 'sqlite');
             const statuses = await history.getAllStatuses();
             const status = statuses.get('test-with-failure');
 
@@ -273,7 +273,7 @@ describe('change: executor', () => {
             expect(result.status).toBe('failed');
 
             // Verify error is recorded in database
-            const history = new ChangeHistory(db, 'test');
+            const history = new ChangeHistory(db, 'test', 'sqlite');
             const statuses = await history.getAllStatuses();
             const status = statuses.get('test-error-recording');
 
@@ -299,7 +299,7 @@ describe('change: executor', () => {
             await executeChange(context, change2);
 
             // Query history
-            const history = new ChangeHistory(db, 'test');
+            const history = new ChangeHistory(db, 'test', 'sqlite');
             const statuses = await history.getAllStatuses();
 
             expect(statuses.size).toBe(2);

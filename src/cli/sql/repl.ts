@@ -48,7 +48,7 @@ const replCommand = defineCommand({
             process.stderr.write(
                 'Error: noorm sql repl is interactive only. For non-interactive SQL, use:\n' +
                 '  noorm sql query "SELECT 1"            # one-shot\n' +
-                '  noorm sql --file query.sql            # from a file\n',
+                '  noorm sql query --file query.sql      # from a file\n',
             );
             process.exit(EXIT.USAGE);
 

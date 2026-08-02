@@ -16,7 +16,7 @@ import { join } from 'node:path';
 import { Kysely, SqliteDialect } from 'kysely';
 
 import { BunSqliteDatabase } from '../../../src/core/connection/dialects/sqlite-bun.js';
-import { runBuild } from '../../../src/core/runner/runner.js';
+import { runBuild, runFile } from '../../../src/core/runner/runner.js';
 import { v1 } from '../../../src/core/version/schema/migrations/v1.js';
 import type { NoormDatabase } from '../../../src/core/shared/index.js';
 import type { RunContext } from '../../../src/core/runner/types.js';
@@ -95,6 +95,41 @@ describe('runner: dry-run output', () => {
         // Without this a `--json` consumer cannot tell that plaintext was
         // written at all, let alone clean it up afterwards.
         expect(result.files[0]?.outputPath).toBe(join(tempDir, 'tmp', 'sql', '001_secret.sql'));
+
+    });
+
+    it('should not execute the statement when runFile is given dryRun', async () => {
+
+        const filepath = join(sqlDir, '002_canary.sql');
+
+        await writeFile(filepath, 'CREATE TABLE dry_run_canary (id integer);', 'utf-8');
+
+        const result = await runFile(context(), filepath, { dryRun: true });
+
+        expect(result.status).toBe('success');
+
+        // The entire contract of --dry-run. `run build`/`run dir` honour it;
+        // `run file` accepted the flag and executed anyway, so a destructive
+        // file reviewed with --dry-run ran against the database.
+        const tables = await db.introspection.getTables();
+
+        expect(tables.map((t) => t.name)).not.toContain('dry_run_canary');
+
+    });
+
+    it('should write no tracking rows when runFile is given dryRun', async () => {
+
+        const filepath = join(sqlDir, '003_canary.sql');
+
+        await writeFile(filepath, 'CREATE TABLE tracked_canary (id integer);', 'utf-8');
+
+        await runFile(context(), filepath, { dryRun: true });
+
+        // executeFiles returns before it creates an operation; runFile must
+        // match, or a dry run leaves history claiming the file was applied.
+        const operations = await db.selectFrom('__noorm_change__').selectAll().execute();
+
+        expect(operations).toHaveLength(0);
 
     });
 

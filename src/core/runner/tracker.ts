@@ -69,7 +69,7 @@ export class Tracker {
     readonly #configName: string;
     readonly #dialect: Dialect;
 
-    constructor(db: Kysely<NoormDatabase>, configName: string, dialect: Dialect = 'sqlite') {
+    constructor(db: Kysely<NoormDatabase>, configName: string, dialect: Dialect) {
 
         this.#db = db;
         this.#ndb = noormDb(db, dialect);

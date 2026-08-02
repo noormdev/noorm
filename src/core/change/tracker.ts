@@ -12,7 +12,7 @@
  * ```typescript
  * import { ChangeTracker } from './tracker'
  *
- * const tracker = new ChangeTracker(db, 'production')
+ * const tracker = new ChangeTracker(db, 'production', 'postgres')
  *
  * // Check if change can be reverted
  * const result = await tracker.canRevert('2024-01-15-add-users', false)
@@ -81,7 +81,7 @@ export interface CanRevertResult {
  *
  * @example
  * ```typescript
- * const tracker = new ChangeTracker(db, 'dev')
+ * const tracker = new ChangeTracker(db, 'dev', 'postgres')
  *
  * // Use inherited methods from Tracker
  * const opId = await tracker.createOperation({
@@ -104,7 +104,7 @@ export class ChangeTracker extends Tracker {
     readonly #tables: ReturnType<typeof getNoormTables>;
     readonly #configName: string;
 
-    constructor(db: Kysely<NoormDatabase>, configName: string, dialect: Dialect = 'sqlite') {
+    constructor(db: Kysely<NoormDatabase>, configName: string, dialect: Dialect) {
 
         super(db, configName, dialect);
         this.#ndb = noormDb(db, dialect);

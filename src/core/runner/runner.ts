@@ -205,6 +205,19 @@ export async function runFile(
         configName: context.configName,
     });
 
+    // Dry run renders to tmp/ and never reaches the database. This has to sit
+    // ahead of the tracker: executeFiles returns before creating an operation,
+    // and runFile must match or a dry run leaves history claiming the file ran.
+    // The policy assertion above still applies — rendering resolves secrets to
+    // disk, so it is gated the same as a real run.
+    if (opts.dryRun) {
+
+        const results = await executeDryRun(context, [filepath]);
+
+        return results[0]!;
+
+    }
+
     // For single file, we still create an operation record for tracking
     const tracker = new Tracker(context.db, context.configName, context.dialect ?? 'postgres');
     const operationName = `run:${new Date().toISOString()}`;

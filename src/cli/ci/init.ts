@@ -59,6 +59,11 @@ const initCommand = defineCommand({
             description: 'Overwrite existing state.enc (backs it up first)',
             default: false,
         },
+        test: {
+            type: 'boolean',
+            description: 'Mark the config as a test database (satisfies the SDK\'s requireTest guard)',
+            default: false,
+        },
         yes: sharedArgs.yes,
         json: sharedArgs.json,
     },
@@ -206,10 +211,16 @@ const initCommand = defineCommand({
         // Validated rather than hand-built and trusted: this is the one path
         // that writes a config nobody reviewed, and it used to persist shapes
         // the schema forbids for every later consumer to trip over.
+        // Opt-in, not automatic. `isTest` is what the SDK's `requireTest`
+        // guard checks before letting a suite truncate or teardown, so
+        // stamping it on every config this command creates made the guard
+        // pass against a production database bootstrapped by the documented
+        // prod-CI flow. Env-only resolution already defaults it to false
+        // (`core/config/resolver.ts`); this now agrees with it.
         const [config, parseErr] = attemptSync(() => parseConfig({
             name: configName,
             type: 'remote',
-            isTest: true,
+            isTest: args.test,
             access: DEFAULT_ACCESS,
             connection,
         }) as Config);
@@ -255,7 +266,7 @@ const initCommand = defineCommand({
                     name: configName,
                     dialect,
                     database: connection.database,
-                    isTest: true,
+                    isTest: args.test,
                 },
                 stateFile,
                 ...(backedUpTo ? { backedUpTo } : {}),
@@ -264,7 +275,7 @@ const initCommand = defineCommand({
                 'CI runtime initialized.',
                 `  Identity:      ${envIdentity.identity.name} <${envIdentity.identity.email}>`,
                 `  Fingerprint:   ${envIdentity.identity.identityHash}`,
-                `  Config:        ${configName} (${dialect}, isTest=true)`,
+                `  Config:        ${configName} (${dialect}, isTest=${args.test})`,
                 `  Database:      ${connection.database}`,
                 `  State file:    ${stateFile}`,
                 ...(backedUpTo ? [`  Previous state backed up to: ${backedUpTo}`] : []),

@@ -67,9 +67,15 @@ const teardownCommand = defineCommand({
 
         const postScript = result.postScriptResult;
 
+        // Decided before the payload is written: toJsonEnvelope defaults
+        // `success` to true when the payload carries neither `success` nor
+        // `status`, so the JSON claimed success while the process exited 1.
+        const postScriptFailed = Boolean(postScript && !postScript.executed);
+
         if (args.json) {
 
             outputResult(args, {
+                success: !postScriptFailed,
                 dropped: result.dropped,
                 count: droppedCount,
                 ...(postScript ? { postScriptResult: postScript } : {}),
@@ -81,11 +87,11 @@ const teardownCommand = defineCommand({
         // The objects are already gone, so this is not a rollback — but a
         // teardown whose post-script never ran is half-finished, and exiting
         // 0 told every pipeline it was complete.
-        if (postScript && !postScript.executed) {
+        if (postScriptFailed) {
 
             if (!args.json) {
 
-                outputError(args, `Post-teardown script failed: ${postScript.error ?? 'Unknown error'}`);
+                outputError(args, `Post-teardown script failed: ${postScript?.error ?? 'Unknown error'}`);
 
             }
 

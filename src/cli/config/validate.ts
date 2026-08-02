@@ -62,7 +62,11 @@ const validateCommand = defineCommand({
 
         const text = `${args.name}: ${statusText}\n${lines.join('\n')}`;
 
-        outputResult(args, { config: args.name, valid, checks }, text);
+        // Explicit `success`: toJsonEnvelope derives it from a `status` field
+        // and defaults to true, so an invalid config would report success:true
+        // while exiting 1, and a CI job branching on .success would read a
+        // failed validation as a pass.
+        outputResult(args, { success: valid, config: args.name, valid, checks }, text);
         process.exit(valid ? 0 : 1);
 
     },
