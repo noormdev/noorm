@@ -198,6 +198,10 @@ gtag('config', 'G-Y69K95866J');`],
                             { text: 'Stages', link: '/guide/environments/stages' },
                             { text: 'Secrets', link: '/guide/environments/secrets' },
                             { text: 'Vault', link: '/guide/environments/vault' },
+                            // Identity is what makes vault sharing and config
+                            // export work, so it belongs beside them even though
+                            // the page lives under /cli/.
+                            { text: 'Identity', link: '/cli/identity' },
                         ],
                     },
                     {

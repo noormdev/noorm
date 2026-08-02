@@ -253,5 +253,5 @@ A null `encrypted_vault_key` means the user is pending vault access.
 ## What's Next?
 
 - [Secrets](/guide/environments/secrets) - Local secret storage
-- [Identity](/dev/identity) - Cryptographic identity setup
+- [Identity](/cli/identity) - The keypair that lets teammates encrypt secrets to you
 - [Templates](/guide/sql-files/templates) - Using secrets in dynamic SQL
