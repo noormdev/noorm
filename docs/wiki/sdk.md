@@ -7,13 +7,13 @@ description: Programmatic API (createContext) for noorm-managed databases, plus 
 
 ## What it does
 
-`createContext` (in [`src/sdk/index.ts`](../../src/sdk/index.ts)) returns a `Context` with a raw Kysely instance (`ctx.kysely`), `proc`/`func`/`tvf`/`transaction`/`impersonate` helpers, and a `ctx.noorm` namespace object bundling changes/run/db/dt/lock/vault/secrets/templates/transfer/utils operations. Published as `@noormdev/sdk` version `1.0.0` from [`packages/sdk/`](../../packages/sdk).
+`createContext` (in [`src/sdk/index.ts`](../../src/sdk/index.ts)) returns a `Context` with a raw Kysely instance (`ctx.kysely`), `proc`/`func`/`tvf`/`transaction`/`impersonate` helpers, and a `ctx.noorm` namespace object bundling changes/run/db/dt/lock/vault/secrets/templates/transfer/utils operations. Published as `@noormdev/sdk` version `1.0.1` from [`packages/sdk/`](../../packages/sdk).
 
 The DT (Data Transfer) module under [`src/core/dt/`](../../src/core/dt) is a separate universal-type serialization format (`.dt`/`.dtz`/`.dtzx` files) for exporting/importing single tables across PostgreSQL, MySQL, and MSSQL — distinct from the `core-db` domain's live DB-to-DB `transfer` module, though both share row-fetch and worker-pipeline patterns.
 
 ## Artifacts
 
-- [`packages/sdk/package.json`](../../packages/sdk/package.json) — published package `@noormdev/sdk`, version `1.0.0`; peer deps `kysely`, and optional `better-sqlite3`/`pg`/`mysql2`/`tedious`/`tarn`
+- [`packages/sdk/package.json`](../../packages/sdk/package.json) — published package `@noormdev/sdk`, version `1.0.1`; peer deps `kysely`, and optional `better-sqlite3`/`pg`/`mysql2`/`tedious`/`tarn`
 - [`packages/sdk/CHANGELOG.md`](../../packages/sdk/CHANGELOG.md) — Changesets-generated release history
 - [`packages/sdk/dist/`](../../packages/sdk/dist) — build output: `index.js` (tsup bundle, all deps inlined except peers) + `index.d.ts` (dts-bundle-generator)
 

@@ -15,7 +15,7 @@ Published to npm as `@noormdev/cli` from [`packages/cli/`](../../packages/cli); 
 
 ## Artifacts
 
-- [`packages/cli/package.json`](../../packages/cli/package.json) — publishes `@noormdev/cli`, currently version `1.0.0`; declares `bin.noorm -> ./noorm.js`, `postinstall` script, `engines.node >=22.13`
+- [`packages/cli/package.json`](../../packages/cli/package.json) — publishes `@noormdev/cli`, currently version `1.0.1`; declares `bin.noorm -> ./noorm.js`, `postinstall` script, `engines.node >=22.13`
 - [`packages/cli/noorm.js`](../../packages/cli/noorm.js) — ESM shim; resolves `bin/noorm` (or `bin/noorm.exe` on `win32`) next to itself and `execFileSync`s it with `stdio: 'inherit'`, forwarding the child's exit code
 - [`packages/cli/scripts/postinstall.js`](../../packages/cli/scripts/postinstall.js) — downloads the platform/arch-matched binary from `https://github.com/noormdev/noorm/releases/download/@noormdev/cli@<version>/noorm-<os>-<arch>`, verifies its SHA-256 against the release's `checksums.txt`, and only then `chmod`s and renames it into `bin/`; skips entirely when it detects the noorm monorepo source checkout (root [`package.json`](../../package.json) name `@noormdev/main` two directories up)
 - [`packages/cli/bin/`](../../packages/cli/bin) — gitignored (`.gitignore:35`); holds the platform binaries either downloaded by postinstall or built locally by `bun run build:binary`
