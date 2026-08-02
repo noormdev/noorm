@@ -24,10 +24,10 @@ Each layer has its own version number in `CURRENT_VERSIONS`:
 import { CURRENT_VERSIONS } from './core/version'
 
 console.log(CURRENT_VERSIONS)
-// { schema: 1, state: 1, settings: 1 }
+// { schema: 2, state: 3, settings: 1 }
 ```
 
-These are independent of the package version. Bumping `schema` to 2 doesn't require bumping `state` or `settings`.
+These are independent of the package version, and of each other. State has moved three times while settings has not moved at all.
 
 
 ## Quick Start
@@ -108,42 +108,63 @@ Schema migrations use Kysely's dialect-agnostic schema builder. Never write raw 
 
 Create a new migration in `src/core/version/schema/migrations/`:
 
-```typescript
-// src/core/version/schema/migrations/v2.ts
-import type { Kysely } from 'kysely'
-import type { SchemaMigration } from '../../types.js'
+`up` and `down` both receive the dialect, and they need it: since v2 the tracking tables live in a `noorm` schema on PostgreSQL and SQL Server, so neither the table name nor the schema is the same everywhere.
 
-export const v2: SchemaMigration = {
-    version: 2,
+```typescript
+// src/core/version/schema/migrations/v3.ts
+import type { Kysely } from 'kysely'
+
+import type { SchemaMigration } from '../../types.js'
+import type { Dialect } from '../../../connection/types.js'
+import { getNoormTables } from '../../../shared/tables.js'
+
+/**
+ * Resolve the schema builder for wherever this dialect keeps its tables.
+ */
+function noormSchema(db: Kysely<unknown>, dialect: Dialect) {
+
+    return dialect === 'postgres' || dialect === 'mssql'
+        ? db.withSchema('noorm').schema
+        : db.schema;
+}
+
+export const v3: SchemaMigration = {
+    version: 3,
     description: 'Add tags column to change table',
 
-    async up(db: Kysely<unknown>): Promise<void> {
-        await db.schema
-            .alterTable('__noorm_change__')
+    async up(db: Kysely<unknown>, dialect: Dialect): Promise<void> {
+        const tables = getNoormTables(dialect);
+
+        await noormSchema(db, dialect)
+            .alterTable(tables.change)
             .addColumn('tags', 'varchar(500)', col => col.notNull().defaultTo(''))
             .execute()
     },
 
-    async down(db: Kysely<unknown>): Promise<void> {
-        await db.schema
-            .alterTable('__noorm_change__')
+    async down(db: Kysely<unknown>, dialect: Dialect): Promise<void> {
+        const tables = getNoormTables(dialect);
+
+        await noormSchema(db, dialect)
+            .alterTable(tables.change)
             .dropColumn('tags')
             .execute()
     }
 }
 ```
 
+Hardcoding `__noorm_change__` here would appear to work, because the migration runs without error on MySQL and SQLite. On PostgreSQL and SQL Server it targets a table that no longer exists at that name, and you find out later.
+
 Then register it and bump the version:
 
 ```typescript
 // src/core/version/schema/index.ts
-import { v2 } from './migrations/v2.js'
+import { v3 } from './migrations/v3.js'
 
-const MIGRATIONS: SchemaMigration[] = [v1, v2]
+const MIGRATIONS: SchemaMigration[] = [v1, v2, v3]
 
 // src/core/version/types.ts
 export const CURRENT_VERSIONS = Object.freeze({
-    schema: 2,  // Bumped from 1
+    schema: 3,  // Bumped from 2
     state: 1,
     settings: 1,
 })
@@ -159,13 +180,13 @@ export const CURRENT_VERSIONS = Object.freeze({
 5. **Create indexes separately** - Use `createIndex()` after table creation.
 
 ```typescript
-// Good: Dialect-agnostic column addition
-await db.schema
-    .alterTable('__noorm_change__')
+// Good: dialect-agnostic column addition, dialect-resolved table name
+await noormSchema(db, dialect)
+    .alterTable(getNoormTables(dialect).change)
     .addColumn('metadata', 'text', col => col.notNull().defaultTo('{}'))
     .execute()
 
-// Bad: Raw SQL for specific dialect
+// Bad: raw SQL for one dialect, and a table name that is wrong on two others
 await sql`ALTER TABLE __noorm_change__ ADD COLUMN metadata JSONB DEFAULT '{}'`.execute(db)
 ```
 
@@ -177,11 +198,11 @@ State migrations transform the decrypted JSON object. They run synchronously and
 Create a new migration in `src/core/version/state/migrations/`:
 
 ```typescript
-// src/core/version/state/migrations/v2.ts
+// src/core/version/state/migrations/v4.ts
 import type { StateMigration } from '../../types.js'
 
-export const v2: StateMigration = {
-    version: 2,
+export const v4: StateMigration = {
+    version: 4,
     description: 'Add lastUsed timestamp to configs',
 
     up(state: Record<string, unknown>): Record<string, unknown> {
@@ -198,7 +219,7 @@ export const v2: StateMigration = {
 
         return {
             ...state,
-            schemaVersion: 2,
+            schemaVersion: 4,
             configs: updatedConfigs,
         }
     },
@@ -215,7 +236,7 @@ export const v2: StateMigration = {
 
         return {
             ...state,
-            schemaVersion: 1,
+            schemaVersion: 3,
             configs: updatedConfigs,
         }
     }
@@ -311,26 +332,33 @@ Same as state migrations:
 4. **Make idempotent** - Safe to run multiple times.
 
 
-## Table Name Constants
+## Referring to Tracking Tables
 
-Use `NOORM_TABLES` instead of hardcoding table names:
+Never hardcode a tracking table name, and do not reach for `NOORM_TABLES` either. That constant is deprecated: it only ever returns the prefixed names, so a query built from it targets a table that does not exist on PostgreSQL or SQL Server, where migration v2 moved everything into a `noorm` schema.
+
+Two helpers replace it, and they are used together.
 
 ```typescript
-import { NOORM_TABLES } from './core/version'
+import { getNoormTables, noormDb } from './core/shared/tables'
 
-console.log(NOORM_TABLES)
-// {
-//     version: '__noorm_version__',
-//     change: '__noorm_change__',
-//     executions: '__noorm_executions__',
-//     lock: '__noorm_lock__',
-//     identities: '__noorm_identities__',
-// }
+const tables = getNoormTables(dialect);   // the right names for this dialect
+const ndb = noormDb(db, dialect);         // the right schema for this dialect
 
-// Use in queries
-await db.selectFrom(NOORM_TABLES.version).selectAll().execute()
-await db.selectFrom(NOORM_TABLES.change).where('status', '=', 'success').execute()
+await ndb.selectFrom(tables.change).selectAll().execute();
 ```
+
+`getNoormTables(dialect)` returns clean names (`change`, `executions`, `lock`) on PostgreSQL and SQL Server, and the `__noorm_*__` prefixed names on MySQL and SQLite.
+
+`noormDb(db, dialect)` wraps the Kysely instance in `withSchema('noorm')` on PostgreSQL and SQL Server, and returns it untouched on MySQL and SQLite.
+
+Neither one is sufficient alone. The names without the schema wrapper resolve against the default schema; the wrapper without the right names looks for `noorm.__noorm_change__`. Take both from the dialect and the same code works everywhere.
+
+```typescript
+// pg / mssql  → SELECT * FROM "noorm"."change"
+// mysql / sqlite → SELECT * FROM `__noorm_change__`
+```
+
+The `NoormDatabase` type is the intersection of both key sets, so either name typechecks.
 
 
 ## Version Record Tracking
