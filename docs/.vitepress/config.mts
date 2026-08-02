@@ -21,7 +21,11 @@ export default withMermaid(
         //
         // The rest are the same class of thing: specs, design notes, scratch
         // output, and the tape sources, none of which are published pages.
-        srcExclude: ['wiki/**', 'spec/**', 'design/**', 'superpowers/**', 'tmp/**', 'tapes/**'],
+        // `models/**` joins the list for the same reason as `tapes/**`: it is
+        // source for a generated artifact, not pages. Left in, VitePress
+        // compiles every entity file into a route like
+        // /models/todo-list/data/core/users.html.
+        srcExclude: ['wiki/**', 'spec/**', 'design/**', 'superpowers/**', 'tmp/**', 'tapes/**', 'models/**'],
 
         markdown: {
             // The terminal recordings are the heaviest assets on the site
