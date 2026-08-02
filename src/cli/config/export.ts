@@ -4,11 +4,6 @@
  * Writes the full config object (including sensitive fields) to stdout
  * or to a file when --output is provided. Intended for backup and
  * cross-machine transfer workflows where the user explicitly owns the data.
- *
- * The payload carries the connection password in plaintext, so the command
- * refuses to write to a terminal: --output chmods 0600, and a TTY offers no
- * equivalent. Redirects and pipes are allowed and warn on stderr, because a
- * shell redirect lands at the caller's umask and cannot make that guarantee.
  */
 import { chmod, writeFile } from 'node:fs/promises';
 
@@ -67,35 +62,6 @@ const exportCommand = defineCommand({
 
         const json = JSON.stringify(config, null, 4);
 
-        // Writing the payload to a terminal is different from piping it to a
-        // file. `--output` chmods 0600 precisely because this content carries
-        // a plaintext password; a TTY has no such protection and keeps it in
-        // scrollback, on screen, and in any recorded session. Redirects and
-        // pipes still work, so `config export dev > dev.json` is unaffected.
-        if (!args.output && process.stdout.isTTY) {
-
-            outputError(
-                args,
-                `Refusing to print config "${args.name}" to a terminal: the export contains the `
-                + 'connection password in plaintext. Use --output <file> to write it at 0600, or '
-                + 'redirect stdout to a file.',
-            );
-            process.exit(EXIT.USAGE);
-
-        }
-
-        // A shell redirect lands at the caller's umask, so the one guarantee
-        // --output makes cannot be made here. stdout has to stay clean JSON
-        // for `config import`, so this goes to stderr.
-        if (!args.output) {
-
-            process.stderr.write(
-                'Warning: this export contains the connection password in plaintext. '
-                + 'The destination is not permission-protected; use --output to write at 0600.\n',
-            );
-
-        }
-
         if (args.output) {
 
             const [, writeErr] = await attempt(() =>
@@ -139,7 +105,7 @@ const exportCommand = defineCommand({
 });
 
 (exportCommand as typeof exportCommand & { examples: string[] }).examples = [
-    'noorm config export dev > dev-config.json',
+    'noorm config export dev',
     'noorm config export dev --output ./dev-config.json',
 ];
 
