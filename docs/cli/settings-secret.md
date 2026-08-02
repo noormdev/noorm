@@ -10,7 +10,7 @@ For secret values, see [`noorm secret set`](./secret.md).
 
 ## Environment
 
-Interactive TTY required. Fails with exit code 1 in CI or piped stdin.
+Interactive TTY required. Fails with exit code 2 (usage error) in CI or piped stdin.
 
 `--yes` / `NOORM_YES` produces a redirect hint here — the requirement
 list lives directly in `settings.yml`, so editing the YAML by hand is the

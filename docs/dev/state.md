@@ -25,7 +25,8 @@ The file contains:
 
 | Field | Purpose |
 |-------|---------|
-| `version` | Schema version for migrations |
+| `version` | Package version that last wrote the file |
+| `schemaVersion` | Numeric state-schema version, keyed to the migrations in `core/version/state` |
 | `knownUsers` | Discovered team members' public keys |
 | `activeConfig` | Currently selected config name |
 | `configs` | Database configurations (credentials included) |
@@ -86,21 +87,20 @@ await state.setConfig('dev', {
         user: 'postgres',
         password: 'postgres',
     },
-    paths: {
-        sql: './sql',
-        changes: './changes',
-    },
 })
+// `paths` is not part of Config — sql/changes locations live in settings.yml
 
 // Retrieve a config
 const dev = state.getConfig('dev')
 
 // List all configs with summary info
 const configs = state.listConfigs()
-// [{ name: 'dev', type: 'local', isTest: false, access: { user: 'admin', agent: 'admin' }, isActive: true }]
+// [{ name: 'dev', type: 'local', isTest: false, access: { user: 'admin', agent: 'admin' },
+//    isActive: true, dialect: 'postgres', database: 'myapp_dev' }]
 
-// Delete a config (also removes its secrets)
-await state.deleteConfig('dev')
+// Delete a config (also removes its secrets).
+// Pass a SettingsProvider to enforce locked-stage protection.
+await state.deleteConfig('dev', settingsProvider)
 ```
 
 
@@ -194,21 +194,23 @@ await state.deleteGlobalSecret('ANTHROPIC_API_KEY')
 
 ### Using Secrets in SQL Templates
 
-Secrets are available in Eta templates via the `$` context:
+Secrets are available in Eta templates via the `$` context. The engine uses
+custom tags — `{%` / `%}`, not Eta's default `<%` / `%>` — and `$` as the
+context variable name:
 
 ```sql
 -- sql/users/create-readonly.sql.tmpl
-CREATE USER <%~ $.secrets.READONLY_USER %>
-WITH PASSWORD '<%~ $.secrets.READONLY_PASSWORD %>';
+CREATE USER {%~ $.secrets.READONLY_USER %}
+WITH PASSWORD '{%~ $.secrets.READONLY_PASSWORD %}';
 
-GRANT SELECT ON ALL TABLES TO <%~ $.secrets.READONLY_USER %>;
+GRANT SELECT ON ALL TABLES TO {%~ $.secrets.READONLY_USER %};
 ```
 
 Global secrets use `$.globalSecrets`:
 
 ```sql
--- Reference app-level secrets
--- <%~ $.globalSecrets.SHARED_API_KEY %>
+INSERT INTO integrations (name, api_key)
+VALUES ('shared', '{%~ $.globalSecrets.SHARED_API_KEY %}');
 ```
 
 
@@ -263,29 +265,53 @@ state.setPrivateKey(yourPrivateKey)
 if (state.hasPrivateKey()) {
     await state.load()
 }
+
+// Re-read ~/.noorm/identity.key from disk — needed when the singleton was
+// constructed before `noorm init` created the identity files
+const loaded = await state.reloadPrivateKey()
 ```
+
+`load()` picks the key up from `~/.noorm/identity.key` on its own when none was
+passed. A new project with no state file loads without a key at all; an existing
+`state.enc` without one throws `Private key required to decrypt state`.
 
 The private key is stored separately in `~/.noorm/identity.key` to solve the bootstrap problem: you need the key to decrypt state, but you can't store the key inside encrypted state.
 
 
 ## Migrations
 
-When the state schema changes between noorm versions, migrations run automatically on load.
+Two independent migration systems run inside `load()`, in this order:
+
+| Order | System | Keyed on | Example |
+|-------|--------|----------|---------|
+| 1 | Schema-version migrations (`core/version/state`) | numeric `schemaVersion` | v2 maps the legacy `protected` boolean to `access` |
+| 2 | Package-semver migration (`core/state/migrations.ts`) | `version` string | backfills missing top-level fields |
+
+The order matters: the semver migration only knows State's own top-level fields
+and would drop anything the schema-version system owns — including
+`schemaVersion` itself — if it ran first.
 
 ```typescript
 await state.load()
-// If version changed:
+// If either migration applied:
 //   - Missing fields get sensible defaults
-//   - state:migrated event emits
-//   - File re-persists with new schema
+//   - state:migrated (semver) / version:state:migrated (schema) events emit
+//   - File re-persists with the new shape
 ```
 
-Migrations are additive - they never delete data, only add missing fields:
+The semver migration carries unknown top-level fields through rather than
+rebuilding from an allowlist — an older binary rebuilding from a fixed list
+silently destroyed fields a newer one had added, and persisted the truncated
+object straight back.
 
-```typescript
-// If 'globalSecrets' field is missing, add it as {}
-// If 'knownUsers' field is missing, add it as {}
-```
+One field is deliberately dropped rather than carried: legacy `identity`. It
+moved to `~/.noorm/`, and pre-move state files hold key material in it, so
+re-persisting would keep a private key inside `state.enc` forever.
+
+`load()` also repairs any config that reached the current schema version without
+a well-formed `access` (a hand-edited file, or one written via `setConfig`
+bypassing the zod path). This is the single place that backfill happens, so no
+downstream consumer needs its own fallback.
 
 
 ## Import/Export
@@ -293,16 +319,19 @@ Migrations are additive - they never delete data, only add missing fields:
 Backup and restore state files while keeping encryption intact.
 
 ```typescript
-// Export (returns encrypted JSON string)
+// Export reads the file back verbatim; null when no state file exists yet
 const backup = state.exportEncrypted()
-fs.writeFileSync('backup.enc', backup)
+
+if (backup) {
+    fs.writeFileSync('backup.enc', backup)
+}
 
 // Import (validates decryption before saving)
-const backup = fs.readFileSync('backup.enc', 'utf8')
-await state.importEncrypted(backup)
+const restored = fs.readFileSync('backup.enc', 'utf8')
+await state.importEncrypted(restored)
 ```
 
-Import validates the file can be decrypted before overwriting. If decryption fails, the current state remains unchanged.
+Import validates the file can be decrypted before overwriting. If decryption fails, the current state remains unchanged. It throws if no private key is available.
 
 
 ## Observer Events
@@ -337,6 +366,18 @@ observer.on('global-secret:deleted', ({ key }) => { ... })
 
 // Known user events (email and source config where user was discovered)
 observer.on('known-user:added', ({ email, source }) => { ... })
+```
+
+
+## Singleton
+
+Most call sites use the module singleton rather than constructing a manager:
+
+```typescript
+import { getStateManager, initState } from './core/state'
+
+const state = getStateManager(process.cwd())  // construct only; still needs load()
+const loaded = await initState(process.cwd()) // construct + load
 ```
 
 

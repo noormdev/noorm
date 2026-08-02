@@ -27,9 +27,9 @@ Templates use [Eta](https://eta.js.org/) with custom delimiters. Any `.sql.tmpl`
 When rendering, the engine:
 
 1. Walks up the directory tree collecting `$helpers.ts` files
-2. Scans the template's directory for data files (JSON5, YAML, CSV)
+2. Scans the template's directory for data files (JSON5, YAML, CSV, DT) — skipping executable formats the template doesn't reference
 3. Builds a context object (`$`) with helpers, data, config, and secrets
-4. Renders the template with Eta
+4. Strips `-- {% %}` directive lines, then renders with Eta
 5. Returns the SQL string
 
 
@@ -42,6 +42,11 @@ noorm uses custom delimiters to avoid conflicts with SQL syntax:
 | `{% %}` | JavaScript code block |
 | `{%~ %}` | Output (raw) |
 | `$` | Context variable |
+| `-- {% %}` | Directive line — the whole line is stripped before Eta parses |
+
+The `-- {% ... %}` form keeps a `.sql.tmpl` file valid SQL: directives look like comments to a SQL parser and to your editor's syntax highlighter. The engine strips the `-- ` prefix, trailing whitespace, and the line's newline before rendering, so the directive produces no output. It only matches lines where the tag is the *only* content — `SELECT 1; -- comment` and `-- {% if (x) { %} SELECT 1` are both left alone.
+
+Eta's `autoTrim` is deliberately off; directive-line stripping handles whitespace instead. Enabling `autoTrim` would make `leftTrim` eat the newline after an interpolation tag, turning `{%~ item %}\nAS` into `itemAS`.
 
 ```sql
 -- Loop over data
@@ -80,12 +85,31 @@ File names are converted to camelCase:
 
 ### Supported Formats
 
-| Extension | Loader | Result |
-|-----------|--------|--------|
-| `.json`, `.json5` | JSON5 | Any (supports comments, trailing commas) |
-| `.yaml`, `.yml` | YAML | Any |
-| `.csv` | csv-parse | Array of row objects |
-| `.js`, `.mjs`, `.ts` | Dynamic import | Module default or exports |
+| Extension | Loader | Result | Auto-loaded? |
+|-----------|--------|--------|--------------|
+| `.json`, `.json5` | JSON5 | Any (supports comments, trailing commas) | Yes |
+| `.yaml`, `.yml` | YAML | Any | Yes |
+| `.csv` | csv-parse | Array of row objects | Yes |
+| `.dt`, `.dtz` | DT reader | Rows from a noorm data-transfer file | Yes |
+| `.js`, `.mjs`, `.ts` | Dynamic import | Module default or exports | **Only when referenced** |
+| `.sql` | Raw text | String | No — `.sql` is for `$.include()` only |
+
+The json5, yaml, and csv parsers are lazy-imported on first use, so a project that never loads one of those formats never pulls its parser in.
+
+`.dtzx` has no loader on purpose: a passphrase-encrypted transfer file cannot be decrypted from template context.
+
+
+### Executable data files are not auto-loaded
+
+`.js`, `.mjs`, and `.ts` files execute code when loaded. The engine loads one **only if the template's own source references its context key** — `$.seed` or `$['seed']`. Dropping a script next to a SQL file no longer gets it run.
+
+```sql
+-- seed.ts sits in this directory but is never imported: the template
+-- does not mention $.seed, so nothing executes.
+SELECT 1;
+```
+
+The reference check is syntactic and narrow by design. A false negative costs the author one explicit `$.key` reference; a false positive would re-open the hole where `run preview`, `run inspect`, and `--dry-run` — the three commands whose entire point is *not* to act — silently ran arbitrary code.
 
 
 ### JSON5 Features
@@ -160,8 +184,8 @@ The `$` object contains everything available in templates:
 | Property | Description |
 |----------|-------------|
 | `$.<helper>` | Functions from inherited `$helpers.ts` files |
-| `$.<filename>` | Auto-loaded data from co-located files |
-| `$.config` | Active configuration object |
+| `$.<filename>` | Auto-loaded data from co-located files (data files override helpers of the same name) |
+| `$.config` | Active configuration object — **omitted** when a `config.*` data file sits in the template's directory, which takes the key instead |
 | `$.secrets` | Decrypted secrets for active config. Reading an unresolved key throws `MissingSecretError` naming the key and the tiers searched (config-local, global-local, vault) — see [Secret Access](#secret-access). |
 | `$.globalSecrets` | Decrypted global secrets |
 | `$.env` | Environment variables |
@@ -465,7 +489,9 @@ toContextKey('seed_data.yml')    // 'seedData'
 sqlEscape("O'Reilly")  // "O''Reilly"
 
 // Get supported extensions
-getSupportedExtensions()  // ['.json', '.json5', '.yaml', '.yml', '.csv', '.js', '.mjs', '.ts']
+getSupportedExtensions()
+// ['.json', '.json5', '.yaml', '.yml', '.csv', '.js', '.mjs', '.ts', '.sql', '.dt', '.dtz']
+// `.sql` has a loader (used by $.include) but is skipped during data auto-load.
 
 // Get loader for extension
 const loader = getLoader('.json5')
@@ -478,6 +504,6 @@ const loader = getLoader('.json5')
 
 2. **Secret Exposure** - Secrets are available in templates. The rendered SQL may contain sensitive values - don't log it
 
-3. **JS Execution** - `$helpers.ts` and `.js` data files execute arbitrary code. Only load trusted files
+3. **JS Execution** - `$helpers.ts` files always execute; `.js` / `.mjs` / `.ts` data files execute only when the template references their context key. Both run arbitrary code in the noorm process — with access to the environment, including the identity key. Only load trusted files
 
 4. **Path Traversal** - `$.include()` resolves relative to the template's directory and cannot escape the project root

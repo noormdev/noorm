@@ -10,7 +10,7 @@ places a secret value can live; see [Which tier?](#which-tier) below before reac
 
 | Command | Purpose |
 |---------|---------|
-| `noorm secret set <key> <value>` | Store a secret for the active or named config |
+| `noorm secret set <key> [value]` | Store a secret for the active or named config |
 | `noorm secret list` | List secret keys for a config (values never shown) |
 | `noorm secret rm <key>` | Remove a secret from a config |
 
@@ -21,6 +21,11 @@ Common to every subcommand:
 
 - `--config <name>` / `-c <name>` — target a config other than the active one
 - `--json` — emit machine-readable JSON on stdout
+
+`secret set` additionally accepts:
+
+- `--stdin` — read the value from stdin instead of argv, so it never reaches the process table, shell history, or a `set -x` trace. Omit the positional value when you pass it.
+- `--yes` / `-y` — confirm the write on a config whose `secret:write` access is a confirm cell (an `operator` user role). Without it the command exits non-zero.
 
 `secret rm` additionally requires:
 
@@ -53,6 +58,7 @@ team-provisioning workflow.
 ## Examples
 
     noorm secret set API_KEY "sk-live-..."
+    echo "$API_KEY" | noorm secret set API_KEY --stdin
     noorm secret set DB_PASSWORD "secret123" --config prod
     noorm secret set API_KEY "sk-live-..." --json
 

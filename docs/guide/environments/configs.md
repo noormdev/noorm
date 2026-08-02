@@ -30,28 +30,28 @@ Press `c` to open the config menu, then `a` to add a new config.
 
 The setup wizard walks you through each field:
 
-1. **Name** - A short identifier like `dev`, `staging`, or `prod`. Use lowercase with hyphens.
+1. **Config Name** - A short identifier like `dev`, `staging`, or `prod`. Use lowercase with hyphens.
 
-2. **Type** - Choose `local` for your machine or `remote` for servers.
+2. **Database Type** - Your database engine: PostgreSQL, MySQL, SQLite, or SQL Server.
 
-3. **Dialect** - Your database engine: `postgres`, `mysql`, `sqlite`, or `mssql`.
+3. **Host** - The server address. For local databases, this is usually `localhost`. SQLite doesn't need a host.
 
-4. **Host** - The server address. For local databases, this is usually `localhost`. SQLite doesn't need a host.
+4. **Port** - The port number. noorm fills in the default for your dialect (PostgreSQL: 5432, MySQL: 3306, MSSQL: 1433).
 
-5. **Port** - The port number. noorm fills in the default for your dialect (PostgreSQL: 5432, MySQL: 3306, MSSQL: 1433).
+5. **Database** - The database name, or file path for SQLite.
 
-6. **Database** - The database name, or file path for SQLite.
+6. **Username** and **Password** - Your credentials. Passwords are stored encrypted.
 
-7. **User** and **Password** - Your credentials. Passwords are stored encrypted.
+7. **User Role** and **Agent Role** - Who may do what through this config. See [Access Roles](#access-roles) below.
 
-8. **Paths** - Where your schema and change files live.
+8. **Test Database** - Marks the config as a test target, which build rules and the SDK's `requireTest` guard read.
 
-After completing the wizard, noorm validates the connection. If it succeeds, your config is saved.
+Before saving, noorm connects to the server to check the credentials. It uses the dialect's system database, so the target database does not have to exist yet. Schema and change directories are not part of a config: they come from `paths` in `settings.yml`.
 
 
 ## Creating a Config Non-Interactively
 
-`noorm config add` and `edit` launch the TUI wizard — they exist to guide credential entry interactively. Removal is the exception: `noorm config rm <name> --yes` deletes headlessly, no wizard involved (see the [CLI Reference](/headless#config-rm-name)). For CI/CD pipelines and scripts that need to skip the config wizard entirely, build the config from **environment variables** instead:
+`noorm config add` and `edit` do not run headlessly. They print the interactive-only message and exit non-zero, because credential entry and the connection test belong in the wizard. Two commands are the exception: `noorm config rm <name> --yes` deletes headlessly (see the [CLI Reference](/headless#config-rm-name)), and `noorm config import <file>` creates or replaces a config from JSON. For CI/CD pipelines and scripts that need to skip the config wizard entirely, build the config from **environment variables** instead:
 
 ```bash
 export NOORM_CONNECTION_DIALECT=postgres
@@ -72,7 +72,7 @@ When at least `NOORM_CONNECTION_DIALECT` and `NOORM_CONNECTION_DATABASE` are set
 
 Only one config is active at a time. All commands use the active config unless you specify otherwise.
 
-**In the TUI:** Press `c` for configs, select one from the list, then press `u` to use it.
+**In the TUI:** Press `c` for configs, highlight one in the list, then press `Enter` to activate it.
 
 **From the command line:**
 
@@ -86,13 +86,13 @@ noorm config use staging
 noorm -c prod run build
 ```
 
-The active config shows with a dot in listings:
+`noorm config list` marks the active one and tags anything whose access is no longer the default:
 
 ```
-Configs
-  * dev        sqlite   ./data/dev.db
-    staging    postgres db.staging.example.com
-    prod       postgres db.prod.example.com
+Configurations:
+  dev (active) — sqlite/./data/dev.db
+  staging — postgres/staging_db
+  prod — postgres/prod_db [user:operator agent:off]
 ```
 
 
@@ -117,6 +117,8 @@ Every config has these fields:
 | `pool` | No | Connection pool settings |
 | `identity` | No | Override the audit identity |
 
+Connection details nest under a `connection` object in the stored JSON, so `host` is `connection.host` and `ssl` is `connection.ssl`. `name`, `type`, `isTest`, `access`, and `identity` sit at the top level.
+
 **Default ports by dialect:**
 
 | Dialect | Default Port |
@@ -135,19 +137,28 @@ The channel is the caller, not the transport. An agent reaches noorm over MCP or
 
 | Role | Behavior |
 |------|----------|
-| `viewer` | Read-only: explore schema, run `SELECT`/`EXPLAIN` |
-| `operator` | Reads plus writes; destructive operations (`change run/ff/revert`, `run build`, `db create`/`db reset`) require typing a confirmation phrase; `db drop` is denied |
-| `admin` | Frictionless — everything allowed, nothing prompts |
+| `viewer` | Read-only: explore schema, run `SELECT`/`EXPLAIN`. Cannot read secrets |
+| `operator` | Reads plus writes; migrations, builds, and `db create`/`db reset` require typing a confirmation phrase; raw DDL, `db drop`, and `db teardown` are denied |
+| `admin` | Everything is permitted, but the operations that cannot be walked back still prompt |
 
 | Operation | viewer | operator | admin |
 |-----------|--------|----------|-------|
+| `db explore`, `SELECT` / `EXPLAIN` | allowed | allowed | allowed |
+| Raw `INSERT` / `UPDATE` / `DELETE` | denied | allowed | allowed |
+| Raw DDL (`CREATE` / `ALTER` / `DROP`) | denied | denied | allowed |
 | `change run` / `change ff` / `change revert` | denied | confirm | allowed |
-| `run build` | denied | confirm | allowed |
-| `db create` | denied | confirm | allowed |
-| `db teardown` | denied | confirm | allowed |
-| `db drop` | denied | denied | confirm |
+| `run build` / `run file` / `run dir` | denied | confirm | allowed |
+| `db create` / `db reset` | denied | confirm | allowed |
+| `db truncate` | denied | confirm | confirm |
+| `db drop` / `db teardown` | denied | denied | confirm |
+| `change rm`, `config rm`, overwriting a config | denied | confirm | confirm |
+| Reading vault or local secrets | denied | allowed | allowed |
+| Writing vault or local secrets | denied | confirm | allowed |
+| `vault propagate` | denied | confirm | confirm |
 
-When an `operator`-role operation needs confirmation in the TUI, noorm asks you to type a phrase (`yes-<config-name>`). This catches the "oops, wrong database" moment before damage happens.
+`admin` is not a bypass. Dropping a database, tearing down a schema, truncating tables, removing a change or a config, overwriting a config's access roles, and propagating the vault key all confirm at every role that is allowed to attempt them. The full matrix lives in `src/core/policy/matrix.ts`.
+
+When an operation needs confirmation in the TUI, noorm asks you to type a phrase (`yes-<config-name>`). This catches the "oops, wrong database" moment before damage happens.
 
 **Skipping confirmations in CI:**
 
@@ -169,6 +180,8 @@ noorm resolves the channel from the environment it was started in, in this order
 3. Otherwise `user`.
 
 `TERM_PROGRAM`, `CI`, and whether stdout is a TTY are deliberately ignored: they describe the terminal or the pipeline, not the caller, and keying on them would lock a human out of their own CLI.
+
+`noorm mcp serve` sits above this chain. It declares `agent` outright, so stdio traffic stays on the agent channel even under `NOORM_CHANNEL=user`.
 
 Set `NOORM_CHANNEL=user` when *you* are scripting from inside an agent session and want your own role:
 
@@ -197,12 +210,14 @@ Environment variables override stored config values. This is how you inject secr
 | `NOORM_CONNECTION_PASSWORD` | `connection.password` |
 | `NOORM_CONNECTION_SSL` | `connection.ssl` |
 
-**Path variables:**
+**Path variables.** These two override `settings.yml`, not the config, because schema and change directories are project-wide:
 
-| Variable | Config Path |
-|----------|-------------|
+| Variable | Settings Path |
+|----------|---------------|
 | `NOORM_PATHS_SQL` | `paths.sql` |
 | `NOORM_PATHS_CHANGES` | `paths.changes` |
+
+The overlay stays out of the file itself. noorm never writes an ambient `NOORM_*` value back into `settings.yml`, which is version controlled.
 
 **Behavior variables:**
 
@@ -238,7 +253,7 @@ noorm run build  # Uses env-only config
 
 ## Validating Connections
 
-Before running changes, verify your config connects successfully. In the TUI, select a config and press `v` to run a full validation:
+Before running changes, verify your config connects successfully. In the TUI, highlight a config, press `+` for More, then press `v` to run a full validation:
 
 1. Can noorm connect with the provided credentials?
 2. Does the target database exist?
@@ -251,11 +266,11 @@ For headless smoke checks, run any command that opens a connection — e.g. `noo
 
 ## Exporting and Importing Configs
 
-You can export configs to share across team members or machines.
+There are two export paths, and they produce different files.
 
-**TUI:** `noorm ui` → Config → press `x` to export the highlighted config or `i` to import one.
+**TUI, for sharing with a teammate:** `noorm ui` → Config → `+` for More → `x` exports the highlighted config, `i` imports one. This path encrypts the config and its local secrets for a single recipient, using an ephemeral X25519 key exchange and AES-256-GCM, and writes `<name>.noorm.enc`. It leaves `user` and `password` out on purpose, so the recipient connects with their own credentials. You need the recipient's identity locally before you can export to them, and only their private key can decrypt the file. On import, noorm decrypts with your private key and prompts for your database credentials.
 
-**CLI:**
+**CLI, for backup and cross-machine transfer:** `noorm config export` writes plain JSON, and that JSON carries the connection password. Treat the file as a credential. noorm writes it with `0600` permissions and requires a role that can read secrets, so a `viewer` is refused.
 
 ```bash
 # Export to stdout or file
@@ -264,25 +279,28 @@ noorm config export dev --output ./dev-config.json
 
 # Import from file
 noorm config import ./dev-config.json
-noorm config import ./staging-config.json --force   # overwrite existing
+noorm config import ./staging-config.json --force --yes   # overwrite existing
 ```
 
-Exports strip passwords and other sensitive fields. The exported JSON looks like this:
+The exported JSON looks like this:
 
 ```json
 {
     "name": "dev",
     "type": "local",
-    "dialect": "sqlite",
-    "database": "./data/dev.db",
-    "paths": {
-        "schema": "./sql",
-        "changes": "./changes"
+    "isTest": false,
+    "access": {
+        "user": "admin",
+        "agent": "viewer"
+    },
+    "connection": {
+        "dialect": "sqlite",
+        "database": "./data/dev.db"
     }
 }
 ```
 
-After importing, set passwords or secrets separately: through the TUI's edit screen or with `NOORM_CONNECTION_PASSWORD` at command time.
+Overwriting an existing config rewrites its access roles, so `--force` on its own is not enough: `config import` also wants `--yes` (or `NOORM_YES`) to confirm. When you import a file that has no credentials in it, set the password afterward through the TUI's edit screen or with `NOORM_CONNECTION_PASSWORD` at command time.
 
 
 ## Managing Configs from the CLI
@@ -314,9 +332,9 @@ noorm config import ./backup.json
 ### Setting Up a New Developer
 
 1. Clone the repository
-2. Run `noorm ui` and import the shared config template under Config → `i`
+2. Run `noorm ui` and import the shared config under Config → `+` → `i`
 3. Edit the imported config and set the password (Config → highlight → `e`)
-4. Press `v` on the same screen to validate the connection
+4. Back on the config list, press `+` then `v` to validate the connection
 
 
 ### CI/CD Pipeline

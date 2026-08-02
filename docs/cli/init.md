@@ -27,8 +27,8 @@ Two flags opt out of that behavior, depending on where you want to invoke from:
 
 ## Environment
 
-Interactive TTY required by default. Fails with exit code 1 in CI or piped stdin
-unless `--yes` / `NOORM_YES=1` is set AND a full identity already exists.
+Interactive TTY required by default. Fails with exit code 2 (usage error) in CI or
+piped stdin unless `--yes` / `NOORM_YES=1` is set AND a full identity already exists.
 
 
 ## Non-interactive (CI) flow
@@ -36,7 +36,7 @@ unless `--yes` / `NOORM_YES=1` is set AND a full identity already exists.
 `noorm init --yes` (or `NOORM_YES=1 noorm init`) skips all prompts when a full
 crypto identity already lives at `~/.noorm/identity.{key,pub,json}`. The identity
 must be in place first — `--yes` does NOT bootstrap one. If any of the three
-files is missing, `noorm init --yes` exits 1 with:
+files is missing, `noorm init --yes` exits 2 with:
 
     Error: noorm init --yes requires an existing identity at ~/.noorm/identity.{key,pub,json}.
     Run: noorm identity init --name "Your Name" --email "you@example.com"

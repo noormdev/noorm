@@ -9,7 +9,7 @@ Here's what happens under the hood:
 
 1. noorm computes a SHA-256 checksum of the SQL that will actually run — for a `.sql.tmpl`, that is the *rendered* output, not the file on disk
 2. It checks the tracking database for a previous execution record
-3. If the file is new, changed, or previously failed, it runs
+3. If the file is new, changed, previously failed, or belonged to an operation a teardown marked stale, it runs
 4. If unchanged and successful, it's skipped
 5. After execution, the result and new checksum are recorded
 
@@ -39,18 +39,17 @@ sql/
     └── 001_active_users.sql      # Runs last
 ```
 
-Output shows what ran and what was skipped:
+Output shows what ran and what was skipped. Every line carries a timestamp and a level marker ahead of the message:
 
 ```
-Building schema...
-
-✓ sql/01_tables/001_users.sql
-• sql/01_tables/002_posts.sql (unchanged)
-✓ sql/02_views/001_active_users.sql
-
-Executed: 2
-Skipped:  1
+Starting schema build (3 files)
+Executed sql/01_tables/001_users.sql (14ms)
+Skipped sql/01_tables/002_posts.sql (unchanged)
+Executed sql/02_views/001_active_users.sql (9ms)
+Build complete: 2 run, 1 skipped (412ms)
 ```
+
+Add `--json` to get the same events as newline-delimited JSON on stderr and the batch result on stdout.
 
 
 ## run file
@@ -108,7 +107,11 @@ sql/02_views/001_my_view.sql  →   tmp/sql/02_views/001_my_view.sql
 sql/03_seeds/001_users.sql.tmpl  →   tmp/sql/03_seeds/001_users.sql
 ```
 
-Templates are fully rendered with your current config context. The `.tmpl` extension is stripped from output files.
+Templates are fully rendered with your current config context. The `.tmpl` extension is stripped from output files. Nothing is written to the database and nothing is tracked.
+
+::: warning Dry run output contains your secrets
+Rendering resolves every secret the template reads, in plaintext, into the files under `tmp/`. noorm writes them owner-only (`0600`, in `0700` directories), but `noorm init` does not add `tmp/` to `.gitignore`. Add it yourself, and delete the output when you're done reading it.
+:::
 
 **When to use dry run:**
 
@@ -116,7 +119,7 @@ Templates are fully rendered with your current config context. The `.tmpl` exten
 |----------|---------|
 | Inspect rendered templates | `noorm run build --dry-run` |
 | Review before production deploy | `noorm run build --dry-run -c production` |
-| Debug template variables | `noorm run file seed.sql.tmpl --dry-run` |
+| Debug one template | `noorm run preview seed.sql.tmpl` |
 | CI/CD validation step | `noorm run build --dry-run` |
 
 
@@ -128,22 +131,24 @@ noorm maintains two tables in your database to track execution history. On Postg
 
 | Field | Description |
 |-------|-------------|
-| `name` | Operation identifier (e.g., `build:2024-01-15T10:30:00`) |
-| `change_type` | `'build'` or `'run'` |
+| `name` | Operation identifier (e.g., `build:2024-01-15T10:30:00.000Z`) |
+| `change_type` | `'build'`, `'run'`, or `'change'` |
 | `executed_by` | Identity string (who ran it) |
 | `config_name` | Which config was used |
-| `status` | `'pending'`, `'success'`, `'failed'` |
+| `status` | `'pending'`, `'success'`, `'failed'`, `'reverted'`, `'stale'` |
 
 **`noorm.executions`** (`__noorm_executions__` on MySQL and SQLite) - Individual file records:
 
 | Field | Description |
 |-------|-------------|
 | `change_id` | FK to parent operation |
-| `filepath` | File that was executed |
-| `checksum` | SHA-256 of file contents |
-| `status` | `'success'`, `'failed'`, `'skipped'` |
-| `skip_reason` | `'unchanged'` if skipped |
+| `filepath` | File that was executed, relative to the project root |
+| `checksum` | SHA-256 of the SQL that actually ran (the rendered output for a `.sql.tmpl`) |
+| `status` | `'pending'`, `'success'`, `'failed'`, `'skipped'` |
+| `skip_reason` | `'unchanged'` when change detection skipped it, or `Skipped: failure in <file>` when an earlier file in the batch failed |
 | `duration_ms` | Execution time |
+
+Every file in a batch gets a `'pending'` row before the first one executes, so an interrupted build still shows you what it was going to do. Rows move to their final status as the run proceeds.
 
 These tables let noorm answer: "Has this exact file content been executed before, and did it succeed?"
 
@@ -239,7 +244,7 @@ For the gory details on what the runner does under the hood, see [MSSQL Batch Ha
 | `noorm run file <path>` | Execute single file |
 | `noorm run dir <path>` | Execute files in directory |
 | `--force` | Re-run regardless of changes |
-| `--dry-run` | Preview without executing |
+| `--dry-run` | Render to `tmp/` without executing (`run build`, `run dir`) |
 
 The checksum system means you can run `noorm run build` as often as you want—only changed or new files execute. This is the foundation of noorm's approach to database schema management.
 

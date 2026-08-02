@@ -28,10 +28,27 @@ Internally, the CLI is built on [citty](https://github.com/unjs/citty). Each com
 
 Not every command accepts every flag — append `--help` to any command to see the exact surface.
 
+Every flag in that table belongs to a *subcommand* and must appear after it. The
+one flag with a root-level meaning is `--cwd`:
+
+| Flag | Short | Type | Description |
+|------|-------|------|-------------|
+| `--cwd` | `-c` | string | Run the subcommand in `<path>`. Must precede the subcommand, like `git -C`. |
+
+`-c` is therefore overloaded by position: `noorm -c prod change ff` chdirs into
+`./prod`, while `noorm change ff -c prod` selects the `prod` config. Any *other*
+flag placed before the subcommand is rejected with a usage error rather than
+silently dropped — citty forwards only the argv after the subcommand index, so a
+hoisted flag would never reach the command's parser. `--help`/`-h` and
+`--version`/`-v` are exempt from that rejection at any position: `entry()` scans
+argv for `--help`/`-h` itself, and citty's `runMain` handles a bare `--version`
+before dispatch.
+
 **Example:**
 ```bash
 noorm change ff --config prod --json
 noorm change ff --help       # Per-command help, rendered by citty
+noorm -c ./services/api change ff   # run against a different project root
 ```
 
 
@@ -126,13 +143,20 @@ noorm run build --force  # Skip checksums
 **JSON output:**
 ```json
 {
+    "success": true,
     "status": "success",
+    "files": [],
     "filesRun": 5,
     "filesSkipped": 2,
     "filesFailed": 0,
     "durationMs": 1234
 }
 ```
+
+Every `--json` payload is an object carrying a top-level boolean `success`, added
+by `toJsonEnvelope` in `src/cli/_utils.ts` — never a bare array — so `jq -e
+'.success'` works against any command. When the payload carries a core `status`
+string, `success` is derived from it (`partial` is never reported as `true`).
 
 #### `run file`
 
@@ -145,7 +169,9 @@ noorm run file sql/01_tables/001_users.sql
 **JSON output:**
 ```json
 {
-    "filepath": "sql/01_tables/001_users.sql",
+    "success": true,
+    "filepath": "/abs/path/sql/01_tables/001_users.sql",
+    "checksum": "e3b0c442...",
     "status": "success",
     "durationMs": 45
 }
@@ -172,10 +198,14 @@ noorm change list
 
 **JSON output:**
 ```json
-[
-    { "name": "001_init", "status": "success" },
-    { "name": "002_users", "status": "pending" }
-]
+{
+    "success": true,
+    "changes": [
+        { "name": "001_init", "status": "success" },
+        { "name": "002_users", "status": "pending" }
+    ],
+    "pending": 1
+}
 ```
 
 #### `change ff`
@@ -189,6 +219,7 @@ noorm change ff
 **JSON output:**
 ```json
 {
+    "success": true,
     "status": "success",
     "executed": 3,
     "skipped": 0,
@@ -202,11 +233,11 @@ noorm change ff
 
 #### `change run`
 
-Apply a specific change.
+Apply a specific change. The name is a positional argument; omit it on a TTY to
+pick interactively.
 
 ```bash
 noorm change run 001_init
-noorm --name 001_init change run
 ```
 
 #### `change revert`
@@ -223,7 +254,7 @@ Get execution history.
 
 ```bash
 noorm change history
-noorm --count 50 change history  # Last 50 records
+noorm change history --count 50  # Last 50 records (default: 20)
 ```
 
 
@@ -240,7 +271,9 @@ noorm db truncate
 **JSON output:**
 ```json
 {
+    "success": true,
     "truncated": ["users", "posts", "comments"],
+    "preserved": [],
     "count": 3
 }
 ```
@@ -253,16 +286,21 @@ Drop all database objects (except noorm tracking tables).
 noorm db teardown
 ```
 
-**JSON output:**
+**JSON output:** `dropped` holds object *names* per category, not counts.
+`count` is the total across `tables`, `views`, `functions`, and `types`.
+
 ```json
 {
+    "success": true,
     "dropped": {
-        "tables": 5,
-        "views": 2,
-        "functions": 3,
-        "types": 1
+        "tables": ["users", "posts"],
+        "views": ["active_users"],
+        "functions": [],
+        "procedures": [],
+        "types": [],
+        "foreignKeys": []
     },
-    "count": 11
+    "count": 3
 }
 ```
 
@@ -280,11 +318,17 @@ noorm db explore
 **JSON output:**
 ```json
 {
+    "success": true,
     "tables": 12,
     "views": 3,
-    "functions": 5,
     "procedures": 0,
-    "types": 2
+    "functions": 5,
+    "types": 2,
+    "indexes": 18,
+    "foreignKeys": 7,
+    "triggers": 0,
+    "locks": 0,
+    "connections": 4
 }
 ```
 
@@ -298,23 +342,27 @@ noorm db explore tables
 
 **JSON output:**
 ```json
-[
-    { "name": "users", "columnCount": 8 },
-    { "name": "posts", "columnCount": 5 }
-]
+{
+    "success": true,
+    "tables": [
+        { "name": "users", "columnCount": 8 },
+        { "name": "posts", "columnCount": 5 }
+    ]
+}
 ```
 
 #### `db explore tables detail`
 
-Describe a specific table.
+Describe a specific table. The table name is a positional argument.
 
 ```bash
-noorm --name users db explore tables detail
+noorm db explore tables detail users
 ```
 
 **JSON output:**
 ```json
 {
+    "success": true,
     "name": "users",
     "schema": "public",
     "columns": [
@@ -338,6 +386,7 @@ noorm lock status
 **JSON output:**
 ```json
 {
+    "success": true,
     "isLocked": true,
     "lock": {
         "lockedBy": "deploy@ci-runner",
@@ -437,7 +486,7 @@ jobs:
               run: noorm change ff
 
             - name: Export schema (optional)
-              run: noorm -c prod db explore --json > schema.json
+              run: noorm db explore -c prod --json > schema.json
 ```
 
 
@@ -480,12 +529,13 @@ set -e
 
 CONFIG="${1:-}"  # Optional, falls back to active config
 
+# The flag goes AFTER the subcommand — before it, -c means --cwd.
 echo "Checking for pending changes..."
-PENDING=$(noorm ${CONFIG:+-c "$CONFIG"} change list --json | jq '.pending')
+PENDING=$(noorm change list --json ${CONFIG:+-c "$CONFIG"} | jq '.pending')
 
 if [ "$PENDING" -gt 0 ]; then
     echo "Applying $PENDING pending changes..."
-    noorm ${CONFIG:+-c "$CONFIG"} change ff
+    noorm change ff ${CONFIG:+-c "$CONFIG"}
 else
     echo "Database is up to date"
 fi
@@ -564,11 +614,21 @@ noorm db explore tables detail users
 # Positional arguments come last; flags can appear anywhere after
 # the leaf command (citty parses options per-subcommand).
 noorm change ff --dry-run
-noorm vault cp --all staging production
+noorm vault cp API_KEY staging production
 noorm db transfer --to backup --tables users,posts
+
+# Rejected: only -c/--cwd is recognized before the subcommand.
+noorm --json change ff   # Error: Unrecognized flag '--json' before the subcommand
 ```
 
 There is no colon or slash syntax — the old `change:ff` / `change/ff` notation was a meow-era artifact and is gone.
+
+One argv rewrite happens before citty sees it: `noorm sql "SELECT 1"` becomes
+`noorm sql query "SELECT 1"`. `sql` has real subcommands (`query`, `history`,
+`clear`, `repl`), so citty would otherwise read the SQL string as a subcommand
+name. `rewriteBareSqlArgv` in `src/cli/index.ts` only rewrites when the first
+positional after `sql` starts with a known SQL verb, so the explicit subcommands
+are untouched.
 
 
 ## Adding New Commands
@@ -581,20 +641,30 @@ Each command is a self-contained citty `defineCommand` module. Domains map to di
 ```
 src/cli/
 ├── _utils.ts             # withContext, withVaultContext, sharedArgs, output helpers
-├── index.ts              # Root command + --help interceptor
+├── _exit.ts              # EXIT codes + exitCodeForStatus / isSuccessStatus
+├── index.ts              # Root command, argv preprocessing, --help interceptor
 ├── ui.ts                 # Lazy-imports the TUI
+├── info.ts               # `noorm info` (leaf command at the root)
 ├── change/
-│   ├── index.ts          # `noorm change` parent (subCommands + run handler)
+│   ├── index.ts          # `noorm change` parent (subCommands only, no run handler)
 │   ├── ff.ts             # `noorm change ff`
 │   ├── run.ts            # `noorm change run`
 │   └── ...
+├── ci/
 ├── config/
 ├── db/
+├── dev/
+├── identity/
 ├── lock/
+├── mcp/
 ├── run/
-├── vault/
-└── mcp/
+├── secret/
+├── settings/
+├── sql/
+└── vault/
 ```
+
+Root subcommands are registered as lazy thunks (`() => import('./change/index.js').then(m => m.default)`) so a single invocation only loads the domain it dispatches to. `resolveCommand` walks argv one positional at a time and resolves thunks as it goes; `printHelpWithExamples` rebuilds the full USAGE breadcrumb from the walked chain, because citty's `renderUsage` only concatenates one level.
 
 
 ### Command Module Pattern
@@ -604,9 +674,9 @@ Each leaf command exports a citty `defineCommand` and (optionally) an `examples:
 ```typescript
 // src/cli/change/ff.ts
 import { defineCommand } from 'citty';
-import { attempt } from '@logosdx/utils';
 
 import { sharedArgs, withContext, outputResult } from '../_utils.js';
+import { exitCodeForStatus } from '../_exit.js';
 
 const command = defineCommand({
     meta: {
@@ -626,14 +696,20 @@ const command = defineCommand({
 
                 if (!args.json) logger.info('Applying pending changes...');
 
-                return ctx.noorm.changes.ff({ dryRun: args.dryRun });
+                return ctx.noorm.changes.ff({
+                    dryRun: Boolean(args.dryRun),
+                    force: Boolean(args.force),
+                });
 
             },
         });
 
         if (err) process.exit(1);
 
-        outputResult(args, result, `Applied ${result.applied} changes`);
+        outputResult(args, result, `Executed ${result.executed} changes`);
+
+        // Never a bare process.exit(0): 'partial' must exit 3, not 0.
+        process.exit(exitCodeForStatus(result.status));
 
     },
 });
@@ -651,10 +727,11 @@ export default command;
 Key details:
 
 - **`sharedArgs`** lives in `src/cli/_utils.ts` and supplies the conventional `--config`, `--json`, `--force`, `--dry-run`, `--yes` set. Spread it first, then add your own.
-- **`withContext`** owns the SDK lifecycle (`createContext` → `connect` → `ensureSchemaVersion` → run → `disconnect`) and returns an `[result, error]` tuple. It also creates a logger configured for JSON or text output.
+- **`withContext`** owns the SDK lifecycle (`createContext` → `connect` → `ensureSchemaVersion` → run → `disconnect`) and returns an `[result, error]` tuple. It also creates a logger configured for JSON or text output. It derives two `createContext` options the command never passes itself: `yes` from `isYesMode(args)` (`--yes` or `NOORM_YES`), and `channel` from `resolveChannel()` — so a command run inside an agent harness is policy-checked on the `agent` channel without every leaf opting in.
 - **Logger guards** — when `args.json` is true, only structured JSON should reach stdout. Wrap any human progress output in `if (!args.json) { ... }` so callers piping JSON downstream get clean output.
-- **`outputResult`** routes its first arg to `logger.result(json)` in `--json` mode and to `logger.info(text)` in human mode.
+- **`outputResult(args, json, text, logger?)`** emits to stdout in both modes. In `--json` mode the payload goes through `toJsonEnvelope` (adds the `success` flag) and out via `logger.result()` when a logger is supplied. In human mode the text is written to `process.stdout` **directly**, never through `logger.info` — the logger's event stream goes to stderr, and a command's result must not land there.
 - **`examples`** is post-assigned via a typed cast because citty's `CommandDef` type does not include the field. The root `--help` interceptor reads it and renders an `EXAMPLES` block.
+- **Exit codes** come from `src/cli/_exit.ts`: `exitCodeForStatus(status)` maps `success`/`skipped` → 0, `partial` → 3, everything else → 1. Use `EXIT.USAGE` (2) for a bad invocation or a named target that does not exist.
 
 
 ### Parent Commands
@@ -693,7 +770,7 @@ Status listing previously lived on the bare `change` handler -- it was moved to 
 
 ### TUI-Only Wizards
 
-Some commands (`config add`, `config edit`) don't have a sensible headless equivalent — they exist to walk users through credential entry interactively. Rather than importing the TUI, they print `Interactive only — run: noorm ui` to stderr and exit 1, leaving the user to launch the TUI themselves. See `src/cli/config/add.ts` for the canonical pattern.
+Some commands (`config add`, `config edit`) don't have a sensible headless equivalent — they exist to walk users through credential entry interactively. Rather than importing the TUI, they call `outputError` (stderr in human mode, a `{ success: false, error }` object under `--json`) and exit 1, leaving the user to launch the TUI themselves. `config add` also names its headless escape hatch in the message: `Interactive only — run: noorm ui. For headless creation use: noorm config import <file.json>`. See `src/cli/config/add.ts` for the canonical pattern.
 
 `config rm` used to live in this bucket but is now real and headless: bootstrap state (`initState`/`getStateManager`), gate the deletion through `checkConfigPolicy` (denies or requires `--yes`/`NOORM_YES` per the config's `user`-channel role for `config:rm`), then call `StateManager.deleteConfig()` — the same core path the TUI's removal screen uses, so the locked-stage guard applies identically. See `src/cli/config/rm.ts`.
 
@@ -741,19 +818,22 @@ describe('cli: change ff', () => {
 
         const result = await noorm(project, 'change', 'ff');
         expect(result.exitCode).toBe(0);
-        expect(result.stdout).toContain('Applied');
+        expect(result.stdout).toContain('Fast-forward success');
 
     });
 
     it('emits structured JSON with --json', async () => {
 
-        const result = await noormJson<{ applied: number }>(project, 'change', 'ff');
+        const result = await noormJson<{ success: boolean; executed: number }>(
+            project, 'change', 'ff',
+        );
         expect(result.ok).toBe(true);
-        expect(result.data?.applied).toBeGreaterThanOrEqual(0);
+        expect(result.data?.success).toBe(true);
+        expect(result.data?.executed).toBeGreaterThanOrEqual(0);
 
     });
 
 });
 ```
 
-The setup helper builds an isolated SQLite project and runs the compiled CLI via `node packages/cli/dist/index.js`. `noormJson` automatically appends `--json` after the command path (citty parses flags per-subcommand, so it must come last).
+The setup helper builds an isolated SQLite project (env-only mode, no `state.enc`) and runs the compiled CLI via `node dist/cli/index.js`. `noormJson` automatically appends `--json` after the command path (citty parses flags per-subcommand, so it must come last) and returns `{ data, error, exitCode, ok }` — `ok` is the process outcome, `data.success` is the payload's own flag.

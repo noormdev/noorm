@@ -226,6 +226,10 @@ Each change has a status:
 | `success` | Applied successfully |
 | `failed` | Last execution failed |
 | `reverted` | Was applied, then rolled back |
+| `stale` | Was applied, then `db teardown` dropped the objects it created |
+
+`pending`, `reverted`, and `stale` all count as outstanding work, so `change ff` and
+`change next` pick up all three.
 
 From the headless CLI, `noorm change list` prints every known change with its status. Bare `noorm change` renders help -- it does not connect to the database.
 
@@ -235,13 +239,34 @@ noorm change list --json      # Same data as JSON
 ```
 
 ```json
-[
-    { "name": "2025-01-15-add-email-verification", "status": "success" },
-    { "name": "2025-02-01-migrate-user-roles", "status": "pending" }
-]
+{
+    "success": true,
+    "changes": [
+        {
+            "name": "2025-01-15-add-email-verification",
+            "status": "success",
+            "appliedAt": "2025-01-15T14:30:00.000Z",
+            "appliedBy": "Alice <alice@example.com>",
+            "revertedAt": null,
+            "errorMessage": null,
+            "isNew": false,
+            "orphaned": false
+        }
+    ],
+    "pending": 1
+}
 ```
 
-When you omit the change name on a TTY, the `run`, `revert`, `rewind`, `edit`, `rm`, and `history-detail` subcommands open an interactive picker filtered to the relevant subset (pending for `run`, applied for `revert`/`rewind`, etc.). Non-TTY callers must supply the name.
+Each entry merges the database record above with the on-disk one, so it also carries
+`path`, `date`, `description`, `changeFiles`, `revertFiles`, and `hasChangelog`. An entry
+flagged `orphaned` exists in the change tracking tables but no longer on disk, so those
+disk fields are absent.
+
+When you omit the change name on a TTY, several subcommands open an interactive picker.
+`run`, `revert`, `rewind`, and `history-detail` query the database and filter to the
+relevant subset: outstanding changes for `run`, successfully applied ones for `revert` and
+`rewind`, anything with a history record for `history-detail`. `edit` and `rm` work offline
+and list every folder in `changes/`. Non-TTY callers must supply the name.
 
 
 ## Common Workflows
@@ -299,28 +324,41 @@ Revert the last N applied changes:
 noorm change rewind 3
 ```
 
-This reverts the three most recently applied changes, starting with the newest.
+This reverts the three most recently applied changes, starting with the newest. Pass a
+change name instead of a count to rewind back to and including that change:
+
+```bash
+noorm change rewind 2025-01-15-add-email-verification
+```
 
 
 ### Preview Before Running
 
-See what SQL will execute without running it:
+`--dry-run` is the preview: it renders every file, templates and manifests included, and
+writes the result under `tmp/` instead of executing it. See [Dry Run](#dry-run) below.
+
+To render a single template file to stdout without involving a change at all, use
+`noorm run preview`:
 
 ```bash
-noorm change run 2025-02-01-migrate-user-roles --preview
+noorm run preview sql/views/user_summary.sql.tmpl
 ```
-
-For templates, this shows the rendered SQL. Use this before running against production.
 
 
 ### Dry Run
 
-Render files to a temporary directory without executing. Available on every apply/revert command: `change run`, `change revert`, `change ff`, and `change next`:
+Render files to a temporary directory without executing. Available on every apply/revert command: `change run`, `change revert`, `change ff`, `change next`, and `change rewind`:
 
     noorm change run 2025-02-01-migrate-user-roles --dry-run
     noorm change ff --dry-run
 
-Files are written to `tmp/` so you can inspect them. The dry-run branch does **not** consult the change tracking tables and never writes to them — making it safe to run repeatedly in production. The CLI tags human output with `(dry-run)` and adds `dryRun: true` to the JSON payload so CI pipelines can verify the result didn't touch the database.
+Files are written to `tmp/` so you can inspect them. A dry run never writes to the change
+tracking tables: it skips the "does this need to run?" lookup, takes no lock, and creates
+no history record, which makes it safe to run repeatedly in production. `ff`, `next`, and
+`rewind` still read the tables to work out which changes to render. The CLI tags human
+output with `(dry-run)` and adds `dryRun: true` to the JSON payload of `run`, `revert`,
+`ff`, and `next` so CI pipelines can verify the result didn't touch the database.
+`rewind --json` does not add the flag.
 
 
 ## When Changes Re-Run
@@ -337,7 +375,7 @@ noorm tracks whether each change needs to run based on several conditions:
 | `--force` flag provided | Runs |
 | Successfully applied, unchanged | Skipped |
 
-After a successful run, the change won't run again unless something changes. This is tracked via checksums of all files in `change/` or `revert/`.
+After a successful run, the change won't run again unless something changes. This is tracked via a combined checksum of every file in `change/` or `revert/` plus the schema files any `.txt` manifest references, so editing a referenced view or function re-triggers the change.
 
 ::: tip Force Re-Run
 Need to re-apply a change? Use `--force`:
@@ -359,7 +397,7 @@ noorm change run my-change --force
 
 **Use manifests for shared SQL.** Reference existing schema files with `.txt` manifests instead of duplicating SQL.
 
-**Preview before production.** Use `--preview` or `--dry-run` to inspect exactly what will execute.
+**Preview before production.** Use `--dry-run` to render everything to `tmp/` and inspect exactly what will execute.
 
 **Write meaningful changelog.md files.** Explain *why* the change exists, not just what it does. Future debugging sessions will benefit.
 

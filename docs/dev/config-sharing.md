@@ -18,6 +18,10 @@ Config sharing uses X25519 key exchange with AES-256-GCM encryption. Each user h
 
 Credentials (user/password) are intentionally excluded from exports. The recipient provides their own database credentials during import. This ensures shared configs don't contain hardcoded passwords.
 
+> **This flow is TUI-only.** It lives in `src/tui/screens/config/ConfigExportScreen.tsx` and `ConfigImportScreen.tsx`, reached from `noorm ui` → config list → `+` (more) → `[x]` export / `[i]` import.
+>
+> The `noorm config export` / `noorm config import` **CLI** commands are a different feature: plain, unencrypted JSON that *includes* the connection password, meant for backup and same-owner machine transfer. `config export` is gated on `secret:read` for exactly that reason. Do not send its output to a teammate.
+
 ```mermaid
 flowchart LR
     A[Alice's Config] --> B[Export]
@@ -47,7 +51,7 @@ sequenceDiagram
     participant Crypto as Crypto Module
     participant FS as File System
 
-    User->>CLI: noorm config:export myconfig
+    User->>CLI: config list → + → [x] export
     CLI->>User: Enter recipient email
     User->>CLI: bob@example.com
     CLI->>State: findKnownUsersByEmail(email)
@@ -75,6 +79,7 @@ The exported data includes everything needed to recreate the config except crede
         type: 'remote',
         isTest: false,
         access: { user: 'operator', agent: 'viewer' },
+        protected: true,        // legacy mirror of `access`, for old importers
         connection: {
             dialect: 'postgres',
             host: 'db.example.com',
@@ -83,17 +88,17 @@ The exported data includes everything needed to recreate the config except crede
             ssl: true,
             // NO user/password
         },
-        paths: {
-            sql: './sql',
-            changes: './changes',
-        },
     },
     secrets: {
-        'API_KEY': 'encrypted-value',
-        'WEBHOOK_SECRET': 'another-value',
+        'API_KEY': 'sk-live-...',        // plaintext inside the encrypted envelope
+        'WEBHOOK_SECRET': 'whsec-...',
     },
 }
 ```
+
+`access` is the source of truth; `protected` rides along so an as-yet-unupgraded importer still reaches a safe (if coarser) access decision. `paths` is *not* exported — the recipient's project layout is their own.
+
+The `secrets` map holds every config-scoped secret in the clear. It is protected only by the AES-256-GCM envelope around the whole JSON blob, so treat exporting as handing the recipient those values outright.
 
 
 ## Import Flow
@@ -114,7 +119,7 @@ sequenceDiagram
     participant Crypto as Crypto Module
     participant State as State Manager
 
-    User->>CLI: noorm config:import myconfig.noorm.enc
+    User->>CLI: config list → + → [i] import
     CLI->>FS: read myconfig.noorm.enc
     FS-->>CLI: SharedConfigPayload (encrypted)
 
@@ -142,7 +147,7 @@ sequenceDiagram
 
 ## Encryption Details
 
-noorm uses the ephemeral keypair pattern for perfect forward secrecy:
+noorm uses the ephemeral keypair pattern (ephemeral-static ECDH). HKDF is SHA-256 with an empty salt and the context string `noorm-config-share`; the IV is 16 random bytes per export:
 
 ```mermaid
 flowchart TB
@@ -188,6 +193,7 @@ Import can fail at several points. Each has a specific error message:
 | Error | Message | Cause |
 |-------|---------|-------|
 | File not found | `File not found: {path}` | Path doesn't exist |
+| Unreadable | `Could not read file.` | Path exists but the read failed (permissions, directory) |
 | Invalid format | `Invalid file format. Not a valid noorm export file.` | File isn't JSON or wrong structure |
 | No identity | `No private key found. Run "noorm init" first.` | Missing `~/.noorm/identity.key` |
 | Wrong recipient | `Could not decrypt file. You may not be the intended recipient.` | Decryption failed - wrong key |
@@ -198,7 +204,9 @@ Import can fail at several points. Each has a specific error message:
 
 ### Why Ephemeral Keypairs?
 
-Each export generates a fresh keypair. Even if someone obtains the recipient's private key later, they cannot decrypt old exports without the ephemeral private key (which is never stored).
+Each export generates a fresh keypair, so no two exports share a wrapping key and the sender needs no long-term secret of their own to encrypt.
+
+**This is not forward secrecy.** The exchange is ephemeral-static: the recipient's key is long-lived, and `decryptWithPrivateKey` needs nothing but that key plus the `ephemeralPubKey` stored in the file itself. Anyone who obtains the recipient's private key can decrypt every `.noorm.enc` file ever sent to them, past and future. Treat a leaked `~/.noorm/identity.key` as a compromise of every shared config and every secret in them.
 
 ### Why Exclude Credentials?
 
@@ -213,8 +221,9 @@ Forcing recipients to enter credentials ensures accountability.
 
 The `.noorm.enc` file can be shared via any channel (email, Slack, git) because:
 - Only the intended recipient can decrypt it
-- Tampering is detected via GCM authentication tag
-- Sender identity is verified via metadata
+- Tampering with the *ciphertext* is detected via the GCM authentication tag
+
+The `sender` and `recipient` fields are **not** authenticated. They sit alongside the ciphertext as plain JSON, and no AAD is bound into the GCM tag, so anyone can edit them without breaking decryption. They are display metadata, not proof of origin — a successful decrypt tells you the file was sealed to your public key, and nothing about who sealed it.
 
 
 ## Key Storage
@@ -223,10 +232,12 @@ Identity keys are stored in the user's home directory:
 
 ```
 ~/.noorm/
-├── identity.key     # X25519 private key (0600 permissions)
-├── identity.pub     # X25519 public key (0644 permissions)
-└── identity.json    # Metadata (name, email, machine, os)
+├── identity.key     # X25519 private key, hex PKCS8 DER (0600 permissions)
+├── identity.pub     # X25519 public key, hex SPKI DER (0644 permissions)
+└── identity.json    # Metadata: identityHash, name, email, publicKey, machine, os, createdAt
 ```
+
+`identityHash` is `SHA-256(email + '\0' + name + '\0' + machine + '\0' + os)` — the stable handle the database and the vault use to address a user.
 
 Identity is stored globally at `~/.noorm/`, separate from the project's encrypted state file (`.noorm/state/state.enc`). This separation means:
 - Identity works across all noorm projects on your machine
@@ -238,21 +249,21 @@ Identity is stored globally at `~/.noorm/`, separate from the project's encrypte
 
 ### Export a config
 
-```bash
-# Export 'production' config for a teammate
-noorm config:export production
-# Enter their email when prompted
-# File created: production.noorm.enc
+```
+noorm ui  →  config list  →  +  →  [x] export
+# Pick 'production', enter the teammate's email
+# File created in the cwd: production.noorm.enc
 ```
 
 ### Import a config
 
-```bash
-# Import a shared config
-noorm config:import production.noorm.enc
-# Enter your database credentials when prompted
+```
+noorm ui  →  config list  →  +  →  [i] import
+# Select production.noorm.enc, enter your own database credentials
 # Config 'production' imported with your credentials
 ```
+
+There is no headless equivalent. `noorm config export|import` is the unencrypted JSON backup path described above, not this one.
 
 ### Known Users
 
@@ -263,7 +274,7 @@ Before exporting, the recipient's public key must be known. Known users are disc
 noorm config use production
 
 # Alice can now see Bob in her known users (if Bob has used this database)
-noorm identity known
+noorm identity list
 ```
 
 Identity sync happens automatically on `config use` - it registers your identity to the database and fetches other team members' public keys.

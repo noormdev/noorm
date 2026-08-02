@@ -19,7 +19,7 @@ noorm provides controlled reset operations that complete in milliseconds while h
 | `teardown` | Drop all database objects | Full rebuild, change testing |
 
 ::: danger Destructive Operations
-Both operations permanently destroy data. `truncate` wipes all rows. `teardown` drops tables, views, functions, and types. There is no undo. These commands require explicit confirmation.
+Both operations permanently destroy data. `truncate` wipes all rows. `teardown` drops tables, views, functions, procedures, types, and foreign key constraints. There is no undo. These commands require explicit confirmation.
 :::
 
 
@@ -34,8 +34,10 @@ noorm db truncate -y
 ### What Gets Truncated
 
 - All user tables (rows deleted)
-- Identity/auto-increment sequences reset to 1
+- Identity/auto-increment counters restarted, on every dialect except SQLite
 - Foreign key constraints temporarily disabled during operation
+
+Foreign key enforcement is re-enabled even when the truncate itself fails partway through, so a failed run never leaves the database with constraints switched off.
 
 ### What Stays
 
@@ -53,7 +55,7 @@ noorm db teardown -y
 ```
 
 ::: warning Access Roles
-`db teardown` is gated by the config's `db:reset` access role: `viewer` is denied outright, `operator` must confirm (`yes-<config>`, or `NOORM_YES=1` in CI), `admin` runs unconfirmed — see [Access Roles](#access-roles) below.
+`db teardown` is gated by the config's `db:teardown` permission: `viewer` and `operator` are both denied outright, and even `admin` must confirm (`yes-<config>`, or `NOORM_YES=1` in CI). Only an `admin`-role config can tear down at all. See [Access Roles](#access-roles) below.
 :::
 
 ### Drop Order
@@ -61,12 +63,18 @@ noorm db teardown -y
 Objects are removed in dependency-safe order:
 
 1. **Foreign key constraints** - Must go first to allow table drops
-2. **Views** - May depend on tables
-3. **Tables** - Core schema objects
-4. **Functions/Procedures** - May depend on types
-5. **Types** - Enum and composite types last
+2. **CHECK constraints** - MSSQL only, and only when functions are being dropped: a scalar UDF referenced by a CHECK constraint cannot be dropped while its table stands
+3. **Procedures** - Dropped early so they hold no references to the functions, views, and tables below
+4. **Functions** - Must precede table drops so schema-bound UDFs release their dependency locks
+5. **Views** - Schema-bound views also lock the tables they reference
+6. **Tables** - Safe once every schema-bound dependent is gone
+7. **Types** - Table types first, then the rest
+
+Procedures, functions, and views all go before tables, not after. A `WITH SCHEMABINDING` object on MSSQL holds a dependency lock on the table it references, and dropping the table first fails with "Cannot DROP TABLE ... because it is being referenced by object ...".
 
 You do not need to manage this ordering. noorm handles it automatically.
+
+Pass `--preserve-schemas <a,b>` to leave whole schemas untouched. Teardown reaches every non-system schema, so this is the way to protect one it did not create.
 
 ### What Stays
 
@@ -83,7 +91,7 @@ After teardown, noorm can still track what was applied previously. Changes are m
 
 ## Access Roles
 
-[Configs](/guide/environments/configs) declare an `access.user` role — `viewer`, `operator`, or `admin` — that gates `db teardown` (and `truncate`, `reset`) via the `db:reset` permission. This prevents accidentally wiping production data. You can also cap it at the [stage level](/guide/environments/stages): a stage with `protected: true` clamps every linked config's resolved access to at most `operator`/`viewer`.
+[Configs](/guide/environments/configs) declare an `access.user` role — `viewer`, `operator`, or `admin` — and each destructive operation resolves against its own permission, not one shared one. This prevents accidentally wiping production data. You can also cap it at the [stage level](/guide/environments/stages): a stage with `protected: true` clamps every linked config's resolved access to at most `operator`/`viewer`.
 
 ```yaml
 # .noorm/settings.yml
@@ -93,15 +101,25 @@ stages:
             protected: true   # access ceiling: at most operator/viewer
 ```
 
-When you attempt teardown on a `viewer`-role config:
+The three permissions in this family resolve differently:
+
+| Operation | Permission | `viewer` | `operator` | `admin` |
+|-----------|------------|----------|------------|---------|
+| `db teardown` | `db:teardown` | Denied | Denied | Confirm |
+| `db truncate` | `db:truncate` | Denied | Confirm | Confirm |
+| `db reset` / `ctx.noorm.db.reset()` | `db:reset` | Denied | Confirm | Allowed |
+
+Teardown is the strictest of the three: it is the only one an `operator` cannot reach at all, and the only one that still asks an `admin` to confirm. `reset` is the loosest, because it rebuilds the schema it just dropped.
+
+When you attempt teardown on a `viewer`- or `operator`-role config:
 
 ```
-Cannot teardown on config "prod": "db:reset" is not allowed on config "prod" (role: viewer)
+Cannot teardown on config "prod": "db:teardown" is not allowed on config "prod" (role: operator)
 ```
 
-An `operator`-role config doesn't refuse teardown — it asks for confirmation instead (see below).
+No flag, environment variable, or SDK option overrides a denial. Give the config `admin` access if it genuinely needs to be torn down.
 
-### Confirming on `operator`
+### Confirming on `admin`
 
 **CLI/TUI**: Type the confirmation phrase, or pass `--yes` (`NOORM_YES=1` in CI) to skip the prompt:
 
@@ -109,15 +127,19 @@ An `operator`-role config doesn't refuse teardown — it asks for confirmation i
 NOORM_YES=1 noorm db teardown --config prod
 ```
 
-**SDK**: There is no prompt to answer. `ctx.noorm.db.teardown()` throws `ProtectedConfigError` on an `operator`-role config unless `NOORM_YES=1` is set in the environment — the same variable the CLI honors:
+**SDK**: There is no prompt to answer. `ctx.noorm.db.teardown()` throws `ProtectedConfigError` on any config whose confirmation the caller has not pre-supplied. Pass `yes: true` to `createContext`, or set `NOORM_YES=1` in the environment, the same variable the CLI honors:
 
 ```typescript
-const ctx = await createContext({ config: 'prod' })
+const ctx = await createContext({ config: 'prod', yes: true })
 
-await ctx.noorm.db.teardown()  // Throws ProtectedConfigError on operator; run via CLI/TUI or set NOORM_YES=1
+await ctx.noorm.db.teardown()  // Throws ProtectedConfigError without `yes` (or NOORM_YES=1)
 ```
 
-A `viewer`-role config denies `db teardown` outright — no flag, environment variable, or SDK option overrides that. Give the config `admin` access if it genuinely needs frictionless teardown.
+Neither `yes: true` nor `NOORM_YES=1` unblocks a denial. On a `viewer`- or `operator`-role config, `teardown()` throws no matter what you pass.
+
+A dry run is checked against the role but never against the confirmation: any role allowed to tear down can preview one without `--yes`. Previewing is the safety mechanism, so it stays reachable.
+
+Contexts created on the `agent` channel (MCP, or an AI agent driving the CLI) never satisfy a confirmation at all. `confirm` collapses to `deny` before `yes` is consulted, so an agent cannot walk through a gate a human was meant to answer.
 
 ::: danger
 Running teardown against production should be exceedingly rare. If you find yourself doing this regularly, reconsider your deployment workflow.
@@ -139,6 +161,8 @@ teardown:
 ```
 
 These tables will be skipped during both truncate and teardown operations. Their data and structure remain intact.
+
+`ctx.noorm.db.reset()` is the exception: it ignores `preserveTables` on purpose. Reset rebuilds the whole schema from `sql/`, so any table left standing would collide with the build's `CREATE TABLE` and abort the rebuild.
 
 
 ## Post-Teardown Scripts
@@ -237,7 +261,7 @@ beforeAll(async () => {
 })
 ```
 
-The `reset()` method combines `ctx.noorm.db.teardown()` and `ctx.noorm.run.build({ force: true })` for complete schema reconstruction.
+The `reset()` method combines a full teardown with `run.build({ force: true })` for complete schema reconstruction. It is gated by `db:reset`, which an `admin`-role config satisfies without confirmation.
 
 
 ## Scripted Usage
@@ -260,22 +284,27 @@ noorm db teardown --dry-run
 ### JSON Output
 
 ```bash
-noorm db teardown --json
+noorm db teardown --json --yes
 ```
 
 ```json
 {
-    "status": "success",
+    "success": true,
     "dropped": {
         "tables": ["users", "posts", "comments"],
         "views": ["active_users"],
         "functions": [],
-        "types": []
+        "procedures": [],
+        "types": [],
+        "foreignKeys": ["posts_user_id_fkey"]
     },
-    "preserved": ["countries", "app_settings"],
-    "durationMs": 45
+    "count": 4
 }
 ```
+
+`count` sums tables, views, functions, and types, but not procedures or foreign keys. A dry run adds `"dryRun": true`, and a configured post-script adds `postScriptResult`. When a post-script fails, the objects are still gone but the command exits non-zero, because a teardown whose seeding step never ran is half-finished.
+
+`noorm db truncate --json` reports `truncated`, `preserved`, and `count`, plus `statements` on a dry run.
 
 ### CI/CD Pattern
 
@@ -332,12 +361,14 @@ noorm generates appropriate SQL for each database:
 
 | Feature | PostgreSQL | MySQL | MSSQL | SQLite |
 |---------|------------|-------|-------|--------|
-| Truncate | `TRUNCATE TABLE` | `TRUNCATE TABLE` | `TRUNCATE TABLE` | `DELETE FROM` |
-| Reset identity | `RESTART IDENTITY` | `AUTO_INCREMENT = 1` | `DBCC CHECKIDENT RESEED` | N/A |
-| Disable FKs | `SET session_replication_role` | `SET FOREIGN_KEY_CHECKS=0` | `NOCHECK CONSTRAINT` | `PRAGMA foreign_keys=OFF` |
+| Truncate | `TRUNCATE TABLE ... CASCADE` | `TRUNCATE TABLE` | `DELETE FROM` | `DELETE FROM` |
+| Reset identity | `RESTART IDENTITY` | Automatic with `TRUNCATE` | `DBCC CHECKIDENT ... RESEED` | N/A |
+| Disable FKs | `SET session_replication_role` | `SET FOREIGN_KEY_CHECKS=0` | Per-table `NOCHECK CONSTRAINT` | `PRAGMA foreign_keys=OFF` |
 | Drop cascade | `CASCADE` | Manual order | Manual order | Manual order |
 
-SQLite uses DELETE instead of TRUNCATE because SQLite does not support TRUNCATE.
+Two dialects use DELETE rather than TRUNCATE, for different reasons. SQLite has no TRUNCATE statement. MSSQL has one, but it refuses to run against a table referenced by a foreign key even with constraints set to NOCHECK, so noorm issues a DELETE and reseeds the identity separately.
+
+MSSQL also has no session-level foreign key switch, so noorm emits one `ALTER TABLE ... NOCHECK CONSTRAINT ALL` per table rather than using `sp_MSforeachtable`, whose parallel workers deadlock on schema locks.
 
 
 ## Best Practices
@@ -350,7 +381,7 @@ SQLite uses DELETE instead of TRUNCATE because SQLite does not support TRUNCATE.
 
 **Use postScript for seeds.** Re-insert required data automatically after teardown.
 
-**Check the config's access role.** A `viewer`/`operator` role exists for a reason. Think twice before switching a config to `admin` just to skip the confirmation.
+**Check the config's access role.** A `viewer`/`operator` role exists for a reason. Switching a config to `admin` is what makes teardown possible at all, so think twice before doing it to get past a denial.
 
 ```bash
 # Safe teardown pattern

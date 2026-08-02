@@ -35,7 +35,7 @@ Your team stores the production Stripe key in the vault:
 Vault:  STRIPE_KEY = "sk_live_abc123..."
 ```
 
-For local development, you want to use Stripe's test mode. Set a local override through the TUI — `noorm ui` → Settings → Secrets → `a`, with key `STRIPE_KEY` and value `sk_test_xyz789...`. Local secrets are stored encrypted in your `.noorm/state/state.enc` and never leave your machine.
+For local development, you want to use Stripe's test mode. Set a local override through the TUI: `noorm ui` → Config → highlight the config → `k` → `a`, with key `STRIPE_KEY` and value `sk_test_xyz789...`. Headlessly, `noorm secret set STRIPE_KEY "sk_test_xyz789..."`. Local secrets are stored encrypted in your `.noorm/state/state.enc` and never leave your machine.
 
 Now when templates reference `secrets.STRIPE_KEY`:
 
@@ -118,12 +118,14 @@ noorm vault list
 noorm vault rm OLD_API_KEY
 ```
 
-The TUI provides a visual interface at **Secrets** (`k` from home):
+The TUI provides a visual interface at **Vault** (`v` from home):
 
-- View all vault secrets with who set them
-- Add, edit, and delete secrets
+- View all vault secrets, each labeled with who set it
+- Add a secret with `a`, edit one by selecting it
 - See pending users who need access
 - One-key propagation (`p`)
+
+Removing a vault secret is CLI-only: `noorm vault rm <KEY>`.
 
 
 ## Granting Team Access
@@ -136,32 +138,31 @@ noorm vault propagate
 
 This encrypts the vault key for each pending user's public key. After propagation, they can decrypt vault secrets on their next connection.
 
-The TUI shows a badge when users are pending:
+The Vault screen counts them in its header:
 
 ```
-Vault  [2 pending]
+3 secret(s) | 4 user(s) with access   (2 pending)
 ```
 
-Press `p` to propagate immediately.
+Press `p` there to propagate. noorm lists the recipients it is about to grant access to and asks you to confirm before it writes anything.
 
 
 ## Copying Secrets Between Configs
 
-Move secrets from one database to another:
+Move a secret from one database to another. `vault cp` takes three positional arguments in this order: the key, the source config, and the destination config. All three are required, so copy one key per invocation.
 
 ```bash
-# Copy specific secret
+# Copy one secret
 noorm vault cp API_KEY staging production
 
-# Copy all secrets
-noorm vault cp staging production
+# Overwrite a key that already exists on the destination
+noorm vault cp API_KEY staging production --force
 
-# Force overwrite existing
-noorm vault cp --force staging production
-
-# Preview without executing
-noorm vault cp --dry-run staging production
+# Preview without writing
+noorm vault cp API_KEY staging production --dry-run
 ```
+
+A dry run performs the same preflight as a real copy (vault access on both ends, source key exists, destination collisions) and only skips the write.
 
 If the destination vault isn't initialized, noorm initializes it automatically using your identity.
 
@@ -174,7 +175,7 @@ Vault secrets merge into the template context alongside local secrets:
 -- sql/setup/external-api.sql.tmpl
 -- Vault secret (or local override if set)
 INSERT INTO api_config (provider, key)
-VALUES ('stripe', '<%= secrets.STRIPE_KEY %>');
+VALUES ('stripe', {%~ $.quote($.secrets.STRIPE_KEY) %});
 ```
 
 The resolution order means you can:
@@ -198,14 +199,14 @@ noorm vault set API_KEY "$API_KEY"
 # List with JSON output
 noorm vault list --json
 
-# Copy secrets between environments
-noorm vault cp --all staging production
+# Copy a secret between environments
+noorm vault cp API_KEY staging production
 ```
 
-Pipe values to avoid command history:
+Pipe the value in with `--stdin` to keep it out of the process table, shell history, and `set -x` traces:
 
 ```bash
-echo "$SECRET_VALUE" | noorm vault set MY_SECRET
+echo "$SECRET_VALUE" | noorm vault set MY_SECRET --stdin
 ```
 
 
@@ -215,7 +216,7 @@ The vault design provides several security properties:
 
 1. **End-to-end encryption** - Secrets encrypted in memory, transmitted encrypted, stored encrypted
 2. **Zero-knowledge database** - Database administrators see only ciphertext
-3. **Key rotation via propagation** - Each user has unique ciphertext for the same vault key
+3. **Per-user key distribution** - Propagation re-encrypts the same vault key for each recipient, so every user holds unique ciphertext
 4. **No shared secrets in transit** - ECDH derives keys without transmitting them
 5. **Authenticated encryption** - AES-256-GCM detects tampering
 

@@ -41,9 +41,19 @@ inherits the active config. `noorm run build`, `noorm change ff`, and
 ## What `noorm db create` does (and what it needs)
 
 The command connects to the dialect's *system database*
-(`postgres` for PostgreSQL, `master` for MSSQL; MySQL skips this) with
-the credentials in the named config, then runs the dialect's
-`CREATE DATABASE` statement targeted at `config.connection.database`.
+(`postgres` for PostgreSQL, `master` for MSSQL; MySQL connects with no
+database named at all) with the credentials in the named config, then
+runs the dialect's `CREATE DATABASE` statement targeted at
+`config.connection.database`. SQLite has no system database to borrow,
+so noorm checks that the directory holding the file is writable
+instead. That probe leaves nothing behind.
+
+Creating the database is only half the job. `db create` then connects
+to the new database and bootstraps noorm's own tracking tables
+(`version`, `change`, `executions`, `lock`, `identities`, `vault`), so
+the config is ready for `run build` and `change ff` when the command
+returns. Running it against a database that already exists and is
+already initialized is a no-op that reports `alreadyExists: true`.
 
 It needs:
 
@@ -51,12 +61,19 @@ It needs:
 - Credentials in the config that can reach the server.
 - A server-level permission to create databases (e.g. `CREATEDB` on
   PostgreSQL, `dbcreator` role on MSSQL).
+- An access role that permits `db:create`. A `viewer` config is denied
+  outright; an `operator` config needs `--yes` (or `NOORM_YES=1`) to
+  satisfy the confirmation; an `admin` config runs unconfirmed.
 
 It does not need:
 
 - The target database to already exist — that's the whole point.
 - A `.noorm/` schema to be built — `noorm run build` is a separate
   step.
+
+The access check runs before any probe touches the server. That
+ordering matters on SQLite, where merely opening the target creates the
+file: checking afterwards would hand a denied role a database anyway.
 
 
 ## Why no `--name <database>` flag?
@@ -80,13 +97,17 @@ Three reasons, in order of importance:
    reviewable artifact in your repo or CI runner.
 
 If you genuinely need ad-hoc database creation without a stored
-config, fall back to a one-shot SQL statement against the system
-database:
+config, fall back to a one-shot SQL statement issued through an
+existing one:
 
     noorm sql query -c dev "CREATE DATABASE foo"
 
-That's an explicit, dialect-aware path — and it forces you to pick
-a config (and therefore a connection identity) for the operation.
+That forces you to pick a config, and therefore a connection identity,
+for the operation. Two caveats: the statement runs against the `dev`
+database rather than the system database, so `dev` itself has to exist
+and be reachable; and `CREATE DATABASE` classifies as `sql:ddl`, which
+only an `admin`-role config may run. The SQL is passed through
+verbatim, so it is on you to write it for the right dialect.
 
 
 ## Companion commands
@@ -98,6 +119,12 @@ a config (and therefore a connection identity) for the operation.
 | `noorm config use <name>` | Switch the active config. |
 | `noorm db create [-c <name>]` | Create the database described by the named config. |
 | `noorm db drop [-c <name>]` | Drop the database described by the named config. |
+
+`db drop` is gated harder than `db create`. Its `db:destroy` permission
+denies both `viewer` and `operator`, and an `admin` config still has to
+confirm, so dropping a database always takes `--yes` (or `NOORM_YES=1`).
+A config using the default access role is `user: admin`, which is why
+`db create` needs no flag on a fresh project.
 
 For interactive setup (when you're at a terminal), `noorm ui` launches
 a wizard that walks through identity → config → DB create in order.

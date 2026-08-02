@@ -141,7 +141,7 @@ Append-only log of raw gateway responses. Used for reconciliation and dispute
 resolution; never read back during normal processing. Retained for 7 years.
 ```
 
-The kind vocabulary is `db`, `cache`, `queue`, `file`, `doc`, `manual`, and `other`. Kind drives the node's color in the diagram, theme-aware and overridable under `theme.flowKinds` in `ignatius.yml`.
+A store file's `kind:` is one of `cache`, `queue`, `file`, `doc`, `manual`, or `other`. An absent or unrecognized value falls back to `other`. `db` is not in that list, because a `db:` store is the entity and needs no file. Kind drives the node's color in the diagram, theme-aware and overridable under `theme.flowKinds` in `ignatius.yml`.
 
 Writing that body is where the value is. "Retained for 7 years" and "never read back during normal processing" are the facts that decide whether the store is a compliance asset or a liability, and they exist nowhere in a schema.
 
@@ -165,7 +165,7 @@ Every node carries an ⓘ badge. A `db:` store opens the rich entity dialog; a p
 
 Hovering an edge that carries data reveals a tooltip listing everything crossing it, under a `source → target` header. That includes the full contents of `db:` column lists which are abbreviated on the canvas when they run long. Labels over 22 characters show a truncated preview with an ellipsis, so you can always see at a glance which edges are hiding detail, and the tooltip stays legible at any zoom level.
 
-`ignatius validate` runs eleven `flow.*` rules whenever a `flows/` directory exists, covering unknown references, column contracts, connection shape, numbering, and decomposition balance. One rule is configurable: direct process-to-process flows warn by default and can be silenced with `flow_rules: { process_to_process: false }` in `ignatius.yml`.
+`ignatius validate` runs twelve `flow.*` rules whenever a `flows/` directory exists, covering unknown references, column contracts, connection shape, numbering, store-token conflicts, and decomposition balance. One rule is configurable: direct process-to-process flows warn by default and can be silenced with `flow_rules: { process_to_process: false }` in `ignatius.yml`.
 
 
 ## Authoring with the skill

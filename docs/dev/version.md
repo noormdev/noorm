@@ -38,18 +38,20 @@ import { VersionManager, getVersionManager } from './core/version'
 const version = getVersionManager(process.cwd())
 
 // Check status of all layers
-const status = await version.check(db, state, settings)
+const status = await version.check(db, 'postgres', state, settings)
 console.log('Schema needs migration:', status.schema.needsMigration)
 console.log('State needs migration:', status.state.needsMigration)
 console.log('Settings needs migration:', status.settings.needsMigration)
 
 // Migrate everything at once
-const result = await version.ensureCompatible(db, state, settings, '1.0.0')
+const result = await version.ensureCompatible(db, 'postgres', state, settings)
 // Schema is migrated in-place (database)
 // State and settings are returned as new objects
 const migratedState = result.state
 const migratedSettings = result.settings
 ```
+
+Every `VersionManager` method that touches the database takes the dialect as its second argument—the schema layer needs it to know whether the tracking tables live in a `noorm` schema or under `__noorm_*__` prefixes. The CLI version is not a parameter: it is read from `getCurrentVersion()` when the version record is written.
 
 
 ## Version Status
@@ -57,7 +59,7 @@ const migratedSettings = result.settings
 Check versions without modifying anything:
 
 ```typescript
-const status = await version.check(db, state, settings)
+const status = await version.check(db, dialect, state, settings)
 
 // Each layer has the same structure
 interface LayerVersionStatus {
@@ -72,10 +74,10 @@ Helper methods for common checks:
 
 ```typescript
 // Any layer need upgrading?
-const needsUpgrade = await version.needsMigration(db, state, settings)
+const needsUpgrade = await version.needsMigration(db, dialect, state, settings)
 
 // Any layer newer than CLI supports?
-const tooNew = await version.hasNewerVersion(db, state, settings)
+const tooNew = await version.hasNewerVersion(db, dialect, state, settings)
 ```
 
 
@@ -84,20 +86,23 @@ const tooNew = await version.hasNewerVersion(db, state, settings)
 When storage is newer than the CLI supports, migration throws `VersionMismatchError`:
 
 ```typescript
+import { attempt } from '@logosdx/utils'
+
 import { VersionMismatchError } from './core/version'
 
-try {
-    await version.ensureCompatible(db, state, settings, cliVersion)
+const [, err] = await attempt(() => version.ensureCompatible(db, dialect, state, settings))
+
+if (err instanceof VersionMismatchError) {
+
+    console.error(`${err.layer} version ${err.current} is newer than CLI supports (${err.expected})`)
+    console.error('Please upgrade noorm')
+    process.exit(1)
 }
-catch (err) {
-    if (err instanceof VersionMismatchError) {
-        console.error(`${err.layer} version ${err.current} is newer than CLI supports (${err.expected})`)
-        console.error('Please upgrade noorm')
-        process.exit(1)
-    }
-    throw err
-}
+
+if (err) throw err
 ```
+
+`MigrationError` is the other error these calls throw—it carries `layer`, `version`, and the underlying `cause`.
 
 This protects against data corruption when running an old CLI against newer data.
 
@@ -165,10 +170,12 @@ const MIGRATIONS: SchemaMigration[] = [v1, v2, v3]
 // src/core/version/types.ts
 export const CURRENT_VERSIONS = Object.freeze({
     schema: 3,  // Bumped from 2
-    state: 1,
+    state: 3,
     settings: 1,
 })
 ```
+
+Only the layer you touched moves. The other two keep whatever they were at.
 
 
 ### Schema Migration Guidelines
@@ -247,17 +254,19 @@ Register and bump:
 
 ```typescript
 // src/core/version/state/index.ts
-import { v2 } from './migrations/v2.js'
+import { v4 } from './migrations/v4.js'
 
-const MIGRATIONS: StateMigration[] = [v1, v2]
+const MIGRATIONS: StateMigration[] = [v1, v2, v3, v4]
 
 // src/core/version/types.ts
 export const CURRENT_VERSIONS = Object.freeze({
-    schema: 1,
-    state: 2,  // Bumped from 1
+    schema: 2,
+    state: 4,  // Bumped from 3
     settings: 1,
 })
 ```
+
+`migrateState` sets `schemaVersion` to `CURRENT_VERSIONS.state` after the last migration runs, so a migration that forgets to set it still ends up correct—but set it anyway, so a partial run is still coherent.
 
 
 ### State Migration Guidelines
@@ -380,16 +389,19 @@ This provides a central record in the database of what versions are in use.
 import { getLatestVersionRecord, updateVersionRecord } from './core/version'
 
 // Get current versions from database
-const record = await getLatestVersionRecord(db)
-// { stateVersion: 1, settingsVersion: 1 }
+const record = await getLatestVersionRecord(db, dialect)
+// { stateVersion: 3, settingsVersion: 1 } — or null if no tracking tables
 
 // Update after state/settings migration
-await updateVersionRecord(db, {
-    cliVersion: '1.1.0',
-    stateVersion: 2,
-    settingsVersion: 1,
+await updateVersionRecord(db, dialect, {
+    stateVersion: CURRENT_VERSIONS.state,
+    settingsVersion: CURRENT_VERSIONS.settings,
 })
 ```
+
+`VersionRecordOptions` carries only `stateVersion` and `settingsVersion`, both optional and both defaulting to `CURRENT_VERSIONS`. `cli_version` and `noorm_version` are not callers' to set—the former comes from `getCurrentVersion()`, the latter from `CURRENT_VERSIONS.schema`.
+
+Both reads (`getLatestVersionRecord`, `getSchemaVersion`, `tablesExist`) are two-step: they try the legacy `__noorm_version__` location first, then the schema-qualified `noorm.version` on PostgreSQL and SQL Server. That is what lets a pre-v2 database be recognized before the v2 migration has moved anything.
 
 
 ## Layer-Specific Functions
@@ -429,37 +441,38 @@ import {
 
 ### Schema Functions
 
+Every schema function takes the dialect as its second argument.
+
 ```typescript
 // Check if tracking tables exist
-const exists = await tablesExist(db)
+const exists = await tablesExist(db, dialect)
 
 // Get current schema version (0 if no tables)
-const version = await getSchemaVersion(db)
+const version = await getSchemaVersion(db, dialect)
 
 // Check status
-const status = await checkSchemaVersion(db)
-// { current: 0, expected: 1, needsMigration: true, isNewer: false }
+const status = await checkSchemaVersion(db, dialect)
+// { current: 0, expected: 2, needsMigration: true, isNewer: false }
 
 // Bootstrap from scratch (creates tables + version record)
-await bootstrapSchema(db, '1.0.0')
+await bootstrapSchema(db, dialect)
 
 // Bootstrap with specific state/settings versions
-await bootstrapSchema(db, '1.0.0', { stateVersion: 2, settingsVersion: 1 })
+await bootstrapSchema(db, dialect, { stateVersion: 3, settingsVersion: 1 })
 
 // Migrate existing schema
-await migrateSchema(db, '1.0.0')
+await migrateSchema(db, dialect)
 
-// Ensure at current version (migrates if needed)
-await ensureSchemaVersion(db, '1.0.0')
+// Ensure at current version (migrates if needed) — thin alias for migrateSchema
+await ensureSchemaVersion(db, dialect)
 
 // Get latest version record (state/settings versions)
-const record = await getLatestVersionRecord(db)
-// { stateVersion: 1, settingsVersion: 1 } or null
+const record = await getLatestVersionRecord(db, dialect)
+// { stateVersion: 3, settingsVersion: 1 } or null
 
 // Update version record after state/settings migration
-await updateVersionRecord(db, {
-    cliVersion: '1.1.0',
-    stateVersion: 2,
+await updateVersionRecord(db, dialect, {
+    stateVersion: 3,
     settingsVersion: 1,
 })
 ```
@@ -482,7 +495,8 @@ if (needsStateMigration(state)) {
 
 // Create fresh versioned state
 const fresh = createEmptyVersionedState()
-// { schemaVersion: 1, identity: null, knownUsers: {}, ... }
+// { schemaVersion: 3, knownUsers: {}, activeConfig: null, configs: {}, ... }
+// Runs every migration against {}, so it always lands on CURRENT_VERSIONS.state
 
 // Ensure at current version
 const current = ensureStateVersion(state)
@@ -577,13 +591,18 @@ import type {
     NewNoormLock,
     NewNoormIdentity,
 } from './core/version'
+import { getNoormTables, noormDb } from './core/shared/tables'
 
 // Use with Kysely
 const db = new Kysely<NoormDatabase>({ dialect })
 
+// Resolve names and schema from the dialect — see "Referring to Tracking Tables"
+const tables = getNoormTables(dialect)
+const ndb = noormDb(db, dialect)
+
 // Type-safe queries
-const changes = await db
-    .selectFrom('__noorm_change__')
+const changes = await ndb
+    .selectFrom(tables.change)
     .selectAll()
     .where('status', '=', 'success')
     .execute()
@@ -595,8 +614,10 @@ const newChange: NewNoormChange = {
     direction: 'change',
     status: 'pending',
 }
-await db.insertInto('__noorm_change__').values(newChange).execute()
+await ndb.insertInto(tables.change).values(newChange).execute()
 ```
+
+The vault table's types (`NoormVaultTable`, `NoormVault`, `NewNoormVault`) are not re-exported from `./core/version`—import them from `./core/shared` directly.
 
 
 ## Singleton Pattern
@@ -616,57 +637,34 @@ beforeEach(() => {
 ```
 
 
-## Integration Example
+## Integration
 
-Typical initialization flow:
+`VersionManager.ensureCompatible` is the all-three-layers entry point, but nothing in the CLI calls it. The layers are migrated where each one is loaded, which means no caller has to hold all three at once:
+
+| Layer | Migrated by | Where |
+|-------|-------------|-------|
+| state | `migrateState` (schema-version), then the package-semver migration | `StateManager.load()` |
+| settings | `migrateSettings` | Settings load path |
+| schema | `ensureSchemaVersion(db, dialect)` | After connect, in the CLI/TUI bootstrap |
+
+Order matters inside `StateManager.load()`: the schema-version migrations run **first**, on the raw record. The package-semver migration only knows `State`'s own top-level fields and would silently drop anything schema-version-owned—including `schemaVersion` itself—if it ran first.
+
+The schema step is what the CLI does after a connection is established:
 
 ```typescript
-import { getVersionManager, VersionMismatchError } from './core/version'
-import { getStateManager } from './core/state'
-import { getSettingsManager } from './core/settings'
-import { createConnection } from './core/connection'
+import { attempt } from '@logosdx/utils'
 
-async function initialize(projectRoot: string): Promise<void> {
+import { ensureSchemaVersion } from './core/version'
 
-    // Load current state and settings
-    const stateManager = getStateManager(projectRoot)
-    const settingsManager = getSettingsManager(projectRoot)
+const [, schemaError] = await attempt(() => ensureSchemaVersion(ctx.kysely, ctx.dialect))
 
-    await stateManager.load()
-    await settingsManager.load()
+if (schemaError) {
 
-    // Connect to database
-    const config = stateManager.getActiveConfig()
-    const db = await createConnection(config)
+    outputError(args, `Failed to initialize database schema: ${schemaError.message}`, logger)
+    await attempt(() => ctx.disconnect())
 
-    // Check and migrate versions
-    const version = getVersionManager(projectRoot)
-
-    try {
-        const result = await version.ensureCompatible(
-            db,
-            stateManager.getRawState(),
-            settingsManager.getRawSettings(),
-            getPackageVersion()
-        )
-
-        // Save migrated state if changed
-        if (result.state !== stateManager.getRawState()) {
-            await stateManager.saveRawState(result.state)
-        }
-
-        // Save migrated settings if changed
-        if (result.settings !== settingsManager.getRawSettings()) {
-            await settingsManager.saveRawSettings(result.settings)
-        }
-    }
-    catch (err) {
-        if (err instanceof VersionMismatchError) {
-            console.error('Your data was created by a newer version of noorm.')
-            console.error(`Please upgrade: npm install -g @noormdev/cli`)
-            process.exit(1)
-        }
-        throw err
-    }
+    return [null, schemaError]
 }
 ```
+
+`ensureSchemaVersion` covers the fresh-install case too: `migrateSchema` sees version 0, finds no tables, and bootstraps from scratch. If tables exist but the version record is missing—an interrupted migration—it assumes v1 and runs v2 onward, which is safe because v2 is idempotent.

@@ -22,7 +22,7 @@ Keep them apart and horizontal scaling is uneventful. Fold schema delivery into 
 
 ## Runtime: connect from the environment
 
-When `NOORM_CONNECTION_DIALECT` and `NOORM_CONNECTION_DATABASE` are both set, `createContext()` builds a config from the environment and never reads `.noorm/` at all. No project directory, no identity, no state file:
+When no stored config is in play and `NOORM_CONNECTION_DIALECT` and `NOORM_CONNECTION_DATABASE` are both set, `createContext()` builds a config from the environment alone. No project directory, no identity, no state file: a missing `state.enc` resolves to empty state rather than an error, and nothing asks for a private key.
 
 ```typescript
 import { createContext } from '@noormdev/sdk';
@@ -124,7 +124,7 @@ Run `build` and `change ff` as a release step, an init container, or a Kubernete
       noorm change ff
 ```
 
-noorm takes a database lock around change execution, so concurrent runs serialize rather than corrupt each other. Treat that as a safety net, not a design: a deployment where every replica queues behind a lock at boot is one slow change away from a rollout that times out.
+noorm takes a database lock around change execution, so a second run cannot interleave with the first. It does not queue: the lock is acquired with `wait: false`, so the loser fails immediately with a lock error naming the holder. Treat that as a safety net, not a design. Fold schema delivery into application boot and the second replica to start does not wait its turn, it crashes.
 
 If your changes render vault-backed secrets, the deploy step needs an enrolled identity too. That flow is covered in [CI/CD Automation](/guide/automation/ci#prod-ci) and applies unchanged here.
 
@@ -166,7 +166,7 @@ The `sql/` and `changes/` directories only need to be present wherever schema de
 
 ## One process, one database
 
-Connection details come from the process environment, and `createContext()` reads that environment when it resolves. There is no `createContext({ host, user, password })` overload today, which has a consequence worth stating plainly: **a process can serve one database.**
+Connection details come from the process environment, and `createContext()` reads that environment when it resolves. There is no `createContext({ host, user, password })` overload today, which has a consequence worth stating plainly: **in environment-only mode, a process serves one database.** (A process that does have a `state.enc` can hold several contexts at once, one per stored config, by passing `createContext({ config: 'name' })`. That route is not available here, because environment-only mode is what you get when there is no state file.)
 
 If you are tempted to reassign `process.env` between calls to reach a second database, don't. The environment is process-global while `createContext()` is asynchronous, so two concurrent calls interleave and the later assignment wins for both:
 

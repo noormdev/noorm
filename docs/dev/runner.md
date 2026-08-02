@@ -38,13 +38,14 @@ When you run a file:
 
 Files are re-executed only when necessary:
 
-| Condition | Action |
-|-----------|--------|
-| New file (no previous record) | Run |
-| Checksum changed | Run |
-| Previous execution failed | Run |
-| `--force` flag | Run |
-| Unchanged and successful | Skip |
+| Condition | `RunReason` | Action |
+|-----------|-------------|--------|
+| New file (no previous record) | `new` | Run |
+| Checksum changed | `changed` | Run |
+| Previous execution failed | `failed` | Run |
+| Parent operation marked stale by teardown | `stale` | Run |
+| `--force` flag | `force` | Run |
+| Unchanged and successful | — | Skip (`skipReason: 'unchanged'`) |
 
 This makes builds idempotent—run the same build command twice and unchanged files won't re-execute.
 
@@ -57,8 +58,10 @@ This makes builds idempotent—run the same build command twice and unchanged fi
 | `abortOnError` | `true` | Stop on first failure |
 | `dryRun` | `false` | Render and write to `tmp/` without executing |
 | `preview` | `false` | Output rendered SQL to stdout/file |
+| `output` | `null` | File path for preview output |
+| `concurrency` | `1` | Reserved; see the note below |
 
-> **Note:** Files are always executed sequentially for DDL safety. Parallel execution is not currently supported.
+> **Note:** Files are always executed sequentially for DDL safety. `concurrency` exists on `RunOptions` and defaults to `1`, but parallel execution is not currently implemented.
 
 
 ## Dry Run Mode
@@ -132,7 +135,7 @@ Every execution is recorded in two tables. Names below are the MySQL/SQLite pref
 | `change_type` | `'build'` or `'run'` |
 | `executed_by` | Identity string |
 | `config_name` | Which config was used |
-| `status` | `'pending'`, `'success'`, `'failed'` |
+| `status` | `'pending'`, `'success'`, `'failed'` — teardown also rewrites forward rows to `'stale'` |
 
 **`__noorm_executions__`** - Individual file records:
 
@@ -268,15 +271,15 @@ An empty file (or one that contains only comments after stripping `GO`s) is trea
 
 | Event | Payload | Description |
 |-------|---------|-------------|
-| `build:start` | `{ schemaPath, fileCount }` | Build operation started |
-| `build:complete` | `{ status, filesRun, filesSkipped, filesFailed, durationMs }` | Build finished |
+| `build:start` | `{ sqlPath, fileCount }` | Build operation started |
+| `build:complete` | `{ status, filesRun, filesSkipped, filesFailed, durationMs, error? }` | Build finished |
 | `run:file` | `{ filepath, configName }` | Single file execution started |
 | `run:dir` | `{ dirpath, fileCount, configName }` | Directory execution started |
 | `run:files` | `{ fileCount, configName }` | Selective file execution started |
 | `file:before` | `{ filepath, checksum, configName }` | About to execute a file |
 | `file:after` | `{ filepath, status, durationMs, error? }` | File execution completed |
-| `file:skip` | `{ filepath, reason }` | File skipped (unchanged) |
-| `file:dry-run` | `{ filepath, outputPath }` | File written to tmp/ |
+| `file:skip` | `{ filepath, reason }` | File skipped; `reason` is `'unchanged'` or `'already-run'` |
+| `file:dry-run` | `{ filepath, status, outputPath?, error? }` | File rendered to `tmp/` (or failed to render) |
 
 ```typescript
 import { observer } from './core/observer'
@@ -347,34 +350,43 @@ This utility is used internally by build operations when applying settings rules
 
 ## Unified executeFiles
 
-The `executeFiles` function provides low-level file execution with full tracking. Both runner and change modules use this internally:
+The `executeFiles` function provides low-level file execution with full tracking. `runBuild`/`runDir`/`runFiles` funnel through it. The change module does **not** — `core/change/executor.ts` has its own private `executeFiles` so it can emit `change:file` events and honour manifest resolution; it shares only `computeChecksum`, `computeCombinedChecksum`, and the `Tracker` base class with the runner.
 
 ```typescript
-import { executeFiles, FileInput } from './core/runner'
+import { executeFiles, type FileInput } from './core/runner'
 
 // Prepare file inputs with pre-computed checksums
 const files: FileInput[] = [
-    { filepath: '/project/sql/001_users.sql', checksum: 'abc123' },
-    { filepath: '/project/sql/002_posts.sql', checksum: 'def456' },
+    { path: '/project/sql/001_users.sql', type: 'sql', checksum: 'abc123' },
+    { path: '/project/sql/002_posts.sql', type: 'sql', checksum: 'def456' },
 ]
 
-const result = await executeFiles(context, files, {
-    operationId,          // Pre-created operation ID
-    force: false,
-    abortOnError: true,
-    dryRun: false,
-})
+// Four arguments: run options and execution options are separate objects
+const result = await executeFiles(
+    context,
+    files,
+    { force: false, abortOnError: true, dryRun: false },   // RunOptions
+    {                                                       // ExecuteFilesOptions
+        changeType: 'build',
+        direction: 'commit',        // default: 'commit'
+        operationName: 'build:2024-01-15T10:30:00',
+        checksum: combinedChecksum, // optional
+        sqlPath: '/project/sql',    // optional, used in error messages
+    },
+)
 ```
 
 The `FileInput` type:
 
 ```typescript
 interface FileInput {
-    filepath: string
-    checksum: string      // Pre-computed SHA-256
-    fileType?: 'sql' | 'txt'  // Default: 'sql'
+    path: string
+    type: 'sql' | 'txt'
+    checksum?: string     // Pre-computed SHA-256; computed if omitted
 }
 ```
+
+`ExecuteFilesOptions` creates the operation record itself (or reuses a `tracker` you pass in) — there is no `operationId` parameter.
 
 This design separates file discovery (external) from execution (internal), enabling:
 - Pre-validation before database operations begin
@@ -389,13 +401,21 @@ The `Tracker` class handles execution history and change detection. It serves as
 ```typescript
 import { Tracker } from './core/runner'
 
-const tracker = new Tracker(db)
+// (db, configName, dialect) — dialect defaults to 'sqlite', which selects the
+// prefixed table names. Pass the real dialect or pg/mssql queries hit the
+// wrong identifiers.
+const tracker = new Tracker(db, configName, 'postgres')
 
-// Check if file needs to run (by filepath)
-const { needsRun, reason, record } = await tracker.needsRun(filepath, checksum, force)
+// Check if file needs to run (by filepath). Returns NeedsRunResult:
+// { needsRun, reason?, skipReason?, previousChecksum? }
+const { needsRun, reason, skipReason } = await tracker.needsRun(filepath, checksum, force)
+
+// Inside a running operation, exclude that operation's own pending rows or
+// every file reads as 'new' forever
+const check = await tracker.needsRun(filepath, checksum, force, operationId)
 
 // Check if file needs to run (by name only - for changes)
-const { needsRun, reason, record } = await tracker.needsRunByName(name, checksum, force)
+const byName = await tracker.needsRunByName(name, checksum, force)
 
 // Create an operation record
 const operationId = await tracker.createOperation({
@@ -406,25 +426,23 @@ const operationId = await tracker.createOperation({
     executedBy: 'alice@example.com',
 })
 
-// Create file records upfront (for full batch visibility)
+// Create file records upfront (for full batch visibility) — fileType required
 await tracker.createFileRecords(operationId, [
-    { filepath: '/path/to/file1.sql', checksum: 'abc123' },
-    { filepath: '/path/to/file2.sql', checksum: 'def456' },
+    { filepath: '/path/to/file1.sql', fileType: 'sql', checksum: 'abc123' },
+    { filepath: '/path/to/file2.sql', fileType: 'sql', checksum: 'def456' },
 ])
 
-// Update individual file after execution
-await tracker.updateFileExecution(operationId, filepath, {
-    status: 'success',
-    durationMs: 45,
-    checksum: 'abc123',
-})
+// Update individual file after execution. Positional, not an options object:
+// (operationId, filepath, status, durationMs, errorMessage?, skipReason?, checksum?)
+await tracker.updateFileExecution(operationId, filepath, 'success', 45, undefined, undefined, 'abc123')
 
 // Skip remaining files (e.g., on error with abortOnError)
 await tracker.skipRemainingFiles(operationId, 'aborted due to previous error')
 
-// Legacy: Record a file execution (still supported)
+// Legacy: Record a file execution (still supported). Note the field is
+// `changeId`, not `operationId`.
 await tracker.recordExecution({
-    operationId,
+    changeId: operationId,
     filepath,
     checksum,
     status: 'success',
@@ -434,6 +452,8 @@ await tracker.recordExecution({
 // Finalize operation with optional checksum and error message
 await tracker.finalizeOperation(operationId, 'success', 1234, checksum, errorMessage)
 ```
+
+`createFileRecords`, `updateFileExecution`, `skipRemainingFiles`, and `finalizeOperation` return `string | null` — an error message on failure, `null` on success — rather than throwing. `createOperation` returns the new operation id.
 
 
 ### Direction and ChangeType
@@ -494,11 +514,18 @@ interface RunContext {
     configName: string
     identity: Identity
     projectRoot: string
+    access: ConfigAccess                    // the config's per-channel roles
+    channel: Channel                        // 'user' (CLI/TUI/SDK) or 'agent' (MCP)
+    dialect?: 'postgres' | 'mysql' | 'sqlite' | 'mssql'  // default: 'postgres'
     config?: Record<string, unknown>        // Config object for template context
     secrets?: Record<string, string>        // Config-scoped secrets
     globalSecrets?: Record<string, string>  // Global secrets from state
 }
 ```
+
+`access` and `channel` are required. Every exported entrypoint (`runBuild`, `runFile`, `runDir`, `runFiles`, `preview`, `checkFilesStatus`) runs `assertRunPolicy` against them once, at the core seam, so SDK/TUI/CLI/MCP callers inherit one enforcement path.
+
+`dialect` selects tracking-table naming (schema-qualified `noorm.*` on postgres/mssql, `__noorm_*__` elsewhere) and drives MSSQL batch splitting.
 
 The optional `config` field exposes the active configuration as a template variable, allowing templates to access config properties like database name, dialect, etc.
 

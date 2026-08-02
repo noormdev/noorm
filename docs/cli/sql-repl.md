@@ -14,7 +14,7 @@ For one-off non-interactive queries (CI scripts, ad-hoc inspection), use [`noorm
 
 ## Environment
 
-Interactive TTY required. Fails with exit code 1 in CI or piped stdin.
+Interactive TTY required. Fails with exit code 2 (usage error) in CI or piped stdin.
 
 A REPL is interactive by definition, so `--yes` / `NOORM_YES` cannot make it
 succeed. They produce a redirect hint instead, pointing at `noorm sql query`

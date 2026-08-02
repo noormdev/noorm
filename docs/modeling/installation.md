@@ -140,15 +140,18 @@ Single-key shortcuts work while no text field is focused and no modifier is held
 | `f` | Switch to the Data Flows |
 | `l` | Toggle graph layout, organic or hierarchical (Graph view) |
 | `b` | Toggle dictionary lens, read or browse (Dictionary view) |
+| `/` | Focus the search bar |
 | `?` | Open the help overlay for the current view |
+| `↑` `↓` `←` `→` | Pan the canvas (Graph and Flows); hold `Shift` for a longer step |
 
-Zoom acts on the diagram canvas rather than the browser page, and works even while a text field is focused because the chords are not typed characters.
+Zoom and search also answer to modifier chords. Those work even while a text field is focused, because the chords are not typed characters, and zoom acts on the diagram canvas rather than the browser page.
 
 | Input | Action |
 |---|---|
 | `Cmd`/`Ctrl` + `=` | Zoom in |
 | `Cmd`/`Ctrl` + `-` | Zoom out |
 | `Cmd`/`Ctrl` + `0` | Fit the diagram to the screen |
+| `Cmd`/`Ctrl` + `k` | Focus the search bar |
 | Trackpad pinch | Zoom toward the pointer |
 
 

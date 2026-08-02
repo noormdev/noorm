@@ -8,7 +8,7 @@ description: Put your own logo, title, and copyright on an ignatius model. The d
 
 An ignatius model is yours. The entities, the prose, the flows, and the diagrams generated from them are your work product, and nothing about using the tool changes that.
 
-Out of the box the app wears noorm's chrome: a noorm logo, the title "Noorm Ignatius", the subtitle "Visualize your data model", and a footer reading "© 2026 Noorm Ignatius, powered by Noorm" with the year taken from the current date. That is placeholder branding on a viewer you are expected to replace, not a claim on the model it displays. The copyright line exists so you have somewhere to put **your** organization, which is the point of it being configurable at all.
+Out of the box the app wears noorm's chrome: a noorm logo, the title "Noorm Ignatius", the subtitle "Visualize your data model", and a footer reading "© 2026 Noorm Ignatius" above a "powered by Noorm" line, with the year taken from the current date. That is placeholder branding on a viewer you are expected to replace, not a claim on the model it displays. The copyright line exists so you have somewhere to put **your** organization, which is the point of it being configurable at all.
 
 Replace all of it in `ignatius.yml`.
 

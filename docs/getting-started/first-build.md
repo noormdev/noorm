@@ -27,20 +27,23 @@ That is the whole loop: `run build` applies the SQL files, `change ff` walks an 
 ```bash
 mkdir noorm-tutorial
 cd noorm-tutorial
-noorm ui
+noorm init
 ```
 
-Launching `noorm ui` in an empty directory kicks off the init wizard — it sets up your identity, creates the project scaffolding, and optionally walks you through adding a first config. When it finishes, you'll have this layout:
+`noorm init` sets up your identity (or reuses the one already in `~/.noorm/`) and creates the project scaffolding. When it finishes, you'll have this layout:
 
 ```
 noorm-tutorial/
 ├── .noorm/
+│   ├── .gitignore             # ignores state/
 │   ├── settings.yml           # Project settings (commit this)
 │   └── state/
 │       └── state.enc          # Encrypted state (don't commit)
 ├── sql/                       # Your SQL files go here
 └── changes/                   # Versioned changes go here
 ```
+
+Configs are added separately, from the TUI. That's the next step.
 
 
 ## Step 2: Add a Database Config
@@ -60,8 +63,11 @@ Press `c` for config, then `a` to add a new config. Fill out the form:
 - **Database**: `noorm_dev`
 - **Username**: `postgres`
 - **Password**: your password
+- **User Role (CLI/TUI access)**: leave at `admin`
+- **Agent Role (MCP/CLI access)**: leave at `viewer`
+- **Test Database**: leave unchecked
 
-Leave the SQL Path and Changes Path at their defaults (`./sql` and `./changes`). Submit the form to save your config.
+Submit the form to save your config. SQL and changes paths are not part of a config. They live in `.noorm/settings.yml` under `paths`, and default to `./sql` and `./changes`.
 
 
 ## Step 3: Create the Database
@@ -72,15 +78,16 @@ Back at the home screen, press `d` for Database. You'll see the Database Operati
 Database Operations
 
 Config:      dev
-Connection:  CONNECTED
+Connection:  NOT CREATED
 
 Available Actions
 
-[c] Create - Build database from SQL files
+[c] Create - Create database and tracking tables
 [d] Destroy - Drop all managed objects
 [x] Explore - Browse database schema
 [w] Wipe - Truncate table data (keep schema)
 [t] Teardown - Drop user objects (keep noorm)
+[r] Transfer - Copy data to another database
 ```
 
 Press `c` to create. noorm will create the `noorm_dev` database on your PostgreSQL server and initialize its tracking tables.
@@ -156,9 +163,10 @@ noorm run build
 Output:
 
 ```
-• build:start    Starting schema build (1 files)
-• file:after     Executed sql/01_tables/001_users.sql (12ms)
-• log            Build completed successfully  filesRun=1 filesSkipped=0
+• build:start     Starting schema build (1 files)
+• file:after      Executed sql/01_tables/001_users.sql (12ms)
+• build:complete  Build complete: 1 run, 0 skipped (18ms)
+• log             Build completed  status=success filesRun=1 filesSkipped=0 filesFailed=0 durationMs=18
 ```
 
 Your users table now exists.
@@ -270,13 +278,13 @@ noorm change ff
 Output:
 
 ```
-• change:start   Applying 2024-01-15-add-posts-and-bio
-• file:after     Executed 001_add_bio.sql (8ms)
-• file:after     Executed 01_tables/002_posts.sql (15ms)
-• file:after     Executed 02_views/001_recent_posts.sql (6ms)
-• change:after   Applied 2024-01-15-add-posts-and-bio
-• log            Changes applied successfully  applied=1 skipped=0
+• change:start     Starting change for 2024-01-15-add-posts-and-bio (3 files)
+• change:complete  change 2024-01-15-add-posts-and-bio: success (29ms)
+• log              Fast-forward success  executed=1 skipped=0 failed=0
+• log                2024-01-15-add-posts-and-bio (success)
 ```
+
+Three files, because the `002_schema.txt` manifest expands to the two SQL files it names. Per-file lines are `change:file` events, which sit at debug level. Raise `logging.level` to `verbose` in `.noorm/settings.yml` to see them.
 
 Your dev database now matches your SQL files.
 
@@ -300,11 +308,12 @@ noorm run build
 Output:
 
 ```
-• build:start    Starting schema build (3 files)
-• file:after     Executed sql/01_tables/001_users.sql (14ms)
-• file:after     Executed sql/01_tables/002_posts.sql (11ms)
-• file:after     Executed sql/02_views/001_recent_posts.sql (7ms)
-• log            Build completed successfully  filesRun=3 filesSkipped=0
+• build:start     Starting schema build (3 files)
+• file:after      Executed sql/01_tables/001_users.sql (14ms)
+• file:after      Executed sql/01_tables/002_posts.sql (11ms)
+• file:after      Executed sql/02_views/001_recent_posts.sql (7ms)
+• build:complete  Build complete: 3 run, 0 skipped (32ms)
+• log             Build completed  status=success filesRun=3 filesSkipped=0 filesFailed=0 durationMs=32
 ```
 
 The test database has the complete schema from your SQL files. No changes needed—they're only for evolving existing databases.

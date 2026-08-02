@@ -69,7 +69,7 @@ The reason for a change almost never gets written down anywhere. That is what `c
 ### Configuration is something you hand to someone
 
 
-A config is exportable. Export uses X25519 key exchange with AES-256-GCM, and credentials are deliberately left out, so the recipient supplies their own username and password on import. You can export local dev, local test, staging, and production, send all four, and the other person fills in only the parts that are theirs.
+A config is exportable. Sharing one goes through the TUI, where export encrypts to the recipient's public key with X25519 key exchange and AES-256-GCM, and leaves credentials out, so the recipient supplies their own username and password on import. You can export local dev, local test, staging, and production, send all four, and the other person fills in only the parts that are theirs. (The CLI's `config export` is a different tool: plain JSON, credentials included, for your own backups.)
 
 **Stages** make that prescriptive. Rather than describing your environments in a README, you define them once, and everyone gets the same shape with the details left blank. A stage declares its variables as required or optional, and a build fails with a clear error when a required one is missing instead of rendering something half-formed. Configs are typed `local` or `remote`, which is the distinction that decides how careful the tool should be. Losing a local dev database costs nothing. Production is a different question, which is what [access roles](/guide/environments/configs#access-roles) gate.
 

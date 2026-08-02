@@ -12,7 +12,7 @@ noorm records three types of operations:
 
 | Type | Description | Trigger |
 |------|-------------|---------|
-| **change** | Change execution | `change run`, `change ff`, `change next` |
+| **change** | Change execution | `change run`, `change ff`, `change next`, `change revert`, `change rewind` |
 | **build** | Full schema rebuild | `run build` |
 | **run** | Individual file execution | `run file`, `run directory` |
 
@@ -20,7 +20,7 @@ Each record captures:
 
 - **Name** - Which change, build, or file was executed
 - **Direction** - Forward (`change`) or rollback (`revert`)
-- **Status** - `success`, `failed`, or `skipped`
+- **Status** - `pending` while the operation is in flight, then `success`, `failed`, `reverted`, or `stale`
 - **Who** - The identity that ran it (name and email)
 - **When** - Timestamp of execution
 - **Duration** - How long it took in milliseconds
@@ -60,8 +60,9 @@ Navigate to history from the changes menu. Press `g` from home, then `h` for his
 The summary bar shows totals by type. Color-coded status indicators make it easy to spot failures:
 
 - Green `[OK]` - Success
-- Red `[ERR]` - Failed
-- Yellow `[-]` - Skipped
+- Red `[ERR]` - Anything else
+
+The list only separates success from not-success. The per-file detail view adds a yellow `[-]` for skipped files.
 
 Arrow keys move through the list. The detail panel at the bottom shows who ran the selected operation and how long it took.
 
@@ -111,13 +112,15 @@ For CI/CD pipelines and scripts, use the headless command:
 noorm change history
 ```
 
+Unlike the TUI screen, this command returns change operations only. Builds and file runs live in the same tracking tables but do not appear here.
+
 Output:
 
 ```
 Execution History: 20 records
   2025-01-15-add-verification - success (1/15/2025, 2:30:00 PM)
-  schema-build - success (1/15/2025, 11:00:00 AM)
-  2025-01-14-add-user-roles - success (1/14/2025, 4:15:00 PM)
+  2025-01-14-add-user-roles - reverted (1/14/2025, 4:15:00 PM)
+  2025-01-10-init-schema - success (1/10/2025, 9:05:00 AM)
 ```
 
 With JSON output for parsing:
@@ -127,27 +130,38 @@ noorm change history --json
 ```
 
 ```json
-[
-    {
-        "name": "2025-01-15-add-verification",
-        "status": "success",
-        "direction": "change",
-        "executedAt": "2025-01-15T14:30:00Z",
-        "executedBy": "Alice <alice@example.com>",
-        "durationMs": 1240
-    },
-    {
-        "name": "schema-build",
-        "status": "success",
-        "direction": null,
-        "executedAt": "2025-01-15T11:00:00Z",
-        "executedBy": "CI Pipeline <ci@company.com>",
-        "durationMs": 5830
-    }
-]
+{
+    "success": true,
+    "history": [
+        {
+            "id": 42,
+            "name": "2025-01-15-add-verification",
+            "direction": "change",
+            "status": "success",
+            "executedAt": "2025-01-15T14:30:00.000Z",
+            "executedBy": "Alice <alice@example.com>",
+            "durationMs": 1240,
+            "errorMessage": null,
+            "checksum": "8f4a2b3c9d1e..."
+        },
+        {
+            "id": 41,
+            "name": "2025-01-14-add-user-roles",
+            "direction": "revert",
+            "status": "success",
+            "executedAt": "2025-01-14T16:15:00.000Z",
+            "executedBy": "CI Pipeline <ci@company.com>",
+            "durationMs": 320,
+            "errorMessage": null,
+            "checksum": "3b7c8d2a4f5e..."
+        }
+    ]
+}
 ```
 
-Limit the number of records:
+The `id` is what `noorm change history-detail` and the TUI drill-down use to fetch the per-file records for an operation.
+
+Limit the number of records (default 20):
 
 ```bash
 noorm change history --count 50
@@ -156,7 +170,7 @@ noorm change history --count 50
 
 ## Filtering by Type
 
-The history screen shows all operation types by default. The summary bar helps you understand the distribution:
+The TUI history screen shows all three operation types by default. The summary bar helps you understand the distribution:
 
 ```
 Total: 47   Changes: 32   Builds: 10   Runs: 5
@@ -197,15 +211,15 @@ Identity is captured from git config or explicitly set via `noorm identity`. Thi
 
 ### When It Ran
 
-Timestamps appear in relative format in the TUI:
+Timestamps appear in relative format in the TUI, rendered by day.js `fromNow()`:
 
-- `just now` - Within the last minute
+- `a few seconds ago` - Just happened
 - `2 hours ago` - Recent operations
-- `yesterday` - Previous day
-- `last week` - Within the past week
-- `Jan 15` - Specific date for older records
+- `a day ago` - Previous day
+- `7 days ago` - Within the past week
+- `a month ago` - Older records
 
-The JSON output provides ISO timestamps for precise filtering and analysis.
+Relative time is all the TUI shows, however old the record. The JSON output provides ISO timestamps for precise filtering and analysis.
 
 
 ### How Long It Took
@@ -234,18 +248,18 @@ The detail view breaks down each file:
 |--------|------|---------|
 | Success | `[OK]` | File executed without errors |
 | Failed | `[ERR]` | Execution threw an error |
-| Skipped | `[-]` | File was skipped (unchanged or conditional) |
+| Skipped | `[-]` | Either a prior run already applied this exact file, or an earlier file in the change failed and this one was never reached |
 
 For skipped files, the skip reason explains why:
 
 ```
-[-]  setup.sql     - unchanged since last run
+[-]  setup.sql     - already applied
 ```
 
 
 ## Using History for Debugging
 
-When something goes wrong, history is your first stop.
+When something goes wrong, history is your first stop, with one dialect-specific exception. On PostgreSQL a change runs inside a transaction that covers its history rows as well as its DDL, so a failed change rolls back completely and writes nothing to history. Read the error off the failing command there. MySQL, SQL Server, and SQLite keep the failed record and everything below applies.
 
 
 ### Finding the Failure
@@ -264,10 +278,10 @@ Press Enter to see which file failed:
 ```
   [OK]  001_create-table.sql      (0.3s)
   [ERR] 002_add-constraint.sql    (0.1s)
-  [-]   003_add-index.sql         - not executed
+  [-]   003_add-index.sql         - 002_add-constraint.sql failed: ...
 ```
 
-The third file was never executed because the second one failed. This tells you exactly where to start looking.
+The third file was never executed because the second one failed, and its skip reason names the culprit. This tells you exactly where to start looking.
 
 
 ### Reading the Error

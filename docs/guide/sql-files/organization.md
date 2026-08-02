@@ -88,10 +88,11 @@ seeds/
 
 ## Execution Order
 
-noorm processes files in **alphabetical order by full path**. This is the critical rule for understanding how your schema executes. This means:
+noorm walks your schema directory recursively, collects every `.sql` and `.sql.tmpl` file, and sorts the **full paths as strings**. That sorted list is the execution order. This is the critical rule for understanding how your schema executes. It means:
 
-1. Folders are sorted first
-2. Files within each folder are sorted second
+1. The directory part of the path decides the order first
+2. File names break ties inside the same directory
+3. The comparison is by character code, not dictionary order, so every uppercase letter sorts before every lowercase one: `Users.sql` runs before `accounts.sql`
 
 Without numeric folder prefixes, alphabetical order causes problems:
 
@@ -143,10 +144,19 @@ build:
 
 Folder names are relative to your `paths.sql` directory, not the project root. With the default `paths.sql: ./sql`, an entry of `01_tables` means `./sql/01_tables` — so you do **not** repeat the `sql/` prefix.
 
-::: warning A wrong include path fails silently
-`sql/01_tables` resolves to `./sql/sql/01_tables` and matches nothing. noorm does not treat that as an error: the build reports success, runs zero files, and exits `0`, leaving your schema uncreated until something downstream fails on a missing table.
+::: warning A wrong include path still exits 0
+`sql/01_tables` resolves to `./sql/sql/01_tables` and matches nothing. `noorm run build` names the offending entries in a warning:
 
-If `noorm run build` reports success but ran zero files, an include entry is almost certainly the cause. A leading `./` or trailing `/` matches nothing for the same reason.
+```
+Ignored 1 build.include entry that matched no files: sql/01_tables
+Include paths are relative to paths.sql — use `01_tables`, not `sql/01_tables`.
+```
+
+The build still reports success and exits `0`, so a pipeline that only checks the exit code will not catch it. Read the warnings.
+
+A mistyped `exclude` entry gets the same treatment and is the more dangerous half: nothing is excluded, so the files you meant to fence off run against the target database.
+
+A leading `./` or a trailing `/` matches nothing for the same reason.
 :::
 
 The `include` array is a **filter**—it controls which folders are included, not their order. Execution order is always alphanumeric. Use numeric prefixes to control the sequence:
@@ -187,6 +197,12 @@ This means:
 - Production builds skip test data entirely
 - CI builds skip slow seed files
 - Development gets everything
+
+::: warning A rule `include` narrows the whole build
+An empty `build.include` means "every folder under `paths.sql`". A matching rule does not add to that set, it replaces it: its `include` entries are merged into `build.include`, and the moment that list is non-empty only the listed folders run.
+
+So on a project with no `build.include`, the rule above turns a test build into `04_seeds` and `05_test-fixtures` only. Your tables never get created. If you use rule `include` at all, list every folder you want in `build.include` too, and use rule `exclude` for the conditional part.
+:::
 
 
 ## Organizing by Feature vs by Type

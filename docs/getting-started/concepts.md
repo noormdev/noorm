@@ -211,8 +211,10 @@ noorm config use staging
 
 Or specify per-command:
 ```bash
-noorm -c prod run build
+noorm run build --config prod
 ```
+
+`--config` is a per-subcommand flag, so it goes *after* the subcommand. Before the subcommand, `-c` means `--cwd` (the only root-level flag), so `noorm -c prod run build` runs the build in a directory named `prod` instead.
 
 
 ## Access Roles
@@ -220,9 +222,9 @@ noorm -c prod run build
 Every config declares an access role — `viewer`, `operator`, or `admin` — separately for two **channels**: `user` (you, at the CLI or TUI) and `agent` (an AI agent, whether it reaches noorm over MCP or by running the CLI). This is how you prevent accidental destructive operations:
 
 - `viewer` - Read-only. `db teardown`, writes, and changes are all blocked.
-- `operator` - Reads and writes are fine; `db teardown` and applying changes require typing a confirmation phrase.
-- `admin` - No friction. Everything is allowed, nothing prompts.
-- Accidental `DROP TABLE` via raw SQL - Still executes if the role allows SQL writes/DDL (be careful!)
+- `operator` - Reads and writes are fine; builds, changes, and `db create` require typing a confirmation phrase. Raw DDL, `db teardown`, and `db drop` are denied outright.
+- `admin` - Builds and changes run without prompting. The operations that cannot be undone still ask: `db drop`, `db teardown`, `db truncate`, `change rm`, `config` edits, `vault propagate`, and `lock force`.
+- Accidental `DROP TABLE` via raw SQL - Still executes if the role allows SQL DDL, which only `admin` does (be careful!)
 
 Roles are a safety net, not a security boundary. They catch mistakes like running teardown against the wrong database — they won't stop a determined user or malicious script.
 
@@ -246,8 +248,10 @@ INSERT INTO app_config (key, value) VALUES
 
 ```bash
 # Set a secret for the current config
-noorm secret set AWS_ACCESS_KEY
-noorm secret set AWS_SECRET_KEY
+noorm secret set AWS_ACCESS_KEY "AKIAEXAMPLE"
+
+# Or pipe the value in so it never reaches the process table or shell history
+printf %s "$AWS_SECRET_KEY" | noorm secret set AWS_SECRET_KEY --stdin
 ```
 
 When you rebuild your database, your credentials are always there—but never exposed in your SQL files or version control.
@@ -257,7 +261,7 @@ Secrets are **config-scoped**. Each config has its own set of secrets (dev AWS v
 
 ## State and Identity
 
-Your **identity** lives in `~/.noorm/identity.json` along with your public and private keys. These are machine-local and never shared.
+Your **identity** lives in `~/.noorm/`, split across three files: `identity.key` (private key, owner-readable only), `identity.pub` (public key), and `identity.json` (metadata such as name, email, and machine). These are machine-local, and the private key is never shared.
 
 Your **state** lives in `.noorm/state/state.enc` and contains:
 
@@ -294,9 +298,11 @@ build:
 
 stages:
   prod:
-    protected: true
+    defaults:
+      protected: true
     secrets:
       - key: AWS_SECRET_KEY
+        type: password
         required: true
 ```
 
@@ -310,18 +316,23 @@ A **stage** is a template for configs. When you create a config and assign it to
 ```yaml
 stages:
   development:
-    dialect: sqlite
-    isTest: false
+    defaults:
+      dialect: sqlite
+      isTest: false
 
   production:
-    dialect: postgres
-    protected: true
+    defaults:
+      dialect: postgres
+      protected: true
     secrets:
       - key: AWS_SECRET_KEY
+        type: password
         required: true
 ```
 
 Now when you create a config with stage `production`, its resolved access is capped to at most `operator`/`viewer` (it can be stricter, never looser), and it requires an `AWS_SECRET_KEY` secret.
+
+Connection values go under `defaults`. Required secrets go under `secrets`, and each entry needs a `type` (`string`, `password`, `api_key`, or `connection_string`). Settings fail to load without it.
 
 
 ## SQL Files vs Changes
@@ -332,9 +343,9 @@ Now when you create a config with stage `production`, its resolved access is cap
 | Location | `sql/` | `changes/` |
 | When to run | Fresh database, tests | Existing database |
 | Rollback | No | Yes, with revert scripts |
-| Order | Settings-defined, then alphabetical | By date prefix |
+| Order | Alphanumeric by full path | By date prefix |
 
-**SQL files** are your source of truth. They define what your schema looks like today. Execution order is first determined by folder order in your settings, then alphabetically within each folder.
+**SQL files** are your source of truth. They define what your schema looks like today. Execution order is alphanumeric by full path. `build.include` picks which folders take part; it does not reorder them, so the numeric prefixes are what control the sequence.
 
 **Changes** are your changelog. They document how to get an existing database to match your SQL files.
 

@@ -277,7 +277,7 @@ Classification comes from how an entity connects to others, applied in this orde
 4. **Dependent**, exactly one identifying parent.
 5. **Independent**, none of the above.
 
-Classification sets the node shape, so the diagram reflects structure rather than a label you maintain. If a file declares a `classification` that contradicts the derived one, the validator surfaces the mismatch instead of trusting the label.
+Classification sets the node shape, so the diagram reflects structure rather than a label you maintain. The only declaration the parser reads is `reference: true`, which marks a lookup or code table and satisfies rule 1. A legacy `classification: Classifier` does the same thing. Any other `classification:` value is ignored, and no finding reports the mismatch, so a label written by hand drifts silently.
 
 
 ### Subtype clusters

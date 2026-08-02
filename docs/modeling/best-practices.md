@@ -40,7 +40,7 @@ Structural validation cannot catch a wrong rule, only a broken reference. Concre
 
 Do not declare `classification`, `identifying`, or cardinality. Describe the primary key, the columns, and the `on:` mapping, and let ignatius work out the rest.
 
-Two reasons. The derived answer stays correct when the key shape changes, and a hand-written label does not. And when a declared classification contradicts the derived one, the validator reports the mismatch rather than trusting you, which means a label you set by hand is at best redundant and at worst a finding to clean up later.
+Two reasons. The derived answer stays correct when the key shape changes, and a hand-written label does not. And nothing reads those labels anyway: `identifying` and cardinality have no frontmatter field at all, and the only classification the parser accepts is `reference: true` for a lookup or code table. A `classification:` you set by hand is ignored without a finding, so it drifts out of agreement with the diagram in silence.
 
 
 ## Choose a key convention on purpose

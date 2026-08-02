@@ -22,6 +22,12 @@ Every database operation records who performed it. This identity comes from mult
 
 The resolver tries each source until it finds a valid name. This means zero configuration for most users—git config "just works."
 
+Two env vars are in play and they are not the same thing. `NOORM_IDENTITY` is the
+plain audit string at priority 3. The `NOORM_IDENTITY_*` trio
+(see [Env-Var Identity Override](#env-var-identity-override-ci)) reconstructs a full
+crypto identity that `getIdentityForConfig` reads through `getIdentityOverride()`,
+which lands it at priority **2** — so when both are set, `NOORM_IDENTITY_*` wins.
+
 ```typescript
 import { resolveIdentity } from './core/identity'
 
@@ -253,28 +259,80 @@ This happens silently and non-blocking—connection failures don't prevent confi
 ```typescript
 import { syncIdentityWithConfig } from './core/identity'
 
-// Sync returns known users instead of storing them directly
-const result = await syncIdentityWithConfig(config, cryptoIdentity)
+// Takes the config only — it loads the identity itself from ~/.noorm/.
+// Returns known users instead of storing them directly.
+const result = await syncIdentityWithConfig(config)
 
-if (result.success) {
+if (result.ok && result.knownUsers?.length) {
     // Store discovered users in state
     await stateManager.addKnownUsers(result.knownUsers)
 }
 ```
 
 The sync function:
-- Connects to the database
+- Loads the crypto identity from `~/.noorm/` (returns `{ ok: true, knownUsersCount: 0 }` if there is none)
+- Derives the dialect from `config.connection.dialect` — callers do not pass it
+- Connects to the database (a connection failure is non-blocking: it emits an error event and returns `ok: true` with no users)
+- Runs `ensureSchemaVersion` so a database still on the legacy prefixed tables is migrated before identity queries hit `noorm.identities`
 - Checks if noorm tracking tables exist (skips sync if not bootstrapped)
 - Upserts your identity (updates `last_seen_at` if already registered)
-- Fetches all identities from the table
-- Returns the list of known users
+- Fetches all identities from the table, but only when the count is non-zero
+- Returns `IdentitySyncResult`: `{ ok, error?, registered?, knownUsersCount?, knownUsers? }`
+
+Note the result flag is `ok`, not `success` — and `ok: true` does not mean the sync
+reached the database. It means nothing went wrong that should block config
+activation, which includes the "could not connect" and "no identity" paths.
 
 **Observer events:**
 
 | Event | Payload | Description |
 |-------|---------|-------------|
-| `identity:registered` | `{ identityHash, configName }` | Your identity added to database |
-| `identity:synced` | `{ configName, usersDiscovered }` | Sync completed |
+| `identity:registered` | `{ identityHash, name, email }` | Your identity inserted into the database (not emitted on a `last_seen_at` update) |
+| `identity:synced` | `{ configName, registered, knownUsersCount }` | Sync completed |
+
+
+## Env-Var Identity Override (CI)
+
+A CI runner has no `~/.noorm/`, so identity comes from environment variables
+instead. `loadIdentityFromEnv()` reads three vars and reconstructs a full
+`CryptoIdentity` without touching the filesystem:
+
+| Variable | Description |
+|----------|-------------|
+| `NOORM_IDENTITY_PRIVATE_KEY` | X25519 private key, hex PKCS8 DER (96 hex chars) |
+| `NOORM_IDENTITY_NAME` | Display name |
+| `NOORM_IDENTITY_EMAIL` | Email address |
+
+The public key is *derived* from the private key rather than supplied. The
+identityHash is then computed with `machine: publicKey` and `os: 'env'` — the
+hostname is deliberately excluded, otherwise every CI runner would appear as a
+new user in the audit trail. Any missing var, a key that fails hex/length
+validation, or a key that will not parse as X25519 returns `null` rather than
+throwing.
+
+Installation happens once at process startup — `entry()` in `src/cli/index.ts`
+for the CLI, and `createContext()` in `src/sdk/index.ts` for SDK consumers:
+
+```typescript
+import { loadIdentityFromEnv } from './core/identity/env'
+import { setKeyOverride, setIdentityOverride } from './core/identity/storage'
+
+const envIdentity = loadIdentityFromEnv()
+
+if (envIdentity) {
+    setKeyOverride(envIdentity.privateKey)
+    setIdentityOverride(envIdentity.identity)
+}
+```
+
+The overrides are process-wide module state. Once set, `loadPrivateKey()` and
+`loadIdentityMetadata()` return the env values for the lifetime of the process
+and never read `~/.noorm/`. `setKeyOverride` re-validates its argument — it is a
+public export, so the env loader's own check is not sufficient; malformed key
+material flows straight into `deriveStateKey` and would silently derive a
+publicly computable encryption key.
+
+`clearKeyOverride()` / `clearIdentityOverride()` undo it (used by tests).
 
 
 ## Additional Utilities
@@ -285,6 +343,8 @@ The identity module exports several utility functions:
 import {
     loadExistingIdentity,            // Load identity from global ~/.noorm/
     syncIdentityWithConfig,          // Sync identity with database on config activation
+    registerIdentity,                // Upsert one identity row (used by withVaultContext)
+    fetchKnownUsers,                 // Read all identity rows as KnownUser[]
     clearIdentityCache,              // Clear cached audit identity
     getIdentityForConfig,            // Extract identity override from config
     getIdentityWithCrypto,           // Resolve with crypto identity awareness
@@ -304,15 +364,34 @@ import {
     getPublicKeyPath,                // Get path to public key file
     getNoormHomePath,                // Get path to noorm home directory
     truncateHash,                    // Truncate identity hash for display
+    loadIdentityFromEnv,             // Reconstruct a CryptoIdentity from NOORM_IDENTITY_*
+    setKeyOverride,                  // Install the process-wide private key override
+    setIdentityOverride,             // Install the process-wide metadata override
 } from './core/identity'
 ```
+
+`detectIdentityDefaults` and `regenerateKeyPair` are worth a note: the first is
+synchronous despite reading git config (it shells out with `execSync`), and the
+second takes the existing `CryptoIdentity` and returns a new one with the same
+identityHash — the hash derives from user details, not from the keys.
+
+Anything that replaces the keypair makes every existing `state.enc` on the
+machine undecryptable, and nothing re-encrypts state under a new key. That is why
+`backupKeyPair()` throws rather than continuing if the private key exists but
+cannot be copied aside. It is the one storage helper the module index does not
+re-export — import it from `./core/identity/storage` directly, as
+`src/cli/identity/init.ts` does.
 
 
 ## CLI Workflow
 
-The TUI provides screens for managing identity:
+Headless identity management lives under `noorm identity`, a citty parent with
+four leaves — `init`, `edit`, `export`, `list`. It has no `run` handler, so bare
+`noorm identity` renders help rather than opening a screen.
 
-**Identity Screen** (`noorm identity` or `[i]` from home)
+The TUI provides equivalent screens, reached via `noorm ui`:
+
+**Identity Screen** (`[i]` from the TUI home screen)
 
 Displays current identity details: name, email, machine, OS, truncated hash/public key, and creation date. Also shows count of known users discovered from database sync.
 

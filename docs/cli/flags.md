@@ -39,8 +39,8 @@ Examples:
     noorm -c packages/db run build
     noorm --cwd /repos/myapp change ff
 
-`--help`/`-h` and `--version` are also recognized outside this mechanism — that's citty's own
-framework behaviour, not a `noorm`-specific hoist.
+`--help`/`-h` and `--version`/`-v` are also recognized outside this mechanism — that's citty's
+own framework behaviour, not a `noorm`-specific hoist.
 
 An unrecognized flag placed before the subcommand is an error, not a silent no-op:
 
@@ -58,7 +58,7 @@ work after the subcommand name:
 
     noorm run build --dry-run
     noorm config list --json
-    noorm sql repl --yes
+    noorm secret rm OLD_KEY --yes
 
 Placed before the subcommand instead, none of them are honoured — `noorm --dry-run run build`
 is rejected exactly like `noorm --bogus-flag config list` above, naming `--dry-run` as the

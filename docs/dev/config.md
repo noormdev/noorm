@@ -49,20 +49,21 @@ interface Config {
         host?: string         // Required for non-SQLite, defaults to 'localhost'
         port?: number         // Default by dialect
         database: string      // Database name or file path
+        filename?: string     // SQLite only — alternative to database
         user?: string
         password?: string
         ssl?: boolean | SSLConfig
         pool?: { min?: number, max?: number }  // Defaults to { min: 0, max: 10 }
-    }
-
-    paths: {
-        schema: string        // Path to schema files
-        changes: string    // Path to change files
+        tlsServerName?: string  // MSSQL only — cert hostname when host is an IP
     }
 
     identity?: string         // Override audit identity
 }
 ```
+
+File locations (`paths.sql`, `paths.changes`) are **not** part of `Config` —
+they live in `settings.yml` and are read through `SettingsManager.getPaths()`.
+See [Settings](./settings.md).
 
 
 ## Environment Variables
@@ -87,10 +88,10 @@ NOORM_{PATH}_{TO}_{VALUE}  →  { path: { to: { value: '' } } }
 | `NOORM_CONNECTION_POOL_MIN` | `connection.pool.min` | |
 | `NOORM_CONNECTION_POOL_MAX` | `connection.pool.max` | |
 
-**Path variables:**
+**Path variables** (override `settings.yml` paths, not `Config`):
 
-| Variable | Config Path |
-|----------|-------------|
+| Variable | Settings Path |
+|----------|---------------|
 | `NOORM_PATHS_SQL` | `paths.sql` |
 | `NOORM_PATHS_CHANGES` | `paths.changes` |
 
@@ -106,12 +107,21 @@ NOORM_{PATH}_{TO}_{VALUE}  →  { path: { to: { value: '' } } }
 
 **Note:** For camelCase properties like `isTest`, preserve the case: `NOORM_isTest` (not `NOORM_IS_TEST`).
 
-**Behavior variables** (not merged into config):
+**Behavior variables** (excluded from config merging — the `META_ENV_VARS` set in `core/config`):
 
 | Variable | Purpose |
 |----------|---------|
 | `NOORM_CONFIG` | Which config to use |
 | `NOORM_YES` | Skip confirmations |
+| `NOORM_JSON` | JSON output mode |
+| `NOORM_HEADLESS` | Headless mode detection |
+| `NOORM_DEBUG` | Debug logging |
+| `NOORM_DEV` | Dev mode detection |
+| `NOORM_CI_CONFIG_NAME` | `ci init` config name override |
+| `NOORM_LOGGER_DEBUG` | Logger-internal debug |
+| `NOORM_CHANNEL` | Policy channel override (`resolveChannel`) |
+
+`NOORM_IDENTITY_*` is also excluded — it belongs to `loadIdentityFromEnv`, and forwarding it would collide with the `identity: string` field.
 
 ```bash
 # CI/CD example: use stored config with overridden host
@@ -280,15 +290,17 @@ stages:
 When resolving a config linked to a stage, stage defaults merge in:
 
 ```typescript
+import { resolveConfig, SettingsProvider } from './core/config/resolver'
+
 const config = resolveConfig(state, {
     name: 'prod',
-    stage: 'prod',  // Required when passing settings - must explicitly specify stage name
-    settings: settingsManager,
+    settings: new SettingsProvider(settingsManager),
+    // stage: 'prod',  // optional — omit to auto-link by matching config name
 })
 // Stage defaults applied, then stored config, then env, then flags
 ```
 
-> **Note:** When passing `settings`, you must also pass `stage` explicitly. Auto-detection of stage from config name is not yet implemented.
+> **Note:** `settings` takes a `SettingsProvider`, not a `SettingsManager` — wrap the manager. The class must be imported from `core/config/resolver` directly; the `core/config` barrel re-exports it type-only. When `stage` is omitted, `findStageForConfig` auto-links a stage whose name matches the config name.
 
 
 ## Config Completeness
@@ -298,10 +310,13 @@ A config is "complete" when all required secrets (from its stage) are set. Incom
 ```typescript
 import { checkConfigCompleteness } from './core/config'
 
-// With explicit stage name (recommended)
-const check = checkConfigCompleteness(config, state, settings, 'prod')
+// Fourth argument is an options object: { stageName?, vaultSecretKeys? }
+const check = checkConfigCompleteness(config, state, settings, {
+    stageName: 'prod',
+    vaultSecretKeys: ['DB_PASSWORD'],  // vault keys count as "set"
+})
 
-// Without stage name - only works if stage name matches config name exactly
+// Without stageName - auto-links a stage whose name matches the config name
 const check = checkConfigCompleteness(config, state, settings)
 
 if (!check.complete) {

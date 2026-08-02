@@ -1,7 +1,7 @@
 # Schema Explorer
 
 
-The Schema Explorer gives you read-only access to your database structure directly from the terminal. No need to switch to pgAdmin, MySQL Workbench, or Azure Data Studio. Browse tables, views, indexes, foreign keys, functions, procedures, and types without leaving your workflow.
+The Schema Explorer gives you read-only access to your database structure directly from the terminal. No need to switch to pgAdmin, MySQL Workbench, or Azure Data Studio. Browse tables, views, indexes, foreign keys, functions, procedures, types, and triggers without leaving your workflow.
 
 
 ## What It Shows
@@ -17,6 +17,20 @@ The explorer queries your database's system catalogs to reveal its structure:
 | Functions | Parameters, return type, definition |
 | Procedures | Parameters, definition |
 | Types | Enum values, composite attributes, domain base types |
+| Triggers | Table, timing (BEFORE/AFTER/INSTEAD OF), events, definition |
+
+Two more categories, **locks** and **connections**, describe runtime state rather than schema. They are counted in the `--json` overview and reachable from the SDK, but they have no CLI listing and no TUI screen.
+
+Which catalogs each dialect reads:
+
+| Dialect | Catalogs |
+|---------|----------|
+| PostgreSQL | `information_schema` for tables, columns, views, FKs, and parameters; `pg_catalog` (`pg_proc`, `pg_type`, `pg_enum`, `pg_indexes`, `pg_locks`, `pg_stat_activity`) for everything it cannot express |
+| MySQL | `information_schema` throughout, plus `performance_schema.metadata_locks` for locks |
+| MSSQL | `sys.*` catalog views (`sys.tables`, `sys.views`, `sys.procedures`, `sys.types`, `sys.indexes`, `sys.foreign_keys`, `sys.triggers`) |
+| SQLite | `sqlite_master` for object names and DDL, `PRAGMA table_info` / `index_info` / `foreign_key_list` for the rest |
+
+noorm's own tracking objects are filtered out: PostgreSQL and MSSQL exclude the `noorm` schema in the catalog query, MySQL and SQLite drop names starting with `__noorm_`. Set the log level to `verbose` to include them.
 
 
 ## Accessing the Explorer
@@ -24,24 +38,28 @@ The explorer queries your database's system catalogs to reveal its structure:
 
 ### Terminal UI
 
-From the home screen, press `d` to enter the Database menu, then `e` to explore:
+From the home screen, press `d` to enter the Database menu, then `x` to explore:
 
 ```
-Home → [d] Database → [e] Explore
+Home → [d] Database → [x] Explore
 ```
 
-Or navigate directly through the menu:
+The Database menu:
 
 ```
 ┌─ Database ──────────────────────────────────────────────────┐
 │                                                             │
-│  [e] explore       Browse tables, views, indexes            │
-│  [t] terminal      Interactive SQL REPL                     │
-│  [w] truncate      Wipe all data (keep schema)              │
-│  [x] teardown      Drop all objects                         │
+│  [c] create        Create the database for this config      │
+│  [d] destroy       Drop the database for this config        │
+│  [x] explore       Browse tables, views, indexes            │
+│  [w] wipe          Truncate all data (keep schema)          │
+│  [t] teardown      Drop all objects                         │
+│  [r] transfer      Move data between configs                │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+The SQL terminal is not on this menu. Press `Shift+Q` from anywhere, or run `noorm sql repl`. See [SQL Terminal](/guide/database/terminal).
 
 
 ### Scripted Usage
@@ -52,8 +70,13 @@ The same subcommands run non-interactively — add `--json` to get machine-reada
 noorm db explore                          # Overview
 noorm db explore tables                   # List tables
 noorm db explore tables detail users      # Table detail
+noorm db explore fks                      # List foreign keys
+noorm db explore triggers                 # List triggers
+noorm db explore tables --schema app      # Restrict to one schema
 noorm db explore --json > schema.json     # JSON output
 ```
+
+The subcommands are `tables`, `views`, `procedures`, `functions`, `types`, `indexes`, `fks`, and `triggers`. Every one accepts `--schema` except on SQLite, which has no schemas and rejects the flag rather than returning an empty list. `tables`, `views`, `procedures`, `functions`, `types`, and `triggers` also take a `detail <name>` subcommand.
 
 
 ## Overview Screen
@@ -90,6 +113,8 @@ Press the number key or hotkey to drill into any category. Categories with zero 
 | `5` | `y` | Types |
 | `6` | `i` | Indexes |
 | `7` | `k` | Foreign Keys |
+
+The TUI overview lists these seven. `noorm db explore` on the command line prints a Triggers count as well, and `--json` carries all ten counters including locks and connections. The Total Objects figure sums every counter the overview computed, so it can exceed the seven rows on screen when triggers, locks, or connections are present.
 
 
 ## Browsing Tables
@@ -336,7 +361,7 @@ Custom types are available in PostgreSQL and MSSQL. The explorer shows enum valu
 
 ## Headless JSON Output
 
-Use `--json` flag for machine-readable output.
+Use `--json` flag for machine-readable output. Every noorm command wraps its `--json` payload in an object carrying a top-level `success` boolean, so `jq -e '.success'` works the same way against all of them. A list is never emitted as a bare array; it is always named, as in `{ "tables": [...] }`.
 
 
 ### Overview
@@ -347,13 +372,17 @@ noorm db explore --json
 
 ```json
 {
+    "success": true,
     "tables": 12,
     "views": 3,
     "procedures": 0,
     "functions": 5,
     "types": 2,
     "indexes": 18,
-    "foreignKeys": 7
+    "foreignKeys": 7,
+    "triggers": 4,
+    "locks": 0,
+    "connections": 2
 }
 ```
 
@@ -365,12 +394,17 @@ noorm db explore tables --json
 ```
 
 ```json
-[
-    { "name": "users", "schema": "public", "columnCount": 8, "rowCountEstimate": 1500 },
-    { "name": "posts", "schema": "public", "columnCount": 5, "rowCountEstimate": 42000 },
-    { "name": "comments", "schema": "public", "columnCount": 4, "rowCountEstimate": 128000 }
-]
+{
+    "success": true,
+    "tables": [
+        { "name": "users", "schema": "public", "columnCount": 8, "rowCountEstimate": 1500 },
+        { "name": "posts", "schema": "public", "columnCount": 5, "rowCountEstimate": 42000 },
+        { "name": "comments", "schema": "public", "columnCount": 4, "rowCountEstimate": 128000 }
+    ]
+}
 ```
+
+The other list subcommands follow the same shape under their own key: `views`, `procedures`, `functions`, `types`, `indexes`, `foreignKeys` (from `noorm db explore fks`), and `triggers`.
 
 
 ### Table Detail
@@ -381,6 +415,7 @@ noorm db explore tables detail users --json
 
 ```json
 {
+    "success": true,
     "name": "users",
     "schema": "public",
     "columns": [
@@ -407,6 +442,7 @@ noorm db explore views detail active_users --json
 
 ```json
 {
+    "success": true,
     "name": "active_users",
     "schema": "public",
     "columns": [
@@ -427,6 +463,7 @@ noorm db explore functions detail calculate_total --json
 
 ```json
 {
+    "success": true,
     "name": "calculate_total",
     "schema": "public",
     "parameters": [
@@ -449,11 +486,14 @@ The explorer works across all supported databases with appropriate translations:
 | Views | Yes | Yes | Yes | Yes |
 | Indexes | Yes | Yes | Yes | Yes |
 | Foreign Keys | Yes | Yes | Yes | Yes |
+| Triggers | Yes | Yes | Yes | Yes |
 | Functions | Yes | Yes | Yes | -- |
 | Procedures | Yes | Yes | Yes | -- |
 | Types | Yes | -- | Yes | -- |
+| Locks | Yes | Yes | Yes | -- |
+| Connections | Yes | Yes | Yes | -- |
 
-SQLite does not support stored procedures, functions, or user-defined types. MySQL does not support user-defined types. These categories return empty results for unsupported dialects.
+SQLite does not support stored procedures, functions, or user-defined types, and has no server to report locks or connections for. MySQL does not support user-defined types. These categories return empty results for unsupported dialects.
 
 **Type support by dialect:**
 

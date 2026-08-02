@@ -31,34 +31,50 @@ noorm change ff
 
 `noorm ci init` reads identity and connection from env vars, writes an ephemeral `.noorm/state/state.enc`, creates a config (default name `ci`, override with `--name` or `NOORM_CI_CONFIG_NAME`), and marks it active. Later commands in the same job (`run build`, `change ff`, `ci secrets`) operate as if a developer had bootstrapped manually.
 
+Two preconditions worth knowing before wiring a pipeline:
+
+- It refuses to run when `.noorm/state/state.enc` already exists. `--force` backs the file up and replaces it; from an interactive terminal `--yes` is required as well, since replacing state destroys every config and config-scoped secret in the project.
+- The config it writes carries `isTest: true`. An SDK context created with `requireTest: true` will therefore accept it — do not rely on that guard to keep a CI job away from a production database.
+
 **One-time setup** (developer with vault access):
 
 Two approaches depending on your trust model:
 
 ```bash
 # Option A: Mint + enroll in one step (developer holds vault access)
-noorm ci identity enroll --config prod --name "GitHub CI" --email ci@example.com
+noorm ci identity enroll --config prod --name "GitHub CI" --email ci@example.com --yes
 # → prints NOORM_IDENTITY_PRIVATE_KEY / NAME / EMAIL once; copy to CI secrets store
 
 # Option B: Air-gapped (key minted on a separate machine)
 noorm ci identity new --name "GitHub CI" --email ci@example.com --json > ci-key.json
 # → gives the public key to a vault-holder, who enrolls it:
 noorm ci identity enroll --config prod --name "GitHub CI" --email ci@example.com \
-    --public-key <hex from ci-key.json>
+    --public-key <hex from ci-key.json> --yes
 ```
 
-`ci identity new` never contacts a database — it only generates a keypair and prints the env block. `ci identity enroll` registers the public key in the target database and grants vault access. Both are idempotent on identityHash.
+`ci identity new` never contacts a database — it only generates a keypair and prints the env block. Each run mints a *fresh* keypair, so it is not idempotent; re-running gives a different identity.
+
+`ci identity enroll` registers the public key in the target database and grants vault access. It is idempotent on identityHash: a second run with the same name/email/public key ensures vault access rather than inserting a duplicate. It refuses if a row already exists under that hash with a *different* public key — that shape is a pre-registration attack, not a retry.
+
+`--yes` is required on the first enroll. Enrollment is gated on `vault:propagate`, a `confirm` cell for every role that holds it (`viewer` is denied outright), because sealing the vault key to a public key cannot be undone. Without `--yes` the command prints the identity it is about to grant to and exits 1. It is skipped when the target already holds vault access, since confirming a no-op is noise.
 
 The full flow (with diagrams and per-provider examples) lives in the [CI automation guide](../guide/automation/ci.md).
 
 
 ## Exit Codes
 
+The `ci` commands follow the repo-wide contract in `src/cli/_exit.ts` — the same
+codes every other `noorm` command uses:
+
 | Code | Meaning |
 |------|---------|
 | 0 | Success |
-| 1 | Configuration, connection, or precondition error (missing env vars, missing state, etc.) |
-| 2 | Partial success (e.g. `ci secrets` loaded some keys but others errored) or SQL build failure |
+| 1 | Total failure — nothing succeeded. `ci init` uses this when `state.enc` already exists without `--force`, or when state/config writes fail. |
+| 2 | Usage error — a bad invocation or a named target that does not exist. `ci init` uses this for missing/invalid `NOORM_IDENTITY_*` and missing `NOORM_CONNECTION_DIALECT`/`DATABASE`; `ci secrets` for an unreadable or unparseable `--file` and for an unknown config. Nothing was attempted. |
+| 3 | Partial — some units succeeded and some failed, e.g. `ci secrets` set some keys and errored on others. The target is in a mixed state; re-running is not automatically safe. |
+
+`3` rather than `2` for partial is deliberate: a clean failure can be retried,
+a partial one needs a human, so the two must never share a code.
 
 
 ## Environment Variables

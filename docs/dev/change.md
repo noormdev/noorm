@@ -91,7 +91,10 @@ const manager = new ChangeManager({
     identity,
     projectRoot: process.cwd(),
     changesDir: '/project/changes',
-    schemaDir: '/project/sql',
+    sqlDir: '/project/sql',
+    access: config.access,   // per-channel roles from the config
+    channel: 'user',         // 'user' for CLI/TUI/SDK, 'agent' for MCP
+    dialect: 'postgres',     // defaults to 'postgres' when omitted
 })
 
 // List all changes with status
@@ -142,6 +145,13 @@ Batch operations (`next`, `ff`, `rewind`) add:
 | Option | Default | Description |
 |--------|---------|-------------|
 | `abortOnError` | `true` | Stop on first failure |
+
+Batch results (`BatchChangeResult`) carry `warnings?: string[]` for conditions
+that silently shrink a batch to nothing — currently a missing changes directory.
+A mistyped `paths.changes` otherwise reports `executed: 0` and exit 0, which is
+indistinguishable from an already-up-to-date database. `error?: string` carries
+a pre-flight failure that no per-change result can explain (e.g. a rewind target
+matching no applied change).
 
 
 ## Scaffolding
@@ -206,28 +216,38 @@ Each change has a status based on its execution history:
 | `success` | Applied successfully |
 | `failed` | Last execution failed |
 | `reverted` | Was applied, then reverted |
+| `stale` | Applied, but its objects were torn down — needs re-run |
+
+These are the `OperationStatus` values from `core/shared`, shared with the runner.
+`isPendingChange(item)` is the one predicate every "what still needs applying"
+surface uses (`ff`, `next`, the SDK's `pending()`, the CLI picker): it returns
+true for `pending`, `reverted`, and `stale` on non-orphaned changes.
 
 The `list()` method returns items with additional metadata:
 
 ```typescript
 interface ChangeListItem {
     name: string
-    status: 'pending' | 'success' | 'failed' | 'reverted'
+    status: OperationStatus
     appliedAt: Date | null
     appliedBy: string | null
     revertedAt: Date | null
+    errorMessage: string | null
+    appliedHistoryId?: number | null  // history row id — the true apply-order key
     isNew: boolean         // Exists on disk but no DB record
     orphaned: boolean      // In DB but folder deleted from disk
-    errorMessage?: string  // Error message if status is 'failed'
     // Disk metadata (when change exists on disk)
     path?: string
-    date?: Date
+    date?: Date | null
     description?: string
     changeFiles?: ChangeFile[]
     revertFiles?: ChangeFile[]
     hasChangelog?: boolean
 }
 ```
+
+`appliedAt` is second-precision, so changes applied in the same `ff` tick tie;
+`rewind` breaks the tie on `appliedHistoryId`.
 
 
 ## Tracking Tables
@@ -241,7 +261,7 @@ Change execution is recorded in the same tables as the runner. Names below are t
 | `name` | Change name |
 | `direction` | `'change'` or `'revert'` |
 | `change_type` | `'change'` |
-| `status` | `'pending'`, `'success'`, `'failed'` |
+| `status` | `OperationStatus`: `'pending'`, `'success'`, `'failed'`, `'reverted'`, `'stale'` |
 | `checksum` | Combined hash of all files |
 | `executed_by` | Identity string |
 
@@ -267,7 +287,7 @@ Change execution is recorded in the same tables as the runner. Names below are t
 | `change:file` | `{ change, filepath, index, total }` | File being executed |
 | `change:complete` | `{ name, direction, status, durationMs }` | Execution finished |
 | `change:skip` | `{ name, reason }` | Change skipped (already applied, unchanged) |
-| `file:dry-run` | `{ filepath, outputPath }` | File written during dry-run mode |
+| `file:dry-run` | `{ filepath, status, outputPath?, error? }` | File rendered during dry-run mode |
 
 ```typescript
 import { observer } from './core/observer'
@@ -324,7 +344,7 @@ else if (err instanceof ManifestReferenceError) {
 | `ChangeOrphanedError` | In DB but folder deleted |
 | `ManifestReferenceError` | `.txt` references missing file |
 
-**Note**: Already-applied changes are not thrown as errors. Instead, they emit a `change:skip` event with `reason: 'already_applied'`. Use `--force` to re-run.
+**Note**: Already-applied changes are not thrown as errors. Instead, they emit a `change:skip` event with `reason: 'already applied'` and the change reports `status: 'success'` with zero files. Use `--force` to re-run. `ChangeAlreadyAppliedError` is exported but no longer thrown by the executor.
 
 
 ## Execution History
@@ -334,7 +354,10 @@ The `ChangeHistory` class provides detailed execution tracking:
 ```typescript
 import { ChangeHistory } from './core/change'
 
-const history = new ChangeHistory(db, 'production')
+// (db, configName, dialect) — dialect defaults to 'sqlite', which selects the
+// prefixed table names. Pass the real dialect or pg/mssql queries hit the
+// wrong identifiers.
+const history = new ChangeHistory(db, 'production', 'postgres')
 
 // Get status for a specific change
 const status = await history.getStatus('2024-01-15-add-users')
@@ -407,8 +430,8 @@ for (const file of files) {
 interface ChangeHistoryRecord {
     id: number
     name: string
-    direction: 'change' | 'revert'
-    status: 'pending' | 'success' | 'failed' | 'reverted'
+    direction: Direction          // 'change' | 'revert'
+    status: OperationStatus       // 'pending' | 'success' | 'failed' | 'reverted' | 'stale'
     executedAt: Date
     executedBy: string
     durationMs: number
@@ -416,17 +439,9 @@ interface ChangeHistoryRecord {
     checksum: string
 }
 
-interface UnifiedHistoryRecord {
-    id: number
-    name: string
-    changeType: 'change' | 'build' | 'run'
-    direction: 'change' | 'revert' | null
-    status: 'pending' | 'success' | 'failed' | 'reverted'
-    executedAt: Date
-    executedBy: string
-    durationMs: number
-    errorMessage: string | null
-    checksum: string
+// Adds the operation type; every other field is inherited unchanged.
+interface UnifiedHistoryRecord extends ChangeHistoryRecord {
+    changeType: 'build' | 'run' | 'change'
 }
 
 interface FileHistoryRecord {
@@ -435,7 +450,7 @@ interface FileHistoryRecord {
     filepath: string
     fileType: 'sql' | 'txt'
     checksum: string
-    status: 'pending' | 'success' | 'failed' | 'skipped'
+    status: ExecutionStatus       // 'pending' | 'success' | 'failed' | 'skipped'
     skipReason: string | null
     errorMessage: string | null
     durationMs: number
@@ -460,19 +475,28 @@ The `ChangeTracker` class extends the base `Tracker` with change-specific operat
 ```typescript
 import { ChangeTracker } from './core/change'
 
-const tracker = new ChangeTracker(db, configName)
+// (db, configName, dialect) — same signature as the base Tracker
+const tracker = new ChangeTracker(db, configName, 'postgres')
 
-// Check if a change can be reverted
-const canRevert = await tracker.canRevert('2024-01-15-add-users')
+// Check if a change can be reverted. `force` is required, and the result is a
+// CanRevertResult, not a boolean.
+const check = await tracker.canRevert('2024-01-15-add-users', false)
+// { canRevert: boolean, reason?: string, status?: OperationStatus, error?: Error }
+
+if (check.error) {
+    // State could not be established (unreadable/damaged tracking table) —
+    // distinct from an established "no".
+}
 
 // Mark a change as reverted
 await tracker.markAsReverted('2024-01-15-add-users')
 
-// Mark all changes as stale (used by teardown operations)
-await tracker.markAllAsStale()
+// Mark all changes as stale (used by teardown operations); returns the count
+const marked = await tracker.markAllAsStale()
 ```
 
 The base `Tracker` class (from `core/runner`) provides:
+- `needsRun()` / `needsRunByName()` - Change detection by filepath or name
 - `createOperation()` - Create operation records with direction
 - `createFileRecords()` - Create pending file records upfront
 - `updateFileExecution()` - Update individual file status
@@ -480,8 +504,8 @@ The base `Tracker` class (from `core/runner`) provides:
 - `finalizeOperation()` - Complete operation with final status
 
 `ChangeTracker` adds change-specific methods:
-- `canRevert()` - Check if change was successfully applied
-- `markAsReverted()` - Update status to 'reverted'
+- `canRevert(name, force)` - Check if change was successfully applied
+- `markAsReverted(name)` - Update status to 'reverted'
 - `markAllAsStale()` - Mark all applied changes for re-execution
 
 **Note:** `ChangeHistory` is now query-focused. Mutation methods (`canRevert`, `markAsReverted`, `markAllAsStale`) moved to `ChangeTracker`.
@@ -494,19 +518,25 @@ The `ChangeContext` interface includes all parameters needed for change executio
 ```typescript
 interface ChangeContext {
     db: Kysely<NoormDatabase>
-    dialect: Dialect             // Required for date formatting in locks
     configName: string
     identity: Identity
     projectRoot: string
     changesDir: string
-    schemaDir: string
+    sqlDir: string               // resolves .txt manifest references
+    access: ConfigAccess         // the config's per-channel roles
+    channel: Channel             // 'user' (CLI/TUI/SDK) or 'agent' (MCP or CLI)
     config?: Record<string, unknown>
     secrets?: Record<string, string>
     globalSecrets?: Record<string, string>
+    dialect?: 'postgres' | 'mysql' | 'sqlite' | 'mssql'  // default: 'postgres'
 }
 ```
 
-The `dialect` property is required because lock operations need dialect-specific date formatting.
+`access` and `channel` are required: `executeChange`/`revertChange` run the
+policy gate once, at the core seam, so SDK/TUI/CLI/MCP callers all inherit one
+enforcement path. `dialect` is optional and defaults to `'postgres'`; it selects
+the tracking-table naming (schema-qualified vs prefixed) and the date formatting
+lock operations need.
 
 
 ## Best Practices

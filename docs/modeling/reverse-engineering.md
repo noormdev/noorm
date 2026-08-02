@@ -83,9 +83,9 @@ Every config carries a role per channel, `access: { user, agent }`, and the `age
 
 | Role | What the agent can do |
 |---|---|
-| `viewer` | Explore schema, run read-only SQL (`SELECT`, `EXPLAIN`, `SHOW`, `DESCRIBE`) |
+| `viewer` | Explore schema, run read-only SQL (`SELECT`, `SHOW`, `DESCRIBE`). `EXPLAIN` inherits the class of the statement it wraps, so `EXPLAIN ANALYZE DELETE ...` is a write and is denied |
 | `operator` | Adds `INSERT`/`UPDATE`/`DELETE`; destructive commands stay out of reach |
-| `admin` | Everything, with no confirmation |
+| `admin` | Adds DDL, change and run commands, and vault writes. The irreversible operations (drop, teardown, truncate, config rewrite, vault propagate, force-unlock) are confirmation-gated, and a confirmation collapses to a denial on the agent channel |
 | `false` | The config is invisible on that channel |
 
 `viewer` is all reverse-engineering needs, and it is already the default: a config that never declared `access` gets `{ user: 'admin', agent: 'viewer' }`. So this step is usually a check rather than a change. Confirm it in `noorm ui` under Config → Edit, and lower it back to `viewer` if someone raised it for other work.

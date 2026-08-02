@@ -6,26 +6,30 @@ This guide covers noorm's cryptographic identity system — the keys that authen
 
 ## Overview
 
-noorm uses X25519 cryptographic identities for secure config sharing and audit tracking. Each identity is stored locally in `~/.noorm/identity.key` (private key) and `~/.noorm/identity.json` (metadata). The public key is derived deterministically from the private key, and the identity hash (`email + name + publicKey`) is stable across machines, so the same private key always resolves to the same identity.
+noorm uses X25519 cryptographic identities for secure config sharing and audit tracking. Each identity is stored locally in `~/.noorm/identity.key` (private key) and `~/.noorm/identity.json` (metadata). The public key is derived deterministically from the private key, so it never has to be stored separately to be recovered.
+
+A disk identity is hashed as `SHA-256(email + name + machine + os)`, where `machine` is the hostname. The same person on two laptops is therefore two identities in the audit trail, and each needs vault access propagated to it. Env-var identities hash differently on purpose, so a CI fleet reads as one user: see [Env-Var Identity (CI)](#env-var-identity-ci) below.
 
 For CI runners, identities load from environment variables instead of files — see the [CI automation guide](../guide/automation/ci.md) for end-to-end setup, including `noorm ci identity new` (generate keypair) and `noorm ci identity enroll` (grant vault access on a target database).
 
 
 ## Creating an Identity
 
-Run `noorm identity init` on your machine to create a keypair:
+Run `noorm identity init` on your machine to create a keypair. `--name` and `--email` are both required; the command does not prompt.
 
 ```bash
-noorm identity init
+noorm identity init --name "Alice Cooper" --email alice@example.com
 ```
 
-This prompts for your name and email, generates a keypair, and writes:
+This generates a keypair and writes:
 
-- Private key: `~/.noorm/identity.key`
-- Public key: `~/.noorm/identity.pub`
+- Private key: `~/.noorm/identity.key` (mode `0600`)
+- Public key: `~/.noorm/identity.pub` (mode `0644`)
 - Metadata: `~/.noorm/identity.json`
 
-The private key never leaves your machine — your public key is what teammates use to share encrypted state with you.
+The private key never leaves your machine. Your public key is what teammates use to share encrypted state with you.
+
+If an identity already exists, `init` refuses. Replacing it takes `--force --yes`, and it is destructive: state encryption is keyed off the private key, so every noorm project on the machine loses access to the configs, secrets, and database passwords in its `.noorm/state/state.enc`. Nothing re-encrypts existing state under the new key. noorm copies the old key files to `.bak-<timestamp>` siblings before overwriting, and aborts if it cannot. An ambient `NOORM_YES` does not satisfy this confirmation; only the literal `--yes` flag does.
 
 
 ## Editing Your Identity

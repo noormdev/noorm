@@ -18,12 +18,17 @@ All locking happens through a single table: `__noorm_lock__` on MySQL and SQLite
 
 ```
 __noorm_lock__
-├── config_name   # Which config/database this lock protects
+├── id            # Auto-increment primary key
+├── config_name   # Which config/database this lock protects — UNIQUE
 ├── locked_by     # Identity of the holder
 ├── locked_at     # When acquired
 ├── expires_at    # Auto-expiry time
-└── reason        # Optional explanation
+└── reason        # Explanation, NOT NULL, defaults to ''
 ```
+
+The `UNIQUE` constraint on `config_name` is what makes acquisition safe: `acquire` claims the lock with a single `INSERT ... ON CONFLICT DO NOTHING` (`INSERT IGNORE` on MySQL, a plain insert arbitrated by the constraint on MSSQL, which has no `ON CONFLICT`). A `SELECT`-then-`INSERT` would leave a window where two processes both see "no lock" and both insert. Losing the race returns `null` internally and becomes a typed `LockAcquireError`, not a raw driver error.
+
+`locked_at` and `expires_at` are naive datetime columns — no stored offset. `manager.ts` serializes UTC and parses back as UTC per dialect (`formatDateForDialect` / `parseDateFromDialect`, `src/core/lock/manager.ts:68` and `:96`). Passing a JS `Date` straight through is the defect those functions exist to prevent: the postgres and mysql drivers bind using the *client's* local offset, so a `lock status` run from another timezone would compare two unrelated wall clocks and delete a live lock.
 
 Locks expire automatically. If a process crashes mid-operation, the next acquire attempt cleans up the stale lock after expiry. No manual intervention needed.
 
@@ -76,7 +81,9 @@ try {
 }
 finally {
 
-    await lockManager.release(db, 'production', 'alice@example.com')
+    // `release` takes the dialect explicitly — it has no default, because it
+    // resolves the schema-qualified vs prefixed table name from it.
+    await lockManager.release(db, 'production', 'alice@example.com', 'postgres')
 }
 ```
 
@@ -87,11 +94,14 @@ Configure lock behavior with these options:
 
 | Option | Default | Description |
 |--------|---------|-------------|
+| `dialect` | `'postgres'` | Resolves the lock table name and the datetime serialization |
 | `timeout` | 5 minutes | Lock duration before auto-expiry |
 | `wait` | `false` | Block until lock is available? |
 | `waitTimeout` | 30 seconds | Max time to wait (if `wait` is true) |
 | `pollInterval` | 1 second | Check frequency while waiting |
 | `reason` | none | Shown to blocked users |
+
+`dialect` defaults to `'postgres'` on every option-taking method (`acquire`, `withLock`, `extend`, `validate`, `status`). Against MySQL or SQLite you must pass it, or the manager looks for `noorm.lock` in a schema those dialects don't have.
 
 ```typescript
 // Fail immediately if locked
@@ -161,6 +171,7 @@ Note: Re-acquiring a lock you already hold also extends it (see "Re-acquiring Yo
 Before committing critical changes, verify your lock is still valid:
 
 ```typescript
+import { attempt } from '@logosdx/utils'
 import { LockExpiredError } from './core/lock'
 
 // Start a transaction
@@ -169,22 +180,23 @@ await db.transaction().execute(async (trx) => {
     await processChanges(trx)
 
     // Before committing, verify lock hasn't expired
-    try {
+    const [, err] = await attempt(() =>
+        lockManager.validate(db, configName, identity, 'postgres')
+    )
 
-        await lockManager.validate(db, configName, identity)
-        // Lock is valid, safe to commit
+    if (err instanceof LockExpiredError) {
+
+        // Lock expired! Roll back
+        throw new Error('Lock expired during operation')
     }
-    catch (err) {
 
-        if (err instanceof LockExpiredError) {
+    if (err) throw err
 
-            // Lock expired! Roll back
-            throw new Error('Lock expired during operation')
-        }
-        throw err
-    }
+    // Lock is valid, safe to commit
 })
 ```
+
+`validate` also throws `LockNotFoundError` when no row exists and `LockOwnershipError` when someone else holds it. On expiry it cleans the stale row up before throwing.
 
 
 ## Force Release
@@ -192,14 +204,16 @@ await db.transaction().execute(async (trx) => {
 Admins can force-release locks regardless of owner. Use sparingly:
 
 ```typescript
-// Returns true if a lock was released, false if none existed
-const released = await lockManager.forceRelease(db, 'production')
+// Returns { released, holder } — `holder` is null when there was nothing to release
+const { released, holder } = await lockManager.forceRelease(db, 'production', 'postgres')
 
 if (released) {
 
-    console.log('Forced lock release')
+    console.log(`Forced release of lock held by ${holder}`)
 }
 ```
+
+`forceRelease` returns a `ForceReleaseResult`, not a boolean, and it carries the evicted holder. Breaking someone else's lock is destructive to their in-flight work, so callers need to be able to say *whose* lock they broke — and to tell "evicted a live holder" apart from "there was nothing there", which a bare boolean collapsed into the same success.
 
 This is intended for CLI commands like `noorm lock force-release` when a crashed process left a lock behind.
 

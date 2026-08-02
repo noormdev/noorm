@@ -32,6 +32,8 @@ TARGETS=(README.md docs skills examples)
 # the correct form under a "does not work"/overload-explainer heading:
 # - docs/guide/troubleshooting.md: the flag-placement entry contrasts broken vs. working forms
 # - docs/cli/flags.md: the placement explainer and `--config`/`-c` overload section contrast the two forms
+# - docs/dev/headless.md: the CLI-architecture page documents extractGlobalCwd by
+#   showing the rejected form next to the error it produces, under a "Rejected:" comment
 # - docs/design/v1-49-54-cli-field-defects.md: this checkpoint's own design doc, which
 #   narrates the "form that cannot work" as the defect under investigation
 # - examples/llm-memory-db-pg/{REPORT.md,REPORT-PHASE-1.md,postgres-problems.md}: dated
@@ -39,7 +41,7 @@ TARGETS=(README.md docs skills examples)
 #   already stating the "must come after the subcommand" rule as a quirk they hit
 # - examples/llm-memory-db-mssql/mssql-problems.md: same — a dated repro transcript, not
 #   instructional prose, predating this branch
-EXEMPT_REGEX='^(docs/guide/troubleshooting\.md|docs/cli/flags\.md|docs/design/v1-49-54-cli-field-defects\.md|examples/llm-memory-db-pg/(REPORT\.md|REPORT-PHASE-1\.md|postgres-problems\.md)|examples/llm-memory-db-mssql/mssql-problems\.md):'
+EXEMPT_REGEX='^(docs/guide/troubleshooting\.md|docs/cli/flags\.md|docs/dev/headless\.md|docs/design/v1-49-54-cli-field-defects\.md|examples/llm-memory-db-pg/(REPORT\.md|REPORT-PHASE-1\.md|postgres-problems\.md)|examples/llm-memory-db-mssql/mssql-problems\.md):'
 
 FAILED=0
 
