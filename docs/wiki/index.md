@@ -1,18 +1,18 @@
 ---
-reflects_rev: 3acf100dd323521cae7cf853e89e6b4c079a42b2
+reflects_rev: 11c77040fb7470082550e3c22dc6724fc331a384
 type: Index
 description: Bun workspace monorepo — noorm, a database schema/change manager with Ink/React TUI, Citty CLI, and Kysely SQL layer
 ---
 
 <wiki-type>repo</wiki-type>
-<scan-sha>bf245fd116209d22ea6385945f0d255d7dc8af92</scan-sha>
+<scan-sha>f4112cdfcca8fa3c44ef2650ffe2943ddc5511f0</scan-sha>
 <wiki-schema>1</wiki-schema>
 
 # Project signals
 
 ## Framework & runtime
 
-- **Language:** TypeScript (82% LOC, 1031 files), Bun runtime (>=1.2), Node >=22.13
+- **Language:** TypeScript (81% LOC, 1031 files), Bun runtime (>=1.2), Node >=22.13
 - **SQL layer:** Kysely 0.28 query builder + executor; dialect-aware across PostgreSQL, MySQL, MSSQL, SQLite
 - **TUI:** Ink 6.8 + React 19.2 ([`src/tui/`](../../src/tui)); Citty 0.2 for CLI arg parsing ([`src/cli/`](../../src/cli))
 - **Event bus:** `@logosdx/observer` (`ObserverEngine`); module-scope singleton in [`src/core/observer.ts`](../../src/core/observer.ts)
@@ -44,16 +44,16 @@ CI gate: lint → typecheck → build → 5 test groups → 3 example jobs. Inte
 
 | Language | LOC | Files | % |
 |----------|-----|-------|---|
-| TypeScript | 240775 | 1031 | 82% |
-| Markdown | 44873 | 136 | 15% |
-| JavaScript | 1261 | 22 | 1% |
-| YAML | 1158 | 16 | 1% |
-| HTML | 1090 | 27 | 1% |
-| CSS | 1015 | 3 | 1% |
-| Shell | 930 | 7 | 1% |
-| JSON | 471 | 22 | 1% |
-| Vue | 203 | 3 | 1% |
-| TOML | 10 | 2 | 1% |
+| TypeScript | 240887 | 1031 | 81% |
+| Markdown | 48422 | 147 | 16% |
+| JavaScript | 1261 | 22 | 0% |
+| YAML | 1158 | 16 | 0% |
+| HTML | 1090 | 27 | 0% |
+| CSS | 1061 | 3 | 0% |
+| Shell | 932 | 7 | 0% |
+| JSON | 473 | 22 | 0% |
+| Vue | 205 | 3 | 0% |
+| TOML | 11 | 3 | 0% |
 
 ## DevOps & CI
 
@@ -62,7 +62,8 @@ CI gate: lint → typecheck → build → 5 test groups → 3 example jobs. Inte
 - **DB services (local):** [`docker-compose.test.yml`](../../docker-compose.test.yml) at repo root (same ports); postgres/mysql services are `tmpfs`-backed, mssql is not
 - **Publish:** Changesets-driven (`changeset publish`) via [`.github/workflows/publish.yml`](../../.github/workflows/publish.yml); fixed-version group: `@noormdev/cli` and `@noormdev/sdk`
 - **Binary release:** `bun build --compile` → GitHub Releases via [`.github/workflows/release-binary.yml`](../../.github/workflows/release-binary.yml)
-- **Docs:** VitePress, deployed via [`.github/workflows/docs.yml`](../../.github/workflows/docs.yml); site now includes [`docs/tapes/`](../tapes) (VHS-recorded terminal demos, replacing static screenshots)
+- **Docs:** VitePress, deployed via [`.github/workflows/docs.yml`](../../.github/workflows/docs.yml); site now includes [`docs/tapes/`](../tapes) (VHS-recorded terminal demos, replacing static screenshots) and [`docs/modeling/`](../modeling) (documents the separate `ignatius` tool)
+- **License:** Apache-2.0 — root [`LICENSE`](../../LICENSE)/[`NOTICE`](../../NOTICE), and [`packages/cli/LICENSE`](../../packages/cli/LICENSE)/[`NOTICE`](../../NOTICE), [`packages/sdk/LICENSE`](../../packages/sdk/LICENSE)/[`NOTICE`](../../NOTICE) mirror it. Relicensed from MIT (`df9cb20 chore: relicense to Apache 2.0`, itself following an earlier `4550e99 chore: adopt MIT license across packages`) — [`README.md`](../../README.md)'s license badge and footer match.
 
 ## Domains
 
@@ -79,7 +80,7 @@ CI gate: lint → typecheck → build → 5 test groups → 3 example jobs. Inte
 | tui | [`src/tui/`](../../src/tui), [`.claude/rules/tui-development.md`](../../.claude/rules/tui-development.md), [`tests/cli/components/`](../../tests/cli/components), [`tests/cli/hooks/`](../../tests/cli/hooks), [`tests/cli/screens/`](../../tests/cli/screens) | Ink/React TUI with focus manager, keyboard routing, ~94 registered screens | [`docs/wiki/tui.md`](tui.md) |
 | mcp-rpc | [`src/mcp/`](../../src/mcp), [`src/rpc/`](../../src/rpc), [`src/cli/mcp/`](../../src/cli/mcp), [`tests/core/mcp/`](../../tests/core/mcp), [`tests/core/rpc/`](../../tests/core/rpc) | MCP server over stdio wrapping flat RPC command registry, permission-gated dispatch | [`docs/wiki/mcp-rpc.md`](mcp-rpc.md) |
 | worker-bridge | [`src/core/worker-bridge/`](../../src/core/worker-bridge), [`src/workers/`](../../src/workers), [`tests/core/worker-bridge/`](../../tests/core/worker-bridge), [`tests/workers/`](../../tests/workers) | Hub-and-spoke worker threads for DT serialization and DB connection worker | [`docs/wiki/worker-bridge.md`](worker-bridge.md) |
-| infra | [`.github/`](../../.github), [`scripts/`](../../scripts), [`examples/`](../../examples), [`docs/`](..), `tsup.*.config.ts`, [`docker-compose.test.yml`](../../docker-compose.test.yml), [`bunfig.toml`](../../bunfig.toml) | CI, build pipeline, binary release, example projects, VitePress docs (incl. [`docs/tapes/`](../tapes) VHS demo recordings) | [`docs/wiki/infra.md`](infra.md) |
+| infra | [`.github/`](../../.github), [`scripts/`](../../scripts), [`examples/`](../../examples), [`docs/`](..), `tsup.*.config.ts`, [`docker-compose.test.yml`](../../docker-compose.test.yml), [`bunfig.toml`](../../bunfig.toml) | CI, build pipeline, binary release, example projects, VitePress docs (incl. [`docs/tapes/`](../tapes) VHS demo recordings, [`docs/modeling/`](../modeling)) | [`docs/wiki/infra.md`](infra.md) |
 
 ## Cross-cutting
 
@@ -89,9 +90,11 @@ CI gate: lint → typecheck → build → 5 test groups → 3 example jobs. Inte
 
 **Convention pointers:** [`.claude/rules/typescript.md`](../../.claude/rules/typescript.md) (4-block function structure, `attempt` over try-catch), [`.claude/rules/tui-development.md`](../../.claude/rules/tui-development.md) (focus system, Ink layout), [`.claude/rules/testing.md`](../../.claude/rules/testing.md) (test naming, coverage), [`.claude/rules/documentation.md`](../../.claude/rules/documentation.md) (three-pillar structure).
 
-**Domain partitioning basis:** Domains are functional vertical slices. `core-state` groups the startup/persistence concerns (state, settings, config, lifecycle, version) because they all initialize together in `project-init.ts`. `core-identity` groups crypto identity, vault, logger, and SQL terminal because they share the "user-facing sensitive data" concern. `core-db` groups connection, explore, transfer, and teardown because they all operate against a live database connection. `core-change` and `core-runner` are separate because changes are versioned operations while runner handles idempotent file execution — they do not share an execution path (core-change implements its own `executeFiles`/`needsRun`, distinct from the core runner's same-named functions). `core-policy` is a cross-cutting domain ([`src/core/policy/`](../../src/core/policy)): domains that enforce a config-scoped action via `assertPolicy`/`checkConfigPolicy` (`core-change`, `core-runner`, `core-db`, `core-identity`, `sdk`, `cli`, `tui`, `mcp-rpc`) import from it directly, and `core-state` imports it too but only for `resolveLegacyAccess`/`guarded` — data resolution and display styling, not enforcement. `infra` absorbs the entire [`docs/`](..) tree (including the new [`docs/tapes/`](../tapes) VHS demo-recording sources and [`docs/guide/relational-design.md`](../guide/relational-design.md)) rather than splitting docs out per-domain, since the docs site is built/deployed as one VitePress unit.
+**Domain partitioning basis:** Domains are functional vertical slices. `core-state` groups the startup/persistence concerns (state, settings, config, lifecycle, version) because they all initialize together in `project-init.ts`. `core-identity` groups crypto identity, vault, logger, and SQL terminal because they share the "user-facing sensitive data" concern. `core-db` groups connection, explore, transfer, and teardown because they all operate against a live database connection. `core-change` and `core-runner` are separate because changes are versioned operations while runner handles idempotent file execution — they do not share an execution path (core-change implements its own `executeFiles`/`needsRun`, distinct from the core runner's same-named functions). `core-policy` is a cross-cutting domain ([`src/core/policy/`](../../src/core/policy)): domains that enforce a config-scoped action via `assertPolicy`/`checkConfigPolicy` (`core-change`, `core-runner`, `core-db`, `core-identity`, `sdk`, `cli`, `tui`, `mcp-rpc`) import from it directly, and `core-state` imports it too but only for `resolveLegacyAccess`/`guarded` — data resolution and display styling, not enforcement. `infra` absorbs the entire [`docs/`](..) tree (including the new [`docs/tapes/`](../tapes) VHS demo-recording sources, [`docs/guide/relational-design.md`](../guide/relational-design.md), and [`docs/modeling/`](../modeling) — which documents `ignatius`, a separate information-modeling tool in a separate repo, not noorm's own code) rather than splitting docs out per-domain, since the docs site is built/deployed as one VitePress unit.
 
 **Access-control policy (2026-07, config-access-roles feature):** `Config.protected: boolean` was replaced by `Config.access: ConfigAccess` (per-channel `user`/`agent` roles), enforced through the `core-policy` domain. `src/core/config/protection.ts` and `src/rpc/protection.ts` were both deleted — their rule-checking is absorbed into `core/policy`. The runner/change/transfer/sql-terminal executors gate at their core seam via `assertPolicy`, so SDK/CLI/TUI/MCP callers all inherit one enforcement path. `StateManager.load()` runs the schemaVersion-keyed migration (`core/version/state/`, v2 maps `protected`→`access`, v3 maps `access.mcp`→`access.agent`) ahead of the pre-existing package-semver migration.
+
+**Schema migration v2 (noorm schema isolation):** [`src/core/version/schema/migrations/v2.ts`](../../src/core/version/schema/migrations/v2.ts) moves the six tracking tables into a dedicated `noorm` schema on postgres/mssql (prefix stripped: `change`, not `__noorm_change__`); a no-op on mysql/sqlite, which keep the `__noorm_*__` prefixed names. [`src/core/shared/tables.ts`](../../src/core/shared/tables.ts)'s `getNoormTables(dialect)`/`noormDb(db, dialect)` are the dialect-aware accessors; the un-dialected `NOORM_TABLES` constant is `@deprecated`. See [`docs/wiki/core-state.md`](core-state.md)'s Conventions section.
 
 **Recent change (2026-08, local):** [`src/core/change/history.ts`](../../src/core/change/history.ts) now hydrates `executed_at` as UTC on pg/mysql — `pg`/`mysql2` were parsing noorm's naive UTC text through the host's local timezone, so a change applied moments ago could render as "in 4 hours" on a UTC-negative host. mssql is deliberately left alone (tedious was not measured). See [`docs/wiki/core-change.md`](core-change.md)'s Conventions section.
 
