@@ -73,10 +73,10 @@ A config is exportable. Export uses X25519 key exchange with AES-256-GCM, and cr
 
 **Stages** make that prescriptive. Rather than describing your environments in a README, you define them once, and everyone gets the same shape with the details left blank. A stage declares its variables as required or optional, and a build fails with a clear error when a required one is missing instead of rendering something half-formed. Configs are typed `local` or `remote`, which is the distinction that decides how careful the tool should be. Losing a local dev database costs nothing. Production is a different question, which is what [access roles](/guide/environments/configs#access-roles) gate.
 
-**The vault** covers what stages cannot: secrets the whole team needs. Those live encrypted in a `__noorm_vault__` table in the database itself, so they distribute automatically rather than over Slack, and they sit lowest in the precedence chain so a local override always wins.
+**The vault** covers what stages cannot: secrets the whole team needs. Those live encrypted in the database itself, in `noorm.vault` where the dialect has schemas and a `__noorm_vault__` table where it does not, so they distribute automatically rather than over Slack. They sit lowest in the precedence chain, so a local override always wins.
 
 
-## Then LLMs arrived
+## The Arrival of LLMs
 
 
 The constraint changed. Writing SQL stopped being the slow part, so the slow part became reviewing SQL that an agent wrote quickly and confidently and sometimes wrongly.
