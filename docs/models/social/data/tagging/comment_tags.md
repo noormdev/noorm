@@ -7,16 +7,11 @@ columns:
   tag_id:
     type: integer
     desc: "The basetype's key, whole. That is what makes this a subtype rather than a child."
-  target_type:
-    type: text
-    default: "'COMMENT'"
-    desc: "Pinned to COMMENT, so the composite foreign key can only resolve to a COMMENT row."
   comment_id:
     type: integer
     desc: "A real foreign key to a real table, which polymorphism cannot give you."
 examples:
   - tag_id: 1
-    target_type: COMMENT
     comment_id: 1
 relationships:
   - target: tags
@@ -31,4 +26,4 @@ relationships:
 
 # comment_tags
 
-A [[tags]] belonging to a [[comments]] row. Its key is the basetype's key, and `target_type` is pinned so the pair can only attach to a row the basetype already marked `COMMENT`.
+A [[tags]] belonging to a [[comments]] row. Its key is the basetype's key.

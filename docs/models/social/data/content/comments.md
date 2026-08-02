@@ -8,7 +8,7 @@ columns:
     type: integer
   target_type:
     type: text
-    desc: "Discriminator. Joins a unique key so it can travel into each subtype's foreign key."
+    desc: "Discriminator, drawn from the comment_target_types table rather than a CHECK list. Joins a unique key so it can travel into each subtype's foreign key."
   created_at:
     type: datetime
 examples:

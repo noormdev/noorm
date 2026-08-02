@@ -7,16 +7,11 @@ columns:
   comment_id:
     type: integer
     desc: "The basetype's key, whole."
-  target_type:
-    type: text
-    default: "'COMMENT'"
-    desc: "Pinned to COMMENT."
   parent_comment_id:
     type: integer
     desc: "The comment being replied to. A real foreign key, even though it points back at the same basetype."
 examples:
   - comment_id: 4
-    target_type: COMMENT
     parent_comment_id: 3
 relationships:
   - target: comments

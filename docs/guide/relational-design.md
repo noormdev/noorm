@@ -121,48 +121,50 @@ basetype-subtypes:    post     → user_post, group_post
                       tag      → post_tag, photo_tag, comment_tag, ...
 ```
 
-That is the honest version of the trade. Polymorphism looks cheaper because it never makes you write this list down: one `comments` table absorbs every case, and the count of things you are actually modelling stays hidden in a string column. Here the count is on the page. Photo alone fans out four ways.
+Polymorphism looks cheaper because it never makes you write this list down: one `comments` table absorbs every case, and the count of things you are actually modelling stays hidden in a string column. Here the count is on the page. Photo alone fans out four ways.
 
-More tables, and every one of them is a real constraint instead of a convention. The mechanism is the same for each, so here is one cluster in full:
+More tables, and every one of them is a constraint the database enforces. The mechanism is the same for each, so here is one cluster in full:
 
 ```sql
+-- The owner types are rows, not a value list baked into DDL.
+-- Admitting ORGANIZATION later is an INSERT.
+CREATE TABLE post_owner_types (
+    owner_type text PRIMARY KEY
+);
+
+INSERT INTO post_owner_types (owner_type) VALUES ('USER'), ('GROUP');
+
 CREATE TABLE posts (
     post_id    serial      PRIMARY KEY,
-    owner_type text        NOT NULL CHECK (owner_type IN ('USER', 'GROUP')),
+    owner_type text        NOT NULL REFERENCES post_owner_types (owner_type),
     body       text        NOT NULL,
-    posted_at  timestamptz NOT NULL DEFAULT now(),
-
-    -- The discriminator has to be reachable by a
-    -- foreign key, so it joins a key of its own.
-    UNIQUE (post_id, owner_type)
+    posted_at  timestamptz NOT NULL DEFAULT now()
 );
 
 CREATE TABLE user_posts (
-    post_id    int  PRIMARY KEY,
-    owner_type text NOT NULL DEFAULT 'USER' CHECK (owner_type = 'USER'),
-    user_id    int  NOT NULL REFERENCES users (user_id),
-
-    FOREIGN KEY (post_id, owner_type) REFERENCES posts (post_id, owner_type)
+    post_id int PRIMARY KEY REFERENCES posts (post_id),
+    user_id int NOT NULL REFERENCES users (user_id)
 );
 
 CREATE TABLE group_posts (
-    post_id    int  PRIMARY KEY,
-    owner_type text NOT NULL DEFAULT 'GROUP' CHECK (owner_type = 'GROUP'),
-    group_id   int  NOT NULL REFERENCES groups (group_id),
-
-    FOREIGN KEY (post_id, owner_type) REFERENCES posts (post_id, owner_type)
+    post_id  int PRIMARY KEY REFERENCES posts (post_id),
+    group_id int NOT NULL REFERENCES groups (group_id)
 );
 ```
 
-Read the last two tables together and the exclusivity is structural. `user_posts.owner_type` is pinned to `USER`, `group_posts.owner_type` to `GROUP`, and both carry it into the composite foreign key back to `posts`. A post the basetype marked `USER` therefore *cannot* accept a `group_posts` row. Not "should not". Cannot.
+Two things to notice.
 
-`user_id` and `group_id` are real foreign keys to real tables, which is precisely what the polymorphic version gives up. Counting a group's posts is a join, not a join plus a string comparison.
+The set of owner types is a table. A `CHECK (owner_type IN (…))` list would have made admitting `ORGANIZATION` a constraint rewrite on the basetype; here it is a row.
 
-Repeat that for photo, comment and tag and you get the list above. It is more tables than the polymorphic version, and that is the whole trade: the tables are where the rules live, so they are not also living in application code you have to keep correct.
+Each subtype's key *is* the basetype's key, so a post gets at most one row in any subtype table and every one of those rows is anchored to a real `posts` row. Keeping a post out of two different subtype tables at once is the one rule this shape leaves to you if you're using postgres. Enforcement is fully possible in TSQL via cross-table constraints.
 
-Each relationship gets its own table with proper constraints against its parent. A `user_post` has a foreign key to `user` and `post`. A `group_photo` has a foreign key to `group` and `photo`. No nulls, no type columns, no ambiguity.
+`user_id` and `group_id` are real foreign keys to real tables, which the polymorphic version gives up. Counting a group's posts is a join, not a join plus a string comparison.
 
-You work with existence and non-existence—not "maybe exists" or calculate. You depend on physical existence, not hopeful logic. Statistics are straightforward. Queries are clean. The database enforces integrity at every level. Illegal states become impossible. The trade-off is more tables, but the benefit is less app logic.
+Repeat that for photo, comment and tag and you get the list above. It is more tables than the polymorphic version. The tables are where the rules live, so they are not also living in application code you have to keep correct.
+
+Each relationship gets its own table with proper constraints against its parent. A `user_post` has a foreign key to `user` and `post`. A `group_photo` has a foreign key to `group` and `photo`. No nulls, no type string you have to read to know what you are holding, no ambiguity.
+
+A row exists or it does not, so nothing has to be computed to find out. Statistics are straightforward. Queries are clean. The database enforces integrity at every level. Illegal states become impossible. The trade is more tables for less application logic.
 
 
 ### What that model looks like
@@ -171,13 +173,15 @@ You work with existence and non-existence—not "maybe exists" or calculate. You
 <iframe src="/models/social.html" title="Basetype-subtypes: the full social graph" loading="lazy"></iframe>
 </div>
 
-All twenty entities, exactly as listed above. Four diamonds, one per cluster, each with an X marking it **exclusive**: a post is one or the other, never both. ignatius reads that from the structure rather than a label.
+All twenty entities, exactly as listed above. Four diamonds, one per cluster, each with an X marking it **exclusive**: a post is one or the other, never both. That X is the model stating the one rule the tables leave to you.
+
+`post_owner_types` and its siblings are not among the twenty. A table whose only job is to enumerate the legal values of a column is a domain rather than an entity: it describes what a value may be, not a thing the business has. It belongs in the data dictionary, not on the graph.
 
 Solid lines run to a basetype, dashed ones to an owner. Dashed means non-identifying, so a photo's subject is a fact *about* it rather than part of what identifies it.
 
-The point of seeing it whole is the edge count. Every line is a foreign key the database enforces.
+Count the edges. Every line is a foreign key the database enforces.
 
-Scroll back to the polymorphic diagram and the difference is not a matter of taste. Twenty entities bound by constraints, against seven that float. Fewer tables did not remove the relationships. It removed the database's knowledge of them, and moved every one into code you have to write, test, and keep correct.
+Scroll back to the polymorphic diagram. Twenty entities bound by constraints, against seven that float. Fewer tables did not remove the relationships. It removed the database's knowledge of them, and moved every one into code you have to write, test, and keep correct.
 
 
 
@@ -213,7 +217,7 @@ LIMIT 10;
 No type filter anywhere. `group_posts` is already only group posts, `post_comments` is already only comments on posts. The tables did the filtering when the rows were written.
 
 
-### What the numbers actually say
+### What the numbers say
 
 PostgreSQL 17, 1,000,000 posts and 5,000,000 comments, both designs indexed equivalently, best of three runs.
 
@@ -252,7 +256,7 @@ GROUP BY gp.group_id;
 | Time | 638.2 ms | 452.7 ms |
 | Pages read from disk | **47,765** | **4,638** |
 
-That is the number to look at. Adding one hop took the polymorphic query from 7,852 pages to 47,765, a six-fold jump. The same hop left the relational query flat, 5,022 to 4,638.
+Adding one hop took the polymorphic query from 7,852 pages to 47,765, a six-fold jump. The same hop left the relational query flat, 5,022 to 4,638.
 
 The reason is mechanical. Every polymorphic join has to re-derive the same fact at read time: sift a large shared table for the fraction of rows that are the right *kind*. Two hops means doing that twice, over five million comments and two million tags, and the intermediate results are large enough that both designs spill to temp files.
 
@@ -277,7 +281,7 @@ Basetype-subtypes: the database refuses.
 
 ```
 ERROR: update or delete on table "posts" violates foreign key
-constraint "group_posts_post_id_owner_type_fkey"
+constraint "group_posts_post_id_fkey"
 ```
 
 You can find the orphans in the polymorphic design. It costs an anti-join across all five million comments, 154 ms here:
@@ -288,19 +292,8 @@ WHERE c.commentable_type = 'POST'
   AND NOT EXISTS (SELECT 1 FROM posts p WHERE p.post_id = c.commentable_id);
 ```
 
-But you have to know to ask, on every polymorphic column, forever, and the answer only tells you about damage already done. That query is not one your product needs. It is rent.
+But you have to know to ask, on every polymorphic column, forever, and the answer only tells you about damage already done. That query does nothing for your product; it is rent.
 
 So you spend more disk and get back two things: queries whose cost grows more slowly as they get deeper, and the guarantee that the number on the dashboard is true. The polymorphic version spends less disk and pays for it per query, per hop, and in the reconciliation jobs it obliges you to write.
 
 You pay for bad relational design later, in complexity and bugs. Sometimes you pay for it in metrics nobody knew to distrust.
-
-
-## What this requires from a tool
-
-Both patterns need things ORM-shaped migration tools make hard:
-
-- **Compound primary keys** that you declare, not ones the tool derives from a single ID column.
-- **Many more tables** than a naive design, which means execution order matters and has to be explicit.
-- **Constraints, triggers, and procedures** as first-class schema objects, not escape-hatch raw SQL bolted onto a migration.
-
-noorm gives you all three because it never parses your SQL into an object model. Your files are the schema. See [SQL File Organization](/guide/sql-files/organization) for how execution order works, and [Concepts](/getting-started/concepts) for how files and changes divide the work.
