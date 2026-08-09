@@ -157,3 +157,52 @@ stdin.write('\x1b[B');  // Down: \x1b[B, Up: \x1b[A, Enter: \r, Esc: \x1b
 await new Promise(r => setTimeout(r, 50));
 unmount();
 ```
+
+
+## Keyboard Shortcuts
+
+Consistent hotkey conventions across all screens:
+
+**Home navigation** (`src/tui/screens/home.tsx`):
+| Key | Action |
+|-----|--------|
+| `r` | run |
+| `c` | config |
+| `g` | changes |
+| `d` | db |
+| `+` | more (settings, vault, identity, lock) |
+| `s` | settings |
+| `v` | vault |
+| `i` | identity |
+| `l` | lock |
+| `u` | update |
+| `1` / `2` / `3` | quick actions: run build, change ff, lock status |
+| `q` | quit |
+
+There is no `k` on Home — secrets belong to a config, so `k` opens them from
+the config list.
+
+**Common actions (sub-screens):**
+| Key | Action | Mnemonic |
+|-----|--------|----------|
+| `a` | add | |
+| `e` | edit | |
+| `d` | delete | |
+| `k` | secrets | **k**eys (from the config list) |
+| `+` | more | export / import / validate live here, not on the list |
+| `Enter` | use/activate | selecting a config activates it |
+
+**Context-dependent keys:**
+- `[i]` = identity on Home, import on the config More screen
+- `[x]` = export on the config More screen, extend in Lock Status
+- `[s]` = settings on Home, status in Lock List
+- `[c]` = config on Home, copy on the config list, create on the DB screen
+
+**Global shortcuts (available everywhere):**
+| Key | Action |
+|-----|--------|
+| `Shift+L` | Toggle log viewer overlay |
+| `Shift+Q` | Open the SQL terminal |
+| `?` | Show help |
+
+Use `numberNav` prop on `SelectList` for 1-9 quick selection in lists.
