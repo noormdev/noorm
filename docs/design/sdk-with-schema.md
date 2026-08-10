@@ -46,6 +46,31 @@ Missing one call site silently targets the default schema. The fix should be per
 - `quoteIdent` (`src/sdk/sql.ts:35`) already splits qualified names on the first `.` and quotes each segment per dialect (`dbo.sp_Get_Users` → `[dbo].[sp_Get_Users]`). The routine builders need zero changes; the derived context prefixes `${schema}.${name}` before delegating.
 - Kysely's `Kysely.withSchema(schema)` returns a copy sharing the executor/pool, with a `WithSchemaPlugin` added at the front (`node_modules/kysely/dist/esm/kysely.js:394-398`, `withPluginAtFront`). Front position means the newest plugin qualifies identifiers first, so the last `withSchema` call wins and accidental stacking is benign. `Transaction` inherits the executor's plugins and carries its own `withSchema` (`kysely.js:507-512`), so transactions started from the wrapped instance are schema-scoped for free.
 
+What it looks like at the call site — illustrative sketch, not the implemented signature:
+
+```
+ctx = createContext<DbShape, Procs>({ config: 'dev' })
+ctx.connect()
+
+acct = ctx.withSchema<AcctTables, AcctProcs>('accounting')    // same pool, no new connection
+
+acct.kysely.selectFrom('invoices').select(['id', 'total']).execute()
+    -> select "id", "total" from "accounting"."invoices"      // typed against AcctTables
+
+acct.proc('rebuild_ledger', { year: 2026 })
+    -> CALL "accounting"."rebuild_ledger"("year" => $1)
+
+acct.proc('billing.close_period')
+    -> CALL "billing"."close_period"()                        // dot present — caller's qualification wins
+
+acct.transaction(fn)                                          // every query inside fn stays accounting-scoped
+
+ctx.kysely.selectFrom('users').execute()
+    -> select * from "users"                                  // parent untouched — no prefix
+
+ctx.disconnect()                                              // one lifecycle for both instances
+```
+
 The derived context is the same `Context` class with fresh generics, sharing the parent's state. Decision rule:
 
 ```
