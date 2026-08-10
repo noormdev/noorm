@@ -71,6 +71,29 @@ await ctx.proc('refresh_cache');
 `createContext<DB, Procs, Funcs, Tvfs>` takes a map per routine kind. Plain `void` is shorthand for "no arguments, no meaningful return".
 
 
+## Schema scoping
+
+`ctx.withSchema<SDB>(name)` derives a `Context` scoped to one schema — same connection, pool, and lifecycle as the parent, just qualified generics and query builder.
+
+```typescript
+const acct = ctx.withSchema<AcctDB>('accounting');
+
+const invoices = await acct.kysely.selectFrom('invoices').selectAll().execute();
+// select * from "accounting"."invoices" — typed against AcctDB
+
+await acct.proc('rebuild_ledger', { year: 2026 });
+// CALL "accounting"."rebuild_ledger"("year" => $1)
+
+await ctx.kysely.selectFrom('users').execute(); // parent untouched, no prefix
+
+await ctx.disconnect(); // one lifecycle closes both
+```
+
+Calling `withSchema` again replaces the schema instead of stacking it, and a `proc`/`func`/`tvf` name that already contains a `.` passes through unqualified. Raw `` sql`…` `` fragments are not rewritten — they resolve against the connection's default schema regardless of `withSchema`.
+
+Non-goals: no config/connection-level schema field (the connection stays schema-agnostic); no schema-defaulting of `ctx.noorm.db.describe*`'s `schema?` arg; no per-dialect gating — the qualifier means whatever the dialect makes of it (a schema on postgres/mssql, a database on mysql, an ATTACHed database on sqlite).
+
+
 ## Requires
 
 Node >= 22.13. Supports **PostgreSQL**, **MySQL**, **SQLite**, and **SQL Server**.
