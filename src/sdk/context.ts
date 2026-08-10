@@ -27,6 +27,49 @@ import { ImpersonationError } from './impersonate/types.js';
 import type { ImpersonatedScope } from './impersonate/types.js';
 
 // ─────────────────────────────────────────────────────────────
+// Schema Name Validation
+// ─────────────────────────────────────────────────────────────
+
+const VALID_SCHEMA_NAME = /^[a-zA-Z0-9_]+$/;
+
+/**
+ * Validate a schema name against a restrictive character set.
+ *
+ * Defense-in-depth before the name is interpolated into `${schema}.${name}`
+ * ahead of dialect quoting (quoteIdent, src/sdk/sql.ts) — same allow-list
+ * posture as impersonate's validateUsername (dialect-strategy.ts). Dots are
+ * rejected (unlike usernames) because a schema name containing one would be
+ * mis-split by quoteIdent's split-on-first-`.` qualification logic.
+ */
+function validateSchemaName(name: string): void {
+
+    if (!name || !VALID_SCHEMA_NAME.test(name)) {
+
+        throw new Error(
+            `Invalid schema name: "${name}". ` +
+            'Only alphanumeric characters and underscores are allowed.',
+        );
+
+    }
+
+}
+
+/**
+ * Prefix `name` with `${schema}.` for routine calls, unless `name` already
+ * contains a `.` (caller supplied an explicit qualification) or no schema
+ * is set on this context. The qualified name is handed unchanged to
+ * buildProcCall/buildFuncCall/buildTvfCall, which split on `.` and quote
+ * each segment per dialect.
+ */
+function qualifyName(schema: string | null, name: string): string {
+
+    if (!schema || name.includes('.')) return name;
+
+    return `${schema}.${name}`;
+
+}
+
+// ─────────────────────────────────────────────────────────────
 // Context Class
 // ─────────────────────────────────────────────────────────────
 
@@ -67,6 +110,13 @@ export class Context<DB = unknown, Procs = object, Funcs = object, Tvfs = object
      */
     #heldConnections = new Set<() => void>();
 
+    /**
+     * Schema this context is scoped to, or `null` for the root context.
+     * Set once by withSchema() and never mutated afterward — a chained
+     * withSchema() call derives a new Context rather than changing this.
+     */
+    #schema: string | null = null;
+
     constructor(
         config: Config,
         settings: Settings,
@@ -105,7 +155,62 @@ export class Context<DB = unknown, Procs = object, Funcs = object, Tvfs = object
 
     get kysely(): Kysely<DB> {
 
-        return requireConnection(this.#state).db as Kysely<DB>;
+        const db = requireConnection(this.#state).db as Kysely<DB>;
+
+        // Re-derived on every access rather than cached: caching the wrapped
+        // instance would let a stale schema wrap survive a reconnect, and
+        // would make chained withSchema() calls stack instead of replace.
+        return this.#schema === null ? db : db.withSchema(this.#schema);
+
+    }
+
+    // ─────────────────────────────────────────────────────────
+    // Schema Scoping
+    // ─────────────────────────────────────────────────────────
+
+    /**
+     * Derive a schema-scoped Context sharing this context's connection,
+     * pool, and #heldConnections — same lifecycle, fresh generics for the
+     * schema's own table/routine shape.
+     *
+     * Replaces rather than stacks: calling withSchema() again on an
+     * already-derived context swaps the schema instead of nesting it,
+     * because every derived context re-derives its `.kysely` from the
+     * shared connection's bare instance, never from another derived
+     * context's already-wrapped one.
+     *
+     * `sql`-tagged raw fragments are not rewritten by this — they resolve
+     * against the connection's default schema regardless of this call.
+     *
+     * @throws Error synchronously if `name` fails identifier validation,
+     * before any connection is borrowed or shared state is touched.
+     *
+     * @example
+     * ```typescript
+     * const acct = ctx.withSchema<AcctDB>('acct');
+     * const rows = await acct.kysely.selectFrom('ledger').selectAll().execute();
+     * await acct.proc('rebuild_ledger', { id: 1 }); // -> acct.rebuild_ledger
+     * ```
+     */
+    withSchema<SDB = DB, SProcs = Procs, SFuncs = Funcs, STvfs = Tvfs>(
+        name: string,
+    ): Context<SDB, SProcs, SFuncs, STvfs> {
+
+        validateSchemaName(name);
+
+        const derived = new Context<SDB, SProcs, SFuncs, STvfs>(
+            this.#state.config,
+            this.#state.settings,
+            this.#state.identity,
+            this.#state.options,
+            this.#state.projectRoot,
+        );
+
+        derived.#state = this.#state;
+        derived.#heldConnections = this.#heldConnections;
+        derived.#schema = name;
+
+        return derived;
 
     }
 
@@ -246,14 +351,15 @@ export class Context<DB = unknown, Procs = object, Funcs = object, Tvfs = object
     ): Promise<T[]> {
 
         const params = args[0] as Record<string, unknown> | unknown[] | undefined;
+        const qualifiedName = qualifyName(this.#schema, name);
 
         if (this.dialect === 'postgres') {
 
-            return this.#executeProcPostgres<T>(name, params);
+            return this.#executeProcPostgres<T>(qualifiedName, params);
 
         }
 
-        const query = buildProcCall<T>(this.dialect, name, params);
+        const query = buildProcCall<T>(this.dialect, qualifiedName, params);
         const result = await query.execute(this.kysely);
 
         return (result.rows ?? []) as T[];
@@ -333,7 +439,7 @@ export class Context<DB = unknown, Procs = object, Funcs = object, Tvfs = object
         const params = hasParams ? args[0] as Record<string, unknown> | unknown[] : undefined;
         const column = (hasParams ? args[1] : args[0]) as string;
 
-        const query = buildFuncCall<T>(this.dialect, name, column, params);
+        const query = buildFuncCall<T>(this.dialect, qualifyName(this.#schema, name), column, params);
         const result = await query.execute(this.kysely);
 
         return (result.rows?.[0] ?? null) as T;
@@ -372,7 +478,7 @@ export class Context<DB = unknown, Procs = object, Funcs = object, Tvfs = object
     ): Promise<T[]> {
 
         const params = args[0] as Record<string, unknown> | unknown[] | undefined;
-        const query = buildTvfCall<T>(this.dialect, name, params);
+        const query = buildTvfCall<T>(this.dialect, qualifyName(this.#schema, name), params);
         const result = await query.execute(this.kysely);
 
         return (result.rows ?? []) as T[];
