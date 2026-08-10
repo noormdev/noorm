@@ -24,7 +24,8 @@
 - [ ] `derived.proc(name, …)`, `.func(...)`, `.tvf(...)` prefix `name` with `${schema}.` unless `name` already contains a `.`, verified against `buildProcCall`/`buildFuncCall`/`buildTvfCall` (`src/sdk/sql.ts`) output.
 - [ ] An invalid schema name throws synchronously from `withSchema` before any connection is borrowed or `#state` is touched.
 - [ ] `derived` and its parent share one `#heldConnections` Set: an explicit-mode impersonation scope opened via `derived.impersonate(username)` is released when `parent.disconnect()` runs.
-- [ ] `derived.transaction(fn)` and `derived.impersonate(username, fn)` both resolve schema-qualified, verified against live postgres/mysql/mssql/sqlite in `tests/integration/sdk/with-schema.test.ts`.
+- [ ] The integration suite provisions three schemas per dialect (native qualifier: schemas on postgres/mssql, databases on mysql, ATTACHed databases on sqlite), each with a distinct table shape and a distinct TypeScript type; three derived contexts plus the parent run interleaved reads and writes, and each context resolves only against its own schema — any cross-schema leakage fails the suite.
+- [ ] `derived.transaction(fn)` and `derived.impersonate(username, fn)` both resolve schema-qualified against the three-schema fixture, verified live in `tests/integration/sdk/with-schema.test.ts` (routine and impersonation assertions scoped to dialects that support them).
 - [ ] `derived.noorm` exposes the same operations against the same shared `#state` as `parent.noorm` — no schema-specific noorm behavior.
 - [ ] `packages/sdk/README.md` and `docs/reference/sdk.md` document `withSchema`, including the raw-`sql` caveat and all four non-goals.
 - [ ] `bun run typecheck`, `bun run lint`, and the full test suite (CI's 5-group split, per `docs/wiki/index.md`) pass; `tests/integration/sdk/with-schema.test.ts` passes against the `docker-compose.test.yml` services.
@@ -70,9 +71,10 @@ tests/sdk/with-schema.test.ts
   #heldConnections shared — a scope opened via a derived context is releasable through the parent
 
 tests/integration/sdk/with-schema.test.ts
-  schema-scoped queries resolve against the target schema across postgres/mysql/mssql/sqlite
-  transaction() inherits schema scoping from a derived context
-  impersonate() composes with a derived context — the impersonated scope's kysely/proc/func/tvf resolve against the schema
+  three-schema fixture — provisions three schemas with distinct table shapes and distinct TS types per dialect (native qualifier: schemas on pg/mssql, databases on mysql, ATTACHed databases on sqlite); torn down after
+  schema isolation at scale — three derived contexts plus the parent interleave reads and writes; each context resolves only against its own schema, cross-schema leakage fails
+  transaction() inherits schema scoping from a derived context against the three-schema fixture
+  impersonate() composes with a derived context — the impersonated scope's kysely/proc/func/tvf resolve against the derived schema
   parent.disconnect() releases a held connection opened through a derived context
 
 packages/sdk/README.md
@@ -121,7 +123,7 @@ Flow: transaction and impersonation composition
 | # | Checkpoint | Files/areas | Agent | Est. files | Verifies |
 |---|------------|-------------|-------|------------|----------|
 | 1 | Implement `Context.withSchema`: identifier validation, `kysely` getter re-derivation, `proc`/`func`/`tvf` prefixing, shared `#state`/`#heldConnections` | `src/sdk/context.ts`, `tests/sdk/with-schema.test.ts` | atomic-implementer (mode: feature) | 2 | `tests/sdk/with-schema.test.ts` green — compiled-SQL qualification, replace-not-stack, prefixing, synchronous validation failure, shared `#heldConnections` |
-| 2 | Integration coverage: schema-scoped queries, transaction and impersonation composition, cross-dialect | `tests/integration/sdk/with-schema.test.ts` | atomic-implementer (mode: feature) | 1 | `tests/integration/sdk/with-schema.test.ts` green against `docker-compose.test.yml` (postgres/mysql/mssql/sqlite) |
+| 2 | Integration coverage: three-schema fixture with distinct typed shapes, schema isolation under interleaved derived contexts, transaction and impersonation composition, cross-dialect | `tests/integration/sdk/with-schema.test.ts` | atomic-implementer (mode: feature) | 1 | `tests/integration/sdk/with-schema.test.ts` green against `docker-compose.test.yml` (postgres/mysql/mssql/sqlite); isolation assertions across all three schemas on every dialect |
 | 3 | Document `withSchema` — SDK README, VitePress SDK reference, changeset | `packages/sdk/README.md`, `docs/reference/sdk.md`, `.changeset/sdk-with-schema.md` | atomic-implementer (mode: feature) | 3 | Docs describe the API, the raw-SQL caveat, and all four non-goals; changeset references `@noormdev/sdk` with a `minor` bump |
 
 
@@ -134,8 +136,15 @@ Flow: transaction and impersonation composition
 | Schema-name validation is too permissive (admits characters that don't belong in an unparameterized identifier position) or too restrictive (rejects legitimate schema names) | med | Mirror `validateUsername`'s allow-list posture (`src/sdk/impersonate/dialect-strategy.ts:33`); unit test covers valid/invalid boundary cases |
 | Cross-dialect integration coverage for transaction/impersonation composition is uneven because mysql/sqlite already reject some routine kinds (per existing dialect gates in `src/sdk/sql.ts`), risking incomplete or falsely-green assertions | med | Scope routine-composition assertions to dialects that already support the routine kind; assert query-builder + transaction schema-qualification uniformly across all four dialects regardless |
 | The raw-`sql` caveat goes unnoticed and users assume `withSchema` rewrites raw fragments | low | Explicit non-goal plus a documented caveat in both `packages/sdk/README.md` and `docs/reference/sdk.md` |
+| Three-schema fixture provisioning differs per dialect — mysql needs two extra databases, sqlite needs ATTACHed files — and may collide with the shared integration harness state | med | Provision and tear down inside the suite using the admin-level credentials `docker-compose.test.yml` already grants, following the `tests/global-setup.ts` bootstrap pattern; unique schema names per run avoid collisions |
 
 
 ## Change log
 
-<!-- Populated on first amendment after the spec is approved. Do not log drafting/refinement turns. -->
+### 2026-08-10 — three-schema integration coverage
+
+**What changed:** Integration success criteria, Outline, checkpoint 2, and Risks now require a three-schema fixture — three schemas per dialect via the native qualifier, each with a distinct table shape and TypeScript type — with isolation assertions under interleaved derived contexts (three derived plus the parent).
+
+**Why:** User requirement — simulate multi-schema scale so cross-schema leakage and type-shape mixups surface in tests instead of production.
+
+**Superseded:** Integration coverage asserted schema scoping against a single schema per dialect.
