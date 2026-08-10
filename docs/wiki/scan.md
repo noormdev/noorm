@@ -1187,7 +1187,7 @@
 ├── .npmrc (60376c8, 1L, 36ch, 36B)
 ├── .prettierignore (e3b0c44, 0L, 0ch, 0B)
 ├── .signalsignore (b0287a5, 17L, 662ch, 674B)
-├── CLAUDE.md (aa57be2, 261L, 13391ch, 13421B)
+├── CLAUDE.md (c67f06a, 213L, 11996ch, 12024B)
 ├── CNAME (f3bed50, 1L, 9ch, 9B)
 ├── LICENSE (cfc7749, 202L, 11358ch, 11358B)
 ├── NOTICE (d698d9d, 2L, 35ch, 35B)
@@ -1218,7 +1218,7 @@
 ## Languages
 
 - TypeScript: 242110 LOC (80%), 1033 files (77%)
-- Markdown: 50087 LOC (16%), 184 files (13%)
+- Markdown: 50039 LOC (16%), 184 files (13%)
 - HTML: 2977 LOC (0%), 30 files (2%)
 - JavaScript: 1261 LOC (0%), 22 files (1%)
 - YAML: 1186 LOC (0%), 19 files (1%)
