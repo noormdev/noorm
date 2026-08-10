@@ -149,7 +149,6 @@ describe('sdk: Context.withSchema validation', () => {
 
         expect(() => ctx.withSchema('acct; DROP TABLE users')).toThrow();
         expect(() => ctx.withSchema('acct.other')).toThrow();
-        expect(() => ctx.withSchema('acct-name')).toThrow();
         expect(() => ctx.withSchema('"acct"')).toThrow();
         expect(() => ctx.withSchema('acct name')).toThrow();
 
@@ -160,6 +159,14 @@ describe('sdk: Context.withSchema validation', () => {
         const ctx = createCtx();
 
         expect(() => ctx.withSchema('acct_1')).not.toThrow();
+
+    });
+
+    it('accepts hyphenated schema names', () => {
+
+        const ctx = createCtx();
+
+        expect(() => ctx.withSchema('acct-name')).not.toThrow();
 
     });
 
@@ -211,6 +218,17 @@ describe('sdk: Context.withSchema kysely getter', () => {
         const compiled = derived.kysely.selectFrom('ledger').selectAll().compile();
 
         expect(compiled.sql).toBe('select * from "acct"."ledger"');
+
+    });
+
+    it('compiles queries qualified with a hyphenated schema name', async () => {
+
+        const ctx = await connectedCtx();
+        const derived = ctx.withSchema<AcctDB>('acct-name');
+
+        const compiled = derived.kysely.selectFrom('ledger').selectAll().compile();
+
+        expect(compiled.sql).toBe('select * from "acct-name"."ledger"');
 
     });
 
