@@ -7,6 +7,10 @@
 
 Manage database configs, execute SQL changes, run templated SQL files. Core modules emit events via `@logosdx/observer`, CLI subscribes. Configs stored encrypted in `.noorm/state/state.enc`. Headless mode for CI/CD with JSON output.
 
+This repo is one of two in the noorm realm; the sibling is `noormdev/ignatius`, the IDEF1X/SSADM
+modeler that renders the models under `docs/models/`. Separate git history, issues, and releases —
+name the repo before acting in it, because a bare PR or issue number is ambiguous across the two.
+
 
 ## Commands
 
@@ -23,33 +27,21 @@ bun run typecheck               # Type check
 
 ## Running Tests
 
-A single `bun test` (whole suite, one process) does **not** reflect CI. CI deliberately splits the suite into five independent `bun test --serial` invocations, each in a fresh process — see `.github/workflows/ci.yml`:
+A single `bun test` (whole suite, one process) does **not** reflect CI. CI splits the suite into five
+independent `bun test --serial` invocations, each in a fresh process — see `.github/workflows/ci.yml`
+for the split and [`docs/wiki/index.md`](docs/wiki/index.md) for the exact per-group commands.
 
-1. `tests/utils` + `tests/core` (excluding `tests/core/transfer`) + `tests/sdk`
-2. `tests/core/transfer` (isolated — comment cites a runner-image regression)
-3. `tests/cli` (excluding `cli-logger-settings.test.ts`)
-4. `tests/cli/cli-logger-settings.test.ts` (isolated — see below)
-5. `tests/integration`
+The split exists because cross-file pollution produces hundreds of false failures in the unified run
+while CI is green. When triaging a "broken" test, **run the file in isolation first**; if it passes
+alone, the failure is contamination, not a regression.
 
-The split exists because cross-file pollution (module-scope `process.env` snapshots, shared DB state, singletons left dirty between files) produces hundreds of false failures in the unified run while CI is green. When triaging a "broken" test, **run the file in isolation first**; if it passes alone, the failure is contamination, not a regression.
+**`mock.module` never restores.** Bun's mock registry is process-global, and re-registering the real
+module does *not* undo a mock — measured directly. Every `afterAll(() => mock.module(..., () => actualX))`
+in this repo is therefore a no-op, despite the "restore mocked modules to prevent pollution" comments
+next to them. A file that mocks a module poisons every file loaded after it for the life of the
+process. When mocking a module other code also depends on, assume the mock is permanent.
 
-**`mock.module` never restores.** Bun's mock registry is process-global, and re-registering the real module does *not* undo a mock — measured directly. Every `afterAll(() => mock.module(..., () => actualX))` in this repo is therefore a no-op, despite the "restore mocked modules to prevent pollution" comments next to them. A file that mocks a module poisons every file loaded after it for the life of the process.
-
-That is what isolates group 4. Two init-screen tests replace the `SettingsManager` *class*; `getSettingsManager` then constructs a mock instance, so `createCliLogger` reads `settings: {}` instead of `settings.yml`. Which file wins depends on load order — root files before subdirectories on macOS, the reverse on Linux — so it passed locally and failed only on CI. When mocking a module other code also depends on, assume the mock is permanent.
-
-The previously documented contamination source — `src/core/config/index.ts:34` calling `makeNestedConfig(process.env, …)` at module scope — **does not reproduce**: the call passes `memoizeOpts: false`, so lookups re-read `process.env` rather than snapshotting at import.
-
-To reproduce CI locally, run the four invocations separately:
-
-```bash
-bun test --serial $(find tests/utils tests/core tests/sdk -name '*.test.ts' | grep -v tests/core/transfer | sort | tr '\n' ' ')
-bun test --serial tests/core/transfer
-bun test --serial $(find tests/cli \( -name '*.test.ts' -o -name '*.test.tsx' \) ! -name 'cli-logger-settings.test.ts' | sort | tr '\n' ' ')
-bun test --serial tests/cli/cli-logger-settings.test.ts
-bun test --serial tests/integration
-```
-
-The integration step needs postgres/mysql/mssql reachable (CI uses service containers on ports `15432` / `13306` / `11433`).
+Integration tests need postgres/mysql/mssql reachable (ports `15432` / `13306` / `11433`).
 
 
 ## Changesets
@@ -75,35 +67,15 @@ Changesets is the release engine because it supports a fixed-version group: `@no
 
 ## Structure
 
-```
-src/
-├── core/                       # Business logic (no UI)
-│   ├── observer.ts             # Central event system
-│   ├── config/                 # Config management
-│   ├── change/                 # Change parsing, execution
-│   ├── runner/                 # SQL file execution
-│   ├── lock/                   # Concurrent operation locking
-│   ├── template/               # Eta templating
-│   ├── encryption/             # AES-256-GCM
-│   ├── worker-bridge/          # Worker thread infrastructure
-│   │   ├── bridge.ts           # WorkerBridge (ObserverRelay subclass)
-│   │   ├── pool.ts             # WorkerPool (round-robin dispatch)
-│   │   ├── order-buffer.ts     # Index-ordered reassembly buffer
-│   │   ├── paths.ts            # Cross-context worker path resolution
-│   │   └── types.ts            # Event contracts, WireMessage, Correlated
-│   └── dt/                     # Data transfer (.dt files)
-│
-├── workers/                    # Worker thread entry points (standalone programs)
-│   ├── connection.ts           # Persistent DB worker (Kysely)
-│   └── compute.ts              # Stateless serialize/deserialize
-│
-├── cli/                        # Citty CLI commands (per-domain subdirectories)
-├── tui/                        # Ink/React TUI (launched via `noorm ui`)
-│
-tests/                          # Test suite
-docs/                           # Documentation
-skills/                         # Claude Code skill source files
-```
+`src/core/` is business logic with no UI, `src/cli/` is Citty commands, `src/tui/` is the Ink app.
+The per-domain path→purpose mapping lives in the Domains table of
+[`docs/wiki/index.md`](docs/wiki/index.md), which is regenerated rather than hand-maintained.
+
+Two placements the tree does not explain on its own:
+
+- `src/workers/` sits *outside* `core/` — those files are standalone entry points compiled by
+  `bun build --compile`, not modules imported by core (see Worker Threads above).
+- `src/core/dt/` is the `.dt` binary serialization format, consumed by the SDK rather than the CLI.
 
 
 ## Development Rules
@@ -125,30 +97,20 @@ Help text is rendered by citty natively via `--help`. Each command file may atta
 
 ## Worker Threads
 
-CPU-bound operations (DT export/import serialization) run in worker threads via `WorkerBridge`, an `ObserverRelay` subclass from `@logosdx/observer`. Hub-and-spoke architecture:
+CPU-bound work (DT serialization) and all DB operations run in worker threads via `WorkerBridge`, an
+`ObserverRelay` subclass. Hub-and-spoke architecture and event contracts:
+[`docs/wiki/worker-bridge.md`](docs/wiki/worker-bridge.md).
 
-- **Connection Worker** (`src/workers/connection.ts`) — persistent, owns Kysely, handles all DB ops
-- **Compute Pool** (`src/workers/compute.ts`) — ephemeral N workers for serialize/deserialize
-- **Main Thread** — orchestrates pipeline, writes files, emits progress events to TUI
+Worker scripts live at `src/workers/` (not inside `core/`) because they're standalone entry points
+for `bun build --compile`.
 
-Worker scripts live at `src/workers/` (not inside `core/`) because they're standalone entry points for `bun build --compile`.
+**Never hardcode worker paths.** Use `resolveWorker(name)` from `src/core/worker-bridge/paths.ts`.
+`bun build --compile` silently strips `src/`, rewrites `.ts`→`.js`, and resolves bare string paths
+against CWD rather than the binary — so `src/workers/compute.ts` becomes
+`/$bunfs/root/workers/compute.js`. The resolver handles dev mode and the compiled binary; a literal
+path works in exactly one of them.
 
-Use `resolveWorker(name)` from `src/core/worker-bridge/paths.ts` to get worker paths. Never hardcode worker paths — the resolver handles dev mode (absolute path to `dist/workers/*.js`) and compiled binary (URL against `import.meta.url`).
-
-
-### Bun Single Binary Worker Gotcha
-
-When `bun build --compile` bundles worker entry points, three transformations happen silently:
-
-1. **`src/` is stripped** — Bun auto-detects `src/` as `--root` and removes it from paths
-2. **`.ts` → `.js`** — TypeScript files are compiled to JavaScript in the embedded graph
-3. **Paths resolve against CWD** — bare string paths like `'src/workers/compute.ts'` resolve relative to the process's current working directory, not the binary
-
-So `src/workers/compute.ts` in the build command becomes `/$bunfs/root/workers/compute.js` in the binary. To resolve correctly regardless of CWD, use `new URL('./workers/compute.js', import.meta.url)` — this resolves against the binary's own `$bunfs` URL.
-
-The `resolveWorker()` function in `src/core/worker-bridge/paths.ts` handles this. Always use it.
-
-Diagnostic command: `noorm dev test-workers` — runs 5 worker thread tests in any execution context.
+Diagnostic: `noorm dev test-workers` — runs 5 worker thread tests in any execution context.
 
 
 ## Principles
@@ -158,54 +120,7 @@ Use Kysely as the SQL translator. Write database operations once, Kysely handles
 For setup wizards where the target database may not exist yet, use `testConnection(config, { testServerOnly: true })`. This connects to the dialect's system database (postgres→`postgres`, mssql→`master`, mysql→no database) to verify credentials without requiring the target database.
 
 
-## Keyboard Shortcuts
-
-Consistent hotkey conventions across all screens:
-
-**Home navigation** (`src/tui/screens/home.tsx`):
-| Key | Action |
-|-----|--------|
-| `r` | run |
-| `c` | config |
-| `g` | changes |
-| `d` | db |
-| `+` | more (settings, vault, identity, lock) |
-| `s` | settings |
-| `v` | vault |
-| `i` | identity |
-| `l` | lock |
-| `u` | update |
-| `1` / `2` / `3` | quick actions: run build, change ff, lock status |
-| `q` | quit |
-
-There is no `k` on Home — secrets belong to a config, so `k` opens them from
-the config list.
-
-**Common actions (sub-screens):**
-| Key | Action | Mnemonic |
-|-----|--------|----------|
-| `a` | add | |
-| `e` | edit | |
-| `d` | delete | |
-| `k` | secrets | **k**eys (from the config list) |
-| `+` | more | export / import / validate live here, not on the list |
-| `Enter` | use/activate | selecting a config activates it |
-
-**Context-dependent keys:**
-- `[i]` = identity on Home, import on the config More screen
-- `[x]` = export on the config More screen, extend in Lock Status
-- `[s]` = settings on Home, status in Lock List
-- `[c]` = config on Home, copy on the config list, create on the DB screen
-
-**Global shortcuts (available everywhere):**
-| Key | Action |
-|-----|--------|
-| `Shift+L` | Toggle log viewer overlay |
-| `Shift+Q` | Open the SQL terminal |
-| `?` | Show help |
-
-Use `numberNav` prop on `SelectList` for 1-9 quick selection in lists.
-
+<<<<<<< HEAD
 ## Documentation surfaces
 
 | Path | Covers | Voice |
@@ -286,6 +201,8 @@ Use `numberNav` prop on `SelectList` for 1-9 quick selection in lists.
 | `docs/reference/sdk.md` | SDK API reference, withSchema, impersonation, routines | terse-technical |
 | `packages/sdk/README.md` | npm SDK readme, install, usage, schema scoping | terse-technical |
 
+=======
+>>>>>>> origin/master
 <atomic-signals>
 
 ## Project signals (auto-loaded)
