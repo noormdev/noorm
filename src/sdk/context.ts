@@ -30,16 +30,19 @@ import type { ImpersonatedScope } from './impersonate/types.js';
 // Schema Name Validation
 // ─────────────────────────────────────────────────────────────
 
-const VALID_SCHEMA_NAME = /^[a-zA-Z0-9_]+$/;
+const VALID_SCHEMA_NAME = /^[a-zA-Z0-9_-]+$/;
 
 /**
  * Validate a schema name against a restrictive character set.
  *
  * Defense-in-depth before the name is interpolated into `${schema}.${name}`
  * ahead of dialect quoting (quoteIdent, src/sdk/sql.ts) — same allow-list
- * posture as impersonate's validateUsername (dialect-strategy.ts). Dots are
- * rejected (unlike usernames) because a schema name containing one would be
- * mis-split by quoteIdent's split-on-first-`.` qualification logic.
+ * posture as impersonate's validateUsername (dialect-strategy.ts). Hyphens
+ * are allowed — hyphenated schema names exist in the wild, and Kysely's
+ * `withSchema()` and `quoteIdent` both quote the identifier, so a hyphen is
+ * inert everywhere it's used. Dots are rejected (unlike usernames) because a
+ * schema name containing one would be mis-split by quoteIdent's
+ * split-on-first-`.` qualification logic.
  */
 function validateSchemaName(name: string): void {
 
@@ -47,7 +50,7 @@ function validateSchemaName(name: string): void {
 
         throw new Error(
             `Invalid schema name: "${name}". ` +
-            'Only alphanumeric characters and underscores are allowed.',
+            'Only alphanumeric characters, underscores, and hyphens are allowed.',
         );
 
     }

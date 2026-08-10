@@ -80,7 +80,14 @@ async function runAll<DB>(db: Kysely<DB>, statements: string[]): Promise<void> {
 
 }
 
-async function runIgnoringErrors<DB>(db: Kysely<DB>, statements: string[]): Promise<void> {
+/**
+ * Run idempotent `DROP ... IF EXISTS` teardown statements, swallowing any
+ * per-statement error so one already-missing object doesn't abort the rest
+ * of `afterAll` cleanup. Teardown-only — every call site passes `IF EXISTS`
+ * DROP statements; this is not a general-purpose "run and ignore errors"
+ * helper for non-teardown code paths.
+ */
+async function dropIgnoringErrors<DB>(db: Kysely<DB>, statements: string[]): Promise<void> {
 
     for (const statement of statements) {
 
@@ -227,7 +234,7 @@ describe('integration: sdk withSchema postgres', () => {
         if (!ctx?.connected) return;
 
         await dropRoleCompletely(ctx.kysely);
-        await runIgnoringErrors(ctx.kysely, [
+        await dropIgnoringErrors(ctx.kysely, [
             `DROP TABLE IF EXISTS "${parentTable}"`,
             `DROP SCHEMA IF EXISTS "${names.a}" CASCADE`,
             `DROP SCHEMA IF EXISTS "${names.b}" CASCADE`,
@@ -372,7 +379,7 @@ describe('integration: sdk withSchema mysql', () => {
 
         if (ctx?.connected) {
 
-            await runIgnoringErrors(ctx.kysely, [`DROP TABLE IF EXISTS \`${parentTable}\``]);
+            await dropIgnoringErrors(ctx.kysely, [`DROP TABLE IF EXISTS \`${parentTable}\``]);
             await ctx.disconnect();
 
         }
@@ -470,7 +477,7 @@ describe('integration: sdk withSchema mssql', () => {
 
         if (!ctx?.connected) return;
 
-        await runIgnoringErrors(ctx.kysely, [
+        await dropIgnoringErrors(ctx.kysely, [
             `DROP USER IF EXISTS [${TEST_USER}]`,
             `DROP TABLE IF EXISTS [${parentTable}]`,
             `DROP TABLE IF EXISTS [${names.a}].items`,
