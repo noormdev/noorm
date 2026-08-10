@@ -56,6 +56,7 @@ The Context API is split into two levels:
 - `connect()`, `disconnect()` — lifecycle
 - `transaction()`, `proc()`, `func()`, `tvf()` — SQL execution
 - `impersonate()` — run queries as another database principal (callback or explicit scope)
+- `withSchema()` — derive a context scoped to one schema (same connection, fresh types)
 - `noorm` — namespace for management operations
 
 **ctx.noorm** — noorm management operations, organized by namespace:
@@ -229,6 +230,34 @@ const result = await ctx.transaction(async (trx) => {
     return { transferred: 100 }
 })
 ```
+
+
+### Schema Scoping
+
+#### `withSchema<SDB, SProcs, SFuncs, STvfs>(name)`
+
+Derive a `Context` scoped to one schema. The derived context shares the parent's connection, pool, and lifecycle — `withSchema` is a typed wrapper over Kysely's own `withSchema`, not a new connection. Fresh generics describe the schema's tables and routines, so queries through the derived context are typed against that slice.
+
+```typescript
+interface AcctDB {
+    invoices: { id: number; total: string }
+}
+
+const acct = ctx.withSchema<AcctDB>('accounting')
+
+await acct.kysely.selectFrom('invoices').selectAll().execute()
+// -> select * from "accounting"."invoices"
+
+await acct.proc('rebuild_ledger', { year: 2026 })
+// -> CALL "accounting"."rebuild_ledger"("year" => $1)
+
+await acct.proc('billing.close_period')
+// -> already qualified: caller's schema wins, no prefix added
+```
+
+Scoping composes through `transaction()` and `impersonate()` — both stay qualified against the derived schema. Calling `withSchema` again replaces the schema rather than stacking (`ctx.withSchema('a').withSchema('b')` resolves against `b`). `connect()`/`disconnect()` on either instance affect both — one connection, N typed views.
+
+Unqualified identifiers inside raw `` sql`…` `` fragments are **not** rewritten — they resolve against the connection default. Qualify raw SQL by hand or use the query builder. The qualifier is dialect pass-through: a schema on postgres/mssql, a database on mysql, an ATTACHed database name on sqlite.
 
 
 ### Stored Procedures, Functions & TVFs
