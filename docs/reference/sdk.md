@@ -169,6 +169,54 @@ Explicit mode holds a pooled connection until you call `revert()`. `ctx.disconne
 An `ImpersonatedScope` carries no `noorm` namespace and no lifecycle methods. Management operations stay on `ctx.noorm`, running as the context's own principal.
 
 
+## Schema Scoping
+
+
+### withSchema(name)
+
+Derive a `Context` scoped to one schema. Same connection, same pool, same lifecycle as the parent — `withSchema` is a typed wrapper over Kysely's own `withSchema`, not a new connection or config-level state.
+
+```typescript
+const acct = ctx.withSchema<AcctDB>('accounting');
+
+const invoices = await acct.kysely
+    .selectFrom('invoices')
+    .selectAll()
+    .execute();
+// select * from "accounting"."invoices" — typed against AcctDB
+
+await acct.proc('rebuild_ledger', { year: 2026 });
+// CALL "accounting"."rebuild_ledger"("year" => $1)
+
+await acct.proc('billing.close_period');
+// CALL "billing"."close_period"() — caller's qualification wins, no prefix added
+
+await ctx.kysely.selectFrom('users').execute();
+// select * from "users" — the parent is untouched, no prefix
+
+await ctx.disconnect(); // one lifecycle closes both
+```
+
+`withSchema<SDB, SProcs, SFuncs, STvfs>(name)` takes up to four generics, one per routine kind, the same shape as `createContext`, and returns a `Context<SDB, SProcs, SFuncs, STvfs>` typed to that schema's own tables and routines.
+
+**Derivation semantics.** The derived context shares the parent's connection, pool, and lifecycle — `connect()`/`disconnect()` on either side act on both — rather than opening a new connection. `ctx.kysely` re-derives from the bare Kysely instance on every access instead of caching a wrapped copy, so a derived context can never leak a stale schema wrap across a reconnect.
+
+**Replace, not stack.** Calling `withSchema` again on an already-derived context swaps the schema instead of nesting it: `ctx.withSchema('a').withSchema('b')` resolves against `b` only.
+
+**`proc`/`func`/`tvf` prefixing.** A routine name with no `.` is qualified with the context's schema before it reaches the query builder — `acct.proc('rebuild_ledger', …)` becomes `accounting.rebuild_ledger`. A name that already contains a `.` passes through unqualified, so `acct.proc('billing.close_period')` still resolves against `billing`.
+
+**Transaction and impersonation composition.** `derived.transaction(fn)` and `derived.impersonate(username, fn)` both inherit the derived schema — every query inside either stays qualified against it, no extra wiring needed. An impersonation scope opened through a derived context still releases when `parent.disconnect()` runs, because `#heldConnections` is shared between parent and derived instances, not per-instance.
+
+**Raw SQL caveat.** `withSchema` does not rewrite unqualified identifiers inside `` sql`…` `` fragments — they resolve against the connection's default schema regardless of which context ran them. This is inherent to Kysely's plugin model, since raw `sql` bypasses the query builder plugins entirely; qualify by hand inside raw fragments.
+
+**Non-goals.**
+
+- No config/connection-level schema field. The connection stays schema-agnostic — `withSchema` is per-call-site sugar, not connection state.
+- No raw-SQL rewriting (see the caveat above).
+- No schema-defaulting of `ctx.noorm.db.describe*`'s `schema?` argument — pass it explicitly.
+- No per-dialect gating. The qualifier means whatever Kysely's `withSchema` means for the active dialect: a schema on PostgreSQL/MSSQL, a database on MySQL, an ATTACHed database name on SQLite.
+
+
 ## Stored Procedures, Functions & TVFs
 
 Type-safe helpers for calling stored procedures, database functions, and table-valued functions. Define your signatures as interfaces, then pass them as generics to `createContext`:

@@ -5,14 +5,14 @@ description: Bun workspace monorepo — noorm, a database schema/change manager 
 ---
 
 <wiki-type>repo</wiki-type>
-<scan-sha>f4112cdfcca8fa3c44ef2650ffe2943ddc5511f0</scan-sha>
+<scan-sha>816ddb2050f6e33ddaad8a73c64bf08c228266b1</scan-sha>
 <wiki-schema>1</wiki-schema>
 
 # Project signals
 
 ## Framework & runtime
 
-- **Language:** TypeScript (81% LOC, 1031 files), Bun runtime (>=1.2), Node >=22.13
+- **Language:** TypeScript (80% LOC, 1033 files), Bun runtime (>=1.2), Node >=22.13
 - **SQL layer:** Kysely 0.28 query builder + executor; dialect-aware across PostgreSQL, MySQL, MSSQL, SQLite
 - **TUI:** Ink 6.8 + React 19.2 ([`src/tui/`](../../src/tui)); Citty 0.2 for CLI arg parsing ([`src/cli/`](../../src/cli))
 - **Event bus:** `@logosdx/observer` (`ObserverEngine`); module-scope singleton in [`src/core/observer.ts`](../../src/core/observer.ts)
@@ -44,12 +44,12 @@ CI gate: lint → typecheck → build → 5 test groups → 3 example jobs. Inte
 
 | Language | LOC | Files | % |
 |----------|-----|-------|---|
-| TypeScript | 240887 | 1031 | 81% |
-| Markdown | 48422 | 147 | 16% |
+| TypeScript | 242110 | 1033 | 80% |
+| Markdown | 50058 | 184 | 16% |
+| HTML | 2977 | 30 | 0% |
 | JavaScript | 1261 | 22 | 0% |
-| YAML | 1158 | 16 | 0% |
-| HTML | 1090 | 27 | 0% |
-| CSS | 1061 | 3 | 0% |
+| YAML | 1186 | 19 | 0% |
+| CSS | 1103 | 3 | 0% |
 | Shell | 932 | 7 | 0% |
 | JSON | 473 | 22 | 0% |
 | Vue | 205 | 3 | 0% |
