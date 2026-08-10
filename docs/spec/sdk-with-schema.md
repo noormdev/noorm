@@ -148,3 +148,27 @@ Flow: transaction and impersonation composition
 **Why:** User requirement — simulate multi-schema scale so cross-schema leakage and type-shape mixups surface in tests instead of production.
 
 **Superseded:** Integration coverage asserted schema scoping against a single schema per dialect.
+
+
+## Implementation log
+
+### shipped — 2026-08-10
+
+Built across 4 iterations of /subagent-implementation. Commits (chronological):
+
+- `40af2d9e` — CP-1 `Context.withSchema` + 16 unit tests (validation, re-derivation, prefixing, shared `#heldConnections`)
+- `a90651ff` — CP-2 three-schema integration suite, 12 tests live across all four dialects
+- `46588801` — CP-3 SDK README + reference docs + `@noormdev/sdk` minor changeset
+- `2eb1e1ff` — polish: hyphens admitted in schema names; teardown helper scoped (`dropIgnoringErrors`)
+
+**Out-of-scope work performed during this build:**
+
+- none
+
+**Unforeseens — surprises that emerged during implementation:**
+
+- CP-3 first pass documented only 1 of 4 non-goals in the README (reviewer-caught, fixed in-iteration); incidental `bun.lockb` byte churn excluded from CP-1's commit
+
+**Deferred items still open:**
+
+- none — both ledgered follow-ups (F-1 hyphen allow-list, F-2 teardown helper naming) were user-dispositioned fix-now and closed in `2eb1e1ff`
