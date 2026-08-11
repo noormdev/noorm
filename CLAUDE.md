@@ -196,7 +196,7 @@ For setup wizards where the target database may not exist yet, use `testConnecti
 | `docs/modeling/data-flows.md` | SSADM data flow diagrams | atomic-writing |
 | `docs/modeling/best-practices.md` | modeling best practices | atomic-writing |
 | `docs/modeling/branding.md` | model branding | atomic-writing |
-| `docs/modeling/modeling-skill.md` | /noorm-modeling skill | atomic-writing |
+| `docs/modeling/modeling-skill.md` | /ignatius-modeling skill | atomic-writing |
 | `docs/modeling/reverse-engineering.md` | reverse-engineering via MCP | atomic-writing |
 | `docs/reference/sdk.md` | SDK API reference, withSchema, impersonation, routines | terse-technical |
 | `packages/sdk/README.md` | npm SDK readme, install, usage, schema scoping | terse-technical |
