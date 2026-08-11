@@ -8,7 +8,7 @@ description: Point an agent at a database you already run and have it extract an
 
 Most databases worth modeling already exist. The schema is in production, the reasoning behind it left with someone two jobs ago, and the only description of it is the DDL.
 
-You do not have to model that by hand. noorm exposes the schema to a coding agent over MCP, and the [`noorm-modeling` skill](/modeling/modeling-skill) knows how to turn what it reads into entity and flow files. Your job is to set up the access, keep it read-only, and review what comes back.
+You do not have to model that by hand. noorm exposes the schema to a coding agent over MCP, and the [`ignatius-modeling` skill](/modeling/modeling-skill) knows how to turn what it reads into entity and flow files. Your job is to set up the access, keep it read-only, and review what comes back.
 
 The result is an ignatius model of the system you already run: a diagram to hand to people, a dictionary of what every table is for, and a base to plan the next change against.
 
@@ -37,7 +37,7 @@ The [`idef1x` skill](https://www.skills.sh/damusix/skills/idef1x) carries the me
 
 - noorm installed, with a config that connects to the database ([installation](/getting-started/installation))
 - ignatius installed ([installation](/modeling/installation))
-- The `noorm-modeling` skill, and optionally the noorm skill for SDK and CLI conventions
+- The `ignatius-modeling` skill, and optionally the noorm skill for SDK and CLI conventions
 - An agent harness that speaks MCP, such as Claude Code or Cursor
 
 
@@ -47,7 +47,7 @@ The [`idef1x` skill](https://www.skills.sh/damusix/skills/idef1x) carries the me
 A model root is any folder with an `ignatius.yml` in it. Let the skill scaffold one:
 
 ```bash
-/noorm-modeling model
+/ignatius-modeling model
 ```
 
 That writes `ignatius.yml`, the group files, and the directories. To do it by hand, a one-line `ignatius.yml` is a valid model root:
@@ -140,7 +140,7 @@ Then check the count. Ask the agent, or run it yourself, for the table list noor
 Launch the harness and point it at both the database and the model root:
 
 ```
-/noorm-modeling discover
+/ignatius-modeling discover
 ```
 
 `discover` interviews you when nothing exists yet. When a real system is available it reads that instead, and interviews you only about the judgment calls the schema cannot answer. Tell it where the model root is and that noorm's MCP server is connected.

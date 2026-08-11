@@ -1,6 +1,6 @@
 ---
 title: Installing ignatius
-description: Install the ignatius binary and the noorm-modeling skill, then serve, validate, and export your first model.
+description: Install the ignatius binary and the ignatius-modeling skill, then serve, validate, and export your first model.
 ---
 
 # Installing ignatius
@@ -77,13 +77,13 @@ ignatius update --yes     # install without prompting, for scripts
 ## The modeling skill
 
 
-To author models from Claude Code, install the `noorm-modeling` skill with the [`skills`](https://www.npmjs.com/package/skills) CLI.
+To author models from Claude Code, install the `ignatius-modeling` skill with the [`skills`](https://www.npmjs.com/package/skills) CLI.
 
 ```bash
-npx skills add https://github.com/noormdev/ignatius --skill noorm-modeling
+npx skills add https://github.com/noormdev/ignatius --skill ignatius-modeling
 ```
 
-That adds the skill to the current project's `.claude/skills/`. Add `-g` to install it globally for every project on the machine. Reload skills in Claude Code and `/noorm-modeling` becomes available. See [The modeling skill](/modeling/modeling-skill) for what each mode does.
+That adds the skill to the current project's `.claude/skills/`. Add `-g` to install it globally for every project on the machine. Reload skills in Claude Code and `/ignatius-modeling` becomes available. See [The modeling skill](/modeling/modeling-skill) for what each mode does.
 
 
 ## Serve a model

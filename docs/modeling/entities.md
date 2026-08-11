@@ -19,7 +19,7 @@ If you want an agent reasoning in those terms alongside you, there is a separate
 npx skills add https://github.com/damusix/skills --skill idef1x
 ```
 
-It advises on method. The [`noorm-modeling` skill](/modeling/modeling-skill) writes the files. Neither is required to use ignatius, and the rest of this page assumes neither.
+It advises on method. The [`ignatius-modeling` skill](/modeling/modeling-skill) writes the files. Neither is required to use ignatius, and the rest of this page assumes neither.
 :::
 
 

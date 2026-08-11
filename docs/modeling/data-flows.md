@@ -171,7 +171,7 @@ Hovering an edge that carries data reveals a tooltip listing everything crossing
 ## Authoring with the skill
 
 
-The [`noorm-modeling` skill](/modeling/modeling-skill) has two doors into flows. `/noorm-modeling flow` walks you through a diagram step by step when you can already name your processes. `/noorm-modeling discover` interviews you about how the business runs and generates both the entities and the flows. Both verify their output with `ignatius validate`.
+The [`ignatius-modeling` skill](/modeling/modeling-skill) has two doors into flows. `/ignatius-modeling flow` walks you through a diagram step by step when you can already name your processes. `/ignatius-modeling discover` interviews you about how the business runs and generates both the entities and the flows. Both verify their output with `ignatius validate`.
 
 
 ## Related
