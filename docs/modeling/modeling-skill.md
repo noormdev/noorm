@@ -1,12 +1,12 @@
 ---
 title: The modeling skill
-description: /noorm-modeling authors ignatius entities and data flow diagrams through guided Q&A in Claude Code, and verifies each file with ignatius validate.
+description: /ignatius-modeling authors ignatius entities and data flow diagrams through guided Q&A in Claude Code, and verifies each file with ignatius validate.
 ---
 
 # The modeling skill
 
 
-`/noorm-modeling` is a Claude Code skill that authors a model through question and answer, then checks its own work. It writes one entity, a data flow diagram, a fresh model skeleton, or a full discovery session that works the model out from how your business runs.
+`/ignatius-modeling` is a Claude Code skill that authors a model through question and answer, then checks its own work. It writes one entity, a data flow diagram, a fresh model skeleton, or a full discovery session that works the model out from how your business runs.
 
 The skill exists because the hard part of modeling is not the YAML. It is knowing which questions to ask, in which order, and noticing when an answer contradicts an earlier one. The skill carries that interview structure, and you supply the domain knowledge.
 
@@ -17,10 +17,10 @@ The skill exists because the hard part of modeling is not the YAML. It is knowin
 
 
 ```bash
-npx skills add https://github.com/noormdev/ignatius --skill noorm-modeling
+npx skills add https://github.com/noormdev/ignatius --skill ignatius-modeling
 ```
 
-That adds `noorm-modeling` to the current project's `.claude/skills/`. Add `-g` to install it globally for every project on the machine. Reload skills in Claude Code and `/noorm-modeling` becomes available.
+That adds `ignatius-modeling` to the current project's `.claude/skills/`. Add `-g` to install it globally for every project on the machine. Reload skills in Claude Code and `/ignatius-modeling` becomes available.
 
 
 ## Modes
@@ -28,11 +28,11 @@ That adds `noorm-modeling` to the current project's `.claude/skills/`. Add `-g` 
 
 | Invocation | What it does |
 |---|---|
-| `/noorm-modeling entity` | Interactive Q&A to author one entity file |
-| `/noorm-modeling model` | Bootstrap a new model skeleton: `ignatius.yml`, group files, directories |
-| `/noorm-modeling flow` | Interactive Q&A to author a [data flow diagram](/modeling/data-flows) |
-| `/noorm-modeling discover` | Socratic interview that works the model out from how your business runs, generating entities and flows |
-| `/noorm-modeling` | Prompts you to choose a mode |
+| `/ignatius-modeling entity` | Interactive Q&A to author one entity file |
+| `/ignatius-modeling model` | Bootstrap a new model skeleton: `ignatius.yml`, group files, directories |
+| `/ignatius-modeling flow` | Interactive Q&A to author a [data flow diagram](/modeling/data-flows) |
+| `/ignatius-modeling discover` | Socratic interview that works the model out from how your business runs, generating entities and flows |
+| `/ignatius-modeling` | Prompts you to choose a mode |
 
 
 ## Choosing between flow and discover

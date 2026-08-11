@@ -51,7 +51,7 @@ The source is markdown with YAML frontmatter, which suits both readers.
 
 A stakeholder gets the rendered app: a diagram they can explore, a dictionary they can search, and prose that explains the business meaning rather than the storage layout. `ignatius export` writes all three views into one self-contained HTML file with no external dependencies, so a reviewer opens it from `file://` and needs nothing installed.
 
-A coding agent gets plain text it can read and write directly. ignatius comes with the [`noorm-modeling` skill](/modeling/modeling-skill) for Claude Code, which authors entity and flow files through guided Q&A and verifies each one with `ignatius validate` before moving on.
+A coding agent gets plain text it can read and write directly. ignatius comes with the [`ignatius-modeling` skill](/modeling/modeling-skill) for Claude Code, which authors entity and flow files through guided Q&A and verifies each one with `ignatius validate` before moving on.
 
 
 ## The workflow
