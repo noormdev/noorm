@@ -78,7 +78,8 @@ export function SettingsStrictScreen({ params: _params }: ScreenProps): ReactEle
             },
             {
                 key: 'stages',
-                label: 'Required Stages (comma-separated)',
+                label: 'Required Stages',
+                hint: '(comma-separated)',
                 type: 'text',
                 defaultValue: formatStageList(strict.stages),
                 placeholder: 'dev, staging, prod',

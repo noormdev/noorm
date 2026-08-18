@@ -280,7 +280,7 @@ export function SettingsRulesListScreen({ params: _params }: ScreenProps): React
                         onSelect={handleSelect}
                         onHighlight={handleHighlight}
                         isFocused={isFocused}
-                        visibleCount={8}
+                        reserveRows={3}
                     />
                 )}
             </Panel>

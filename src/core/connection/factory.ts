@@ -8,10 +8,12 @@ import { accessSync, constants as fsConstants, existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 
 import { sql } from 'kysely';
-import { retry, attempt, attemptSync } from '@logosdx/utils';
+import { retry, attempt, attemptSync, runWithTimeout, isTimeoutError } from '@logosdx/utils';
 import type { ConnectionConfig, ConnectionResult, Dialect } from './types.js';
 import { observer } from '../observer.js';
+import { OperationAbortedError, raceAbort, throwIfAborted } from '../shared/abort.js';
 import { getConnectionManager } from './manager.js';
+import { connectTimeoutFor } from './defaults.js';
 
 type DialectFactory = (config: ConnectionConfig) => ConnectionResult | Promise<ConnectionResult>;
 
@@ -87,32 +89,72 @@ export interface ConnectionRetryOptions {
 }
 
 /**
- * Create a database connection with retry logic.
+ * Milliseconds a `destroy()` on an abandoned connection may take before it is
+ * left to the garbage collector.
  *
- * Automatically retries on transient connection failures (ECONNREFUSED, ETIMEDOUT).
- * Does not retry authentication failures or missing drivers.
+ * Closing a pool whose socket is already dead can hang exactly the way opening
+ * it did, which is why `ConnectionManager.closeAll` wraps its own destroys the
+ * same way. Without the bound, the cleanup for a hang would be a second hang.
+ */
+const DISCARD_TIMEOUT_MS = 5_000;
+
+/**
+ * Milliseconds the liveness probe is allowed on top of the driver's own
+ * connect timeout.
+ *
+ * The two deadlines would otherwise be identical and race, and the driver's
+ * loss is the bad outcome: only it can tear down its socket, and only it knows
+ * enough to say "Connection terminated due to connection timeout" instead of a
+ * generic one. The grace lets the driver report first and leaves the probe as
+ * the backstop for the case no driver option covers — a socket that opened and
+ * then went silent.
+ */
+const PROBE_GRACE_MS = 2_000;
+
+/**
+ * Close a connection whose caller has stopped waiting for it.
+ *
+ * The window between "the user pressed Escape" and "the driver finally
+ * connected" leaves a live pool with no reference to it anywhere. This is the
+ * only thing that reclaims it.
  *
  * @example
- * ```typescript
- * const conn = await createConnection({
- *     dialect: 'postgres',
- *     host: 'localhost',
- *     database: 'myapp',
- *     user: 'postgres',
- *     password: 'secret',
- * })
- *
- * await sql`SELECT 1`.execute(conn.db)
- * await conn.destroy()
- * ```
+ * // raceAbort hands the late arrival here rather than dropping it
+ * return raceAbort(openConnection(config), signal, discardConnection);
  */
-export async function createConnection(
+export async function discardConnection(
+    conn: Pick<ConnectionResult, 'destroy'>,
+    timeoutMs: number = DISCARD_TIMEOUT_MS,
+): Promise<void> {
+
+    const [, err] = await attempt(() =>
+        runWithTimeout(() => conn.destroy(), { timeout: timeoutMs, throws: true }),
+    );
+
+    if (err) {
+
+        observer.emit('error', { source: 'connection', error: err });
+
+    }
+
+}
+
+/**
+ * Open a connection, retrying transient failures.
+ *
+ * Split out from `createConnection` so the abort race wraps the whole thing:
+ * the caller stops waiting at the boundary, while this keeps running to the
+ * point where its result can be handed back for cleanup.
+ */
+async function openConnection(
     config: ConnectionConfig,
-    configName: string = '__default__',
-    retryOptions: ConnectionRetryOptions = {},
+    configName: string,
+    retryOptions: ConnectionRetryOptions,
+    signal?: AbortSignal,
 ): Promise<ConnectionResult> {
 
     const { retries = 3, delay = 1000, backoff = 2 } = retryOptions;
+    const connectTimeout = connectTimeoutFor(config);
 
     const [conn, err] = await attempt(() =>
         retry(
@@ -139,8 +181,43 @@ export async function createConnection(
 
                 const conn = await createFn!(config);
 
-                // Test connection with simple query
-                await sql`SELECT 1`.execute(conn.db);
+                // The driver can hand back a live pool after the caller gave
+                // up. Nothing else holds it at this point, so close it here.
+                if (signal?.aborted) {
+
+                    void discardConnection(conn);
+
+                    throw new OperationAbortedError();
+
+                }
+
+                // A socket that opened and then went quiet is what a blackholed
+                // network looks like from here, and no driver connect timeout
+                // covers it — the connect already succeeded.
+                const [, probeErr] = await attempt(() =>
+                    runWithTimeout(() => sql`SELECT 1`.execute(conn.db), {
+                        timeout: connectTimeout + PROBE_GRACE_MS,
+                        throws: true,
+                    }),
+                );
+
+                if (probeErr) {
+
+                    void discardConnection(conn);
+
+                    // "Function timed out" is what the wrapper says, and it
+                    // would be the whole of what the user sees.
+                    if (isTimeoutError(probeErr)) {
+
+                        throw new Error(
+                            `Database did not respond within ${connectTimeout + PROBE_GRACE_MS}ms`,
+                        );
+
+                    }
+
+                    throw probeErr;
+
+                }
 
                 return conn;
 
@@ -150,7 +227,12 @@ export async function createConnection(
                 delay,
                 backoff,
                 jitterFactor: 0.1,
+                signal,
                 shouldRetry: (err) => {
+
+                    // Retrying something the caller walked away from would
+                    // hold the pool open for another two rounds of backoff.
+                    if (err instanceof OperationAbortedError) return false;
 
                     const msg = err.message.toLowerCase();
 
@@ -219,6 +301,48 @@ export async function createConnection(
 }
 
 /**
+ * Create a database connection with retry logic.
+ *
+ * Automatically retries on transient connection failures (ECONNREFUSED, ETIMEDOUT).
+ * Does not retry authentication failures or missing drivers.
+ *
+ * Pass `signal` to be able to stop waiting. Aborting rejects with
+ * `OperationAbortedError` right away; the driver is not obliged to notice, so
+ * a connection that opens afterwards is closed rather than left half-open.
+ * Omit it and nothing about the call changes.
+ *
+ * @example
+ * ```typescript
+ * const conn = await createConnection({
+ *     dialect: 'postgres',
+ *     host: 'localhost',
+ *     database: 'myapp',
+ *     user: 'postgres',
+ *     password: 'secret',
+ * })
+ *
+ * await sql`SELECT 1`.execute(conn.db)
+ * await conn.destroy()
+ * ```
+ */
+export async function createConnection(
+    config: ConnectionConfig,
+    configName: string = '__default__',
+    retryOptions: ConnectionRetryOptions = {},
+    signal?: AbortSignal,
+): Promise<ConnectionResult> {
+
+    throwIfAborted(signal);
+
+    return raceAbort(
+        openConnection(config, configName, retryOptions, signal),
+        signal,
+        discardConnection,
+    );
+
+}
+
+/**
  * Default system databases by dialect.
  * Used for testing server connectivity without requiring the target database to exist.
  */
@@ -238,6 +362,9 @@ const SYSTEM_DATABASES: Record<Dialect, string | undefined> = {
  * @param options - Test options
  * @param options.testServerOnly - If true, connects to system database instead of target.
  *                                  Useful when the target database doesn't exist yet.
+ * @param options.signal - Abort to stop waiting. The result comes back with
+ *                         `aborted: true` so a caller can say so honestly
+ *                         instead of reporting a database error.
  *
  * @example
  * ```typescript
@@ -254,8 +381,8 @@ const SYSTEM_DATABASES: Record<Dialect, string | undefined> = {
  */
 export async function testConnection(
     config: ConnectionConfig,
-    options: { testServerOnly?: boolean } = {},
-): Promise<{ ok: boolean; error?: string }> {
+    options: { testServerOnly?: boolean; signal?: AbortSignal } = {},
+): Promise<{ ok: boolean; error?: string; aborted?: boolean }> {
 
     let testConfig = config;
 
@@ -296,9 +423,17 @@ export async function testConnection(
 
     }
 
-    const [conn, err] = await attempt(() => createConnection(testConfig, '__test__'));
+    const [conn, err] = await attempt(() =>
+        createConnection(testConfig, '__test__', {}, options.signal),
+    );
 
     if (err) {
+
+        if (err instanceof OperationAbortedError) {
+
+            return { ok: false, error: err.message, aborted: true };
+
+        }
 
         return { ok: false, error: err.message };
 

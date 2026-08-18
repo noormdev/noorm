@@ -8,6 +8,9 @@
 // Errors
 export { getSqlErrorMessage } from './errors.js';
 
+// Cancellation
+export { OperationAbortedError, throwIfAborted, raceAbort } from './abort.js';
+
 // Files
 export { filterFilesByPaths, findUnmatchedIncludePatterns, findUnmatchedExcludePatterns } from './files.js';
 

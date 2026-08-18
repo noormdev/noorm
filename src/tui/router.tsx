@@ -25,9 +25,11 @@ import {
     type RouteParams,
     type HistoryEntry,
     type RouterContextValue,
+    type NavigationKind,
     getSection,
     getParentRoute,
 } from './types.js';
+import { clearListMemory } from './list-memory.js';
 import { observer } from '../core/index.js';
 
 /**
@@ -104,6 +106,7 @@ export function RouterProvider({
     const [history, setHistory] = useState<HistoryEntry[]>(() =>
         buildAncestorHistory(initialRoute),
     );
+    const [arrivedBy, setArrivedBy] = useState<NavigationKind>('initial');
 
     const navigate = useCallback(
         (newRoute: Route, newParams: RouteParams = {}) => {
@@ -123,6 +126,7 @@ export function RouterProvider({
             // Navigate to new route
             setRoute(newRoute);
             setParams(newParams);
+            setArrivedBy('push');
 
             // Emit event for listeners
             observer.emit('router:navigated', {
@@ -151,6 +155,7 @@ export function RouterProvider({
         setHistory((prev) => prev.slice(0, -1));
         setRoute(previous.route);
         setParams(previous.params);
+        setArrivedBy('pop');
 
         // Emit event for listeners (e.g., to clear state when leaving a screen)
         observer.emit('router:popped', {
@@ -165,14 +170,20 @@ export function RouterProvider({
         // Replace without modifying history
         setRoute(newRoute);
         setParams(newParams);
+        setArrivedBy('replace');
 
     }, []);
 
     const reset = useCallback(() => {
 
+        // The remembered list cursors are a companion to the history stack this
+        // throws away, so they go with it.
+        clearListMemory();
+
         setHistory([]);
         setRoute('home');
         setParams({});
+        setArrivedBy('initial');
 
     }, []);
 
@@ -181,6 +192,7 @@ export function RouterProvider({
             route,
             params,
             history,
+            arrivedBy,
             navigate,
             back,
             replace,
@@ -188,7 +200,7 @@ export function RouterProvider({
             canGoBack: history.length > 0,
             section: getSection(route),
         }),
-        [route, params, history, navigate, back, replace, reset],
+        [route, params, history, arrivedBy, navigate, back, replace, reset],
     );
 
     return <RouterContext.Provider value={value}>{children}</RouterContext.Provider>;
@@ -222,6 +234,24 @@ export function useRouter(): RouterContextValue {
     }
 
     return context;
+
+}
+
+/**
+ * Router access for a component that may be rendered without one.
+ *
+ * `useRouter` throws off-provider, which is the right contract for a screen but
+ * the wrong one for a shared component that is also rendered bare in tests and
+ * that only wants the route as a cache key. Returns `null` instead, so the
+ * caller can degrade rather than crash.
+ *
+ * @example
+ * const router = useOptionalRouter();
+ * const key = router ? listMemoryKey(router.route, router.params) : null;
+ */
+export function useOptionalRouter(): RouterContextValue | null {
+
+    return useContext(RouterContext);
 
 }
 

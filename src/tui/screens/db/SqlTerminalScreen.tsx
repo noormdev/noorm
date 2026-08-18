@@ -16,7 +16,7 @@
  * ```
  */
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { Box, Text, useInput, useStdout } from 'ink';
+import { Box, Text, useInput, useWindowSize } from 'ink';
 import { attempt } from '@logosdx/utils';
 
 import type { ReactElement } from 'react';
@@ -28,9 +28,15 @@ import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
 import { Panel, Spinner, useToast } from '../../components/index.js';
-import { SqlInput, ResultTable } from '../../components/terminal/index.js';
+import { SqlInput, ResultBrowser } from '../../components/terminal/index.js';
+import { useAbortableTask } from '../../hooks/index.js';
 import { createConnection, testConnection } from '../../../core/connection/index.js';
-import { SqlHistoryManager, executeRawSql } from '../../../core/sql-terminal/index.js';
+import {
+    SqlHistoryManager,
+    executeRawSql,
+    abortMessageFor,
+    hasServerSideCancel,
+} from '../../../core/sql-terminal/index.js';
 
 /**
  * Focus areas within the terminal.
@@ -46,20 +52,26 @@ export function SqlTerminalScreen({ params }: ScreenProps): ReactElement {
     const { isFocused } = useFocusScope('SqlTerminal');
     const { activeConfig, activeConfigName, projectRoot, setHelpKeyEnabled } = useAppContext();
     const { showToast } = useToast();
-    const { stdout } = useStdout();
+    // useWindowSize, not useStdout: stdout.rows mutates on resize without asking
+    // React for anything, so a memo keyed on it never recomputes.
+    const { rows: terminalHeight } = useWindowSize();
 
     // Calculate max visible rows as 75% of terminal height, accounting for UI chrome
     // UI chrome: header (2), panel border (2), status bar (1), separator (1), footer (2), help (1) = ~9 lines
     const maxResultRows = useMemo(() => {
 
-        const terminalHeight = stdout.rows ?? 24;
         const uiChrome = 9;
         const availableHeight = terminalHeight - uiChrome;
         const maxRows = Math.floor(availableHeight * 0.75);
 
         return Math.max(5, Math.min(maxRows, 30));
 
-    }, [stdout.rows]);
+    }, [terminalHeight]);
+
+    // Lines the row document viewer gets. It replaces the grid rather than
+    // sitting beside it, so it is spending the same chrome and is not capped at
+    // thirty: a row with sixty columns should use whatever the terminal has.
+    const rowViewRows = useMemo(() => Math.max(5, terminalHeight - 9), [terminalHeight]);
 
     // State
     const [query, setQuery] = useState('');
@@ -69,6 +81,11 @@ export function SqlTerminalScreen({ params }: ScreenProps): ReactElement {
     const [connectionError, setConnectionError] = useState<string | null>(null);
     const [focusArea, setFocusArea] = useState<FocusArea>('input');
 
+    // Whether the result browser has a row open as a document. The footer below
+    // is outside that component, so without this it would keep offering Tab and
+    // Escape while the viewer owns both.
+    const [rowOpen, setRowOpen] = useState(false);
+
     // History state
     const [history, setHistory] = useState<SqlHistoryEntry[]>([]);
     const [historyIndex, setHistoryIndex] = useState(-1);
@@ -77,6 +94,9 @@ export function SqlTerminalScreen({ params }: ScreenProps): ReactElement {
     // Database connection ref
     const dbRef = useRef<Kysely<unknown> | null>(null);
     const destroyRef = useRef<(() => Promise<void>) | null>(null);
+
+    // One in-flight operation at a time: the initial connect, then each query.
+    const task = useAbortableTask();
 
     // Load query from params if re-running from history
     useEffect(() => {
@@ -116,6 +136,7 @@ export function SqlTerminalScreen({ params }: ScreenProps): ReactElement {
         }
 
         let cancelled = false;
+        const controller = task.start();
 
         const initialize = async () => {
 
@@ -123,11 +144,13 @@ export function SqlTerminalScreen({ params }: ScreenProps): ReactElement {
             setConnectionError(null);
 
             // Test connection
-            const testResult = await testConnection(activeConfig.connection);
+            const testResult = await testConnection(activeConfig.connection, {
+                signal: controller.signal,
+            });
 
             if (!testResult.ok) {
 
-                if (!cancelled) {
+                if (!cancelled && task.isCurrent(controller)) {
 
                     setConnectionError(testResult.error ?? 'Connection failed');
                     setIsConnecting(false);
@@ -140,12 +163,12 @@ export function SqlTerminalScreen({ params }: ScreenProps): ReactElement {
 
             // Create connection
             const [conn, connErr] = await attempt(() =>
-                createConnection(activeConfig.connection, activeConfigName),
+                createConnection(activeConfig.connection, activeConfigName, {}, controller.signal),
             );
 
             if (connErr || !conn) {
 
-                if (!cancelled) {
+                if (!cancelled && task.isCurrent(controller)) {
 
                     setConnectionError(connErr?.message ?? 'Failed to connect');
                     setIsConnecting(false);
@@ -156,7 +179,7 @@ export function SqlTerminalScreen({ params }: ScreenProps): ReactElement {
 
             }
 
-            if (cancelled) {
+            if (cancelled || !task.isCurrent(controller)) {
 
                 await conn.destroy();
 
@@ -206,6 +229,8 @@ export function SqlTerminalScreen({ params }: ScreenProps): ReactElement {
 
         if (!dbRef.current || !historyManagerRef.current || !activeConfigName || !activeConfig) return;
 
+        const controller = task.start();
+
         setIsExecuting(true);
         setResult(null);
 
@@ -214,8 +239,14 @@ export function SqlTerminalScreen({ params }: ScreenProps): ReactElement {
                 access: activeConfig.access,
                 channel: 'user',
                 dialect: activeConfig.connection.dialect,
-            }),
+            }, controller.signal),
         );
+
+        // The cancel handler already reported the outcome. A driver that
+        // answered anyway must not overwrite it, or the screen silently
+        // un-cancels itself — and the query would land in history as if the
+        // user had waited for it.
+        if (!task.isCurrent(controller)) return;
 
         const execResult: SqlExecutionResult = gateErr
             ? { success: false, errorMessage: gateErr.message, durationMs: 0 }
@@ -257,7 +288,32 @@ export function SqlTerminalScreen({ params }: ScreenProps): ReactElement {
 
         }
 
-    }, [activeConfigName, activeConfig, showToast]);
+    }, [activeConfigName, activeConfig, showToast, task]);
+
+    // Escape while an operation is in flight. Returns false when there was
+    // nothing to cancel, so the caller can fall through to its normal Escape.
+    const cancelInFlight = useCallback(() => {
+
+        if (!task.cancel()) return false;
+
+        const dialect = activeConfig?.connection.dialect;
+
+        if (dialect) {
+
+            setResult({
+                success: false,
+                errorMessage: abortMessageFor(dialect),
+                durationMs: 0,
+                aborted: hasServerSideCancel(dialect) ? 'server-cancel-requested' : 'stopped-waiting',
+            });
+
+        }
+
+        setIsExecuting(false);
+
+        return true;
+
+    }, [task, activeConfig]);
 
     // Navigate history
     const handleHistoryNavigate = useCallback((direction: 'up' | 'down') => {
@@ -318,7 +374,33 @@ export function SqlTerminalScreen({ params }: ScreenProps): ReactElement {
     // Keyboard shortcuts
     useInput((input, key) => {
 
-        if (!isFocused || isExecuting) return;
+        if (!isFocused) return;
+
+        // A query in flight owns Escape: leaving the screen would abandon it
+        // rather than stop it, and every other key belongs to a screen that is
+        // not accepting input yet.
+        if (isExecuting) {
+
+            if (key.escape) cancelInFlight();
+
+            return;
+
+        }
+
+        // Connecting: Escape stops the connect on the way out, so the driver
+        // is not left opening a pool for a screen that no longer exists.
+        if (isConnecting) {
+
+            if (key.escape) {
+
+                task.cancel();
+                back();
+
+            }
+
+            return;
+
+        }
 
         // Tab: Switch focus between input and results
         if (key.tab && !key.shift && result?.rows && result.rows.length > 0) {
@@ -393,6 +475,10 @@ export function SqlTerminalScreen({ params }: ScreenProps): ReactElement {
                 <Panel title="SQL Terminal" paddingX={1} paddingY={1}>
                     <Spinner label="Connecting to database..." />
                 </Panel>
+
+                <Box flexWrap="wrap" columnGap={2}>
+                    <Text dimColor>[Esc] Cancel</Text>
+                </Box>
             </Box>
         );
 
@@ -441,12 +527,15 @@ export function SqlTerminalScreen({ params }: ScreenProps): ReactElement {
                     paddingX={1}
                     paddingY={1}
                 >
-                    <ResultTable
+                    <ResultBrowser
                         columns={result.columns}
                         rows={result.rows}
                         maxVisibleRows={maxResultRows}
+                        height={rowViewRows}
                         active={true}
+                        label={`Results · ${result.rows.length} row${result.rows.length === 1 ? '' : 's'}`}
                         onEscape={() => setFocusArea('input')}
+                        onRowOpenChange={setRowOpen}
                     />
                 </Panel>
             )}
@@ -471,8 +560,9 @@ export function SqlTerminalScreen({ params }: ScreenProps): ReactElement {
 
                     {/* Executing indicator */}
                     {isExecuting && (
-                        <Box>
+                        <Box gap={2}>
                             <Spinner label="Running query..." />
+                            <Text dimColor>[Esc] Cancel</Text>
                         </Box>
                     )}
 
@@ -496,14 +586,26 @@ export function SqlTerminalScreen({ params }: ScreenProps): ReactElement {
                 </>
             )}
 
-            {/* Footer hints */}
-            <Box flexWrap="wrap" columnGap={2}>
-                {focusArea === 'input' && <Text dimColor>[h] History</Text>}
-                {result?.rows && result.rows.length > 0 && (
-                    <Text dimColor>[Tab] {focusArea === 'input' ? 'View Results' : 'Edit Query'}</Text>
-                )}
-                <Text dimColor>[Esc] {focusArea === 'results' ? 'Edit Query' : query.trim() ? 'Clear' : 'Back'}</Text>
-            </Box>
+            {/* Footer hints. Silent while a row is open as a document: that
+                overlay names its own keys and owns Escape, and Tab does not
+                reach this screen at all until it closes. */}
+            {!rowOpen && (
+                <Box flexWrap="wrap" columnGap={2}>
+                    {focusArea === 'input' && <Text dimColor>[h] History</Text>}
+                    {result?.rows && result.rows.length > 0 && (
+                        <Text dimColor>[Tab] {focusArea === 'input' ? 'View Results' : 'Edit Query'}</Text>
+                    )}
+                    {/* While a query runs the spinner row carries the cancel
+                        hint, right next to the thing being cancelled. Repeating
+                        it here would be two hints for one key, and leaving the
+                        idle label would name the wrong action. */}
+                    {!isExecuting && (
+                        <Text dimColor>
+                            [Esc] {focusArea === 'results' ? 'Edit Query' : query.trim() ? 'Clear' : 'Back'}
+                        </Text>
+                    )}
+                </Box>
+            )}
         </Box>
     );
 

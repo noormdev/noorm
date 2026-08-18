@@ -6,9 +6,14 @@
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { render } from 'ink-testing-library';
 import React from 'react';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
 
 import { App } from '../../src/tui/app.js';
 import { resetLifecycleManager } from '../../src/core/lifecycle/manager.js';
+import { resetSettingsManager } from '../../src/core/settings/index.js';
+import { resetStateManager } from '../../src/core/state/index.js';
+import { MOUSE_ENABLE, MOUSE_DISABLE } from '../../src/tui/mouse.js';
 import type { Route } from '../../src/tui/types.js';
 
 // ANSI escape sequences
@@ -16,6 +21,18 @@ const KEYS = {
     ESCAPE: '\x1B',
     CTRL_C: '\x03',
 };
+
+async function waitFor(predicate: () => boolean, timeoutMs = 3000): Promise<void> {
+
+    const deadline = Date.now() + timeoutMs;
+
+    while (!predicate() && Date.now() < deadline) {
+
+        await new Promise((resolve) => setTimeout(resolve, 10));
+
+    }
+
+}
 
 describe('cli: app', () => {
 
@@ -127,6 +144,82 @@ describe('cli: app', () => {
 
         });
 
+        /**
+         * The help screen as it renders for a project with the given settings
+         * file, or with none written at all.
+         *
+         * Reads the help out of `frames` rather than `lastFrame()`: the mouse
+         * transport writes its escape sequences through the same stream, so the
+         * last write is often a sequence rather than a screen.
+         */
+        async function helpScreenFor(yaml: string | null): Promise<string> {
+
+            const root = mkdtempSync(join(process.cwd(), 'tmp', 'noorm-mouse-help-'));
+
+            try {
+
+                if (yaml !== null) {
+
+                    mkdirSync(join(root, '.noorm'), { recursive: true });
+                    writeFileSync(join(root, '.noorm', 'settings.yml'), yaml);
+
+                }
+
+                resetSettingsManager();
+                resetStateManager();
+
+                const { stdin, frames, unmount } = render(<App projectRoot={root} />);
+
+                await waitFor(() => frames.some((f) => f.includes('Home')));
+
+                // The line reports the transport's state, so it is only
+                // meaningful once the settings load has settled it.
+                await new Promise((resolve) => setTimeout(resolve, 300));
+
+                stdin.write('?');
+
+                await waitFor(() => frames.some((f) => f.includes('go back / cancel')));
+
+                unmount();
+
+                return frames.filter((f) => f.includes('go back / cancel')).at(-1) ?? '';
+
+            }
+            finally {
+
+                resetSettingsManager();
+                resetStateManager();
+                rmSync(root, { recursive: true, force: true });
+
+            }
+
+        }
+
+        it('should tell the help screen reader how to turn the mouse off', async () => {
+
+            // Discoverability now cuts the other way. With the mouse on by
+            // default, the user who has to find the flag is the one who dislikes
+            // it, and their symptom is "text selection stopped working" — which
+            // points at their terminal, not at noorm. `?` is where that gets
+            // answered.
+            const help = await helpScreenFor(null);
+
+            expect(help).toContain('Mouse on.');
+            expect(help).toContain('ui.mouse: false');
+            expect(help).toContain('restores text selection');
+
+        });
+
+        it('should tell the help screen reader how to turn the mouse back on', async () => {
+
+            const help = await helpScreenFor('ui:\n    mouse: false\n');
+
+            expect(help).toContain('Mouse off.');
+            expect(help).toContain('ui.mouse: true');
+            expect(help).toContain('enables clicks');
+
+        });
+
         it('should exit on Ctrl+C', async () => {
 
             const { stdin, unmount } = render(<App />);
@@ -211,6 +304,115 @@ describe('cli: app', () => {
             const { lastFrame } = render(<App />);
 
             expect(lastFrame()).toBeDefined();
+
+        });
+
+        it('should turn the mouse on when settings.yml has no ui section at all', async () => {
+
+            // The default. `ui.mouse` absent means on, so a project that never
+            // writes the section gets the mouse.
+            const root = mkdtempSync(join(process.cwd(), 'tmp', 'noorm-mouse-app-'));
+
+            try {
+
+                resetSettingsManager();
+                resetStateManager();
+
+                const { frames, unmount } = render(<App projectRoot={root} />);
+
+                await waitFor(() => frames.includes(MOUSE_ENABLE));
+
+                expect(frames).toContain(MOUSE_ENABLE);
+
+                unmount();
+                await new Promise((resolve) => setTimeout(resolve, 100));
+
+                expect(frames).toContain(MOUSE_DISABLE);
+
+            }
+            finally {
+
+                resetSettingsManager();
+                resetStateManager();
+                rmSync(root, { recursive: true, force: true });
+
+            }
+
+        });
+
+        it('should leave the mouse off when settings.yml writes ui.mouse: false', async () => {
+
+            // The escape hatch, and the reason the flag still exists. Written
+            // false has to survive a default that says otherwise.
+            const root = mkdtempSync(join(process.cwd(), 'tmp', 'noorm-mouse-app-'));
+
+            try {
+
+                mkdirSync(join(root, '.noorm'), { recursive: true });
+                writeFileSync(join(root, '.noorm', 'settings.yml'), 'ui:\n    mouse: false\n');
+
+                resetSettingsManager();
+                resetStateManager();
+
+                const { frames, unmount } = render(<App projectRoot={root} />);
+
+                await waitFor(() => frames.some((f) => f.includes('Home')));
+
+                // Past the point where the settings load resolves, which is the
+                // only moment the flag could have flipped on.
+                await new Promise((resolve) => setTimeout(resolve, 300));
+
+                expect(frames).not.toContain(MOUSE_ENABLE);
+
+                unmount();
+
+                expect(frames).not.toContain(MOUSE_DISABLE);
+
+            }
+            finally {
+
+                resetSettingsManager();
+                resetStateManager();
+                rmSync(root, { recursive: true, force: true });
+
+            }
+
+        });
+
+        it('should turn the mouse on when settings.yml asks for it explicitly', async () => {
+
+            const root = mkdtempSync(join(process.cwd(), 'tmp', 'noorm-mouse-app-'));
+
+            try {
+
+                mkdirSync(join(root, '.noorm'), { recursive: true });
+                writeFileSync(join(root, '.noorm', 'settings.yml'), 'ui:\n    mouse: true\n');
+
+                resetSettingsManager();
+                resetStateManager();
+
+                const { frames, unmount } = render(<App projectRoot={root} />);
+
+                // The flag is not known at render() time — the managers load
+                // asynchronously — so this also pins that the enable sequence
+                // waits for the setting rather than for the first frame.
+                await waitFor(() => frames.includes(MOUSE_ENABLE));
+
+                expect(frames).toContain(MOUSE_ENABLE);
+
+                unmount();
+                await new Promise((resolve) => setTimeout(resolve, 100));
+
+                expect(frames).toContain(MOUSE_DISABLE);
+
+            }
+            finally {
+
+                resetSettingsManager();
+                resetStateManager();
+                rmSync(root, { recursive: true, force: true });
+
+            }
 
         });
 

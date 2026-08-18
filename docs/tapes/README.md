@@ -10,6 +10,7 @@ so re-recording after a CLI change is one command instead of a fresh take.
 | `02-build-and-change.tape` | `build-and-change.gif` | `run build`, `change list`, `change ff`, `change history` |
 | `03-tui.tape` | `tui.gif` | `noorm ui` — create a config, create the database, build, fast-forward changes, history, explorer |
 | `04-screenshots.tape` | `../public/image/tui/*.png` | Stills of every TUI screen, for `tui.md`. Run via `./shots.sh` |
+| `05-rows.tape` | `tui-rows.gif` | Peek at both ends of a table, then open one row as a document |
 
 
 ## Prerequisites
@@ -30,17 +31,24 @@ cd docs/tapes
 vhs 01-install.tape
 vhs 02-build-and-change.tape
 vhs 03-tui.tape
-./shots.sh              # 04-screenshots.tape + per-image cropping
+./shots.sh              # 04-screenshots.tape + per-image trimming
+vhs 05-rows.tape
 ```
 
 Each tape builds its own sandbox first, so they can run in any order and none
 of them depends on a previous one.
 
-`shots.sh` is a wrapper, not an alternative: `04-screenshots.tape` produces
-stills at one canvas size (tall enough for the add-config form, the tallest
-screen in the app), and the script crops each one back down to its own content
-and re-pads it. Running the tape directly leaves every short screen sitting on
-a slab of empty terminal.
+`shots.sh` is a wrapper, not an alternative: it renders `04-screenshots.tape`,
+then trims each PNG to its own widest line and re-pads it in the brand
+background so the twenty stills share one margin.
+
+**The canvas is the frame, not a bound.** The TUI renders into the alternate
+screen and draws to the full terminal height, so a screen shorter than the
+canvas gets empty panel rather than a shorter image, and `shots.sh` cannot trim
+that away: the status bar reaches the bottom edge on every screen. Size the
+canvas to the tallest screen a tape visits and no taller. 32 lines holds the
+add-config form's ten fields with a select expanded, which is the floor all
+three TUI tapes are set to.
 
 
 ## The sandbox
@@ -68,7 +76,14 @@ Three things this buys:
 
 Modes: `fresh` (nothing set up), `project` (identity and a project, but no
 config and no database — the TUI walkthrough creates both on camera),
-`bootstrapped` (identity + config), `built` (also applies the schema).
+`bootstrapped` (identity + config), `built` (also applies the schema), `seeded`
+(also loads `demo-project/seed.sql`, which is what `05-rows.tape` peeks at).
+
+Every mode except `fresh` and `project` runs `noorm run build`, which is
+refused outright when a coding-agent environment variable is set: the CLI reads
+that as the `agent` channel, whose default role is `viewer`. Source
+`env-scrub.sh` first, as every tape does, or run `sandbox.sh` from a plain
+shell.
 
 `sandbox.sh` drops the `noorm_demo` database on the test Postgres container
 each run, so recordings never inherit objects from a previous take — that
@@ -87,6 +102,12 @@ compound keys rather than a surrogate ID per table.
 The SQL files describe the schema **as it exists today**, including `priority`.
 The changes exist for databases built before that column landed, and are
 written idempotently (`ADD COLUMN IF NOT EXISTS`) so they are safe on both.
+
+`demo-project/seed.sql` sits beside `sql/` rather than inside it, so `run build`
+never picks it up and stays a 4-file build in every recording that narrates the
+count. Only `sandbox.sh seeded` loads it, piped straight to psql. Its 24 tasks
+are what make the row peek show a first set and a last set instead of collapsing
+to one `All N rows` table.
 
 To record against the full example instead:
 
@@ -116,6 +137,17 @@ Height = lines   * 22.4 + 64
 ```
 
 Re-measure if you change the font or size — do not scale the numbers by eye.
+The three TUI tapes override the theme's size with `Set FontSize 15`, where the
+same probe reports:
+
+| `Set Width` / `Set Height` | `tput cols` / `tput lines` |
+|---|---|
+| 1200 / 700 | 111 / 32 |
+| 1200 / 1160 | 111 / 57 |
+
+Cell height does not divide evenly out of those two points, so read the number
+you need off a probe rather than off a constant. A probe is a two-line tape:
+`Type "tput lines > size.txt" Enter`, then `Sleep 2s`.
 
 
 ## Notes on VHS
@@ -161,9 +193,19 @@ Driving the TUI adds three more, all of which fail *silently* — the recording
 looks plausible while the database stays empty, so verify against the database
 rather than against the GIF:
 
-- **Enter on a text field submits the whole form.** It does not advance. Only
-  Tab and the arrows move between fields. Enter is correct on a select (confirm
-  + advance) and on the final checkbox (submit).
+- **A form has a browse mode and an edit mode, and Enter switches between
+  them.** Browse is where the tape starts: `↑`/`↓` and Tab move between fields,
+  every field type included, and Enter opens the active one. Inside a field,
+  Enter commits and Esc puts back the value it held on entry. So the loop for a
+  text field is Enter, type, Enter, Down — typing straight into a browsing form
+  sends the characters to a handler that ignores them, and the recording shows
+  an empty form.
+
+  Submit is not a key. Past the last field the cursor lands on the
+  `[ Create Config ]` / `[ Cancel ]` row, and Enter there is what saves.
+
+  A checkbox toggles in place on Space or Enter, and a select expands on Enter
+  and takes the highlighted option on the next one.
 - **Run Build and Change FF each gate on a confirm** ("Run 4 SQL files on
   dev?"). Miss the `y` and Escape simply cancels the operation.
 - **Navigation is two levels deep**: Home → list → action. One Escape returns
@@ -173,8 +215,15 @@ rather than against the GIF:
 
 ## Known rough edges
 
-Both are in the CLI, not the tapes:
+All three are in the app, not the tapes:
 
+- **The `?` help screen and the Shift+L log overlay overflow the alternate
+  screen.** `AppShell` claims `height={terminalHeight}` and both overlays render
+  as siblings after it (`src/tui/app.tsx:384-388`), so the frame is the window
+  plus the overlay and the top of it scrolls out of reach. `log-viewer.png` was
+  re-shot with that visible, because it is what the app draws today. Re-run
+  `./shots.sh` once the overlays take over the frame again, as their own
+  comments say they mean to.
 - `run build` at the default log level prints one `file:after` line per file
   with the absolute path repeated in a `filepath=` field. It is too verbose to
   record on a real schema.

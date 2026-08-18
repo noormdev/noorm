@@ -12,11 +12,15 @@
 # Usage:
 #   ./sandbox.sh              # fresh project, no identity, no config
 #   ./sandbox.sh bootstrapped # identity + config + schema already applied
+#   ./sandbox.sh seeded       # built, plus demo rows for the row-peek tape
 #
 set -euo pipefail
 
 DEMO_ROOT="${NOORM_DEMO_ROOT:-/tmp/noorm-demo}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# Absolute: the mode blocks below cd into the sandbox, so a path relative to
+# this script stops resolving once they have.
+TAPES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MODE="${1:-fresh}"
 
 PG_CONTAINER="noorm-test-postgres"
@@ -120,7 +124,7 @@ if [ "$MODE" = "project" ]; then
     node "$NOORM_BIN" init --yes >/dev/null
 fi
 
-if [ "$MODE" = "bootstrapped" ] || [ "$MODE" = "built" ]; then
+if [ "$MODE" = "bootstrapped" ] || [ "$MODE" = "built" ] || [ "$MODE" = "seeded" ]; then
 
     export HOME="$DEMO_ROOT/home"
     cd "$DEMO_ROOT/project"
@@ -145,9 +149,20 @@ fi
 # `built` also applies the schema, so the TUI opens on a real database instead
 # of reporting "empty database" on its home screen. Changes stay pending — that
 # is the state worth showing.
-if [ "$MODE" = "built" ]; then
+if [ "$MODE" = "built" ] || [ "$MODE" = "seeded" ]; then
 
     node "$NOORM_BIN" run build >/dev/null 2>&1
+fi
+
+# `seeded` adds rows on top. The schema tapes only ever show structure, so an
+# empty database is the honest state for them; the row peek has nothing to peek
+# at without this. Piped straight to psql rather than added under sql/, which
+# would make `run build` report five files instead of the four every other tape
+# narrates.
+if [ "$MODE" = "seeded" ]; then
+
+    docker exec -i "$PG_CONTAINER" psql -q -v ON_ERROR_STOP=1 -U "$PG_USER" -d "$PG_DB" \
+        < "$TAPES_DIR/demo-project/seed.sql" >/dev/null
 fi
 
 echo "sandbox ready at $DEMO_ROOT ($MODE)"

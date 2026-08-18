@@ -214,7 +214,6 @@ export function ConfigListScreen({ params: _params }: ScreenProps): ReactElement
                         onSelect={handleSelect}
                         onHighlight={handleHighlight}
                         isFocused={isFocused}
-                        visibleCount={8}
                     />
                 )}
             </Panel>

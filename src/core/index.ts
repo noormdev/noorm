@@ -29,10 +29,15 @@ export type { Config, ConfigInput } from './config/types.js';
 export {
     createConnection,
     testConnection,
+    discardConnection,
     getConnectionManager,
     resetConnectionManager,
+    DEFAULT_CONNECT_TIMEOUT_MS,
 } from './connection/index.js';
 export type { Dialect, ConnectionConfig, ConnectionResult } from './connection/index.js';
+
+// Cancellation
+export { OperationAbortedError } from './shared/abort.js';
 
 // Settings
 export {
@@ -336,7 +341,7 @@ export type {
 } from './change/index.js';
 
 // SQL Terminal
-export { SqlHistoryManager, executeRawSql } from './sql-terminal/index.js';
+export { SqlHistoryManager, executeRawSql, hasServerSideCancel, abortMessageFor } from './sql-terminal/index.js';
 export type {
     SqlHistoryEntry,
     SqlExecutionResult,

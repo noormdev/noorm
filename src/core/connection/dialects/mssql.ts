@@ -14,7 +14,7 @@ import { Kysely, MssqlDialect, sql } from 'kysely';
 import type { ConnectionConfiguration } from 'tedious';
 
 import type { ConnectionConfig, ConnectionResult } from '../types.js';
-import { DEFAULT_PORTS } from '../defaults.js';
+import { DEFAULT_PORTS, connectTimeoutFor } from '../defaults.js';
 import { MssqlLimitPlugin } from './mssql-limit-plugin.js';
 
 /**
@@ -145,6 +145,12 @@ export function buildTediousOptions(
             trustServerCertificate: !config.ssl,
             encrypt: true,
             serverName: resolveTlsServerName(config),
+            // Matches tedious's own default, so mssql keeps the behaviour it
+            // had while becoming overridable alongside the other dialects.
+            // `requestTimeout` is deliberately left alone: a long-running
+            // query is legitimate, and Escape is the answer for that, not a
+            // deadline nobody asked for.
+            connectTimeout: connectTimeoutFor(config),
         },
     };
 

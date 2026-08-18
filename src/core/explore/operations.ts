@@ -8,7 +8,9 @@ import { attempt } from '@logosdx/utils';
 
 import type { Kysely } from 'kysely';
 import type { Dialect } from '../connection/types.js';
+import type { Channel, ConfigAccess } from '../policy/index.js';
 import type {
+    ColumnDetail,
     ExploreCategory,
     ExploreOverview,
     TableSummary,
@@ -29,7 +31,9 @@ import type {
     TriggerDetail,
 } from './types.js';
 import { getExploreOperations } from './dialects/index.js';
+import { readPeekRows } from './peek.js';
 import { observer } from '../observer.js';
+import { assertPolicy } from '../policy/index.js';
 
 /**
  * Options for explore operations.
@@ -317,6 +321,194 @@ export async function fetchDetail<C extends DetailCategory>(
     }
 
     return result as DetailTypeMap[C] | null;
+
+}
+
+/**
+ * Rows a peek reads per set unless the caller sizes it itself.
+ */
+export const DEFAULT_PEEK_ROWS = 10;
+
+/**
+ * Policy inputs the row peek is checked against.
+ *
+ * Mandatory, and shaped like `SqlPolicyGate`, for the same reason: this is the
+ * one explore operation that returns user data rather than catalog metadata, so
+ * it is gated on `sql:read` where the rest of the module needs only `explore`.
+ * A schema-only permission must not become a way to read rows.
+ */
+export interface RowPeekGate {
+
+    /** Config name, which is what the policy message names. */
+    configName: string;
+
+    /** The config's per-channel access roles. */
+    access: ConfigAccess;
+
+    /** Who is driving — see `resolveChannel`. */
+    channel: Channel;
+
+}
+
+/**
+ * Both ends of a table, or the one set that is honest for it.
+ *
+ * `mode` is what the caller renders from, because "first N and last N" is only
+ * one of three truthful answers:
+ *
+ * | mode | what came back | why |
+ * |------|----------------|-----|
+ * | `whole` | every row the table has, in `first` | it holds fewer than two pages |
+ * | `ends` | `first` and `last`, disjoint | it holds more |
+ * | `head` | `first` only, and there may be more | no primary key to order a tail by |
+ */
+export interface RowPeek {
+
+    /** Which of the three shapes above this is. */
+    mode: 'whole' | 'ends' | 'head';
+
+    /** Column names in ordinal order, so both sets draw the same grid. */
+    columns: string[];
+
+    /** Primary-key columns the read was ordered by. Empty in `head` mode. */
+    keyColumns: string[];
+
+    /** The head of the table, or the whole of it in `whole` mode. */
+    first: Record<string, unknown>[];
+
+    /** The tail, in ascending order. Empty except in `ends` mode. */
+    last: Record<string, unknown>[];
+
+}
+
+/**
+ * A row's key as one comparable string.
+ *
+ * `String` per column before encoding, rather than stringifying the row object:
+ * a driver may hand the same key back as a number in one result and a string in
+ * another, and a Date or a Buffer has no JSON form worth comparing. Within one
+ * table a key column holds one type, so a per-column `String` is enough to tell
+ * two rows apart, and a primary key is unique so there are no ties to break.
+ *
+ * The parts are then encoded as a JSON array rather than joined by a
+ * separator, because any separator a value could itself contain would make
+ * `('a|b', 'c')` and `('a', 'b|c')` the same key.
+ */
+function keyOf(row: Record<string, unknown>, keyColumns: string[]): string {
+
+    return JSON.stringify(keyColumns.map((column) => String(row[column])));
+
+}
+
+/**
+ * Column names in ordinal order.
+ */
+function namesInOrder(columns: ColumnDetail[]): string[] {
+
+    return [...columns]
+        .sort((a, b) => a.ordinalPosition - b.ordinalPosition)
+        .map((column) => column.name);
+
+}
+
+/**
+ * Read the first and last rows of a table.
+ *
+ * Ordered by the primary key, which is the only order a relational table
+ * actually has: `ORDER BY pk ASC` and `ORDER BY pk DESC` both ride the primary
+ * key index, so reading the tail costs the same as reading the head no matter
+ * how large the table is. Without a primary key there is no tail to read — the
+ * alternative would be a full scan and a sort of an unbounded table to answer a
+ * question the user asked casually — so the result comes back in `head` mode
+ * and says so.
+ *
+ * The second query is skipped whenever the first one already answered: a page
+ * that came back short is the whole table. When both run and their keys
+ * intersect, the two sets are merged rather than drawn twice, because a table
+ * holding fewer than two pages would otherwise show the same rows under both
+ * headings with nothing to distinguish that from a table that really has them
+ * at both ends.
+ *
+ * @param db - Kysely database instance
+ * @param dialect - Database dialect
+ * @param detail - The table, as `fetchDetail` returned it
+ * @param gate - Policy inputs; the read is refused unless they allow `sql:read`
+ * @param limit - Rows per set
+ * @returns Both ends of the table, or the single set that is honest for it
+ *
+ * @throws Error carrying the policy's blockedReason when `gate` denies.
+ *
+ * @example
+ * ```typescript
+ * const peek = await fetchRowPeek(db, 'postgres', detail, {
+ *     configName: 'local',
+ *     access: config.access,
+ *     channel: 'user',
+ * });
+ *
+ * if (peek.mode === 'head') console.log('no primary key; no tail');
+ * ```
+ */
+export async function fetchRowPeek(
+    db: Kysely<unknown>,
+    dialect: Dialect,
+    detail: TableDetail,
+    gate: RowPeekGate,
+    limit: number = DEFAULT_PEEK_ROWS,
+): Promise<RowPeek> {
+
+    const columns = namesInOrder(detail.columns);
+    const keyColumns = namesInOrder(detail.columns.filter((column) => column.isPrimaryKey));
+    const base = { table: detail.name, schema: detail.schema, keyColumns, limit };
+
+    assertPolicy(gate.channel, { name: gate.configName, access: gate.access }, 'sql:read');
+
+    const [first, headErr] = await attempt(() => readPeekRows(db, dialect, { ...base, direction: 'asc' }));
+
+    if (headErr) {
+
+        observer.emit('error', { source: 'explore', error: headErr });
+        throw headErr;
+
+    }
+
+    // A short page is the whole table, whether or not it has a key: there is
+    // nothing left for a tail query to find.
+    if (first.length < limit) {
+
+        return { mode: 'whole', columns, keyColumns, first, last: [] };
+
+    }
+
+    if (keyColumns.length === 0) {
+
+        return { mode: 'head', columns, keyColumns, first, last: [] };
+
+    }
+
+    const [tail, tailErr] = await attempt(() => readPeekRows(db, dialect, { ...base, direction: 'desc' }));
+
+    if (tailErr) {
+
+        observer.emit('error', { source: 'explore', error: tailErr });
+        throw tailErr;
+
+    }
+
+    const last = [...tail].reverse();
+    const headKeys = new Set(first.map((row) => keyOf(row, keyColumns)));
+    const beyondHead = last.filter((row) => !headKeys.has(keyOf(row, keyColumns)));
+
+    if (beyondHead.length === last.length) {
+
+        return { mode: 'ends', columns, keyColumns, first, last };
+
+    }
+
+    // The ends met. Both sets are already ascending and the overlap is what
+    // joins them, so appending the part the head did not cover reconstructs the
+    // table in order.
+    return { mode: 'whole', columns, keyColumns, first: [...first, ...beyondHead], last: [] };
 
 }
 

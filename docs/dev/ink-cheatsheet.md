@@ -3,13 +3,26 @@
 
 A reference for building CLI applications with Ink (React for the terminal).
 
-This page documents the upstream Ink API, not noorm's own TUI. Where the two diverge, noorm's rules win—see `.claude/rules/tui-development.md`. The divergences are called out inline below. Installed here: `ink@^6.8.0`, `react@^19.2.4`, `@inkjs/ui@^2.0.0`.
+This page documents the upstream Ink API, not noorm's own TUI. Where the two diverge, noorm's rules win—see `.claude/rules/tui-development.md`. The divergences are called out inline below. Installed here: `ink@^7.1.1`, `react@^19.2.4`, `@inkjs/ui@^2.0.0`.
+
+The body describes Ink 7.1.1 (released 2026-07-16), which is the installed version. Everything here is available to you. Two markers record *when* a thing arrived, which is what you need when reading noorm code written against Ink 6:
+
+| Marker | Meaning |
+|--------|---------|
+| **[Ink 7]** | Arrived in Ink 7.x. Ink 6.8.0 had no such export. |
+| **[Changed in 7]** | Existed in Ink 6.8.0 as well, but behaved differently there. See [Migrating from Ink 6 to Ink 7](#migrating-from-ink-6-to-ink-7). |
+
+Find every one of them with `rg '\[Ink 7\]|\[Changed in 7\]' docs/dev/ink-cheatsheet.md`.
+
+noorm went from 6.8.0 to 7.1.1 with no peer bumps. Ink 7 requires Node >=22 and React >=19.2; `engines.node >= 22.13` and `react@^19.2.4` already met both. [Migrating from Ink 6 to Ink 7](#migrating-from-ink-6-to-ink-7) walks each breaking change and what it cost here.
 
 
 ## Table of Contents
 
 
 - [Installation](#installation)
+- [What Ink 7 Changes for noorm](#what-ink-7-changes-for-noorm)
+- [Migrating from Ink 6 to Ink 7](#migrating-from-ink-6-to-ink-7)
 - [Core Concepts](#core-concepts)
 - [Components](#components)
 - [Hooks](#hooks)
@@ -36,6 +49,224 @@ bun add @inkjs/ui
 ```
 
 This repo is Bun-managed (`bun.lockb`, `bunfig.toml`, `engines.bun >= 1.2`). Running `npm install` here creates a conflicting lockfile.
+
+
+## What Ink 7 Changes for noorm
+
+
+The upgrade closed two live bugs. Three more Ink 7 capabilities cover things this codebase still hand-rolls or lives without.
+
+Fixed by the upgrade:
+
+| noorm bug | What fixed it | Where |
+|-----------|---------------|-------|
+| Terminal resize never re-rendered | `useStdout` replaced by [`useWindowSize`](#usewindowsize) | `src/tui/screens/db/SqlTerminalScreen.tsx:51,55-63`<br>`src/tui/screens/config/ConfigEditScreen.tsx:49,262` |
+| Filter-mode Backspace did nothing | The version bump alone; the existing guard became correct | `src/tui/components/terminal/ResultTable.tsx:471` |
+
+Still open:
+
+| noorm problem | Where it lives today | Ink 7 answer |
+|---------------|----------------------|--------------|
+| Multi-line paste submits a partial query | `src/tui/components/terminal/SqlInput.tsx:78,139-157` | [`usePaste`](#usepaste) |
+| Exiting the TUI leaves its frames in scrollback | `src/cli/ui.ts:45`<br>`src/cli/sql/repl.ts:108` | [`alternateScreen`](#render-options) |
+| Chrome heights are hand-counted constants | `src/tui/screens/db/SqlTerminalScreen.tsx:57`<br>`src/tui/screens/config/ConfigEditScreen.tsx:262` | [`useBoxMetrics`](#useboxmetrics), [`measureElement`](#measureelement) |
+
+
+### Resize is reactive now
+
+Both screens used to read the stream from `useStdout()` and size themselves from `stdout.rows`:
+
+```tsx
+const { stdout } = useStdout();
+
+const maxResultRows = useMemo(() => {
+
+    const terminalHeight = stdout.rows ?? 24;
+    // ... arithmetic
+
+}, [stdout.rows]);
+```
+
+Node updates `stdout.rows` when the terminal resizes, but nothing asks React to re-render. A dependency array is compared only during a render pass, so with no render there is no comparison, and `maxResultRows` held its stale value until some unrelated state change happened to re-render the screen. `ConfigEditScreen` had the same defect in a different shape: it read `stdout.rows` in the render body, which does pick up a new value on any render, but a resize by itself still produced no render.
+
+`useWindowSize()` subscribes to the resize event and re-renders the component, so the value is current by construction. `src/tui/screens/db/SqlTerminalScreen.tsx:51,55-63`:
+
+```tsx
+const { rows: terminalHeight } = useWindowSize();     // [Ink 7]
+
+const maxResultRows = useMemo(() => {
+
+    const uiChrome = 9;
+    const availableHeight = terminalHeight - uiChrome;
+    const maxRows = Math.floor(availableHeight * 0.75);
+
+    return Math.max(5, Math.min(maxRows, 30));
+
+}, [terminalHeight]);
+```
+
+`src/tui/screens/config/ConfigEditScreen.tsx:49,262` does the same for `formHeight`. Its hook has to stay above the screen's early returns, because those returns run before the config finishes loading and a hook called after them changes the hook count between renders.
+
+The `?? 24` fallback both sites carried is gone: `useWindowSize` returns `columns` and `rows` as plain numbers, falling back to the `terminal-size` probe and then to 80x24 when the stream reports nothing.
+
+
+### Pasted SQL submits before it is complete
+
+Nothing in `src/` enables bracketed paste, and `src/tui/components/terminal/SqlInput.tsx:78` reads keys through `useInput`. Without bracketed paste the terminal gives Ink no way to distinguish pasted text from typed text, so a newline inside a paste is indistinguishable from pressing Enter. `SqlInput.tsx:139-157` routes Enter like this:
+
+```tsx
+if (key.return) {
+
+    if (key.shift || editMode) { /* insert a newline */ }
+    else if (value.trim()) { onSubmit(value); }
+
+    return;
+
+}
+```
+
+Outside edit mode, the first newline in a pasted multi-line statement calls `onSubmit(value)` with only the first line.
+
+`usePaste` turns bracketed paste mode on while the hook is mounted and delivers the paste as one string. Ink routes paste and keypresses on separate channels, so pasted content never reaches the `useInput` handler while `usePaste` is active:
+
+```tsx
+usePaste((text) => {                  // [Ink 7]
+
+    const before = value.slice(0, cursor);
+    const after = value.slice(cursor);
+
+    updateValue(before + text + after, cursor + text.length);
+
+});
+```
+
+
+### The TUI has no alternate screen
+
+Both entry points render onto the primary screen: `src/cli/ui.ts:45` and `src/cli/sql/repl.ts:108`, each with `{ exitOnCtrlC: false, patchConsole: true }`. On `app:exit` they call `clear()` then `unmount()`, which erases the last frame but leaves earlier output in the user's scrollback.
+
+`alternateScreen: true` renders into the terminal's alternate buffer, the mechanism vim and less use, and restores the previous terminal contents on exit.
+
+```tsx
+render(<App />, {
+    exitOnCtrlC: false,
+    patchConsole: true,
+    alternateScreen: true,            // [Ink 7]
+});
+```
+
+::: warning Two constraints before adopting it
+Scrollback is unavailable while the alternate screen is active, which is standard terminal behavior but changes how the log viewer overlay feels. Ink also treats alternate-screen teardown output as disposable: frames, hook writes, and `console.*` output produced after unmount begins are not replayed onto the restored screen. Anything the user must still see after exit has to be written after the Ink instance is gone.
+:::
+
+
+### Chrome heights are hand-counted
+
+Neither `measureElement` nor `useBoxMetrics` is used anywhere in `src/`. Both height budgets are maintained by hand and drift whenever the chrome changes:
+
+- `SqlTerminalScreen.tsx:57` — `const uiChrome = 9;`, with a comment enumerating header (2), panel border (2), status bar (1), separator (1), footer (2), help (1).
+- `ConfigEditScreen.tsx:262` — `Math.max(terminalHeight - 6, 10)`, reserving panel border (2), title (2), padding (2).
+
+`useBoxMetrics(ref)` reports a real box's measured `width`, `height`, `left`, and `top`, and re-reports on layout change, so the number comes from the rendered tree instead of a comment. Ink 7.1.1's `measureElement` also returns `x` and `y` now, not just `width` and `height`.
+
+
+### Filter-mode Backspace works now
+
+`src/tui/components/terminal/ResultTable.tsx:471` checks only `key.backspace`:
+
+```tsx
+if (key.backspace) {
+
+    setFilter((f) => ({ ...f, term: f.term.slice(0, -1) }));
+
+    return;
+
+}
+```
+
+Most terminals send byte `0x7F` for the Backspace key. Ink 6.8.0 reported that as `key.delete`, so this branch never fired and the filter term could not be edited. Ink 7 reports it as `key.backspace`, so the bump alone made the existing code correct — no edit to this file. `tests/cli/components/terminal.test.tsx` pins the behavior: it fails on 6.8.0 and passes on 7.1.1.
+
+The other two Backspace handlers, `SqlInput.tsx:172` and `LogViewerOverlay.tsx:197`, check `key.backspace || key.delete`. That was required on 6.8.0 and is now merely harmless: it makes the real Delete key erase backwards too. New code should test `key.backspace` alone.
+
+
+## Migrating from Ink 6 to Ink 7
+
+
+Ink 7.0.0 has four breaking changes. All four cost noorm nothing; this is the record of why.
+
+| Change | Outcome here |
+|--------|--------------|
+| Requires Node >=22 | Already met — `engines.node >= 22.13` |
+| Requires React >=19.2 (Ink uses `useEffectEvent` internally) | Already met — `react@^19.2.4`, `@types/react@^19.2.14` |
+| Backspace sets `key.backspace`, not `key.delete` | One site fixed itself (`ResultTable.tsx:471`), two were already safe |
+| `key.meta` is no longer `true` on plain Escape | No effect — see below |
+
+
+### `key.backspace` vs `key.delete`
+
+Most terminals send the same byte for Backspace as for Delete, and Ink 6 misreported it. Ink 7 separates them.
+
+```tsx
+// Before (Ink 6) — the physical Backspace key arrived as key.delete
+useInput((input, key) => {
+    if (key.delete) { /* fired for physical Backspace */ }
+});
+
+// After (Ink 7)
+useInput((input, key) => {
+    if (key.backspace) { /* physical Backspace (0x7F) */ }
+    if (key.delete)    { /* the real Delete key, e.g. Fn+Backspace */ }
+});
+```
+
+`SqlInput.tsx:172` and `LogViewerOverlay.tsx:197` check both flags, which is why they survived the upgrade untouched. Now that 7.1.1 is the installed version, new code should test `key.backspace` for Backspace and leave `key.delete` to the Delete key.
+
+
+### `key.meta` on plain Escape
+
+Ink 6 set `key.meta` to `true` for a plain Escape as well as for Alt/Meta combinations. Ink 7 reserves `key.meta` for actual modifier combinations.
+
+```tsx
+// Before (Ink 6) — key.meta was true for Escape AND for Alt+key
+useInput((input, key) => {
+    if (key.meta) { /* also fired on plain Escape */ }
+});
+
+// After (Ink 7) — test key.escape for Escape
+useInput((input, key) => {
+    if (key.escape) { /* plain Escape */ }
+    if (key.meta)   { /* Alt/Meta combinations only */ }
+});
+```
+
+noorm has two `!key.meta` guards on character input, `ResultTable.tsx:480` and `LogViewerOverlay.tsx:208`, both testing `input && !key.ctrl && !key.meta`. Neither depends on the old behavior: Ink strips the leading escape byte before it reaches the handler, so a plain Escape arrives with `input` empty and the `input &&` test already rejects it. The `!key.meta` clause keeps doing its intended job of filtering Alt combinations.
+
+
+### One change the release notes omit
+
+Ink 6.8.0's `textWrap` type accepted two values the 6.8.0 readme never documented: `wrap="end"` and `wrap="middle"`. Neither did anything. Ink 6's `wrapText` matches only the `wrap` branch and values starting with `truncate`, so both fell through and returned the text unmodified. Running 6.8.0's `wrapText('hello world', 5, mode)` gives `"hello world"` for `end` and `middle`, against `"hell…"` for `truncate-end`.
+
+Ink 7.0.0 removed both from the type. The release notes do not mention it.
+
+If you find one in a codebase, deleting the prop preserves what the screen renders today. Rewriting it to `truncate-end` or `truncate-middle` does not: it replaces a no-op with real truncation. noorm has neither, using only `wrap="wrap"` and `wrap="truncate"`.
+
+
+### Fixes carried by the 7.0.x and 7.1.x line
+
+Upgrading picks these up along with the new API.
+
+| Version | Fix | Bearing on noorm |
+|---------|-----|------------------|
+| 7.0.0 | Wide characters (emoji, CJK) no longer split on overlapping writes; CJK text no longer truncates past `<Box>` width | Result grids render arbitrary column data, so this is the highest-value fix here |
+| 7.0.0 | `useInput` no longer crashes on unmapped key codes | Every screen registers a `useInput` handler |
+| 7.0.0 | Incremental rendering handles a trailing newline | Only with `incrementalRendering: true`, which noorm does not set |
+| 7.0.1 | `disableFocus()` is respected when handling Escape; `useApp` exit typing restored | Ink's own focus registry, which noorm does not use |
+| 7.0.2 | Raw-mode disable is deferred, preventing a process hang on component swap | Both entry points unmount and then `process.exit(0)` |
+| 7.0.0, 7.0.3, 7.1.1 | Four `<Static>` correctness fixes | None. `<Static>` is unused in `src/` |
+| 7.0.3 | `useBoxMetrics` accepts refs whose initial value is `null` | Applies to the standard `useRef(null)` form |
+| 7.0.4 | One shared resize listener via `emitLayoutListeners` instead of one per hook | Matters once `useWindowSize` is used on several screens |
+| 7.0.5 | Incomplete stack frames handled in the error overview | Error display only |
+| 7.0.6 | Stale frames on Windows when output exactly fills the terminal | Windows only |
 
 
 ## Core Concepts
@@ -72,6 +303,41 @@ instance.clear();                // Clear the output
 instance.rerender(<NewApp />);   // Re-render with new component
 await instance.waitUntilExit();  // Wait for app to exit
 ```
+
+The second argument may also be a plain `WriteStream` instead of an options object.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `stdout` | `WriteStream` | `process.stdout` | Output stream |
+| `stdin` | `ReadStream` | `process.stdin` | Input stream |
+| `stderr` | `WriteStream` | `process.stderr` | Error stream |
+| `exitOnCtrlC` | `boolean` | `true` | Listen for Ctrl+C and exit |
+| `patchConsole` | `boolean` | `true` | Keep `console.*` output from mixing into Ink's |
+| `debug` | `boolean` | `false` | Write each update as separate output instead of replacing |
+| `maxFps` | `number` | `30` | Ceiling on render updates per second |
+| `incrementalRendering` | `boolean` | `false` | Redraw only changed lines |
+| `concurrent` | `boolean` | `false` | React concurrent mode: Suspense, `useTransition`, `useDeferredValue` |
+| `onRender` | `(metrics) => void` | — | Runs after each committed frame with `{ renderTime }` |
+| `isScreenReaderEnabled` | `boolean` | `INK_SCREEN_READER === 'true'` | Screen reader support |
+| `kittyKeyboard` | `KittyKeyboardOptions` | — | Kitty protocol config: `{ mode, flags }` |
+| `interactive` | `boolean` | auto | **[Ink 7]** Override interactive-mode detection |
+| `alternateScreen` | `boolean` | `false` | **[Ink 7]** Render into the terminal's alternate screen buffer |
+
+`interactive` defaults to `true`, or `false` when running in CI or when `stdout.isTTY` is falsy. Non-interactive mode disables ANSI erase sequences, cursor manipulation, synchronized output, resize handling, and Kitty auto-detection, writing only the final frame at unmount. `alternateScreen` is ignored whenever the session is non-interactive.
+
+Reusing one `stdout` across several `render()` calls without unmounting is unsupported. Call `unmount()` first, or use `cleanup()`.
+
+
+#### Instance Methods
+
+| Method | Description |
+|--------|-------------|
+| `rerender(node)` | Replace the root node or update its props |
+| `unmount()` | Unmount the app |
+| `clear()` | Clear the output |
+| `waitUntilExit()` | Promise settling when the app unmounts; resolves with the value passed to `exit(value)`, rejects with the error passed to `exit(error)` |
+| `waitUntilRenderFlush()` | **[Ink 7]** Promise settling once pending output is flushed to stdout |
+| `cleanup()` | **[Changed in 7]** Drop the internal instance for this stdout so the next `render()` builds a fresh one. Ink 7 also unmounts the current app first, leaving no terminal state such as the alternate screen behind; 6.8.0 only removes the registry entry and never unmounts |
 
 
 ### Exit Programmatically
@@ -132,17 +398,27 @@ Layout props only. `borderStyle`, `borderColor`, the individual `borderTop`/`bor
 | `flexDirection` | `row` \| `column` \| `row-reverse` \| `column-reverse` | Direction of flex items |
 | `flexGrow` | `number` | Grow factor |
 | `flexShrink` | `number` | Shrink factor |
+| `flexBasis` | `number` \| `string` | Initial size before free space is distributed |
 | `flexWrap` | `wrap` \| `nowrap` \| `wrap-reverse` | Wrap behavior |
-| `justifyContent` | `flex-start` \| `flex-end` \| `center` \| `space-between` \| `space-around` | Main axis alignment |
-| `alignItems` | `flex-start` \| `flex-end` \| `center` \| `stretch` | Cross axis alignment |
-| `alignSelf` | `flex-start` \| `flex-end` \| `center` \| `auto` | Self alignment |
+| `justifyContent` | `flex-start` \| `flex-end` \| `center` \| `space-between` \| `space-around` \| `space-evenly` | Main axis alignment |
+| `alignItems` | `flex-start` \| `flex-end` \| `center` \| `stretch` \| `baseline` | Cross axis alignment. `baseline` is **[Ink 7]** |
+| `alignSelf` | `flex-start` \| `flex-end` \| `center` \| `auto` \| `stretch` \| `baseline` | Self alignment. `stretch` and `baseline` are **[Ink 7]** |
+| `alignContent` | `flex-start` \| `flex-end` \| `center` \| `stretch` \| `space-between` \| `space-around` \| `space-evenly` | **[Ink 7]** Cross axis alignment across wrapped lines |
 | `gap` | `number` | Gap between children |
 | `rowGap` | `number` | Gap between rows |
 | `columnGap` | `number` | Gap between columns |
 | `width` | `number` \| `string` | Width (number or percentage) |
 | `height` | `number` \| `string` | Height (number or percentage) |
-| `minWidth` | `number` | Minimum width |
-| `minHeight` | `number` | Minimum height |
+| `minWidth` | `number` \| `string` | Minimum width. Percentages unsupported |
+| `minHeight` | `number` \| `string` | Minimum height (rows or percentage) |
+| `maxWidth` | `number` \| `string` | **[Ink 7]** Maximum width. Percentages unsupported |
+| `maxHeight` | `number` \| `string` | **[Ink 7]** Maximum height (rows or percentage) |
+| `aspectRatio` | `number` | **[Ink 7]** Width/height ratio. Needs at least one size constraint so Ink can derive the other dimension |
+| `position` | `relative` \| `absolute` \| `static` | Positioning mode, default `relative`. `static` is **[Ink 7]** and ignores the offsets below |
+| `top` / `right` / `bottom` / `left` | `number` \| `string` | **[Ink 7]** Offsets for positioned elements |
+| `display` | `flex` \| `none` | `none` hides the element |
+| `overflow` | `visible` \| `hidden` | Overflow in both directions, default `visible` |
+| `overflowX` / `overflowY` | `visible` \| `hidden` | Overflow per axis |
 | `padding` | `number` | Padding all sides |
 | `paddingX` | `number` | Horizontal padding |
 | `paddingY` | `number` | Vertical padding |
@@ -194,7 +470,26 @@ Layout props only. `borderStyle`, `borderColor`, the individual `borderTop`/`bor
 }}>
     <Text>Custom</Text>
 </Box>
+
+// Border background, independent of the box background
+<Box borderStyle="round" borderColor="white" borderBackgroundColor="blue">
+    <Text>Border painted on blue</Text>
+</Box>
 ```
+
+
+#### Border Props Reference
+
+| Prop | Type | Description |
+|------|------|-------------|
+| `borderStyle` | `keyof Boxes` \| `BoxStyle` | Named style or a custom character set. No border when unset |
+| `borderTop` / `borderBottom` / `borderLeft` / `borderRight` | `boolean` | Per-side visibility, each defaulting to `true` |
+| `borderColor` | `string` | Shorthand for all four per-side colors |
+| `borderTopColor` / `borderBottomColor` / `borderLeftColor` / `borderRightColor` | `string` | Per-side color |
+| `borderDimColor` | `boolean` | Shorthand for all four per-side dim flags, default `false` |
+| `borderTopDimColor` / `borderBottomDimColor` / `borderLeftDimColor` / `borderRightDimColor` | `boolean` | Per-side dim |
+| `borderBackgroundColor` | `string` | **[Ink 7]** Shorthand for all four per-side border backgrounds |
+| `borderTopBackgroundColor` / `borderBottomBackgroundColor` / `borderLeftBackgroundColor` / `borderRightBackgroundColor` | `string` | **[Ink 7]** Per-side border background |
 
 
 #### Background Colors
@@ -234,8 +529,12 @@ import { Text } from "ink";
 
 // Text wrapping
 <Text wrap="truncate">Long text will be truncated...</Text>
+<Text wrap="truncate-start">Truncates at the start...</Text>
 <Text wrap="truncate-middle">Truncates in the middle...</Text>
 <Text wrap="truncate-end">Truncates at the end...</Text>
+
+// [Ink 7] Fill every line to the full column width, breaking words as needed
+<Text wrap="hard">Long text broken mid-word to fill each line...</Text>
 ```
 
 
@@ -251,7 +550,11 @@ import { Text } from "ink";
 | `strikethrough` | `boolean` | Strikethrough text |
 | `dimColor` | `boolean` | Dimmed color |
 | `inverse` | `boolean` | Inverse colors |
-| `wrap` | `wrap` \| `truncate` \| `truncate-middle` \| `truncate-end` | Wrap behavior |
+| `wrap` | `wrap` \| `hard` \| `truncate` \| `truncate-start` \| `truncate-middle` \| `truncate-end` | Wrap behavior, default `wrap`. `hard` is **[Ink 7]** |
+
+::: warning Two dead wrap values were removed in Ink 7
+Ink 6.8.0's type accepted `wrap="end"` and `wrap="middle"`, both undocumented and both no-ops that returned the text unchanged. Ink 7.0.0 dropped them from the type. Delete the prop to keep current rendering; swapping in `truncate-end` or `truncate-middle` starts truncating text that was never truncated before. See [One change the release notes omit](#one-change-the-release-notes-omit). noorm uses neither.
+:::
 
 
 ### Newline
@@ -381,7 +684,8 @@ function App() {
         }
 
         if (key.meta) {
-            // Alt/Option key held
+            // [Changed in 7] Alt/Option combinations only.
+            // Ink 6 also set this to true on a plain Escape.
         }
 
         if (key.shift) {
@@ -389,14 +693,20 @@ function App() {
         }
 
         // Other special keys
-        if (key.backspace) { }
-        if (key.delete) { }
+        if (key.backspace) { } // [Changed in 7] the physical Backspace key (0x7F)
+        if (key.delete) { }    // [Changed in 7] the real Delete key, e.g. Fn+Backspace
         if (key.tab) { }
         if (key.pageUp) { }
         if (key.pageDown) { }
+        if (key.home) { }
+        if (key.end) { }
     });
 }
 ```
+
+::: warning Backspace and Escape changed in Ink 7
+On Ink 6.8.0 the Backspace key sets `key.delete`, and a plain Escape sets both `key.escape` and `key.meta`. Both are fixed in Ink 7. Checking `key.backspace || key.delete` works on either version. See [Migrating from Ink 6 to Ink 7](#migrating-from-ink-6-to-ink-7).
+:::
 
 
 #### Key Object Reference
@@ -411,12 +721,23 @@ function App() {
 | `escape` | `boolean` | Escape pressed |
 | `ctrl` | `boolean` | Ctrl held |
 | `shift` | `boolean` | Shift held |
-| `meta` | `boolean` | Alt/Option held |
+| `meta` | `boolean` | Alt/Option held. **[Changed in 7]** no longer `true` on a plain Escape |
 | `tab` | `boolean` | Tab pressed |
-| `backspace` | `boolean` | Backspace pressed |
-| `delete` | `boolean` | Delete pressed |
+| `backspace` | `boolean` | Backspace pressed. **[Changed in 7]** Ink 6 reported this key as `delete` |
+| `delete` | `boolean` | Delete pressed. **[Changed in 7]** now the real Delete key only |
 | `pageUp` | `boolean` | Page Up pressed |
 | `pageDown` | `boolean` | Page Down pressed |
+| `home` | `boolean` | Home pressed |
+| `end` | `boolean` | End pressed |
+| `super` | `boolean` | Cmd/Win held. Kitty protocol only |
+| `hyper` | `boolean` | Hyper held. Kitty protocol only |
+| `capsLock` | `boolean` | Caps Lock active. Kitty protocol only |
+| `numLock` | `boolean` | Num Lock active. Kitty protocol only |
+| `eventType` | `'press' \| 'repeat' \| 'release'` | Key event type. Kitty protocol only |
+
+::: tip Kitty protocol detection widened in Ink 7
+**[Changed in 7]** In `auto` mode Ink now queries every terminal for Kitty keyboard protocol support instead of consulting a hardcoded allowlist, so the `super`, `hyper`, `capsLock`, `numLock`, and `eventType` fields populate in more terminals than they did on 6.8.0. Configure it with the `kittyKeyboard` render option.
+:::
 
 
 #### Conditional Input
@@ -428,6 +749,23 @@ useInput(
     { isActive: isFocused }
 );
 ```
+
+::: danger noorm guards inside the handler instead
+The "Focus System" section of `.claude/rules/tui-development.md` requires the opposite of the upstream pattern above. In `src/tui/`, check `isFocused` inside the handler body, not through the `isActive` option:
+
+```tsx
+const { isFocused } = useFocusScope('my-component');
+
+useInput((input, key) => {
+
+    if (!isFocused) return;
+    // handle input
+
+});
+```
+
+`isActive: false` prevents the handler from registering at all, and `isFocused` is false on the first render because noorm's focus stack initializes in a `useEffect`. Registering unconditionally and returning early is what keeps the component reachable. Ink 7 does not change this; the divergence stands.
+:::
 
 
 ### useFocus
@@ -477,6 +815,7 @@ function App() {
         focus,          // Focus specific ID
         enableFocus,    // Enable focus system
         disableFocus,   // Disable focus system
+        activeId,       // [Ink 7] ID of the focused component, or undefined
     } = useFocusManager();
 
     useInput((input, key) => {
@@ -507,6 +846,37 @@ function App() {
     const handleError = () => exit(new Error("Failed"));
 }
 ```
+
+`exit(value)` resolves `waitUntilExit()` with `value`; `exit(error)` rejects it.
+
+Ink 7 adds two more members to the same object.
+
+```tsx
+const { exit, waitUntilRenderFlush, suspendTerminal } = useApp();
+
+// [Ink 7] Wait for the pending frame to reach stdout
+await waitUntilRenderFlush();
+```
+
+
+#### suspendTerminal
+
+**[Ink 7]** Added in 7.1.0. Hands the terminal to a child process such as `$EDITOR`, `less`, or `fzf`, then restores Ink's terminal state and forces a full redraw. The callback form restores the terminal even when the callback throws.
+
+```tsx
+const { suspendTerminal } = useApp();
+
+// Callback form - preferred
+await suspendTerminal(async () => {
+    await runEditor();
+});
+
+// Handle form - resume yourself, or let `await using` do it on scope exit
+await using suspension = await suspendTerminal();
+await runEditor();
+```
+
+Called without a callback it returns a `TerminalSuspension`: `{ resume(), [Symbol.asyncDispose]() }`.
 
 
 ### useStdin
@@ -544,6 +914,12 @@ function App() {
 }
 ```
 
+::: danger `stdout.rows` does not trigger re-renders
+Node mutates `stdout.rows` and `stdout.columns` when the terminal resizes, but that mutation asks React for nothing. A component sized from `stdout.rows` keeps its old layout until an unrelated state change re-renders it, and a `[stdout.rows]` dependency array is never even compared in the meantime.
+
+Use [`useWindowSize`](#usewindowsize) **[Ink 7]** for dimensions. Reserve `useStdout` for `write()`. The two noorm screens that had this bug were converted on the 7.1.1 upgrade: see [Resize is reactive now](#resize-is-reactive-now).
+:::
+
 
 ### useStderr
 
@@ -560,6 +936,114 @@ function App() {
 ```
 
 
+### usePaste
+
+**[Ink 7]** Handle clipboard pastes as a single string.
+
+```tsx
+import { useInput, usePaste } from "ink";
+
+function Editor() {
+    useInput((input, key) => {
+        // Typed characters and key events only, never pasted text
+        if (key.return) { /* submit */ }
+    });
+
+    usePaste((text) => {
+        // The whole pasted string, newlines included
+        insert(text);
+    });
+}
+
+// Disable when another component should own pastes
+usePaste(handler, { isActive: isFocused });
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `handler` | `(text: string) => void` | Called once per paste with the full string |
+| `options.isActive` | `boolean` | Enable or disable the handler, default `true` |
+
+While the hook is mounted, Ink turns on bracketed paste mode (`\x1b[?2004h`), so the terminal frames pasted text and Ink stops guessing. `usePaste` and `useInput` compose in the same component because they run on separate channels: with `usePaste` active, paste content never reaches `useInput`.
+
+
+### useWindowSize
+
+**[Ink 7]** Terminal dimensions that re-render on resize.
+
+```tsx
+import { useWindowSize, Box, Text } from "ink";
+
+function App() {
+    const { columns, rows } = useWindowSize();
+
+    return (
+        <Box width={columns}>
+            <Text>{columns}x{rows}</Text>
+        </Box>
+    );
+}
+```
+
+Returns `{ columns, rows }` and re-renders the component whenever the terminal resizes. This is the correct source for terminal dimensions; `useStdout().stdout.rows` is not reactive.
+
+
+### useBoxMetrics
+
+**[Ink 7]** Track a box's measured layout, updating as the layout changes.
+
+```tsx
+import { useRef } from "react";
+import { Box, Text, useBoxMetrics } from "ink";
+
+function Example() {
+    const ref = useRef(null);
+    const { width, height, left, top, hasMeasured } = useBoxMetrics(ref);
+
+    return (
+        <Box ref={ref}>
+            <Text>
+                {hasMeasured ? `${width}x${height} at ${left},${top}` : "Measuring..."}
+            </Text>
+        </Box>
+    );
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `width` / `height` | `number` | Measured size |
+| `left` / `top` | `number` | Offset from the parent's edges |
+| `hasMeasured` | `boolean` | Whether the tracked element was measured in the latest layout pass |
+
+Positions are relative to the parent. The hook returns zeros before the first layout pass and whenever the ref is detached, which is what `hasMeasured` distinguishes from a genuine zero. It re-runs on terminal resize, sibling and content changes, and position changes, so unlike [`measureElement`](#measureelement) it needs no effect to stay current.
+
+
+### useAnimation
+
+**[Ink 7]** Drive frame-based animation without your own timer.
+
+```tsx
+import { Text, useAnimation } from "ink";
+
+function Spinner() {
+    const { frame } = useAnimation({ interval: 80 });
+    const characters = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+
+    return <Text>{characters[frame % characters.length]}</Text>;
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `frame` | `number` | Counter incrementing by 1 each interval. Use for indexed sequences |
+| `time` | `number` | Milliseconds since the animation started or last reset. Use for continuous math |
+| `delta` | `number` | Milliseconds since the previous rendered tick, accounting for throttled renders. Use for velocity-driven motion |
+| `reset` | `() => void` | Reset `frame`, `time`, and `delta` to `0` and restart timing |
+
+Options are `interval` (default `100` ms) and `isActive` (default `true`). Setting `isActive` back to `true` after pausing resets all values to `0`. Every `useAnimation` in the tree shares one internal timer, so several animated components collapse into a single render cycle.
+
+
 ### measureElement
 
 Measure rendered element dimensions.
@@ -574,7 +1058,8 @@ function App() {
 
     useEffect(() => {
         if (ref.current) {
-            const { width, height } = measureElement(ref.current);
+            // [Changed in 7] 7.1.1 also returns x and y
+            const { x, y, width, height } = measureElement(ref.current);
             setDimensions({ width, height });
         }
     }, []);
@@ -586,6 +1071,15 @@ function App() {
     );
 }
 ```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `width` / `height` | `number` | Measured size |
+| `x` / `y` | `number` | **[Ink 7]** 0-based column and row within the live layout region, added in 7.1.1 |
+
+`x` and `y` are layout-tree coordinates, accumulated by walking up each ancestor's offset. They are not terminal viewport coordinates, so comparing them against mouse events means converting through the live region's viewport position. That holds in alternate-screen mode too, whenever output such as `<Static>` content sits above the live region.
+
+`measureElement` returns zeros when called during render, before layout runs. Call it from `useEffect`, `useLayoutEffect`, an input handler, or a timer, and pass the changing content as a dependency so it re-measures. [`useBoxMetrics`](#useboxmetrics) does that bookkeeping for you.
 
 
 ## Ink UI Components
@@ -1384,11 +1878,13 @@ useEffect(() => {
 
 ### Focus Management
 
-Only one component should handle input at a time. Use `isActive` option:
+Only one component should handle input at a time. Upstream does that with the `isActive` option:
 
 ```tsx
 useInput(handler, { isActive: isFocused });
 ```
+
+In noorm, guard inside the handler instead. See [Conditional Input](#conditional-input).
 
 
 ### Testing

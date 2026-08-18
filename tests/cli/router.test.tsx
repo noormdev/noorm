@@ -30,6 +30,25 @@ function RouteDisplay() {
 /**
  * Test component that performs navigation on mount.
  */
+/**
+ * Poll until the predicate holds instead of sleeping a guessed duration.
+ *
+ * The first render in this file pays React and Ink's cold-start cost after the
+ * rest of the suite has run, which overran the old fixed 50ms budget and made
+ * whichever test ran first here fail on load rather than on behavior.
+ */
+async function waitFor(predicate: () => boolean, timeoutMs = 3000): Promise<void> {
+
+    const deadline = Date.now() + timeoutMs;
+
+    while (!predicate() && Date.now() < deadline) {
+
+        await new Promise((r) => setTimeout(r, 5));
+
+    }
+
+}
+
 function NavigateOnMount({ to, params }: { to: Route; params?: Record<string, unknown> }) {
 
     const { navigate } = useRouter();
@@ -166,9 +185,12 @@ describe('cli: router', () => {
 
             });
 
-            // In React 19, errors during render are caught and logged
-            const { lastFrame } = render(<RouteDisplay />);
-            const output = lastFrame() ?? '';
+            // In React 19, errors during render are caught and logged.
+            // Ink 7 paints its error overview and then writes a cleared frame
+            // as it unmounts, so the message is in `frames` but never in
+            // `lastFrame()`. Search every frame.
+            const { frames } = render(<RouteDisplay />);
+            const output = frames.join('');
 
             // Error may appear in rendered output or in console.error
             const hasErrorInOutput = output.includes('useRouter must be used within a RouterProvider');
@@ -192,8 +214,7 @@ describe('cli: router', () => {
                 </RouterProvider>,
             );
 
-            // Wait for effect
-            await new Promise((resolve) => setTimeout(resolve, 50));
+            await waitFor(() => lastFrame()?.includes('route:config') ?? false);
 
             expect(lastFrame()).toContain('route:config');
 
@@ -207,7 +228,7 @@ describe('cli: router', () => {
                 </RouterProvider>,
             );
 
-            await new Promise((resolve) => setTimeout(resolve, 50));
+            await waitFor(() => lastFrame()?.includes('canGoBack:true') ?? false);
 
             expect(lastFrame()).toContain('canGoBack:true');
             // History may have multiple entries due to React strict mode rerenders
@@ -226,7 +247,7 @@ describe('cli: router', () => {
                 </RouterProvider>,
             );
 
-            await new Promise((resolve) => setTimeout(resolve, 50));
+            await waitFor(() => lastFrame()?.includes('route:config/edit') ?? false);
 
             expect(lastFrame()).toContain('route:config/edit');
             expect(lastFrame()).toContain('"name":"dev"');
@@ -306,7 +327,7 @@ describe('cli: router', () => {
                 </RouterProvider>,
             );
 
-            await new Promise((resolve) => setTimeout(resolve, 50));
+            await waitFor(() => lastFrame()?.includes('route:config') ?? false);
 
             expect(lastFrame()).toContain('route:config');
             expect(lastFrame()).toContain('canGoBack:false');
@@ -323,8 +344,7 @@ describe('cli: router', () => {
                 </RouterProvider>,
             );
 
-            // Longer wait for CI environments where React effects may be slower
-            await new Promise((resolve) => setTimeout(resolve, 50));
+            await waitFor(() => lastFrame()?.includes('route:config/edit') ?? false);
 
             expect(lastFrame()).toContain('route:config/edit');
             expect(lastFrame()).toContain('"name":"staging"');

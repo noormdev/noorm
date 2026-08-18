@@ -22,6 +22,7 @@ export type {
     StrictConfig,
     LoggingConfig,
     TeardownConfig,
+    UiConfig,
     Settings,
     RuleEvaluationResult,
     RulesEvaluationResult,
@@ -49,6 +50,7 @@ export type {
     PathConfigSchemaType,
     StrictConfigSchemaType,
     LoggingConfigSchemaType,
+    UiConfigSchemaType,
 } from './schema.js';
 
 // Defaults
@@ -58,9 +60,11 @@ export {
     DEFAULT_PATH_CONFIG,
     DEFAULT_STRICT_CONFIG,
     DEFAULT_LOGGING_CONFIG,
+    DEFAULT_UI_MOUSE,
     SETTINGS_FILE_PATH,
     SETTINGS_DIR_PATH,
     createDefaultSettings,
+    isMouseEnabled,
 } from './defaults.js';
 
 // Rule Evaluation

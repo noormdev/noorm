@@ -7,6 +7,7 @@
 import { z } from 'zod';
 
 import { PortSchema } from '../connection/defaults.js';
+import { DEFAULT_UI_MOUSE } from './defaults.js';
 
 // ─────────────────────────────────────────────────────────────
 // Base Schemas
@@ -168,6 +169,22 @@ export const TeardownConfigSchema = z.object({
     postScript: z.string().optional(),
 });
 
+// ─────────────────────────────────────────────────────────────
+// UI Config Schema
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Terminal UI behaviour.
+ *
+ * `mouse` takes `DEFAULT_UI_MOUSE` here as well as being optional on the
+ * section, so `ui: {}` in settings.yml means the same thing as no `ui` section
+ * at all. Absent-section behaviour is `isMouseEnabled`'s job, off the same
+ * constant.
+ */
+export const UiConfigSchema = z.object({
+    mouse: z.boolean().default(DEFAULT_UI_MOUSE),
+});
+
 // Main Settings Schema
 // ─────────────────────────────────────────────────────────────
 
@@ -183,6 +200,7 @@ export const SettingsSchema = z.object({
     logging: LoggingConfigSchema.optional(),
     secrets: z.array(StageSecretSchema).optional(),
     teardown: TeardownConfigSchema.optional(),
+    ui: UiConfigSchema.optional(),
 });
 
 // ─────────────────────────────────────────────────────────────
@@ -199,6 +217,7 @@ export type BuildConfigSchemaType = z.infer<typeof BuildConfigSchema>;
 export type PathConfigSchemaType = z.infer<typeof PathConfigSchema>;
 export type StrictConfigSchemaType = z.infer<typeof StrictConfigSchema>;
 export type LoggingConfigSchemaType = z.infer<typeof LoggingConfigSchema>;
+export type UiConfigSchemaType = z.infer<typeof UiConfigSchema>;
 
 // ─────────────────────────────────────────────────────────────
 // Validation Error

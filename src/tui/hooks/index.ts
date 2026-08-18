@@ -58,6 +58,16 @@ export {
 
 export { useAsyncEffect } from './useAsyncEffect.js';
 
+export { useAbortableTask, type AbortableTask } from './useAbortableTask.js';
+
+export {
+    useViewportRows,
+    viewportRows,
+    modeBannerRows,
+    SCREEN_CHROME_ROWS,
+    MIN_VIEWPORT_ROWS,
+} from './useViewportRows.js';
+
 export {
     useSettingsOperation,
     type UseSettingsOperationOptions,

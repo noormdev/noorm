@@ -26,7 +26,7 @@ import type { ScreenProps } from '../../types.js';
 import { useRouter } from '../../router.js';
 import { useSettings, useGlobalModes, useAppContext } from '../../app-context.js';
 import { Panel, Spinner, SelectList, type SelectListItem, Confirm, KeyHandler, useToast } from '../../components/index.js';
-import { useRunProgress, useAsyncEffect } from '../../hooks/index.js';
+import { useRunProgress, useAsyncEffect, modeBannerRows } from '../../hooks/index.js';
 import { discoverFiles, runFiles } from '../../../core/runner/index.js';
 import { getErrorMessage, resolveScreenIdentity, buildRunContext, withScreenConnection } from '../../utils/index.js';
 import { attempt } from '@logosdx/utils';
@@ -266,17 +266,15 @@ export function RunExecScreen({ params: _params }: ScreenProps): ReactElement {
                         <Text dimColor>
                             Space to toggle, Enter to confirm ({selectedFiles.size} selected)
                         </Text>
-                        <Box flexDirection="column" height={15}>
-                            <SelectList
-                                focusLabel="RunExecPicker"
-                                items={fileItems}
-                                multiSelect={true}
-                                onToggle={toggleFile}
-                                onSubmit={handleSubmit}
-                                onCancel={handleCancel}
-                                visibleCount={10}
-                            />
-                        </Box>
+                        <SelectList
+                            focusLabel="RunExecPicker"
+                            items={fileItems}
+                            multiSelect={true}
+                            onToggle={toggleFile}
+                            onSubmit={handleSubmit}
+                            onCancel={handleCancel}
+                            reserveRows={2 + modeBannerRows(globalModes)}
+                        />
                     </Box>
                 </Panel>
 

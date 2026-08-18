@@ -17,7 +17,7 @@
  */
 import { useState, useCallback, useRef } from 'react';
 import { Box, Text, useInput } from 'ink';
-import { TextInput } from '@inkjs/ui';
+import { TextInput } from '../forms/TextInput.js';
 
 import type { ReactElement } from 'react';
 

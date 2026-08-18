@@ -4,7 +4,19 @@
  * Shows full details for tables, views, procedures, functions, and types.
  * Displays columns, indexes, foreign keys, parameters, etc.
  *
+ * A detail view does not return a tree; it returns a flat list of rows, one
+ * element per visual line, and `ScrollView` draws the slice of that list the
+ * terminal has room for. Ink exposes no scroll offset, so the alternative was
+ * to window five nested section trees independently — five implementations of
+ * the same arithmetic, none of them assertable.
+ *
  * Keyboard shortcuts:
+ * - ↑/↓: Scroll one row
+ * - Ctrl+U/Ctrl+D: Scroll half a viewport
+ * - PageUp/PageDown (fn+↑/fn+↓ on a Mac), ⌘+↑/⌘+↓: Scroll one viewport
+ * - Home/End: Jump to either end
+ * - v: Open the full-text overlay, where nothing is truncated
+ * - p: Peek at the table's first and last rows (tables only)
  * - Esc: Go back
  *
  * @example
@@ -13,7 +25,7 @@
  * ```
  */
 import { useState } from 'react';
-import { Box, Text, useInput } from 'ink';
+import { Box, Text, useInput, useWindowSize } from 'ink';
 import { attempt } from '@logosdx/utils';
 
 import type { ReactElement } from 'react';
@@ -26,6 +38,24 @@ import { useAppContext } from '../../../app-context.js';
 import { Panel, Spinner } from '../../../components/index.js';
 import { useConnection, useAsyncEffect } from '../../../hooks/index.js';
 import { fetchDetail } from '../../../../core/explore/index.js';
+import {
+    CELL_GAP,
+    MARKER_WIDTH,
+    IDENTIFIER_CAP,
+    DATA_TYPE_CAP,
+    cellWidth,
+    detailFooterHints,
+    fitWidths,
+    rowBudget,
+    rowWindow,
+    scrollTarget,
+    viewportRows,
+    wrapText,
+} from './layout.js';
+import { FullTextOverlay } from './FullTextOverlay.js';
+import { RowPeekOverlay } from './RowPeekOverlay.js';
+
+import type { DetailOverlay, DetailRow } from './layout.js';
 
 import type { DetailCategory } from '../../../../core/explore/index.js';
 import type {
@@ -57,300 +87,649 @@ const ROUTE_TO_CATEGORY: Record<string, DetailCategory> = {
 type AnyDetail = TableDetail | ViewDetail | ProcedureDetail | FunctionDetail | TypeDetail;
 
 /**
- * Column list component.
+ * The trailing cell of a column row: nullability, then the default if there
+ * is one.
  */
-function ColumnList({ columns }: { columns: ColumnDetail[] }): ReactElement {
+function constraintText(col: ColumnDetail): string {
+
+    const nullability = col.isNullable ? 'NULL' : 'NOT NULL';
+
+    return col.defaultValue ? `${nullability} DEFAULT ${col.defaultValue}` : nullability;
+
+}
+
+/**
+ * The cells of a row as one string, spaced the way the row Box gaps them.
+ *
+ * This is the untruncated copy of the line. It is not padded to the cell widths,
+ * because padding is what the element does to keep the columns aligned and the
+ * overlay's whole job is to stop paying for that.
+ */
+function joinCells(cells: string[]): string {
+
+    return cells.join(' '.repeat(CELL_GAP));
+
+}
+
+/**
+ * A blank line between two sections.
+ *
+ * The sections used to be `gap={1}` on a column Box. A gap is invisible to the
+ * row count, so it becomes a row of its own here.
+ */
+function spacerRow(key: string): DetailRow {
+
+    return { text: '', element: <Box key={key} height={1} /> };
+
+}
+
+/**
+ * A section's underlined title.
+ */
+function headingRow(key: string, text: string): DetailRow {
+
+    return { text, element: <Text key={key} bold underline>{text}</Text> };
+
+}
+
+/**
+ * One row per column.
+ *
+ * Cell widths come from the longest entry in this table, not from a guess, so
+ * the type and constraint columns land on one offset for every row no matter
+ * which rows carry a default.
+ *
+ * @example
+ * const rows = columnRows(detail.columns, rowBudget(terminalColumns));
+ */
+export function columnRows(columns: ColumnDetail[], width: number): DetailRow[] {
 
     if (columns.length === 0) {
 
-        return <Text dimColor>No columns</Text>;
+        return [{ text: 'No columns', element: <Text key="col:empty" dimColor>No columns</Text> }];
 
     }
 
-    return (
-        <Box flexDirection="column">
-            {columns.map((col) => (
-                <Box key={col.name} gap={2}>
-                    <Box width={24}>
-                        <Text color={col.isPrimaryKey ? 'yellow' : undefined}>
-                            {col.isPrimaryKey ? '* ' : '  '}
-                            {col.name}
+    const [nameWidth, typeWidth, constraintWidth] = fitWidths(
+        [
+            MARKER_WIDTH + cellWidth(columns.map((col) => col.name), IDENTIFIER_CAP),
+            cellWidth(columns.map((col) => col.dataType), DATA_TYPE_CAP),
+            cellWidth(columns.map(constraintText)),
+        ],
+        width,
+    );
+
+    return columns.map((col) => {
+
+        const name = `${col.isPrimaryKey ? '* ' : '  '}${col.name}`;
+
+        return {
+            text: joinCells([name, col.dataType, constraintText(col)]),
+            element: (
+                <Box key={`col:${col.name}`} gap={CELL_GAP}>
+                    <Box width={nameWidth} flexShrink={0}>
+                        <Text color={col.isPrimaryKey ? 'yellow' : undefined} wrap="truncate">
+                            {name}
                         </Text>
                     </Box>
-                    <Box width={20}>
-                        <Text dimColor>{col.dataType}</Text>
+                    <Box width={typeWidth} flexShrink={0}>
+                        <Text dimColor wrap="truncate">{col.dataType}</Text>
                     </Box>
-                    <Text dimColor>
-                        {col.isNullable ? 'NULL' : 'NOT NULL'}
-                        {col.defaultValue ? ` DEFAULT ${col.defaultValue}` : ''}
-                    </Text>
+                    <Box width={constraintWidth} flexShrink={0}>
+                        <Text dimColor wrap="truncate">{constraintText(col)}</Text>
+                    </Box>
                 </Box>
-            ))}
-        </Box>
-    );
+            ),
+        };
+
+    });
 
 }
 
 /**
- * Parameter list component.
+ * One row per parameter.
+ *
+ * Same content-derived widths as the column rows, so a procedure with one
+ * `timestamp with time zone` parameter does not stagger the rest.
+ *
+ * @example
+ * const rows = parameterRows(detail.parameters, rowBudget(terminalColumns));
  */
-function ParameterList({ parameters }: { parameters: ParameterDetail[] }): ReactElement {
+export function parameterRows(parameters: ParameterDetail[], width: number): DetailRow[] {
 
     if (parameters.length === 0) {
 
-        return <Text dimColor>No parameters</Text>;
+        return [{ text: 'No parameters', element: <Text key="param:empty" dimColor>No parameters</Text> }];
 
     }
 
-    return (
-        <Box flexDirection="column">
-            {parameters.map((param) => (
-                <Box key={param.name} gap={2}>
-                    <Box width={20}>
-                        <Text>{param.name}</Text>
-                    </Box>
-                    <Box width={16}>
-                        <Text dimColor>{param.dataType}</Text>
-                    </Box>
-                    <Text dimColor>{param.mode}</Text>
-                </Box>
-            ))}
-        </Box>
+    const [nameWidth, typeWidth, modeWidth] = fitWidths(
+        [
+            cellWidth(parameters.map((param) => param.name), IDENTIFIER_CAP),
+            cellWidth(parameters.map((param) => param.dataType), DATA_TYPE_CAP),
+            cellWidth(parameters.map((param) => param.mode)),
+        ],
+        width,
     );
+
+    return parameters.map((param) => ({
+        text: joinCells([param.name, param.dataType, param.mode]),
+        element: (
+            <Box key={`param:${param.name}`} gap={CELL_GAP}>
+                <Box width={nameWidth} flexShrink={0}>
+                    <Text wrap="truncate">{param.name}</Text>
+                </Box>
+                <Box width={typeWidth} flexShrink={0}>
+                    <Text dimColor wrap="truncate">{param.dataType}</Text>
+                </Box>
+                <Box width={modeWidth} flexShrink={0}>
+                    <Text dimColor wrap="truncate">{param.mode}</Text>
+                </Box>
+            </Box>
+        ),
+    }));
 
 }
 
 /**
- * Index list component.
+ * The trailing cell of an index row: the indexed columns, then UNIQUE when
+ * that is not already implied by the primary-key marker.
  */
-function IndexList({ indexes }: { indexes: IndexSummary[] }): ReactElement {
+function indexColumnsText(idx: IndexSummary): string {
+
+    const columns = `(${idx.columns.join(', ')})`;
+
+    return idx.isUnique && !idx.isPrimary ? `${columns} UNIQUE` : columns;
+
+}
+
+/**
+ * One row per index.
+ *
+ * Index names run long and unevenly, so the name cell is capped and truncated
+ * rather than allowed to push the column list off the right edge.
+ *
+ * @example
+ * const rows = indexRows(detail.indexes, rowBudget(terminalColumns));
+ */
+export function indexRows(indexes: IndexSummary[], width: number): DetailRow[] {
 
     if (indexes.length === 0) {
 
-        return <Text dimColor>No indexes</Text>;
+        return [{ text: 'No indexes', element: <Text key="idx:empty" dimColor>No indexes</Text> }];
 
     }
 
-    return (
-        <Box flexDirection="column">
-            {indexes.map((idx) => (
-                <Box key={idx.name} gap={2}>
-                    <Box width={30}>
-                        <Text color={idx.isPrimary ? 'yellow' : undefined}>
-                            {idx.isPrimary ? '* ' : '  '}
-                            {idx.name}
+    const [nameWidth, columnsWidth] = fitWidths(
+        [
+            MARKER_WIDTH + cellWidth(indexes.map((idx) => idx.name), IDENTIFIER_CAP),
+            cellWidth(indexes.map(indexColumnsText)),
+        ],
+        width,
+    );
+
+    return indexes.map((idx) => {
+
+        const name = `${idx.isPrimary ? '* ' : '  '}${idx.name}`;
+
+        return {
+            text: joinCells([name, indexColumnsText(idx)]),
+            element: (
+                <Box key={`idx:${idx.name}`} gap={CELL_GAP}>
+                    <Box width={nameWidth} flexShrink={0}>
+                        <Text color={idx.isPrimary ? 'yellow' : undefined} wrap="truncate">
+                            {name}
                         </Text>
                     </Box>
-                    <Text dimColor>
-                        ({idx.columns.join(', ')})
-                        {idx.isUnique && !idx.isPrimary ? ' UNIQUE' : ''}
-                    </Text>
+                    <Box width={columnsWidth} flexShrink={0}>
+                        <Text dimColor wrap="truncate">{indexColumnsText(idx)}</Text>
+                    </Box>
                 </Box>
-            ))}
-        </Box>
-    );
+            ),
+        };
+
+    });
 
 }
 
 /**
- * Foreign key list component.
+ * Two rows per foreign key, not two columns: a constraint name plus both sides
+ * of the reference never fits one line. Both rows truncate so a long reference
+ * degrades instead of reflowing under the next key's name.
+ *
+ * @example
+ * const rows = foreignKeyRows(detail.foreignKeys, rowBudget(terminalColumns));
  */
-function ForeignKeyList({ foreignKeys }: { foreignKeys: ForeignKeySummary[] }): ReactElement {
+export function foreignKeyRows(foreignKeys: ForeignKeySummary[], width: number): DetailRow[] {
 
     if (foreignKeys.length === 0) {
 
-        return <Text dimColor>No foreign keys</Text>;
+        return [{ text: 'No foreign keys', element: <Text key="fk:empty" dimColor>No foreign keys</Text> }];
+
+    }
+
+    return foreignKeys.flatMap((fk) => {
+
+        const reference = `  (${fk.columns.join(', ')}) → ${fk.referencedTable}(${fk.referencedColumns.join(', ')})`;
+
+        return [
+            {
+                text: fk.name,
+                element: (
+                    <Box key={`fk:${fk.name}`} width={width}>
+                        <Text wrap="truncate">{fk.name}</Text>
+                    </Box>
+                ),
+            },
+            {
+                text: reference,
+                element: (
+                    <Box key={`fk:${fk.name}:ref`} width={width}>
+                        <Text dimColor wrap="truncate">{reference}</Text>
+                    </Box>
+                ),
+            },
+        ];
+
+    });
+
+}
+
+/**
+ * Qualified object name, with whatever the view shows beside it.
+ */
+function titleRow(detail: AnyDetail, trailing?: string): DetailRow {
+
+    const qualified = `${detail.schema ? `${detail.schema}.` : ''}${detail.name}`;
+
+    return {
+        text: trailing ? joinCells([qualified, trailing]) : qualified,
+        element: (
+            <Box key="title" gap={2}>
+                <Text bold>{qualified}</Text>
+                {trailing !== undefined && <Text dimColor>{trailing}</Text>}
+            </Box>
+        ),
+    };
+
+}
+
+/**
+ * The definition dump, one row per line it will occupy.
+ *
+ * The 500-character cut and its ASCII marker are left as they were; only the
+ * line breaking is new, because a `<Text>` that wraps itself has a height the
+ * viewport cannot count.
+ */
+function definitionRows(definition: string, width: number): DetailRow[] {
+
+    const shown = `${definition.slice(0, 500)}${definition.length > 500 ? '...' : ''}`;
+
+    return wrapText(shown, width).map((line, index) => ({
+        text: line,
+        element: <Text key={`def:${index}`} dimColor>{line}</Text>,
+    }));
+
+}
+
+/**
+ * Flatten sections into one row list, a blank line between each.
+ *
+ * Replaces the `gap={1}` the section Boxes used to carry, which the viewport
+ * had no way to account for.
+ */
+function joinSections(sections: DetailRow[][]): DetailRow[] {
+
+    return sections.flatMap((section, index) => (
+        index === 0 ? section : [spacerRow(`gap:${index}`), ...section]
+    ));
+
+}
+
+/**
+ * Table detail as rows: identity, columns, then indexes and foreign keys when
+ * the table has any.
+ *
+ * @example
+ * const rows = tableDetailRows(detail, rowBudget(terminalColumns));
+ */
+export function tableDetailRows(detail: TableDetail, width: number): DetailRow[] {
+
+    const sections: DetailRow[][] = [
+        [titleRow(
+            detail,
+            detail.rowCountEstimate === undefined
+                ? undefined
+                : `~${detail.rowCountEstimate.toLocaleString()} rows`,
+        )],
+        [headingRow('h:columns', `Columns (${detail.columns.length})`), ...columnRows(detail.columns, width)],
+    ];
+
+    if (detail.indexes.length > 0) {
+
+        sections.push([
+            headingRow('h:indexes', `Indexes (${detail.indexes.length})`),
+            ...indexRows(detail.indexes, width),
+        ]);
+
+    }
+
+    if (detail.foreignKeys.length > 0) {
+
+        sections.push([
+            headingRow('h:fks', `Foreign Keys (${detail.foreignKeys.length})`),
+            ...foreignKeyRows(detail.foreignKeys, width),
+        ]);
+
+    }
+
+    return joinSections(sections);
+
+}
+
+/**
+ * View detail as rows: identity, columns, then the definition when there is one.
+ *
+ * @example
+ * const rows = viewDetailRows(detail, rowBudget(terminalColumns));
+ */
+export function viewDetailRows(detail: ViewDetail, width: number): DetailRow[] {
+
+    const sections: DetailRow[][] = [
+        [titleRow(detail, detail.isUpdatable ? 'UPDATABLE' : 'READ-ONLY')],
+        [headingRow('h:columns', `Columns (${detail.columns.length})`), ...columnRows(detail.columns, width)],
+    ];
+
+    if (detail.definition) {
+
+        sections.push([headingRow('h:definition', 'Definition'), ...definitionRows(detail.definition, width)]);
+
+    }
+
+    return joinSections(sections);
+
+}
+
+/**
+ * Procedure detail as rows: identity, parameters, then the definition.
+ *
+ * @example
+ * const rows = procedureDetailRows(detail, rowBudget(terminalColumns));
+ */
+export function procedureDetailRows(detail: ProcedureDetail, width: number): DetailRow[] {
+
+    const sections: DetailRow[][] = [
+        [titleRow(detail)],
+        [
+            headingRow('h:parameters', `Parameters (${detail.parameters.length})`),
+            ...parameterRows(detail.parameters, width),
+        ],
+    ];
+
+    if (detail.definition) {
+
+        sections.push([headingRow('h:definition', 'Definition'), ...definitionRows(detail.definition, width)]);
+
+    }
+
+    return joinSections(sections);
+
+}
+
+/**
+ * Function detail as rows: identity and return type, parameters, definition.
+ *
+ * @example
+ * const rows = functionDetailRows(detail, rowBudget(terminalColumns));
+ */
+export function functionDetailRows(detail: FunctionDetail, width: number): DetailRow[] {
+
+    const sections: DetailRow[][] = [
+        [titleRow(detail, `→ ${detail.returnType}`)],
+        [
+            headingRow('h:parameters', `Parameters (${detail.parameters.length})`),
+            ...parameterRows(detail.parameters, width),
+        ],
+    ];
+
+    if (detail.definition) {
+
+        sections.push([headingRow('h:definition', 'Definition'), ...definitionRows(detail.definition, width)]);
+
+    }
+
+    return joinSections(sections);
+
+}
+
+/**
+ * Type detail as rows. Which section follows the header depends on the kind:
+ * enum values, composite attributes, or a domain's base type.
+ *
+ * @example
+ * const rows = typeDetailRows(detail, rowBudget(terminalColumns));
+ */
+export function typeDetailRows(detail: TypeDetail, width: number): DetailRow[] {
+
+    const sections: DetailRow[][] = [
+        [titleRow(detail, detail.kind.toUpperCase())],
+    ];
+
+    if (detail.kind === 'enum' && detail.values) {
+
+        sections.push([
+            headingRow('h:values', `Values (${detail.values.length})`),
+            ...detail.values.map((value, index) => ({
+                text: `  ${value}`,
+                element: <Text key={`value:${index}`}>  {value}</Text>,
+            })),
+        ]);
+
+    }
+
+    if (detail.kind === 'composite' && detail.attributes) {
+
+        sections.push([
+            headingRow('h:attributes', `Attributes (${detail.attributes.length})`),
+            ...columnRows(detail.attributes, width),
+        ]);
+
+    }
+
+    if (detail.kind === 'domain' && detail.baseType) {
+
+        sections.push([
+            headingRow('h:baseType', 'Base Type'),
+            { text: `  ${detail.baseType}`, element: <Text key="baseType">  {detail.baseType}</Text> },
+        ]);
+
+    }
+
+    return joinSections(sections);
+
+}
+
+/**
+ * Props for the detail viewport.
+ */
+export interface ScrollViewProps {
+
+    /** One row per visual line, each carrying its own untruncated text. */
+    rows: DetailRow[];
+
+    /** Lines the viewport may draw, indicators included. */
+    height: number;
+
+    /** Focus comes from the screen; this component opens no scope of its own. */
+    isFocused: boolean;
+
+    /**
+     * Told whenever an overlay opens or closes, so the screen can swap the
+     * footer hints. The overlay's state lives here rather than on the screen
+     * because the viewport is what has to survive it: keeping this component
+     * mounted is what preserves the scroll offset across a dismissal.
+     */
+    onOverlayChange?: (overlay: DetailOverlay) => void;
+
+    /**
+     * Draws the row peek, when the object has rows to peek at. Absent is what
+     * suppresses `p`, so a view or a procedure never offers a key that would
+     * open an empty overlay.
+     */
+    renderPeek?: (close: () => void) => ReactElement;
+
+}
+
+/**
+ * A vertical viewport over a flat row list.
+ *
+ * Takes `height` as a prop rather than reading `useWindowSize` itself so the
+ * screen stays the one place that accounts for chrome, and so a test can pin a
+ * viewport without a terminal to measure.
+ *
+ * `v` swaps the viewport for `FullTextOverlay`, which draws the same rows with
+ * nothing truncated; `p` swaps it for the row peek, when the caller supplied
+ * one. Both swaps happen here rather than on the screen so this component stays
+ * mounted through them and its scroll offset survives Escape.
+ *
+ * @example
+ * <ScrollView rows={tableDetailRows(detail, width)} height={viewportRows(rows)} isFocused={isFocused} />
+ */
+export function ScrollView({
+    rows,
+    height,
+    isFocused,
+    onOverlayChange,
+    renderPeek,
+}: ScrollViewProps): ReactElement {
+
+    const [offset, setOffset] = useState(0);
+    const [overlay, setOverlay] = useState<DetailOverlay>('none');
+
+    const view = rowWindow(rows.length, offset, height);
+    const maxOffset = rows.length - view.count;
+
+    // Every move rebases on `view.start`, not on `offset`: the window clamps
+    // what it draws, so a stale offset left by a resize or a smaller object
+    // cannot send the next keypress somewhere the viewport never was.
+    const scrollTo = (next: number) => setOffset(Math.min(Math.max(next, 0), maxOffset));
+
+    const open = (next: DetailOverlay) => {
+
+        setOverlay(next);
+        onOverlayChange?.(next);
+
+    };
+
+    useInput((input, key) => {
+
+        // The overlay as well as `isFocused`: an overlay pushes a focus scope,
+        // so the screen's `isFocused` does go false in the app, but this
+        // component is also rendered directly by tests that pin it true.
+        // Whoever owns the keys, it is not this handler while an overlay is up.
+        if (!isFocused || overlay !== 'none') return;
+
+        // Ink reports Ctrl+V as `input === 'v'` with `key.ctrl` set, so the
+        // modifier has to be excluded or a paste attempt opens the overlay.
+        if (input === 'v' && !key.ctrl && !key.meta) {
+
+            open('fullText');
+
+            return;
+
+        }
+
+        // `r` for rows, matching the hint. Screen-local, as `r` already means
+        // re-run, rename and transfer on three other screens.
+        if (input === 'r' && !key.ctrl && !key.meta && renderPeek) {
+
+            open('peek');
+
+            return;
+
+        }
+
+        const target = scrollTarget(input, key, view, maxOffset);
+
+        if (target !== null) scrollTo(target);
+
+    });
+
+    if (overlay === 'fullText') {
+
+        return (
+            <FullTextOverlay
+                text={rows.map((row) => row.text)}
+                startRow={view.start}
+                height={height}
+                onClose={() => open('none')}
+            />
+        );
+
+    }
+
+    if (overlay === 'peek' && renderPeek) {
+
+        return renderPeek(() => open('none'));
 
     }
 
     return (
         <Box flexDirection="column">
-            {foreignKeys.map((fk) => (
-                <Box key={fk.name} flexDirection="column">
-                    <Text>{fk.name}</Text>
-                    <Text dimColor>
-                        {'  '}({fk.columns.join(', ')}) → {fk.referencedTable}({fk.referencedColumns.join(', ')})
-                    </Text>
-                </Box>
-            ))}
+            {view.above > 0 && <Text dimColor> ↑ {view.above} more</Text>}
+            {rows.slice(view.start, view.start + view.count).map((row) => row.element)}
+            {view.below > 0 && <Text dimColor> ↓ {view.below} more</Text>}
         </Box>
     );
 
 }
 
 /**
- * Table detail view.
+ * Whether this detail is a table, by shape rather than by assertion.
+ *
+ * `TableDetail` is the only variant carrying both an index list and a foreign
+ * key list, so the pair narrows the union without a cast. The peek needs a real
+ * `TableDetail` — it reads the column list for the primary key — and trusting
+ * the route alone would hand it whatever `fetchDetail` happened to return.
+ *
+ * @example
+ * if (isTableDetail(detail)) peek(detail.columns);
  */
-function TableDetailView({ detail }: { detail: TableDetail }): ReactElement {
+function isTableDetail(detail: AnyDetail): detail is TableDetail {
 
-    return (
-        <Box flexDirection="column" gap={1}>
-            {/* Header */}
-            <Box gap={2}>
-                <Text bold>{detail.schema ? `${detail.schema}.` : ''}{detail.name}</Text>
-                {detail.rowCountEstimate !== undefined && (
-                    <Text dimColor>~{detail.rowCountEstimate.toLocaleString()} rows</Text>
-                )}
-            </Box>
-
-            {/* Columns */}
-            <Box flexDirection="column">
-                <Text bold underline>Columns ({detail.columns.length})</Text>
-                <ColumnList columns={detail.columns} />
-            </Box>
-
-            {/* Indexes */}
-            {detail.indexes.length > 0 && (
-                <Box flexDirection="column">
-                    <Text bold underline>Indexes ({detail.indexes.length})</Text>
-                    <IndexList indexes={detail.indexes} />
-                </Box>
-            )}
-
-            {/* Foreign Keys */}
-            {detail.foreignKeys.length > 0 && (
-                <Box flexDirection="column">
-                    <Text bold underline>Foreign Keys ({detail.foreignKeys.length})</Text>
-                    <ForeignKeyList foreignKeys={detail.foreignKeys} />
-                </Box>
-            )}
-        </Box>
-    );
+    return 'indexes' in detail && 'foreignKeys' in detail;
 
 }
 
 /**
- * View detail view.
+ * Rows for whichever kind of object the route asked for.
+ *
+ * The route is what decides, not the object's shape: `fetchDetail` was called
+ * with this category and returns the matching detail for it.
  */
-function ViewDetailView({ detail }: { detail: ViewDetail }): ReactElement {
+function buildDetailRows(category: DetailCategory | undefined, detail: AnyDetail, width: number): DetailRow[] {
 
-    return (
-        <Box flexDirection="column" gap={1}>
-            {/* Header */}
-            <Box gap={2}>
-                <Text bold>{detail.schema ? `${detail.schema}.` : ''}{detail.name}</Text>
-                <Text dimColor>{detail.isUpdatable ? 'UPDATABLE' : 'READ-ONLY'}</Text>
-            </Box>
+    switch (category) {
 
-            {/* Columns */}
-            <Box flexDirection="column">
-                <Text bold underline>Columns ({detail.columns.length})</Text>
-                <ColumnList columns={detail.columns} />
-            </Box>
+    case 'tables':
+        return tableDetailRows(detail as TableDetail, width);
 
-            {/* Definition */}
-            {detail.definition && (
-                <Box flexDirection="column">
-                    <Text bold underline>Definition</Text>
-                    <Text dimColor>{detail.definition.slice(0, 500)}{detail.definition.length > 500 ? '...' : ''}</Text>
-                </Box>
-            )}
-        </Box>
-    );
+    case 'views':
+        return viewDetailRows(detail as ViewDetail, width);
 
-}
+    case 'procedures':
+        return procedureDetailRows(detail as ProcedureDetail, width);
 
-/**
- * Procedure detail view.
- */
-function ProcedureDetailView({ detail }: { detail: ProcedureDetail }): ReactElement {
+    case 'functions':
+        return functionDetailRows(detail as FunctionDetail, width);
 
-    return (
-        <Box flexDirection="column" gap={1}>
-            {/* Header */}
-            <Text bold>{detail.schema ? `${detail.schema}.` : ''}{detail.name}</Text>
+    case 'types':
+        return typeDetailRows(detail as TypeDetail, width);
 
-            {/* Parameters */}
-            <Box flexDirection="column">
-                <Text bold underline>Parameters ({detail.parameters.length})</Text>
-                <ParameterList parameters={detail.parameters} />
-            </Box>
+    default:
+        return [{ text: 'Unknown category', element: <Text key="unknown">Unknown category</Text> }];
 
-            {/* Definition */}
-            {detail.definition && (
-                <Box flexDirection="column">
-                    <Text bold underline>Definition</Text>
-                    <Text dimColor>{detail.definition.slice(0, 500)}{detail.definition.length > 500 ? '...' : ''}</Text>
-                </Box>
-            )}
-        </Box>
-    );
-
-}
-
-/**
- * Function detail view.
- */
-function FunctionDetailView({ detail }: { detail: FunctionDetail }): ReactElement {
-
-    return (
-        <Box flexDirection="column" gap={1}>
-            {/* Header */}
-            <Box gap={2}>
-                <Text bold>{detail.schema ? `${detail.schema}.` : ''}{detail.name}</Text>
-                <Text dimColor>→ {detail.returnType}</Text>
-            </Box>
-
-            {/* Parameters */}
-            <Box flexDirection="column">
-                <Text bold underline>Parameters ({detail.parameters.length})</Text>
-                <ParameterList parameters={detail.parameters} />
-            </Box>
-
-            {/* Definition */}
-            {detail.definition && (
-                <Box flexDirection="column">
-                    <Text bold underline>Definition</Text>
-                    <Text dimColor>{detail.definition.slice(0, 500)}{detail.definition.length > 500 ? '...' : ''}</Text>
-                </Box>
-            )}
-        </Box>
-    );
-
-}
-
-/**
- * Type detail view.
- */
-function TypeDetailView({ detail }: { detail: TypeDetail }): ReactElement {
-
-    return (
-        <Box flexDirection="column" gap={1}>
-            {/* Header */}
-            <Box gap={2}>
-                <Text bold>{detail.schema ? `${detail.schema}.` : ''}{detail.name}</Text>
-                <Text dimColor>{detail.kind.toUpperCase()}</Text>
-            </Box>
-
-            {/* Enum values */}
-            {detail.kind === 'enum' && detail.values && (
-                <Box flexDirection="column">
-                    <Text bold underline>Values ({detail.values.length})</Text>
-                    <Box flexDirection="column">
-                        {detail.values.map((value, i) => (
-                            <Text key={i}>  {value}</Text>
-                        ))}
-                    </Box>
-                </Box>
-            )}
-
-            {/* Composite attributes */}
-            {detail.kind === 'composite' && detail.attributes && (
-                <Box flexDirection="column">
-                    <Text bold underline>Attributes ({detail.attributes.length})</Text>
-                    <ColumnList columns={detail.attributes} />
-                </Box>
-            )}
-
-            {/* Domain base type */}
-            {detail.kind === 'domain' && detail.baseType && (
-                <Box flexDirection="column">
-                    <Text bold underline>Base Type</Text>
-                    <Text>  {detail.baseType}</Text>
-                </Box>
-            )}
-        </Box>
-    );
+    }
 
 }
 
@@ -363,19 +742,38 @@ export function ExploreDetailScreen({ params }: ScreenProps): ReactElement {
 
     const { back, route } = useRouter();
     const { isFocused } = useFocusScope('ExploreDetail');
-    const { activeConfig, activeConfigName: _activeConfigName } = useAppContext();
+    const { activeConfig, activeConfigName } = useAppContext();
+
+    // useWindowSize, not useStdout: stdout.columns and .rows mutate on resize
+    // without telling React, so anything derived from them would freeze at mount
+    // size. Above the early returns, or the hook count changes once the load
+    // resolves.
+    const { columns: terminalColumns, rows: terminalRows } = useWindowSize();
 
     const [detail, setDetail] = useState<AnyDetail | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+
+    // Mirrors the viewport's overlay state, which the footer is the only thing
+    // here that needs. Above the early returns, like every other hook.
+    const [overlay, setOverlay] = useState<DetailOverlay>('none');
 
     // Get category from route
     const category = ROUTE_TO_CATEGORY[route];
     const name = params.name;
     const schema = params.schema;
 
-    // Shared connection
-    const { db, dialect, loading: connLoading, error: connError } = useConnection();
+    // Shared connection.
+    //
+    // `ConnectionProvider` labels it `Kysely<NoormDatabase>` — by its own cast
+    // at `ConnectionProvider.tsx:192`, over a connection `createConnection`
+    // returned untyped — so the vault and lock screens can name noorm's own
+    // tables. Nothing here reads one, and Kysely treats the two instantiations
+    // as mutually unassignable, so the untyped view is recovered once and both
+    // core calls take it. This replaces the per-call cast `fetchDetail` used to
+    // carry rather than adding a second one.
+    const { db: typedDb, dialect, loading: connLoading, error: connError } = useConnection();
+    const db = typedDb as Kysely<unknown> | null;
 
     // Load detail when connection is ready
     useAsyncEffect(async (isCancelled) => {
@@ -393,7 +791,7 @@ export function ExploreDetailScreen({ params }: ScreenProps): ReactElement {
 
         const [result, err] = await attempt(async () => {
 
-            return await fetchDetail(db as Kysely<unknown>, dialect, category, name, schema);
+            return await fetchDetail(db, dialect, category, name, schema);
 
         });
 
@@ -515,41 +913,63 @@ export function ExploreDetailScreen({ params }: ScreenProps): ReactElement {
 
     }
 
-    // Render detail based on category
-    const renderDetail = () => {
+    // Columns a detail row gets once the Panel has taken its border and padding.
+    const rowWidth = rowBudget(terminalColumns);
 
-        switch (category) {
+    // Rows the viewport gets once the shell, the Panel, and the footer have
+    // taken theirs.
+    const height = viewportRows(terminalRows);
 
-        case 'tables':
-            return <TableDetailView detail={detail as TableDetail} />;
+    const detailRows = buildDetailRows(category, detail, rowWidth);
 
-        case 'views':
-            return <ViewDetailView detail={detail as ViewDetail} />;
+    // Advertise the scroll keys only when there is something to scroll, so a
+    // detail that fits reads exactly as it did before.
+    const scrolls = detailRows.length > height;
 
-        case 'procedures':
-            return <ProcedureDetailView detail={detail as ProcedureDetail} />;
-
-        case 'functions':
-            return <FunctionDetailView detail={detail as FunctionDetail} />;
-
-        case 'types':
-            return <TypeDetailView detail={detail as TypeDetail} />;
-
-        default:
-            return <Text>Unknown category</Text>;
-
-        }
-
-    };
+    // Only a table has rows to peek at, and only a live connection can read
+    // them. Anything missing suppresses the key rather than opening an overlay
+    // that can only report why it is empty.
+    const peekable = category === 'tables'
+        && isTableDetail(detail)
+        && db !== null
+        && dialect !== null
+        && activeConfigName !== null;
 
     return (
         <Box flexDirection="column" gap={1}>
             <Panel title={getTitle()} paddingX={1} paddingY={1}>
-                {renderDetail()}
+                <ScrollView
+                    rows={detailRows}
+                    height={height}
+                    isFocused={isFocused}
+                    onOverlayChange={setOverlay}
+                    renderPeek={peekable
+                        ? (close) => (
+                            <RowPeekOverlay
+                                db={db}
+                                dialect={dialect}
+                                detail={detail}
+                                // 'user': the TUI is a human at a keyboard, and
+                                // every other policy-checking screen says the
+                                // same. A non-interactive caller resolves its
+                                // own channel and passes it here instead.
+                                gate={{
+                                    configName: activeConfigName,
+                                    access: activeConfig.access,
+                                    channel: 'user',
+                                }}
+                                height={height}
+                                onClose={close}
+                            />
+                        )
+                        : undefined}
+                />
             </Panel>
 
             <Box flexWrap="wrap" columnGap={2}>
-                <Text dimColor>[Esc] Back</Text>
+                {detailFooterHints({ scrolls, overlay, canPeek: peekable }).map((hint) => (
+                    <Text key={hint} dimColor>{hint}</Text>
+                ))}
             </Box>
         </Box>
     );

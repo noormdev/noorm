@@ -54,6 +54,16 @@ export interface ConnectionConfig {
         max?: number;
     };
 
+    /**
+     * Milliseconds a single connection attempt may spend before the driver
+     * gives up. Defaults to `DEFAULT_CONNECT_TIMEOUT_MS`.
+     *
+     * Raise it for a link that is slow but working — a serverless database
+     * resuming from auto-pause is the case that motivates it, since the resume
+     * can outlast any timeout tuned for a handshake.
+     */
+    connectTimeoutMs?: number;
+
     // SSL
     ssl?:
         | boolean

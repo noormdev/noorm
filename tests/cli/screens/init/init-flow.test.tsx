@@ -165,6 +165,26 @@ async function waitForEffects(ms = 50): Promise<void> {
 }
 
 /**
+ * Submit the identity form.
+ *
+ * The Form browses by default and reserves Enter for opening a field, so
+ * submitting means walking past the three identity fields onto the action row
+ * first. Index 3 is the submit button whether or not a Cancel button follows it.
+ */
+async function submitIdentityForm(stdin: { write: (data: string) => void }): Promise<void> {
+
+    for (let i = 0; i < 3; i++) {
+
+        stdin.write('\x1b[B');
+        await waitForEffects(30);
+
+    }
+
+    stdin.write('\r');
+
+}
+
+/**
  * Test wrapper with all required providers.
  */
 function TestWrapper({ children }: { children: React.ReactNode }) {
@@ -224,8 +244,8 @@ describe('cli: screens/init - flow integration', () => {
         // Should show identity setup
         expect(lastFrame()).toContain('Welcome to noorm');
 
-        // Press Enter to submit the pre-filled form
-        stdin.write('\r');
+        // Walk onto the action row and submit the pre-filled form
+        await submitIdentityForm(stdin);
 
         await waitForEffects(100);
 
@@ -253,8 +273,8 @@ describe('cli: screens/init - flow integration', () => {
         // Should show identity setup
         expect(lastFrame()).toContain('Welcome to noorm');
 
-        // Press Enter to submit identity form
-        stdin.write('\r');
+        // Walk onto the action row and submit the identity form
+        await submitIdentityForm(stdin);
 
         await waitForEffects(100);
 
@@ -312,8 +332,8 @@ describe('cli: screens/init - flow integration', () => {
         // Should show identity setup
         expect(lastFrame()).toContain('Welcome to noorm');
 
-        // Press Enter to submit identity form
-        stdin.write('\r');
+        // Walk onto the action row and submit the identity form
+        await submitIdentityForm(stdin);
 
         await waitForEffects(100);
 

@@ -1,11 +1,16 @@
 #!/usr/bin/env bash
 #
-# Renders 04-screenshots.tape and crops each still down to its own content.
+# Renders 04-screenshots.tape and trims each still back to its content.
 #
-# One tape has one canvas, but the TUI screens run from ~14 to ~49 lines. The
-# canvas is sized for the tallest (the add-config form), so every other shot
-# comes out with a slab of empty terminal below it. This trims that back off
-# and re-adds even padding, so each image is sized to what it actually shows.
+# What "content" means changed when the TUI moved into the alternate screen.
+# It draws to the full terminal height now — breadcrumb at the top, status bar
+# pinned to the bottom — so every screen reaches both edges and the vertical
+# trim only takes off the padding VHS drew. The horizontal trim still does real
+# work, cutting each image to its own widest line, and the re-added border
+# gives all of them the same margin in the brand background.
+#
+# So: do not size the canvas in 04-screenshots.tape expecting this to crop the
+# slack back off. It cannot. The canvas is the frame.
 #
 # Output lands in ../public/image/tui/.
 #
