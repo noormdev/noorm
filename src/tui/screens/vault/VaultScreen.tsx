@@ -506,6 +506,7 @@ export function VaultScreen({ params: _params }: ScreenProps): ReactElement {
                             items={listItems}
                             onSelect={(item) => handleEdit(item.value)}
                             isFocused={isFocused}
+                            reserveRows={2}
                             showDescriptionBelow
                         />
                     )}

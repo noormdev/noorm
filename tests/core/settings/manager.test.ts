@@ -167,6 +167,57 @@ stages:
 
         });
 
+        it('should carry a hand-written ui.mouse flag through to the resolved view', async () => {
+
+            const { tempDir, manager, cleanup } = createTestContext();
+
+            try {
+
+                const settingsDir = join(tempDir, '.test-settings');
+                mkdirSync(settingsDir, { recursive: true });
+
+                const yaml = `
+ui:
+    mouse: true
+`;
+                writeFileSync(join(settingsDir, 'settings.yml'), yaml);
+
+                await manager.load();
+
+                // The TUI reads `manager.settings`, which is the document plus
+                // the env overlay rather than the document itself. A section
+                // the overlay dropped would leave the flag unreachable from the
+                // only place that consumes it.
+                expect(manager.settings.ui?.mouse).toBe(true);
+
+            }
+            finally {
+
+                cleanup();
+
+            }
+
+        });
+
+        it('should leave the ui section absent when settings.yml never mentioned it', async () => {
+
+            const { manager, cleanup } = createTestContext();
+
+            try {
+
+                await manager.load();
+
+                expect(manager.settings.ui).toBeUndefined();
+
+            }
+            finally {
+
+                cleanup();
+
+            }
+
+        });
+
     });
 
     describe('save', () => {

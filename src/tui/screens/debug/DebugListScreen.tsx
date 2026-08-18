@@ -483,7 +483,7 @@ export function DebugListScreen({ params }: ScreenProps): ReactElement {
                         noResultsLabel="No matching rows"
                         isFocused={isFocused}
                         numberNav
-                        visibleCount={10}
+                        reserveRows={2}
                     />
                 </Box>
             </Panel>

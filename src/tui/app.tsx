@@ -16,7 +16,7 @@
  */
 import { useState, useCallback, useEffect } from 'react';
 import type { ReactElement } from 'react';
-import { Box, Text, Spacer, useInput } from 'ink';
+import { Box, Text, Spacer, useInput, useWindowSize } from 'ink';
 
 import { useFocusScope } from './focus.js';
 
@@ -33,7 +33,10 @@ import {
     useGlobalModes,
     useDryRunMode,
     useForceMode,
+    useSettings,
 } from './app-context.js';
+import { MouseProvider, useMouseTransport } from './mouse.js';
+import { isMouseEnabled } from '../core/settings/defaults.js';
 import { ToastProvider, ToastRenderer, LogViewerOverlay, useToast } from './components/index.js';
 import { ShutdownProvider } from './shutdown.js';
 import { ConnectionProvider, useConnectionContext } from './providers/ConnectionProvider.js';
@@ -49,6 +52,10 @@ function HelpScreen({ onClose }: { onClose: () => void }): ReactElement {
 
     const globalModes = useGlobalModes();
     const { isFocused } = useFocusScope('HelpScreen');
+
+    // Read from the transport rather than from settings, so the line describes
+    // what the terminal is actually in rather than what the file asked for.
+    const { enabled: mouseEnabled } = useMouseTransport();
 
     // Any key closes help
     useInput(() => {
@@ -104,6 +111,23 @@ function HelpScreen({ onClose }: { onClose: () => void }): ReactElement {
                     <Item k="?" desc="show this help" />
                     <Item k="ctrl + c" desc="quit application" />
                 </Box>
+            </Box>
+
+            {/*
+                The escape hatch for the mouse. It is on unless a project turns
+                it off, and turning it on takes click-drag text selection away
+                from the terminal — a symptom a user reports as "text selection
+                stopped working", which points at their terminal rather than at
+                noorm. Naming the setting here is what closes that gap.
+            */}
+            <Box paddingX={1} paddingTop={1}>
+                <Text dimColor>Mouse {mouseEnabled ? 'on' : 'off'}. </Text>
+                <Text color="yellow">
+                    ui.mouse: {mouseEnabled ? 'false' : 'true'}
+                </Text>
+                <Text dimColor>
+                    {' '}in .noorm/settings.yml {mouseEnabled ? 'restores text selection' : 'enables clicks'}
+                </Text>
             </Box>
         </Box>
     );
@@ -209,6 +233,7 @@ function AppShell(): ReactElement {
     const { navigate } = useRouter();
     const { showToast } = useToast();
     const { updateInfo, installing } = useUpdateChecker();
+    const { rows: terminalHeight } = useWindowSize();
 
     // Show toast when update available (non-major updates)
     useEffect(() => {
@@ -318,7 +343,13 @@ function AppShell(): ReactElement {
             onOpenSqlTerminal={handleOpenSqlTerminal}
             onDebugMode={handleDebugMode}
         >
-            <Box flexDirection="column" minHeight={20}>
+            {/* height, not minHeight: the shell owns the alternate screen, so it
+                claims the full window instead of growing to fit its content. */}
+            <Box
+                flexDirection="column"
+                height={terminalHeight}
+                display={showHelp || showLogViewer ? 'none' : 'flex'}
+            >
                 {/* Header */}
                 <Box
                     borderStyle="single"
@@ -351,12 +382,41 @@ function AppShell(): ReactElement {
 
             </Box>
 
-            {/* Help Screen - Full screen takeover */}
+            {/* Hidden rather than unmounted: the shell claims the whole window,
+                so an overlay drawn beside it would push the top out of reach.
+                Unmounting instead would take the screen's state with it — the
+                half-filled form you pressed ? from. */}
             {showHelp && <HelpScreen onClose={handleCloseHelp} />}
 
-            {/* Log Viewer - Full screen takeover */}
             {showLogViewer && <LogViewerOverlay onClose={handleToggleLogViewer} />}
         </GlobalKeyboard>
+    );
+
+}
+
+/**
+ * Turns the mouse transport on unless settings say not to.
+ *
+ * Separate from `MouseProvider` because the transport must not depend on the
+ * app context: it has to be testable on its own, and the enable sequence has to
+ * wait for the setting rather than for `render()`.
+ *
+ * `settings` is null while the managers load, and that is *unknown*, not
+ * *absent* — absent is a loaded settings object with no `ui` section, which
+ * `isMouseEnabled` reads as on. Waiting matters now that the default is on: a
+ * project that wrote `ui: { mouse: false }` would otherwise spend every startup
+ * with tracking enabled and its text selection broken, for a setting it
+ * explicitly wrote. So the flag reads false first and flips once, which is
+ * exactly when the escape sequence should go out.
+ */
+function MouseFromSettings({ children }: { children: ReactElement }): ReactElement {
+
+    const { settings } = useSettings();
+
+    return (
+        <MouseProvider enabled={settings !== null && isMouseEnabled(settings)}>
+            {children}
+        </MouseProvider>
     );
 
 }
@@ -401,15 +461,17 @@ export function App({
         <ShutdownProvider projectRoot={root}>
             <NoormObserver>
                 <AppContextProvider projectRoot={projectRoot} autoLoad={autoLoad}>
-                    <ConnectionProvider>
-                        <ToastProvider>
-                            <FocusProvider>
-                                <RouterProvider initialRoute={initialRoute} initialParams={initialParams}>
-                                    <AppShell />
-                                </RouterProvider>
-                            </FocusProvider>
-                        </ToastProvider>
-                    </ConnectionProvider>
+                    <MouseFromSettings>
+                        <ConnectionProvider>
+                            <ToastProvider>
+                                <FocusProvider>
+                                    <RouterProvider initialRoute={initialRoute} initialParams={initialParams}>
+                                        <AppShell />
+                                    </RouterProvider>
+                                </FocusProvider>
+                            </ToastProvider>
+                        </ConnectionProvider>
+                    </MouseFromSettings>
                 </AppContextProvider>
             </NoormObserver>
         </ShutdownProvider>

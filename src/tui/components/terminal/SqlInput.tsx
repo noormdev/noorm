@@ -11,6 +11,8 @@ import { useState, useRef, useEffect } from 'react';
 import { Box, Text, useInput } from 'ink';
 import type { ReactElement } from 'react';
 
+import { isMouseReport } from '../../mouse.js';
+
 /**
  * Props for SqlInput component.
  */
@@ -78,6 +80,11 @@ export function SqlInput({
     useInput((input, key) => {
 
         if (!isActive) return;
+
+        // A mouse report reaches every useInput handler as a plain string, and
+        // the character branch below would type `[<0;12;5M` into the query.
+        // Nothing here answers a click, so the whole handler drops them.
+        if (isMouseReport(input)) return;
 
         // Shift+Tab: Toggle edit mode
         if (key.shift && key.tab) {

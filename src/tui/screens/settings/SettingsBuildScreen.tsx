@@ -85,14 +85,16 @@ export function SettingsBuildScreen({ params: _params }: ScreenProps): ReactElem
         () => [
             {
                 key: 'include',
-                label: 'Include Paths (comma-separated)',
+                label: 'Include Paths',
+                hint: '(comma-separated)',
                 type: 'text',
                 defaultValue: formatPathList(build.include),
                 placeholder: 'tables, views, functions',
             },
             {
                 key: 'exclude',
-                label: 'Exclude Paths (comma-separated)',
+                label: 'Exclude Paths',
+                hint: '(comma-separated)',
                 type: 'text',
                 defaultValue: formatPathList(build.exclude),
                 placeholder: 'archive, experiments',

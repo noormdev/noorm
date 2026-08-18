@@ -110,6 +110,32 @@ OK (42ms)
 ```
 
 
+## Stopping a Query That Will Not Come Back
+
+`Escape` while a query is running gives the terminal back. What that does to the
+database depends on the dialect, and the terminal says which one happened:
+
+| Dialect | On `Escape` | What you see |
+|---------|-------------|--------------|
+| PostgreSQL | `pg_cancel_backend` on a second connection | `Cancelled. The server was asked to stop the query.` |
+| MySQL | `KILL QUERY` on a second connection | `Cancelled. The server was asked to stop the query.` |
+| SQL Server | nothing reaches the server | `Stopped waiting. The query may still be running on the server.` |
+| SQLite | nothing reaches the server | `Stopped waiting. The query may still be running on the server.` |
+
+The difference is not cosmetic. On the bottom two rows the query keeps running
+to completion, holding locks and burning CPU, and the only thing that changed is
+that noorm stopped listening for the answer. Kill it from the server side if it
+matters.
+
+SQL Server is a limitation of the driver layer rather than of the database:
+tedious exposes a per-request cancel, but Kysely's MSSQL dialect owns the
+request object and never hands it out. SQLite has no second connection to
+interrupt the first from.
+
+`Escape` also works while the terminal is still connecting, which is what a
+network problem looks like before a query ever runs.
+
+
 ## Result Formatting
 
 Results display in a formatted table with column alignment:
@@ -199,7 +225,7 @@ There are two ways to write across several lines. `Shift+Enter` inserts a newlin
 | `Tab` | Insert four spaces, or move between the query and the results table once a query has returned rows |
 | `Up` / `Down` | Navigate command history when the input is empty, otherwise move the cursor |
 | `Left` / `Right` | Move the cursor |
-| `Escape` | Clear the input; on an empty input, leave the terminal |
+| `Escape` | Stop a running query or a connect in progress; otherwise clear the input, and on an empty input leave the terminal |
 | `h` | Open the history viewer (empty input only) |
 
 

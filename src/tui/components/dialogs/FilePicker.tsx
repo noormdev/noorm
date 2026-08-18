@@ -17,12 +17,23 @@
  */
 import { useState, useCallback, useMemo } from 'react';
 import { Box, Text, useInput } from 'ink';
-import { TextInput } from '@inkjs/ui';
+import { TextInput } from '../forms/TextInput.js';
 
 import type { ReactElement } from 'react';
 
 import { useFocusScope } from '../../focus.js';
+import { useViewportRows } from '../../hooks/useViewportRows.js';
 import { Panel } from '../layout/Panel.js';
+
+/**
+ * Rows this component costs a screen beyond the shared screen reserve.
+ *
+ * It draws its own search row, status row, and help row with a gap either side
+ * of the list, which is six rows — but it also brings its own Panel and its own
+ * help line, so the two rows the shared reserve holds back for a hotkey footer
+ * are not spent twice.
+ */
+const PICKER_CHROME_ROWS = 4;
 
 /**
  * File picker modes.
@@ -45,8 +56,17 @@ export interface FilePickerProps {
     /** Callback when cancelled */
     onCancel: () => void;
 
-    /** Maximum visible files in the list */
+    /**
+     * Maximum visible files in the list. Defaults to what the terminal has room
+     * for once this component's own chrome is accounted for.
+     */
     visibleCount?: number;
+
+    /**
+     * Rows of the screen that belong to something other than this picker, such
+     * as a dry-run banner stacked above it. Only the parent knows these.
+     */
+    reserveRows?: number;
 
     /** Focus scope label */
     focusLabel?: string;
@@ -88,9 +108,13 @@ export function FilePicker({
     selected: initialSelected = [],
     onSelect,
     onCancel,
-    visibleCount = 8,
+    visibleCount: pinnedVisibleCount,
+    reserveRows = 0,
     focusLabel = 'FilePicker',
 }: FilePickerProps): ReactElement {
+
+    const availableRows = useViewportRows(PICKER_CHROME_ROWS + reserveRows);
+    const visibleCount = pinnedVisibleCount ?? availableRows;
 
     const { isFocused } = useFocusScope(focusLabel);
 

@@ -12,8 +12,8 @@
  * noorm db         # Then press 'x' to explore
  * ```
  */
-import { useState } from 'react';
-import { Box, Text, useInput } from 'ink';
+import { useState, useMemo } from 'react';
+import { Box, Text, useInput, useWindowSize } from 'ink';
 import { attempt } from '@logosdx/utils';
 
 import type { ReactElement } from 'react';
@@ -26,6 +26,7 @@ import { useAppContext, useExploreFilters, useSettings } from '../../../app-cont
 import { useOnScreenPopped, useConnection, useAsyncEffect } from '../../../hooks/index.js';
 import { Panel, Spinner } from '../../../components/index.js';
 import { fetchOverview } from '../../../../core/explore/index.js';
+import { CELL_GAP, LABEL_CAP, cellWidth, fitWidths, rowBudget } from './layout.js';
 
 import type { ExploreOverview, ExploreOptions } from '../../../../core/explore/index.js';
 
@@ -56,6 +57,83 @@ const CATEGORIES: CategoryConfig[] = [
 ];
 
 /**
+ * Sums the categories this screen actually lists.
+ *
+ * `ExploreOverview` also carries `triggers`, `locks` and `connections`. None
+ * has a row here, and locks and connections are runtime state rather than
+ * schema objects, so counting them left the total silently exceeding the rows
+ * a reader could see.
+ *
+ * @example
+ * countBrowsableObjects({ tables: 42, views: 7, ...rest }); // 49 + rest
+ */
+export function countBrowsableObjects(overview: ExploreOverview): number {
+
+    return CATEGORIES.reduce((sum, cat) => sum + (overview[cat.key] ?? 0), 0);
+
+}
+
+/**
+ * Labels of the config summary above the category list. Their gutter is
+ * derived here so the three values start on one offset instead of each
+ * landing wherever its own label ended.
+ */
+const SUMMARY_LABELS = ['Config:', 'Database:', 'Total Objects:'];
+
+const SUMMARY_GUTTER = cellWidth(SUMMARY_LABELS, LABEL_CAP);
+
+/**
+ * Category list component.
+ *
+ * Hotkey, label, and count are sized from the categories themselves rather
+ * than a hardcoded width, and none of the three shrinks, so every count sits
+ * on the same offset.
+ */
+export function CategoryList({ overview, width }: { overview: ExploreOverview | null; width: number }): ReactElement {
+
+    const [hotkeyWidth, labelWidth, countWidth] = useMemo(() => fitWidths(
+        [
+            cellWidth(CATEGORIES.map((cat) => `[${cat.numberKey}]`)),
+            cellWidth(CATEGORIES.map((cat) => cat.label), LABEL_CAP),
+            cellWidth(CATEGORIES.map((cat) => String(overview?.[cat.key] ?? 0))),
+        ],
+        width,
+    ), [overview, width]);
+
+    return (
+        <Box marginTop={1} flexDirection="column">
+            {CATEGORIES.map((cat) => {
+
+                const count = overview?.[cat.key] ?? 0;
+                const hasItems = count > 0;
+
+                return (
+                    <Box key={cat.key} gap={CELL_GAP}>
+                        <Box width={hotkeyWidth} flexShrink={0}>
+                            <Text color={hasItems ? 'cyan' : 'gray'}>
+                                [{cat.numberKey}]
+                            </Text>
+                        </Box>
+                        <Box width={labelWidth} flexShrink={0}>
+                            <Text color={hasItems ? undefined : 'gray'} wrap="truncate">
+                                {cat.label}
+                            </Text>
+                        </Box>
+                        <Box width={countWidth} flexShrink={0}>
+                            <Text bold={hasItems} color={hasItems ? 'green' : 'gray'}>
+                                {count}
+                            </Text>
+                        </Box>
+                    </Box>
+                );
+
+            })}
+        </Box>
+    );
+
+}
+
+/**
  * ExploreOverviewScreen component.
  *
  * Entry point for database exploration, showing counts of all object types.
@@ -67,6 +145,11 @@ export function ExploreOverviewScreen({ params: _params }: ScreenProps): ReactEl
     const { activeConfig, activeConfigName } = useAppContext();
     const { clearFilters } = useExploreFilters();
     const { settings } = useSettings();
+
+    // useWindowSize, not useStdout: stdout.columns mutates on resize without
+    // telling React, so widths derived from it would freeze at mount size.
+    // Above the early returns, or the hook count changes once the load resolves.
+    const { columns: terminalColumns } = useWindowSize();
 
     const [overview, setOverview] = useState<ExploreOverview | null>(null);
     const [isLoading, setIsLoading] = useState(true);
@@ -213,57 +296,36 @@ export function ExploreOverviewScreen({ params: _params }: ScreenProps): ReactEl
 
     }
 
-    // Calculate total objects
-    const totalObjects = overview
-        ? Object.values(overview).reduce((sum, count) => sum + count, 0)
-        : 0;
+    const totalObjects = overview ? countBrowsableObjects(overview) : 0;
 
     return (
         <Box flexDirection="column" gap={1}>
             <Panel title="DB Explore" paddingX={1} paddingY={1}>
                 <Box flexDirection="column" gap={1}>
                     {/* Config info */}
-                    <Box gap={2}>
-                        <Text>Config:</Text>
+                    <Box gap={CELL_GAP}>
+                        <Box width={SUMMARY_GUTTER} flexShrink={0}>
+                            <Text>Config:</Text>
+                        </Box>
                         <Text bold color="cyan">{activeConfigName}</Text>
                         <Text dimColor>({activeConfig.connection.dialect})</Text>
                     </Box>
 
-                    <Box gap={2}>
-                        <Text>Database:</Text>
+                    <Box gap={CELL_GAP}>
+                        <Box width={SUMMARY_GUTTER} flexShrink={0}>
+                            <Text>Database:</Text>
+                        </Box>
                         <Text>{activeConfig.connection.database}</Text>
                     </Box>
 
-                    <Box gap={2}>
-                        <Text>Total Objects:</Text>
+                    <Box gap={CELL_GAP}>
+                        <Box width={SUMMARY_GUTTER} flexShrink={0}>
+                            <Text>Total Objects:</Text>
+                        </Box>
                         <Text bold color="green">{totalObjects}</Text>
                     </Box>
 
-                    {/* Category list */}
-                    <Box marginTop={1} flexDirection="column">
-                        {CATEGORIES.map((cat) => {
-
-                            const count = overview?.[cat.key] ?? 0;
-                            const hasItems = count > 0;
-
-                            return (
-                                <Box key={cat.key} gap={2}>
-                                    <Text color={hasItems ? 'cyan' : 'gray'}>
-                                        [{cat.numberKey}]
-                                    </Text>
-                                    <Box width={14}>
-                                        <Text color={hasItems ? undefined : 'gray'}>
-                                            {cat.label}
-                                        </Text>
-                                    </Box>
-                                    <Text bold={hasItems} color={hasItems ? 'green' : 'gray'}>
-                                        {count}
-                                    </Text>
-                                </Box>
-                            );
-
-                        })}
-                    </Box>
+                    <CategoryList overview={overview} width={rowBudget(terminalColumns)} />
                 </Box>
             </Panel>
 

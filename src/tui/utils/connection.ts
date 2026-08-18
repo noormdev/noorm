@@ -20,6 +20,16 @@ import type { NoormDatabase } from '../../core/shared/index.js';
 import { createConnection, testConnection } from '../../core/connection/index.js';
 
 /**
+ * What the user is told after cancelling a connect.
+ *
+ * "Stopped waiting" rather than "cancelled" because that is all that happened:
+ * the driver may still be holding a half-open socket, and nothing was asked of
+ * the server. Cleanup runs regardless — this is about the wording, not the
+ * behaviour.
+ */
+export const STOPPED_WAITING_MESSAGE = 'Stopped waiting for the database. Nothing was saved.';
+
+/**
  * Execute a callback with a managed database connection.
  *
  * Tests connectivity, creates a connection, runs the callback,

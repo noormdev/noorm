@@ -23,11 +23,11 @@ import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
 import { Panel, Spinner, SmartConfirm, useToast } from '../../components/index.js';
-import { useAsyncEffect } from '../../hooks/index.js';
+import { useAbortableTask, useAsyncEffect } from '../../hooks/index.js';
 import { createConnection, testConnection } from '../../../core/connection/index.js';
 import { getLockManager } from '../../../core/lock/index.js';
 import { confirmationPhraseFor } from '../../../core/policy/index.js';
-import { isConfigGuarded } from '../../utils/index.js';
+import { isConfigGuarded, STOPPED_WAITING_MESSAGE } from '../../utils/index.js';
 
 /**
  * Screen phase state.
@@ -53,6 +53,8 @@ export function LockForceScreen({ params: _params }: ScreenProps): ReactElement 
     const [error, setError] = useState<string | null>(null);
     const [lockStatus, setLockStatus] = useState<LockStatusType | null>(null);
 
+    const task = useAbortableTask();
+
     // Check current lock status
     useAsyncEffect(async (isCancelled) => {
 
@@ -65,17 +67,24 @@ export function LockForceScreen({ params: _params }: ScreenProps): ReactElement 
 
         }
 
+        // The first pass runs before the app context has resolved a config and
+        // latches the error above. Clearing it here matters most exactly when
+        // the connect below hangs: without it the screen sits on "No active
+        // configuration" instead of the spinner the hatch is attached to.
+        setPhase('loading');
+        setError(null);
+
+        const controller = task.start();
+
         // Test connection
-        const testResult = await testConnection(activeConfig.connection);
+        const testResult = await testConnection(activeConfig.connection, { signal: controller.signal });
+
+        if (!task.isCurrent(controller) || isCancelled()) return;
 
         if (!testResult.ok) {
 
-            if (!isCancelled()) {
-
-                setError(`Cannot connect to database: ${testResult.error}`);
-                setPhase('error');
-
-            }
+            setError(`Cannot connect to database: ${testResult.error}`);
+            setPhase('error');
 
             return;
 
@@ -87,6 +96,8 @@ export function LockForceScreen({ params: _params }: ScreenProps): ReactElement 
             const conn = await createConnection(
                 activeConfig.connection,
                 activeConfigName ?? undefined,
+                {},
+                controller.signal,
             );
             const db = conn.db as Kysely<NoormDatabase>;
             const lockManager = getLockManager();
@@ -99,7 +110,9 @@ export function LockForceScreen({ params: _params }: ScreenProps): ReactElement 
 
         });
 
-        if (isCancelled()) return;
+        // A driver is free to answer after the abort; that answer must not
+        // reinstate a screen the user already stopped.
+        if (!task.isCurrent(controller) || isCancelled()) return;
 
         if (err) {
 
@@ -130,6 +143,8 @@ export function LockForceScreen({ params: _params }: ScreenProps): ReactElement 
 
         if (!activeConfig || !activeConfigName) return;
 
+        const controller = task.start();
+
         setPhase('running');
 
         const [, err] = await attempt(async () => {
@@ -137,6 +152,8 @@ export function LockForceScreen({ params: _params }: ScreenProps): ReactElement 
             const conn = await createConnection(
                 activeConfig.connection,
                 activeConfigName ?? undefined,
+                {},
+                controller.signal,
             );
             const db = conn.db as Kysely<NoormDatabase>;
             const lockManager = getLockManager();
@@ -146,6 +163,8 @@ export function LockForceScreen({ params: _params }: ScreenProps): ReactElement 
             await conn.destroy();
 
         });
+
+        if (!task.isCurrent(controller)) return;
 
         if (err) {
 
@@ -158,7 +177,18 @@ export function LockForceScreen({ params: _params }: ScreenProps): ReactElement 
 
         setPhase('done');
 
-    }, [activeConfig, activeConfigName]);
+    }, [activeConfig, activeConfigName, task]);
+
+    // Escape while a connect is in flight stops it rather than leaving it
+    // running behind a spinner nobody can dismiss.
+    const handleCancelBusy = useCallback(() => {
+
+        if (!task.cancel()) return;
+
+        setError(STOPPED_WAITING_MESSAGE);
+        setPhase('error');
+
+    }, [task]);
 
     // Handle cancel
     const handleCancel = useCallback(() => {
@@ -179,6 +209,14 @@ export function LockForceScreen({ params: _params }: ScreenProps): ReactElement 
     useInput((input, key) => {
 
         if (!isFocused) return;
+
+        if ((phase === 'loading' || phase === 'running') && key.escape) {
+
+            handleCancelBusy();
+
+            return;
+
+        }
 
         if (phase === 'done' || phase === 'error' || phase === 'no-lock') {
 
@@ -222,9 +260,15 @@ export function LockForceScreen({ params: _params }: ScreenProps): ReactElement 
     if (phase === 'loading') {
 
         return (
-            <Panel title="Force Release Lock" paddingX={1} paddingY={1}>
-                <Spinner label="Checking lock status..." />
-            </Panel>
+            <Box flexDirection="column" gap={1}>
+                <Panel title="Force Release Lock" paddingX={1} paddingY={1}>
+                    <Spinner label="Checking lock status..." />
+                </Panel>
+
+                <Box flexWrap="wrap" columnGap={2}>
+                    <Text dimColor>[Esc] Cancel</Text>
+                </Box>
+            </Box>
         );
 
     }
@@ -298,9 +342,15 @@ export function LockForceScreen({ params: _params }: ScreenProps): ReactElement 
     if (phase === 'running') {
 
         return (
-            <Panel title="Force Release Lock" paddingX={1} paddingY={1}>
-                <Spinner label="Force-releasing lock..." />
-            </Panel>
+            <Box flexDirection="column" gap={1}>
+                <Panel title="Force Release Lock" paddingX={1} paddingY={1}>
+                    <Spinner label="Force-releasing lock..." />
+                </Panel>
+
+                <Box flexWrap="wrap" columnGap={2}>
+                    <Text dimColor>[Esc] Cancel</Text>
+                </Box>
+            </Box>
         );
 
     }

@@ -15,7 +15,7 @@
  * ```
  */
 import { useState, useEffect, useMemo } from 'react';
-import { Box, Text, useInput } from 'ink';
+import { Box, Text, useInput, useWindowSize } from 'ink';
 
 import type { ReactElement } from 'react';
 import type { ScreenProps } from '../../types.js';
@@ -25,7 +25,7 @@ import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
 import { Panel, Spinner, useToast } from '../../components/index.js';
-import { ResultTable } from '../../components/terminal/index.js';
+import { ResultBrowser } from '../../components/terminal/index.js';
 import { SqlHistoryManager } from '../../../core/sql-terminal/index.js';
 
 import dayjs from 'dayjs';
@@ -55,6 +55,9 @@ export function SqlHistoryScreen({ params: _params }: ScreenProps): ReactElement
     const { isFocused } = useFocusScope('SqlHistory');
     const { activeConfigName, projectRoot } = useAppContext();
     const { showToast } = useToast();
+    // Above the early returns, or the hook count changes between renders once
+    // the history load resolves.
+    const { rows: terminalHeight } = useWindowSize();
 
     // State
     const [history, setHistory] = useState<SqlHistoryEntry[]>([]);
@@ -63,6 +66,10 @@ export function SqlHistoryScreen({ params: _params }: ScreenProps): ReactElement
     const [scrollOffset, setScrollOffset] = useState(0);
     const [selectedResult, setSelectedResult] = useState<SqlExecutionResult | null>(null);
     const [loadingResult, setLoadingResult] = useState(false);
+
+    // Whether the open result has a row up as a document, so the footer below
+    // stops offering an Escape the viewer has taken over.
+    const [rowOpen, setRowOpen] = useState(false);
 
     const maxVisibleRows = 10;
 
@@ -115,15 +122,22 @@ export function SqlHistoryScreen({ params: _params }: ScreenProps): ReactElement
 
     };
 
+    /** Whether the open result has a grid, which decides who owns Escape. */
+    const hasResultGrid = Boolean(selectedResult?.columns && selectedResult.rows);
+
     // Keyboard shortcuts
     useInput((input, key) => {
 
         if (!isFocused) return;
 
-        // Viewing result - Escape to close
+        // Viewing a result. The grid owns Escape by mode — cancel filter, leave
+        // sort, then close — and Ink hands every keystroke to every registered
+        // handler, so claiming it here as well would close the whole result view
+        // on a keystroke the reader meant for the filter box. Escape is claimed
+        // here only for a stored result with no grid to hand it to.
         if (selectedResult) {
 
-            if (key.escape) {
+            if (key.escape && !hasResultGrid) {
 
                 setSelectedResult(null);
 
@@ -275,19 +289,25 @@ export function SqlHistoryScreen({ params: _params }: ScreenProps): ReactElement
             <Box flexDirection="column" gap={1}>
                 <Panel title="Query Result" paddingX={1} paddingY={1}>
                     {selectedResult.columns && selectedResult.rows ? (
-                        <ResultTable
+                        <ResultBrowser
                             columns={selectedResult.columns}
                             rows={selectedResult.rows}
+                            height={Math.max(5, terminalHeight - 9)}
                             active={true}
+                            label="Stored result"
+                            onEscape={() => setSelectedResult(null)}
+                            onRowOpenChange={setRowOpen}
                         />
                     ) : (
                         <Text dimColor>No data</Text>
                     )}
                 </Panel>
 
-                <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Esc] Close</Text>
-                </Box>
+                {!rowOpen && (
+                    <Box flexWrap="wrap" columnGap={2}>
+                        <Text dimColor>[Esc] Close</Text>
+                    </Box>
+                )}
             </Box>
         );
 

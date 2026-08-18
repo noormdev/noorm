@@ -4,17 +4,22 @@
 #
 # Three things this tape has to respect that the CLI tapes do not:
 #
-#   1. Size is the composition, not a crop. Ink lays out against the terminal
-#      it is handed and does not reflow afterwards. The add-config form is the
-#      tallest screen (10 fields rendered at once, not as steps) and sets the
-#      height for the whole recording.
+#   1. Size is the whole frame, not a crop. The TUI renders into the alternate
+#      screen and draws to the full terminal height, so the canvas below is the
+#      shell: breadcrumb pinned to the top, status bar pinned to the bottom, and
+#      whatever the screen needs in between. A taller canvas is not more room
+#      for content, it is more empty room.
 #   2. Keys are not text. Single-key hotkeys need a Sleep after each one; Ink
 #      repaints on its own schedule and a key sent mid-repaint is dropped.
-#   3. In the form, Enter on a text field SUBMITS THE WHOLE FORM — it does not
-#      advance. Only Tab and the arrow keys move between fields. Enter is
-#      correct on a select (it confirms the option and advances) and on the
-#      final checkbox (it submits). Getting this wrong silently creates a
-#      half-filled config instead of failing loudly.
+#   3. The form has two modes, and Enter is the switch between them. In browse
+#      mode ↑/↓ move between fields — every field type, selects included — and
+#      Enter opens the active field. In edit mode the field owns the keyboard,
+#      and Enter commits back to browse. Typing without opening the field first
+#      does not error: the characters land on the browse handler, which ignores
+#      them, and the recording shows an empty form being submitted.
+#
+#      Submit is not a key any more. Past the last field the cursor lands on the
+#      [ Create Config ] / [ Cancel ] action row, and Enter there is what saves.
 #
 # Screen keys, from src/tui:
 #   home    [r] Run  [c] Config  [g] Change  [d] DB  [q] Quit
@@ -27,8 +32,8 @@ Source theme.tape
 
 Output ../public/image/tui.gif
 
-Set Width 1200    # ~111 cols
-Set Height 1160   # ~49 lines, sized to the add-config form
+Set Width 1200    # 111 cols
+Set Height 700    # 32 lines — measured with `tput lines`, not derived
 Set FontSize 15
 Set TypingSpeed 90ms
 
@@ -57,62 +62,94 @@ Sleep 2s
 Type "a"
 Sleep 2500ms
 
-# Config Name — Tab, never Enter.
+# Config Name. Enter opens the field, Enter commits it, ↓ moves on. That is
+# the loop for every field below; only the select and the checkbox differ.
+Enter
+Sleep 800ms
 Type "dev"
 Sleep 800ms
-Tab
-Sleep 1s
-
-# Database Type — PostgreSQL is already highlighted; Enter confirms + advances.
 Enter
-Sleep 1200ms
-
-# Host — "localhost" is prefilled, so Tab straight past it.
-Tab
+Sleep 800ms
+Down
 Sleep 800ms
 
-# Port — the 5432 shown is a placeholder, not a value; the test container is
+# Database Type. A select collapses to its current value until it is opened,
+# so Enter expands the four dialects and a second Enter takes the highlighted
+# one. PostgreSQL is already the value, so this is a confirmation, not a pick.
+Enter
+Sleep 1500ms
+Enter
+Sleep 1000ms
+
+# Host is prefilled with `localhost`, so pass over it.
+Down
+Sleep 700ms
+Down
+Sleep 700ms
+
+# Port. The 5432 shown is the placeholder, not a value; the test container is
 # on 15432 and leaving this blank yields a config that cannot connect.
+Enter
+Sleep 500ms
 Type "15432"
 Sleep 800ms
-Tab
+Enter
+Sleep 700ms
+Down
 Sleep 600ms
 
+Enter
+Sleep 500ms
 Type "noorm_demo"
 Sleep 800ms
-Tab
-Sleep 600ms
-
-Type "noorm_test"
-Sleep 800ms
-Tab
-Sleep 600ms
-
-Type "noorm_test"
-Sleep 800ms
-Tab
-Sleep 1s
-
-# User Role — Admin at the terminal.
 Enter
-Sleep 1200ms
+Sleep 700ms
+Down
+Sleep 600ms
 
-# Agent Role — already Viewer: DEFAULT_ACCESS is { user: 'admin', agent:
-# 'viewer' }, so an agent gets read-only against this config out of the box.
-# That access split is the point, so just confirm it.
+Enter
+Sleep 500ms
+Type "noorm_test"
+Sleep 800ms
+Enter
+Sleep 700ms
+Down
+Sleep 600ms
+
+Enter
+Sleep 500ms
+Type "noorm_test"
+Sleep 800ms
+Enter
+Sleep 900ms
+
+# User Role, then Agent Role. Both already hold their defaults —
+# DEFAULT_ACCESS is { user: 'admin', agent: 'viewer' }, so an agent gets
+# read-only against this config out of the box. That access split is the
+# point, so ↓ past them rather than opening either.
 #
-# Do not "helpfully" arrow to Viewer here. This tape used to press Up twice to
-# get there from Admin, which was correct until the default changed; the same
-# two presses now wrap round to Admin and hand an agent full access while the
-# recording still claims read-only. Selects follow the default, not a position.
-Enter
+# Do not "helpfully" open the Agent Role select and arrow to Viewer. An
+# earlier tape pressed Up twice to reach it from Admin, which was correct
+# until the default changed; the same two presses then wrapped round to Admin
+# and handed an agent full access while the recording still claimed
+# read-only. Selects follow the default, not a position.
+Down
+Sleep 700ms
+Down
+Sleep 700ms
+Down
+Sleep 900ms
+
+# Test Database. A checkbox has nothing to type into, so Space (or Enter)
+# toggles it in place.
+Space
 Sleep 1200ms
 
-# Test Database — Space toggles, Enter submits the form.
-Space
-Sleep 1s
+# Past the last field is the action row. This is where the form is submitted.
+Down
+Sleep 1500ms
 Enter
-Sleep 4s
+Sleep 5s
 
 Escape
 Sleep 2s
@@ -177,7 +214,8 @@ Sleep 5s
 # [1] Tables, then down to `task` — the payoff table. Its detail shows both the
 # inherited compound key (user_id + created_at + task_index, no surrogate id)
 # and the `priority` column the fast-forward just added, which is the whole
-# walkthrough in one screen.
+# walkthrough in one screen. Its footer advertises [r] Rows; that is
+# 05-rows.tape.
 Type "1"
 Sleep 3s
 Down

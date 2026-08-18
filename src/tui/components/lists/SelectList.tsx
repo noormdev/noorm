@@ -19,6 +19,10 @@ import { Box, Text, useInput } from 'ink';
 import type { ReactElement } from 'react';
 
 import { useFocusScope } from '../../focus.js';
+import { useRowMouse } from '../../mouse.js';
+import { useOptionalRouter } from '../../router.js';
+import { listMemoryKey, recallListPosition, rememberListPosition } from '../../list-memory.js';
+import { useViewportRows } from '../../hooks/useViewportRows.js';
 
 /**
  * Item in a SelectList.
@@ -59,8 +63,19 @@ export interface SelectListProps<T = unknown> {
     /** Label shown when no items */
     emptyLabel?: string;
 
-    /** Number of visible items before scrolling */
+    /**
+     * Items visible before scrolling. Defaults to what the terminal has room
+     * for, assuming the list owns the screen. Pass a number only to pin a list
+     * that must not grow.
+     */
     visibleCount?: number;
+
+    /**
+     * Rows of the screen that belong to something other than this list — an
+     * intro paragraph above it, a banner over the Panel. Only the parent knows
+     * these, and only they stop a terminal-sized list from overrunning them.
+     */
+    reserveRows?: number;
 
     /** Focus scope label for keyboard handling. If not provided, uses parent's focus. */
     focusLabel?: string;
@@ -110,7 +125,8 @@ export function SelectList<T = unknown>({
     onSelect,
     onHighlight,
     emptyLabel = 'No items',
-    visibleCount = 5,
+    visibleCount: pinnedVisibleCount,
+    reserveRows = 0,
     focusLabel,
     isFocused: externalFocused,
     defaultValue,
@@ -122,6 +138,15 @@ export function SelectList<T = unknown>({
     onSubmit,
     onCancel,
 }: SelectListProps<T>): ReactElement {
+
+    // Unconditional so the hook count is stable whether or not the caller
+    // pinned a count; the pin wins when it is there. `visibleCount` counts
+    // items while the budget counts rows, and those differ once a description
+    // is drawn on its own line - halving assumes every item carries one, which
+    // under-fills a mixed list rather than running it off the bottom.
+    const availableRows = useViewportRows(reserveRows);
+    const rowsPerItem = showDescriptionBelow ? 2 : 1;
+    const visibleCount = pinnedVisibleCount ?? Math.max(1, Math.floor(availableRows / rowsPerItem));
 
     // Use external focus if provided, otherwise manage own focus scope
     const hasExternalFocus = externalFocused !== undefined;
@@ -180,6 +205,51 @@ export function SelectList<T = unknown>({
 
     }, [enabledItems.length, highlightedIndex]);
 
+    // Where this list's cursor is remembered. Derived from the router rather
+    // than from a prop, so every list screen gets the behaviour without opting
+    // in and the next one cannot forget to. `focusLabel` separates the lists on
+    // the two routes that render more than one (`db/transfer`, `db/dt-modify`),
+    // both of which already label theirs. Rendered without a router - a bare
+    // list in a test - there is no key and nothing is remembered.
+    const router = useOptionalRouter();
+    const memoryKey = router ? listMemoryKey(router.route, router.params, focusLabel) : null;
+    const arrivedBy = router?.arrivedBy;
+
+    // Restore once, and only once there is something to match against: a screen
+    // that fetches its rows mounts this list empty, and `useState` above has
+    // already read its initial value by the time the rows land.
+    const hasRestoredRef = useRef(false);
+
+    useEffect(() => {
+
+        if (hasRestoredRef.current || enabledItems.length === 0) return;
+
+        hasRestoredRef.current = true;
+
+        // Only on the way back. Restoring on every mount reads well for a
+        // browsing list but it also rewinds the wizards, where each phase swaps
+        // one list for another under a single route and a step is meant to open
+        // on its own first row - `DbTransferScreen` opens its options on the
+        // truncate toggle, and its test says so.
+        if (arrivedBy !== 'pop') return;
+
+        // An explicit defaultValue is the caller stating where to start, which
+        // outranks where the user happened to leave the cursor last time.
+        if (memoryKey === null || defaultValue !== undefined) return;
+
+        const remembered = recallListPosition(memoryKey);
+
+        if (remembered === undefined) return;
+
+        const index = enabledItems.findIndex((item) => item.key === remembered);
+
+        // A miss means the row was deleted while we were away. Leaving the
+        // cursor at the top is the honest answer; an index would have restored
+        // onto whichever row slid into the empty slot.
+        if (index >= 0) setHighlightedIndex(index);
+
+    }, [enabledItems, memoryKey, defaultValue, arrivedBy]);
+
     // Calculate visible window for scrolling
     const startIndex = useMemo(() => {
 
@@ -211,13 +281,21 @@ export function SelectList<T = unknown>({
 
         const item = enabledItems[highlightedIndex];
 
-        if (item && onHighlight) {
+        if (!item) return;
+
+        if (memoryKey !== null) {
+
+            rememberListPosition(memoryKey, item.key);
+
+        }
+
+        if (onHighlight) {
 
             onHighlight(item);
 
         }
 
-    }, [highlightedIndex, enabledItems, onHighlight]);
+    }, [highlightedIndex, enabledItems, onHighlight, memoryKey]);
 
     // Handle keyboard navigation
     // Note: We don't use isActive option because it prevents handler registration
@@ -225,6 +303,14 @@ export function SelectList<T = unknown>({
     useInput((input, key) => {
 
         if (!isFocused || isDisabled) return;
+
+        // No guard against mouse reports here, deliberately. Every branch below
+        // tests a named key or an exact character, and a report matches none of
+        // them — `numberNav` runs it through parseInt and gets NaN. A guard was
+        // written and then removed once the mutation harness showed that taking
+        // it out changed nothing. The handlers that do need one are the ones
+        // with a catch-all character branch: `ResultTable`'s filter box and
+        // `SqlInput`.
 
         // Escape - cancel/back
         if (key.escape) {
@@ -333,6 +419,48 @@ export function SelectList<T = unknown>({
 
     });
 
+    /**
+     * What Enter would do to one row.
+     *
+     * In multi-select Enter submits the whole list, which is not something a
+     * click on a single row asked for. Space is the row-scoped key there, so
+     * that is the one a double click borrows.
+     */
+    const activateRow = (index: number) => {
+
+        const item = enabledItemsRef.current[index];
+
+        if (!item) return;
+
+        if (multiSelect) onToggleRef.current?.(item);
+        else onSelectRef.current?.(item);
+
+    };
+
+    // Inert without a MouseProvider above it or with the setting off: no refs
+    // are attached to the rows and nothing subscribes.
+    const { rowRef } = useRowMouse({
+        isActive: isFocused && !isDisabled,
+        onClick: setHighlightedIndex,
+        onActivate: activateRow,
+        onWheel: (delta) => {
+
+            setHighlightedIndex((current) => {
+
+                const last = enabledItemsRef.current.length - 1;
+
+                if (last < 0) return current;
+
+                // Clamped, not wrapped. The arrows wrap, but a wheel that
+                // jumps from the last row back to the first reads as a glitch
+                // rather than as navigation.
+                return Math.min(Math.max(current + delta, 0), last);
+
+            });
+
+        },
+    });
+
     // Empty state
     if (enabledItems.length === 0) {
 
@@ -367,7 +495,7 @@ export function SelectList<T = unknown>({
                     : '';
 
                 return (
-                    <Box key={item.key} flexDirection="column">
+                    <Box key={item.key} flexDirection="column" ref={rowRef(actualIndex)}>
                         <Box>
                             {numberNav && (
                                 <Text dimColor>{numberIndicator}</Text>

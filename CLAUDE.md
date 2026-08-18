@@ -84,10 +84,10 @@ Path-specific rules are in `.claude/rules/`:
 
 | File | Applies To | Covers |
 |------|------------|--------|
-| `typescript.md` | `**/*.{js,jsx,ts,tsx}` | 4-block function structure, error handling (no try-catch), imports, code style |
-| `tui-development.md` | `src/tui/**`, `tests/tui/**` | Focus system, UI patterns, Ink layout, observer hooks |
-| `testing.md` | `tests/**/*.{ts,tsx}` | Test naming, coverage, error assertions |
-| `documentation.md` | `docs/**/*.md` | Three-pillar structure, style, tone |
+| `typescript.md` | `**/*.{js,jsx,ts,tsx}` | 4-block function structure, error handling (no try-catch), classes, JSDoc |
+| `tui-development.md` | `src/tui/**`, `tests/cli/**` | Focus system, keyboard handling, non-reactive terminal size, observer hooks |
+| `testing.md` | `tests/**/*.{ts,tsx}` | Docker preflight, database safety, naming, error assertions |
+| `documentation.md` | `docs/**/*.md` | Per-file voice assignment, claims discipline |
 
 
 ## Help System
@@ -120,7 +120,6 @@ Use Kysely as the SQL translator. Write database operations once, Kysely handles
 For setup wizards where the target database may not exist yet, use `testConnection(config, { testServerOnly: true })`. This connects to the dialect's system database (postgres→`postgres`, mssql→`master`, mysql→no database) to verify credentials without requiring the target database.
 
 
-<<<<<<< HEAD
 ## Documentation surfaces
 
 | Path | Covers | Voice |
@@ -201,8 +200,7 @@ For setup wizards where the target database may not exist yet, use `testConnecti
 | `docs/reference/sdk.md` | SDK API reference, withSchema, impersonation, routines | terse-technical |
 | `packages/sdk/README.md` | npm SDK readme, install, usage, schema scoping | terse-technical |
 
-=======
->>>>>>> origin/master
+
 <atomic-signals>
 
 ## Project signals (auto-loaded)

@@ -4,11 +4,25 @@
  * Interactive table renderer with client-side filtering and sorting.
  *
  * **Features:**
- * - Auto-calculated column widths
+ * - Auto-calculated column widths, chopped to what the row can hold
  * - Truncation for long values
  * - Scroll support for large result sets
  * - Filter by all columns or specific column
  * - Sort ascending/descending by any column
+ *
+ * **A wide result is chopped, not crammed.** Ink's `width` is a flex basis and
+ * flex items shrink by default, so a row wider than the terminal does not
+ * overflow — every cell loses columns at once, headers wrap onto a second line
+ * and double each row's height, and values break mid-value. `fitGridColumns`
+ * therefore keeps the leading columns that fit at a readable width and reports
+ * the rest as a `… N more columns` marker. The filter and the sort picker still
+ * see every column, because a column being off the right edge is a drawing
+ * decision and not a reason it should stop being searchable.
+ *
+ * Cells are formatted through `documentValue`, the same normalizer the row
+ * document viewer uses, so a `bytea` reads `<binary 40 bytes 0x…>` rather than
+ * `{"type":"Buffer","data":[0,…` and a `Date` reads as a bare timestamp rather
+ * than a quoted one.
  *
  * @example
  * ```tsx
@@ -18,10 +32,14 @@
  * />
  * ```
  */
-import { useState, useMemo, useCallback, useEffect } from 'react';
-import { Box, Text, useInput } from 'ink';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import { Box, Text, useInput, useWindowSize } from 'ink';
 import v from 'voca';
 import type { ReactElement } from 'react';
+
+import { isMouseReport, useRowMouse } from '../../mouse.js';
+import { fitGridColumns } from './columnFit.js';
+import { documentValue } from './rowDocument.js';
 
 /**
  * Props for ResultTable component.
@@ -48,6 +66,37 @@ export interface ResultTableProps {
 
     /** Auto-sort by date column (desc) or ID (desc) on load. Default: true */
     autoSort?: boolean;
+
+    /**
+     * Cursor position, zero-based, into the rows as displayed.
+     *
+     * Supplying it makes the cursor controlled: the table draws this row and
+     * reports where the arrows would move it instead of moving it itself. Left
+     * out, the table keeps its own cursor, which is what the SQL terminal does.
+     */
+    highlightedRow?: number;
+
+    /** Where the arrows moved the cursor, so a controlled parent can follow. */
+    onHighlightChange?: (index: number) => void;
+
+    /**
+     * Enter on the cursor's row, in browse mode only, so the filter box keeps
+     * its own Enter and the sort picker keeps its own.
+     *
+     * `rows` is the list as displayed — filtered and sorted — because a caller
+     * that opens the picked row usually wants to step to the next one, and the
+     * next one is the next in what the reader is looking at rather than the
+     * next in what was handed in.
+     */
+    onSelect?: (row: Record<string, unknown>, index: number, rows: Record<string, unknown>[]) => void;
+
+    /**
+     * Tab in browse mode only, so the filter box keeps its column cycling.
+     *
+     * Named for the key rather than for an intent: this table has no idea what
+     * is next to it, and the caller decides what leaving means.
+     */
+    onTab?: () => void;
 
 }
 
@@ -244,14 +293,34 @@ function detectNumericIdColumn(
 
 /**
  * Format a cell value for display.
+ *
+ * Routed through `documentValue` rather than `JSON.stringify` because the
+ * drivers hand back real JavaScript and disagree per dialect about what: a
+ * binary column arrives as a `Buffer` on three of them and a `Uint8Array` on
+ * `bun:sqlite`, and either one stringifies to `{"type":"Buffer","data":[0,…`,
+ * which is the wrapper rather than the value and which the width allocator will
+ * happily spend a whole column on. `documentValue` was measured against all four
+ * drivers; it also survives the two values that make `JSON.stringify` throw
+ * outright, a `bigint` and MySQL's zero date.
+ *
+ * `undefined` stays blank and `null` stays `NULL`, which is the one place this
+ * departs from the document: a grid has a column heading to say what the blank
+ * is under, and a document has only the value.
+ *
+ * @example
+ * formatCellValue(Buffer.of(0, 255)); // '<binary 2 bytes 0x00ff>'
  */
 function formatCellValue(value: unknown): string {
 
-    if (value === null) return 'NULL';
     if (value === undefined) return '';
-    if (typeof value === 'object') return JSON.stringify(value);
 
-    return String(value);
+    const documented = documentValue(value);
+
+    if (documented === null) return 'NULL';
+
+    if (typeof documented === 'object') return JSON.stringify(documented);
+
+    return String(documented);
 
 }
 
@@ -266,9 +335,19 @@ export function ResultTable({
     active = true,
     onEscape,
     autoSort = true,
+    highlightedRow: controlledRow,
+    onHighlightChange,
+    onSelect,
+    onTab,
 }: ResultTableProps): ReactElement {
 
     const isActive = active;
+
+    const isControlled = controlledRow !== undefined;
+
+    // useWindowSize rather than a prop: how many columns fit is the terminal's
+    // business, and this hook is what re-runs the fit when it resizes.
+    const { columns: terminalColumns } = useWindowSize();
 
     // Compute initial sort based on data
     const initialSort = useMemo((): SortState | null => {
@@ -304,8 +383,28 @@ export function ResultTable({
     const [filter, setFilter] = useState<FilterState>({ term: '', column: null });
     const [sort, setSort] = useState<SortState | null>(initialSort);
     const [scrollOffset, setScrollOffset] = useState(0);
-    const [highlightedRow, setHighlightedRow] = useState(0);
+    const [internalRow, setInternalRow] = useState(0);
     const [sortColumnIndex, setSortColumnIndex] = useState(0);
+
+    const highlightedRow = isControlled ? controlledRow : internalRow;
+
+    // One mover for both cursors, so a controlled parent and an uncontrolled
+    // table cannot drift into two different ideas of where the cursor is.
+    const moveCursor = (next: number) => {
+
+        if (!isControlled) setInternalRow(next);
+
+        onHighlightChange?.(next);
+
+    };
+
+    // Held in a ref for the reset effect below. A parent that passes an inline
+    // arrow - which is every parent - hands over a new function on every
+    // render, so an effect that listed the mover in its dependencies would
+    // re-run on every render and snap the cursor back to the top row on each
+    // one, which looks exactly like the arrows not working.
+    const moveCursorRef = useRef(moveCursor);
+    moveCursorRef.current = moveCursor;
 
     // Update sort when data changes (new query)
     useEffect(() => {
@@ -314,32 +413,35 @@ export function ResultTable({
 
     }, [initialSort]);
 
-    // Calculate column widths
-    const columnWidths = useMemo(() => {
+    // Which columns are drawn and how wide each one is.
+    //
+    // The width a column wants comes from its own content, so a table of short
+    // values keeps its density; the fit then decides how many of those columns
+    // the row can actually hold and drops the rest off the right edge.
+    const fit = useMemo(() => {
 
-        const widths: Record<string, number> = {};
+        const desired: Record<string, number> = {};
 
         for (const col of columns) {
 
-            // Start with header length
-            let maxWidth = col.length;
+            let want = col.length;
 
-            // Check all row values
             for (const row of rows) {
 
-                const value = formatCellValue(row[col]);
-                maxWidth = Math.max(maxWidth, value.length);
+                want = Math.max(want, formatCellValue(row[col]).length);
 
             }
 
-            // Cap at max width
-            widths[col] = Math.min(maxWidth, maxColumnWidth);
+            desired[col] = Math.min(want, maxColumnWidth);
 
         }
 
-        return widths;
+        return fitGridColumns(columns, desired, terminalColumns);
 
-    }, [columns, rows, maxColumnWidth]);
+    }, [columns, rows, maxColumnWidth, terminalColumns]);
+
+    const drawnColumns = fit.columns;
+    const columnWidths = fit.widths;
 
     // Apply filter
     const filteredRows = useMemo(() => {
@@ -410,14 +512,44 @@ export function ResultTable({
     useEffect(() => {
 
         setScrollOffset(0);
-        setHighlightedRow(0);
+        moveCursorRef.current(0);
 
     }, [filter.term, filter.column]);
+
+    // Keep the cursor in view when something outside moved it.
+    //
+    // The arrow handlers below scroll as they move, so for an uncontrolled
+    // table this never fires. A controlled parent can set the cursor to
+    // anywhere — the row view's ←/→ do exactly that — and the window has to
+    // follow it or the reader escapes back to a table scrolled somewhere else.
+    useEffect(() => {
+
+        if (highlightedRow < scrollOffset) {
+
+            setScrollOffset(highlightedRow);
+
+            return;
+
+        }
+
+        if (highlightedRow >= scrollOffset + maxVisibleRows) {
+
+            setScrollOffset(highlightedRow - maxVisibleRows + 1);
+
+        }
+
+    }, [highlightedRow, scrollOffset, maxVisibleRows]);
 
     // Handle keyboard input
     useInput((input, key) => {
 
         if (!isActive) return;
+
+        // A mouse report reaches every useInput handler as a plain string, and
+        // the filter box below would happily type `[<0;12;5M` into itself.
+        // Dropped for the whole handler so a click can only ever do what the
+        // mouse handler decides.
+        if (isMouseReport(input)) return;
 
         // Mode-specific handling
         if (mode === 'filter') {
@@ -557,7 +689,7 @@ export function ResultTable({
 
             if (highlightedRow > 0) {
 
-                setHighlightedRow((r) => r - 1);
+                moveCursor(highlightedRow - 1);
 
                 // Scroll if needed
                 if (highlightedRow - 1 < scrollOffset) {
@@ -576,7 +708,7 @@ export function ResultTable({
 
             if (highlightedRow < sortedRows.length - 1) {
 
-                setHighlightedRow((r) => r + 1);
+                moveCursor(highlightedRow + 1);
 
                 // Scroll if needed
                 if (highlightedRow + 1 >= scrollOffset + maxVisibleRows) {
@@ -586,6 +718,29 @@ export function ResultTable({
                 }
 
             }
+
+            return;
+
+        }
+
+        // Enter: hand the cursor's row up. Only reached in browse mode, which
+        // is what leaves the filter box's Enter and the sort picker's Enter
+        // alone - both return above without falling through to here.
+        if (key.return && onSelect) {
+
+            const picked = sortedRows[highlightedRow];
+
+            if (picked) onSelect(picked, highlightedRow, sortedRows);
+
+            return;
+
+        }
+
+        // Tab: likewise. Guarded on the callback so a table without one behaves
+        // exactly as it did before, rather than swallowing the key.
+        if (key.tab && onTab) {
+
+            onTab();
 
             return;
 
@@ -631,13 +786,38 @@ export function ResultTable({
 
     });
 
+    // Mouse. Gated on browse mode for the same reason Enter and Tab are: the
+    // filter box and the sort picker own their own keys, and a click should not
+    // reach past whichever one is open. Inert without a MouseProvider above it
+    // or with the setting off.
+    const { rowRef } = useRowMouse({
+        isActive: isActive && mode === 'browse',
+        onClick: moveCursor,
+        onActivate: (index) => {
+
+            const picked = sortedRows[index];
+
+            if (picked && onSelect) onSelect(picked, index, sortedRows);
+
+        },
+        onWheel: (delta) => {
+
+            if (sortedRows.length === 0) return;
+
+            const next = Math.min(Math.max(highlightedRow + delta, 0), sortedRows.length - 1);
+
+            if (next !== highlightedRow) moveCursor(next);
+
+        },
+    });
+
     // Render a table row
     const renderRow = useCallback(
         (row: Record<string, unknown>, index: number, isHighlighted: boolean) => {
 
             return (
-                <Box key={index}>
-                    {columns.map((col, colIndex) => {
+                <Box key={index} ref={rowRef(index)}>
+                    {drawnColumns.map((col, colIndex) => {
 
                         const colWidth = columnWidths[col] ?? col.length;
                         const value = v.truncate(formatCellValue(row[col]), colWidth, '\u2026');
@@ -660,7 +840,7 @@ export function ResultTable({
             );
 
         },
-        [columns, columnWidths],
+        [drawnColumns, columnWidths, rowRef],
     );
 
     // Calculate total width for separator
@@ -668,18 +848,18 @@ export function ResultTable({
 
         let width = 0;
 
-        for (const col of columns) {
+        for (const col of drawnColumns) {
 
             width += columnWidths[col] ?? col.length;
 
         }
 
         // Add separators
-        width += (columns.length - 1) * 3; // ' | '
+        width += (drawnColumns.length - 1) * 3; // ' | '
 
         return width;
 
-    }, [columns, columnWidths]);
+    }, [drawnColumns, columnWidths]);
 
     const hasFilter = filter.term.length > 0;
     const hasSort = sort !== null;
@@ -727,11 +907,21 @@ export function ResultTable({
                 <>
                     {/* Header */}
                     <Box>
-                        {columns.map((col, index) => {
+                        {drawnColumns.map((col, index) => {
 
                             const colWidth = columnWidths[col] ?? col.length;
-                            const paddedCol = col.padEnd(colWidth);
                             const isSortColumn = sort?.column === col;
+
+                            // A header wider than its column used to be written
+                            // out in full: Ink wrapped it onto a second line,
+                            // which silently doubled the height of every row on
+                            // screen and left the grid looking shredded. Cells
+                            // have always truncated; headers now do too, and the
+                            // sort arrow is charged to the same width instead of
+                            // being added past it, which used to shift every
+                            // column after it by one.
+                            const labelWidth = Math.max(1, isSortColumn ? colWidth - 1 : colWidth);
+                            const paddedCol = v.truncate(col, labelWidth, '\u2026').padEnd(labelWidth);
 
                             return (
                                 <Box key={col}>
@@ -762,7 +952,11 @@ export function ResultTable({
                     {visibleRows.map((row, index) => {
 
                         const actualIndex = scrollOffset + index;
-                        const isHighlighted = actualIndex === highlightedRow;
+
+                        // Gated on `isActive`: a cursor is a claim that the
+                        // arrows and Enter land here, and on a screen holding
+                        // two tables two cursors make that claim twice.
+                        const isHighlighted = isActive && actualIndex === highlightedRow;
 
                         return renderRow(row, actualIndex, isHighlighted);
 
@@ -776,22 +970,32 @@ export function ResultTable({
                             </Text>
                         </Box>
                     )}
+
                 </>
             )}
 
-            {/* Footer */}
+            {/* Footer. The columns the fit dropped are reported here rather
+                than on a line of their own: a caller sizing itself has to know
+                how tall a table is before it lays one out, and a notice that
+                appears only sometimes makes that a guess. This line is already
+                in every caller's arithmetic. */}
             <Box marginTop={1}>
-                <Text dimColor>
+                <Text dimColor wrap="truncate">
                     {sortedRows.length} row{sortedRows.length !== 1 ? 's' : ''}
                     {isFiltered && ` (filtered from ${rows.length})`}
+                    {fit.hidden > 0 && ` · … ${fit.hidden} more column${fit.hidden === 1 ? '' : 's'}`}
+                    {fit.hidden > 0 && onSelect && isActive && ' — [↵] on a row shows them all'}
                 </Text>
             </Box>
 
-            {/* Help */}
-            {mode === 'browse' && (
+            {/* Help. Gated on `isActive`: these keys belong to whichever table
+                currently has input, and an inactive one advertising them sends
+                the reader pressing keys that go nowhere. */}
+            {mode === 'browse' && isActive && (
                 <Box>
                     <Text dimColor>
                         [/] Filter  [s] Sort  [c] Clear  [↑/↓] Navigate
+                        {onSelect ? '  [↵] Open row' : ''}
                     </Text>
                 </Box>
             )}

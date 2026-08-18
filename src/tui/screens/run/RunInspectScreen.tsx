@@ -596,17 +596,15 @@ export function RunInspectScreen({ params }: ScreenProps): ReactElement {
                                 <Text dimColor>
                                     Select a template file to inspect
                                 </Text>
-                                <Box flexDirection="column" height={15}>
-                                    <SearchableList
-                                        focusLabel="InspectFilePicker"
-                                        items={fileItems}
-                                        onSelect={handleSelect}
-                                        onCancel={back}
-                                        visibleCount={10}
-                                        searchPlaceholder="Filter templates..."
-                                        emptyLabel="No template files found"
-                                    />
-                                </Box>
+                                <SearchableList
+                                    focusLabel="InspectFilePicker"
+                                    items={fileItems}
+                                    onSelect={handleSelect}
+                                    onCancel={back}
+                                    reserveRows={2}
+                                    searchPlaceholder="Filter templates..."
+                                    emptyLabel="No template files found"
+                                />
                             </>
                         ) : (
                             <>

@@ -236,6 +236,34 @@ export interface TeardownConfig {
 }
 
 /**
+ * Terminal UI configuration.
+ *
+ * Only affects `noorm ui`; headless commands ignore it.
+ *
+ * @example
+ * ```yaml
+ * ui:
+ *     mouse: false
+ * ```
+ */
+export interface UiConfig {
+
+    /**
+     * Answer mouse clicks and wheel notches in lists and result grids.
+     *
+     * Absent means on — `isMouseEnabled` in `./defaults.js` is where that is
+     * decided, so read it rather than this field. Written `false` is the only
+     * thing that turns tracking off, and it is worth writing: enabling any
+     * tracking mode takes click-drag text selection away from the terminal
+     * unless the user holds a modifier (Option on macOS Terminal and iTerm2,
+     * Shift elsewhere). The symptom a user reports is "text selection stopped
+     * working", which does not point at noorm on its own.
+     */
+    mouse?: boolean;
+
+}
+
+/**
  * Complete settings configuration.
  *
  * Stored in .noorm/settings.yml and version controlled.
@@ -265,6 +293,9 @@ export interface Settings {
 
     /** Database teardown/reset configuration */
     teardown?: TeardownConfig;
+
+    /** Terminal UI behaviour */
+    ui?: UiConfig;
 
 }
 

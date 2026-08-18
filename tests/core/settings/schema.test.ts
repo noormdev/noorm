@@ -7,6 +7,7 @@ import {
     validateRule,
     SettingsValidationError,
 } from '../../../src/core/settings/schema.js';
+import { isMouseEnabled, DEFAULT_UI_MOUSE } from '../../../src/core/settings/defaults.js';
 
 describe('settings: schema validation', () => {
 
@@ -474,6 +475,80 @@ describe('settings: schema validation', () => {
 
             expect(result.teardown).toBeDefined();
             expect(result.teardown?.preserveTables).toHaveLength(2);
+
+        });
+
+    });
+
+    describe('ui', () => {
+
+        it('should carry the mouse flag through parseSettings', () => {
+
+            const result = parseSettings({ ui: { mouse: true } });
+
+            expect(result.ui?.mouse).toBe(true);
+
+        });
+
+        it('should default the mouse flag on when the section is present but empty', () => {
+
+            const result = parseSettings({ ui: {} });
+
+            expect(result.ui?.mouse).toBe(true);
+
+        });
+
+        it('should keep an explicit false false', () => {
+
+            // The whole point of the flag now that the default is on: a user
+            // whose terminal handles tracking badly writes this one line, and
+            // nothing may quietly promote it back to the default.
+            const result = parseSettings({ ui: { mouse: false } });
+
+            expect(result.ui?.mouse).toBe(false);
+            expect(isMouseEnabled(result)).toBe(false);
+
+        });
+
+        it('should leave the section absent when it was not written', () => {
+
+            // Absent stays absent through the schema. What absent *means* is
+            // decided once, by isMouseEnabled, rather than by each reader.
+            const result = parseSettings({ build: { include: [] } });
+
+            expect(result.ui).toBeUndefined();
+            expect(isMouseEnabled(result)).toBe(true);
+
+        });
+
+        it('should reject a non-boolean mouse flag', () => {
+
+            expect(() => validateSettings({ ui: { mouse: 'yes' } })).toThrow();
+
+        });
+
+    });
+
+    describe('isMouseEnabled', () => {
+
+        it('should be on when there are no settings at all', () => {
+
+            expect(DEFAULT_UI_MOUSE).toBe(true);
+            expect(isMouseEnabled(null)).toBe(true);
+            expect(isMouseEnabled(undefined)).toBe(true);
+
+        });
+
+        it('should be on when the ui section exists without the flag', () => {
+
+            expect(isMouseEnabled({ ui: {} })).toBe(true);
+
+        });
+
+        it('should be off only when the flag is written false', () => {
+
+            expect(isMouseEnabled({ ui: { mouse: false } })).toBe(false);
+            expect(isMouseEnabled({ ui: { mouse: true } })).toBe(true);
 
         });
 

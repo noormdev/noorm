@@ -122,10 +122,12 @@ describe('cli: focus', () => {
 
             });
 
-            // In React 19, errors during render are caught and logged
-            // Check that the render fails with an error
-            const { lastFrame } = render(<FocusDisplay />);
-            const output = lastFrame() ?? '';
+            // In React 19, errors during render are caught and logged.
+            // Ink 7 paints its error overview and then writes a cleared frame
+            // as it unmounts, so the message is in `frames` but never in
+            // `lastFrame()`. Search every frame.
+            const { frames } = render(<FocusDisplay />);
+            const output = frames.join('');
 
             // Error may appear in rendered output or in console.error
             const hasErrorInOutput = output.includes('useFocusContext must be used within a FocusProvider');

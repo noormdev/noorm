@@ -102,6 +102,10 @@ teardown:
     preserveTables:
         - AppSettings
     postScript: sql/teardown/cleanup.sql
+
+# Terminal UI behavior
+ui:
+    mouse: false  # default: true
 ```
 
 
@@ -524,6 +528,56 @@ Use cases:
 
 - **preserveTables** - Lookup tables, configuration tables, or audit logs that should never be truncated
 - **postScript** - Re-seed essential data, reset sequences, or run cleanup SQL after teardown
+
+
+## UI Configuration
+
+Affects `noorm ui` only; headless commands ignore this section.
+
+```yaml
+ui:
+    mouse: false
+```
+
+| Property | Default | Description |
+|----------|---------|-------------|
+| `mouse` | `true` | Answer clicks and wheel notches in lists and result grids |
+
+There is no settings-screen toggle and no accessor on `SettingsManager`. What an
+absent flag means is decided in exactly one place, `isMouseEnabled` in
+`src/core/settings/defaults.ts`, and every reader goes through it:
+
+```typescript
+export const DEFAULT_UI_MOUSE = true
+
+export function isMouseEnabled(settings) {
+    return settings?.ui?.mouse ?? DEFAULT_UI_MOUSE
+}
+```
+
+`UiConfigSchema` takes the same constant for `mouse`'s zod default, so `ui: {}`
+and no `ui` section at all mean the same thing. Only a written `false` disables
+it.
+
+The TUI adds one condition on top, and it is about timing rather than meaning:
+
+```typescript
+const { settings } = useSettings()
+
+<MouseProvider enabled={settings !== null && isMouseEnabled(settings)}>
+```
+
+`null` is *not loaded yet*, not *absent*. Without that check, a project that
+wrote `mouse: false` would spend every startup with tracking on and its text
+selection broken, for a setting it explicitly wrote. So the enable sequence goes
+out once the managers have finished loading rather than at `render()`.
+
+On by default because the feature is worth having, but it is a trade: any
+terminal mouse-tracking mode takes click-drag text selection away from the
+terminal unless the user holds a modifier (Option on macOS Terminal and iTerm2,
+Shift elsewhere). A user who hits that reports it as "text selection stopped
+working", which is why the help screen (`?`) names `ui.mouse: false` directly.
+See `docs/tui.md` for what the mouse does.
 
 
 ## SettingsManager API

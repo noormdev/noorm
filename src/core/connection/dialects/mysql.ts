@@ -6,7 +6,7 @@
  */
 import { Kysely, MysqlDialect } from 'kysely';
 import type { ConnectionConfig, ConnectionResult } from '../types.js';
-import { DEFAULT_PORTS } from '../defaults.js';
+import { DEFAULT_PORTS, connectTimeoutFor } from '../defaults.js';
 
 /**
  * Create a MySQL connection.
@@ -36,6 +36,9 @@ export async function createMysqlConnection(config: ConnectionConfig): Promise<C
         database: config.database,
         connectionLimit: config.pool?.max ?? 10,
         ssl: config.ssl ? {} : undefined,
+        // mysql2 defaults this to 10s. Set explicitly so every dialect gives
+        // up on the same schedule and one override moves all of them.
+        connectTimeout: connectTimeoutFor(config),
     });
 
     const db = new Kysely<unknown>({

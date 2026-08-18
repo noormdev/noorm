@@ -12,7 +12,7 @@
  */
 import { useState, useCallback, useMemo } from 'react';
 import { Box, Text, useInput } from 'ink';
-import { TextInput, ProgressBar } from '@inkjs/ui';
+import { ProgressBar } from '@inkjs/ui';
 
 import type { ReactElement } from 'react';
 import type { ScreenProps } from '../../types.js';
@@ -30,6 +30,7 @@ import {
     StatusMessage,
     SmartConfirm,
     StatusList,
+    TextInput,
 } from '../../components/index.js';
 import { checkConfigPolicy } from '../../../core/policy/index.js';
 import { useChangeProgress, useAsyncEffect } from '../../hooks/index.js';

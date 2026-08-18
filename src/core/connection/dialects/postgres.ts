@@ -6,7 +6,7 @@
  */
 import { Kysely, PostgresDialect } from 'kysely';
 import type { ConnectionConfig, ConnectionResult } from '../types.js';
-import { DEFAULT_PORTS } from '../defaults.js';
+import { DEFAULT_PORTS, connectTimeoutFor } from '../defaults.js';
 
 /**
  * Create a PostgreSQL connection.
@@ -39,6 +39,9 @@ export async function createPostgresConnection(
         min: config.pool?.min ?? 0,
         max: config.pool?.max ?? 10,
         ssl: config.ssl,
+        // pg's own default is 0, meaning wait forever: an unreachable host
+        // never comes back without this.
+        connectionTimeoutMillis: connectTimeoutFor(config),
     });
 
     const db = new Kysely<unknown>({

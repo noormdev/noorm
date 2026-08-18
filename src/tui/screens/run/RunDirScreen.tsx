@@ -20,7 +20,7 @@ import type { ScreenProps } from '../../types.js';
 import { useRouter } from '../../router.js';
 import { useSettings, useGlobalModes, useAppContext } from '../../app-context.js';
 import { Panel, Spinner, Confirm, SelectList, FilePicker, KeyHandler, useToast } from '../../components/index.js';
-import { useRunProgress, useAsyncEffect } from '../../hooks/index.js';
+import { useRunProgress, useAsyncEffect, modeBannerRows } from '../../hooks/index.js';
 import { discoverFiles, runFiles, checkFilesStatus } from '../../../core/runner/index.js';
 import type { FilesStatusResult } from '../../../core/runner/index.js';
 import { getErrorMessage, resolveScreenIdentity, buildRunContext, withScreenConnection } from '../../utils/index.js';
@@ -502,16 +502,14 @@ export function RunDirScreen({ params }: ScreenProps): ReactElement {
                                 <Text dimColor>
                                     Select a directory to execute all SQL files within
                                 </Text>
-                                <Box flexDirection="column" height={15}>
-                                    <SelectList
-                                        focusLabel="RunDirPicker"
-                                        items={dirItems}
-                                        onSelect={handleSelect}
-                                        onCancel={handleCancel}
-                                        visibleCount={10}
-                                        emptyLabel="No directories found"
-                                    />
-                                </Box>
+                                <SelectList
+                                    focusLabel="RunDirPicker"
+                                    items={dirItems}
+                                    onSelect={handleSelect}
+                                    onCancel={handleCancel}
+                                    reserveRows={2 + modeBannerRows(globalModes)}
+                                    emptyLabel="No directories found"
+                                />
                             </>
                         ) : (
                             <>
@@ -608,7 +606,7 @@ export function RunDirScreen({ params }: ScreenProps): ReactElement {
                     selected={relativeFiles}
                     onSelect={handleFileSelect}
                     onCancel={() => setPhase('picker')}
-                    visibleCount={10}
+                    reserveRows={modeBannerRows(globalModes)}
                 />
             </Box>
         );

@@ -12,7 +12,6 @@
  */
 import { useState, useCallback, useMemo } from 'react';
 import { Box, Text, useInput } from 'ink';
-import { TextInput } from '@inkjs/ui';
 import { writeFileSync } from 'fs';
 import { join } from 'path';
 import { attempt } from '@logosdx/utils';
@@ -28,6 +27,7 @@ import {
     Spinner,
     StatusMessage,
     SelectList,
+    TextInput,
     type SelectListItem,
 } from '../../components/index.js';
 import { encryptForRecipient } from '../../../core/identity/crypto.js';
