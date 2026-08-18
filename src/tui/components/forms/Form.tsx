@@ -1,10 +1,22 @@
 /**
- * Form component - multi-field form with validation.
+ * Form component - multi-field form with a browse/edit navigation model.
  *
- * Orchestrates multiple input fields with keyboard navigation:
- * - ↑/↓ navigate between fields (Tab also advances)
- * - Enter submits the form (or selects option in select fields)
- * - Esc clears current field or cancels if empty
+ * Layout is two aligned columns: a label gutter sized from the longest label,
+ * then the value. One row per field, no spacer rows, and a select collapses to
+ * its current value until it is being edited. A 10-field config form fits on a
+ * short terminal instead of running off the bottom.
+ *
+ * Navigation has two modes, because a single mode cannot serve both "move
+ * around the form" and "change this value" with the same arrow keys:
+ *
+ * - Browse (default): ↑/↓ and Tab move between fields on EVERY field type,
+ *   Enter opens the active field for editing, Esc cancels the form. Past the
+ *   last field the cursor lands on the action row, where Enter submits.
+ * - Edit: the field owns input. Enter commits and returns to browse, Esc puts
+ *   back the value the field had when edit mode opened.
+ *
+ * Enter is therefore the mode switch, not the submit key - submission lives on
+ * the action row so "down, then enter" is the only model to learn.
  *
  * @example
  * ```tsx
@@ -20,13 +32,41 @@
  * />
  * ```
  */
-import { useState, useCallback, useMemo, useId, useEffect, useRef } from 'react';
-import { Box, Text, useInput } from 'ink';
-import { TextInput } from '@inkjs/ui';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { Box, Text, useInput, useWindowSize } from 'ink';
+import { TextInput } from './TextInput.js';
 
 import type { ReactElement } from 'react';
 
 import { useFocusScope } from '../../focus.js';
+
+/** Options an expanded select shows before it starts scrolling. */
+const SELECT_VISIBLE_OPTIONS = 4;
+
+/** Widest label gutter. Anything longer truncates instead of moving the value column. */
+const LABEL_GUTTER_MAX = 22;
+
+/** Columns the `›` active marker occupies. */
+const MARKER_WIDTH = 2;
+
+/** Columns between the label gutter and the value column. */
+const LABEL_VALUE_GAP = 2;
+
+/**
+ * Rows the form spends on chrome rather than fields: two scroll indicators, the
+ * spacer above the action row, the action row, and the hint row.
+ */
+const FORM_CHROME_ROWS = 5;
+
+/**
+ * Rows the app shell and its Panel claim before a Form sees the terminal:
+ * breadcrumb header (2), status bar (2), panel border (2), title + spacer (2),
+ * vertical padding (2). Only used when a consumer does not pass `height`.
+ */
+const SCREEN_CHROME_ROWS = 10;
+
+/** Floor for the derived budget, so a tiny terminal still renders something usable. */
+const MIN_FORM_ROWS = 8;
 
 /**
  * Form field types.
@@ -55,8 +95,8 @@ interface SelectFieldProps {
 /**
  * Inline SelectField component with proper keyboard handling.
  *
- * Manages its own highlighted index and keyboard navigation.
- * Enter confirms selection and moves to next field.
+ * Only mounted while its field is in edit mode, so it owns up/down/enter
+ * without ever competing with the Form's own field navigation.
  */
 function SelectField({
     options,
@@ -124,19 +164,17 @@ function SelectField({
 
     });
 
-    // Calculate visible window (show 4 options max)
-    const visibleCount = 4;
     const startIndex = useMemo(() => {
 
-        if (options.length <= visibleCount) return 0;
+        if (options.length <= SELECT_VISIBLE_OPTIONS) return 0;
 
-        const halfVisible = Math.floor(visibleCount / 2);
+        const halfVisible = Math.floor(SELECT_VISIBLE_OPTIONS / 2);
         let start = highlightedIndex - halfVisible;
 
         if (start < 0) start = 0;
-        if (start > options.length - visibleCount) {
+        if (start > options.length - SELECT_VISIBLE_OPTIONS) {
 
-            start = options.length - visibleCount;
+            start = options.length - SELECT_VISIBLE_OPTIONS;
 
         }
 
@@ -144,13 +182,13 @@ function SelectField({
 
     }, [highlightedIndex, options.length]);
 
-    const visibleOptions = options.slice(startIndex, startIndex + visibleCount);
+    const visibleOptions = options.slice(startIndex, startIndex + SELECT_VISIBLE_OPTIONS);
     const hasMoreAbove = startIndex > 0;
-    const hasMoreBelow = startIndex + visibleCount < options.length;
+    const hasMoreBelow = startIndex + SELECT_VISIBLE_OPTIONS < options.length;
 
     return (
         <Box flexDirection="column">
-            {hasMoreAbove && <Text dimColor> ↑ more</Text>}
+            {hasMoreAbove && <Text dimColor>↑ more</Text>}
 
             {visibleOptions.map((option, visibleIdx) => {
 
@@ -173,7 +211,7 @@ function SelectField({
 
             })}
 
-            {hasMoreBelow && <Text dimColor> ↓ more</Text>}
+            {hasMoreBelow && <Text dimColor>↓ more</Text>}
         </Box>
     );
 
@@ -186,7 +224,7 @@ export interface FormField {
     /** Unique field identifier */
     key: string;
 
-    /** Display label */
+    /** Display label. Truncated in the gutter if longer than the cap. */
     label: string;
 
     /** Field type */
@@ -203,6 +241,12 @@ export interface FormField {
 
     /** Placeholder text for text/password */
     placeholder?: string;
+
+    /**
+     * Short qualifier rendered dim after the value, e.g. `(locked)`.
+     * Keeps the label short enough to survive the gutter cap.
+     */
+    hint?: string;
 
     /** Custom validation function */
     validate?: (value: string | boolean) => string | undefined;
@@ -228,7 +272,7 @@ export interface FormProps {
     /** Callback when form is submitted with valid values */
     onSubmit: (values: FormValues) => void;
 
-    /** Callback when form is cancelled */
+    /** Callback when form is cancelled. Omit it and the Cancel button is not rendered. */
     onCancel?: () => void;
 
     /** Submit button label */
@@ -243,14 +287,80 @@ export interface FormProps {
     /** Busy label to show while busy */
     busyLabel?: string;
 
+    /**
+     * Called when Escape is pressed while `busy`. Supplying it also advertises
+     * the hatch next to the busy label — a busy state that can be cancelled
+     * and does not say so is one nobody tries.
+     *
+     * Omit it and Escape keeps falling through to `onCancel`.
+     */
+    onCancelBusy?: () => void;
+
     /** Error message to show in toolbar (right side) */
     statusError?: string;
+
+    /**
+     * Total rows the form may occupy, including its action and hint rows.
+     * Pass it when the screen knows its own chrome; otherwise the form derives
+     * a budget from the terminal height.
+     */
+    height?: number;
+}
+
+/**
+ * Which action stop the cursor is on once it moves past the last field.
+ */
+type FormAction = 'submit' | 'cancel';
+
+/**
+ * Truncate a label to the gutter width, marking the cut with an ellipsis.
+ */
+function truncateLabel(label: string, max: number): string {
+
+    if (max <= 0) return '';
+
+    if (label.length <= max) return label;
+
+    return `${label.slice(0, max - 1)}…`;
+
+}
+
+/**
+ * Browse-mode text for a field's value, so a select costs one row like
+ * everything else until it is opened.
+ */
+function displayValue(field: FormField, value: string | boolean | undefined): string {
+
+    if (field.type === 'checkbox') {
+
+        return value ? '☑ Yes' : '☐ No';
+
+    }
+
+    const text = typeof value === 'string' ? value : '';
+
+    if (field.type === 'password') {
+
+        return '•'.repeat(text.length);
+
+    }
+
+    if (field.type === 'select') {
+
+        const option = field.options?.find((opt) => opt.value === text);
+
+        return option?.label ?? text;
+
+    }
+
+    return text;
+
 }
 
 /**
  * Form component.
  *
- * A multi-field form with keyboard navigation and validation.
+ * A multi-field form with browse/edit keyboard navigation and validation.
  * Pushes to the focus stack on mount.
  */
 export function Form({
@@ -261,14 +371,20 @@ export function Form({
     focusLabel = 'Form',
     busy = false,
     busyLabel = 'Working...',
+    onCancelBusy,
     statusError,
+    height,
 }: FormProps): ReactElement {
 
     const { isFocused } = useFocusScope(focusLabel);
-    const _formId = useId();
 
-    // Form state
+    // useWindowSize, not useStdout: stdout.rows mutates on resize without telling
+    // React, which would freeze the derived budget at mount size.
+    const { rows: terminalRows } = useWindowSize();
+
     const [activeIndex, setActiveIndex] = useState(0);
+    const [editingKey, setEditingKey] = useState<string | null>(null);
+    const [editSnapshot, setEditSnapshot] = useState<string | boolean>('');
     const [values, setValues] = useState<FormValues>(() => {
 
         const initial: FormValues = {};
@@ -300,31 +416,38 @@ export function Form({
     const [submitted, setSubmitted] = useState(false);
     const [submitting, setSubmitting] = useState(false);
 
-    // Get current field
-    const currentField = fields[activeIndex];
+    const actions: FormAction[] = useMemo(
+        () => (onCancel ? ['submit', 'cancel'] : ['submit']),
+        [onCancel],
+    );
 
-    // Navigate fields
-    const nextField = useCallback(() => {
+    const stopCount = fields.length + actions.length;
+    const activeAction = activeIndex >= fields.length ? actions[activeIndex - fields.length] : undefined;
+    const currentField = activeIndex < fields.length ? fields[activeIndex] : undefined;
+    const isEditing = editingKey !== null;
 
-        setActiveIndex((i) => (i + 1) % fields.length);
+    // A field list that shrinks (SecretValueForm swaps fields by mode) must not
+    // leave the cursor pointing past the end.
+    useEffect(() => {
 
-    }, [fields.length]);
+        setActiveIndex((i) => (i >= stopCount ? Math.max(0, stopCount - 1) : i));
 
-    const prevField = useCallback(() => {
+    }, [stopCount]);
 
-        setActiveIndex((i) => (i - 1 + fields.length) % fields.length);
+    const moveBy = useCallback((delta: number) => {
 
-    }, [fields.length]);
+        setActiveIndex((i) => (i + delta + stopCount) % stopCount);
 
-    // Update field value - stable reference (no dependencies)
+    }, [stopCount]);
+
     const updateValue = useCallback((key: string, value: string | boolean) => {
 
         setValues((prev) => ({ ...prev, [key]: value }));
 
-        // Clear error when value changes
         setErrors((prev) => {
 
-            if (!prev[key]) return prev; // No change needed
+            if (!prev[key]) return prev;
+
             const next = { ...prev };
             delete next[key];
 
@@ -334,7 +457,9 @@ export function Form({
 
     }, []);
 
-    // Create stable onChange handlers for each field (memoized by field key)
+    // TextInput reports changes from a useEffect keyed on the onChange identity,
+    // so an inline arrow would re-fire the last change on every render - loud
+    // enough to overwrite an Esc revert with the value it just discarded.
     const onChangeHandlers = useRef<Record<string, (value: string) => void>>({});
 
     const getOnChangeHandler = useCallback(
@@ -352,35 +477,29 @@ export function Form({
         [updateValue],
     );
 
-    // Validate all fields
-    const validateAll = useCallback((): boolean => {
+    const collectErrors = useCallback((): FormErrors => {
 
-        const newErrors: FormErrors = {};
+        const found: FormErrors = {};
 
         for (const field of fields) {
 
             const value = values[field.key];
 
-            // Required check
-            if (field.required) {
+            if (field.required && (value === '' || value === undefined)) {
 
-                if (value === '' || value === undefined) {
+                found[field.key] = 'Required';
 
-                    newErrors[field.key] = 'Required';
-                    continue;
-
-                }
+                continue;
 
             }
 
-            // Custom validation
             if (field.validate) {
 
                 const error = field.validate(value ?? '');
 
                 if (error) {
 
-                    newErrors[field.key] = error;
+                    found[field.key] = error;
 
                 }
 
@@ -388,122 +507,86 @@ export function Form({
 
         }
 
-        setErrors(newErrors);
-
-        return Object.keys(newErrors).length === 0;
+        return found;
 
     }, [fields, values]);
 
-    // Handle submit
     const handleSubmit = useCallback(() => {
 
-        // Prevent double-submit
         if (busy || submitting) return;
+
+        const found = collectErrors();
+        const firstInvalid = fields.findIndex((field) => found[field.key]);
 
         setSubmitted(true);
         setSubmitting(true);
+        setErrors(found);
 
-        if (validateAll()) {
+        if (firstInvalid === -1) {
 
             onSubmit(values);
-
-            // Reset submitting - parent's `busy` prop guards against double-submit
-            // during async operations
-            setSubmitting(false);
 
         }
         else {
 
-            // Validation failed, allow retry
-            setSubmitting(false);
+            // Land on the offending field; it may be outside the current window.
+            setActiveIndex(firstInvalid);
 
         }
 
-    }, [busy, submitting, validateAll, values, onSubmit]);
+        // Parent's `busy` prop guards double-submit across the async work.
+        setSubmitting(false);
 
-    // Handle escape - clear field or cancel
-    const handleEscape = useCallback(() => {
+    }, [busy, submitting, collectErrors, fields, values, onSubmit]);
+
+    const beginEdit = useCallback(() => {
 
         const field = fields[activeIndex];
 
         if (!field) return;
 
-        const value = values[field.key];
+        // A checkbox has nothing to type into, so Enter just flips it.
+        if (field.type === 'checkbox') {
 
-        // Check if field has content to clear
-        const hasContent =
-            field.type === 'checkbox' ? value === true : typeof value === 'string' && value !== '';
-
-        if (hasContent) {
-
-            // Clear the field
-            updateValue(field.key, field.type === 'checkbox' ? false : '');
-
-        }
-        else {
-
-            // Field is empty, cancel form
-            onCancel?.();
-
-        }
-
-    }, [activeIndex, fields, values, updateValue, onCancel]);
-
-    // Keyboard handling for navigation
-    // Note: Select fields handle their own up/down/enter
-    // Note: Text/password fields handle Enter via TextInput's onSubmit
-    useInput((input, key) => {
-
-        if (!isFocused) return;
-
-        const fieldType = currentField?.type;
-        const isSelectField = fieldType === 'select';
-        const isTextInput = fieldType === 'text' || fieldType === 'password';
-
-        // Shift+Tab - moves to previous field
-        if (key.tab && key.shift) {
-
-            prevField();
+            updateValue(field.key, !values[field.key]);
 
             return;
 
         }
 
-        // Tab - moves to next field
-        if (key.tab) {
+        if (field.type === 'select' && !field.options?.length) return;
 
-            nextField();
+        setEditSnapshot(values[field.key] ?? '');
+        setEditingKey(field.key);
 
-            return;
+    }, [activeIndex, fields, values, updateValue]);
 
-        }
+    const commitEdit = useCallback((finalValue?: string) => {
 
-        // Arrow keys - only handle if NOT on a select field
-        // (select fields handle their own arrow navigation)
-        if (!isSelectField) {
+        if (editingKey !== null && finalValue !== undefined) {
 
-            if (key.downArrow) {
-
-                nextField();
-
-                return;
-
-            }
-
-            if (key.upArrow) {
-
-                prevField();
-
-                return;
-
-            }
+            updateValue(editingKey, finalValue);
 
         }
 
-        // Enter - submit form
-        // Skip for select (uses Enter to select option)
-        // Skip for text/password (TextInput handles via onSubmit)
-        if (key.return && !isSelectField && !isTextInput) {
+        setEditingKey(null);
+
+    }, [editingKey, updateValue]);
+
+    const revertEdit = useCallback(() => {
+
+        if (editingKey === null) return;
+
+        const key = editingKey;
+
+        setValues((prev) => ({ ...prev, [key]: editSnapshot }));
+        setEditingKey(null);
+
+    }, [editingKey, editSnapshot]);
+
+    const activateStop = useCallback(() => {
+
+        if (activeAction === 'submit') {
 
             handleSubmit();
 
@@ -511,17 +594,121 @@ export function Form({
 
         }
 
-        // Escape
-        if (key.escape) {
+        if (activeAction === 'cancel') {
 
-            handleEscape();
+            onCancel?.();
 
             return;
 
         }
 
-        // Space toggles checkbox
-        if (fieldType === 'checkbox' && input === ' ' && currentField) {
+        beginEdit();
+
+    }, [activeAction, handleSubmit, onCancel, beginEdit]);
+
+    // Note: the guard is inside the handler, not useInput's `isActive` option -
+    // isFocused is false on the first render and `isActive` would skip
+    // registration permanently.
+    useInput((input, key) => {
+
+        if (!isFocused) return;
+
+        if (isEditing) {
+
+            // Everything else belongs to the field: TextInput's own handler for
+            // text/password, SelectField's for select.
+            if (key.escape) {
+
+                revertEdit();
+
+                return;
+
+            }
+
+            if (key.tab) {
+
+                commitEdit();
+                moveBy(key.shift ? -1 : 1);
+
+                return;
+
+            }
+
+            if (key.return) {
+
+                commitEdit();
+
+            }
+
+            return;
+
+        }
+
+        if (key.tab) {
+
+            moveBy(key.shift ? -1 : 1);
+
+            return;
+
+        }
+
+        if (key.downArrow) {
+
+            moveBy(1);
+
+            return;
+
+        }
+
+        if (key.upArrow) {
+
+            moveBy(-1);
+
+            return;
+
+        }
+
+        if (activeAction && (key.leftArrow || key.rightArrow)) {
+
+            setActiveIndex((i) => {
+
+                const next = key.leftArrow ? i - 1 : i + 1;
+
+                return Math.min(stopCount - 1, Math.max(fields.length, next));
+
+            });
+
+            return;
+
+        }
+
+        if (key.escape) {
+
+            // While busy, Escape belongs to the operation in flight: leaving
+            // the screen would abandon it rather than stop it.
+            if (busy && onCancelBusy) {
+
+                onCancelBusy();
+
+                return;
+
+            }
+
+            onCancel?.();
+
+            return;
+
+        }
+
+        if (key.return) {
+
+            activateStop();
+
+            return;
+
+        }
+
+        if (input === ' ' && currentField?.type === 'checkbox') {
 
             updateValue(currentField.key, !values[currentField.key]);
 
@@ -529,84 +716,192 @@ export function Form({
 
     });
 
-    return (
-        <Box flexDirection="column" gap={1}>
-            {fields.map((field, index) => {
+    const gutterWidth = useMemo(() => {
 
+        let widest = 0;
+
+        for (const field of fields) {
+
+            const width = field.label.length + (field.required ? 1 : 0);
+
+            if (width > widest) widest = width;
+
+        }
+
+        return Math.min(widest, LABEL_GUTTER_MAX);
+
+    }, [fields]);
+
+    const labelColumnWidth = MARKER_WIDTH + gutterWidth + LABEL_VALUE_GAP;
+
+    // An expanded select eats rows the field list would otherwise get.
+    const expandedExtraRows = useMemo(() => {
+
+        const field = fields.find((candidate) => candidate.key === editingKey);
+
+        if (field?.type !== 'select' || !field.options) return 0;
+
+        const listed = Math.min(field.options.length, SELECT_VISIBLE_OPTIONS);
+        const indicators = field.options.length > SELECT_VISIBLE_OPTIONS ? 2 : 0;
+
+        return listed + indicators - 1;
+
+    }, [fields, editingKey]);
+
+    const budget = height ?? Math.max(terminalRows - SCREEN_CHROME_ROWS, MIN_FORM_ROWS);
+    const visibleCount = Math.max(1, budget - FORM_CHROME_ROWS - expandedExtraRows);
+
+    // Same windowing as SelectList: centre the focused row, clamp to the ends.
+    const startIndex = useMemo(() => {
+
+        if (fields.length <= visibleCount) return 0;
+
+        const windowFocus = Math.min(activeIndex, fields.length - 1);
+        const halfVisible = Math.floor(visibleCount / 2);
+        let start = windowFocus - halfVisible;
+
+        if (start < 0) start = 0;
+        if (start > fields.length - visibleCount) {
+
+            start = fields.length - visibleCount;
+
+        }
+
+        return start;
+
+    }, [activeIndex, fields.length, visibleCount]);
+
+    const visibleFields = fields.slice(startIndex, startIndex + visibleCount);
+    const hasMoreAbove = startIndex > 0;
+    const hasMoreBelow = startIndex + visibleCount < fields.length;
+
+    const hintText = useMemo(() => {
+
+        if (isEditing) {
+
+            const field = fields.find((candidate) => candidate.key === editingKey);
+
+            return field?.type === 'select'
+                ? '↑↓ option   ↵ commit   esc revert'
+                : '↵ commit   esc revert   tab commit + next';
+
+        }
+
+        if (activeAction) {
+
+            return '↑↓ move   ←→ button   ↵ activate   esc cancel';
+
+        }
+
+        if (currentField?.type === 'checkbox') {
+
+            return '↑↓ field   ↵/space toggle   esc cancel';
+
+        }
+
+        return '↑↓ field   ↵ edit   esc cancel';
+
+    }, [isEditing, fields, editingKey, activeAction, currentField]);
+
+    return (
+        <Box flexDirection="column">
+            {hasMoreAbove && <Text dimColor>{'  '}↑ {startIndex} more</Text>}
+
+            {visibleFields.map((field, visibleIndex) => {
+
+                const index = startIndex + visibleIndex;
                 const isActive = index === activeIndex && isFocused;
+                const isFieldEditing = editingKey === field.key;
                 const error = errors[field.key];
                 const value = values[field.key];
+                const starWidth = field.required ? 1 : 0;
 
                 return (
-                    <Box key={field.key} flexDirection="column">
-                        <Box gap={1}>
-                            <Text color={isActive ? 'cyan' : 'white'}>
+                    <Box key={field.key}>
+                        <Box width={labelColumnWidth}>
+                            <Text
+                                color={isActive ? 'cyan' : undefined}
+                                dimColor={!isActive}
+                                bold={isActive}
+                            >
                                 {isActive ? '› ' : '  '}
-                                {field.label}
-                                {field.required && <Text color="red">*</Text>}
+                                {truncateLabel(field.label, gutterWidth - starWidth)}
                             </Text>
+                            {field.required && <Text color="red">*</Text>}
                         </Box>
 
-                        <Box marginLeft={2}>
-                            {field.type === 'text' && (
+                        <Box flexDirection="column">
+                            {isFieldEditing && (field.type === 'text' || field.type === 'password') && (
                                 <TextInput
                                     placeholder={field.placeholder ?? ''}
-                                    defaultValue={String(field.defaultValue ?? '')}
+                                    defaultValue={typeof value === 'string' ? value : ''}
                                     onChange={getOnChangeHandler(field.key)}
-                                    onSubmit={handleSubmit}
-                                    isDisabled={!isActive}
+                                    onSubmit={commitEdit}
                                 />
                             )}
 
-                            {field.type === 'password' && (
-                                <TextInput
-                                    placeholder={field.placeholder ?? ''}
-                                    defaultValue={String(field.defaultValue ?? '')}
-                                    onChange={getOnChangeHandler(field.key)}
-                                    onSubmit={handleSubmit}
-                                    isDisabled={!isActive}
-                                />
-                            )}
-
-                            {field.type === 'select' && field.options && (
+                            {isFieldEditing && field.type === 'select' && field.options && (
                                 <SelectField
                                     options={field.options}
-                                    value={String(value ?? '')}
+                                    value={typeof value === 'string' ? value : ''}
                                     onChange={getOnChangeHandler(field.key)}
-                                    isActive={isActive}
-                                    onConfirm={nextField}
+                                    isActive={isFocused}
+                                    onConfirm={commitEdit}
                                 />
                             )}
 
-                            {field.type === 'checkbox' && (
-                                <Text>
-                                    {value ? '☑' : '☐'} {value ? 'Yes' : 'No'}
-                                </Text>
+                            {!isFieldEditing && (
+                                <Box>
+                                    {displayValue(field, value) === '' && field.placeholder ? (
+                                        <Text dimColor>{field.placeholder}</Text>
+                                    ) : (
+                                        <Text>{displayValue(field, value)}</Text>
+                                    )}
+
+                                    {field.hint && <Text dimColor>{'  '}{field.hint}</Text>}
+
+                                    {error && submitted && <Text color="red">{'  '}✘ {error}</Text>}
+                                </Box>
                             )}
                         </Box>
-
-                        {error && submitted && (
-                            <Box marginLeft={2}>
-                                <Text color="red">{error}</Text>
-                            </Box>
-                        )}
                     </Box>
                 );
 
             })}
 
-            <Box marginTop={1} justifyContent="space-between">
-                <Box gap={2}>
-                    {busy ? (
+            {hasMoreBelow && (
+                <Text dimColor>{'  '}↓ {fields.length - startIndex - visibleCount} more</Text>
+            )}
+
+            <Box marginTop={1} gap={2}>
+                {busy ? (
+                    <>
                         <Text dimColor>{busyLabel}</Text>
-                    ) : (
-                        <>
-                            <Text dimColor>[Enter] {submitLabel}</Text>
-                            <Text dimColor>[Esc] Cancel</Text>
-                            <Text dimColor>[↑↓] Navigate</Text>
-                        </>
-                    )}
-                </Box>
+                        {onCancelBusy && <Text dimColor>[Esc] Cancel</Text>}
+                    </>
+                ) : (
+                    actions.map((action) => {
+
+                        const focused = activeAction === action && isFocused;
+                        const label = action === 'submit' ? submitLabel : 'Cancel';
+
+                        return (
+                            <Text
+                                key={action}
+                                color={focused ? 'cyan' : undefined}
+                                bold={focused}
+                                dimColor={!focused}
+                            >
+                                {focused ? '❯ ' : '  '}[ {label} ]
+                            </Text>
+                        );
+
+                    })
+                )}
+            </Box>
+
+            <Box justifyContent="space-between">
+                <Text dimColor wrap="truncate">{'  '}{hintText}</Text>
 
                 {statusError && <Text color="red">✘ {statusError}</Text>}
             </Box>

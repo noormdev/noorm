@@ -11,7 +11,7 @@
  * ```
  */
 import { useState, useCallback, useMemo } from 'react';
-import { Box, useStdout } from 'ink';
+import { useWindowSize } from 'ink';
 import { attempt } from '@logosdx/utils';
 
 import type { ReactElement } from 'react';
@@ -24,8 +24,10 @@ import { useAppContext } from '../../app-context.js';
 import { Panel, Form, useToast, MissingParamPanel, NotFoundPanel } from '../../components/index.js';
 import { testConnection } from '../../../core/connection/factory.js';
 import { SettingsProvider } from '../../../core/config/resolver.js';
+import { useAbortableTask } from '../../hooks/index.js';
 import {
     getErrorMessage,
+    STOPPED_WAITING_MESSAGE,
     validateConfigName,
     validatePort,
     buildConnectionConfig,
@@ -42,13 +44,24 @@ export function ConfigEditScreen({ params }: ScreenProps): ReactElement {
     const { back } = useRouter();
     const { stateManager, settingsManager, refresh } = useAppContext();
     const { showToast } = useToast();
-    const { stdout } = useStdout();
+    // useWindowSize, not useStdout: stdout.rows mutates on resize without asking
+    // React for anything, so formHeight below would stay frozen at mount size.
+    // Must stay above the early returns, or the hook count changes across the
+    // async config-load boundary.
+    const { rows: terminalHeight } = useWindowSize();
 
     const configName = params.name;
 
     const [busy, setBusy] = useState(false);
     const [busyLabel, setBusyLabel] = useState('Testing connection...');
     const [connectionError, setConnectionError] = useState<string | null>(null);
+
+    // Only the connection test can be cancelled. The save that follows is a
+    // local write, and offering a hatch over it would let the screen report
+    // "nothing was saved" about a config that had just been written.
+    const [cancellable, setCancellable] = useState(false);
+
+    const task = useAbortableTask();
 
     // Get the config to edit
     const config = useMemo(() => {
@@ -87,8 +100,9 @@ export function ConfigEditScreen({ params }: ScreenProps): ReactElement {
             },
             {
                 key: 'dialect',
-                label: 'Database Type (cannot be changed)',
+                label: 'Database Type',
                 type: 'text',
+                hint: '(locked)',
                 defaultValue: config.connection.dialect,
                 // Read-only - we'll skip this in submit
             },
@@ -127,14 +141,16 @@ export function ConfigEditScreen({ params }: ScreenProps): ReactElement {
             },
             {
                 key: 'userRole',
-                label: 'User Role (CLI/TUI access)',
+                label: 'User Role',
+                hint: '(CLI/TUI access)',
                 type: 'select',
                 options: USER_ROLE_OPTIONS,
                 defaultValue: access.user,
             },
             {
                 key: 'agentRole',
-                label: 'Agent Role (MCP/CLI access)',
+                label: 'Agent Role',
+                hint: '(MCP/CLI access)',
                 type: 'select',
                 options: AGENT_ROLE_OPTIONS,
                 defaultValue: access.agent === false ? 'off' : access.agent,
@@ -170,11 +186,21 @@ export function ConfigEditScreen({ params }: ScreenProps): ReactElement {
             });
 
             // Test connection first
+            const controller = task.start();
+
             setBusy(true);
             setBusyLabel('Testing connection...');
             setConnectionError(null);
+            setCancellable(true);
 
-            const result = await testConnection(connectionConfig, { testServerOnly: true });
+            const result = await testConnection(connectionConfig, {
+                testServerOnly: true,
+                signal: controller.signal,
+            });
+
+            // Cancelled or superseded: whoever did that already owns the
+            // screen, and a driver that answered anyway must not undo it.
+            if (!task.isCurrent(controller)) return;
 
             if (!result.ok) {
 
@@ -198,6 +224,7 @@ export function ConfigEditScreen({ params }: ScreenProps): ReactElement {
 
             // Save config
             setBusyLabel('Saving changes...');
+            setCancellable(false);
 
             const [_, err] = await attempt(async () => {
 
@@ -212,6 +239,8 @@ export function ConfigEditScreen({ params }: ScreenProps): ReactElement {
                 await refresh();
 
             });
+
+            if (!task.isCurrent(controller)) return;
 
             if (err) {
 
@@ -230,8 +259,19 @@ export function ConfigEditScreen({ params }: ScreenProps): ReactElement {
             back();
 
         },
-        [stateManager, config, configName, settingsProvider, refresh, showToast, back],
+        [stateManager, config, configName, settingsProvider, refresh, showToast, back, task],
     );
+
+    // Escape while busy stops the operation instead of walking away from it.
+    const handleCancelBusy = useCallback(() => {
+
+        if (!task.cancel()) return;
+
+        setBusy(false);
+        setCancellable(false);
+        setConnectionError(STOPPED_WAITING_MESSAGE);
+
+    }, [task]);
 
     // Handle cancel
     const handleCancel = useCallback(() => {
@@ -254,25 +294,26 @@ export function ConfigEditScreen({ params }: ScreenProps): ReactElement {
 
     }
 
-    const terminalHeight = stdout.rows ?? 24;
-
-    // Reserve space for Panel border (2), title (2), padding (2)
-    const formHeight = Math.max(terminalHeight - 6, 10);
+    // App shell header (2) + status bar (2) + panel border (2) + title and its
+    // spacer (2) + vertical padding (2). The old reserve of 6 ignored the shell,
+    // which is what pushed the last fields under an overflow-hidden fold; the
+    // Form windows itself to this budget now, so no clipping container is needed.
+    const formHeight = Math.max(terminalHeight - 10, 8);
 
     return (
         <Panel title={`Edit: ${configName}`} paddingX={2} paddingY={1}>
-            <Box height={formHeight} overflowY="hidden">
-                <Form
-                    fields={fields}
-                    onSubmit={handleSubmit}
-                    onCancel={handleCancel}
-                    submitLabel="Save Changes"
-                    focusLabel="ConfigEditForm"
-                    busy={busy}
-                    busyLabel={busyLabel}
-                    statusError={connectionError ?? undefined}
-                />
-            </Box>
+            <Form
+                fields={fields}
+                onSubmit={handleSubmit}
+                onCancel={handleCancel}
+                submitLabel="Save Changes"
+                focusLabel="ConfigEditForm"
+                busy={busy}
+                busyLabel={busyLabel}
+                onCancelBusy={cancellable ? handleCancelBusy : undefined}
+                statusError={connectionError ?? undefined}
+                height={formHeight}
+            />
         </Panel>
     );
 

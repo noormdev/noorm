@@ -7,12 +7,11 @@
  * block and is already covered by iteration 1's `state/manager.test.ts`.
  *
  * A full render assertion of the surfaced error text was tried and dropped:
- * the Form's fixed-height `overflowY="hidden"` container (10 fields at the
- * 24-row ink-testing-library default terminal) clips the bottom status-error
- * row before it reaches `lastFrame()`, making a text assertion flaky/false-
- * negative independent of the wiring. Spying on the mock call args is
- * deterministic and still proves the wiring is load-bearing: revert the
- * `settingsProvider` argument and this test goes red.
+ * at the 24-row ink-testing-library default terminal the Form windows its 10
+ * fields to a budget, so which rows reach `lastFrame()` depends on where the
+ * cursor sits - a text assertion would be testing the viewport, not the wiring.
+ * Spying on the mock call args is deterministic and still proves the wiring is
+ * load-bearing: revert the `settingsProvider` argument and this test goes red.
  */
 import { describe, it, expect, vi, mock, beforeEach, afterEach, afterAll } from 'bun:test';
 import { render } from 'ink-testing-library';
@@ -87,10 +86,101 @@ mock.module('../../../../src/core/identity/index.js', () => ({
     loadExistingIdentity: vi.fn().mockResolvedValue(null),
 }));
 
+/**
+ * The implementation the mock falls back to, and the one it must be left on.
+ *
+ * `mock.module` is process-global and never restores, so this file's
+ * `testConnection` stays installed for every file that runs after it in the
+ * cli group. Leaving `testConnectionImpl` on a hanging implementation hands
+ * those files a promise nobody will ever settle: `db-dry-run` sat forever on
+ * "Truncating tables..." because its screen was waiting on this mock.
+ */
+const answersImmediately = async () => ({ ok: true });
+
+// Mutable so a test can hold the connection open and decide when — or
+// whether — it answers. Reset in `afterEach`, not just `beforeEach`, because
+// the state that matters outlives this file.
+let testConnectionImpl: () => Promise<{ ok: boolean; error?: string; aborted?: boolean }> =
+    answersImmediately;
+
+/**
+ * Resolvers for connections a test is deliberately holding open.
+ *
+ * Registered here so `afterEach` can settle anything still parked; a suspended
+ * submit handler would otherwise keep the screen it belongs to alive for the
+ * rest of the process.
+ */
+const heldConnections: Array<(result: { ok: boolean }) => void> = [];
+
+/**
+ * A connection test that answers only when this file says so.
+ */
+function heldConnection(): Promise<{ ok: boolean }> {
+
+    return new Promise<{ ok: boolean }>((resolve) => {
+
+        heldConnections.push(resolve);
+
+    });
+
+}
+
+const testConnectionMock = vi.fn(
+    (_config: unknown, _options?: { testServerOnly?: boolean; signal?: AbortSignal }) =>
+        testConnectionImpl(),
+);
+
 mock.module('../../../../src/core/connection/factory.js', () => ({
     ...actualConnectionFactory,
-    testConnection: vi.fn().mockResolvedValue({ ok: true }),
+    testConnection: testConnectionMock,
 }));
+
+/**
+ * Poll until `predicate` holds. A fixed sleep is the suite's known weak point:
+ * under load it expires before the frame arrives and reads as a regression.
+ */
+async function waitFor(predicate: () => boolean, timeoutMs = 3000) {
+
+    const deadline = Date.now() + timeoutMs;
+
+    while (!predicate() && Date.now() < deadline) {
+
+        await new Promise((r) => setTimeout(r, 10));
+
+    }
+
+}
+
+/**
+ * Move the cursor onto the submit button and press it.
+ *
+ * Counting arrow presses is what made this fragile: two Ups is only the right
+ * number while the cursor starts on the first field, and a press written before
+ * the focus effect has run lands on nothing. Drive until the frame shows the
+ * cursor where it belongs instead.
+ */
+async function submitForm(
+    stdin: { write: (data: string) => void },
+    lastFrame: () => string | undefined,
+): Promise<void> {
+
+    const focused = '❯ [ Save Changes ]';
+
+    await waitFor(() => Boolean(lastFrame()?.includes('[ Save Changes ]')));
+
+    const deadline = Date.now() + 3000;
+
+    while (!lastFrame()?.includes(focused) && Date.now() < deadline) {
+
+        stdin.write('\x1B[A');
+
+        await new Promise((r) => setTimeout(r, 30));
+
+    }
+
+    stdin.write('\r');
+
+}
 
 function TestWrapper({ children }: { children: React.ReactNode }) {
 
@@ -112,12 +202,21 @@ describe('cli: ConfigEditScreen', () => {
 
         vi.clearAllMocks();
         actualCore.observer.clear();
+        testConnectionImpl = answersImmediately;
 
     });
 
-    afterEach(() => {
+    afterEach(async () => {
 
         actualCore.observer.clear();
+
+        // Put the mock back on an implementation that answers, and let go of
+        // anything still held. Both matter to the *next* file, not this one.
+        testConnectionImpl = answersImmediately;
+
+        while (heldConnections.length > 0) heldConnections.pop()?.({ ok: false });
+
+        await new Promise((r) => setTimeout(r, 20));
 
     });
 
@@ -146,7 +245,7 @@ describe('cli: ConfigEditScreen', () => {
         // resolution; the initial render (config unresolved) takes the
         // early-return branch, then a later render (config resolved) reaches
         // the bottom of the component - the exact transition that changes
-        // hook count if useStdout is called after the returns.
+        // hook count if useWindowSize is called after the returns.
         await new Promise((r) => setTimeout(r, 200));
 
         const hooksOrderWarning = consoleErrorSpy.mock.calls.some(
@@ -165,7 +264,7 @@ describe('cli: ConfigEditScreen', () => {
         mockStateManager = createMockStateManager('prod', makeConfig('prod'));
         mockSettingsManager = createMockSettingsManager({ prod: { locked: true } });
 
-        const { stdin, unmount } = render(
+        const { stdin, lastFrame, unmount } = render(
             <TestWrapper>
                 <ConfigEditScreen params={{ name: 'prod' }} />
             </TestWrapper>,
@@ -173,13 +272,20 @@ describe('cli: ConfigEditScreen', () => {
 
         await new Promise((r) => setTimeout(r, 150));
 
-        // Rename "prod" -> "prod2" (name field is active by default) and
-        // submit via Enter, which TextInput routes straight to handleSubmit.
+        // Rename "prod" -> "prod2". The name field is active by default but the
+        // Form starts in browse mode, so Enter opens it for editing, the digit
+        // lands, and Enter commits back to browse.
+        stdin.write('\r');
+        await new Promise((r) => setTimeout(r, 50));
         stdin.write('2');
         await new Promise((r) => setTimeout(r, 50));
         stdin.write('\r');
+        await new Promise((r) => setTimeout(r, 50));
 
-        await new Promise((r) => setTimeout(r, 200));
+        // Submission lives on the action row now.
+        await submitForm(stdin, lastFrame);
+
+        await waitFor(() => mockStateManager.deleteConfig.mock.calls.length > 0);
 
         expect(mockStateManager.deleteConfig).toHaveBeenCalledTimes(1);
 
@@ -194,5 +300,81 @@ describe('cli: ConfigEditScreen', () => {
         unmount();
 
     });
+
+    it('should offer the escape hatch while a connection test is in flight', async () => {
+
+        mockStateManager = createMockStateManager('prod', makeConfig('prod'));
+        mockSettingsManager = createMockSettingsManager({ prod: { locked: true } });
+
+        // Answers only when this test lets it: the hung connect the hatch
+        // exists for.
+        testConnectionImpl = heldConnection;
+
+        const { stdin, lastFrame, unmount } = render(
+            <TestWrapper>
+                <ConfigEditScreen params={{ name: 'prod' }} />
+            </TestWrapper>,
+        );
+
+        await submitForm(stdin, lastFrame);
+
+        await waitFor(() => Boolean(lastFrame()?.includes('Testing connection')));
+
+        // A busy state that can be cancelled has to say so, or nobody tries it.
+        expect(lastFrame()).toContain('[Esc] Cancel');
+
+        // The hatch is only real if the connection layer got a signal to act on.
+        const options = testConnectionMock.mock.calls[0]?.[1];
+
+        expect(options?.signal).toBeInstanceOf(AbortSignal);
+        expect(options?.signal?.aborted).toBe(false);
+
+        stdin.write('\x1B');
+
+        await waitFor(() => Boolean(options?.signal?.aborted));
+
+        expect(options?.signal?.aborted).toBe(true);
+
+        unmount();
+
+    }, 20_000);
+
+    it('should return the form to a usable state on Escape, and drop the late answer', async () => {
+
+        mockStateManager = createMockStateManager('prod', makeConfig('prod'));
+        mockSettingsManager = createMockSettingsManager({ prod: { locked: true } });
+
+        testConnectionImpl = heldConnection;
+
+        const { stdin, lastFrame, unmount } = render(
+            <TestWrapper>
+                <ConfigEditScreen params={{ name: 'prod' }} />
+            </TestWrapper>,
+        );
+
+        await submitForm(stdin, lastFrame);
+
+        await waitFor(() => Boolean(lastFrame()?.includes('Testing connection')));
+
+        stdin.write('\x1B');
+
+        await waitFor(() => Boolean(lastFrame()?.includes('Stopped waiting')));
+
+        // Back to a form, not a spinner: the action row is rendered again.
+        expect(lastFrame()).toContain('Save Changes');
+        expect(lastFrame()).not.toContain('Testing connection');
+
+        // A driver that ignores the abort and answers "fine" a moment later.
+        // Acting on that answer is how a cancelled screen saves anyway.
+        heldConnections.pop()?.({ ok: true });
+
+        await new Promise((r) => setTimeout(r, 150));
+
+        expect(mockStateManager.setConfig).not.toHaveBeenCalled();
+        expect(lastFrame()).toContain('Stopped waiting');
+
+        unmount();
+
+    }, 20_000);
 
 });

@@ -238,7 +238,22 @@ export interface RouterState {
 
     /** Navigation history stack */
     history: HistoryEntry[];
+
+    /**
+     * How the current route was reached.
+     *
+     * A screen cannot tell a fresh visit from a return trip on its own, because
+     * it is unmounted and rebuilt either way. This is what separates them, and
+     * it is why a list restores its cursor after `back()` but opens at the top
+     * when you walk into it.
+     */
+    arrivedBy: NavigationKind;
 }
+
+/**
+ * How the router landed on the current route.
+ */
+export type NavigationKind = 'initial' | 'push' | 'pop' | 'replace';
 
 /**
  * Router context value exposed to components.

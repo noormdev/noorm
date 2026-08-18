@@ -864,7 +864,6 @@ export function DtModifyScreen({ params: _params }: ScreenProps): ReactElement {
                 files={availableDtFiles}
                 onSelect={handleFileSelect}
                 onCancel={back}
-                visibleCount={12}
             />
         );
 
@@ -1183,7 +1182,7 @@ export function DtModifyScreen({ params: _params }: ScreenProps): ReactElement {
 
                             }}
                             focusLabel="DtModifyDropList"
-                            visibleCount={10}
+                            reserveRows={2}
                         />
                     </Box>
                 </Panel>
@@ -1303,7 +1302,7 @@ export function DtModifyScreen({ params: _params }: ScreenProps): ReactElement {
                                 onSelect={handleRenameSelect}
                                 onCancel={() => setPhase('operations')}
                                 focusLabel="DtModifyRenameList"
-                                visibleCount={10}
+                                reserveRows={2}
                             />
                         </Box>
                     </Panel>
@@ -1423,7 +1422,7 @@ export function DtModifyScreen({ params: _params }: ScreenProps): ReactElement {
 
                             }}
                             focusLabel="DtModifyAlterList"
-                            visibleCount={10}
+                            reserveRows={2}
                         />
                     </Box>
                 </Panel>

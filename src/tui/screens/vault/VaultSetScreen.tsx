@@ -6,7 +6,6 @@
  */
 import { useState, useCallback } from 'react';
 import { Box, Text, useInput } from 'ink';
-import { TextInput } from '@inkjs/ui';
 import { attempt } from '@logosdx/utils';
 import type { Kysely } from 'kysely';
 
@@ -17,7 +16,7 @@ import type { NoormDatabase } from '../../../core/shared/index.js';
 import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
-import { Panel, Spinner, useToast } from '../../components/index.js';
+import { Panel, Spinner, useToast, TextInput } from '../../components/index.js';
 import { useVaultConnection } from '../../hooks/index.js';
 import { loadPrivateKey } from '../../../core/identity/storage.js';
 import { getVaultKey, setVaultSecret } from '../../../core/vault/index.js';

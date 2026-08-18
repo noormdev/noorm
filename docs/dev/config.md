@@ -55,6 +55,7 @@ interface Config {
         ssl?: boolean | SSLConfig
         pool?: { min?: number, max?: number }  // Defaults to { min: 0, max: 10 }
         tlsServerName?: string  // MSSQL only — cert hostname when host is an IP
+        connectTimeoutMs?: number  // Per attempt, defaults to 15000
     }
 
     identity?: string         // Override audit identity
@@ -64,6 +65,13 @@ interface Config {
 File locations (`paths.sql`, `paths.changes`) are **not** part of `Config` —
 they live in `settings.yml` and are read through `SettingsManager.getPaths()`.
 See [Settings](./settings.md).
+
+`connectTimeoutMs` bounds one connection attempt, and is passed to whichever
+option the dialect's driver exposes for it — `connectionTimeoutMillis` on `pg`,
+`connectTimeout` on `mysql2` and `tedious`. It exists because `pg` defaults to
+no limit, so an unreachable host waited forever. Raise it when the link is slow
+but working; a serverless database resuming from auto-pause is the case that
+needs it.
 
 
 ## Environment Variables

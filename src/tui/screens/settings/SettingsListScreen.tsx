@@ -257,7 +257,6 @@ export function SettingsListScreen({ params: _params }: ScreenProps): ReactEleme
                     onSelect={handleSelect}
                     onHighlight={handleHighlight}
                     isFocused={isFocused}
-                    visibleCount={8}
                     numberNav
                 />
             </Panel>

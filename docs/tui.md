@@ -9,7 +9,8 @@ noorm ui
 
 ![A full pass through the TUI: adding a config, creating the database, building the schema, fast-forwarding changes, and browsing the result in the explorer](/image/tui.gif)
 
-Everything in noorm is accessible through keyboard shortcuts. No mouse needed.
+Everything in noorm is accessible through keyboard shortcuts. The mouse works
+too, in lists and grids — see [Mouse](#mouse) if you would rather it did not.
 
 The TUI is a dedicated subcommand — every other `noorm` command runs as a non-interactive CLI. Running `noorm` on its own prints the command list (citty's `--help`) instead of opening the wizard, so the entry into the TUI is always explicit. See the [CLI Reference](/headless) for the headless surface.
 
@@ -112,6 +113,89 @@ apart.
 Numbered selection is enabled per list — if a list renders numbers down its
 left edge (Settings and the schema explorer do), the digits work there.
 
+Every list sizes itself to the window, so a taller terminal shows more rows
+rather than the same fixed count with the rest behind a scroll marker. A list
+also keeps its cursor when you open an item and come back, so walking a long
+list one entry at a time does not restart at the top.
+
+
+### Form Navigation
+
+Forms have two modes and `Enter` switches between them.
+
+| Mode | Key | Effect |
+|------|-----|--------|
+| Browse | `↑` `↓` | Move between fields, every field type included |
+| Browse | `Tab` / `Shift+Tab` | Same, forwards and backwards |
+| Browse | `Enter` | Open the active field for editing |
+| Browse | `Escape` | Cancel the form |
+| Edit | `Enter` | Commit and return to browse |
+| Edit | `Escape` | Restore the value the field held when edit opened |
+| Edit | `Tab` | Commit and move to the next field |
+
+Enter is the mode switch, so submitting is a place you navigate to rather than
+a key you press:
+
+```mermaid
+stateDiagram-v2
+    [*] --> Browse
+    Browse --> Edit: Enter on a text or select field
+    Edit --> Browse: Enter commits
+    Edit --> Browse: Esc reverts
+    Browse --> Actions: Down past the last field
+    Actions --> Browse: Down wraps to the first field
+    Actions --> [*]: Enter on the submit button
+```
+
+Past the last field the cursor lands on the action row, where `←` `→` move
+between the buttons and `Enter` activates one. The submit button carries the
+screen's own label, `[ Create Config ]` on the add-config form.
+
+Two field types never open into edit mode:
+
+- A **checkbox** toggles in place on `Enter` or `Space`.
+- A **select** expands on `Enter`, moves with `↑` `↓`, and takes the highlighted
+  option on a second `Enter`. Collapsed, it shows its current value on one line
+  like every other field.
+
+A red `*` after a label marks a required field. Submitting with one empty puts
+the cursor on it and shows the error beside the value.
+
+
+### Mouse
+
+On by default, in lists and result grids only:
+
+| Action | Effect |
+|--------|--------|
+| Click a row | Move the cursor to it |
+| Double-click a row | Same as `Enter` on that row |
+| Wheel up / down | Move the cursor one row |
+
+A click acts on whatever already has focus. Clicking a list that is not focused
+does nothing — it does not move focus there, so the keyboard stays where you
+left it.
+
+
+#### Text selection stopped working
+
+That is this feature, and it is the one thing it costs you. Any terminal
+mouse-tracking mode hands the mouse to the application, so click-drag selection
+needs a modifier held down: Option in macOS Terminal and iTerm2, Shift in most
+others.
+
+If you would rather have plain selection back, turn the mouse off in
+`.noorm/settings.yml`:
+
+```yaml
+ui:
+    mouse: false
+```
+
+`?` inside the TUI prints the same line, so you do not have to remember which
+file it lives in. Nothing else changes: every screen is fully keyboard-driven
+either way.
+
 
 ### Global Shortcuts
 
@@ -122,6 +206,35 @@ left edge (Settings and the schema explorer do), the digits work there.
 | `?` | Show help |
 | `Escape` | Go back / Cancel |
 | `Ctrl+C` | Quit |
+
+
+### Cancelling a Database Operation
+
+A screen waiting on a database says so, and says that `Escape` will stop it:
+
+```
+Testing connection...  [Esc] Cancel
+```
+
+That appears while a config is being tested (add and edit), while the
+force-release screen checks lock status, and while the SQL terminal connects or
+runs a query. `Escape` returns the screen to a usable state; nothing is saved.
+
+Two things are worth knowing about what "cancel" means here:
+
+- **The client always stops waiting. The server usually does not stop working.**
+  A cancelled query keeps running on PostgreSQL and MySQL only until noorm's
+  cancel request reaches it, and on SQL Server and SQLite it is never told at
+  all. The message names which happened, and
+  [the SQL terminal guide](./guide/database/terminal.md) has the per-dialect
+  table.
+- **A connect that answers after you cancelled is closed, not adopted.** The
+  screen keeps the state you cancelled into, and the connection is destroyed
+  rather than left half-open.
+
+A connection attempt also ends on its own after 15 seconds, with or without a
+keypress. Raise `connection.connectTimeoutMs` for a link that is slow but
+working.
 
 
 ## Screen Reference
@@ -186,6 +299,63 @@ Select a table to see its full schema:
 
 ![Table detail: columns, indexes, and foreign keys](/image/tui/explore-table-detail.png)
 
+A detail longer than the window scrolls rather than running off the bottom:
+
+| Key | Action |
+|-----|--------|
+| `↑` `↓` | Scroll one line |
+| `Ctrl+U` / `Ctrl+D` | Half a page |
+| `PageUp` / `PageDown` | A full page. On macOS these are `fn ↑` and `fn ↓`, which is what the footer says there |
+| `Home` / `End` | Top, bottom |
+| `v` | Redraw the same rows with nothing truncated |
+| `r` | Read rows from the object |
+
+The footer lists only the keys the current screen answers to, so a detail that
+fits shows no scroll hints and a view shows no `[r] Rows`.
+
+
+### Reading Rows
+
+The explorer describes structure. `r` on a detail screen reads the rows
+themselves, without leaving the explorer for the SQL terminal:
+
+![Peeking at both ends of a table, then opening one row as a document](/image/tui-rows.gif)
+
+The peek reads both ends of the table rather than a page from the top, so the
+last rows by primary key are as reachable as the first:
+
+![The row peek: first rows and last rows, side by side](/image/tui/explore-row-peek.png)
+
+| Key | Action |
+|-----|--------|
+| `↑` `↓` | Move the cursor within a set |
+| `Tab` | Swap between the first set and the last |
+| `Enter` | Open the highlighted row as a document |
+| `/` `s` `c` | Filter, sort, clear, on the focused set |
+| `Escape` | Close the peek |
+
+Three things decide what comes back:
+
+- **Reading rows needs `sql:read`**, not the `explore` permission the rest of
+  these screens use. A config an agent may inspect the schema of is not one it
+  may read data from. See [Configs](/guide/environments/configs#access-roles).
+- **The tail needs a primary key.** With one, the last rows ride the index.
+  Without one, only the first rows appear.
+- **A short table is one set.** When both ends meet, the peek says
+  `All N rows` and draws a single table.
+
+The table fits as many whole columns as the terminal holds and marks the rest
+`… N more columns`. `Enter` on a row is what shows them all:
+
+![One row as a YAML document, with the keys to walk to the next](/image/tui/explore-row-view.png)
+
+| Key | Action |
+|-----|--------|
+| `←` `→` | Previous row, next row, in the order the table was showing |
+| `↑` `↓` | Scroll a document taller than the window |
+| `f` | Swap YAML for JSON. The choice holds for the rest of the session |
+| `Escape` | Back to the peek, on the row you were reading |
+
 
 ### SQL Terminal
 
@@ -193,9 +363,11 @@ Press `Shift+Q` anywhere to open the SQL terminal against the active config:
 
 ![The built-in SQL terminal](/image/tui/sql-terminal.png)
 
-- Tab completion for table/column names
-- Query history with up/down arrows
-- Results cached for review
+- `↑` `↓` walk your query history, and `h` opens it as a list
+- A result wider than the terminal keeps whole columns and marks the remainder
+  `… N more columns`, rather than cramming every column into a few characters
+- `Enter` on a result row opens it as a document, the same YAML or JSON view the
+  row peek uses, which is how you read the columns the grid left out
 
 
 ### Log Viewer
@@ -204,9 +376,9 @@ Press `Shift+L` anywhere to toggle the log overlay:
 
 ![The log viewer overlay, opened with Shift+L](/image/tui/log-viewer.png)
 
-The overlay sits on top of whatever screen you were on, so you can watch events
-while an operation runs. `[/]` searches, `[Space]` pauses the live tail, and
-`[Enter]` opens a single entry in full.
+The overlay tails events as they happen, so you can watch an operation run.
+`[/]` searches, `[g]` and `[G]` jump to the top and bottom, `[Space]` pauses the
+tail, `[Enter]` opens a single entry in full, and `Shift+L` again closes it.
 
 
 ### More Options

@@ -64,6 +64,18 @@ export interface SqlExecutionResult {
     /** Execution duration in milliseconds */
     durationMs: number;
 
+    /**
+     * How an execution ended when the caller stopped waiting. Absent when the
+     * query ran to completion, whether it succeeded or failed.
+     *
+     * `server-cancel-requested` means a cancel was sent to the database on a
+     * second connection, so the query is being stopped there. `stopped-waiting`
+     * means only the client let go: the query may well still be running and
+     * holding resources. The distinction exists so the UI can say which one
+     * happened rather than calling both of them "cancelled".
+     */
+    aborted?: 'server-cancel-requested' | 'stopped-waiting';
+
 }
 
 /**

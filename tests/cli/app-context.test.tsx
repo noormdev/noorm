@@ -251,8 +251,11 @@ describe('cli: app-context', () => {
 
             });
 
-            const { lastFrame, unmount } = render(<ContextDisplay />);
-            const output = lastFrame() ?? '';
+            // Ink 7 paints its error overview and then writes a cleared frame
+            // as it unmounts, so the message is in `frames` but never in
+            // `lastFrame()`. Search every frame.
+            const { frames, unmount } = render(<ContextDisplay />);
+            const output = frames.join('');
 
             // Error may appear in rendered output or in console.error
             const hasErrorInOutput = output.includes('useAppContext must be used within an AppContextProvider');

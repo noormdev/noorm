@@ -271,7 +271,7 @@ export function SettingsStagesListScreen({ params: _params }: ScreenProps): Reac
                         onSelect={handleSelect}
                         onHighlight={handleHighlight}
                         isFocused={isFocused}
-                        visibleCount={8}
+                        reserveRows={3}
                     />
                 )}
             </Panel>

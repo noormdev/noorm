@@ -110,7 +110,8 @@ export function SettingsStageEditScreen({ params }: ScreenProps): ReactElement {
             },
             {
                 key: 'locked',
-                label: 'Locked (prevent config deletion)',
+                label: 'Locked',
+                hint: '(prevents config deletion)',
                 type: 'checkbox',
                 defaultValue: existingStage?.locked ?? false,
             },
@@ -164,7 +165,8 @@ export function SettingsStageEditScreen({ params }: ScreenProps): ReactElement {
             },
             {
                 key: 'protected',
-                label: 'Default: Protected (enforce)',
+                label: 'Default: Protected',
+                hint: '(enforce)',
                 type: 'checkbox',
                 defaultValue: defaults.protected ?? false,
             },

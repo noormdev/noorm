@@ -21,7 +21,6 @@ import { useState, useCallback } from 'react';
 import { existsSync } from 'fs';
 import { join } from 'path';
 import { Box, Text, useInput } from 'ink';
-import { TextInput } from '@inkjs/ui';
 
 import type { ReactElement } from 'react';
 import type { ScreenProps } from '../../types.js';
@@ -30,7 +29,7 @@ import { attempt } from '@logosdx/utils';
 import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
-import { Panel, Spinner, StatusMessage } from '../../components/index.js';
+import { Panel, Spinner, StatusMessage, TextInput } from '../../components/index.js';
 import { createChange, addFile } from '../../../core/change/scaffold.js';
 import { getErrorMessage, toKebabCase, resolveChangesDir } from '../../utils/index.js';
 

@@ -1,67 +1,24 @@
 ---
-paths: "**/*.{js,jsx,ts,tsx}"
+paths:
+  - "**/*.{js,jsx,ts,tsx}"
 ---
 
-# TypeScript Standards
+# TypeScript standards
 
 
-## Function Structure (MANDATORY)
+General TypeScript judgment (`const` over `let`, no `as`, no `any`, inference over annotation, short functions) is covered by the global TypeScript style rules and is not repeated here. This file carries only what is specific to noorm.
 
-Every function body should be organized into up to four logical sections, in this order:
+
+## Function structure
+
+Organize every function body into up to four sections, in this order, separated by a blank line:
 
 1. **Declaration** — local variables, destructuring, constants
 2. **Validation** — input guards, early throws
-3. **Business logic** — the actual work
+3. **Business logic** — the work
 4. **Commit** — final side effects and the return value
 
-Use `attempt(...)` only when this function does something with the error — translate it, recover, emit, etc. If you'd just re-throw or re-return it unchanged, don't wrap — let it propagate naturally.
-
-### The mental model (for thinking about your code)
-
-The block markers below are **authoring aids only**. They show the four sections so you can reason about where code belongs. **Do NOT copy these `// === ... ===` comments into actual source files.** They are not a code artifact — they are a guide you read, then delete.
-
-```typescript
-/**
- * Updates user email address after validation.
- *
- * Prevents invalid emails and ensures user exists before update.
- *
- * @example
- * const user = await modifyUserEmail(userID, newEmail);
- */
-async function modifyUserEmail(userID: UUID, newEmail: EmailAddress) {
-
-    // === Declaration block ===
-    const now = new Date();
-
-    // === Validation block ===
-    if (!isValidEmail(newEmail)) {
-
-        throw new InvalidEmailError(newEmail);
-    }
-
-    // === Business logic block ===
-    // attempt() here because we translate both "fetch failed" and "user missing"
-    // into a single UserNotFoundError for the caller.
-    const [user, err] = await attempt(() => fetchUser(userID));
-
-    if (err || !user) {
-
-        throw new UserNotFoundError(userID);
-    }
-
-    user.email = newEmail;
-    user.updatedAt = now;
-
-    // === Commit block ===
-    // No attempt() — saveUser's error is already meaningful; let it propagate.
-    return saveUser(user);
-}
-```
-
-### What the code should actually look like
-
-Separate sections with a blank line. No banner comments. Errors propagate unless the function does something with them.
+No banner comments marking the sections. If a section needs one to be understandable, the function is too long; split it.
 
 ```typescript
 /**
@@ -79,72 +36,52 @@ async function modifyUserEmail(userID: UUID, newEmail: EmailAddress) {
     if (!isValidEmail(newEmail)) {
 
         throw new InvalidEmailError(newEmail);
+
     }
 
+    // attempt() here because we collapse "fetch failed" and "user missing"
+    // into one UserNotFoundError for the caller.
     const [user, err] = await attempt(() => fetchUser(userID));
 
     if (err || !user) {
 
         throw new UserNotFoundError(userID);
+
     }
 
     user.email = newEmail;
     user.updatedAt = now;
 
+    // No attempt() here: saveUser's error is already meaningful, so let it propagate.
     return saveUser(user);
+
 }
 ```
 
-If a section needs a banner comment to be understandable, the function is probably too long — split it.
 
-### When to use `attempt`
+## Error handling
 
-Use `attempt` whenever you need to *inspect* the error before deciding what to do. Common cases:
 
-- **Ignore it** — a non-critical cleanup step fails, you don't care.
-- **Ignore only specific kinds** — swallow a network timeout, re-throw everything else.
-- **Translate it** — collapse several underlying failures into one domain error.
-- **Recover** — fall back to a default, retry, read from cache.
-- **Observe it** — emit an event, log context, then either continue or re-throw.
+### Never bind a catch parameter
+
+`catch (err)` appears **zero** times in `src/`. Use `attempt`/`attemptSync` instead; the error tuple is the convention (600+ call sites across 187 files).
 
 ```typescript
-// Ignore a specific error class, re-throw the rest.
-const [res, err] = await attempt(() => fetchRemote(url));
-if (err && !(err instanceof NetworkError)) throw err;
-
-// Translate + observe.
-const [user, err] = await attempt(() => modifyUserEmail(userID, newEmail));
-if (err) {
-
-    observer.emit('user:update-failed', { userID, error: err });
-    return;
-}
-```
-
-If you're going to re-throw the error unchanged in every case, skip `attempt` and let it propagate directly.
-
-
-## Error Handling (ZERO TOLERANCE)
-
-- **NEVER use try-catch** - This is a critical violation. The zero tolerance targets try-catch specifically, not throwing or `attempt`/`attemptSync` - see Function Structure above for when to wrap deliberately vs. let errors propagate.
-- **Mandated `@logosdx/utils` utilities**: `attempt`/`attemptSync` (the convention actually in use - 553 call sites across 175 files) and `retry` (used at `src/core/connection/factory.ts:93`). Use `attempt`/`attemptSync` per the Function Structure guidance above - only when the function does something with the error.
-- **Available in `@logosdx/utils` but not currently used**: `batch`, `circuitBreaker`, `debounce`, `throttle`, `memo`/`memoize`, `rateLimit`, `withTimeout`, `FetchEngine`. Reach for them if a real need arises; they are not mandated because nothing in `src/` imports them today.
-- `ObserverEngine` is `@logosdx/observer`, not `@logosdx/utils`.
-
-```typescript
-// CORRECT - attempt() used deliberately: observes the error, emits, then stops
+// Correct: attempt() observes the error, emits, then stops
 const [result, err] = await attempt(() => db.execute(sql));
+
 if (err) {
 
     observer.emit('error', { source: 'executor', error: err });
 
     return;
+
 }
 
-// ALSO CORRECT - nothing to add by wrapping; let the error propagate
+// Also correct: nothing to add by wrapping, so let it propagate
 return db.execute(sql);
 
-// WRONG - Never do this
+// Wrong
 try {
     const result = await db.execute(sql);
 }
@@ -153,123 +90,71 @@ catch (err) {
 }
 ```
 
+`try { } finally { }` for cleanup binds no error and swallows nothing. It is permitted and used at 4 sites, including `src/core/lock/manager.ts:358` and `src/sdk/context.ts:570`.
 
-## Import Organization
+Four bare `catch { }` blocks remain in TUI code (`RunFileScreen.tsx:273`, `RunDirScreen.tsx:336`, `LogViewerOverlay.tsx:78`, `SecretValueForm.tsx:154`). They are the "may fail, do not care" case, which `attemptSync` expresses without a `try`. Convert them when you touch the surrounding code; do not add more.
+
+This rule also reaches `tests/**` through this file's glob, where 17 genuine `try/catch` blocks currently violate it (`tests/core/config/schema.test.ts:203` and 10 other files). Use `attempt` plus `expect(err)` there instead.
+
+
+### Wrap with `attempt` only when the function acts on the error
+
+If every branch re-throws the error unchanged, skip `attempt` and let it propagate. Reach for it when you need to inspect the error first:
+
+| Intent | Example |
+|--------|---------|
+| Ignore it | a non-critical cleanup step fails |
+| Ignore specific kinds | swallow a network timeout, re-throw everything else |
+| Translate it | collapse several failures into one domain error |
+| Recover | fall back to a default, retry, read from cache |
+| Observe it | emit an event or log context, then continue or re-throw |
 
 ```typescript
-// Built-ins first
-import { readFile } from 'fs/promises';
-
-// External libraries (alphabetical by org)
-import {
-    attempt,
-    attemptSync,
-    FetchEngine,
-} from '@logosdx/utils';
-import Joi from 'joi';
-
-// Local imports (by depth, deepest first)
-import * as utils from '../../../utils/index';
-import * as controllers from '../../controllers/index';
-import * as misc from '../misc';
+// Ignore a specific error class, re-throw the rest.
+const [res, err] = await attempt(() => fetchRemote(url));
+if (err && !(err instanceof NetworkError)) throw err;
 ```
 
 
-## Code Style (ESLint-Enforced)
+## Shared utilities actually in use
 
-These patterns are enforced by ESLint:
+| Symbol | Package | Where |
+|--------|---------|-------|
+| `attempt` / `attemptSync` | `@logosdx/utils` | everywhere; the error-handling convention |
+| `retry` | `@logosdx/utils` | `src/core/connection/factory.ts:118`, `src/core/update/updater.ts:227` |
+| `runWithTimeout` | `@logosdx/utils` | `src/core/connection/manager.ts:217`, `src/core/lifecycle/manager.ts:343` |
+| `ObserverEngine` / `ObserverRelay` | `@logosdx/observer` | `src/core/observer.ts:19`, `src/core/worker-bridge/bridge.ts:2` |
 
-```typescript
-// 4-space indentation
-function example() {
+`@logosdx/utils` also exports `batch`, `circuitBreaker`, `debounce`, `throttle`, `memoize`, `rateLimit`, `withTimeout`, `clone`, `equals`, `reach`, `Deferred`, and `assert`. Nothing in `src/` imports any of them. Reach for one if a real need arises, and read its signature from the package types rather than assuming it.
 
-    const value = 'test';
-}
-
-// Single quotes, semicolons always
-const name = 'value';
-
-// Stroustrup brace style (else on new line)
-if (condition) {
-
-    // logic
-}
-else {
-
-    // other logic
-}
-
-// Padded blocks - newline after opening brace, before closing
-function doSomething() {
-
-    const x = 1;
-
-    return x;
-
-}
-
-for (const item of items) {
-
-    process(item);
-
-}
-
-// Trailing comma on multiline
-const config = {
-    name: 'test',
-    value: 42,
-};
-
-// Object curly spacing
-const { name, value } = config;
-
-// Max line length 150
-```
+`FetchEngine` is not in `@logosdx/utils`; it lives in `@logosdx/fetch`. There is no `memo` export, only `memoize` and `memoizeSync`.
 
 
-## Utilities
+## Formatting
 
-Core utilities from `@logosdx/utils`:
+ESLint enforces all of the following (`eslint.config.js`), so `bun run lint` is the authority. Listed here to get it right the first time:
 
-```typescript
-// Error tuples - Go-style [result, err]
-const [data, err] = await attempt(() => db.query());
-const [parsed, parseErr] = attemptSync(() => JSON.parse(str));
+| Rule | Setting |
+|------|---------|
+| `indent` | 4 spaces |
+| `quotes` | single, `avoidEscape` |
+| `semi` | always |
+| `brace-style` | stroustrup (`else` on a new line) |
+| `padded-blocks` | always (blank line after `{`, before `}`) |
+| `padding-line-between-statements` | blank line before every `return` |
+| `comma-dangle` | always on multiline |
+| `object-curly-spacing` | always |
+| `array-bracket-spacing` | never |
+| `max-len` | 150, strings and URLs exempt |
+| `unused-imports/no-unused-vars` | `^_` prefix exempts a binding |
+| `no-multiple-empty-lines` | max 2 |
 
-// Retry with backoff
-const fn = retry(asyncFn, { retries: 3, delay: 1000, backoff: 2 });
-
-// Batch with concurrency
-await batch(fn, { items, concurrency: 3, failureMode: 'abort' | 'continue' });
-
-// Timeout enforcement
-const fn = withTimeout(asyncFn, { timeout: 5000 });
-
-// Debounce/throttle for UI
-const fn = debounce(handler, { delay: 300, maxWait: 1000 });
-const fn = throttle(handler, { delay: 16 });
-
-// Deep operations
-const copy = clone(obj);           // handles circular refs
-const same = equals(a, b);         // deep comparison
-const val = reach(obj, 'a.b.c');   // safe nested access
-
-// Async control
-const d = new Deferred<T>();       // external resolve/reject
-d.resolve(value);
-
-// Memoization with LRU
-const fn = memoize(asyncFn, { ttl: 60000, maxSize: 100 });
-fn.cache.clear();
-
-// Assertions
-assert(condition, 'message', CustomError);
-```
+Import order is **not** enforced and not consistently followed in `src/`. Match the file you are editing.
 
 
-## Class Patterns
+## Classes
 
-Use private fields with `#` prefix.
+Use `#` private fields. 30 files do; zero use the TypeScript `private` keyword on a field, because `private` is erased at compile time while `#` is enforced at runtime.
 
 ```typescript
 export class StateManager {
@@ -288,13 +173,14 @@ export class StateManager {
 }
 ```
 
+`protected override` on a method is the one exception, and only when overriding a third-party base class member that `#` cannot express (`src/core/worker-bridge/bridge.ts:61`).
 
-## JSDoc Requirements
 
-- All functions and classes MUST have JSDoc
-- Explain WHY, not what or how
-- Include usage examples
-- Comment ambiguous validation logic
+## JSDoc
+
+Every exported function and class needs a JSDoc block. Explain WHY, not what or how, and include a usage example.
+
+Current coverage: 99.5% of exported functions, 81% of exported classes. The gap is concentrated in `src/sdk/namespaces/*.ts`, which is public SDK surface; add the block when you touch one.
 
 ```typescript
 /**

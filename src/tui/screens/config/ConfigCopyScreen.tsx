@@ -11,7 +11,6 @@
  */
 import { useState, useCallback, useMemo } from 'react';
 import { Box, Text, useInput } from 'ink';
-import { TextInput } from '@inkjs/ui';
 import { attempt } from '@logosdx/utils';
 
 import type { ReactElement } from 'react';
@@ -20,7 +19,7 @@ import type { ScreenProps } from '../../types.js';
 import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
-import { Panel, Spinner, useToast, MissingParamPanel, NotFoundPanel } from '../../components/index.js';
+import { Panel, Spinner, useToast, MissingParamPanel, NotFoundPanel, TextInput } from '../../components/index.js';
 import { getErrorMessage, validateConfigName } from '../../utils/index.js';
 
 /**

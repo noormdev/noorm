@@ -133,6 +133,7 @@ export const ConnectionSchema = z
         ssl: SSLSchema.optional(),
         pool: PoolSchema.optional(),
         tlsServerName: z.string().optional(),
+        connectTimeoutMs: z.number().int().positive().optional(),
     })
     .refine((conn) => conn.dialect === 'sqlite' || conn.host, {
         message: 'Host is required for non-SQLite databases',
@@ -181,6 +182,7 @@ const PartialConnectionSchema = z.object({
     ssl: SSLSchema.optional(),
     pool: PoolSchema.optional(),
     tlsServerName: z.string().optional(),
+    connectTimeoutMs: z.number().int().positive().optional(),
 });
 
 /**

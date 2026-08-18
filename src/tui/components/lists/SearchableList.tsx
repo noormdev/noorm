@@ -15,14 +15,21 @@
  */
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { Box, Text, useInput } from 'ink';
-import { TextInput } from '@inkjs/ui';
+import { TextInput } from '../forms/TextInput.js';
 
 import type { ReactElement } from 'react';
 
 import { useFocusScope } from '../../focus.js';
+import { useViewportRows } from '../../hooks/useViewportRows.js';
 import { SelectList } from './SelectList.js';
 
 import type { SelectListItem } from './SelectList.js';
+
+/**
+ * Rows this component draws around the list it wraps: the search row, the hint
+ * row, and the two gaps the surrounding column puts either side of the list.
+ */
+const SEARCH_CHROME_ROWS = 4;
 
 /**
  * Filter state for SearchableList (used for persistence).
@@ -58,8 +65,18 @@ export interface SearchableListProps<T = unknown> {
     /** Label shown when no items match search */
     noResultsLabel?: string;
 
-    /** Number of visible items before scrolling */
+    /**
+     * Items visible before scrolling. Defaults to what the terminal has room
+     * for once this component's own search and hint rows are accounted for.
+     */
     visibleCount?: number;
+
+    /**
+     * Rows of the screen that belong to something other than this list — an
+     * intro paragraph above it, a banner over the Panel. Only the parent knows
+     * these, and only they stop a terminal-sized list from overrunning them.
+     */
+    reserveRows?: number;
 
     /** Focus scope label for keyboard handling */
     focusLabel?: string;
@@ -97,7 +114,8 @@ export function SearchableList<T = unknown>({
     searchPlaceholder = 'Search...',
     emptyLabel = 'No items',
     noResultsLabel = 'No matches',
-    visibleCount = 8,
+    visibleCount: pinnedVisibleCount,
+    reserveRows = 0,
     focusLabel,
     isFocused: externalFocused,
     numberNav = false,
@@ -106,6 +124,11 @@ export function SearchableList<T = unknown>({
     onFilterChange,
     onCancel,
 }: SearchableListProps<T>): ReactElement {
+
+    // The wrapped SelectList is handed a resolved number, so it never
+    // double-counts this component's search and hint rows.
+    const availableRows = useViewportRows(SEARCH_CHROME_ROWS + reserveRows);
+    const visibleCount = pinnedVisibleCount ?? availableRows;
 
     // Focus management
     const hasExternalFocus = externalFocused !== undefined;

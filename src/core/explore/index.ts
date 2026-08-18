@@ -19,15 +19,19 @@
  * ```
  */
 export {
+    DEFAULT_PEEK_ROWS,
     fetchOverview,
     fetchList,
     fetchDetail,
+    fetchRowPeek,
     formatSummaryDescription,
 } from './operations.js';
 
-export type { DetailCategory, ExploreOptions } from './operations.js';
+export type { DetailCategory, ExploreOptions, RowPeek, RowPeekGate } from './operations.js';
 
 export { getExploreOperations } from './dialects/index.js';
+
+export { applyRowLimit, MAX_PEEK_ROWS, peekQuery, readPeekRows } from './peek.js';
 
 export type {
     ExploreCategory,
@@ -49,4 +53,5 @@ export type {
     DialectExploreOperations,
     ExploreSummary,
     ExploreDetail,
+    RowPeekQuery,
 } from './types.js';

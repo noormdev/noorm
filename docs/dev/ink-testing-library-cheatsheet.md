@@ -380,8 +380,12 @@ describe("NavigableMenu", () => {
 | Delete | `\x1B[3~` |
 | Ctrl+C | `\x03` |
 
+On `ink@7.1.1` (installed here) `\x7F` sets `key.backspace` and `\x1B[3~` sets `key.delete`. Ink 6.8.0 reported *both* as `key.delete`, so a component guarding on `key.backspace` never fired for `\x7F` and the backspace example below could not have passed. Verified by feeding each sequence through `useInput` on the installed build.
+
 
 ### Testing Character Input
+
+Every write needs an `await` around it. Ink registers the `useInput` handler in a `useEffect`, so input written on the render tick lands before any handler exists, and React needs a tick after the keystroke to flush the new frame into `lastFrame()`. Without the waits both assertions below read `"Text:"`.
 
 ```tsx
 function TextCollector() {
@@ -407,32 +411,39 @@ function TextCollector() {
     return <Text>Text: {text}</Text>;
 }
 
+const tick = () => new Promise((r) => setTimeout(r, 50));
+
 describe("TextCollector", () => {
 
-    it("should collect typed characters", () => {
+    it("should collect typed characters", async () => {
 
         const { stdin, lastFrame } = render(<TextCollector />);
 
-        stdin.write("h");
-        stdin.write("e");
-        stdin.write("l");
-        stdin.write("l");
-        stdin.write("o");
+        await tick();
+        stdin.write("hello");
+        await tick();
 
         expect(lastFrame()).toBe("Text: hello");
     });
 
-    it("should handle backspace", () => {
+    it("should handle backspace", async () => {
 
         const { stdin, lastFrame } = render(<TextCollector />);
 
+        await tick();
         stdin.write("hello");
+        await tick();
         stdin.write("\x7F"); // Backspace
+        await tick();
 
         expect(lastFrame()).toBe("Text: hell");
     });
 });
 ```
+
+A multi-character `stdin.write("hello")` arrives as one `input` string, not five events. `tests/cli/components/terminal.test.tsx` is the live version of this pattern.
+
+A fixed `tick()` is the smallest thing that works, not the most robust. For anything slower than a keystroke, poll until the condition holds instead of sleeping a guessed duration. `.claude/rules/tui-development.md` carries the helper and the measurements behind that advice.
 
 
 ## Testing Async Components

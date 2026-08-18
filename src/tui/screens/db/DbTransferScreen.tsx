@@ -29,7 +29,7 @@
  */
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Box, Text, useInput } from 'ink';
-import { ProgressBar, TextInput } from '@inkjs/ui';
+import { ProgressBar } from '@inkjs/ui';
 import { attempt } from '@logosdx/utils';
 
 import type { ReactElement } from 'react';
@@ -48,6 +48,7 @@ import {
     Confirm,
     SmartConfirm,
     FilePicker,
+    TextInput,
     type SelectListItem,
 } from '../../components/index.js';
 
@@ -815,15 +816,13 @@ export function DbTransferScreen({ params: _params }: ScreenProps): ReactElement
                             Source: <Text bold color="cyan">{activeConfigName}</Text>
                         </Text>
                         <Text dimColor>Select destination or action:</Text>
-                        <Box flexDirection="column" height={Math.min(configItems.length + 2, 14)}>
-                            <SelectList
-                                focusLabel="DbTransferDestSelect"
-                                items={configItems}
-                                onSelect={handleDestSelect}
-                                onCancel={back}
-                                visibleCount={12}
-                            />
-                        </Box>
+                        <SelectList
+                            focusLabel="DbTransferDestSelect"
+                            items={configItems}
+                            onSelect={handleDestSelect}
+                            onCancel={back}
+                            reserveRows={4}
+                        />
                     </Box>
                 </Panel>
                 <Box flexWrap="wrap" columnGap={2}>
@@ -850,17 +849,15 @@ export function DbTransferScreen({ params: _params }: ScreenProps): ReactElement
                         <Text dimColor>
                             Space to toggle, Enter to continue ({selectAllTables ? 'all' : selectedTables.size} selected)
                         </Text>
-                        <Box flexDirection="column" height={Math.min(tableItems.length + 2, 15)}>
-                            <SelectList
-                                focusLabel="DbTransferTableSelect"
-                                items={tableItems}
-                                multiSelect={true}
-                                onToggle={handleTableToggle}
-                                onSubmit={handleTablesSubmit}
-                                onCancel={() => setPhase('select-dest')}
-                                visibleCount={12}
-                            />
-                        </Box>
+                        <SelectList
+                            focusLabel="DbTransferTableSelect"
+                            items={tableItems}
+                            multiSelect={true}
+                            onToggle={handleTableToggle}
+                            onSubmit={handleTablesSubmit}
+                            onCancel={() => setPhase('select-dest')}
+                            reserveRows={4}
+                        />
                     </Box>
                 </Panel>
                 <Box flexWrap="wrap" columnGap={2}>
@@ -886,13 +883,17 @@ export function DbTransferScreen({ params: _params }: ScreenProps): ReactElement
                                 DRY RUN MODE - the transfer will be validated, not executed
                             </Text>
                         )}
+                        {/* Pinned rather than terminal-derived: the menu is a fixed
+                            set of entries - one truncate toggle and the four conflict
+                            strategies - so it always fits and a taller terminal has
+                            nothing more to reveal. */}
                         <Box flexDirection="column" height={10}>
                             <SelectList
                                 focusLabel="DbTransferOptionsSelect"
                                 items={optionItems}
                                 onSelect={handleConflictSelect}
                                 onCancel={() => setPhase('select-tables')}
-                                visibleCount={5}
+                                visibleCount={optionItems.length}
                             />
                         </Box>
                     </Box>
@@ -994,7 +995,6 @@ export function DbTransferScreen({ params: _params }: ScreenProps): ReactElement
                 selected={importFiles}
                 onSelect={handleImportFilesSelect}
                 onCancel={() => setPhase('select-dest')}
-                visibleCount={12}
             />
         );
 

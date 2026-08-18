@@ -49,6 +49,32 @@ export const DEFAULT_LOGGING_CONFIG: LoggingConfig = {
 };
 
 /**
+ * Whether the TUI answers mouse reports when nothing says otherwise.
+ *
+ * The single place "absent means on" is decided. The schema reads it for the
+ * `ui: {}` case, `isMouseEnabled` reads it for the no-section case, and the TUI
+ * reads neither directly — so the two cannot drift apart into a state where
+ * writing an empty `ui:` block changes behaviour.
+ */
+export const DEFAULT_UI_MOUSE = true;
+
+/**
+ * Whether the TUI should answer mouse reports for these settings.
+ *
+ * A plain `settings?.ui?.mouse === true` read makes an absent section mean off,
+ * which is the opposite of the default now, and a plain `!== false` read
+ * scatters the decision across every caller. This is the one reader.
+ *
+ * @example
+ * <MouseProvider enabled={isMouseEnabled(settings)}>
+ */
+export function isMouseEnabled(settings: Pick<Settings, 'ui'> | null | undefined): boolean {
+
+    return settings?.ui?.mouse ?? DEFAULT_UI_MOUSE;
+
+}
+
+/**
  * Complete default settings.
  *
  * Used when no settings.yml exists.

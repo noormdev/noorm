@@ -19,7 +19,7 @@ import type { ScreenProps } from '../../types.js';
 import { useRouter } from '../../router.js';
 import { useSettings, useGlobalModes, useAppContext } from '../../app-context.js';
 import { Panel, Spinner, Confirm, SearchableList, KeyHandler, useToast } from '../../components/index.js';
-import { useRunProgress, useAsyncEffect } from '../../hooks/index.js';
+import { useRunProgress, useAsyncEffect, modeBannerRows } from '../../hooks/index.js';
 import { discoverFiles, runFile, checkFilesStatus } from '../../../core/runner/index.js';
 import type { FilesStatusResult } from '../../../core/runner/index.js';
 import { getErrorMessage, resolveScreenIdentity, buildRunContext, withScreenConnection } from '../../utils/index.js';
@@ -403,17 +403,15 @@ export function RunFileScreen({ params }: ScreenProps): ReactElement {
                                 <Text dimColor>
                                     Select a SQL file to execute
                                 </Text>
-                                <Box flexDirection="column" height={15}>
-                                    <SearchableList
-                                        focusLabel="RunFilePicker"
-                                        items={fileItems}
-                                        onSelect={handleSelect}
-                                        onCancel={handleCancel}
-                                        visibleCount={10}
-                                        searchPlaceholder="Filter files..."
-                                        emptyLabel="No SQL files found"
-                                    />
-                                </Box>
+                                <SearchableList
+                                    focusLabel="RunFilePicker"
+                                    items={fileItems}
+                                    onSelect={handleSelect}
+                                    onCancel={handleCancel}
+                                    reserveRows={2 + modeBannerRows(globalModes)}
+                                    searchPlaceholder="Filter files..."
+                                    emptyLabel="No SQL files found"
+                                />
                             </>
                         ) : (
                             <>

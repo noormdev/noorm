@@ -320,7 +320,6 @@ export function ExploreListScreen({ params: _params }: ScreenProps): ReactElemen
                     searchPlaceholder={`Filter ${meta.title.toLowerCase()}...`}
                     emptyLabel={`No ${meta.title.toLowerCase()} found`}
                     noResultsLabel="No matches"
-                    visibleCount={10}
                     isFocused={isFocused}
                     numberNav
                     initialSearchTerm={filterState?.searchTerm}

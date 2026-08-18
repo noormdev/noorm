@@ -6,30 +6,39 @@
 # screens (the [c] Create label was wrong in both for a while).
 #
 # Run `./shots.sh` rather than calling vhs directly: it renders this tape and
-# then crops each PNG down to its own content, since one tape has one canvas
-# but the screens vary from ~14 to ~49 lines tall.
+# then trims each PNG back to its content.
+#
+# On sizing: the TUI draws into the alternate screen at full terminal height,
+# so the canvas is the frame every screen gets, not a bound the tall ones push
+# against. Lists and forms window themselves into whatever they are given —
+# a taller canvas shows a few more rows and a lot more empty panel, and a
+# shorter one starts hiding fields behind a `↓ N more`. 32 lines holds the
+# add-config form's ten fields with an expanded select and still leaves the
+# explorer's table detail room to breathe.
+#
+# `seeded` rather than `built`, because the row peek has nothing to show
+# against empty tables.
 #
 # Screen keys, from src/tui:
 #   home    [r] Run  [c] Config  [g] Change  [d] DB  [+] More  [q] Quit
 #   config  [a] Add
 #   change  [f] FF  [h] History
 #   db      [c] Create  [x] Explore
+#   detail  [v] Full text  [r] Rows
 #   global  Shift+L log viewer, Shift+Q SQL terminal, ? help
 
 Source theme.tape
 
 Output ../../tmp/screenshots-throwaway.gif
 
-# Tall enough for the add-config form, the tallest screen in the app. Every
-# other shot gets cropped back down by shots.sh.
-Set Width 1200
-Set Height 1160
+Set Width 1200    # 111 cols
+Set Height 700    # 32 lines — measured with `tput lines`, not derived
 Set FontSize 15
 Set TypingSpeed 90ms
 
 Hide
 Type "source ./env-scrub.sh" Enter
-Type "./sandbox.sh built" Enter
+Type "./sandbox.sh seeded" Enter
 Wait+Screen@180s /sandbox ready/
 Type "export HOME=/tmp/noorm-demo/home" Enter
 Type "cd /tmp/noorm-demo/project" Enter
@@ -109,6 +118,25 @@ Enter
 Sleep 4s
 Screenshot shots/explore-table-detail.png
 Sleep 2s
+
+# Rows, then one row as a document. Two sets appear only because the seeded
+# table holds more rows than the viewport reads at either end.
+Type "r"
+Sleep 4s
+Screenshot shots/explore-row-peek.png
+Sleep 2s
+
+Down
+Sleep 800ms
+Enter
+Sleep 3s
+Screenshot shots/explore-row-view.png
+Sleep 2s
+Escape
+Sleep 1500ms
+Escape
+Sleep 1500ms
+
 Escape
 Sleep 1500ms
 Escape
@@ -126,10 +154,14 @@ Sleep 2s
 Escape
 Sleep 2s
 
+# The dwell after this Screenshot is 4s, not the 2s everywhere else. The PNG is
+# flushed asynchronously and the very next keypress here closes the overlay, so
+# a short dwell writes the *closed* screen under this filename — silently, with
+# a plausible-looking file.
 Type "L"
-Sleep 3s
+Sleep 4s
 Screenshot shots/log-viewer.png
-Sleep 2s
+Sleep 4s
 Type "L"
 Sleep 2s
 Escape

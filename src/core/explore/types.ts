@@ -293,6 +293,44 @@ export interface TriggerDetail {
 }
 
 // -----------------------------------------------------------------------------
+// Row peek
+// -----------------------------------------------------------------------------
+
+/**
+ * One page of a table's rows, as `readPeekRows` is asked for it.
+ *
+ * The key columns arrive already resolved rather than being looked up here:
+ * `fetchDetail` has already reported which columns are the primary key, and a
+ * second catalog query per peek would be paying twice for the same answer.
+ *
+ * Not part of `DialectExploreOperations`: the statement is the same on every
+ * dialect and only its row cap differs, so it lives in one builder with one
+ * branch rather than four near-identical methods.
+ */
+export interface RowPeekQuery {
+
+    /** Table to read from, unquoted, exactly as the catalog reported it. */
+    table: string;
+
+    /** Schema qualifying `table`, where the dialect has one. */
+    schema?: string;
+
+    /**
+     * Primary-key columns, in the order they should be sorted by. Empty reads
+     * in whatever order the storage engine hands rows back, which is the only
+     * thing a table without a primary key can offer.
+     */
+    keyColumns: string[];
+
+    /** `desc` reads the tail; the caller re-reverses it for display. */
+    direction: 'asc' | 'desc';
+
+    /** Rows to read. Clamped by the dialect before it reaches the SQL. */
+    limit: number;
+
+}
+
+// -----------------------------------------------------------------------------
 // Dialect operations interface
 // -----------------------------------------------------------------------------
 

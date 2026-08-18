@@ -47,6 +47,11 @@ const uiCommand = defineCommand({
             {
                 exitOnCtrlC: false,
                 patchConsole: true,
+                // Without this the TUI draws into normal scrollback, so every
+                // repaint appends and anything taller than the window scrolls
+                // out of reach. The alternate buffer also restores whatever the
+                // terminal was showing before `noorm ui` on exit.
+                alternateScreen: true,
             },
         );
 
