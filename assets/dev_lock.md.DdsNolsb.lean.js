@@ -1,0 +1,1 @@
+import{_ as i,o as a,c as n,a6 as l}from"./chunks/framework.ZMCvXf1_.js";const o=JSON.parse('{"title":"Lock","description":"","frontmatter":{},"headers":[],"relativePath":"dev/lock.md","filePath":"dev/lock.md"}'),h={name:"dev/lock.md"};function t(e,s,k,p,r,E){return a(),n("div",null,[...s[0]||(s[0]=[l("",53)])])}const c=i(h,[["render",t]]);export{o as __pageData,c as default};

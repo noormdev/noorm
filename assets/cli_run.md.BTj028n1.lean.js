@@ -1,0 +1,1 @@
+import{_ as t,o,c as d,a6 as a}from"./chunks/framework.ZMCvXf1_.js";const p=JSON.parse('{"title":"noorm run","description":"","frontmatter":{},"headers":[],"relativePath":"cli/run.md","filePath":"cli/run.md"}'),r={name:"cli/run.md"};function n(s,e,c,i,l,u){return o(),d("div",null,[...e[0]||(e[0]=[a("",26)])])}const m=t(r,[["render",n]]);export{p as __pageData,m as default};

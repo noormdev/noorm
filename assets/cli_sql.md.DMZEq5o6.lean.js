@@ -1,0 +1,1 @@
+import{_ as o,o as t,c as r,a6 as n}from"./chunks/framework.ZMCvXf1_.js";const m=JSON.parse('{"title":"noorm sql","description":"","frontmatter":{},"headers":[],"relativePath":"cli/sql.md","filePath":"cli/sql.md"}'),c={name:"cli/sql.md"};function d(a,e,s,l,i,u){return t(),r("div",null,[...e[0]||(e[0]=[n("",23)])])}const q=o(c,[["render",d]]);export{m as __pageData,q as default};
