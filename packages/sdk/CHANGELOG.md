@@ -1,5 +1,15 @@
 # @noormdev/sdk
 
+## 1.2.0
+
+### Minor Changes
+
+- bab7dfc: ## Connection
+
+  ### Added
+
+  - `feat(db):` Connections now carry a connect timeout, so an unreachable host fails instead of hanging forever. Defaults to 15s; set `connection.connectTimeoutMs` per config to raise it for a database that resumes from an auto-paused state.
+
 ## 1.1.0
 
 ### Minor Changes
