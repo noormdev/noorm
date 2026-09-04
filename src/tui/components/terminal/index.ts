@@ -17,6 +17,9 @@ export type { ResultBrowserProps } from './ResultBrowser.js';
 export { RowViewOverlay } from './RowViewOverlay.js';
 export type { RowViewOverlayProps } from './RowViewOverlay.js';
 
+export { ScrollPane } from './ScrollPane.js';
+export type { ScrollPaneProps } from './ScrollPane.js';
+
 export { fitGridColumns, fitPeekColumns, PEEK_COLUMN_CAP } from './columnFit.js';
 export type { GridColumnFit, PeekColumnFit } from './columnFit.js';
 
