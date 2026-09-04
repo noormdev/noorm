@@ -34,6 +34,7 @@ import type { ScreenProps } from '../../../types.js';
 
 import { useRouter } from '../../../router.js';
 import { useFocusScope } from '../../../focus.js';
+import { useWheelScroll } from '../../../mouse.js';
 import { useAppContext } from '../../../app-context.js';
 import { Panel, Spinner } from '../../../components/index.js';
 import { useConnection, useAsyncEffect } from '../../../hooks/index.js';
@@ -613,6 +614,13 @@ export function ScrollView({
     // what it draws, so a stale offset left by a resize or a smaller object
     // cannot send the next keypress somewhere the viewport never was.
     const scrollTo = (next: number) => setOffset(Math.min(Math.max(next, 0), maxOffset));
+
+    // Only while this component owns the viewport: an overlay draws over it and
+    // scrolls itself, so the pane underneath must not move under the notch.
+    useWheelScroll({
+        isActive: isFocused && overlay === 'none',
+        onWheel: (delta) => scrollTo(view.start + delta),
+    });
 
     const open = (next: DetailOverlay) => {
 

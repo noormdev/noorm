@@ -41,6 +41,7 @@ import type { ReactElement } from 'react';
 import type { RowFormat } from './rowDocument.js';
 
 import { useFocusScope } from '../../focus.js';
+import { useWheelScroll } from '../../mouse.js';
 import { preferredRowFormat, rememberRowFormat, renderRowDocument } from './rowDocument.js';
 import { rowBudget, rowWindow, scrollTarget, wrapText } from './viewport.js';
 
@@ -118,6 +119,13 @@ export function RowViewOverlay({
     const view = rowWindow(lines.length, offset, budget);
     const maxOffset = lines.length - view.count;
 
+    const scrollTo = (next: number) => setOffset(Math.min(Math.max(next, 0), maxOffset));
+
+    // Scrolls the document, not the row cursor: ←/→ change rows, and a wheel
+    // that jumped between rows would lose the reader's place in a long one.
+    // Inert without a MouseProvider above it or with the setting off.
+    useWheelScroll({ isActive: isFocused, onWheel: (delta) => scrollTo(view.start + delta) });
+
     const move = (next: number) => {
 
         if (next < 0 || next > rows.length - 1 || next === index) return;
@@ -169,7 +177,7 @@ export function RowViewOverlay({
 
         const target = scrollTarget(input, key, view, maxOffset);
 
-        if (target !== null) setOffset(Math.min(Math.max(target, 0), maxOffset));
+        if (target !== null) scrollTo(target);
 
     });
 
