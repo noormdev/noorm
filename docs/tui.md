@@ -274,19 +274,12 @@ installs an update if one is available, `[r]` re-checks, and `esc` goes
 back.
 
 The binary runs to around 70MB, so the install reports where it has got to
-rather than leaving you watching a spinner. You get received and total size
-in MB, a floored percent, and a bar once the total size is known:
+rather than leaving you watching a spinner. Below the spinner you get the
+byte count as `42.0 / 73.0 MB (57%)`, and a progress bar tracking the same
+percent. When the server sends no `Content-Length` there's nothing to
+measure against, so the count drops to a bare `9.0 MB received` and the bar
+is omitted rather than sitting at zero.
 
-```
-⠦ Installing 1.5.0...
-
-  42.0 / 73.0 MB (57%)
-
-  ████████████████████████████░░░░░░░░░░░░░░░░░░░░░░
-```
-
-When the server sends no `Content-Length`, there's nothing to measure the
-percent against, so the line drops to a bare `9.0 MB received` with no bar.
 If a download stalls and resumes, a yellow line names why and which attempt
 it's on, for example `download stalled, no data for 30s — resuming (attempt
 1/5)...`. Progress isn't reset by the retry, since it resumes from the bytes
