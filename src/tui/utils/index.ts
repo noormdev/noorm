@@ -2,7 +2,7 @@
  * CLI utilities barrel export.
  */
 export { copyToClipboard, isClipboardAvailable } from './clipboard.js';
-export { toKebabCase } from './string.js';
+export { toKebabCase, oneLine } from './string.js';
 export { resolveChangesDir, resolveSqlDir } from './paths.js';
 export { resolveScreenIdentity } from './identity.js';
 export { createChangeManager, type CreateChangeManagerOptions } from './change-context.js';

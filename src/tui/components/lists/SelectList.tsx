@@ -16,7 +16,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { Box, Text, useInput } from 'ink';
 
-import type { ReactElement } from 'react';
+import type { ReactElement, ReactNode } from 'react';
 
 import { useFocusScope } from '../../focus.js';
 import { useRowMouse } from '../../mouse.js';
@@ -112,6 +112,35 @@ export interface SelectListProps<T = unknown> {
 
     /** Callback when Escape is pressed (for navigation) */
     onCancel?: () => void;
+
+    /**
+     * Draw the body of a row in place of the default icon/label/description.
+     *
+     * The list keeps the cursor, the window, the scroll indicators, focus and
+     * the mouse; this replaces only what one row *says*. A row whose meaning
+     * lives in per-segment colour — a green `[OK]` against a red `[ERR]`, a
+     * type badge — cannot be expressed as one `label` string, and the
+     * alternative was every such screen hand-rolling its own list and losing
+     * the windowing with it.
+     *
+     * Must draw exactly one row. The window arithmetic counts items, so a body
+     * that wraps or embeds a newline puts the fold out by that much: truncate
+     * (`wrap="truncate"`) or pre-wrap before returning.
+     */
+    renderItem?: (item: SelectListItem<T>, state: SelectListRowState) => ReactNode;
+}
+
+/**
+ * What a row needs to know to draw itself.
+ */
+export interface SelectListRowState {
+
+    /** The cursor is on this row. */
+    isHighlighted: boolean;
+
+    /** The list itself holds focus — a highlight is inert without it. */
+    isFocused: boolean;
+
 }
 
 /**
@@ -137,6 +166,7 @@ export function SelectList<T = unknown>({
     onToggle,
     onSubmit,
     onCancel,
+    renderItem,
 }: SelectListProps<T>): ReactElement {
 
     // Unconditional so the hook count is stable whether or not the caller
@@ -500,18 +530,33 @@ export function SelectList<T = unknown>({
                             {numberNav && (
                                 <Text dimColor>{numberIndicator}</Text>
                             )}
-                            <Text
-                                color={isHighlighted && isFocused ? 'cyan' : undefined}
-                                bold={isHighlighted && isFocused}
-                            >
-                                {isHighlighted ? '❯ ' : '  '}
-                                {item.icon ? `${item.icon} ` : ''}
-                                {item.label}
-                                {/* Inline description (default behavior) */}
-                                {!showDescriptionBelow && item.description && (
-                                    <Text dimColor> {item.description}</Text>
-                                )}
-                            </Text>
+                            {/* The cursor stays with the list even under a custom
+                                body, so every list in the app marks its selection
+                                the same way and a caller cannot forget to. */}
+                            {renderItem ? (
+                                <>
+                                    <Text
+                                        color={isHighlighted && isFocused ? 'cyan' : undefined}
+                                        bold={isHighlighted && isFocused}
+                                    >
+                                        {isHighlighted ? '❯ ' : '  '}
+                                    </Text>
+                                    {renderItem(item, { isHighlighted, isFocused })}
+                                </>
+                            ) : (
+                                <Text
+                                    color={isHighlighted && isFocused ? 'cyan' : undefined}
+                                    bold={isHighlighted && isFocused}
+                                >
+                                    {isHighlighted ? '❯ ' : '  '}
+                                    {item.icon ? `${item.icon} ` : ''}
+                                    {item.label}
+                                    {/* Inline description (default behavior) */}
+                                    {!showDescriptionBelow && item.description && (
+                                        <Text dimColor> {item.description}</Text>
+                                    )}
+                                </Text>
+                            )}
                         </Box>
                         {/* Description below (when showDescriptionBelow is true) */}
                         {showDescriptionBelow && item.description && (
