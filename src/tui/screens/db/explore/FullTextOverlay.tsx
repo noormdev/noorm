@@ -28,6 +28,7 @@ import { Box, Text, useInput, useWindowSize } from 'ink';
 import type { ReactElement } from 'react';
 
 import { useFocusScope } from '../../../focus.js';
+import { useWheelScroll } from '../../../mouse.js';
 import { rowBudget, rowWindow, scrollTarget, wrapText } from './layout.js';
 
 /**
@@ -96,6 +97,11 @@ export function FullTextOverlay({ text, startRow, height, onClose }: FullTextOve
     const view = rowWindow(lines.length, offset, budget);
     const maxOffset = lines.length - view.count;
 
+    const scrollTo = (next: number) => setOffset(Math.min(Math.max(next, 0), maxOffset));
+
+    // Inert without a MouseProvider above it or with the setting off.
+    useWheelScroll({ isActive: isFocused, onWheel: (delta) => scrollTo(view.start + delta) });
+
     useInput((input, key) => {
 
         if (!isFocused) return;
@@ -110,7 +116,7 @@ export function FullTextOverlay({ text, startRow, height, onClose }: FullTextOve
 
         const target = scrollTarget(input, key, view, maxOffset);
 
-        if (target !== null) setOffset(Math.min(Math.max(target, 0), maxOffset));
+        if (target !== null) scrollTo(target);
 
     });
 

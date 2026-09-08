@@ -436,6 +436,72 @@ export function useMouseTransport(): MouseTransport {
 }
 
 /**
+ * Options for useWheelScroll.
+ */
+export interface WheelScrollOptions {
+
+    /**
+     * Whether the component owning the viewport currently has input.
+     *
+     * The same guard its `useInput` handler uses: a wheel notch acts on
+     * whatever already has focus, so a pane sitting behind an overlay must not
+     * move under it.
+     */
+    isActive: boolean;
+
+    /** A wheel notch: -1 for up, 1 for down. */
+    onWheel: (delta: -1 | 1) => void;
+
+}
+
+/**
+ * Wheel notches for a viewport that scrolls but has no rows to click.
+ *
+ * `useRowMouse` already carries wheel handling, but it is built around
+ * hit-testing a list of registered row refs, and a viewport has none — it draws
+ * a slice of a flat line list where nothing is selectable. Subscribing for the
+ * wheel alone is the whole of what those panes need.
+ *
+ * Without this the wheel is not merely unhandled, it is broken: the TUI runs in
+ * the alternate screen, which has no scrollback of its own, and mouse tracking
+ * takes the notches that a terminal would otherwise translate into arrow keys.
+ * So turning the mouse on removes the only wheel behaviour a viewport had.
+ *
+ * @example
+ * useWheelScroll({ isActive: isFocused, onWheel: (delta) => scrollTo(view.start + delta) });
+ */
+export function useWheelScroll({ isActive, onWheel }: WheelScrollOptions): void {
+
+    const { enabled, subscribe } = useMouseTransport();
+
+    // Registered once, reading the latest props through this ref. Listing them
+    // as dependencies would resubscribe on every render, since every caller
+    // passes an inline arrow.
+    const latest = useRef({ isActive, onWheel });
+
+    latest.current = { isActive, onWheel };
+
+    useEffect(() => {
+
+        if (!enabled) return;
+
+        return subscribe((event) => {
+
+            const current = latest.current;
+
+            if (!current.isActive || event.kind !== 'press') return;
+
+            if (event.button === 'wheel-up') current.onWheel(-1);
+
+            else if (event.button === 'wheel-down') current.onWheel(1);
+
+        });
+
+    }, [enabled, subscribe]);
+
+}
+
+/**
  * Options for useRowMouse.
  */
 export interface RowMouseOptions {

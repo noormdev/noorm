@@ -14,6 +14,9 @@ export { OperationAbortedError, throwIfAborted, raceAbort } from './abort.js';
 // Files
 export { filterFilesByPaths, findUnmatchedIncludePatterns, findUnmatchedExcludePatterns } from './files.js';
 
+// Secret display
+export { maskSecret } from './mask.js';
+
 // Dialect quoting
 export { createDialectQuoting, type DialectQuoting } from './dialect-quoting.js';
 

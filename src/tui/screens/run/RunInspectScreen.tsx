@@ -10,8 +10,8 @@
  * noorm run inspect sql/users/001_create.sql.tmpl  # With pre-filled path
  * ```
  */
-import { useState, useCallback, useEffect } from 'react';
-import { Box, Text, useInput } from 'ink';
+import { useState, useCallback, useEffect, useMemo } from 'react';
+import { Box, Text, useInput, useWindowSize } from 'ink';
 import { join, relative } from 'path';
 
 import type { ReactElement } from 'react';
@@ -22,7 +22,9 @@ import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useSettings, useAppContext } from '../../app-context.js';
 import { Panel, Spinner, SearchableList } from '../../components/index.js';
-import { useAsyncEffect, useConnection } from '../../hooks/index.js';
+import { ScrollPane, rowBudget, wrapText } from '../../components/terminal/index.js';
+import { useAsyncEffect, useConnection, viewportRows } from '../../hooks/index.js';
+import { maskSecret } from '../../../core/shared/index.js';
 import { discoverFiles } from '../../../core/runner/index.js';
 import { buildContext } from '../../../core/template/context.js';
 import { processFile } from '../../../core/template/engine.js';
@@ -43,7 +45,27 @@ type Phase = 'loading' | 'picker' | 'inspecting' | 'expanded' | 'preview' | 'err
 const BUILTIN_HELPERS = new Set(['quote', 'escape', 'uuid', 'now', 'json', 'include']);
 const STANDARD_KEYS = new Set(['config', 'secrets', 'globalSecrets', 'env']);
 
-interface CategorizedContext {
+/**
+ * Rows a scrolling phase spends inside its Panel before the pane starts.
+ *
+ * The `File:` line and the gap under it. The file name stays out of the pane on
+ * purpose: it is the one thing a reader needs at every scroll position, and a
+ * heading that scrolls away is a heading that is missing when it is wanted.
+ */
+const HEADER_ROWS = 2;
+
+/**
+ * A template context split into the groups the screen draws as sections.
+ *
+ * Exported because the line builders below are unit-tested directly, the way
+ * `ExploreDetailScreen`'s row builders are — rendering the whole screen to
+ * assert on a mask would mean standing up a project, a config and a connection
+ * for a pure function.
+ *
+ * @example
+ * const lines = contextLines(categorizeContext(ctx, helperKeys, []), projectRoot, 96);
+ */
+export interface CategorizedContext {
     dataFiles: Array<{ key: string; value: unknown }>;
     helpers: Array<{ key: string; value: unknown }>;
     helperErrors: HelperLoadError[];
@@ -276,42 +298,244 @@ async function resolveRenderSecrets(
 
 }
 
+/** Widest the name column grows before it truncates. */
+const NAME_CAP = 30;
+
+/** Narrowest the name column shrinks to, however little the terminal offers. */
+const NAME_MIN = 12;
+
+/** Left inset every entry under a section heading shares. */
+const ENTRY_INDENT = 2;
+
 /**
- * Component that handles keyboard input for a specific focus scope.
+ * Width of the name column, derived from what this context actually holds.
+ *
+ * Same idiom as the explore rows and the Form label gutter: size once from the
+ * content, cap it, truncate past the cap. A context of short names does not pay
+ * for the one environment variable with a sixty-character name.
  */
-function KeyHandler({
-    focusLabel,
-    onEscape,
-    onKey,
-}: {
-    focusLabel: string;
-    onEscape?: () => void;
-    onKey?: (input: string, key: { escape: boolean }) => void;
-}): null {
+function nameColumnWidth(names: string[], budget: number): number {
 
-    const { isFocused } = useFocusScope(focusLabel);
+    let widest = 0;
 
-    useInput((input, key) => {
+    for (const name of names) {
 
-        if (!isFocused) return;
+        if (name.length > widest) widest = name.length;
 
-        if (key.escape && onEscape) {
+    }
 
-            onEscape();
+    return Math.max(NAME_MIN, Math.min(widest, NAME_CAP, budget - ENTRY_INDENT - NAME_MIN));
 
-            return;
+}
 
-        }
+/**
+ * Text with its line breaks flattened, so it can occupy exactly one row.
+ *
+ * `wrap="truncate"` bounds a line's width, not its height: Ink still breaks on
+ * an embedded newline, so a single `<Text>` holding one draws two rows and puts
+ * the viewport's arithmetic out by one for everything below it. Nothing on this
+ * screen controls the strings it displays — a secret can be a PEM key, an
+ * environment variable can hold anything, a helper's error message can be a
+ * multi-line diagnostic — so the flattening happens where text enters a
+ * one-row cell rather than at each of those sources.
+ */
+function oneLine(text: string): string {
 
-        if (onKey) {
+    return text.replace(/[\r\n]+/g, ' ');
 
-            onKey(input, key);
+}
 
-        }
+/**
+ * One `name  detail` line, exactly one row tall.
+ *
+ * `flexShrink={0}` on the name cell because Ink's `width` is a flex basis and
+ * flex items shrink by default: without it a long detail squeezes the name on
+ * that row alone, and the column wanders down the page. Both cells truncate
+ * rather than wrap, which bounds their width; `oneLine` is what bounds their
+ * height.
+ */
+function entryRow(key: string, name: string, color: string, detail: string, width: number): ReactElement {
+
+    return (
+        <Box key={key} marginLeft={ENTRY_INDENT} gap={1}>
+            <Box width={width} flexShrink={0}>
+                <Text color={color} wrap="truncate">{oneLine(name)}</Text>
+            </Box>
+            <Text dimColor wrap="truncate">{oneLine(detail)}</Text>
+        </Box>
+    );
+
+}
+
+/**
+ * A heading, its entries, and the blank line under them.
+ *
+ * An empty section contributes nothing rather than a bare heading, so a project
+ * with no data files does not scroll past a promise of some.
+ */
+function sectionLines(key: string, title: string, rows: ReactElement[]): ReactElement[] {
+
+    if (rows.length === 0) return [];
+
+    return [
+        <Text key={`${key}:title`} bold wrap="truncate">{title}</Text>,
+        ...rows,
+        <Text key={`${key}:end`}> </Text>,
+    ];
+
+}
+
+/**
+ * Secret keys, each with as much of its value as is safe to show.
+ *
+ * A count answers "is anything there". The question this screen is actually
+ * asked is "did this template get the value I think it got", and only the value
+ * answers that — a stale password and a fresh one are both `Object (7 keys)`.
+ * How much of it is safe to show is `maskSecret`'s decision, not this
+ * component's; see `core/shared/mask.ts`. The length rides alongside as a
+ * number rather than as mask width so that "set but empty" and "set to the
+ * wrong 8-character value" stay distinguishable without the asterisks
+ * themselves leaking anything.
+ */
+function secretRows(prefix: string, values: Record<string, string | undefined>, color: string, width: number): ReactElement[] {
+
+    return Object.keys(values).sort().map((key) => {
+
+        const value = values[key] ?? '';
+
+        // Code points, matching how `maskSecret` counts. Reporting UTF-16 units
+        // beside a mask banded on characters would call the same value two
+        // different lengths.
+        const count = [...value].length;
+
+        return entryRow(`${prefix}:${key}`, key, color, `${maskSecret(value)}  (${count} chars)`, width);
 
     });
 
-    return null;
+}
+
+/**
+ * The summary view as one element per visual line.
+ *
+ * Flattened rather than nested because Ink has no scroll offset: the only way
+ * to reach content past the bottom of the terminal is to draw a slice of a flat
+ * list, and a tree cannot be sliced.
+ *
+ * `$.env` is listed and masked like the other two secret tiers. It is the whole
+ * of `process.env` (`core/template/context.ts`), which on a developer's machine
+ * routinely carries tokens that never went near noorm's vault, and nothing here
+ * can tell which of its keys those are. Masking every value is the answer that
+ * is wrong in the harmless direction.
+ *
+ * @example
+ * <ScrollPane lines={contextLines(context, projectRoot, rowBudget(columns))} … />
+ */
+export function contextLines(context: CategorizedContext, projectRoot: string, budget: number): ReactElement[] {
+
+    const envKeys = Object.keys(context.env);
+    const width = nameColumnWidth(
+        [
+            ...context.dataFiles.map(({ key }) => `$.${key}`),
+            ...context.helpers.map(({ key }) => `$.${key}`),
+            ...context.builtins.map(({ key }) => `$.${key}`),
+            ...Object.keys(context.secrets),
+            ...Object.keys(context.globalSecrets),
+            ...envKeys,
+            '$.config',
+        ],
+        budget,
+    );
+
+    // A helper error gets the whole row rather than the two-column treatment.
+    // The name column is sized from the `$.name` entries beside it, which are
+    // short, and a path is the one thing this row exists to say — put it in
+    // that column and `sql/helpers/slug.js` renders as `sql/helpers…`, naming
+    // no file at all.
+    const helperEntries = [
+        ...context.helpers.map(({ key, value }) =>
+            entryRow(`helper:${key}`, `$.${key}`, 'magenta', describeType(value), width)),
+        ...context.helperErrors.map(({ filepath, error }) => (
+            <Text key={`helperError:${filepath}`} color="red" wrap="truncate">
+                {oneLine(`${' '.repeat(ENTRY_INDENT)}${relative(projectRoot, filepath)} — ${error.message}`)}
+            </Text>
+        )),
+    ];
+
+    return [
+        ...sectionLines('data', 'Data Files', context.dataFiles.map(({ key, value }) =>
+            entryRow(`data:${key}`, `$.${key}`, 'green', describeType(value), width))),
+        ...sectionLines('helpers', 'Helpers ($helpers)', helperEntries),
+        ...sectionLines('builtins', 'Built-ins', context.builtins.map(({ key }) =>
+            entryRow(`builtin:${key}`, `$.${key}`, 'blue', 'Function', width))),
+        ...sectionLines('config', 'Config', [
+            entryRow('config', '$.config', 'yellow', context.config ? describeType(context.config) : '(not set)', width),
+        ]),
+        ...sectionLines(
+            'secrets',
+            `Secrets ($.secrets — ${Object.keys(context.secrets).length})`,
+            secretRows('secret', context.secrets, 'red', width),
+        ),
+        ...sectionLines(
+            'globalSecrets',
+            `Global Secrets ($.globalSecrets — ${Object.keys(context.globalSecrets).length})`,
+            secretRows('globalSecret', context.globalSecrets, 'red', width),
+        ),
+        ...sectionLines(
+            'env',
+            `Environment ($.env — ${envKeys.length})`,
+            secretRows('env', context.env, 'gray', width),
+        ),
+    ];
+
+}
+
+/**
+ * Plain text as one element per visual line.
+ *
+ * Wrapped here rather than left to Ink because a `<Text>` that wraps itself
+ * occupies however many rows the terminal decides, and the viewport has to know
+ * the count before Ink lays it out.
+ */
+function textLines(key: string, text: string, budget: number, style: { color?: string; dim?: boolean } = {}): ReactElement[] {
+
+    return wrapText(text, budget).map((line, index) => (
+        <Text key={`${key}:${index}`} color={style.color} dimColor={style.dim}>{line}</Text>
+    ));
+
+}
+
+/**
+ * The expanded view as one element per visual line.
+ *
+ * Reports shapes rather than values, so what can overflow a row here is a long
+ * key or a wide shape summary, and both are wrapped to the budget rather than
+ * truncated — the expanded view exists to show what a summary cut.
+ *
+ * @example
+ * <ScrollPane lines={expandedLines(context, rowBudget(columns))} … />
+ */
+export function expandedLines(context: CategorizedContext, budget: number): ReactElement[] {
+
+    const lines: ReactElement[] = [];
+
+    for (const { key, value } of context.dataFiles) {
+
+        lines.push(<Text key={`exp:${key}`} color="green" bold wrap="truncate">{oneLine(`$.${key}`)}</Text>);
+        lines.push(...describeTypeExpanded(value, 1).flatMap((line, index) =>
+            textLines(`exp:${key}:${index}`, line, budget, { dim: true })));
+        lines.push(<Text key={`exp:${key}:end`}> </Text>);
+
+    }
+
+    if (context.config !== undefined && context.config !== null) {
+
+        lines.push(<Text key="exp:config" color="yellow" bold wrap="truncate">$.config</Text>);
+        lines.push(...describeTypeExpanded(context.config, 1).flatMap((line, index) =>
+            textLines(`exp:config:${index}`, line, budget, { dim: true })));
+
+    }
+
+    return lines;
 
 }
 
@@ -325,6 +549,12 @@ export function RunInspectScreen({ params }: ScreenProps): ReactElement {
     const { settings } = useSettings();
     const { db, dialect } = useConnection();
 
+    // useWindowSize, not useStdout: stdout.columns and .rows mutate on resize
+    // without telling React, so anything derived from them would freeze at
+    // mount size. Above the early returns, or the hook count changes once the
+    // load resolves.
+    const { columns: terminalColumns, rows: terminalRows } = useWindowSize();
+
     const [phase, setPhase] = useState<Phase>('loading');
     const [allFiles, setAllFiles] = useState<string[]>([]);
     const [selectedFile, setSelectedFile] = useState<string | null>(params.path ?? null);
@@ -332,6 +562,18 @@ export function RunInspectScreen({ params }: ScreenProps): ReactElement {
     const [renderedSql, setRenderedSql] = useState<string | null>(null);
     const [renderDuration, setRenderDuration] = useState<number | null>(null);
     const [error, setError] = useState<string | null>(null);
+
+    // One scope for the whole screen rather than one per phase, because the
+    // scroll pane and the action keys have to agree on who is focused and two
+    // scopes cannot: React runs a child's effects before its parent's, so a
+    // screen-level push lands *above* its own child's and takes the keys the
+    // child was mounted to receive. `skip` is how a screen that sometimes hosts
+    // a focusable child stays out of the stack while that child is up — here,
+    // the file picker's `SearchableList`.
+    const { isFocused } = useFocusScope({
+        label: 'RunInspect',
+        skip: phase === 'picker' && allFiles.length > 0,
+    });
 
     const projectRoot = process.cwd();
 
@@ -511,42 +753,79 @@ export function RunInspectScreen({ params }: ScreenProps): ReactElement {
 
     });
 
-    // Handlers for inspecting phase
-    const handleInspectKey = useCallback((input: string) => {
-
-        if (input === 'e') {
-
-            setPhase('expanded');
-
-        }
-        else if (input === 'p') {
-
-            handlePreview();
-
-        }
-        else if (input === 'r') {
-
-            handleRefresh();
-
-        }
-
-    }, [handlePreview, handleRefresh]);
-
     const handleInspectEscape = useCallback(() => {
 
         setSelectedFile(null);
         setContext(null);
+        setError(null);
         setPhase('picker');
 
     }, []);
 
-    const handleBackToInspect = useCallback(() => {
-
-        setPhase('inspecting');
-
-    }, []);
-
     const displayPath = selectedFile ? relative(projectRoot, selectedFile) : '';
+
+    const paneHeight = viewportRows(terminalRows, HEADER_ROWS);
+    const budget = rowBudget(terminalColumns);
+
+    const summaryLines = useMemo(
+        () => (context ? contextLines(context, projectRoot, budget) : []),
+        [context, projectRoot, budget],
+    );
+
+    const detailLines = useMemo(
+        () => (context ? expandedLines(context, budget) : []),
+        [context, budget],
+    );
+
+    // The render error and the rendered SQL share the pane, because they are
+    // the same thing to a reader: what came back from asking for this template.
+    // A stack trace overflows a terminal as readily as a schema does.
+    const previewLines = useMemo(
+        () => (error !== null
+            ? textLines('previewError', error, budget, { color: 'red' })
+            : textLines('preview', renderedSql ?? '', budget)),
+        [error, renderedSql, budget],
+    );
+
+    const errorLines = useMemo(
+        () => textLines('error', error ?? 'Unknown error', budget, { dim: true }),
+        [error, budget],
+    );
+
+    useInput((input, key) => {
+
+        if (!isFocused) return;
+
+        if (key.escape) {
+
+            // An error raised against a chosen template goes back to the
+            // picker, like a successful inspection does. Only a failure to
+            // discover any templates at all leaves the screen, because there is
+            // no picker to go back to.
+            if (phase === 'inspecting' || (phase === 'error' && selectedFile)) handleInspectEscape();
+            else if (phase === 'expanded' || phase === 'preview') setPhase('inspecting');
+            else back();
+
+            return;
+
+        }
+
+        if (phase !== 'inspecting') return;
+
+        // Ink reports a Ctrl chord as the bare letter with `key.ctrl` set, so
+        // without this Ctrl+E would expand and Ctrl+R would re-render. Ctrl+D
+        // is safe either way — it arrives as `d`, which none of these match —
+        // but the pane below reads it, so the modifier check has to happen
+        // before any of them.
+        if (key.ctrl || key.meta) return;
+
+        if (input === 'e') setPhase('expanded');
+
+        if (input === 'p') handlePreview();
+
+        if (input === 'r') handleRefresh();
+
+    });
 
     // Loading
     if (phase === 'loading') {
@@ -561,19 +840,26 @@ export function RunInspectScreen({ params }: ScreenProps): ReactElement {
 
     }
 
-    // Error (for context loading errors)
-    if (phase === 'error' && !selectedFile) {
+    // Error, from discovering the file list or from building the context.
+    //
+    // Both, deliberately: this used to require `!selectedFile`, which is true
+    // only of a discovery failure, so a template whose helper threw set
+    // `phase: 'error'` with a file selected and fell through every branch to
+    // "Unknown phase" — the one error a reader is most likely to hit was the
+    // one the screen would not show.
+    if (phase === 'error') {
 
         return (
             <Box flexDirection="column" gap={1}>
-                <KeyHandler focusLabel="ErrorEscape" onEscape={back} />
                 <Panel title="Inspect Template" borderColor="red" paddingX={1} paddingY={1}>
                     <Box flexDirection="column" gap={1}>
-                        <Text color="red">Error</Text>
-                        <Text dimColor>{error}</Text>
+                        <Text color="red" wrap="truncate">Error{displayPath ? `: ${displayPath}` : ''}</Text>
+                        <ScrollPane lines={errorLines} height={paneHeight} isFocused={isFocused} />
                     </Box>
                 </Panel>
                 <Box flexWrap="wrap" columnGap={2}>
+                    <Text dimColor>[↑↓] Scroll</Text>
+                    <Text dimColor>[^U/^D] Half</Text>
                     <Text dimColor>[Esc] Back</Text>
                 </Box>
             </Box>
@@ -608,7 +894,6 @@ export function RunInspectScreen({ params }: ScreenProps): ReactElement {
                             </>
                         ) : (
                             <>
-                                <KeyHandler focusLabel="ErrorEscape" onEscape={back} />
                                 <Box flexDirection="column" gap={1}>
                                     <Text color="yellow">No template files found in {sqlPath}/</Text>
                                     <Text dimColor>
@@ -639,111 +924,19 @@ export function RunInspectScreen({ params }: ScreenProps): ReactElement {
 
         return (
             <Box flexDirection="column" gap={1}>
-                <KeyHandler
-                    focusLabel="InspectActions"
-                    onEscape={handleInspectEscape}
-                    onKey={handleInspectKey}
-                />
                 <Panel title="Template Context" paddingX={1} paddingY={1}>
                     <Box flexDirection="column" gap={1}>
-                        <Box gap={2}>
-                            <Text>File:</Text>
+                        <Text wrap="truncate">
+                            <Text>File: </Text>
                             <Text bold color="cyan">{displayPath}</Text>
-                        </Box>
-
-                        {context.dataFiles.length > 0 && (
-                            <Box flexDirection="column" marginTop={1}>
-                                <Text bold>Data Files</Text>
-                                {context.dataFiles.map(({ key, value }) => (
-                                    <Box key={key} marginLeft={2} gap={1}>
-                                        <Box width={24}>
-                                            <Text color="green">$.{key}</Text>
-                                        </Box>
-                                        <Text dimColor>{describeType(value)}</Text>
-                                    </Box>
-                                ))}
-                            </Box>
-                        )}
-
-                        {(context.helpers.length > 0 || context.helperErrors.length > 0) && (
-                            <Box flexDirection="column" marginTop={1}>
-                                <Text bold>Helpers ($helpers)</Text>
-                                {context.helpers.map(({ key, value }) => (
-                                    <Box key={key} marginLeft={2} gap={1}>
-                                        <Box width={24}>
-                                            <Text color="magenta">$.{key}</Text>
-                                        </Box>
-                                        <Text dimColor>{describeType(value)}</Text>
-                                    </Box>
-                                ))}
-                                {context.helperErrors.map(({ filepath, error: helperErr }) => (
-                                    <Box key={filepath} flexDirection="column" marginLeft={2}>
-                                        <Text color="red">Failed to load: {relative(projectRoot, filepath)}</Text>
-                                        <Text color="red" dimColor>  {helperErr.message}</Text>
-                                    </Box>
-                                ))}
-                            </Box>
-                        )}
-
-                        <Box flexDirection="column" marginTop={1}>
-                            <Text bold>Built-ins</Text>
-                            {context.builtins.map(({ key }) => (
-                                <Box key={key} marginLeft={2} gap={1}>
-                                    <Box width={24}>
-                                        <Text color="blue">$.{key}</Text>
-                                    </Box>
-                                    <Text dimColor>Function</Text>
-                                </Box>
-                            ))}
-                        </Box>
-
-                        <Box flexDirection="column" marginTop={1}>
-                            <Text bold>Config</Text>
-                            <Box marginLeft={2} gap={1}>
-                                <Box width={24}>
-                                    <Text color="yellow">$.config</Text>
-                                </Box>
-                                <Text dimColor>
-                                    {context.config ? describeType(context.config) : '(not set)'}
-                                </Text>
-                            </Box>
-                        </Box>
-
-                        <Box flexDirection="column" marginTop={1}>
-                            <Text bold>Secrets</Text>
-                            <Box marginLeft={2} gap={1}>
-                                <Box width={24}>
-                                    <Text color="red">$.secrets</Text>
-                                </Box>
-                                <Text dimColor>
-                                    Object ({Object.keys(context.secrets).length} keys)
-                                </Text>
-                            </Box>
-                            <Box marginLeft={2} gap={1}>
-                                <Box width={24}>
-                                    <Text color="red">$.globalSecrets</Text>
-                                </Box>
-                                <Text dimColor>
-                                    Object ({Object.keys(context.globalSecrets).length} keys)
-                                </Text>
-                            </Box>
-                        </Box>
-
-                        <Box flexDirection="column" marginTop={1}>
-                            <Text bold>Environment</Text>
-                            <Box marginLeft={2} gap={1}>
-                                <Box width={24}>
-                                    <Text dimColor>$.env</Text>
-                                </Box>
-                                <Text dimColor>
-                                    Object ({Object.keys(context.env).length} keys)
-                                </Text>
-                            </Box>
-                        </Box>
+                        </Text>
+                        <ScrollPane lines={summaryLines} height={paneHeight} isFocused={isFocused} />
                     </Box>
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
+                    <Text dimColor>[↑↓] Scroll</Text>
+                    <Text dimColor>[^U/^D] Half</Text>
                     <Text dimColor>[e] Expand</Text>
                     <Text dimColor>[p] Preview SQL</Text>
                     <Text dimColor>[r] Refresh</Text>
@@ -759,38 +952,19 @@ export function RunInspectScreen({ params }: ScreenProps): ReactElement {
 
         return (
             <Box flexDirection="column" gap={1}>
-                <KeyHandler
-                    focusLabel="ExpandedActions"
-                    onEscape={handleBackToInspect}
-                />
                 <Panel title="Expanded Context" paddingX={1} paddingY={1}>
                     <Box flexDirection="column" gap={1}>
-                        <Box gap={2}>
-                            <Text>File:</Text>
+                        <Text wrap="truncate">
+                            <Text>File: </Text>
                             <Text bold color="cyan">{displayPath}</Text>
-                        </Box>
-
-                        {context.dataFiles.map(({ key, value }) => (
-                            <Box key={key} flexDirection="column" marginTop={1}>
-                                <Text color="green" bold>$.{key}</Text>
-                                {describeTypeExpanded(value, 1).map((line, i) => (
-                                    <Text key={i} dimColor>{line}</Text>
-                                ))}
-                            </Box>
-                        ))}
-
-                        {context.config !== undefined && context.config !== null && (
-                            <Box flexDirection="column" marginTop={1}>
-                                <Text color="yellow" bold>$.config</Text>
-                                {describeTypeExpanded(context.config, 1).map((line, i) => (
-                                    <Text key={i} dimColor>{line}</Text>
-                                ))}
-                            </Box>
-                        )}
+                        </Text>
+                        <ScrollPane lines={detailLines} height={paneHeight} isFocused={isFocused} />
                     </Box>
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
+                    <Text dimColor>[↑↓] Scroll</Text>
+                    <Text dimColor>[^U/^D] Half</Text>
                     <Text dimColor>[Esc] Back to summary</Text>
                 </Box>
             </Box>
@@ -802,13 +976,10 @@ export function RunInspectScreen({ params }: ScreenProps): ReactElement {
     if (phase === 'preview') {
 
         const hasError = error !== null;
+        const timing = renderDuration !== null ? ` · ${renderDuration.toFixed(1)}ms` : '';
 
         return (
             <Box flexDirection="column" gap={1}>
-                <KeyHandler
-                    focusLabel="PreviewActions"
-                    onEscape={handleBackToInspect}
-                />
                 <Panel
                     title={hasError ? 'Render Error' : 'Rendered SQL'}
                     borderColor={hasError ? 'red' : undefined}
@@ -816,29 +987,18 @@ export function RunInspectScreen({ params }: ScreenProps): ReactElement {
                     paddingY={1}
                 >
                     <Box flexDirection="column" gap={1}>
-                        <Box gap={2}>
-                            <Text>File:</Text>
+                        <Text wrap="truncate">
+                            <Text>File: </Text>
                             <Text bold color="cyan">{displayPath}</Text>
-                        </Box>
-
-                        {!hasError && renderDuration !== null && (
-                            <Box gap={2}>
-                                <Text>Rendered in:</Text>
-                                <Text dimColor>{renderDuration.toFixed(1)}ms</Text>
-                            </Box>
-                        )}
-
-                        <Box flexDirection="column" marginTop={1}>
-                            {hasError ? (
-                                <Text color="red">{error}</Text>
-                            ) : (
-                                <Text>{renderedSql}</Text>
-                            )}
-                        </Box>
+                            <Text dimColor>{hasError ? '' : timing}</Text>
+                        </Text>
+                        <ScrollPane lines={previewLines} height={paneHeight} isFocused={isFocused} />
                     </Box>
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
+                    <Text dimColor>[↑↓] Scroll</Text>
+                    <Text dimColor>[^U/^D] Half</Text>
                     <Text dimColor>[Esc] Back to summary</Text>
                 </Box>
             </Box>
