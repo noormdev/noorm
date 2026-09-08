@@ -25,6 +25,13 @@ export {
 export { useUpdateChecker, type UseUpdateCheckerResult } from './useUpdateChecker.js';
 
 export {
+    useUpdateProgress,
+    type UpdateProgressState,
+    type UpdatePhase,
+    type UpdateRetryInfo,
+} from './useUpdateProgress.js';
+
+export {
     useChangeProgress,
     type ChangeProgressState,
 } from './useChangeProgress.js';
