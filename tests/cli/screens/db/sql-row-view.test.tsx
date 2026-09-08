@@ -243,7 +243,13 @@ describe('cli: screens/db sql result browsing', () => {
             </FocusProvider>,
         );
 
-        const frame = () => view.lastFrame() ?? '';
+        // Colour escapes stripped: CI runs at `FORCE_COLOR: 'true'`, so every
+        // line arrives prefixed with an SGR sequence and the chop test's
+        // `startsWith('│')` never matched — it has failed since it was written.
+        // Every assertion here is on text, so reading the frame without colour
+        // is both correct and agnostic to how the suite is invoked.
+        // eslint-disable-next-line no-control-regex -- matching the ANSI SGR escape is the point
+        const frame = () => (view.lastFrame() ?? '').replace(/\x1B\[[0-9;]*m/g, '');
 
         await waitFor(() => frame().includes('select * from ai_usage'));
 
