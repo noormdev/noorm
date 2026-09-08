@@ -39,24 +39,28 @@ const createMockStateManager = () => ({
     isLoaded: true,
 });
 
-const createMockSettingsManager = () => ({
-    load: vi.fn().mockResolvedValue({ version: '0.1.0' }),
-    isLoaded: true,
-    settings: { version: '0.1.0' },
-    getStages: vi.fn().mockReturnValue([]),
-});
-
-// Mock the state and settings managers
+// Spread the real module rather than listing replacements.
+//
+// `mock.module` swaps the whole module, so naming only the handful of exports
+// this file uses deleted the other ~40 the barrel carries — and because the
+// registry is process-global and never restores, it deleted them for every file
+// loaded afterwards too.
+//
+// `getSettingsManager` is deliberately *not* mocked. `app.test.tsx` is the next
+// file in the suite, and it writes a real `.noorm/settings.yml` to assert the
+// mouse honours `ui.mouse: false`; a faked manager handed it a settings object
+// with no `ui` section, which `isMouseEnabled` reads as on. That was two CI
+// failures on Linux, where the leak reproduces and macOS does not. The real
+// manager on a project with no settings file returns defaults, which is what
+// the assertions below want anyway.
 mock.module('../../src/core/index.js', () => ({
-    observer,
+    ...actualCore,
     getStateManager: vi.fn(() => createMockStateManager()),
-    getSettingsManager: vi.fn(() => createMockSettingsManager()),
-    resetStateManager: vi.fn(),
-    resetSettingsManager: vi.fn(),
 }));
 
 // Mock identity loading to return null (no global identity)
 mock.module('../../src/core/identity/index.js', () => ({
+    ...actualIdentity,
     loadExistingIdentity: vi.fn().mockResolvedValue(null),
 }));
 
@@ -183,11 +187,15 @@ describe('cli: app-context', () => {
 
     });
 
-    // Restore mocked modules to prevent pollution of subsequent test files
+    // No restore here, deliberately. Re-registering the real module does not
+    // undo `mock.module` — measured on Bun 1.3.11 and 1.4.0 alike, a re-register
+    // still resolves to the mock. The block that used to sit here claimed to
+    // prevent pollution and did nothing. What keeps this file honest is the
+    // mocks above spreading the real module and faking as little as possible,
+    // because whatever they fake is faked for the rest of the process.
     afterAll(() => {
 
-        mock.module('../../src/core/index.js', () => actualCore);
-        mock.module('../../src/core/identity/index.js', () => actualIdentity);
+        observer.clear();
 
     });
 
