@@ -92,22 +92,21 @@ const updateCommand = defineCommand({
 
         process.stdout.write(`Update available: ${currentVersion} → ${checkResult.latestVersion}\n`);
 
-        // Render a live progress line for the binary download. TTY output uses a
-        // carriage return to update in place; when stdout is piped (e.g. CI, JSON
-        // mode) there's no cursor to rewind, so fall back to periodic newlines.
+        // Render a live progress line for the binary download, TTY only. Piped
+        // output (CI, JSON mode) has no cursor to rewind, so every tick would
+        // land on its own line and bury the log under a few hundred of them.
+        // The static "Installing" line below is that case's only progress note.
         const isTty = Boolean(process.stdout.isTTY) && !args.json;
 
         const onProgress = ({ received, total }: { received: number; total: number }) => {
+
+            if (!isTty) return;
 
             const pct = total > 0 ? ` (${Math.floor((received / total) * 100)}%)` : '';
             const of = total > 0 ? ` / ${toMb(total)}` : '';
             const line = `Downloading ${toMb(received)}${of} MB${pct}`;
 
-            if (isTty) {
-
-                process.stdout.write(`\r${line}   `);
-
-            }
+            process.stdout.write(`\r${line}   `);
 
         };
 
