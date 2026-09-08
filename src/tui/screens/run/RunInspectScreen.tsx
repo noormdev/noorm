@@ -24,6 +24,7 @@ import { useSettings, useAppContext } from '../../app-context.js';
 import { Panel, Spinner, SearchableList } from '../../components/index.js';
 import { ScrollPane, rowBudget, wrapText } from '../../components/terminal/index.js';
 import { useAsyncEffect, useConnection, viewportRows } from '../../hooks/index.js';
+import { oneLine } from '../../utils/index.js';
 import { maskSecret } from '../../../core/shared/index.js';
 import { discoverFiles } from '../../../core/runner/index.js';
 import { buildContext } from '../../../core/template/context.js';
@@ -325,23 +326,6 @@ function nameColumnWidth(names: string[], budget: number): number {
     }
 
     return Math.max(NAME_MIN, Math.min(widest, NAME_CAP, budget - ENTRY_INDENT - NAME_MIN));
-
-}
-
-/**
- * Text with its line breaks flattened, so it can occupy exactly one row.
- *
- * `wrap="truncate"` bounds a line's width, not its height: Ink still breaks on
- * an embedded newline, so a single `<Text>` holding one draws two rows and puts
- * the viewport's arithmetic out by one for everything below it. Nothing on this
- * screen controls the strings it displays — a secret can be a PEM key, an
- * environment variable can hold anything, a helper's error message can be a
- * multi-line diagnostic — so the flattening happens where text enters a
- * one-row cell rather than at each of those sources.
- */
-function oneLine(text: string): string {
-
-    return text.replace(/[\r\n]+/g, ' ');
 
 }
 

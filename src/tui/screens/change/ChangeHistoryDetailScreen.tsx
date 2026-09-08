@@ -4,26 +4,49 @@
  * Shows all files executed as part of a build, run, or change
  * with their individual status, duration, and errors.
  *
+ * A build runs however many files the project has, so this is the screen most
+ * likely to hold more rows than the terminal. It drew `files.slice(0, 20)` with
+ * the cursor ranging over all of them, and rendered a failed file's error as one
+ * `<Text>` per line of the message — so a stack trace pushed the file list, the
+ * detail box and the hints off the bottom together. The list is now a
+ * `SelectList`, which windows around its own cursor, and the error is a bounded
+ * line here with the full text an Enter away in a `TextOverlay`.
+ *
  * @example
  * ```bash
  * # Navigate from ChangeHistoryScreen by pressing Enter
  * ```
  */
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 
 import type { ReactElement } from 'react';
 import type { ScreenProps } from '../../types.js';
+import type { SelectListItem, SelectListRowState } from '../../components/index.js';
 import type { FileHistoryRecord } from '../../../core/change/types.js';
 
 import { attempt } from '@logosdx/utils';
 import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
-import { Panel, Spinner } from '../../components/index.js';
+import { Panel, Spinner, SelectList, TextOverlay } from '../../components/index.js';
 import { useConnection, useAsyncEffect } from '../../hooks/index.js';
 import { ChangeHistory } from '../../../core/change/history.js';
-import { getErrorMessage } from '../../utils/index.js';
+import { getErrorMessage, oneLine } from '../../utils/index.js';
+
+/**
+ * Rows this screen spends inside its Panel on everything that is not the list.
+ *
+ * The statistics line and the gap under it, the list's own top margin, the gap
+ * above the detail box, the box itself — two borders around three content lines
+ * plus its top margin — and the gap before the hotkey hints, which are
+ * themselves already counted by `SCREEN_CHROME_ROWS`.
+ *
+ * Three content lines whatever the record: the box used to grow a row per line
+ * of a failed file's error message, which is exactly how an unlucky stack trace
+ * took the whole screen with it.
+ */
+const CHROME_ROWS = 11;
 
 /**
  * Get status indicator for a file execution.
@@ -59,6 +82,37 @@ function getFilename(filepath: string): string {
 }
 
 /**
+ * One file row: status, filename, duration, skip reason.
+ *
+ * Drawn by the caller rather than handed over as a label because a reader scans
+ * this list for the red row among the green, and a `label` string carries one
+ * colour for the whole line.
+ */
+function fileRow(file: FileHistoryRecord, state: SelectListRowState): ReactElement {
+
+    const statusIndicator = getStatusIndicator(file.status);
+    const duration = file.durationMs ? `(${(file.durationMs / 1000).toFixed(1)}s)` : '';
+
+    return (
+        <>
+            <Text color={statusIndicator.color}>{statusIndicator.icon} </Text>
+            <Text
+                color={state.isHighlighted && state.isFocused ? 'cyan' : undefined}
+                bold={state.isHighlighted && state.isFocused}
+                wrap="truncate"
+            >
+                {getFilename(file.filepath)}
+            </Text>
+            <Text dimColor wrap="truncate">
+                {' '}{duration}
+                {file.status === 'skipped' && file.skipReason ? ` - ${oneLine(file.skipReason)}` : ''}
+            </Text>
+        </>
+    );
+
+}
+
+/**
  * ChangeHistoryDetailScreen component.
  */
 export function ChangeHistoryDetailScreen({ params }: ScreenProps): ReactElement {
@@ -73,7 +127,8 @@ export function ChangeHistoryDetailScreen({ params }: ScreenProps): ReactElement
     const [files, setFiles] = useState<FileHistoryRecord[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [selectedIndex, setSelectedIndex] = useState(0);
+    const [selectedFile, setSelectedFile] = useState<FileHistoryRecord | null>(null);
+    const [showError, setShowError] = useState(false);
 
     // Shared connection
     const { db, dialect, loading: connLoading, error: connError } = useConnection();
@@ -117,40 +172,26 @@ export function ChangeHistoryDetailScreen({ params }: ScreenProps): ReactElement
 
     }, [db, activeConfigName, loadingStatus, operationId]);
 
-    // Get selected file
-    const selectedFile = useMemo(() => {
+    const failureText = selectedFile?.errorMessage ?? '';
 
-        return files[selectedIndex];
-
-    }, [files, selectedIndex]);
-
-    // Keyboard handling
+    // Arrows belong to the SelectList below. Enter opens the error because a
+    // file execution has nowhere further to drill into, so the only thing left
+    // to ask of a row is what went wrong with it.
     useInput((_input, key) => {
 
         if (!isFocused) return;
-
-        // Navigation
-        if (key.upArrow) {
-
-            setSelectedIndex((prev) => Math.max(0, prev - 1));
-
-            return;
-
-        }
-
-        if (key.downArrow) {
-
-            setSelectedIndex((prev) => Math.min(files.length - 1, prev + 1));
-
-            return;
-
-        }
 
         if (key.escape) {
 
             back();
 
             return;
+
+        }
+
+        if (key.return && failureText) {
+
+            setShowError(true);
 
         }
 
@@ -203,10 +244,28 @@ export function ChangeHistoryDetailScreen({ params }: ScreenProps): ReactElement
 
     }
 
+    if (showError && failureText) {
+
+        return (
+            <TextOverlay
+                title={`Error — ${selectedFile ? getFilename(selectedFile.filepath) : 'File'}`}
+                text={failureText}
+                onClose={() => setShowError(false)}
+            />
+        );
+
+    }
+
     // Statistics
     const totalSuccess = files.filter((f) => f.status === 'success').length;
     const totalFailed = files.filter((f) => f.status === 'failed').length;
     const totalSkipped = files.filter((f) => f.status === 'skipped').length;
+
+    const items: SelectListItem<FileHistoryRecord>[] = files.map((file) => ({
+        key: String(file.id),
+        label: getFilename(file.filepath),
+        value: file,
+    }));
 
     return (
         <Panel title={`File Executions (${operationName})`} paddingX={2} paddingY={1}>
@@ -232,52 +291,22 @@ export function ChangeHistoryDetailScreen({ params }: ScreenProps): ReactElement
                 </Box>
 
                 {/* File List */}
-                {files.length === 0 ? (
-                    <Box marginTop={1}>
-                        <Text dimColor>No file executions recorded.</Text>
-                    </Box>
-                ) : (
-                    <Box flexDirection="column" marginTop={1}>
-                        {files.slice(0, 20).map((file, index) => {
+                <Box flexDirection="column" marginTop={1}>
+                    <SelectList
+                        items={items}
+                        isFocused={isFocused}
+                        reserveRows={CHROME_ROWS}
+                        // Dismissing the error overlay remounts this list; the
+                        // starting key is what stops that landing the reader
+                        // back at the first file.
+                        defaultValue={selectedFile ? String(selectedFile.id) : undefined}
+                        emptyLabel="No file executions recorded."
+                        renderItem={(item, state) => fileRow(item.value, state)}
+                        onHighlight={(item) => setSelectedFile(item.value)}
+                    />
+                </Box>
 
-                            const isSelected = index === selectedIndex;
-                            const statusIndicator = getStatusIndicator(file.status);
-                            const duration = file.durationMs
-                                ? `(${(file.durationMs / 1000).toFixed(1)}s)`
-                                : '';
-
-                            return (
-                                <Box key={file.id}>
-                                    <Text color={isSelected ? 'cyan' : undefined}>
-                                        {isSelected ? '>' : ' '}
-                                    </Text>
-                                    <Text color={statusIndicator.color}>
-                                        {' '}
-                                        {statusIndicator.icon}{' '}
-                                    </Text>
-                                    <Text
-                                        color={isSelected ? 'cyan' : undefined}
-                                        bold={isSelected}
-                                    >
-                                        {getFilename(file.filepath)}
-                                    </Text>
-                                    <Text dimColor> {duration}</Text>
-                                    {file.status === 'skipped' && file.skipReason && (
-                                        <Text dimColor> - {file.skipReason}</Text>
-                                    )}
-                                </Box>
-                            );
-
-                        })}
-                        {files.length > 20 && (
-                            <Text dimColor>
-                                ...and {files.length - 20} more
-                            </Text>
-                        )}
-                    </Box>
-                )}
-
-                {/* Selected file details */}
+                {/* Selected file details, fixed at three lines - see CHROME_ROWS */}
                 {selectedFile && (
                     <Box
                         marginTop={1}
@@ -286,31 +315,26 @@ export function ChangeHistoryDetailScreen({ params }: ScreenProps): ReactElement
                         borderColor="gray"
                         paddingX={1}
                     >
-                        <Text bold>File Details</Text>
-                        <Text dimColor>Path: {selectedFile.filepath}</Text>
-                        <Text dimColor>
+                        <Text dimColor wrap="truncate">Path: {selectedFile.filepath}</Text>
+                        <Text dimColor wrap="truncate">
                             Checksum: {selectedFile.checksum.slice(0, 16)}...
                         </Text>
-                        {selectedFile.status === 'skipped' && selectedFile.skipReason && (
-                            <Text color="yellow">Skip Reason: {selectedFile.skipReason}</Text>
-                        )}
-                        {selectedFile.status === 'failed' && selectedFile.errorMessage && (
-                            <Box flexDirection="column">
-                                <Text color="red">Error:</Text>
-                                <Box marginLeft={2} flexDirection="column">
-                                    {selectedFile.errorMessage.split('\n').map((line, i) => (
-                                        <Text key={i} color="red" dimColor>
-                                            {line}
-                                        </Text>
-                                    ))}
-                                </Box>
-                            </Box>
+                        {failureText ? (
+                            <Text color="red" wrap="truncate">{oneLine(failureText)}</Text>
+                        ) : selectedFile.status === 'skipped' && selectedFile.skipReason ? (
+                            <Text color="yellow" wrap="truncate">
+                                Skip Reason: {oneLine(selectedFile.skipReason)}
+                            </Text>
+                        ) : (
+                            <Text dimColor>No errors recorded for this file.</Text>
                         )}
                     </Box>
                 )}
 
                 {/* Keyboard hints */}
                 <Box marginTop={1} gap={2}>
+                    <Text dimColor>[↑↓] Navigate</Text>
+                    {failureText && <Text dimColor>[Enter] Full Error</Text>}
                     <Text dimColor>[Esc] Back</Text>
                 </Box>
             </Box>
