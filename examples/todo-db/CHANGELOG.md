@@ -1,5 +1,11 @@
 # @noormdev/example-todo-db
 
+## 0.0.7
+
+### Patch Changes
+
+- @noormdev/sdk@1.4.0
+
 ## 0.0.6
 
 ### Patch Changes
