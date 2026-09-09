@@ -11,8 +11,8 @@ import { Box, Text, useInput } from 'ink';
 import type { ScreenProps } from '../types.js';
 import { useFocusScope } from '../focus.js';
 import { useRouter } from '../router.js';
-import { useToast, Spinner } from '../components/index.js';
-import { useUpdateChecker } from '../hooks/index.js';
+import { useToast, Spinner, ProgressBar } from '../components/index.js';
+import { useUpdateChecker, useUpdateProgress } from '../hooks/index.js';
 
 /**
  * Update screen showing current version, update availability, and install action.
@@ -29,11 +29,14 @@ export function UpdateScreen(_props: ScreenProps): ReactElement {
         performUpdate,
         recheckForUpdate,
     } = useUpdateChecker();
+    const { state: progress, reset: resetProgress } = useUpdateProgress();
 
     const [done, setDone] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
     const handleInstall = useCallback(async (): Promise<void> => {
+
+        resetProgress();
 
         const result = await performUpdate();
 
@@ -55,7 +58,7 @@ export function UpdateScreen(_props: ScreenProps): ReactElement {
 
         }
 
-    }, [performUpdate, showToast]);
+    }, [performUpdate, showToast, resetProgress]);
 
     useInput((input, key) => {
 
@@ -105,11 +108,34 @@ export function UpdateScreen(_props: ScreenProps): ReactElement {
     // Installing state
     if (installing) {
 
+        const receivedMb = (progress.received / 1024 / 1024).toFixed(1);
+        const totalMb = (progress.total / 1024 / 1024).toFixed(1);
+        const percent = progress.total > 0 ? Math.floor((progress.received / progress.total) * 100) : null;
+
         return (
             <Box flexDirection="column" paddingX={2} paddingY={1}>
                 <Box>
                     <Spinner label={`Installing ${updateInfo?.latestVersion}...`} />
                 </Box>
+                <Box marginTop={1}>
+                    {percent !== null ? (
+                        <Text>{receivedMb} / {totalMb} MB ({percent}%)</Text>
+                    ) : (
+                        <Text>{receivedMb} MB received</Text>
+                    )}
+                </Box>
+                {percent !== null && (
+                    <Box width={50} marginTop={1}>
+                        <ProgressBar value={percent} />
+                    </Box>
+                )}
+                {progress.retry && (
+                    <Box marginTop={1}>
+                        <Text color="yellow">
+                            {progress.retry.error} — resuming (attempt {progress.retry.attempt + 1}/{progress.retry.maxAttempts})...
+                        </Text>
+                    </Box>
+                )}
             </Box>
         );
 
