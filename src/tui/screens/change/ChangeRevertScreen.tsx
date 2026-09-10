@@ -37,6 +37,7 @@ import { getErrorMessage,
     loadChangesWithStatus,
     createChangeManager,
     isConfigGuarded,
+    progressPercentage,
 } from '../../utils/index.js';
 import { createConnection } from '../../../core/connection/factory.js';
 
@@ -276,7 +277,7 @@ export function ChangeRevertScreen({ params }: ScreenProps): ReactElement {
     // Reverting
     if (step === 'reverting') {
 
-        const progressValue = fileProgress.total > 0 ? fileProgress.current / fileProgress.total : 0;
+        const progressValue = progressPercentage(fileProgress.current, fileProgress.total);
 
         return (
             <Panel title="Revert Change" paddingX={2} paddingY={1}>

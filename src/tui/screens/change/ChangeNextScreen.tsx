@@ -34,7 +34,14 @@ import {
 } from '../../components/index.js';
 import { checkConfigPolicy } from '../../../core/policy/index.js';
 import { useChangeProgress, useAsyncEffect } from '../../hooks/index.js';
-import { getErrorMessage, loadChangesWithStatus, buildPendingChangeList, createChangeManager, isConfigGuarded } from '../../utils/index.js';
+import {
+    getErrorMessage,
+    loadChangesWithStatus,
+    buildPendingChangeList,
+    createChangeManager,
+    isConfigGuarded,
+    progressPercentage,
+} from '../../utils/index.js';
 import { createConnection } from '../../../core/connection/factory.js';
 
 /**
@@ -343,7 +350,7 @@ export function ChangeNextScreen({ params }: ScreenProps): ReactElement {
     // Running
     if (step === 'running') {
 
-        const progressValue = progress.total > 0 ? progress.current / progress.total : 0;
+        const progressValue = progressPercentage(progress.current, progress.total);
 
         return (
             <Panel title="Apply Next Changes" paddingX={2} paddingY={1}>
