@@ -34,7 +34,7 @@ import { attempt } from '@logosdx/utils';
 
 import type { ReactElement } from 'react';
 import type { ScreenProps } from '../../types.js';
-import { getErrorMessage } from '../../utils/index.js';
+import { getErrorMessage, progressPercentage } from '../../utils/index.js';
 
 import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
@@ -1258,13 +1258,8 @@ export function DbTransferScreen({ params: _params }: ScreenProps): ReactElement
         const modeLabel = transferMode === 'export' ? 'Exporting' : transferMode === 'import' ? 'Importing' : 'Transferring';
         const titleLabel = transferMode === 'export' ? 'Export' : transferMode === 'import' ? 'Import' : 'Data Transfer';
 
-        const tableProgress = progress.tableCount > 0
-            ? progress.tablesCompleted / progress.tableCount
-            : 0;
-
-        const rowProgress = progress.currentRowsTotal > 0
-            ? progress.currentRowsTransferred / progress.currentRowsTotal
-            : 0;
+        const tableProgress = progressPercentage(progress.tablesCompleted, progress.tableCount);
+        const rowProgress = progressPercentage(progress.currentRowsTransferred, progress.currentRowsTotal);
 
         return (
             <Box flexDirection="column" gap={1}>

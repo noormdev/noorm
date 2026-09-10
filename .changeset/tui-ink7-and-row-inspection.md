@@ -22,3 +22,4 @@
 * `fix(explore):` Column, index and parameter lists re-flowed per row, so the type column landed on a different offset on nearly every row.
 * `fix(explore):` "Total Objects" counted categories the screen does not list, so it exceeded the rows a reader could see.
 * `fix(tui):` The help screen and log viewer drew past the bottom of the window, putting their first lines out of reach.
+* `fix(tui):` Build, file, change, and transfer progress bars now advance with completed work instead of remaining visually empty until completion.

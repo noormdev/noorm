@@ -17,7 +17,7 @@
  *     return (
  *         <Box flexDirection="column">
  *             <Text>Transferring: {state.currentTable}</Text>
- *             <ProgressBar value={state.tablesCompleted / state.tableCount} />
+ *             <ProgressBar value={(state.tablesCompleted / state.tableCount) * 100} />
  *             <Text>
  *                 {state.rowsTransferred} rows transferred
  *             </Text>

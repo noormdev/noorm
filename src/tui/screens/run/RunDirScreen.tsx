@@ -23,7 +23,7 @@ import { Panel, Spinner, Confirm, SelectList, FilePicker, KeyHandler, useToast }
 import { useRunProgress, useAsyncEffect, modeBannerRows } from '../../hooks/index.js';
 import { discoverFiles, runFiles, checkFilesStatus } from '../../../core/runner/index.js';
 import type { FilesStatusResult } from '../../../core/runner/index.js';
-import { getErrorMessage, resolveScreenIdentity, buildRunContext, withScreenConnection } from '../../utils/index.js';
+import { getErrorMessage, resolveScreenIdentity, buildRunContext, withScreenConnection, progressPercentage } from '../../utils/index.js';
 import { useConnection } from '../../hooks/index.js';
 import { attempt } from '@logosdx/utils';
 
@@ -688,7 +688,7 @@ export function RunDirScreen({ params }: ScreenProps): ReactElement {
     if (phase === 'running') {
 
         const processed = progress.filesRun + progress.filesSkipped + progress.filesFailed + progress.filesDryRun;
-        const progressValue = fileCount > 0 ? processed / fileCount : 0;
+        const progressValue = progressPercentage(processed, fileCount);
 
         return (
             <Box flexDirection="column" gap={1}>

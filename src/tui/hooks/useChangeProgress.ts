@@ -92,7 +92,7 @@ export function useChangeProgress(): ChangeProgressState {
     useOnEvent('change:file', (data) => {
 
         setCurrentFile(data.filepath);
-        setFileProgress({ current: data.index, total: data.total });
+        setFileProgress({ current: data.index + 1, total: data.total });
 
     }, []);
 
