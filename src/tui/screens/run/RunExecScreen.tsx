@@ -28,7 +28,7 @@ import { useSettings, useGlobalModes, useAppContext } from '../../app-context.js
 import { Panel, Spinner, SelectList, type SelectListItem, Confirm, KeyHandler, useToast } from '../../components/index.js';
 import { useRunProgress, useAsyncEffect, modeBannerRows } from '../../hooks/index.js';
 import { discoverFiles, runFiles } from '../../../core/runner/index.js';
-import { getErrorMessage, resolveScreenIdentity, buildRunContext, withScreenConnection } from '../../utils/index.js';
+import { getErrorMessage, resolveScreenIdentity, buildRunContext, withScreenConnection, progressPercentage } from '../../utils/index.js';
 import { attempt } from '@logosdx/utils';
 
 type Phase = 'loading' | 'picker' | 'confirm' | 'running' | 'complete' | 'error';
@@ -316,7 +316,7 @@ export function RunExecScreen({ params: _params }: ScreenProps): ReactElement {
     if (phase === 'running') {
 
         const processed = progress.filesRun + progress.filesSkipped + progress.filesFailed + progress.filesDryRun;
-        const progressValue = selectedFiles.size > 0 ? processed / selectedFiles.size : 0;
+        const progressValue = progressPercentage(processed, selectedFiles.size);
 
         return (
             <Box flexDirection="column" gap={1}>

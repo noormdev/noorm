@@ -31,7 +31,7 @@ import { getEffectiveBuildPaths } from '../../../core/settings/rules.js';
 import { discoverFiles, runBuild } from '../../../core/runner/index.js';
 import { filterFilesByPaths, findUnmatchedIncludePatterns } from '../../../core/shared/index.js';
 import { checkConfigPolicy } from '../../../core/policy/index.js';
-import { getErrorMessage, resolveScreenIdentity, buildRunContext, withScreenConnection } from '../../utils/index.js';
+import { getErrorMessage, resolveScreenIdentity, buildRunContext, withScreenConnection, progressPercentage } from '../../utils/index.js';
 import { attempt } from '@logosdx/utils';
 
 type Phase = 'loading' | 'confirm' | 'running' | 'complete' | 'error';
@@ -353,7 +353,7 @@ export function RunBuildScreen({ params: _params }: ScreenProps): ReactElement {
     if (phase === 'running') {
 
         const processed = progress.filesRun + progress.filesSkipped + progress.filesFailed + progress.filesDryRun;
-        const progressValue = files.length > 0 ? processed / files.length : 0;
+        const progressValue = progressPercentage(processed, files.length);
 
         return (
             <Box flexDirection="column" gap={1}>

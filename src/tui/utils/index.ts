@@ -8,6 +8,7 @@ export { resolveScreenIdentity } from './identity.js';
 export { createChangeManager, type CreateChangeManagerOptions } from './change-context.js';
 export { buildRunContext, type BuildRunContextOptions } from './run-context.js';
 export { withScreenConnection, STOPPED_WAITING_MESSAGE } from './connection.js';
+export { progressPercentage } from './progress.js';
 export {
     loadChangesWithStatus,
     buildPendingChangeList,

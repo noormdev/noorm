@@ -17,7 +17,7 @@
  *     return (
  *         <Box flexDirection="column">
  *             <Text>Running: {state.currentFile}</Text>
- *             <ProgressBar value={state.filesRun / state.filesTotal} />
+ *             <ProgressBar value={(state.filesRun / state.filesTotal) * 100} />
  *             <Text>
  *                 {state.filesRun}/{state.filesTotal} files
  *                 ({state.filesSkipped} skipped, {state.filesFailed} failed)
@@ -118,6 +118,7 @@ const INITIAL_STATE: RunProgressState = {
 
 type UseRunProgressReturn = {
     state: RunProgressState;
+    /** Reset all counters before starting a run with the given file count. */
     reset: (totalFiles: number) => void;
 };
 

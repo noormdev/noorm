@@ -37,6 +37,7 @@ import { getErrorMessage,
     loadChangesWithStatus,
     createChangeManager,
     isConfigGuarded,
+    progressPercentage,
 } from '../../utils/index.js';
 import { validateChangeContent } from '../../../core/change/validation.js';
 import { createConnection } from '../../../core/connection/factory.js';
@@ -272,7 +273,7 @@ export function ChangeRunScreen({ params }: ScreenProps): ReactElement {
     // Running
     if (step === 'running') {
 
-        const progressValue = fileProgress.total > 0 ? fileProgress.current / fileProgress.total : 0;
+        const progressValue = progressPercentage(fileProgress.current, fileProgress.total);
 
         return (
             <Panel title="Run Change" paddingX={2} paddingY={1}>
