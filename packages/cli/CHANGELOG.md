@@ -1,5 +1,107 @@
 # @noormdev/cli
 
+## 1.4.0
+
+### Minor Changes
+
+- 685b125: Show download progress while the TUI installs an update
+
+  The updater has always emitted byte counts every 512KB, and the CLI has always
+  rendered them, but the TUI's update screen ignored them: a ~70MB binary
+  download sat behind a bare spinner for its whole duration, indistinguishable
+  from a hang. The installing state now shows received and total megabytes, a
+  percent, and a progress bar, falling back to megabytes alone when the server
+  sends no `Content-Length`. A stalled attempt that resumes says so, and keeps
+  the progress it had, because the retry resumes from the bytes already on disk.
+
+## 1.3.0
+
+### Minor Changes
+
+- 4c0e7c1: Make the execution history and file-execution screens scroll, and let a failed
+  file's error be read in full.
+
+  Both screens drew a fixed window — `slice(0, 15)` of the history, `slice(0, 20)`
+  of the files — while their selection cursor ranged over every record. Past that
+  window the arrow keys still moved a selection that was not on screen, and the
+  detail box under the list described a record the reader could not see, so the
+  screens were not merely unscrollable: they were reporting on rows that had
+  scrolled out from under the cursor. Both now use `SelectList`, which owns the
+  cursor and the window together and sizes itself from the terminal, so what is
+  selected is always drawn and a tall terminal shows more rows rather than the same
+  fifteen. The history list also fetches 200 records instead of 50, now that
+  reaching past the fifteenth is possible.
+
+  A failed file's error message was rendered as one line per `\n`, with no bound.
+  A stack trace therefore pushed the file list, the detail box and the hotkey hints
+  off the bottom together — and on the history screen the same message was cut at
+  80 characters instead, which drops the part that names the constraint or the
+  syntax error. Both screens now show a bounded single line in the detail box and
+  open the whole message, wrapped and scrollable, on a keypress: `e` on the history
+  screen, Enter on a file execution.
+
+  `SelectList` gains an optional `renderItem`, which lets a screen draw its own row
+  body while the list keeps the cursor, the window, the scroll indicators, focus and
+  the mouse. Without it these two screens would have had to give up the per-status
+  colour a reader scans a history list for, which is why they had their own list in
+  the first place.
+
+- 37abd22: Make `run inspect` scrollable, and show secrets partially rather than as a count.
+
+  The inspect screen rendered its context as a nested tree that grew with the
+  project, and Ink has no scroll offset — so on any real template the bottom of
+  the view sat below the fold with no key that could reach it, and the screen's
+  own footer was what got pushed off to make room. Every view it offers (summary,
+  expanded, rendered SQL, and render errors) is now a flat list of one element per
+  visual line behind a viewport, scrolled with the same `↑↓` / `^U` / `^D` keys the
+  explore and SQL screens already use.
+
+  `$.secrets` and `$.globalSecrets` reported a key count, which cannot answer the
+  question the screen is opened to answer: a stale password and a fresh one are
+  both `Object (7 keys)`. Both tiers now show a partial reveal that narrows as the
+  value gets shorter — a four-character value shows nothing, a long one shows two
+  characters and a four-character suffix — with the length beside it as a number,
+  so a value that is set but empty is distinguishable from one that is set wrong.
+  `$.env` is listed and masked on the same terms, because it is the whole of
+  `process.env` and nothing in the screen can tell which of its keys are
+  credentials.
+
+  The mouse wheel now scrolls every viewport, which it never did. Only `SelectList`
+  and `ResultTable` consumed wheel notches, so the explore detail view, the
+  full-text overlay and the row viewer ignored them — and because the TUI runs in
+  the alternate screen, which has no scrollback, and mouse tracking intercepts the
+  notches a terminal would otherwise translate into arrow keys, turning the mouse
+  on had actually removed the only wheel behaviour those panes had.
+
+  Also fixes an error path that could never render: a template whose helper failed
+  to load set the screen's error phase with a file selected, which no branch
+  matched, so the most likely failure showed as "Unknown phase".
+
+## 1.2.0
+
+### Minor Changes
+
+- bab7dfc: ## TUI
+
+  ### Added
+
+  - `feat(tui):` The interactive UI now draws in the alternate screen at full terminal height, and restores the terminal on exit instead of leaving itself in scrollback.
+  - `feat(tui):` Forms are a two-column layout with browse and edit modes. Arrow keys move between fields on every field type including selects, `Enter` opens a field and commits it, `Esc` reverts it, and submit is a `[ Save ]` row you navigate to.
+  - `feat(tui):` Lists size themselves to the terminal instead of a fixed row count, and keep their cursor when you leave a screen and come back.
+  - `feat(explore):` `r` on a table shows its first and last rows, ordered by primary key. `Enter` opens a row as YAML or JSON, `f` switches format, and the arrow keys walk between rows.
+  - `feat(explore):` The detail screen scrolls, and `v` shows a value the column grid had to truncate.
+  - `feat(sql):` Wide result grids drop whole columns behind a `… N more columns` marker rather than squeezing every column past legibility. `Enter` opens a row in full.
+  - `feat(tui):` Mouse support: click to move the cursor, double-click to activate, wheel to scroll. Set `ui.mouse: false` in `.noorm/settings.yml` to restore click-drag text selection.
+  - `feat(db):` `Esc` cancels a connection test or query that is hanging. On PostgreSQL and MySQL the server is asked to stop the query; on SQL Server and SQLite the client stops waiting and says so.
+
+  ### Fixed
+
+  - `fix(sql):` Backspace in the results filter did nothing, because the key reports as `delete` on the previous Ink release.
+  - `fix(tui):` Screens sized from the terminal never recomputed on resize.
+  - `fix(explore):` Column, index and parameter lists re-flowed per row, so the type column landed on a different offset on nearly every row.
+  - `fix(explore):` "Total Objects" counted categories the screen does not list, so it exceeded the rows a reader could see.
+  - `fix(tui):` The help screen and log viewer drew past the bottom of the window, putting their first lines out of reach.
+
 ## 1.1.0
 
 ## 1.0.2

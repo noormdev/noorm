@@ -133,6 +133,40 @@ async function settleRowView(
 
 }
 
+/**
+ * Wait until the peek's grid is listening, before any key that has to land.
+ *
+ * Waiting for the header and the spinner's absence proves the query resolved,
+ * not that `ResultTable` registered its `useInput` — that happens in an effect,
+ * one tick after the frame those checks read. An arrow written in between is
+ * dropped silently, and the test then asserts against row one having asked for
+ * row two. On a loaded CI runner that gap is wide enough to lose the keystroke
+ * every time, which is what made five tests here fail there and nowhere else.
+ *
+ * `/` is the probe because filter mode announces itself in the footer, and
+ * Escape out of it restores the grid without moving the cursor.
+ */
+async function settleGrid(
+    stdin: { write: (data: string) => void },
+    frame: () => string,
+): Promise<void> {
+
+    const deadline = Date.now() + 2000;
+
+    while (!frame().includes('[Tab] Column') && Date.now() < deadline) {
+
+        stdin.write(KEY.filter);
+
+        await new Promise((resolve) => setTimeout(resolve, 20));
+
+    }
+
+    stdin.write(KEY.escape);
+
+    await waitFor(() => !frame().includes('[Tab] Column'));
+
+}
+
 function column(name: string, overrides: Partial<ColumnDetail> = {}): ColumnDetail {
 
     return {
@@ -919,6 +953,9 @@ describe('cli: screens/db/explore peek navigation', () => {
         // it alone hands back a spinner with no table mounted and every
         // keystroke after it lands nowhere.
         await waitFor(() => frame().includes(PEEK_HEADER) && !frame().includes('Reading'));
+
+        // ...and then until the grid under it is actually listening.
+        await settleGrid(stdin, frame);
 
         const press = async (sequence: string, settled: (current: string) => boolean) => {
 

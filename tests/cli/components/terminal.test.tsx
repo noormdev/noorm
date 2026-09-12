@@ -31,6 +31,27 @@ import { ResultBrowser, ResultTable } from '../../../src/tui/components/terminal
 /** Columns the ink-testing-library terminal reports. */
 const TERMINAL_COLUMNS = 100;
 
+// eslint-disable-next-line no-control-regex -- matching the ANSI SGR escape is the point
+const SGR_PATTERN = /\x1B\[[0-9;]*m/g;
+
+/**
+ * A frame with its colour escapes removed.
+ *
+ * The header of this file used to say the suite runs at `FORCE_COLOR=0` and
+ * that nothing here may read an SGR escape. Only the second half was true: CI
+ * sets `FORCE_COLOR: 'true'`, so every line arrives prefixed with one. The two
+ * tests that located a row by `startsWith('─')` therefore never found it —
+ * `findIndex` returned -1, the assertion indexed past the start of the array,
+ * and both have failed since the day they were written. Reading the layout
+ * through this instead makes them agnostic to whether colour is on, which is
+ * what they meant in the first place.
+ */
+function plain(frame: string | undefined): string {
+
+    return (frame ?? '').replace(SGR_PATTERN, '');
+
+}
+
 /**
  * A line only the grid prints.
  *
@@ -229,9 +250,11 @@ describe('cli: components/terminal', () => {
 
             await waitFor(() => Boolean(lastFrame()?.includes('col_00')));
 
-            const frame = lastFrame() ?? '';
+            const frame = plain(lastFrame());
             const lines = frame.split('\n');
             const rule = lines.findIndex((line) => line.startsWith('─'));
+
+            expect(rule).toBeGreaterThan(0);
 
             // Five whole columns at sixteen, not fifteen at four. Asserting on
             // the header line rather than on the frame is the point: squeezing
