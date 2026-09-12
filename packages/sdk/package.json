@@ -1,6 +1,6 @@
 {
   "name": "@noormdev/sdk",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "Database schema & changeset manager SDK",
   "type": "module",
   "main": "./dist/index.js",

@@ -1,5 +1,11 @@
 # @noormdev/cli
 
+## 1.4.1
+
+### Patch Changes
+
+- 8681ddc: Make build, file, change, and transfer progress bars advance with completed work instead of remaining visually empty until completion.
+
 ## 1.4.0
 
 ### Minor Changes
