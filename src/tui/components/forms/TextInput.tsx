@@ -1,8 +1,9 @@
 /**
  * Single-line text input.
  *
- * A copy of `@inkjs/ui`'s `TextInput` (MIT) with exactly one behavioural
- * change: a mouse report is dropped instead of typed into the field.
+ * A copy of `@inkjs/ui`'s `TextInput` (MIT) with one behavioural change, a
+ * mouse report is dropped instead of typed into the field, plus a
+ * `useTextEntry` call so `GlobalKeyboard` leaves its keystrokes alone.
  *
  * **Why a copy and not a wrapper.** Upstream's handler ends in an
  * unconditional `state.insert(input)`, and Ink's `useInput` is subscriber-based
@@ -38,6 +39,7 @@ import { Text, useInput } from 'ink';
 import type { ReactElement, ReactNode } from 'react';
 
 import { isMouseReport } from '../../mouse.js';
+import { useTextEntry } from '../../focus.js';
 
 interface TextInputState {
 
@@ -149,6 +151,8 @@ export function TextInput({
         value: defaultValue,
         cursorOffset: defaultValue.length,
     });
+
+    useTextEntry(!isDisabled);
 
     const suggestion = useMemo(() => {
 

@@ -10,6 +10,7 @@ import { describe, it, expect } from 'bun:test';
 import { attempt } from '@logosdx/utils';
 
 import {
+    DatabaseConnectionError,
     createConnection,
     testConnection,
     getConnectionManager,
@@ -59,10 +60,12 @@ describe('integration: unreachable host', () => {
         expect(err).not.toBeInstanceOf(OperationAbortedError);
         expect(elapsed).toBeLessThan(SHORT_TIMEOUT_MS * 4);
 
-        // The driver's own message, not the generic wrapper's. The two
-        // deadlines race, and the driver has to win it: only its timeout tears
-        // the socket down, and only it can name what actually failed.
-        expect(err?.message).toContain('connection timeout');
+        // The driver's deadline, not the generic wrapper's (which is the
+        // timeout plus a grace period). The two race, and the driver has to
+        // win: only its timeout tears the socket down, and only it can name
+        // what failed.
+        expect(err?.message).toContain(`did not answer within ${SHORT_TIMEOUT_MS}ms`);
+        expect(err instanceof DatabaseConnectionError && err.serverMessage).toContain('connection timeout');
 
     }, 30_000);
 

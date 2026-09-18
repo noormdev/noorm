@@ -22,7 +22,6 @@ import type { ReactNode, ReactElement } from 'react';
 
 import { useFocusContext } from './focus.js';
 import { useShutdown } from './shutdown.js';
-import { useAppContext } from './app-context.js';
 
 /**
  * Props for GlobalKeyboard component.
@@ -79,10 +78,13 @@ export interface GlobalKeyboardProps {
  *
  * Wraps the app and handles:
  * - Ctrl+C: Exit application
- * - ?: Show help overlay (when not in text input)
- * - D: Toggle dry-run mode (when not in text input)
- * - F: Toggle force mode (when not in text input)
+ * - Shift+L / Shift+Q: Log viewer / SQL terminal (when not typing)
+ * - ?: Show help overlay (when not typing)
+ * - D: Toggle dry-run mode (when not typing)
+ * - F: Toggle force mode (when not typing)
  * - Esc: Navigate back (when nothing else handles it)
+ *
+ * "Typing" means a text field has registered with `useTextEntry`.
  *
  * Individual screens/components register their own handlers
  * via useInput with focus-aware filtering.
@@ -108,10 +110,12 @@ export function GlobalKeyboard({
 }: GlobalKeyboardProps): ReactElement {
 
     const { gracefulExit } = useShutdown();
-    const { stack } = useFocusContext();
-    const { helpKeyEnabled } = useAppContext();
+    const { stack, isTyping } = useFocusContext();
 
     useInput((input, key) => {
+
+        // Every shortcut but Ctrl+C is a printable key a text field may want.
+        const typing = isTyping();
 
         // Ctrl+C always exits gracefully
         if (key.ctrl && input === 'c') {
@@ -122,8 +126,7 @@ export function GlobalKeyboard({
 
         }
 
-        // Shift+L toggles log viewer (works from anywhere, even in text input)
-        if (key.shift && input === 'L') {
+        if (!typing && key.shift && input === 'L') {
 
             onToggleLogViewer?.();
 
@@ -131,8 +134,7 @@ export function GlobalKeyboard({
 
         }
 
-        // Shift+Q opens SQL terminal (works from anywhere)
-        if (key.shift && input === 'Q') {
+        if (!typing && key.shift && input === 'Q') {
 
             onOpenSqlTerminal?.();
 
@@ -140,12 +142,11 @@ export function GlobalKeyboard({
 
         }
 
-        // Global keys only work when not typing in a text input
-        // (focus stack > 1 means we're likely in an input component)
-        if (stack.length <= 1) {
+        // Help and the mode toggles also stay out of nested scopes such as
+        // dialogs, where the screen underneath is not what they act on.
+        if (!typing && stack.length <= 1) {
 
-            // ? shows help (can be disabled by components with text input)
-            if (input === '?' && helpKeyEnabled) {
+            if (input === '?') {
 
                 // Toggle help on every press (help shows on odd presses, hides on even)
                 onHelp?.();

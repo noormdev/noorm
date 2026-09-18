@@ -172,7 +172,14 @@ export interface NoormEvents extends SettingsEvents, UpdateEvents, VaultEvents, 
         database?: string;
     };
     'connection:close': { configName: string };
-    'connection:error': { configName: string; error: string };
+    'connection:error': {
+        configName: string;
+        /** Worded for the user. */
+        error: string;
+        /** What the server or driver reported, for the log: its code(s) and message(s). */
+        serverCode?: string;
+        serverMessage?: string;
+    };
 
     // App lifecycle
     'app:starting': { mode: AppMode };

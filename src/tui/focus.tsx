@@ -23,7 +23,7 @@
  * })
  * ```
  */
-import { createContext, useContext, useState, useCallback, useMemo, useId, useEffect } from 'react';
+import { createContext, useContext, useState, useCallback, useMemo, useId, useEffect, useRef } from 'react';
 
 import type { ReactNode, ReactElement } from 'react';
 
@@ -56,6 +56,21 @@ export interface FocusProviderProps {
 export function FocusProvider({ children }: FocusProviderProps): ReactElement {
 
     const [stack, setStack] = useState<FocusEntry[]>([]);
+    const activeTextEntries = useRef(0);
+
+    const isTyping = useCallback(() => activeTextEntries.current > 0, []);
+
+    const beginTextEntry = useCallback(() => {
+
+        activeTextEntries.current += 1;
+
+        return () => {
+
+            activeTextEntries.current -= 1;
+
+        };
+
+    }, []);
 
     const push = useCallback((id: string, label?: string) => {
 
@@ -128,8 +143,10 @@ export function FocusProvider({ children }: FocusProviderProps): ReactElement {
             isActive,
             activeId,
             stack,
+            isTyping,
+            beginTextEntry,
         }),
-        [push, pop, isActive, activeId, stack],
+        [push, pop, isActive, activeId, stack, isTyping, beginTextEntry],
     );
 
     return <FocusContext.Provider value={value}>{children}</FocusContext.Provider>;
@@ -222,6 +239,33 @@ export function useFocusScope(labelOrOptions?: string | UseFocusScopeOptions): {
         isFocused: skip ? false : isActive(focusId),
         focusId,
     };
+
+}
+
+/**
+ * Mark a text field as taking keystrokes while `active`.
+ *
+ * Ink hands every keystroke to every handler, so without this a capital `L`
+ * typed into a field also opens the log viewer. `GlobalKeyboard` reads it and
+ * leaves its single-key shortcuts alone while any field counts.
+ *
+ * Does nothing outside a FocusProvider, so a field rendered on its own (as in
+ * its unit tests) still works.
+ *
+ * @example
+ * useTextEntry(!isDisabled);
+ */
+export function useTextEntry(active: boolean): void {
+
+    const beginTextEntry = useContext(FocusContext)?.beginTextEntry;
+
+    useEffect(() => {
+
+        if (!active || !beginTextEntry) return;
+
+        return beginTextEntry();
+
+    }, [active, beginTextEntry]);
 
 }
 
