@@ -274,7 +274,7 @@ export function DbTruncateScreen({ params: _params }: ScreenProps): ReactElement
                             <Text bold>Tables to truncate ({toTruncate.length}):</Text>
                             {toTruncate.length > 0 ? (
                                 toTruncate.slice(0, 10).map((t) => (
-                                    <Text key={t.name} dimColor>  - {t.name}</Text>
+                                    <Text key={t.schema ? `${t.schema}.${t.name}` : t.name} dimColor>  - {t.name}</Text>
                                 ))
                             ) : (
                                 <Text dimColor>  (none)</Text>
@@ -288,7 +288,7 @@ export function DbTruncateScreen({ params: _params }: ScreenProps): ReactElement
                             <Box flexDirection="column" marginTop={1}>
                                 <Text bold color="green">Preserved ({toPreserve.length}):</Text>
                                 {toPreserve.slice(0, 5).map((t) => (
-                                    <Text key={t.name} color="green" dimColor>
+                                    <Text key={t.schema ? `${t.schema}.${t.name}` : t.name} color="green" dimColor>
                                         {'  '}- {t.name} {t.name.startsWith('__noorm_') ? '(system)' : '(settings)'}
                                     </Text>
                                 ))}
