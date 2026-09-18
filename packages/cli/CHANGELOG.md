@@ -1,5 +1,15 @@
 # @noormdev/cli
 
+## 1.4.2
+
+### Patch Changes
+
+- bca3052: Stop the `noorm` binary from loading `.env` in the working directory. Bun's loader expanded `$` and cut values at `#`, so a `NOORM_CONNECTION_PASSWORD` containing those characters reached the database as a different password and login failed. `NOORM_*` variables now come only from the process environment: export them in the shell or set them in CI.
+- bca3052: Say why a database connection failed: refused port, unknown host, timeout, rejected TLS certificate, disabled, locked, or expired account, missing grant, connection limit, missing password, and SQLite file or directory faults. Where the server withholds the reason (SQL Server 18456, PostgreSQL 28P01, MySQL 1045), the message says so and lists the usual causes. Exhausted retries report the server's last error. `connection:error` log entries carry `serverCode` and `serverMessage`.
+- bca3052: Let MSSQL logins without server-level access connect. Connecting no longer detours through `master` to look the target up in `sys.databases`, so contained database users (the usual account on Azure SQL Database) and logins without `VIEW ANY DATABASE` can connect, and the config add/edit connection test passes for them. A database that is missing, or that the login cannot open, now fails with that reason instead of "Login failed".
+- 8e8df92: Stop TUI lists from leaving stale rows on screen when two rows share an identity: explore indexes and foreign keys whose names repeat across tables (SQL Server's `IX_UserId`, MySQL's `PRIMARY`), PostgreSQL function and procedure overloads, and settings rules with the same description. `listFunctions` and `listProcedures` now return a `signature` on PostgreSQL that tells overloads apart.
+- bca3052: Stop global TUI shortcuts from firing while you type. A capital `L` or `Q` typed into a form field, search box, or the SQL editor used to open the log viewer or the SQL terminal, and `?`, `D`, and `F` could open help or toggle dry-run and force mode. While a text field is taking input, those keys now type their character.
+
 ## 1.4.1
 
 ### Patch Changes
