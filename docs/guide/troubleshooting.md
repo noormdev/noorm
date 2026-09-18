@@ -114,6 +114,29 @@ skips every other prompt. Two commands:
 See [Non-interactive operation](./automation/non-interactive.md).
 
 
+## Login fails with a password I know is right
+
+SQL Server, PostgreSQL, and MySQL each send one error for a wrong password and
+an unknown account, so a client cannot learn which accounts exist. noorm says so
+and lists what that error covers; the server's own log names the cause:
+
+| Server     | Error                            | Also sent for                                                          |
+|------------|----------------------------------|------------------------------------------------------------------------|
+| SQL Server | `Login failed` (18456)           | unknown login, login denied `CONNECT SQL`, Windows-only authentication |
+| PostgreSQL | `password authentication failed` | unknown role, password past `VALID UNTIL`                              |
+| MySQL      | `Access denied` (1045)           | unknown user, no account for this client host, `REQUIRE SSL` account   |
+
+The message noorm shows is reworded for the user. What the server itself
+sent is in the log (`.noorm/state/noorm.log`): the `connection:error`
+entry carries `serverCode` (error number, SQLSTATE, or driver code) and
+`serverMessage` (the server's text, including any wrapped socket error).
+
+A password that reaches noorm through a `NOORM_CONNECTION_PASSWORD`
+environment variable arrives exactly as the shell exported it. The
+compiled `noorm` binary does not read `.env` files, so export the
+variable or set it in CI.
+
+
 ## Related
 
 - [CLI flag conventions](../cli/flags.md)

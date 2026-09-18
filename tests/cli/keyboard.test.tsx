@@ -11,7 +11,9 @@ import { Text } from 'ink';
 import { RouterProvider } from '../../src/tui/router.js';
 import { FocusProvider, useFocusScope } from '../../src/tui/focus.js';
 import { ShutdownProvider } from '../../src/tui/shutdown.js';
-import { useFocusedInput, useListKeys, useQuitHandler } from '../../src/tui/keyboard.js';
+import { GlobalKeyboard, useFocusedInput, useListKeys, useQuitHandler } from '../../src/tui/keyboard.js';
+import { TextInput } from '../../src/tui/components/forms/TextInput.js';
+import { SqlInput } from '../../src/tui/components/terminal/SqlInput.js';
 import { resetLifecycleManager } from '../../src/core/lifecycle/manager.js';
 
 // ANSI escape sequences for arrow keys
@@ -563,6 +565,158 @@ describe('cli: keyboard', () => {
             );
 
             expect(lastFrame()).toContain('hasQuit:yes');
+
+            unmount();
+
+        });
+
+    });
+
+    // Ink hands every keystroke to every handler, so GlobalKeyboard has to
+    // stand down on its own.
+    describe('GlobalKeyboard while a text field is focused', () => {
+
+        const SHORTCUT_KEYS = ['L', 'Q', '?', 'D', 'F'];
+
+        function shortcutHandlers() {
+
+            return {
+                onToggleLogViewer: vi.fn(),
+                onOpenSqlTerminal: vi.fn(),
+                onHelp: vi.fn(),
+                onToggleDryRun: vi.fn(),
+                onToggleForce: vi.fn(),
+            };
+
+        }
+
+        async function waitFor(predicate: () => boolean, timeoutMs = 2000): Promise<void> {
+
+            const deadline = Date.now() + timeoutMs;
+
+            while (!predicate() && Date.now() < deadline) {
+
+                await new Promise((resolve) => setTimeout(resolve, 10));
+
+            }
+
+        }
+
+        async function press(stdin: { write: (data: string) => void }, keys: string[]): Promise<void> {
+
+            for (const key of keys) {
+
+                stdin.write(key);
+                await new Promise((resolve) => setTimeout(resolve, 20));
+
+            }
+
+        }
+
+        /** A screen with one text field, the way ChangeAddScreen has one. */
+        function FieldScreen({ fieldFocused, onChange }: { fieldFocused: boolean; onChange: (value: string) => void }) {
+
+            useFocusScope('FieldScreen');
+
+            return <TextInput isDisabled={!fieldFocused} onChange={onChange} />;
+
+        }
+
+        function SqlScreen({ onChange }: { onChange: (value: string) => void }) {
+
+            const [query, setQuery] = useState('');
+
+            useFocusScope('SqlScreen');
+
+            const change = useCallback((next: string) => {
+
+                setQuery(next);
+                onChange(next);
+
+            }, [onChange]);
+
+            return <SqlInput value={query} onChange={change} onSubmit={() => {}} onHistoryNavigate={() => {}} />;
+
+        }
+
+        it('should type L, Q, ?, D and F into the field instead of running their shortcuts', async () => {
+
+            const handlers = shortcutHandlers();
+            let value = '';
+
+            const { stdin, unmount } = render(
+                <TestWrapper>
+                    <GlobalKeyboard {...handlers}>
+                        <FieldScreen fieldFocused onChange={(next) => {
+
+                            value = next;
+
+                        }} />
+                    </GlobalKeyboard>
+                </TestWrapper>,
+            );
+
+            await new Promise((resolve) => setTimeout(resolve, 30));
+            await press(stdin, SHORTCUT_KEYS);
+            await waitFor(() => value === 'LQ?DF');
+
+            expect(value).toBe('LQ?DF');
+
+            for (const handler of Object.values(handlers)) expect(handler).not.toHaveBeenCalled();
+
+            unmount();
+
+        });
+
+        it('should run the shortcuts again once the field loses focus', async () => {
+
+            const handlers = shortcutHandlers();
+            const tree = (fieldFocused: boolean) => (
+                <TestWrapper>
+                    <GlobalKeyboard {...handlers}>
+                        <FieldScreen fieldFocused={fieldFocused} onChange={() => {}} />
+                    </GlobalKeyboard>
+                </TestWrapper>
+            );
+
+            const { stdin, rerender, unmount } = render(tree(true));
+
+            await new Promise((resolve) => setTimeout(resolve, 30));
+            rerender(tree(false));
+            await new Promise((resolve) => setTimeout(resolve, 30));
+            await press(stdin, SHORTCUT_KEYS);
+            await waitFor(() => handlers.onToggleForce.mock.calls.length > 0);
+
+            for (const handler of Object.values(handlers)) expect(handler).toHaveBeenCalledTimes(1);
+
+            unmount();
+
+        });
+
+        it('should leave the SQL editor\'s keystrokes alone too', async () => {
+
+            const handlers = shortcutHandlers();
+            let value = '';
+
+            const { stdin, unmount } = render(
+                <TestWrapper>
+                    <GlobalKeyboard {...handlers}>
+                        <SqlScreen onChange={(next) => {
+
+                            value = next;
+
+                        }} />
+                    </GlobalKeyboard>
+                </TestWrapper>,
+            );
+
+            await new Promise((resolve) => setTimeout(resolve, 30));
+            await press(stdin, ['L', 'Q']);
+            await waitFor(() => value === 'LQ');
+
+            expect(value).toBe('LQ');
+            expect(handlers.onToggleLogViewer).not.toHaveBeenCalled();
+            expect(handlers.onOpenSqlTerminal).not.toHaveBeenCalled();
 
             unmount();
 

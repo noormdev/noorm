@@ -4,17 +4,19 @@
  * Uses 'tedious' and 'tarn' packages for MSSQL connections.
  * Install with: npm install tedious tarn
  *
- * Verifies database existence via sys.databases before connecting
- * to the target database, avoiding cryptic ECONNRESET errors when
- * the database doesn't exist.
+ * Connects straight to the target database, so a login needs no access to
+ * `master` or to other databases' rows in `sys.databases`.
  */
 import { isIP } from 'node:net';
 
+import { attempt } from '@logosdx/utils';
 import { Kysely, MssqlDialect, sql } from 'kysely';
 import type { ConnectionConfiguration } from 'tedious';
 
 import type { ConnectionConfig, ConnectionResult } from '../types.js';
 import { DEFAULT_PORTS, connectTimeoutFor } from '../defaults.js';
+import { explainMssqlLoginFailure } from '../errors.js';
+import type { MssqlServerError } from '../errors.js';
 import { MssqlLimitPlugin } from './mssql-limit-plugin.js';
 
 /**
@@ -119,16 +121,13 @@ export function resolveTlsServerName(config: ConnectionConfig): string | undefin
 /**
  * Build tedious connection options from noorm config.
  *
- * Centralizes the tedious config so both the preflight check
- * and the real pool use the same settings.
+ * Kept separate from the pool so the TLS and timeout choices can be asserted
+ * without a server.
  *
  * @example
- * const options = buildTediousOptions(config, 'master');
+ * const options = buildTediousOptions(config);
  */
-export function buildTediousOptions(
-    config: ConnectionConfig,
-    database?: string,
-): ConnectionConfiguration {
+export function buildTediousOptions(config: ConnectionConfig): ConnectionConfiguration {
 
     return {
         server: config.host ?? 'localhost',
@@ -141,7 +140,7 @@ export function buildTediousOptions(
         },
         options: {
             port: config.port ?? DEFAULT_PORTS.mssql,
-            database: database ?? config.database,
+            database: config.database,
             trustServerCertificate: !config.ssl,
             encrypt: true,
             serverName: resolveTlsServerName(config),
@@ -157,78 +156,33 @@ export function buildTediousOptions(
 }
 
 /**
- * Instantiate a tedious Connection for the given noorm config.
+ * Instantiate a tedious Connection that records every error the server sends
+ * while logging in. tedious keeps only the last one, which for a missing
+ * database or a withheld reason is the generic 18456 "Login failed".
  */
-function buildTediousConfig(
+function buildTediousConnection(
     Tedious: typeof import('tedious'),
     config: ConnectionConfig,
-    database?: string,
+    loginErrors: MssqlServerError[],
 ) {
 
-    return new Tedious.Connection(buildTediousOptions(config, database));
+    const connection = new Tedious.Connection(buildTediousOptions(config));
+    const record = (token: MssqlServerError) => loginErrors.push({ number: token.number, message: token.message });
 
-}
+    // Pooled connections live on, and their query errors are not login errors.
+    connection.on('errorMessage', record);
+    connection.once('connect', () => connection.removeListener('errorMessage', record));
 
-/**
- * Verify the target database exists by querying sys.databases on master.
- *
- * Connects to 'master' first and checks sys.databases. Throws a clear
- * error if the database is missing, instead of letting tedious hang
- * with a cryptic ECONNRESET.
- */
-async function verifyDatabaseExists(
-    Tedious: typeof import('tedious'),
-    Tarn: typeof import('tarn'),
-    config: ConnectionConfig,
-): Promise<void> {
-
-    const masterDb = new Kysely<unknown>({
-        dialect: new MssqlDialect({
-            tarn: {
-                ...Tarn,
-                options: {
-                    min: 0,
-                    max: 1,
-                    propagateCreateError: true,
-                },
-            },
-            tedious: {
-                ...Tedious,
-                connectionFactory: () => buildTediousConfig(Tedious, config, 'master'),
-            },
-        }),
-        plugins: [new MssqlLimitPlugin()],
-    });
-
-    try {
-
-        const { rows } = await sql<{ name: string }>`
-            SELECT name FROM sys.databases WHERE name = ${config.database}
-        `.execute(masterDb);
-
-        if (rows.length === 0) {
-
-            throw new Error(
-                `Database '${config.database}' does not exist on ${config.host ?? 'localhost'}:${config.port ?? DEFAULT_PORTS.mssql}`,
-            );
-
-        }
-
-    }
-    finally {
-
-        await masterDb.destroy();
-
-    }
+    return connection;
 
 }
 
 /**
  * Create a SQL Server connection.
  *
- * Verifies the target database exists via master before opening
- * the connection pool. This avoids the tedious/tarn hang that
- * occurs when MSSQL rejects login for a non-existent database.
+ * Runs a first query before returning, so a failed login is reported here with
+ * the error numbers the server sent. They name a missing database, a login
+ * without access to it, or the causes a plain 18456 can stand for.
  *
  * @example
  * ```typescript
@@ -251,9 +205,7 @@ export async function createMssqlConnection(config: ConnectionConfig): Promise<C
     const TarnImport = await import('tarn');
     const Tedious = TediousImport.default ?? TediousImport;
     const Tarn = TarnImport.default ?? TarnImport;
-
-    // Preflight: verify database exists via master
-    await verifyDatabaseExists(Tedious, Tarn, config);
+    let loginErrors: MssqlServerError[] = [];
 
     const db = new Kysely<unknown>({
         dialect: new MssqlDialect({
@@ -267,11 +219,27 @@ export async function createMssqlConnection(config: ConnectionConfig): Promise<C
             },
             tedious: {
                 ...Tedious,
-                connectionFactory: () => buildTediousConfig(Tedious, config),
+                connectionFactory: () => {
+
+                    loginErrors = [];
+
+                    return buildTediousConnection(Tedious, config, loginErrors);
+
+                },
             },
         }),
         plugins: [new MssqlLimitPlugin()],
     });
+
+    const [, connectErr] = await attempt(() => sql`SELECT 1`.execute(db));
+
+    if (connectErr) {
+
+        await db.destroy();
+
+        throw explainMssqlLoginFailure(loginErrors, connectErr, config);
+
+    }
 
     return {
         db,

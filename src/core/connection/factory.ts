@@ -14,6 +14,7 @@ import { observer } from '../observer.js';
 import { OperationAbortedError, raceAbort, throwIfAborted } from '../shared/abort.js';
 import { getConnectionManager } from './manager.js';
 import { connectTimeoutFor } from './defaults.js';
+import { DatabaseConnectionError, explainConnectionError } from './errors.js';
 
 type DialectFactory = (config: ConnectionConfig) => ConnectionResult | Promise<ConnectionResult>;
 
@@ -228,6 +229,9 @@ async function openConnection(
                 backoff,
                 jitterFactor: 0.1,
                 signal,
+                // Otherwise running out of retries reads "Max retries
+                // reached", and the server's own error is lost.
+                throwLastError: true,
                 shouldRetry: (err) => {
 
                     // Retrying something the caller walked away from would
@@ -261,8 +265,13 @@ async function openConnection(
 
     if (err) {
 
-        observer.emit('connection:error', { configName, error: err.message });
-        throw err;
+        const explained = explainConnectionError(err, config);
+        const server = explained instanceof DatabaseConnectionError
+            ? { serverCode: explained.serverCode, serverMessage: explained.serverMessage }
+            : {};
+
+        observer.emit('connection:error', { configName, error: explained.message, ...server });
+        throw explained;
 
     }
 
@@ -354,14 +363,48 @@ const SYSTEM_DATABASES: Record<Dialect, string | undefined> = {
 };
 
 /**
+ * Outcome of a connection test. `aborted` separates a caller who stopped
+ * waiting from a database that failed.
+ */
+interface ConnectionTestResult {
+    ok: boolean;
+    error?: string;
+    aborted?: boolean;
+}
+
+async function probeConnection(config: ConnectionConfig, signal?: AbortSignal): Promise<ConnectionTestResult> {
+
+    const [conn, err] = await attempt(() =>
+        createConnection(config, '__test__', {}, signal),
+    );
+
+    if (err) {
+
+        if (err instanceof OperationAbortedError) {
+
+            return { ok: false, error: err.message, aborted: true };
+
+        }
+
+        return { ok: false, error: err.message };
+
+    }
+
+    await conn!.destroy();
+
+    return { ok: true };
+
+}
+
+/**
  * Test a connection config without keeping the connection open.
  *
  * Useful for validating config before saving or for health checks.
  *
  * @param config - Connection configuration to test
  * @param options - Test options
- * @param options.testServerOnly - If true, connects to system database instead of target.
- *                                  Useful when the target database doesn't exist yet.
+ * @param options.testServerOnly - If true, a target database that does not exist yet
+ *                                  is not a failure: the system database stands in for it.
  * @param options.signal - Abort to stop waiting. The result comes back with
  *                         `aborted: true` so a caller can say so honestly
  *                         instead of reporting a database error.
@@ -382,21 +425,9 @@ const SYSTEM_DATABASES: Record<Dialect, string | undefined> = {
 export async function testConnection(
     config: ConnectionConfig,
     options: { testServerOnly?: boolean; signal?: AbortSignal } = {},
-): Promise<{ ok: boolean; error?: string; aborted?: boolean }> {
+): Promise<ConnectionTestResult> {
 
-    let testConfig = config;
-
-    // If testing server only, swap to system database
-    if (options.testServerOnly && config.dialect !== 'sqlite') {
-
-        const systemDb = SYSTEM_DATABASES[config.dialect];
-
-        testConfig = {
-            ...config,
-            database: systemDb ?? config.database,
-        };
-
-    }
+    const systemDb = SYSTEM_DATABASES[config.dialect];
 
     // SQLite has no system database to swap to, so the probe would open the
     // target — and the driver creates the file. Probe the directory that
@@ -423,24 +454,18 @@ export async function testConnection(
 
     }
 
-    const [conn, err] = await attempt(() =>
-        createConnection(testConfig, '__test__', {}, options.signal),
-    );
+    const result = await probeConnection(config, options.signal);
 
-    if (err) {
+    // The target goes first because a login scoped to its own database (an
+    // Azure SQL contained user) cannot open the system database at all.
+    const targetMissing = !result.ok && !result.aborted && !!result.error?.includes('does not exist');
 
-        if (err instanceof OperationAbortedError) {
+    if (options.testServerOnly && systemDb && targetMissing) {
 
-            return { ok: false, error: err.message, aborted: true };
-
-        }
-
-        return { ok: false, error: err.message };
+        return probeConnection({ ...config, database: systemDb }, options.signal);
 
     }
 
-    await conn!.destroy();
-
-    return { ok: true };
+    return result;
 
 }

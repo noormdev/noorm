@@ -28,7 +28,11 @@ for (const { bun: target, suffix } of targets) {
     const outfile = `packages/cli/bin/noorm-${suffix}`;
     console.log(`  Building ${outfile} (${target})...`);
 
-    await $`bun build --compile --target=${target} --minify src/cli/index.ts src/workers/connection.ts src/workers/compute.ts --outfile ${outfile} --define __CLI_VERSION__=\"${version}\"`.quiet();
+    // A compiled binary loads `.env` from the cwd by default, and Bun's parser
+    // expands `$` even inside single quotes and cuts unquoted values at `#`. A
+    // project `.env` holding NOORM_CONNECTION_PASSWORD reached the driver as a
+    // different password, so the binary reads only the real environment.
+    await $`bun build --compile --no-compile-autoload-dotenv --target=${target} --minify src/cli/index.ts src/workers/connection.ts src/workers/compute.ts --outfile ${outfile} --define __CLI_VERSION__=\"${version}\"`.quiet();
 
     console.log(`  ✓ ${outfile}`);
 
