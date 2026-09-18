@@ -222,6 +222,7 @@ interface FunctionSummary {
     schema?: string
     parameterCount: number
     returnType: string
+    signature?: string    // PostgreSQL only: argument list that tells overloads apart
 }
 
 interface IndexSummary {
