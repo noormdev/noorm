@@ -12,6 +12,7 @@ import { Box, Text, useInput } from 'ink';
 import type { ReactElement } from 'react';
 
 import { isMouseReport } from '../../mouse.js';
+import { useTextEntry } from '../../focus.js';
 
 /**
  * Props for SqlInput component.
@@ -52,6 +53,8 @@ export function SqlInput({
     const isActive = active && !disabled;
     const [editMode, setEditMode] = useState(false);
     const [cursor, setCursor] = useState(value.length);
+
+    useTextEntry(isActive);
 
     // Track what we last set to detect external changes
     const lastValueRef = useRef(value);

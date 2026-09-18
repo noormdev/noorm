@@ -50,7 +50,7 @@ export function SqlTerminalScreen({ params }: ScreenProps): ReactElement {
 
     const { navigate, back } = useRouter();
     const { isFocused } = useFocusScope('SqlTerminal');
-    const { activeConfig, activeConfigName, projectRoot, setHelpKeyEnabled } = useAppContext();
+    const { activeConfig, activeConfigName, projectRoot } = useAppContext();
     const { showToast } = useToast();
     // useWindowSize, not useStdout: stdout.rows mutates on resize without asking
     // React for anything, so a memo keyed on it never recomputes.
@@ -108,21 +108,6 @@ export function SqlTerminalScreen({ params }: ScreenProps): ReactElement {
         }
 
     }, [params.name]);
-
-    // Disable help key when input has content (to allow typing '?')
-    useEffect(() => {
-
-        const hasContent = query.trim() !== '';
-        setHelpKeyEnabled(!hasContent);
-
-        // Re-enable on unmount
-        return () => {
-
-            setHelpKeyEnabled(true);
-
-        };
-
-    }, [query, setHelpKeyEnabled]);
 
     // Initialize connection and history
     useEffect(() => {

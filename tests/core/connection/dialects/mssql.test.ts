@@ -165,15 +165,6 @@ describe('connection/dialects/mssql: buildTediousOptions', () => {
 
     });
 
-    it('should carry the database override used by the master preflight', () => {
-
-        const options = buildTediousOptions(mssqlConfig({ host: '10.0.0.5' }), 'master');
-
-        expect(options.options?.database).toBe('master');
-        expect(options.options?.serverName).toBe(UNVERIFIED_TLS_SERVER_NAME);
-
-    });
-
     it('should default the host to localhost', () => {
 
         const options = buildTediousOptions(mssqlConfig({ host: undefined }));

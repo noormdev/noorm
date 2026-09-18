@@ -38,6 +38,7 @@ import v from 'voca';
 import type { ReactElement } from 'react';
 
 import { isMouseReport, useRowMouse } from '../../mouse.js';
+import { useTextEntry } from '../../focus.js';
 import { fitGridColumns } from './columnFit.js';
 import { documentValue } from './rowDocument.js';
 
@@ -385,6 +386,8 @@ export function ResultTable({
     const [scrollOffset, setScrollOffset] = useState(0);
     const [internalRow, setInternalRow] = useState(0);
     const [sortColumnIndex, setSortColumnIndex] = useState(0);
+
+    useTextEntry(mode === 'filter');
 
     const highlightedRow = isControlled ? controlledRow : internalRow;
 
