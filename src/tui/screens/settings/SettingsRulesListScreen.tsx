@@ -14,7 +14,6 @@
 import { useState, useCallback, useMemo } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { attempt } from '@logosdx/utils';
-import v from 'voca';
 
 import type { ReactElement } from 'react';
 import type { ScreenProps } from '../../types.js';
@@ -35,7 +34,7 @@ import {
 /**
  * Rule list item value.
  */
-interface RuleListValue {
+export interface RuleListValue {
     index: number;
     rule: Rule;
 }
@@ -80,6 +79,46 @@ function formatEffect(rule: Rule): string {
 }
 
 /**
+ * Builds the list rows for the settings rules.
+ *
+ * Keyed by description so the remembered cursor follows a rule the edit
+ * screen moves to the end on save; the occurrence count separates rules
+ * described alike. A rule without a description has only its position.
+ *
+ * @example
+ * const rows = ruleListItems(settings.rules ?? []);
+ * navigate('settings/rules/edit', { name: String(rows[0].value.index) });
+ */
+export function ruleListItems(rules: Rule[]): SelectListItem<RuleListValue>[] {
+
+    const occurrences = new Map<string, number>();
+
+    return rules.map((rule, index) => {
+
+        const { description } = rule;
+        let key = String(index);
+
+        if (description) {
+
+            const occurrence = (occurrences.get(description) ?? 0) + 1;
+
+            occurrences.set(description, occurrence);
+            key = `${description}#${occurrence}`;
+
+        }
+
+        return {
+            key,
+            label: description || `Rule ${index + 1}`,
+            value: { index, rule },
+            description: `${formatMatch(rule.match)} → ${formatEffect(rule)}`,
+        };
+
+    });
+
+}
+
+/**
  * SettingsRulesListScreen component.
  */
 export function SettingsRulesListScreen({ params: _params }: ScreenProps): ReactElement {
@@ -103,16 +142,7 @@ export function SettingsRulesListScreen({ params: _params }: ScreenProps): React
     }, [settings]);
 
     // Convert rules to list items
-    const items: SelectListItem<RuleListValue>[] = useMemo(() => {
-
-        return rules.map((rule, index) => ({
-            key: rule.description ? v.kebabCase(rule.description) : String(index),
-            label: rule.description || `Rule ${index + 1}`,
-            value: { index, rule },
-            description: `${formatMatch(rule.match)} → ${formatEffect(rule)}`,
-        }));
-
-    }, [rules]);
+    const items = useMemo(() => ruleListItems(rules), [rules]);
 
     // Set initial highlighted index
     useMemo(() => {

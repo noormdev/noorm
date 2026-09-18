@@ -113,6 +113,44 @@ type AnySummary =
     | IndexSummary
     | ForeignKeySummary;
 
+function exploreItemKey(item: AnySummary, label: string): string {
+
+    if ('tableName' in item) return `${label} on ${item.tableName}`;
+
+    if ('signature' in item && item.signature !== undefined) return `${label}(${item.signature})`;
+
+    return label;
+
+}
+
+/**
+ * Builds the list rows for one explore category.
+ *
+ * `schema.name` alone repeats: index and foreign key names are unique only
+ * within their table (MySQL names every primary key `PRIMARY`), and
+ * PostgreSQL overloads share a name.
+ *
+ * @example
+ * const rows = exploreListItems('indexes', indexes);
+ * // rows[0].key === 'dbo.IX_UserId on AspNetUserLogins'
+ */
+export function exploreListItems(category: ExploreCategory, items: AnySummary[]): SelectListItem<AnySummary>[] {
+
+    return items.map((item) => {
+
+        const label = item.schema ? `${item.schema}.${item.name}` : item.name;
+
+        return {
+            key: exploreItemKey(item, label),
+            label,
+            value: item,
+            description: formatSummaryDescription(category, item),
+        };
+
+    });
+
+}
+
 /**
  * ExploreListScreen component.
  *
@@ -182,25 +220,10 @@ export function ExploreListScreen({ params: _params }: ScreenProps): ReactElemen
     }, [db, dialect, meta, settings?.logging?.level]);
 
     // Convert items to SelectListItem format
-    const listItems = useMemo((): SelectListItem<AnySummary>[] => {
-
-        if (!meta) return [];
-
-        return items.map((item) => {
-
-            const name = item.name;
-            const schema = 'schema' in item ? (item as { schema?: string }).schema : undefined;
-
-            return {
-                key: schema ? `${schema}.${name}` : name,
-                label: schema ? `${schema}.${name}` : name,
-                value: item,
-                description: formatSummaryDescription(meta.category, item),
-            };
-
-        });
-
-    }, [items, meta]);
+    const listItems = useMemo(
+        () => (meta ? exploreListItems(meta.category, items) : []),
+        [items, meta],
+    );
 
     // Handle item selection
     const handleSelect = (item: SelectListItem<AnySummary>) => {

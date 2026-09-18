@@ -5,6 +5,7 @@
  * Requires docker-compose.test.yml containers to be running.
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'bun:test';
+import { sql } from 'kysely';
 import type { Kysely } from 'kysely';
 
 import { fetchOverview, fetchList, fetchDetail } from '../../../src/core/explore/index.js';
@@ -233,6 +234,59 @@ describe('integration: postgres explore', () => {
             // get_user_by_id returns TABLE with column definitions
             const getUserById = functions.find((f) => f.name === 'get_user_by_id');
             expect(getUserById?.returnType).toContain('TABLE');
+
+        });
+
+        // Same arity on purpose, so parameterCount cannot stand in for the signature.
+        it('should tell same-arity function overloads apart by signature', async () => {
+
+            await sql`CREATE FUNCTION overload_probe(v integer) RETURNS integer LANGUAGE sql AS 'SELECT v'`.execute(db);
+            await sql`CREATE FUNCTION overload_probe(v text) RETURNS integer LANGUAGE sql AS 'SELECT 1'`.execute(db);
+
+            try {
+
+                const functions = await fetchList(db, 'postgres', 'functions');
+                const signatures = functions
+                    .filter((f) => f.name === 'overload_probe')
+                    .map((f) => f.signature);
+
+                expect(signatures).not.toContain(undefined);
+                expect(new Set(signatures).size).toBe(2);
+
+            }
+            finally {
+
+                await sql`DROP FUNCTION IF EXISTS overload_probe(integer), overload_probe(text)`.execute(db);
+
+            }
+
+        });
+
+    });
+
+    describe('fetchList - procedures', () => {
+
+        it('should tell same-arity procedure overloads apart by signature', async () => {
+
+            await sql`CREATE PROCEDURE overload_probe_proc(v integer) LANGUAGE sql AS 'SELECT 1'`.execute(db);
+            await sql`CREATE PROCEDURE overload_probe_proc(v text) LANGUAGE sql AS 'SELECT 1'`.execute(db);
+
+            try {
+
+                const procedures = await fetchList(db, 'postgres', 'procedures');
+                const signatures = procedures
+                    .filter((p) => p.name === 'overload_probe_proc')
+                    .map((p) => p.signature);
+
+                expect(signatures).not.toContain(undefined);
+                expect(new Set(signatures).size).toBe(2);
+
+            }
+            finally {
+
+                await sql`DROP PROCEDURE IF EXISTS overload_probe_proc(integer), overload_probe_proc(text)`.execute(db);
+
+            }
 
         });
 

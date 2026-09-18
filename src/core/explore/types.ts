@@ -76,6 +76,9 @@ export interface ProcedureSummary {
     schema?: string;
     parameterCount: number;
 
+    /** Argument list that tells PostgreSQL overloads apart, e.g. `v integer, w text`. */
+    signature?: string;
+
 }
 
 /**
@@ -87,6 +90,9 @@ export interface FunctionSummary {
     schema?: string;
     parameterCount: number;
     returnType: string;
+
+    /** Argument list that tells PostgreSQL overloads apart, e.g. `v integer, w text`. */
+    signature?: string;
 
 }
 

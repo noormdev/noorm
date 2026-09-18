@@ -142,11 +142,13 @@ export const postgresExploreOperations: DialectExploreOperations = {
             proname: string;
             nspname: string;
             param_count: string;
+            identity_args: string;
         }>`
             SELECT
                 p.proname,
                 n.nspname,
-                p.pronargs::text as param_count
+                p.pronargs::text as param_count,
+                pg_get_function_identity_arguments(p.oid) as identity_args
             FROM pg_proc p
             JOIN pg_namespace n ON p.pronamespace = n.oid
             WHERE n.nspname ${schemaFilter(schema)}
@@ -163,6 +165,7 @@ export const postgresExploreOperations: DialectExploreOperations = {
             name: row.proname,
             schema: row.nspname,
             parameterCount: parseInt(row.param_count, 10),
+            signature: row.identity_args,
         }));
 
     },
@@ -175,12 +178,14 @@ export const postgresExploreOperations: DialectExploreOperations = {
             nspname: string;
             param_count: string;
             return_type: string;
+            identity_args: string;
         }>`
             SELECT
                 p.proname,
                 n.nspname,
                 p.pronargs::text as param_count,
-                pg_get_function_result(p.oid) as return_type
+                pg_get_function_result(p.oid) as return_type,
+                pg_get_function_identity_arguments(p.oid) as identity_args
             FROM pg_proc p
             JOIN pg_namespace n ON p.pronamespace = n.oid
             WHERE n.nspname ${schemaFilter(schema)}
@@ -198,6 +203,7 @@ export const postgresExploreOperations: DialectExploreOperations = {
             schema: row.nspname,
             parameterCount: parseInt(row.param_count, 10),
             returnType: row.return_type,
+            signature: row.identity_args,
         }));
 
     },
