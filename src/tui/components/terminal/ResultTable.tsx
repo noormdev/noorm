@@ -38,6 +38,7 @@ import v from 'voca';
 import type { ReactElement } from 'react';
 
 import { isMouseReport, useRowMouse } from '../../mouse.js';
+import { useTextEntry } from '../../focus.js';
 import { fitGridColumns } from './columnFit.js';
 import { documentValue } from './rowDocument.js';
 
@@ -381,6 +382,8 @@ export function ResultTable({
     // State
     const [mode, setMode] = useState<TableMode>('browse');
     const [filter, setFilter] = useState<FilterState>({ term: '', column: null });
+
+    useTextEntry(mode === 'filter');
     const [sort, setSort] = useState<SortState | null>(initialSort);
     const [scrollOffset, setScrollOffset] = useState(0);
     const [internalRow, setInternalRow] = useState(0);

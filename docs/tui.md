@@ -207,6 +207,10 @@ either way.
 | `Escape` | Go back / Cancel |
 | `Ctrl+C` | Quit |
 
+While a text field is taking input (a form field in edit mode, a search box,
+the SQL editor), `Shift+L`, `Shift+Q`, `?`, `D`, and `F` type their character
+instead. They work again once you leave the field.
+
 
 ### Cancelling a Database Operation
 

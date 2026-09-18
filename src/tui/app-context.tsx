@@ -232,10 +232,6 @@ export interface AppContextValue {
     setExploreFilter: (category: string, filter: ExploreFilterEntry) => void;
     clearExploreFilters: () => void;
 
-    // Global key toggles (for disabling keys in text input contexts)
-    helpKeyEnabled: boolean;
-    setHelpKeyEnabled: (enabled: boolean) => void;
-
     // Actions
     refresh: () => Promise<void>;
     setActiveConfig: (name: string) => Promise<void>;
@@ -311,9 +307,6 @@ export function AppContextProvider({
 
     // Explore filter state
     const [exploreFilters, setExploreFilters] = useState<ExploreFilterState>({});
-
-    // Global key toggles
-    const [helpKeyEnabled, setHelpKeyEnabled] = useState(true);
 
     /**
      * Toggle dry-run mode.
@@ -700,8 +693,6 @@ export function AppContextProvider({
             exploreFilters,
             setExploreFilter,
             clearExploreFilters,
-            helpKeyEnabled,
-            setHelpKeyEnabled,
             refresh,
             setActiveConfig: handleSetActiveConfig,
         }),
@@ -726,7 +717,6 @@ export function AppContextProvider({
             exploreFilters,
             setExploreFilter,
             clearExploreFilters,
-            helpKeyEnabled,
             refresh,
             handleSetActiveConfig,
         ],

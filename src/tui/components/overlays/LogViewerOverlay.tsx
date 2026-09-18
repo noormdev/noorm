@@ -20,7 +20,7 @@ import { Box, Text, useInput } from 'ink';
 
 import type { ReactElement } from 'react';
 
-import { useFocusScope } from '../../focus.js';
+import { useFocusScope, useTextEntry } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
 import { readLogFile } from '../../../core/logger/reader.js';
 import { Spinner } from '../feedback/index.js';
@@ -98,6 +98,8 @@ export function LogViewerOverlay({ onClose }: LogViewerOverlayProps): ReactEleme
     const [searchMode, setSearchMode] = useState(false);
     const [highlightedIndex, setHighlightedIndex] = useState(0);
     const [showDetail, setShowDetail] = useState(false);
+
+    useTextEntry(searchMode);
     const [paused, setPaused] = useState(false);
 
     // Refs

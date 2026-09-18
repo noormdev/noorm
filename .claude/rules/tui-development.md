@@ -174,7 +174,11 @@ if (key.downArrow) {
 
 `GlobalKeyboard` (`src/tui/keyboard.tsx:114`) owns Ctrl+C, Shift+L, Shift+Q, `?`, `D`, and `F`. It deliberately does **not** handle Esc: each screen handles its own, because a global handler fires alongside the screen handler and pops history twice.
 
-`?`, `D`, and `F` only fire when `stack.length <= 1`, so they stay inert while a text input is focused.
+Every one of them but Ctrl+C stands down while a text field is taking keystrokes. A field says so with `useTextEntry(active)` from `src/tui/focus.tsx`, which counts it while `active` is true and uncounts it on blur or unmount; `GlobalKeyboard` reads `isTyping()` at keypress time. The focus stack cannot answer this: a `TextInput` never pushes its own scope, so `stack.length` stays 1 while you type into a screen's only field.
+
+Registered today: `TextInput` (while not `isDisabled`, which also covers `SearchableList` and `FilePicker` search), `SqlInput` (while active), the `LogViewerOverlay` search box, and the `ResultTable` filter box. **A new free-text entry must call `useTextEntry`**, or capital `L`/`Q`/`D`/`F` and `?` typed into it fire their shortcuts.
+
+`?`, `D`, and `F` additionally require `stack.length <= 1`, which keeps them out of nested scopes such as dialogs.
 
 
 ## @inkjs/ui components
@@ -375,7 +379,7 @@ There is no `k` on Home. Secrets belong to a config, so `k` opens them from the 
 | `c` | config list | copy |
 | `c` | DB list | create |
 
-**Global (every screen, via `GlobalKeyboard`):**
+**Global (every screen, via `GlobalKeyboard`; all but `Ctrl+C` inactive while typing in a field):**
 
 | Key | Action |
 |-----|--------|

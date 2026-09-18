@@ -341,6 +341,18 @@ export interface FocusContextValue {
      * Debug: get the full focus stack.
      */
     stack: FocusEntry[];
+
+    /**
+     * Whether a text field is taking keystrokes right now. A function, read at
+     * keypress time, so a field gaining or losing focus re-renders nothing.
+     */
+    isTyping: () => boolean;
+
+    /**
+     * Count a text field as taking keystrokes until the returned function is
+     * called. Use `useTextEntry` rather than calling this directly.
+     */
+    beginTextEntry: () => () => void;
 }
 
 /**
