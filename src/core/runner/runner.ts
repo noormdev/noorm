@@ -37,7 +37,11 @@ import { assertPolicy } from '../policy/index.js';
 import type { Permission } from '../policy/index.js';
 import { computeChecksum, computeChecksumFromContent, computeCombinedChecksum } from './checksum.js';
 import { executeSqlBody } from './mssql-batches.js';
+import { StatementWatcher } from './statement-watcher.js';
 import { Tracker } from './tracker.js';
+import { getSqlErrorMessage } from '../shared/index.js';
+import { OperationAbortedError } from '../shared/abort.js';
+import type { NoormDatabase } from '../shared/index.js';
 import type {
     RunOptions,
     RunContext,
@@ -248,12 +252,14 @@ export async function runFile(
 
     }
 
-    const result = await executeSingleFile(context, filepath, opts, tracker, operationId!);
+    const watcher = createWatcher(context);
+    const result = await executeSingleFile(context, filepath, opts, tracker, operationId!, watcher)
+        .finally(() => watcher.close());
 
     // Finalize operation
     await tracker.finalizeOperation(
         operationId!,
-        result.status === 'failed' ? 'failed' : 'success',
+        result.status === 'failed' || result.error ? 'failed' : 'success',
         Math.round(result.durationMs ?? 0),
         result.checksum,
         result.error,
@@ -589,6 +595,61 @@ const DEFAULT_RUN_OPTIONS_INTERNAL = {
     output: null as string | null,
 };
 
+/** Error and skip reason for a run stopped by `context.signal`. */
+const RUN_CANCELLED = 'Run cancelled';
+
+function createWatcher(context: RunContext): StatementWatcher<NoormDatabase> {
+
+    return new StatementWatcher(context.db, {
+        dialect: context.dialect ?? 'postgres',
+        signal: context.signal,
+    });
+
+}
+
+/** Returned by `runWatched` when the run was cancelled before the file's SQL was sent. */
+const NOT_STARTED = Symbol('not-started');
+
+/**
+ * Execute a file's SQL through the watcher.
+ *
+ * The connection checkout sits outside `executeSqlBody`'s own error handling,
+ * so its failure is turned into the file's error here rather than escaping the
+ * batch unfinalized. A file the watcher refused to start is not a failure.
+ */
+async function runWatched(
+    context: RunContext,
+    watcher: StatementWatcher<NoormDatabase>,
+    filepath: string,
+    sqlContent: string,
+): Promise<string | null | typeof NOT_STARTED> {
+
+    const [execErrMsg, err] = await attempt(() =>
+        watcher.run(filepath, context.db, (conn) => executeSqlBody({ ...context, db: conn }, sqlContent)),
+    );
+
+    if (err instanceof OperationAbortedError) return NOT_STARTED;
+
+    return err ? getSqlErrorMessage(err) : execErrMsg;
+
+}
+
+async function skipRemaining(tracker: Tracker, operationId: number, reason: string): Promise<void> {
+
+    const skipErr = await tracker.skipRemainingFiles(operationId, reason.slice(0, 100));
+
+    if (skipErr) {
+
+        observer.emit('error', {
+            source: 'runner:skip-remaining',
+            error: new Error(skipErr),
+            context: { operationId },
+        });
+
+    }
+
+}
+
 /**
  * Execute multiple files with tracking.
  *
@@ -745,48 +806,75 @@ export async function executeFiles(
     // Execute files sequentially (concurrency is typically 1 for DDL safety)
     const results: FileResult[] = [];
     let failed = false;
+    let cancelled = false;
+    const watcher = createWatcher(context);
 
-    for (let i = 0; i < files.length; i++) {
+    try {
 
-        const file = files[i]!;
-        const fileRecord = fileRecords[i]!;
+        for (let i = 0; i < files.length; i++) {
 
-        const result = await executeSingleFileWithUpdate(
-            context,
-            file.path,
-            fileRecord.checksum,
-            opts,
-            tracker,
-            operationId!,
-            execOptions.changeType,
-        );
+            const file = files[i]!;
+            const fileRecord = fileRecords[i]!;
 
-        results.push(result);
+            if (context.signal?.aborted) {
 
-        // Abort on error if configured
-        if (result.status === 'failed' && opts.abortOnError) {
+                failed = true;
+                cancelled = true;
+                await skipRemaining(tracker, operationId!, RUN_CANCELLED);
 
-            failed = true;
-
-            // Mark remaining files as skipped
-            const skipErr = await tracker.skipRemainingFiles(
-                operationId!,
-                `Skipped: failure in ${path.basename(file.path)}`.slice(0, 100),
-            );
-
-            if (skipErr) {
-
-                observer.emit('error', {
-                    source: 'runner:skip-remaining',
-                    error: new Error(skipErr),
-                    context: { operationId: operationId! },
-                });
+                break;
 
             }
 
-            break;
+            const result = await executeSingleFileWithUpdate(
+                context,
+                file.path,
+                fileRecord.checksum,
+                opts,
+                tracker,
+                operationId!,
+                execOptions.changeType,
+                watcher,
+            );
+
+            // Refused before its SQL was sent: its pending row is skipped with the rest.
+            if (!result) {
+
+                failed = true;
+                cancelled = true;
+                await skipRemaining(tracker, operationId!, RUN_CANCELLED);
+
+                break;
+
+            }
+
+            results.push(result);
+
+            // A last file that finished despite the abort (mssql, sqlite, or a
+            // cancel that missed) completed the run; nothing was cut short.
+            cancelled = (context.signal?.aborted ?? false)
+                && (i < files.length - 1 || result.status === 'failed');
+
+            if (cancelled || (result.status === 'failed' && opts.abortOnError)) {
+
+                failed = true;
+
+                await skipRemaining(
+                    tracker,
+                    operationId!,
+                    cancelled ? RUN_CANCELLED : `Skipped: failure in ${path.basename(file.path)}`,
+                );
+
+                break;
+
+            }
 
         }
+
+    }
+    finally {
+
+        await watcher.close();
 
     }
 
@@ -831,7 +919,7 @@ export async function executeFiles(
         finalStatus,
         Math.round(durationMs),
         combinedChecksum,
-        failed ? results.find((r) => r.status === 'failed')?.error : undefined,
+        cancelled ? RUN_CANCELLED : failed ? results.find((r) => r.status === 'failed')?.error : undefined,
     );
 
     if (finalizeErr) {
@@ -852,6 +940,7 @@ export async function executeFiles(
         filesFailed,
         durationMs,
         changeId: operationId,
+        error: cancelled ? RUN_CANCELLED : undefined,
     };
 
 }
@@ -909,7 +998,8 @@ async function executeSingleFileWithUpdate(
     tracker: Tracker,
     operationId: number,
     changeType: ChangeType,
-): Promise<FileResult> {
+    watcher: StatementWatcher<NoormDatabase>,
+): Promise<FileResult | null> {
 
     const start = performance.now();
 
@@ -1004,7 +1094,9 @@ async function executeSingleFileWithUpdate(
     }
 
     // Execute SQL (MSSQL splits on `GO` batches; other dialects run as one)
-    const execErrMsg = await executeSqlBody(context, sqlContent);
+    const execErrMsg = await runWatched(context, watcher, filepath, sqlContent);
+
+    if (execErrMsg === NOT_STARTED) return null;
 
     const durationMs = performance.now() - start;
 
@@ -1080,6 +1172,7 @@ async function executeSingleFile(
     options: Required<Omit<RunOptions, 'output'>> & { output: string | null },
     tracker: Tracker,
     operationId: number,
+    watcher: StatementWatcher<NoormDatabase>,
 ): Promise<FileResult> {
 
     const start = performance.now();
@@ -1191,9 +1284,23 @@ async function executeSingleFile(
     }
 
     // Execute SQL (MSSQL splits on `GO` batches; other dialects run as one)
-    const execErrMsg = await executeSqlBody(context, sqlContent);
+    const execErrMsg = await runWatched(context, watcher, filepath, sqlContent);
 
     const durationMs = performance.now() - start;
+
+    if (execErrMsg === NOT_STARTED) {
+
+        await tracker.recordExecution({
+            changeId: operationId,
+            filepath: relFilepath,
+            checksum,
+            status: 'skipped',
+            skipReason: RUN_CANCELLED,
+        });
+
+        return { filepath, checksum, status: 'skipped', error: RUN_CANCELLED };
+
+    }
 
     if (execErrMsg) {
 

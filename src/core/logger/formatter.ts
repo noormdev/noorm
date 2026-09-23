@@ -21,6 +21,7 @@ const MESSAGE_TEMPLATES: Record<string, (data: Record<string, unknown>) => strin
             ? `Executed ${d['filepath']} (${d['durationMs']}ms)`
             : `Failed ${d['filepath']}: ${d['error']}`,
     'file:skip': (d) => `Skipped ${d['filepath']} (${d['reason']})`,
+    'file:progress': (d) => `Still running ${d['filepath']} (${Math.round(Number(d['elapsedMs']) / 1000)}s)`,
 
     // Change
     'change:start': (d) =>

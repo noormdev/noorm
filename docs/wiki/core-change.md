@@ -1,64 +1,151 @@
 ---
 type: Domain
-description: Versioned database changes — scaffold, parse, execute, revert, and track history
+description: Versioned database changes, scaffold, parse, execute/revert with checksum skip, and history
+tags: [core, change-management, sql-execution]
 ---
 
 # core-change
 
 ## What it does
 
-Manages versioned database changes: scaffold (create/add/remove/rename/reorder change files on disk), parse (discover + validate change folders), execute (forward/revert with checksum-based skip detection), and history (per-change and per-file execution records).
+Changes are versioned, forward/revert SQL migrations tracked by checksum, so a change (or a single file inside it) that already ran with an unchanged checksum is skipped rather than re-executed. That makes `noorm change ff` safe to run repeatedly without re-applying finished work, and lets a database recover from a partial failure without an operator manually diagnosing what already happened.
 
-A change directory holds a `change/` folder, an optional `revert/` folder, an optional `changelog.md`, and SQL or `.txt` manifest files. Execution state is stored in the `__noorm_change__` and `__noorm_executions__` tables ([`src/core/shared/tables.ts`](../../src/core/shared/tables.ts)).
+## How it works
 
-## CLI code
+`executeChange` and `revertChange` ([`src/core/change/executor.ts`](../../src/core/change/executor.ts)) are the entry points every caller (CLI, TUI, SDK, RPC) funnels through.
 
-- [`src/cli/change/index.ts`](../../src/cli/change/index.ts) — registers the `change` command group: `add|edit|ff|list|next|rm|run|revert|history|rewind|history-detail`
-- [`src/cli/change/_prompt.ts`](../../src/cli/change/_prompt.ts) — shared interactive change-name pickers (`selectChangeFromFs`, `selectChangeFromStatus`, `requireTty`) used across the offline (add/edit/rm) and DB-aware (run/revert/rewind/history-detail) commands
-- [`src/cli/change/add.ts`](../../src/cli/change/add.ts) — offline; scaffolds a new change via `createChange`
-- [`src/cli/change/edit.ts`](../../src/cli/change/edit.ts) — offline; spawns `$EDITOR`/`$VISUAL`/`code` against the change folder
-- [`src/cli/change/rm.ts`](../../src/cli/change/rm.ts) — offline; gates on `change:rm` via `checkConfigPolicy` (not `assertPolicy`), then calls `deleteChange`
-- [`src/cli/change/run.ts`](../../src/cli/change/run.ts) — applies one named change
-- [`src/cli/change/next.ts`](../../src/cli/change/next.ts) — applies the next N pending changes
-- [`src/cli/change/ff.ts`](../../src/cli/change/ff.ts) — fast-forward: applies all pending changes; warns rather than fails when the changes directory is missing
-- [`src/cli/change/revert.ts`](../../src/cli/change/revert.ts) — reverts one applied change
-- [`src/cli/change/rewind.ts`](../../src/cli/change/rewind.ts) — reverts applied changes back to (and including) a named change
-- [`src/cli/change/list.ts`](../../src/cli/change/list.ts) — lists all changes with status; an orphaned change appends `, orphaned` inside the same parenthetical (e.g. `myname (success, orphaned)`)
-- [`src/cli/change/history.ts`](../../src/cli/change/history.ts) — combined change/revert execution history
-- [`src/cli/change/history-detail.ts`](../../src/cli/change/history-detail.ts) — per-file history for one change's operations
+`executeChange` passes the policy gate, the content gate, and the checksum gate before a lock is taken. `revertChange` has a different gate pair: the `hasRevertFiles` throw, then `tracker.canRevert`, which checks status rather than checksum.
 
-## Docs
+```mermaid
+flowchart TD
+    %% source: src/core/change/executor.ts
+    A[executeChange] --> B{assertChangePolicy}
+    B -->|denied| X[throw]
+    B -->|allowed| C[validateChange / hasRevertFiles]
+    C --> D{"files.length === 0"}
+    D -->|yes| X2[throw]
+    D -->|no| E["validateFilesHaveContent (hasExecutableSql gate)"]
+    E --> F[computeCombinedChecksum]
+    F --> G{needsRun / canRevert}
+    G -->|no| H["emit change:skip"]
+    G -->|yes| I["lockManager.acquire"]
+    I --> J[executeFiles]
+    J --> K["lockManager.release"]
+```
 
-- [`docs/dev/change.md`](../dev/change.md) — developer reference for change internals
-- [`docs/guide/changes/overview.md`](../guide/changes/overview.md) — user-facing: what changes are
-- [`docs/guide/changes/forward-revert.md`](../guide/changes/forward-revert.md) — forward and revert semantics
-- [`docs/guide/changes/history.md`](../guide/changes/history.md) — history querying
-- [`docs/cli/run.md`](../cli/run.md) — run command docs for `noorm run` (build/file/dir/files/exec); a separate command family from `noorm change`
+A change directory holds a `change/` folder, an optional `revert/` folder, an optional `changelog.md`, and SQL or `.txt` manifest files. Execution state lives in the `__noorm_change__` and `__noorm_executions__` tables.
+
+### Dry-run and preview bypass the run gate
+
+`opts.dryRun`/`opts.preview` are checked before `history.needsRun`/`tracker.canRevert` (`executor.ts:174`), so both modes render every file's SQL regardless of whether the change already ran:
+
+```mermaid
+flowchart TD
+    %% source: src/core/change/executor.ts
+    A[executeChange] --> B{dryRun or preview}
+    B -->|dryRun| C[executeDryRun]
+    B -->|preview| D[executePreview]
+    B -->|neither| E["continues to needsRun gate"]
+```
+
+### File execution and the statement watcher
+
+`executeFiles` picks a path by dialect: non-transactional dialects run `runFileBatch` directly against `context.db`; Postgres (`TRANSACTIONAL_DIALECTS` in `executor.ts`) wraps the same batch in `context.db.transaction()` so a failed change leaves neither DDL nor history rows behind, surfacing the failure only through the returned `ChangeResult` (unwrapped from a thrown `ChangeRollback` sentinel).
+
+`executeFiles` creates one `StatementWatcher` per call and passes it into `runFileBatch`; each file's SQL runs through `watcher.run(file.path, executor, (conn) => sql.raw(sqlContent).execute(conn))`. The watcher is closed in a `finally` on the non-transactional path and explicitly after the transaction settles on Postgres.
+
+```mermaid
+flowchart TD
+    %% source: src/core/change/executor.ts
+    A[executeFiles] --> B[new StatementWatcher]
+    B --> C{TRANSACTIONAL_DIALECTS.has dialect}
+    C -->|no| D["runFileBatch(context.db)"]
+    C -->|yes, postgres| E["context.db.transaction(...)"]
+    D --> F["watcher.close (finally)"]
+    E --> G["watcher.close (after settle)"]
+```
+
+Inside the transaction, `batchResult.status !== 'success'` is the rollback trigger.
+
+### Per-file skip on retry
+
+Per file inside `runFileBatch`, `history.needsRunFile` can still skip a file whose checksum already succeeded, even when the overall change checksum changed because a sibling file needed fixing:
+
+```mermaid
+flowchart TD
+    %% source: src/core/change/executor.ts, src/core/change/history.ts
+    A["for each expanded file"] --> B{needsRunFile}
+    B -->|no| C["record status: skipped"] --> A
+    B -->|yes| D[loadAndRenderFile]
+    D -->|error| E["record failed, break loop"]
+    D -->|ok| F["watcher.run(file.path, executor, ...)"]
+    F -->|error| G["record failed, break loop"]
+    F -->|ok| H["record success"] --> A
+```
+
+### Change lifecycle
+
+A change's `OperationStatus` moves between `pending`, `success`, `failed`, `reverted`, and `stale`, computed by `ChangeManager`/`ChangeHistory` from `__noorm_change__`/`__noorm_executions__` rows. `isPendingChange` ([`src/core/change/types.ts`](../../src/core/change/types.ts)) treats only `pending`, `reverted`, and `stale` as "needs a forward run" for `ff`/`next`, and only when the item is not orphaned; `failed` re-applies only through an explicit run, via `needsRun`'s own `failed` branch.
+
+```mermaid
+stateDiagram-v2
+    [*] --> pending
+    pending --> success: executeChange
+    success --> reverted: revertChange
+    reverted --> success: executeChange
+    success --> stale: teardown (ChangeTracker.markAllAsStale)
+    stale --> success: executeChange
+    pending --> failed: SQL failure
+    reverted --> failed: SQL failure
+    stale --> failed: SQL failure
+    failed --> success: executeChange (retry)
+    success --> failed: SQL failure (re-run on changed checksum)
+    success --> success: executeChange (checksum changed, re-run)
+    pending --> stale: teardown (ChangeTracker.markAllAsStale)
+    failed --> stale: teardown (ChangeTracker.markAllAsStale)
+    failed --> reverted: revertChange
+    %% source: src/core/change/types.ts, src/core/change/tracker.ts, src/core/change/history.ts
+```
+
+`ChangeTracker.markAllAsStale` (`tracker.ts:245`) flips every `success`, `failed`, and `pending` row to `stale` on teardown, not only `success` rows. `revertChange` marks the original as `reverted` only when the revert itself succeeds (`tracker.ts:171-172`, `executor.ts:411`), so a `failed` change can still be reverted (`canRevert` allows it) and the revert's own success is what moves the record to `reverted`.
+
+`orphaned` is not a status: it is a boolean on `ChangeListItem`, set when a change has DB rows but no folder on disk. Because of the Postgres rollback above, a failed run there leaves the stored status at its prior value.
+
+## Where it lives
+
+| Path | Responsibility |
+|------|-----------------|
+| [`src/core/change/executor.ts`](../../src/core/change/executor.ts) | `executeChange`/`revertChange` entry points; policy gate; per-dialect transactional dispatch; `StatementWatcher` wiring; dry-run and preview modes |
+| [`src/core/change/manager.ts`](../../src/core/change/manager.ts) | `ChangeManager`, public API combining parser, history, and executor (`list`, `run`, `next`, `ff`, `revert`, `rewind`) |
+| [`src/core/change/parser.ts`](../../src/core/change/parser.ts) | `parseChange`/`discoverChanges`, scans a change folder, validates structure, resolves `.txt` manifests, parses sequence/date prefixes |
+| [`src/core/change/scaffold.ts`](../../src/core/change/scaffold.ts) | Creates/deletes/renames/reorders change files and folders on disk |
+| [`src/core/change/tracker.ts`](../../src/core/change/tracker.ts) | `ChangeTracker` (extends `Tracker`), `canRevert`, `markAsReverted`, `markAllAsStale` |
+| [`src/core/change/history.ts`](../../src/core/change/history.ts) | `ChangeHistory`, `needsRun`/`needsRunFile`, operation/file record CRUD, `hydrateDate` UTC normalization |
+| [`src/core/change/types.ts`](../../src/core/change/types.ts) | `Change`, `ChangeContext`, `ChangeOptions`, `ChangeResult`, error classes, `isPendingChange` |
+| [`src/core/change/validation.ts`](../../src/core/change/validation.ts) | `validateChangeContent`/`SQL_TEMPLATE`, used only by TUI pre-flight checks, not by the executor's own content gate |
+| [`src/cli/change/index.ts`](../../src/cli/change/index.ts) | `change` command group registration (`add`, `edit`, `rm`, `run`, `next`, `ff`, `revert`, `rewind`, `list`, `history`, `history-detail`) |
+| [`src/cli/change/_prompt.ts`](../../src/cli/change/_prompt.ts) | Shared interactive change-name picker helper used across the CLI commands, not a command itself |
+| `tests/core/change/*.test.ts` | Executor, manager, tracker, history, parser, scaffold, and type-contract tests, plus `executor-retry.test.ts` for per-file skip-on-retry |
+
+## Constraints
+
+- Only Postgres (`TRANSACTIONAL_DIALECTS` in `executor.ts`) wraps a change's file execution in a database transaction. MySQL's DDL implicitly commits, MSSQL's GO-batch execution is unverified under a wrapping transaction, and SQLite is excluded so per-file partial success (used by unit tests) keeps working. On MySQL, MSSQL, and SQLite, a change failing partway leaves earlier files' DDL applied and their history rows persisted, since nothing rolls either back.
+- `executor.ts`'s pre-execution content gate (`hasExecutableSql`, preceded by the `files.length === 0` throw) checks for any non-blank, non-`--`-comment line; it does not call `validateChangeContent` from `validation.ts`, which is a stale check still used only by the TUI's `ChangeFFScreen`/`ChangeRunScreen`. A stub worded to pass `validateChangeContent` can still fail the executor's own gate, so TUI pre-flight and `noorm change run` can disagree about whether a change is runnable.
+- `createChange` always scaffolds a stub file into both `change/` and `revert/`. An empty `change/`+`revert/` pair fails `parseChange`'s validation (`scaffold.ts:146-149`), and without the stub the caller sees that misreported as "change not found" instead of "needs editing".
+- Change directory names follow `YYYY-MM-DD-<slugified-description>`; a name without a date prefix parses with `date: null`, and `discoverChanges` sorts by raw name (`a.name.localeCompare(b.name)`, `parser.ts:215`), so an undated `add-users` sorts after every `2024-...` change and moves in `ff`/`next` order. Files inside are ordered by `filename.localeCompare` (`parser.ts:440`), not by parsed sequence number, so an unpadded sequence prefix (`2_foo.sql` before `10_bar.sql`) sorts and runs out of numeric order.
+- `ChangeHistory.needsRunFile` bounds its lookback at the most recent opposite-direction operation, so a prior success only licenses a per-file skip while no revert/re-apply has happened since. It also retires a prior success once the parent operation's own status is `reverted` or `stale` (`history.ts:494-509`); without both conditions, every apply -> revert -> apply cycle silently no-ops its files instead of re-running them.
+- `RESET_MARKER = '__reset__'` is a reserved change name written by `ChangeHistory.recordReset` for teardown audit rows. A user change named `__reset__` collides with it: `getAllStatuses` filters that name out, so the change disappears from `change list` even though it still shows in `getHistory`/`getUnifiedHistory`.
+- `history.ts`'s `hydrateDate` normalizes `executed_at` to UTC for Postgres/MySQL (reinterpreted field-by-field) and SQLite (text with `Z` appended); MSSQL is left unmodified on purpose, because its driver's behavior was never measured. On a host whose local zone isn't UTC, MSSQL's `executed_at` can render in the TUI's relative-time display shifted by the host's UTC offset.
+- Add a new status to `isPendingChange` only. An inlined copy of the check drifts, and `ff` then reports success while work is still outstanding.
+- `DEFAULT_OPTIONS`/`DEFAULT_BATCH` in `executor.ts`/`manager.ts` duplicate `DEFAULT_CHANGE_OPTIONS`/`DEFAULT_BATCH_OPTIONS` from `types.ts` rather than importing them, so a default changed in `types.ts` does not reach `executeChange`/`ChangeManager`.
+- Change runs get `file:progress` reports but no server-side cancel: `executeFiles` passes no `signal` into `new StatementWatcher(...)` (`executor.ts:477`), so a running change cannot be aborted mid-file the way a runner-driven run with a signal can.
 
 ## Coupling
 
-- Calls `runner`'s checksum utilities (`computeChecksum`, `computeCombinedChecksum` from [`src/core/runner/checksum.ts`](../../src/core/runner/checksum.ts)) — checksum algorithm changes propagate here.
-- `ChangeTracker` ([`src/core/change/tracker.ts`](../../src/core/change/tracker.ts)) extends `Tracker` from [`src/core/runner/tracker.ts`](../../src/core/runner/tracker.ts) — base tracker changes affect revert/stale logic.
-- Reads config via [`src/core/config/`](../../src/core/config) to resolve the active database connection — config schema changes affect `ChangeContext` construction.
-- Emits `change:*` events (`change:start`, `change:file`, `change:complete`, `change:skip`, `change:created`, `file:dry-run`) via [`src/core/observer.ts`](../../src/core/observer.ts) — the TUI's `useChangeProgress` hook ([`src/tui/hooks/useChangeProgress.ts`](../../src/tui/hooks/useChangeProgress.ts)) subscribes, consumed by `ChangeNextScreen`, `ChangeFFScreen`, `ChangeRevertScreen`, `ChangeRewindScreen`, `ChangeRunScreen` under [`src/tui/screens/change/`](../../src/tui/screens/change).
-- Writes to `__noorm_change__` and `__noorm_executions__` tables defined in [`src/core/shared/tables.ts`](../../src/core/shared/tables.ts) — table renames propagate to executor and history queries.
-- `executeChange`/`revertChange` call `assertPolicy` from [`src/core/policy/`](../../src/core/policy) before executing, gated on `change:run`/`change:revert`; [`src/cli/change/rm.ts`](../../src/cli/change/rm.ts) gates `change:rm` separately via `checkConfigPolicy` — `ChangeContext` carries `access`/`channel` for the gate; policy-matrix changes in [`src/core/policy/matrix.ts`](../../src/core/policy/matrix.ts) affect which roles can run/revert/rm changes.
-- `ChangeTracker.markAllAsStale` is called from [`src/core/teardown/operations.ts`](../../src/core/teardown/operations.ts) (core-db domain) after a teardown, to mark applied changes as needing re-application.
-- [`src/sdk/namespaces/changes.ts`](../../src/sdk/namespaces/changes.ts) wraps `ChangeManager` and the scaffold functions for the programmatic SDK — SDK's `Changes` namespace API shape changes with `ChangeManager`'s public methods.
-- [`src/rpc/commands/changes.ts`](../../src/rpc/commands/changes.ts) exposes change operations (e.g. `change_history`) as MCP/RPC commands, delegating to `ctx.noorm.changes` — same SDK surface as above.
-- CLI commands in [`src/cli/change/`](../../src/cli/change) call `ChangeManager` + scaffold functions directly — `ChangeManager`/scaffold signature changes require CLI command updates.
-
-## Conventions worth knowing
-
-- Change directory names follow `YYYY-MM-DD-<slugified-description>` (`DATE_PREFIX_REGEX` in `parser.ts`); a name without a date prefix is parsed with `date: null` and the whole name as `description`.
-- Change files are ordered by 3-digit sequence prefix: `NNN_description.{sql,sql.tmpl,txt}` (`SEQUENCE_REGEX`); `.txt` files are manifests referencing other SQL files, resolved in the manifest's own line order (not re-sorted).
-- `createChange` always scaffolds one stub file into `change/` and one into `revert/` (`CHANGE_STUB_TEMPLATE` / `REVERT_STUB_TEMPLATE` in `scaffold.ts`) — an empty `change/`+`revert/` pair fails `parseChange`'s validation, so the stub exists purely so the change is runnable immediately.
-- `executor.ts`'s pre-execution content gate (`hasExecutableSql`) checks for any non-blank, non-`--`-comment line — it does not call `validateChangeContent` from `validation.ts`. `validation.ts`'s `SQL_TEMPLATE` constant (`'-- TODO: Add SQL statements here\n'`) is a stale exact-match check no longer used at the executor seam; it is still imported and called only by the TUI's `ChangeFFScreen.tsx` and `ChangeRunScreen.tsx` for pre-flight UI checks.
-- `DEFAULT_CHANGE_OPTIONS` and `DEFAULT_BATCH_OPTIONS` (`types.ts`) define `force`/`dryRun`/`preview`/`output`/`abortOnError` defaults; `executor.ts` and `manager.ts` each keep their own local copy of the same defaults (`DEFAULT_OPTIONS`, `DEFAULT_BATCH`).
-- Error classes (`ChangeValidationError`, `ChangeNotFoundError`, `ChangeAlreadyAppliedError`, `ChangeNotAppliedError`, `ChangeOrphanedError`, `ManifestReferenceError`) extend `Error` with a `name` and structured fields; callers distinguish failure modes by class, not a `code` field.
-- Only Postgres wraps a change's file execution in a DB transaction (`TRANSACTIONAL_DIALECTS` in `executor.ts`): MySQL's DDL implicitly commits, MSSQL's GO-batch execution hasn't been verified to compose with a wrapping transaction, and SQLite is excluded so per-file partial success (used by unit tests) keeps working. On a failed Postgres change, neither the DDL nor its history rows persist — the caller still sees the failure via the returned `ChangeResult`, unwrapped from a thrown `ChangeRollback` sentinel.
-- `history.ts`'s `hydrateDate` normalizes `executed_at` to UTC: Postgres and MySQL drivers (`pg`, `mysql2`) parse the naive `timestamp`/`datetime2` column in the host's local zone, so their `Date` values are reinterpreted field-by-field as UTC; SQLite returns text and is parsed by appending `Z`. MSSQL (`tedious`) is deliberately left unmodified — not measured, left as-is to avoid a correction in the wrong direction.
-- `ChangeStatus`/`ChangeListItem` carry `appliedHistoryId?: number | null` — the `__noorm_change__` row's autoincrement id, used as the true apply-order tiebreaker (over second-precision `appliedAt`) in `ChangeManager.rewind()`.
-- `ChangeHistory.needsRunFile` excludes `pending` and `skipped` execution rows from its lookback, and bounds the lookback at the most recent opposite-direction operation's id — a prior success only licenses a per-file skip while no revert/re-apply has happened since.
-- `RESET_MARKER = '__reset__'` is a reserved change name: `ChangeHistory.recordReset` writes a `db teardown` audit row under this name so it appears in `getHistory`/`getUnifiedHistory`, but `getAllStatuses` explicitly filters it out so it never appears in `change list`.
-- `isPendingChange` (types.ts) is the single shared predicate for "needs a forward run" (`pending`, `reverted`, or `stale` status, and not orphaned) — used by `ChangeManager.next`/`ff` and the CLI's interactive pickers; the file's own doc comment warns this predicate must be updated everywhere at once when a new status is added.
+- **core-runner** ([`src/core/runner/`](../../src/core/runner)): `executeFiles` creates one `StatementWatcher` per call and runs every file's SQL through `watcher.run(...)`; the watcher's lifecycle, dialect probes, and cancel semantics belong there ([`src/core/runner/statement-watcher.ts`](../../src/core/runner/statement-watcher.ts)). Also calls `computeChecksum`/`computeCombinedChecksum` from [`src/core/runner/checksum.ts`](../../src/core/runner/checksum.ts), checksum algorithm changes propagate here. `ChangeTracker` extends `Tracker` from [`src/core/runner/tracker.ts`](../../src/core/runner/tracker.ts), base tracker changes affect revert/stale logic. Also pulls `processFile`/`isTemplate` from [`src/core/template/`](../../src/core/template) to render templated SQL files before execution.
+- **core-policy** ([`src/core/policy/`](../../src/core/policy)): `executeChange`/`revertChange` call `assertPolicy`, gated on `change:run`/`change:revert`; [`src/cli/change/rm.ts`](../../src/cli/change/rm.ts) gates `change:rm` separately via `checkConfigPolicy`. Policy-matrix changes in [`src/core/policy/matrix.ts`](../../src/core/policy/matrix.ts) affect which roles can run/revert/rm changes.
+- **core-state** ([`src/core/observer.ts`](../../src/core/observer.ts)): emits `change:*` events (`change:start`, `change:file`, `change:complete`, `change:skip`, `change:created`, `file:dry-run`) through the shared observer.
+- **core-db**: writes to `__noorm_change__` and `__noorm_executions__` tables; `ChangeTracker.markAllAsStale` is called from [`src/core/teardown/operations.ts`](../../src/core/teardown/operations.ts) after a teardown.
+- **tui**: the `useChangeProgress` hook ([`src/tui/hooks/useChangeProgress.ts`](../../src/tui/hooks/useChangeProgress.ts)) subscribes to the watcher's `file:progress` event, consumed by the `Change*Screen` components under [`src/tui/screens/change/`](../../src/tui/screens/change). Those screens import `ChangeHistory`, `discoverChanges`, and `validateChangeContent` directly for read-only status and pre-flight checks.
+- **sdk**: [`src/sdk/namespaces/changes.ts`](../../src/sdk/namespaces/changes.ts) wraps `ChangeManager` and the scaffold functions for the programmatic SDK.
+- **mcp-rpc**: [`src/rpc/commands/changes.ts`](../../src/rpc/commands/changes.ts) exposes change operations as MCP/RPC commands through the same SDK surface.

@@ -53,3 +53,6 @@ export type {
 } from './types.js';
 
 export { DEFAULT_RUN_OPTIONS } from './types.js';
+
+// Statement watcher
+export type { OperationProgress } from './statement-probes.js';

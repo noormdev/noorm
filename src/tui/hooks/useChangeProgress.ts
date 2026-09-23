@@ -1,9 +1,9 @@
 /**
  * Hook for tracking change execution progress via observer events.
  *
- * Subscribes to change:start, change:complete, and change:file events,
- * maintaining state for results list, current change name, progress
- * counter, and per-file progress.
+ * Subscribes to change:start, change:complete, change:file, and file:progress
+ * events, maintaining state for results list, current change name, progress
+ * counter, per-file progress, and the running file's server report.
  *
  * @example
  * ```tsx
@@ -15,6 +15,7 @@
 import { useState, useCallback } from 'react';
 
 import type { StatusListItem } from '../components/lists/index.js';
+import type { NoormEvents } from '../../core/observer.js';
 import { useOnEvent } from './useObserver.js';
 
 /**
@@ -36,6 +37,9 @@ export interface ChangeProgressState {
     /** File-level progress within current change */
     fileProgress: { current: number; total: number };
 
+    /** Latest server report on the current file, once it has run past the watch delay */
+    statement: NoormEvents['file:progress'] | null;
+
     /** Reset state for a new batch with given total */
     reset: (total: number) => void;
 }
@@ -43,7 +47,7 @@ export interface ChangeProgressState {
 /**
  * Track change execution progress via observer events.
  *
- * Subscribes to change:start, change:complete, and change:file,
+ * Subscribes to change:start, change:complete, change:file, and file:progress,
  * returning reactive state that updates as changes execute.
  *
  * @example
@@ -66,6 +70,7 @@ export function useChangeProgress(): ChangeProgressState {
     const [progress, setProgress] = useState({ current: 0, total: 0 });
     const [currentFile, setCurrentFile] = useState('');
     const [fileProgress, setFileProgress] = useState({ current: 0, total: 0 });
+    const [statement, setStatement] = useState<NoormEvents['file:progress'] | null>(null);
 
     useOnEvent('change:start', (data) => {
 
@@ -86,6 +91,7 @@ export function useChangeProgress(): ChangeProgressState {
         ]);
 
         setProgress((prev) => ({ ...prev, current: prev.current + 1 }));
+        setStatement(null);
 
     }, []);
 
@@ -93,6 +99,13 @@ export function useChangeProgress(): ChangeProgressState {
 
         setCurrentFile(data.filepath);
         setFileProgress({ current: data.index + 1, total: data.total });
+        setStatement(null);
+
+    }, []);
+
+    useOnEvent('file:progress', (data) => {
+
+        setStatement(data);
 
     }, []);
 
@@ -103,9 +116,10 @@ export function useChangeProgress(): ChangeProgressState {
         setProgress({ current: 0, total });
         setCurrentFile('');
         setFileProgress({ current: 0, total: 0 });
+        setStatement(null);
 
     }, []);
 
-    return { results, currentChange, progress, currentFile, fileProgress, reset };
+    return { results, currentChange, progress, currentFile, fileProgress, statement, reset };
 
 }

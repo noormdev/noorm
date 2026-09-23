@@ -14,7 +14,7 @@
  * noorm run build     # Opens this screen
  * ```
  */
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { ProgressBar } from '@inkjs/ui';
 import { join, relative } from 'path';
@@ -25,13 +25,20 @@ import type { ScreenProps } from '../../types.js';
 import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useSettings, useGlobalModes, useAppContext } from '../../app-context.js';
-import { Panel, Spinner, SmartConfirm, useToast } from '../../components/index.js';
-import { useRunProgress, useAsyncEffect } from '../../hooks/index.js';
+import { Panel, Spinner, SmartConfirm, StatementProgress, useToast } from '../../components/index.js';
+import { useRunProgress, useAsyncEffect, useDoublePress, DOUBLE_PRESS_WINDOW_MS } from '../../hooks/index.js';
 import { getEffectiveBuildPaths } from '../../../core/settings/rules.js';
 import { discoverFiles, runBuild } from '../../../core/runner/index.js';
 import { filterFilesByPaths, findUnmatchedIncludePatterns } from '../../../core/shared/index.js';
 import { checkConfigPolicy } from '../../../core/policy/index.js';
-import { getErrorMessage, resolveScreenIdentity, buildRunContext, withScreenConnection, progressPercentage } from '../../utils/index.js';
+import {
+    getErrorMessage,
+    resolveScreenIdentity,
+    buildRunContext,
+    withScreenConnection,
+    progressPercentage,
+    runCancelMessage,
+} from '../../utils/index.js';
 import { attempt } from '@logosdx/utils';
 
 type Phase = 'loading' | 'confirm' | 'running' | 'complete' | 'error';
@@ -49,8 +56,11 @@ export function RunBuildScreen({ params: _params }: ScreenProps): ReactElement {
     const check = activeConfig ? checkConfigPolicy('user', activeConfig, 'run:build') : null;
     const { showToast } = useToast();
     const { state: progress, reset: resetProgress } = useRunProgress();
+    const runController = useRef<AbortController | null>(null);
+    const confirmCancel = useDoublePress();
 
     const [phase, setPhase] = useState<Phase>('loading');
+    const [cancelling, setCancelling] = useState(false);
     const [files, setFiles] = useState<string[]>([]);
     const [sqlPath, setSqlPath] = useState<string>('');
     const [error, setError] = useState<string | null>(null);
@@ -123,8 +133,11 @@ export function RunBuildScreen({ params: _params }: ScreenProps): ReactElement {
         if (!activeConfig || !activeConfigName || !stateManager) return;
 
         setPhase('running');
+        setCancelling(false);
         resetProgress(files.length);
 
+        const controller = new AbortController();
+        runController.current = controller;
         const projectRoot = process.cwd();
 
         // Resolve identity
@@ -148,7 +161,7 @@ export function RunBuildScreen({ params: _params }: ScreenProps): ReactElement {
                 };
 
                 // Run build with filtered files
-                await runBuild(context, sqlPath, options, files);
+                await runBuild({ ...context, signal: controller.signal }, sqlPath, options, files);
 
             },
         );
@@ -184,7 +197,18 @@ export function RunBuildScreen({ params: _params }: ScreenProps): ReactElement {
 
             if (phase === 'running') {
 
-                showToast({ message: 'Cannot cancel running build', variant: 'warning' });
+                if (cancelling) return;
+
+                if (!confirmCancel()) {
+
+                    showToast({ message: 'Press Esc again to cancel the build', variant: 'warning', duration: DOUBLE_PRESS_WINDOW_MS });
+
+                    return;
+
+                }
+
+                runController.current?.abort();
+                setCancelling(true);
 
                 return;
 
@@ -389,6 +413,8 @@ export function RunBuildScreen({ params: _params }: ScreenProps): ReactElement {
                             </Box>
                         )}
 
+                        {progress.statement && <StatementProgress report={progress.statement} />}
+
                         <Box marginTop={1} width={50}>
                             <ProgressBar value={progressValue} />
                         </Box>
@@ -411,6 +437,12 @@ export function RunBuildScreen({ params: _params }: ScreenProps): ReactElement {
                         </Box>
                     </Box>
                 </Panel>
+
+                <Box flexWrap="wrap" columnGap={2}>
+                    {cancelling
+                        ? <Text color="yellow">{runCancelMessage(activeConfig.connection.dialect)}</Text>
+                        : <Text dimColor>[Esc Esc] Cancel</Text>}
+                </Box>
             </Box>
         );
 

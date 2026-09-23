@@ -236,6 +236,15 @@ PostgreSQL runs a multi-statement file as-is, in one implicit transaction. SQLit
 For the gory details on what the runner does under the hood, see [MSSQL Batch Handling](/dev/runner#mssql-batch-handling).
 
 
+## Long-Running Files
+
+A file that is still running after 10 seconds gets a status report every 10 seconds until it finishes: elapsed time, the progress the database reports for the running command (an index build's phase and block count, for example), and any session it is waiting on for a lock. That tells a slow file apart from a stuck one. The TUI shows the report under the running file, and the log records a `Still running <file> (Ns)` line with the full report attached.
+
+The report comes from a second pooled connection, opened only when a file first passes 10 seconds and kept until the run ends. With `connection.pool.max: 1` there is no second connection to take, so reports carry elapsed time only. Behind a transaction-mode pooler (PgBouncer transaction mode, RDS Proxy, Supabase port 6543) the report can describe the wrong session; connect directly for builds you want to watch.
+
+To cancel a build from the TUI, see [Long-Running Files](/tui#long-running-files).
+
+
 ## Summary
 
 | Command | Purpose |
