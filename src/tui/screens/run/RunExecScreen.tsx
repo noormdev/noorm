@@ -15,7 +15,7 @@
  * noorm run exec     # Opens this screen
  * ```
  */
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { Box, Text } from 'ink';
 import { ProgressBar } from '@inkjs/ui';
 import { join, relative } from 'path';
@@ -25,10 +25,26 @@ import type { ScreenProps } from '../../types.js';
 
 import { useRouter } from '../../router.js';
 import { useSettings, useGlobalModes, useAppContext } from '../../app-context.js';
-import { Panel, Spinner, SelectList, type SelectListItem, Confirm, KeyHandler, useToast } from '../../components/index.js';
-import { useRunProgress, useAsyncEffect, modeBannerRows } from '../../hooks/index.js';
+import {
+    Panel,
+    Spinner,
+    SelectList,
+    type SelectListItem,
+    Confirm,
+    KeyHandler,
+    StatementProgress,
+    useToast,
+} from '../../components/index.js';
+import { useRunProgress, useAsyncEffect, useDoublePress, DOUBLE_PRESS_WINDOW_MS, modeBannerRows } from '../../hooks/index.js';
 import { discoverFiles, runFiles } from '../../../core/runner/index.js';
-import { getErrorMessage, resolveScreenIdentity, buildRunContext, withScreenConnection, progressPercentage } from '../../utils/index.js';
+import {
+    getErrorMessage,
+    resolveScreenIdentity,
+    buildRunContext,
+    withScreenConnection,
+    progressPercentage,
+    runCancelMessage,
+} from '../../utils/index.js';
 import { attempt } from '@logosdx/utils';
 
 type Phase = 'loading' | 'picker' | 'confirm' | 'running' | 'complete' | 'error';
@@ -45,8 +61,11 @@ export function RunExecScreen({ params: _params }: ScreenProps): ReactElement {
     const globalModes = useGlobalModes();
     const { showToast } = useToast();
     const { state: progress, reset: resetProgress } = useRunProgress();
+    const runController = useRef<AbortController | null>(null);
+    const confirmCancel = useDoublePress();
 
     const [phase, setPhase] = useState<Phase>('loading');
+    const [cancelling, setCancelling] = useState(false);
     const [allFiles, setAllFiles] = useState<string[]>([]);
     const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
     const [error, setError] = useState<string | null>(null);
@@ -112,7 +131,11 @@ export function RunExecScreen({ params: _params }: ScreenProps): ReactElement {
 
         const filesToRun = Array.from(selectedFiles);
         setPhase('running');
+        setCancelling(false);
         resetProgress(filesToRun.length);
+
+        const controller = new AbortController();
+        runController.current = controller;
 
         // Resolve identity
         const identity = resolveScreenIdentity(cryptoIdentity);
@@ -133,7 +156,7 @@ export function RunExecScreen({ params: _params }: ScreenProps): ReactElement {
                 };
 
                 // Run all files as a single batch operation
-                await runFiles(context, filesToRun, options);
+                await runFiles({ ...context, signal: controller.signal }, filesToRun, options);
 
             },
         );
@@ -147,9 +170,32 @@ export function RunExecScreen({ params: _params }: ScreenProps): ReactElement {
 
         }
 
+        if (controller.signal.aborted) {
+
+            showToast({ message: 'Run cancelled', variant: 'warning' });
+
+        }
+
         setPhase('complete');
 
-    }, [activeConfig, activeConfigName, stateManager, cryptoIdentity, selectedFiles, globalModes, resetProgress, projectRoot]);
+    }, [activeConfig, activeConfigName, stateManager, cryptoIdentity, selectedFiles, globalModes, resetProgress, projectRoot, showToast]);
+
+    const requestCancel = useCallback(() => {
+
+        if (cancelling) return;
+
+        if (!confirmCancel()) {
+
+            showToast({ message: 'Press Esc again to cancel the run', variant: 'warning', duration: DOUBLE_PRESS_WINDOW_MS });
+
+            return;
+
+        }
+
+        runController.current?.abort();
+        setCancelling(true);
+
+    }, [cancelling, confirmCancel, showToast]);
 
     // Submit selection (Enter in picker)
     const handleSubmit = useCallback(() => {
@@ -320,15 +366,14 @@ export function RunExecScreen({ params: _params }: ScreenProps): ReactElement {
 
         return (
             <Box flexDirection="column" gap={1}>
-                <KeyHandler
-                    focusLabel="RunExecRunning"
-                    onEscape={() => showToast({ message: 'Cannot cancel running files', variant: 'warning' })}
-                />
+                <KeyHandler focusLabel="RunExecRunning" onEscape={requestCancel} />
                 <Panel title="Running Files" paddingX={1} paddingY={1}>
                     <Box flexDirection="column" gap={1}>
                         {progress.currentFile && (
                             <Text dimColor>{progress.currentFile.split('/').pop()}</Text>
                         )}
+
+                        {progress.statement && <StatementProgress report={progress.statement} />}
 
                         <Box width={50}>
                             <ProgressBar value={progressValue} />
@@ -341,6 +386,12 @@ export function RunExecScreen({ params: _params }: ScreenProps): ReactElement {
                         </Box>
                     </Box>
                 </Panel>
+
+                <Box flexWrap="wrap" columnGap={2}>
+                    {cancelling
+                        ? <Text color="yellow">{runCancelMessage(activeConfig.connection.dialect)}</Text>
+                        : <Text dimColor>[Esc Esc] Cancel</Text>}
+                </Box>
             </Box>
         );
 

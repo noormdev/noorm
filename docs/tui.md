@@ -241,6 +241,31 @@ keypress. Raise `connection.connectTimeoutMs` for a link that is slow but
 working.
 
 
+### Long-Running Files
+
+A file that runs longer than 10 seconds gets a status block under its name,
+refreshed every 10 seconds, on the run screens (Build, Exec, Dir, File) and the
+change screens (Run, Revert, Fast Forward, Next, Rewind):
+
+```
+Current:  06_items.sql
+Running for 17m05s  pid 4412
+CREATE INDEX on items · building index: loading tuples · 4210/9800 (42%)  2 parallel workers
+Waiting on pid 4411 (CREATE INDEX items_embedding ..., 17m04s) · Lock: transactionid
+```
+
+The third line appears when the server reports progress for the running
+command (index builds, `VACUUM`, `CLUSTER`, `COPY`, `ANALYZE` on PostgreSQL;
+`percent_complete` on SQL Server; stage counters on MySQL). The fourth appears when the file is waiting
+on another session's lock. SQLite shows elapsed time only.
+
+On Run Build and Run Exec, `Escape` pressed once shows a warning; pressed again
+within 2 seconds it cancels the run. No further file starts. On PostgreSQL and
+MySQL the running statement is cancelled on the server; on SQL Server and
+SQLite it finishes first, and the screen says so. Leaving the screen does not
+cancel the run.
+
+
 ## Screen Reference
 
 

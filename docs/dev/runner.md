@@ -279,6 +279,7 @@ An empty file (or one that contains only comments after stripping `GO`s) is trea
 | `file:before` | `{ filepath, checksum, configName }` | About to execute a file |
 | `file:after` | `{ filepath, status, durationMs, error? }` | File execution completed |
 | `file:skip` | `{ filepath, reason }` | File skipped; `reason` is `'unchanged'` or `'already-run'` |
+| `file:progress` | `{ filepath, elapsedMs, sessionId, status }` | File still running past the watch delay; repeats every watch interval. See [Long-Running Statements](#long-running-statements) |
 | `file:dry-run` | `{ filepath, status, outputPath?, error? }` | File rendered to `tmp/` (or failed to render) |
 
 ```typescript
@@ -298,6 +299,75 @@ observer.on('build:complete', ({ filesRun, filesSkipped, durationMs }) => {
 
     console.log(`Build complete: ${filesRun} run, ${filesSkipped} skipped in ${durationMs}ms`)
 })
+```
+
+
+## Long-Running Statements
+
+A file runs as one call, so from the client a 20-minute `CREATE INDEX` and a file queued behind another session's lock look the same. `StatementWatcher` ([`src/core/runner/statement-watcher.ts`](../../src/core/runner/statement-watcher.ts)) tells them apart by asking the server. The runner routes every file's SQL through it with one watcher per run; the change executor uses one watcher per change.
+
+A file that finishes inside 10 seconds costs one extra query (its session id) and nothing else. A file that runs longer gets a report every 10 seconds until it ends:
+
+```mermaid
+sequenceDiagram
+    participant R as runner
+    participant W as StatementWatcher
+    participant P as pinned connection
+    participant S as side connection
+    R->>W: run(filepath, db, fn)
+    W->>P: SESSION_ID_SQL
+    W->>P: fn(conn) runs the file
+    Note over W: 10s delay passes
+    W->>S: checkout (first slow file only)
+    loop every 10s until the file ends
+        W->>S: STATEMENT_PROBES[dialect](sessionId)
+        W-->>R: emit file:progress
+    end
+    P-->>W: file done, timer cleared
+    R->>W: close() at end of run returns S to the pool
+```
+
+The file is pinned with `db.connection()` so the session id read first is the session the SQL runs on. A transaction executor (postgres changes) is already one connection and runs as is. The side connection comes from the same pool, is checked out only when a file first runs long, and is held until `close()` so later slow files reuse it.
+
+`status` in the event is what the server reported:
+
+| Dialect | Source | Reports |
+|---------|--------|---------|
+| postgres | `pg_stat_activity`, `pg_blocking_pids()`, `pg_stat_progress_{create_index,vacuum,cluster,copy,analyze}` | state, wait event, blockers with query and age, parallel workers, phase and done/total |
+| mssql | `sys.dm_exec_requests` | status, wait type, blocking session, `percent_complete` |
+| mysql | `information_schema.processlist`, `sys.innodb_lock_waits`, `sys.schema_table_lock_waits`, `performance_schema.events_stages_current` | thread state, blockers, stage done/estimated |
+| sqlite | none | `status` is null; elapsed time only |
+
+Each part of a probe is attempted on its own. A missing privilege (`VIEW SERVER STATE` on mssql, the `sys` schema on mysql) drops that part of the report, not the report.
+
+What bites:
+
+| Condition | Effect |
+|-----------|--------|
+| Pool has no spare connection (`connection.pool.max: 1`) | The side checkout waits 5 seconds, then the watcher gives it up for the rest of the run: reports carry elapsed time only and cancel stops only between files. A checkout that arrives after its file ended, or after the watcher gave up, is returned to the pool at once |
+| Transaction-mode pooler (PgBouncer `pool_mode = transaction`, RDS Proxy, Supabase port 6543) | The session-id read and the file can land on different backends. Reports can describe another client's session and a cancel can stop another client's statement. Point noorm at the database directly, or at a session-mode pooler |
+| Postgres change on a transaction | The file already runs on the change's transaction, so no second pin happens; the side connection is still a separate pooled session |
+
+### Cancellation
+
+Aborting `RunContext.signal` stops the run. The runner starts no further file, marks the remaining ones skipped, and returns `error: 'Run cancelled'`. What happens to the file already running depends on the dialect:
+
+| Dialect | Running file |
+|---------|--------------|
+| postgres | `pg_cancel_backend(pid)` from the side connection; the file fails and its implicit transaction rolls back |
+| mysql | `KILL QUERY id` from the side connection |
+| mssql | Runs to completion. Kysely's `MssqlDialect` never exposes tedious's `Request`, and `KILL` would end the session, not the request |
+| sqlite | Runs to completion. It is in-process on one connection, so there is no second session to send a cancel from |
+
+A file the signal aborted before its SQL was sent does not start, and is skipped with the rest. The pinned connection goes back to the pool only after an in-flight cancel returns, so a cancel that lands late cannot hit the next query on that session. A last file that completes despite the abort leaves the run successful, because nothing was cut short.
+
+The session-id queries and the cancel table live in [`src/core/connection/session.ts`](../../src/core/connection/session.ts), shared with the SQL terminal's cancel.
+
+```typescript
+const controller = new AbortController();
+
+const result = await runBuild({ ...context, signal: controller.signal }, sqlPath);
+// elsewhere: controller.abort();
 ```
 
 
@@ -520,6 +590,7 @@ interface RunContext {
     config?: Record<string, unknown>        // Config object for template context
     secrets?: Record<string, string>        // Config-scoped secrets
     globalSecrets?: Record<string, string>  // Global secrets from state
+    signal?: AbortSignal                    // abort to cancel the run
 }
 ```
 

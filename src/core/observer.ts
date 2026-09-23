@@ -27,6 +27,7 @@ import type { TransferEvents } from './transfer/events.js';
 import type { DtEvents } from './dt/events.js';
 import type { LogLevel } from './logger/types.js';
 import type { TruncateResult, TeardownResult } from './teardown/types.js';
+import type { StatementStatus } from './runner/statement-probes.js';
 import { isDebug } from './environment.js';
 
 /**
@@ -66,6 +67,17 @@ export interface NoormEvents extends SettingsEvents, UpdateEvents, VaultEvents, 
         error?: string;
     };
     'file:skip': { filepath: string; reason: 'unchanged' | 'already-run' };
+    /**
+     * A file has run past the watch delay. Repeats every watch interval until
+     * it finishes. `status` is null when the dialect has no probe (sqlite) or
+     * the server could not be asked.
+     */
+    'file:progress': {
+        filepath: string;
+        elapsedMs: number;
+        sessionId: number | null;
+        status: StatementStatus | null;
+    };
     'file:dry-run': {
         filepath: string;
         status: 'success' | 'failed';

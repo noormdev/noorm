@@ -117,6 +117,13 @@ export interface RunContext {
 
     /** Global secrets for template context */
     globalSecrets?: Record<string, string>;
+
+    /**
+     * Aborting stops the run: the server is asked to cancel the running
+     * statement (postgres, mysql), and no further file starts. On dialects
+     * without a server-side cancel the current file runs to completion first.
+     */
+    signal?: AbortSignal;
 }
 
 // ─────────────────────────────────────────────────────────────

@@ -56,12 +56,13 @@ export type {
 } from './dialogs/index.js';
 
 // Status
-export { LockStatus, ConnectionStatus, isDatabaseNotFoundError } from './status/index.js';
+export { LockStatus, ConnectionStatus, isDatabaseNotFoundError, StatementProgress } from './status/index.js';
 export type {
     LockStatusProps,
     LockStatusType,
     ConnectionStatusProps,
     ConnectionStatusType,
+    StatementProgressProps,
 } from './status/index.js';
 
 // Secrets

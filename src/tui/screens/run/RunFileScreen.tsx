@@ -18,7 +18,7 @@ import type { ScreenProps } from '../../types.js';
 
 import { useRouter } from '../../router.js';
 import { useSettings, useGlobalModes, useAppContext } from '../../app-context.js';
-import { Panel, Spinner, Confirm, SearchableList, KeyHandler, useToast } from '../../components/index.js';
+import { Panel, Spinner, Confirm, SearchableList, KeyHandler, StatementProgress, useToast } from '../../components/index.js';
 import { useRunProgress, useAsyncEffect, modeBannerRows } from '../../hooks/index.js';
 import { discoverFiles, runFile, checkFilesStatus } from '../../../core/runner/index.js';
 import type { FilesStatusResult } from '../../../core/runner/index.js';
@@ -536,7 +536,10 @@ export function RunFileScreen({ params }: ScreenProps): ReactElement {
                     onCancel={cancelExecution}
                 />
                 <Panel title="Running File" paddingX={1} paddingY={1}>
-                    <Spinner label={`Executing ${displayPath}...`} />
+                    <Box flexDirection="column" gap={1}>
+                        <Spinner label={`Executing ${displayPath}...`} />
+                        {progress.statement && <StatementProgress report={progress.statement} />}
+                    </Box>
                 </Panel>
                 <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[Esc] Cancel</Text>
