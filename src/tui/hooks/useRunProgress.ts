@@ -30,6 +30,7 @@
 import { useState, useCallback } from 'react';
 
 import { useOnEvent } from './useObserver.js';
+import type { NoormEvents } from '../../core/observer.js';
 
 /**
  * Phase of the run operation.
@@ -71,6 +72,9 @@ export interface RunProgressState {
     /** Currently executing file (or null if between files) */
     currentFile: string | null;
 
+    /** Latest server report on the current file, once it has run past the watch delay */
+    statement: NoormEvents['file:progress'] | null;
+
     /** Total number of files to process */
     filesTotal: number;
 
@@ -105,6 +109,7 @@ export interface RunProgressState {
 const INITIAL_STATE: RunProgressState = {
     phase: 'idle',
     currentFile: null,
+    statement: null,
     filesTotal: 0,
     filesRun: 0,
     filesSkipped: 0,
@@ -168,6 +173,20 @@ export function useRunProgress(): UseRunProgressReturn {
             setState((prev) => ({
                 ...prev,
                 currentFile: data.filepath,
+                statement: null,
+            }));
+
+        },
+        [],
+    );
+
+    useOnEvent(
+        'file:progress',
+        (data) => {
+
+            setState((prev) => ({
+                ...prev,
+                statement: data,
             }));
 
         },
@@ -195,6 +214,7 @@ export function useRunProgress(): UseRunProgressReturn {
                     filesFailed: prev.filesFailed + (isSuccess ? 0 : 1),
                     results: [...prev.results, result],
                     currentFile: null,
+                    statement: null,
                 };
 
             });
@@ -268,6 +288,7 @@ export function useRunProgress(): UseRunProgressReturn {
                 status: data.status,
                 durationMs: data.durationMs,
                 currentFile: null,
+                statement: null,
                 error: data.error ?? null,
             }));
 

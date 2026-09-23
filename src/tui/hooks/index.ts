@@ -66,6 +66,7 @@ export {
 export { useAsyncEffect } from './useAsyncEffect.js';
 
 export { useAbortableTask, type AbortableTask } from './useAbortableTask.js';
+export { useDoublePress, DOUBLE_PRESS_WINDOW_MS } from './useDoublePress.js';
 
 export {
     useViewportRows,

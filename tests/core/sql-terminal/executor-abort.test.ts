@@ -17,8 +17,8 @@ import {
     executeRawSql,
     executeRawSqlUnchecked,
     hasServerSideCancel,
-    readSessionId,
 } from '../../../src/core/sql-terminal/executor.js';
+import { readSessionId } from '../../../src/core/connection/session.js';
 import { DEFAULT_ACCESS } from '../../../src/core/policy/index.js';
 import type { ConnectionResult } from '../../../src/core/connection/types.js';
 

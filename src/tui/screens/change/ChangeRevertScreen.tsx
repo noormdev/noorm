@@ -30,6 +30,7 @@ import {
     StatusMessage,
     SmartConfirm,
     MissingParamPanel,
+    StatementProgress,
 } from '../../components/index.js';
 import { checkConfigPolicy } from '../../../core/policy/index.js';
 import { useChangeProgress, useAsyncEffect } from '../../hooks/index.js';
@@ -63,7 +64,7 @@ export function ChangeRevertScreen({ params }: ScreenProps): ReactElement {
 
     const changeName = params.name;
 
-    const { currentFile, fileProgress } = useChangeProgress();
+    const { currentFile, fileProgress, statement } = useChangeProgress();
 
     const [step, setStep] = useState<RevertStep>('loading');
     const [change, setChange] = useState<Change | null>(null);
@@ -297,6 +298,8 @@ export function ChangeRevertScreen({ params }: ScreenProps): ReactElement {
                         {fileProgress.current}/{fileProgress.total} files
                         {currentFile && ` - ${currentFile.split('/').pop()}`}
                     </Text>
+
+                    {statement && <StatementProgress report={statement} />}
                 </Box>
             </Panel>
         );

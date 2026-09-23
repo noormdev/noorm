@@ -34,6 +34,7 @@ import { assertPolicy } from '../policy/index.js';
 import type { Permission } from '../policy/index.js';
 import type { Dialect } from '../connection/types.js';
 import { computeChecksum, computeCombinedChecksum } from '../runner/checksum.js';
+import { StatementWatcher } from '../runner/statement-watcher.js';
 import { getSqlErrorMessage } from '../shared/index.js';
 import type { NoormDatabase } from '../shared/index.js';
 import { getLockManager } from '../lock/index.js';
@@ -473,6 +474,7 @@ async function executeFiles(
 
     const dialect = context.dialect ?? 'postgres';
     const expandedFiles = await expandFiles(files, context.sqlDir);
+    const watcher = new StatementWatcher(context.db, { dialect });
 
     if (!TRANSACTIONAL_DIALECTS.has(dialect)) {
 
@@ -486,7 +488,8 @@ async function executeFiles(
             history,
             context.db,
             startTime,
-        );
+            watcher,
+        ).finally(() => watcher.close());
 
     }
 
@@ -514,6 +517,7 @@ async function executeFiles(
                 trxHistory,
                 trx,
                 startTime,
+                watcher,
             );
 
             if (batchResult.status !== 'success') {
@@ -526,6 +530,8 @@ async function executeFiles(
 
         }),
     );
+
+    await watcher.close();
 
     if (err) {
 
@@ -563,6 +569,7 @@ async function runFileBatch(
     history: ChangeHistory,
     executor: Kysely<NoormDatabase>,
     startTime: number,
+    watcher: StatementWatcher<NoormDatabase>,
 ): Promise<ChangeResult> {
 
     // Create operation record
@@ -746,7 +753,9 @@ async function runFileBatch(
             }
 
             // Execute SQL
-            const [, execErr] = await attempt(() => sql.raw(sqlContent).execute(executor));
+            const [, execErr] = await attempt(() =>
+                watcher.run(file.path, executor, (conn) => sql.raw(sqlContent).execute(conn)),
+            );
 
             const durationMs = performance.now() - fileStart;
 

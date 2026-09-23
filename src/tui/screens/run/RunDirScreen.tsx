@@ -19,7 +19,7 @@ import type { ScreenProps } from '../../types.js';
 
 import { useRouter } from '../../router.js';
 import { useSettings, useGlobalModes, useAppContext } from '../../app-context.js';
-import { Panel, Spinner, Confirm, SelectList, FilePicker, KeyHandler, useToast } from '../../components/index.js';
+import { Panel, Spinner, Confirm, SelectList, FilePicker, KeyHandler, StatementProgress, useToast } from '../../components/index.js';
 import { useRunProgress, useAsyncEffect, modeBannerRows } from '../../hooks/index.js';
 import { discoverFiles, runFiles, checkFilesStatus } from '../../../core/runner/index.js';
 import type { FilesStatusResult } from '../../../core/runner/index.js';
@@ -701,6 +701,8 @@ export function RunDirScreen({ params }: ScreenProps): ReactElement {
                         {progress.currentFile && (
                             <Text dimColor>{progress.currentFile.split('/').pop()}</Text>
                         )}
+
+                        {progress.statement && <StatementProgress report={progress.statement} />}
 
                         <Box width={50}>
                             <ProgressBar value={progressValue} />

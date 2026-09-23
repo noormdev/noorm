@@ -29,6 +29,7 @@ import {
     StatusMessage,
     SmartConfirm,
     StatusList,
+    StatementProgress,
 } from '../../components/index.js';
 import { checkConfigPolicy } from '../../../core/policy/index.js';
 import { useChangeProgress, useAsyncEffect } from '../../hooks/index.js';
@@ -63,7 +64,7 @@ export function ChangeFFScreen({ params: _params }: ScreenProps): ReactElement {
     const { activeConfig, activeConfigName, projectRoot, settings, stateManager, identity: cryptoIdentity, globalModes } = useAppContext();
     const check = activeConfig ? checkConfigPolicy('user', activeConfig, 'change:ff') : null;
 
-    const { results, currentChange, progress, reset: resetProgress } = useChangeProgress();
+    const { results, currentChange, progress, statement, reset: resetProgress } = useChangeProgress();
 
     const [step, setStep] = useState<FFStep>('loading');
     const [pendingChanges, setPendingChanges] = useState<ChangeListItem[]>([]);
@@ -310,6 +311,8 @@ export function ChangeFFScreen({ params: _params }: ScreenProps): ReactElement {
                         {progress.current}/{progress.total}
                         {currentChange && ` - ${currentChange}`}
                     </Text>
+
+                    {statement && <StatementProgress report={statement} />}
 
                     {results.length > 0 && (
                         <Box marginTop={1}>
