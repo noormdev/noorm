@@ -1,5 +1,15 @@
 # @noormdev/sdk
 
+## 1.4.2
+
+### Patch Changes
+
+- bca3052: Say why a database connection failed: refused port, unknown host, timeout, rejected TLS certificate, disabled, locked, or expired account, missing grant, connection limit, missing password, and SQLite file or directory faults. Where the server withholds the reason (SQL Server 18456, PostgreSQL 28P01, MySQL 1045), the message says so and lists the usual causes. Exhausted retries report the server's last error. `connection:error` log entries carry `serverCode` and `serverMessage`.
+- bca3052: Let MSSQL logins without server-level access connect. Connecting no longer detours through `master` to look the target up in `sys.databases`, so contained database users (the usual account on Azure SQL Database) and logins without `VIEW ANY DATABASE` can connect, and the config add/edit connection test passes for them. A database that is missing, or that the login cannot open, now fails with that reason instead of "Login failed".
+- 8e8df92: Stop TUI lists from leaving stale rows on screen when two rows share an identity: explore indexes and foreign keys whose names repeat across tables (SQL Server's `IX_UserId`, MySQL's `PRIMARY`), PostgreSQL function and procedure overloads, and settings rules with the same description. `listFunctions` and `listProcedures` now return a `signature` on PostgreSQL that tells overloads apart.
+
+## 1.4.1
+
 ## 1.4.0
 
 ## 1.3.0
