@@ -1,5 +1,17 @@
 # @noormdev/sdk
 
+## 1.5.0
+
+### Minor Changes
+
+- d9b9efd: Show what a long-running SQL file is doing. After 10 seconds the runner asks the server about the file's session every 10 seconds, from a second pooled connection, and emits `file:progress`: elapsed time, the command's own progress (PostgreSQL `pg_stat_progress_*`, SQL Server `percent_complete`, MySQL stage counters), and the sessions it is waiting on. The TUI run and change screens render it under the running file, and the log records it. Build and exec runs in the TUI cancel on a second `Escape` within 2 seconds; PostgreSQL and MySQL stop the running statement on the server.
+
+### Patch Changes
+
+- d8398bd: Say why a database connection failed: refused port, unknown host, timeout, rejected TLS certificate, disabled, locked, or expired account, missing grant, connection limit, missing password, and SQLite file or directory faults. Where the server withholds the reason (SQL Server 18456, PostgreSQL 28P01, MySQL 1045), the message says so and lists the usual causes. Exhausted retries report the server's last error. `connection:error` log entries carry `serverCode` and `serverMessage`.
+- d8398bd: Let MSSQL logins without server-level access connect. Connecting no longer detours through `master` to look the target up in `sys.databases`, so contained database users (the usual account on Azure SQL Database) and logins without `VIEW ANY DATABASE` can connect, and the config add/edit connection test passes for them. A database that is missing, or that the login cannot open, now fails with that reason instead of "Login failed".
+- d799b13: Stop TUI lists from leaving stale rows on screen when two rows share an identity: explore indexes and foreign keys whose names repeat across tables (SQL Server's `IX_UserId`, MySQL's `PRIMARY`), PostgreSQL function and procedure overloads, and settings rules with the same description. `listFunctions` and `listProcedures` now return a `signature` on PostgreSQL that tells overloads apart.
+
 ## 1.4.2
 
 ### Patch Changes
