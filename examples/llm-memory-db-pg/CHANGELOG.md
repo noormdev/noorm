@@ -1,5 +1,12 @@
 # @noormdev/example-llm-memory-db-pg
 
+## 0.0.11
+
+### Patch Changes
+
+- Updated dependencies [0fcc257]
+  - @noormdev/sdk@1.5.1
+
 ## 0.0.10
 
 ### Patch Changes
