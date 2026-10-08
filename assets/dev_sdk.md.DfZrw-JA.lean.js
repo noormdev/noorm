@@ -1,0 +1,1 @@
+import{_ as i,o as a,c as t,a6 as e}from"./chunks/framework.ZMCvXf1_.js";const o=JSON.parse('{"title":"noorm SDK","description":"","frontmatter":{},"headers":[],"relativePath":"dev/sdk.md","filePath":"dev/sdk.md"}'),n={name:"dev/sdk.md"};function h(l,s,k,p,r,d){return a(),t("div",null,[...s[0]||(s[0]=[e("",273)])])}const E=i(n,[["render",h]]);export{o as __pageData,E as default};
