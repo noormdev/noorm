@@ -16,7 +16,7 @@ import { BunSqliteDatabase } from '../../../src/core/connection/dialects/sqlite-
 
 import { observer } from '../../../src/core/observer.js';
 import { OperationAbortedError } from '../../../src/core/shared/abort.js';
-import { runFiles } from '../../../src/core/runner/runner.js';
+import { runFile, runFiles } from '../../../src/core/runner/runner.js';
 import { StatementWatcher } from '../../../src/core/runner/statement-watcher.js';
 import { v1 } from '../../../src/core/version/schema/migrations/v1.js';
 import type { NoormDatabase } from '../../../src/core/shared/index.js';
@@ -237,6 +237,45 @@ describe('runner: run cancellation', () => {
         expect(result.error).toBe('Run cancelled');
         expect(result.files).toHaveLength(1);
         expect(result.filesFailed).toBe(0);
+
+    });
+
+    it('should report success when the cancel lands after the last file that runs, before an unchanged one', async () => {
+
+        await runFiles(buildContext(new AbortController().signal), files);
+        await writeFile(files[0]!, 'CREATE TABLE cancel_a2 (id INTEGER PRIMARY KEY);\n', 'utf-8');
+
+        const controller = new AbortController();
+        const stop = observer.on('file:after', ({ filepath }) => {
+
+            if (filepath === files[0]) controller.abort();
+
+        });
+
+        const result = await runFiles(buildContext(controller.signal), files);
+        stop();
+
+        expect(result.status).toBe('success');
+        expect(result.error).toBeUndefined();
+        expect(result.files.map((f) => f.status)).toEqual(['success', 'skipped']);
+
+    });
+
+    it('should skip and finalize the operation as cancelled when runFile gets an aborted signal', async () => {
+
+        const controller = new AbortController();
+        controller.abort();
+
+        const result = await runFile(buildContext(controller.signal), files[0]!);
+
+        const { rows } = await sql<{ status: string; error_message: string }>`
+            SELECT status, error_message FROM __noorm_change__
+        `.execute(db);
+
+        expect(result.status).toBe('skipped');
+        expect(result.error).toBe('Run cancelled');
+        expect(await tableExists('cancel_a')).toBe(false);
+        expect(rows).toEqual([{ status: 'failed', error_message: 'Run cancelled' }]);
 
     });
 

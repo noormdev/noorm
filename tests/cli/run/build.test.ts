@@ -145,12 +145,8 @@ describe('cli: noorm run build — per-file error and skip surfacing', () => {
 
 describe('cli: noorm run build — skip-on-rerun (CP10, v1/49-54)', () => {
 
-    // Previously untestable: `executeFiles` creates an upfront 'pending'
-    // execution record for every file before `needsRun` ever runs, and
-    // `needsRun` picked the newest row by id -- always that same pending
-    // record -- so it always read as 'new'. Checksum-based skipping was
-    // structurally unreachable for build/dir/files. Fixed by excluding the
-    // running operation's own rows from the `needsRun` lookup.
+    // Each build is a separate CLI process, so the skip must come from the
+    // previous build's rows; re-running unchanged DDL fails the second build.
 
     let project: TestProject;
 
@@ -255,8 +251,6 @@ describe('cli: noorm run build — skip-on-rerun (CP10, v1/49-54)', () => {
         const first = runCli(project, ['run', 'build']);
         expect(first.status).toBe(0);
 
-        // A content change is a different checksum, distinct from the
-        // upfront-pending-row bug CP10 fixes.
         await writeFile(
             filePath,
             'CREATE TABLE noorm_build_changed_b (id INTEGER PRIMARY KEY);\n',

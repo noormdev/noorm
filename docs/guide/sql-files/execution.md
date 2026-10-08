@@ -145,10 +145,10 @@ noorm maintains two tables in your database to track execution history. On Postg
 | `filepath` | File that was executed, relative to the project root |
 | `checksum` | SHA-256 of the SQL that actually ran (the rendered output for a `.sql.tmpl`) |
 | `status` | `'pending'`, `'success'`, `'failed'`, `'skipped'` |
-| `skip_reason` | `'unchanged'` when change detection skipped it, or `Skipped: failure in <file>` when an earlier file in the batch failed |
+| `skip_reason` | `Skipped: failure in <file>` when an earlier file in the batch failed |
 | `duration_ms` | Execution time |
 
-Every file in a batch gets a `'pending'` row before the first one executes, so an interrupted build still shows you what it was going to do. Rows move to their final status as the run proceeds.
+Every file that will run gets a `'pending'` row before the first one executes, so an interrupted build still shows you what it was going to do. Rows move to their final status as the run proceeds. A file that change detection skips gets no row.
 
 These tables let noorm answer: "Has this exact file content been executed before, and did it succeed?"
 

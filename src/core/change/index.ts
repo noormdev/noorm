@@ -56,6 +56,7 @@ export type {
     // Change detection
     ChangeRunReason,
     NeedsRunResult,
+    FileExecutionRecord,
 
     // Scaffold
     CreateChangeOptions,
@@ -109,7 +110,7 @@ export {
 // History & Tracking
 // ─────────────────────────────────────────────────────────────
 
-export { ChangeHistory } from './history.js';
+export { ChangeHistory, decideNeedsRunFile } from './history.js';
 export { ChangeTracker, type CanRevertResult } from './tracker.js';
 
 // ─────────────────────────────────────────────────────────────

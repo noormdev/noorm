@@ -8,7 +8,7 @@
  */
 import type { Kysely } from 'kysely';
 
-import type { NoormDatabase, ExecutionStatus } from '../shared/index.js';
+import type { NoormDatabase, ExecutionStatus, OperationStatus } from '../shared/index.js';
 import type { Identity } from '../identity/index.js';
 import type { Channel, ConfigAccess } from '../policy/index.js';
 
@@ -280,6 +280,16 @@ export interface NeedsRunResult {
     previousChecksum?: string;
 }
 
+/**
+ * Newest execution row for a file, joined to its parent change.
+ */
+export interface ExecutionRecord {
+    checksum: string;
+    exec_status: ExecutionStatus;
+    skip_reason: string;
+    change_status: OperationStatus;
+}
+
 // ─────────────────────────────────────────────────────────────
 // Operation Types (Shared by Runner and Change)
 // ─────────────────────────────────────────────────────────────
@@ -313,9 +323,6 @@ export interface FileInput {
 
     /** File type */
     type: 'sql' | 'txt';
-
-    /** Pre-computed checksum (optional, computed if not provided) */
-    checksum?: string;
 }
 
 /**
@@ -365,32 +372,6 @@ export interface CreateOperationData {
 
     /** Identity string */
     executedBy: string;
-}
-
-/**
- * Data for recording a file execution.
- */
-export interface RecordExecutionData {
-    /** Parent operation ID */
-    changeId: number;
-
-    /** File path */
-    filepath: string;
-
-    /** File checksum */
-    checksum: string;
-
-    /** Execution status */
-    status: ExecutionStatus;
-
-    /** Skip reason if skipped */
-    skipReason?: string;
-
-    /** Error message if failed */
-    errorMessage?: string;
-
-    /** Duration in milliseconds */
-    durationMs?: number;
 }
 
 // ─────────────────────────────────────────────────────────────

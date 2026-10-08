@@ -38,7 +38,7 @@ import { StatementWatcher } from '../runner/statement-watcher.js';
 import { getSqlErrorMessage } from '../shared/index.js';
 import type { NoormDatabase } from '../shared/index.js';
 import { getLockManager } from '../lock/index.js';
-import { ChangeHistory } from './history.js';
+import { ChangeHistory, decideNeedsRunFile } from './history.js';
 import { ChangeTracker } from './tracker.js';
 import { resolveManifest, validateChange, hasRevertFiles } from './parser.js';
 import type {
@@ -572,7 +572,18 @@ async function runFileBatch(
     watcher: StatementWatcher<NoormDatabase>,
 ): Promise<ChangeResult> {
 
-    // Create operation record
+    const fileChecksums = new Map<string, string>();
+
+    for (const file of expandedFiles) {
+
+        const [cs] = await attempt(() => computeChecksum(file.path));
+        fileChecksums.set(file.path, cs ?? '');
+
+    }
+
+    const skipReasons = await findSkippedFiles(context, change.name, direction, expandedFiles, fileChecksums, force, history);
+
+    // Written even when every file skips: finalizeOperation records the change checksum on it.
     const [operationId, createErr] = await attempt(() =>
         history.createOperation({
             name: change.name,
@@ -593,20 +604,10 @@ async function runFileBatch(
 
     }
 
-    // Compute checksums for all files
-    const fileChecksums = new Map<string, string>();
-
-    for (const file of expandedFiles) {
-
-        const [cs] = await attempt(() => computeChecksum(file.path));
-        fileChecksums.set(file.path, cs ?? '');
-
-    }
-
     // Create pending file records (use relative paths to avoid leaking absolute paths)
     const createRecordsErr = await history.createFileRecords(
         operationId,
-        expandedFiles.map((f) => ({
+        expandedFiles.filter((_, i) => !skipReasons[i]).map((f) => ({
             filepath: path.relative(context.projectRoot, f.path),
             fileType: f.type,
             checksum: fileChecksums.get(f.path) ?? '',
@@ -662,47 +663,17 @@ async function runFileBatch(
             const fileStart = performance.now();
             const relPath = path.relative(context.projectRoot, file.path);
             const fileChecksum = fileChecksums.get(file.path) ?? '';
+            const skipReason = skipReasons[i];
 
-            // Per-file skip: a prior success with a matching checksum means this
-            // file doesn't need to run again, even though the overall change's
-            // checksum differs because another file needed fixing.
-            const needsRunFileResult = await history.needsRunFile(
-                change.name,
-                direction,
-                relPath,
-                fileChecksum,
-                force,
-            );
-
-            if (!needsRunFileResult.needsRun) {
+            if (skipReason) {
 
                 results.push({
                     filepath: file.path,
                     checksum: fileChecksum,
                     status: 'skipped',
-                    skipReason: needsRunFileResult.skipReason,
+                    skipReason,
                     durationMs: 0,
                 });
-
-                const skipUpdateErr = await history.updateFileExecution(
-                    operationId,
-                    relPath,
-                    'skipped',
-                    0,
-                    undefined,
-                    needsRunFileResult.skipReason,
-                );
-
-                if (skipUpdateErr) {
-
-                    // Log but continue - the skip decision itself is sound
-                    observer.emit('error', {
-                        source: 'change',
-                        error: new Error(skipUpdateErr),
-                        context: { filepath: relPath, operation: 'update-skipped-record' },
-                    });
-
-                }
 
                 continue;
 
@@ -913,6 +884,53 @@ async function runFileBatch(
         error: finalStatus === 'failed' ? combinedError : undefined,
         operationId,
     };
+
+}
+
+/**
+ * Skip reason per file, by position in `files`; `undefined` means run.
+ *
+ * Decided per file because a retry after a fix changes the change's
+ * checksum while the files that already succeeded stay applied. A path
+ * repeated through `.txt` manifests runs only at its first position.
+ */
+async function findSkippedFiles(
+    context: ChangeContext,
+    changeName: string,
+    direction: 'change' | 'revert',
+    files: ChangeFile[],
+    fileChecksums: Map<string, string>,
+    force: boolean,
+    history: ChangeHistory,
+): Promise<Array<string | undefined>> {
+
+    const skipReasons: Array<string | undefined> = [];
+    const seen = new Set<string>();
+
+    const [latest, latestErr] = force
+        ? [null, null]
+        : await history.latestFileExecutions(changeName, direction);
+
+    for (const file of files) {
+
+        const relPath = path.relative(context.projectRoot, file.path);
+
+        if (seen.has(relPath)) {
+
+            skipReasons.push('already applied');
+            continue;
+
+        }
+
+        seen.add(relPath);
+
+        const decision = decideNeedsRunFile(latestErr ?? latest?.get(relPath), fileChecksums.get(file.path) ?? '', force);
+
+        skipReasons.push(decision.needsRun ? undefined : decision.skipReason);
+
+    }
+
+    return skipReasons;
 
 }
 

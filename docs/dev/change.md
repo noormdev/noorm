@@ -70,9 +70,25 @@ Changes use checksum-based detection at the change level. Each condition has an 
 | `force` | `--force` flag provided | Run |
 | — | Successfully applied, unchanged | Skip |
 
-Unlike the runner which tracks individual files, changes track the combined checksum of all files in `change/` or `revert/`.
-
 The `stale` status is set by teardown operations that wipe the database. When you run `db:teardown`, all applied changes are marked as stale so they'll re-run on the next `ff` operation.
+
+This check uses the combined checksum of all files in `change/` or `revert/`.
+
+When the change runs, each file gets its own decision, so a retry after a fix re-runs only the files that need it. `ChangeHistory.latestFileExecutions(name, direction)` reads the newest qualifying execution row for every file of the change in two SELECTs, whatever the file count. `decideNeedsRunFile` then judges each file:
+
+| Reason | Condition | Action |
+|--------|-----------|--------|
+| `force` | `--force` flag provided | Run |
+| `new` | No qualifying row, or the lookup failed | Run |
+| `failed` | Last attempt failed | Run |
+| `changed` | File checksum differs | Run |
+| — | Last success has a matching checksum | Skip, `'already applied'` |
+
+A row qualifies only while its success still stands. Rows from a `reverted` or `stale` operation do not count, and neither do rows older than the newest operation in the opposite direction, so apply, revert, apply re-runs every file.
+
+A filepath listed more than once through `.txt` manifests runs at its first position and skips as `'already applied'` at the rest.
+
+A skipped file pushes its `skipped` result and makes no database call. Pending rows are written for the files that will run. The operation row is written even when every file skips, because it records the change checksum.
 
 
 ## Basic Usage
@@ -274,6 +290,8 @@ Change execution is recorded in the same tables as the runner. Names below are t
 | `checksum` | SHA-256 of file contents |
 | `status` | `'pending'`, `'success'`, `'failed'`, `'skipped'` |
 | `duration_ms` | Execution time (integer, not float) |
+
+`skipped` marks a file a failure left unreached. See [Change Detection](#change-detection) for files that get no row.
 
 **Note:** The `duration_ms` column is an integer. `performance.now()` returns floats, so all writes use `Math.round(durationMs)`. This is important for PostgreSQL compatibility.
 
@@ -496,9 +514,10 @@ const marked = await tracker.markAllAsStale()
 ```
 
 The base `Tracker` class (from `core/runner`) provides:
-- `needsRun()` / `needsRunByName()` - Change detection by filepath or name
+- `latestExecutions()` - Newest execution row per filepath, for the batch skip decision
+- `needsRunByName()` - Change detection by change name
 - `createOperation()` - Create operation records with direction
-- `createFileRecords()` - Create pending file records upfront
+- `createFileRecords()` - Create pending records for the files about to run
 - `updateFileExecution()` - Update individual file status
 - `skipRemainingFiles()` - Mark remaining files as skipped
 - `finalizeOperation()` - Complete operation with final status

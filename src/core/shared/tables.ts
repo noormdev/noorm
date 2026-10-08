@@ -307,7 +307,7 @@ export interface NoormExecutionsTable {
     /** Error details (empty = no error) */
     error_message: Generated<string>;
 
-    /** 'unchanged', 'already-run', 'change failed' */
+    /** Why a failure left this file unreached, e.g. 'change failed'; older rows may hold 'unchanged' or 'already applied' */
     skip_reason: Generated<string>;
 
     /** Execution time (0 = never ran) */

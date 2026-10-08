@@ -69,14 +69,14 @@ Inside the transaction, `batchResult.status !== 'success'` is the rollback trigg
 
 ### Per-file skip on retry
 
-Per file inside `runFileBatch`, `history.needsRunFile` can still skip a file whose checksum already succeeded, even when the overall change checksum changed because a sibling file needed fixing:
+`runFileBatch` first calls `findSkippedFiles`, which runs `ChangeHistory.latestFileExecutions(name, direction)` (a boundary SELECT plus one history SELECT) and the pure `decideNeedsRunFile`. A file whose checksum already succeeded skips even when the overall change checksum changed because a sibling file needed fixing. A path repeated through `.txt` manifests runs once; later positions skip as 'already applied'. Skipped files get no pending row and no DB call, and the operation row is still written when every file skips:
 
 ```mermaid
 flowchart TD
     %% source: src/core/change/executor.ts, src/core/change/history.ts
-    A["for each expanded file"] --> B{needsRunFile}
-    B -->|no| C["record status: skipped"] --> A
-    B -->|yes| D[loadAndRenderFile]
+    A["for each expanded file"] --> B{"decideNeedsRunFile via findSkippedFiles"}
+    B -->|skip| C["no row, no DB call"] --> A
+    B -->|run| D[loadAndRenderFile]
     D -->|error| E["record failed, break loop"]
     D -->|ok| F["watcher.run(file.path, executor, ...)"]
     F -->|error| G["record failed, break loop"]
@@ -120,7 +120,7 @@ stateDiagram-v2
 | [`src/core/change/parser.ts`](../../src/core/change/parser.ts) | `parseChange`/`discoverChanges`, scans a change folder, validates structure, resolves `.txt` manifests, parses sequence/date prefixes |
 | [`src/core/change/scaffold.ts`](../../src/core/change/scaffold.ts) | Creates/deletes/renames/reorders change files and folders on disk |
 | [`src/core/change/tracker.ts`](../../src/core/change/tracker.ts) | `ChangeTracker` (extends `Tracker`), `canRevert`, `markAsReverted`, `markAllAsStale` |
-| [`src/core/change/history.ts`](../../src/core/change/history.ts) | `ChangeHistory`, `needsRun`/`needsRunFile`, operation/file record CRUD, `hydrateDate` UTC normalization |
+| [`src/core/change/history.ts`](../../src/core/change/history.ts) | `ChangeHistory`, `needsRun`, `latestFileExecutions`, operation/file record CRUD, `hydrateDate` UTC normalization |
 | [`src/core/change/types.ts`](../../src/core/change/types.ts) | `Change`, `ChangeContext`, `ChangeOptions`, `ChangeResult`, error classes, `isPendingChange` |
 | [`src/core/change/validation.ts`](../../src/core/change/validation.ts) | `validateChangeContent`/`SQL_TEMPLATE`, used only by TUI pre-flight checks, not by the executor's own content gate |
 | [`src/cli/change/index.ts`](../../src/cli/change/index.ts) | `change` command group registration (`add`, `edit`, `rm`, `run`, `next`, `ff`, `revert`, `rewind`, `list`, `history`, `history-detail`) |
@@ -133,7 +133,7 @@ stateDiagram-v2
 - `executor.ts`'s pre-execution content gate (`hasExecutableSql`, preceded by the `files.length === 0` throw) checks for any non-blank, non-`--`-comment line; it does not call `validateChangeContent` from `validation.ts`, which is a stale check still used only by the TUI's `ChangeFFScreen`/`ChangeRunScreen`. A stub worded to pass `validateChangeContent` can still fail the executor's own gate, so TUI pre-flight and `noorm change run` can disagree about whether a change is runnable.
 - `createChange` always scaffolds a stub file into both `change/` and `revert/`. An empty `change/`+`revert/` pair fails `parseChange`'s validation (`scaffold.ts:146-149`), and without the stub the caller sees that misreported as "change not found" instead of "needs editing".
 - Change directory names follow `YYYY-MM-DD-<slugified-description>`; a name without a date prefix parses with `date: null`, and `discoverChanges` sorts by raw name (`a.name.localeCompare(b.name)`, `parser.ts:215`), so an undated `add-users` sorts after every `2024-...` change and moves in `ff`/`next` order. Files inside are ordered by `filename.localeCompare` (`parser.ts:440`), not by parsed sequence number, so an unpadded sequence prefix (`2_foo.sql` before `10_bar.sql`) sorts and runs out of numeric order.
-- `ChangeHistory.needsRunFile` bounds its lookback at the most recent opposite-direction operation, so a prior success only licenses a per-file skip while no revert/re-apply has happened since. It also retires a prior success once the parent operation's own status is `reverted` or `stale` (`history.ts:494-509`); without both conditions, every apply -> revert -> apply cycle silently no-ops its files instead of re-running them.
+- `ChangeHistory.latestFileExecutions` bounds its lookback at the most recent opposite-direction operation, so a prior success only licenses a per-file skip while no revert/re-apply has happened since. It also retires a prior success once the parent operation's own status is `reverted` or `stale`; without both conditions, every apply -> revert -> apply cycle silently no-ops its files instead of re-running them.
 - `RESET_MARKER = '__reset__'` is a reserved change name written by `ChangeHistory.recordReset` for teardown audit rows. A user change named `__reset__` collides with it: `getAllStatuses` filters that name out, so the change disappears from `change list` even though it still shows in `getHistory`/`getUnifiedHistory`.
 - `history.ts`'s `hydrateDate` normalizes `executed_at` to UTC for Postgres/MySQL (reinterpreted field-by-field) and SQLite (text with `Z` appended); MSSQL is left unmodified on purpose, because its driver's behavior was never measured. On a host whose local zone isn't UTC, MSSQL's `executed_at` can render in the TUI's relative-time display shifted by the host's UTC offset.
 - Add a new status to `isPendingChange` only. An inlined copy of the check drifts, and `ff` then reports success while work is still outstanding.

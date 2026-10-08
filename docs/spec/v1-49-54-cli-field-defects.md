@@ -300,8 +300,8 @@ every file, so a second build against a populated database is *guaranteed* to fa
 first non-idempotent DDL statement. For the reporter's schema that is `CREATE TYPE mls_id` —
 the first statement of the second phase, exactly as reported.
 
-Fix: exclude the current operation's own rows from the `needsRun` lookup — `change_id <>
-operationId`, or `executions.id <` the first id inserted by this run.
+Fix: decide skip-or-run for the whole batch before the operation inserts any pending row,
+so the lookup never sees this run's rows (`docs/spec/prefetch-run-gate.md`).
 
 **Do not "scope `needsRun` to the current operation".** An earlier draft of this spec said
 that; it is backwards and would cement the defect while appearing to fix it. The pending row
@@ -372,3 +372,7 @@ Integration tests requiring MSSQL use `TEST_MSSQL_*` from `tests/sample.env` (po
   citty dispatch (the design doc's D1) so they worked in either position. That created an
   asymmetry with `--config`/`--force`, which were never hoisted, for no reason beyond
   convenience. The standard is now uniform: a flag goes on the command that uses it.
+- 2026-10-07 — CP10 fix replaced by the prefetch run gate (`docs/spec/prefetch-run-gate.md`):
+  the batch decides skip-or-run before any pending row exists.
+  **Superseded:** `needsRun` excluded the running operation's own rows (`change_id <>
+  operationId`).
