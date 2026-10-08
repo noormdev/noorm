@@ -1,23 +1,25 @@
 /**
- * Runner tracker tests (v1/49-54 CP9/CP10).
+ * Runner tracker tests.
  *
- * Uses a real in-memory SQLite database, not a mock -- the CP10 defect
- * lives in `needsRun`'s `ORDER BY id DESC` picking up a row that a mocked
- * tracker would never reproduce.
+ * Uses a real in-memory SQLite database, not a mock -- `decideNeedsRun`
+ * decides from whichever row `latestExecutions` picks as newest, which a mock
+ * can't reproduce.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { Kysely, SqliteDialect, sql } from 'kysely';
 import { BunSqliteDatabase } from '../../../src/core/connection/dialects/sqlite-bun.js';
 
-import { Tracker } from '../../../src/core/runner/tracker.js';
+import { Tracker, decideNeedsRun } from '../../../src/core/runner/tracker.js';
+import { observer } from '../../../src/core/observer.js';
 import { v1 } from '../../../src/core/version/schema/migrations/v1.js';
 import type { NoormDatabase } from '../../../src/core/shared/index.js';
-import type { CreateOperationData } from '../../../src/core/runner/types.js';
+import type { CreateOperationData, NeedsRunResult } from '../../../src/core/runner/types.js';
 
 describe('runner: tracker', () => {
 
     let db: Kysely<NoormDatabase>;
     let tracker: Tracker;
+    let queries: string[];
 
     const baseOp: Omit<CreateOperationData, 'name'> = {
         changeType: 'build',
@@ -27,10 +29,17 @@ describe('runner: tracker', () => {
 
     beforeEach(async () => {
 
+        queries = [];
+
         db = new Kysely<NoormDatabase>({
             dialect: new SqliteDialect({
                 database: new BunSqliteDatabase(':memory:') as never,
             }),
+            log: (event) => {
+
+                if (event.level === 'query') queries.push(event.query.sql);
+
+            },
         });
 
         await v1.up(db as Kysely<unknown>, 'sqlite');
@@ -45,86 +54,22 @@ describe('runner: tracker', () => {
 
     });
 
-    describe('needsRun — excludeOperationId (CP10)', () => {
+    const decide = async (filepath: string, checksum: string, force: boolean): Promise<NeedsRunResult> => {
 
-        it('should not treat the current operation\'s own upfront pending row as the newest record', async () => {
+        const [latest, err] = await tracker.latestExecutions();
 
-            // A prior, completed build ran this file successfully.
-            const priorOpId = await tracker.createOperation({ ...baseOp, name: 'build:prior' });
-            await tracker.createFileRecords(priorOpId, [
-                { filepath: 'sql/001.sql', fileType: 'sql', checksum: 'abc123' },
-            ]);
-            await tracker.updateFileExecution(priorOpId, 'sql/001.sql', 'success', 10);
+        return decideNeedsRun(err ?? latest.get(filepath), checksum, force);
 
-            // A second build's `executeFiles` inserts a pending row for
-            // every file upfront (createFileRecords), before needsRun runs.
-            const currentOpId = await tracker.createOperation({ ...baseOp, name: 'build:current' });
-            await tracker.createFileRecords(currentOpId, [
-                { filepath: 'sql/001.sql', fileType: 'sql', checksum: 'abc123' },
-            ]);
+    };
 
-            // Reproduces the defect: without exclusion, the newest row by id
-            // is this run's own pending record, and 'pending' always reads
-            // as 'new' -- checksum-based skipping is unreachable.
-            const withoutExclusion = await tracker.needsRun('sql/001.sql', 'abc123', false);
-            expect(withoutExclusion).toEqual({ needsRun: true, reason: 'new' });
-
-            // With exclusion, the lookup skips this operation's own pending
-            // row and finds the prior success -- the file is unchanged.
-            const result = await tracker.needsRun('sql/001.sql', 'abc123', false, currentOpId);
-
-            expect(result.needsRun).toBe(false);
-            expect(result.skipReason).toBe('unchanged');
-
-        });
-
-        it('should still report a changed file as needing to run when excluding the current operation', async () => {
-
-            const priorOpId = await tracker.createOperation({ ...baseOp, name: 'build:prior' });
-            await tracker.createFileRecords(priorOpId, [
-                { filepath: 'sql/001.sql', fileType: 'sql', checksum: 'old-checksum' },
-            ]);
-            await tracker.updateFileExecution(priorOpId, 'sql/001.sql', 'success', 10);
-
-            const currentOpId = await tracker.createOperation({ ...baseOp, name: 'build:current' });
-            await tracker.createFileRecords(currentOpId, [
-                { filepath: 'sql/001.sql', fileType: 'sql', checksum: 'new-checksum' },
-            ]);
-
-            const result = await tracker.needsRun('sql/001.sql', 'new-checksum', false, currentOpId);
-
-            expect(result).toEqual({
-                needsRun: true,
-                reason: 'changed',
-                previousChecksum: 'old-checksum',
-            });
-
-        });
-
-        it('should force re-run regardless of exclusion', async () => {
-
-            const priorOpId = await tracker.createOperation({ ...baseOp, name: 'build:prior' });
-            await tracker.createFileRecords(priorOpId, [
-                { filepath: 'sql/001.sql', fileType: 'sql', checksum: 'abc123' },
-            ]);
-            await tracker.updateFileExecution(priorOpId, 'sql/001.sql', 'success', 10);
-
-            const result = await tracker.needsRun('sql/001.sql', 'abc123', true, priorOpId);
-
-            expect(result).toEqual({ needsRun: true, reason: 'force' });
-
-        });
-
-    });
-
-    describe('needsRun — skipped means two different things', () => {
+    describe('latestExecutions + decideNeedsRun — skipped means two different things', () => {
 
         const filepath = 'sql/001.sql';
 
         /**
-         * Replays the first two builds of the sequence that used to break:
-         * build 1 executes the file, build 2 correctly skips it as unchanged.
-         * What build 3 should do with that history is what each test asks.
+         * Seeds the history an older build left: build 1 executes the file,
+         * build 2 skips it and records an `unchanged` skip row. Current builds
+         * write no row for a skip, but these rows remain in existing databases.
          */
         const seedSuccessThenUnchangedSkip = async (checksum: string) => {
 
@@ -148,16 +93,9 @@ describe('runner: tracker', () => {
 
             await seedSuccessThenUnchangedSkip('abc123');
 
-            // Build 3 inserts its own pending row upfront, then asks. Before
-            // the fix this returned `{ needsRun: true, reason: 'new' }` off
-            // build 2's skip and re-executed the file -- fatal for any DDL
-            // that isn't idempotent, and deterministic on every third build.
-            const thirdOpId = await tracker.createOperation({ ...baseOp, name: 'build:3' });
-            await tracker.createFileRecords(thirdOpId, [
-                { filepath, fileType: 'sql', checksum: 'abc123' },
-            ]);
-
-            const result = await tracker.needsRun(filepath, 'abc123', false, thirdOpId);
+            // Reading build 2's skip as 'new' re-executes the file on every
+            // third build -- fatal for any DDL that isn't idempotent.
+            const result = await decide(filepath, 'abc123', false);
 
             expect(result).toEqual({
                 needsRun: false,
@@ -174,25 +112,25 @@ describe('runner: tracker', () => {
                 { filepath, fileType: 'sql', checksum: 'abc123' },
             ]);
 
-            // The batch stopped before reaching this file, so its upfront
-            // pending row becomes a skip carrying a cascade reason. Unlike an
+            // The batch stopped before reaching this file, so its pending
+            // row becomes a skip carrying a cascade reason. Unlike an
             // 'unchanged' skip, nothing ever ran -- the file still owes a run.
             await tracker.skipRemainingFiles(opId, 'Skipped: failure in 000_first.sql');
 
-            const result = await tracker.needsRun(filepath, 'abc123', false);
+            const result = await decide(filepath, 'abc123', false);
 
             expect(result).toEqual({ needsRun: true, reason: 'new' });
 
         });
 
-        it('should re-run a file whose only record is an upfront pending placeholder', async () => {
+        it('should re-run a file whose only record is a pending placeholder', async () => {
 
             const opId = await tracker.createOperation({ ...baseOp, name: 'build:crashed' });
             await tracker.createFileRecords(opId, [
                 { filepath, fileType: 'sql', checksum: 'abc123' },
             ]);
 
-            const result = await tracker.needsRun(filepath, 'abc123', false);
+            const result = await decide(filepath, 'abc123', false);
 
             expect(result).toEqual({ needsRun: true, reason: 'new' });
 
@@ -204,7 +142,7 @@ describe('runner: tracker', () => {
 
             // Proves the unchanged skip falls through to the checksum
             // comparison rather than short-circuiting into a blanket skip.
-            const result = await tracker.needsRun(filepath, 'def456', false);
+            const result = await decide(filepath, 'def456', false);
 
             expect(result).toEqual({
                 needsRun: true,
@@ -226,7 +164,7 @@ describe('runner: tracker', () => {
                 .where('id', '=', secondOpId)
                 .execute();
 
-            const result = await tracker.needsRun(filepath, 'abc123', false);
+            const result = await decide(filepath, 'abc123', false);
 
             expect(result).toEqual({
                 needsRun: true,
@@ -240,7 +178,7 @@ describe('runner: tracker', () => {
 
             await seedSuccessThenUnchangedSkip('abc123');
 
-            const result = await tracker.needsRun(filepath, 'abc123', true);
+            const result = await decide(filepath, 'abc123', true);
 
             expect(result).toEqual({ needsRun: true, reason: 'force' });
 
@@ -248,7 +186,7 @@ describe('runner: tracker', () => {
 
     });
 
-    describe('needsRun — DB error path (CP9.3)', () => {
+    describe('latestExecutions + decideNeedsRun — DB error path', () => {
 
         it('should distinguish a failed read from a genuinely new file', async () => {
 
@@ -256,11 +194,108 @@ describe('runner: tracker', () => {
             // fails -- distinct from "no matching row".
             await sql`DROP TABLE __noorm_executions__`.execute(db);
 
-            const result = await tracker.needsRun('sql/001.sql', 'abc123', false);
+            const result = await decide('sql/001.sql', 'abc123', false);
 
             expect(result.needsRun).toBe(true);
             expect(result.reason).toBe('error');
             expect(result.reason).not.toBe('new');
+
+        });
+
+    });
+
+    describe('latestExecutions', () => {
+
+        const seedRun = async (configName: string, filepath: string, checksum: string) => {
+
+            const opId = await tracker.createOperation({ ...baseOp, configName, name: `build:${checksum}` });
+            await tracker.createFileRecords(opId, [{ filepath, fileType: 'sql', checksum }]);
+            await tracker.updateFileExecution(opId, filepath, 'success', 1);
+
+            return opId;
+
+        };
+
+        it('should return the newest row per filepath for the config', async () => {
+
+            await seedRun('test', 'sql/001.sql', 'old');
+            await seedRun('test', 'sql/001.sql', 'new');
+            await seedRun('test', 'sql/002.sql', 'only');
+
+            const [latest, err] = await tracker.latestExecutions();
+
+            expect(err).toBeNull();
+            expect(latest?.size).toBe(2);
+            expect(latest?.get('sql/001.sql')?.checksum).toBe('new');
+            expect(latest?.get('sql/002.sql')?.checksum).toBe('only');
+
+        });
+
+        it('should exclude rows recorded under another config', async () => {
+
+            await seedRun('test', 'sql/001.sql', 'mine');
+            await seedRun('other', 'sql/001.sql', 'theirs');
+            await seedRun('other', 'sql/002.sql', 'theirs');
+
+            const [latest] = await tracker.latestExecutions();
+
+            expect(latest?.size).toBe(1);
+            expect(latest?.get('sql/001.sql')?.checksum).toBe('mine');
+
+        });
+
+        it('should carry the parent change status so stale rows rerun', async () => {
+
+            const opId = await seedRun('test', 'sql/001.sql', 'abc');
+
+            await db
+                .updateTable('__noorm_change__')
+                .set({ status: 'stale' })
+                .where('id', '=', opId)
+                .execute();
+
+            const [latest] = await tracker.latestExecutions();
+
+            expect(latest?.get('sql/001.sql')).toEqual({
+                checksum: 'abc',
+                exec_status: 'success',
+                skip_reason: '',
+                change_status: 'stale',
+            });
+
+        });
+
+        it('should issue exactly one query regardless of file count', async () => {
+
+            for (let i = 0; i < 5; i++) {
+
+                await seedRun('test', `sql/00${i}.sql`, `c${i}`);
+
+            }
+
+            queries = [];
+
+            const [latest] = await tracker.latestExecutions();
+
+            expect(latest?.size).toBe(5);
+            expect(queries).toHaveLength(1);
+
+        });
+
+        it('should emit and return the error when the lookup fails', async () => {
+
+            const events: unknown[] = [];
+            const unsub = observer.on('error', (data) => events.push(data));
+
+            await sql`DROP TABLE __noorm_executions__`.execute(db);
+
+            const [latest, err] = await tracker.latestExecutions();
+
+            unsub();
+
+            expect(latest).toBeNull();
+            expect(err).toBeInstanceOf(Error);
+            expect(events).toHaveLength(1);
 
         });
 

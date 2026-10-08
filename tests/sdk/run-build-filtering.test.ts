@@ -86,8 +86,9 @@ function makeKysely(): Kysely<unknown> {
  * Tracker.createOperation's `insert ... returning "id"` (verified via a
  * compiled-query sanity check — it's the only query shape containing both
  * substrings) gets an incrementing id, or the whole batch aborts before
- * touching any file. Everything else — the needsRun lookup, file-record
- * inserts/updates, and each fixture file's own SQL body — gets empty rows,
+ * touching any file. Everything else — the `latestExecutions` lookup,
+ * file-record inserts/updates, and each fixture file's own SQL body —
+ * gets empty rows,
  * which reads as "no prior execution" / "no-op success". This is enough to
  * prove which files build() attempted to run; simulating real execution
  * semantics is core/runner's own test surface, not this one's.

@@ -3,6 +3,8 @@
 
 Every database operation noorm performs is recorded. When a change runs, a build executes, or files get deployed, that execution goes into the history log with who ran it, when, how long it took, and whether it succeeded.
 
+A build, dir, files or file run where every file is unchanged writes no operation, so it appears neither in history nor in Recent Activity.
+
 This gives you an audit trail for compliance, a debugging tool for failures, and a reference for understanding what happened to your database.
 
 
@@ -248,12 +250,12 @@ The detail view breaks down each file:
 |--------|------|---------|
 | Success | `[OK]` | File executed without errors |
 | Failed | `[ERR]` | Execution threw an error |
-| Skipped | `[-]` | Either a prior run already applied this exact file, or an earlier file in the change failed and this one was never reached |
+| Skipped | `[-]` | An earlier file in the change failed and this one was never reached |
 
-For skipped files, the skip reason explains why:
+A file a prior run already applied leaves no row, so it does not appear here. For skipped files, the skip reason names the failure:
 
 ```
-[-]  setup.sql     - already applied
+[-]  setup.sql     - 001_tables.sql failed: table users already exists
 ```
 
 

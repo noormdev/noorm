@@ -544,7 +544,7 @@ noorm change history --json
 
 ### change history-detail
 
-Per-file execution history for a specific change — every operation record plus each SQL file's status, duration, and error/skip reason. Omit the name on a TTY to pick from changes that have a history record.
+Per-file execution history for a specific change — every operation record plus each executed file's status, duration, and error/skip reason. Omit the name on a TTY to pick from changes that have a history record.
 
 ```bash
 noorm change history-detail                  # Interactive picker

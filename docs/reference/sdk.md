@@ -575,7 +575,9 @@ Execute a single SQL file.
 await ctx.noorm.run.file('seeds/test-data.sql');
 ```
 
-**Returns:** `Promise<FileResult>`. On failure `result.error` carries the SQL/load error message; on skip `result.skipReason` carries `'unchanged'` or `'already-run'`.
+**Options (`RunOptions`):** `{ force?: boolean; abortOnError?: boolean; dryRun?: boolean; preview?: boolean; output?: string | null }`. `preview` renders the file without executing it or writing history.
+
+**Returns:** `Promise<FileResult>`. On failure `result.error` carries the SQL/load error message; on skip `result.skipReason` carries `'unchanged'`. A skipped file writes no execution history.
 
 
 #### run.files(filepaths, options?)

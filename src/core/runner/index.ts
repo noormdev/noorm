@@ -17,7 +17,7 @@ export {
 } from './runner.js';
 
 // Tracker
-export { Tracker } from './tracker.js';
+export { Tracker, decideNeedsRun } from './tracker.js';
 
 // Checksum utilities
 export {
@@ -39,8 +39,8 @@ export type {
     SkipReason,
     RunReason,
     NeedsRunResult,
+    ExecutionRecord,
     CreateOperationData,
-    RecordExecutionData,
     // New unified types
     ChangeType,
     Direction,

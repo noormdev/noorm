@@ -310,6 +310,8 @@ Press `h` for the execution history — what ran, when, and who ran it:
 
 ![The run menu](/image/tui/run-menu.png)
 
+Picking a file that already ran with the same content opens **File Previously Run** and asks "Run this file again?". A directory with such files opens **Files Previously Run**.
+
 
 ### Database Menu
 

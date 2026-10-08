@@ -14,6 +14,9 @@
  * needs, these methods must hand back a usable primary key that child
  * rows can reference. Anything else means no operation record exists.
  *
+ * `latestFileExecutions` is here for the same reason: its `MAX(id) GROUP BY`
+ * subquery join is dialect SQL that the sqlite unit tests cannot vouch for.
+ *
  * Requires the docker-compose.test.yml containers (postgres 15432,
  * mysql 13306, mssql 11433). Each dialect skips itself when unreachable.
  */
@@ -27,7 +30,7 @@ import { ChangeHistory } from '../../../src/core/change/history.js';
 import { migrateSchema } from '../../../src/core/version/schema/index.js';
 import { v1 } from '../../../src/core/version/schema/migrations/v1.js';
 import { getNoormTables, noormDb } from '../../../src/core/shared/index.js';
-import type { NoormDatabase } from '../../../src/core/shared/index.js';
+import type { Direction, ExecutionStatus, NoormDatabase } from '../../../src/core/shared/index.js';
 import type { Dialect } from '../../../src/core/connection/types.js';
 import type { ConnectionResult } from '../../../src/core/connection/types.js';
 
@@ -169,6 +172,68 @@ describe('change: history id retrieval across dialects', () => {
 
                 expect(typeof id).toBe('number');
                 expect(id).toBeGreaterThan(0);
+
+            });
+
+            it('should return the newest standing row per file of one change', async () => {
+
+                if (!reachable) {
+
+                    console.warn(`Skipping ${dialect}: container not reachable`);
+
+                    return;
+
+                }
+
+                const db = conn!.db as unknown as Kysely<NoormDatabase>;
+                const history = new ChangeHistory(db, CONFIG_NAME, dialect);
+                const name = `change:latest:${dialect}:${Date.now()}`;
+                const fileA = `changes/${name}/change/001_a.sql`;
+                const fileB = `changes/${name}/change/002_b.sql`;
+
+                async function record(
+                    changeName: string,
+                    direction: Direction,
+                    rows: Array<{ filepath: string; checksum: string; status: ExecutionStatus }>,
+                ): Promise<void> {
+
+                    const opId = await history.createOperation({ name: changeName, direction, executedBy: 'test@example.com' });
+
+                    await history.createFileRecords(opId, rows.map((row) => ({ ...row, fileType: 'sql' })));
+
+                    for (const row of rows) {
+
+                        await history.updateFileExecution(opId, row.filepath, row.status, 5);
+
+                    }
+
+                    await history.finalizeOperation(opId, 'success', `${changeName}:checksum`, 5);
+
+                }
+
+                await record(name, 'change', [
+                    { filepath: fileA, checksum: 'a-old', status: 'success' },
+                    { filepath: fileB, checksum: 'b-only', status: 'success' },
+                ]);
+                await record(name, 'change', [
+                    { filepath: fileA, checksum: 'a-new', status: 'failed' },
+                    { filepath: fileB, checksum: 'b-unreached', status: 'skipped' },
+                ]);
+                await record(`${name}:other`, 'change', [{ filepath: fileA, checksum: 'a-other', status: 'success' }]);
+
+                const [latest, err] = await history.latestFileExecutions(name, 'change');
+
+                expect(err).toBeNull();
+                expect(latest!.size).toBe(2);
+                expect(latest!.get(fileA)).toEqual({ checksum: 'a-new', exec_status: 'failed' });
+                expect(latest!.get(fileB)).toEqual({ checksum: 'b-only', exec_status: 'success' });
+
+                await record(name, 'revert', [{ filepath: `changes/${name}/revert/001_a.sql`, checksum: 'r', status: 'success' }]);
+
+                const [afterRevert, revertErr] = await history.latestFileExecutions(name, 'change');
+
+                expect(revertErr).toBeNull();
+                expect(afterRevert!.size).toBe(0);
 
             });
 

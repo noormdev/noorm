@@ -14,19 +14,21 @@ Runs `.sql` and `.sql.tmpl` files against a Kysely connection with checksum-base
 
 ### Execution and change detection
 
-A file's status decides whether it runs, and a run always records the outcome before moving to the next file.
+`executeFiles` renders and hashes every file once, reads prior outcomes in one query, and decides the whole batch in memory. Only files that need a run touch the database again.
 
 ```mermaid
 flowchart TD
-    A[loadAndRenderFile] --> B[computeChecksumFromContent]
-    B --> C{Tracker.needsRun}
-    C -->|"new / changed / failed / stale / force / error"| D[runWatched: executeSqlBody via StatementWatcher]
-    C -->|unchanged| E[skip: skipReason unchanged]
-    D --> F[Tracker.updateFileExecution]
-    E --> F
+    A["prepareFiles: render + computeChecksumFromContent"] --> B["Tracker.latestExecutions (one query, skipped under force)"]
+    B --> C{"decideNeedsRun per file"}
+    C -->|"unchanged"| E["skipFile: no row, no DB call"]
+    C -->|"new / changed / failed / stale / force / error"| F["createOperation + createFileRecords (run set only)"]
+    F --> D["runWatched: executeSqlBody via StatementWatcher"]
+    D --> G["Tracker.updateFileExecution"]
 ```
 
-`executeSingleFileWithUpdate` ([`src/core/runner/runner.ts`](../../src/core/runner/runner.ts)) loads and renders the file first, then recomputes the checksum from the rendered content, because comparing raw `.sql.tmpl` bytes would re-execute every template on every build. The raw `computeChecksum` only seeds the pending row that `createFileRecords` inserts for every file in the batch before the batch starts. [`src/core/runner/tracker.ts`](../../src/core/runner/tracker.ts)'s `Tracker.needsRun` excludes that pending row by its own operation id (`excludeOperationId`), or every file would read as "new" forever. A prior `skipped` row with `skip_reason: 'unchanged'` counts as a valid outcome and falls through to the stale and checksum comparison; any other `skipped` row (a cascade skip after an earlier failure, or a cancelled run) and any `pending` row re-runs with `reason: 'new'`.
+`prepareFiles` ([`src/core/runner/runner.ts`](../../src/core/runner/runner.ts)) loads and renders each file once and hashes the rendered content, because comparing raw `.sql.tmpl` bytes would re-execute every template on every build. The rendered SQL is kept and run as-is later. `Tracker.latestExecutions` ([`src/core/runner/tracker.ts`](../../src/core/runner/tracker.ts)) fetches the latest outcome per file in one query, and the pure `decideNeedsRun` (applied by `applyRunGate`) compares it to the new checksum. A legacy `skipped` row with `skip_reason: 'unchanged'` still counts as a prior outcome; any other `skipped` row (a cascade skip after an earlier failure, or a cancelled run) and any `pending` row re-runs with `reason: 'new'`.
+
+Skipped files write no rows. If every file skips, no operation row is written and `changeId` is `undefined`. Otherwise `createOperation` and `createFileRecords` cover the run set only, and `executeSingleFileWithUpdate(context, entry, tracker, operationId, watcher)` walks it sequentially. `runFile` routes through `executeFiles`, and `checkFilesStatus` uses the same batched lookup.
 
 ### Long-running statement detection
 
@@ -76,7 +78,7 @@ Aborting `RunContext.signal` sends the dialect's `SERVER_CANCEL` from the side c
 | [`src/core/runner/runner.ts`](../../src/core/runner/runner.ts) | `runBuild`/`runFile`/`runDir`/`runFiles`/`preview`/`checkFilesStatus`/`discoverFiles`/`executeFiles`; all except `discoverFiles`/`executeFiles` are gated. `createWatcher` builds one `StatementWatcher` per run and routes every file's SQL through `runWatched`. |
 | [`src/core/runner/statement-watcher.ts`](../../src/core/runner/statement-watcher.ts) | `StatementWatcher` class: pins a file's connection, reads its session id, times the 10s delay and 10s report interval via `#report`/`#poll`, checks out and holds the side connection via `#sideConnection`, sends the cancel on abort via `#cancel`. |
 | [`src/core/runner/statement-probes.ts`](../../src/core/runner/statement-probes.ts) | `STATEMENT_PROBES` (postgres/mssql/mysql `StatementProbe` functions) and the `StatementStatus`/`BlockingSession`/`OperationProgress` shapes a probe returns. |
-| [`src/core/runner/tracker.ts`](../../src/core/runner/tracker.ts) | `Tracker` class: `needsRun`, `needsRunByName`, `createOperation`, `recordExecution`, `createFileRecords`, `updateFileExecution`, `finalizeOperation`, `skipRemainingFiles`, `priorSuccessfulExecutions`. |
+| [`src/core/runner/tracker.ts`](../../src/core/runner/tracker.ts) | `Tracker` class: `latestExecutions`, `needsRunByName`, `createOperation`, `createFileRecords`, `updateFileExecution`, `finalizeOperation`, `skipRemainingFiles`, `priorSuccessfulExecutions`. |
 | [`src/core/runner/checksum.ts`](../../src/core/runner/checksum.ts) | `computeChecksum`, `computeChecksumFromContent`, `computeCombinedChecksum` (SHA-256). |
 | [`src/core/runner/mssql-batches.ts`](../../src/core/runner/mssql-batches.ts) | `executeSqlBody` (dialect dispatch: mssql splits on line-only `GO`, sqlite splits on statement boundaries, postgres/mysql execute the body whole), `splitMssqlBatches`. |
 | [`src/core/runner/sqlite-statements.ts`](../../src/core/runner/sqlite-statements.ts) | `splitSqliteStatements`, a boundary scanner (not a SQL parser) tracking string/identifier quoting, comments, and `BEGIN`/`CASE`…`END` trigger bodies. |
@@ -103,7 +105,7 @@ Aborting `RunContext.signal` sends the dialect's `SERVER_CANCEL` from the side c
 
 ## Constraints
 
-- Dropping `excludeOperationId` from `Tracker.needsRun` makes every file read as "new" forever, since the batch's own `pending` rows would be the latest record.
+- Reading `latestExecutions` after `createFileRecords` makes every file read as "new" forever, since the batch's own `pending` rows would be the latest record. Read prior outcomes first.
 - Comparing raw `.sql.tmpl` bytes instead of the rendered checksum re-executes every template on every build.
 - Skipping `StatementWatcher.close()` leaks any side connection checked out during the run; it never returns to the pool.
 - With `connection.pool.max: 1`, the side connection checkout waits `SIDE_CONNECTION_WAIT_MS` (5s) then the watcher gives it up for the rest of the run: reports carry elapsed time only, and cancel can only act between files.

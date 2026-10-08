@@ -15,12 +15,14 @@
  *
  * const tracker = new Tracker(db, 'dev')
  *
- * // Check if file needs to run
- * const result = await tracker.needsRun('/path/to/file.sql', 'abc123', false)
+ * // Decide every file of a batch from one prefetch
+ * const [latest, err] = await tracker.latestExecutions()
+ * const result = decideNeedsRun(err ?? latest.get('sql/001.sql'), 'abc123', false)
  *
- * // Create operation and record executions
+ * // Create operation and pending rows, then record each outcome
  * const opId = await tracker.createOperation({ name: 'build:...', ... })
- * await tracker.recordExecution({ changeId: opId, filepath: '...', ... })
+ * await tracker.createFileRecords(opId, [{ filepath: '...', fileType: 'sql', checksum: '...' }])
+ * await tracker.updateFileExecution(opId, '...', 'success', 42)
  * ```
  */
 import type { Kysely } from 'kysely';
@@ -31,7 +33,100 @@ import { observer } from '../observer.js';
 import { getNoormTables, insertOperationRecord, noormDb } from '../shared/index.js';
 import type { NoormDatabase, ChangeType, ExecutionStatus, FileType } from '../shared/index.js';
 import type { Dialect } from '../connection/types.js';
-import type { NeedsRunResult, CreateOperationData, RecordExecutionData, Direction } from './types.js';
+import type { NeedsRunResult, CreateOperationData, Direction, ExecutionRecord } from './types.js';
+
+/**
+ * Decide whether a file must run, given its newest execution record.
+ *
+ * @param record - Newest execution record, `undefined` when the file never ran, or the lookup error
+ * @param checksum - Current file checksum
+ * @param force - Force re-run regardless of history
+ * @returns Whether the file needs to run and why
+ *
+ * @example
+ * ```typescript
+ * const [latest, err] = await tracker.latestExecutions()
+ * const result = decideNeedsRun(err ?? latest.get('sql/001.sql'), checksum, false)
+ * ```
+ */
+export function decideNeedsRun(
+    record: ExecutionRecord | Error | undefined,
+    checksum: string,
+    force: boolean,
+): NeedsRunResult {
+
+    if (force) {
+
+        return { needsRun: true, reason: 'force' };
+
+    }
+
+    // Distinct from 'new': the SELECT itself failed, so whether a
+    // record exists is genuinely unknown. Reporting this as 'new'
+    // would make a transient read failure indistinguishable from a
+    // first-ever run in logs and audits.
+    if (record instanceof Error) {
+
+        return { needsRun: true, reason: 'error' };
+
+    }
+
+    if (!record) {
+
+        return { needsRun: true, reason: 'new' };
+
+    }
+
+    if (record.exec_status === 'failed') {
+
+        return {
+            needsRun: true,
+            reason: 'failed',
+            previousChecksum: record.checksum,
+        };
+
+    }
+
+    // A `pending` row belongs to a file its batch never reached, so it
+    // carries no outcome to compare against and must run.
+    //
+    // A cascade `skipped` row never executed either. An `unchanged` skip (older
+    // builds only) recorded a real skip, so fall through and re-compare the checksum.
+    const isUnchangedSkip = record.exec_status === 'skipped' && record.skip_reason === 'unchanged';
+
+    if (record.exec_status === 'pending' || (record.exec_status === 'skipped' && !isUnchangedSkip)) {
+
+        return { needsRun: true, reason: 'new' };
+
+    }
+
+    if (record.change_status === 'stale') {
+
+        return {
+            needsRun: true,
+            reason: 'stale',
+            previousChecksum: record.checksum,
+        };
+
+    }
+
+    if (record.checksum !== checksum) {
+
+        return {
+            needsRun: true,
+            reason: 'changed',
+            previousChecksum: record.checksum,
+        };
+
+    }
+
+    return {
+        needsRun: false,
+        skipReason: 'unchanged',
+        previousChecksum: record.checksum,
+    };
+
+}
 
 /**
  * Execution tracker for change detection and audit logging.
@@ -48,14 +143,11 @@ import type { NeedsRunResult, CreateOperationData, RecordExecutionData, Directio
  *     executedBy: 'Alice <alice@example.com>',
  * })
  *
- * // Record each file execution
- * await tracker.recordExecution({
- *     changeId: opId,
- *     filepath: '/project/sql/001.sql',
- *     checksum: 'abc123...',
- *     status: 'success',
- *     durationMs: 42,
- * })
+ * // Seed a pending row per file, then record each outcome
+ * await tracker.createFileRecords(opId, [
+ *     { filepath: 'sql/001.sql', fileType: 'sql', checksum: 'abc123...' },
+ * ])
+ * await tracker.updateFileExecution(opId, 'sql/001.sql', 'success', 42)
  *
  * // Finalize the operation
  * await tracker.finalizeOperation(opId, 'success', 1234)
@@ -80,72 +172,49 @@ export class Tracker {
     }
 
     /**
-     * Check if a file needs to run.
+     * Fetch the newest execution row per filepath for this config.
      *
-     * A file needs to run if:
-     * - Force flag is set
-     * - No previous execution exists (new file)
-     * - Previous execution failed
-     * - Parent change is stale (schema was torn down)
-     * - Checksum differs (file changed)
+     * One SELECT for any number of files, so a batch can decide every file
+     * with `decideNeedsRun` before writing any tracking rows. Query form:
+     * `docs/design/prefetch-run-gate.md`.
      *
-     * @param filepath - File path to check
-     * @param checksum - Current file checksum
-     * @param force - Force re-run regardless of status
-     * @param excludeOperationId - Operation whose own rows should be ignored.
-     * `executeFiles` inserts a `pending` row for every discovered file
-     * *before* running any of them (for batch visibility), so within that
-     * same operation the newest row for a file is always its own pending
-     * record — reading as "new" forever and making checksum-based skipping
-     * unreachable. Passing the running operation's id here excludes those
-     * rows so the lookup finds the last *completed* operation instead.
-     * @returns Whether file needs to run and why
+     * @returns Map of filepath to its newest record, or the lookup error
+     *
+     * @example
+     * ```typescript
+     * const [latest, err] = await tracker.latestExecutions()
+     * const result = decideNeedsRun(err ?? latest.get(filepath), checksum, false)
+     * ```
      */
-    async needsRun(
-        filepath: string,
-        checksum: string,
-        force: boolean,
-        excludeOperationId?: number,
-    ): Promise<NeedsRunResult> {
+    async latestExecutions(): Promise<[Map<string, ExecutionRecord>, null] | [null, Error]> {
 
-        // Force always runs
-        if (force) {
+        const { executions, change } = this.#tables;
 
-            return { needsRun: true, reason: 'force' };
-
-        }
-
-        // Find most recent execution for this file and config
-        // Also fetch the parent change status to check for stale
-        let query = (this.#ndb
-            .selectFrom(this.#tables.executions)
-            .innerJoin(
-                this.#tables.change,
-                `${this.#tables.change}.id`,
-                `${this.#tables.executions}.change_id`,
+        const newestIds = (this.#ndb
+            .selectFrom(executions)
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            ) as any)
+            .innerJoin(change, `${change}.id`, `${executions}.change_id`) as any)
+            .where(`${change}.config_name`, '=', this.#configName)
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            .select((eb: any) => [
-                eb.ref(`${this.#tables.executions}.checksum`).as('checksum'),
-                eb.ref(`${this.#tables.executions}.status`).as('exec_status'),
-                eb.ref(`${this.#tables.executions}.skip_reason`).as('skip_reason'),
-                eb.ref(`${this.#tables.change}.status`).as('change_status'),
-            ])
-            .where(`${this.#tables.executions}.filepath`, '=', filepath)
-            .where(`${this.#tables.change}.config_name`, '=', this.#configName);
+            .select((eb: any) => eb.fn.max(`${executions}.id`).as('id'))
+            .groupBy(`${executions}.filepath`)
+            .as('newest');
 
-        if (excludeOperationId !== undefined) {
-
-            query = query.where(`${this.#tables.executions}.change_id`, '<>', excludeOperationId);
-
-        }
-
-        const [record, err] = await attempt(() =>
-            query
-                .orderBy(`${this.#tables.executions}.id`, 'desc')
-                .limit(1)
-                .executeTakeFirst(),
+        const [rows, err] = await attempt(() =>
+            (this.#ndb
+                .selectFrom(executions)
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                .innerJoin(change, `${change}.id`, `${executions}.change_id`) as any)
+                .innerJoin(newestIds, 'newest.id', `${executions}.id`)
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                .select((eb: any) => [
+                    eb.ref(`${executions}.filepath`).as('filepath'),
+                    eb.ref(`${executions}.checksum`).as('checksum'),
+                    eb.ref(`${executions}.status`).as('exec_status'),
+                    eb.ref(`${executions}.skip_reason`).as('skip_reason'),
+                    eb.ref(`${change}.status`).as('change_status'),
+                ])
+                .execute(),
         );
 
         if (err) {
@@ -153,81 +222,22 @@ export class Tracker {
             observer.emit('error', {
                 source: 'runner',
                 error: err,
-                context: { filepath, operation: 'needs-run-check' },
+                context: { operation: 'latest-executions' },
             });
 
-            // Distinct from 'new': the SELECT itself failed, so whether a
-            // record exists is genuinely unknown. Reporting this as 'new'
-            // would make a transient read failure indistinguishable from a
-            // first-ever run in logs and audits.
-            return { needsRun: true, reason: 'error' };
+            return [null, err];
 
         }
 
-        // No previous record - new file
-        if (!record) {
+        const latest = new Map<string, ExecutionRecord>();
 
-            return { needsRun: true, reason: 'new' };
+        for (const { filepath, ...record } of rows) {
 
-        }
-
-        // Previous execution failed - retry
-        if (record.exec_status === 'failed') {
-
-            return {
-                needsRun: true,
-                reason: 'failed',
-                previousChecksum: record.checksum,
-            };
+            latest.set(filepath, record);
 
         }
 
-        // A `pending` row is an upfront placeholder for batch visibility whose
-        // file never reached execution, so it carries no outcome to compare
-        // against and must run.
-        //
-        // `skipped` means two different things. A cascade skip (an earlier file
-        // in the batch failed) also never executed, so it must run too. But an
-        // `unchanged` skip is the recorded outcome of a correct decision, and
-        // treating it as "never ran" made the third consecutive build re-execute
-        // a file the second build had rightly skipped -- failing on any DDL that
-        // is not idempotent. Fall through and re-compare the checksum instead.
-        const isUnchangedSkip = record.exec_status === 'skipped' && record.skip_reason === 'unchanged';
-
-        if (record.exec_status === 'pending' || (record.exec_status === 'skipped' && !isUnchangedSkip)) {
-
-            return { needsRun: true, reason: 'new' };
-
-        }
-
-        // Parent change is stale (schema was torn down) - needs re-run
-        if (record.change_status === 'stale') {
-
-            return {
-                needsRun: true,
-                reason: 'stale',
-                previousChecksum: record.checksum,
-            };
-
-        }
-
-        // Checksum changed
-        if (record.checksum !== checksum) {
-
-            return {
-                needsRun: true,
-                reason: 'changed',
-                previousChecksum: record.checksum,
-            };
-
-        }
-
-        // Unchanged - skip
-        return {
-            needsRun: false,
-            skipReason: 'unchanged',
-            previousChecksum: record.checksum,
-        };
+        return [latest, null];
 
     }
 
@@ -277,44 +287,6 @@ export class Tracker {
         }
 
         return id;
-
-    }
-
-    /**
-     * Record a file execution.
-     *
-     * Creates a child record in __noorm_executions__ linked
-     * to the parent operation.
-     *
-     * @param data - Execution data
-     */
-    async recordExecution(data: RecordExecutionData): Promise<void> {
-
-        const [, err] = await attempt(() =>
-            this.#ndb
-                .insertInto(this.#tables.executions)
-                .values({
-                    change_id: data.changeId,
-                    filepath: data.filepath,
-                    file_type: 'sql',
-                    checksum: data.checksum,
-                    status: data.status as ExecutionStatus,
-                    skip_reason: data.skipReason ?? '',
-                    error_message: data.errorMessage ?? '',
-                    duration_ms: Math.round(data.durationMs ?? 0),
-                })
-                .execute(),
-        );
-
-        if (err) {
-
-            observer.emit('error', {
-                source: 'runner',
-                error: err,
-                context: { filepath: data.filepath, operation: 'record-execution' },
-            });
-
-        }
 
     }
 
@@ -394,10 +366,10 @@ export class Tracker {
     // ─────────────────────────────────────────────────────────
 
     /**
-     * Create pending file records for all files upfront.
+     * Create pending file records for the files about to run.
      *
-     * Creates records so the batch is fully visible. On failure,
-     * remaining files can be marked as skipped.
+     * The pending rows let `skipRemainingFiles` mark the files a
+     * failure left unreached.
      *
      * @param operationId - Parent operation ID
      * @param files - Files to create records for
@@ -455,13 +427,6 @@ export class Tracker {
      * @param durationMs - Execution time
      * @param errorMessage - Error message if failed
      * @param skipReason - Skip reason if skipped
-     * @param checksum - Checksum of the SQL that actually reached the
-     * database. `createFileRecords` seeds the pending row with the *raw*
-     * file hash because rendering every template upfront would execute them
-     * twice; for a `.sql.tmpl` that hash is not what `needsRun` compares
-     * against, so leaving it in place made template dedup unreachable.
-     * Omitted leaves the seeded value alone — correct only where no render
-     * happened (e.g. the file could not be read).
      * @returns Error message if update failed, null on success
      */
     async updateFileExecution(
@@ -471,7 +436,6 @@ export class Tracker {
         durationMs: number,
         errorMessage?: string,
         skipReason?: string,
-        checksum?: string,
     ): Promise<string | null> {
 
         const [result, err] = await attempt(() =>
@@ -482,7 +446,6 @@ export class Tracker {
                     duration_ms: Math.round(durationMs),
                     error_message: errorMessage ?? '',
                     skip_reason: skipReason ?? '',
-                    ...(checksum === undefined ? {} : { checksum }),
                 })
                 .where('change_id', '=', operationId)
                 .where('filepath', '=', filepath)
@@ -636,7 +599,6 @@ export class Tracker {
     /**
      * Check if a change needs to run by name.
      *
-     * Similar to needsRun but checks by change name instead of filepath.
      * Used for change sets where we track by change name, not individual files.
      *
      * @param name - Change name
