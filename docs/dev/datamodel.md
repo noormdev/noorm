@@ -731,15 +731,15 @@ Used in `__noorm_executions__` and file results.
 
 ### Skip Reasons
 
-Free-form text, not an enum. The values emitted today:
+Free-form text, not an enum. A skip row marks only a file a failure left unreached. The values written today:
 
 | Reason | Meaning |
 |--------|---------|
-| unchanged | File checksum matches previous run |
-| already-run | File was already executed successfully |
-| already applied | The change as a whole was already applied |
+| `Skipped: failure in {file}` | A runner batch aborted at a named file; remaining files skipped |
 | change failed | Parent change failed with no single culprit file |
 | `{file} failed: {error}` | Parent change failed at a named file; remaining files skipped |
+
+A file skipped because a prior run covers it gets no row. Rows written by older versions may still hold `unchanged` (runner) or `already applied` (change) for that case.
 
 
 ### Lock

@@ -606,6 +606,12 @@ export interface NeedsRunResult {
     previousStatus?: OperationStatus;
 }
 
+/** Newest qualifying execution row for one file of a change; see `ChangeHistory.latestFileExecutions`. */
+export interface FileExecutionRecord {
+    checksum: string;
+    exec_status: ExecutionStatus;
+}
+
 // ─────────────────────────────────────────────────────────────
 // Scaffold Types
 // ─────────────────────────────────────────────────────────────

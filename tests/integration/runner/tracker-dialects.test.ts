@@ -14,6 +14,9 @@
  * usable primary key that later rows can reference. Anything else means the
  * operation record was never created.
  *
+ * `latestExecutions` is here for the same reason: its `MAX(id) GROUP BY`
+ * subquery join is dialect SQL that the sqlite unit tests cannot vouch for.
+ *
  * Requires the docker-compose.test.yml containers (postgres 15432,
  * mysql 13306, mssql 11433). Each dialect skips itself when unreachable.
  */
@@ -36,8 +39,9 @@ import { createTestConnection, isContainerRunning } from '../../utils/db.js';
 const LIVE_DIALECTS: Dialect[] = ['postgres', 'mysql', 'mssql'];
 
 const CONFIG_NAME = '__tracker_dialects__';
+const OTHER_CONFIG_NAME = '__tracker_dialects_other__';
 
-describe('runner: tracker.createOperation across dialects', () => {
+describe('runner: tracker across dialects', () => {
 
     it('should return a usable operation id on sqlite', async () => {
 
@@ -99,7 +103,7 @@ describe('runner: tracker.createOperation across dialects', () => {
                             (noormDb(db, dialect) as any)
                                 .selectFrom(tables.change)
                                 .select('id')
-                                .where('config_name', '=', CONFIG_NAME),
+                                .where('config_name', 'in', [CONFIG_NAME, OTHER_CONFIG_NAME]),
                         )
                         .execute(),
                 );
@@ -108,7 +112,7 @@ describe('runner: tracker.createOperation across dialects', () => {
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
                     (noormDb(db, dialect) as any)
                         .deleteFrom(tables.change)
-                        .where('config_name', '=', CONFIG_NAME)
+                        .where('config_name', 'in', [CONFIG_NAME, OTHER_CONFIG_NAME])
                         .execute(),
                 );
 
@@ -149,6 +153,62 @@ describe('runner: tracker.createOperation across dialects', () => {
                 ]);
 
                 expect(recordsErr).toBeNull();
+
+            });
+
+            it('should return the newest execution per filepath for its own config only', async () => {
+
+                if (!reachable) {
+
+                    console.warn(`Skipping ${dialect}: container not reachable`);
+
+                    return;
+
+                }
+
+                const db = conn!.db as unknown as Kysely<NoormDatabase>;
+                const tracker = new Tracker(db, CONFIG_NAME, dialect);
+                const otherTracker = new Tracker(db, OTHER_CONFIG_NAME, dialect);
+                const run = Date.now();
+                const fileA = `sql/latest-a-${run}.sql`;
+                const fileB = `sql/latest-b-${run}.sql`;
+
+                async function record(
+                    target: Tracker,
+                    configName: string,
+                    rows: Array<{ filepath: string; checksum: string }>,
+                    status: 'success' | 'failed',
+                ): Promise<void> {
+
+                    const opId = await target.createOperation({
+                        name: `build:${dialect}:${run}`,
+                        changeType: 'build',
+                        configName,
+                        executedBy: 'test@example.com',
+                    });
+
+                    await target.createFileRecords(opId, rows.map((row) => ({ ...row, fileType: 'sql' })));
+
+                    for (const row of rows) {
+
+                        await target.updateFileExecution(opId, row.filepath, status, 5);
+
+                    }
+
+                }
+
+                await record(tracker, CONFIG_NAME, [
+                    { filepath: fileA, checksum: 'a-old' },
+                    { filepath: fileB, checksum: 'b-only' },
+                ], 'success');
+                await record(tracker, CONFIG_NAME, [{ filepath: fileA, checksum: 'a-new' }], 'failed');
+                await record(otherTracker, OTHER_CONFIG_NAME, [{ filepath: fileA, checksum: 'a-other' }], 'success');
+
+                const [latest, err] = await tracker.latestExecutions();
+
+                expect(err).toBeNull();
+                expect(latest!.get(fileA)).toMatchObject({ checksum: 'a-new', exec_status: 'failed' });
+                expect(latest!.get(fileB)).toMatchObject({ checksum: 'b-only', exec_status: 'success' });
 
             });
 

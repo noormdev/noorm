@@ -255,7 +255,6 @@ export type {
     RunReason,
     NeedsRunResult,
     CreateOperationData,
-    RecordExecutionData,
 } from './runner/index.js';
 
 // Database lifecycle

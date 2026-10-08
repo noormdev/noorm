@@ -163,8 +163,8 @@ describe('change: executor retry', () => {
         expect(aResult?.status).toBe('skipped');
         expect(bResult?.status).toBe('success');
 
-        // A's SQL was never re-submitted: exactly one success row for A
-        // across both operations (op1: success, op2: skipped).
+        // A's SQL was never re-submitted, and its skip left no row: op1's
+        // success is A's only execution row.
         const relA = relative(tempDir, fileA.path);
         const aExecutions = await db
             .selectFrom('__noorm_executions__')
@@ -173,9 +173,8 @@ describe('change: executor retry', () => {
             .orderBy('id', 'asc')
             .execute();
 
-        expect(aExecutions).toHaveLength(2);
+        expect(aExecutions).toHaveLength(1);
         expect(aExecutions[0]?.status).toBe('success');
-        expect(aExecutions[1]?.status).toBe('skipped');
 
         // Cross-check via ChangeHistory's own query surface
         const history = new ChangeHistory(db, 'test', 'sqlite');
@@ -184,8 +183,9 @@ describe('change: executor retry', () => {
         expect(op1Files.find((f) => f.filepath === relA)?.status).toBe('success');
 
         const op2Files = await history.getFileHistory(result2.operationId!);
-        expect(op2Files.find((f) => f.filepath === relA)?.status).toBe('skipped');
-        expect(op2Files.find((f) => f.filepath === relative(tempDir, fileB.path))?.status).toBe('success');
+        expect(op2Files.map((f) => ({ filepath: f.filepath, status: f.status }))).toEqual([
+            { filepath: relative(tempDir, fileB.path), status: 'success' },
+        ]);
 
         const statuses = await history.getAllStatuses();
         expect(statuses.get('retry-fix-and-rerun')?.status).toBe('success');
@@ -195,11 +195,8 @@ describe('change: executor retry', () => {
     it('should keep a succeeded file skipped across a THIRD attempt, not just a second', async () => {
 
         // File A always succeeds. File B fails on attempts 1 and 2 (syntax
-        // error, not fixed yet), then is fixed before attempt 3. This
-        // reproduces the third-attempt regression: needsRunFile must not
-        // find attempt 2's `skipped` row for A (written by the per-file
-        // skip path) and mistake it for a "never reached" skip that needs
-        // re-running — A's real success is two operations back.
+        // error, not fixed yet), then is fixed before attempt 3, when A's
+        // covering success is two operations back and must still license the skip.
         const change = await createTestChange('retry-three-attempts', [
             { name: '001_a.sql', content: 'CREATE TABLE retry3_test_a (id INTEGER PRIMARY KEY)' },
             { name: '002_b.sql', content: 'CREATE TALBE retry3_test_b (id INTEGER PRIMARY KEY)' },
@@ -230,10 +227,8 @@ describe('change: executor retry', () => {
         expect(result3.files[0]?.status).toBe('skipped');
         expect(result3.files[1]?.status).toBe('success');
 
-        // A's SQL was submitted exactly once across all three attempts:
-        // one success row, and every other row skipped. On the buggy
-        // code, op3 re-runs A (finding op2's ambiguous `skipped` row),
-        // producing a second success (or a failure) instead.
+        // A's SQL was submitted exactly once across all three attempts,
+        // and its two skips left no rows.
         const fileA = change.changeFiles[0]!;
         const relA = relative(tempDir, fileA.path);
         const aExecutions = await db
@@ -243,11 +238,8 @@ describe('change: executor retry', () => {
             .orderBy('id', 'asc')
             .execute();
 
-        expect(aExecutions).toHaveLength(3);
-        expect(aExecutions.filter((e) => e.status === 'success')).toHaveLength(1);
+        expect(aExecutions).toHaveLength(1);
         expect(aExecutions[0]?.status).toBe('success');
-        expect(aExecutions[1]?.status).toBe('skipped');
-        expect(aExecutions[2]?.status).toBe('skipped');
 
     });
 
@@ -276,8 +268,8 @@ describe('change: executor retry', () => {
 
         // Third run with force: per-file skip must be bypassed even
         // though file A has a prior success record with a matching
-        // checksum — force short-circuits needsRunFile before any DB
-        // lookup, so the file actually re-runs (not 'skipped')
+        // checksum — force bypasses the per-file history lookup, so the
+        // file actually re-runs (not 'skipped')
         const result3 = await executeChange(context, change, { force: true });
         expect(result3.files).toHaveLength(1);
         expect(result3.files[0]?.status).toBe('success');

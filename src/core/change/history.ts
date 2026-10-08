@@ -17,7 +17,7 @@
  * const history = new ChangeHistory(db, 'production', 'postgres')
  *
  * // Check if change needs to run
- * const result = await history.needsRun('2024-01-15-add-users', 'abc123...')
+ * const result = await history.needsRun('2024-01-15-add-users', 'abc123...', false)
  *
  * // Get status
  * const status = await history.getStatus('2024-01-15-add-users')
@@ -43,6 +43,7 @@ import type {
     ChangeHistoryRecord,
     UnifiedHistoryRecord,
     FileHistoryRecord,
+    FileExecutionRecord,
     NeedsRunResult,
 } from './types.js';
 import type { ChangeType } from '../shared/index.js';
@@ -131,6 +132,74 @@ export function hydrateDate(
 }
 
 // ─────────────────────────────────────────────────────────────
+// File Decision
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Decide whether one file of a change must run, given its newest
+ * qualifying execution row.
+ *
+ * A lookup error runs the file: a redundant run is recoverable, a wrongly
+ * skipped one is not.
+ *
+ * @param record - Newest qualifying row, `undefined` when there is none, or the lookup error
+ * @param checksum - Current checksum of the file
+ * @param force - Force re-run regardless of history
+ * @returns Whether the file needs to run and why
+ *
+ * @example
+ * ```typescript
+ * const [latest, err] = await history.latestFileExecutions('2024-01-15-add-users', 'change')
+ * const result = decideNeedsRunFile(err ?? latest.get('changes/2024-01-15-add-users/change/001.sql'), checksum, false)
+ * ```
+ */
+export function decideNeedsRunFile(
+    record: FileExecutionRecord | Error | undefined,
+    checksum: string,
+    force: boolean,
+): NeedsRunResult {
+
+    if (force) {
+
+        return { needsRun: true, reason: 'force' };
+
+    }
+
+    if (record instanceof Error || !record) {
+
+        return { needsRun: true, reason: 'new' };
+
+    }
+
+    if (record.exec_status === 'failed') {
+
+        return {
+            needsRun: true,
+            reason: 'failed',
+            previousChecksum: record.checksum,
+        };
+
+    }
+
+    if (record.checksum !== checksum) {
+
+        return {
+            needsRun: true,
+            reason: 'changed',
+            previousChecksum: record.checksum,
+        };
+
+    }
+
+    return {
+        needsRun: false,
+        skipReason: 'already applied',
+        previousChecksum: record.checksum,
+    };
+
+}
+
+// ─────────────────────────────────────────────────────────────
 // History Class
 // ─────────────────────────────────────────────────────────────
 
@@ -150,13 +219,11 @@ export function hydrateDate(
  *     executedBy: 'Alice <alice@example.com>',
  * })
  *
- * // Record file executions
- * await history.recordFileExecution(opId, {
- *     filepath: '/path/to/001.sql',
- *     checksum: 'abc123',
- *     status: 'success',
- *     durationMs: 42,
- * })
+ * // Seed a pending row per file that will run, then record each outcome
+ * await history.createFileRecords(opId, [
+ *     { filepath: 'changes/2024-01-15-add-users/change/001.sql', fileType: 'sql', checksum: 'abc123' },
+ * ])
+ * await history.updateFileExecution(opId, 'changes/2024-01-15-add-users/change/001.sql', 'success', 42)
  *
  * // Finalize
  * await history.finalizeOperation(opId, 'success', 'xyz789', 1234)
@@ -466,31 +533,19 @@ export class ChangeHistory {
     }
 
     /**
-     * Check if a single file within a change needs to run.
+     * Fetch the newest qualifying execution row per filepath for one
+     * change and direction.
      *
-     * Mirrors `Tracker.needsRun` (runner/tracker.ts) but scoped to this
-     * change's name+direction+config instead of a global filepath lookup,
-     * so file A's success under one change never satisfies file A's check
-     * under a different change.
+     * Two SELECTs for any number of files: the direction boundary, then the
+     * same query form as `Tracker.latestExecutions`.
      *
-     * Excludes `pending` rows from consideration: `createFileRecords`
-     * inserts a fresh pending row for every file before the per-file loop
-     * runs, and that row (always the highest id for this filepath) would
-     * otherwise shadow the prior operation's real success/failure record,
-     * making retries re-run every file instead of just the one that failed.
+     * Rows are scoped to this change's name+direction+config, so file A's
+     * success under one change never satisfies file A's check under another.
      *
-     * Also excludes `skipped` rows: `status: 'skipped'` is written for two
-     * different meanings — `skipRemainingFiles` writes it for files never
-     * reached after an earlier failure (must re-run), while this method's
-     * own per-file-skip path (called from `executor.ts`) writes it for a
-     * file that matched a prior success (must stay skipped). A `skipped`
-     * row is never itself a decision basis: a success-match skip still has
-     * its covering `success` row further back in history (found once the
-     * `skipped` row is excluded), and a never-reached skip has no terminal
-     * row at all, so the lookup falls through to `{ needsRun: true, reason:
-     * 'new' }` below and the file runs. Both resolve correctly without
-     * consulting the ambiguous row — excluding it here is what prevents a
-     * third attempt from re-running a file a prior success already covered.
+     * `pending` and `skipped` rows never count. Neither records an outcome:
+     * `pending` is a file its batch never reached, and `skipped` is written by
+     * `skipRemainingFiles` for the same reason, or by older versions for a
+     * file that matched a success still further back in history.
      *
      * A prior success only licenses a skip while it is still *standing*.
      * Two things retire it, and neither is visible on the execution row
@@ -511,33 +566,25 @@ export class ChangeHistory {
      *
      * @param name - Change name
      * @param direction - 'change' or 'revert'
-     * @param filepath - Relative filepath as stored in execution records
-     * @param checksum - Current checksum of the file
-     * @param force - Force re-run regardless of status
-     * @returns Whether the file needs to run and why
+     * @returns Map of relative filepath to its newest qualifying row, or the lookup error
+     *
+     * @example
+     * ```typescript
+     * const [latest, err] = await history.latestFileExecutions('2024-01-15-add-users', 'change')
+     * const result = decideNeedsRunFile(err ?? latest.get(filepath), checksum, false)
+     * ```
      */
-    async needsRunFile(
+    async latestFileExecutions(
         name: string,
         direction: Direction,
-        filepath: string,
-        checksum: string,
-        force: boolean,
-    ): Promise<NeedsRunResult> {
+    ): Promise<[Map<string, FileExecutionRecord>, null] | [null, Error]> {
 
-        // Force always runs
-        if (force) {
-
-            return { needsRun: true, reason: 'force' };
-
-        }
-
+        const { executions, change } = this.#tables;
         const opposite: Direction = direction === 'change' ? 'revert' : 'change';
 
-        // Newest operation that ran the other way; anything at or before it
-        // has since been undone.
         const [boundary, boundaryErr] = await attempt(() =>
             this.#ndb
-                .selectFrom(this.#tables.change)
+                .selectFrom(change)
                 .select(['id'])
                 .where('name', '=', name)
                 .where('change_type', '=', 'change')
@@ -553,100 +600,69 @@ export class ChangeHistory {
             observer.emit('error', {
                 source: 'change',
                 error: boundaryErr,
-                context: { name, filepath, operation: 'needs-run-file-boundary' },
+                context: { name, operation: 'latest-file-executions-boundary' },
             });
 
-            // Can't prove the prior success still stands, so re-run rather
-            // than skip: a redundant run is recoverable, a skipped one is not.
-            return { needsRun: true, reason: 'new' };
+            return [null, boundaryErr];
 
         }
 
-        // Get most recent completed execution record for this file, scoped
-        // to this change's name+direction+config
-        const [record, err] = await attempt(() => {
+        let qualifying = (this.#ndb
+            .selectFrom(executions)
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            .innerJoin(change, `${change}.id`, `${executions}.change_id`) as any)
+            .where(`${change}.name`, '=', name)
+            .where(`${change}.direction`, '=', direction)
+            .where(`${change}.config_name`, '=', this.#configName)
+            .where(`${change}.status`, 'not in', ['reverted', 'stale'])
+            .where(`${executions}.status`, 'not in', ['pending', 'skipped']);
 
-            let query = (this.#ndb
-                .selectFrom(this.#tables.executions)
-                .innerJoin(
-                    this.#tables.change,
-                    `${this.#tables.change}.id`,
-                    `${this.#tables.executions}.change_id`,
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                ) as any)
+        if (boundary) {
+
+            qualifying = qualifying.where(`${change}.id`, '>', boundary.id);
+
+        }
+
+        const newestIds = qualifying
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            .select((eb: any) => eb.fn.max(`${executions}.id`).as('id'))
+            .groupBy(`${executions}.filepath`)
+            .as('newest');
+
+        const [rows, err] = await attempt(() =>
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (this.#ndb.selectFrom(executions) as any)
+                .innerJoin(newestIds, 'newest.id', `${executions}.id`)
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 .select((eb: any) => [
-                    eb.ref(`${this.#tables.executions}.checksum`).as('checksum'),
-                    eb.ref(`${this.#tables.executions}.status`).as('exec_status'),
+                    eb.ref(`${executions}.filepath`).as('filepath'),
+                    eb.ref(`${executions}.checksum`).as('checksum'),
+                    eb.ref(`${executions}.status`).as('exec_status'),
                 ])
-                .where(`${this.#tables.change}.name`, '=', name)
-                .where(`${this.#tables.change}.direction`, '=', direction)
-                .where(`${this.#tables.change}.config_name`, '=', this.#configName)
-                .where(`${this.#tables.change}.status`, 'not in', ['reverted', 'stale'])
-                .where(`${this.#tables.executions}.filepath`, '=', filepath)
-                .where(`${this.#tables.executions}.status`, 'not in', ['pending', 'skipped']);
-
-            if (boundary) {
-
-                query = query.where(`${this.#tables.change}.id`, '>', boundary.id);
-
-            }
-
-            return query
-                .orderBy(`${this.#tables.executions}.id`, 'desc')
-                .limit(1)
-                .executeTakeFirst();
-
-        });
+                .execute(),
+        );
 
         if (err) {
 
             observer.emit('error', {
                 source: 'change',
                 error: err,
-                context: { name, filepath, operation: 'needs-run-file-check' },
+                context: { name, operation: 'latest-file-executions' },
             });
 
-            // On error, assume needs to run
-            return { needsRun: true, reason: 'new' };
+            return [null, err];
 
         }
 
-        // No previous completed record - new file
-        if (!record) {
+        const latest = new Map<string, FileExecutionRecord>();
 
-            return { needsRun: true, reason: 'new' };
+        for (const { filepath, ...record } of rows) {
 
-        }
-
-        // Previous execution failed - retry
-        if (record.exec_status === 'failed') {
-
-            return {
-                needsRun: true,
-                reason: 'failed',
-                previousChecksum: record.checksum,
-            };
+            latest.set(filepath, record);
 
         }
 
-        // Checksum changed since the last recorded attempt
-        if (record.checksum !== checksum) {
-
-            return {
-                needsRun: true,
-                reason: 'changed',
-                previousChecksum: record.checksum,
-            };
-
-        }
-
-        // Success and unchanged - skip
-        return {
-            needsRun: false,
-            skipReason: 'already applied',
-            previousChecksum: record.checksum,
-        };
+        return [latest, null];
 
     }
 
@@ -701,9 +717,10 @@ export class ChangeHistory {
     }
 
     /**
-     * Create pending file records for all files.
+     * Create pending file records for the files about to run.
      *
-     * Creates records upfront so we can mark remaining as skipped on failure.
+     * The pending rows let `skipRemainingFiles` mark the files a
+     * failure left unreached.
      *
      * @returns Error message if creation failed, null on success
      */

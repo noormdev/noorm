@@ -10,7 +10,7 @@ You have SQL files that need to run against a database. But running them manuall
 - What happens if execution fails halfway through?
 - How do you preview what will run before committing?
 
-noorm's runner solves this with checksum-based change detection and execution tracking. Files that haven't changed are skipped. Failed files are automatically retried. Everything is logged to the database for auditability.
+noorm's runner solves this with checksum-based change detection and execution tracking. Files that haven't changed are skipped. Failed files are automatically retried. Every execution is logged to the database for auditability.
 
 
 ## How It Works
@@ -24,14 +24,15 @@ The runner provides four execution modes:
 | **Dir** | Execute all files in a directory | Directory path |
 | **Files** | Execute specific files selectively | Array of file paths |
 
-When you run a file:
+When you run a batch (a single file is a batch of one):
 
-1. Compute SHA-256 checksum of file contents
-2. Check tracking database for previous execution
-3. Skip if unchanged, run if new/changed/failed
-4. Render template if `.sql.tmpl` file
-5. Execute SQL against database
-6. Record result in tracking tables
+1. Render every `.sql.tmpl` file, then compute the SHA-256 checksum of the SQL that will execute
+2. Read the newest execution row per file from the tracking database, in one query for the whole batch
+3. Skip if unchanged, run if new/changed/failed. A skipped file writes no tracking row
+4. If no file is left to run, return here without writing an operation row
+5. Create the operation and a `pending` row for each file about to run
+6. Execute SQL against database, in discovery order
+7. Record result in tracking tables
 
 
 ## Change Detection
@@ -143,9 +144,9 @@ Every execution is recorded in two tables. Names below are the MySQL/SQLite pref
 |-------|-------------|
 | `change_id` | FK to parent operation |
 | `filepath` | File that was executed |
-| `checksum` | SHA-256 of file contents |
-| `status` | `'success'`, `'failed'`, `'skipped'` |
-| `skip_reason` | `'unchanged'` if skipped |
+| `checksum` | SHA-256 of the executed SQL (the rendered output, for a template) |
+| `status` | `'pending'`, `'success'`, `'failed'`, `'skipped'` (a file the batch never reached after an earlier failure) |
+| `skip_reason` | Which failure stopped the batch, if skipped |
 | `duration_ms` | Execution time |
 
 
@@ -420,15 +421,14 @@ This utility is used internally by build operations when applying settings rules
 
 ## Unified executeFiles
 
-The `executeFiles` function provides low-level file execution with full tracking. `runBuild`/`runDir`/`runFiles` funnel through it. The change module does **not** — `core/change/executor.ts` has its own private `executeFiles` so it can emit `change:file` events and honour manifest resolution; it shares only `computeChecksum`, `computeCombinedChecksum`, and the `Tracker` base class with the runner.
+The `executeFiles` function provides low-level file execution with full tracking. `runBuild`/`runDir`/`runFiles`/`runFile` funnel through it. The change module does **not** — `core/change/executor.ts` has its own private `executeFiles` so it can emit `change:file` events and honour manifest resolution; it shares only `computeChecksum`, `computeCombinedChecksum`, and the `Tracker` base class with the runner.
 
 ```typescript
 import { executeFiles, type FileInput } from './core/runner'
 
-// Prepare file inputs with pre-computed checksums
 const files: FileInput[] = [
-    { path: '/project/sql/001_users.sql', type: 'sql', checksum: 'abc123' },
-    { path: '/project/sql/002_posts.sql', type: 'sql', checksum: 'def456' },
+    { path: '/project/sql/001_users.sql', type: 'sql' },
+    { path: '/project/sql/002_posts.sql', type: 'sql' },
 ]
 
 // Four arguments: run options and execution options are separate objects
@@ -452,7 +452,6 @@ The `FileInput` type:
 interface FileInput {
     path: string
     type: 'sql' | 'txt'
-    checksum?: string     // Pre-computed SHA-256; computed if omitted
 }
 ```
 
@@ -460,8 +459,8 @@ interface FileInput {
 
 This design separates file discovery (external) from execution (internal), enabling:
 - Pre-validation before database operations begin
-- Checksum computation for all files upfront
-- Full batch visibility via `createFileRecords()`
+- Rendering and hashing every file before any tracking write
+- One tracking query to decide skip-or-run for the whole batch
 
 
 ## Tracker Class
@@ -469,20 +468,18 @@ This design separates file discovery (external) from execution (internal), enabl
 The `Tracker` class handles execution history and change detection. It serves as the base for both runner and change operations.
 
 ```typescript
-import { Tracker } from './core/runner'
+import { Tracker, decideNeedsRun } from './core/runner'
 
 // (db, configName, dialect) — dialect defaults to 'sqlite', which selects the
 // prefixed table names. Pass the real dialect or pg/mssql queries hit the
 // wrong identifiers.
 const tracker = new Tracker(db, configName, 'postgres')
 
-// Check if file needs to run (by filepath). Returns NeedsRunResult:
+// Check if files need to run: the newest row per filepath in one query,
+// decided in memory. Returns NeedsRunResult:
 // { needsRun, reason?, skipReason?, previousChecksum? }
-const { needsRun, reason, skipReason } = await tracker.needsRun(filepath, checksum, force)
-
-// Inside a running operation, exclude that operation's own pending rows or
-// every file reads as 'new' forever
-const check = await tracker.needsRun(filepath, checksum, force, operationId)
+const [latest, latestErr] = await tracker.latestExecutions()
+const { needsRun, reason, skipReason } = decideNeedsRun(latestErr ?? latest.get(filepath), checksum, force)
 
 // Check if file needs to run (by name only - for changes)
 const byName = await tracker.needsRunByName(name, checksum, force)
@@ -496,28 +493,18 @@ const operationId = await tracker.createOperation({
     executedBy: 'alice@example.com',
 })
 
-// Create file records upfront (for full batch visibility) — fileType required
+// Create file records for the files about to run — fileType required
 await tracker.createFileRecords(operationId, [
     { filepath: '/path/to/file1.sql', fileType: 'sql', checksum: 'abc123' },
     { filepath: '/path/to/file2.sql', fileType: 'sql', checksum: 'def456' },
 ])
 
 // Update individual file after execution. Positional, not an options object:
-// (operationId, filepath, status, durationMs, errorMessage?, skipReason?, checksum?)
-await tracker.updateFileExecution(operationId, filepath, 'success', 45, undefined, undefined, 'abc123')
+// (operationId, filepath, status, durationMs, errorMessage?, skipReason?)
+await tracker.updateFileExecution(operationId, filepath, 'success', 45)
 
 // Skip remaining files (e.g., on error with abortOnError)
 await tracker.skipRemainingFiles(operationId, 'aborted due to previous error')
-
-// Legacy: Record a file execution (still supported). Note the field is
-// `changeId`, not `operationId`.
-await tracker.recordExecution({
-    changeId: operationId,
-    filepath,
-    checksum,
-    status: 'success',
-    durationMs: 45,
-})
 
 // Finalize operation with optional checksum and error message
 await tracker.finalizeOperation(operationId, 'success', 1234, checksum, errorMessage)
@@ -542,14 +529,14 @@ The API uses `'commit'` | `'revert'` for clarity, but the database stores `'chan
 
 ### Batch Visibility
 
-Creating file records upfront provides complete audit trails:
+Every file in the run set appears as `pending` before the first one executes. Skipped files leave no row.
 
 ```typescript
-// All files are visible immediately as 'pending'
-await tracker.createFileRecords(operationId, files)
+// Every file in the run set is visible immediately as 'pending'
+await tracker.createFileRecords(operationId, runSet)
 
 // As each executes, status updates to 'success' or 'failed'
-await tracker.updateFileExecution(operationId, filepath, { status: 'success', ... })
+await tracker.updateFileExecution(operationId, filepath, 'success', 45)
 
 // If aborted, remaining files marked as 'skipped'
 await tracker.skipRemainingFiles(operationId, 'aborted due to error')

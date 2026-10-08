@@ -2,14 +2,14 @@
  * Checksum dedup for `.sql.tmpl` files through `run build`.
  *
  * The runner's headline promise is "run build as often as you like, only
- * changed files execute". For templates it was false on every build: the
- * checksum persisted upfront was the *raw file* hash while `needsRun`
- * compared the *rendered* hash, so the two could never match and every
- * template re-executed forever — failing on any non-idempotent DDL.
+ * changed files execute". For a template that holds only if the recorded
+ * checksum and the compared checksum are both the *rendered* hash; mixing in
+ * the raw file hash means they never match, and every template re-executes
+ * forever — failing on any non-idempotent DDL.
  *
- * `tests/core/runner/tracker.test.ts` cannot see this: it hands `needsRun`
- * checksums directly, so the raw-vs-rendered mismatch is invisible by
- * construction. These tests drive `runBuild` end to end instead, and pin
+ * `tests/core/runner/tracker.test.ts` cannot see this: it hands
+ * `latestExecutions` rows and checksums to `decideNeedsRun` directly,
+ * so the raw-vs-rendered mismatch is invisible by construction. These tests drive `runBuild` end to end instead, and pin
  * the *decision* the fix encodes — the rendered SQL is the dedup key, so a
  * template whose inputs changed re-runs even though its bytes did not.
  */
@@ -22,6 +22,7 @@ import { Kysely, SqliteDialect, sql } from 'kysely';
 import { BunSqliteDatabase } from '../../../src/core/connection/dialects/sqlite-bun.js';
 import { runBuild } from '../../../src/core/runner/runner.js';
 import { computeChecksumFromContent } from '../../../src/core/runner/checksum.js';
+import { observer } from '../../../src/core/observer.js';
 import { v1 } from '../../../src/core/version/schema/migrations/v1.js';
 import type { NoormDatabase } from '../../../src/core/shared/index.js';
 import type { RunContext } from '../../../src/core/runner/types.js';
@@ -103,8 +104,8 @@ describe('runner: template checksum dedup', () => {
         expect(second.filesSkipped).toBe(1);
         expect(second.files[0]?.skipReason).toBe('unchanged');
 
-        // The third build is the one the previous skip-reason fix (dd7e387)
-        // was about — a recorded `unchanged` skip must not read as "never ran".
+        // A skip writes no row, so the third build still compares against
+        // the first build's success.
         const third = await runBuild(context(), sqlDir);
 
         expect(third.status).toBe('success');
@@ -159,6 +160,42 @@ describe('runner: template checksum dedup', () => {
 
         expect(afterDataChange.filesRun).toBe(1);
         expect(afterDataChange.filesSkipped).toBe(0);
+
+    });
+
+    it('should write no tracking rows when the rendered output is unchanged', async () => {
+
+        await writeFile(join(sqlDir, 'seed.json'), JSON.stringify({ label: 'same' }), 'utf-8');
+        await writeFile(join(sqlDir, '001_t.sql.tmpl'), "SELECT '{%~ $.seed.label %}' AS label;", 'utf-8');
+
+        await runBuild(context(), sqlDir);
+
+        const before = await sql<{ n: number }>`SELECT COUNT(*) AS n FROM __noorm_executions__`.execute(db);
+        const second = await runBuild(context(), sqlDir);
+        const after = await sql<{ n: number }>`SELECT COUNT(*) AS n FROM __noorm_executions__`.execute(db);
+
+        expect(second.filesSkipped).toBe(1);
+        expect(after.rows[0]!.n).toBe(before.rows[0]!.n);
+
+    });
+
+    it('should render each template once per build, whether it runs or skips', async () => {
+
+        await writeFile(join(sqlDir, '001_t.sql.tmpl'), 'CREATE TABLE tmpl_once (id INTEGER PRIMARY KEY);', 'utf-8');
+
+        const renders: string[] = [];
+        const off = observer.on('template:render', (data) => renders.push(data.filepath));
+
+        await runBuild(context(), sqlDir);
+        const rendersWhenRun = renders.length;
+
+        await runBuild(context(), sqlDir);
+        const rendersWhenSkipped = renders.length - rendersWhenRun;
+
+        off();
+
+        expect(rendersWhenRun).toBe(1);
+        expect(rendersWhenSkipped).toBe(1);
 
     });
 
