@@ -167,6 +167,9 @@ Defaults:
 | `sql` | `./sql` |
 | `changes` | `./changes` |
 
+These apply only when `settings.yml` has no `paths` key. `noorm init` writes `./db/sql` and
+`./db/changes` into the file explicitly, so a new project never relies on them.
+
 ```typescript
 const paths = settings.getPaths()
 // { sql: './db/sql', changes: './db/changes' }

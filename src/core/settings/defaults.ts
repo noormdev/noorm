@@ -27,6 +27,31 @@ export const DEFAULT_PATH_CONFIG: PathConfig = {
     changes: './changes',
 };
 
+export const INIT_DB_DIR = 'db';
+
+export const INIT_SQL_PATH = `./${INIT_DB_DIR}/sql`;
+
+export const INIT_CHANGES_PATH = `./${INIT_DB_DIR}/changes`;
+
+// Not DEFAULT_PATH_CONFIG: moving that repoints every project whose settings.yml has no `paths`.
+export const INIT_PATH_CONFIG: PathConfig = {
+    sql: INIT_SQL_PATH,
+    changes: INIT_CHANGES_PATH,
+};
+
+/**
+ * Whether `paths` is the layout `noorm init` scaffolds, as opposed to a
+ * project that already chose its own.
+ *
+ * @example
+ * if (isInitLayout(paths)) scaffoldDbLayout(root, paths);
+ */
+export function isInitLayout(paths: PathConfig): boolean {
+
+    return paths.sql === INIT_SQL_PATH && paths.changes === INIT_CHANGES_PATH;
+
+}
+
 /**
  * Default strict mode configuration.
  *

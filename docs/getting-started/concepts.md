@@ -9,7 +9,7 @@ This page explains how noorm thinks about your database. Understanding these con
 Your SQL files define what your schema **is**. They represent the ideal, current state of your database structure.
 
 ```
-sql/
+db/sql/
 ├── 01_tables/
 │   ├── 001_users.sql    # CREATE TABLE users...
 │   └── 002_posts.sql    # CREATE TABLE posts...
@@ -29,17 +29,17 @@ Everything runs in alphanumeric order. Directories, files within directories, ch
 This matters because dependencies have order. Tables must exist before views reference them. Functions must exist before triggers call them. Without numeric prefixes, you get alphabetical order:
 
 ```
-sql/functions/   ← runs first (f < t < v)
-sql/tables/      ← runs second
-sql/views/       ← runs third
+db/sql/functions/   ← runs first (f < t < v)
+db/sql/tables/      ← runs second
+db/sql/views/       ← runs third
 ```
 
 That's broken—views can't reference tables that don't exist yet. Use numeric prefixes:
 
 ```
-sql/01_tables/   ← runs first
-sql/02_views/    ← runs second
-sql/03_functions/ ← runs third (functions can reference tables/views)
+db/sql/01_tables/   ← runs first
+db/sql/02_views/    ← runs second
+db/sql/03_functions/ ← runs third (functions can reference tables/views)
 ```
 
 The same rule applies to files within directories:
@@ -68,7 +68,7 @@ One rule, everywhere. Look at the filesystem and you know the order.
 Changes document what you did to evolve an existing database. They answer: who changed what, when, and why.
 
 ```
-changes/
+db/changes/
 └── 2024-01-15-add-user-roles/
     ├── change/
     │   └── 001_add_role_column.sql
@@ -86,7 +86,7 @@ Sometimes you need more than static SQL. Templates let you generate SQL from str
 Add `.tmpl` to any SQL file to make it a template:
 
 ```
-sql/
+db/sql/
 ├── tables/
 │   └── users.sql           # Static SQL
 └── security/
@@ -99,7 +99,7 @@ Templates can read adjacent data files. Place a `rls.yml` next to `rls.sql.tmpl`
 Here's a real example: PostgreSQL Row-Level Security. Without templates, you'd write dozens of similar `CREATE POLICY` statements. With templates, you define policies in YAML:
 
 ```yaml
-# sql/security/rls.yml
+# db/sql/security/rls.yml
 policies:
     users:
         - name: users_own_data
@@ -129,7 +129,7 @@ policies:
 Then generate all the SQL:
 
 ```sql
--- sql/security/rls.sql.tmpl
+-- db/sql/security/rls.sql.tmpl
 {% for (const [table, policies] of Object.entries($.rls.policies)) { %}
 
 ALTER TABLE {%~ table %} ENABLE ROW LEVEL SECURITY;
@@ -149,7 +149,7 @@ This generates correct, complete SQL for every table. Add a new policy? Edit the
 You can also define **helper functions** in `$helpers.ts` files. Helpers are inherited up the directory tree—define utilities at the root, specialize them in subdirectories:
 
 ```typescript
-// sql/$helpers.ts
+// db/sql/$helpers.ts
 export function grantAll(role: string, tables: string[]) {
     return tables
         .map(t => `GRANT SELECT, INSERT, UPDATE, DELETE ON ${t} TO ${role};`)
@@ -158,7 +158,7 @@ export function grantAll(role: string, tables: string[]) {
 ```
 
 ```sql
--- sql/security/grants.sql.tmpl
+-- db/sql/security/grants.sql.tmpl
 {%~ $.grantAll('app_user', ['users', 'posts', 'comments']) %}
 ```
 
@@ -240,7 +240,7 @@ Secrets are sensitive values that get inserted **into** your database via SQL te
 noorm stores secrets encrypted in your local state. When you run SQL templates, secrets are available but never written to disk in plain text.
 
 ```sql
--- sql/config/aws.sql.tmpl
+-- db/sql/config/aws.sql.tmpl
 INSERT INTO app_config (key, value) VALUES
     ('aws_access_key', '{%~ $.secrets.AWS_ACCESS_KEY %}'),
     ('aws_secret_key', '{%~ $.secrets.AWS_SECRET_KEY %}');
@@ -287,8 +287,8 @@ Settings live in `.noorm/settings.yml` and **should be committed**. They define 
 ```yaml
 # .noorm/settings.yml
 paths:
-  sql: ./sql
-  changes: ./changes
+  sql: ./db/sql
+  changes: ./db/changes
 
 build:
   include:
@@ -340,7 +340,7 @@ Connection values go under `defaults`. Required secrets go under `secrets`, and 
 | Aspect | SQL Files | Changes |
 |--------|-----------|---------|
 | Purpose | Define ideal schema | Evolve existing databases |
-| Location | `sql/` | `changes/` |
+| Location | `db/sql/` | `db/changes/` |
 | When to run | Fresh database, tests | Existing database |
 | Rollback | No | Yes, with revert scripts |
 | Order | Alphanumeric by full path | By date prefix |

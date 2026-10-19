@@ -84,7 +84,7 @@ Press Enter on any record to see file-level execution details:
 |                                                                |
 |  +------------------------------------------------------------+|
 |  | File Details                                               ||
-|  | Path: changes/2025-01-15-.../change/001_create-tokens...   ||
+|  | Path: db/changes/2025-01-15-.../change/001_create-tok...   ||
 |  | Checksum: 8f4a2b3c9d1e...                                  ||
 |  +------------------------------------------------------------+|
 |                                                                |
@@ -97,7 +97,7 @@ For failed files, the detail panel shows the error message:
 ```
 |  +------------------------------------------------------------+|
 |  | File Details                                               ||
-|  | Path: changes/2025-01-15-.../change/003_add-index.sql      ||
+|  | Path: db/changes/2025-01-15-.../change/003_add-index.sql   ||
 |  | Checksum: 3b7c8d2a4f5e...                                  ||
 |  | Error: relation "users" does not exist                     ||
 |  +------------------------------------------------------------+|

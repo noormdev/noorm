@@ -93,7 +93,7 @@ with no prompts:
       --name "$CI_USER" \
       --email "$CI_EMAIL"
 
-    # 2. Project scaffold (sql/, changes/, settings.yml, state.enc).
+    # 2. Project scaffold (db/sql/, db/changes/, settings.yml, state.enc).
     cd "$PROJECT_ROOT"
     noorm init --yes
 

@@ -151,10 +151,13 @@ your-project/
 │   ├── settings.yml           # Project settings (commit this)
 │   └── state/
 │       └── state.enc          # Encrypted state (don't commit)
-├── sql/                       # Your SQL files
-│   └── .gitkeep
-└── changes/                   # Versioned changes
-    └── .gitkeep
+└── db/
+    ├── sql/                   # Your SQL files
+    │   └── .gitkeep
+    ├── changes/               # Versioned changes
+    │   └── .gitkeep
+    ├── AGENTS.md              # Steering for AI coding agents working in db/
+    └── CLAUDE.md              # Imports AGENTS.md for Claude Code
 ```
 
 `noorm init` is strictly interactive and exits with an error on a non-TTY unless you pass `--yes` and already have an identity at `~/.noorm/identity.{key,pub,json}`.

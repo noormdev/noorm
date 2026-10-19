@@ -95,8 +95,8 @@ curl -fsSL https://raw.githubusercontent.com/noormdev/noorm/master/install.sh | 
 Write a SQL file, then build it:
 
 ```bash
-mkdir -p sql/01_tables
-echo "CREATE TABLE users (id SERIAL PRIMARY KEY, name TEXT);" > sql/01_tables/001_users.sql
+mkdir -p db/sql/01_tables
+echo "CREATE TABLE users (id SERIAL PRIMARY KEY, name TEXT);" > db/sql/01_tables/001_users.sql
 
 noorm run build
 ```
@@ -108,8 +108,8 @@ noorm run build
 When the schema evolves, update the SQL file **and** add a change. The file keeps describing what the schema is; the change tells existing databases how to catch up:
 
 ```bash
-# Edit sql/01_tables/001_users.sql to add an email column
-# Add changes/2024-01-add-email/forward.sql
+# Edit db/sql/01_tables/001_users.sql to add an email column
+# Add db/changes/2024-01-add-email/forward.sql
 
 noorm change ff     # fast-forward: apply pending changes
 ```

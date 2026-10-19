@@ -309,10 +309,10 @@ const history = await ctx.noorm.changes.history(20); // Execution log
 
 ```typescript
 // Discovery
-const files = await ctx.noorm.run.discover('sql/');
+const files = await ctx.noorm.run.discover('db/sql/');
 
 // Preview (render templates without executing)
-const previews = await ctx.noorm.run.preview(['sql/001.sql', 'sql/002.sql']);
+const previews = await ctx.noorm.run.preview(['db/sql/001.sql', 'db/sql/002.sql']);
 
 // Execution
 await ctx.noorm.run.file('seeds/test-data.sql');
@@ -404,7 +404,7 @@ const apiKey = ctx.noorm.secrets.get('API_KEY'); // Returns undefined if not set
 Render `.sql.tmpl` files without executing — useful for previewing generated SQL.
 
 ```typescript
-const result = await ctx.noorm.templates.render('sql/001_users.sql.tmpl');
+const result = await ctx.noorm.templates.render('db/sql/001_users.sql.tmpl');
 // result: { name, content, error?, durationMs? }
 ```
 
@@ -449,7 +449,7 @@ const result = await ctx.noorm.dt.importFile('./exports/users.dtz', {
 ### utils
 
 ```typescript
-const checksum = await ctx.noorm.utils.checksum('sql/001.sql');
+const checksum = await ctx.noorm.utils.checksum('db/sql/001.sql');
 const { ok, error } = await ctx.noorm.utils.testConnection();
 ```
 
