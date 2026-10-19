@@ -1,6 +1,6 @@
 # NoORM Templates Reference
 
-Writing `.sql.tmpl` files — syntax, context API, secrets, environment variables, data files, and helpers.
+Writing `.sql.tmpl` files — syntax, context API, secrets, environment variables, data files, and helpers. For when a template is the right choice over plain SQL, and where it goes (`sql/` or a change), see **Templates** in `schema-files.md`.
 
 ## Table of Contents
 
@@ -184,7 +184,7 @@ Include another SQL file. Path is relative to the current template. **Async — 
 If the included file is `.sql.tmpl`, it is recursively rendered with the same context.
 
 ```sql
--- changes/2025-01-15-setup/change/001_schema.sql.tmpl
+-- db/changes/2025-01-15-setup/change/001_schema.sql.tmpl
 {%~ await $.include('../lib/core_tables.sql') %}
 {%~ await $.include('../lib/audit_triggers.sql.tmpl') %}
 ```
@@ -198,7 +198,7 @@ Path traversal outside the project root is blocked.
 Any supported file in the same directory as the template is automatically loaded onto `$`:
 
 ```
-sql/users/
+db/sql/users/
 ├── 001_seed.sql.tmpl     # Template
 ├── users.json            # → $.users
 ├── roles.yml             # → $.roles
@@ -236,7 +236,7 @@ Filenames are converted to camelCase:
 Files named `$helpers.ts` (or `.js`, `.mjs`) are auto-discovered by walking UP the directory tree to the project root. Child helpers override parent helpers with the same name.
 
 ```
-sql/
+db/sql/
 ├── $helpers.ts                  # Project-wide helpers
 ├── users/
 │   ├── $helpers.ts              # Overrides parent for this subtree
@@ -248,7 +248,7 @@ sql/
 ### Writing Helpers
 
 ```typescript
-// sql/$helpers.ts
+// db/sql/$helpers.ts
 export function padId(id: number, length = 6): string {
 
     return String(id).padStart(length, '0')
@@ -347,7 +347,7 @@ GRANT EXECUTE ON {%~ proc %} TO {%~ role %};
 ### Composing from Fragments
 
 ```sql
--- changes/2025-01-15-setup/change/001_schema.sql.tmpl
+-- db/changes/2025-01-15-setup/change/001_schema.sql.tmpl
 {%~ await $.include('../lib/core_tables.sql') %}
 {%~ await $.include('../lib/content_tables.sql') %}
 {%~ await $.include('../lib/seed_defaults.sql') %}
@@ -373,14 +373,14 @@ Before executing, preview or inspect templates:
 **CLI:**
 
 ```bash
-noorm run preview sql/schema.sql.tmpl              # Rendered SQL to stdout
-noorm run preview sql/schema.sql.tmpl > rendered.sql
-noorm run inspect sql/seed.sql.tmpl                 # Show available context
+noorm run preview db/sql/schema.sql.tmpl              # Rendered SQL to stdout
+noorm run preview db/sql/schema.sql.tmpl > rendered.sql
+noorm run inspect db/sql/seed.sql.tmpl                 # Show available context
 ```
 
 **SDK:**
 
 ```typescript
-const result = await ctx.noorm.templates.render('sql/001_users.sql.tmpl');
+const result = await ctx.noorm.templates.render('db/sql/001_users.sql.tmpl');
 // result: { name, content, error?, durationMs? }
 ```

@@ -127,8 +127,8 @@ NOORM_CI_CONFIG_NAME         # Default config name for `ci init` (override: --na
 
 **Paths:**
 ```bash
-NOORM_PATHS_SQL              # Schema directory (default: ./sql)
-NOORM_PATHS_CHANGES          # Changes directory (default: ./changes)
+NOORM_PATHS_SQL              # Schema directory (default: ./sql when settings.yml has no paths)
+NOORM_PATHS_CHANGES          # Changes directory (default: ./changes when settings.yml has no paths)
 ```
 
 **Behavior:**
@@ -209,7 +209,7 @@ Raw SQL (`noorm sql`) is gated by what the statement actually does, not by a fla
 
 #### `init`
 
-Bootstrap a new noorm project interactively. Creates identity (if needed), project structure (`sql/`, `changes/`, `.noorm/`), `settings.yml`, and encrypted `state.enc`.
+Bootstrap a new noorm project interactively. Creates identity (if needed), project structure (`db/sql/`, `db/changes/`, `db/AGENTS.md`, `db/CLAUDE.md`, `.noorm/`), `settings.yml`, and encrypted `state.enc`.
 
 ```bash
 noorm init              # Interactive, requires TTY
@@ -685,7 +685,7 @@ noorm run build --dry-run  # Preview without executing
     "success": true,
     "status": "success",
     "files": [
-        {"filepath": "sql/01_tables/users.sql", "status": "success", "checksum": "…", "durationMs": 12}
+        {"filepath": "db/sql/01_tables/users.sql", "status": "success", "checksum": "…", "durationMs": 12}
     ],
     "filesRun": 2,
     "filesSkipped": 1,
@@ -702,9 +702,9 @@ noorm run build --dry-run  # Preview without executing
 Execute a single SQL or `.sql.tmpl` file.
 
 ```bash
-noorm run file sql/01_tables/001_users.sql
+noorm run file db/sql/01_tables/001_users.sql
 noorm run file seed.sql.tmpl
-noorm run file sql/init.sql --json
+noorm run file db/sql/init.sql --json
 ```
 
 **JSON output:**
@@ -724,7 +724,7 @@ noorm run file sql/init.sql --json
 Execute all SQL files in a directory in alphabetical order.
 
 ```bash
-noorm run dir sql/01_tables/
+noorm run dir db/sql/01_tables/
 noorm run dir seeds/
 noorm run dir migrations/ --json
 ```
@@ -737,8 +737,8 @@ A directory that does not exist, or that holds no SQL files, exits `2` — a dir
 Batch-execute SQL files matching a glob pattern or directory. More flexible than `run dir`.
 
 ```bash
-noorm run exec sql/
-noorm run exec "sql/**/*.sql"
+noorm run exec db/sql/
+noorm run exec "db/sql/**/*.sql"
 noorm run exec "seeds/*.sql" --force
 noorm run exec migrations/ --dry-run
 ```
@@ -752,7 +752,7 @@ Execute multiple specific SQL files in order.
 
 ```bash
 noorm run files --paths seed.sql,fixtures.sql
-noorm run files --paths sql/001_tables.sql,sql/002_indexes.sql --json
+noorm run files --paths db/sql/001_tables.sql,db/sql/002_indexes.sql --json
 ```
 
 
@@ -761,15 +761,15 @@ noorm run files --paths sql/001_tables.sql,sql/002_indexes.sql --json
 Inspect the template context for a `.sql.tmpl` file without executing. Shows data files, helpers, config, secrets, and built-in functions.
 
 ```bash
-noorm run inspect sql/users/001_create.sql.tmpl
-noorm run inspect sql/core/Crons.sql.tmpl --json
+noorm run inspect db/sql/users/001_create.sql.tmpl
+noorm run inspect db/sql/core/Crons.sql.tmpl --json
 ```
 
 **JSON output:**
 ```json
 {
     "success": true,
-    "filepath": "sql/users/001_create.sql.tmpl",
+    "filepath": "db/sql/users/001_create.sql.tmpl",
     "context": {
         "dataFiles": [{"key": "roles", "type": "Array [3]"}],
         "helpers": [{"key": "padId", "type": "Function"}],
@@ -788,17 +788,17 @@ noorm run inspect sql/core/Crons.sql.tmpl --json
 Render a `.sql.tmpl` file and output the resulting SQL. Does **not** execute against the database.
 
 ```bash
-noorm run preview sql/schema.sql.tmpl
-noorm run preview sql/schema.sql.tmpl > rendered.sql
-noorm run preview sql/seed.sql.tmpl --json
-noorm run preview sql/migrations/002.sql.tmpl --config staging
+noorm run preview db/sql/schema.sql.tmpl
+noorm run preview db/sql/schema.sql.tmpl > rendered.sql
+noorm run preview db/sql/seed.sql.tmpl --json
+noorm run preview db/sql/migrations/002.sql.tmpl --config staging
 ```
 
 **JSON output:**
 ```json
 {
     "success": true,
-    "filepath": "sql/schema.sql.tmpl",
+    "filepath": "db/sql/schema.sql.tmpl",
     "sql": "CREATE TABLE ...",
     "durationMs": 12
 }
@@ -818,8 +818,8 @@ Bare `noorm change` renders citty's help output and does not connect to the data
 | `change run` | pending + reverted + stale (not orphaned) |
 | `change revert` | success |
 | `change rewind` | success |
-| `change edit` | every directory under `changes/` (filesystem) |
-| `change rm` | every directory under `changes/` (filesystem) |
+| `change edit` | every directory under `db/changes/` (filesystem) |
+| `change rm` | every directory under `db/changes/` (filesystem) |
 | `change history-detail` | anything with an execution record (non-pending) |
 
 Non-TTY callers (CI, scripts) must pass the name or the command errors out.
@@ -873,7 +873,7 @@ noorm change ff --force
 }
 ```
 
-`--dry-run` adds `"dryRun": true` to the payload. A missing `changes/` directory is a warning, not a failure: it lands in `warnings` rather than making the batch fail.
+`--dry-run` adds `"dryRun": true` to the payload. A missing `db/changes/` directory is a warning, not a failure: it lands in `warnings` rather than making the batch fail.
 
 
 #### `change next`
@@ -946,7 +946,7 @@ noorm change add add-users-table
 noorm change add "notification queue" --json
 ```
 
-Creates `changes/<YYYY-MM-DD>-<slug>/` with `change/` and `revert/` directories, each
+Creates `db/changes/<YYYY-MM-DD>-<slug>/` with `change/` and `revert/` directories, each
 holding a `001_<slug>.sql` stub (a single comment naming what belongs there — "Add the SQL
 statements that apply this change" / "...undo this change"), plus `changelog.md`. The stub
 comments alone don't count as content: running the change before editing them fails with an
@@ -1804,7 +1804,7 @@ list results live under a key named for the resource:
 { "success": true,  "changes": [ … ], "pending": 0 }
 { "success": true,  "status": "success", "filesRun": 3, "filesSkipped": 0, "filesFailed": 0 }
 { "success": false, "status": "partial", "filesRun": 1, "filesSkipped": 0, "filesFailed": 2 }
-{ "success": false, "error": "Template not found: sql/nope.sql.tmpl" }
+{ "success": false, "error": "Template not found: db/sql/nope.sql.tmpl" }
 ```
 
 Three guarantees hold across every command:
@@ -1866,5 +1866,5 @@ fi
 
 ```bash
 # Render template and pipe to external tool
-noorm run preview sql/hotfix.sql.tmpl | psql -h localhost -d myapp
+noorm run preview db/sql/hotfix.sql.tmpl | psql -h localhost -d myapp
 ```

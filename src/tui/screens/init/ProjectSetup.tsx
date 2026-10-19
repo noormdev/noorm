@@ -12,6 +12,7 @@ import { Box, Text } from 'ink';
 import { Panel } from '../../components/layout/index.js';
 import { SelectList } from '../../components/lists/index.js';
 import type { SelectListItem } from '../../components/lists/index.js';
+import { INIT_CHANGES_PATH, INIT_DB_DIR, INIT_SQL_PATH, isInitLayout } from '../../../core/settings/defaults.js';
 
 /**
  * Props for ProjectSetup.
@@ -39,12 +40,14 @@ export interface ProjectSetupProps {
  * Shows what will be created and offers to add first config.
  */
 export function ProjectSetup({
-    sqlPath = './sql',
-    changesPath = './changes',
+    sqlPath = INIT_SQL_PATH,
+    changesPath = INIT_CHANGES_PATH,
     onAddConfig,
     onSkipConfig,
     onCancel: _onCancel,
 }: ProjectSetupProps): ReactElement {
+
+    const scaffoldsDb = isInitLayout({ sql: sqlPath, changes: changesPath });
 
     // Note: No useFocusScope here - let the SelectList manage its own focus.
     // Parent focus scopes interfere with child focus due to React effect order.
@@ -111,14 +114,26 @@ export function ProjectSetup({
                 <Box flexDirection="column" marginBottom={1}>
                     <Text bold>Will create:</Text>
                     <Box flexDirection="column" marginLeft={2} marginTop={1}>
-                        <Text dimColor>
-                            <Text>• </Text>
-                            <Text>{sqlPath}/.gitkeep</Text>
-                        </Text>
-                        <Text dimColor>
-                            <Text>• </Text>
-                            <Text>{changesPath}/.gitkeep</Text>
-                        </Text>
+                        {scaffoldsDb && (
+                            <>
+                                <Text dimColor>
+                                    <Text>• </Text>
+                                    <Text>{sqlPath}/.gitkeep</Text>
+                                </Text>
+                                <Text dimColor>
+                                    <Text>• </Text>
+                                    <Text>{changesPath}/.gitkeep</Text>
+                                </Text>
+                                <Text dimColor>
+                                    <Text>• </Text>
+                                    <Text>./{INIT_DB_DIR}/AGENTS.md</Text>
+                                </Text>
+                                <Text dimColor>
+                                    <Text>• </Text>
+                                    <Text>./{INIT_DB_DIR}/CLAUDE.md</Text>
+                                </Text>
+                            </>
+                        )}
                         <Text dimColor>
                             <Text>• </Text>
                             <Text>.noorm/settings.yml</Text>

@@ -62,8 +62,8 @@ When all three identity vars are set at process startup, every `noorm` command i
 ### Paths
 
 ```bash
-NOORM_PATHS_SQL              # Schema directory (default: ./sql)
-NOORM_PATHS_CHANGES          # Changes directory (default: ./changes)
+NOORM_PATHS_SQL              # Schema directory (default: ./sql when settings.yml has no paths)
+NOORM_PATHS_CHANGES          # Changes directory (default: ./changes when settings.yml has no paths)
 ```
 
 ### Behavior
@@ -83,7 +83,7 @@ NOORM_DEBUG                  # Enable debug logging
 
 ### init
 
-Bootstrap a new noorm project interactively. Creates identity (if needed), project structure (`sql/`, `changes/`, `.noorm/`), `settings.yml`, and encrypted `state.enc`.
+Bootstrap a new noorm project interactively. Creates identity (if needed), project structure (`db/sql/`, `db/changes/`, `.noorm/`), `settings.yml`, and encrypted `state.enc`.
 
 ```bash
 noorm init              # Interactive — requires TTY
@@ -310,9 +310,9 @@ noorm run build --dry-run   # Preview without executing
 Execute a single SQL or `.sql.tmpl` file.
 
 ```bash
-noorm run file sql/01_tables/001_users.sql
+noorm run file db/sql/01_tables/001_users.sql
 noorm run file seed.sql.tmpl
-noorm run file sql/init.sql --json
+noorm run file db/sql/init.sql --json
 ```
 
 **JSON:** `{ "filepath": "seed.sql", "status": "success", "durationMs": 45 }`
@@ -324,7 +324,7 @@ Status is `"success"` or `"skipped"` (unchanged checksum).
 Execute all SQL files in a directory in alphabetical order.
 
 ```bash
-noorm run dir sql/01_tables/
+noorm run dir db/sql/01_tables/
 noorm run dir seeds/
 ```
 
@@ -333,15 +333,15 @@ noorm run dir seeds/
 Show the template context for a `.sql.tmpl` file without rendering it. Lists available data files, helpers, built-in functions, config keys, and secret counts.
 
 ```bash
-noorm run inspect sql/users/001_create.sql.tmpl
-noorm run inspect sql/core/Crons.sql.tmpl --json
+noorm run inspect db/sql/users/001_create.sql.tmpl
+noorm run inspect db/sql/core/Crons.sql.tmpl --json
 ```
 
 **JSON:**
 
 ```json
 {
-    "filepath": "sql/users/001_create.sql.tmpl",
+    "filepath": "db/sql/users/001_create.sql.tmpl",
     "context": {
         "dataFiles": [{ "key": "roles", "type": "Array [3]" }],
         "helpers": [{ "key": "padId", "type": "Function" }],
@@ -359,10 +359,10 @@ noorm run inspect sql/core/Crons.sql.tmpl --json
 Render a `.sql.tmpl` file and output the resulting SQL. Does **not** execute against the database.
 
 ```bash
-noorm run preview sql/schema.sql.tmpl              # Raw SQL to stdout
-noorm run preview sql/schema.sql.tmpl > rendered.sql # Pipe to file
-noorm run preview sql/seed.sql.tmpl --json           # JSON envelope
-noorm run preview sql/migrations/002.sql.tmpl --config staging
+noorm run preview db/sql/schema.sql.tmpl              # Raw SQL to stdout
+noorm run preview db/sql/schema.sql.tmpl > rendered.sql # Pipe to file
+noorm run preview db/sql/seed.sql.tmpl --json           # JSON envelope
+noorm run preview db/sql/migrations/002.sql.tmpl --config staging
 ```
 
 **JSON:** `{ "filepath": "...", "sql": "CREATE TABLE ...", "durationMs": 12 }`
@@ -379,9 +379,9 @@ Pickers filter their list to whatever the command can act on:
 
 | Command | TTY picker lists |
 |---------|------------------|
-| `change edit` | every folder in `changes/` |
+| `change edit` | every folder in `db/changes/` |
 | `change add` | — (prompts for free-form description via `p.text`) |
-| `change rm` | every folder in `changes/` |
+| `change rm` | every folder in `db/changes/` |
 | `change run` | pending / reverted changes |
 | `change revert` | successfully applied changes |
 | `change rewind` | successfully applied changes |
@@ -490,7 +490,7 @@ noorm change add add-users-table
 noorm change add create-audit-log --json
 ```
 
-**JSON:** `{ "name": "2024-04-17-add-users-table", "path": "/project/changes/2024-04-17-add-users-table" }`
+**JSON:** `{ "name": "2024-04-17-add-users-table", "path": "/project/db/changes/2024-04-17-add-users-table" }`
 
 ### change edit
 
@@ -982,13 +982,13 @@ fi
 ### Render template and pipe to external tool
 
 ```bash
-noorm run preview sql/hotfix.sql.tmpl | psql -h localhost -d myapp
+noorm run preview db/sql/hotfix.sql.tmpl | psql -h localhost -d myapp
 ```
 
 ### Check template context before rendering
 
 ```bash
-files=$(noorm run inspect sql/seed.sql.tmpl --json | jq '.context.dataFiles | length')
+files=$(noorm run inspect db/sql/seed.sql.tmpl --json | jq '.context.dataFiles | length')
 echo "Template has $files data files available"
 ```
 

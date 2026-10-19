@@ -2,7 +2,8 @@
  * Project initialization — shared between TUI `InitScreen` and CLI `noorm init`.
  *
  * Creates the on-disk structure for a new noorm project:
- * - `sql/` and `changes/` directories with .gitkeep
+ * - `db/sql/` and `db/changes/` directories with .gitkeep
+ * - `db/AGENTS.md` and `db/CLAUDE.md` agent steering, when absent
  * - `.noorm/`, `.noorm/state/`, `.noorm/.gitignore`
  * - `settings.yml` via SettingsManager
  * - `state.enc` via StateManager
@@ -19,7 +20,7 @@ import {
     readFileSync,
     appendFileSync,
 } from 'node:fs';
-import { join } from 'node:path';
+import { join, posix } from 'node:path';
 
 import { attempt } from '@logosdx/utils';
 
@@ -30,6 +31,15 @@ import {
     loadIdentityMetadata,
 } from './identity/index.js';
 import { SettingsManager } from './settings/manager.js';
+import {
+    DEFAULT_PATH_CONFIG,
+    INIT_CHANGES_PATH,
+    INIT_DB_DIR,
+    INIT_PATH_CONFIG,
+    INIT_SQL_PATH,
+    isInitLayout,
+} from './settings/defaults.js';
+import type { PathConfig } from './settings/types.js';
 import { StateManager, getStateManager } from './state/index.js';
 import { observer } from './observer.js';
 
@@ -40,6 +50,11 @@ import { observer } from './observer.js';
 const NOORM_IGNORE_ENTRY = '.noorm/state/';
 
 const NOORM_GITIGNORE_BLOCK = `\n# noorm\n${NOORM_IGNORE_ENTRY}\n`;
+
+const AGENTS_TEMPLATE = 'Use the `/noorm` skill for managing files here.\n\n<!-- add user specific LLM steering here -->\n';
+
+// Claude Code skips AGENTS.md when a CLAUDE.md is present, so CLAUDE.md imports it.
+const CLAUDE_TEMPLATE = '@AGENTS.md\n';
 
 export interface ProjectInitIdentityInfo {
     name: string;
@@ -60,6 +75,69 @@ export interface ProjectInitResult {
 }
 
 /**
+ * Paths a project's settings.yml carries after init. A project that already has
+ * a settings.yml keeps what it resolves to, so `--force` never repoints it at
+ * a layout it does not have; only a new project gets the `db/` layout.
+ *
+ * @example
+ * const paths = await resolveInitPaths('/project'); // INIT_PATH_CONFIG when new
+ */
+export async function resolveInitPaths(projectRoot: string): Promise<PathConfig> {
+
+    const manager = new SettingsManager(projectRoot);
+
+    if (!(await manager.exists())) return INIT_PATH_CONFIG;
+
+    const [settings] = await attempt(() => manager.load());
+
+    return settings?.paths ?? DEFAULT_PATH_CONFIG;
+
+}
+
+/**
+ * Creates `db/sql/`, `db/changes/`, and the agent steering files beside them,
+ * for projects on the init layout. The steering files hold the user's edits,
+ * so they are written only when absent.
+ *
+ * @example
+ * scaffoldDbLayout('/project', INIT_PATH_CONFIG); // ['db/sql/.gitkeep', ..., 'db/CLAUDE.md']
+ */
+export function scaffoldDbLayout(projectRoot: string, paths: PathConfig): string[] {
+
+    if (!isInitLayout(paths)) return [];
+
+    const created: string[] = [];
+    const agentFiles = {
+        'AGENTS.md': AGENTS_TEMPLATE,
+        'CLAUDE.md': CLAUDE_TEMPLATE,
+    };
+
+    for (const dir of [INIT_SQL_PATH, INIT_CHANGES_PATH]) {
+
+        const relativeDir = posix.normalize(dir);
+
+        mkdirSync(join(projectRoot, relativeDir), { recursive: true });
+        writeFileSync(join(projectRoot, relativeDir, '.gitkeep'), '', { flag: 'a' });
+        created.push(`${relativeDir}/.gitkeep`);
+
+    }
+
+    for (const [name, body] of Object.entries(agentFiles)) {
+
+        const filePath = join(projectRoot, INIT_DB_DIR, name);
+
+        if (existsSync(filePath)) continue;
+
+        writeFileSync(filePath, body);
+        created.push(`${INIT_DB_DIR}/${name}`);
+
+    }
+
+    return created;
+
+}
+
+/**
  * Bootstraps a noorm project: directories, settings, state, and (optionally) identity.
  * When `identityInfo` is null, a global identity must already exist.
  */
@@ -69,21 +147,14 @@ export async function performProjectInit(
 
     const { projectRoot, force, identityInfo } = opts;
 
-    const sqlPath = join(projectRoot, 'sql');
-    const changesPath = join(projectRoot, 'changes');
     const noormPath = join(projectRoot, '.noorm');
     const statePath = join(noormPath, 'state');
     const gitignorePath = join(projectRoot, '.gitignore');
 
     const created: string[] = [];
+    const paths = await resolveInitPaths(projectRoot);
 
-    mkdirSync(sqlPath, { recursive: true });
-    writeFileSync(join(sqlPath, '.gitkeep'), '', { flag: 'a' });
-    created.push('sql/.gitkeep');
-
-    mkdirSync(changesPath, { recursive: true });
-    writeFileSync(join(changesPath, '.gitkeep'), '', { flag: 'a' });
-    created.push('changes/.gitkeep');
+    created.push(...scaffoldDbLayout(projectRoot, paths));
 
     mkdirSync(noormPath, { recursive: true });
     mkdirSync(statePath, { recursive: true });
@@ -134,6 +205,7 @@ export async function performProjectInit(
 
     const settingsManager = new SettingsManager(projectRoot);
     await settingsManager.init(force);
+    await settingsManager.setPaths(paths);
     created.push('.noorm/settings.yml');
 
     const stateManager = new StateManager(projectRoot, { privateKey });

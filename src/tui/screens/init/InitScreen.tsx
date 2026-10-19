@@ -8,7 +8,7 @@
  * 4. Optionally add first config
  *
  * Creates:
- * - sql/ and changes/ directories
+ * - db/sql/, db/changes/, db/AGENTS.md, db/CLAUDE.md (new projects only)
  * - .noorm/settings.yml
  * - .noorm/state/state.enc
  * - Keypair in ~/.noorm/
@@ -39,6 +39,9 @@ import {
     loadIdentityMetadata,
 } from '../../../core/identity/index.js';
 import { SettingsManager } from '../../../core/settings/manager.js';
+import { INIT_PATH_CONFIG } from '../../../core/settings/defaults.js';
+import type { PathConfig } from '../../../core/settings/types.js';
+import { resolveInitPaths, scaffoldDbLayout } from '../../../core/project-init.js';
 import { StateManager, getStateManager } from '../../../core/state/index.js';
 import { observer } from '../../../core/observer.js';
 
@@ -102,6 +105,9 @@ export function InitScreen({ params }: ScreenProps): ReactElement {
     // Project root
     const projectRoot = process.cwd();
 
+    // Paths the project will carry: its own when settings.yml exists, else the db/ layout
+    const [initPaths, setInitPaths] = useState<PathConfig>(INIT_PATH_CONFIG);
+
     // Check existing state on mount
     useEffect(() => {
 
@@ -110,6 +116,8 @@ export function InitScreen({ params }: ScreenProps): ReactElement {
             // Check if .noorm directory exists
             const noormDir = join(projectRoot, '.noorm');
             const alreadyInitialized = existsSync(noormDir);
+
+            setInitPaths(await resolveInitPaths(projectRoot));
 
             // Check if identity key files exist
             const keysExist = await hasKeyFiles();
@@ -222,16 +230,10 @@ export function InitScreen({ params }: ScreenProps): ReactElement {
             // Step 1: Create directories
             updateItem(0, { status: 'running' });
 
-            const sqlPath = join(projectRoot, 'sql');
-            const changesPath = join(projectRoot, 'changes');
             const noormPath = join(projectRoot, '.noorm');
             const statePath = join(noormPath, 'state');
 
-            mkdirSync(sqlPath, { recursive: true });
-            writeFileSync(join(sqlPath, '.gitkeep'), '', { flag: 'a' });
-
-            mkdirSync(changesPath, { recursive: true });
-            writeFileSync(join(changesPath, '.gitkeep'), '', { flag: 'a' });
+            scaffoldDbLayout(projectRoot, initPaths);
 
             mkdirSync(noormPath, { recursive: true });
             mkdirSync(statePath, { recursive: true });
@@ -284,6 +286,7 @@ export function InitScreen({ params }: ScreenProps): ReactElement {
 
             const settingsManager = new SettingsManager(projectRoot);
             await settingsManager.init(force);
+            await settingsManager.setPaths(initPaths);
 
             updateItem(settingsIndex, { status: 'success' });
 
@@ -371,7 +374,7 @@ export function InitScreen({ params }: ScreenProps): ReactElement {
 
         setStep('complete');
 
-    }, [projectRoot, identityValues, hasExistingKeys, hasExistingMetadata, force, refresh]);
+    }, [projectRoot, identityValues, hasExistingKeys, hasExistingMetadata, force, refresh, initPaths]);
 
     // Handle project setup - add config
     const handleAddConfig = useCallback(async () => {
@@ -467,6 +470,8 @@ export function InitScreen({ params }: ScreenProps): ReactElement {
         return (
             <Box flexDirection="column" padding={1}>
                 <ProjectSetup
+                    sqlPath={initPaths.sql}
+                    changesPath={initPaths.changes}
                     onAddConfig={handleAddConfig}
                     onSkipConfig={handleSkipConfig}
                     onCancel={handleCancel}

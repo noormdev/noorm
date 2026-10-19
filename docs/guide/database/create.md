@@ -19,7 +19,7 @@ expects a `--name` flag.
 
 End-to-end, from a clean repo to a usable database:
 
-    # 1. Scaffold the project (settings.yml, .noorm/, sql/, changes/).
+    # 1. Scaffold the project (settings.yml, .noorm/, db/sql/, db/changes/).
     noorm init --yes
 
     # 2. Add one config per environment, non-interactively.

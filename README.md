@@ -43,7 +43,7 @@ The install script is [fully transparent and open source](https://github.com/noo
 ## Quick start
 
 ```bash
-# Bootstrap a project — creates your identity and the sql/ and changes/ layout
+# Bootstrap a project — creates your identity and the db/sql/ and db/changes/ layout
 noorm init
 
 # Add a database config

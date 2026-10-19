@@ -145,6 +145,7 @@ mock.module('../../../../src/core/settings/manager.js', () => {
         SettingsManager: class MockSettingsManager {
 
             init = vi.fn(() => Promise.resolve());
+            setPaths = vi.fn(() => Promise.resolve());
             load = vi.fn(() => Promise.resolve());
             exists = vi.fn(() => Promise.resolve(false));
             isLoaded = true;

@@ -234,15 +234,15 @@ export async function discoverChanges(
  *
  * @example
  * ```typescript
- * // Manifest contains:
- * // sql/tables/users.sql
- * // sql/views/active_users.sql
+ * // Lines are relative to the schema directory, not the project root:
+ * // tables/users.sql
+ * // views/active_users.sql
  *
  * const paths = await resolveManifest(
- *     '/project/changes/.../change/001_refs.txt',
- *     '/project/sql'
+ *     '/project/db/changes/.../change/001_refs.txt',
+ *     '/project/db/sql'
  * )
- * // => ['/project/sql/tables/users.sql', '/project/sql/views/active_users.sql']
+ * // => ['/project/db/sql/tables/users.sql', '/project/db/sql/views/active_users.sql']
  * ```
  */
 export async function resolveManifest(manifestPath: string, sqlDir: string): Promise<string[]> {

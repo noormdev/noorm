@@ -101,6 +101,7 @@ mock.module('../../../../src/core/state/manager.js', () => ({
 mock.module('../../../../src/core/settings/manager.js', () => ({
     SettingsManager: vi.fn().mockImplementation(() => ({
         init: vi.fn(() => Promise.resolve()),
+        setPaths: vi.fn(() => Promise.resolve()),
         load: vi.fn(() => Promise.resolve()),
         exists: vi.fn(() => Promise.resolve(false)),
         isLoaded: true,

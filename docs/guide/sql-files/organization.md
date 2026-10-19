@@ -9,7 +9,7 @@ How you structure your SQL files determines how they execute. noorm processes fi
 Start with this layout:
 
 ```
-sql/
+db/sql/
 ├── 01_tables/
 │   ├── 001_users.sql
 │   ├── 002_posts.sql
@@ -97,7 +97,7 @@ noorm walks your schema directory recursively, collects every `.sql` and `.sql.t
 Without numeric folder prefixes, alphabetical order causes problems:
 
 ```
-sql/
+db/sql/
 ├── functions/          # f comes before t—runs first!
 │   └── 001_helpers.sql
 ├── tables/             # t comes after f—runs second
@@ -110,7 +110,7 @@ sql/
 This is wrong—functions often depend on tables. Use numeric prefixes on folders:
 
 ```
-sql/
+db/sql/
 ├── 01_tables/          # runs first
 │   ├── 001_users.sql
 │   └── 002_posts.sql
@@ -121,10 +121,10 @@ sql/
 ```
 
 Execution order:
-1. `sql/01_tables/001_users.sql`
-2. `sql/01_tables/002_posts.sql`
-3. `sql/02_views/001_summary.sql`
-4. `sql/03_functions/001_helpers.sql`
+1. `db/sql/01_tables/001_users.sql`
+2. `db/sql/01_tables/002_posts.sql`
+3. `db/sql/02_views/001_summary.sql`
+4. `db/sql/03_functions/001_helpers.sql`
 
 
 ## Using Settings for Build Order
@@ -142,10 +142,10 @@ build:
         - archive         # Never runs
 ```
 
-Folder names are relative to your `paths.sql` directory, not the project root. With the default `paths.sql: ./sql`, an entry of `01_tables` means `./sql/01_tables` — so you do **not** repeat the `sql/` prefix.
+Folder names are relative to your `paths.sql` directory, not the project root. With the `paths.sql: ./db/sql` that `noorm init` writes, an entry of `01_tables` means `./db/sql/01_tables` — so you do **not** repeat the `sql/` prefix.
 
 ::: warning A wrong include path still exits 0
-`sql/01_tables` resolves to `./sql/sql/01_tables` and matches nothing. `noorm run build` names the offending entries in a warning:
+`sql/01_tables` resolves to `./db/sql/sql/01_tables` and matches nothing. `noorm run build` names the offending entries in a warning:
 
 ```
 Ignored 1 build.include entry that matched no files: sql/01_tables
@@ -162,7 +162,7 @@ A leading `./` or a trailing `/` matches nothing for the same reason.
 The `include` array is a **filter**—it controls which folders are included, not their order. Execution order is always alphanumeric. Use numeric prefixes to control the sequence:
 
 ```
-sql/
+db/sql/
 ├── 01_tables/    ← runs first
 ├── 02_views/     ← runs second
 ├── 03_functions/ ← runs third
@@ -215,7 +215,7 @@ There are two common approaches to organizing SQL files.
 Group files by what they are:
 
 ```
-sql/
+db/sql/
 ├── 01_tables/
 ├── 02_views/
 ├── 03_functions/
@@ -237,7 +237,7 @@ sql/
 If you're building a [typed SDK](/getting-started/building-your-sdk), organize SQL to mirror your domain classes:
 
 ```
-sql/
+db/sql/
 ├── 01_core/
 │   ├── tables/           # Base entities (users, accounts)
 │   └── functions/        # Shared utilities
@@ -253,7 +253,7 @@ sql/
     └── defaults.sql      # Reference data
 ```
 
-This aligns your database layer with your application layer. The SDK's `auth` domain class maps to `sql/02_auth/`, making it easy to find related code.
+This aligns your database layer with your application layer. The SDK's `auth` domain class maps to `db/sql/02_auth/`, making it easy to find related code.
 
 **Pros:**
 - SQL and SDK stay in sync
@@ -270,7 +270,7 @@ This aligns your database layer with your application layer. The SDK's `auth` do
 Start simple and add domains as needed:
 
 ```
-sql/
+db/sql/
 ├── 01_tables/            # All tables (simple start)
 ├── 02_views/
 ├── 03_functions/
@@ -280,7 +280,7 @@ sql/
 When a domain grows complex, extract it:
 
 ```
-sql/
+db/sql/
 ├── 01_core/              # Moved tables, views, functions
 ├── 02_billing/           # Extracted billing domain
 ├── 03_functions/         # Shared functions
@@ -296,7 +296,7 @@ sql/
 Use rules to include environment-specific folders:
 
 ```
-sql/
+db/sql/
 ├── 01_tables/
 ├── 02_views/
 ├── 03_seeds-dev/        # Development data
@@ -328,7 +328,7 @@ rules:
 Keep old files without running them:
 
 ```
-sql/
+db/sql/
 ├── 01_tables/
 ├── 02_views/
 └── archive/          # Old files, excluded from builds

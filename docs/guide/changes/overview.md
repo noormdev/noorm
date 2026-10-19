@@ -31,9 +31,9 @@ Changes are your changelog. They document *how* to get an existing database to m
 
 The distinction is simple: **can you rebuild from scratch, or do you need to evolve what's there?**
 
-**Fresh database?** Run `noorm run build`. This executes your `sql/` folder—your source of truth. Tables, views, functions, seed data. Everything needed to create a working schema from nothing.
+**Fresh database?** Run `noorm run build`. This executes your `db/sql/` folder—your source of truth. Tables, views, functions, seed data. Everything needed to create a working schema from nothing.
 
-**Existing database with data you can't lose?** Run `noorm change ff`. This applies pending changes from your `changes/` folder. Each change runs once, gets recorded in the database, and won't run again unless reverted.
+**Existing database with data you can't lose?** Run `noorm change ff`. This applies pending changes from your `db/changes/` folder. Each change runs once, gets recorded in the database, and won't run again unless reverted.
 
 Changes exist because production databases can't be rebuilt. You can't drop a table with millions of rows and recreate it. You need to `ALTER TABLE` in place, transform data carefully, add indexes without blocking writes. Changes give you:
 
@@ -47,7 +47,7 @@ Changes exist because production databases can't be rebuilt. You can't drop a ta
 Each change lives in its own folder with a specific structure:
 
 ```
-changes/
+db/changes/
 └── 2025-01-15-add-email-verification/
     ├── change/                    # Forward scripts (required)
     │   ├── 001_create-tokens-table.sql
@@ -101,7 +101,7 @@ Or from the TUI: run `noorm ui`, press `g` from home to enter the changes screen
 and enter a name like `add-email-verification`. Either path scaffolds the same layout:
 
 ```
-changes/2025-01-15-add-email-verification/
+db/changes/2025-01-15-add-email-verification/
 ├── change/
 │   └── 001_add-email-verification.sql
 ├── revert/
@@ -203,7 +203,7 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'active';
 
 Manifest files participate in ordering. Here, `001_rebuild-views.txt` runs first (recreating views that might depend on the old schema), then `002_add-status-column.sql` adds the column. You could also flip this—add the column first with `001_`, then rebuild views with `002_` so they pick up the new column.
 
-This keeps your `sql/` folder as the single source of truth. Views and functions are defined once, referenced wherever needed.
+This keeps your `db/sql/` folder as the single source of truth. Views and functions are defined once, referenced wherever needed.
 
 
 ## Checking Change Status
@@ -266,7 +266,7 @@ When you omit the change name on a TTY, several subcommands open an interactive 
 `run`, `revert`, `rewind`, and `history-detail` query the database and filter to the
 relevant subset: outstanding changes for `run`, successfully applied ones for `revert` and
 `rewind`, anything with a history record for `history-detail`. `edit` and `rm` work offline
-and list every folder in `changes/`. Non-TTY callers must supply the name.
+and list every folder in `db/changes/`. Non-TTY callers must supply the name.
 
 
 ## Common Workflows
@@ -341,7 +341,7 @@ To render a single template file to stdout without involving a change at all, us
 `noorm run preview`:
 
 ```bash
-noorm run preview sql/views/user_summary.sql.tmpl
+noorm run preview db/sql/views/user_summary.sql.tmpl
 ```
 
 

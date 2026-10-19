@@ -648,7 +648,7 @@ if (result.status !== 'success') {
 Discover SQL files in a directory without executing. Works offline — no connection required. Defaults to the project's configured SQL path.
 
 ```typescript
-const files = await ctx.noorm.run.discover('sql/');
+const files = await ctx.noorm.run.discover('db/sql/');
 console.log(`Found ${files.length} SQL files`);
 ```
 
@@ -660,7 +660,7 @@ console.log(`Found ${files.length} SQL files`);
 Render SQL files (including templates) without executing. Useful for reviewing what would run before committing.
 
 ```typescript
-const results = await ctx.noorm.run.preview(['sql/001.sql', 'sql/002.sql']);
+const results = await ctx.noorm.run.preview(['db/sql/001.sql', 'db/sql/002.sql']);
 for (const r of results) {
     console.log(`${r.filepath}:\n${r.renderedSql}`);
 }
@@ -750,7 +750,7 @@ Full rebuild: teardown + build.
 await ctx.noorm.db.reset();
 ```
 
-**Returns:** `Promise<void>`. Unlike `teardown()` and `truncate()`, `reset()` takes no options and deliberately ignores `settings.teardown.preserveTables`: it rebuilds the whole schema from `sql/`, so any preserved table would collide with the build's `CREATE TABLE` and abort the rebuild.
+**Returns:** `Promise<void>`. Unlike `teardown()` and `truncate()`, `reset()` takes no options and deliberately ignores `settings.teardown.preserveTables`: it rebuilds the whole schema from `db/sql/`, so any preserved table would collide with the build's `CREATE TABLE` and abort the rebuild.
 
 **Implementation notes.** Objects are dropped in `FK → Procedures → Functions → Views → Tables → Types` order. Procs/funcs/views go before tables because MSSQL schema-bound objects (`WITH SCHEMABINDING`) hold dependency locks on the tables they reference — dropping the table first fails with `Cannot DROP TABLE ... because it is being referenced by object ...`. Types drop last because TVPs may still be referenced by procs/funcs earlier in the chain. See [dev/teardown.md](../dev/teardown.md#drop-order) for the full reasoning.
 
@@ -1098,7 +1098,7 @@ This is the one lock method behind the access policy. Breaking someone else's lo
 Render a template file without executing.
 
 ```typescript
-const result = await ctx.noorm.templates.render('sql/001_users.sql.tmpl');
+const result = await ctx.noorm.templates.render('db/sql/001_users.sql.tmpl');
 console.log(result.sql);
 ```
 
@@ -1457,7 +1457,7 @@ if (!result.ok) {
 Compute SHA-256 checksum for a file.
 
 ```typescript
-const checksum = await ctx.noorm.utils.checksum('sql/001_users.sql');
+const checksum = await ctx.noorm.utils.checksum('db/sql/001_users.sql');
 ```
 
 
