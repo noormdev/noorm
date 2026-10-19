@@ -49,7 +49,7 @@ When a file errors, the human-readable output includes the SQL error
 beneath the file's status line so you don't have to scroll the log
 looking for the cause:
 
-    sql/02_tables/Memory.sql (failed)
+    db/sql/02_tables/Memory.sql (failed)
       error: relation "memory" does not exist
     Build completed  status=partial filesRun=12 filesSkipped=0 filesFailed=1 durationMs=84
 
@@ -66,7 +66,7 @@ populated for every failed file:
         "status": "partial",
         "files": [
             {
-                "filepath": "sql/02_tables/Memory.sql",
+                "filepath": "db/sql/02_tables/Memory.sql",
                 "status": "failed",
                 "error": "relation \"memory\" does not exist",
                 "durationMs": 4.2,
@@ -85,13 +85,13 @@ populated for every failed file:
 A file is skipped when its checksum matches a previous successful
 execution. The reason is shown inline:
 
-    sql/seeds/Sentinels.sql.tmpl (skipped: unchanged)
+    db/sql/seeds/Sentinels.sql.tmpl (skipped: unchanged)
 
 In JSON form, `skipReason` is set to `'unchanged'` (or `'already-run'`
 for the change-level checks):
 
     {
-        "filepath": "sql/seeds/Sentinels.sql.tmpl",
+        "filepath": "db/sql/seeds/Sentinels.sql.tmpl",
         "status": "skipped",
         "skipReason": "unchanged",
         "checksum": "..."
@@ -125,10 +125,10 @@ and known limitations.
     noorm run build --force
     noorm run build --json
 
-    noorm run file sql/init.sql
+    noorm run file db/sql/init.sql
     noorm run file seeds/test-data.sql.tmpl --dry-run
 
-    noorm run dir sql/02_views/
-    noorm run files --paths sql/01_tables/users.sql,sql/01_tables/orders.sql
+    noorm run dir db/sql/02_views/
+    noorm run files --paths db/sql/01_tables/users.sql,db/sql/01_tables/orders.sql
 
-    noorm run exec "sql/**/*.sql"
+    noorm run exec "db/sql/**/*.sql"

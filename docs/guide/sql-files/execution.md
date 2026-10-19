@@ -29,7 +29,7 @@ noorm run build
 This executes all SQL files in your schema directory (defined in settings). Files are processed alphabetically by path, which means you can control execution order with prefixes:
 
 ```
-sql/
+db/sql/
 ├── 00_extensions/
 │   └── 001_extensions.sql        # Runs first
 ├── 01_tables/
@@ -43,9 +43,9 @@ Output shows what ran and what was skipped. Every line carries a timestamp and a
 
 ```
 Starting schema build (3 files)
-Executed sql/01_tables/001_users.sql (14ms)
-Skipped sql/01_tables/002_posts.sql (unchanged)
-Executed sql/02_views/001_active_users.sql (9ms)
+Executed db/sql/01_tables/001_users.sql (14ms)
+Skipped db/sql/01_tables/002_posts.sql (unchanged)
+Executed db/sql/02_views/001_active_users.sql (9ms)
 Build complete: 2 run, 1 skipped (412ms)
 ```
 
@@ -57,7 +57,7 @@ Add `--json` to get the same events as newline-delimited JSON on stderr and the 
 Execute a single SQL file:
 
 ```bash
-noorm run file sql/01_tables/001_users.sql
+noorm run file db/sql/01_tables/001_users.sql
 ```
 
 Useful for testing a specific file or re-running one file after a quick fix. The same change detection applies—if the file hasn't changed since its last successful run, it won't execute unless you use `--force`.
@@ -68,7 +68,7 @@ Useful for testing a specific file or re-running one file after a quick fix. The
 Execute all files in a specific directory:
 
 ```bash
-noorm run dir sql/02_views
+noorm run dir db/sql/02_views
 ```
 
 Processes all `.sql` and `.sql.tmpl` files in that directory (and subdirectories), alphabetically. This is helpful when you want to rebuild just views or just a subset of your schema.
@@ -103,8 +103,8 @@ This renders all SQL files (including templates) and writes them to a local `tmp
 
 ```
 Source:                              Dry run output:
-sql/02_views/001_my_view.sql  →   tmp/sql/02_views/001_my_view.sql
-sql/03_seeds/001_users.sql.tmpl  →   tmp/sql/03_seeds/001_users.sql
+db/sql/02_views/001_my_view.sql  →   tmp/db/sql/02_views/001_my_view.sql
+db/sql/03_seeds/001_users.sql.tmpl  →   tmp/db/sql/03_seeds/001_users.sql
 ```
 
 Templates are fully rendered with your current config context. The `.tmpl` extension is stripped from output files. Nothing is written to the database and nothing is tracked.
@@ -160,7 +160,7 @@ Files execute **alphabetically by full path**. This is deterministic and predict
 Common patterns:
 
 ```
-sql/
+db/sql/
 ├── 00_extensions/
 │   └── 001_uuid.sql           # Extensions first
 ├── 01_types/
@@ -194,7 +194,7 @@ SQL Server has a particular rule: `CREATE PROCEDURE`, `CREATE FUNCTION`, `CREATE
 
 
 ```sql
--- sql/09_procedures/checkout.sql
+-- db/sql/09_procedures/checkout.sql
 CREATE PROCEDURE checkout_begin
     @CustomerId INT
 AS

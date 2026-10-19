@@ -53,7 +53,7 @@ describe('cli: screens/init/ProjectSetup', () => {
             </TestWrapper>,
         );
 
-        expect(lastFrame()).toContain('./sql');
+        expect(lastFrame()).toContain('./db/sql');
 
     });
 
@@ -65,7 +65,20 @@ describe('cli: screens/init/ProjectSetup', () => {
             </TestWrapper>,
         );
 
-        expect(lastFrame()).toContain('./changes');
+        expect(lastFrame()).toContain('./db/changes');
+
+    });
+
+    it('should list the agent steering files it will create', () => {
+
+        const { lastFrame } = render(
+            <TestWrapper>
+                <ProjectSetup onAddConfig={() => {}} onSkipConfig={() => {}} onCancel={() => {}} />
+            </TestWrapper>,
+        );
+
+        expect(lastFrame()).toContain('./db/AGENTS.md');
+        expect(lastFrame()).toContain('./db/CLAUDE.md');
 
     });
 

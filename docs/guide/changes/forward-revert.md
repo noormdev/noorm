@@ -39,7 +39,7 @@ Fast-forward is the workhorse for deployments. It finds every outstanding change
 }
 ```
 
-Each entry in `changes` also carries a `files` array with one record per SQL file: relative path, checksum, status, duration, and the error message when the file failed. If the `changes/` directory is missing, the payload gains a `warnings` array saying so, because an absent directory otherwise looks identical to an up-to-date database.
+Each entry in `changes` also carries a `files` array with one record per SQL file: relative path, checksum, status, duration, and the error message when the file failed. If the `db/changes/` directory is missing, the payload gains a `warnings` array saying so, because an absent directory otherwise looks identical to an up-to-date database.
 
 
 ### Apply a Specific Change

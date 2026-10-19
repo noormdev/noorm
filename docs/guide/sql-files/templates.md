@@ -128,7 +128,7 @@ INSERT INTO config (data) VALUES ('{%~ $.escape($.json(settings)) %}');
 Includes another SQL file. The path is relative to the current template:
 
 ```sql
--- changes/2025-01-15-setup/change/001_setup.sql.tmpl
+-- db/changes/2025-01-15-setup/change/001_setup.sql.tmpl
 
 -- Load shared functions
 {%~ await $.include('../lib/uuid_function.sql') %}
@@ -145,7 +145,7 @@ An included `.sql` file is inserted verbatim. An included `.sql.tmpl` file is re
 Data files in the same directory as the template are automatically loaded into `$`:
 
 ```
-sql/users/
+db/sql/users/
 ├── 001_seed.sql.tmpl     # Template
 ├── users.json            # -> $.users
 ├── roles.yml             # -> $.roles
@@ -242,7 +242,7 @@ INSERT INTO users (email, name, role) VALUES
 `.dt` and `.dtz` files exported from [Data Transfer](/guide/database/transfer) can be used directly as seed data. The loader reads the embedded schema, maps positional values to column names, and exposes the data as an array of row objects—just like CSV.
 
 ```
-sql/users/
+db/sql/users/
 ├── 001_seed.sql.tmpl     # Template
 └── users.dt              # -> $.users (exported from another database)
 ```
@@ -263,7 +263,7 @@ This lets you export data from one environment and use it as seed data in templa
 Helper files named `$helpers.ts` (or `$helpers.js`) are automatically loaded and inherited up the directory tree:
 
 ```
-sql/
+db/sql/
 ├── $helpers.ts                  # Project-wide helpers
 ├── users/
 │   ├── $helpers.ts              # Overrides/extends parent
@@ -281,7 +281,7 @@ Child helpers override parent helpers with the same name. This lets you define p
 Helper files can be written in TypeScript (`.ts`) or JavaScript (`.js`, `.mjs`). TypeScript helpers require Node >= 22.13, which supports type stripping natively. On older Node versions, use `.js` instead.
 
 ```typescript
-// sql/$helpers.ts
+// db/sql/$helpers.ts
 export function padId(id: number, length = 6): string {
 
     return String(id).padStart(length, '0')
@@ -463,7 +463,7 @@ GRANT EXECUTE ON {%~ proc %} TO {%~ role %};
 Large table schemas are easier to review when split into logical groups. Use `$.include()` to compose them into a single change:
 
 ```
-changes/2025-01-15-full-setup/
+db/changes/2025-01-15-full-setup/
 ├── change/
 │   └── 001_schema.sql.tmpl
 └── lib/
@@ -473,7 +473,7 @@ changes/2025-01-15-full-setup/
 ```
 
 ```sql
--- changes/2025-01-15-full-setup/change/001_schema.sql.tmpl
+-- db/changes/2025-01-15-full-setup/change/001_schema.sql.tmpl
 
 -- Core tables (users, roles, user_roles)
 {%~ await $.include('../lib/core_tables.sql') %}

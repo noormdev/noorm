@@ -10,7 +10,7 @@ Project settings live in `.noorm/settings.yml`. Configs (database connections) a
 
 build:
     # Folders to include. Paths are relative to `paths.sql`, NOT the project
-    # root — with `paths.sql: ./sql`, `tables` means `./sql/tables`.
+    # root — with `paths.sql: ./db/sql`, `tables` means `./db/sql/tables`.
     # Empty list means all files under `paths.sql`.
     include:
         - tables
@@ -26,8 +26,8 @@ build:
 # Override default directory locations (relative to project root).
 
 paths:
-    sql: ./sql             # Schema SQL files (default: ./sql)
-    changes: ./changes     # Change directories (default: ./changes)
+    sql: ./db/sql          # Schema SQL files (`noorm init` writes this; ./sql when the key is absent)
+    changes: ./db/changes  # Change directories (`noorm init` writes this; ./changes when the key is absent)
 
 # ── Rules ────────────────────────────────────────────────────
 # Conditional include/exclude based on the active config's properties.
@@ -128,16 +128,16 @@ secrets:
 
 This is the single most common misconfiguration, and it fails silently.
 
-Entries in `build.include`, `build.exclude`, and `rules[].include` / `rules[].exclude` are matched against each file's path **relative to `paths.sql`** — never the project root. With the default `paths.sql: ./sql`:
+Entries in `build.include`, `build.exclude`, and `rules[].include` / `rules[].exclude` are matched against each file's path **relative to `paths.sql`** — never the project root. With the `paths.sql: ./db/sql` that `noorm init` writes:
 
 ```yaml
 paths:
-    sql: ./sql
+    sql: ./db/sql
 
 build:
     include:
-        - 01_tables      # correct   -> ./sql/01_tables
-        - sql/01_tables  # WRONG     -> ./sql/sql/01_tables, matches nothing
+        - 01_tables      # correct   -> ./db/sql/01_tables
+        - sql/01_tables  # WRONG     -> ./db/sql/sql/01_tables, matches nothing
 ```
 
 A non-matching entry is not an error. The build reports `"status": "success"` with `"filesRun": 0` and exits `0`, so a misconfigured `include` looks exactly like a successful build — the schema is simply never created, and the failure surfaces later as a missing table.
@@ -155,8 +155,8 @@ Use bare, unprefixed segment names. Nested paths (`06_seeds/cron`) are supported
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `sql` | `string` | `./sql` | Schema SQL directory |
-| `changes` | `string` | `./changes` | Change (migration) directory |
+| `sql` | `string` | `./sql` | Schema SQL directory. `noorm init` writes `./db/sql` |
+| `changes` | `string` | `./changes` | Change directory. `noorm init` writes `./db/changes` |
 
 ### `rules[]`
 
@@ -275,8 +275,8 @@ For a simple project with just dev and test:
 
 ```yaml
 paths:
-    sql: ./sql
-    changes: ./changes
+    sql: ./db/sql
+    changes: ./db/changes
 
 stages:
     dev:

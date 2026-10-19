@@ -20,7 +20,7 @@ noorm's change system solves this with versioned folders containing forward and 
 A change is a folder with a specific structure:
 
 ```
-changes/
+db/changes/
 └── 2025-01-15-add-email-verification/
     ├── change/                    # Forward changes (required)
     │   ├── 001_create-tokens-table.sql

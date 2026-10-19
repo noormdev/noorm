@@ -39,8 +39,11 @@ noorm-tutorial/
 │   ├── settings.yml           # Project settings (commit this)
 │   └── state/
 │       └── state.enc          # Encrypted state (don't commit)
-├── sql/                       # Your SQL files go here
-└── changes/                   # Versioned changes go here
+└── db/
+    ├── sql/                   # Your SQL files go here
+    ├── changes/               # Versioned changes go here
+    ├── AGENTS.md              # Steering for AI coding agents working in db/
+    └── CLAUDE.md              # Imports AGENTS.md for Claude Code
 ```
 
 Configs are added separately, from the TUI. That's the next step.
@@ -67,7 +70,7 @@ Press `c` for config, then `a` to add a new config. Fill out the form:
 - **Agent Role (MCP/CLI access)**: leave at `viewer`
 - **Test Database**: leave unchecked
 
-Submit the form to save your config. SQL and changes paths are not part of a config. They live in `.noorm/settings.yml` under `paths`, and default to `./sql` and `./changes`.
+Submit the form to save your config. SQL and changes paths are not part of a config. They live in `.noorm/settings.yml` under `paths`, which `noorm init` sets to `./db/sql` and `./db/changes`.
 
 
 ## Step 3: Create the Database
@@ -103,8 +106,8 @@ Open `.noorm/settings.yml` and define which folders to include:
 
 ```yaml
 paths:
-  sql: ./sql
-  changes: ./changes
+  sql: ./db/sql
+  changes: ./db/changes
 
 build:
   include:
@@ -117,17 +120,17 @@ The `include` array filters which folders are included in builds. Folder names a
 Files and directories run in **alphanumeric order**. Without numeric prefixes:
 
 ```
-sql/functions/   ← runs first (alphabetically)
-sql/tables/      ← runs second
-sql/views/       ← runs third
+db/sql/functions/   ← runs first (alphabetically)
+db/sql/tables/      ← runs second
+db/sql/views/       ← runs third
 ```
 
 That's wrong—tables should exist before views reference them. Use numeric prefixes:
 
 ```
-sql/01_tables/   ← runs first
-sql/02_views/    ← runs second
-sql/03_functions/ ← runs third
+db/sql/01_tables/   ← runs first
+db/sql/02_views/    ← runs second
+db/sql/03_functions/ ← runs third
 ```
 
 This rule applies everywhere: directories, files within directories, change scripts. One mental model for everything.
@@ -139,13 +142,13 @@ This rule applies everywhere: directories, files within directories, change scri
 Create the users table:
 
 ```bash
-mkdir -p sql/01_tables
+mkdir -p db/sql/01_tables
 ```
 
-Create `sql/01_tables/001_users.sql`:
+Create `db/sql/01_tables/001_users.sql`:
 
 ```sql
-CREATE TABLE IF NOT EXISTS users (
+CREATE TABLE users (
     id SERIAL PRIMARY KEY,
     name TEXT NOT NULL,
     email TEXT UNIQUE,
@@ -164,7 +167,7 @@ Output:
 
 ```
 • build:start     Starting schema build (1 files)
-• file:after      Executed sql/01_tables/001_users.sql (12ms)
+• file:after      Executed db/sql/01_tables/001_users.sql (12ms)
 • build:complete  Build complete: 1 run, 0 skipped (18ms)
 • log             Build completed  status=success filesRun=1 filesSkipped=0 filesFailed=0 durationMs=18
 ```
@@ -178,10 +181,10 @@ Now you want to expand the schema: add a `bio` column to users, create a posts t
 
 First, **update your SQL files** to reflect the new ideal state.
 
-Edit `sql/01_tables/001_users.sql`:
+Edit `db/sql/01_tables/001_users.sql`:
 
 ```sql
-CREATE TABLE IF NOT EXISTS users (
+CREATE TABLE users (
     id SERIAL PRIMARY KEY,
     name TEXT NOT NULL,
     email TEXT UNIQUE,
@@ -190,10 +193,10 @@ CREATE TABLE IF NOT EXISTS users (
 );
 ```
 
-Create `sql/01_tables/002_posts.sql`:
+Create `db/sql/01_tables/002_posts.sql`:
 
 ```sql
-CREATE TABLE IF NOT EXISTS posts (
+CREATE TABLE posts (
     id SERIAL PRIMARY KEY,
     user_id INTEGER REFERENCES users(id),
     title TEXT NOT NULL,
@@ -202,10 +205,10 @@ CREATE TABLE IF NOT EXISTS posts (
 );
 ```
 
-Create `sql/02_views/001_recent_posts.sql`:
+Create `db/sql/02_views/001_recent_posts.sql`:
 
 ```bash
-mkdir -p sql/02_views
+mkdir -p db/sql/02_views
 ```
 
 ```sql
@@ -251,22 +254,35 @@ Created folder structure with template files.
 
 Press `e` to open the change folder in your editor, or navigate to it manually. Add these files:
 
-`changes/2024-01-15-add-posts-and-bio/change/001_add_bio.sql`:
+`db/changes/2024-01-15-add-posts-and-bio/change/001_add_bio.sql`:
 
 ```sql
 ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT;
 ```
 
-Changes should be idempotent—safe to run on any database state. PostgreSQL's `IF NOT EXISTS` ensures this won't error if the column already exists.
+Changes should be idempotent—safe to run on any database state. PostgreSQL's `IF NOT EXISTS` ensures this won't error if the column already exists. A freshly built database records no change history, so its first `noorm change ff` runs every change again.
 
-`changes/2024-01-15-add-posts-and-bio/change/002_schema.txt`:
+`db/changes/2024-01-15-add-posts-and-bio/change/002_create_posts.sql`:
+
+```sql
+CREATE TABLE IF NOT EXISTS posts (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id),
+    title TEXT NOT NULL,
+    body TEXT,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+```
+
+The change carries its own copy of the `CREATE TABLE`. A manifest runs the current content of the file it names, so it should only name objects that are safe to run repeatedly.
+
+`db/changes/2024-01-15-add-posts-and-bio/change/003_views.txt`:
 
 ```
-01_tables/002_posts.sql
 02_views/001_recent_posts.sql
 ```
 
-The `.txt` file references your SQL files. When the change runs, it executes those files from your `sql/` directory.
+The `.txt` file references a SQL file instead of copying it. When the change runs, it executes that file from your `db/sql/` directory, relative to `paths.sql`. The view is `CREATE OR REPLACE`, so running it again is harmless.
 
 
 ## Step 9: Apply the Change
@@ -284,7 +300,7 @@ Output:
 • log                2024-01-15-add-posts-and-bio (success)
 ```
 
-Three files, because the `002_schema.txt` manifest expands to the two SQL files it names. Per-file lines are `change:file` events, which sit at debug level. Raise `logging.level` to `verbose` in `.noorm/settings.yml` to see them.
+Three files: the two `.sql` files, and the one view file that the `003_views.txt` manifest names. Per-file lines are `change:file` events, which sit at debug level. Raise `logging.level` to `verbose` in `.noorm/settings.yml` to see them.
 
 Your dev database now matches your SQL files.
 
@@ -309,9 +325,9 @@ Output:
 
 ```
 • build:start     Starting schema build (3 files)
-• file:after      Executed sql/01_tables/001_users.sql (14ms)
-• file:after      Executed sql/01_tables/002_posts.sql (11ms)
-• file:after      Executed sql/02_views/001_recent_posts.sql (7ms)
+• file:after      Executed db/sql/01_tables/001_users.sql (14ms)
+• file:after      Executed db/sql/01_tables/002_posts.sql (11ms)
+• file:after      Executed db/sql/02_views/001_recent_posts.sql (7ms)
 • build:complete  Build complete: 3 run, 0 skipped (32ms)
 • log             Build completed  status=success filesRun=3 filesSkipped=0 filesFailed=0 durationMs=32
 ```
