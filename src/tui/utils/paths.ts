@@ -13,21 +13,22 @@
 import { join } from 'path';
 
 import type { Settings } from '../../core/settings/types.js';
+import { DEFAULT_CHANGES_PATH, DEFAULT_SQL_PATH } from '../../core/settings/defaults.js';
 
 /**
  * Resolve the absolute changes directory from settings.
  *
- * Uses settings.paths.changes with fallback to 'changes'.
+ * Uses settings.paths.changes with fallback to DEFAULT_CHANGES_PATH.
  *
  * @example
  * ```typescript
  * const dir = resolveChangesDir('/project', settings);
- * // '/project/changes' or '/project/custom-changes'
+ * // '/project/db/changes' or '/project/custom-changes'
  * ```
  */
 export function resolveChangesDir(projectRoot: string, settings: Settings | null): string {
 
-    const changesPath = settings?.paths?.changes ?? 'changes';
+    const changesPath = settings?.paths?.changes ?? DEFAULT_CHANGES_PATH;
 
     return join(projectRoot, changesPath);
 
@@ -36,17 +37,17 @@ export function resolveChangesDir(projectRoot: string, settings: Settings | null
 /**
  * Resolve the absolute SQL directory from settings.
  *
- * Uses settings.paths.sql with fallback to 'sql'.
+ * Uses settings.paths.sql with fallback to DEFAULT_SQL_PATH.
  *
  * @example
  * ```typescript
  * const dir = resolveSqlDir('/project', settings);
- * // '/project/sql' or '/project/custom-sql'
+ * // '/project/db/sql' or '/project/custom-sql'
  * ```
  */
 export function resolveSqlDir(projectRoot: string, settings: Settings | null): string {
 
-    const sqlPath = settings?.paths?.sql ?? 'sql';
+    const sqlPath = settings?.paths?.sql ?? DEFAULT_SQL_PATH;
 
     return join(projectRoot, sqlPath);
 

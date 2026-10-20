@@ -104,7 +104,7 @@ const filesCommand = defineCommand({
 
 (filesCommand as typeof filesCommand & { examples: string[] }).examples = [
     'noorm run files --paths seed.sql,fixtures.sql',
-    'noorm run files --paths sql/001_tables.sql,sql/002_indexes.sql',
+    'noorm run files --paths db/sql/001_tables.sql,db/sql/002_indexes.sql',
     'noorm run files --paths migrations/001.sql,migrations/002.sql --json',
     'noorm run files --paths triggers/audit.sql --force',
 ];

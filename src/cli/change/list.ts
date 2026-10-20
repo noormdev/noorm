@@ -35,7 +35,7 @@ const listCommand = defineCommand({
             : [
                 // `orphaned` is computed but was never rendered, so a change
                 // deleted from disk printed identically to a live applied one.
-                ...changes.map((cs) => `${cs.name} (${cs.status}${cs.orphaned ? ', orphaned' : ''})`),
+                ...changes.map((cs) => `${cs.name} (${cs.status}${cs.orphaned ? ', orphaned' : ''})${cs.status === 'failed' && cs.errorMessage ? `: ${cs.errorMessage.split('\n')[0]}` : ''}`),
                 ...(pending > 0 ? [`${pending} pending change(s)`] : []),
             ].join('\n');
 

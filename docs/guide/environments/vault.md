@@ -172,7 +172,7 @@ If the destination vault isn't initialized, noorm initializes it automatically u
 Vault secrets merge into the template context alongside local secrets:
 
 ```sql
--- sql/setup/external-api.sql.tmpl
+-- db/sql/setup/external-api.sql.tmpl
 -- Vault secret (or local override if set)
 INSERT INTO api_config (provider, key)
 VALUES ('stripe', {%~ $.quote($.secrets.STRIPE_KEY) %});

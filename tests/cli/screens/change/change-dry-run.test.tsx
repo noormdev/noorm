@@ -228,10 +228,10 @@ describe('cli: ChangeFFScreen global modes', () => {
 
         // A real pending change on disk: the screen refuses to fast-forward
         // template-only or empty changes before it ever builds a manager.
-        const changeDir = join(tempDir, 'changes', 'add-widgets-table', 'change');
+        const changeDir = join(tempDir, 'db', 'changes', 'add-widgets-table', 'change');
 
         await mkdir(changeDir, { recursive: true });
-        await mkdir(join(tempDir, 'sql'), { recursive: true });
+        await mkdir(join(tempDir, 'db', 'sql'), { recursive: true });
         await writeFile(
             join(changeDir, '001.sql'),
             'CREATE TABLE widgets (id INTEGER PRIMARY KEY)',

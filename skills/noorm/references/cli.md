@@ -62,8 +62,8 @@ When all three identity vars are set at process startup, every `noorm` command i
 ### Paths
 
 ```bash
-NOORM_PATHS_SQL              # Schema directory (default: ./sql when settings.yml has no paths)
-NOORM_PATHS_CHANGES          # Changes directory (default: ./changes when settings.yml has no paths)
+NOORM_PATHS_SQL              # Schema directory (default: ./db/sql)
+NOORM_PATHS_CHANGES          # Changes directory (default: ./db/changes)
 ```
 
 ### Behavior

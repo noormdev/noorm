@@ -18,7 +18,9 @@ import type { Config, Settings } from '../../core/index.js';
 import type { Change, ChangeStatus, ChangeListItem } from '../../core/change/types.js';
 import type { NoormDatabase } from '../../core/shared/index.js';
 
-import { discoverChanges } from '../../core/change/parser.js';
+import { failureListItem, scanChanges } from '../../core/change/parser.js';
+import type { ChangeParseFailure } from '../../core/change/parser.js';
+import { isPendingChange } from '../../core/change/types.js';
 import { ChangeHistory } from '../../core/change/history.js';
 import { createConnection } from '../../core/connection/factory.js';
 import { resolveChangesDir, resolveSqlDir } from './paths.js';
@@ -29,6 +31,9 @@ import { resolveChangesDir, resolveSqlDir } from './paths.js';
 export interface ChangesWithStatus {
     changes: Change[];
     statuses: Map<string, ChangeStatus>;
+
+    /** Folders on disk that could not be parsed; they must not vanish from the views */
+    failures: ChangeParseFailure[];
 }
 
 /**
@@ -52,7 +57,7 @@ export async function loadChangesWithStatus(
     projectRoot: string,
 ): Promise<ChangesWithStatus> {
 
-    const changes = await discoverChanges(
+    const { changes, failures } = await scanChanges(
         resolveChangesDir(projectRoot, settings),
         resolveSqlDir(projectRoot, settings),
     );
@@ -68,7 +73,7 @@ export async function loadChangesWithStatus(
 
     await conn.destroy();
 
-    return { changes, statuses };
+    return { changes, statuses, failures };
 
 }
 
@@ -80,7 +85,12 @@ export async function loadChangesWithStatus(
 export function buildPendingChangeList(
     changes: Change[],
     statuses: Map<string, ChangeStatus>,
+    failures: ChangeParseFailure[] = [],
 ): ChangeListItem[] {
+
+    const unreadable = failures
+        .map((failure) => failureListItem(failure, statuses.get(failure.name)))
+        .filter(isPendingChange);
 
     return changes
         .filter((cs) => {
@@ -90,7 +100,7 @@ export function buildPendingChangeList(
             return !status || status.status === 'pending' || status.status === 'reverted';
 
         })
-        .map((cs) => ({
+        .map((cs): ChangeListItem => ({
             name: cs.name,
             path: cs.path,
             date: cs.date,
@@ -105,6 +115,7 @@ export function buildPendingChangeList(
             changeFiles: cs.changeFiles,
             revertFiles: cs.revertFiles,
         }))
+        .concat(unreadable)
         .sort((a, b) => {
 
             const dateA = a.date?.getTime() ?? 0;
@@ -177,9 +188,10 @@ export function buildAppliedChangeList(
 export function buildMergedChangeList(
     changes: Change[],
     statuses: Map<string, ChangeStatus>,
+    failures: ChangeParseFailure[] = [],
 ): ChangeListItem[] {
 
-    const merged: ChangeListItem[] = [];
+    const merged: ChangeListItem[] = failures.map((failure) => failureListItem(failure, statuses.get(failure.name)));
 
     for (const cs of changes) {
 
@@ -210,6 +222,12 @@ export function buildMergedChangeList(
     for (const cs of changes) {
 
         diskNames[cs.name] = true;
+
+    }
+
+    for (const failure of failures) {
+
+        diskNames[failure.name] = true;
 
     }
 

@@ -6,6 +6,7 @@ import {
     SettingsManager,
     resetSettingsManager,
     DEFAULT_SETTINGS,
+    DEFAULT_PATH_CONFIG,
 } from '../../../src/core/settings/index.js';
 
 import type { Stage, Rule } from '../../../src/core/settings/types.js';
@@ -347,6 +348,78 @@ ui:
 
         });
 
+        it('should keep the paths already in the file when overwriting', async () => {
+
+            const { manager, cleanup } = createTestContext();
+
+            try {
+
+                await manager.init();
+                await manager.setPaths({ sql: './sql', changes: './changes' });
+
+                await manager.init(true);
+
+                expect(manager.getPaths()).toEqual({ sql: './sql', changes: './changes' });
+                expect(readFileSync(manager.settingsFilePath, 'utf-8')).toContain('./sql');
+
+            }
+            finally {
+
+                cleanup();
+
+            }
+
+        });
+
+        it('should give an overwritten file with no paths the default layout', async () => {
+
+            const { manager, cleanup } = createTestContext();
+
+            try {
+
+                await manager.init();
+                writeFileSync(manager.settingsFilePath, 'build:\n    include: []\n');
+
+                await manager.init(true);
+
+                expect(manager.getPaths()).toEqual(DEFAULT_PATH_CONFIG);
+
+            }
+            finally {
+
+                cleanup();
+
+            }
+
+        });
+
+        // The resolved view merges NOORM_* variables; saving it would turn one
+        // shell's override into the project's settings.
+        it('should not write an environment override into the file', async () => {
+
+            const { manager, cleanup } = createTestContext();
+
+            process.env['NOORM_PATHS_SQL'] = './env-sql';
+
+            try {
+
+                await manager.init();
+
+                const written = readFileSync(manager.settingsFilePath, 'utf-8');
+
+                expect(written).not.toContain('env-sql');
+                expect(written).toContain('./db/sql');
+
+            }
+            finally {
+
+                delete process.env['NOORM_PATHS_SQL'];
+                cleanup();
+
+            }
+
+        });
+
     });
 
     describe('exists', () => {
@@ -441,8 +514,8 @@ ui:
 
                 const paths = manager.getPaths();
 
-                expect(paths.sql).toBe('./sql');
-                expect(paths.changes).toBe('./changes');
+                expect(paths.sql).toBe('./db/sql');
+                expect(paths.changes).toBe('./db/changes');
 
             }
             finally {

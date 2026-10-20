@@ -24,6 +24,7 @@ import { getSettingsManager } from '../../core/settings/index.js';
 import { outputError } from '../_utils.js';
 import { selectChangeFromFs, requireTty } from './_prompt.js';
 import { EXIT } from '../_exit.js';
+import { DEFAULT_CHANGES_PATH } from '../../core/settings/defaults.js';
 
 /**
  * Spawn an editor against a target path and wait for it to exit.
@@ -77,7 +78,7 @@ const editCommand = defineCommand({
 
         const changesDir = join(
             projectRoot,
-            settingsManager.settings.paths?.changes ?? 'changes',
+            settingsManager.settings.paths?.changes ?? DEFAULT_CHANGES_PATH,
         );
 
         let changeName = args.name;

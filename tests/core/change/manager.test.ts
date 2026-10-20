@@ -701,4 +701,179 @@ describe('change: manager', () => {
 
     });
 
+    // sqlite's prepare() runs only the first statement and reports success
+    describe('multi-statement change files', () => {
+
+        it('should run every statement of a change file on sqlite', async () => {
+
+            await createTestChange('multi-ok', [{
+                name: '001.sql',
+                content: 'CREATE TABLE multi_first (id INTEGER PRIMARY KEY);\nCREATE TABLE multi_second (id INTEGER PRIMARY KEY);',
+            }]);
+
+            const manager = new ChangeManager(buildContext());
+            const result = await manager.run('multi-ok');
+
+            expect(result.status).toBe('success');
+            expect(await tableExists('multi_first')).toBe(true);
+            expect(await tableExists('multi_second')).toBe(true);
+
+        });
+
+        it('should fail the change and name the statement when a later statement fails', async () => {
+
+            await createTestChange('multi-bad', [{
+                name: '001.sql',
+                content: 'CREATE TABLE multi_bad_first (id INTEGER PRIMARY KEY);\nSELECT * FROM no_such_table_xyz;',
+            }]);
+
+            const manager = new ChangeManager(buildContext());
+            const result = await manager.run('multi-bad');
+
+            expect(result.status).toBe('failed');
+            expect(result.error).toContain('[statement 2 of 2]');
+
+        });
+
+    });
+
+    describe('changes that cannot be parsed', () => {
+
+        async function createBrokenManifestChange(name: string): Promise<void> {
+
+            await createTestChange(name, [{ name: '001_views.txt', content: 'views/missing.sql\n' }]);
+
+        }
+
+        it('should fail ff at the broken change instead of reporting success', async () => {
+
+            await createTestChange('2025-01-01-good', [
+                { name: '001.sql', content: 'CREATE TABLE parse_good (id INTEGER PRIMARY KEY)' },
+            ]);
+            await createBrokenManifestChange('2025-01-02-broken');
+            await createTestChange('2025-01-03-after', [
+                { name: '001.sql', content: 'CREATE TABLE parse_after (id INTEGER PRIMARY KEY)' },
+            ]);
+
+            const manager = new ChangeManager(buildContext());
+            const result = await manager.ff();
+
+            expect(result.status).toBe('partial');
+            expect(result.executed).toBe(1);
+            expect(result.failed).toBe(1);
+
+            const broken = result.changes.find((c) => c.name === '2025-01-02-broken');
+
+            expect(broken?.status).toBe('failed');
+            expect(broken?.error).toContain('missing.sql');
+            expect(await tableExists('parse_good')).toBe(true);
+            expect(await tableExists('parse_after')).toBe(false);
+
+        });
+
+        it('should ignore a folder that has neither change/ nor revert/', async () => {
+
+            await mkdir(join(changesDir, 'lib'), { recursive: true });
+            await writeFile(join(changesDir, 'lib', 'shared.sql'), 'SELECT 1');
+            await createTestChange('2025-07-01-real', [
+                { name: '001.sql', content: 'CREATE TABLE parse_real (id INTEGER PRIMARY KEY)' },
+            ]);
+
+            const manager = new ChangeManager(buildContext());
+            const result = await manager.ff();
+
+            expect((await manager.list()).map((c) => c.name)).toEqual(['2025-07-01-real']);
+            expect(result.status).toBe('success');
+            expect(result.failed).toBe(0);
+            expect(await tableExists('parse_real')).toBe(true);
+
+        });
+
+        it('should fail ff --dry-run for the same change', async () => {
+
+            await createBrokenManifestChange('2025-02-01-broken');
+
+            const manager = new ChangeManager(buildContext());
+            const result = await manager.ff({ dryRun: true });
+
+            expect(result.status).toBe('failed');
+            expect(result.failed).toBe(1);
+
+        });
+
+        it('should name the missing file, not "not found", when run is asked for the broken change', async () => {
+
+            await createBrokenManifestChange('2025-05-01-broken');
+
+            const manager = new ChangeManager(buildContext());
+            const [, err] = await attempt(() => manager.run('2025-05-01-broken'));
+
+            expect(err?.message).toContain('missing.sql');
+            expect(err?.message).not.toContain('not found');
+
+        });
+
+        it('should list the unapplied broken change as failed with the parse error', async () => {
+
+            await createBrokenManifestChange('2025-03-01-broken');
+
+            const manager = new ChangeManager(buildContext());
+            const list = await manager.list();
+            const item = list.find((c) => c.name === '2025-03-01-broken');
+
+            expect(item?.status).toBe('failed');
+            expect(item?.errorMessage).toContain('missing.sql');
+            expect(item?.orphaned).toBe(false);
+
+        });
+
+        it('should fail ff at a reverted change whose manifest later breaks', async () => {
+
+            await mkdir(join(sqlDir, 'views'), { recursive: true });
+            await writeFile(join(sqlDir, 'views', 'v.sql'), 'CREATE VIEW parse_reverted_view AS SELECT 1 AS a');
+            await createTestChange(
+                '2025-06-01-reverted',
+                [{ name: '001_views.txt', content: 'views/v.sql\n' }],
+                [{ name: '001.sql', content: 'DROP VIEW IF EXISTS parse_reverted_view' }],
+            );
+
+            const manager = new ChangeManager(buildContext());
+
+            await manager.run('2025-06-01-reverted');
+            await manager.revert('2025-06-01-reverted');
+            await rm(join(sqlDir, 'views', 'v.sql'));
+
+            const result = await manager.ff();
+
+            expect(result.status).toBe('failed');
+            expect(result.changes[0]?.error).toContain('v.sql');
+            expect(result.warnings?.join('\n') ?? '').not.toContain('is applied');
+
+        });
+
+        it('should keep an applied change visible and warn when its manifest later breaks', async () => {
+
+            await mkdir(join(sqlDir, 'views'), { recursive: true });
+            await writeFile(join(sqlDir, 'views', 'v.sql'), 'CREATE VIEW parse_view AS SELECT 1 AS a');
+            await createTestChange('2025-04-01-applied', [{ name: '001_views.txt', content: 'views/v.sql\n' }]);
+
+            const manager = new ChangeManager(buildContext());
+
+            expect((await manager.run('2025-04-01-applied')).status).toBe('success');
+
+            await rm(join(sqlDir, 'views', 'v.sql'));
+
+            const item = (await manager.list()).find((c) => c.name === '2025-04-01-applied');
+            const result = await manager.ff();
+
+            expect(item?.status).toBe('success');
+            expect(item?.orphaned).toBe(false);
+            expect(result.status).toBe('success');
+            expect(result.failed).toBe(0);
+            expect(result.warnings?.join('\n')).toContain('2025-04-01-applied');
+
+        });
+
+    });
+
 });

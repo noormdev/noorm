@@ -23,7 +23,6 @@
 import path from 'node:path';
 import { readFile, writeFile as fsWriteFile, mkdir } from 'node:fs/promises';
 import type { Kysely } from 'kysely';
-import { sql } from 'kysely';
 
 import { attempt, attemptSync } from '@logosdx/utils';
 
@@ -35,6 +34,7 @@ import type { Permission } from '../policy/index.js';
 import type { Dialect } from '../connection/types.js';
 import { computeChecksum, computeCombinedChecksum } from '../runner/checksum.js';
 import { StatementWatcher } from '../runner/statement-watcher.js';
+import { executeSqlBody } from '../runner/mssql-batches.js';
 import { getSqlErrorMessage } from '../shared/index.js';
 import type { NoormDatabase } from '../shared/index.js';
 import { getLockManager } from '../lock/index.js';
@@ -724,17 +724,18 @@ async function runFileBatch(
             }
 
             // Execute SQL
-            const [, execErr] = await attempt(() =>
-                watcher.run(file.path, executor, (conn) => sql.raw(sqlContent).execute(conn)),
+            const [execMessage, execErr] = await attempt(() =>
+                watcher.run(file.path, executor, (conn) => executeSqlBody({ db: conn, dialect: context.dialect }, sqlContent)),
             );
 
             const durationMs = performance.now() - fileStart;
 
-            if (execErr) {
+            // executeSqlBody reports a failed statement as a message, not a throw.
+            // getSqlErrorMessage preserves TDS diagnostics (line numbers, error codes, procedure names).
+            const errorMessage = execErr ? getSqlErrorMessage(execErr) : execMessage;
 
-                // Capture error info FIRST — use getSqlErrorMessage to preserve
-                // TDS diagnostics (line numbers, error codes, procedure names)
-                const errorMessage = getSqlErrorMessage(execErr);
+            if (errorMessage) {
+
                 failed = true;
                 failedFile = file.path;
                 failureError = errorMessage;

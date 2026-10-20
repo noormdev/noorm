@@ -81,7 +81,7 @@ See [Templates](/guide/sql-files/templates) for full syntax reference.
 Secrets inject into SQL templates via the `$` context object:
 
 ```sql
--- sql/users/create-readonly.sql.tmpl
+-- db/sql/users/create-readonly.sql.tmpl
 CREATE USER {%~ $.secrets.READONLY_USER %}
 WITH PASSWORD '{%~ $.secrets.READONLY_PASSWORD %}';
 

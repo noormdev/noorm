@@ -40,6 +40,7 @@ import {
     runCancelMessage,
 } from '../../utils/index.js';
 import { attempt } from '@logosdx/utils';
+import { DEFAULT_SQL_PATH } from '../../../core/settings/defaults.js';
 
 type Phase = 'loading' | 'confirm' | 'running' | 'complete' | 'error';
 
@@ -76,7 +77,7 @@ export function RunBuildScreen({ params: _params }: ScreenProps): ReactElement {
 
         // Get project root
         const projectRoot = process.cwd();
-        const schema = settings.paths?.sql ?? 'sql';
+        const schema = settings.paths?.sql ?? DEFAULT_SQL_PATH;
         setSqlPath(schema);
 
         // Get effective build paths

@@ -28,6 +28,7 @@ import { useConnection } from '../../hooks/index.js';
 import { attempt } from '@logosdx/utils';
 
 import type { SelectListItem } from '../../components/index.js';
+import { DEFAULT_SQL_PATH } from '../../../core/settings/defaults.js';
 
 type Phase = 'loading' | 'picker' | 'confirm' | 'checking' | 'rerun-confirm' | 'running' | 'complete' | 'error';
 
@@ -101,7 +102,7 @@ export function RunDirScreen({ params }: ScreenProps): ReactElement {
     const cancelledRef = useRef(false);
 
     const projectRoot = process.cwd();
-    const sqlPath = settings?.paths?.sql ?? 'sql';
+    const sqlPath = settings?.paths?.sql ?? DEFAULT_SQL_PATH;
 
     // Load files and extract directories on mount
     useAsyncEffect(async (isCancelled) => {

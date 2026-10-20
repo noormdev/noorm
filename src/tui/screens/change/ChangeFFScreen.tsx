@@ -78,13 +78,13 @@ export function ChangeFFScreen({ params: _params }: ScreenProps): ReactElement {
 
         const [_, err] = await attempt(async () => {
 
-            const { changes, statuses } = await loadChangesWithStatus(
+            const { changes, statuses, failures } = await loadChangesWithStatus(
                 activeConfig, activeConfigName ?? '', settings, projectRoot,
             );
 
             if (isCancelled()) return;
 
-            const pending = buildPendingChangeList(changes, statuses);
+            const pending = buildPendingChangeList(changes, statuses, failures);
 
             // Validate all pending changes have actual content
             const emptyChanges: string[] = [];

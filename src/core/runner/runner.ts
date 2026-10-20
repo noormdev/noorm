@@ -1215,7 +1215,7 @@ async function executeDryRun(context: RunContext, files: string[]): Promise<File
  * Get the output path for a dry run file.
  *
  * Mirrors the source path structure under tmp/, stripping .tmpl extension.
- * Example: sql/views/my_view.sql.tmpl → tmp/sql/views/my_view.sql
+ * Example: db/sql/views/my_view.sql.tmpl → tmp/db/sql/views/my_view.sql
  */
 function getDryRunOutputPath(projectRoot: string, filepath: string): string {
 

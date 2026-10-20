@@ -205,6 +205,8 @@ Manifest files participate in ordering. Here, `001_rebuild-views.txt` runs first
 
 This keeps your `db/sql/` folder as the single source of truth. Views and functions are defined once, referenced wherever needed.
 
+The reference is resolved every time the change is read. Delete or rename a file a manifest lists and that change can no longer be read: `noorm change ff` stops at it if it has not run, and `noorm change list` shows it as `failed` with the missing path. A change that already ran keeps its status, and `ff` only warns. A manifest also runs the file's current content, so list only objects that are safe to run repeatedly, never a `CREATE TABLE` file.
+
 
 ## Checking Change Status
 

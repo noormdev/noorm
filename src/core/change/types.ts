@@ -253,6 +253,9 @@ export interface ChangeListItem {
  * `stale` is set by teardown on changes that did apply but whose objects
  * no longer exist, so it is pending work in the only sense that matters.
  *
+ * A `failed` item that is also new never ran and could not be parsed. A batch
+ * has to stop at it, not step over it, so it counts as outstanding work.
+ *
  * @example
  * const outstanding = list.filter(isPendingChange);
  */
@@ -262,6 +265,7 @@ export function isPendingChange(item: ChangeListItem): boolean {
         item.status === 'pending'
         || item.status === 'reverted'
         || item.status === 'stale'
+        || (item.status === 'failed' && item.isNew)
     );
 
 }

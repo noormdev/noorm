@@ -86,13 +86,13 @@ export function ChangeListScreen({ params: _params }: ScreenProps): ReactElement
 
         const [_, err] = await attempt(async () => {
 
-            const { changes: diskChanges, statuses } = await loadChangesWithStatus(
+            const { changes: diskChanges, statuses, failures } = await loadChangesWithStatus(
                 activeConfig, activeConfigName ?? '', settings, projectRoot,
             );
 
             if (isCancelled()) return;
 
-            const merged = buildMergedChangeList(diskChanges, statuses);
+            const merged = buildMergedChangeList(diskChanges, statuses, failures);
 
             setChanges(merged);
 

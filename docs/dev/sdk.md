@@ -449,7 +449,7 @@ await ctx.noorm.run.dir('seeds/')
 Discover SQL files in a directory. Defaults to the configured SQL directory.
 
 ```typescript
-const files = await ctx.noorm.run.discover('sql/')
+const files = await ctx.noorm.run.discover('db/sql/')
 ```
 
 ##### `run.preview(filepaths, output?)`
@@ -457,7 +457,7 @@ const files = await ctx.noorm.run.discover('sql/')
 Preview SQL files — render templates without executing.
 
 ```typescript
-const results = await ctx.noorm.run.preview(['sql/001.sql', 'sql/002.sql'])
+const results = await ctx.noorm.run.preview(['db/sql/001.sql', 'db/sql/002.sql'])
 ```
 
 
@@ -693,7 +693,7 @@ const { released, holder } = await ctx.noorm.lock.forceRelease()
 Render a template file without executing.
 
 ```typescript
-const result = await ctx.noorm.templates.render('sql/001_users.sql.tmpl')
+const result = await ctx.noorm.templates.render('db/sql/001_users.sql.tmpl')
 console.log(result.sql)
 ```
 
@@ -801,7 +801,7 @@ const result = await ctx.noorm.vault.copy(destConfig, ['API_KEY'], privateKey)
 Compute SHA-256 checksum for a file.
 
 ```typescript
-const checksum = await ctx.noorm.utils.checksum('sql/001_users.sql')
+const checksum = await ctx.noorm.utils.checksum('db/sql/001_users.sql')
 ```
 
 ##### `utils.testConnection()`

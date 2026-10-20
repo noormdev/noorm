@@ -4,12 +4,14 @@
  * Downloads the platform-appropriate binary from GitHub releases
  * and replaces the running binary in-place.
  */
+import * as p from '@clack/prompts';
 import { defineCommand } from 'citty';
 import { attempt } from '@logosdx/utils';
 
 import { observer } from '../core/observer.js';
 import { checkForUpdate, getCurrentVersion } from '../core/update/checker.js';
 import { installUpdate } from '../core/update/updater.js';
+import { SKILL_COMMAND, canPromptForSkill, installSkill } from '../core/update/skill.js';
 import { isInsecureMode, outputError, outputResult, sharedArgs } from './_utils.js';
 import { EXIT } from './_exit.js';
 
@@ -17,6 +19,57 @@ import { EXIT } from './_exit.js';
 function toMb(bytes: number): string {
 
     return (bytes / 1024 / 1024).toFixed(1);
+
+}
+
+/**
+ * Ask whether to install or update the noorm agent skill, once the binary is
+ * updated. The update already succeeded, so nothing here changes the exit code:
+ * a declined prompt or a failed install only prints how to do it by hand.
+ */
+export async function offerSkill(
+    json: boolean | undefined,
+    interactive = canPromptForSkill({ stdinTty: process.stdin.isTTY, stdoutTty: process.stdout.isTTY }),
+): Promise<void> {
+
+    if (json) return;
+
+    if (!interactive) {
+
+        process.stdout.write(`Agent skill: run \`${SKILL_COMMAND}\` to install or update it.\n`);
+
+        return;
+
+    }
+
+    const answer = await p.confirm({
+        message: `Install or update the noorm agent skill? (${SKILL_COMMAND}, run in ${process.cwd()})`,
+        initialValue: true,
+    });
+
+    if (p.isCancel(answer) || !answer) {
+
+        process.stdout.write(`Skipped. Run \`${SKILL_COMMAND}\` any time.\n`);
+
+        return;
+
+    }
+
+    const [code, spawnErr] = await attempt(() => installSkill());
+
+    if (spawnErr) {
+
+        process.stderr.write(`Could not run npx (${spawnErr.message}). Install Node.js, then run: ${SKILL_COMMAND}\n`);
+
+        return;
+
+    }
+
+    if (code !== 0) {
+
+        process.stderr.write(`Skill install exited with code ${code}. Re-run: ${SKILL_COMMAND}\n`);
+
+    }
 
 }
 
@@ -180,6 +233,8 @@ const updateCommand = defineCommand({
         if (result.success) {
 
             process.stdout.write(`Updated to ${result.newVersion}. Restart noorm to use the new version.\n`);
+
+            await offerSkill(args.json);
 
         }
         else if (!args.json) {
