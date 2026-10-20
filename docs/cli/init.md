@@ -5,7 +5,8 @@ Bootstrap a new noorm project interactively. Creates identity (if not present),
 project structure (`db/sql/`, `db/changes/`, `.noorm/`), `settings.yml`, and `state.enc`.
 
 It also writes `db/AGENTS.md` and `db/CLAUDE.md`. `AGENTS.md` points coding agents at the
-`/noorm` skill and holds a marker for your own steering; `CLAUDE.md` imports it with
+`/noorm` skill, points data modeling at [ignatius](../modeling/index.md) and its
+[`/ignatius-modeling` skill](../modeling/modeling-skill.md), and holds a marker for your own steering; `CLAUDE.md` imports it with
 `@AGENTS.md`. Both are written only when absent, so re-running with `--force` keeps your edits.
 
 A project that already has `paths` in its `settings.yml` keeps them. `--force` resets the rest of the file, but a project laid out at `sql/` and `changes/` stays there, and no `db/` directory is created for it.

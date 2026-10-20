@@ -19,8 +19,6 @@ Every claim has to be one you can point at.
 
 Do not invent a position to argue against. No "some people say", no "you may have been told", no opponent who does not hold the view. State the finding and let it stand without a foil.
 
-`docs/guide/changes/overview.md:15` currently breaks this ("Some argue that you *are* moving data..."). Fix it when you next touch that file, and do not copy the shape.
-
 Measurements carry their conditions: the tool, the scale, the run. Never combine numbers from different runs or builds into one comparison. If the conditions differ, re-measure or say which figure came from where.
 
 Mark inference as inference. An extrapolation from a mechanism reads as a measured result unless the text says otherwise.

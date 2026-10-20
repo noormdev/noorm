@@ -1584,7 +1584,17 @@ noorm update --json
 |------|-------------|
 | `--insecure` | Downgrade an unreachable `checksums.txt` from a failure to a warning. Also settable as `NOORM_INSECURE=1`. It never bypasses a confirmed checksum mismatch, which always fails |
 
-After a successful update on a terminal, `noorm update` asks whether to install or update the agent skill and, on yes, runs `npx skills add noormdev/noorm/skills`. Declining, `--json`, and piped output skip the prompt; piped text output prints the command instead. A failed skill install does not change the exit code, since the update itself succeeded.
+On a terminal, the download is one line rewritten in place with megabytes and percent, ending on `Downloaded X MB (100%)`. Piped output prints one line per step instead. `--json` prints only the JSON document.
+
+After a successful update, `noorm update` offers the agent skill through the first installer it finds on `PATH`:
+
+| Found | Command |
+|-------|---------|
+| `npx` | `npx skills add noormdev/noorm/skills` |
+| `gh` (no `npx`) | `gh skill install noormdev/noorm skills/noorm`, which needs GitHub CLI 2.90 or newer |
+| Neither | None run; both commands are printed with where to get Node.js and the GitHub CLI |
+
+On a terminal it asks first and runs the command on yes. Piped output prints the command instead of asking, and `--json` skips the offer. When the command fails, both commands are printed. A declined or failed skill install does not change the exit code, since the update itself succeeded.
 
 
 #### `ui`

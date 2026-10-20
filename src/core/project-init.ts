@@ -49,7 +49,15 @@ const NOORM_IGNORE_ENTRY = '.noorm/state/';
 
 const NOORM_GITIGNORE_BLOCK = `\n# noorm\n${NOORM_IGNORE_ENTRY}\n`;
 
-const AGENTS_TEMPLATE = 'Use the `/noorm` skill for managing files here.\n\n<!-- add user specific LLM steering here -->\n';
+const AGENTS_TEMPLATE = [
+    'Use the `/noorm` skill for managing files here.',
+    '',
+    'For data modeling, use ignatius (https://noorm.dev/modeling/) and its `/ignatius-modeling` skill '
+        + '(https://noorm.dev/modeling/modeling-skill).',
+    '',
+    '<!-- add user specific LLM steering here -->',
+    '',
+].join('\n');
 
 // Claude Code skips AGENTS.md when a CLAUDE.md is present, so CLAUDE.md imports it.
 const CLAUDE_TEMPLATE = '@AGENTS.md\n';
