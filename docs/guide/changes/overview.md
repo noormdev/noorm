@@ -12,8 +12,6 @@ Most tools call these migrations. We don't, and here's why.
 
 **Changes describe what you *do*, not what you *move*.** To migrate implies moving something from one place to another. Data migrations traditionally mean moving data between servers, warehouses, or systems. But when you add a column to an existing table, you're not migrating anything—you're changing the schema.
 
-Some argue that you *are* moving data—adding a column means moving data into it, splitting `full_name` into `first_name` and `last_name` is moving data between columns, or you're "moving the schema from one version to the next." This is mental gymnastics. It's stretching a word to fit a process it was never meant to describe.
-
 The term "migration" originated in enterprise contexts where it actually made sense—incrementally moving schemas and data from Oracle to SQL Server, or consolidating legacy systems into a new platform. Rails borrowed this terminology in 2005 and popularized it for web applications. Everyone followed suit without questioning whether the word fit. We're not moving databases between systems. We're changing them in place. The language matters.
 
 **Kysely already has migrations.** If you want a traditional migration system, Kysely has one built in. But it lacks what noorm provides:

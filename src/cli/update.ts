@@ -11,9 +11,19 @@ import { attempt } from '@logosdx/utils';
 import { observer } from '../core/observer.js';
 import { checkForUpdate, getCurrentVersion } from '../core/update/checker.js';
 import { installUpdate } from '../core/update/updater.js';
-import { SKILL_COMMAND, canPromptForSkill, installSkill } from '../core/update/skill.js';
+import {
+    SKILL_INSTALLERS,
+    canPromptForSkill,
+    findSkillInstaller,
+    installSkill,
+    skillCommand,
+} from '../core/update/skill.js';
 import { isInsecureMode, outputError, outputResult, sharedArgs } from './_utils.js';
 import { EXIT } from './_exit.js';
+
+// Wider than any line rewritten in place, so each `\r` rewrite erases the
+// previous one by construction.
+const STATUS_LINE_WIDTH = 40;
 
 /** Render a byte count as MB with one decimal (e.g. 41.2). */
 function toMb(bytes: number): string {
@@ -23,9 +33,117 @@ function toMb(bytes: number): string {
 }
 
 /**
- * Ask whether to install or update the noorm agent skill, once the binary is
- * updated. The update already succeeded, so nothing here changes the exit code:
- * a declined prompt or a failed install only prints how to do it by hand.
+ * Status output for `noorm update`. On a terminal, `pending` leaves its line
+ * open and the next `say` rewrites it in place; off one, every line is final.
+ * Under `--json` neither prints, so stdout holds only the JSON document.
+ *
+ * @example
+ * const status = updateStatus((text) => process.stdout.write(text), { isTty: true, json: false });
+ * status.pending('Checking for updates...');
+ * status.say('Already on the latest version (1.5.1)');
+ */
+export function updateStatus(write: (text: string) => void, opts: { isTty: boolean; json: boolean }) {
+
+    let lineOpen = false;
+
+    const raw = (text: string) => {
+
+        lineOpen = !text.endsWith('\n');
+        write(text);
+
+    };
+
+    return {
+        /** Writes text as given; the download renderer draws through this. */
+        raw,
+
+        say(line: string) {
+
+            if (opts.json) return;
+
+            raw(lineOpen ? `\r${line.padEnd(STATUS_LINE_WIDTH)}\n` : `${line}\n`);
+
+        },
+
+        pending(line: string) {
+
+            if (opts.json) return;
+
+            raw(opts.isTty ? line : `${line}\n`);
+
+        },
+
+        /** Ends a line left open, so what prints next starts on a line of its own. */
+        endLine() {
+
+            if (lineOpen) raw('\n');
+
+        },
+    };
+
+}
+
+/**
+ * Builds the `\r`-rewritten download line for a terminal, or null off one:
+ * piped output has no cursor to rewind, so every tick would land on its own
+ * line. The tick that reaches the total writes `Downloaded X MB (100%)` and
+ * ends the line; ticks after it write nothing.
+ *
+ * @example
+ * const render = downloadProgressRenderer((text) => process.stdout.write(text), true);
+ * observer.on('update:progress', (progress) => render?.(progress));
+ */
+export function downloadProgressRenderer(
+    write: (text: string) => void,
+    isTty: boolean,
+): ((progress: { received: number; total: number }) => void) | null {
+
+    let done = false;
+
+    if (!isTty) return null;
+
+    return ({ received, total }) => {
+
+        if (done) return;
+
+        if (total > 0 && received >= total) {
+
+            done = true;
+            write(`\r${`Downloaded ${toMb(total)} MB (100%)`.padEnd(STATUS_LINE_WIDTH)}\n`);
+
+            return;
+
+        }
+
+        const line = total > 0
+            ? `Downloading ${toMb(received)} / ${toMb(total)} MB (${Math.floor((received * 100) / total)}%)`
+            : `Downloading ${toMb(received)} MB`;
+
+        write(`\r${line.padEnd(STATUS_LINE_WIDTH)}`);
+
+    };
+
+}
+
+/** Every way to install the skill, one per line, with what each needs. */
+function skillInstallOptions(): string {
+
+    const width = Math.max(...SKILL_INSTALLERS.map((installer) => skillCommand(installer).length));
+
+    return SKILL_INSTALLERS
+        .map((installer) => `  ${skillCommand(installer).padEnd(width)}  (${installer.bin}: ${installer.provider})`)
+        .join('\n');
+
+}
+
+/**
+ * Offer to install or update the noorm agent skill once the binary is
+ * updated, through the first installer on PATH. With none, or when the
+ * installer fails, it prints every way to install the skill. The update
+ * already succeeded, so nothing here changes the exit code.
+ *
+ * @example
+ * if (result.success) await offerSkill(args.json);
  */
 export async function offerSkill(
     json: boolean | undefined,
@@ -34,32 +152,44 @@ export async function offerSkill(
 
     if (json) return;
 
+    const installer = findSkillInstaller();
+
+    if (!installer) {
+
+        process.stdout.write(`Agent skill: install npx or gh, then run its command:\n${skillInstallOptions()}\n`);
+
+        return;
+
+    }
+
+    const command = skillCommand(installer);
+
     if (!interactive) {
 
-        process.stdout.write(`Agent skill: run \`${SKILL_COMMAND}\` to install or update it.\n`);
+        process.stdout.write(`Agent skill: run \`${command}\` to install or update it.\n`);
 
         return;
 
     }
 
     const answer = await p.confirm({
-        message: `Install or update the noorm agent skill? (${SKILL_COMMAND}, run in ${process.cwd()})`,
+        message: `Install or update the noorm agent skill? (${command}, run in ${process.cwd()})`,
         initialValue: true,
     });
 
     if (p.isCancel(answer) || !answer) {
 
-        process.stdout.write(`Skipped. Run \`${SKILL_COMMAND}\` any time.\n`);
+        process.stdout.write(`Skipped. Run \`${command}\` any time.\n`);
 
         return;
 
     }
 
-    const [code, spawnErr] = await attempt(() => installSkill());
+    const [code, spawnErr] = await attempt(() => installSkill(installer));
 
     if (spawnErr) {
 
-        process.stderr.write(`Could not run npx (${spawnErr.message}). Install Node.js, then run: ${SKILL_COMMAND}\n`);
+        process.stderr.write(`Could not run ${installer.bin} (${spawnErr.message}). Install the skill with either:\n${skillInstallOptions()}\n`);
 
         return;
 
@@ -67,7 +197,7 @@ export async function offerSkill(
 
     if (code !== 0) {
 
-        process.stderr.write(`Skill install exited with code ${code}. Re-run: ${SKILL_COMMAND}\n`);
+        process.stderr.write(`Skill install exited with code ${code}. Install the skill with either:\n${skillInstallOptions()}\n`);
 
     }
 
@@ -88,9 +218,10 @@ const updateCommand = defineCommand({
     async run({ args }) {
 
         const currentVersion = getCurrentVersion();
+        const isTty = Boolean(process.stdout.isTTY) && !args.json;
+        const status = updateStatus((text) => process.stdout.write(text), { isTty, json: Boolean(args.json) });
 
-        process.stdout.write(`Current version: ${currentVersion}\n`);
-        process.stdout.write('Checking for updates...\n');
+        status.pending('Checking for updates...');
 
         const [checkResult, checkErr] = await attempt(() => checkForUpdate());
 
@@ -116,6 +247,7 @@ const updateCommand = defineCommand({
             }
             else {
 
+                status.endLine();
                 outputError(args, errorMsg);
 
             }
@@ -126,7 +258,7 @@ const updateCommand = defineCommand({
 
         if (!checkResult.updateAvailable) {
 
-            process.stdout.write(`Already on the latest version (${currentVersion})\n`);
+            status.say(`Already on the latest version (${currentVersion})`);
 
             if (args.json) {
 
@@ -143,42 +275,9 @@ const updateCommand = defineCommand({
 
         }
 
-        process.stdout.write(`Update available: ${currentVersion} → ${checkResult.latestVersion}\n`);
+        const latestVersion = checkResult.latestVersion;
 
-        // Render a live progress line for the binary download, TTY only. Piped
-        // output (CI, JSON mode) has no cursor to rewind, so every tick would
-        // land on its own line and bury the log under a few hundred of them.
-        // The static "Installing" line below is that case's only progress note.
-        const isTty = Boolean(process.stdout.isTTY) && !args.json;
-
-        const onProgress = ({ received, total }: { received: number; total: number }) => {
-
-            if (!isTty) return;
-
-            const pct = total > 0 ? ` (${Math.floor((received / total) * 100)}%)` : '';
-            const of = total > 0 ? ` / ${toMb(total)}` : '';
-            const line = `Downloading ${toMb(received)}${of} MB${pct}`;
-
-            process.stdout.write(`\r${line}   `);
-
-        };
-
-        const onRetry = ({ attempt: n, maxAttempts, error }: { attempt: number; maxAttempts: number; error: string }) => {
-
-            if (args.json) return;
-
-            // End the in-place progress line before printing the notice.
-            const prefix = isTty ? '\n' : '';
-
-            process.stdout.write(`${prefix}${error} — resuming (attempt ${n + 1}/${maxAttempts})...\n`);
-
-        };
-
-        if (!args.json) {
-
-            process.stdout.write(isTty ? 'Installing...\n' : 'Installing (downloading binary)...\n');
-
-        }
+        status.say(`Update available: ${currentVersion} → ${latestVersion}`);
 
         const insecure = isInsecureMode(args);
 
@@ -188,19 +287,28 @@ const updateCommand = defineCommand({
 
         }
 
+        const renderProgress = downloadProgressRenderer(status.raw, isTty);
+
+        status.pending(isTty ? 'Downloading...' : 'Installing (downloading binary)...');
+
+        const onProgress = (progress: { received: number; total: number }) => renderProgress?.(progress);
+
+        const onRetry = ({ attempt: n, maxAttempts, error }: { attempt: number; maxAttempts: number; error: string }) => {
+
+            status.endLine();
+            status.say(`${error} — resuming (attempt ${n + 1}/${maxAttempts})...`);
+
+        };
+
         observer.on('update:progress', onProgress);
         observer.on('update:retry', onRetry);
 
-        const [result, installErr] = await attempt(() => installUpdate(checkResult.latestVersion, { insecure }));
+        const [result, installErr] = await attempt(() => installUpdate(latestVersion, { insecure }));
 
         observer.off('update:progress', onProgress);
         observer.off('update:retry', onRetry);
 
-        if (isTty) {
-
-            process.stdout.write('\n');
-
-        }
+        status.endLine();
 
         if (installErr || !result) {
 
@@ -214,7 +322,7 @@ const updateCommand = defineCommand({
                     success: false,
                     error: errorMsg,
                     currentVersion,
-                    latestVersion: checkResult.latestVersion,
+                    latestVersion,
                     updateAvailable: true,
                     installed: false,
                 }, '');
@@ -232,7 +340,7 @@ const updateCommand = defineCommand({
 
         if (result.success) {
 
-            process.stdout.write(`Updated to ${result.newVersion}. Restart noorm to use the new version.\n`);
+            status.say(`Updated to ${result.newVersion}. Restart noorm to use the new version.`);
 
             await offerSkill(args.json);
 
@@ -251,7 +359,7 @@ const updateCommand = defineCommand({
             outputResult(args, {
                 success: result.success,
                 currentVersion,
-                latestVersion: checkResult.latestVersion,
+                latestVersion,
                 updateAvailable: true,
                 installed: result.success,
                 error: result.error ?? undefined,
