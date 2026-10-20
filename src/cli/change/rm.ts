@@ -30,6 +30,7 @@ import { checkConfigPolicy, resolveChannel } from '../../core/policy/index.js';
 import { outputResult, outputError, sharedArgs, isYesMode } from '../_utils.js';
 import { selectChangeFromFs, requireTty } from './_prompt.js';
 import { EXIT } from '../_exit.js';
+import { DEFAULT_CHANGES_PATH } from '../../core/settings/defaults.js';
 
 const rmCommand = defineCommand({
     meta: { name: 'rm', description: 'Delete a change directory' },
@@ -82,7 +83,7 @@ const rmCommand = defineCommand({
 
         const changesDir = join(
             projectRoot,
-            settingsManager.settings.paths?.changes ?? 'changes',
+            settingsManager.settings.paths?.changes ?? DEFAULT_CHANGES_PATH,
         );
 
         let changeName = args.name;

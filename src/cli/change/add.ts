@@ -18,6 +18,7 @@ import { createChange } from '../../core/change/index.js';
 import { getSettingsManager } from '../../core/settings/index.js';
 import { outputResult, outputError, sharedArgs } from '../_utils.js';
 import { requireTty } from './_prompt.js';
+import { DEFAULT_CHANGES_PATH } from '../../core/settings/defaults.js';
 
 const addCommand = defineCommand({
     meta: { name: 'add', description: 'Create a new change directory' },
@@ -45,7 +46,7 @@ const addCommand = defineCommand({
 
         const changesDir = join(
             projectRoot,
-            settingsManager.settings.paths?.changes ?? 'changes',
+            settingsManager.settings.paths?.changes ?? DEFAULT_CHANGES_PATH,
         );
 
         let description = args.name;

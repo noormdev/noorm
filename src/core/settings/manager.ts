@@ -279,6 +279,10 @@ export class SettingsManager {
     /**
      * Initialize a new settings file with defaults.
      *
+     * An overwrite keeps the `paths` already in the file: they say where the
+     * project's files are, not a preference, and resetting them would point a
+     * project laid out elsewhere at directories that do not exist.
+     *
      * @param force - Overwrite existing file if true
      * @throws Error if file exists and force is false
      */
@@ -292,7 +296,13 @@ export class SettingsManager {
 
         }
 
+        const [previous] = fileExists ? await attempt(() => this.load()) : [undefined];
+        const keptPaths = previous ? this.#document?.paths : undefined;
+
         this.#document = createDefaultSettings();
+
+        if (keptPaths) this.#document.paths = clone(keptPaths);
+
         this.#refreshResolved();
         this.#loaded = true;
 

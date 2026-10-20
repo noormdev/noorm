@@ -33,7 +33,7 @@ Where SQL goes in a noorm project and why. Read this before adding a table, alte
         └── CLAUDE.md        # imports AGENTS.md
 
 
-`noorm init` writes `paths.sql: ./db/sql` and `paths.changes: ./db/changes` into `.noorm/settings.yml`. Projects created before that use `./sql` and `./changes`, and a settings file with no `paths` key falls back to those.
+`noorm init` writes `paths.sql: ./db/sql` and `paths.changes: ./db/changes` into `.noorm/settings.yml`. Projects created before that have `./sql` and `./changes` written in their `paths`, and a settings file with no `paths` key means the `db/` paths.
 
 Read `.noorm/settings.yml` before creating or moving a file. Never create a second `sql/` or `changes/` beside the configured ones: noorm does not read them, so their files never run.
 
@@ -72,9 +72,23 @@ A table whose definition is spread over a `CREATE` and later `ALTER`s cannot be 
 ### Rules for `changes/`
 
 - Everything that turns an existing database into the current state: `ALTER`, `DROP`, backfills, data fixes, type changes, index and constraint additions on live tables.
-- Make every statement safe to run twice (`ADD COLUMN IF NOT EXISTS`, `DROP ... IF EXISTS`, `CREATE ... IF NOT EXISTS`). `noorm run build` records no change history, so the first `change ff` on a freshly built database replays every change in the folder, and a statement that is not safe to run twice fails there.
+- Make every statement safe to run twice (see [Guards by dialect](#guards-by-dialect); the examples below are PostgreSQL). `noorm run build` records no change history, so the first `change ff` on a freshly built database replays every change in the folder, and a statement that is not safe to run twice fails there.
 - Write a `revert/` for each change.
 - Never edit a change that has been applied anywhere. Databases that already ran it keep the old body and the rest run the new one, so environments drift apart. Add a new change instead. `change ff` skips applied changes; `noorm change run <name>` re-executes an edited one on the one database you point it at.
+
+
+### Guards by dialect
+
+
+| Statement | PostgreSQL | MySQL 8 | SQL Server | SQLite |
+|---|---|---|---|---|
+| Create table | `CREATE TABLE IF NOT EXISTS` | `CREATE TABLE IF NOT EXISTS` | `IF OBJECT_ID('dbo.t', 'U') IS NULL CREATE TABLE ...` | `CREATE TABLE IF NOT EXISTS` |
+| Add column | `ADD COLUMN IF NOT EXISTS` | Check `information_schema.columns` first | `IF COL_LENGTH('dbo.t', 'c') IS NULL ALTER TABLE ... ADD ...` | No guard |
+| Drop column | `DROP COLUMN IF EXISTS` | Check `information_schema.columns` first | `DROP COLUMN IF EXISTS` | No guard |
+| Create index | `CREATE INDEX IF NOT EXISTS` | Check `information_schema.statistics` first | `IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE ...)` | `CREATE INDEX IF NOT EXISTS` |
+| Drop table or view | `DROP ... IF EXISTS` | `DROP ... IF EXISTS` | `DROP ... IF EXISTS` | `DROP ... IF EXISTS` |
+
+MySQL and SQL Server reject the PostgreSQL forms of `ADD COLUMN IF NOT EXISTS` and `CREATE INDEX IF NOT EXISTS` as syntax errors. SQLite has no guard for `ADD COLUMN`, so a replayed change that adds one fails there.
 
 
 ---
@@ -118,6 +132,7 @@ Every edit to `sql/` that changes what a built database contains ships with a ch
 - `revert/` also runs in forward order (`001`, then `002`). Number the revert files in the order the undo has to happen.
 - `changelog.md` says why the change exists. The diff already shows what it does.
 - A change whose files contain only comments or placeholders is rejected.
+- A folder under `changes/` with neither `change/` nor `revert/` is not a change and is ignored, so shared fragments and archives can live beside the real ones.
 
 
 ---
@@ -136,7 +151,7 @@ A `.txt` file in `change/` or `revert/` runs existing `sql/` files in place inst
 
 - One path per line, relative to `paths.sql` (`views/active_users.sql`, not `db/sql/views/active_users.sql`). Blank lines and lines starting with `#` are ignored.
 - Lines run in file order. The manifest sorts among the other change files by filename, so `001_rebuild.txt` runs before `002_alter.sql`.
-- A missing file fails `noorm change run <name>` with a `ManifestReferenceError`. `noorm change ff` and `change list` skip a change they cannot parse, still exit 0, and the change is absent from `change list`. A manifest with no path lines is treated the same way.
+- A missing file makes the change unreadable. `noorm change ff` stops at that change and exits non-zero (1, or 3 when earlier changes in the batch applied) with the missing path in the message, `change list` shows it as `failed`, and `change run <name>` reports the same error. If the change already ran, it keeps its status and `ff` only warns. A manifest with no path lines is treated the same way.
 - A manifest runs the referenced file's current content, not its content when the change was written. A change still pending on a lagging database, or replayed after a build, executes today's definition.
 - Because of that, reference only objects that are safe to run repeatedly: `CREATE OR REPLACE` views, functions, procedures, triggers. Never reference a `CREATE TABLE` file: replayed, it hits a table that already exists.
 - A path listed more than once across a change's manifests runs once, at its first position.
@@ -169,7 +184,7 @@ Reach for a template when any of these holds:
 |---|---|
 | Rows come from data: lookups, enums, roles, feature flags, cron schedules | Keep the data in `roles.yml` beside the template and loop over `$.roles` |
 | Three or more statements differ only by a name or value: grants, audit triggers, per-table indexes | Loop over a list in a data file, or call a function from `$helpers.ts` |
-| A value differs by environment: stage, test flag, host | Branch on `$.config.stage` / `$.config.isTest`, or read `$.env` |
+| A value differs by environment: stage, test flag, host | Branch on `$.config.name` (a config named `prod` is the `prod` stage) or `$.config.isTest`, or read `$.env` |
 | A value is secret | Read `$.secrets.KEY`. Never write a secret into a plain `.sql` file |
 | The same fragment appears in several files | `$.include()` it |
 
@@ -225,7 +240,7 @@ becomes data plus a template:
 ## Worked example
 
 
-Add a `bio` column to `users`.
+Add a `bio` column to `users` (PostgreSQL).
 
 
     -- db/sql/01_tables/001_users.sql
@@ -263,4 +278,4 @@ The `ALTER` is in the change and the column is declared once, inline, in `sql/`.
 - No `CREATE OR REPLACE` object was copied into a change when a manifest would do.
 - Seed lists, grants and repeated statements went through a template.
 - No file landed outside the configured `paths`.
-- The change appears in `noorm change list`. A broken manifest makes `ff` skip the change and still exit 0.
+- No change shows `failed` in `noorm change list` because of a manifest that names a file `sql/` no longer has. Deleting or renaming a `sql/` file breaks every unapplied change that lists it.

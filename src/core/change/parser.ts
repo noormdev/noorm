@@ -25,7 +25,7 @@ import { constants as fsConstants } from 'node:fs';
 import { attempt } from '@logosdx/utils';
 
 import { observer } from '../observer.js';
-import type { Change, ChangeFile, ChangeFileType } from './types.js';
+import type { Change, ChangeFile, ChangeFileType, ChangeListItem, ChangeStatus } from './types.js';
 import {
     ChangeValidationError,
     ChangeNotFoundError,
@@ -137,8 +137,48 @@ export async function parseChange(folderPath: string, sqlDir?: string): Promise<
 // Discover All Changes
 // ─────────────────────────────────────────────────────────────
 
+/** A change folder that exists on disk but could not be parsed. */
+export interface ChangeParseFailure {
+    name: string;
+    path: string;
+    message: string;
+}
+
+/**
+ * The list entry for a folder that could not be parsed: its recorded status
+ * when it has history, otherwise `failed` with the parse error, which is what
+ * marks it as outstanding work.
+ *
+ * @example
+ * const item = failureListItem(failure, statuses.get(failure.name))
+ */
+export function failureListItem(failure: ChangeParseFailure, status?: ChangeStatus): ChangeListItem {
+
+    const { date, description } = parseName(failure.name);
+
+    return {
+        name: failure.name,
+        path: failure.path,
+        date,
+        description,
+        status: status?.status ?? 'failed',
+        appliedAt: status?.appliedAt ?? null,
+        appliedBy: status?.appliedBy ?? null,
+        revertedAt: status?.revertedAt ?? null,
+        errorMessage: status ? status.errorMessage : failure.message,
+        appliedHistoryId: status?.appliedHistoryId ?? null,
+        isNew: !status,
+        orphaned: false,
+    };
+
+}
+
 /**
  * Discover all changes in a directory.
+ *
+ * Folders that fail to parse are dropped here. Callers that must not lose
+ * track of them (a change that never ran would silently never run) use
+ * `scanChanges`.
  *
  * @param changesDir - Directory containing change folders
  * @param sqlDir - Schema directory for resolving .txt references
@@ -158,12 +198,30 @@ export async function discoverChanges(
     sqlDir?: string,
 ): Promise<Change[]> {
 
+    const { changes } = await scanChanges(changesDir, sqlDir);
+
+    return changes;
+
+}
+
+/**
+ * Discover all changes in a directory, and report the folders that could not
+ * be parsed instead of dropping them.
+ *
+ * @example
+ * const { changes, failures } = await scanChanges('/project/db/changes', '/project/db/sql')
+ */
+export async function scanChanges(
+    changesDir: string,
+    sqlDir?: string,
+): Promise<{ changes: Change[]; failures: ChangeParseFailure[] }> {
+
     // Check directory exists
     const [exists] = await attempt(() => stat(changesDir));
 
     if (!exists) {
 
-        return [];
+        return { changes: [], failures: [] };
 
     }
 
@@ -178,7 +236,7 @@ export async function discoverChanges(
             context: { changesDir, operation: 'discover' },
         });
 
-        return [];
+        return { changes: [], failures: [] };
 
     }
 
@@ -187,10 +245,13 @@ export async function discoverChanges(
 
     // Parse each change
     const changes: Change[] = [];
+    const failures: ChangeParseFailure[] = [];
 
     for (const folder of folders) {
 
         const folderPath = path.join(changesDir, folder.name);
+
+        if (!(await looksLikeChange(folderPath))) continue;
 
         const [change, parseErr] = await attempt(() => parseChange(folderPath, sqlDir));
 
@@ -203,6 +264,8 @@ export async function discoverChanges(
                 context: { folder: folder.name, operation: 'parse' },
             });
 
+            failures.push({ name: folder.name, path: folderPath, message: parseErr.message });
+
             continue;
 
         }
@@ -212,7 +275,10 @@ export async function discoverChanges(
     }
 
     // Sort by name (date prefix ensures chronological order)
-    return changes.sort((a, b) => a.name.localeCompare(b.name));
+    return {
+        changes: changes.sort((a, b) => a.name.localeCompare(b.name)),
+        failures,
+    };
 
 }
 
@@ -378,6 +444,24 @@ function parseName(name: string): { date: Date | null; description: string } {
 
     // No date prefix - use entire name as description
     return { date: null, description: name };
+
+}
+
+/**
+ * A folder with neither `change/` nor `revert/` is not a change attempt:
+ * shared `$.include()` fragments and archives live beside real changes.
+ */
+async function looksLikeChange(folderPath: string): Promise<boolean> {
+
+    for (const subfolder of ['change', 'revert']) {
+
+        const [entry] = await attempt(() => stat(path.join(folderPath, subfolder)));
+
+        if (entry?.isDirectory()) return true;
+
+    }
+
+    return false;
 
 }
 

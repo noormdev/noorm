@@ -41,6 +41,7 @@ import { checkProtectedConfig } from '../guards.js';
 
 import type { ContextState } from '../state.js';
 import { requireConnection } from '../state.js';
+import { DEFAULT_CHANGES_PATH, DEFAULT_SQL_PATH } from '../../core/settings/defaults.js';
 
 // ─────────────────────────────────────────────────────────────
 // ChangesNamespace
@@ -426,7 +427,7 @@ export class ChangesNamespace {
 
         return path.join(
             this.#state.projectRoot,
-            this.#state.settings.paths?.changes ?? 'changes',
+            this.#state.settings.paths?.changes ?? DEFAULT_CHANGES_PATH,
         );
 
     }
@@ -435,7 +436,7 @@ export class ChangesNamespace {
 
         return path.join(
             this.#state.projectRoot,
-            this.#state.settings.paths?.sql ?? 'sql',
+            this.#state.settings.paths?.sql ?? DEFAULT_SQL_PATH,
         );
 
     }

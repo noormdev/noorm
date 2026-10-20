@@ -85,13 +85,13 @@ export function ChangeNextScreen({ params }: ScreenProps): ReactElement {
 
         const [_, err] = await attempt(async () => {
 
-            const { changes, statuses } = await loadChangesWithStatus(
+            const { changes, statuses, failures } = await loadChangesWithStatus(
                 activeConfig, activeConfigName ?? '', settings, projectRoot,
             );
 
             if (isCancelled()) return;
 
-            const pending = buildPendingChangeList(changes, statuses);
+            const pending = buildPendingChangeList(changes, statuses, failures);
 
             setPendingChanges(pending);
 

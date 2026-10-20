@@ -390,7 +390,7 @@ export async function setupTestProject(): Promise<TestProject> {
         NOORM_CONNECTION_DIALECT: 'sqlite',
         NOORM_CONNECTION_DATABASE: dbPath,
         NOORM_PATHS_SQL: './sql',
-        NOORM_PATHS_CHANGESETS: './changes',
+        NOORM_PATHS_CHANGES: './changes',
         NOORM_NAME: '__test__',
         NOORM_ISTEST: 'true',
         // Bypass identity check in headless mode (CI has no ~/.noorm/identity.key)

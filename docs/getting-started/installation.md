@@ -85,6 +85,8 @@ noorm update
 # Or launch the TUI (`noorm ui`) and press [u] from the home screen
 ```
 
+On a terminal, `noorm update` finishes by asking whether to install or update the [agent skill](#install-the-agent-skill-optional).
+
 
 ## Install the SDK (Optional)
 
@@ -118,7 +120,7 @@ npx skills add noormdev/noorm/skills
 
 Agents otherwise guess at noorm's conventions, and several of them are non-obvious enough to guess wrong: SDK methods throw named errors rather than returning them, `attempt()` is used deliberately rather than everywhere, the codebase uses no `try`/`catch`, and test helpers carry safety guards that exist for a reason. The skill covers all of it, plus the headless CLI flags used in CI.
 
-It installs four references the agent reads on demand:
+Run the same command again to update an installed copy; it replaces the copy. It installs the references the agent reads on demand:
 
 | Reference | Covers |
 |-----------|--------|
@@ -126,6 +128,7 @@ It installs four references the agent reads on demand:
 | `cli.md` | Headless commands, flags, exit codes, CI usage |
 | `templates.md` | `.sql.tmpl` syntax and data loaders |
 | `config.md` | `settings.yml`, paths, stages, secrets |
+| `schema-files.md` | What `sql/` and `changes/` are for, which edits go where, manifests, when to use a template |
 
 ::: tip Include paths are relative to `paths.sql`
 The single most common mistake — by people and agents alike — is writing `build.include` entries relative to the project root. They resolve against `paths.sql`. The skill states this explicitly; `noorm run build` also warns when an include entry matches nothing.

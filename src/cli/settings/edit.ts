@@ -22,6 +22,7 @@ import type {
 } from '../../core/settings/types.js';
 import { isYesMode, sharedArgs } from '../_utils.js';
 import { EXIT } from '../_exit.js';
+import { DEFAULT_CHANGES_PATH, DEFAULT_SQL_PATH } from '../../core/settings/defaults.js';
 
 type Manager = ReturnType<typeof getSettingsManager>;
 
@@ -77,7 +78,7 @@ async function editPaths(manager: Manager): Promise<void> {
 
     const sql = await p.text({
         message: 'SQL files path',
-        initialValue: current.sql ?? './sql',
+        initialValue: current.sql ?? DEFAULT_SQL_PATH,
         validate: (v) => {
 
             if (v && v.trim()) return undefined;
@@ -91,7 +92,7 @@ async function editPaths(manager: Manager): Promise<void> {
 
     const changes = await p.text({
         message: 'Changes path',
-        initialValue: current.changes ?? './changes',
+        initialValue: current.changes ?? DEFAULT_CHANGES_PATH,
         validate: (v) => {
 
             if (v && v.trim()) return undefined;

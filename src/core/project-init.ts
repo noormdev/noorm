@@ -32,12 +32,10 @@ import {
 } from './identity/index.js';
 import { SettingsManager } from './settings/manager.js';
 import {
-    DEFAULT_PATH_CONFIG,
-    INIT_CHANGES_PATH,
-    INIT_DB_DIR,
-    INIT_PATH_CONFIG,
-    INIT_SQL_PATH,
-    isInitLayout,
+    DEFAULT_CHANGES_PATH,
+    DEFAULT_DB_DIR,
+    DEFAULT_SQL_PATH,
+    isDefaultLayout,
 } from './settings/defaults.js';
 import type { PathConfig } from './settings/types.js';
 import { StateManager, getStateManager } from './state/index.js';
@@ -75,36 +73,16 @@ export interface ProjectInitResult {
 }
 
 /**
- * Paths a project's settings.yml carries after init. A project that already has
- * a settings.yml keeps what it resolves to, so `--force` never repoints it at
- * a layout it does not have; only a new project gets the `db/` layout.
- *
- * @example
- * const paths = await resolveInitPaths('/project'); // INIT_PATH_CONFIG when new
- */
-export async function resolveInitPaths(projectRoot: string): Promise<PathConfig> {
-
-    const manager = new SettingsManager(projectRoot);
-
-    if (!(await manager.exists())) return INIT_PATH_CONFIG;
-
-    const [settings] = await attempt(() => manager.load());
-
-    return settings?.paths ?? DEFAULT_PATH_CONFIG;
-
-}
-
-/**
  * Creates `db/sql/`, `db/changes/`, and the agent steering files beside them,
- * for projects on the init layout. The steering files hold the user's edits,
+ * for projects on the default layout. The steering files hold the user's edits,
  * so they are written only when absent.
  *
  * @example
- * scaffoldDbLayout('/project', INIT_PATH_CONFIG); // ['db/sql/.gitkeep', ..., 'db/CLAUDE.md']
+ * scaffoldDbLayout('/project', DEFAULT_PATH_CONFIG); // ['db/sql/.gitkeep', ..., 'db/CLAUDE.md']
  */
 export function scaffoldDbLayout(projectRoot: string, paths: PathConfig): string[] {
 
-    if (!isInitLayout(paths)) return [];
+    if (!isDefaultLayout(paths)) return [];
 
     const created: string[] = [];
     const agentFiles = {
@@ -112,7 +90,7 @@ export function scaffoldDbLayout(projectRoot: string, paths: PathConfig): string
         'CLAUDE.md': CLAUDE_TEMPLATE,
     };
 
-    for (const dir of [INIT_SQL_PATH, INIT_CHANGES_PATH]) {
+    for (const dir of [DEFAULT_SQL_PATH, DEFAULT_CHANGES_PATH]) {
 
         const relativeDir = posix.normalize(dir);
 
@@ -124,12 +102,12 @@ export function scaffoldDbLayout(projectRoot: string, paths: PathConfig): string
 
     for (const [name, body] of Object.entries(agentFiles)) {
 
-        const filePath = join(projectRoot, INIT_DB_DIR, name);
+        const filePath = join(projectRoot, DEFAULT_DB_DIR, name);
 
         if (existsSync(filePath)) continue;
 
         writeFileSync(filePath, body);
-        created.push(`${INIT_DB_DIR}/${name}`);
+        created.push(`${DEFAULT_DB_DIR}/${name}`);
 
     }
 
@@ -152,9 +130,6 @@ export async function performProjectInit(
     const gitignorePath = join(projectRoot, '.gitignore');
 
     const created: string[] = [];
-    const paths = await resolveInitPaths(projectRoot);
-
-    created.push(...scaffoldDbLayout(projectRoot, paths));
 
     mkdirSync(noormPath, { recursive: true });
     mkdirSync(statePath, { recursive: true });
@@ -205,7 +180,9 @@ export async function performProjectInit(
 
     const settingsManager = new SettingsManager(projectRoot);
     await settingsManager.init(force);
-    await settingsManager.setPaths(paths);
+
+    const scaffolded = scaffoldDbLayout(projectRoot, settingsManager.getPaths());
+
     created.push('.noorm/settings.yml');
 
     const stateManager = new StateManager(projectRoot, { privateKey });
@@ -240,7 +217,7 @@ export async function performProjectInit(
     return {
         success: true,
         createdIdentity,
-        createdFiles: created,
+        createdFiles: [...scaffolded, ...created],
     };
 
 }

@@ -32,7 +32,8 @@ import { CURRENT_VERSIONS } from '../../core/version/types.js';
 import { getFullVersionRecord, type FullVersionRecord } from '../../core/version/schema/index.js';
 import { fetchOverview, type ExploreOverview } from '../../core/explore/index.js';
 import { ChangeHistory } from '../../core/change/history.js';
-import { discoverChanges } from '../../core/change/parser.js';
+import { failureListItem, scanChanges } from '../../core/change/parser.js';
+import { isPendingChange } from '../../core/change/types.js';
 import { getLockManager } from '../../core/lock/manager.js';
 import type { UnifiedHistoryRecord } from '../../core/change/types.js';
 import type { LockStatus } from '../../core/lock/types.js';
@@ -179,7 +180,7 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
             const changeHistory = new ChangeHistory(db, activeConfigName ?? '', connDialect);
 
             // Discover changes from disk
-            const diskChanges = await discoverChanges(
+            const { changes: diskChanges, failures } = await scanChanges(
                 resolveChangesDir(projectRoot, settings),
                 resolveSqlDir(projectRoot, settings),
             );
@@ -197,6 +198,13 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
                     pendingCount++;
 
                 }
+
+            }
+
+            // An unreadable change that a batch would run is outstanding work too
+            for (const failure of failures) {
+
+                if (isPendingChange(failureListItem(failure, statuses.get(failure.name)))) pendingCount++;
 
             }
 

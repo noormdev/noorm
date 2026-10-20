@@ -20,7 +20,7 @@ import { useRouter } from '../../router.js';
 import { useAppContext } from '../../app-context.js';
 import { Panel, Form } from '../../components/index.js';
 import { useSettingsOperation } from '../../hooks/index.js';
-import { DEFAULT_PATH_CONFIG } from '../../../core/settings/defaults.js';
+import { DEFAULT_SQL_PATH } from '../../../core/settings/defaults.js';
 
 /**
  * Parse comma-separated string to array.
@@ -72,11 +72,11 @@ export function SettingsBuildScreen({ params: _params }: ScreenProps): ReactElem
     // Get current SQL path
     const sqlPath = useMemo(() => {
 
-        if (!settingsManager) return DEFAULT_PATH_CONFIG.sql ?? './sql';
+        if (!settingsManager) return DEFAULT_SQL_PATH;
 
         const paths = settingsManager.getPaths();
 
-        return paths.sql ?? DEFAULT_PATH_CONFIG.sql ?? './sql';
+        return paths.sql ?? DEFAULT_SQL_PATH;
 
     }, [settingsManager]);
 

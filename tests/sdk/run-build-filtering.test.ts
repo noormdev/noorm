@@ -171,10 +171,10 @@ async function makeSqlProject(): Promise<string> {
 
     const projectRoot = await mkdtemp(join(tmpdir(), 'noorm-build-filter-'));
 
-    await mkdir(join(projectRoot, 'sql', 'a'), { recursive: true });
-    await mkdir(join(projectRoot, 'sql', 'b'), { recursive: true });
-    await writeFile(join(projectRoot, 'sql', 'a', '001_a.sql'), 'select 1;');
-    await writeFile(join(projectRoot, 'sql', 'b', '001_b.sql'), 'select 1;');
+    await mkdir(join(projectRoot, 'db', 'sql', 'a'), { recursive: true });
+    await mkdir(join(projectRoot, 'db', 'sql', 'b'), { recursive: true });
+    await writeFile(join(projectRoot, 'db', 'sql', 'a', '001_a.sql'), 'select 1;');
+    await writeFile(join(projectRoot, 'db', 'sql', 'b', '001_b.sql'), 'select 1;');
 
     return projectRoot;
 
@@ -221,7 +221,7 @@ describe('sdk: RunNamespace.build() filtering', () => {
         const result = await run.build();
 
         expect(result.files.map((f) => f.filepath)).toEqual([
-            join(projectRoot, 'sql', 'a', '001_a.sql'),
+            join(projectRoot, 'db', 'sql', 'a', '001_a.sql'),
         ]);
 
     });
@@ -259,8 +259,8 @@ describe('sdk: RunNamespace.build() filtering', () => {
         const result = await run.build();
 
         expect(result.files.map((f) => f.filepath).sort()).toEqual([
-            join(projectRoot, 'sql', 'a', '001_a.sql'),
-            join(projectRoot, 'sql', 'b', '001_b.sql'),
+            join(projectRoot, 'db', 'sql', 'a', '001_a.sql'),
+            join(projectRoot, 'db', 'sql', 'b', '001_b.sql'),
         ].sort());
 
     });
@@ -281,7 +281,7 @@ describe('sdk: RunNamespace.build() filtering', () => {
         const result = await run.build();
 
         expect(result.files.map((f) => f.filepath)).toEqual([
-            join(projectRoot, 'sql', 'a', '001_a.sql'),
+            join(projectRoot, 'db', 'sql', 'a', '001_a.sql'),
         ]);
 
     });

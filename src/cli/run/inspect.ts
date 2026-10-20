@@ -6,8 +6,8 @@
  *
  * @example
  * ```bash
- * noorm run inspect sql/users/001_create.sql.tmpl
- * noorm run inspect sql/core/05_Cron/Crons.sql.tmpl --json
+ * noorm run inspect db/sql/users/001_create.sql.tmpl
+ * noorm run inspect db/sql/core/05_Cron/Crons.sql.tmpl --json
  * ```
  */
 import { stat } from 'node:fs/promises';
@@ -272,8 +272,8 @@ const inspectCommand = defineCommand({
 });
 
 (inspectCommand as typeof inspectCommand & { examples: string[] }).examples = [
-    'noorm run inspect sql/users/001_create.sql.tmpl',
-    'noorm run inspect sql/core/05_Cron/Crons.sql.tmpl --json',
+    'noorm run inspect db/sql/users/001_create.sql.tmpl',
+    'noorm run inspect db/sql/core/05_Cron/Crons.sql.tmpl --json',
 ];
 
 export default inspectCommand;

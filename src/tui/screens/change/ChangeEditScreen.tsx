@@ -23,7 +23,7 @@ import { useAppContext } from '../../app-context.js';
 import { Panel, Spinner, StatusMessage, MissingParamPanel } from '../../components/index.js';
 import { useAsyncEffect } from '../../hooks/index.js';
 import { getErrorMessage, resolveChangesDir, resolveSqlDir } from '../../utils/index.js';
-import { discoverChanges } from '../../../core/change/parser.js';
+import { scanChanges } from '../../../core/change/parser.js';
 
 /**
  * Edit steps.
@@ -63,12 +63,12 @@ export function ChangeEditScreen({ params }: ScreenProps): ReactElement {
         const [_, err] = await attempt(async () => {
 
             // Find the change
-            const changes = await discoverChanges(
+            const { changes, failures } = await scanChanges(
                 resolveChangesDir(projectRoot, settings),
                 resolveSqlDir(projectRoot, settings),
             );
 
-            const change = changes.find((cs) => cs.name === changeName);
+            const change = [...changes, ...failures].find((cs) => cs.name === changeName);
 
             if (!change) {
 

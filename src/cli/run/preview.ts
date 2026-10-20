@@ -6,9 +6,9 @@
  *
  * @example
  * ```bash
- * noorm run preview sql/users/001_create.sql.tmpl
- * noorm run preview sql/core/05_Cron/Crons.sql.tmpl --json
- * noorm run preview sql/migrations/002.sql.tmpl > rendered.sql
+ * noorm run preview db/sql/users/001_create.sql.tmpl
+ * noorm run preview db/sql/core/05_Cron/Crons.sql.tmpl --json
+ * noorm run preview db/sql/migrations/002.sql.tmpl > rendered.sql
  * ```
  */
 import { stat } from 'node:fs/promises';
@@ -147,9 +147,9 @@ const previewCommand = defineCommand({
 });
 
 (previewCommand as typeof previewCommand & { examples: string[] }).examples = [
-    'noorm run preview sql/users/001_create.sql.tmpl',
-    'noorm run preview sql/core/05_Cron/Crons.sql.tmpl --json',
-    'noorm run preview sql/migrations/002.sql.tmpl > rendered.sql',
+    'noorm run preview db/sql/users/001_create.sql.tmpl',
+    'noorm run preview db/sql/core/05_Cron/Crons.sql.tmpl --json',
+    'noorm run preview db/sql/migrations/002.sql.tmpl > rendered.sql',
 ];
 
 export default previewCommand;

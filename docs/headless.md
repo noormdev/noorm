@@ -127,8 +127,8 @@ NOORM_CI_CONFIG_NAME         # Default config name for `ci init` (override: --na
 
 **Paths:**
 ```bash
-NOORM_PATHS_SQL              # Schema directory (default: ./sql when settings.yml has no paths)
-NOORM_PATHS_CHANGES          # Changes directory (default: ./changes when settings.yml has no paths)
+NOORM_PATHS_SQL              # Schema directory (default: ./db/sql)
+NOORM_PATHS_CHANGES          # Changes directory (default: ./db/changes)
 ```
 
 **Behavior:**
@@ -875,6 +875,15 @@ noorm change ff --force
 
 `--dry-run` adds `"dryRun": true` to the payload. A missing `db/changes/` directory is a warning, not a failure: it lands in `warnings` rather than making the batch fail.
 
+A change folder that cannot be parsed, for example a `.txt` manifest that names a file no longer in `db/sql/`, is handled by what `ff` would do with it:
+
+| The unreadable change | `ff` / `next` |
+|-----------------------|---------------|
+| Never ran, `reverted`, or `stale` | Fails at that change's position, so later changes do not run out of order. The result is `failed` (exit `1`), or `partial` (exit `3`) when earlier changes applied, and `error` carries the parse message |
+| Applied | Keeps its status and adds a message to `warnings` |
+
+A folder with neither `change/` nor `revert/` is not a change and is ignored. `change list` shows an unreadable change that never ran as `failed`, with the parse message after it in text output and in `errorMessage` under `--json`.
+
 
 #### `change next`
 
@@ -1574,6 +1583,8 @@ noorm update --json
 | Flag | Description |
 |------|-------------|
 | `--insecure` | Downgrade an unreachable `checksums.txt` from a failure to a warning. Also settable as `NOORM_INSECURE=1`. It never bypasses a confirmed checksum mismatch, which always fails |
+
+After a successful update on a terminal, `noorm update` asks whether to install or update the agent skill and, on yes, runs `npx skills add noormdev/noorm/skills`. Declining, `--json`, and piped output skip the prompt; piped text output prints the command instead. A failed skill install does not change the exit code, since the update itself succeeded.
 
 
 #### `ui`

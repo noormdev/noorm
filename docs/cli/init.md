@@ -8,7 +8,7 @@ It also writes `db/AGENTS.md` and `db/CLAUDE.md`. `AGENTS.md` points coding agen
 `/noorm` skill and holds a marker for your own steering; `CLAUDE.md` imports it with
 `@AGENTS.md`. Both are written only when absent, so re-running with `--force` keeps your edits.
 
-A project that already has a `settings.yml` keeps its `paths`. `--force` resets the rest of the file, but a project laid out at `sql/` and `changes/` stays there, and no `db/` directory is created for it.
+A project that already has `paths` in its `settings.yml` keeps them. `--force` resets the rest of the file, but a project laid out at `sql/` and `changes/` stays there, and no `db/` directory is created for it.
 
 
 ## Flags

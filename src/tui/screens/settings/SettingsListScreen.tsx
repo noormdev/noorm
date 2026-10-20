@@ -23,6 +23,7 @@ import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
 import { Panel, SelectList, type SelectListItem } from '../../components/index.js';
+import { DEFAULT_CHANGES_PATH, DEFAULT_SQL_PATH } from '../../../core/settings/defaults.js';
 
 /**
  * Settings section item value.
@@ -56,7 +57,7 @@ function pathsSectionSummary(settings: Settings | null): string {
 
     const paths = settings.paths ?? {};
 
-    return `schema: ${paths.sql ?? './sql'}, changes: ${paths.changes ?? './changes'}`;
+    return `schema: ${paths.sql ?? DEFAULT_SQL_PATH}, changes: ${paths.changes ?? DEFAULT_CHANGES_PATH}`;
 
 }
 

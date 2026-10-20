@@ -74,7 +74,7 @@ const fileCommand = defineCommand({
 (fileCommand as typeof fileCommand & { examples: string[] }).examples = [
     'noorm run file seed.sql',
     'noorm run file migrations/001_init.sql',
-    'noorm run file sql/init.sql.tmpl --json',
+    'noorm run file db/sql/init.sql.tmpl --json',
 ];
 
 export default fileCommand;

@@ -27,6 +27,7 @@ import { useConnection } from '../../hooks/index.js';
 import { attempt } from '@logosdx/utils';
 
 import type { SelectListItem } from '../../components/index.js';
+import { DEFAULT_SQL_PATH } from '../../../core/settings/defaults.js';
 
 type Phase = 'loading' | 'picker' | 'confirm' | 'checking' | 'rerun-confirm' | 'running' | 'complete' | 'error';
 
@@ -65,7 +66,7 @@ export function RunFileScreen({ params }: ScreenProps): ReactElement {
 
         setPhase('loading');
 
-        const sqlPath = settings.paths?.sql ?? 'sql';
+        const sqlPath = settings.paths?.sql ?? DEFAULT_SQL_PATH;
         const sqlFullPath = join(projectRoot, sqlPath);
 
         const [files, err] = await attempt(() => discoverFiles(sqlFullPath));
@@ -381,7 +382,7 @@ export function RunFileScreen({ params }: ScreenProps): ReactElement {
     if (phase === 'picker') {
 
         const hasFiles = allFiles.length > 0;
-        const sqlPath = settings?.paths?.sql ?? 'sql';
+        const sqlPath = settings?.paths?.sql ?? DEFAULT_SQL_PATH;
 
         return (
             <Box flexDirection="column" gap={1}>

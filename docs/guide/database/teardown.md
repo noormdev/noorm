@@ -162,7 +162,7 @@ teardown:
 
 These tables will be skipped during both truncate and teardown operations. Their data and structure remain intact.
 
-`ctx.noorm.db.reset()` is the exception: it ignores `preserveTables` on purpose. Reset rebuilds the whole schema from `sql/`, so any table left standing would collide with the build's `CREATE TABLE` and abort the rebuild.
+`ctx.noorm.db.reset()` is the exception: it ignores `preserveTables` on purpose. Reset rebuilds the whole schema from `db/sql/`, so any table left standing would collide with the build's `CREATE TABLE` and abort the rebuild.
 
 
 ## Post-Teardown Scripts
@@ -172,7 +172,7 @@ Re-seed essential data after teardown completes:
 ```yaml
 # .noorm/settings.yml
 teardown:
-    postScript: sql/teardown/seed.sql
+    postScript: db/sql/teardown/seed.sql
 ```
 
 The `postScript` runs immediately after teardown finishes. Use it to:
@@ -182,7 +182,7 @@ The `postScript` runs immediately after teardown finishes. Use it to:
 - Set up test fixtures
 
 ```sql
--- sql/teardown/seed.sql
+-- db/sql/teardown/seed.sql
 INSERT INTO countries (code, name) VALUES
     ('US', 'United States'),
     ('CA', 'Canada'),
