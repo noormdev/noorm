@@ -106,8 +106,8 @@ a partial one needs a human, so the two must never share a code.
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `NOORM_PATHS_SQL` | No | Schema directory (default: `./sql`) |
-| `NOORM_PATHS_CHANGES` | No | Changes directory (default: `./changes`) |
+| `NOORM_PATHS_SQL` | No | Schema directory (default: `./db/sql`) |
+| `NOORM_PATHS_CHANGES` | No | Changes directory (default: `./db/changes`) |
 
 
 ## GitHub Actions Example (Test CI)

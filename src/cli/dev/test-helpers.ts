@@ -7,8 +7,8 @@
  *
  * @example
  * ```bash
- * noorm dev test-helpers sql/core/05_Cron/Crons.sql.tmpl
- * noorm dev test-helpers --json sql/seed.sql.tmpl
+ * noorm dev test-helpers db/sql/core/05_Cron/Crons.sql.tmpl
+ * noorm dev test-helpers --json db/sql/seed.sql.tmpl
  * ```
  */
 import { dirname, join, relative } from 'node:path';
@@ -160,8 +160,8 @@ const testHelpersCommand = defineCommand({
 });
 
 (testHelpersCommand as typeof testHelpersCommand & { examples: string[] }).examples = [
-    'noorm dev test-helpers sql/core/05_Cron/Crons.sql.tmpl',
-    'noorm dev test-helpers --json sql/seed.sql.tmpl',
+    'noorm dev test-helpers db/sql/core/05_Cron/Crons.sql.tmpl',
+    'noorm dev test-helpers --json db/sql/seed.sql.tmpl',
 ];
 
 export default testHelpersCommand;

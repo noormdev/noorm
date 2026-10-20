@@ -19,6 +19,9 @@ import { getSqlErrorMessage } from '../shared/index.js';
 import { splitSqliteStatements } from './sqlite-statements.js';
 import type { RunContext } from './types.js';
 
+/** The two fields body execution reads; a change context supplies them too. */
+type SqlBodyContext = Pick<RunContext, 'db' | 'dialect'>;
+
 
 /**
  * Split MSSQL SQL content on the `GO` batch separator.
@@ -118,7 +121,7 @@ function isCommentOnly(batch: string): boolean {
  * }
  */
 export async function executeSqlBody(
-    context: RunContext,
+    context: SqlBodyContext,
     sqlContent: string,
 ): Promise<string | null> {
 
@@ -154,7 +157,7 @@ export async function executeSqlBody(
  * usually the whole file.
  */
 async function executeFragments(
-    context: RunContext,
+    context: SqlBodyContext,
     fragments: string[],
     label: 'batch' | 'statement',
 ): Promise<string | null> {

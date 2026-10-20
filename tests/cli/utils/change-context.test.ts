@@ -115,8 +115,8 @@ describe('tui: createChangeManager', () => {
         capturedContexts.length = 0;
 
         tempDir = await mkdtemp(join(tmpdir(), 'noorm-change-context-test-'));
-        changesDir = join(tempDir, 'changes');
-        sqlDir = join(tempDir, 'sql');
+        changesDir = join(tempDir, 'db', 'changes');
+        sqlDir = join(tempDir, 'db', 'sql');
 
         await mkdir(changesDir, { recursive: true });
         await mkdir(sqlDir, { recursive: true });

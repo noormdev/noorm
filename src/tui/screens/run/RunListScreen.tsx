@@ -30,6 +30,7 @@ import { useFocusScope } from '../../focus.js';
 import { useActiveConfig, useSettings, useGlobalModes } from '../../app-context.js';
 import { Panel, Spinner } from '../../components/index.js';
 import { getEffectiveBuildPaths } from '../../../core/settings/rules.js';
+import { DEFAULT_SQL_PATH } from '../../../core/settings/defaults.js';
 
 /**
  * RunListScreen component.
@@ -171,7 +172,7 @@ export function RunListScreen({ params: _params }: ScreenProps): ReactElement {
 
     }
 
-    const sqlPath = settings?.paths?.sql ?? 'sql';
+    const sqlPath = settings?.paths?.sql ?? DEFAULT_SQL_PATH;
 
     return (
         <Box flexDirection="column" gap={1}>

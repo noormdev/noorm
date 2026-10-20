@@ -64,8 +64,7 @@ The active database configuration object:
 
 | Key | Example | Description |
 |---|---|---|
-| `$.config.name` | `'dev'` | Config name |
-| `$.config.stage` | `'prod'` | Stage name |
+| `$.config.name` | `'dev'` | Config name. A config links to the stage of the same name |
 | `$.config.isTest` | `true` | Whether config is marked as test |
 | `$.config.connection.database` | `'myapp'` | Database name |
 | `$.config.connection.host` | `'localhost'` | Database host |
@@ -116,7 +115,7 @@ Combine with config for environment-aware templates:
 
 ```sql
 -- monitoring.sql.tmpl
-{% if ($.config.stage === 'prod') { %}
+{% if ($.config.name === 'prod') { %}
 -- Production: use real monitoring endpoint
 INSERT INTO settings (key, value) VALUES
     ('monitor_url', {%~ $.quote($.env.MONITOR_URL) %});
@@ -301,7 +300,7 @@ INSERT INTO roles (name, permissions) VALUES
 
 ```sql
 -- setup.sql.tmpl
-{% if ($.config.stage === 'prod') { %}
+{% if ($.config.name === 'prod') { %}
 ALTER TABLE orders ADD CONSTRAINT chk_amount CHECK (amount > 0);
 {% } %}
 

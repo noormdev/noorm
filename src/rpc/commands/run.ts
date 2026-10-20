@@ -36,7 +36,7 @@ const runFileCommand: RpcCommand<RunFileInput> = {
     name: 'run_file',
     description: 'Execute a single SQL file against the database.',
     examples: [
-        { description: 'run a file', input: { path: 'sql/procedures/usp_get_user.sql' } },
+        { description: 'run a file', input: { path: 'db/sql/procedures/usp_get_user.sql' } },
     ],
     inputSchema: runFileSchema,
     permission: 'run:file',

@@ -38,6 +38,7 @@ import { checkProtectedConfig } from '../guards.js';
 import type { ContextState } from '../state.js';
 import { requireConnection } from '../state.js';
 import type { BuildOptions } from '../types.js';
+import { DEFAULT_SQL_PATH } from '../../core/settings/defaults.js';
 
 // ─────────────────────────────────────────────────────────────
 // RunNamespace
@@ -62,13 +63,13 @@ export class RunNamespace {
      *
      * @example
      * ```typescript
-     * const files = await ctx.noorm.run.discover('sql/')
+     * const files = await ctx.noorm.run.discover('db/sql/')
      * ```
      */
     async discover(dirpath?: string): Promise<string[]> {
 
         const absolutePath = this.#resolvePath(
-            dirpath ?? this.#state.settings.paths?.sql ?? 'sql',
+            dirpath ?? this.#state.settings.paths?.sql ?? DEFAULT_SQL_PATH,
         );
 
         return coreDiscoverFiles(absolutePath);
@@ -84,7 +85,7 @@ export class RunNamespace {
      *
      * @example
      * ```typescript
-     * const results = await ctx.noorm.run.preview(['sql/001.sql', 'sql/002.sql'])
+     * const results = await ctx.noorm.run.preview(['db/sql/001.sql', 'db/sql/002.sql'])
      * ```
      */
     async preview(
@@ -186,7 +187,7 @@ export class RunNamespace {
         const context = await this.#createRunContext();
         const sqlPath = path.join(
             this.#state.projectRoot,
-            this.#state.settings.paths?.sql ?? 'sql',
+            this.#state.settings.paths?.sql ?? DEFAULT_SQL_PATH,
         );
 
         const configForMatch = {
@@ -227,7 +228,7 @@ export class RunNamespace {
         // Reported on the result rather than thrown: an unmatched entry is a
         // misconfiguration, not an execution failure, and a build that legitimately
         // matches nothing must keep succeeding. Surfacing it is what stops the
-        // `sql/`-prefix mistake from reading as a clean build.
+        // `db/sql/`-prefix mistake from reading as a clean build.
         //
         // Both directions, because the exclude side is the one that fails
         // dangerously: it fences off nothing and the held-back files run.

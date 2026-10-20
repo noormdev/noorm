@@ -3,8 +3,8 @@ import { mkdtempSync, mkdirSync, rmSync, existsSync, readFileSync, writeFileSync
 import { tmpdir, homedir } from 'node:os';
 import { join } from 'node:path';
 
-import { performProjectInit, resolveInitPaths, scaffoldDbLayout } from '../../src/core/project-init.js';
-import { DEFAULT_PATH_CONFIG, INIT_PATH_CONFIG } from '../../src/core/settings/defaults.js';
+import { performProjectInit, scaffoldDbLayout } from '../../src/core/project-init.js';
+import { DEFAULT_PATH_CONFIG } from '../../src/core/settings/defaults.js';
 import { SettingsManager } from '../../src/core/settings/manager.js';
 import { resolveChangesDir, resolveSqlDir } from '../../src/tui/utils/paths.js';
 
@@ -176,7 +176,6 @@ describe('core: performProjectInit', () => {
 
     });
 
-    // --force resets settings.yml; a project laid out at ./sql must not be repointed at an empty db/.
     it.skipIf(!hasGlobalIdentity)('should keep a legacy project layout on --force', async () => {
 
         mkdirSync(join(tmpDir, '.noorm'), { recursive: true });
@@ -200,56 +199,6 @@ describe('core: performProjectInit', () => {
 
 });
 
-describe('core: resolveInitPaths', () => {
-
-    let tmpDir: string;
-
-    beforeEach(() => {
-
-        tmpDir = mkdtempSync(join(tmpdir(), 'noorm-init-paths-'));
-        mkdirSync(join(tmpDir, '.noorm'), { recursive: true });
-
-    });
-
-    afterEach(() => {
-
-        rmSync(tmpDir, { recursive: true, force: true });
-
-    });
-
-    it('should give a project with no settings.yml the db/ layout', async () => {
-
-        expect(await resolveInitPaths(tmpDir)).toEqual(INIT_PATH_CONFIG);
-
-    });
-
-    it('should keep the paths an existing settings.yml carries', async () => {
-
-        writeFileSync(join(tmpDir, '.noorm', 'settings.yml'), 'paths:\n    sql: ./schema\n    changes: ./deltas\n');
-
-        expect(await resolveInitPaths(tmpDir)).toEqual({ sql: './schema', changes: './deltas' });
-
-    });
-
-    // A settings.yml without `paths` resolves to ./sql today; init must not silently move it.
-    it('should resolve a settings.yml with no paths key to the legacy default', async () => {
-
-        writeFileSync(join(tmpDir, '.noorm', 'settings.yml'), 'build:\n    include: []\n');
-
-        expect(await resolveInitPaths(tmpDir)).toEqual(DEFAULT_PATH_CONFIG);
-
-    });
-
-    it('should resolve an unreadable settings.yml to the legacy default', async () => {
-
-        writeFileSync(join(tmpDir, '.noorm', 'settings.yml'), 'paths: [unclosed\n');
-
-        expect(await resolveInitPaths(tmpDir)).toEqual(DEFAULT_PATH_CONFIG);
-
-    });
-
-});
-
 describe('core: scaffoldDbLayout', () => {
 
     let tmpDir: string;
@@ -268,7 +217,7 @@ describe('core: scaffoldDbLayout', () => {
 
     it('should nest sql/ and changes/ under db/', () => {
 
-        const created = scaffoldDbLayout(tmpDir, INIT_PATH_CONFIG);
+        const created = scaffoldDbLayout(tmpDir, DEFAULT_PATH_CONFIG);
 
         expect(created).toEqual([
             'db/sql/.gitkeep',
@@ -283,7 +232,7 @@ describe('core: scaffoldDbLayout', () => {
 
     it('should template AGENTS.md for the user and import it from CLAUDE.md', () => {
 
-        scaffoldDbLayout(tmpDir, INIT_PATH_CONFIG);
+        scaffoldDbLayout(tmpDir, DEFAULT_PATH_CONFIG);
 
         const agents = readFileSync(join(tmpDir, 'db', 'AGENTS.md'), 'utf-8');
         const claude = readFileSync(join(tmpDir, 'db', 'CLAUDE.md'), 'utf-8');
@@ -296,7 +245,7 @@ describe('core: scaffoldDbLayout', () => {
 
     it('should create nothing for a project on its own layout', () => {
 
-        const created = scaffoldDbLayout(tmpDir, DEFAULT_PATH_CONFIG);
+        const created = scaffoldDbLayout(tmpDir, { sql: './sql', changes: './changes' });
 
         expect(created).toEqual([]);
         expect(existsSync(join(tmpDir, 'db'))).toBe(false);
@@ -308,7 +257,7 @@ describe('core: scaffoldDbLayout', () => {
         mkdirSync(join(tmpDir, 'db'), { recursive: true });
         writeFileSync(join(tmpDir, 'db', 'CLAUDE.md'), 'mine\n');
 
-        const created = scaffoldDbLayout(tmpDir, INIT_PATH_CONFIG);
+        const created = scaffoldDbLayout(tmpDir, DEFAULT_PATH_CONFIG);
 
         expect(readFileSync(join(tmpDir, 'db', 'CLAUDE.md'), 'utf-8')).toBe('mine\n');
         expect(created).toContain('db/AGENTS.md');

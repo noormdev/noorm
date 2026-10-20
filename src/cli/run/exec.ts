@@ -56,7 +56,7 @@ async function expandGlob(pattern: string, cwd: string): Promise<string[]> {
  * discovery. Otherwise treats the argument as a glob pattern and expands it.
  *
  * @example
- * const files = await resolveInputPaths('sql/', cwd);
+ * const files = await resolveInputPaths('db/sql/', cwd);
  * const files = await resolveInputPaths('migrations/*.sql', cwd);
  */
 async function resolveInputPaths(input: string, cwd: string): Promise<string[]> {
@@ -188,11 +188,11 @@ const execCommand = defineCommand({
 });
 
 (execCommand as typeof execCommand & { examples: string[] }).examples = [
-    'noorm run exec sql/',
+    'noorm run exec db/sql/',
     'noorm run exec migrations/',
-    'noorm run exec "sql/**/*.sql"',
+    'noorm run exec "db/sql/**/*.sql"',
     'noorm run exec "seeds/*.sql" --force',
-    'noorm run exec sql/ --json',
+    'noorm run exec db/sql/ --json',
     'noorm run exec "migrations/*.sql" --dry-run',
 ];
 

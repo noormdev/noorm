@@ -26,8 +26,8 @@ build:
 # Override default directory locations (relative to project root).
 
 paths:
-    sql: ./db/sql          # Schema SQL files (`noorm init` writes this; ./sql when the key is absent)
-    changes: ./db/changes  # Change directories (`noorm init` writes this; ./changes when the key is absent)
+    sql: ./db/sql          # Schema SQL files (default: ./db/sql)
+    changes: ./db/changes  # Change directories (default: ./db/changes)
 
 # ── Rules ────────────────────────────────────────────────────
 # Conditional include/exclude based on the active config's properties.
@@ -155,8 +155,8 @@ Use bare, unprefixed segment names. Nested paths (`06_seeds/cron`) are supported
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `sql` | `string` | `./sql` | Schema SQL directory. `noorm init` writes `./db/sql` |
-| `changes` | `string` | `./changes` | Change directory. `noorm init` writes `./db/changes` |
+| `sql` | `string` | `./db/sql` | Schema SQL directory |
+| `changes` | `string` | `./db/changes` | Change directory |
 
 ### `rules[]`
 

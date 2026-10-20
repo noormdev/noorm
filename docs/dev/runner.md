@@ -71,9 +71,9 @@ The `--dry-run` flag renders all SQL files and writes them to a local `tmp/` dir
 
 ```
 Source:                                     Dry run output:
-sql/02_views/001_my_view.sql           →    tmp/sql/02_views/001_my_view.sql
-sql/03_seeds/001_users.sql.tmpl        →    tmp/sql/03_seeds/001_users.sql
-sql/04_auth/002_permissions.sql.tmpl   →    tmp/sql/04_auth/002_permissions.sql
+db/sql/02_views/001_my_view.sql           →    tmp/db/sql/02_views/001_my_view.sql
+db/sql/03_seeds/001_users.sql.tmpl        →    tmp/db/sql/03_seeds/001_users.sql
+db/sql/04_auth/002_permissions.sql.tmpl   →    tmp/db/sql/04_auth/002_permissions.sql
 ```
 
 Templates are fully rendered with the current config context. The `.tmpl` extension is stripped from output files.
@@ -115,7 +115,7 @@ noorm run build --preview --output build.sql
 Files ending in `.sql.tmpl` are processed through the template engine before execution:
 
 ```sql
--- sql/03_seeds/001_users.sql.tmpl
+-- db/sql/03_seeds/001_users.sql.tmpl
 {% for (const user of $.users) { %}
 INSERT INTO users (email, name) VALUES ({%~ $.quote(user.email) %}, {%~ $.quote(user.name) %});
 {% } %}
@@ -165,16 +165,16 @@ console.log(`Ran ${result.filesRun} files in ${result.durationMs}ms`)
 console.log(`Skipped ${result.filesSkipped} unchanged files`)
 
 // Execute a single file
-const fileResult = await runFile(context, '/project/sql/001_users.sql')
+const fileResult = await runFile(context, '/project/db/sql/001_users.sql')
 
 // Execute all files in a directory
-const dirResult = await runDir(context, '/project/sql/02_views')
+const dirResult = await runDir(context, '/project/db/sql/02_views')
 
 // Execute specific files (selective execution)
 const filesResult = await runFiles(context, [
-    '/project/sql/01_tables/001_users.sql',
-    '/project/sql/01_tables/002_posts.sql',
-    '/project/sql/02_views/001_active_users.sql',
+    '/project/db/sql/01_tables/001_users.sql',
+    '/project/db/sql/01_tables/002_posts.sql',
+    '/project/db/sql/02_views/001_active_users.sql',
 ])
 
 // Dry run - render to tmp/ without executing
@@ -184,13 +184,13 @@ const dryResult = await runBuild(context, '/project/sql', {
 
 // Preview rendered SQL
 const previews = await preview(context, [
-    '/project/sql/seed.sql.tmpl',
+    '/project/db/sql/seed.sql.tmpl',
 ])
 console.log(previews[0].renderedSql)
 
 // Preview to a file (optional 3rd parameter)
 const previewsToFile = await preview(context, [
-    '/project/sql/seed.sql.tmpl',
+    '/project/db/sql/seed.sql.tmpl',
 ], '/project/output.sql')
 ```
 
@@ -248,7 +248,7 @@ When `context.dialect === 'mssql'`, the runner splits SQL content on `^\s*GO\s*$
 
 
 ```typescript
-const result = await ctx.noorm.run.file('sql/procs/checkout.sql');
+const result = await ctx.noorm.run.file('db/sql/procs/checkout.sql');
 
 if (result.status === 'failed') {
 
@@ -402,18 +402,18 @@ Filter files by include/exclude path patterns:
 import { filterFilesByPaths } from './core/shared'
 
 const files = [
-    '/project/sql/01_tables/001_users.sql',
-    '/project/sql/02_views/001_active.sql',
-    '/project/sql/archive/old.sql',
+    '/project/db/sql/01_tables/001_users.sql',
+    '/project/db/sql/02_views/001_active.sql',
+    '/project/db/sql/archive/old.sql',
 ]
 
 const filtered = filterFilesByPaths(
     files,
     '/project',
-    ['sql/01_tables', 'sql/02_views'],  // include
-    ['sql/archive']                     // exclude
+    ['db/sql/01_tables', 'db/sql/02_views'],  // include
+    ['db/sql/archive']                     // exclude
 )
-// ['/project/sql/01_tables/001_users.sql', '/project/sql/02_views/001_active.sql']
+// ['/project/db/sql/01_tables/001_users.sql', '/project/db/sql/02_views/001_active.sql']
 ```
 
 This utility is used internally by build operations when applying settings rules. The CLI passes the SQL directory (`paths.sql`) as the base directory, so settings patterns like `01_tables` resolve relative to the SQL path, not the project root. Exclude patterns take precedence when both match.
@@ -427,8 +427,8 @@ The `executeFiles` function provides low-level file execution with full tracking
 import { executeFiles, type FileInput } from './core/runner'
 
 const files: FileInput[] = [
-    { path: '/project/sql/001_users.sql', type: 'sql' },
-    { path: '/project/sql/002_posts.sql', type: 'sql' },
+    { path: '/project/db/sql/001_users.sql', type: 'sql' },
+    { path: '/project/db/sql/002_posts.sql', type: 'sql' },
 ]
 
 // Four arguments: run options and execution options are separate objects

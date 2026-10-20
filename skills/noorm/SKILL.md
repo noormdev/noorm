@@ -1,6 +1,6 @@
 ---
 name: noorm
-description: Guide for building applications and tests with the NoORM database SDK (@noormdev/sdk) and composing CLI headless commands for CI/CD pipelines. Use this skill whenever the user imports @noormdev/sdk, calls createContext(), writes Kysely queries in a noorm-managed project, writes database integration tests, sets up CI/CD with noorm commands, manages database schemas or migrations, runs SQL files through noorm, transfers data between databases, manages vault secrets, or discusses noorm in any development context. Also trigger when you see noorm environment variables (NOORM_*), .sql.tmpl template files, .txt change manifests, a `.noorm/` directory, `db/sql` or `db/changes` folders, or change/revert directory structures, and whenever the task is to add, alter, or drop a table, column, view, function, or seed data in a noorm project. Trigger for any database task in a noorm-managed project — the SDK conventions (SDK methods throw named errors, `attempt()` wraps deliberately, no try-catch, test safety guards, Kysely patterns) and CLI flags are non-obvious and critical to get right.
+description: Guide for building applications and tests with the NoORM database SDK (@noormdev/sdk) and composing CLI headless commands for CI/CD pipelines. Use this skill whenever the user imports @noormdev/sdk, calls createContext(), writes Kysely queries in a noorm-managed project, writes database integration tests, sets up CI/CD with noorm commands, manages database schemas or migrations, runs SQL files through noorm, transfers data between databases, manages vault secrets, or discusses noorm in any development context. Also trigger on noorm environment variables (NOORM_*), .sql.tmpl templates, .txt change manifests, a `.noorm/` directory, `db/sql` or `db/changes` folders, change/revert directories, and any task that adds, alters, or drops a table, column, view, function, or seed data in a noorm project. Trigger for any database task in a noorm-managed project: the SDK conventions (named errors, no try-catch, test safety guards) and CLI flags are non-obvious.
 ---
 
 # NoORM
@@ -41,7 +41,7 @@ Database schema and change manager with two interfaces:
     └── CLAUDE.md   imports AGENTS.md
 
 
-The real locations are `paths.sql` and `paths.changes` in `.noorm/settings.yml`. Older projects use `./sql` and `./changes`. Read the settings before creating a file, and never add a second `sql/` or `changes/` beside the configured ones.
+The real locations are `paths.sql` and `paths.changes` in `.noorm/settings.yml`. Projects created before the `db/` layout have `./sql` and `./changes` written in their `paths`; a settings file with no `paths` key means `./db/sql` and `./db/changes`. Read the settings before creating a file, and never add a second `sql/` or `changes/` beside the configured ones.
 
 Four rules that every schema edit follows (details and examples in `references/schema-files.md`):
 

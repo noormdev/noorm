@@ -123,7 +123,7 @@ const dirCommand = defineCommand({
 (dirCommand as typeof dirCommand & { examples: string[] }).examples = [
     'noorm run dir migrations/',
     'noorm run dir seeds/',
-    'noorm run dir sql/01_tables/ --json',
+    'noorm run dir db/sql/01_tables/ --json',
 ];
 
 export default dirCommand;

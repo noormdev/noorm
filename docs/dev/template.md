@@ -69,7 +69,7 @@ INSERT INTO users (id) VALUES ('{%~ $.uuid() %}');
 Data files in the same directory as the template are automatically loaded into the context:
 
 ```
-sql/users/
+db/sql/users/
 ├── 001_seed.sql.tmpl     # Template
 ├── users.json5           # → $.users
 ├── roles.yml             # → $.roles
@@ -132,7 +132,7 @@ strings work',
 Helper files named `$helpers.ts` or `$helpers.js` are automatically loaded. They're inherited up the directory tree - child helpers override parent helpers.
 
 ```
-sql/
+db/sql/
 ├── $helpers.ts                  # Project-wide helpers
 ├── users/
 │   ├── $helpers.ts              # Overrides/extends parent
@@ -152,7 +152,7 @@ sql/
 ### Writing Helpers
 
 ```typescript
-// sql/$helpers.ts
+// db/sql/$helpers.ts
 export function padId(id: number, length = 6): string {
 
     return String(id).padStart(length, '0')
@@ -234,7 +234,7 @@ secret, a bad lookup), never an intentional value. `null` is unaffected and stil
 Define users, roles, and permissions in YAML - generate all the grants from config:
 
 ```yaml
-# sql/Auth/auth.yml
+# db/sql/Auth/auth.yml
 users:
     - username: __web_app
       password: $DB_WEB_APP_PASSWORD
@@ -267,7 +267,7 @@ permissions:
 ```
 
 ```sql
--- sql/Auth/02-Permissions.sql.tmpl
+-- db/sql/Auth/02-Permissions.sql.tmpl
 {% for (const role in $.auth.permissions) { %}
 {% const perms = $.auth.permissions[role] %}
 
@@ -290,7 +290,7 @@ GRANT EXECUTE ON [{%~ proc %}] TO [{%~ role %}];
 Manage cron jobs from a config file - no more clicking through SSMS:
 
 ```yaml
-# sql/Crons/cron.yml
+# db/sql/Crons/cron.yml
 Jobs:
     Sync_Entrata:
         Description: 'Sync property data from Entrata API'
@@ -321,7 +321,7 @@ Schedules:
 ```
 
 ```sql
--- sql/Crons/Crons.sql.tmpl
+-- db/sql/Crons/Crons.sql.tmpl
 
 -- Create jobs
 {% for (const job in $.cron.Jobs) { %}
@@ -353,7 +353,7 @@ EXEC msdb.dbo.sp_attach_schedule
 ### Seeding from CSV
 
 ```sql
--- sql/seed/users.sql.tmpl
+-- db/sql/seed/users.sql.tmpl
 INSERT INTO users (email, name, role) VALUES
 {% $.users.forEach((user, i) => { %}
     ({%~ $.quote(user.email) %}, {%~ $.quote(user.name) %}, {%~ $.quote(user.role) %}){% if (i < $.users.length - 1) { %},{% } %}
@@ -372,7 +372,7 @@ bob@example.com,Bob,user
 ### Using Secrets
 
 ```sql
--- sql/config/api_keys.sql.tmpl
+-- db/sql/config/api_keys.sql.tmpl
 INSERT INTO config (key, value) VALUES
     ('stripe_key', '{%~ $.secrets.STRIPE_KEY %}'),
     ('api_url', '{%~ $.env.API_URL || 'https://api.example.com' %}');
@@ -398,7 +398,7 @@ INSERT INTO config (key, value) VALUES
 ### Dialect-Specific SQL
 
 ```sql
--- sql/indexes/create.sql.tmpl
+-- db/sql/indexes/create.sql.tmpl
 CREATE INDEX idx_users_email ON users(email);
 
 {% if ($.config.connection.dialect === 'postgres') { %}

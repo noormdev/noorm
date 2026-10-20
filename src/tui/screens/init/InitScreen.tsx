@@ -8,7 +8,7 @@
  * 4. Optionally add first config
  *
  * Creates:
- * - db/sql/, db/changes/, db/AGENTS.md, db/CLAUDE.md (new projects only)
+ * - db/sql/, db/changes/, db/AGENTS.md, db/CLAUDE.md (default layout only)
  * - .noorm/settings.yml
  * - .noorm/state/state.enc
  * - Keypair in ~/.noorm/
@@ -39,9 +39,9 @@ import {
     loadIdentityMetadata,
 } from '../../../core/identity/index.js';
 import { SettingsManager } from '../../../core/settings/manager.js';
-import { INIT_PATH_CONFIG } from '../../../core/settings/defaults.js';
+import { DEFAULT_PATH_CONFIG } from '../../../core/settings/defaults.js';
 import type { PathConfig } from '../../../core/settings/types.js';
-import { resolveInitPaths, scaffoldDbLayout } from '../../../core/project-init.js';
+import { scaffoldDbLayout } from '../../../core/project-init.js';
 import { StateManager, getStateManager } from '../../../core/state/index.js';
 import { observer } from '../../../core/observer.js';
 
@@ -105,8 +105,7 @@ export function InitScreen({ params }: ScreenProps): ReactElement {
     // Project root
     const projectRoot = process.cwd();
 
-    // Paths the project will carry: its own when settings.yml exists, else the db/ layout
-    const [initPaths, setInitPaths] = useState<PathConfig>(INIT_PATH_CONFIG);
+    const [initPaths, setInitPaths] = useState<PathConfig>(DEFAULT_PATH_CONFIG);
 
     // Check existing state on mount
     useEffect(() => {
@@ -117,7 +116,9 @@ export function InitScreen({ params }: ScreenProps): ReactElement {
             const noormDir = join(projectRoot, '.noorm');
             const alreadyInitialized = existsSync(noormDir);
 
-            setInitPaths(await resolveInitPaths(projectRoot));
+            const [existing] = await attempt(() => new SettingsManager(projectRoot).load());
+
+            setInitPaths(existing?.paths ?? DEFAULT_PATH_CONFIG);
 
             // Check if identity key files exist
             const keysExist = await hasKeyFiles();
@@ -286,7 +287,6 @@ export function InitScreen({ params }: ScreenProps): ReactElement {
 
             const settingsManager = new SettingsManager(projectRoot);
             await settingsManager.init(force);
-            await settingsManager.setPaths(initPaths);
 
             updateItem(settingsIndex, { status: 'success' });
 

@@ -109,7 +109,7 @@ When the schema evolves, update the SQL file **and** add a change. The file keep
 
 ```bash
 # Edit db/sql/01_tables/001_users.sql to add an email column
-# Add db/changes/2024-01-add-email/forward.sql
+# Run `noorm change add add-email`, then put the ALTER in its change/001_add-email.sql
 
 noorm change ff     # fast-forward: apply pending changes
 ```

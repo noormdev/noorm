@@ -163,7 +163,7 @@ string, `success` is derived from it (`partial` is never reported as `true`).
 Execute a single SQL file.
 
 ```bash
-noorm run file sql/01_tables/001_users.sql
+noorm run file db/sql/01_tables/001_users.sql
 ```
 
 **JSON output:**
@@ -182,7 +182,7 @@ noorm run file sql/01_tables/001_users.sql
 Execute all SQL files in a directory.
 
 ```bash
-noorm run dir sql/01_tables/
+noorm run dir db/sql/01_tables/
 ```
 
 
@@ -660,7 +660,7 @@ src/cli/
 ├── run/
 ├── secret/
 ├── settings/
-├── sql/
+├── db/sql/
 └── vault/
 ```
 

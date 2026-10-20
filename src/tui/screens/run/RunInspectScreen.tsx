@@ -39,6 +39,7 @@ import type { TemplateContext } from '../../../core/template/types.js';
 import type { Dialect } from '../../../core/connection/types.js';
 import type { NoormDatabase } from '../../../core/shared/index.js';
 import type { StateManager } from '../../../core/state/index.js';
+import { DEFAULT_SQL_PATH } from '../../../core/settings/defaults.js';
 
 type Phase = 'loading' | 'picker' | 'inspecting' | 'expanded' | 'preview' | 'error';
 
@@ -568,7 +569,7 @@ export function RunInspectScreen({ params }: ScreenProps): ReactElement {
 
         setPhase('loading');
 
-        const sqlPath = settings.paths?.sql ?? 'sql';
+        const sqlPath = settings.paths?.sql ?? DEFAULT_SQL_PATH;
         const sqlFullPath = join(projectRoot, sqlPath);
 
         const [files, err] = await attempt(() => discoverFiles(sqlFullPath));
@@ -855,7 +856,7 @@ export function RunInspectScreen({ params }: ScreenProps): ReactElement {
     if (phase === 'picker') {
 
         const hasFiles = allFiles.length > 0;
-        const sqlPath = settings?.paths?.sql ?? 'sql';
+        const sqlPath = settings?.paths?.sql ?? DEFAULT_SQL_PATH;
 
         return (
             <Box flexDirection="column" gap={1}>

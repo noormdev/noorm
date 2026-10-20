@@ -28,7 +28,8 @@ import { stat } from 'node:fs/promises';
 
 import { attempt } from '@logosdx/utils';
 
-import { parseChange, discoverChanges } from './parser.js';
+import { failureListItem, parseChange, scanChanges } from './parser.js';
+import type { ChangeParseFailure } from './parser.js';
 import { deleteChange as deleteFromDisk } from './scaffold.js';
 import { ChangeHistory } from './history.js';
 import { executeChange, revertChange } from './executor.js';
@@ -99,14 +100,35 @@ export class ChangeManager {
      * List all changes with status.
      *
      * Merges changes from disk with status from database.
-     * Includes orphaned changes (in DB but not on disk).
+     * Includes orphaned changes (in DB but not on disk), and folders on disk
+     * that cannot be parsed: `failed` with the parse error when they never
+     * ran, otherwise their recorded status.
      *
      * @returns Array of changes with merged status
      */
     async list(): Promise<ChangeListItem[]> {
 
+        const { items } = await this.#scan();
+
+        return items;
+
+    }
+
+    /**
+     * Merge disk and database state, and report the folders that cannot be read.
+     *
+     * An unreadable folder that a batch would run (never run, or `reverted` or
+     * `stale`) is pending work: the batch fails at its position rather than
+     * skipping it and running later changes out of order. `unreadable` holds the
+     * applied ones; they keep their status and only warrant a warning.
+     */
+    async #scan(): Promise<{
+        items: ChangeListItem[];
+        unreadable: ChangeParseFailure[];
+    }> {
+
         // Discover changes from disk
-        const diskChanges = await discoverChanges(
+        const { changes: diskChanges, failures } = await scanChanges(
             this.#context.changesDir,
             this.#context.sqlDir,
         );
@@ -115,7 +137,7 @@ export class ChangeManager {
         const statuses = await this.#history.getAllStatuses();
 
         // Create set of disk names for orphan detection
-        const diskNames = new Set(diskChanges.map((cs) => cs.name));
+        const diskNames = new Set([...diskChanges, ...failures].map((cs) => cs.name));
 
         // Get orphaned changes
         const orphanedNames = await this.#history.getOrphaned(diskNames);
@@ -140,6 +162,25 @@ export class ChangeManager {
                 isNew: !status,
                 orphaned: false,
             });
+
+        }
+
+        // Add folders that are on disk but cannot be parsed
+        const unreadable: ChangeParseFailure[] = [];
+
+        for (const failure of failures) {
+
+            const status = statuses.get(failure.name);
+
+            const item = failureListItem(failure, status);
+
+            if (!isPendingChange(item)) {
+
+                unreadable.push(failure);
+
+            }
+
+            result.push(item);
 
         }
 
@@ -170,7 +211,10 @@ export class ChangeManager {
         }
 
         // Sort by name
-        return result.sort((a, b) => a.name.localeCompare(b.name));
+        return {
+            items: result.sort((a, b) => a.name.localeCompare(b.name)),
+            unreadable,
+        };
 
     }
 
@@ -255,11 +299,17 @@ export class ChangeManager {
         const opts = { ...DEFAULT_BATCH, ...options };
         const start = performance.now();
 
-        const warnings = await this.#collectWarnings();
+        const { items, unreadable } = await this.#scan();
 
-        // Get pending changes
-        const list = await this.list();
-        const pending = list
+        const messages = [
+            ...(await this.#collectWarnings() ?? []),
+            ...unreadable.map((f) => `Change '${f.name}' is applied but its files can no longer be read: ${f.message}`),
+        ];
+        const warnings = messages.length > 0 ? messages : undefined;
+
+        // An unreadable pending change keeps its place in the sequence:
+        // loading it fails, which stops the batch there.
+        const pending = items
             .filter(isPendingChange)
             .slice(0, count);
 
@@ -361,11 +411,7 @@ export class ChangeManager {
      */
     async ff(options: BatchChangeOptions = {}): Promise<BatchChangeResult> {
 
-        // Get count of pending
-        const list = await this.list();
-        const pendingCount = list.filter(isPendingChange).length;
-
-        return this.next(pendingCount, options);
+        return this.next(Number.POSITIVE_INFINITY, options);
 
     }
 
@@ -632,6 +678,12 @@ export class ChangeManager {
         );
 
         if (err) {
+
+            // A folder that is there but will not parse needs its own error:
+            // "not found" sends the user looking for a file that exists.
+            const [onDisk] = await attempt(() => stat(changePath));
+
+            if (onDisk) throw err;
 
             // Check if it exists in DB (orphaned)
             const status = await this.#history.getStatus(name);

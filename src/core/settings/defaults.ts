@@ -18,37 +18,35 @@ export const DEFAULT_BUILD_CONFIG: BuildConfig = {
 };
 
 /**
+ * Directory the schema layout lives under, relative to the project root.
+ */
+export const DEFAULT_DB_DIR = 'db';
+
+export const DEFAULT_SQL_PATH = `./${DEFAULT_DB_DIR}/sql`;
+
+export const DEFAULT_CHANGES_PATH = `./${DEFAULT_DB_DIR}/changes`;
+
+/**
  * Default path configuration.
  *
- * Standard locations relative to project root.
+ * What `noorm init` writes into settings.yml, and what a project resolves to
+ * when its settings.yml has no `paths`.
  */
 export const DEFAULT_PATH_CONFIG: PathConfig = {
-    sql: './sql',
-    changes: './changes',
-};
-
-export const INIT_DB_DIR = 'db';
-
-export const INIT_SQL_PATH = `./${INIT_DB_DIR}/sql`;
-
-export const INIT_CHANGES_PATH = `./${INIT_DB_DIR}/changes`;
-
-// Not DEFAULT_PATH_CONFIG: moving that repoints every project whose settings.yml has no `paths`.
-export const INIT_PATH_CONFIG: PathConfig = {
-    sql: INIT_SQL_PATH,
-    changes: INIT_CHANGES_PATH,
+    sql: DEFAULT_SQL_PATH,
+    changes: DEFAULT_CHANGES_PATH,
 };
 
 /**
- * Whether `paths` is the layout `noorm init` scaffolds, as opposed to a
- * project that already chose its own.
+ * Whether `paths` is the default layout, as opposed to a project that
+ * already chose its own.
  *
  * @example
- * if (isInitLayout(paths)) scaffoldDbLayout(root, paths);
+ * if (isDefaultLayout(paths)) scaffoldDbLayout(root, paths);
  */
-export function isInitLayout(paths: PathConfig): boolean {
+export function isDefaultLayout(paths: PathConfig): boolean {
 
-    return paths.sql === INIT_SQL_PATH && paths.changes === INIT_CHANGES_PATH;
+    return paths.sql === DEFAULT_SQL_PATH && paths.changes === DEFAULT_CHANGES_PATH;
 
 }
 

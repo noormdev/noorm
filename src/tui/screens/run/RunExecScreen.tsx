@@ -46,6 +46,7 @@ import {
     runCancelMessage,
 } from '../../utils/index.js';
 import { attempt } from '@logosdx/utils';
+import { DEFAULT_SQL_PATH } from '../../../core/settings/defaults.js';
 
 type Phase = 'loading' | 'picker' | 'confirm' | 'running' | 'complete' | 'error';
 
@@ -78,7 +79,7 @@ export function RunExecScreen({ params: _params }: ScreenProps): ReactElement {
 
         setPhase('loading');
 
-        const sqlPath = settings.paths?.sql ?? 'sql';
+        const sqlPath = settings.paths?.sql ?? DEFAULT_SQL_PATH;
         const sqlFullPath = join(projectRoot, sqlPath);
 
         const [files, err] = await attempt(() => discoverFiles(sqlFullPath));

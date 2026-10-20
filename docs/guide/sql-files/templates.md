@@ -339,7 +339,7 @@ The active configuration is available through `$.config`. Use it to adapt SQL ba
 ```sql
 -- setup_monitoring.sql.tmpl
 {% const db = $.config.connection.database %}
-{% const stage = $.config.stage %}
+{% const stage = $.config.name %}
 
 -- Tag all entries with the source database
 INSERT INTO monitoring.activity_log (source_db, event, created_at) VALUES
@@ -360,7 +360,7 @@ Common conditions:
 
 | Condition | Use Case |
 |-----------|----------|
-| `$.config.stage === 'prod'` | Production-only constraints or settings |
+| `$.config.name === 'prod'` | Production-only constraints or settings (a config links to the stage of the same name) |
 | `$.config.isTest` | Test fixtures and sample data |
 | `$.config.name === 'dev'` | Local development overrides |
 | `$.config.connection.database` | Database-specific configuration |

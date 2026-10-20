@@ -19,6 +19,7 @@ import { useRouter } from '../../router.js';
 import { useAppContext } from '../../app-context.js';
 import { Panel, Form } from '../../components/index.js';
 import { useSettingsOperation } from '../../hooks/index.js';
+import { DEFAULT_CHANGES_PATH, DEFAULT_SQL_PATH } from '../../../core/settings/defaults.js';
 
 /**
  * SettingsPathsScreen component.
@@ -36,7 +37,7 @@ export function SettingsPathsScreen({ params: _params }: ScreenProps): ReactElem
     // Get current paths config
     const paths = useMemo(() => {
 
-        if (!settingsManager) return { sql: './sql', changes: './changes' };
+        if (!settingsManager) return { sql: DEFAULT_SQL_PATH, changes: DEFAULT_CHANGES_PATH };
 
         return settingsManager.getPaths();
 
@@ -49,15 +50,15 @@ export function SettingsPathsScreen({ params: _params }: ScreenProps): ReactElem
                 key: 'sql',
                 label: 'SQL Path',
                 type: 'text',
-                defaultValue: paths.sql ?? './sql',
-                placeholder: './sql',
+                defaultValue: paths.sql ?? DEFAULT_SQL_PATH,
+                placeholder: DEFAULT_SQL_PATH,
             },
             {
                 key: 'changes',
                 label: 'Changes Path',
                 type: 'text',
-                defaultValue: paths.changes ?? './changes',
-                placeholder: './changes',
+                defaultValue: paths.changes ?? DEFAULT_CHANGES_PATH,
+                placeholder: DEFAULT_CHANGES_PATH,
             },
         ],
         [paths],
@@ -68,8 +69,8 @@ export function SettingsPathsScreen({ params: _params }: ScreenProps): ReactElem
         async (values: FormValues) => {
 
             await execute({
-                sql: String(values['sql'] || './sql'),
-                changes: String(values['changes'] || './changes'),
+                sql: String(values['sql'] || DEFAULT_SQL_PATH),
+                changes: String(values['changes'] || DEFAULT_CHANGES_PATH),
             });
 
         },
