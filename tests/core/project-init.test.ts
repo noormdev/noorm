@@ -238,6 +238,8 @@ describe('core: scaffoldDbLayout', () => {
         const claude = readFileSync(join(tmpDir, 'db', 'CLAUDE.md'), 'utf-8');
 
         expect(agents).toContain('Use the `/noorm` skill for managing files here.');
+        expect(agents).toContain('`/ignatius-modeling` skill');
+        expect(agents).toContain('https://noorm.dev/modeling/');
         expect(agents).toContain('<!-- add user specific LLM steering here -->');
         expect(claude.split('\n')).toContain('@AGENTS.md');
 
