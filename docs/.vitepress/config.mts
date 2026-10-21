@@ -41,7 +41,7 @@ export default withMermaid(
         // The `title`/`description` config fields cover <title> and <meta name>;
         // everything social has to be spelled out here.
         head: [
-            ['link', { rel: 'icon', href: '/image/logo.svg', type: 'image/svg+xml' }],
+            ['link', { rel: 'icon', href: '/image/favicon.svg', type: 'image/svg+xml' }],
             ['link', { rel: 'apple-touch-icon', href: '/image/logo.png' }],
             ['link', { rel: 'canonical', href: `${SITE_URL}/` }],
             ['meta', { name: 'theme-color', content: '#E05742' }],
@@ -83,7 +83,7 @@ gtag('config', 'G-Y69K95866J');`],
         },
         themeConfig: {
             // https://vitepress.dev/reference/default-theme-config
-            logo: '/image/logo.svg',
+            logo: { light: '/image/logo.svg', dark: '/image/logo-dark.svg' },
             siteTitle: 'noorm',
             // No Home entry: the logo already links to `/`. Dev docs are not a
             // top-bar concern either — they live in the Reference group of the
