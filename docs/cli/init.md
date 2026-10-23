@@ -1,77 +1,105 @@
 # noorm init
 
 
-Bootstrap a new noorm project interactively. Creates identity (if not present),
-project structure (`db/sql/`, `db/changes/`, `.noorm/`), `settings.yml`, and `state.enc`.
+Create a noorm project in the current repository: the `.noorm/` state folder and the `db/` folder that holds your schema.
 
-It also writes `db/AGENTS.md` and `db/CLAUDE.md`. `AGENTS.md` points coding agents at the
-`/noorm` skill, points data modeling at [ignatius](../modeling/index.md) and its
-[`/ignatius-modeling` skill](../modeling/modeling-skill.md), and holds a marker for your own steering; `CLAUDE.md` imports it with
-`@AGENTS.md`. Both are written only when absent, so re-running with `--force` keeps your edits.
+```bash
+noorm init --yes
+```
 
-A project that already has `paths` in its `settings.yml` keeps them. `--force` resets the rest of the file, but a project laid out at `sql/` and `changes/` stays there, and no `db/` directory is created for it.
+```
+┌  noorm init
+│
+●  Using existing identity: Alice Cooper <alice@example.com>
+│
+◇  Done
+│
+└  noorm initialized.
+  Created:
+    db/sql/.gitkeep
+    db/changes/.gitkeep
+    db/AGENTS.md
+    db/CLAUDE.md
+    .noorm/.gitignore
+    .noorm/settings.yml
+    .noorm/state/state.enc
+```
+
+```
+.
+├── .gitignore               # gains "# noorm" and ".noorm/state/"
+├── .noorm/
+│   ├── .gitignore           # state/
+│   ├── settings.yml         # paths: ./db/sql, ./db/changes
+│   └── state/state.enc      # configs and secrets, encrypted with your identity key
+└── db/
+    ├── AGENTS.md            # points coding agents at the /noorm skill
+    ├── CLAUDE.md            # imports AGENTS.md
+    ├── changes/
+    └── sql/
+```
+
+`db/AGENTS.md` also points data modeling at [ignatius](/modeling/) and its [`/ignatius-modeling` skill](/modeling/modeling-skill), and holds a marker comment for your own steering. `db/CLAUDE.md` is one line, `@AGENTS.md`. Without `--yes`, `init` prompts for a name and email when no identity exists yet.
 
 
 ## Flags
 
-- `--force` / `-f` — overwrite an existing `.noorm/` directory
-- `--here` — initialize in the original cwd, ignoring any parent `.noorm/` discovered while walking up
-- `--yes` / `-y` — proceed non-interactively when a full identity already exists at `~/.noorm/identity.{key,pub,json}`. Equivalent to setting `NOORM_YES=1`. See [Non-interactive operation](../guide/automation/non-interactive.md) for details.
+
+| Flag | Effect |
+|------|--------|
+| `--force`, `-f` | Initialize a folder that already has `.noorm/`. Resets `settings.yml` to defaults and keeps its `paths` |
+| `--here` | Initialize the directory you launched from, ignoring a parent `.noorm/` |
+| `--yes`, `-y` | Skip prompts. Needs an identity in `~/.noorm/`. `NOORM_YES=1` is the same |
+
+`noorm init` has no `--json` flag.
 
 
-## Picking the project root
-
-Every `noorm` invocation walks up from the current directory looking for a
-`.noorm/` folder, then `chdir`s into it. That is what lets you run commands from
-deep inside a repo without thinking about paths. It also means `noorm init` from
-a subfolder of an already-initialized project tries to re-init the *parent*.
-
-Two flags opt out of that behavior, depending on where you want to invoke from:
-
-- `noorm init --here` — stay in the cwd you launched from. Use this when you want to nest a fresh noorm project inside one that already exists (e.g. a `packages/db/` workspace under a repo that has its own `.noorm/`).
-- `noorm -c <path> init` — global flag (must precede the subcommand, like `git -C`). Resolves `<path>` relative to the current shell, `chdir`s into it, and skips the walk-up entirely.
+## Which folder becomes the project root?
 
 
-## Environment
+Every `noorm` command walks up from the current directory to the nearest `.noorm/` and runs there. `init` follows the same rule, so it targets the parent project unless you say otherwise.
 
-Interactive TTY required by default. Fails with exit code 2 (usage error) in CI or
-piped stdin unless `--yes` / `NOORM_YES=1` is set AND a full identity already exists.
-
-
-## Non-interactive (CI) flow
-
-`noorm init --yes` (or `NOORM_YES=1 noorm init`) skips all prompts when a full
-crypto identity already lives at `~/.noorm/identity.{key,pub,json}`. The identity
-must be in place first — `--yes` does NOT bootstrap one. If any of the three
-files is missing, `noorm init --yes` exits 2 with:
-
-    Error: noorm init --yes requires an existing identity at ~/.noorm/identity.{key,pub,json}.
-    Run: noorm identity init --name "Your Name" --email "you@example.com"
-    Then re-run: noorm init --yes
-
-The end-to-end CI bootstrap is two commands:
-
-    # CI flow
-    noorm identity init --name "$CI_USER" --email "$CI_EMAIL"
-    noorm init --yes
+| Invocation | Project root |
+|------------|--------------|
+| `noorm init` | Nearest parent holding `.noorm/`; the current directory when none does |
+| `noorm init --here` | The directory you launched from. Nests a project inside another, such as `packages/db/` |
+| `noorm -c packages/db init` | `packages/db`, with no walk up. `-c` must come before `init` |
 
 
-## Example
-
-    noorm init
-    noorm init --force
-    noorm init --here
-    noorm init --yes                 # non-interactive, requires existing identity
-
-    # From the repo root, init a sub-project at packages/db
-    noorm -c packages/db init
+## What happens to an existing project?
 
 
-## Next steps
+| Condition | Behavior |
+|-----------|----------|
+| `.noorm/` exists, no `--force` | `Error: noorm project already initialized at <path>. Use --force to reinitialize.`, exit 1 |
+| `--force` | `settings.yml` resets to defaults except `paths`. `db/AGENTS.md` and `db/CLAUDE.md` are written only when absent, so your edits stay |
+| `paths` are not `./db/sql` and `./db/changes` | Layout kept; no `db/` folder is created. A project at `./sql` and `./changes` stays there |
+| `.gitignore` already lists `.noorm/state/` | Left alone; otherwise the block is appended |
 
-After `init` lays down `settings.yml` and `.noorm/`, the database
-itself still has to be provisioned. See
-[Creating a database](../guide/database/create.md) for the configs-first
-workflow (`config import` → `db create` → `config use`), and
-[CLI flag conventions](./flags.md) for `--json` placement and the
-global-vs-per-subcommand rules.
+`db/sql/.gitkeep` and `db/changes/.gitkeep` are listed under `Created:` on every run for a default layout. They are empty files and are not overwritten.
+
+
+## How do I run it in CI?
+
+
+`--yes` skips every prompt but cannot create an identity. Create one first. A checkout that already has `.noorm/` needs no `init`, and running it there exits 1, so guard it:
+
+```bash
+[ -f ~/.noorm/identity.key ] || noorm identity init --name "$CI_USER" --email "$CI_EMAIL"
+[ -d .noorm ] || noorm init --yes
+```
+
+| Condition | Behavior |
+|-----------|----------|
+| No terminal and no `--yes` | `Error: noorm init requires an interactive terminal.`, exit 2 |
+| `--yes`, but one of `identity.key`, `identity.pub`, `identity.json` is missing | `Error: noorm init --yes requires an existing identity at ~/.noorm/identity.{key,pub,json}.` with the two commands to fix it, exit 2 |
+| Ctrl+C at a prompt | `Cancelled.`, exit 0 |
+| Bootstrap fails after the prompts | The error text, exit 1 |
+
+
+## Next
+
+
+- [Creating a database](/guide/database/create): add a config, create the database, build
+- [First build](/getting-started/first-build)
+- [CLI flag conventions](/cli/flags): where `-c` and `--yes` go

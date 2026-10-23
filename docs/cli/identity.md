@@ -1,79 +1,180 @@
 # Identity Management
 
 
-This guide covers noorm's cryptographic identity system — the keys that authenticate you to shared state, sign your changes, and let teammates encrypt vault secrets to you.
-
-
-## Overview
-
-noorm uses X25519 cryptographic identities for secure config sharing and audit tracking. Each identity is stored locally in `~/.noorm/identity.key` (private key) and `~/.noorm/identity.json` (metadata). The public key is derived deterministically from the private key, so it never has to be stored separately to be recovered.
-
-A disk identity is hashed as `SHA-256(email + name + machine + os)`, where `machine` is the hostname. The same person on two laptops is therefore two identities in the audit trail, and each needs vault access propagated to it. Env-var identities hash differently on purpose, so a CI fleet reads as one user: see [Env-Var Identity (CI)](#env-var-identity-ci) below.
-
-For CI runners, identities load from environment variables instead of files — see the [CI automation guide](../guide/automation/ci.md) for end-to-end setup, including `noorm ci identity new` (generate keypair) and `noorm ci identity enroll` (grant vault access on a target database).
-
-
-## Creating an Identity
-
-Run `noorm identity init` on your machine to create a keypair. `--name` and `--email` are both required; the command does not prompt.
+Create the keypair that unlocks your local state, tags your changes in the audit trail, and lets teammates share vault secrets with you.
 
 ```bash
 noorm identity init --name "Alice Cooper" --email alice@example.com
 ```
 
-This generates a keypair and writes:
-
-- Private key: `~/.noorm/identity.key` (mode `0600`)
-- Public key: `~/.noorm/identity.pub` (mode `0644`)
-- Metadata: `~/.noorm/identity.json`
-
-The private key never leaves your machine. Your public key is what teammates use to share encrypted state with you.
-
-If an identity already exists, `init` refuses. Replacing it takes `--force --yes`, and it is destructive: state encryption is keyed off the private key, so every noorm project on the machine loses access to the configs, secrets, and database passwords in its `.noorm/state/state.enc`. Nothing re-encrypts existing state under the new key. noorm copies the old key files to `.bak-<timestamp>` siblings before overwriting, and aborts if it cannot. An ambient `NOORM_YES` does not satisfy this confirmation; only the literal `--yes` flag does.
-
-
-## Editing Your Identity
-
-Update the display name or email on the existing identity. At least one of `--name` or `--email` must be provided.
-
-```bash
-noorm identity edit --name "Alice Cooper"
-noorm identity edit --email "alice@newjob.com"
+```
+Identity created.
+  Name:        Alice Cooper
+  Email:       alice@example.com
+  Fingerprint: 5e217a60eb7c27d5390cf2f3c8639fb7158dc3006df5057be03d83e3be51d721
 ```
 
+`init` writes three files in `~/.noorm/`. The private key never leaves your machine.
 
-## Exporting Your Public Key
+| File | Mode | Holds |
+|------|------|-------|
+| `identity.key` | `0600` | Private key |
+| `identity.pub` | `0644` | Public key, derived from the private key |
+| `identity.json` | umask default | Name, email, public key, machine, OS, fingerprint |
 
-Print your public key so teammates can add you to encrypted vaults:
+
+## What is an identity used for?
+
+
+One identity serves every project on the machine. On CI, environment variables replace the files.
+
+```mermaid
+flowchart TD
+    ENV["NOORM_IDENTITY_*<br/>environment"] -->|wins when valid| ID["identity in use"]
+    DISK["~/.noorm/identity.key<br/>identity.json"] -->|otherwise| ID
+    ID --> ST[".noorm/state/state.enc<br/>decrypted"]
+    ID --> VT["vault secrets<br/>encrypted to you"]
+    ID --> AU["fingerprint in<br/>change history"]
+```
+
+The fingerprint identifies you in the database. A disk identity hashes the machine too, so the same person on two laptops appears twice, and each laptop needs vault access.
+
+| | Disk identity | Environment identity |
+|---|---|---|
+| Fingerprint input | `SHA-256(email, name, hostname, OS)` | `SHA-256(email, name, public key, "env")` |
+| Same person on two machines | Two identities | One identity |
+| Files written | `~/.noorm/*` | None |
+
+
+## identity init
+
+
+```
+noorm identity init --name <name> --email <email> [--force --yes] [--json]
+```
+
+| Flag | Effect |
+|------|--------|
+| `--name <name>` | Display name. Required |
+| `--email <email>` | Email address. Required |
+| `--force` | Replace an existing identity. Needs `--yes` |
+| `--yes`, `-y` | Confirm the replacement. `NOORM_YES` does not count |
+| `--json` | JSON result with `name`, `email`, `fingerprint`, `publicKey` |
+
+| Condition | Behavior |
+|-----------|----------|
+| `--name` or `--email` missing | Usage text and `Missing required argument`, exit 1. No prompt |
+| Identity exists, no `--force` | `Identity already exists. Use --force to overwrite.`, exit 1 |
+| `--force` without `--yes` | Prints the warning below and `Pass --yes to confirm.`, exit 1 |
+| `--force --yes` | Copies the key files to `<file>.bak-<timestamp>`, then replaces them. Prints the backup paths |
+| Backup fails | Refuses to overwrite, exit 1 |
+
+::: danger
+Replacing an identity makes every `.noorm/state/state.enc` on the machine unreadable. State encryption is keyed off the private key, and nothing re-encrypts it under the new one. Restore `identity.key` from the `.bak-` copy to get the configs, secrets, and database passwords back.
+:::
+
+
+## identity edit
+
+
+```
+noorm identity edit [--name <name>] [--email <email>] [--json]
+```
 
 ```bash
-noorm identity export
+noorm identity edit --name "Alice C. Cooper"
+```
+
+```
+Identity updated.
+  Name:        Alice C. Cooper
+  Email:       alice@example.com
+  Fingerprint: bf151889b92fdc4f65e0b717dc3e93465488beba27f4df00be06095a70547936
+
+NOTE: the fingerprint changed, because it is derived from your name and email.
+Vault access is granted against the old fingerprint, so you will need a team
+member with vault access to propagate it to the new one.
+  Previous: 5e217a60eb7c27d5390cf2f3c8639fb7158dc3006df5057be03d83e3be51d721
+```
+
+| Condition | Behavior |
+|-----------|----------|
+| Neither `--name` nor `--email` | `At least one of --name or --email must be provided.`, exit 2 |
+| No identity yet | ``No identity found. Run `noorm identity init` first.``, exit 2 |
+| Name or email changes | The fingerprint changes. `--json` reports `previousFingerprint` and `fingerprintChanged` |
+| Machine | Carried over unchanged |
+
+
+## identity export
+
+
+```
+noorm identity export [--json]
+```
+
+Prints your name, email, fingerprint, and public key. Send the public key to a teammate who is adding you to the vault.
+
+```bash
 noorm identity export --json
 ```
 
-
-## Listing Known Identities
-
-Show every identity discovered from database syncs (the audit trail of who has touched shared state):
-
-```bash
-noorm identity list
-noorm identity list --json
+```json
+{"success":true,"name":"Alice Cooper","email":"alice@example.com","fingerprint":"5e217a60…","publicKey":"302a3005…"}
 ```
 
+| Condition | Behavior |
+|-----------|----------|
+| No identity | ``No identity found. Run `noorm identity init` to create one.``, exit 2 |
+| Public key unreadable | `Failed to load public key. Identity files may be corrupted.`, exit 1 |
 
-## Env-Var Identity (CI)
 
-When `NOORM_IDENTITY_PRIVATE_KEY`, `NOORM_IDENTITY_NAME`, and `NOORM_IDENTITY_EMAIL` are set at process startup, every `noorm` command in that process uses the env-derived identity without touching `~/.noorm/`.
+## identity list
 
-The variables are read once when the process starts, so they apply to every command that process runs.
 
-**Guarantees:**
+```
+noorm identity list [--json]
+```
 
-- The public key is **derived** from the private key, not separately specified — same key, same public half.
-- The identity hash is **independent of hostname or OS** (CI uses `os='env'`, `machine=publicKey`) — same key, same identity across every runner.
-- Env vars are **trimmed automatically** — leading/trailing whitespace is removed.
-- **Env vars win over disk** — if both are present, env takes precedence.
-- **No files written** — env-based bootstrap is read-only.
+Lists the people this project has seen, collected when a config syncs with its database.
 
-To generate a CI-shaped keypair without touching the database, use `noorm ci identity new` (see the [CI automation guide](../guide/automation/ci.md)).
+```
+Known users (1):
+  Alice Cooper <alice@example.com>
+    Fingerprint: 5e217a60eb7c27d5390cf2f3c8639fb7158dc3006df5057be03d83e3be51d721
+    Machine:     alice-mbp
+    Source:      prod
+    Last seen:   2026-10-21 05:41:59
+```
+
+| Condition | Behavior |
+|-----------|----------|
+| Nobody synced yet | `No known users found.`, exit 0. `--json` gives `{"users":[]}` |
+| State cannot be decrypted | `Failed to load state: …`, exit 1 |
+
+
+## How does CI get an identity?
+
+
+Set three variables before the first `noorm` command. Every command in that process then uses the environment identity and writes nothing to `~/.noorm/`.
+
+| Variable | Value |
+|----------|-------|
+| `NOORM_IDENTITY_PRIVATE_KEY` | Hex-encoded X25519 private key, 96 hex characters |
+| `NOORM_IDENTITY_NAME` | Display name |
+| `NOORM_IDENTITY_EMAIL` | Email address |
+
+| Condition | Behavior |
+|-----------|----------|
+| All three valid | Environment identity is used, even if `~/.noorm/` also holds one |
+| One missing, blank, or the key is not valid hex | Ignored without an error, and the disk identity is used |
+| Leading or trailing whitespace | Trimmed |
+
+`noorm ci identity new` generates a CI keypair, and `noorm ci identity enroll` grants it vault access on a database. The [CI guide](/guide/automation/ci) walks through both.
+
+
+## Next
+
+
+- [CI automation](/guide/automation/ci): provision and enroll a CI identity
+- [Vault](/guide/environments/vault): share secrets between identities
+- [Secrets](/cli/secret): config-scoped secrets, which the identity key protects

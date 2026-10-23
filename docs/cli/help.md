@@ -1,47 +1,51 @@
 # Discovering command help
 
 
-Every `noorm` command exposes its own help via the standard `--help`
-(or `-h`) flag. There is no `noorm help <subcommand>` form — `noorm`'s
-CLI framework (citty) renders help natively per command, and that's the
-canonical surface.
+Append `--help` or `-h` to any command to see its usage, flags, and examples.
+
+```
+$ noorm run inspect --help
+Inspect template context for a .sql.tmpl file (noorm run inspect)
+
+USAGE noorm run inspect [OPTIONS] <PATH>
+
+ARGUMENTS
+
+  PATH    Path to the .sql.tmpl file (Required)
+
+OPTIONS
+
+  -c, --config=<config>    Use specific configuration
+                 --json    Output JSON               
 
 
-## Canonical form
+EXAMPLES
 
-Append `--help` (or the short `-h`) to any command — including
-multi-segment commands like `db create` or `change ff`:
+  noorm run inspect db/sql/users/001_create.sql.tmpl
+  noorm run inspect db/sql/core/05_Cron/Crons.sql.tmpl --json
+```
 
-    noorm --help
-    noorm db --help
-    noorm db create --help
-    noorm change ff --help
-    noorm sql query --help
-
-The help output includes the usage line, every flag with its
-description, and a curated `EXAMPLES` block where the command author
-added one.
+The same flag works at every depth: `noorm --help`, `noorm db --help`, `noorm db create --help`, `noorm change ff --help`. A parent command lists its subcommands. A leaf command lists its flags and an `EXAMPLES` block when its author wrote one.
 
 
-## Why not `noorm help <sub>`?
-
-citty (the CLI framework `noorm` is built on) doesn't ship a
-re-dispatching `help` subcommand. Adding one would mean a parallel
-copy of every command's help text — easy to let drift. The `--help`
-flag is uniform, always current, and matches the convention used by
-`git`, `kubectl`, `docker`, and most other modern CLIs.
-
-If you arrive from a tool like `npm`, `yarn`, or older `commander`-based
-CLIs that DO support `npm help <sub>`, just swap to the flag form:
-
-    # this errors with "Unknown command help"
-    noorm help db create
-
-    # this is the equivalent that works
-    noorm db create --help
+## What if I type `noorm help <command>`?
 
 
-## Related
+noorm has no `help` subcommand. citty renders help per command, so one source serves every command and no second copy can drift.
 
-- [Flag conventions](./flags.md) — where `--help` and other flags must
-  be placed relative to the subcommand.
+| Input | Result |
+|-------|--------|
+| `noorm <command> --help`, `-h` | Usage, flags, examples; exit 0 |
+| `noorm --help` | Command list; exit 0 |
+| `noorm` | Command list, then `No command specified.`; exit 1 |
+| `noorm help db create` | Command list, then `Unknown command help`; exit 1 |
+| `noorm --version`, `noorm -v` | Version only, when it is the sole argument |
+
+For shell completion, run `noorm complete <shell>` and source the script it prints. [Flag placement](/cli/flags) explains where `--help` and the other flags may go.
+
+
+## Next
+
+
+- [CLI flag conventions](/cli/flags)
+- [CLI reference](/headless)

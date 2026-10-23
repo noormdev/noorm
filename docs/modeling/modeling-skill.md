@@ -1,86 +1,97 @@
 ---
 title: The modeling skill
-description: /ignatius-modeling authors ignatius entities and data flow diagrams through guided Q&A in Claude Code, and verifies each file with ignatius validate.
+description: /ignatius-modeling writes ignatius entities and data flow diagrams by asking one question at a time, runs ignatius validate on each file, and ends every session with a change note you review and approve.
 ---
 
 # The modeling skill
 
+`/ignatius-modeling` is a Claude Code skill that writes ignatius entity and flow files by asking you one question at a time.
 
-`/ignatius-modeling` is a Claude Code skill that authors a model through question and answer, then checks its own work. It writes one entity, a data flow diagram, a fresh model skeleton, or a full discovery session that works the model out from how your business runs.
+One session asks, writes, validates, and then waits for you to approve:
 
-The skill exists because the hard part of modeling is not the YAML. It is knowing which questions to ask, in which order, and noticing when an answer contradicts an earlier one. The skill carries that interview structure, and you supply the domain knowledge.
+```mermaid
+sequenceDiagram
+    participant You
+    participant Skill
+    participant Files as model files
+    participant Validate as ignatius validate
+    You->>Skill: /ignatius-modeling entity
+    loop each step
+        Skill->>You: one question
+        You->>Skill: answer
+    end
+    Skill->>Files: write the entity file
+    Skill->>Validate: check the model folder
+    Validate-->>Skill: findings, up to 5 attempts
+    Skill->>Files: write .ignatius/changes/slug.md
+    You->>Files: ignatius serve, read the changes
+    You->>Files: ignatius approve
+```
 
-**Prerequisites:** Claude Code with skill support, and the `ignatius` binary on your `$PATH` or built locally with `bun run build:cli`.
-
-
-## Install
-
+The skill needs Claude Code and the `ignatius` binary on your `$PATH` ([Download](/download)). Install the skill into the current project, or add `-g` for every project:
 
 ```bash
 npx skills add https://github.com/noormdev/ignatius --skill ignatius-modeling
 ```
 
-That adds `ignatius-modeling` to the current project's `.claude/skills/`. Add `-g` to install it globally for every project on the machine. Reload skills in Claude Code and `/ignatius-modeling` becomes available.
+
+## Which mode do I run?
 
 
-## Modes
-
-
-| Invocation | What it does |
+| Invocation | Use it to |
 |---|---|
-| `/ignatius-modeling entity` | Interactive Q&A to author one entity file |
-| `/ignatius-modeling model` | Bootstrap a new model skeleton: `ignatius.yml`, group files, directories |
-| `/ignatius-modeling flow` | Interactive Q&A to author a [data flow diagram](/modeling/data-flows) |
-| `/ignatius-modeling discover` | Socratic interview that works the model out from how your business runs, generating entities and flows |
-| `/ignatius-modeling` | Prompts you to choose a mode |
+| `/ignatius-modeling entity` | Add one entity |
+| `/ignatius-modeling model` | Bootstrap `ignatius.yml`, group files, and folders |
+| `/ignatius-modeling flow` | Author a [data flow diagram](/modeling/data-flows) when you can already name your processes |
+| `/ignatius-modeling discover` | Work out entities and flows from how the business runs. With a real database, schema dump, codebase, or API, it reads that instead of interviewing you |
+| `/ignatius-modeling` | Asks which mode |
+
+Every entity gets example rows and every process gets input and output examples, because concrete rows expose wrong rules that pass every structural check. The skill picks `key-inherited` or `orm-oriented` for each new entity from the keys you already have; see [the two key conventions](/modeling/entities). To point `discover` at a live database, see [Reverse-engineering](/modeling/reverse-engineering).
 
 
-## Choosing between flow and discover
+## What does validation catch?
 
 
-`flow` and `discover` are two doors into the same artifacts.
+After each write the skill runs `ignatius validate <model-root>`, reports each finding with a fix hint, and asks whether to revise. It stops after five attempts.
 
-Pick `flow` when you can already name your processes. It walks the structure step by step: processes as verbs, externals, the decision between a `db:` store and a `kind:` store, the data each flow carries, sample rows, and the business narrative.
-
-Pick `discover` when you know what the business does but have not decomposed it yet. The skill interviews you in plain language, derives the entities your processes require, writes those first, then writes the flows that reference them. When a real system already exists, whether a database, a schema dump, a codebase, or an API, `discover` reads it instead of interviewing you and then walks you through the judgment calls it cannot infer. To point it at a live database, see [Reverse-engineering an existing database](/modeling/reverse-engineering).
-
-Both modes always produce example data. Every entity gets sample rows and every process gets input and output tables, because concrete instances expose wrong rules that pass every structural check.
-
-
-## Convention detection
+| Check | Done by |
+|---|---|
+| Unknown targets, dangling foreign-key columns, missing discriminators, unknown columns in flow contracts, unbalanced decompositions | `ignatius validate` |
+| Example rows with a key that is not a column | Only `ignatius serve` shows it. `validate` never prints that rule, so the skill reads the rows back |
+| Each predicate reads as a true sentence both ways, and the body states the purpose and rules | The skill's self-check, then you |
 
 
-The skill works out which key convention a model uses from the shape of its existing entities rather than asking you to choose a mode up front, and a model can mix both styles per entity.
+## How do I review what it changed?
 
-| Convention | Primary key shape | Foreign key placement |
+
+Every session that changes model files ends with one change note, `.ignatius/changes/<slug>.md`. It names the entities, columns, diagrams, and nodes the session touched and says why. `ignatius serve` shows the edit as highlights beside the note. `ignatius approve` accepts it.
+
+Before its first write, the skill checks for a baseline so that the edit shows as a change:
+
+| `.ignatius/baseline.json` | `.ignatius/changes/` | The skill |
 |---|---|---|
-| `key-inherited` | Composite: parent primary-key columns plus a local discriminator | Inside the child's primary key |
-| `orm-oriented` | A single surrogate `id`, typically integer or uuid | Outside the primary key, as plain columns |
+| valid | any | edits as usual |
+| missing or invalid | empty | runs `ignatius approve`, then edits |
+| missing or invalid | holds notes | stops and asks you to approve the notes or restore the baseline |
 
-You never set `classification` or `identifying` by hand in either convention. The parser derives both from the key shape you describe. See [what gets derived](/modeling/entities#what-gets-derived).
-
-
-## The verification loop
+The skill never runs `approve` after editing. Accepting the edit is your step. The `model` mode writes no note, and a model it creates gets a `.gitignore` containing `.ignatius/`. The note format is in [Change review](https://github.com/noormdev/ignatius/blob/main/docs/guides/change-review.md).
 
 
-After writing each file the skill runs `ignatius validate <model-root>` and parses the findings from stderr. Findings are reported with fix hints, and you can ask the skill to revise and re-run, up to five attempts. A clean run with no findings confirms the file is valid.
-
-This is the part that makes agent-authored models trustworthy. The skill is not asked to be right on the first try. It is asked to converge against a linter that checks unknown targets, dangling foreign-key columns, missing discriminators, unknown columns in flow contracts, and unbalanced decompositions.
+## What bites
 
 
-## From model to schema
+| Symptom | Cause | Fix |
+|---|---|---|
+| The skill stops before its first write | `.ignatius/changes/` holds notes and there is no baseline | Read the notes, run `ignatius approve`, then continue |
+| A change shows as `unexplained` | The note does not name that entity, column, diagram, or node | Add the name to the note |
+| A note shows `named but unchanged` | The note names an entity, column, diagram, or node that did not change | Remove the name, or make the change |
+| A note you wanted is gone | `ignatius approve` deletes every note | Copy anything worth keeping into the entity or flow body first |
 
 
-A validated model is a specification, and the same markdown a stakeholder reviewed is what the agent reads to build.
-
-Once the model is agreed, point Claude Code at the model root and ask it to write the SQL. The entity files carry the keys, the columns, the relationships, and the prose explaining what each one is for, which is more context than a schema request usually gets. From there, [noorm](/getting-started/installation) takes over: SQL files in directories, `noorm run build` to build a fresh database, and changes for existing ones.
-
-The division of labor is worth stating plainly. ignatius owns the decision about what the data is. noorm owns building and versioning it. Neither tool reaches into the other's job, and both keep the source of truth in files you own.
+## Next
 
 
-## Related
-
-
-- [Entities and key inheritance](/modeling/entities) for the format the skill writes.
-- [Data flows](/modeling/data-flows) for the diagram format.
-- [Best practices](/modeling/best-practices) for how to review what the skill produces.
+- [Entities and key inheritance](/modeling/entities): the format the skill writes
+- [Data flows](/modeling/data-flows): the diagram format
+- [From model to SQL](/modeling/model-to-sql): hand the validated model to an agent that writes the DDL
+- [Best practices](/modeling/best-practices): review what the skill produces

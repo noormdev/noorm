@@ -1,265 +1,178 @@
 # Execution
 
 
-## How Execution Works
-
-When you run SQL files with noorm, every file goes through a checksum-based change detection process. This is the core value proposition: files that haven't changed don't run again.
-
-Here's what happens under the hood:
-
-1. noorm computes a SHA-256 checksum of the SQL that will actually run — for a `.sql.tmpl`, that is the *rendered* output, not the file on disk
-2. It checks the tracking database for a previous execution record
-3. If the file is new, changed, previously failed, or belonged to an operation a teardown marked stale, it runs
-4. If unchanged and successful, it's skipped
-5. After execution, the result and new checksum are recorded
-
-Hashing the rendered output is what makes a template re-run when its data file, config, or secrets change even though its own bytes did not. The flip side: a template whose render is genuinely non-deterministic — one calling `$.now()` or `$.uuid()` — produces new SQL every time and therefore re-runs every build. That is the correct answer for a file whose output really is different each time; use a fixed value if you want it to settle.
-
-This makes builds idempotent. Run the same command twice—unchanged files won't re-execute.
-
-
-## run build
-
-The primary command for executing your schema:
+Run your SQL files against a database and re-run only the ones whose SQL changed.
 
 ```bash
 noorm run build
 ```
 
-This executes all SQL files in your schema directory (defined in settings). Files are processed alphabetically by path, which means you can control execution order with prefixes:
-
 ```
-db/sql/
-├── 00_extensions/
-│   └── 001_extensions.sql        # Runs first
-├── 01_tables/
-│   ├── 001_users.sql             # Runs second
-│   └── 002_posts.sql             # Runs third
-└── 02_views/
-    └── 001_active_users.sql      # Runs last
+• log  Build completed  status=success filesRun=5 filesSkipped=0 filesFailed=0 durationMs=53.388000000000034
 ```
 
-Output shows what ran and what was skipped. Every line carries a timestamp and a level marker ahead of the message:
-
-```
-Starting schema build (3 files)
-Executed db/sql/01_tables/001_users.sql (14ms)
-Skipped db/sql/01_tables/002_posts.sql (unchanged)
-Executed db/sql/02_views/001_active_users.sql (9ms)
-Build complete: 2 run, 1 skipped (412ms)
-```
-
-Add `--json` to get the same events as newline-delimited JSON on stderr and the batch result on stdout.
-
-
-## run file
-
-Execute a single SQL file:
+Run it again and every file is skipped:
 
 ```bash
-noorm run file db/sql/01_tables/001_users.sql
+noorm run build
 ```
 
-Useful for testing a specific file or re-running one file after a quick fix. The same change detection applies—if the file hasn't changed since its last successful run, it won't execute unless you use `--force`.
-
-
-## run dir
-
-Execute all files in a specific directory:
-
-```bash
-noorm run dir db/sql/02_views
+```
+• log  /srv/shop/db/sql/01_tables/01_party.sql (skipped: unchanged)
+• log  /srv/shop/db/sql/01_tables/02_sales_order.sql (skipped: unchanged)
+• log  /srv/shop/db/sql/01_tables/03_product.sql (skipped: unchanged)
+• log  /srv/shop/db/sql/02_views/01_open_orders.sql (skipped: unchanged)
+• log  /srv/shop/db/sql/09_seeds/01_products.sql.tmpl (skipped: unchanged)
+• log  Build completed  status=success filesRun=0 filesSkipped=5 filesFailed=0 durationMs=8.991874999999993
 ```
 
-Processes all `.sql` and `.sql.tmpl` files in that directory (and subdirectories), alphabetically. This is helpful when you want to rebuild just views or just a subset of your schema.
+Each line also starts with a `[YY-MM-DD HH:mm:ss]` timestamp, left out here.
 
 
-## Force Mode
+## Which command runs what?
 
-Skip change detection entirely with `--force`:
 
-```bash
-noorm run build --force
+| Command | Runs | Applies `build.include`, `build.exclude`, rules |
+|---|---|---|
+| `noorm run build` | every file under `paths.sql` | yes |
+| `noorm run file <path>` | one file | no |
+| `noorm run dir <path>` | every file under a directory | no |
+| `noorm run exec <dir-or-glob>` | a directory, or the files a glob matches | no |
+| `noorm run files --paths a.sql,b.sql` | the listed files, in the order listed | no |
+| `noorm run preview <file>` | nothing: prints a template's rendered SQL | n/a |
+| `noorm run inspect <file>` | nothing: lists what a template can read from `$` | n/a |
+
+Directories and globs run in path order, the order [Organization](/guide/sql-files/organization) describes. The five commands that run SQL take these flags:
+
+| Flag | Effect |
+|---|---|
+| `--force`, `-f` | Run every file without the checksum test |
+| `--dry-run` | Render to `tmp/`. Run nothing and record nothing |
+| `--config`, `-c` | Use a config other than the active one |
+| `--json` | Print the result as JSON on stdout |
+
+`preview` and `inspect` take `--config` and `--json` only. Exit codes and JSON shapes are in [`noorm run`](/cli/run).
+
+
+## How does noorm decide to skip a file?
+
+
+A file skips only when its newest record succeeded on the same SQL. Everything else runs:
+
+```mermaid
+flowchart TD
+    A["render, then hash the<br/>SQL with SHA-256"] --> B{"--force?"}
+    B -->|yes| RUN[run]
+    B -->|no| C{"record for this path<br/>and this config?"}
+    C -->|no| RUN
+    C -->|yes| D{"last attempt failed<br/>or never started?"}
+    D -->|yes| RUN
+    D -->|no| E{"marked stale by<br/>a teardown?"}
+    E -->|yes| RUN
+    E -->|no| F{"checksum differs?"}
+    F -->|yes| RUN
+    F -->|no| SKIP[skip]
 ```
 
-Every file executes, regardless of whether it changed. Use this when:
+The hash covers the SQL the database would receive. For a `.sql.tmpl` that is the rendered output, so a changed data file, config, or secret re-runs the template while its own bytes stay the same.
 
-- You need to rebuild everything after a database restore
-- Troubleshooting an issue and want fresh execution
-- External changes happened that noorm doesn't know about
-
-In the TUI, the force option appears when you select a run command.
+One lookup decides the whole batch before anything runs. A skipped file leaves no row, and a batch where every file skips creates no operation record. Records are per config and per file path, whichever command wrote them, so `run file` after `run build` skips an unchanged file.
 
 
-## Dry Run Mode
+## What does --dry-run do?
 
-Preview what would execute without actually running anything:
+
+It renders every file, templates included, and writes the result under `tmp/`, mirroring the source path and dropping `.tmpl`. Nothing runs and nothing is recorded. The skip test does not apply, so unchanged files render too:
 
 ```bash
 noorm run build --dry-run
 ```
 
-This renders all SQL files (including templates) and writes them to a local `tmp/` directory that mirrors your source structure:
-
 ```
-Source:                              Dry run output:
-db/sql/02_views/001_my_view.sql  →   tmp/db/sql/02_views/001_my_view.sql
-db/sql/03_seeds/001_users.sql.tmpl  →   tmp/db/sql/03_seeds/001_users.sql
+• log  /srv/shop/db/sql/09_seeds/01_products.sql.tmpl (success, dry-run) -> /srv/shop/tmp/db/sql/09_seeds/01_products.sql
+• log  Build (dry-run) completed  status=success filesRun=5 filesSkipped=0 filesFailed=0 durationMs=11.70675 dryRun=true
 ```
 
-Templates are fully rendered with your current config context. The `.tmpl` extension is stripped from output files. Nothing is written to the database and nothing is tracked.
-
-::: warning Dry run output contains your secrets
-Rendering resolves every secret the template reads, in plaintext, into the files under `tmp/`. noorm writes them owner-only (`0600`, in `0700` directories), but `noorm init` does not add `tmp/` to `.gitignore`. Add it yourself, and delete the output when you're done reading it.
+::: warning Dry-run files hold your secrets
+Rendering resolves every secret a template reads and writes it to `tmp/` in plain text. The files are owner-only (`0600`, in `0700` directories), but `noorm init` does not add `tmp/` to `.gitignore`. Add it, and delete the output when you finish.
 :::
 
-**When to use dry run:**
-
-| Scenario | Command |
-|----------|---------|
-| Inspect rendered templates | `noorm run build --dry-run` |
-| Review before production deploy | `noorm run build --dry-run -c production` |
-| Debug one template | `noorm run preview seed.sql.tmpl` |
-| CI/CD validation step | `noorm run build --dry-run` |
+## What gets tracked
 
 
-## What Gets Tracked
+Each batch that runs writes to two tables in your database. PostgreSQL and SQL Server keep them in a `noorm` schema, as `noorm.change` and `noorm.executions`. MySQL and SQLite name them `__noorm_change__` and `__noorm_executions__`.
 
-noorm maintains two tables in your database to track execution history. On PostgreSQL and SQL Server they live in a dedicated `noorm` schema; MySQL and SQLite have no schemas, so they keep prefixed names in the default schema.
+| Table | Columns |
+|---|---|
+| change (one row per batch) | `id`, `name`, `change_type`, `direction`, `checksum`, `executed_at`, `executed_by`, `config_name`, `cli_version`, `status`, `error_message`, `duration_ms` |
+| executions (one row per file) | `id`, `change_id`, `filepath`, `file_type`, `checksum`, `cli_version`, `status`, `error_message`, `skip_reason`, `duration_ms` |
 
-**`noorm.change`** (`__noorm_change__` on MySQL and SQLite) - Operation records:
-
-| Field | Description |
-|-------|-------------|
-| `name` | Operation identifier (e.g., `build:2024-01-15T10:30:00.000Z`) |
-| `change_type` | `'build'`, `'run'`, or `'change'` |
-| `executed_by` | Identity string (who ran it) |
-| `config_name` | Which config was used |
-| `status` | `'pending'`, `'success'`, `'failed'`, `'reverted'`, `'stale'` |
-
-**`noorm.executions`** (`__noorm_executions__` on MySQL and SQLite) - Individual file records:
-
-| Field | Description |
-|-------|-------------|
-| `change_id` | FK to parent operation |
-| `filepath` | File that was executed, relative to the project root |
-| `checksum` | SHA-256 of the SQL that actually ran (the rendered output for a `.sql.tmpl`) |
-| `status` | `'pending'`, `'success'`, `'failed'`, `'skipped'` |
-| `skip_reason` | `Skipped: failure in <file>` when an earlier file in the batch failed |
-| `duration_ms` | Execution time |
-
-Every file that will run gets a `'pending'` row before the first one executes, so an interrupted build still shows you what it was going to do. Rows move to their final status as the run proceeds. A file that change detection skips gets no row.
-
-These tables let noorm answer: "Has this exact file content been executed before, and did it succeed?"
+`change_type` is `build`, `run`, or `change`. `filepath` is relative to the project root. Before the first file runs, every file in the run set gets a `pending` row, so an interrupted build still shows what it intended. The next build treats a `pending` row as never started.
 
 
-## Execution Order
-
-Files execute **alphabetically by full path**. This is deterministic and predictable, but it means you need to name files carefully when order matters. See [Organization](/guide/sql-files/organization) for detailed naming strategies.
-
-Common patterns:
-
-```
-db/sql/
-├── 00_extensions/
-│   └── 001_uuid.sql           # Extensions first
-├── 01_types/
-│   └── 001_enums.sql          # Types before tables
-├── 02_tables/
-│   ├── 001_users.sql          # Independent tables first
-│   ├── 002_profiles.sql       # Tables with FKs after their dependencies
-│   └── 003_posts.sql
-└── 03_views/
-    └── 001_active_users.sql   # Views last (they depend on tables)
-```
-
-The numbered prefixes ensure:
-1. Extensions load before anything uses them
-2. Types exist before tables reference them
-3. Tables exist before views reference them
-4. Within each category, files run in predictable order
-
-::: tip File Naming
-Use `001_`, `002_` prefixes rather than `1_`, `2_` for consistent sorting. Leading zeros ensure `002` comes before `010` alphabetically.
-:::
+## What happens when a file fails?
 
 
-## MSSQL: Multiple Statements per File
+The batch stops at the first failure. Files after it are not attempted:
+
+| File | Recorded as | Next build |
+|---|---|---|
+| ran before the failure | `success` | skipped |
+| the one that failed | `failed` | runs |
+| after the failure | `skipped`, with `Skipped: failure in <file>` | runs |
+
+The command exits `3` when some files ran and `1` when none did.
 
 
-SQL Server has a particular rule: `CREATE PROCEDURE`, `CREATE FUNCTION`, `CREATE TRIGGER`, `CREATE VIEW`, and `CREATE TYPE` (for table-valued parameters) must each be the only statement in their batch. SQL Server expresses this with `GO` — a separator that ends a batch.
+## How do I watch a slow file?
 
 
-`GO` is not part of the SQL language. It's a sqlcmd / SSMS directive. Tools that pass raw file content directly to the driver get back `Incorrect syntax near 'GO'`. noorm handles this for you: on MSSQL connections, the runner splits files on `GO` (anchored to its own line) and executes each batch in order.
+A file still running after 10 seconds logs `Still running <file> (Ns)` every 10 seconds. The entry carries the progress the database reports (an index build's phase and block count) and any session the file waits on for a lock, which tells a slow file from a stuck one. To cancel a run, use the TUI: [Long-Running Files](/tui#long-running-files).
 
+
+## Multiple statements per file
+
+
+| Dialect | A file with several statements |
+|---|---|
+| PostgreSQL | Runs as one call, in one implicit transaction |
+| SQL Server | Splits on a line that holds only `GO`, then runs each batch in order |
+| SQLite | Splits on statement boundaries. Semicolons inside strings, quoted identifiers, comments, and trigger bodies do not count |
+| MySQL | The driver rejects it. Use one statement per file |
+
+SQL Server needs `GO` because `CREATE VIEW`, `CREATE PROCEDURE`, `CREATE FUNCTION`, `CREATE TRIGGER`, and `CREATE TYPE` must each be alone in their batch:
 
 ```sql
--- db/sql/09_procedures/checkout.sql
-CREATE PROCEDURE checkout_begin
-    @CustomerId INT
-AS
-BEGIN
-    SET NOCOUNT ON;
-    INSERT INTO orders (customer_id, status) VALUES (@CustomerId, 'pending');
-END
+-- db/sql/02_views/02_order_views.sql
+CREATE OR ALTER VIEW open_orders AS
+SELECT party_id, order_no FROM sales_order WHERE status = 'open';
 GO
 
-CREATE PROCEDURE checkout_commit
-    @OrderId INT
-AS
-BEGIN
-    SET NOCOUNT ON;
-    UPDATE orders SET status = 'paid' WHERE id = @OrderId;
-END
-GO
-
-CREATE PROCEDURE checkout_cancel
-    @OrderId INT
-AS
-BEGIN
-    SET NOCOUNT ON;
-    UPDATE orders SET status = 'cancelled' WHERE id = @OrderId;
-END
+CREATE OR ALTER VIEW invoiced_orders AS
+SELECT party_id, order_no FROM sales_order WHERE status = 'invoiced';
 GO
 ```
 
-
-Three related procedures, one file. If batch 2 fails, noorm reports `[batch 2 of 3]` in the error and skips batch 3 — so you know exactly which `CREATE PROCEDURE` blew up without re-reading the file in your head.
-
-
-`GO` recognition is line-oriented: the literal token `GO` must be the entire trimmed content of a line (case-insensitive). `GO;`, `GOLANG`, or `GO` mid-line do not split. Keep `GO` tokens out of string literals and `/* ... */` block comments — the splitter does not parse SQL, so an inadvertent `GO` inside a string on its own line will still be treated as a separator. This matches sqlcmd behavior.
+When a batch fails, the error starts with `[batch 2 of 2]`. SQLite errors start with `[statement N of M]`. Files in `db/changes/` split the same way. Splitter rules are in the [runner internals](/dev/runner#mssql-batch-handling).
 
 
-PostgreSQL runs a multi-statement file as-is, in one implicit transaction. SQLite gets its own splitter: its driver compiles the first statement of a string and discards the rest, so noorm splits on statement boundaries before handing anything over — semicolons inside string literals, quoted identifiers, comments, and trigger bodies are not treated as boundaries. MySQL's driver rejects multi-statement strings outright; put each statement in its own file, or use a dialect that supports them.
+## What bites
 
 
-For the gory details on what the runner does under the hood, see [MSSQL Batch Handling](/dev/runner#mssql-batch-handling).
+| Mistake or symptom | Cause | Fix |
+|---|---|---|
+| A build skips files after you dropped tables by hand | The records still say `success` and the checksums match | `noorm run build --force`. To empty a database, use `noorm db teardown`, which marks the records stale |
+| `run build` fails with `already exists`, and the error ends with `1 prior successful execution` | A `CREATE TABLE` file changed, so it ran again against a table that exists | `run build` is for new databases. Bring an existing one up to date with `noorm change ff` |
+| A template runs on every build | Its SQL changes on every render: `$.now()`, `$.uuid()` | Use a fixed value |
+| The first build on a second config runs every file | Records are per config name | None needed. The config has not run them yet |
+| Progress reports show only elapsed time, or describe another session | `connection.pool.max: 1` leaves no second connection. A transaction-mode pooler (PgBouncer, RDS Proxy, Supabase port 6543) can route the report to another session | Raise the pool max, and connect to the database directly for builds you want to watch |
+| A line that is only `GO` inside a string or block comment splits the file | The splitter reads lines, not SQL | Keep `GO` out of strings and `/* */` comments |
 
 
-## Long-Running Files
-
-A file that is still running after 10 seconds gets a status report every 10 seconds until it finishes: elapsed time, the progress the database reports for the running command (an index build's phase and block count, for example), and any session it is waiting on for a lock. That tells a slow file apart from a stuck one. The TUI shows the report under the running file, and the log records a `Still running <file> (Ns)` line with the full report attached.
-
-The report comes from a second pooled connection, opened only when a file first passes 10 seconds and kept until the run ends. With `connection.pool.max: 1` there is no second connection to take, so reports carry elapsed time only. Behind a transaction-mode pooler (PgBouncer transaction mode, RDS Proxy, Supabase port 6543) the report can describe the wrong session; connect directly for builds you want to watch.
-
-To cancel a build from the TUI, see [Long-Running Files](/tui#long-running-files).
+## Next
 
 
-## Summary
-
-| Command | Purpose |
-|---------|---------|
-| `noorm run build` | Execute entire schema directory |
-| `noorm run file <path>` | Execute single file |
-| `noorm run dir <path>` | Execute files in directory |
-| `--force` | Re-run regardless of changes |
-| `--dry-run` | Render to `tmp/` without executing (`run build`, `run dir`) |
-
-The checksum system means you can run `noorm run build` as often as you want—only changed or new files execute. This is the foundation of noorm's approach to database schema management.
-
-
-## What's Next?
-
-- [Organization](/guide/sql-files/organization) - Structure your SQL files for predictable execution order
-- [Templates](/guide/sql-files/templates) - Add dynamic content to `.sql.tmpl` files
-- [Changes](/guide/changes/overview) - One-time operations with rollback support
+- [Organization](/guide/sql-files/organization): folder layout and which files take part
+- [Templates](/guide/sql-files/templates): generate SQL from data files
+- [Forward and revert](/guide/changes/forward-revert): bring existing databases up to date
+- [`noorm run`](/cli/run): exit codes and JSON output

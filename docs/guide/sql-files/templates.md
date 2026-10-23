@@ -1,508 +1,210 @@
 # SQL Templates
 
 
-Static SQL handles most database work. But sometimes you need SQL generated from structured data:
+Generate repeated SQL from data files, config, and secrets instead of writing every statement by hand.
 
-- Seeding reference data from CSV or JSON files
-- Generating similar objects (triggers, policies, grants) from configuration
-- Inserting secrets like API keys into config tables
-- Adapting SQL based on environment or stage
+A data file sits beside the template, and its name becomes a variable:
 
-Custom scripts work, but then you're maintaining two systems. Templates keep everything in one place: structured data files plus SQL templates that read them.
-
-Any file ending in `.sql.tmpl` is processed before execution. Templates look like SQL with embedded logic. They auto-load data files, inherit helpers, and have access to secrets and config.
-
-
-## Basic Syntax
-
-Templates use [Eta](https://eta.js.org/) with custom delimiters designed to avoid conflicts with SQL syntax:
-
-| Syntax | Purpose | Example |
-|--------|---------|---------|
-| `{% %}` | JavaScript code block | `{% for (const x of $.items) { %}` |
-| `{%~ %}` | Output a value | `{%~ user.name %}` |
-| `-- {% %}` | Code block on a line of its own, disguised as a SQL comment | `-- {% for (const x of $.items) { %}` |
-| `$` | Context variable | `$.config`, `$.secrets`, `$.uuid()` |
-
-A line whose entire content is `-- {% ... %}` gets its `-- ` prefix and its newline stripped before Eta parses the file, so the directive produces no output. Writing loops and conditionals that way keeps the `.sql.tmpl` file valid SQL, which means your editor still highlights it and a SQL linter still reads it. Inline tags and real `--` comments are untouched.
-
-Here's a simple example:
-
-```sql
--- seed_roles.sql.tmpl
-{% for (const role of $.roles) { %}
-INSERT INTO roles (name) VALUES ('{%~ role %}');
-{% } %}
+```yaml
+# db/sql/09_seeds/products.yml
+- { sku: HW-DONGLE, name: USB security key, list_price: 49.00 }
+- { sku: SW-SEAT,   name: "Desktop seat, yearly", list_price: 89.00 }
 ```
 
-When rendered with `$.roles = ['admin', 'editor', 'viewer']`, this produces:
-
 ```sql
-INSERT INTO roles (name) VALUES ('admin');
-INSERT INTO roles (name) VALUES ('editor');
-INSERT INTO roles (name) VALUES ('viewer');
+-- db/sql/09_seeds/01_products.sql.tmpl
+-- {% for (const p of $.products) { %}
+INSERT INTO product (sku, name, list_price)
+VALUES ({%~ $.quote(p.sku) %}, {%~ $.quote(p.name) %}, {%~ p.list_price %});
+-- {% } %}
+```
+
+```bash
+noorm run preview db/sql/09_seeds/01_products.sql.tmpl
+```
+
+```
+INSERT INTO product (sku, name, list_price)
+VALUES ('HW-DONGLE', 'USB security key', 49);
+INSERT INTO product (sku, name, list_price)
+VALUES ('SW-SEAT', 'Desktop seat, yearly', 89);
+```
+
+Four inputs meet in one `$` object. The rendered SQL is what `run build` hashes and runs, and what `run preview` prints:
+
+```mermaid
+flowchart TD
+    D["products.yml<br/>(same folder)"] --> C["$ context"]
+    H["$helpers.ts<br/>(this folder and up)"] --> C
+    S["$.secrets<br/>(config, global, vault)"] --> C
+    G["$.config and $.env"] --> C
+    C --> T["01_products.sql.tmpl<br/>rendered by Eta"]
+    T --> Q[plain SQL]
+    Q --> B["run build<br/>hash, then skip or run"]
+    Q --> P["run preview<br/>print to stdout"]
 ```
 
 
-## How Rendering Works
-
-When noorm encounters a `.sql.tmpl` file:
-
-1. Scans the template's directory for data files (JSON5, YAML, CSV, `.dt`, and referenced JS/TS modules)
-2. Walks up the directory tree collecting `$helpers.ts` files
-3. Builds a context object (`$`) with helpers, data, config, and secrets
-4. Renders the template with Eta
-5. Returns the SQL string for execution
+## What does the syntax look like?
 
 
-## The Template Context ($)
+Templates use [Eta](https://eta.js.org/) with delimiters that do not collide with SQL. Output is never HTML-escaped.
 
-Everything available in your template lives on the `$` object:
+| Syntax | Does | Example |
+|---|---|---|
+| `{% %}` | runs JavaScript | `{% for (const p of $.products) { %}` |
+| `{%~ %}` | writes a value into the SQL | `{%~ p.sku %}` |
+| `-- {% %}` | a tag alone on a line, behind a SQL comment | `-- {% } %}` |
+| `$` | the context object | `$.products` |
 
-| Property | Description |
-|----------|-------------|
-| `$.<datafile>` | Auto-loaded data from files in the same directory |
-| `$.<helper>` | Functions from `$helpers.ts` files |
-| `$.config` | Active database configuration |
-| `$.secrets` | Decrypted secrets for active config |
-| `$.globalSecrets` | Decrypted global secrets |
+noorm removes the `-- ` and the line break from a line that holds only `-- ` and a tag, before Eta runs. The directive prints nothing, and the file stays valid SQL for your editor and linter. The result loses its leading and trailing blank lines.
+
+
+## What can a template read?
+
+
+| Name | Holds |
+|---|---|
+| `$.<file>` | each data file in the template's folder, under its camelCased name |
+| `$.<export>` | each export of the `$helpers` files from the template's folder up |
+| `$.config` | the active config: `name`, `type`, `isTest`, `connection`, `access` |
+| `$.secrets` | this config's secrets, merged with global and vault ones. A missing key throws |
+| `$.globalSecrets` | global secrets only. A missing key reads as `undefined` |
 | `$.env` | `process.env` |
+| `$.quote`, `$.escape`, `$.json`, `$.uuid`, `$.now`, `$.include` | the built-ins |
 
-Data files win the name: a `config.json` or `config.yml` sitting beside the template claims the `config` key, and `$.config` then holds that file instead of the active database configuration. Helpers lose to data files the same way, so keep helper exports and data file base names distinct.
+When names collide, the last wins: helpers, data files, then `$.config`, `$.secrets`, `$.globalSecrets`, `$.env`, and the built-ins. A data file named `config.*` is the exception: it replaces `$.config`.
 
 
-## Built-in Helpers
+## Where does data come from?
 
-These helpers are always available in every template:
 
-### $.quote(value)
+noorm loads the data files in the template's own folder. It skips subfolders, dotfiles, `.sql` files, `$helpers` files, and other `.tmpl` files. `seed_data.yml` becomes `$.seedData`, and `my-config.json` becomes `$.myConfig`.
 
-Escapes a value and wraps it in single quotes. Use this for string values:
+| Extension | `$.<file>` holds |
+|---|---|
+| `.json`, `.json5` | the parsed value. JSON5 allows comments and trailing commas |
+| `.yaml`, `.yml` | the parsed value |
+| `.csv` | an array of row objects keyed by the header row. Every value is a string |
+| `.dt`, `.dtz` | an array of row objects from a [data transfer](/guide/database/transfer) export. `.dtzx` is not supported |
+| `.js`, `.mjs`, `.ts` | the module's default export, or its exports |
 
-```sql
-INSERT INTO users (name) VALUES ({%~ $.quote(user.name) %});
--- Input: O'Reilly
--- Output: INSERT INTO users (name) VALUES ('O''Reilly');
-```
+A `.js`, `.mjs`, or `.ts` file runs code, so noorm loads it only when the template names its key, as `$.buildRows` or `$['buildRows']`.
 
-`null` renders as the SQL keyword `NULL`. `undefined` throws, because no rendering of it is correct and the old behavior wrote the literal six-character string `undefined` into the database. Pass `null` when you mean SQL `NULL`.
 
-### $.escape(value)
+## How do helpers work?
 
-Escapes a string by doubling single quotes, without adding surrounding quotes:
 
-```sql
-UPDATE users SET bio = '{%~ $.escape(user.bio) %}' WHERE id = 1;
--- Input: It's great
--- Output: UPDATE users SET bio = 'It''s great' WHERE id = 1;
-```
-
-### $.uuid()
-
-Generates a UUID v4:
-
-```sql
-INSERT INTO tokens (id) VALUES ('{%~ $.uuid() %}');
--- Output: INSERT INTO tokens (id) VALUES ('550e8400-e29b-41d4-a716-446655440000');
-```
-
-### $.now()
-
-Returns the current ISO timestamp:
-
-```sql
-INSERT INTO logs (created_at) VALUES ('{%~ $.now() %}');
--- Output: INSERT INTO logs (created_at) VALUES ('2024-01-15T10:30:00.000Z');
-```
-
-### $.json(value)
-
-JSON stringifies a value:
-
-```sql
-INSERT INTO config (data) VALUES ('{%~ $.escape($.json(settings)) %}');
-```
-
-### $.include(path)
-
-Includes another SQL file. The path is relative to the current template:
-
-```sql
--- db/changes/2025-01-15-setup/change/001_setup.sql.tmpl
-
--- Load shared functions
-{%~ await $.include('../lib/uuid_function.sql') %}
-
--- Load triggers
-{%~ await $.include('../lib/audit_triggers.sql') %}
-```
-
-An included `.sql` file is inserted verbatim. An included `.sql.tmpl` file is rendered first, with the same config and secrets, and its output is inserted.
-
-
-## Auto-Loading Data Files
-
-Data files in the same directory as the template are automatically loaded into `$`:
-
-```
-db/sql/users/
-├── 001_seed.sql.tmpl     # Template
-├── users.json            # -> $.users
-├── roles.yml             # -> $.roles
-└── seed-data.csv         # -> $.seedData
-```
-
-File names are converted to camelCase:
-
-| Filename | Context Key |
-|----------|-------------|
-| `my-config.json` | `$.myConfig` |
-| `seed_data.yml` | `$.seedData` |
-| `API_KEYS.json` | `$.apiKeys` |
-
-Subdirectories are not scanned, and neither are `.sql` files (those are for `$.include()`), dotfiles, `$helpers.*`, or other `.tmpl` files.
-
-
-### Executable Side-Cars Load Only When Referenced
-
-`.js`, `.mjs`, and `.ts` data files are an exception to auto-loading. Parsing a `.csv` cannot do anything, but importing a `.ts` runs whatever is in it. So noorm loads an executable side-car only when the template text actually names its key, as `$.key` or `$['key']`:
-
-```sql
--- 001_seed.sql.tmpl, sitting next to build-rows.ts
--- The mention of $.buildRows is what makes build-rows.ts load and run.
-{% for (const row of $.buildRows) { %}
-INSERT INTO rows (label) VALUES ({%~ $.quote(row.label) %});
-{% } %}
-```
-
-A `build-rows.ts` that no template mentions is skipped, including during `run preview`, `run inspect`, and `--dry-run`, the three commands whose whole point is not to act. The check is syntactic, so a key you reach some other way (a computed lookup, a helper that reads it) will not trigger the load. Reference it by name once and it works.
-
-
-### Naming Collisions
-
-Different naming patterns can produce the same context key:
-
-| Filename | Context Key |
-|----------|-------------|
-| `user_roles.json` | `$.userRoles` |
-| `user-roles.yaml` | `$.userRoles` |
-| `user.roles.csv` | `$.userRoles` |
-
-If two files resolve to the same key, one silently overwrites the other. Use distinct base names to avoid conflicts.
-
-
-### Supported Formats
-
-| Extension | Notes |
-|-----------|-------|
-| `.json`, `.json5` | JSON5 supports comments and trailing commas |
-| `.yaml`, `.yml` | Full YAML support |
-| `.csv` | Parsed into array of row objects |
-| `.dt`, `.dtz` | Exported database tables (see [Data Transfer](/guide/database/transfer)) |
-| `.js`, `.mjs`, `.ts` | Module's default export or exports object (`.ts` requires Node >= 22.13) |
-
-
-### JSON5 Example
-
-JSON5 is easier to write by hand than strict JSON:
-
-```json5
-// users.json5 - Comments are allowed
-{
-    users: [
-        { name: 'Alice', role: 'admin' },
-        { name: 'Bob', role: 'user' },  // Trailing commas are fine
-    ]
-}
-```
-
-### CSV Example
-
-Given `users.csv`:
-
-```csv
-email,name,role
-alice@example.com,Alice,admin
-bob@example.com,Bob,user
-```
-
-Access in your template as an array of objects:
-
-```sql
--- seed.sql.tmpl
-{% for (const user of $.users) { %}
-INSERT INTO users (email, name, role) VALUES
-    ({%~ $.quote(user.email) %}, {%~ $.quote(user.name) %}, {%~ $.quote(user.role) %});
-{% } %}
-```
-
-
-### .dt Files (Exported Database Tables)
-
-`.dt` and `.dtz` files exported from [Data Transfer](/guide/database/transfer) can be used directly as seed data. The loader reads the embedded schema, maps positional values to column names, and exposes the data as an array of row objects—just like CSV.
-
-```
-db/sql/users/
-├── 001_seed.sql.tmpl     # Template
-└── users.dt              # -> $.users (exported from another database)
-```
-
-```sql
--- seed.sql.tmpl
-{% for (const user of $.users) { %}
-INSERT INTO users (id, email, name) VALUES
-    ({%~ user.id %}, {%~ $.quote(user.email) %}, {%~ $.quote(user.name) %});
-{% } %}
-```
-
-This lets you export data from one environment and use it as seed data in templates—without converting formats. Compressed `.dtz` files work too. Encrypted `.dtzx` files are not supported as template data since there's no way to provide a passphrase in the template context.
-
-
-## Helper Inheritance
-
-Helper files named `$helpers.ts` (or `$helpers.js`) are automatically loaded and inherited up the directory tree:
+A `$helpers.ts`, `$helpers.js`, or `$helpers.mjs` file exports functions and values for every template in its folder and below. The nearest file wins a name:
 
 ```
 db/sql/
-├── $helpers.ts                  # Project-wide helpers
-├── users/
-│   ├── $helpers.ts              # Overrides/extends parent
-│   ├── 001_create.sql.tmpl      # Has access to both
-│   └── roles.json
-└── products/
-    └── 001_create.sql.tmpl      # Only has project-wide helpers
+├── $helpers.ts                  # price() for every template
+└── 09_seeds/
+    ├── $helpers.ts              # its own price() wins here
+    ├── products.yml
+    └── 01_products.sql.tmpl     # sees both files
 ```
 
-Child helpers override parent helpers with the same name. This lets you define project-wide utilities at the root and specialize them in subdirectories.
-
-
-### Writing Helpers
-
-Helper files can be written in TypeScript (`.ts`) or JavaScript (`.js`, `.mjs`). TypeScript helpers require Node >= 22.13, which supports type stripping natively. On older Node versions, use `.js` instead.
-
-```typescript
+```ts
 // db/sql/$helpers.ts
-export function padId(id: number, length = 6): string {
+export function price(amount: number): string {
 
-    return String(id).padStart(length, '0')
-}
-
-export function formatDate(date: Date): string {
-
-    return date.toISOString().split('T')[0]
-}
-
-export const defaults = {
-    pageSize: 50,
-    maxRetries: 3,
+    return amount.toFixed(2);
 }
 ```
 
-Use in templates:
+`{%~ $.price(p.list_price) %}` now writes `49.00`. The search for helper files stops at the project root, not at `paths.sql`.
+
+`noorm run inspect` lists what a template can read, without rendering it:
+
+```bash
+noorm run inspect db/sql/09_seeds/01_products.sql.tmpl
+```
+
+```
+Template: db/sql/09_seeds/01_products.sql.tmpl
+Config:   dev
+
+Data Files:
+  $.products  Array [2]
+
+Helpers ($helpers):
+  $.price  Function
+
+Built-ins: include, escape, quote, json, now, uuid
+Secrets: 1 resolved, 0 global
+```
+
+
+## What do the built-ins do?
+
+
+| Call | Returns |
+|---|---|
+| `$.quote(v)` | `v` as a SQL string literal: single quotes around it, quotes inside doubled. `null` gives `NULL`, `undefined` throws, and a number is quoted too (`'49'`) |
+| `$.escape(s)` | `s` with single quotes doubled, and no surrounding quotes |
+| `$.json(v)` | `JSON.stringify(v)` |
+| `$.uuid()` | a UUID v4 |
+| `$.now()` | the current time as an ISO 8601 string |
+| `await $.include(path)` | the file at `path`, relative to the template. A `.sql` file is inserted as is. A `.sql.tmpl` file is rendered with the same context first. The path cannot leave the project root |
+
+
+## How do secrets and config reach a template?
+
+
+Read them off `$`. This template writes a secret and picks a URL by config name:
 
 ```sql
-INSERT INTO users (id, created_at) VALUES
-    ('{%~ $.padId(1) %}', '{%~ $.formatDate(new Date()) %}');
-
--- Output: INSERT INTO users (id, created_at) VALUES ('000001', '2024-01-15');
+-- db/sql/09_seeds/02_gateway.sql.tmpl
+INSERT INTO app_setting (name, value) VALUES
+    ('payment_gateway_key', {%~ $.quote($.secrets.PAYMENT_GATEWAY_KEY) %}),
+    ('payment_gateway_url', {%~ $.quote($.config.name === 'prod' ? 'https://api.gateway.example' : 'https://sandbox.gateway.example') %});
 ```
 
-
-## Common Patterns
-
-
-### Seeding from Data Files
-
-```yaml
-# roles.yml
-- name: admin
-  permissions: ["read", "write", "delete"]
-- name: editor
-  permissions: ["read", "write"]
-- name: viewer
-  permissions: ["read"]
-```
-
-```sql
--- seed_roles.sql.tmpl
-{% for (const role of $.roles) { %}
-INSERT INTO roles (name, permissions) VALUES
-    ({%~ $.quote(role.name) %}, {%~ $.quote($.json(role.permissions)) %});
-{% } %}
-```
-
-
-### Environment-Aware SQL
-
-The active configuration is available through `$.config`. Use it to adapt SQL based on stage, config name, or database:
-
-```sql
--- setup_monitoring.sql.tmpl
-{% const db = $.config.connection.database %}
-{% const stage = $.config.name %}
-
--- Tag all entries with the source database
-INSERT INTO monitoring.activity_log (source_db, event, created_at) VALUES
-    ({%~ $.quote(db) %}, 'schema_deployed', '{%~ $.now() %}');
-
-{% if (stage === 'prod') { %}
--- Only production stage gets strict constraints
-ALTER TABLE orders ADD CONSTRAINT chk_amount CHECK (amount > 0);
-{% } %}
-
-{% if ($.config.isTest) { %}
--- Test databases get sample data
-INSERT INTO users (name, email) VALUES ('Test User', 'test@example.com');
-{% } %}
-```
-
-Common conditions:
-
-| Condition | Use Case |
-|-----------|----------|
-| `$.config.name === 'prod'` | Production-only constraints or settings (a config links to the stage of the same name) |
-| `$.config.isTest` | Test fixtures and sample data |
-| `$.config.name === 'dev'` | Local development overrides |
-| `$.config.connection.database` | Database-specific configuration |
-
-
-### Using Secrets
-
-Never hardcode credentials. Access them through `$.secrets`:
-
-```sql
--- config_setup.sql.tmpl
-INSERT INTO app_config (key, value) VALUES
-    ('stripe_key', {%~ $.quote($.secrets.STRIPE_KEY) %}),
-    ('api_endpoint', {%~ $.quote($.env.API_URL || 'https://api.example.com') %});
-```
-
-Secrets resolve through a three-tier hierarchy: config-specific local secrets override global local secrets, which override team-shared [vault](/guide/environments/vault) secrets. This means you can store production credentials in the vault and override them locally for development without affecting teammates. See the [secret resolution hierarchy](/guide/environments/vault#secret-resolution-hierarchy) for details.
-
-A key that isn't set in any of the three tiers has no correct SQL rendering, so reading it
-throws instead of quietly resolving to `undefined`:
-
-```sql
--- Throws: Secret "STRIPE_KEY" not found (searched: config-local, global-local, vault)
-{%~ $.secrets.STRIPE_KEY %}
-```
-
-This is deliberate — a missing secret used to render as the literal six-character string
-`undefined`, which is valid SQL and easy to miss in a review. `$.secrets.KEY ?? fallback`
-can't paper over a missing key either, because `??` still evaluates the throwing read on its
-left side. To probe for a secret that's genuinely optional, check for it first with `in`,
-which never throws:
-
-```sql
-{% const hasKey = 'STRIPE_KEY' in $.secrets; %}
-{%~ hasKey ? $.quote($.secrets.STRIPE_KEY) : 'NULL' %}
-```
-
-`in` before read is how a template says "this secret is allowed to be missing" on purpose,
-rather than by accident. See
-[`examples/todo-db/sql/10_seeds/feature_flags.sql.tmpl`](https://github.com/noormdev/noorm/blob/master/examples/todo-db/sql/10_seeds/feature_flags.sql.tmpl)
-for a full example that forces a feature flag off when its backing secret isn't configured.
-
-
-### Generating Multiple Similar Objects
-
-When you have many similar tables, views, or procedures:
-
-```yaml
-# audit_tables.yml
-tables:
-    - users
-    - posts
-    - comments
-    - orders
-```
-
-```sql
--- create_audit_triggers.sql.tmpl
-{% for (const table of $.auditTables.tables) { %}
-CREATE TRIGGER trg_{%~ table %}_audit
-AFTER INSERT OR UPDATE OR DELETE ON {%~ table %}
-FOR EACH ROW EXECUTE FUNCTION audit_log_changes();
-
-{% } %}
-```
-
-
-### Role-Based Permissions
-
-Define permissions in YAML and generate all the grants:
-
-```yaml
-# permissions.yml
-roles:
-    WebApp:
-        views: [Users_V, Posts_V, Settings_V]
-        procs: [Login_trx, Signup_trx]
-    Worker:
-        views: [Queue_V, Jobs_V]
-        procs: [ProcessJob_trx]
-```
-
-```sql
--- grant_permissions.sql.tmpl
-{% for (const [role, perms] of Object.entries($.permissions.roles)) { %}
--- Grants for {%~ role %}
-{% for (const view of perms.views || []) { %}
-GRANT SELECT ON {%~ view %} TO {%~ role %};
-{% } %}
-{% for (const proc of perms.procs || []) { %}
-GRANT EXECUTE ON {%~ proc %} TO {%~ role %};
-{% } %}
-
-{% } %}
-```
-
-
-### Composing from Fragments
-
-Large table schemas are easier to review when split into logical groups. Use `$.include()` to compose them into a single change:
+On a config named `dev` with the secret set, `run preview` prints:
 
 ```
-db/changes/2025-01-15-full-setup/
-├── change/
-│   └── 001_schema.sql.tmpl
-└── lib/
-    ├── core_tables.sql
-    ├── content_tables.sql
-    └── seed_defaults.sql
+INSERT INTO app_setting (name, value) VALUES
+    ('payment_gateway_key', 'gw_live_123'),
+    ('payment_gateway_url', 'https://sandbox.gateway.example');
 ```
 
-```sql
--- db/changes/2025-01-15-full-setup/change/001_schema.sql.tmpl
-
--- Core tables (users, roles, user_roles)
-{%~ await $.include('../lib/core_tables.sql') %}
-
--- Content tables (posts, comments, tags, post_tags)
-{%~ await $.include('../lib/content_tables.sql') %}
-
--- Default seed data
-{%~ await $.include('../lib/seed_defaults.sql') %}
-```
-
-Each fragment is plain SQL that could run on its own. The template just stitches them together so the change stays atomic while the source stays organized.
+[Secrets](/guide/environments/secrets#which-value-does-a-template-get) explains which of the three tiers supplies `$.secrets.PAYMENT_GATEWAY_KEY`. `$.config.isTest` and `$.config.connection.database` are the other keys templates branch on.
 
 
-## Security Notes
-
-**SQL Injection**: Always use `$.quote()` or `$.escape()` for values from data files. Even trusted data files can contain characters that break SQL syntax.
-
-**Secret Exposure**: The rendered SQL may contain sensitive values from `$.secrets`. Don't log rendered templates in production.
-
-**Code Execution**: `$helpers.ts` files execute arbitrary code whenever a template in or under their directory renders. `.js`, `.mjs`, and `.ts` data files execute only when a template names their key. Both run in the noorm process with your environment. Only use trusted sources.
-
-**Path Traversal**: `$.include()` resolves relative paths and cannot escape the project root.
+## How do I check what a template renders?
 
 
-## What's Next?
+`noorm run preview <file>` prints the rendered SQL to stdout, so `> rendered.sql` works. `--json` returns `{ filepath, sql, durationMs }`. Both `preview` and `inspect` take `--config` and `--json`, and a `viewer` role cannot use either.
 
-- [Organization](/guide/sql-files/organization) - Control execution order with file naming
-- [Secrets](/guide/environments/secrets) - Securely store credentials
-- [Vault](/guide/environments/vault) - Team-shared secrets with resolution hierarchy
-- [Changes](/guide/changes/overview) - Versioned changes with template support
-- [Data Transfer](/guide/database/transfer) - Export/import .dt files for seeding templates
+A change folder renders `.sql.tmpl` files the same way. [Changes](/guide/changes/overview) covers where they go.
+
+::: warning Helpers and scripts run as you
+A `$helpers` file runs whenever a template at or below its folder renders, and a referenced `.js` or `.ts` data file runs too. Both execute in the noorm process with your environment, including during `preview`. Read them before you run a template from a branch you did not write.
+:::
+
+
+## What bites
+
+
+| Mistake or symptom | Cause | Fix |
+|---|---|---|
+| `49.00` renders as `49` | YAML and JSON parse it as the number 49 | Quote it in the data file (`"49.00"`), or format it in a helper such as `$.price()` |
+| `Secret "PAYMENT_GATEWAY_KEY" not found (searched: config-local, global-local, vault)` | No tier holds the key. `$.secrets.KEY ?? fallback` cannot catch it, because the read throws first | Set the secret, or test first: `'PAYMENT_GATEWAY_KEY' in $.secrets ? $.quote($.secrets.PAYMENT_GATEWAY_KEY) : 'NULL'` |
+| `sqlQuote() received undefined` | A field the row lacks, a typo, or an unset `$.globalSecrets` key | Fix the name. Pass `null` when you mean SQL `NULL` |
+| `$.config.name` is undefined, or holds a file's fields | A `config.yml` beside the template replaced `$.config` | Rename the data file |
+| `[object Promise]` in the SQL | `$.include()` is async | Write `{%~ await $.include('...') %}` |
+| A string with `'` breaks the statement | The value went in with `{%~ %}` alone, which writes raw text | Wrap every string from a data file in `$.quote()` |
+| One of two data files is ignored | `user_roles.json`, `user-roles.yaml`, and `user.roles.csv` all become `$.userRoles`, and the last one loaded wins | Give each file a distinct base name |
+| A `.ts` data file never loads, even in `preview` | The template does not name its key | Write `$.key` in the template |
+| A `$helpers.ts` fails to load on Node | Node older than 22.13 cannot strip TypeScript types | Use `$helpers.js`. `run inspect` lists the failure under `Helper Errors:` |
+
+
+## Next
+
+
+- [Secrets](/guide/environments/secrets): set the values a template reads
+- [Organization](/guide/sql-files/organization): where templates sit in the build order
+- [Execution](/guide/sql-files/execution): how a rendered template is hashed and skipped
+- [Data transfer](/guide/database/transfer): export `.dt` files to use as seed data

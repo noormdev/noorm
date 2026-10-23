@@ -1,258 +1,124 @@
 # Vault
 
 
-Team-shared secrets need to live somewhere everyone can access them. Local secrets stay on your machine, but what about API keys that the whole team needs? The vault stores encrypted secrets in the database itself, distributing them to team members automatically.
+Share a secret with your whole team without chat messages or committed files.
 
-
-## Secret Resolution Hierarchy
-
-When a template references `secrets.API_KEY`, noorm checks three sources in order. The first match wins:
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│  1. Config-specific local secret         (highest priority) │
-│     Your override for this specific config                  │
-│     Location: .noorm/state/state.enc                        │
-├─────────────────────────────────────────────────────────────┤
-│  2. Global local secret                                     │
-│     Your shared secret across all configs                   │
-│     Location: .noorm/state/state.enc                        │
-├─────────────────────────────────────────────────────────────┤
-│  3. Vault secret                          (lowest priority) │
-│     Team-shared value from the database                     │
-│     Location: the vault table                               │
-└─────────────────────────────────────────────────────────────┘
-```
-
-**Local always wins.** This lets you override team secrets for testing without affecting others.
-
-
-### Example: Overriding a Team Secret
-
-Your team stores the production Stripe key in the vault:
-
-```
-Vault:  STRIPE_KEY = "sk_live_abc123..."
-```
-
-For local development, you want to use Stripe's test mode. Set a local override through the TUI: `noorm ui` → Config → highlight the config → `k` → `a`, with key `STRIPE_KEY` and value `sk_test_xyz789...`. Headlessly, `noorm secret set STRIPE_KEY "sk_test_xyz789..."`. Local secrets are stored encrypted in your `.noorm/state/state.enc` and never leave your machine.
-
-Now when templates reference `secrets.STRIPE_KEY`:
-
-| Context | Resolved Value | Source |
-|---------|----------------|--------|
-| Your machine | `sk_test_xyz789...` | Local (your override) |
-| Teammate's machine | `sk_live_abc123...` | Vault (no local override) |
-| CI/CD pipeline | `sk_live_abc123...` | Vault (no local override) |
-
-Your local override doesn't affect anyone else.
-
-
-### When to Use Each Layer
-
-| Layer | Use When |
-|-------|----------|
-| **Config-specific local** | Testing with different credentials per environment |
-| **Global local** | Personal API keys you use across all configs |
-| **Vault** | Team-shared secrets everyone needs |
-
-
-## How Encryption Works
-
-The vault uses dual-layer encryption to share secrets securely:
-
-**Layer 1: Vault Key Distribution**
-
-A single 256-bit vault key encrypts all secrets. Each team member receives their own encrypted copy of this key:
-
-1. Generate ephemeral X25519 keypair
-2. Perform ECDH with recipient's public key
-3. Derive encryption key via HKDF-SHA256
-4. Encrypt vault key with AES-256-GCM
-5. Store in user's `encrypted_vault_key` column
-
-When you connect, noorm decrypts your copy of the vault key using your private identity key.
-
-**Layer 2: Secret Encryption**
-
-Individual secrets are encrypted with the shared vault key:
-
-- AES-256-GCM authenticated encryption
-- Random IV per secret
-- Stored as JSON in the vault table
-
-This design means: compromising the database alone doesn't expose secrets. An attacker needs both database access AND a team member's private key.
-
-
-## Initializing the Vault
-
-The first team member to initialize creates the vault key:
+The first developer creates the vault and stores a secret in it:
 
 ```bash
 noorm vault init
-```
-
-This generates a new vault key and stores it encrypted for your identity. Only one person needs to do this per database.
-
-If someone else already initialized:
-
-```
-Vault already initialized but you do not have access.
-Ask a team member to propagate.
-```
-
-
-## Managing Secrets
-
-Once you have vault access, manage secrets with these commands:
-
-```bash
-# Set a secret
-noorm vault set API_KEY "sk-live-..."
-noorm vault set DB_PASSWORD "secret123"
-
-# List all secrets (values hidden)
+printf %s "$KEY" | noorm vault set PAYMENT_GATEWAY_KEY --stdin
 noorm vault list
-
-# Remove a secret
-noorm vault rm OLD_API_KEY
 ```
 
-The TUI provides a visual interface at **Vault** (`v` from home):
+```
+Vault initialized successfully
+Vault secret "PAYMENT_GATEWAY_KEY" set successfully
+Vault secrets (1):
+  PAYMENT_GATEWAY_KEY (set by ana@example.com)
+```
 
-- View all vault secrets, each labeled with who set it
-- Add a secret with `a`, edit one by selecting it
-- See pending users who need access
-- One-key propagation (`p`)
-
-Removing a vault secret is CLI-only: `noorm vault rm <KEY>`.
+The vault lives in the config's own database, one per config. Templates read it as the last tier of [`$.secrets`](/guide/environments/secrets#which-value-does-a-template-get), so a local value overrides it for one developer.
 
 
-## Granting Team Access
+## How does a teammate get access?
 
-New team members register their identity but don't automatically get vault access. Someone with access must propagate the key:
+
+A new teammate is registered but holds no key. Someone with access grants it:
+
+```mermaid
+sequenceDiagram
+    participant Ana
+    participant Database
+    participant Ben
+    Ana->>Database: vault init, key sealed to Ana
+    Ana->>Database: vault set PAYMENT_GATEWAY_KEY
+    Ben->>Database: vault list, Ben is registered
+    Database-->>Ben: refused, no key yet
+    Ana->>Database: vault propagate
+    Database-->>Ana: pending list, nothing granted
+    Ana->>Database: vault propagate --yes
+    Database->>Database: key sealed to Ben's public key
+    Ben->>Database: vault list
+    Database-->>Ben: secrets, decrypted with Ben's key
+```
+
+Ben needs an identity first: `noorm identity init`. Without `--yes`, `propagate` lists who is waiting and grants nothing. With it:
 
 ```bash
-noorm vault propagate
+noorm vault propagate --yes
 ```
 
-This encrypts the vault key for each pending user's public key. After propagation, they can decrypt vault secrets on their next connection.
-
-The Vault screen counts them in its header:
-
 ```
-3 secret(s) | 4 user(s) with access   (2 pending)
+Granted vault access to 1 identities
+  Ben Ortiz <ben@example.com>  4a5c14af...
 ```
 
-Press `p` there to propagate. noorm lists the recipients it is about to grant access to and asks you to confirm before it writes anything.
+In the TUI, `v` from home opens the vault. The header counts waiting teammates, `p` grants after listing them, and `a` adds a secret.
 
 
-## Copying Secrets Between Configs
+## Which commands manage the vault?
 
-Move a secret from one database to another. `vault cp` takes three positional arguments in this order: the key, the source config, and the destination config. All three are required, so copy one key per invocation.
+
+| Command | Effect |
+|---|---|
+| `noorm vault init` | Create the vault key and seal it to you. Safe to repeat |
+| `noorm vault set <KEY> [value] [--stdin]` | Add or replace a secret |
+| `noorm vault list` | Keys and who set them, never values |
+| `noorm vault rm <KEY> --yes` | Delete a secret. The TUI cannot |
+| `noorm vault propagate [--to <hash,...>] --yes` | Grant the key to waiting teammates |
+| `noorm vault cp <KEY> <source> <destination>` | Copy one secret between configs |
+
+Each takes `--json`, and every command but `cp` takes `--config`. Keys follow the [secret key rule](/guide/environments/secrets#how-do-i-set-a-secret).
+
+
+## How is it encrypted?
+
+
+| What | Encrypted with | Stored in |
+|---|---|---|
+| Each secret | One 256-bit vault key, AES-256-GCM, random IV | `noorm.vault`, column `encrypted_value` |
+| The vault key, once per teammate | That teammate's public key: ephemeral X25519, HKDF-SHA256, AES-256-GCM | `noorm.identities`, column `encrypted_vault_key` |
+
+A null `encrypted_vault_key` marks a teammate as waiting. Those are the PostgreSQL and SQL Server names. MySQL and SQLite use `__noorm_vault__` and `__noorm_identities__`. Someone with only the database sees ciphertext. Reading a secret takes the database and a granted teammate's private key.
+
+
+## How do I copy a secret to another config?
+
 
 ```bash
-# Copy one secret
-noorm vault cp API_KEY staging production
-
-# Overwrite a key that already exists on the destination
-noorm vault cp API_KEY staging production --force
-
-# Preview without writing
-noorm vault cp API_KEY staging production --dry-run
+noorm vault cp PAYMENT_GATEWAY_KEY staging prod --dry-run
 ```
 
-A dry run performs the same preflight as a real copy (vault access on both ends, source key exists, destination collisions) and only skips the write.
-
-If the destination vault isn't initialized, noorm initializes it automatically using your identity.
-
-
-## Using Vault Secrets in Templates
-
-Vault secrets merge into the template context alongside local secrets:
-
-```sql
--- db/sql/setup/external-api.sql.tmpl
--- Vault secret (or local override if set)
-INSERT INTO api_config (provider, key)
-VALUES ('stripe', {%~ $.quote($.secrets.STRIPE_KEY) %});
+```
+Would copy 1 secrets: PAYMENT_GATEWAY_KEY
 ```
 
-The resolution order means you can:
-
-1. Store production `STRIPE_KEY` in the vault
-2. Override with a test key locally for development
-3. Templates work identically in both cases
+A dry run checks vault access on both configs, that the key exists, and collisions, then writes nothing. A real copy initializes the destination vault if it has none. An existing key is skipped unless you pass `--force`.
 
 
-## CI/CD Integration
-
-Vault commands run non-interactively, so you can manage secrets straight from a pipeline:
-
-```bash
-# Initialize vault
-noorm vault init
-
-# Set secret (value as argument)
-noorm vault set API_KEY "$API_KEY"
-
-# List with JSON output
-noorm vault list --json
-
-# Copy a secret between environments
-noorm vault cp API_KEY staging production
-```
-
-Pipe the value in with `--stdin` to keep it out of the process table, shell history, and `set -x` traces:
-
-```bash
-echo "$SECRET_VALUE" | noorm vault set MY_SECRET --stdin
-```
+## How does a CI runner get access?
 
 
-## Security Considerations
-
-The vault design provides several security properties:
-
-1. **End-to-end encryption** - Secrets encrypted in memory, transmitted encrypted, stored encrypted
-2. **Zero-knowledge database** - Database administrators see only ciphertext
-3. **Per-user key distribution** - Propagation re-encrypts the same vault key for each recipient, so every user holds unique ciphertext
-4. **No shared secrets in transit** - ECDH derives keys without transmitting them
-5. **Authenticated encryption** - AES-256-GCM detects tampering
-
-Limitations to understand:
-
-- Team members with vault access can read all vault secrets
-- Removing access requires regenerating the vault key (not yet supported)
-- Lost private keys mean lost vault access (identity must be re-registered)
+A developer with access runs `noorm ci identity enroll --config prod --name "GitHub CI" --email ci@example.com --yes` once. It registers the runner's identity and seals the key to it. [CI/CD](/guide/automation/ci) covers the runner side.
 
 
-## Database Schema
-
-The vault uses two database structures. Their names depend on the dialect: PostgreSQL and SQL Server put noorm's tracking tables in a dedicated `noorm` schema (`noorm.vault`, `noorm.identities`), while MySQL and SQLite have no schemas and keep the prefixed forms (`__noorm_vault__`, `__noorm_identities__`) in the default schema.
-
-**The vault table:**
-
-| Column | Type | Description |
-|--------|------|-------------|
-| `id` | int | Primary key |
-| `secret_key` | string | Secret name (unique) |
-| `encrypted_value` | text | AES-256-GCM ciphertext (JSON) |
-| `set_by` | string | Identity who set it |
-| `created_at` | timestamp | Creation time |
-| `updated_at` | timestamp | Last update time |
-
-**The identities table extension:**
-
-| Column | Type | Description |
-|--------|------|-------------|
-| `encrypted_vault_key` | text | Vault key encrypted for this user (nullable) |
-
-A null `encrypted_vault_key` means the user is pending vault access.
+## What bites
 
 
-## What's Next?
+| Symptom | Cause | Fix |
+|---|---|---|
+| `No vault access. Wait for a team member to propagate access.` | Your identity holds no sealed key yet | Ask a teammate to run `noorm vault propagate --yes` |
+| `vault rm` exits 1: cannot be undone | The vault keeps no history, so it needs `--yes` | Check the key, then pass `--yes` |
+| A `vault set` or `vault init` asks for confirmation | Your role on the config is `operator` | Pass `--yes` |
+| A former teammate who still reaches the database can read the vault | A grant cannot be revoked, and no command rotates the vault key | Change the secret at its source, then `vault set` the new value |
+| Everyone with access reads every secret | The vault has one key for all of it | Keep per-person values in local secrets |
 
-- [Secrets](/guide/environments/secrets) - Local secret storage
-- [Identity](/cli/identity) - The keypair that lets teammates encrypt secrets to you
-- [Templates](/guide/sql-files/templates) - Using secrets in dynamic SQL
+
+## Next
+
+
+- [Secrets](/guide/environments/secrets): resolution order and local overrides
+- [Configs](/guide/environments/configs): the `vault:*` permissions per role
+- [Identity](/cli/identity): create the keypair a teammate is registered with
+- [CI/CD](/guide/automation/ci): enroll a runner and load job secrets

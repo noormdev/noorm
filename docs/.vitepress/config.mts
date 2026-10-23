@@ -1,5 +1,6 @@
 import { defineConfig } from 'vitepress';
 import { withMermaid } from 'vitepress-plugin-mermaid';
+import { mermaid } from './mermaid';
 
 // https://vitepress.dev/reference/site-config
 const SITE_URL = 'https://noorm.dev';
@@ -11,6 +12,7 @@ export default withMermaid(
         title: 'noorm',
         description: DESCRIPTION,
         base: process.env.VITEPRESS_BASE || '/',
+        mermaid,
 
         // `docs/wiki/` is generated repo-analysis output for tooling and
         // contributors, not published documentation. VitePress compiles every
@@ -24,8 +26,9 @@ export default withMermaid(
         // `models/**` joins the list for the same reason as `tapes/**`: it is
         // source for a generated artifact, not pages. Left in, VitePress
         // compiles every entity file into a route like
-        // /models/todo-list/data/core/users.html.
-        srcExclude: ['wiki/**', 'spec/**', 'design/**', 'superpowers/**', 'tmp/**', 'tapes/**', 'models/**'],
+        // /models/todo-list/data/core/users.html. `parts/**` holds fragments
+        // that pages pull in with `<!--@include: -->`; they are not pages either.
+        srcExclude: ['wiki/**', 'spec/**', 'design/**', 'superpowers/**', 'tmp/**', 'tapes/**', 'models/**', 'parts/**'],
 
         markdown: {
             // The terminal recordings are the heaviest assets on the site
@@ -85,15 +88,13 @@ gtag('config', 'G-Y69K95866J');`],
             // https://vitepress.dev/reference/default-theme-config
             logo: { light: '/image/logo.svg', dark: '/image/logo-dark.svg' },
             siteTitle: 'noorm',
-            // No Home entry: the logo already links to `/`. Dev docs are not a
-            // top-bar concern either — they live in the Reference group of the
-            // main sidebar as "Contributor Documentation".
+            // No Home entry: the logo already links to `/`. Contributor docs are
+            // not a reader's concern, so they sit in the footer, not the nav.
             nav: [
-                { text: 'Getting Started', link: '/getting-started/installation' },
-                { text: 'Guide', link: '/guide/sql-files/organization' },
-                { text: 'CLI', link: '/headless' },
-                { text: 'TUI', link: '/tui' },
+                { text: 'Docs', link: '/getting-started/installation' },
                 { text: 'Modeling', link: '/modeling/' },
+                { text: 'Reference', link: '/headless' },
+                { text: 'Download', link: '/download' },
             ],
 
             sidebar: {
@@ -149,7 +150,6 @@ gtag('config', 'G-Y69K95866J');`],
                     {
                         text: 'Getting Started',
                         items: [
-                            { text: 'Why noorm', link: '/why-noorm' },
                             { text: 'Installation', link: '/getting-started/installation' },
                             { text: 'First Build', link: '/getting-started/first-build' },
                             { text: 'Building Your SDK', link: '/getting-started/building-your-sdk' },
@@ -161,15 +161,6 @@ gtag('config', 'G-Y69K95866J');`],
                     // is collapsible and starts closed, so the sidebar opens as
                     // a short list of topics rather than a wall of links.
                     {
-                        text: 'Features',
-                        collapsed: true,
-                        items: [
-                            { text: 'CLI Reference', link: '/headless' },
-                            { text: 'Terminal UI', link: '/tui' },
-                            { text: 'Relational Design', link: '/guide/relational-design' },
-                        ],
-                    },
-                    {
                         // ignatius is a separate binary with its own release
                         // cadence, so these pages carry the narrative and link
                         // out to the ignatius repo for the exhaustive rule
@@ -178,13 +169,15 @@ gtag('config', 'G-Y69K95866J');`],
                         collapsed: true,
                         items: [
                             { text: 'Overview', link: '/modeling/' },
-                            { text: 'Installation', link: '/modeling/installation' },
+                            { text: 'Commands', link: '/modeling/installation' },
                             { text: 'Entities & Key Inheritance', link: '/modeling/entities' },
                             { text: 'Data Flows', link: '/modeling/data-flows' },
+                            { text: 'From Model to SQL', link: '/modeling/model-to-sql' },
                             { text: 'Modeling Skill', link: '/modeling/modeling-skill' },
                             { text: 'Reverse-Engineering', link: '/modeling/reverse-engineering' },
                             { text: 'Branding', link: '/modeling/branding' },
                             { text: 'Best Practices', link: '/modeling/best-practices' },
+                            { text: 'Why ignatius', link: '/modeling/why' },
                         ],
                     },
                     {
@@ -215,6 +208,7 @@ gtag('config', 'G-Y69K95866J');`],
                         collapsed: true,
                         items: [
                             { text: 'Overview', link: '/guide/changes/overview' },
+                            { text: 'Add a Column', link: '/guide/changes/add-a-column' },
                             { text: 'Forward & Revert', link: '/guide/changes/forward-revert' },
                             { text: 'History', link: '/guide/changes/history' },
                         ],
@@ -241,8 +235,17 @@ gtag('config', 'G-Y69K95866J');`],
                     {
                         text: 'Reference',
                         items: [
+                            { text: 'CLI', link: '/headless' },
                             { text: 'SDK', link: '/reference/sdk' },
-                            { text: 'Contributor Documentation', link: '/dev/' },
+                            { text: 'Terminal UI', link: '/tui' },
+                        ],
+                    },
+                    {
+                        text: 'Background',
+                        collapsed: true,
+                        items: [
+                            { text: 'Why noorm', link: '/why-noorm' },
+                            { text: 'Relational Design', link: '/guide/relational-design' },
                         ],
                     },
                 ],
@@ -268,15 +271,16 @@ gtag('config', 'G-Y69K95866J');`],
                 },
             },
 
+            // Depth 4 because the CLI reference puts each command at ####.
             outline: {
-                level: [2, 3],
+                level: [2, 4],
             },
 
             footer: {
                 message: 'Database Schema & Change Manager',
                 // Apache-2.0 to match LICENSE and every package.json in the repo. This
                 // read "ISC" until 2026-08 and matched nothing that ships.
-                copyright: `© ${new Date().getFullYear()} <a href="https://github.com/noormdev">noorm</a> · <a href="https://github.com/noormdev/noorm">GitHub</a> · <a href="https://www.npmjs.com/org/noormdev">npm</a> · <a href="https://github.com/noormdev/noorm/blob/master/LICENSE">Apache 2.0</a>`,
+                copyright: `© ${new Date().getFullYear()} <a href="https://github.com/noormdev">noorm</a> · <a href="https://github.com/noormdev/noorm">GitHub</a> · <a href="https://www.npmjs.com/org/noormdev">npm</a> · <a href="https://github.com/noormdev/noorm/blob/master/LICENSE">Apache 2.0</a> · <a href="/dev/">Contributor docs</a>`,
             },
         },
     }),

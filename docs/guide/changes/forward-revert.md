@@ -1,301 +1,188 @@
-# Forward and Revert Lifecycle
+# Forward and revert
 
 
-Database changes move in two directions: forward when you apply them, backward when you need to undo. Understanding this lifecycle helps you deploy with confidence and recover gracefully when things go wrong.
+Apply outstanding changes in order, and roll one back when it goes wrong.
 
-
-## Applying Changes
-
-noorm provides three ways to apply changes, each suited to different situations.
-
-
-### Fast-Forward All Pending
-
-Apply every pending change in chronological order:
-
-**TUI:** Navigate to Changes (`g` from home), then press `f` for fast-forward.
-
-**Headless:**
 ```bash
 noorm change ff
-noorm change ff --json
 ```
 
-Fast-forward is the workhorse for deployments. It finds every outstanding change (`pending`, `reverted`, or `stale` after a teardown), sorts them by folder name so the `YYYY-MM-DD` prefix puts them in chronological order, and executes each one in sequence. If any change fails, execution stops immediately.
-
-**JSON output:**
-```json
-{
-    "success": true,
-    "status": "success",
-    "executed": 2,
-    "skipped": 0,
-    "failed": 0,
-    "durationMs": 77,
-    "changes": [
-        {"name": "2024-02-01-add-notifications", "direction": "change", "status": "success", "durationMs": 45},
-        {"name": "2024-02-15-user-preferences", "direction": "change", "status": "success", "durationMs": 32}
-    ]
-}
 ```
-
-Each entry in `changes` also carries a `files` array with one record per SQL file: relative path, checksum, status, duration, and the error message when the file failed. If the `db/changes/` directory is missing, the payload gains a `warnings` array saying so, because an absent directory otherwise looks identical to an up-to-date database. A change folder that cannot be read, such as a manifest naming a deleted `sql/` file, stops the batch at that change when it would run, and only adds a warning when it is already applied.
-
-
-### Apply a Specific Change
-
-Run one change by name:
-
-**TUI:** From the Changes list, select a change and press `r` for run.
-
-**Headless:**
-```bash
-noorm change run 2024-02-01-add-notifications
+• log  Fast-forward success  executed=2 skipped=0 failed=0
+• log    2026-10-22-open-orders (success)
+• log    2026-10-23-payment (success)
 ```
-
-This is useful when you need to apply changes out of order during development, or re-run a failed change after fixing the underlying issue.
-
-
-### Apply the Next Pending Change
-
-Apply only the next change in sequence:
-
-**TUI:** From Changes, press `n` for next.
-
-**Headless:**
-```bash
-noorm change next
-```
-
-Useful for stepping through changes one at a time, perhaps while monitoring system behavior between each.
-
-
-## Reverting Changes
-
-Rolling back requires that your change includes revert scripts in its `revert/` folder.
-
-
-### Revert a Specific Change
-
-Undo one change:
-
-**TUI:** From Changes, select an applied change and press `v` for revert.
-
-**Headless:**
-```bash
-noorm change revert 2024-02-01-add-notifications
-```
-
-Revert scripts execute in forward sequence order, just like change scripts. You design them to undo in reverse—if your change had `001_create-table.sql` and `002_add-indexes.sql`, your revert should have `001_drop-indexes.sql` (undoes the last thing) and `002_drop-table.sql` (undoes the first thing).
-
-
-### Rewind Multiple Changes
-
-Revert the last N applied changes:
-
-**TUI:** From Changes, press `w` for rewind, then specify how many.
-
-**Headless:**
-```bash
-noorm change rewind 3
-```
-
-Rewind walks through your applied changes starting with the newest, reverting each one before moving to the next oldest. It considers only changes currently recorded as `success`, and orders them by when they were applied. Changes applied in the same second, which is everything a single `change ff` applies, tie on that timestamp, so the tracking table's row id breaks the tie and preserves true apply order.
-
-Pass a change name instead of a count to rewind back to and including that change:
 
 ```bash
-noorm change rewind 2024-02-01-add-notifications
+noorm change revert 2026-10-23-payment
 ```
 
-
-## What Happens During Apply
-
-When you apply a change, noorm:
-
-1. **Reads the change folder** - Loads all files from `change/` and determines their types (`.sql`, `.sql.tmpl`, or `.txt` manifest).
-
-2. **Calculates a checksum** - Creates a combined hash of all files to detect future modifications.
-
-3. **Checks the database record** - Looks up this change's status to determine if it should run.
-
-4. **Acquires the config lock** - Stops a second operation on the same config from running concurrently. The lock is released when the change finishes, whatever the outcome.
-
-5. **Resolves manifest references** - For `.txt` files, replaces file references with actual SQL content from your schema directory.
-
-6. **Processes templates** - For `.sql.tmpl` files, runs them through the Eta templating engine.
-
-7. **Executes SQL in sequence** - Runs each file in order (`001_`, `002_`, etc.) against the database. A file whose checksum matches a still-standing success from an earlier attempt is skipped, so a retry only re-runs what actually needs re-running.
-
-8. **Records the result** - Stores the execution status, checksum, and timestamp in the change tracking tables.
-
-If any file fails, execution stops, and the files that were never reached are recorded as skipped. On PostgreSQL the whole change runs inside one transaction, so the failure rolls back the DDL and the history rows together and the change leaves no record at all. On MySQL, SQL Server, and SQLite there is no wrapping transaction: whatever already committed stays committed, and the change is recorded as `failed`.
-
-
-## What Happens During Revert
-
-Reverting follows a similar process but with key differences:
-
-1. **Verifies the change can be reverted** - A change recorded as `success` or `failed` can be reverted. One that was never applied, is already `reverted`, or went `stale` after a teardown cannot. `--force` skips this check.
-
-2. **Reads the revert folder** - Loads files from `revert/` instead of `change/`.
-
-3. **Executes in sequence order** - Files run from lowest to highest (`001_`, `002_`, etc.), same as change scripts.
-
-4. **Updates the records** - Writes its own history record with direction `revert`, then flips the original forward record's status to `reverted`. The revert record's timestamp is what surfaces as `revertedAt`.
-
-After reverting, the change returns to a state where it can be applied again. This is the `reverted` status, which noorm treats as "needs to run" during the next fast-forward.
-
-
-## Dry Run Mode
-
-Preview what would happen without touching the database:
-
-**TUI:** Press `Shift+D` to turn on dry-run mode. It is a global toggle, so every apply and revert stays a dry run until you press it again.
-
-**Headless:**
-
-    noorm change ff --dry-run
-    noorm change run 2024-02-01-add-notifications --dry-run
-    noorm change revert 2024-02-01-add-notifications --dry-run
-    noorm change next --dry-run
-    noorm change rewind 3 --dry-run
-
-Dry run writes rendered SQL to a `tmp/` folder so you can inspect exactly what would execute. Templates are processed and manifests are resolved, but nothing from your change files runs against the database and nothing is written to the change tracking tables: the dry-run path skips the status lookup, takes no lock, and creates no history record. `ff`, `next`, and `rewind` still read the tracking tables to decide which changes to render.
-
-In human mode the CLI opens with `Dry run: rendering changes to tmp/ (no DB writes)`, labels the summary line `(dry-run)`, and tags each change `dry-run`, so log scrapers and operators can tell it apart from a real apply. With `--json` those lines are suppressed and the result payload carries a `dryRun: true` field instead (`rewind --json` is the exception and omits it):
-
-    $ noorm change ff --dry-run --json
-    {
-      "success": true,
-      "status": "success",
-      "executed": 2,
-      "skipped": 0,
-      "failed": 0,
-      "durationMs": 12,
-      "changes": [],
-      "dryRun": true
-    }
-
-This is essential for production deployments. Always preview before applying.
-
-
-## Handling Failures
-
-When a change fails:
-
-1. **Execution stops immediately** - No further files in the change execute. The ones never reached are recorded as `skipped`, with the failing file named as the reason.
-
-2. **Status is recorded as failed** - The change shows `failed` in the list.
-
-3. **Error details are captured** - The failing file name and the database's error message are stored on both the change record and that file's record.
-
-4. **Next fast-forward will retry** - Failed changes are outstanding work, so the next `ff` attempt includes them.
-
-On PostgreSQL, steps 2 and 3 do not survive the failure. The change runs inside one transaction, DDL and history rows alike, so a failure rolls all of it back and leaves no record behind. You still see the error in the command's output and exit code, and the next `ff` reruns the change because the tracking tables show it as never applied. MySQL, SQL Server, and SQLite have no wrapping transaction and keep the `failed` record.
-
-
-### Investigating Failures
-
-**TUI:** From Changes, press `h` for history, then select the failed operation to see file-level details.
-
-**Headless:**
-```bash
-noorm change history
+```
+• log  2026-10-23-payment reverted (success)
 ```
 
-The history shows which specific file failed and includes the error message from the database. On PostgreSQL there is nothing to show, since a failed change rolls its history rows back with the DDL; read the error off the failing command instead. See [History](/guide/changes/history) for detailed debugging workflows.
+`ff` ran both outstanding changes, oldest first. `revert` ran the `revert/` files of `payment` and set it to `reverted`, so the next `ff` applies it again.
 
 
-### Recovering from Failures
-
-Option 1: **Fix and retry**
-- Edit the SQL file to fix the issue
-- Run `change ff` again (the change will be picked up automatically)
-
-Option 2: **Manual cleanup**
-- If partial SQL executed, you may need to manually clean up
-- Then run with `--force` to skip the checksum check:
-
-        noorm change run 2024-02-01-add-notifications --force
+## Which statuses can a change have?
 
 
-## Common Workflows
+A change has five statuses, and `ff` and `next` pick up three of them.
+
+```mermaid
+stateDiagram-v2
+    [*] --> pending : change add
+    pending --> success : files pass
+    pending --> failed : a file fails
+    failed --> success : change run
+    success --> reverted : revert
+    reverted --> success : ff or run
+    success --> stale : db teardown
+    stale --> success : ff or run
+```
+
+| Status | Means | `ff` and `next` |
+|---|---|---|
+| `pending` | no record yet | run it |
+| `success` | applied | skip it |
+| `failed` | last run failed and was recorded | skip it |
+| `reverted` | applied, then rolled back | run it |
+| `stale` | `db teardown` dropped what it built | run it |
+
+`revert` runs from `success` or `failed`, and `db teardown` turns both into `stale`. A revert from `reverted` or `stale` runs nothing and still reports success. A change with no record fails with `not applied`.
 
 
-### Deploying to Production
-
-    # Preview what will run
-    noorm change ff --dry-run
-
-    # Review the rendered SQL in tmp/
-    # Then apply for real
-    noorm change ff
+## How do I apply changes?
 
 
-### Rolling Back a Bad Deploy
+| Command | Applies | TUI |
+|---|---|---|
+| `noorm change ff` | every outstanding change, oldest first | `f` |
+| `noorm change next [n]` | the next `n` outstanding changes, default 1 | `n` |
+| `noorm change run <name>` | one named change, in or out of order | `r` |
+
+`ff` and `next` stop at the first failing change. Exit `0` is success, `1` failed, `3` partial: some applied before one failed. [CI](/guide/automation/ci) runs these in a pipeline.
+
+
+## What happens when a change runs?
+
+
+A change takes the config lock, runs its files in order, and records the outcome. The first failing file stops it.
+
+```mermaid
+flowchart TD
+    N{"needs to run?<br/>status, checksums"} -->|no| S["skip"]
+    N -->|yes| L["take the config lock"]
+    L --> F["run files in order,<br/>skip passed files"]
+    F --> P{"every file passes?"}
+    P -->|yes| OK["record success"]
+    P -->|no| D{"PostgreSQL?"}
+    D -->|yes| RB["roll back the DDL<br/>and the records"]
+    D -->|no| FL["record failed,<br/>skip unreached files"]
+```
+
+On PostgreSQL the whole change is one transaction, so a failure leaves no record and no applied file. MySQL, SQL Server, and SQLite have no wrapping transaction, so files that passed stay applied.
+
+
+## How do I recover from a failed change?
+
+
+Fix the file, then retry:
+
+| | PostgreSQL | MySQL, SQL Server, SQLite |
+|---|---|---|
+| Status after a failure | none, so `pending` | `failed`, with the error |
+| Retry with | `noorm change ff` | `noorm change run <name>` |
+
+The retry skips files that already passed. If a half-applied run needs manual cleanup first, clean up, then add `--force` to run every file. [History](/guide/changes/history#which-file-broke-the-change) shows which file failed.
+
+
+## What happens when a change folder cannot be read?
+
+
+A manifest that names a file no longer in `db/sql/` makes its change unreadable. `ff` and `next` do not step over it:
+
+| The unreadable change | `ff` and `next` |
+|---|---|
+| never ran, or is `reverted` or `stale` | fail at its position, so later changes do not run out of order. Exit `1`, or `3` when earlier changes applied |
+| already applied | keep its status and add a `warnings` entry |
+
+```
+✗ log  Fast-forward partial  executed=1 skipped=1 failed=1
+• log    2026-10-20-order-status (success)
+✗ log    2026-10-22-open-orders (failed)
+✗ log      error: Manifest '/home/dana/orders/db/changes/2026-10-22-open-orders/change/001_rebuild-views.txt' references missing file: 02_views/02_unpaid_invoices.sql
+```
+
+`skipped=1` is `2026-10-23-payment`, which never ran.
+
+
+## How do I roll back?
+
+
+| Command | Reverts | TUI |
+|---|---|---|
+| `noorm change revert <name>` | one change | `v` |
+| `noorm change rewind <n>` | the last `n` applied changes, newest first | `w` |
+| `noorm change rewind <name>` | that change and every change applied after it | `w` |
+
+`revert` runs the `revert/` files in filename order, writes a history record with direction `revert`, then sets the original record to `reverted`. `rewind` considers only `success` changes and orders them by apply time, breaking same-second ties by history id.
+
+
+## How do I preview a run?
+
+
+`--dry-run` renders every file, templates and manifests included, to `tmp/` and runs nothing:
 
 ```bash
-# See current state
-noorm change list
-
-# Revert the problematic change
-noorm change revert 2024-02-15-broken-change
+noorm change ff --dry-run
 ```
 
-
-### Starting Fresh After Teardown
-
-After running `db teardown`, all changes are marked as `stale`. The next fast-forward re-applies everything:
-
-```bash
-noorm db teardown -y
-noorm run build      # Rebuild base schema
-noorm change ff      # Re-apply all changes
+```
+• log  Dry run: rendering changes to tmp/ (no DB writes)
+• log  Fast-forward (dry-run) success  executed=2 skipped=0 failed=0 dryRun=true
+• log    2026-10-22-open-orders (success, dry-run)
+• log    2026-10-23-payment (success, dry-run)
 ```
 
+A dry run takes no lock and writes no status or history. `ff`, `next`, and `rewind` still read the tracking tables to choose what to render. In the TUI, `Shift+D` toggles it.
 
-### Testing Revert Scripts
-
-During development, verify your revert logic works:
-
-```bash
-# Apply the change
-noorm change run 2024-02-01-add-notifications
-
-# Revert it
-noorm change revert 2024-02-01-add-notifications
-
-# Apply again to confirm round-trip works
-noorm change run 2024-02-01-add-notifications
-```
-
-This apply-revert-apply cycle catches revert scripts that are missing steps or have incorrect SQL.
+::: warning Rendered secrets
+Dry-run files hold every secret a template resolved, in plaintext. noorm writes them owner-only, and `noorm init` does not add `tmp/` to `.gitignore`.
+:::
 
 
-### CI/CD Pipeline
-
-A typical deployment script:
-
-```bash
-#!/bin/bash
-set -e
-
-# Build base schema (idempotent)
-noorm run build
-
-# Apply pending changes
-noorm change ff
-
-# Verify the result
-noorm db explore --json
-```
-
-The build step handles the initial schema. The fast-forward applies any changes that have been merged since the last deploy.
+## What decides whether a change runs?
 
 
-## What's Next?
+noorm compares checksums of every file in `change/`, plus every file a manifest lists.
 
-- [History](/guide/changes/history) - Track and debug execution history
-- [Changes](/guide/changes/overview) - Change structure and file types
-- [Teardown](/guide/database/teardown) - How teardown affects change status
+| The change is | `ff` and `next` | `change run <name>` |
+|---|---|---|
+| new, `reverted`, or `stale` | runs | runs |
+| `failed` | skips | runs the files that have not passed |
+| `success`, files unchanged | skips | skips |
+| `success`, a file edited | skips | runs the edited files |
+
+`--force` (TUI: `Shift+F`) runs every file and ignores file history. On `revert` it skips the status check. [`change ff`](/headless#change-ff) lists the other flags.
+
+
+## What bites
+
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `ff` reports `executed=0` while a change shows `failed` | `ff` skips a recorded `failed` change | Fix the file, then `noorm change run <name>` |
+| `ff` fails after `run build`: already exists | A build records no changes, and `db teardown` marks applied ones `stale`, so `ff` replays them over the built schema | Write each change to be safe to run twice ([Add a column](/guide/changes/add-a-column)) |
+| `ff` warns `Changes directory not found` and runs nothing | `settings.yml` has no `paths`, which now resolves to `./db/changes` | Add `paths: { sql: ./sql, changes: ./changes }` |
+| Exit `1`: `requires confirmation` or `(role: viewer)` | Your role on that config is `operator` or `viewer` | `NOORM_YES=1` for `operator`. `viewer` is denied: [Access roles](/headless#access-roles) |
+| Exit `1`: `Lock for '<config>' held by ...` | Another operation holds the config lock | Wait, or check `noorm lock status` |
+
+
+## Next
+
+
+- [History](/guide/changes/history): what each run recorded
+- [Changes](/guide/changes/overview): folder layout and manifests
+- [Add a column](/guide/changes/add-a-column): a change with a backfill
+- [Teardown](/guide/database/teardown): how teardown makes changes `stale`

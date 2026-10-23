@@ -1,28 +1,57 @@
-# First Build
+# First build
 
 
-This tutorial takes about 5 minutes. By the end, you'll understand how noorm separates **schema definition** from **schema evolution**.
+Create a project, connect it to a PostgreSQL server, and build a schema from SQL files.
 
-![Building a schema from SQL files, then fast-forwarding two pending changes](/image/build-and-change.gif)
+```sql
+-- db/sql/01_tables/02_sales_order.sql
+CREATE TABLE sales_order (
+    party_id   integer     NOT NULL,
+    order_no   integer     NOT NULL,
+    placed_at  timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT sales_order_pk
+        PRIMARY KEY (party_id, order_no),
+    CONSTRAINT sales_order_isplacedby_party
+        FOREIGN KEY (party_id) REFERENCES party (party_id)
+);
+```
 
-That is the whole loop: `run build` applies the SQL files, `change ff` walks an existing database forward, and `change history` records what ran. The rest of this page does it step by step.
+```bash
+noorm run build
+```
+
+```
+• log  Build completed  status=success filesRun=2 filesSkipped=0 filesFailed=0 durationMs=31.208
+```
+
+Real runs prefix each line with a timestamp.
 
 
-## What You'll Do
-
-1. Initialize a project and configure a database
-2. Create SQL files and build your schema
-3. Evolve the schema with a change
-4. Create a fresh test database to see you don't need migrations
+## What do the commands touch?
 
 
-## Prerequisites
+In this walkthrough, only three commands change the database: `db create`, `run build`, and `change ff`.
 
-- noorm installed ([Installation Guide](/getting-started/installation))
-- A PostgreSQL database to connect to
+```mermaid
+sequenceDiagram
+    participant You
+    participant noorm
+    participant Database
+    You->>noorm: noorm init
+    noorm-->>You: .noorm/ and db/
+    You->>noorm: noorm ui, then c and a
+    noorm->>Database: test the server connection
+    You->>noorm: noorm db create
+    noorm->>Database: create it, add tracking tables
+    You->>noorm: noorm run build
+    noorm->>Database: run each db/sql/ file
+    You->>noorm: noorm change ff
+    noorm->>Database: run each pending change
+```
 
 
-## Step 1: Initialize Your Project
+## Create the project
+
 
 ```bash
 mkdir noorm-tutorial
@@ -30,332 +59,157 @@ cd noorm-tutorial
 noorm init
 ```
 
-`noorm init` sets up your identity (or reuses the one already in `~/.noorm/`) and creates the project scaffolding. When it finishes, you'll have this layout:
+`noorm init` asks for a display name and email unless `~/.noorm/` already holds an identity. It creates:
 
 ```
 noorm-tutorial/
+├── .gitignore         # gets a .noorm/state/ line
 ├── .noorm/
-│   ├── .gitignore             # ignores state/
-│   ├── settings.yml           # Project settings (commit this)
+│   ├── .gitignore
+│   ├── settings.yml   # commit this
 │   └── state/
-│       └── state.enc          # Encrypted state (don't commit)
+│       └── state.enc  # your configs and secrets, encrypted
 └── db/
-    ├── sql/                   # Your SQL files go here
-    ├── changes/               # Versioned changes go here
-    ├── AGENTS.md              # Steering for AI coding agents working in db/
-    └── CLAUDE.md              # Imports AGENTS.md for Claude Code
+    ├── sql/
+    ├── changes/
+    ├── AGENTS.md
+    └── CLAUDE.md
 ```
 
-Configs are added separately, from the TUI. That's the next step.
+`db/AGENTS.md` sends AI agents to the `/noorm` skill, and `db/CLAUDE.md` imports it. [What lives where](/getting-started/concepts#what-lives-where) covers the rest.
 
 
-## Step 2: Add a Database Config
+## Add a config
 
-Launch the TUI:
+
+A config is a saved connection. Creating one is interactive:
 
 ```bash
 noorm ui
 ```
 
-Press `c` for config, then `a` to add a new config. Fill out the form:
+Press `c`, then `a`. Enter name `dev`, type PostgreSQL, host `localhost`, port `5432`, database `noorm_dev`, and your server's username and password. Leave User Role at `admin`, Agent Role at `viewer`, and Test Database unchecked.
 
-- **Config Name**: `dev`
-- **Database Type**: PostgreSQL (use arrow keys to select)
-- **Host**: `localhost`
-- **Port**: `5432`
-- **Database**: `noorm_dev`
-- **Username**: `postgres`
-- **Password**: your password
-- **User Role (CLI/TUI access)**: leave at `admin`
-- **Agent Role (MCP/CLI access)**: leave at `viewer`
-- **Test Database**: leave unchecked
-
-Submit the form to save your config. SQL and changes paths are not part of a config. They live in `.noorm/settings.yml` under `paths`, which `noorm init` sets to `./db/sql` and `./db/changes`.
+The form tests the server connection before it saves, and the first config you save becomes the active one. Quit with `ctrl + c`.
 
 
-## Step 3: Create the Database
+## Create the database
 
-Back at the home screen, press `d` for Database. You'll see the Database Operations screen:
-
-```
-Database Operations
-
-Config:      dev
-Connection:  NOT CREATED
-
-Available Actions
-
-[c] Create - Create database and tracking tables
-[d] Destroy - Drop all managed objects
-[x] Explore - Browse database schema
-[w] Wipe - Truncate table data (keep schema)
-[t] Teardown - Drop user objects (keep noorm)
-[r] Transfer - Copy data to another database
-```
-
-Press `c` to create. noorm will create the `noorm_dev` database on your PostgreSQL server and initialize its tracking tables.
-
-::: tip No SQL Files Yet?
-That's fine! At this point we're just creating the empty database and noorm's internal tracking tables. We'll add SQL files next.
-:::
-
-
-## Step 4: Configure Build Settings
-
-Open `.noorm/settings.yml` and define which folders to include:
-
-```yaml
-paths:
-  sql: ./db/sql
-  changes: ./db/changes
-
-build:
-  include:
-    - 01_tables
-```
-
-The `include` array filters which folders are included in builds. Folder names are relative to your `paths.sql` directory.
-
-::: warning Execution Order
-Files and directories run in **alphanumeric order**. Without numeric prefixes:
-
-```
-db/sql/functions/   ← runs first (alphabetically)
-db/sql/tables/      ← runs second
-db/sql/views/       ← runs third
-```
-
-That's wrong—tables should exist before views reference them. Use numeric prefixes:
-
-```
-db/sql/01_tables/   ← runs first
-db/sql/02_views/    ← runs second
-db/sql/03_functions/ ← runs third
-```
-
-This rule applies everywhere: directories, files within directories, change scripts. One mental model for everything.
-:::
-
-
-## Step 5: Create Your First SQL File
-
-Create the users table:
 
 ```bash
-mkdir -p db/sql/01_tables
+noorm db create
 ```
 
-Create `db/sql/01_tables/001_users.sql`:
+```
+Database "noorm_dev" created and initialized.
+```
+
+It also adds noorm's tracking tables.
+
+
+## Build the schema
+
+
+```bash
+mkdir db/sql/01_tables
+```
+
+Save the `sales_order` file from the top of this page in that folder, and add the table it points at:
 
 ```sql
-CREATE TABLE users (
-    id SERIAL PRIMARY KEY,
-    name TEXT NOT NULL,
-    email TEXT UNIQUE,
-    created_at TIMESTAMP DEFAULT NOW()
+-- db/sql/01_tables/01_party.sql
+CREATE TABLE party (
+    party_id  integer GENERATED ALWAYS AS IDENTITY,
+    name      text    NOT NULL,
+    CONSTRAINT party_pk PRIMARY KEY (party_id)
 );
 ```
 
-
-## Step 6: Run Build
-
-```bash
-noorm run build
-```
-
-Output:
-
-```
-• build:start     Starting schema build (1 files)
-• file:after      Executed db/sql/01_tables/001_users.sql (12ms)
-• build:complete  Build complete: 1 run, 0 skipped (18ms)
-• log             Build completed  status=success filesRun=1 filesSkipped=0 filesFailed=0 durationMs=18
-```
-
-Your users table now exists.
+Then run `noorm run build`. It prints the block at the top of this page: two files run in path order, so `party` exists before the foreign key needs it.
 
 
-## Step 7: Evolve the Schema
+## Catch an existing database up
 
-Now you want to expand the schema: add a `bio` column to users, create a posts table, and add a view.
 
-First, **update your SQL files** to reflect the new ideal state.
-
-Edit `db/sql/01_tables/001_users.sql`:
+Treat `dev` as a database you cannot rebuild. Declare a new table in `db/sql/`, then add a change so `dev` gets it too.
 
 ```sql
-CREATE TABLE users (
-    id SERIAL PRIMARY KEY,
-    name TEXT NOT NULL,
-    email TEXT UNIQUE,
-    bio TEXT,
-    created_at TIMESTAMP DEFAULT NOW()
+-- db/sql/01_tables/03_invoice.sql
+CREATE TABLE invoice (
+    party_id    integer     NOT NULL,
+    invoice_no  integer     NOT NULL,
+    issued_at   timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT invoice_pk
+        PRIMARY KEY (party_id, invoice_no),
+    CONSTRAINT invoice_isowedby_party
+        FOREIGN KEY (party_id) REFERENCES party (party_id)
 );
 ```
 
-Create `db/sql/01_tables/002_posts.sql`:
+```bash
+noorm change add invoice-table
+```
+
+This scaffolds `db/changes/2026-10-21-invoice-table/` (your folder carries the day you run it) with comment-only stubs in `change/` and `revert/`. Replace both. The change carries its own guarded copy of the table:
 
 ```sql
-CREATE TABLE posts (
-    id SERIAL PRIMARY KEY,
-    user_id INTEGER REFERENCES users(id),
-    title TEXT NOT NULL,
-    body TEXT,
-    created_at TIMESTAMP DEFAULT NOW()
+-- db/changes/2026-10-21-invoice-table/change/001_invoice-table.sql
+CREATE TABLE IF NOT EXISTS invoice (
+    party_id    integer     NOT NULL,
+    invoice_no  integer     NOT NULL,
+    issued_at   timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT invoice_pk
+        PRIMARY KEY (party_id, invoice_no),
+    CONSTRAINT invoice_isowedby_party
+        FOREIGN KEY (party_id) REFERENCES party (party_id)
 );
 ```
 
-Create `db/sql/02_views/001_recent_posts.sql`:
-
-```bash
-mkdir -p db/sql/02_views
-```
-
 ```sql
-CREATE OR REPLACE VIEW recent_posts AS
-SELECT p.*, u.name as author_name
-FROM posts p
-JOIN users u ON p.user_id = u.id
-WHERE p.created_at > NOW() - INTERVAL '7 days';
+-- db/changes/2026-10-21-invoice-table/revert/001_invoice-table.sql
+DROP TABLE IF EXISTS invoice;
 ```
-
-Since you added views, **update your settings** to include the new folder:
-
-```yaml
-build:
-  include:
-    - 01_tables
-    - 02_views
-```
-
-The `02_` prefix ensures views run after tables—important since views reference tables.
-
-Your SQL files now represent the complete, ideal schema. But the dev database still only has the old users table.
-
-
-## Step 8: Create a Change
-
-Use the TUI to create a change:
-
-```bash
-noorm ui
-```
-
-Press `g` for changes, then `a` to add a new change. Enter a name like `add-posts-and-bio`.
-
-The TUI creates the folder structure and shows:
-
-```
-✓ Change "2024-01-15-add-posts-and-bio" created!
-Created folder structure with template files.
-
-[e] Edit in editor  [any] Back to list
-```
-
-Press `e` to open the change folder in your editor, or navigate to it manually. Add these files:
-
-`db/changes/2024-01-15-add-posts-and-bio/change/001_add_bio.sql`:
-
-```sql
-ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT;
-```
-
-Changes should be idempotent—safe to run on any database state. PostgreSQL's `IF NOT EXISTS` ensures this won't error if the column already exists. A freshly built database records no change history, so its first `noorm change ff` runs every change again.
-
-`db/changes/2024-01-15-add-posts-and-bio/change/002_create_posts.sql`:
-
-```sql
-CREATE TABLE IF NOT EXISTS posts (
-    id SERIAL PRIMARY KEY,
-    user_id INTEGER REFERENCES users(id),
-    title TEXT NOT NULL,
-    body TEXT,
-    created_at TIMESTAMP DEFAULT NOW()
-);
-```
-
-The change carries its own copy of the `CREATE TABLE`. A manifest runs the current content of the file it names, so it should only name objects that are safe to run repeatedly.
-
-`db/changes/2024-01-15-add-posts-and-bio/change/003_views.txt`:
-
-```
-02_views/001_recent_posts.sql
-```
-
-The `.txt` file references a SQL file instead of copying it. When the change runs, it executes that file from your `db/sql/` directory, relative to `paths.sql`. The view is `CREATE OR REPLACE`, so running it again is harmless.
-
-
-## Step 9: Apply the Change
 
 ```bash
 noorm change ff
 ```
 
-Output:
-
 ```
-• change:start     Starting change for 2024-01-15-add-posts-and-bio (3 files)
-• change:complete  change 2024-01-15-add-posts-and-bio: success (29ms)
-• log              Fast-forward success  executed=1 skipped=0 failed=0
-• log                2024-01-15-add-posts-and-bio (success)
+• log  Fast-forward success  executed=1 skipped=0 failed=0
+• log    2026-10-21-invoice-table (success)
 ```
 
-Three files: the two `.sql` files, and the one view file that the `003_views.txt` manifest names. Per-file lines are `change:file` events, which sit at debug level. Raise `logging.level` to `verbose` in `.noorm/settings.yml` to see them.
-
-Your dev database now matches your SQL files.
+Adding a column works the same way: see [Add a column](/guide/changes/add-a-column).
 
 
-## Step 10: Fresh Database (No Migrations Needed)
+## Build a second database
 
-Now create a test database to see the other path. In the TUI:
 
-1. Press `c` for Configurations, then `a` to add a new config named `test` pointing to `noorm_test`
-2. Use arrow keys to select the `test` config and press `Enter` to switch to it
-3. Press `d` for Database, then `c` to create the database
-4. Press `r` for Run SQL, then `b` for Build
-
-If you already have a test config and database set up, the same flow runs from the non-interactive CLI:
+A fresh database takes the schema from `db/sql/`. The change exists for databases that predate the table. Point one command at another database name with `NOORM_CONNECTION_DATABASE`:
 
 ```bash
-noorm config use test
-noorm run build
+NOORM_CONNECTION_DATABASE=noorm_test noorm db create
+NOORM_CONNECTION_DATABASE=noorm_test noorm run build
 ```
 
-Output:
-
-```
-• build:start     Starting schema build (3 files)
-• file:after      Executed db/sql/01_tables/001_users.sql (14ms)
-• file:after      Executed db/sql/01_tables/002_posts.sql (11ms)
-• file:after      Executed db/sql/02_views/001_recent_posts.sql (7ms)
-• build:complete  Build complete: 3 run, 0 skipped (32ms)
-• log             Build completed  status=success filesRun=3 filesSkipped=0 filesFailed=0 durationMs=32
-```
-
-The test database has the complete schema from your SQL files. No changes needed—they're only for evolving existing databases.
+The build runs 3 files, `invoice` included. The variable overrides the stored database name for that command, and the `dev` config is unchanged.
 
 
-## What Just Happened?
-
-You experienced both paths:
-
-| Scenario | Command | What Runs |
-|----------|---------|-----------|
-| Fresh database | `noorm run build` | SQL files |
-| Existing database | `noorm change ff` | Changes |
-
-Your SQL files are the source of truth. Changes are the changelog of how you evolved existing databases to match them.
-
-::: tip The Workflow
-1. Update your SQL files to reflect the ideal schema
-2. Create a change to evolve existing databases
-3. Fresh databases just run build—no migration history needed
-:::
+## What bites
 
 
-## What's Next?
+| Symptom | Cause | Fix |
+|---|---|---|
+| `noorm init` exits: requires an interactive terminal | `init` prompts, and a script has no terminal | Run `noorm identity init --name "Ada" --email ada@example.com` once, then `noorm init --yes` |
+| `noorm config add` prints: Interactive only | The CLI cannot prompt for connection details | Use `noorm ui`, or `noorm config import <file.json>` in scripts |
+| `"run:build" is not allowed on config "dev" (role: viewer)` | An AI agent is driving the CLI, so the config's agent role applies, and it defaults to `viewer` | Run the command in your own terminal, or raise Agent Role on the config |
+| `change ff` on a freshly built database fails: relation "invoice" already exists | The change has no guard, and a built database has no change records, so `ff` runs every change | Guard it: `CREATE TABLE IF NOT EXISTS` |
 
-- [Concepts](/getting-started/concepts) - Understand the full mental model
-- [Building Your SDK](/getting-started/building-your-sdk) - Wrap noorm in a TypeScript SDK for your apps
-- [TUI Quick Reference](/tui) - Navigate the terminal interface
-- [Changes Guide](/guide/changes/overview) - Versioned changes in depth
+
+## Next
+
+
+- [Concepts](/getting-started/concepts): the two folders and the commands that apply them
+- [Add a column](/guide/changes/add-a-column): one edit, both folders, with a backfill
+- [Building your SDK](/getting-started/building-your-sdk): query the schema from TypeScript
+- [Terminal UI](/tui): keys and screens

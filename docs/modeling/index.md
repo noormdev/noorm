@@ -1,127 +1,184 @@
 ---
-title: Information modeling
-description: Plan the data model before you build it. ignatius turns a folder of markdown into an IDEF1X entity diagram, a searchable data dictionary, and SSADM data flow diagrams.
+layout: home
+title: ignatius, data modeling
+description: ignatius turns a folder of markdown into data flow diagrams, a relationship graph, and a data dictionary, so a team agrees on the data model before anyone writes the SQL.
 ---
 
-# Information modeling
+<section class="nh-hero">
 
+<p class="nh-eyebrow">ignatius · data modeling · works with or without noorm</p>
 
-Most schemas get designed while they are being built. A table appears because a feature needed it, a column gets added because a bug needed it, and the shape of the whole thing only exists in the migration history and in the head of whoever wrote it. By the time anyone can see the model, it is already in production and expensive to change.
+<h1 class="nh-title">Agree on the data model<br><span>before anyone writes the SQL</span></h1>
 
-[ignatius](https://github.com/noormdev/ignatius) moves that work earlier. It is a planning tool for information modeling: you describe entities, keys, and relationships in markdown files, and it renders them as an interactive diagram you can hand to another person. The binary never connects to a database and never generates DDL. Its output is a picture of what you intend to build, precise enough to argue about before anyone writes SQL.
-
-<!-- Wrapped in a div because `video` is not a CommonMark block-level tag:
-     left bare, markdown-it splits the multi-line element across paragraphs and
-     Vue's SFC parser then rejects the orphaned closing tag. -->
-<div class="demo-video">
-<video src="/video/ignatius.mp4" poster="/video/ignatius-poster.jpg" width="1316" height="858" controls muted playsinline preload="none"></video>
+<div class="nh-row">
+<p class="nh-lead">Analysis costs less than rebuilding a system. ignatius turns a folder of markdown into a picture of the plan: what captures data, the shape it takes, why each table exists, the rules it follows, and who outside the system sends it and receives it.</p>
+<div class="nh-actions">
+<a class="nh-btn brand" href="/download">Download</a>
+<a class="nh-btn alt" href="#try-it">Try it in two minutes</a>
+<p class="nh-caption">one binary · macOS, Linux, Windows</p>
+</div>
 </div>
 
-Above: a model of an LLM memory database, walked through all three views. The entity dialog, the searchable dictionary with its key-inheritance lineage, and a decomposed process flow where an external LLM agent creates and files artifacts.
+</section>
 
+<section class="nh-section">
 
-## What it produces
+<p class="nh-eyebrow">01 · Movement</p>
 
+<h2 class="nh-h2">Do you know how data moves through your system, and who produces it?</h2>
 
-One folder of markdown files drives three views of the same model.
+<p class="nh-chapter">A data flow diagram answers both. It shows who produces data, including people outside the technical system, which process moves or transforms it, and which store keeps it: a table, a cache, a log file, a paper form. Most teams skip this step and draw logic flowcharts, which show decisions, not data.</p>
 
-| View | What it shows |
+<!--@include: ../parts/ignatius-dfd.md-->
+
+<p class="nh-note">Read each process as an operation your database must support. <strong>Place order</strong> takes the customer's order request and product prices and writes <code>sales_order</code> and <code>order_line</code>. That is <code>place_order()</code>, specified before anyone writes the SQL or the code that calls it.</p>
+
+</section>
+
+<section class="nh-section">
+
+<p class="nh-eyebrow">02 · Relationships</p>
+
+<h2 class="nh-h2">Have you ever visualized your entity relationships clearly?</h2>
+
+<p class="nh-chapter">An ER diagram lists every column and buries the relationships under them. ignatius draws the relationships alone: entities by name, joined by the business verbs that relate them. Click an entity to open its columns, keys, example rows, and the reason it exists, then walk the graph to tell the story in a meeting.</p>
+
+<!--@include: ../parts/ignatius-viewer.md-->
+
+</section>
+
+<section class="nh-section">
+
+<p class="nh-eyebrow">03 · Agents</p>
+
+<h2 class="nh-h2">In the age of AI agents, review the plan first</h2>
+
+<p class="nh-chapter">Agents write schemas faster than anyone can read them, so the review has to happen before the code exists. The model is markdown, so it is the thing you review before you sign off on what the agent builds. The agent reads the same files, and the ignatius-modeling skill writes them one question at a time and validates each one.</p>
+
+<!--@include: ../parts/ignatius-cmds.md-->
+
+</section>
+
+<section class="nh-section">
+
+<p class="nh-eyebrow">04 · Documentation</p>
+
+<h2 class="nh-h2">The plan becomes the visualization</h2>
+
+<p class="nh-chapter">Everything above comes from one folder of markdown. The same files are your database's documentation and its data dictionary, the place the team plans and shares plans, and the place an agent looks to see what it should build.</p>
+
+<!--@include: ../parts/ignatius-problems.md-->
+
+</section>
+
+<section class="nh-section">
+
+<p class="nh-eyebrow">05 · Lineage</p>
+
+<h2 class="nh-h2">Built on the shoulders of giants</h2>
+
+<p class="nh-chapter">ignatius is not a new invention. It is a looking glass into excellent standards: IDEF1X for entities, grown out of E. F. Codd's relational model, and SSADM-style data flow diagrams for movement.</p>
+
+| Year | Step |
 |---|---|
-| Data Graph | An IDEF1X entity-relationship diagram in crow's-foot notation. Pan, zoom, click an entity to open its full definition. |
-| Data Dictionary | Every entity, process, external, and store in one searchable reference page. |
-| Data Flows | SSADM data flow diagrams showing how processes move data between people, the database, and everything else. |
+| 1970 | E. F. Codd publishes the relational model of data. |
+| 1977–78 | Chris Gane and Trish Sarson, then Tom DeMarco, publish structured analysis built on data flow diagrams. |
+| 1981 | The US Air Force's ICAM program publishes IDEF1, built on Codd's relational theory and Peter Chen's entity-relationship model. |
+| 1982 | Robert Brown develops the logical database design technique for Bank of America. |
+| 1983 on | The Air Force extends IDEF1 into IDEF1X, using Brown's technique. |
+| 1993 | NIST publishes IDEF1X as federal standard FIPS 184. |
+| 2012 | IDEF1X becomes part of the international standard ISO/IEC/IEEE 31320-2. |
 
-The diagrams are generated, never drawn. You write the structure as text, and ignatius derives the cardinality, the entity classification, and the subtype clusters from the key shape you described. Change a foreign key and the notation updates on the next reload. A model that lives in markdown diffs like code, reviews like code, and cannot drift from a picture somebody drew once in a diagramming app.
+</section>
 
+<section class="nh-section" id="try-it">
 
-## Why a web instead of a list
+<p class="nh-eyebrow">Try it</p>
 
+<h2 class="nh-h2">A model in two minutes</h2>
 
-A table list tells you what exists. It does not tell you how anything connects, or why any of it is there.
+<div class="nh-steps">
+<div>
+<div>
+<p class="nh-step">01 · Install</p>
+<p class="nh-step-note">Windows and other options: <a href="/download">Download</a>.</p>
+</div>
+<div>
 
-The graph gives you the web: which entities hang off which, where identity comes from, which clusters are subtypes of a common basetype. Each entity carries a prose body explaining what it is and what business function it serves, so the answer to "why does this table exist" lives next to the table. Each entity also carries example rows. Two or three realistic instances make the rules concrete, and a sample row that violates a constraint you believed in reveals a modeling error no structural check will catch.
-
-You make better decisions with a full view of the thing you are about to build. That is the whole argument for doing this before the schema exists rather than after.
-
-
-## Written for people and for models
-
-
-The source is markdown with YAML frontmatter, which suits both readers.
-
-A stakeholder gets the rendered app: a diagram they can explore, a dictionary they can search, and prose that explains the business meaning rather than the storage layout. `ignatius export` writes all three views into one self-contained HTML file with no external dependencies, so a reviewer opens it from `file://` and needs nothing installed.
-
-A coding agent gets plain text it can read and write directly. ignatius comes with the [`ignatius-modeling` skill](/modeling/modeling-skill) for Claude Code, which authors entity and flow files through guided Q&A and verifies each one with `ignatius validate` before moving on.
-
-
-## The workflow
-
-
-Model first, get agreement, then build.
-
-1. **Model.** Describe the entities and the processes in markdown, either by hand or through the modeling skill.
-2. **Review.** Serve the model or export it to HTML and walk stakeholders through the graph and the flows. Arguments about the shape of the data are cheap here and expensive later.
-3. **Build.** Once the model is agreed, hand it to your agent as the specification. The files that describe the model are the same files the LLM reads to write the schema.
-
-noorm is the other half of that last step. ignatius describes what you intend to build. noorm builds it, versions it, and keeps every environment in sync. The two share a bias: your schema belongs in files you own, not in an object model a tool derived for you.
-
-
-## Why a separate tool
-
-
-noorm already explores schemas and runs SQL, so it is fair to ask why modeling is a second binary instead of a `noorm model` subcommand. Three reasons, and they all come back to ignatius being useful at a moment when noorm is not.
-
-**It never touches a database.** ignatius carries no driver and emits no DDL. Its value is being usable before the database exists, which is exactly the moment a tool that requires a connection has nothing to offer. Putting the planning step inside noorm would gate it behind the thing you have not built yet.
-
-**It does not need noorm.** Nothing in the format is noorm-specific: markdown in, IDEF1X and SSADM diagrams out, with no dialect anywhere in the pipeline. A team on Prisma, ActiveRecord, or hand-written migrations gets the same thing from it. Making it a subcommand would shrink its audience to noorm users and buy nothing.
-
-**The audiences differ.** `ignatius export` produces a file for the person approving a design, not the person deploying a schema. That reader is not going to install a schema and change manager to look at a diagram.
-
-There is a practical consequence worth knowing as you read: the two ship on their own cadences from their own repositories. That is why these pages carry the narrative and link out to the ignatius repo for the exhaustive rule catalogs rather than copying them here, where they would drift out of date.
-
-
-## Two notations, two questions
-
-
-ignatius answers a different question in each of its diagram views.
-
-**IDEF1X** answers "what is the data, and how is it identified". It is the premise the entity side is built on, which is why key inheritance gets first-class treatment: identifying relationships, compound keys that carry their lineage, and subtype clusters with exclusive or inclusive discriminators. See [Entities and key inheritance](/modeling/entities).
-
-**SSADM data flow diagrams** answer "who touches the data, and where does it live". Processes, external actors, and data stores. Stores are not only tables. A cache, a log file, a queue, a paper form, and a document all appear as first-class stores, so the diagram shows where data rests rather than only the part of it that reached a database. See [Data flows](/modeling/data-flows).
-
-
-## Where the name comes from
-
-
-ignatius is named for Derek Ignatius Asirvadem, who mentored me for a couple of years and introduced me to IDEF1X.
-
-Studying it and then practising it convinced me there is no higher standard for modeling data. The industry mostly skips modeling and goes straight to building. Modeling first solves something like 80% of the problems up front, and it produces months of valid programming work before anyone opens an editor.
-
-The other 20% is real and worth naming: once you start building, you **do** find problems in the model. That is the part that drifts. What matters is when you find it. While nothing is physically committed to the system yet, changing the model is cheap. Once it is code, it is not. Modeling holds that cheap window open longer, and an agent working from a written model holds it open longer still.
-
-Before ignatius I drew models in OmniGraffle, on Derek's recommendation. Two things broke that. My own obsession with perfect lines and perfect names turned drawing into the bottleneck, and there was no way to tell an LLM "this is the relationship between these two entities" from a picture. So the model moved into markdown, where both problems go away. The layout is generated rather than drawn, and the source is text an agent can read and write.
-
-None of these tools would exist without his guidance. ignatius is a tribute to him.
-
-
-## Next steps
-
-
-<div class="next-steps">
-
-[**Installation**](/modeling/installation)
-Install the binary and the modeling skill.
-
-[**Entities and key inheritance**](/modeling/entities)
-The entity format, what gets derived, and the two key conventions.
-
-[**Data flows**](/modeling/data-flows)
-Processes, externals, stores, and sub-diagrams.
-
-[**Reverse-engineering**](/modeling/reverse-engineering)
-Extract a model from a database you already run.
-
-[**Best practices**](/modeling/best-practices)
-How to get a model worth showing to a stakeholder.
+```bash
+curl -fsSL https://noorm.dev/ignatius.sh | sh
+```
 
 </div>
+</div>
+<div>
+<div>
+<p class="nh-step">02 · Write one entity</p>
+<p class="nh-step-note">A folder with an <code>ignatius.yml</code> is a model. Each file under <code>data/</code> is one entity: keys and columns in the frontmatter, what it is for in the body.</p>
+</div>
+<div>
+
+<div class="nh-file">
+<div class="nh-panel-head"><span>model/ignatius.yml</span><span>you write this</span></div>
+
+```yaml
+name: Shop
+```
+
+</div>
+<div class="nh-file">
+<div class="nh-panel-head"><span>model/data/party.md</span><span>you write this</span></div>
+
+```markdown
+---
+entity: party
+pk: [party_id]
+columns:
+  party_id: { type: integer }
+  name:     { type: text }
+---
+
+# party
+
+Anyone who places orders.
+```
+
+</div>
+
+</div>
+</div>
+<div>
+<div>
+<p class="nh-step">03 · Serve it</p>
+<p class="nh-step-note">The browser opens on the diagram. Save <code>party.md</code> and the open tab redraws. Add the next entity with a <code>relationships:</code> block pointing at <code>party</code>, and the edge appears.</p>
+</div>
+<div>
+
+```bash
+ignatius serve model -o
+```
+
+</div>
+</div>
+</div>
+
+</section>
+
+<section class="nh-section">
+
+<p class="nh-eyebrow">Go deeper</p>
+
+<h2 class="nh-h2">Where to go next</h2>
+
+<div class="nh-cards">
+<a href="/modeling/entities"><strong>Entity files</strong><span>The entity format, and what ignatius derives from your keys.</span></a>
+<a href="/modeling/data-flows"><strong>Data flows</strong><span>Processes, externals, and stores, including the ones that are not tables.</span></a>
+<a href="/modeling/model-to-sql"><strong>From model to SQL</strong><span>How each field of an entity file becomes DDL.</span></a>
+<a href="/modeling/reverse-engineering"><strong>Reverse-engineering</strong><span>Extract a model from a database you already run.</span></a>
+<a href="/modeling/modeling-skill"><strong>The modeling skill</strong><span>Author entities and flows from Claude Code, one question at a time.</span></a>
+<a href="/modeling/best-practices"><strong>Best practices</strong><span>What makes a model worth showing to a stakeholder.</span></a>
+<a href="/modeling/installation"><strong>Commands</strong><span>Install, serve, validate, export, index, approve, and update.</span></a>
+<a href="/modeling/why"><strong>Why ignatius</strong><span>The case for modeling first, and where the name comes from.</span></a>
+</div>
+
+</section>
