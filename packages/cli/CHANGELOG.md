@@ -1,5 +1,22 @@
 # @noormdev/cli
 
+## 1.6.0
+
+### Minor Changes
+
+- d497028: `noorm init` now creates `db/sql/` and `db/changes/` instead of `sql/` and `changes/`, and writes `db/AGENTS.md` and `db/CLAUDE.md`. `AGENTS.md` points coding agents at the `/noorm` skill and points data modeling at ignatius and its `/ignatius-modeling` skill. It also leaves a marker for your own steering. `CLAUDE.md` imports `AGENTS.md`. Neither file is overwritten on re-init. Overwriting a settings file (`noorm init --force`, `noorm settings init --force`) keeps the `paths` already in it. The `noorm` skill now states what `sql/` and `changes/` are for, which edits belong in each, how to reference `sql/` files from a change with a `.txt` manifest, and when to use a `.sql.tmpl`.
+
+  The built-in default for `paths.sql` and `paths.changes` is now `./db/sql` and `./db/changes`, matching what `noorm init` creates. `noorm init` writes `paths` into `settings.yml`, so an initialized project keeps its layout. A project laid out at `./sql` and `./changes` whose `settings.yml` is missing, empty, or has no `paths` key now resolves to `./db/sql` and `./db/changes`. Add `paths: { sql: ./sql, changes: ./changes }` to `settings.yml`, or set `NOORM_PATHS_SQL` and `NOORM_PATHS_CHANGES`.
+
+- 6dbc2e3: After a successful update, `noorm update` offers the noorm agent skill. It runs `npx skills add noormdev/noorm/skills` when `npx` is on `PATH`, else `gh skill install noormdev/noorm skills/noorm` (GitHub CLI 2.90 or newer). With neither, or when the command fails, it prints both commands and where to get Node.js and the GitHub CLI. On a terminal it asks first; piped output prints the command instead, and `--json` skips the offer. A declined or failed skill install does not change the exit code.
+
+  On a terminal, `noorm update` now rewrites its status line in place: `Checking for updates...` is replaced by the result, and the download counter ends on `Downloaded X MB (100%)`. `noorm update --json` now writes only the JSON document to stdout; before, status lines preceded it.
+
+### Patch Changes
+
+- 6dbc2e3: A change file with more than one statement now runs every statement on SQLite, and `GO` batch separators in change files are honored on SQL Server, as they already were for `sql/` files. Before, SQLite ran only the first statement of a change file and reported success.
+- 6dbc2e3: `noorm change ff` and `change next` now fail at the position of a change folder that cannot be parsed when they would run it (never run, `reverted`, or `stale`), for example a `.txt` manifest that names a file no longer in `sql/`. Before, the folder was skipped, later changes ran without it, and the command exited 0. `change list` shows such a change as `failed` with the parse error, the TUI change screens and home count include it, `changes.pending()` returns it, and `change run <name>` reports the parse error instead of "Change not found". An applied change keeps its status, and the batch adds a warning instead of failing. A folder with neither `change/` nor `revert/` is not a change and is ignored.
+
 ## 1.5.1
 
 ### Patch Changes
