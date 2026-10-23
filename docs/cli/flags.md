@@ -1,100 +1,69 @@
 # CLI flag conventions
 
 
-`noorm`'s CLI is built on [citty](https://github.com/unjs/citty), which parses flags
-relative to the subcommand they belong to — a flag typed before the subcommand name never
-reaches the leaf command's own parser. `noorm` works around that for the one flag that
-genuinely needs to run before dispatch, by stripping it out of `argv` before citty ever sees
-it. This page covers that flag and the rule for everything else.
+Put every flag after the subcommand. The one exception is `-c <path>`, which goes before it.
+
+```bash
+noorm -c packages/db run build --dry-run
+```
+
+Here `-c packages/db` sets the working directory, and `--dry-run` belongs to `run build`. A flag in the wrong position is an error, not a silent no-op:
+
+```
+$ noorm --dry-run run build
+Error: Unrecognized flag '--dry-run' before the subcommand — noorm can't forward it there. The only root-level flag is -c/--cwd <path>; every other flag goes on the command that uses it. Move '--dry-run' after the subcommand instead, e.g. noorm <command> ... --dry-run.
+```
+
+The first non-flag token is the subcommand. It decides who reads each flag:
+
+```mermaid
+flowchart TD
+    F["a flag in argv"] --> Q{"before the<br/>subcommand?"}
+    Q -->|no| CMD["the command reads it:<br/>--config, --json, -c name"]
+    Q -->|yes| W{"-c or --cwd?"}
+    W -->|yes| CWD["working directory<br/>for this run"]
+    W -->|no| ERR["Error, exit 2"]
+```
+
+`--help`, `-h`, `--version`, and `-v` skip this check. `--version` and `-v` work only as the sole argument.
 
 
-## Global flags vs per-subcommand flags
-
-A flag is **global** when `noorm` recognizes and hoists it regardless of where it appears —
-before or after the subcommand. A flag is **per-subcommand** when it's owned by an
-individual command like `noorm sql query` and only works *after* the subcommand name.
-
-`noorm` hoists exactly one flag on purpose — most flags vary in meaning per command (`-c` is
-`--cwd` at the root, but `--config` on many subcommands), so per-subcommand parsing is the
-default for everything else, `--dry-run`/`--json`/`--yes` included.
+## Which flags go where?
 
 
-### The one global: `-c` / `--cwd <path>`
+| Flag | Before the subcommand | After the subcommand |
+|------|-----------------------|----------------------|
+| `-c <path>`, `--cwd <path>`, `--cwd=<path>` | Working directory, like `git -C` | `-c` means `--config` |
+| `-c <name>`, `--config <name>` | `-c` is read as `--cwd`; `--config` is an error | Config to use instead of the active one |
+| `--json` | Error | Print JSON on stdout |
+| `--dry-run` | Error | Preview without executing |
+| `--force`, `-f` | Error | Force the operation; the effect varies per command |
+| `--yes`, `-y` | Error | Skip confirmations, same as `NOORM_YES=1` |
 
-| Flag | Purpose |
-|------|---------|
-| `--cwd <path>` / `-c <path>` | Change working directory before resolving `.noorm/`. Same idea as `git -C`. Recognized only **before** the subcommand — see the note below. |
-
-`--cwd`/`-c` is global for two reasons:
-
-1. It's consumed **before dispatch** — it sets the working directory everything else
-   (project discovery, config resolution) resolves against, so it's genuinely the CLI's own
-   flag rather than any subcommand's.
-2. `-c` already means `--config` *after* the subcommand (see the overload note below).
-   Hoisting it lets `noorm -c <path> run build` mean cwd while `noorm run build -c <name>`
-   means config, without either shadowing the other.
-
-Examples:
-
-    noorm -c packages/db run build
-    noorm --cwd /repos/myapp change ff
-
-`--help`/`-h` and `--version`/`-v` are also recognized outside this mechanism — that's citty's
-own framework behaviour, not a `noorm`-specific hoist.
-
-An unrecognized flag placed before the subcommand is an error, not a silent no-op:
-
-    $ noorm --bogus-flag config list
-    Error: Unrecognized flag '--bogus-flag' before the subcommand — noorm can't forward it there.
-    The only root-level flag is -c/--cwd <path>; every other flag goes on the command that uses it.
-    Move '--bogus-flag' after the subcommand instead, e.g. noorm <command> ... --bogus-flag.
+Each command declares the subset it accepts, and `noorm <command> --help` lists them. It prints `--dryRun` for `--dry-run`; the two spellings are one flag. After the subcommand, a misspelled flag is dropped without an error, so check the spelling there. The full table is in the [CLI reference](/headless#where-do-flags-go).
 
 
-### Per-subcommand flags (after the subcommand)
-
-Everything else lives on a specific subcommand — `--config <name>`, `--force`, `--dry-run`,
-`--json`, `--yes`/`-y`, and any command-specific flag. These are **not** hoisted, so they only
-work after the subcommand name:
-
-    noorm run build --dry-run
-    noorm config list --json
-    noorm secret rm OLD_KEY --yes
-
-Placed before the subcommand instead, none of them are honoured — `noorm --dry-run run build`
-is rejected exactly like `noorm --bogus-flag config list` above, naming `--dry-run` as the
-offending flag. To see exactly which flags a command accepts, append `--help` to it:
-
-    noorm change ff --help
-    noorm db create --help
-    noorm sql query --help
+## What does `-c` / `--cwd` do?
 
 
-## The `--config` / `-c` overload
+noorm normally walks up from the current directory to the nearest `.noorm/` and runs there. `--cwd` skips the walk and runs in the path you name.
 
-`-c` is overloaded by position, which is the one sharp edge left in this system:
+```bash
+noorm -c packages/db run build
+noorm --cwd /repos/shop change ff
+```
 
-- `noorm -c <path> run build` — global `--cwd`, because `-c` appears **before** the subcommand.
-- `noorm run build -c <name>` — per-command `--config`, because `-c` appears **after** the subcommand.
-
-The first non-flag token (the subcommand name) is the boundary that decides which meaning
-applies. `--config` in long form has no global meaning at all — it only works after the
-subcommand, so `noorm --config prod run build` is not the same as `noorm run build --config prod`
-(the former is rejected as an unrecognized global flag).
-
-
-## Mental model
-
-`noorm` has exactly one true global, `-c`/`--cwd`, and everything else is command-scoped. Put
-every flag right next to the subcommand it modifies:
-
-    noorm <subcommand> <flags…> <positional args…>
-
-If a flag isn't being honored, it's placed before the subcommand boundary — or it's a typo,
-in which case `noorm` now says so instead of silently dropping it.
+| Situation | Result |
+|-----------|--------|
+| Path is not a directory | `Error: --cwd path is not a directory: <absolute path>`, exit 2 |
+| `-c` followed by the subcommand, `noorm -c run build` | `run` is taken as the path, so this fails as above |
+| `-c` with no value | Ignored; noorm walks up as usual |
+| `-c prod` meant as a config, `noorm -c prod run build` | `prod` is a path, not a config. Use `noorm run build --config prod` |
 
 
-## Related
+## Next
 
-- [`noorm` help conventions](./help.md) — how to find a command's flags.
-- [Headless reference](../headless.md) — full table of common flags.
-- [Troubleshooting](../guide/troubleshooting.md) — quick fixes for common surprises.
+
+- [Discovering command help](/cli/help)
+- [CLI reference](/headless): every command and the exit-code table
+- [Troubleshooting](/guide/troubleshooting)

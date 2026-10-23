@@ -1,138 +1,67 @@
 # Non-interactive operation
 
 
-CI runners, deploy scripts, and AI subagents don't get to "press Enter".
-noorm's CLI defaults to assuming a human is at the keyboard for a
-handful of commands; the universal `--yes` / `NOORM_YES` opt-in tells
-those commands to stop asking.
+Run noorm in CI, a deploy script, or an agent subprocess, where nobody can press Enter.
 
-`--yes` does not mean "do anything regardless." It means: "use defaults,
-don't prompt, fail loudly if a non-interactive path doesn't exist for
-this command."
+```bash
+# bootstrap.sh
+set -euo pipefail
 
+# identity init exits 1 when an identity exists, so guard it
+[ -f ~/.noorm/identity.key ] || noorm identity init --name "$CI_USER" --email "$CI_EMAIL"
+# init exits 1 when .noorm/ exists, which a CI checkout of a project has
+[ -d .noorm ] || noorm init --yes
+noorm run build    # connection comes from NOORM_CONNECTION_* variables
+noorm change ff
+```
 
-## The opt-in
-
-
-### Flag form
-
-Every TTY-gated command accepts `--yes` (alias `-y`):
-
-    noorm init --yes
+This scaffolds a project if there is none, then builds it.
 
 
-### Environment form
-
-`NOORM_YES` is equivalent and applies to every command at once. Useful in
-CI where you set it once at the top of the pipeline.
-
-    export NOORM_YES=1
-    noorm init
-    noorm change ff
-    noorm db reset
-
-Truthy values: `1`, `true`, `yes`, `TRUE`, any non-empty string. Falsy
-values: `0`, `false`, empty string, unset. The comparison for `false` is
-case-insensitive.
-
-The `--yes` flag wins over `NOORM_YES=0`. Use that if you want to override
-a globally-set falsy default.
+## What does `--yes` answer?
 
 
-## What `--yes` does per command
+`--yes` (or `-y`) answers a confirmation for one command. `NOORM_YES` answers for every command: any non-empty value counts except `0` and `false`, in any letter case. The flag beats `NOORM_YES=0`.
 
-Some commands have a genuine non-interactive equivalent — for those,
-`--yes` succeeds. The rest are interactive by design; for them, `--yes`
-errors fast and points at the headless alternative.
+A run with no terminal stops at the first gate it cannot answer. The role cells come from [Access roles](/guide/environments/configs#access-roles), and on the `agent` channel `confirm` is `deny`:
 
-
-### Accepts `--yes` (proceeds)
-
-| Command | Behavior with `--yes` |
-|---------|-----------------------|
-| `noorm init` | Skips all prompts. Requires an existing identity at `~/.noorm/identity.{key,pub,json}`. Errors with a bootstrap hint if missing. |
-
-
-### Refuses `--yes` (redirect hint)
-
-| Command | Redirect |
-|---------|----------|
-| `noorm sql repl` | Use `noorm sql query "<SQL>"` or `noorm sql query --file query.sql`. |
-| `noorm settings edit` | Edit `settings.yml` directly; run `noorm settings build` to validate. |
-| `noorm settings secret` | Edit the `secrets:` section of `settings.yml` directly. For values, use `noorm secret set <key> <value>`. |
-
-These commands exit 2 (bad invocation) with the redirect message on
-stderr. Same exit code as their TTY refusal, so a pipeline sees one
-code whichever way it hit the gate.
+```mermaid
+flowchart TD
+    A["noorm command"] --> B{"TTY-only command?<br/>sql repl, settings edit"}
+    B -->|yes| X2["exit 2<br/>needs a terminal"]
+    B -->|no| C{"role cell"}
+    C -->|deny| X1["exit 1<br/>no flag opens it"]
+    C -->|allow| R["runs"]
+    C -->|confirm| D{"--yes or<br/>NOORM_YES?"}
+    D -->|yes| R
+    D -->|no| X3["exit 1<br/>requires confirmation"]
+```
 
 
-### Already non-interactive (no `--yes` needed)
-
-These accept explicit flags and don't gate on a TTY:
-
-- `noorm identity init --name "..." --email "..."` — bootstraps the identity used by `noorm init --yes`.
-- `noorm config import <path>` — wizard-free config setup.
-- `noorm ci init` / `ci secrets` / `ci identity new` — the dedicated CI bootstrap surface.
-
-One exception inside that surface: `noorm ci identity enroll` **does** need
-`--yes` (or `NOORM_YES=1`). It ends in a `vault:propagate` grant, which the
-matrix marks `confirm` for every role that holds it, and sealing the vault
-key to a public key cannot be undone.
+## Which prompts have a flag?
 
 
-## CI bootstrap pipeline
-
-End-to-end happy path: from a clean machine to a usable noorm project,
-with no prompts:
-
-    #!/usr/bin/env bash
-    set -euo pipefail
-
-    # 1. Identity (once per machine; exits 1 if one already exists).
-    noorm identity init \
-      --name "$CI_USER" \
-      --email "$CI_EMAIL"
-
-    # 2. Project scaffold (db/sql/, db/changes/, settings.yml, state.enc).
-    cd "$PROJECT_ROOT"
-    noorm init --yes
-
-    # 3. Connection config — env-only, no wizard.
-    export NOORM_CONNECTION_DIALECT=postgres
-    export NOORM_CONNECTION_HOST="$DB_HOST"
-    export NOORM_CONNECTION_DATABASE="$DB_NAME"
-    export NOORM_CONNECTION_USER="$DB_USER"
-    export NOORM_CONNECTION_PASSWORD="$DB_PASSWORD"
-
-    # 4. Build schema + apply pending changes.
-    noorm run build
-    noorm change ff
-
-Step 1 is not idempotent, and under `set -e` it aborts the script if an
-identity already exists. Replacing one takes `--force --yes` together,
-mints a fresh keypair, and leaves any state encrypted under the old key
-unreadable. Guard it instead of passing `--force` blind:
-
-    [ -f ~/.noorm/identity.key ] || noorm identity init \
-      --name "$CI_USER" --email "$CI_EMAIL"
-
-The raw `--yes` flag is required for a replacement; an ambient
-`NOORM_YES` deliberately does not satisfy it.
-
-If you need a stored config (rather than env-only), use `noorm config
-import <path>` with a pre-built JSON file. See
-[`docs/headless.md`](../../headless.md) for the full env-only matrix.
+| Command | Without a terminal |
+|---|---|
+| `noorm init` | `--yes`, after `noorm identity init` has written `~/.noorm/identity.*` |
+| `change run`, `revert`, `rm`, `edit`, `add` | Pass the name or description as the argument, or exit 1 |
+| `db transfer` with a `.dtzx` file | `--passphrase`, or exit 2 |
+| `sql repl` | `--yes` exits 2. Use `noorm sql query "SELECT 1"` or `--file query.sql` |
+| `settings edit` | `--yes` exits 2. Edit `.noorm/settings.yml`, then `noorm settings build` |
+| `settings secret` | `--yes` exits 2. Edit `secrets:`, and set values with `noorm secret set <key> --stdin` |
 
 
-## When `--yes` is NOT enough
+## What bites
 
-`--yes` covers prompts. It does NOT relax safety gates that exist for
-destructive operations:
 
-- `noorm db drop`, `noorm db reset`, `noorm db teardown` still require `--yes` per their own contracts. `NOORM_YES=1` does count toward those gates.
-- Every destructive command is also gated by the config's access role (`viewer`/`operator`/`admin` — see [Access Roles](../../headless.md#access-roles)). `--yes`/`NOORM_YES=1` only satisfies a `confirm` cell; it cannot open a `deny` cell. A `viewer`- or `operator`-role config still refuses `db teardown` no matter how many flags you pass.
-- Vault and identity operations that need a private key still need the key — either on disk at `~/.noorm/identity.key` or in `$NOORM_IDENTITY_PRIVATE_KEY`.
+| Symptom | Cause | Fix |
+|---|---|---|
+| `identity init --force` still exits 1 | Replacing needs the `--yes` flag. `NOORM_YES` does not count, because a new keypair orphans every `state.enc` | Pass `--yes` |
+| `db reset` exits 1: `This is a destructive operation. Pass --yes to confirm.` | It needs `--yes` or `NOORM_YES` even for `admin` | Pass it |
 
-If a command refuses with a useful error in interactive mode, it refuses
-with the same error in `--yes` mode. The flag turns prompts off, not
-preconditions off.
+
+## Next
+
+
+- [CI/CD Automation](/guide/automation/ci): test CI and prod CI pipelines
+- [Exit codes](/headless#exit-codes): the 0, 1, 2, 3 contract

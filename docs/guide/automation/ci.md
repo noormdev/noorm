@@ -1,194 +1,117 @@
 # CI/CD Automation
 
 
-Running noorm from an automated pipeline feels a lot like running it on your laptop — the same `run build`, `change ff`, and `db transfer` commands do the same things — but a CI runner has no `.noorm/` directory, no interactive TTY, and no identity on disk. The `noorm ci` namespace exists to close that gap: bootstrap an ephemeral state from environment variables, enroll a long-lived identity once from a developer machine, and let the same commands work in both places.
-
-This guide walks through the two common shapes of CI and the commands that connect them.
-
-
-## Two Shapes of CI
-
-Not every pipeline needs the same setup. Before writing YAML, decide which of these describes your job:
-
-| | Test CI | Prod CI |
-|---|---|---|
-| **Database** | Ephemeral (Postgres container, SQLite file, etc.) spun up in the job | Real, shared, already has data |
-| **Vault-backed secrets?** | No — templates don't reference `secrets.*` from the vault | Yes — templates decrypt keys at render time |
-| **Identity source** | Not required (no vault to decrypt, no audit trail worth sharing) | Required (enrolled once, keeps the audit trail of who deployed what) |
-| **`noorm ci init`?** | Optional | **Required** |
-| **Where to start** | [Test CI section](#test-ci) | [Prod CI section](#prod-ci) |
-
-When in doubt: if any change or template calls `secrets.KEY` and that key lives in the team vault, you need Prod CI.
-
-
-## Test CI
-
-The goal is to verify the schema builds and changes apply against a throwaway database. Nothing shared, nothing persisted, nothing secret.
-
-The flow is three env vars and two commands:
-
-```bash
-export NOORM_CONNECTION_DIALECT=postgres
-export NOORM_CONNECTION_HOST=localhost
-export NOORM_CONNECTION_DATABASE=test_db
-export NOORM_CONNECTION_USER=postgres
-export NOORM_CONNECTION_PASSWORD=test
-
-noorm run build
-noorm change ff
-```
-
-No identity, no `ci init`, no vault. If the schema compiles and all changes apply cleanly, exit 0.
-
-
-### GitHub Actions (Test CI)
+Run `noorm run build` and `noorm change ff` from a pipeline that has no saved state, no terminal, and no identity file.
 
 ```yaml
+# .github/workflows/database.yml
 name: Database CI
 
 on:
     pull_request:
-        branches: [main]
 
 jobs:
-    test:
+    schema:
         runs-on: ubuntu-latest
         services:
             postgres:
                 image: postgres:16
                 env:
                     POSTGRES_PASSWORD: test
-                    POSTGRES_DB: test_db
+                    POSTGRES_DB: order_to_cash_ci
                 ports:
                     - 5432:5432
                 options: >-
                     --health-cmd pg_isready
-                    --health-interval 10s
-                    --health-timeout 5s
+                    --health-interval 5s
                     --health-retries 5
+        env:
+            NOORM_CONNECTION_DIALECT: postgres
+            NOORM_CONNECTION_HOST: localhost
+            NOORM_CONNECTION_DATABASE: order_to_cash_ci
+            NOORM_CONNECTION_USER: postgres
+            NOORM_CONNECTION_PASSWORD: test
         steps:
             - uses: actions/checkout@v4
             - uses: actions/setup-node@v4
               with:
                   node-version: '22'
-            - run: npm ci
-
-            - name: Apply schema and changes
-              env:
-                  NOORM_CONNECTION_DIALECT: postgres
-                  NOORM_CONNECTION_HOST: localhost
-                  NOORM_CONNECTION_DATABASE: test_db
-                  NOORM_CONNECTION_USER: postgres
-                  NOORM_CONNECTION_PASSWORD: test
-              run: |
-                  npx noorm run build
-                  npx noorm change ff
-
+            - run: npm install -g @noormdev/cli
+            - run: noorm run build
+            - run: noorm change ff
             - run: npm test
 ```
 
+A database built from `db/sql/` has no change records, so `change ff` replays every change in `db/changes/`. A change that is not safe to run twice fails here instead of in production.
 
-## Prod CI
-
-When templates render vault-backed secrets or the target config's `access.user` role isn't `admin`, the runner needs two things the test flow skipped:
-
-1. **An identity** — an X25519 keypair whose public key is enrolled in the target database, giving it a slot in the `encrypted_vault_key` column.
-2. **A bootstrapped `.noorm/state/state.enc`** — the ephemeral state that every later command expects to find.
-
-The provisioning (step 1) happens once, on a developer machine. The runtime (step 2) happens every job.
+Tests that open the database through the SDK with `requireTest` need a stored test config. Add the `NOORM_IDENTITY_*` variables and run `noorm ci init --name test --test` before `npm test`, as [Building your SDK](/getting-started/building-your-sdk#where-does-the-connection-come-from) shows.
 
 
-### One-Time: Provision the CI Identity
-
-Pick the flow that matches your trust model:
-
-- **In-place** — mint the keypair right on the developer's laptop and grant it vault access. Simplest; the private key never leaves the developer's terminal.
-- **Air-gapped** — mint the keypair on one machine, hand the public key to a developer with vault access, and have them enroll just the public half. Use when the machine that will hold the CI private key is different from the one with vault access.
+## Which shape does my pipeline need?
 
 
-#### In-Place
+Test CI builds a throwaway database and replays every change. Prod CI applies only the pending changes to a shared database:
 
-Run this on a machine that already has vault access on the target config:
-
-```bash
-noorm ci identity enroll \
-    --config prod \
-    --name "GitHub CI" \
-    --email ci@example.com \
-    --yes
+```mermaid
+flowchart TD
+    subgraph TEST["Test CI"]
+        T1["noorm run build"] --> T2["noorm change ff"]
+        T2 --> T3["npm test"]
+    end
+    subgraph PROD["Prod CI"]
+        P1["noorm ci init"] --> P2["noorm change ff"]
+    end
 ```
 
-`--yes` is required, not optional. Enrollment ends in a `vault:propagate` grant, which the matrix marks `confirm` for every role that holds it, and sealing the vault key to a public key cannot be undone. Without `--yes` (or `NOORM_YES=1`) the command prints the identity it was about to grant to and exits 1 so you can check it first.
+| | Test CI | Prod CI |
+|---|---|---|
+| Database | Created in the job | Shared, holds data |
+| Identity | None, unless SDK tests need a stored test config | Enrolled once, read from `NOORM_IDENTITY_*` |
+| Vault secrets | Unavailable | Decrypted when templates render |
 
-The command:
-
-1. Mints a new X25519 keypair.
-2. Decrypts the vault key using your own private key.
-3. Inserts the new identity row and re-encrypts the vault key for it.
-4. **Prints the private key exactly once** — stdout contains `NOORM_IDENTITY_PRIVATE_KEY=<96-hex>`.
-
-Copy the printed block into your CI provider's secret store (GitHub Actions Secrets, GitLab CI Variables, etc.) under whatever name you like. You'll reference it later as `NOORM_IDENTITY_PRIVATE_KEY`.
+If a change or template reads `$.secrets.KEY` and the key lives in the team vault, you need prod CI.
 
 
-#### Air-Gapped
+## How do I set up prod CI?
 
-On the machine that will hold the CI secret:
+
+A developer with vault access enrolls the CI identity once. Every job then builds its own state from environment variables:
+
+```mermaid
+sequenceDiagram
+    participant Dev as Developer
+    participant DB as Database
+    participant Store as CI secrets
+    participant Job as Runner
+    Dev->>DB: ci identity enroll --yes
+    DB-->>Dev: identity added, vault key sealed to it
+    Dev->>Store: save the identity variables
+    Note over Dev,Store: once per CI identity
+    Job->>Store: read identity and connection variables
+    Job->>Job: ci init writes .noorm/state/state.enc
+    Job->>DB: change ff
+    DB-->>Job: pending changes applied
+```
+
+Enroll from a machine that has vault access on `prod`. The command prints `NOORM_IDENTITY_PRIVATE_KEY` once. Save it, with the name and email, in your CI secret store:
+
+```bash
+noorm ci identity enroll --config prod --name "GitHub CI" --email ci@example.com --yes
+```
+
+If the CI secret lives on a different machine than the vault access, mint the keypair there and enroll only the public half:
 
 ```bash
 noorm ci identity new --name "GitHub CI" --email ci@example.com --json > ci-identity.json
+noorm ci identity enroll --config prod --name "GitHub CI" --email ci@example.com \
+    --public-key <publicKey from ci-identity.json> --yes
 ```
 
-This prints the same env block as `ci identity enroll`, but does not touch any database. Extract the `publicKey` from `ci-identity.json` and send it to someone with vault access on the target config. They run:
-
-```bash
-noorm ci identity enroll \
-    --config prod \
-    --name "GitHub CI" \
-    --email ci@example.com \
-    --public-key <hex-from-ci-identity.json> \
-    --yes
-```
-
-Only the public half is enrolled. The private key never leaves the first machine. The public key is 88 hex characters; anything else is rejected before a row is written.
-
-`ci identity enroll` is **idempotent on identityHash** — re-running just ensures vault access, so you can replay it safely if anything fails partway through. It refuses outright when a row already exists under that hash carrying a *different* public key, since granting there would seal the vault key to someone else's key.
-
-
-### Every Job: Runtime Bootstrap
-
-Inside the CI job, set the three identity env vars plus the connection and call `ci init`:
-
-```bash
-noorm ci init --name prod
-noorm change ff
-```
-
-`ci init` reads `NOORM_IDENTITY_*` and `NOORM_CONNECTION_*`, writes a fresh `.noorm/state/state.enc`, creates a config (default name `ci`, override via `--name` or `NOORM_CI_CONFIG_NAME`), and marks it active. After it runs, every other `noorm` command in the job works exactly as if a developer had bootstrapped the project manually.
-
-If the env vars are missing or malformed, `ci init` exits 2 (bad invocation) before doing anything else. If `state.enc` already exists and `--force` was not passed, it exits 1. With `--force` it backs the old file up next to it first, and from an interactive terminal it also demands `--yes`, since overwriting destroys every config and config-scoped secret in the project.
-
-
-### Loading Per-Job Secrets
-
-When your templates need secrets that shouldn't live in the vault — one-off job tokens, ephemeral API keys — use `ci secrets` to batch-load them into the active config's vault from a dotenv file:
-
-```bash
-cat > ./ci-secrets.env <<EOF
-API_KEY=$API_KEY
-STRIPE_KEY=$STRIPE_KEY
-EOF
-
-noorm ci secrets --file ./ci-secrets.env
-rm ./ci-secrets.env
-```
-
-Existing keys are skipped by default (so a rerun is safe). Pass `--overwrite` to replace them. Exit codes: `0` clean load, `1` total failure, `2` bad invocation (unknown config, unreadable or malformed `--file`), `3` partial (some keys set, some errored).
-
-
-### GitHub Actions (Prod CI)
+Each job runs `ci init`, then `change ff`:
 
 ```yaml
-name: Deploy Database Changes
+# .github/workflows/deploy-db.yml
+name: Deploy database changes
 
 on:
     push:
@@ -197,158 +120,60 @@ on:
 jobs:
     deploy:
         runs-on: ubuntu-latest
+        env:
+            NOORM_IDENTITY_PRIVATE_KEY: ${{ secrets.NOORM_CI_KEY }}
+            NOORM_IDENTITY_NAME: GitHub CI
+            NOORM_IDENTITY_EMAIL: ci@example.com
+            NOORM_CONNECTION_DIALECT: postgres
+            NOORM_CONNECTION_HOST: ${{ secrets.DB_HOST }}
+            NOORM_CONNECTION_DATABASE: order_to_cash
+            NOORM_CONNECTION_USER: ${{ secrets.DB_USER }}
+            NOORM_CONNECTION_PASSWORD: ${{ secrets.DB_PASSWORD }}
+            # the prod stage is protected, so change ff asks for confirmation
+            NOORM_YES: "1"
         steps:
             - uses: actions/checkout@v4
             - uses: actions/setup-node@v4
               with:
                   node-version: '22'
-            - run: npm ci
-
-            - name: Bootstrap CI state
-              env:
-                  NOORM_IDENTITY_PRIVATE_KEY: ${{ secrets.NOORM_CI_KEY }}
-                  NOORM_IDENTITY_NAME: "GitHub CI"
-                  NOORM_IDENTITY_EMAIL: "ci@example.com"
-                  NOORM_CONNECTION_DIALECT: postgres
-                  NOORM_CONNECTION_HOST: ${{ secrets.DB_HOST }}
-                  NOORM_CONNECTION_DATABASE: ${{ secrets.DB_NAME }}
-                  NOORM_CONNECTION_USER: ${{ secrets.DB_USER }}
-                  NOORM_CONNECTION_PASSWORD: ${{ secrets.DB_PASSWORD }}
-              run: npx noorm ci init --name prod
-
-            - name: Apply changes
-              run: npx noorm change ff
+            - run: npm install -g @noormdev/cli
+            - run: noorm ci init --name prod
+            - run: noorm change ff
 ```
 
-
-### GitHub Actions (Prod CI with job-scoped secrets)
-
-If your changes read vault keys the runner doesn't already have, load them after `ci init`:
-
-```yaml
-- name: Bootstrap CI state
-  env:
-      NOORM_IDENTITY_PRIVATE_KEY: ${{ secrets.NOORM_CI_KEY }}
-      NOORM_IDENTITY_NAME: "GitHub CI"
-      NOORM_IDENTITY_EMAIL: "ci@example.com"
-      NOORM_CONNECTION_DIALECT: postgres
-      NOORM_CONNECTION_HOST: ${{ secrets.DB_HOST }}
-      NOORM_CONNECTION_DATABASE: ${{ secrets.DB_NAME }}
-      NOORM_CONNECTION_USER: ${{ secrets.DB_USER }}
-      NOORM_CONNECTION_PASSWORD: ${{ secrets.DB_PASSWORD }}
-  run: npx noorm ci init --name prod
-
-- name: Load job secrets into vault
-  env:
-      API_KEY: ${{ secrets.API_KEY }}
-      STRIPE_KEY: ${{ secrets.STRIPE_KEY }}
-  run: |
-      cat > ./ci-secrets.env <<EOF
-      API_KEY=$API_KEY
-      STRIPE_KEY=$STRIPE_KEY
-      EOF
-      npx noorm ci secrets --file ./ci-secrets.env
-      rm ./ci-secrets.env
-
-- name: Apply changes
-  run: npx noorm change ff
-```
+GitLab CI takes the same variables under `variables:` and the same three commands. `NOORM_CI_CONFIG_NAME` renames the config when `--name` is absent (default `ci`). The connection variables are listed under [environment-only mode](/headless#environment-only-mode).
 
 
-### GitLab CI (Prod)
-
-```yaml
-migrate:
-    stage: deploy
-    image: node:22
-    script:
-        - npm ci
-        - npx noorm ci init --name prod
-        - npx noorm change ff
-    variables:
-        NOORM_IDENTITY_PRIVATE_KEY: $NOORM_CI_KEY
-        NOORM_IDENTITY_NAME: "GitLab CI"
-        NOORM_IDENTITY_EMAIL: "ci@example.com"
-        NOORM_CONNECTION_DIALECT: postgres
-        NOORM_CONNECTION_HOST: $DB_HOST
-        NOORM_CONNECTION_DATABASE: $DB_NAME
-        NOORM_CONNECTION_USER: $DB_USER
-        NOORM_CONNECTION_PASSWORD: $DB_PASSWORD
-```
+## How do I load secrets for one job?
 
 
-### Shell Script (Prod, with locking)
+`ci secrets` reads `KEY=value` lines from a dotenv file into the active config's secrets, in the runner's state file. They outrank a vault secret with the same key. Existing keys are skipped unless you pass `--overwrite`:
 
 ```bash
-#!/bin/bash
-set -e
-
-export NOORM_IDENTITY_PRIVATE_KEY=$NOORM_CI_KEY
-export NOORM_IDENTITY_NAME="CI Bot"
-export NOORM_IDENTITY_EMAIL="ci@example.com"
-export NOORM_CONNECTION_DIALECT=postgres
-export NOORM_CONNECTION_HOST=$DB_HOST
-export NOORM_CONNECTION_DATABASE=$DB_NAME
-export NOORM_CONNECTION_USER=$DB_USER
-export NOORM_CONNECTION_PASSWORD=$DB_PASSWORD
-
-noorm ci init --name prod
-
-# Prevent concurrent migrations. `change ff` releases the lock itself once
-# the last change lands, so the trap tolerates an already-released lock.
-noorm lock acquire
-trap 'noorm lock release || true' EXIT
-
-noorm change ff
-noorm db explore --json
+printf 'STRIPE_KEY=%s\n' "$STRIPE_KEY" > ci-secrets.env
+noorm ci secrets --file ci-secrets.env
+rm ci-secrets.env
 ```
 
 
-## Reference
+## What bites
 
 
-### Environment Variables
-
-| Variable | Required for | Description |
+| Symptom | Cause | Fix |
 |---|---|---|
-| `NOORM_IDENTITY_PRIVATE_KEY` | Prod CI | X25519 private key, hex PKCS8 DER (96 hex chars) |
-| `NOORM_IDENTITY_NAME` | Prod CI | Display name (e.g. `"GitHub CI"`) |
-| `NOORM_IDENTITY_EMAIL` | Prod CI | Email address |
-| `NOORM_CI_CONFIG_NAME` | Optional | Default config name for `ci init` |
-| `NOORM_YES` | Optional | Truthy value stands in for `--yes` on every command. Truthy is any non-empty value except `0` and `false` |
-| `NOORM_CONNECTION_DIALECT` | Always | `postgres`, `mysql`, `sqlite`, or `mssql` |
-| `NOORM_CONNECTION_HOST` | Dialect-specific | Host |
-| `NOORM_CONNECTION_PORT` | Dialect-specific | Port |
-| `NOORM_CONNECTION_DATABASE` | Always | Database name / file path |
-| `NOORM_CONNECTION_USER` | Dialect-specific | Username |
-| `NOORM_CONNECTION_PASSWORD` | Dialect-specific | Password |
+| `ci init` exits 2: `Missing or invalid environment variables` | A secret is not passed to the step, or the key is not 96 hex characters | Map the secret into the step's `env`. Copy the full value `enroll` printed |
+| `ci init` exits 1: `State already exists at … Use --force to overwrite.` | A cached or committed `.noorm/state/state.enc` is in the workspace | `ci init --force` backs it up first. At a terminal it also needs `--yes` |
+| `ci identity enroll` exits 1: `About to grant irrevocable vault access` | `--yes` is missing, and sealing a vault key cannot be undone | Check the fingerprint it prints, then rerun with `--yes` |
+| `change ff` exits 1: `requires confirmation` | A stage named like the config (`prod`) has `protected: true`, which caps `user` at `operator` | Set `NOORM_YES=1` on the deploy step |
+| Tests fail: `Config "ci" does not have isTest: true` | `ci init` leaves `isTest` false, and an environment-only config has it false too | `ci init --test`. `ci identity new` mints a throwaway identity for it |
+| `Secret "STRIPE_KEY" not found (searched: config-local, global-local, vault)` | A template reads a secret this job does not have | Use prod CI for vault secrets, or `ci secrets` for job-scoped ones |
+| `ci secrets` exits 3 | Some keys were stored and some failed | Fix the errors it lists, then rerun. Stored keys are skipped |
 
 
-### `ci` Commands at a Glance
-
-| Command | Runs on | Purpose |
-|---|---|---|
-| `noorm ci identity new` | Developer machine | Mint a CI keypair + print env block. No DB contact. |
-| `noorm ci identity enroll --yes` | Developer machine (with vault access) | Enroll a CI identity in a target DB; grant vault access. Idempotent. `--yes` required. |
-| `noorm ci init` | CI runner | Bootstrap ephemeral `state.enc` from env; create & activate a config. |
-| `noorm ci secrets --file <path>` | CI runner (after `ci init`) | Batch-load secrets from dotenv into the active config. |
+## Next
 
 
-### Exit Codes
-
-| Code | Meaning |
-|---|---|
-| `0` | Success — everything the caller asked for happened |
-| `1` | Total failure — the operation ran and no unit of work succeeded |
-| `2` | Bad invocation — a missing or malformed flag or env var, or a named target (config, file, change) that does not exist. Nothing was attempted |
-| `3` | Partial — some units of work succeeded and some failed. The target is in a mixed state and re-running is not automatically safe |
-
-These four codes are shared by every noorm command, not just `ci`. `2` and `3` are what let a pipeline tell "you named something that isn't there" (retry is pointless) from "half of it landed" (a human needs to look).
-
-
-## See Also
-
-- [Identity Management](../../cli/identity.md) — keypair model and env-var identity
-- [Vault](../environments/vault.md) — how team secrets are encrypted and shared
-- [Secrets](../environments/secrets.md) — the three-layer secret resolution hierarchy
-- [CI Architecture](../../dev/ci.md) — developer-focused notes on the CI flow
+- [Non-interactive operation](/guide/automation/non-interactive): what `--yes` answers and what still refuses
+- [Deploying an application](/guide/deployment): schema once per release, the app on every replica
+- [Vault](/guide/environments/vault): how team secrets are encrypted and shared
+- [Exit codes](/headless#exit-codes): the 0, 1, 2, 3 contract every command shares

@@ -6,144 +6,100 @@ description: How to produce an ignatius model that survives a stakeholder review
 # Modeling best practices
 
 
-A model earns its keep when someone who does not write SQL can read it, disagree with it, and be right. These are the habits that get you there.
+A model earns its keep when someone who does not write SQL can read it, disagree with it, and be right.
+
+The model is agreed before any SQL exists, so a wrong entity boundary costs a conversation instead of a migration.
+
+```mermaid
+flowchart TD
+    A["write the model files"] --> B{"ignatius validate"}
+    B -->|"errors"| A
+    B -->|"clean"| C["ignatius export"]
+    C --> D{"stakeholder review"}
+    D -->|"disagrees"| A
+    D -->|"signs off"| E["agent writes db/sql/"]
+```
 
 
-## Model the decision, not the storage
+## What belongs in the model?
 
 
-The question a model answers is what the data is and how it is identified. Column types are logical for that reason: `text`, `integer`, `decimal`, `boolean`, `date`, `datetime`, `binary`. Whether a column becomes `VARCHAR(255)` or `TEXT`, which index it gets, and how it partitions are build-time decisions that belong in the SQL files noorm runs.
-
-Keeping those out of the model is what makes it reviewable by the people whose sign-off you need.
-
-
-## Write the body
+- **Decisions, not storage.** Types are logical. Whether `text` becomes `varchar(255)`, which index it gets, and how it partitions belong in the SQL ([From model to SQL](/modeling/model-to-sql)).
+- **The reason, in the body.** Frontmatter is the structure. The body is the argument a stakeholder reviews. The `party` body says every table in sales and billing inherits `party_id`, which is what stops one customer's payment from settling another customer's invoice. A schema dump cannot give you that sentence.
+- **Two or three example rows per entity.** Validation catches a broken reference, not a wrong rule. A row that reads wrong when you read it back exposes the rule.
+- **Stores that are not tables.** Caches, log files, queues, exported spreadsheets, and signed forms hold data nobody versioned. Give each a `stores/<name>.md` that says what is written to it, who reads it, and how long it is kept.
 
 
-The frontmatter is the structure. The body is the reason the entity exists, and it is the part of the model that a schema dump can never give you.
-
-Say what the thing is in business terms, what it is not, and what rule made you draw the boundary where you did. The reference model's `Party` entity explains why customers, vendors, and employees are one entity rather than three: a company that is both a customer and a vendor should not have two identities, and a person who becomes a customer after being an employee keeps one record. That paragraph is what a stakeholder argues with. The column list is not.
-
-Link related entities in prose with `[[Entity]]`. A wiki link that points at a nonexistent entity renders muted and raises `body.unknown_link`, so the prose stays honest as the model changes.
+## How do I choose keys and name relationships?
 
 
-## Always include examples
+- Describe `pk`, `columns`, and `on`. Leave `classification`, `identifying`, and cardinality out: ignatius derives them ([What gets derived](/modeling/entities#what-gets-derived)).
+- Choose inherited or surrogate keys on purpose. Inherited keys stop a child attaching to the wrong parent and put the owning party on every row. Surrogate keys suit lookup tables and roots such as `party`. Record the reason in the entity body.
+- When a team disagrees, serve the three variants of one model in the ignatius repository (`key-inherited`, `orm-hybrid`, `orm-pure` under `models/`). Only the keys differ.
+- Name each relationship with a business act: `is placed by`, not `belongs to` ([What goes in a predicate?](/modeling/entities#what-goes-in-a-predicate)).
 
 
-Add two or three realistic rows to every entity and input and output tables to every process. The modeling skill does this by default, and it is worth keeping when you author by hand.
-
-Structural validation cannot catch a wrong rule, only a broken reference. Concrete instances can. Write the rows for a case you believe is legal, and if one of them looks wrong when you read it back, the rule is wrong. This is the cheapest modeling test that exists, and it is the one that finds the errors that survive to production.
+## How do I write flows?
 
 
-## Let derivation do its job
-
-
-Do not declare `classification`, `identifying`, or cardinality. Describe the primary key, the columns, and the `on:` mapping, and let ignatius work out the rest.
-
-Two reasons. The derived answer stays correct when the key shape changes, and a hand-written label does not. And nothing reads those labels anyway: `identifying` and cardinality have no frontmatter field at all, and the only classification the parser accepts is `reference: true` for a lookup or code table. A `classification:` you set by hand is ignored without a finding, so it drifts out of agreement with the diagram in silence.
-
-
-## Choose a key convention on purpose
-
-
-Decide whether an entity inherits its parent's key or carries a surrogate `id`, and be able to say why.
-
-Inherited keys carry lineage in the identity, so a child cannot be attached to the wrong parent and the owning party is available without a join. They also make the lineage spotlight useful, since the feature works on shared-key families and has nothing to show on an all-surrogate schema. Surrogate keys are simpler to write and fit reference tables that nothing depends on for identity.
-
-Mixing conventions per entity is supported and often correct: a transactional spine that inherits keys alongside lookup tables that do not. Record the reason in the entity body so the next reader sees a decision instead of an inconsistency.
-
-When a team disagrees about this, serve the three reference variants that ship with ignatius (`key-inherited`, `orm-hybrid`, `orm-pure`) and compare them directly. They model the same business with the same entities, so the only variable is the keys.
-
-
-## Name processes as verbs
-
-
-A process transforms data. `Collect-Payment`, `Issue-Invoice`, and `Validate-Customer` read as work. A noun like `Payment-Handler` describes a component, and components belong in an architecture diagram rather than a DFD.
-
-The file name minus `.md` becomes the process id used in `proc:` tokens, wiki links, and the sub-diagram folder name, so pick it once and pick it well.
-
-
-## Enumerate what a flow carries
-
-
-On a `db:` endpoint the `data:` field is a column list, validated against the entity's keys and columns. On any other endpoint it is free text, and free text is where flows go vague.
-
-Write "gateway transaction reference, HTTP status, raw response" rather than "log data". The label is the contract for what crosses that arrow, and a reviewer can only catch a missing field if the field would have been named. Anything long is truncated on the canvas with an ellipsis and shown in full on hover, so a thorough label costs you nothing visually.
-
-
-## Model the stores that are not tables
-
-
-The caches, log files, queues, exported spreadsheets, signed forms, and PDFs are where the surprises live. They hold data nobody versioned, nobody backed up, and nobody remembered when the retention policy was written.
-
-Give each one a `stores/<name>.md` with its kind and a body explaining why it exists, what is written to it, and what happens to it over time. "Append-only log of raw gateway responses, never read back during normal processing, retained for 7 years" is a compliance fact that exists in no schema and in no codebase.
-
-
-## Decompose only where it earns it
-
-
-A sub-diagram is a folder named exactly after its parent process, and it must stay balanced with that parent: the data crossing its boundary has to match the parent's declared inputs and outputs, column for column on `db:` flows. `flow.unbalanced_decomposition` enforces that at every level.
-
-That check is a feature, and it is also a cost. Decompose a process when the detail changes a decision, not to show completeness. Two levels that stay balanced beat four that drift.
-
-
-## Keep validate clean
-
-
-`ignatius validate` exits `1` on errors and `0` otherwise, and warnings alone do not fail it. Run it while authoring and wire it into CI next to your other checks.
-
-Treat warnings as a queue rather than noise. `entity.unknown_group`, `cluster.no_discriminator`, and `flow.unknown_attribute` each name a real gap: a group file you never wrote, an exclusive cluster with no way to tell its subtypes apart, a flow promising a column the entity does not have. The model that fails a review is usually the one that accumulated twenty warnings nobody read.
-
-The `models/broken-demo` folder in the ignatius repo is deliberately broken to exercise every rule, which makes it a fast way to learn what each finding looks like before you meet it on your own model.
+- **Processes are verbs.** `Place-Order`, `Issue-Invoice`, and `Collect-Payment` read as work. `Payment-Handler` names a component, which belongs in an architecture diagram.
+- **Flow data lists fields.** Write "transaction reference, status, raw response", not "log data". A reviewer can only catch a missing field that was named.
+- **Decompose only where the detail changes a decision.** A sub-diagram must balance with its parent, and `flow.unbalanced_decomposition` checks it at every level. Two levels that stay balanced beat four that drift.
 
 
 ## Review before you build
 
 
-Export the model and put it in front of someone.
-
 ```bash
-ignatius export ./models -o model.html
+ignatius validate model
+ignatius export model -o model.html
 ```
 
-One self-contained HTML file with the graph, the dictionary, and the flows, working offline with nothing installed. Attach it to the ticket, mail it to the stakeholder, or commit it beside the model.
+`validate` exits `1` on errors and `0` otherwise, so warnings alone do not fail it. Read them anyway: `entity.unknown_group` is a group file you never wrote, `cluster.no_discriminator` is an exclusive cluster that cannot tell its members apart, and `flow.unknown_attribute` is a flow promising a column the entity lacks.
 
-Put your own name on it first. The default logo, title, and copyright line are placeholders, and a document going to a client or an approver should carry your organization rather than the tool's. See [Branding your model](/modeling/branding).
+`export` writes one HTML file holding the graph, the dictionary, and the flows. It works offline, so attach it to the ticket or mail it. Set `branding` in `ignatius.yml` first, because the default logo, title, and copyright are the tool's own ([Branding your model](/modeling/branding)). Then give the agreed model to your agent as the specification for the SQL.
 
-This is the step the whole tool exists for. A wrong entity boundary costs a conversation now and a migration later. Get the disagreement out of people before the schema is real, then hand the agreed model to your agent as the specification for the SQL.
+When an agent edits the model, review the edit as a diff. Record the baseline before it starts:
+
+```bash
+ignatius approve model
+```
+
+```
+Approved 0 change(s), cleared 0 note(s).
+```
+
+Then open `ignatius serve model`. It marks every added, changed, and removed entity, column, relationship, and flow node since the last approval, and lists each beside the change note that explains it. Run `approve` again to accept the edit. The [modeling skill](/modeling/modeling-skill) writes the note.
+
+Commit the model folder in the repository whose schema it describes. The `.gitignore` ignatius writes keeps `.ignatius/` out. A schema change and its model change land in one reviewable commit, and CI can run `validate` next to your other checks.
 
 
-## Keep the model next to the code
+## Where can I see a finished model?
 
-
-Commit the model folder in the repository whose schema it describes. It diffs cleanly, so a schema change and its model change land in one reviewable commit, and the prose explaining why gets reviewed alongside the DDL.
-
-A model that lives in a wiki or a drawing tool drifts within a quarter. One that lives in the repo and gates CI does not.
-
-
-## A model that follows all of this
-
-
-Reading a finished model beats reading rules about one. [`models/llm-memory-db-mssql`](https://github.com/noormdev/ignatius/tree/main/models/llm-memory-db-mssql) in the ignatius repo is the memory database an AI coding agent writes to, and it is the model in the [demo recording](/modeling/#information-modeling).
 
 ```bash
 git clone https://github.com/noormdev/ignatius.git
 ignatius serve ignatius/models/llm-memory-db-mssql -o
 ```
 
-It runs 38 entities across 8 groups, 27 processes in 6 diagrams, and one external actor, and `ignatius validate` reports no findings. Things worth looking at while it is open:
-
-- **Every entity and every process carries examples.** All 38 and all 27, with no exceptions, which is what the practice above asks for and what most models skip first.
-- **The key conventions are mixed on purpose.** `Agent` and `Artifact` are surrogate roots, while `Milestone` → `Task` (`milestone_id, task_no`) → `Task_Artifact` (`milestone_id, task_no, artifact_id`) inherits the whole way down. The transactional spine inherits; the things with independent identity do not.
-- **Classification is visible, not declared.** Reference tables, associatives like `Memory_Tag`, and the `StateTransition` subtype cluster all get their shape from their keys.
-- **The bodies carry business rules.** `Agent` explains why rows default `agent_id` to a sentinel: memories written before an agent existed, or after one is deleted, stay intact instead of being orphaned. No schema records that.
-
-Two practices it does not exercise, because the domain has no occasion for them: it has no non-`db` stores and no sub-diagrams. For those, read [`models/key-inherited`](https://github.com/noormdev/ignatius/tree/main/models/key-inherited), which validates clean at 24 entities and has both a `file:` store with a retention policy in its body and a decomposed process with a balanced child diagram.
+It validates clean and mixes keys on purpose: `Agent` and `Artifact` are surrogate roots, while `Milestone`, `Task`, and `Task_Artifact` inherit `milestone_id` and `task_no` down the chain.
 
 
-## Related
+## What bites
+
+
+| Mistake or symptom | Cause | Fix |
+|---|---|---|
+| Review comments argue about `varchar` lengths | physical types sit in the model | keep types logical and decide them in the SQL |
+| Warnings pile up unread | `validate` exits `0` on warnings | read each one, because each names a real gap |
+| The export carries the tool's logo and title | `branding` is unset | set it before the file leaves your team |
+| A reviewer cannot tell what crosses an arrow | `data:` on a non-table flow says "log data" | list the fields |
+
+
+## Next
 
 
 - [Entities and key inheritance](/modeling/entities)
 - [Data flows](/modeling/data-flows)
 - [The modeling skill](/modeling/modeling-skill)
+- [Branding your model](/modeling/branding)

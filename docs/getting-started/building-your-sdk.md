@@ -1,200 +1,94 @@
-# Building Your SDK
+# Building your SDK
 
 
-You've built your schema. Now you want to use it. This guide shows how to wrap noorm in a TypeScript SDK that provides type-safe database access across your workers, servers, and CLI tools.
-
-
-## What You'll Build
-
-A dedicated database package in your monorepo:
-
-```
-packages/
-└── db/
-    ├── package.json
-    ├── src/
-    │   ├── index.ts          # Public API
-    │   ├── client.ts         # Database client
-    │   ├── testing.ts        # Test utilities
-    │   ├── types.ts          # Database types
-    │   └── domains/          # Domain classes
-    │       ├── users.ts
-    │       └── posts.ts
-    └── tests/                # Integration tests
-```
-
-This structure gives you:
-
-- **Type safety** - Kysely types mirror your database
-- **Testability** - Integration tests use real databases
-- **Portability** - Same SDK works in workers, servers, CLI
-
-
-## Step 1: Set Up the Monorepo
-
-Create a pnpm workspace:
-
-```bash
-mkdir my-project && cd my-project
-pnpm init
-```
-
-Create `pnpm-workspace.yaml`:
-
-```yaml
-packages:
-    - 'packages/*'
-    - 'apps/*'
-```
-
-
-## Step 2: Create the Database Package
-
-```bash
-mkdir -p packages/db
-cd packages/db
-pnpm init
-```
-
-Update `packages/db/package.json`:
-
-```json
-{
-    "name": "@my-project/db",
-    "version": "1.0.0",
-    "type": "module",
-    "main": "./dist/index.js",
-    "types": "./dist/index.d.ts",
-    "exports": {
-        ".": "./dist/index.js",
-        "./testing": "./dist/testing.js"
-    },
-    "scripts": {
-        "build": "tsc",
-        "test": "vitest run",
-        "test:watch": "vitest"
-    },
-    "dependencies": {
-        "@noormdev/sdk": "*",
-        "kysely": "^0.28.0",
-        "pg": "^8.16.0",
-        "zod": "^3.24.0"
-    },
-    "devDependencies": {
-        "typescript": "^5.9.0",
-        "vitest": "^4.0.0"
-    }
-}
-```
-
-
-## Step 3: Define Your Types
-
-Create `src/types.ts` with types that match your schema:
+Wrap `createContext` in one workspace package, so every app and test queries the database through the same typed client.
 
 ```typescript
-import { z } from 'zod';
+// apps/api/src/orders.ts
+import { connect } from '@acme/db';
 
-/**
- * Database type definitions matching SQL schema.
- *
- * These types are used by Kysely for type-safe queries.
- * Keep them in sync with your SQL files.
- */
+const db = await connect({ config: 'dev' });
 
-export interface UsersTable {
-    id: number;
+const orders = await db.orders.listByParty(2);
+// [ { party_id: 2, order_no: 1 }, { party_id: 2, order_no: 2 } ]
+```
+
+
+## How is the package laid out?
+
+
+Apps and tests share one client, and only the test entry point sets `requireTest`.
+
+```mermaid
+flowchart TD
+    APPS["apps/api<br/>apps/worker"] --> CONNECT["connect()"]
+    TESTS["tests/orders.test.ts"] --> SETUP["setupTestDb()<br/>requireTest: true"]
+    SETUP --> CREATE["createClient()"]
+    CONNECT --> CREATE
+    CREATE --> CTX["createContext()"]
+    CTX --> KYSELY["ctx.kysely"]
+    CTX --> OPS["ctx.noorm"]
+    KYSELY --> DB[(database)]
+    OPS --> DB
+```
+
+```
+packages/db/
+├── src/
+│   ├── index.ts           # re-exports connect, createClient, Client, Database
+│   ├── client.ts
+│   ├── testing.ts
+│   ├── types.ts
+│   └── domains/orders.ts
+└── tests/orders.test.ts
+```
+
+In `packages/db`, install the SDK, Kysely, and your driver ([Installation](/getting-started/installation#install-the-sdk-optional) lists the driver per dialect), plus the test tools:
+
+```bash
+pnpm add @noormdev/sdk kysely pg
+pnpm add -D typescript vitest
+```
+
+
+## Describe the schema
+
+
+One interface per table, mirroring `db/sql/`. Update an interface in the same commit that changes its table.
+
+```typescript
+// packages/db/src/types.ts
+import type { Generated } from 'kysely';
+
+export interface PartyTable {
+    party_id: Generated<number>;
     name: string;
-    email: string | null;
-    bio: string | null;
-    created_at: Date;
 }
 
-export interface PostsTable {
-    id: number;
-    user_id: number;
-    title: string;
-    body: string | null;
-    created_at: Date;
+export interface SalesOrderTable {
+    party_id: number;
+    order_no: number;
+    placed_at: Generated<Date>;
 }
 
-export interface RecentPostsView {
-    id: number;
-    user_id: number;
-    title: string;
-    body: string | null;
-    created_at: Date;
-    author_name: string;
-}
-
-/**
- * Complete database schema for Kysely.
- */
 export interface Database {
-    users: UsersTable;
-    posts: PostsTable;
-    recent_posts: RecentPostsView;
+    party: PartyTable;
+    sales_order: SalesOrderTable;
 }
-
-// Domain types (what comes OUT of the database)
-export type User = UsersTable;
-export type Post = PostsTable;
-export type RecentPost = RecentPostsView;
-
-// ─────────────────────────────────────────────────────────────
-// Input Schemas (what goes INTO the database)
-// ─────────────────────────────────────────────────────────────
-
-/**
- * Define inputs as Zod schemas, then infer types from them.
- *
- * Input types differ from table types—they don't include
- * auto-generated fields like `id` or `created_at`.
- */
-
-export const CreateUserSchema = z.object({
-    name: z.string().min(1).max(255),
-    email: z.string().email().optional(),
-    bio: z.string().max(1000).optional(),
-});
-
-export const CreatePostSchema = z.object({
-    user_id: z.number().int().positive(),
-    title: z.string().min(1).max(255),
-    body: z.string().max(10000).optional(),
-});
-
-// Infer input types from schemas—no duplication
-export type CreateUserInput = z.infer<typeof CreateUserSchema>;
-export type CreatePostInput = z.infer<typeof CreatePostSchema>;
 ```
 
-Zod gives you runtime validation that TypeScript can't. Never trust user input—validate it before it touches your database. This protects against malformed data, provides clear error messages, and catches mistakes that even you might make.
 
-::: tip Type Generation
-Kysely provides [kysely-codegen](https://github.com/RobinBlomberg/kysely-codegen) to automatically generate types from your database:
-
-```bash
-pnpm add -D kysely-codegen
-npx kysely-codegen --dialect postgres --out-file src/types.ts
-```
-
-This introspects your database and generates accurate TypeScript types.
-:::
+## Write a domain class
 
 
-## Step 4: Create Domain Classes
-
-Create classes for each domain that hold a reference to the database context.
-
-`src/domains/users.ts`:
+Each domain holds the context and exposes the queries for its tables:
 
 ```typescript
+// packages/db/src/domains/orders.ts
 import type { Context } from '@noormdev/sdk';
-import type { Database, User, CreateUserInput } from '../types.js';
-import { CreateUserSchema } from '../types.js';
+import type { Database } from '../types.js';
 
-export class Users {
+export class Orders {
 
     #ctx: Context<Database>;
 
@@ -204,114 +98,13 @@ export class Users {
 
     }
 
-    async findById(id: number): Promise<User | null> {
-
-        const result = await this.#ctx.kysely
-            .selectFrom('users')
-            .selectAll()
-            .where('id', '=', id)
-            .executeTakeFirst();
-
-        return result ?? null;
-
-    }
-
-    async findByEmail(email: string): Promise<User | null> {
-
-        const result = await this.#ctx.kysely
-            .selectFrom('users')
-            .selectAll()
-            .where('email', '=', email)
-            .executeTakeFirst();
-
-        return result ?? null;
-
-    }
-
-    async create(input: CreateUserInput): Promise<User> {
-
-        // Validate input before touching the database
-        const validated = CreateUserSchema.parse(input);
-
-        const result = await this.#ctx.kysely
-            .insertInto('users')
-            .values({
-                name: validated.name,
-                email: validated.email ?? null,
-                bio: validated.bio ?? null,
-            })
-            .returningAll()
-            .executeTakeFirstOrThrow();
-
-        return result;
-
-    }
-
-    async list(): Promise<User[]> {
+    listByParty(partyId: number) {
 
         return this.#ctx.kysely
-            .selectFrom('users')
-            .selectAll()
-            .orderBy('created_at', 'desc')
-            .execute();
-
-    }
-
-}
-```
-
-`src/domains/posts.ts`:
-
-```typescript
-import type { Context } from '@noormdev/sdk';
-import type { Database, Post, RecentPost, CreatePostInput } from '../types.js';
-import { CreatePostSchema } from '../types.js';
-
-export class Posts {
-
-    #ctx: Context<Database>;
-
-    constructor(ctx: Context<Database>) {
-
-        this.#ctx = ctx;
-
-    }
-
-    async create(input: CreatePostInput): Promise<Post> {
-
-        const validated = CreatePostSchema.parse(input);
-
-        const result = await this.#ctx.kysely
-            .insertInto('posts')
-            .values({
-                user_id: validated.user_id,
-                title: validated.title,
-                body: validated.body ?? null,
-            })
-            .returningAll()
-            .executeTakeFirstOrThrow();
-
-        return result;
-
-    }
-
-    async getRecent(): Promise<RecentPost[]> {
-
-        return this.#ctx.kysely
-            .selectFrom('recent_posts')
-            .selectAll()
-            .orderBy('created_at', 'desc')
-            .execute();
-
-    }
-
-    async getByUser(userId: number): Promise<Post[]> {
-
-        return this.#ctx.kysely
-            .selectFrom('posts')
-            .selectAll()
-            .where('user_id', '=', userId)
-            .orderBy('created_at', 'desc')
+            .selectFrom('sales_order')
+            .select(['party_id', 'order_no'])
+            .where('party_id', '=', partyId)
+            .orderBy('order_no')
             .execute();
 
     }
@@ -320,103 +113,72 @@ export class Posts {
 ```
 
 
-## Step 5: Create the Database Client
+## Assemble the client
 
-The client assembles all domains and exposes them as properties.
 
-`src/client.ts`:
+`createContext` returns an unconnected context. `connect()` creates and connects it:
 
 ```typescript
-import { createContext, type Context } from '@noormdev/sdk';
+// packages/db/src/client.ts
+import { createContext, type Context, type CreateContextOptions } from '@noormdev/sdk';
 import type { Database } from './types.js';
-import { Users } from './domains/users.js';
-import { Posts } from './domains/posts.js';
-
-export interface ClientOptions {
-    config?: string;
-    requireTest?: boolean;
-    projectRoot?: string;
-    yes?: boolean;
-}
+import { Orders } from './domains/orders.js';
 
 export class Client {
 
     #ctx: Context<Database>;
 
-    readonly users: Users;
-    readonly posts: Posts;
+    readonly orders: Orders;
 
     constructor(ctx: Context<Database>) {
 
         this.#ctx = ctx;
-        this.users = new Users(ctx);
-        this.posts = new Posts(ctx);
+        this.orders = new Orders(ctx);
 
     }
 
-    async connect(): Promise<void> {
+    get kysely() {
 
-        await this.#ctx.connect();
-
-    }
-
-    async disconnect(): Promise<void> {
-
-        await this.#ctx.disconnect();
+        return this.#ctx.kysely;
 
     }
 
-    /**
-     * Reset database (teardown + build).
-     */
-    async reset(): Promise<void> {
+    connect() {
 
-        await this.#ctx.noorm.db.reset();
+        return this.#ctx.connect();
 
     }
 
-    /**
-     * Truncate all tables (keep schema).
-     */
-    async truncate(): Promise<void> {
+    disconnect() {
 
-        await this.#ctx.noorm.db.truncate();
+        return this.#ctx.disconnect();
+
+    }
+
+    reset() {
+
+        return this.#ctx.noorm.db.reset();
+
+    }
+
+    truncate() {
+
+        return this.#ctx.noorm.db.truncate();
 
     }
 
 }
 
-/**
- * Create a database client.
- *
- * @example
- * const db = await createClient({ config: 'dev' });
- * await db.connect();
- * const user = await db.users.findById(1);
- */
-export async function createClient(options: ClientOptions = {}): Promise<Client> {
+export async function createClient(options: CreateContextOptions = {}) {
 
-    const ctx = await createContext<Database>({
-        config: options.config,
-        requireTest: options.requireTest,
-        projectRoot: options.projectRoot,
-        yes: options.yes,
-    });
-
-    return new Client(ctx);
+    return new Client(await createContext<Database>(options));
 
 }
 
-/**
- * Create a connected client.
- *
- * @example
- * const db = await connect({ config: 'dev' });
- * const user = await db.users.findById(1);
- */
-export async function connect(options: ClientOptions = {}): Promise<Client> {
+export async function connect(options: CreateContextOptions = {}) {
 
     const client = await createClient(options);
+
     await client.connect();
 
     return client;
@@ -424,87 +186,28 @@ export async function connect(options: ClientOptions = {}): Promise<Client> {
 }
 ```
 
-
-## Step 6: Create the Public API
-
-`src/index.ts`:
-
-```typescript
-// Client
-export { Client, createClient, connect, type ClientOptions } from './client.js';
-
-// Types
-export type {
-    Database,
-    User,
-    Post,
-    RecentPost,
-    CreateUserInput,
-    CreatePostInput,
-} from './types.js';
-```
+`reset()` tears the schema down and rebuilds it from `db/sql/`. `truncate()` empties every table and keeps the schema.
 
 
-## Step 7: Add Testing Utilities
+## Test against a real database
 
-Create `src/testing.ts` for integration test helpers:
+
+The test client refuses any config that is not marked as a test database:
 
 ```typescript
-import { createClient, Client } from './client.js';
+// packages/db/src/testing.ts
+import { createClient } from './client.js';
 
-export interface TestClientOptions {
-    projectRoot?: string;
-}
+export function createTestClient(projectRoot?: string) {
 
-/**
- * Create a test database client.
- *
- * requireTest: true refuses any config that isn't marked as a test database.
- * yes: true pre-confirms the operations noorm would otherwise stop on.
- * db:truncate needs confirmation even on an admin config, so without it
- * every truncate() throws ProtectedConfigError.
- *
- * @example
- * const db = await createTestClient();
- * await db.connect();
- * await db.reset();
- */
-export async function createTestClient(
-    options: TestClientOptions = {},
-): Promise<Client> {
-
-    return createClient({
-        config: 'test',
-        requireTest: true,
-        yes: true,
-        projectRoot: options.projectRoot,
-    });
+    return createClient({ config: 'test', requireTest: true, yes: true, projectRoot });
 
 }
 
-/**
- * Setup hook for test suites.
- *
- * Returns connected client with clean database.
- *
- * @example
- * describe('Users', () => {
- *     let db: Client;
- *
- *     beforeAll(async () => {
- *         db = await setupTestDb();
- *     });
- *
- *     afterAll(async () => {
- *         await db.disconnect();
- *     });
- * });
- */
-export async function setupTestDb(
-    options: TestClientOptions = {},
-): Promise<Client> {
+export async function setupTestDb(projectRoot?: string) {
 
-    const db = await createTestClient(options);
+    const db = await createTestClient(projectRoot);
+
     await db.connect();
     await db.reset();
 
@@ -513,265 +216,107 @@ export async function setupTestDb(
 }
 ```
 
+Export it as its own entry, so production code never imports it. In `packages/db/package.json`:
 
-## Step 8: Write Integration Tests
+```json
+{
+    "type": "module",
+    "exports": {
+        ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" },
+        "./testing": { "types": "./dist/testing.d.ts", "import": "./dist/testing.js" }
+    },
+    "scripts": { "build": "tsc", "test": "vitest run" }
+}
+```
 
-By testing your SDK against a real database, you're testing your entire data layer—tables, views, stored procedures, constraints, and all. If someone changes a column type, renames a table, or breaks a view, your tests will catch it. This is how you detect schema drift before it reaches production.
-
-Create `tests/users.test.ts`:
+Then write tests against the real schema:
 
 ```typescript
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+// packages/db/tests/orders.test.ts
+import { afterAll, beforeAll, beforeEach, expect, it } from 'vitest';
 import { setupTestDb } from '../src/testing.js';
 import type { Client } from '../src/client.js';
 
-describe('User Queries', () => {
-    let db: Client;
+let db: Client;
 
-    beforeAll(async () => {
-        db = await setupTestDb();
-    });
+beforeAll(async () => {
 
-    afterAll(async () => {
-        await db.disconnect();
-    });
+    db = await setupTestDb();
 
-    beforeEach(async () => {
-        await db.truncate();
-    });
+});
 
-    describe('create', () => {
-        it('creates a user with required fields', async () => {
-            const user = await db.users.create({ name: 'Alice' });
+afterAll(async () => {
 
-            expect(user.id).toBeDefined();
-            expect(user.name).toBe('Alice');
-            expect(user.email).toBeNull();
-            expect(user.created_at).toBeInstanceOf(Date);
-        });
+    await db.disconnect();
 
-        it('creates a user with all fields', async () => {
-            const user = await db.users.create({
-                name: 'Bob',
-                email: 'bob@example.com',
-                bio: 'Hello world',
-            });
+});
 
-            expect(user.name).toBe('Bob');
-            expect(user.email).toBe('bob@example.com');
-            expect(user.bio).toBe('Hello world');
-        });
-    });
+beforeEach(async () => {
 
-    describe('findByEmail', () => {
-        it('finds existing user', async () => {
-            await db.users.create({ name: 'Alice', email: 'alice@example.com' });
+    await db.truncate();
 
-            const found = await db.users.findByEmail('alice@example.com');
+});
 
-            expect(found).not.toBeNull();
-            expect(found?.name).toBe('Alice');
-        });
+it('lists a party\'s orders by order_no', async () => {
 
-        it('returns null for non-existent email', async () => {
-            const found = await db.users.findByEmail('nobody@example.com');
+    const { party_id } = await db.kysely
+        .insertInto('party')
+        .values({ name: 'Ada Lovelace' })
+        .returning('party_id')
+        .executeTakeFirstOrThrow();
 
-            expect(found).toBeNull();
-        });
-    });
+    await db.kysely
+        .insertInto('sales_order')
+        .values([{ party_id, order_no: 1 }, { party_id, order_no: 2 }])
+        .execute();
 
-    describe('list', () => {
-        it('returns users in descending order by created_at', async () => {
-            await db.users.create({ name: 'First' });
-            await db.users.create({ name: 'Second' });
+    const orders = await db.orders.listByParty(party_id);
 
-            const list = await db.users.list();
+    expect(orders.map((o) => o.order_no)).toEqual([1, 2]);
 
-            expect(list).toHaveLength(2);
-            expect(list[0].name).toBe('Second');
-            expect(list[1].name).toBe('First');
-        });
-    });
 });
 ```
 
+Add the `test` config once with `noorm ui`: press `c`, then `a`, name it `test`, and check Test Database.
 
-## Step 9: Configure Test Database
 
-The SDK uses noorm configs. You'll need a `test` config that points to your test database. Add one via the noorm TUI wherever your noorm project lives:
+## Where does the connection come from?
+
+
+| Where it runs | Connection source | Call |
+|---|---|---|
+| Your machine | A stored config in `.noorm/state/state.enc` | `connect({ config: 'dev' })` |
+| Tests | A stored config marked as a test database | `createTestClient()` |
+| CI | `noorm ci init` writes the `test` config from env vars | `createTestClient()` |
+| Production | `NOORM_CONNECTION_*` env vars, no stored config | `connect()` |
+
+In CI, create the config before the tests run:
 
 ```bash
-noorm ui
+noorm -c packages/db ci init --name test --test
+pnpm --filter @acme/db test
 ```
 
-Press `c` for config, `a` to add:
-
-- **Config Name**: `test`
-- **Database**: `my_project_test`
-- **Test Database (skipped in production builds)**: checked
-
-The checkbox is what `requireTest: true` reads. A context created with `requireTest: true` against a config without it throws `RequireTestError` before it ever connects.
+Both steps need `NOORM_IDENTITY_PRIVATE_KEY`, `NOORM_IDENTITY_NAME`, and `NOORM_IDENTITY_EMAIL`. `ci init` also needs `NOORM_CONNECTION_*`. [CI](/guide/automation/ci) has the full workflow, and [Deploying](/guide/deployment) covers production.
 
 
-## Using Your SDK
-
-Now you can use your SDK anywhere in the monorepo.
+## What bites
 
 
-### In a Server
-
-```typescript
-// apps/api/src/routes/users.ts
-import { connect } from '@my-project/db';
-
-const db = await connect({ config: 'prod' });
-
-app.get('/users', async (req, res) => {
-    const list = await db.users.list();
-    res.json(list);
-});
-
-app.get('/users/:id', async (req, res) => {
-    const user = await db.users.findById(Number(req.params.id));
-    if (!user) {
-        return res.status(404).json({ error: 'User not found' });
-    }
-    res.json(user);
-});
-```
+| Symptom | Cause | Fix |
+|---|---|---|
+| `RequireTestError: Config "test" does not have isTest: true` | The config is not marked as a test database. `ci init` leaves it unmarked | Check Test Database in `noorm ui`, or run `ci init --test` |
+| PostgreSQL: `db.truncate()` fails with `permission denied to set parameter "session_replication_role"` | Truncate turns off foreign-key triggers with a setting only superusers, or roles granted `SET` on it, may change | Use a superuser login for the test database, or [grant the setting](/guide/database/teardown#what-bites) |
+| `ProtectedConfigError` from `truncate()` | `db:truncate` asks for confirmation even on an `admin` config, and the SDK cannot ask | Pass `yes: true` to `createContext`, or set `NOORM_YES=1` |
+| `Config "dev" not found` | Stored configs resolve against `projectRoot`, which defaults to the process's cwd | Run from the directory that holds `.noorm/`, or pass `projectRoot` |
+| `NotConnectedError: Not connected` | `createContext` returns an unconnected context | Call `connect()` first |
+| A query fails: column does not exist | The interface in `types.ts` drifted from `db/sql/` | Update the interface with the table |
 
 
-### In a Worker
-
-```typescript
-// apps/worker/src/jobs/send-welcome-email.ts
-import { connect } from '@my-project/db';
-
-export async function sendWelcomeEmail(userId: number) {
-    const db = await connect();
-
-    const user = await db.users.findById(userId);
-    if (!user?.email) {
-        console.log('User has no email, skipping');
-        return;
-    }
-
-    await emailService.send({
-        to: user.email,
-        subject: 'Welcome!',
-        body: `Hi ${user.name}, welcome aboard!`,
-    });
-
-    await db.disconnect();
-}
-```
+## Next
 
 
-### In a CLI Tool
-
-```typescript
-// apps/cli/src/commands/list-users.ts
-import { connect } from '@my-project/db';
-
-export async function listUsersCommand() {
-    const db = await connect({ config: process.env.DB_CONFIG });
-
-    const list = await db.users.list();
-
-    console.table(list.map(u => ({
-        id: u.id,
-        name: u.name,
-        email: u.email ?? '(none)',
-    })));
-
-    await db.disconnect();
-}
-```
-
-
-### In CI/CD
-
-```yaml
-# .github/workflows/test.yml
-name: Tests
-on: [push]
-
-jobs:
-    test:
-        runs-on: ubuntu-latest
-        services:
-            postgres:
-                image: postgres:15
-                env:
-                    POSTGRES_DB: test
-                    POSTGRES_USER: postgres
-                    POSTGRES_PASSWORD: postgres
-                ports:
-                    - 5432:5432
-
-        steps:
-            - uses: actions/checkout@v4
-            - uses: pnpm/action-setup@v2
-            - uses: actions/setup-node@v4
-              with:
-                  node-version: '20'
-                  cache: 'pnpm'
-
-            - run: pnpm install
-
-            # createTestClient asks for a stored config named `test`, and a
-            # fresh runner has no .noorm/state/state.enc. `ci init` writes one
-            # from the env vars and marks the config active and isTest.
-            # -c runs it in packages/db, which is where vitest's cwd will be,
-            # and createContext resolves state against cwd.
-            - run: npx noorm -c packages/db ci init --name test
-              env:
-                  NOORM_IDENTITY_PRIVATE_KEY: ${{ secrets.NOORM_CI_KEY }}
-                  NOORM_IDENTITY_NAME: "GitHub CI"
-                  NOORM_IDENTITY_EMAIL: "ci@example.com"
-                  NOORM_CONNECTION_DIALECT: postgres
-                  NOORM_CONNECTION_HOST: localhost
-                  NOORM_CONNECTION_DATABASE: test
-                  NOORM_CONNECTION_USER: postgres
-                  NOORM_CONNECTION_PASSWORD: postgres
-
-            - run: pnpm --filter @my-project/db test
-              env:
-                  NOORM_IDENTITY_PRIVATE_KEY: ${{ secrets.NOORM_CI_KEY }}
-                  NOORM_IDENTITY_NAME: "GitHub CI"
-                  NOORM_IDENTITY_EMAIL: "ci@example.com"
-```
-
-Generate `NOORM_CI_KEY` once with `noorm ci identity new --name "GitHub CI" --email ci@example.com`, which prints the env block to stdout, then paste it into your provider's secret store. If your templates read vault secrets, use `noorm ci identity enroll` instead so the key also gets vault access. See [CI/CD](/guide/automation/ci) for the full walkthrough.
-
-
-## Final Structure
-
-```
-my-project/
-├── pnpm-workspace.yaml
-├── packages/
-│   └── db/
-│       ├── package.json
-│       ├── tsconfig.json
-│       ├── src/
-│       │   ├── index.ts
-│       │   ├── client.ts
-│       │   ├── testing.ts
-│       │   ├── types.ts
-│       │   └── domains/
-│       │       ├── users.ts
-│       │       └── posts.ts
-│       └── tests/
-│           └── users.test.ts
-└── apps/
-    ├── api/                      # Uses @my-project/db
-    ├── worker/                   # Uses @my-project/db
-    └── cli/                      # Uses @my-project/db
-```
-
-
-## What's Next?
-
-- [SDK Reference](/reference/sdk) - Full API documentation
-- [Templates](/guide/sql-files/templates) - Dynamic SQL generation
+- [SDK reference](/reference/sdk): every method on `ctx` and `ctx.noorm`
+- [Deploying](/guide/deployment): env-only connections and one context per process
+- [CI](/guide/automation/ci): `ci init` and the workflow shapes
+- [Templates](/guide/sql-files/templates): generate SQL from data

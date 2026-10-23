@@ -125,18 +125,20 @@ For setup wizards where the target database may not exist yet, use `testConnecti
 | Path | Covers | Voice |
 |------|--------|-------|
 | `README.md` | project overview, install, quick start | atomic-writing |
-| `docs/index.md` | docs landing, why noorm, quick start | atomic-writing |
+| `docs/index.md` | landing: problems noorm and ignatius remove, how it works, FAQ | atomic-writing |
+| `docs/download.md` | install noorm and ignatius, agent skills, SDK, install options | atomic-writing |
 | `docs/why-noorm.md` | rationale, prior tools, history | atomic-writing |
 | `docs/tui.md` | TUI screens, navigation, keyboard shortcuts | terse-technical |
 | `docs/headless.md` | CLI reference, global flags, command discovery | terse-technical |
-| `docs/getting-started/installation.md` | requirements, CLI install, SDK install | atomic-writing |
-| `docs/getting-started/concepts.md` | SQL files as source of truth, execution order, changes | atomic-writing |
+| `docs/getting-started/installation.md` | CLI install, SDK install, agent skill, update, download verification | atomic-writing |
+| `docs/getting-started/concepts.md` | db/sql vs db/changes, execution order, templates, configs and roles, secrets, what lives where | atomic-writing |
 | `docs/getting-started/first-build.md` | init, first build walkthrough | atomic-writing |
-| `docs/getting-started/building-your-sdk.md` | monorepo setup, database package, SDK wiring | atomic-writing |
+| `docs/getting-started/building-your-sdk.md` | database package layout, schema types, domain classes, client, tests | atomic-writing |
 | `docs/guide/automation/ci.md` | test CI, prod CI shapes | atomic-writing |
 | `docs/guide/automation/mcp.md` | MCP server, AI agent integration, tools | atomic-writing |
 | `docs/guide/automation/non-interactive.md` | --yes semantics, CI bootstrap | atomic-writing |
-| `docs/guide/changes/overview.md` | changes vs migrations, directory structure | atomic-writing |
+| `docs/guide/changes/overview.md` | change folder anatomy, file types, .txt manifests, ordering | atomic-writing |
+| `docs/guide/changes/add-a-column.md` | adding a column: db/sql/ declaration, change with backfill, revert | atomic-writing |
 | `docs/guide/changes/forward-revert.md` | apply and revert lifecycle | atomic-writing |
 | `docs/guide/changes/history.md` | execution history, TUI history views | atomic-writing |
 | `docs/guide/database/create.md` | db create, configs-first workflow | atomic-writing |
@@ -189,10 +191,13 @@ For setup wizards where the target database may not exist yet, use `testConnecti
 | `docs/dev/version.md` | version layers, migration | atomic-writing |
 | `docs/dev/ink-cheatsheet.md` | Ink API cheatsheet | terse-technical |
 | `docs/dev/ink-testing-library-cheatsheet.md` | ink-testing-library cheatsheet | terse-technical |
-| `docs/modeling/index.md` | ignatius overview, IDEF1X modeling | atomic-writing |
-| `docs/modeling/installation.md` | ignatius install | atomic-writing |
+| `docs/modeling/index.md` | ignatius landing: data flows, live model, two-minute try-it, links into the section | atomic-writing |
+| `docs/modeling/why.md` | case for modeling first, why a separate tool, the two notations, the name | atomic-writing |
+| `docs/parts/` | fragments shared by the two landings through `<!--@include: -->`; not pages | atomic-writing |
+| `docs/modeling/installation.md` | ignatius commands: install, serve, validate, export, index, approve, update | atomic-writing |
 | `docs/modeling/entities.md` | entity format, key inheritance | atomic-writing |
 | `docs/modeling/data-flows.md` | SSADM data flow diagrams | atomic-writing |
+| `docs/modeling/model-to-sql.md` | entity file fields mapped to DDL, constraint naming | atomic-writing |
 | `docs/modeling/best-practices.md` | modeling best practices | atomic-writing |
 | `docs/modeling/branding.md` | model branding | atomic-writing |
 | `docs/modeling/modeling-skill.md` | /ignatius-modeling skill | atomic-writing |

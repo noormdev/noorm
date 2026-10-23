@@ -1,357 +1,246 @@
 ---
 title: Entities and key inheritance
-description: The ignatius entity format, what the tool derives from your key shape, and why IDEF1X key inheritance is the premise the whole tool is built on.
+description: The ignatius entity file, how a child's key carries its parents' keys, and what ignatius derives from those keys so you never label an edge by hand.
 ---
 
 # Entities and key inheritance
 
 
-IDEF1X is the premise ignatius is built on. In IDEF1X an entity is defined by how it is identified, and identity flows down through relationships: a child that depends on a parent carries the parent's key inside its own. That single idea decides the cardinality of an edge, whether the edge is identifying, and how the entity gets classified. ignatius implements that premise directly. You describe the key shape, and the notation follows.
+An entity file describes one table: its key, its columns, and the parents it points at. ignatius derives the rest of the diagram from the keys.
 
-You can still model an ORM-style schema where every table has one surrogate `id`. ignatius draws that correctly too. It is not what the tool optimizes for.
+A child's key contains its parent's key. That is the IDEF1X premise ignatius implements, and it is why every `order_line` names its party without a join.
 
-::: tip Modeling IDEF1X with an agent
-IDEF1X is a methodology, not a file format. The calls it asks you to make (what counts as an entity, where identity comes from, which relationships are identifying) are the ones no tool can make for you.
+Each child carries its parents' key columns inside its own key.
 
-If you want an agent reasoning in those terms alongside you, there is a separate [`idef1x` skill](https://www.skills.sh/damusix/skills/idef1x) that installs with the same `skills` CLI as the modeling skill:
-
-```bash
-npx skills add https://github.com/damusix/skills --skill idef1x
+```mermaid
+erDiagram
+    party ||--o{ sales_order : places
+    sales_order ||--o{ order_line : contains
+    product ||..o{ order_line : "is sold via"
+    party {
+        integer party_id PK
+    }
+    sales_order {
+        integer party_id PK, FK
+        integer order_no PK
+    }
+    order_line {
+        integer party_id PK, FK
+        integer order_no PK, FK
+        integer line_no PK
+        integer product_id FK
+    }
+    product {
+        integer product_id PK
+    }
 ```
-
-It advises on method. The [`ignatius-modeling` skill](/modeling/modeling-skill) writes the files. Neither is required to use ignatius, and the rest of this page assumes neither.
-:::
 
 
 ## The folder format
 
 
-A folder is a model root when it contains an `ignatius.yml` file. Five top-level folders are recognized, and everything else at the root is left alone.
+A folder with an `ignatius.yml` is a model. Entities go under `data/`. The subfolder is for your own organization, because an entity's group comes from its `group:` field.
 
 ```
-models/
-    ignatius.yml
-    data/
-        identity/
-            Party.md
-            Person.md
-            Business.md
-        transactional/
-            SalesInvoice.md
-            SI_Line.md
-    groups/
-        identity.md
-        transactional.md
-    externals/          # optional, shared DFD externals
-    stores/             # optional, shared non-db DFD stores
-    flows/              # optional, data flow diagrams
-    notes/              # free-form, never scanned
+model/
+├── ignatius.yml
+├── data/
+│   ├── parties/        party.md, person.md, business.md, party_type.md
+│   ├── sales/          sales_order.md, order_line.md, product.md
+│   └── billing/        invoice.md, invoice_line.md, payment.md, ...
+├── groups/             one file per group
+├── externals/          Customer.md
+├── stores/             gateway-log.md
+├── clusters/           optional: named sets of stores for flows
+└── flows/
+    └── order-to-cash/  Place-Order.md, Issue-Invoice.md, ...
 ```
 
-Entities live under `data/`. The subdirectory is organizational convenience only: an entity's group comes from its `group:` frontmatter field, not from the folder it sits in. `groups/` is optional, and a model with no groups parses without error.
+`ignatius.yml` can be one line, `name: Order to cash`. `theme` and `branding` change how the model looks: see [Branding your model](/modeling/branding). `ignatius serve` and `ignatius approve` also write `.ignatius/`, the local change-review state, and a `.gitignore` entry that keeps it out of version control.
 
-`ignatius.yml` marks the root and carries display config. The minimum is one line.
-
-```yaml
-name: My Schema
-```
-
-Add `version`, `description`, and `updated` for model metadata, a `theme` block to override colors and spacing, and a `branding` block for a logo, title, or copyright line. The model is yours, and the default chrome is a placeholder you are meant to replace. See [Branding your model](/modeling/branding).
+A group file in `groups/` holds a `label` and a `color`. It tints the entities that name it and does not affect layout.
 
 
-## An entity file
+## What does an entity file contain?
 
 
-Frontmatter carries the structure. The body is free-form documentation. The attribute table you see in the viewer is generated from the frontmatter, so do not write one in the body.
+Frontmatter carries the structure. The body says why the entity exists. The viewer builds the attribute table from the frontmatter, so do not write one.
+
+<div class="nh-file">
+<div class="nh-panel-head"><span>model/data/sales/order_line.md (excerpt)</span><span>you write this</span></div>
 
 ```markdown
 ---
-entity: SalesInvoice
-group: transactional
+entity: order_line
+group: sales
 pk:
-    - party_id
-    - sales_invoice_id
+  - party_id
+  - order_no
+  - line_no
 columns:
-    party_id:
-        type: integer
-        desc: "Billed party, foreign key to Party."
-    sales_invoice_id:
-        type: integer
-        desc: "Identifier of the invoice within the party."
-    issued_at:
-        type: datetime
-        desc: "Timestamp the invoice was issued."
-        default: now
-    total:
-        type: decimal
-        desc: "Invoice total; reconciles to the sum of its line items."
+  party_id:
+    type: integer
+  order_no:
+    type: integer
+  line_no:
+    type: integer
+  product_id:
+    type: integer
 examples:
-    - party_id: 2
-      sales_invoice_id: 5001
-      issued_at: "2024-03-05T14:25:00Z"
-      total: 138.00
+  - party_id: 2
+    order_no: 1
+    line_no: 1
+    product_id: 10
 relationships:
-    - target: Party
-      on:
-          party_id: party_id
-      predicate: { fwd: owes on, rev: is owed by }
+  - target: sales_order
+    on:
+      party_id: party_id
+      order_no: order_no
+    predicate: { fwd: contains, rev: is part of }
+  - target: product
+    on:
+      product_id: product_id
+    predicate: { fwd: is sold via, rev: sells }
 ---
 
-# SalesInvoice
+# order_line
 
-A **SalesInvoice** is a bill issued to a [[Party]] for amounts owed. It is the
-demand for payment, the document a `Payment` is ultimately applied against,
-line by line.
+One product on a [[sales_order]]. The key carries the whole lineage, so the owning party is on every row without a join.
 ```
 
-Note what is absent: no `classification`, no per-edge `identifying`, no `cardinality`. ignatius derives all three.
+</div>
+
+Only `entity` is required. A missing `pk` or `columns` raises a warning. The other fields:
+
+| Field | Meaning |
+|---|---|
+| `group` | A file name in `groups/` |
+| `columns` | Each takes a `type`, plus optional `nullable` (default `false`), `default`, `desc` |
+| `ak` | Alternate keys: a `rule` naming the business rule, and its `columns` |
+| `relationships` | The parents: `target`, `on: { child_column: parent_column }`, `predicate` |
+| `subtypes` | A subtype cluster, declared on the basetype |
+| `reference: true` | Marks a lookup table |
+| `examples` | Sample rows keyed by column name |
+
+`type` is logical: `text`, `integer`, `decimal`, `boolean`, `date`, `datetime`, `binary`, or `json` for a document with an open-ended shape. The SQL picks the physical type ([From model to SQL](/modeling/model-to-sql)).
+
+Write two or three realistic `examples` per entity. A row that looks wrong when you read it back means the rule is wrong, and no validation rule catches that.
+
+In a body, `[[party]]` links to that entity and `[[party|the buyer]]` changes the label.
 
 
-### Columns
+## What goes in a predicate?
 
 
-Each column takes a logical `type` and three optional fields.
+The business verb for the relationship. It is the one part of an edge ignatius cannot derive.
 
-| Field | Default | Meaning |
+Write both readings. `fwd` reads parent to child and `rev` reads child to parent. Neither is derived from the other, because the inverse of "is realized as" is "is a". A plain string sets both to the same phrase.
+
+`belongs to`, `has many`, and `has one` restate the foreign key, the cardinality marker, and the key shape. Read the verb aloud in both directions. If someone who runs the business would not say it, the predicate or the relationship is wrong.
+
+| Relationship | Parent reads | Child reads |
 |---|---|---|
-| `type` | required | One of `text`, `integer`, `decimal`, `boolean`, `date`, `datetime`, `binary` |
-| `nullable` | `false` | Whether the column accepts null |
-| `default` | none | A default value note |
-| `desc` | none | A short note on what the column is for |
+| `sales_order → party` | party places sales_order | sales_order is placed by party |
+| `invoice → party` | party owes on invoice | invoice is owed by party |
 
-The types are logical, not physical. ignatius models information, so it does not care whether your `text` becomes `VARCHAR(255)` or `TEXT`. That decision belongs in the SQL files noorm runs.
-
-
-### Relationships
-
-
-A relationship names a `target` entity and maps foreign-key columns with `on: { child_column: parent_column }`. The `predicate` labels the edge in the graph and the dictionary.
-
-```yaml
-relationships:
-    - target: Party
-      on:
-          party_id: party_id
-      predicate: is a
-```
-
-A predicate can carry both reading directions with `{ fwd, rev }`, so the edge reads correctly whichever way you traverse it.
-
-
-#### Lazy predicates and real ones
-
-
-In IDEF1X, entities are nouns and relationships are verbs. The predicate is where that verb goes, and it is the part of the model a tool cannot derive for you. Everything else on the edge comes from the keys.
-
-`has many`, `belongs to`, and `has one` are the reflex answers, and they are all restatements of something already on the diagram. "Party has many SalesOrders" tells you the cardinality the crow's-foot marker is already showing. It says nothing about the business. The relationship exists because a party **places** orders, and that is the fact the schema is there to record.
-
-| Lazy | What it restates | What the business actually says |
-|---|---|---|
-| `belongs to` | the foreign key | `is placed by`, `is owed by`, `is part of` |
-| `has many` | the cardinality marker | `contains`, `journals`, `is broken down into` |
-| `has one` | the key shape | `is realized as`, `is settled via` |
-
-The replacements are not synonyms for the lazy versions. `contains` and `is part of` assert composition, that the child is a constituent of the parent rather than merely pointing at it. `is sold via` and `is realized as` assert that one thing is the concrete form another takes. Those are different claims about the world, and picking between them is modeling work.
-
-
-#### The sentence has to ring true
-
-
-Read the relationship aloud as a sentence, in both directions. If it is not something a person who runs the business would say, and nod at, then either the predicate is wrong or the relationship is.
-
-This is the cheapest correctness check in the model, and it catches things no structural rule can. A predicate you cannot phrase truthfully is usually a relationship that does not belong, or an entity whose purpose you have not settled. When the sentence does ring true, it *is* the business case for the entity carrying it: the reason that table exists, stated in one line, in the language of the people who asked for it.
-
-The reference model reads like this in both directions:
-
-| Relationship | Forward, parent to child | Reverse, child to parent |
-|---|---|---|
-| `SI_Line → SalesInvoice` | SalesInvoice **contains** SI_Line | SI_Line **is part of** SalesInvoice |
-| `SalesOrder → Party` | Party **places** SalesOrder | SalesOrder **is placed by** Party |
-| `SalesInvoice → Party` | Party **owes on** SalesInvoice | SalesInvoice **is owed by** Party |
-| `Business → Party` | Party **is realized as** Business | Business **is a** Party |
-| `SOL_Subscription → Subscription` | Subscription **is sold via** SOL_Subscription | SOL_Subscription **sells** Subscription |
-
-Read the whole diagram with predicates like those and it narrates the business. Read it with `has many` everywhere and it narrates the foreign keys, which you could have got from the DDL.
-
-
-#### Both directions are authored, neither is derived
-
-
-`fwd` reads parent to child. `rev` reads child to parent. ignatius does not invent one from the other, because English does not work that way: the inverse of "is realized as" is "is a", not "is realized as by".
-
-```yaml
-relationships:
-    - target: Identity
-      on:
-          party_id: party_id
-      predicate: { fwd: is realized as, rev: is a }
-```
-
-A plain string sets both directions to the same phrase, which is fine when one reading works both ways (`is a`) and is the right first move when you have not settled the reverse yet.
-
-```yaml
-predicate: is a
-```
-
-Supply only one key of the object form and the other defaults to empty.
-
-The graph draws edges parent to child and labels them with the forward predicate, so the label matches the direction of the line. Hover an entity and every edge touching it re-reads outward from that entity: edges where it is the child flip to the reverse predicate, and edges where it is the parent stay forward. The dictionary, which has no hover, shows the forward predicate and appends the reverse in a muted style when the two differ.
-
-One thing worth carrying past the diagram: once a relationship has a real verb, the foreign key can take its name. A column named for the sentence documents itself, and the schema, the dictionary, and the application code end up speaking the same language as the people who asked for the feature.
-
-
-### Example rows
-
-
-An entity can carry sample instances in `examples:`, a list of row objects keyed by column name.
-
-```yaml
-examples:
-    - party_id: 1
-      type: BUSINESS
-    - party_id: 2
-      type: PERSON
-```
-
-They render as a collapsible table in the entity dialog and the dictionary. Two or three realistic rows are enough. Their job is to make the rules concrete: a sample row that violates a constraint you believe in reveals a modeling error that no structural check can find. Every key must be a real column or PK column, and the live server flags unknown keys with an `entity.example_unknown_column` warning.
-
-
-### Linking entities in prose
-
-
-Double brackets in the body become links.
-
-```markdown
-A **Person** is the specialization of a [[Party]] that is a natural human.
-A customer settles invoices with a [[PaymentMethod|payment method]] on file.
-```
-
-`[[Party]]` links to Party and displays "Party". `[[PaymentMethod|payment method]]` links to PaymentMethod and displays "payment method". In the graph the link opens that entity's dialog; in the dictionary it jumps to its section. The target must match an entity id exactly, case-sensitive. A link to an entity that does not exist renders as muted, non-clickable text and is reported as a `body.unknown_link` finding, so a typo never passes silently.
-
-
-## Key inheritance in practice
-
-
-Here is the pattern the tool is shaped around, taken from the reference model that ships with ignatius.
-
-```
-Party          pk: party_id
-SalesInvoice   pk: party_id, sales_invoice_id
-SI_Line        pk: party_id, sales_invoice_id, line_seq
-```
-
-`SalesInvoice` does not get an independent `invoice_id`. It inherits `party_id` from `Party` and adds its own discriminator. `SI_Line` inherits both and adds a line sequence. Every line item carries its full lineage in its own identity, so the owning party is available without a join, and a line item that belongs to the wrong invoice is not expressible.
-
-Three things fall out of that automatically:
-
-- The edge from `SalesInvoice` to `Party` is **identifying**, because the foreign-key column sits inside the child's primary key.
-- The cardinality is **one-to-many**, because the child has primary-key columns beyond the foreign key.
-- `SalesInvoice` classifies as **dependent**, because it has exactly one identifying parent.
-
-None of that was declared. Changing the key shape changes all three on the next reload.
+The graph labels each edge with `fwd`. Hover an entity and its edges read outward from it, so edges where it is the child show `rev`. In the SQL, the reverse predicate names the foreign key: `sales_order_isplacedby_party`.
 
 
 ## What gets derived
 
 
-### Cardinality
+A changed key changes the diagram on the next reload. An edge is identifying when every foreign-key column is part of the child's primary key.
 
+Classification takes the first rule that matches, top to bottom.
 
-Cardinality comes from the primary-key layout, the relationship type, and foreign-key nullability. There is no `cardinality` field.
-
-- An identifying edge where the child's primary key equals the foreign key exactly is one-to-one.
-- A child with primary-key columns beyond the foreign key is one-to-many.
-- A nullable foreign key makes the parent side optional.
-
-An edge is identifying when its foreign-key columns are part of the child's primary key. That too comes from the key shape, never from a per-edge flag.
-
-
-### Classification
-
-
-Classification comes from how an entity connects to others, applied in this order.
-
-1. **Classifier**, flagged as a reference or classifier entity.
-2. **Subtype**, a member of another entity's subtype cluster.
-3. **Associative**, two or more identifying parents.
-4. **Dependent**, exactly one identifying parent.
-5. **Independent**, none of the above.
-
-Classification sets the node shape, so the diagram reflects structure rather than a label you maintain. The only declaration the parser reads is `reference: true`, which marks a lookup or code table and satisfies rule 1. A legacy `classification: Classifier` does the same thing. Any other `classification:` value is ignored, and no finding reports the mismatch, so a label written by hand drifts silently.
-
-
-### Subtype clusters
-
-
-A basetype declares its members in `subtypes:`, with a discriminator mapping per member.
-
-```yaml
-subtypes:
-    - exclusive: true
-      desc: Every Party is exactly one of Business or Person
-      members:
-          Business:
-              type: PartyType.code.BUSINESS
-          Person:
-              type: PartyType.code.PERSON
+```mermaid
+flowchart TD
+    A["entity"] --> B{"reference: true?"}
+    B -->|yes| C["Classifier"]
+    B -->|no| D{"in a subtypes:<br/>cluster?"}
+    D -->|yes| E["Subtype"]
+    D -->|no| F{"identifying<br/>parents"}
+    F -->|"2 or more"| G["Associative"]
+    F -->|"1"| H["Dependent"]
+    F -->|"0"| I["Independent"]
 ```
 
-Clusters render with diamond joiners between the basetype and its members. An exclusive cluster shows an X in the diamond and needs a discriminator column saying which subtype a basetype row is. An inclusive cluster leaves the diamond empty and needs no discriminator, because several subtypes can coexist for the same row. An exclusive cluster with no discriminator raises `cluster.no_discriminator`.
+| Entity | Primary key | Derived | Why |
+|---|---|---|---|
+| `party_type` | `code` | Classifier | `reference: true` |
+| `party` | `party_id` | Independent | its only parent, `party_type`, is outside the key |
+| `person` | `party_id` | Subtype | listed in the `subtypes:` of `party` |
+| `order_line` | `party_id`, `order_no`, `line_no` | Dependent | `sales_order` is in the key, `product` is not |
+| `payment_allocation` | `party_id`, `payment_no`, `invoice_no`, `line_no` | Associative | `payment` and `invoice_line` are both in the key |
+
+The dialog for `order_line` shows the result: the DEPENDENT badge and the PK, FK marks on `party_id` and `order_no`, none of which the file declares.
+
+<ModelViewer class="tall" model="order-to-cash" hash="view=graph&amp;entity=order_line" :tabs="false" label="order_line in the model" title="Order-to-cash model with order_line selected" />
+
+Cardinality comes from the same keys:
+
+| Edge | Parent : child | Example |
+|---|---|---|
+| identifying, FK is part of the child key | 1 : many | `sales_order → party` |
+| identifying, FK is the whole child key | 1 : 1 | none in this model |
+| identifying, child is a subtype | 1 : 0..1 | `person → party` |
+| not identifying | 1 : many | `order_line → product` |
+
+On a not-identifying edge, a nullable FK makes the parent side optional (`0..1`), and an `ak` on the FK columns makes the child side `1`.
 
 
-## Lineage: how key inheritance pays off in the viewer
+## How do subtypes work?
 
 
-A key-inherited entity shares its primary-key ancestry with a whole family. Selecting one should surface the family, and ignatius does that with a lineage spotlight: dotted lines in the dictionary and dotted inferred-upstream rays in the graph.
+The basetype lists its members and the column that tells them apart:
 
-The rule is precise. A **key edge** is one whose child-side foreign-key columns are all contained in the child's primary key. That is a subset test, not an equality test, which is what makes it correct for both cases:
+```yaml
+# model/data/parties/party.md (excerpt)
+subtypes:
+  - exclusive: true
+    desc: Every party is exactly one of person or business
+    members:
+      person:
+        party_type: party_type.code.PERSON
+      business:
+        party_type: party_type.code.BUSINESS
+```
 
-- A subtype member pointing at its basetype, where the foreign key equals the full primary key.
-- `SalesInvoice → Party`, where `party_id` is a proper subset of `{party_id, sales_invoice_id}`. This is the identifying one-to-many case, and an equality test would miss it.
-
-An entity's lineage is the transitive connected component of that entity in the graph of key edges only, traversed in both directions. Secondary foreign keys are excluded. A classifier reference like `Party → PartyType` is a real relationship but not a shared-key ancestry, so it never pulls an unrelated entity into the spotlight.
-
-Subtype clusters fall out for free, since every member-to-basetype relationship is itself a key edge.
-
-The practical effect: select `SSN` in the reference model and the spotlight reaches `SalesInvoice`, `SI_Line`, `SalesOrder`, `SO_Line`, and `PaymentAllocation`, because all of them carry `party_id` inside a larger key. That is the family that moves together when the identity spine changes. On an all-surrogate schema the same feature has nothing to show, because nothing shares a key.
+Each member is also its own entity file, keyed by the basetype's key, with a relationship back to it. An exclusive cluster draws an X in the diamond and needs the mapping form above. An inclusive cluster (`exclusive: false`) leaves the diamond empty and lists members by name, because several can coexist for one row.
 
 
 ## The two key conventions
 
 
-A model can use either convention, and can mix them per entity. The modeling skill detects which one a model uses from the shape of its existing entities rather than asking you to pick a mode.
-
-| Convention | Primary key shape | Foreign key placement |
+| Convention | Primary key | Foreign key |
 |---|---|---|
-| `key-inherited` | Composite: the parent's primary-key columns plus a local discriminator | Foreign-key columns live inside the child's primary key |
-| `orm-oriented` | A single surrogate `id`, typically integer or uuid | Foreign-key columns sit outside the primary key as plain columns |
+| `key-inherited` | the parent's key columns plus a local discriminator | inside the child's key |
+| `orm-oriented` | a single surrogate `id` | a plain column outside the key |
 
-ignatius ships three variants of the same data model to compare directly: `key-inherited`, `orm-hybrid`, and `orm-pure`. Serving each in turn is the fastest way to see what the convention costs and buys, because the entities and the business meaning are held constant while only the keys change.
+A model can mix them per entity. `party` is the root of the order-to-cash model, nothing above it supplies a key, and a surrogate is right there. Record the reason in the entity body. The [modeling skill](/modeling/modeling-skill) detects the prevailing convention from existing entities.
 
-Mixing is legitimate. A transactional spine can inherit keys while a lookup table keeps a surrogate code. Do it deliberately rather than by accident, and record the reason in the entity body.
+Key inheritance pays off in the graph. Hold Shift and hover `party`: dotted lines reach `order_line`, `invoice_line`, and `payment_allocation`, which are not direct neighbors but carry `party_id` inside their keys. On a schema where every table has its own `id`, there is nothing to show.
 
-
-## Groups
-
-
-A group is a markdown file in `groups/` with a label and a color in frontmatter and a description in the body.
-
-```markdown
----
-label: Identity & Accounts
-color: "#2ea043"
----
-
-Party identity, classifications, and ID documents.
-```
-
-Groups set a border color and a pastel fill for their entities. They do not affect layout. An entity whose `group` names a file that does not exist renders without a color band and raises an `entity.unknown_group` warning.
+The ignatius repository ships one data model three ways under `models/`: `key-inherited`, `orm-hybrid`, and `orm-pure`. Only the keys differ.
 
 
-## Related
+## What bites
 
 
-- [Data flows](/modeling/data-flows) puts these entities to work as data stores in process diagrams.
-- [The case for proper relational design](/guide/relational-design) makes the argument for inherited keys in the database itself.
-- The [`idef1x` skill](https://www.skills.sh/damusix/skills/idef1x) coaches an agent through the methodology itself, separately from ignatius.
-- The [derivation guide](https://github.com/noormdev/ignatius/blob/main/docs/guides/derivation.md) and the [folder format reference](https://github.com/noormdev/ignatius/blob/main/docs/guides/folder-format.md) carry the exhaustive rules.
+| Mistake or symptom | Cause | Fix |
+|---|---|---|
+| `classification: Dependent` or `identifying: true` does nothing | ignatius reads only `reference: true`, and no finding reports the rest | delete the line and change the key shape |
+| `cluster.no_discriminator` warning | an exclusive cluster lists `members` as plain names | use the mapping form: `person: { party_type: party_type.code.PERSON }` |
+| `[[Party]]` renders as muted text, `body.unknown_link` | link targets match the entity id exactly, and the id is `party` | write `[[party]]` |
+| `entity.example_unknown_column` never shows in `validate` | the rule is live-only, reported by `ignatius serve` | check the rows in the viewer |
+| An entity file named `index.md` fails with `config.index_file_entity` | `index.md` is the reserved router name | rename the file |
+
+
+## Next
+
+
+- [Data flows](/modeling/data-flows): the processes, externals, and stores that use these entities
+- [From model to SQL](/modeling/model-to-sql): how each field becomes DDL
+- [The case for proper relational design](/guide/relational-design): the argument for inherited keys in the database
+- The [`idef1x` skill](https://www.skills.sh/damusix/skills/idef1x) coaches an agent through the methodology, separately from ignatius
+- The [folder format reference](https://github.com/noormdev/ignatius/blob/main/docs/guides/folder-format.md) lists every rule

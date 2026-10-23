@@ -1,28 +1,41 @@
 # noorm sql repl
 
 
-Launch the TUI directly on the SQL Terminal screen. Uses the active config
-unless `--config` is provided.
+Open the TUI directly on the SQL terminal, against the active config or the one you name.
 
-For one-off non-interactive queries (CI scripts, ad-hoc inspection), use [`noorm sql query`](./sql.md) — `repl` requires an interactive TTY.
+```bash
+noorm sql repl --config dev
+```
+
+The terminal opens with the query box focused. `Enter` runs the query and `Esc` backs out. [The TUI page](/tui#sql-terminal) lists the keys, and [the SQL terminal guide](/guide/database/terminal) covers history, result browsing, and cancel.
 
 
 ## Flags
 
-- `--config <name>` / `-c` — switch active config before launching
+
+| Flag | Effect |
+|------|--------|
+| `--config <name>`, `-c <name>` | Make this config the active one, then launch. The switch is saved, so it outlasts the session |
+| `--yes`, `-y` | Accepted only to refuse: see below |
 
 
-## Environment
-
-Interactive TTY required. Fails with exit code 2 (usage error) in CI or piped stdin.
-
-A REPL is interactive by definition, so `--yes` / `NOORM_YES` cannot make it
-succeed. They produce a redirect hint instead, pointing at `noorm sql query`
-for one-shot SQL and `noorm sql query --file` for files. See
-[Non-interactive operation](../guide/automation/non-interactive.md).
+## Where does it refuse to run?
 
 
-## Example
+A REPL is interactive, so `--yes` and `NOORM_YES` cannot make it run unattended.
 
-    noorm sql repl
-    noorm sql repl --config dev
+| Condition | Behavior |
+|-----------|----------|
+| `--yes`, `-y`, or `NOORM_YES=1` | `Error: noorm sql repl is interactive only.` with `noorm sql query "SELECT 1"` and `noorm sql query --file query.sql` as the headless routes. Exit 2 |
+| No terminal on stdin | `Error: noorm sql repl requires an interactive terminal.`, exit 2 |
+| `--config` names a config that does not exist | `Error: Config not found: <name>`, exit 2 |
+| State cannot be decrypted | `Error: <message>`, exit 1 |
+
+Use [`noorm sql query`](/cli/sql) for one-shot SQL in scripts and CI. History from the terminal is what [`noorm sql history`](/cli/sql#sql-history) reads.
+
+
+## Next
+
+
+- [`noorm sql`](/cli/sql): one-shot queries and history
+- [The TUI](/tui): keys for every screen

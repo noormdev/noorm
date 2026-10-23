@@ -1,351 +1,119 @@
 # Organizing SQL Files
 
 
-How you structure your SQL files determines how they execute. noorm processes files in alphabetical order by path, so a well-organized directory structure gives you predictable, repeatable builds.
+Name your folders and files so the order they sort in is the order they run in.
 
-
-## Recommended Directory Structure
-
-Start with this layout:
+`noorm run build` finds every `.sql` and `.sql.tmpl` file under `paths.sql` (`./db/sql` after `noorm init`), sorts the paths as text, and runs them in that order. Every other file is ignored.
 
 ```
 db/sql/
 ├── 01_tables/
-│   ├── 001_users.sql
-│   ├── 002_posts.sql
-│   └── 003_comments.sql
+│   ├── 01_party.sql            # runs 1st
+│   ├── 02_sales_order.sql      # 2nd
+│   ├── 03_product.sql          # 3rd
+│   ├── 04_order_line.sql       # 4th
+│   └── 05_app_setting.sql      # 5th
 ├── 02_views/
-│   ├── 001_active_users.sql
-│   └── 002_recent_posts.sql
+│   └── 01_open_orders.sql      # 6th
 ├── 03_functions/
-│   └── 001_calculate_score.sql
-└── 04_seeds/
-    └── 001_default_roles.sql
+│   └── 01_place_order.sql      # 7th
+├── 09_seeds/
+│   ├── products.yml            # data file, never runs
+│   ├── 01_products.sql.tmpl    # 8th
+│   └── 02_gateway.sql.tmpl     # 9th
+└── archive/                    # excluded in settings, never runs
 ```
 
-This structure works because:
-
-- **Numbered folder prefixes** - Guarantee execution order between folders (`01_` before `02_`)
-- **Numbered file prefixes** - Guarantee execution order within each folder
-- **Logical grouping** - Easy to find and maintain related files
+`09_seeds` leaves `04` to `08` free for groups you add later, such as procedures and triggers.
 
 
-## Naming Conventions
-
-noorm doesn't enforce naming rules, but consistent naming makes life easier.
+## How are files ordered?
 
 
-### Use Numeric Prefixes for Order
+noorm compares whole paths as text, one character at a time. The folder comes first in the path, so a folder prefix orders the folders and a file prefix orders the files inside one.
 
-Files execute alphabetically. Without prefixes, `accounts.sql` runs before `users.sql`—even if users should exist first.
+| Names, in the order you want | Run order | Why |
+|---|---|---|
+| `tables/`, `views/`, `functions/` | `functions/`, `tables/`, `views/` | `f` sorts before `t` before `v` |
+| `2_party.sql`, `10_order.sql` | `10_order.sql`, `2_party.sql` | `1` sorts before `2` as text |
+| `accounts.sql`, `Users.sql` | `Users.sql`, `accounts.sql` | every capital letter sorts before every lowercase one |
 
-```
-# Without prefixes (unpredictable)
-accounts.sql      # Runs first (a < u)
-users.sql         # Runs second
-
-# With prefixes (explicit order)
-001_users.sql     # Runs first
-002_accounts.sql  # Runs second
-```
-
-Recommended formats:
-
-| Format | Example | Best For |
-|--------|---------|----------|
-| `001_` | `001_users.sql` | Most projects (up to 999 files per folder) |
-| `01_` | `01_users.sql` | Smaller projects (up to 99 files) |
-| `0001_` | `0001_users.sql` | Large projects with many files |
+Pad the prefixes in a folder to one width: `01_` through `99_`, or `001_` past that. Name each file for the object it creates.
 
 
-### Use Descriptive Names
+## Which files take part in a build?
 
-The name should tell you what the file does without opening it:
 
-```
-# Good
-001_create_users.sql
-002_add_user_indexes.sql
-003_create_posts.sql
+A file runs unless an exclude entry covers it, or an include list exists and does not cover it:
 
-# Avoid
-001.sql
-002_update.sql
-users_v2_final_FINAL.sql
+```mermaid
+flowchart TD
+    A["db/sql/<br/>.sql and .sql.tmpl files"] --> B{"under a<br/>build.exclude<br/>entry?"}
+    B -->|yes| X[skipped]
+    B -->|no| C{"build.include<br/>empty?"}
+    C -->|yes| R[runs]
+    C -->|no| D{"under a<br/>build.include<br/>entry?"}
+    D -->|yes| R
+    D -->|no| X
 ```
 
-
-### Template Files
-
-Files ending in `.sql.tmpl` are processed through the template engine before execution:
-
-```
-seeds/
-├── 001_default_roles.sql          # Static SQL
-└── 002_environment_config.sql.tmpl # Dynamic SQL with variables
-```
-
-
-## Execution Order
-
-noorm walks your schema directory recursively, collects every `.sql` and `.sql.tmpl` file, and sorts the **full paths as strings**. That sorted list is the execution order. This is the critical rule for understanding how your schema executes. It means:
-
-1. The directory part of the path decides the order first
-2. File names break ties inside the same directory
-3. The comparison is by character code, not dictionary order, so every uppercase letter sorts before every lowercase one: `Users.sql` runs before `accounts.sql`
-
-Without numeric folder prefixes, alphabetical order causes problems:
-
-```
-db/sql/
-├── functions/          # f comes before t—runs first!
-│   └── 001_helpers.sql
-├── tables/             # t comes after f—runs second
-│   ├── 001_users.sql
-│   └── 002_posts.sql
-└── views/              # v is last
-    └── 001_summary.sql
-```
-
-This is wrong—functions often depend on tables. Use numeric prefixes on folders:
-
-```
-db/sql/
-├── 01_tables/          # runs first
-│   ├── 001_users.sql
-│   └── 002_posts.sql
-├── 02_views/           # runs second
-│   └── 001_summary.sql
-└── 03_functions/       # runs third (can reference tables/views)
-    └── 001_helpers.sql
-```
-
-Execution order:
-1. `db/sql/01_tables/001_users.sql`
-2. `db/sql/01_tables/002_posts.sql`
-3. `db/sql/02_views/001_summary.sql`
-4. `db/sql/03_functions/001_helpers.sql`
-
-
-## Using Settings for Build Order
-
-The `settings.yml` file lets you control which folders run and in what order:
+An entry is a folder or one file, relative to `paths.sql`. Both keys filter and neither reorders. `exclude` wins over `include`.
 
 ```yaml
-build:
-    include:
-        - 01_tables
-        - 02_views
-        - 03_functions
-        - 04_seeds
-    exclude:
-        - archive         # Never runs
-```
-
-Folder names are relative to your `paths.sql` directory, not the project root. With the `paths.sql: ./db/sql` that `noorm init` writes, an entry of `01_tables` means `./db/sql/01_tables` — so you do **not** repeat the `sql/` prefix.
-
-::: warning A wrong include path still exits 0
-`sql/01_tables` resolves to `./db/sql/sql/01_tables` and matches nothing. `noorm run build` names the offending entries in a warning:
-
-```
-Ignored 1 build.include entry that matched no files: sql/01_tables
-Include paths are relative to paths.sql — use `01_tables`, not `sql/01_tables`.
-```
-
-The build still reports success and exits `0`, so a pipeline that only checks the exit code will not catch it. Read the warnings.
-
-A mistyped `exclude` entry gets the same treatment and is the more dangerous half: nothing is excluded, so the files you meant to fence off run against the target database.
-
-A leading `./` or a trailing `/` matches nothing for the same reason.
-:::
-
-The `include` array is a **filter**—it controls which folders are included, not their order. Execution order is always alphanumeric. Use numeric prefixes to control the sequence:
-
-```
-db/sql/
-├── 01_tables/    ← runs first
-├── 02_views/     ← runs second
-├── 03_functions/ ← runs third
-├── 04_seeds/     ← runs last
-└── archive/      ← excluded, never runs
-```
-
-This keeps the filesystem self-documenting. Anyone can see the execution order without consulting settings.
-
-
-### Conditional Includes with Rules
-
-Different environments often need different files. Use rules to include or exclude folders based on config properties:
-
-```yaml
-rules:
-    # Only run seeds in test environments
-    - match:
-          isTest: true
-      include:
-          - 04_seeds
-          - 05_test-fixtures
-
-    # Skip heavy seeds for CI
-    - match:
-          name: ci-test
-      exclude:
-          - 04_seeds/003_large-dataset.sql
-```
-
-This means:
-- Production builds skip test data entirely
-- CI builds skip slow seed files
-- Development gets everything
-
-::: warning A rule `include` narrows the whole build
-An empty `build.include` means "every folder under `paths.sql`". A matching rule does not add to that set, it replaces it: its `include` entries are merged into `build.include`, and the moment that list is non-empty only the listed folders run.
-
-So on a project with no `build.include`, the rule above turns a test build into `04_seeds` and `05_test-fixtures` only. Your tables never get created. If you use rule `include` at all, list every folder you want in `build.include` too, and use rule `exclude` for the conditional part.
-:::
-
-
-## Organizing by Feature vs by Type
-
-There are two common approaches to organizing SQL files.
-
-
-### By Type (Recommended for Most Projects)
-
-Group files by what they are:
-
-```
-db/sql/
-├── 01_tables/
-├── 02_views/
-├── 03_functions/
-├── 04_procedures/
-└── 05_seeds/
-```
-
-**Pros:**
-- Clear execution order from numeric prefixes
-- Filesystem is self-documenting
-- Matches how databases organize objects
-
-**Cons:**
-- Related files are spread across folders
-
-
-### By Domain (For Projects with SDK)
-
-If you're building a [typed SDK](/getting-started/building-your-sdk), organize SQL to mirror your domain classes:
-
-```
-db/sql/
-├── 01_core/
-│   ├── tables/           # Base entities (users, accounts)
-│   └── functions/        # Shared utilities
-├── 02_auth/
-│   ├── tables/           # Sessions, tokens, permissions
-│   ├── views/            # Active sessions, user permissions
-│   └── functions/        # Authentication helpers
-├── 03_billing/
-│   ├── tables/           # Invoices, payments, subscriptions
-│   ├── views/            # Revenue reports, aging
-│   └── procedures/       # Billing transactions
-└── 04_seeds/
-    └── defaults.sql      # Reference data
-```
-
-This aligns your database layer with your application layer. The SDK's `auth` domain class maps to `db/sql/02_auth/`, making it easy to find related code.
-
-**Pros:**
-- SQL and SDK stay in sync
-- Clear ownership boundaries
-- Domain changes are localized
-
-**Cons:**
-- Need numbered folders to control cross-domain dependencies
-- More complex include configuration
-
-
-### Hybrid Approach
-
-Start simple and add domains as needed:
-
-```
-db/sql/
-├── 01_tables/            # All tables (simple start)
-├── 02_views/
-├── 03_functions/
-└── 04_seeds/
-```
-
-When a domain grows complex, extract it:
-
-```
-db/sql/
-├── 01_core/              # Moved tables, views, functions
-├── 02_billing/           # Extracted billing domain
-├── 03_functions/         # Shared functions
-└── 04_seeds/
-```
-
-
-## Common Patterns
-
-
-### Environment-Specific Files
-
-Use rules to include environment-specific folders:
-
-```
-db/sql/
-├── 01_tables/
-├── 02_views/
-├── 03_seeds-dev/        # Development data
-├── 03_seeds-staging/    # Staging data
-└── 03_seeds-prod/       # Production defaults only
-```
-
-```yaml
-rules:
-    - match:
-          name: dev
-      include:
-          - 03_seeds-dev
-
-    - match:
-          name: staging
-      include:
-          - 03_seeds-staging
-
-    - match:
-          name: prod
-      include:
-          - 03_seeds-prod
-```
-
-
-### Archive Pattern
-
-Keep old files without running them:
-
-```
-db/sql/
-├── 01_tables/
-├── 02_views/
-└── archive/          # Old files, excluded from builds
-    └── deprecated_table.sql
-```
-
-```yaml
+# .noorm/settings.yml
 build:
     exclude:
         - archive
 ```
 
 
-## What's Next?
+## Can a config change which files run?
 
-Now that your files are organized:
 
-- [Templates](/guide/sql-files/templates) - Add dynamic content to your SQL
-- [Execution](/guide/sql-files/execution) - Understand builds and change detection
-- [Settings](/guide/environments/stages) - Configure build order with settings.yml
+A rule adds include or exclude entries when the active config matches. Rules run in order, every key in `match` must hold, and a later rule overrides an earlier one for the same entry.
+
+Suppose test configs have no `PAYMENT_GATEWAY_KEY`. A template that reads a missing secret throws, so this rule keeps the gateway seed out of test builds:
+
+```yaml
+# .noorm/settings.yml
+rules:
+    - description: Test configs have no gateway key
+      match:
+          isTest: true
+      exclude:
+          - 09_seeds/02_gateway.sql.tmpl
+```
+
+| `match` key | Holds when |
+|---|---|
+| `name` | the config's name equals the value |
+| `isTest` | the config's `isTest` flag equals the value |
+| `type` | the config's type is `local` or `remote` |
+| `protected` | `true` when the config's `user` role is below `admin` |
+
+Matching rules are merged into `build.include` and `build.exclude` before the build filters its files. `noorm run build --dry-run --config test` lists the files that config would run, and writes them rendered to `tmp/`.
+
+
+## Can I group by domain instead of type?
+
+
+Yes. Number the domain folders by dependency (`01_parties/`, `02_sales/`, `03_billing/`), and number `01_tables/` and `02_views/` inside each one. A view in `01_parties` runs before any `02_sales` table exists, so objects that reach across domains are easier to order by type.
+
+
+## What bites
+
+
+| Mistake or symptom | Cause | Fix |
+|---|---|---|
+| The build reports `success` with `filesRun=0`, or a file you excluded ran | An entry matched nothing. `sql/01_tables`, `./01_tables`, and `01_tables/` all match nothing, because entries start inside `paths.sql` | Write `01_tables`. The build warns `Ignored 1 build.include entry that matched no files` and still exits `0`, so read the warnings in CI |
+| A test build runs the seeds but creates no tables | A matching rule's `include` joins an empty `build.include`, so the list is no longer empty and only the rule's folders run | List every folder in `build.include`, and use rule `exclude` for the conditional part |
+| `run dir` runs a file that `build.exclude` lists | Only `run build` applies include, exclude, and rules | Name the files you want, or use `run build` |
+
+
+## Next
+
+
+- [Execution](/guide/sql-files/execution): what a build skips, runs, and records
+- [Templates](/guide/sql-files/templates): generate seeds from data files
+- [Concepts](/getting-started/concepts): how `db/sql/` and `db/changes/` fit together
+- [Settings reference](/dev/settings): every key in `settings.yml`

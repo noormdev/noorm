@@ -1,140 +1,92 @@
 # Terminal UI
 
 
-Launch the interactive terminal interface with:
+Run builds, apply changes, and explore the database from the keyboard.
 
 ```bash
 noorm ui
 ```
 
-![A full pass through the TUI: adding a config, creating the database, building the schema, fast-forwarding changes, and browsing the result in the explorer](/image/tui.gif)
+![Adding a config, creating the database, building the schema, fast-forwarding changes, and browsing the result](/image/tui.gif)
 
-Everything in noorm is accessible through keyboard shortcuts. The mouse works
-too, in lists and grids — see [Mouse](#mouse) if you would rather it did not.
-
-The TUI is a dedicated subcommand — every other `noorm` command runs as a non-interactive CLI. Running `noorm` on its own prints the command list (citty's `--help`) instead of opening the wizard, so the entry into the TUI is always explicit. See the [CLI Reference](/headless) for the headless surface.
+`noorm ui` takes no flags and opens on Home. Every other `noorm` command is a non-interactive CLI, and bare `noorm` prints the command list; see the [CLI reference](/headless).
 
 
-## Home Screen
-
-![The noorm TUI home screen: status, quick actions, and recent activity](/image/tui/home.png)
+## How do I get around?
 
 
-## Navigation Map
+Home opens four working screens with one key. Secrets hang off a config, and the schema explorer off the database menu:
 
-```
-                              ┌─────────┐
-                              │  Home   │
-                              └────┬────┘
-        ┌──────────┬──────────┬────┴────┬──────────┐
-        │          │          │         │          │
-     [c]│       [g]│       [r]│      [d]│       [s]│
-        ▼          ▼          ▼         ▼          ▼
-   ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐
-   │ Config │ │ Change │ │  Run   │ │Database│ │Settings│
-   │  List  │ │  List  │ │  Menu  │ │  Menu  │ │  Menu  │
-   └────────┘ └────────┘ └────────┘ └────────┘ └────────┘
-        │          │          │         │
-        │          │          │         ├── Explore (tables, views...)
-        │          │          │         └── Terminal (SQL REPL)
-        │          │          │
-        │          │          └── Build, File, Directory, Exec, Inspect
-        │          │
-        │          └── FF, Next, Run, Revert, Rewind, History
-        │
-        ├── Add, Edit, Delete, Copy, Use
-        │
-        └──[k]── Secrets List
+```mermaid
+flowchart TD
+    Home["Home"] -->|c| Config["Config list"]
+    Home -->|g| Changes["Changes list"]
+    Home -->|r| Run["Run menu"]
+    Home -->|d| Db["Database menu"]
+    Config -->|k| Secrets["Secrets of the<br/>highlighted config"]
+    Db -->|x| Explore["Schema explorer"]
 ```
 
-Secrets hang off a config, so `k` opens them from the Config List, not from
-Home. Export, import, and validate sit behind `[+] More` on the Config List.
+![Home: status, quick actions, and recent activity](/image/tui/home.png)
 
-
-## Keyboard Shortcuts
-
-
-### Home Navigation
-
-| Key | Screen | Description |
-|-----|--------|-------------|
-| `r` | Run | Execute schema files |
-| `c` | Config | Manage database connections |
-| `g` | Changes | View and apply changes |
-| `d` | Database | Explore schema, run queries |
-| `+` | More | Settings, vault, identity, lock |
-| `s` | Settings | Project configuration |
-| `v` | Vault | Team-shared encrypted secrets |
-| `i` | Identity | View/edit your identity |
-| `l` | Lock | View/manage database locks |
-| `u` | Update | Check for a newer noorm |
-| `q` | — | Quit noorm |
-
-`s`, `v`, `i`, and `l` work from Home directly as well as from `[+] More`.
-Three number keys run the quick actions listed on the home screen:
-
-| Key | Action |
-|-----|--------|
+| Key on Home | Opens |
+|-------------|-------|
+| `r` | Run menu |
+| `c` | Config list |
+| `g` | Changes list |
+| `d` | Database menu |
+| `+` | More: Settings, Vault, Identity, Lock |
+| `s`, `v`, `i`, `l` | Settings, Vault, Identity, Lock, without going through More |
+| `u` | Update |
 | `1` | Run build |
-| `2` | Apply changes (fast-forward) |
-| `3` | View lock status |
+| `2` | Fast-forward changes |
+| `3` | Lock status |
+| `q` | Quit |
 
-Per-config **secrets** are not on this list — they hang off a config rather
-than the project, so you reach them with `k` from the config list.
-
-
-### Common Actions (in sub-screens)
-
-| Key | Action | Available In |
-|-----|--------|--------------|
-| `a` | Add new | Config, Changes, Secrets |
-| `e` | Edit | Config, Changes, Secrets |
-| `d` | Delete | Config, Changes, Secrets |
-| `c` | Copy | Config |
-| `k` | Secrets | Config (secrets for the highlighted config) |
-| `+` | More | Config (export, import, validate) |
-| `Enter` | Use/Activate | Config (set as active) |
-
-Export, import, and validate live behind `[+] More` on the config list rather
-than on the list itself, which keeps the destructive and the routine actions
-apart.
+| Task | Keys |
+|------|------|
+| Switch config | `c`, `↓` to the config, `Enter` |
+| Fast-forward all changes | `g`, `f` |
+| Run the build | `r`, `b` |
+| Validate a config | `c`, `+`, `v` |
 
 
-### List Navigation
+## Which keys work on every screen?
+
 
 | Key | Action |
 |-----|--------|
-| `↑` | Move up |
-| `↓` | Move down |
+| `Esc` | Go back, or cancel the operation in flight |
+| `Ctrl+C` | Quit |
+| `?` | Help overlay. Any key closes it |
+| `Shift+L` | Toggle the log viewer |
+| `Shift+Q` | Open the SQL terminal |
+| `D` | Toggle dry-run mode. The status bar shows `DRY` |
+| `F` | Toggle force mode. The status bar shows `FORCE` |
+
+`D` applies to the run screens, `change ff`, and the database wipe, teardown, and transfer screens. `F` applies to the run screens and `change ff`.
+
+While a text field takes input (a form field in edit mode, a search box, the SQL editor), every key above except `Ctrl+C` types its character instead. `?`, `D`, and `F` also stand down inside dialogs.
+
+
+### Lists
+
+
+| Key | Action |
+|-----|--------|
+| `↑` `↓` | Move the cursor. Wraps at both ends, except on the changes list |
 | `Enter` | Select |
-| `Escape` | Go back |
-| `1`-`9` | Quick select by number, on lists that show numbers |
+| `Esc` | Back |
+| `1`-`9` | Select by number, on lists that show numbers: Settings and the explorer |
+| `Space` | Toggle an item, on multi-select lists. `Enter` then submits |
 
-Numbered selection is enabled per list — if a list renders numbers down its
-left edge (Settings and the schema explorer do), the digits work there.
-
-Every list sizes itself to the window, so a taller terminal shows more rows
-rather than the same fixed count with the rest behind a scroll marker. A list
-also keeps its cursor when you open an item and come back, so walking a long
-list one entry at a time does not restart at the top.
+A list fits the window, so a taller terminal shows more rows. It keeps its cursor when you open an item and come back.
 
 
-### Form Navigation
+### Forms
 
-Forms have two modes and `Enter` switches between them.
 
-| Mode | Key | Effect |
-|------|-----|--------|
-| Browse | `↑` `↓` | Move between fields, every field type included |
-| Browse | `Tab` / `Shift+Tab` | Same, forwards and backwards |
-| Browse | `Enter` | Open the active field for editing |
-| Browse | `Escape` | Cancel the form |
-| Edit | `Enter` | Commit and return to browse |
-| Edit | `Escape` | Restore the value the field held when edit opened |
-| Edit | `Tab` | Commit and move to the next field |
-
-Enter is the mode switch, so submitting is a place you navigate to rather than
-a key you press:
+A form has two modes. `Enter` switches between them, so submitting is a place you navigate to:
 
 ```mermaid
 stateDiagram-v2
@@ -147,105 +99,67 @@ stateDiagram-v2
     Actions --> [*]: Enter on the submit button
 ```
 
-Past the last field the cursor lands on the action row, where `←` `→` move
-between the buttons and `Enter` activates one. The submit button carries the
-screen's own label, `[ Create Config ]` on the add-config form.
+| Mode | Key | Effect |
+|------|-----|--------|
+| Browse | `↑` `↓`, `Tab`, `Shift+Tab` | Move between fields, wrapping through the action row |
+| Browse | `Enter` | Open the field for editing |
+| Browse | `Esc` | Cancel the form |
+| Edit | `Enter` | Commit and return to browse |
+| Edit | `Esc` | Restore the value the field held when edit opened |
+| Edit | `Tab`, `Shift+Tab` | Commit and move to the next or previous field |
+| Actions | `←` `→`, `Enter` | Pick a button and activate it |
 
-Two field types never open into edit mode:
-
-- A **checkbox** toggles in place on `Enter` or `Space`.
-- A **select** expands on `Enter`, moves with `↑` `↓`, and takes the highlighted
-  option on a second `Enter`. Collapsed, it shows its current value on one line
-  like every other field.
-
-A red `*` after a label marks a required field. Submitting with one empty puts
-the cursor on it and shows the error beside the value.
+A checkbox toggles in place on `Enter` or `Space`. A select expands on `Enter`, moves with `↑` `↓`, and takes the highlighted option on a second `Enter`. A red `*` marks a required field. Submitting with one empty puts the cursor on it, with the error beside the value.
 
 
 ### Mouse
 
-On by default, in lists and result grids only:
+
+On by default, in lists and result grids:
 
 | Action | Effect |
 |--------|--------|
 | Click a row | Move the cursor to it |
 | Double-click a row | Same as `Enter` on that row |
-| Wheel up / down | Move the cursor one row |
+| Wheel | Move the cursor one row, or scroll a document |
 
-A click acts on whatever already has focus. Clicking a list that is not focused
-does nothing — it does not move focus there, so the keyboard stays where you
-left it.
+A click acts on whatever already has focus. Clicking an unfocused list does nothing.
 
-
-#### Text selection stopped working
-
-That is this feature, and it is the one thing it costs you. Any terminal
-mouse-tracking mode hands the mouse to the application, so click-drag selection
-needs a modifier held down: Option in macOS Terminal and iTerm2, Shift in most
-others.
-
-If you would rather have plain selection back, turn the mouse off in
-`.noorm/settings.yml`:
+::: tip
+Mouse tracking takes click-drag text selection away from the terminal. Hold Option in macOS Terminal and iTerm2, or Shift in most others. To turn the mouse off, set `ui.mouse` in `.noorm/settings.yml`; `?` prints the same hint.
 
 ```yaml
+# .noorm/settings.yml
 ui:
     mouse: false
 ```
-
-`?` inside the TUI prints the same line, so you do not have to remember which
-file it lives in. Nothing else changes: every screen is fully keyboard-driven
-either way.
+:::
 
 
-### Global Shortcuts
-
-| Key | Action |
-|-----|--------|
-| `Shift+L` | Toggle log viewer overlay |
-| `Shift+Q` | Open the SQL terminal |
-| `?` | Show help |
-| `Escape` | Go back / Cancel |
-| `Ctrl+C` | Quit |
-
-While a text field is taking input (a form field in edit mode, a search box,
-the SQL editor), `Shift+L`, `Shift+Q`, `?`, `D`, and `F` type their character
-instead. They work again once you leave the field.
+## What does Esc do while the database is busy?
 
 
-### Cancelling a Database Operation
-
-A screen waiting on a database says so, and says that `Escape` will stop it:
+A screen waiting on the database says so and names the key:
 
 ```
 Testing connection...  [Esc] Cancel
 ```
 
-That appears while a config is being tested (add and edit), while the
-force-release screen checks lock status, and while the SQL terminal connects or
-runs a query. `Escape` returns the screen to a usable state; nothing is saved.
+That covers testing a config (add and edit), the force-release lock check, and the SQL terminal connecting or running a query. `Esc` returns the screen to a usable state and saves nothing. The client always stops waiting. Whether the server stops depends on the dialect:
 
-Two things are worth knowing about what "cancel" means here:
+| Dialect | Effect on the server |
+|---------|----------------------|
+| PostgreSQL | `pg_cancel_backend` asks it to stop the statement |
+| MySQL | `KILL QUERY` stops the statement |
+| SQL Server, SQLite | Nothing. The statement finishes. The message reads `Stopped waiting. The query may still be running on the server.` |
 
-- **The client always stops waiting. The server usually does not stop working.**
-  A cancelled query keeps running on PostgreSQL and MySQL only until noorm's
-  cancel request reaches it, and on SQL Server and SQLite it is never told at
-  all. The message names which happened, and
-  [the SQL terminal guide](./guide/database/terminal.md) has the per-dialect
-  table.
-- **A connect that answers after you cancelled is closed, not adopted.** The
-  screen keeps the state you cancelled into, and the connection is destroyed
-  rather than left half-open.
-
-A connection attempt also ends on its own after 15 seconds, with or without a
-keypress. Raise `connection.connectTimeoutMs` for a link that is slow but
-working.
+A connect that answers after you cancelled is closed, not adopted. A connection attempt also ends on its own after 15 seconds. Raise `connection.connectTimeoutMs` for a link that is slow but working. [The SQL terminal guide](/guide/database/terminal) has the full table.
 
 
 ### Long-Running Files
 
-A file that runs longer than 10 seconds gets a status block under its name,
-refreshed every 10 seconds, on the run screens (Build, Exec, Dir, File) and the
-change screens (Run, Revert, Fast Forward, Next, Rewind):
+
+A file that runs past 10 seconds gets a status block under its name, refreshed every 10 seconds. It appears on the run screens (Build, Exec, Dir, File) and the change screens (Run, Revert, Fast Forward, Next, Rewind):
 
 ```
 Current:  06_items.sql
@@ -254,286 +168,276 @@ CREATE INDEX on items · building index: loading tuples · 4210/9800 (42%)  2 pa
 Waiting on pid 4411 (CREATE INDEX items_embedding ..., 17m04s) · Lock: transactionid
 ```
 
-The third line appears when the server reports progress for the running
-command (index builds, `VACUUM`, `CLUSTER`, `COPY`, `ANALYZE` on PostgreSQL;
-`percent_complete` on SQL Server; stage counters on MySQL). The fourth appears when the file is waiting
-on another session's lock. SQLite shows elapsed time only.
+| Line | Appears when |
+|------|--------------|
+| `Running for …  pid …` | Always. SQLite shows elapsed time only |
+| Operation progress | The server reports it: index builds, `VACUUM`, `CLUSTER`, `COPY`, `ANALYZE` on PostgreSQL; `percent_complete` on SQL Server; stage counters on MySQL |
+| `Waiting on pid …` | The file waits on another session's lock |
 
-On Run Build and Run Exec, `Escape` pressed once shows a warning; pressed again
-within 2 seconds it cancels the run. No further file starts. On PostgreSQL and
-MySQL the running statement is cancelled on the server; on SQL Server and
-SQLite it finishes first, and the screen says so. Leaving the screen does not
-cancel the run.
+On Run Build and Run Exec, press `Esc` once for a warning and again within 2 seconds to cancel. No further file starts. PostgreSQL and MySQL cancel the running statement. SQL Server and SQLite let it finish, and the screen says `Stopping after the current file finishes.` Leaving the screen does not cancel the run.
 
 
-## Screen Reference
+## What does each screen do?
 
 
 ### Config List
 
-![The configuration list screen](/image/tui/config-list.png)
 
-- `●` indicates active config
-- `○` indicates inactive config
-- `>` indicates cursor position
-- `[user:<role> agent:<role|off>]` tag shows access roles for any config whose access differs from the default (`user: admin`, `agent: viewer`) — omitted entirely for configs still on the default
-- `[test]` tag shows test configs
-- Press `Enter` on a config to activate it
+![The configuration list](/image/tui/config-list.png)
 
-Press `a` to add one. Adding a config is the one operation that is interactive only — `noorm config add` on the CLI directs you here:
+A config shows `●` when active and `○` when not, with `[user:<role> agent:<role|off>]` when its access differs from the default (`admin` for you, `viewer` for the agent) and `[test]` on a test config.
 
-![The add-config form: name, dialect, connection details, and per-channel access roles](/image/tui/config-add.png)
+| Key | Action |
+|-----|--------|
+| `Enter` | Make the highlighted config active. On the config that is already active, open its edit form |
+| `a` | Add |
+| `e` | Edit |
+| `d` | Delete |
+| `c` | Copy |
+| `k` | Secrets of the highlighted config |
+| `+` | More: `x` export, `i` import, `v` validate |
 
-The two role fields set access per **channel** — who is *driving*. `User Role` covers a human on the CLI, TUI, or SDK; `Agent Role` covers an AI agent, over MCP and the CLI alike. They are independent, so a config can be wide open at your terminal and read-only — or invisible — to an agent. New configs default to `admin` for you and `viewer` for the agent. See [Configs](/guide/environments/configs#access-roles) for what each role permits.
+Adding a config is interactive only. `noorm config add` points here, and `noorm config import <file.json>` is the headless route.
+
+![The add-config form](/image/tui/config-add.png)
+
+`User Role` covers a human on the CLI, TUI, or SDK. `Agent Role` covers an AI agent over MCP and the CLI. They are independent. [Configs](/guide/environments/configs#access-roles) lists what each role permits.
 
 
 ### Changes List
 
-![The changes list, showing applied and pending changes](/image/tui/changes-list.png)
 
-- `✓` = Applied
-- `○` = Pending
-- `✗` = Failed
+![The changes list](/image/tui/changes-list.png)
 
-When no changes exist:
+| Symbol | Meaning |
+|--------|---------|
+| `✓` | Applied |
+| `○` | Pending |
+| `✗` | Failed |
+| `↩` | Reverted |
+| `!` | Orphaned: recorded in the database, folder gone from disk |
 
-```
-No changes found. Press [a] to create one.
-```
+| Key | Action |
+|-----|--------|
+| `Enter` | Run a pending, failed, or reverted change. Revert an applied one |
+| `a` | Add |
+| `e` | Edit. Not for an orphaned change |
+| `d` | Delete |
+| `r` | Run. Pending, failed, or reverted only |
+| `v` | Revert. Applied only |
+| `n` | Next: apply the next N pending changes, one by default |
+| `f` | Fast-forward all pending changes |
+| `w` | Rewind |
+| `h` | History |
 
-Press `h` for the execution history — what ran, when, and who ran it:
+With no changes, the list reads `No changes found. Press [a] to create one.`
 
-![Change execution history, with per-change status and the identity that applied it](/image/tui/change-history.png)
+![Change history](/image/tui/change-history.png)
+
+History lists what ran, when, and under which identity. `Enter` shows the files, and `e` shows the full error of a failed change.
 
 
 ### Run Menu
 
+
 ![The run menu](/image/tui/run-menu.png)
 
-Picking a file that already ran with the same content opens **File Previously Run** and asks "Run this file again?". A directory with such files opens **Files Previously Run**.
+`b` or `1` Build, `e` or `2` Exec, `f` or `3` File, `d` or `4` Dir, `i` or `5` Inspect.
+
+A file that already ran with the same content opens **File Previously Run** and asks `Run this file again?`. A directory with such files opens **Files Previously Run**.
 
 
 ### Database Menu
 
-![The database operations menu](/image/tui/database-menu.png)
+
+![The database menu](/image/tui/database-menu.png)
+
+| Key | Action | Needs a connection |
+|-----|--------|--------------------|
+| `c` | Create the database. Shows a toast if it is already initialized | No |
+| `d` | Destroy | No |
+| `x` | Explore | Yes |
+| `w` | Wipe: truncate | Yes |
+| `t` | Teardown | Yes |
+| `r` | Transfer | Yes |
+
+The SQL terminal is not on this menu. Open it with `Shift+Q`.
 
 
 ### Schema Explorer
 
-![The schema explorer overview, with object counts by category](/image/tui/explore-overview.png)
 
-Press a number to drill into a category:
+![The explorer overview, with object counts by category](/image/tui/explore-overview.png)
 
-![The explorer table list](/image/tui/explore-tables.png)
+Each category opens from the overview by its letter or its number. A category with no objects does nothing.
 
-Select a table to see its full schema:
+| Category | Keys |
+|----------|------|
+| Tables | `t`, `1` |
+| Views | `v`, `2` |
+| Procedures | `p`, `3` |
+| Functions | `f`, `4` |
+| Types | `y`, `5` |
+| Indexes | `i`, `6` |
+| Foreign Keys | `k`, `7` |
+
+![The table list](/image/tui/explore-tables.png)
+
+`Enter` on an object opens its detail. Indexes and foreign keys have none.
 
 ![Table detail: columns, indexes, and foreign keys](/image/tui/explore-table-detail.png)
 
-A detail longer than the window scrolls rather than running off the bottom:
+A detail longer than the window scrolls. The footer lists only the keys the screen answers to.
 
 | Key | Action |
 |-----|--------|
 | `↑` `↓` | Scroll one line |
-| `Ctrl+U` / `Ctrl+D` | Half a page |
-| `PageUp` / `PageDown` | A full page. On macOS these are `fn ↑` and `fn ↓`, which is what the footer says there |
-| `Home` / `End` | Top, bottom |
-| `v` | Redraw the same rows with nothing truncated |
-| `r` | Read rows from the object |
-
-The footer lists only the keys the current screen answers to, so a detail that
-fits shows no scroll hints and a view shows no `[r] Rows`.
+| `Ctrl+U`, `Ctrl+D` | Half a page |
+| `PageUp`, `PageDown` | A full page. On macOS the footer shows `fn ↑↓` |
+| `Home`, `End` | Top, bottom |
+| `v` | Full text: the same rows with nothing truncated |
+| `r` | Read rows. Tables only |
 
 
 ### Reading Rows
 
-The explorer describes structure. `r` on a detail screen reads the rows
-themselves, without leaving the explorer for the SQL terminal:
+
+`r` on a table detail reads its rows without leaving the explorer for the SQL terminal.
 
 ![Peeking at both ends of a table, then opening one row as a document](/image/tui-rows.gif)
 
-The peek reads both ends of the table rather than a page from the top, so the
-last rows by primary key are as reachable as the first:
+The peek reads both ends of the table, so the last rows by primary key are as reachable as the first:
 
-![The row peek: first rows and last rows, side by side](/image/tui/explore-row-peek.png)
+![First and last rows, side by side](/image/tui/explore-row-peek.png)
 
 | Key | Action |
 |-----|--------|
 | `↑` `↓` | Move the cursor within a set |
 | `Tab` | Swap between the first set and the last |
 | `Enter` | Open the highlighted row as a document |
-| `/` `s` `c` | Filter, sort, clear, on the focused set |
-| `Escape` | Close the peek |
+| `/` | Filter. `Tab` cycles the column, `Enter` applies, `Esc` clears |
+| `s` | Sort. `←` `→` pick the column, `a` ascending, `d` descending |
+| `c` | Clear filter and sort |
+| `Esc` | Close the peek |
 
-Three things decide what comes back:
+| Condition | Result |
+|-----------|--------|
+| The role lacks `sql:read` | Refused. Reading rows needs `sql:read`, not the `explore` permission the other explorer screens use |
+| The table has no primary key | Only the first rows appear: `No primary key, so there is no last set — rows are in storage order.` |
+| Both ends meet | One table, headed `All N rows` |
 
-- **Reading rows needs `sql:read`**, not the `explore` permission the rest of
-  these screens use. A config an agent may inspect the schema of is not one it
-  may read data from. See [Configs](/guide/environments/configs#access-roles).
-- **The tail needs a primary key.** With one, the last rows ride the index.
-  Without one, only the first rows appear.
-- **A short table is one set.** When both ends meet, the peek says
-  `All N rows` and draws a single table.
+The grid fits as many whole columns as the terminal holds and marks the rest `… N more columns`. `Enter` on a row shows them all:
 
-The table fits as many whole columns as the terminal holds and marks the rest
-`… N more columns`. `Enter` on a row is what shows them all:
-
-![One row as a YAML document, with the keys to walk to the next](/image/tui/explore-row-view.png)
+![One row as a YAML document](/image/tui/explore-row-view.png)
 
 | Key | Action |
 |-----|--------|
-| `←` `→` | Previous row, next row, in the order the table was showing |
+| `←` `→` | Previous row, next row, in the order the table showed |
 | `↑` `↓` | Scroll a document taller than the window |
-| `f` | Swap YAML for JSON. The choice holds for the rest of the session |
-| `Escape` | Back to the peek, on the row you were reading |
+| `f` | Swap YAML and JSON. The choice holds for the session |
+| `Esc` | Back to the peek, on the row you were reading |
 
 
 ### SQL Terminal
 
-Press `Shift+Q` anywhere to open the SQL terminal against the active config:
 
-![The built-in SQL terminal](/image/tui/sql-terminal.png)
+`Shift+Q` opens the SQL terminal against the active config from any screen.
 
-- `↑` `↓` walk your query history, and `h` opens it as a list
-- A result wider than the terminal keeps whole columns and marks the remainder
-  `… N more columns`, rather than cramming every column into a few characters
-- `Enter` on a result row opens it as a document, the same YAML or JSON view the
-  row peek uses, which is how you read the columns the grid left out
+![The SQL terminal](/image/tui/sql-terminal.png)
+
+| Key | Action |
+|-----|--------|
+| `Enter` | Run the query |
+| `Shift+Enter` | New line |
+| `Shift+Tab` | Toggle edit mode, where `Enter` inserts a new line |
+| `↑` `↓` | Walk query history, when the box is empty or already browsing |
+| `h` | Open the history list, when the box is empty |
+| `Tab` | Switch between the query and the results, once there are rows |
+| `Esc` | In results: back to the query. With text in the box: clear it. Empty: go back. While a query runs: cancel it |
+
+In the results grid, `/`, `s`, and `c` filter, sort, and clear as in the row peek, and `Enter` opens a row as a document. A result wider than the terminal keeps whole columns and marks the remainder `… N more columns`.
+
+The history list takes `↑` `↓`, `Enter` to view a result, `r` to re-run a query, and `c` to clear.
 
 
 ### Log Viewer
 
-Press `Shift+L` anywhere to toggle the log overlay:
 
-![The log viewer overlay, opened with Shift+L](/image/tui/log-viewer.png)
+`Shift+L` toggles an overlay that tails events as they happen, newest first.
 
-The overlay tails events as they happen, so you can watch an operation run.
-`[/]` searches, `[g]` and `[G]` jump to the top and bottom, `[Space]` pauses the
-tail, `[Enter]` opens a single entry in full, and `Shift+L` again closes it.
+![The log viewer overlay](/image/tui/log-viewer.png)
+
+| Key | Action |
+|-----|--------|
+| `/` | Search. `Enter` leaves search, `Esc` clears it |
+| `g`, `G` | Newest, oldest |
+| `↑` `↓`, `PageUp`, `PageDown` | Move |
+| `Space` | Pause or resume the tail |
+| `r` | Refresh |
+| `Enter` | Open one entry in full. `Esc` returns to the list |
+| `Shift+L`, `Esc` | Close |
 
 
-### More Options
+### More
 
-Press `+` from home for the screens that aren't part of the day-to-day loop:
 
-![The More Options menu: settings, vault, identity, and lock](/image/tui/more-menu.png)
+![The More menu](/image/tui/more-menu.png)
 
-Each of these also has a direct key from home — `+` just groups them.
+`+` from Home opens Settings (`s`), Vault (`v`), Identity (`i`), and Lock (`l`). Each also has its direct key on Home.
 
 
 ### Settings
 
-![The settings screen, listing the seven setting groups](/image/tui/settings.png)
 
-Edits here write to `.noorm/settings.yml`. Press `i` to create that file if the
-project doesn't have one yet. See [Configs](/guide/environments/configs) and
-[SQL File Organization](/guide/sql-files/organization) for what each group
-controls.
+![The settings screen](/image/tui/settings.png)
+
+Seven groups: Build, Paths, Stages, Rules, Strict, Logging, Secrets. `Enter` or a number opens one, and edits write to `.noorm/settings.yml`. `i` creates that file when the project has none. See [SQL file organization](/guide/sql-files/organization) and [Configs](/guide/environments/configs).
 
 
 ### Identity
 
-![The identity screen, showing the current keypair and fingerprint](/image/tui/identity.png)
 
-Your identity signs your name to every change execution, which is what makes
-[change history](/guide/changes/history) attributable across a team. It lives
-in `~/.noorm/`, not in the project, so it follows you between repositories.
+![The identity screen](/image/tui/identity.png)
+
+`e` edit, `x` export your public key, `r` regenerate, `u` known users. The identity lives in `~/.noorm/` and names who ran each change in the [history](/guide/changes/history). The CLI equivalent is [`noorm identity`](/cli/identity).
 
 
 ### Vault
 
+
 ![The vault screen before initialization](/image/tui/vault.png)
 
-The vault holds team-shared encrypted secrets in the database itself, so
-teammates get them by connecting rather than by copying a `.env` around. It
-starts uninitialized — press `i` to create it. See [Vault](/guide/environments/vault).
+The vault holds team-shared encrypted secrets in the database. It starts uninitialized: `i` creates it. After that, `a` adds a secret, `Enter` edits the highlighted one, and `p` propagates access to teammates. See [Vault](/guide/environments/vault).
 
 
 ### Secrets
 
-Per-config secrets are reached with `k` from the config list, not from home —
-they belong to a config rather than to the project:
 
 ![The secrets screen for a config](/image/tui/secrets.png)
 
-These are values a config needs at connection or render time. See
-[Secrets](/guide/environments/secrets) for how they resolve against stages.
+`k` on the config list opens the highlighted config's secrets: `a` add, `e` or `Enter` edit, `d` delete. See [Secrets](/guide/environments/secrets).
 
 
 ### Lock
 
-![The lock screen, showing current lock state](/image/tui/lock.png)
 
-noorm takes a lock around operations that write to the database, so two people
-running a build against the same environment don't interleave. `[s]` shows
-status, `[a]` acquires, `[r]` releases, and `[f]` force-breaks a stale lock.
-See [Locking](/dev/lock).
+![The lock screen](/image/tui/lock.png)
+
+noorm locks the database around writes, so two people building one environment do not interleave. On the lock menu, `s` or `1` shows status, `a` or `2` acquires, `r` or `3` releases, and `f` or `4` force-breaks a stale lock. The status screen also has `x` to extend. See [Locking](/dev/lock).
 
 
 ### Update
 
-Press `u` from Home to check GitHub releases for a newer noorm. `[i]`
-installs an update if one is available, `[r]` re-checks, and `esc` goes
-back.
 
-The binary runs to around 70MB, so the install reports where it has got to
-rather than leaving you watching a spinner. Below the spinner you get the
-byte count as `42.0 / 73.0 MB (57%)`, and a progress bar tracking the same
-percent. When the server sends no `Content-Length` there's nothing to
-measure against, so the count drops to a bare `9.0 MB received` and the bar
-is omitted rather than sitting at zero.
+`u` from Home checks GitHub releases for a newer noorm. `i` installs it, `r` checks again, and `Esc` goes back.
 
-If a download stalls and resumes, a yellow line names why and which attempt
-it's on, for example `download stalled, no data for 30s — resuming (attempt
-1/5)...`. Progress isn't reset by the retry, since it resumes from the bytes
-already on disk rather than starting the file over. The npm install path
-(`npm install -g`) owns its own output, so none of this applies there.
+A binary install reports its download as `42.0 / 73.0 MB (57%)` with a progress bar. Without a `Content-Length` it shows `9.0 MB received` and no bar. A stalled download resumes from the bytes on disk and shows `download stalled — no data for 30s — resuming (attempt N/5)...`. An npm install runs the package manager and shows none of this.
 
 
-## Tips
+## Next
 
 
-### Quick Config Switching
-
-From home, press `c`, arrow to the config you want, then `Enter` to activate it.
-The config list is not numbered, so the digits do nothing there:
-
-```
-c → ↓ → Enter
-```
-
-`Enter` on the config that is *already* active opens its edit form instead.
-
-
-### Fast Forward All Changes
-
-```
-g → f
-```
-
-
-### Run Build
-
-```
-r → b
-```
-
-
-### Check Connection
-
-Validate lives behind `[+] More` on the config list:
-
-```
-c → + → v (validate highlighted config)
-```
-
-
-## Color Coding
-
-| Color | Meaning |
-|-------|---------|
-| Green | Success, applied, active |
-| Yellow | Warning, pending, in progress |
-| Red | Error, failed |
-| Gray | Skipped, unchanged |
-| Cyan | Info, links |
+- [CLI reference](/headless): the non-interactive surface
+- [The SQL terminal guide](/guide/database/terminal): history, result browsing, per-dialect cancel
+- [Execution](/guide/sql-files/execution): what the run screens do with each file
+- [Configs](/guide/environments/configs): access roles

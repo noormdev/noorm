@@ -1,189 +1,143 @@
 ---
 title: Reverse-engineering an existing database
-description: Point an agent at a database you already run and have it extract an ignatius model, using noorm's MCP server for read-only schema access.
+description: Point an agent at a database you already run, read through noorm's MCP server, and have the ignatius-modeling skill extract an ignatius model from it.
 ---
 
 # Reverse-engineering an existing database
 
+Extract an ignatius model from a database you already run, with an agent that reads the schema through noorm's MCP server.
 
-Most databases worth modeling already exist. The schema is in production, the reasoning behind it left with someone two jobs ago, and the only description of it is the DDL.
+The agent reads the database through noorm, writes the model files, and checks them. You review the result:
 
-You do not have to model that by hand. noorm exposes the schema to a coding agent over MCP, and the [`ignatius-modeling` skill](/modeling/modeling-skill) knows how to turn what it reads into entity and flow files. Your job is to set up the access, keep it read-only, and review what comes back.
+```mermaid
+sequenceDiagram
+    participant You
+    participant Agent
+    participant MCP as noorm MCP
+    participant DB as database
+    participant Files as model files
+    participant Validate as ignatius validate
+    You->>Agent: /ignatius-modeling discover
+    Agent->>MCP: run_noorm_cmd list, detail
+    MCP->>DB: read system catalogs
+    DB-->>MCP: tables, columns, keys
+    MCP-->>Agent: JSON results
+    Agent->>Files: write entity and flow files
+    Agent->>Validate: check the model folder
+    Validate-->>Agent: findings
+    Agent->>You: questions the schema cannot answer
+    You->>Files: ignatius serve -o
+```
 
-The result is an ignatius model of the system you already run: a diagram to hand to people, a dictionary of what every table is for, and a base to plan the next change against.
-
-
-## Where this sits in IDEF1X
-
-
-Extraction is not a detour around the methodology. It is a recognized path inside it. IDEF1X calls this the **bottom-up** approach, inferring a logical model from the physical artifacts that already exist, and the full round trip of reverse-engineer, adjust for new requirements, then forward-engineer is **re-engineering**.
-
-The discipline is also specific about how far bottom-up gets you, which is worth knowing before you start rather than after. A *data model* describes a physical database. An *information model* describes the logical requirements a system satisfies. Reverse-engineering climbs from the first toward the second in levels:
-
-| Level | What you get | What it is worth |
-|---|---|---|
-| 1 | Current-system documentation, a physical model | Guaranteed only to show what **is** |
-| 2 | Application-level logical model | The requirements the system currently satisfies, with no claim about whether they are right |
-| 3 | Business-level model | A basis for future design, and unreachable without the business participating directly |
-
-An agent with schema access reaches level 1 quickly and gets a good way into level 2. It cannot reach level 3 on its own, because the information at that level was never in the database. It is in the heads of the people who run the business, and the only way out is to ask them.
-
-The IDEF1X literature is blunt about the risk, and the warning is the reason this page ends with a review step rather than a success message: **a model of what you have is not a model of what you want.** Assumptions compound as you climb the levels, and their source is the past, mistakes included. That is also why the skill records anti-patterns instead of quietly correcting them. Faithful first, better second, with the "better" being a conversation you have afterward rather than something extraction decides for you.
-
-The [`idef1x` skill](https://www.skills.sh/damusix/skills/idef1x) carries the methodology itself if you want an agent applying it alongside you.
-
-
-## What you need
-
-- noorm installed, with a config that connects to the database ([installation](/getting-started/installation))
-- ignatius installed ([installation](/modeling/installation))
-- The `ignatius-modeling` skill, and optionally the noorm skill for SDK and CLI conventions
-- An agent harness that speaks MCP, such as Claude Code or Cursor
-
-
-## 1. Create the modeling space
-
-
-A model root is any folder with an `ignatius.yml` in it. Let the skill scaffold one:
+`noorm mcp init` runs once per project. The slash command runs in the agent:
 
 ```bash
-/ignatius-modeling model
+noorm mcp init
 ```
-
-That writes `ignatius.yml`, the group files, and the directories. To do it by hand, a one-line `ignatius.yml` is a valid model root:
-
-```bash
-mkdir -p models/legacy && echo "name: Legacy Schema" > models/legacy/ignatius.yml
-```
-
-Put it in the repository whose schema it describes, so the model and the code stay in one history.
-
-The rest of this page refers to that folder as `models/legacy`. Substitute wherever yours actually landed, or leave the path off entirely: `serve`, `export`, and `validate` all take the model root as an optional argument and find it by searching up and down from the current directory when you omit it.
-
-
-## 2. Connect noorm over MCP
-
-
-noorm runs an MCP server over stdio. Generate the agent's config:
-
-```bash
-noorm mcp init                  # Claude Code, writes .mcp.json
-noorm mcp init --agent cursor   # Cursor, writes .cursor/mcp.json
-```
-
-The agent picks up the server on next launch and gets two tools: `noorm_help` to list commands and `run_noorm_cmd` to execute them. The schema explorer, the SQL runner, and config management all arrive through those.
-
-Make sure the config you want the agent reading is the active one, and that it points at the database you mean. Reverse-engineering staging when you meant production produces a confident model of the wrong thing.
-
-
-## 3. Keep the config read-only
-
-
-Every config carries a role per channel, `access: { user, agent }`, and the `agent` role governs what a coding agent can do regardless of whether it comes in over MCP or shells out to the `noorm` binary. noorm resolves the channel from the harness that spawned it, so an agent refused over MCP cannot route around the refusal on the command line.
-
-| Role | What the agent can do |
-|---|---|
-| `viewer` | Explore schema, run read-only SQL (`SELECT`, `SHOW`, `DESCRIBE`). `EXPLAIN` inherits the class of the statement it wraps, so `EXPLAIN ANALYZE DELETE ...` is a write and is denied |
-| `operator` | Adds `INSERT`/`UPDATE`/`DELETE`; destructive commands stay out of reach |
-| `admin` | Adds DDL, change and run commands, and vault writes. The irreversible operations (drop, teardown, truncate, config rewrite, vault propagate, force-unlock) are confirmation-gated, and a confirmation collapses to a denial on the agent channel |
-| `false` | The config is invisible on that channel |
-
-`viewer` is all reverse-engineering needs, and it is already the default: a config that never declared `access` gets `{ user: 'admin', agent: 'viewer' }`. So this step is usually a check rather than a change. Confirm it in `noorm ui` under Config → Edit, and lower it back to `viewer` if someone raised it for other work.
-
-Raw SQL is classified by what the statement does rather than which command asked, so an agent on `viewer` gets a `SELECT` through and a same-shaped `INSERT` denied.
-
-::: warning Roles prevent accidents, not attacks
-The `agent` role is a guardrail against a mistake, not a security boundary. It stops an agent from doing damage it never meant to do, which is the realistic failure. It does not stop one that has been talked into it: `NOORM_CHANNEL` is an environment variable, so anything able to influence the agent's instructions or its environment can reach around the role.
-
-That is worth weighing here specifically, because reverse-engineering points an agent at a large amount of text you did not write. Table comments, column descriptions, and stored procedure bodies are all content a prompt injection can ride in on.
-
-So for a database you care about, connect noorm with a database user that holds only `SELECT` and catalog permissions. Then the role is the second line of defense rather than the only one, and an instruction that gets past it still cannot write anything.
-:::
-
-
-## 4. Give the database user catalog access
-
-
-The explorer reads your database's system catalogs. Which ones depends on the dialect:
-
-| Dialect | Catalog noorm reads |
-|---|---|
-| PostgreSQL | `information_schema` views (`columns`, `table_constraints`, `key_column_usage`, `referential_constraints`, `parameters`) |
-| MySQL | `information_schema` views (`columns`, `key_column_usage`, `referential_constraints`, `routines`, `parameters`) |
-| SQL Server | `sys` catalog views (`sys.columns`, `sys.foreign_keys`, `sys.foreign_key_columns`, `sys.index_columns`) |
-| SQLite | `sqlite_master` and `PRAGMA` (file access, no grants) |
-
-This is the step that quietly ruins a model, because a permissions gap does not raise an error. It returns fewer rows.
-
-PostgreSQL filters the information schema by privilege: "Only those tables and views are shown that the current user has access to (by way of being the owner or having some privilege)." SQL Server behaves the same way through metadata visibility, where "the visibility of metadata is limited to securables that a user either owns or on which the user has been granted some permission," and a user with no permission on a table gets an empty result set rather than a denial.
-
-An agent reading through an under-privileged user therefore produces a model that looks finished and is silently missing tables. Grant catalog access before you start:
-
-```sql
--- PostgreSQL: visibility follows privilege
-GRANT USAGE ON SCHEMA public TO modeler;
-GRANT SELECT ON ALL TABLES IN SCHEMA public TO modeler;
-
--- MySQL: same idea, per schema
-GRANT SELECT ON mydb.* TO 'modeler'@'%';
-
--- SQL Server: metadata visibility without data access
-GRANT VIEW DEFINITION TO modeler;
-```
-
-Then check the count. Ask the agent, or run it yourself, for the table list noorm sees and compare it against what you know is there. A mismatch here is cheaper to catch now than after the model is written.
-
-
-## 5. Ask the agent to reverse-engineer
-
-
-Launch the harness and point it at both the database and the model root:
 
 ```
 /ignatius-modeling discover
 ```
 
-`discover` interviews you when nothing exists yet. When a real system is available it reads that instead, and interviews you only about the judgment calls the schema cannot answer. Tell it where the model root is and that noorm's MCP server is connected.
 
-Code is worth offering alongside the schema. Foreign keys give the agent your entities and relationships, but only the handlers, jobs, and stored procedures that touch the data can give it the processes for the [data flow diagrams](/modeling/data-flows). A `SELECT` inside a request handler is an input flow with a column list; an `INSERT` is an output flow. Point the agent at the repository and the flows come out at column level rather than as guesses.
-
-
-## 6. What a good extraction does
+## What do I set up first?
 
 
-The skill's method is worth knowing, because it is what you review against.
-
-**It reads rather than invents.** Entities come from tables, attributes from columns with nullability preserved, relationships from foreign-key constraints, and subtype clusters from tables whose whole primary key equals their parent's. Whether an edge is identifying is derived from the key shape, never declared.
-
-**It keeps the source's names.** `sales_orders` stays `sales_orders`. The entity id is what every relationship target, wiki link, and `db:` token has to match, so renaming during extraction breaks the correspondence with the real system. A rename is a decision to surface, not a cleanup to perform quietly.
-
-**It detects your key convention instead of imposing one.** A composite primary key containing a foreign key reads as `key-inherited`; a lone surrogate `id` with foreign keys outside the key reads as `orm-oriented`. Mixed schemas stay mixed. See [the two key conventions](/modeling/entities#the-two-key-conventions).
-
-**It records anti-patterns rather than fixing them.** Faithful first, better second. A junk-drawer table or a surrogate key where the real identity is composite gets captured as it is, then raised with you as a question. Silent improvement during extraction produces a model of a database you do not have.
-
-**It grounds the model in real rows.** Sample data from the live system makes the best examples, which is why every entity and process should carry some. Mask anything sensitive before it lands in a file you commit.
+1. A model root: any folder with an `ignatius.yml`. `/ignatius-modeling model` scaffolds one. `mkdir -p models/legacy && echo "name: Legacy Schema" > models/legacy/ignatius.yml` is the minimum. Keep it in the repository whose schema it describes.
+2. The agent's MCP config. `noorm mcp init` writes `.mcp.json` for Claude Code, and `noorm mcp init --agent cursor` writes `.cursor/mcp.json`. The agent gets two tools, `noorm_help` and `run_noorm_cmd`.
+3. A noorm config for the database you mean. The agent connects to the active config unless it names another. A model of staging is not a model of production.
+4. The skill and the binary, both on [Download](/download).
 
 
-## 7. Verify and review
+## How do I keep the agent read-only?
+
+
+A config that never declared `access` gives agents `viewer`: schema exploration and read-only SQL. That is all this job needs, so this step is usually a check. Confirm it in `noorm ui` under Config, then Edit.
+
+The role covers MCP and an agent that shells out to `noorm`. See [MCP](/guide/automation/mcp) for the full role table.
+
+::: warning Roles prevent accidents, not attacks
+An agent that shells out can set `NOORM_CHANNEL=user`. Reverse-engineering also feeds the agent table comments, column descriptions, and procedure bodies that you may not have written. Connect noorm with a database user that holds only `SELECT` and catalog permissions, so the role is the second line of defense.
+:::
+
+
+## What does the database user need?
+
+
+A permissions gap does not raise an error. The catalogs return fewer rows, so the model looks finished and misses tables. [PostgreSQL](https://www.postgresql.org/docs/current/infoschema-tables.html), [MySQL](https://dev.mysql.com/doc/refman/8.0/en/information-schema-introduction.html), and [SQL Server](https://learn.microsoft.com/en-us/sql/relational-databases/security/metadata-visibility-configuration) each show only objects the user owns or holds a privilege on.
+
+| Dialect | noorm reads | Grant |
+|---|---|---|
+| PostgreSQL | `information_schema`, `pg_catalog` | `GRANT USAGE ON SCHEMA public TO modeler;` and `GRANT SELECT ON ALL TABLES IN SCHEMA public TO modeler;` |
+| MySQL | `information_schema` | `GRANT SELECT ON mydb.* TO 'modeler'@'%';` |
+| SQL Server | `sys` catalog views | `GRANT VIEW DEFINITION TO modeler;` |
+| SQLite | `sqlite_master`, `PRAGMA` | none, file access |
+
+Before the agent writes anything, have it run `overview`, which returns a count for each object type. Compare the table count with what you know is there.
+
+
+## What does the agent extract?
+
+
+Foreign keys give the agent entities and relationships. Only code gives it processes, so offer the repository too.
+
+| In the database or code | In the model |
+|---|---|
+| Table | Entity, named exactly as the table. `sales_orders` stays `sales_orders` |
+| Column | Attribute, nullability kept. A `NOT NULL` foreign key is a mandatory parent |
+| Primary key | `key-inherited` when it contains a foreign key, `orm-oriented` for a lone surrogate `id` |
+| Foreign key | Relationship. Whether it is identifying comes from where the key sits |
+| Table whose whole primary key is its parent's | Subtype member |
+| `SELECT` in a handler or procedure | Input flow with that column list |
+| `INSERT` in a handler or procedure | Output flow with those columns |
+| A few real rows per table | `examples:`, with PII and secrets masked |
+
+The skill records anti-patterns instead of fixing them. A junk-drawer table or a surrogate key where the real identity is composite is captured as it is, then raised with you as a question.
+
+
+## How far does extraction get?
+
+
+IDEF1X names the approach bottom-up and sorts its results into levels:
+
+| Level | You get | Worth |
+|---|---|---|
+| 1 | Current-system documentation | Shows what **is** |
+| 2 | Application-level logical model | The requirements the system satisfies today, right or wrong |
+| 3 | Business-level model | A basis for future design. Needs the business in the room |
+
+We read a schema as enough for level 1 and part of level 2. Level 3 lives with the people who run the business. A model of what you have is not a model of what you want. The [`idef1x` skill](https://www.skills.sh/damusix/skills/idef1x) carries the method.
+
+
+## How do I review the result?
 
 
 ```bash
-ignatius validate models/legacy      # or just `ignatius validate` from inside the project
+ignatius validate models/legacy
 ignatius serve models/legacy -o
 ```
 
-`validate` exits `1` on errors and `0` otherwise, so it works as a gate. A clean run means the model is internally consistent. It does not mean the model is right, and the two failures worth hunting are ones no linter catches: a table the agent could not see, and a purpose it invented because the schema could not tell it one.
+`validate` exits `1` on errors and `0` otherwise, so it also gates a pull request. A clean run means the model is consistent. Two failures pass it: a table the agent could not see, and a purpose the agent had to guess. An entity body that restates its columns is the second one.
 
-Read the entity bodies with that in mind. Any entity whose description restates its columns rather than explaining what it is for is a question the agent could not answer from the schema, and the answer is in your head or nobody's. Those paragraphs are the part of the model worth the most later, and the part only you can supply.
-
-This is the climb from level 2 to level 3, and it is the work reverse-engineering cannot do for you. An extracted model tells you what the database is. Turning that into what the business means, and then into what it should be, takes the people who run it. Serve the model, walk them through it, and let the arguments start.
+The skill ends the session with a change note. `serve` shows the edit beside it, and `ignatius approve` accepts it; see [the modeling skill](/modeling/modeling-skill). Walk the people who run the business through the served model.
 
 
-## Related
+## What bites
 
 
-- [Entities and key inheritance](/modeling/entities)
-- [Data flows](/modeling/data-flows)
-- [The modeling skill](/modeling/modeling-skill)
-- [MCP (AI agent integration)](/guide/automation/mcp) for the server itself
-- [Access roles](/guide/environments/configs#access-roles) for channel detection and the `NOORM_CHANNEL` override
+| Symptom | Cause | Fix |
+|---|---|---|
+| The model is clean and tables are missing | The database user cannot see them | Grant catalog access, then compare `overview` counts |
+| The agent cannot find your config | `access.agent` is `false`, which hides the config from agents | Set `agent` to `viewer` |
+| Links and `db:` tokens break | An entity id no longer matches its table name | Restore the source name. Raise a rename as a question |
+| Real customer values in a committed file | `examples:` come from live rows | Mask them before you commit |
+| An entity body restates its columns | The schema cannot say what the entity is for | Write the purpose yourself |
+
+
+## Next
+
+
+- [The modeling skill](/modeling/modeling-skill): the modes and the change-review loop
+- [Entities and key inheritance](/modeling/entities): the files the agent writes
+- [Data flows](/modeling/data-flows): processes, externals, and stores
+- [MCP](/guide/automation/mcp): the server and its access roles

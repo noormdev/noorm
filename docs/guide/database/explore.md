@@ -1,521 +1,129 @@
 # Schema Explorer
 
 
-The Schema Explorer gives you read-only access to your database structure directly from the terminal. No need to switch to pgAdmin, MySQL Workbench, or Azure Data Studio. Browse tables, views, indexes, foreign keys, functions, procedures, types, and triggers without leaving your workflow.
+Read your database's structure, from tables to triggers, without opening a second client.
 
-
-## What It Shows
-
-The explorer queries your database's system catalogs to reveal its structure:
-
-| Category | Information |
-|----------|-------------|
-| Tables | Columns, data types, row estimates, indexes, foreign keys |
-| Views | Columns, definition SQL, whether it is updatable |
-| Indexes | Table, columns, unique/primary status |
-| Foreign Keys | Source and target tables, column mappings, cascade rules |
-| Functions | Parameters, return type, definition |
-| Procedures | Parameters, definition |
-| Types | Enum values, composite attributes, domain base types |
-| Triggers | Table, timing (BEFORE/AFTER/INSTEAD OF), events, definition |
-
-Two more categories, **locks** and **connections**, describe runtime state rather than schema. They are counted in the `--json` overview and reachable from the SDK, but they have no CLI listing and no TUI screen.
-
-Which catalogs each dialect reads:
-
-| Dialect | Catalogs |
-|---------|----------|
-| PostgreSQL | `information_schema` for tables, columns, views, FKs, and parameters; `pg_catalog` (`pg_proc`, `pg_type`, `pg_enum`, `pg_indexes`, `pg_locks`, `pg_stat_activity`) for everything it cannot express |
-| MySQL | `information_schema` throughout, plus `performance_schema.metadata_locks` for locks |
-| MSSQL | `sys.*` catalog views (`sys.tables`, `sys.views`, `sys.procedures`, `sys.types`, `sys.indexes`, `sys.foreign_keys`, `sys.triggers`) |
-| SQLite | `sqlite_master` for object names and DDL, `PRAGMA table_info` / `index_info` / `foreign_key_list` for the rest |
-
-noorm's own tracking objects are filtered out: PostgreSQL and MSSQL exclude the `noorm` schema in the catalog query, MySQL and SQLite drop names starting with `__noorm_`. Set the log level to `verbose` to include them.
-
-
-## Accessing the Explorer
-
-
-### Terminal UI
-
-From the home screen, press `d` to enter the Database menu, then `x` to explore:
-
-```
-Home → [d] Database → [x] Explore
-```
-
-The Database menu:
-
-```
-┌─ Database ──────────────────────────────────────────────────┐
-│                                                             │
-│  [c] create        Create the database for this config      │
-│  [d] destroy       Drop the database for this config        │
-│  [x] explore       Browse tables, views, indexes            │
-│  [w] wipe          Truncate all data (keep schema)          │
-│  [t] teardown      Drop all objects                         │
-│  [r] transfer      Move data between configs                │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
-```
-
-The SQL terminal is not on this menu. Press `Shift+Q` from anywhere, or run `noorm sql repl`. See [SQL Terminal](/guide/database/terminal).
-
-
-### Scripted Usage
-
-The same subcommands run non-interactively — add `--json` to get machine-readable output:
+Counts first, then one table:
 
 ```bash
-noorm db explore                          # Overview
-noorm db explore tables                   # List tables
-noorm db explore tables detail users      # Table detail
-noorm db explore fks                      # List foreign keys
-noorm db explore triggers                 # List triggers
-noorm db explore tables --schema app      # Restrict to one schema
-noorm db explore --json > schema.json     # JSON output
+noorm db explore
+noorm db explore tables detail sales_order
 ```
 
-The subcommands are `tables`, `views`, `procedures`, `functions`, `types`, `indexes`, `fks`, and `triggers`. Every one accepts `--schema` except on SQLite, which has no schemas and rejects the flag rather than returning an empty list. `tables`, `views`, `procedures`, `functions`, `types`, and `triggers` also take a `detail <name>` subcommand.
-
-
-## Overview Screen
-
-The overview shows counts of all database objects at a glance:
-
 ```
-┌─ DB Explore ────────────────────────────────────────────────┐
-│                                                             │
-│  Config:        dev (postgres)                              │
-│  Database:      myapp_development                           │
-│  Total Objects: 47                                          │
-│                                                             │
-│  [1] Tables         12                                      │
-│  [2] Views           3                                      │
-│  [3] Procedures      0                                      │
-│  [4] Functions       5                                      │
-│  [5] Types           2                                      │
-│  [6] Indexes        18                                      │
-│  [7] Foreign Keys    7                                      │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
-  [1-7] Navigate   [Esc] Back
+Database Overview
+  Tables:       11
+  Views:        1
+  Functions:    1
+  Procedures:   0
+  Types:        0
+  Indexes:      14
+  Foreign Keys: 12
+  Triggers:     0
 ```
 
-Press the number key or hotkey to drill into any category. Categories with zero items appear dimmed and cannot be selected.
-
-| Key | Hotkey | Category |
-|-----|--------|----------|
-| `1` | `t` | Tables |
-| `2` | `v` | Views |
-| `3` | `p` | Procedures |
-| `4` | `f` | Functions |
-| `5` | `y` | Types |
-| `6` | `i` | Indexes |
-| `7` | `k` | Foreign Keys |
-
-The TUI overview lists these seven. `noorm db explore` on the command line prints a Triggers count as well, and `--json` carries all ten counters including locks and connections. The Total Objects figure sums every counter the overview computed, so it can exceed the seven rows on screen when triggers, locks, or connections are present.
-
-
-## Browsing Tables
-
-Press `1` or `t` from the overview to see all tables:
-
 ```
-┌─ Tables (12) ───────────────────────────────────────────────┐
-│                                                             │
-│  /  Filter tables...                                        │
-│                                                             │
-│  1. > public.users          8 columns, ~1.5K rows           │
-│  2.   public.posts          5 columns, ~42K rows            │
-│  3.   public.comments       4 columns, ~128K rows           │
-│  4.   public.notifications  6 columns, ~8.9K rows           │
-│  5.   public.sessions       3 columns, ~2.1K rows           │
-│                                                             │
-│  ... 7 more                                                 │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
-  [Enter] View detail   [Esc] Back
+• log  Table: sales_order
+• log    party_id: integer (not null) [PK]
+• log    order_no: integer (not null) [PK]
+• log    placed_at: timestamp with time zone (not null)
+• log    status: text (not null)
 ```
 
-The list is searchable. Press `/` to focus the filter field and type to narrow results. Press `1-9` for quick selection.
+The explorer is read-only and every role may use it. The TUI path is Home, `d` for Database, `x` for Explore.
 
 
-### Table Detail
-
-Select a table to see its full schema:
-
-```
-┌─ Table ─────────────────────────────────────────────────────┐
-│                                                             │
-│  public.users                           ~1,500 rows         │
-│                                                             │
-│  Columns (8)                                                │
-│  ─────────────────────────────────────────────────────────  │
-│  * id            uuid             NOT NULL                  │
-│    email         varchar(255)     NOT NULL                  │
-│    name          varchar(100)     NULL                      │
-│    password_hash text             NOT NULL                  │
-│    role          user_role        NOT NULL DEFAULT 'user'   │
-│    active        boolean          NOT NULL DEFAULT true     │
-│    created_at    timestamptz      NOT NULL DEFAULT now()    │
-│    updated_at    timestamptz      NULL                      │
-│                                                             │
-│  Indexes (2)                                                │
-│  ─────────────────────────────────────────────────────────  │
-│  * users_pkey              (id)                             │
-│    users_email_idx         (email) UNIQUE                   │
-│                                                             │
-│  Foreign Keys (0)                                           │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
-  [Esc] Back
-```
-
-The `*` marker indicates primary key columns and primary key indexes.
+## What can I look at?
 
 
-## Browsing Views
+| Category | List | One object | TUI keys | Empty on |
+|---|---|---|---|---|
+| Tables | `tables` | `tables detail <name>` | `1` `t` | |
+| Views | `views` | `views <name>` | `2` `v` | |
+| Procedures | `procedures` | `procedures <name>` | `3` `p` | SQLite |
+| Functions | `functions` | `functions <name>` | `4` `f` | SQLite |
+| Types | `types` | `types <name>` | `5` `y` | MySQL, SQLite |
+| Indexes | `indexes` | | `6` `i` | |
+| Foreign keys | `fks` | | `7` `k` | |
+| Triggers | `triggers` | `triggers <name>` | | |
 
-Press `2` or `v` from the overview:
+Every list and detail command takes `--schema <name>`. SQLite has no schemas and rejects the flag.
 
-```
-┌─ Views (3) ─────────────────────────────────────────────────┐
-│                                                             │
-│  1. > public.active_users     4 columns, READ-ONLY          │
-│  2.   public.post_stats       6 columns, READ-ONLY          │
-│  3.   public.user_activity    8 columns, UPDATABLE          │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
-  [Enter] View detail   [Esc] Back
+Types are enums, composites, and domains on PostgreSQL, and alias and table types on MSSQL. Triggers have no TUI screen. Locks and connections are runtime state, so they appear only as counters in the `--json` overview.
+
+
+## How do I move around the TUI?
+
+
+Indexes and foreign keys end at the list. The other categories continue to a detail screen:
+
+```mermaid
+flowchart TD
+    DB["Database screen<br/>x"] --> OV["Overview<br/>counts per category"]
+    OV -->|"1-7 or t v p f y i k"| LS["List<br/>filter with /"]
+    LS -->|Enter| DT["Detail<br/>columns, parameters,<br/>definition"]
+    DT -->|v| FT["Full text<br/>nothing truncated"]
+    DT -->|r| RW["Rows<br/>first and last"]
 ```
 
+| Screen | Keys |
+|---|---|
+| Overview | A category with a zero count is dimmed and cannot be opened. `Esc` goes back |
+| List | `/` filters, `1`-`9` picks a row, `Enter` opens it. The filter text is kept until you leave the explorer |
+| Detail | `↑` `↓` scroll, `Ctrl+U` `Ctrl+D` half a page, `PageUp` `PageDown` a page, `Home` `End` the ends |
+| Rows | `Tab` switches between the first and last set, `Enter` opens a row, `/` filters, `s` sorts, `Esc` closes |
 
-### View Detail
-
-```
-┌─ View ──────────────────────────────────────────────────────┐
-│                                                             │
-│  public.active_users                    READ-ONLY           │
-│                                                             │
-│  Columns (4)                                                │
-│  ─────────────────────────────────────────────────────────  │
-│    id            uuid             NOT NULL                  │
-│    email         varchar(255)     NOT NULL                  │
-│    name          varchar(100)     NULL                      │
-│    created_at    timestamptz      NOT NULL                  │
-│                                                             │
-│  Definition                                                 │
-│  ─────────────────────────────────────────────────────────  │
-│  SELECT id, email, name, created_at                         │
-│  FROM users                                                 │
-│  WHERE active = true                                        │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
-  [Esc] Back
-```
+`r` works on tables only. It reads rows ordered by primary key: up to 10 from each end, fewer on a short terminal. A table with no primary key shows only its first rows, in storage order.
 
 
-## Browsing Indexes and Foreign Keys
-
-Indexes and foreign keys are list-only categories. They show all the information inline without a separate detail screen.
+## How do I use it in scripts?
 
 
-### Indexes
-
-```
-┌─ Indexes (18) ──────────────────────────────────────────────┐
-│                                                             │
-│  1.   users_pkey              on users, PRIMARY             │
-│  2.   users_email_idx         on users, UNIQUE              │
-│  3.   posts_pkey              on posts, PRIMARY             │
-│  4.   posts_user_id_idx       on posts                      │
-│  5.   posts_created_at_idx    on posts                      │
-│  6.   comments_pkey           on comments, PRIMARY          │
-│                                                             │
-│  ... 12 more                                                │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
-  [Esc] Back
-```
-
-
-### Foreign Keys
-
-```
-┌─ Foreign Keys (7) ──────────────────────────────────────────┐
-│                                                             │
-│  1.   posts_user_id_fkey                                    │
-│       posts(user_id) → users(id) ON DELETE CASCADE          │
-│                                                             │
-│  2.   comments_post_id_fkey                                 │
-│       comments(post_id) → posts(id) ON DELETE CASCADE       │
-│                                                             │
-│  3.   comments_user_id_fkey                                 │
-│       comments(user_id) → users(id) ON DELETE SET NULL      │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
-  [Esc] Back
-```
-
-
-## Browsing Functions and Procedures
-
-Functions and procedures show parameters, return types, and definitions.
-
-
-### Functions
-
-```
-┌─ Functions (5) ─────────────────────────────────────────────┐
-│                                                             │
-│  1. > public.calculate_total    2 params → numeric          │
-│  2.   public.get_user_posts     1 param → SETOF posts       │
-│  3.   public.update_timestamp   0 params → trigger          │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
-  [Enter] View detail   [Esc] Back
-```
-
-
-### Function Detail
-
-```
-┌─ Function ──────────────────────────────────────────────────┐
-│                                                             │
-│  public.calculate_total                 → numeric           │
-│                                                             │
-│  Parameters (2)                                             │
-│  ─────────────────────────────────────────────────────────  │
-│    price           numeric         IN                       │
-│    quantity        integer         IN                       │
-│                                                             │
-│  Definition                                                 │
-│  ─────────────────────────────────────────────────────────  │
-│  BEGIN                                                      │
-│      RETURN price * quantity;                               │
-│  END;                                                       │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
-  [Esc] Back
-```
-
-
-### Procedures
-
-Procedures work the same way as functions, but without a return type.
-
-
-## Browsing Types
-
-Custom types are available in PostgreSQL and MSSQL. The explorer shows enum values, composite type attributes, and domain/alias base types.
-
-```
-┌─ Types (2) ─────────────────────────────────────────────────┐
-│                                                             │
-│  1. > public.user_role       ENUM, 3 values                 │
-│  2.   public.address         COMPOSITE, 5 attributes        │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
-  [Enter] View detail   [Esc] Back
-```
-
-
-### Enum Type Detail
-
-```
-┌─ Type ──────────────────────────────────────────────────────┐
-│                                                             │
-│  public.user_role                       ENUM                │
-│                                                             │
-│  Values (3)                                                 │
-│  ─────────────────────────────────────────────────────────  │
-│    user                                                     │
-│    moderator                                                │
-│    admin                                                    │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
-  [Esc] Back
-```
-
-
-### Composite Type Detail
-
-```
-┌─ Type ──────────────────────────────────────────────────────┐
-│                                                             │
-│  public.address                         COMPOSITE           │
-│                                                             │
-│  Attributes (5)                                             │
-│  ─────────────────────────────────────────────────────────  │
-│    street          varchar(200)    NOT NULL                 │
-│    city            varchar(100)    NOT NULL                 │
-│    state           varchar(50)     NULL                     │
-│    postal_code     varchar(20)     NOT NULL                 │
-│    country         varchar(100)    NOT NULL                 │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
-  [Esc] Back
-```
-
-
-## Headless JSON Output
-
-Use `--json` flag for machine-readable output. Every noorm command wraps its `--json` payload in an object carrying a top-level `success` boolean, so `jq -e '.success'` works the same way against all of them. A list is never emitted as a bare array; it is always named, as in `{ "tables": [...] }`.
-
-
-### Overview
+Add `--json`. Every payload carries a top-level `success`, and a list is always named, never a bare array:
 
 ```bash
-noorm db explore --json
+noorm db explore tables detail sales_order --json
 ```
 
 ```json
 {
     "success": true,
-    "tables": 12,
-    "views": 3,
-    "procedures": 0,
-    "functions": 5,
-    "types": 2,
-    "indexes": 18,
-    "foreignKeys": 7,
-    "triggers": 4,
-    "locks": 0,
-    "connections": 2
-}
-```
-
-
-### Table List
-
-```bash
-noorm db explore tables --json
-```
-
-```json
-{
-    "success": true,
-    "tables": [
-        { "name": "users", "schema": "public", "columnCount": 8, "rowCountEstimate": 1500 },
-        { "name": "posts", "schema": "public", "columnCount": 5, "rowCountEstimate": 42000 },
-        { "name": "comments", "schema": "public", "columnCount": 4, "rowCountEstimate": 128000 }
-    ]
-}
-```
-
-The other list subcommands follow the same shape under their own key: `views`, `procedures`, `functions`, `types`, `indexes`, `foreignKeys` (from `noorm db explore fks`), and `triggers`.
-
-
-### Table Detail
-
-```bash
-noorm db explore tables detail users --json
-```
-
-```json
-{
-    "success": true,
-    "name": "users",
+    "name": "sales_order",
     "schema": "public",
     "columns": [
-        { "name": "id", "dataType": "uuid", "isNullable": false, "isPrimaryKey": true, "ordinalPosition": 1 },
-        { "name": "email", "dataType": "varchar(255)", "isNullable": false, "isPrimaryKey": false, "ordinalPosition": 2 },
-        { "name": "name", "dataType": "varchar(100)", "isNullable": true, "isPrimaryKey": false, "ordinalPosition": 3 },
-        { "name": "created_at", "dataType": "timestamptz", "isNullable": false, "defaultValue": "now()", "isPrimaryKey": false, "ordinalPosition": 7 }
+        { "name": "party_id", "dataType": "integer", "isNullable": false, "isPrimaryKey": true, "ordinalPosition": 1 },
+        { "name": "status", "dataType": "text", "isNullable": false, "defaultValue": "'open'::text", "isPrimaryKey": false, "ordinalPosition": 4 }
     ],
     "indexes": [
-        { "name": "users_pkey", "columns": ["id"], "isUnique": true, "isPrimary": true },
-        { "name": "users_email_idx", "columns": ["email"], "isUnique": true, "isPrimary": false }
+        { "name": "sales_order_pk", "columns": ["party_id", "order_no"], "isUnique": true, "isPrimary": true }
     ],
-    "foreignKeys": [],
-    "rowCountEstimate": 1500
+    "foreignKeys": [
+        { "name": "sales_order_isplacedby_party", "columns": ["party_id"], "referencedTable": "party", "referencedColumns": ["party_id"], "onUpdate": "NO ACTION", "onDelete": "NO ACTION" }
+    ],
+    "rowCountEstimate": 3
 }
 ```
 
-
-### View Detail
-
-```bash
-noorm db explore views detail active_users --json
-```
-
-```json
-{
-    "success": true,
-    "name": "active_users",
-    "schema": "public",
-    "columns": [
-        { "name": "id", "dataType": "uuid", "isNullable": false, "isPrimaryKey": false, "ordinalPosition": 1 },
-        { "name": "email", "dataType": "varchar(255)", "isNullable": false, "isPrimaryKey": false, "ordinalPosition": 2 }
-    ],
-    "definition": "SELECT id, email FROM users WHERE active = true",
-    "isUpdatable": false
-}
-```
+This output is trimmed to two columns, and the repeated `schema` keys inside indexes and foreign keys are dropped. The list commands return `{ "tables": [...] }`, `{ "views": [...] }`, and so on, with `foreignKeys` for `fks`. The overview adds `locks` and `connections` to the eight counters. Full flags: [`db explore`](/headless#db-explore).
 
 
-### Function Detail
-
-```bash
-noorm db explore functions detail calculate_total --json
-```
-
-```json
-{
-    "success": true,
-    "name": "calculate_total",
-    "schema": "public",
-    "parameters": [
-        { "name": "price", "dataType": "numeric", "mode": "IN", "ordinalPosition": 1 },
-        { "name": "quantity", "dataType": "integer", "mode": "IN", "ordinalPosition": 2 }
-    ],
-    "returnType": "numeric",
-    "definition": "BEGIN RETURN price * quantity; END;"
-}
-```
+## What bites
 
 
-## Dialect Support
-
-The explorer works across all supported databases with appropriate translations:
-
-| Category | PostgreSQL | MySQL | MSSQL | SQLite |
-|----------|:----------:|:-----:|:-----:|:------:|
-| Tables | Yes | Yes | Yes | Yes |
-| Views | Yes | Yes | Yes | Yes |
-| Indexes | Yes | Yes | Yes | Yes |
-| Foreign Keys | Yes | Yes | Yes | Yes |
-| Triggers | Yes | Yes | Yes | Yes |
-| Functions | Yes | Yes | Yes | -- |
-| Procedures | Yes | Yes | Yes | -- |
-| Types | Yes | -- | Yes | -- |
-| Locks | Yes | Yes | Yes | -- |
-| Connections | Yes | Yes | Yes | -- |
-
-SQLite does not support stored procedures, functions, or user-defined types, and has no server to report locks or connections for. MySQL does not support user-defined types. These categories return empty results for unsupported dialects.
-
-**Type support by dialect:**
-
-- **PostgreSQL** - Enums, composite types, domains
-- **MSSQL** - Alias types (e.g., `CREATE TYPE EmailAddress FROM VARCHAR(255)`), table types
+| Symptom | Cause | Fix |
+|---|---|---|
+| `noorm db explore tables \| grep party` prints nothing | Listings and detail text are log lines on stderr. Only the overview text and `--json` use stdout | Use `--json` |
+| `noorm db explore -c prod tables` explores the active config | A flag before the subcommand is read by `explore`, not by `tables` | `noorm db explore tables -c prod` |
+| `View not found: detail` | Only `tables` has a `detail` subcommand | `noorm db explore views open_orders` |
+| `SQLite has no schemas; drop the schema filter to explore this database` | `--schema` on SQLite | Drop the flag |
+| noorm's tracking tables are missing from the lists | Explore hides the `noorm` schema on PostgreSQL and MSSQL, and `__noorm_*` tables on MySQL and SQLite | The TUI shows them when `logging.level` is `verbose` in `.noorm/settings.yml`. The CLI never does |
+| A composite foreign key lists its columns several times, mispaired (PostgreSQL) | The query joins `key_column_usage` to `constraint_column_usage` on the constraint name alone | Read the key from its `CREATE TABLE` in `db/sql/` |
 
 
-## Common Use Cases
-
-**Verify builds.** After running [schema builds](/guide/sql-files/execution), use explore to confirm tables, views, and functions were created correctly.
-
-**Check constraints.** Browse foreign keys to verify referential integrity is set up as expected before deploying.
-
-**Inspect indexes.** Review index coverage before and after adding new queries to ensure performance.
-
-**Compare environments.** Run overview on dev vs prod to spot schema drift quickly. Use different [configs](/guide/environments/configs) with the `-c` flag.
-
-**Debug changes.** When [changes](/guide/changes/overview) fail, explore the current schema state to understand what exists.
+## Next
 
 
-## What's Next?
-
-- [SQL Terminal](/guide/database/terminal) - Run queries against your database
-- [Teardown](/guide/database/teardown) - Reset database objects
-- [Configs](/guide/environments/configs) - Connect to different databases
+- [SQL terminal](/guide/database/terminal): query the data itself
+- [Teardown](/guide/database/teardown): drop what you found
+- [Configs](/guide/environments/configs): point the explorer at another database
+- [`db explore` reference](/headless#db-explore): every subcommand and flag

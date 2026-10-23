@@ -26,6 +26,6 @@ Mark inference as inference. An extrapolation from a mechanism reads as a measur
 
 ## Structure
 
-Lead with the problem the reader wants to solve, then the mechanism. Code follows the explanation that motivates it.
+Lead with the problem the reader wants to solve, in one sentence. The example comes next, the file or command with its real output, and the explanation follows it. A reader should see the thing working before the first `##` heading.
 
 Prefer a table, tree, or diagram wherever the content has a shape. Reserve prose for reasoning and motivation, which is the one thing a table cannot carry.

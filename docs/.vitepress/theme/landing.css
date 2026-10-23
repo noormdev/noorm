@@ -1,0 +1,645 @@
+/* ─────────────────────────────────────────────
+   Landing pages — docs/index.md, docs/modeling/index.md, docs/download.md
+   (.nh-file panels also frame the files on docs/modeling/model-to-sql.md)
+   ───────────────────────────────────────────── */
+.nh-hero {
+    padding: 56px 0 24px;
+}
+
+.vp-doc .nh-eyebrow {
+    margin: 0 0 12px;
+    font-family: var(--vp-font-family-mono);
+    font-size: 0.75rem;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--noorm-bronze);
+}
+
+.vp-doc .nh-title {
+    margin: 0 0 24px;
+    font-size: clamp(2.2rem, 2.4vw + 1rem, 3.5rem);
+    line-height: 1.08;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+}
+
+.vp-doc .nh-title span,
+.vp-doc .nh-big span {
+    color: var(--noorm-bronze-strong);
+}
+
+/* The wordmark gradient from the previous hero. */
+.vp-doc .nh-title span {
+    background: linear-gradient(135deg, #E05742 0%, #B47A45 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
+
+.nh-row {
+    display: grid;
+    grid-template-columns: 7fr 5fr;
+    gap: 48px;
+    align-items: center;
+    margin-bottom: 32px;
+}
+
+.vp-doc .nh-lead {
+    margin: 0;
+    max-width: 60ch;
+    font-size: 1.125rem;
+    line-height: 1.6;
+    color: var(--vp-c-text-2);
+}
+
+.nh-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+}
+
+.vp-doc .nh-btn {
+    display: inline-flex;
+    align-items: center;
+    height: 42px;
+    padding: 0 18px;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    font-size: 15px;
+    font-weight: 500;
+    text-decoration: none;
+    transition: background-color 120ms ease-out, border-color 120ms ease-out;
+}
+
+.vp-doc .nh-btn.brand {
+    background: var(--vp-button-brand-bg);
+    color: var(--vp-button-brand-text);
+    font-weight: 600;
+}
+
+.vp-doc .nh-btn.brand:hover {
+    background: var(--vp-button-brand-hover-bg);
+    color: var(--vp-button-brand-hover-text);
+}
+
+.vp-doc .nh-btn.alt {
+    background: var(--vp-c-bg-elv);
+    border-color: var(--vp-c-border);
+    color: var(--vp-c-text-1);
+}
+
+.vp-doc .nh-btn.alt:hover {
+    border-color: var(--vp-c-text-3);
+}
+
+.vp-doc .nh-caption {
+    flex-basis: 100%;
+    margin: 4px 0 0;
+    font-family: var(--vp-font-family-mono);
+    font-size: 0.75rem;
+    color: var(--vp-c-text-3);
+}
+
+/* Two-panel comparisons: the dim panel is the usual way, the other is noorm's or ignatius's. */
+.nh-compare {
+    display: grid;
+    grid-template-columns: 5fr 7fr;
+    gap: 14px;
+    align-items: stretch;
+}
+
+.nh-panel,
+.nh-file {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    border: 1px solid var(--vp-c-border);
+    border-radius: 10px;
+    overflow: hidden;
+    background: var(--vp-c-bg-elv);
+}
+
+.nh-file {
+    background: var(--vp-code-block-bg);
+}
+
+/* Not this, but that: red marks the usual way, green marks noorm's. */
+.nh-bad {
+    border-color: color-mix(in srgb, var(--vp-c-danger-1) 45%, var(--vp-c-border));
+}
+
+.nh-good {
+    border-color: color-mix(in srgb, var(--vp-c-success-1) 55%, var(--vp-c-border));
+}
+
+.nh-bad .nh-panel-head {
+    color: var(--vp-c-danger-1);
+    background: color-mix(in srgb, var(--vp-c-danger-1) 10%, transparent);
+}
+
+.nh-good .nh-panel-head {
+    color: var(--vp-c-success-1);
+    background: color-mix(in srgb, var(--vp-c-success-1) 10%, transparent);
+}
+
+.vp-doc .nh-bad .nh-panel-foot {
+    color: var(--vp-c-danger-1);
+}
+
+.nh-mark {
+    margin-right: 4px;
+    font-size: 0.875rem;
+}
+
+.nh-panel-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--vp-c-divider);
+    font-family: var(--vp-font-family-mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.04em;
+    color: var(--vp-c-text-3);
+}
+
+.vp-doc .nh-panel-body {
+    flex: 1;
+    margin: 0;
+    padding: 14px 16px;
+    font-family: var(--vp-font-family-mono);
+    font-size: 0.8125rem;
+    line-height: 1.6;
+    color: var(--vp-c-text-3);
+    background: transparent;
+    overflow-x: auto;
+}
+
+.vp-doc .nh-panel-foot {
+    margin: 0;
+    padding: 8px 14px;
+    border-top: 1px dashed var(--vp-c-divider);
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    color: var(--vp-c-text-2);
+}
+
+.vp-doc .nh-file div[class*='language-'],
+.vp-doc .nh-cmds div[class*='language-'],
+.vp-doc .nh-split div[class*='language-'] {
+    margin: 0;
+    border-radius: 0;
+}
+
+.vp-doc .nh-file div[class*='language-'] {
+    flex: 1;
+    border: 0;
+}
+
+.vp-doc .nh-split div[class*='language-'] + div[class*='language-'] {
+    margin-top: 12px;
+}
+
+.vp-doc .nh-split div[class*='language-'],
+.vp-doc .nh-cmds div[class*='language-'] {
+    border-radius: 10px;
+}
+
+.nh-section {
+    padding: 64px 0 8px;
+    border-top: 1px solid var(--vp-c-divider);
+    margin-top: 56px;
+}
+
+.vp-doc .nh-h2 {
+    margin: 0 0 24px;
+    padding: 0;
+    border-top: 0;
+    font-size: 1.875rem;
+    line-height: 1.2;
+    letter-spacing: -0.02em;
+}
+
+.vp-doc .nh-big {
+    font-size: clamp(2rem, 2vw + 1rem, 3rem);
+    line-height: 1.1;
+}
+
+.vp-doc .nh-h3 {
+    margin: 0 0 10px;
+    font-size: 1.5rem;
+    letter-spacing: -0.01em;
+}
+
+.nh-r {
+    display: grid;
+    grid-template-columns: 4fr 5fr 3fr;
+    gap: 28px;
+    align-items: start;
+    padding: 18px 0;
+}
+
+.nh-r + .nh-r {
+    border-top: 1px solid var(--vp-c-divider);
+}
+
+.vp-doc .nh-pain {
+    margin: 0;
+    font-weight: 500;
+    color: var(--vp-c-text-1);
+}
+
+.vp-doc .nh-fix {
+    margin: 0;
+    font-size: 0.9375rem;
+    color: var(--vp-c-text-2);
+}
+
+.vp-doc .nh-proof {
+    justify-self: start;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    font-size: 0.75rem;
+}
+
+.nh-split {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 48px;
+    align-items: start;
+}
+
+.vp-doc .nh-flow {
+    margin: 20px 0;
+    padding: 14px 18px;
+    border: 1px solid var(--vp-c-border);
+    border-radius: 10px;
+    background: var(--vp-c-bg-elv);
+    font-family: var(--vp-font-family-mono);
+    font-size: 0.8125rem;
+    line-height: 1.9;
+    color: var(--vp-c-text-1);
+    overflow-x: auto;
+}
+
+.nh-dim {
+    color: var(--vp-c-text-3);
+}
+
+.nh-arrow {
+    color: var(--noorm-bronze);
+}
+
+.vp-doc .nh-links {
+    font-size: 0.875rem;
+}
+
+/* Full-width band for the second tool. --vp-offset is VPHomeContent's distance to the
+   viewport edge; padding by its negation keeps the content on the page column. */
+.nh-section.nh-band {
+    padding-top: 0;
+    border-top: 0;
+}
+
+.nh-tool {
+    margin-left: var(--vp-offset, calc(50% - 50vw));
+    margin-right: var(--vp-offset, calc(50% - 50vw));
+    padding: 64px calc(-1 * var(--vp-offset, calc(50% - 50vw))) 56px;
+    border-top: 1px solid var(--vp-c-border);
+    border-bottom: 1px solid var(--vp-c-border);
+    background: var(--vp-c-bg-soft);
+}
+
+.nh-dfd {
+    margin: 8px 0 40px;
+    padding-top: 28px;
+    border-top: 1px solid var(--vp-c-divider);
+}
+
+.vp-doc .nh-dfd-lead {
+    max-width: 76ch;
+    margin: 0 0 20px;
+}
+
+.nh-dfd-compare {
+    display: grid;
+    grid-template-columns: 4fr 8fr;
+    gap: 14px;
+    align-items: stretch;
+}
+
+.vp-doc .nh-ascii {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.875rem;
+    line-height: 1.18;
+    color: var(--vp-c-text-2);
+}
+
+.vp-doc .model-embed.nh-dfd-frame,
+.vp-doc .nh-viewer .model-embed {
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+}
+
+.vp-doc .nh-dfd-frame iframe,
+.vp-doc .nh-viewer .model-embed iframe {
+    flex: 1;
+    min-height: 470px;
+}
+
+.model-viewer-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 7px 12px;
+    border-bottom: 1px solid var(--vp-c-divider);
+    font-family: var(--vp-font-family-mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.04em;
+    color: var(--vp-c-text-3);
+    background: var(--vp-c-bg-elv);
+}
+
+.model-viewer-tabs {
+    display: inline-flex;
+    gap: 2px;
+}
+
+.model-viewer-tabs button {
+    padding: 2px 8px;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    font-family: var(--vp-font-family-mono);
+    font-size: 0.6875rem;
+    color: var(--vp-c-text-2);
+    cursor: pointer;
+}
+
+.model-viewer-tabs button.on {
+    border-color: var(--vp-c-border);
+    background: var(--vp-c-bg);
+    color: var(--vp-c-text-1);
+}
+
+.nh-viewer {
+    display: grid;
+    grid-template-columns: 5fr 7fr;
+    gap: 14px;
+    align-items: stretch;
+}
+
+.vp-doc .nh-note {
+    margin: 12px 0 28px;
+    font-size: 0.875rem;
+    color: var(--vp-c-text-2);
+}
+
+.nh-tool .nh-rows {
+    margin-top: 8px;
+}
+
+.nh-cmds {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin-top: 28px;
+}
+
+.nh-cmds > div {
+    display: flex;
+    flex-direction: column;
+}
+
+.vp-doc .nh-cmds div[class*='language-'] {
+    flex: 1;
+}
+
+.nh-band + .nh-section {
+    border-top: 0;
+}
+
+.nh-start {
+    text-align: center;
+}
+
+.nh-start .nh-h2 {
+    max-width: 32ch;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.vp-doc .nh-start div[class*='language-'] {
+    max-width: 640px;
+    margin: 0 auto;
+    text-align: left;
+}
+
+.nh-inline {
+    justify-content: center;
+    margin-top: 20px;
+}
+
+.nh-faq {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 18px;
+}
+
+.nh-faq > div {
+    padding: 20px;
+    border: 1px solid var(--vp-c-border);
+    border-radius: 10px;
+    background: var(--vp-c-bg-elv);
+}
+
+.vp-doc .nh-faq h3 {
+    margin: 0 0 8px;
+    font-size: 1rem;
+}
+
+.vp-doc .nh-faq p {
+    margin: 0;
+    font-size: 0.9375rem;
+    color: var(--vp-c-text-2);
+}
+
+@media (max-width: 959px) {
+
+    .nh-row,
+    .nh-compare,
+    .nh-split,
+    .nh-dfd-compare,
+    .nh-viewer,
+    .nh-cmds {
+        grid-template-columns: 1fr;
+    }
+
+    .nh-r {
+        grid-template-columns: 1fr;
+        gap: 6px;
+    }
+
+    .nh-faq {
+        grid-template-columns: 1fr;
+    }
+
+    .nh-tool {
+        padding: 28px 20px;
+    }
+}
+
+/* ─────────────────────────────────────────────
+   Download page
+   ───────────────────────────────────────────── */
+
+/* Wider than VPDoc's 784px; doubled classes outrank its scoped width rule. */
+.page-download .VPDoc.VPDoc .content.content {
+    max-width: 1104px;
+}
+
+.dl-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 22px;
+    margin: 28px 0 8px;
+}
+
+.dl-tool {
+    min-width: 0;
+    padding: 4px 26px 22px;
+    border: 1px solid var(--vp-c-border);
+    border-radius: 14px;
+    background: var(--vp-c-bg-elv);
+}
+
+.vp-doc .dl-tool h2 {
+    margin-top: 20px;
+    padding-top: 0;
+    border-top: 0;
+}
+
+.vp-doc .dl-what {
+    margin: 8px 0 16px;
+    color: var(--vp-c-text-2);
+}
+
+.vp-doc .dl-label {
+    margin: 20px 0 6px;
+    font-family: var(--vp-font-family-mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--vp-c-text-3);
+}
+
+.vp-doc .dl-label + div[class*='language-'] {
+    margin-top: 0;
+}
+
+.vp-doc .dl-small {
+    font-size: 0.8125rem;
+    color: var(--vp-c-text-2);
+}
+
+@media (max-width: 959px) {
+
+    .dl-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ─────────────────────────────────────────────
+   Modeling landing — docs/modeling/index.md
+   ───────────────────────────────────────────── */
+.nh-steps {
+    display: grid;
+    gap: 28px;
+}
+
+.nh-steps > div {
+    display: grid;
+    grid-template-columns: 4fr 8fr;
+    gap: 28px;
+    align-items: start;
+}
+
+.vp-doc .nh-step {
+    margin: 0 0 8px;
+    font-family: var(--vp-font-family-mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--noorm-bronze);
+}
+
+.vp-doc .nh-steps div[class*='language-'] {
+    margin-top: 0;
+}
+
+.vp-doc .nh-step-note {
+    margin: 10px 0 0;
+    font-size: 0.875rem;
+    color: var(--vp-c-text-2);
+}
+
+.nh-cards {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 14px;
+}
+
+.vp-doc .nh-cards a {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 18px;
+    border: 1px solid var(--vp-c-border);
+    border-radius: 10px;
+    background: var(--vp-c-bg-elv);
+    text-decoration: none;
+    transition: border-color 120ms ease-out;
+}
+
+.vp-doc .nh-cards a:hover {
+    border-color: var(--vp-c-text-3);
+}
+
+.vp-doc .nh-cards strong {
+    color: var(--vp-c-text-1);
+}
+
+.vp-doc .nh-cards span {
+    font-size: 0.875rem;
+    line-height: 1.5;
+    color: var(--vp-c-text-2);
+}
+
+@media (max-width: 959px) {
+
+    .nh-cards {
+        grid-template-columns: 1fr;
+    }
+
+    .nh-steps > div {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+}
+
+.vp-doc .nh-steps .nh-file + .nh-file {
+    margin-top: 10px;
+}
+
+.vp-doc .nh-chapter {
+    max-width: 76ch;
+    margin: 0 0 24px;
+    font-size: 1.0625rem;
+    line-height: 1.65;
+    color: var(--vp-c-text-2);
+}

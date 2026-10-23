@@ -1,0 +1,7 @@
+name: Order to cash
+description: The running example used on every page of noorm.dev.
+branding:
+  title: Order to cash
+  subtitle: the noorm.dev running example
+  copyright:
+    holder: noorm
