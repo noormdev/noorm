@@ -1,186 +1,111 @@
 # Installation
 
 
-![Installing noorm: the install script, creating an identity, and bootstrapping a project](/image/install.gif)
-
-
-## Requirements
-
-- A supported database:
-    - PostgreSQL
-    - MySQL
-    - SQLite
-    - SQL Server (MSSQL)
-
-
-## Install the CLI
-
-`noorm` is a non-interactive CLI by default. Every command emits structured output suitable for scripting or piping into CI/CD. Running `noorm ui` launches the optional Ink/React terminal wizard for when you'd rather point-and-click.
-
-### macOS / Linux
+Install the noorm CLI, then the SDK and the agent skill if you need them.
 
 ```bash
 curl -fsSL https://noorm.dev/install.sh | sh
 ```
 
-This downloads a self-contained binary for your platform. The installer looks for a user-writable bin directory already in your PATH (`~/.local/bin`, `~/bin`, etc.) so you don't need sudo. No runtime dependencies needed.
-
-::: tip Corporate network?
-If `noorm.dev` is blocked, use the GitHub mirror:
-```bash
-curl -fsSL https://raw.githubusercontent.com/noormdev/noorm/master/install.sh | sh
 ```
-:::
-
-You can also override the install location:
-
-```bash
-NOORM_INSTALL_DIR=~/my-tools curl -fsSL https://noorm.dev/install.sh | sh
+Installing noorm v1.5.1 (darwin-arm64) to /Users/ada/.local/bin...
+Installed noorm v1.5.1 to /Users/ada/.local/bin/noorm
 ```
-
-### npm
-
-If you already work in a Node project, npm installs the same binary and puts it on your PATH for you:
-
-```bash
-npm install -g @noormdev/cli
-```
-
-The package is a thin wrapper: installing it downloads the prebuilt binary for your platform and verifies it, exactly as the shell installer does. `npx @noormdev/cli` works too if you'd rather not install globally.
-
-This is the most convenient route on Windows, and the one to reach for when you want noorm pinned per-project rather than per-machine.
-
-### Windows
-
-Use the npm install above, or download [noorm-windows-x64.exe](https://github.com/noormdev/noorm/releases) from the latest `@noormdev/cli` release, rename it to `noorm.exe`, and add it to your PATH.
-
-### Integrity verification
-
-Every install path verifies the downloaded binary before it runs. The release publishes a `checksums.txt` alongside the binaries, and the installer (`install.sh`), the npm `postinstall` step, and `noorm update` each recompute the binary's SHA-256 and compare it against that file before making the binary executable. A mismatch aborts — a corrupted download or a tampered release asset never gets run.
-
-Verification is fail-closed: if `checksums.txt` can't be fetched (an offline mirror, a network block, an older release without it), the install stops rather than trusting an unverified binary. To override that one case — and only that case — set `NOORM_INSECURE=1`:
-
-```bash
-NOORM_INSECURE=1 curl -fsSL https://noorm.dev/install.sh | sh
-
-# self-update equivalent
-noorm update --insecure
-```
-
-`NOORM_INSECURE` skips verification only when the checksums can't be reached. A confirmed hash mismatch always fails, escape hatch or not — the flag can't wave through a binary that has actually been altered.
-
-### Verify
 
 ```bash
 noorm --version
 ```
 
-### Update
-
-noorm can update itself:
-
-```bash
-noorm update
-
-# Or launch the TUI (`noorm ui`) and press [u] from the home screen
+```
+1.5.1
 ```
 
-After an update, `noorm update` offers to install or update the [agent skill](#install-the-agent-skill-optional).
+The binary needs no runtime and includes the database drivers for PostgreSQL, MySQL, SQLite, and SQL Server. For npm, Windows, and the GitHub mirror, see [Download](/download).
+
+`noorm` on its own prints the command list. `noorm ui` opens the [terminal UI](/tui).
 
 
-## Install the SDK (Optional)
+## Install the SDK (optional)
 
-For programmatic access in scripts, tests, or custom tooling:
+
+The SDK needs Node 22.13 or newer, `kysely`, and the driver for your dialect:
 
 ```bash
-npm install @noormdev/sdk kysely
+npm install @noormdev/sdk kysely pg
 ```
 
-The SDK uses peer dependencies. Install the driver for your database:
+| Dialect | Driver |
+|---|---|
+| PostgreSQL | `pg` |
+| MySQL | `mysql2` |
+| SQLite | `better-sqlite3` |
+| SQL Server | `tedious` and `tarn` |
 
-| Dialect | Install |
-|---------|---------|
-| PostgreSQL | `npm install pg` |
-| MySQL | `npm install mysql2` |
-| SQLite | `npm install better-sqlite3` |
-| SQL Server | `npm install tedious tarn` |
-
-::: tip CLI Includes Drivers
-The CLI bundles all drivers — no extra installation needed. These are only required if you're using the SDK directly.
-:::
+Drivers are optional peer dependencies, so install only the one you use.
 
 
-## Install the Agent Skill (Optional)
+## Install the agent skill (optional)
 
-If you work with an AI coding agent — Claude Code, Codex, Cursor, Gemini CLI — install the noorm skill:
+
+The skill tells your coding agent where SQL goes in a noorm project, how SDK calls report errors, and which CLI flags CI needs, so it stops guessing.
 
 ```bash
 npx skills add noormdev/noorm/skills
 ```
 
-Agents otherwise guess at noorm's conventions, and several of them are non-obvious enough to guess wrong: SDK methods throw named errors rather than returning them, `attempt()` is used deliberately rather than everywhere, the codebase uses no `try`/`catch`, and test helpers carry safety guards that exist for a reason. The skill covers all of it, plus the headless CLI flags used in CI.
-
-Without Node.js, GitHub CLI 2.90 or newer installs the same skill from the latest release:
+Without Node.js, GitHub CLI 2.90 or newer installs the same skill:
 
 ```bash
 gh skill install noormdev/noorm skills/noorm
 ```
 
-Run either command again to update an installed copy. The skill includes these references, which the agent reads on demand:
 
-| Reference | Covers |
-|-----------|--------|
-| `schema-files.md` | What belongs in `db/sql/` and `db/changes/`, manifests, templates |
-| `sdk.md` | `createContext()`, Kysely patterns, error handling, testing |
-| `cli.md` | Headless commands, flags, exit codes, CI usage |
-| `templates.md` | `.sql.tmpl` syntax and data loaders |
-| `config.md` | `settings.yml`, paths, stages, secrets |
+## Update noorm
 
-::: tip Include paths are relative to `paths.sql`
-The single most common mistake — by people and agents alike — is writing `build.include` entries relative to the project root. They resolve against `paths.sql`. The skill states this explicitly; `noorm run build` also warns when an include entry matches nothing.
-:::
-
-
-## Initialize a Project
-
-Run `noorm init` in your project root. It prompts for the identity to create (skipped if you already have one) and scaffolds the project:
 
 ```bash
-cd your-project
-noorm init
+noorm update
 ```
 
-The init wizard creates:
+After a successful update, noorm offers the skill, using the same commands:
 
+| Where `noorm update` runs | Skill step |
+|---|---|
+| A terminal, with `npx` or `gh` on `PATH` | Asks before it installs or updates the skill |
+| Piped output, with `npx` or `gh` on `PATH` | Prints the command to run |
+| Neither `npx` nor `gh` on `PATH` | Prints both commands and where to get Node.js and the GitHub CLI |
+| `--json` | Skips the offer |
+
+A declined or failed skill install does not change the exit code. From the TUI, press `u` on the home screen.
+
+
+## How is the download verified?
+
+
+The npm package, `noorm update`, and the script at `raw.githubusercontent.com/noormdev/noorm/master/install.sh` compare the binary's SHA-256 with the `checksums.txt` published beside it. A mismatch always aborts. The short script at `noorm.dev/install.sh` does not check yet; install with the GitHub URL when you want the check.
+
+If `checksums.txt` cannot be fetched, they stop. `NOORM_INSECURE=1` overrides that case only:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/noormdev/noorm/master/install.sh | NOORM_INSECURE=1 sh
+noorm update --insecure
 ```
-your-project/
-├── .gitignore                 # gets a .noorm/state/ entry appended
-├── .noorm/
-│   ├── .gitignore             # ignores state/
-│   ├── settings.yml           # Project settings (commit this)
-│   └── state/
-│       └── state.enc          # Encrypted state (don't commit)
-└── db/
-    ├── sql/                   # Your SQL files
-    │   └── .gitkeep
-    ├── changes/               # Versioned changes
-    │   └── .gitkeep
-    ├── AGENTS.md              # Steering for AI coding agents working in db/
-    └── CLAUDE.md              # Imports AGENTS.md for Claude Code
-```
-
-`noorm init` is strictly interactive and exits with an error on a non-TTY unless you pass `--yes` and already have an identity at `~/.noorm/identity.{key,pub,json}`.
-
-Adding the first database config comes next, from the TUI (`noorm ui`, then `c` for config and `a` to add).
-
-::: warning Git Ignore
-`noorm init` adds `.noorm/state/` to your `.gitignore` for you. That folder holds encrypted configs and secrets specific to each developer's machine. The `.noorm/settings.yml` should be committed — it's the shared project configuration.
-:::
 
 
-## Next Steps
+## What bites
 
-You're ready to go! Continue to:
 
-- [First Build](/getting-started/first-build) - Complete the 5-minute tutorial
-- [Concepts](/getting-started/concepts) - Understand the mental model
+| Symptom | Cause | Fix |
+|---|---|---|
+| `noorm: command not found` | The install directory is not on `PATH` | Add the `export PATH="<dir>:$PATH"` line the installer prints to your shell profile |
+| `NOORM_INSTALL_DIR` has no effect | The variable was set before `curl`, so only `curl` sees it | Set it after the pipe: `curl … \| NOORM_INSTALL_DIR=~/bin sh` |
+| Install stops with "could not verify checksum" | `checksums.txt` is unreachable or has no entry for your platform | Retry, or set `NOORM_INSECURE=1` as shown above |
+| The SDK cannot connect and reports a missing driver | The driver is a peer dependency | Install the driver for your dialect |
+
+
+## Next
+
+
+- [First build](/getting-started/first-build): `noorm init`, a config, and a built schema
+- [Concepts](/getting-started/concepts): the two folders and how databases reach the same schema
+- [Download](/download): every install method and option

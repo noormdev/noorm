@@ -1,181 +1,151 @@
 ---
 title: Data flows
-description: SSADM data flow diagrams in ignatius. Show how processes move data between people, the database, caches, files, and paper.
+description: SSADM data flow diagrams in ignatius. Show where data comes from, including people outside the system, which process moves it, and which store keeps it, including stores that are not tables.
 ---
 
 # Data flows
 
 
-An entity diagram tells you what the data is. It does not tell you who touches it, or where it rests when it is not in a table.
+An entity diagram shows what the data is. A data flow diagram shows where it comes from, which process moves it, and where it rests, including the people and files that are not tables.
 
-ignatius answers that with data flow diagrams in the SSADM style, using Gane-Sarson notation: numbered process hubs, green external boxes for actors outside the system, and open-ended `D#` boxes for stores. Flows live in the same folder as the entities, in the same markdown format, and a `db:` store in a diagram is the same entity you modeled in the graph. Click it and the full entity dialog opens, with columns, relationships, and examples.
+| Part | Answers | Endpoint token | Example |
+|---|---|---|---|
+| External | who sends data in or receives it, outside the system | `ext:<Name>` | `ext:Customer` |
+| Process | what moves or transforms it | a file in the diagram folder, or `proc:<Name>` at a sub-diagram boundary | `Collect-Payment.md` |
+| Store, entity | where it rests as a table | `db:<entity>` | `db:payment` |
+| Store, other | where it rests when it is not a table | `cache:` `queue:` `file:` `doc:` `manual:` `other:` | `file:gateway-log` |
 
+Three process files, one external, and a log file that no table holds draw this diagram:
 
-## Why the diagram includes more than tables
+<ModelViewer class="tall" model="order-to-cash" hash="view=flow&amp;dfd=order-to-cash" :tabs="false" label="order-to-cash data flows" title="Order-to-cash data flow diagram rendered by ignatius" />
 
+One file declares the arrows into and out of Collect payment:
 
-The useful part of a DFD is that a data store is not required to be a database table.
-
-A cache holds derived state. A log file holds gateway responses nobody reads until a dispute. A queue holds work in flight. A signed paper form sits in a drawer, and a PDF sits in someone's mail. All of those are places your business keeps data, and all of them are places it can go missing, go stale, or leak. Model them and the diagram shows where information lives, including the parts that never reached the database.
-
-The same applies to people. An external entity is a source or a sink that sits outside the system boundary: a customer, a supplier, a regulator, a support agent. Drawing them makes the handoffs explicit, which is where most process defects are.
-
-Two distinctions are worth holding onto:
-
-- **Stores are inside the system, externals are outside it.** Both can be the source or the sink of a flow, but only a store represents state the system owns.
-- **Every entity is a store, not every store is an entity.** A `db:` store resolves to a real entity in the graph. A cache, file, queue, document, or manual record is a store and nothing more.
-
-
-## Folder layout
-
-
-Flows live in a `flows/` folder at the model root. Each diagram is a folder, and each process is a file inside it.
-
-```
-models/
-    ignatius.yml
-    data/
-        identity/ ...           # entities live under data/
-    externals/
-        Customer.md             # shared external, usable by every diagram
-    stores/
-        gateway-log.md          # optional description of a non-entity store
-    flows/
-        order-to-cash/
-            Create-Sales-Order.md   # process 1
-            Create-Sales-Order/     # same-named folder is the sub-diagram
-                Validate-Customer.md
-                Record-Order.md
-            Issue-Invoice.md        # process 2
-            Collect-Payment.md      # process 3
-        refund/
-            Process-Return.md
-```
-
-Files under `flows/` are never scanned as entities. The file name minus `.md` is the process id used everywhere: in `proc:` tokens, in wiki links, and as the sub-diagram folder name. Name it as an imperative phrase with hyphens for spaces, so `Collect Payment` becomes `Collect-Payment.md`.
-
-
-## A process file
-
-
-Frontmatter declares the data contract. The body explains the business. The arrows on the diagram are generated from `inputs:` and `outputs:`.
+<div class="nh-file">
+<div class="nh-panel-head"><span>model/flows/order-to-cash/Collect-Payment.md (excerpt)</span><span>you write this</span></div>
 
 ```markdown
 ---
-process: Collect Payment
+process: Collect payment
 number: 3
 inputs:
-    - from: ext:Customer
-      data: payment details
-    - from: db:PaymentMethod
-      data: [party_id, payment_method_id, type, label]
+  - from: ext:Customer
+    label: payment
+    data: card, amount
+  - from: db:invoice_line
+    label: open lines
+    data: [party_id, invoice_no, line_no, amount]
 outputs:
-    - to: db:Payment
-      data: [party_id, payment_method_id, payment_id, amount]
-    - to: file:gateway-log
-      data: gateway transaction reference, HTTP status, raw response
-    - to: ext:Customer
-      data: receipt
-examples:
-    in:
-        - from: ext:Customer
-          label: payment details
-          rows:
-              - { card: "****4242", amount: 49.99, currency: GBP }
-    out:
-        - to: db:Payment
-          label: settled payment record
-          rows:
-              - { party_id: 1001, payment_method_id: 42, payment_id: 9001, amount: 49.99 }
+  - to: db:payment
+    label: payment
+    data: [party_id, payment_no, amount]
+  - to: db:payment_allocation
+    label: allocations
+    data: [party_id, payment_no, invoice_no, line_no, amount]
+  - to: file:gateway-log
+    label: gateway response
+    data: transaction reference, status, raw response
+  - to: ext:Customer
+    label: receipt
+    data: payment number, status
 ---
 
-Settles an invoice by recording a [[Payment]] and allocating it against the
-invoice line it pays. A receipt is returned to the [[Customer]].
+Writes the [[payment]] and its [[payment_allocation]] rows in one transaction.
 ```
 
-| Field | Required | Meaning |
-|---|---|---|
-| `process` | yes | The human label shown on the node |
-| `number` | no | Local rank among sibling processes, falling back to file order. Full SSADM numbers like `1.2.1` are composed from the folder nesting |
-| `inputs` / `outputs` | yes | The flows. Each names an endpoint and the `data:` it carries |
-| `examples` | no | Sample in and out rows, rendered as tables in the process dialog, one entry per flow |
-
-The `data:` field is both the arrow's label and its contract. On a `db:` endpoint it is always column names, a string for one or a list for several, and every name is checked against the entity's `pk` and `columns` under the `flow.unknown_attribute` rule. On any other endpoint it is an opaque label, so make it enumerate what the flow carries rather than summarize it in one word.
-
-Bodies support the same `[[Entity]]` wiki links as entity files, and can also link to processes, externals, and stores by name. Links open the target's dialog in place.
+</div>
 
 
-## Endpoints
+## What does a process file declare?
 
 
-Every flow connects a process to something. The token's prefix says what.
+The file name minus `.md` is the process id, an imperative phrase like `Collect-Payment`. The frontmatter is the data contract and the body explains the business.
 
-| Token | Endpoint |
+| Field | Meaning |
 |---|---|
-| `db:<Entity>` | A store backed by a modeled entity. Must match an entity id exactly |
-| `ext:<Name>` | An external entity, an actor outside the system boundary |
-| `proc:<Name>` | Another process, used for sub-diagram boundary flows |
-| `cache:` `queue:` `file:` `doc:` `manual:` `other:` | A non-entity store of that kind |
+| `process` | The label on the node. Required |
+| `number` | Rank among sibling processes. Without it, file order decides |
+| `inputs`, `outputs` | The flows: an endpoint, a `label` for the arrow, and the `data` it carries |
+| `examples` | Sample `in` and `out` rows, shown in the process dialog |
 
-The prefix set is closed. A store that fits none of the named kinds is authored as `other:<name>`; there is no way to invent a prefix. A bare, unprefixed name resolves only when it is unambiguous across all namespaces, and otherwise raises `flow.ambiguous_endpoint` asking you to qualify it.
-
-
-### Externals
+`data` is the contract. On a `db:` endpoint it is column names, and each is checked against the entity's `pk` and `columns`. On any other endpoint it is free text, so list what crosses: "transaction reference, status, raw response", not "log data".
 
 
-Describe an external once in `externals/<Name>.md` at the model root, with an `external:` label in frontmatter and a body covering its role, what it does, and what it expects back. Every diagram at any nesting depth can then reference `ext:<Name>`. There is no per-diagram override.
+## What do externals and non-table stores need?
 
 
-### Stores
+An `ext:` token needs `externals/<Name>.md`, a body saying who the actor is and what it expects back. A `db:` store needs no file, because the entity is the store.
 
-
-A `db:` store needs no file. It is the entity, documented in the entity's own markdown. A non-`db` store exists by being referenced, and an optional `stores/<name>.md` adds a kind, a display title, and the reason it exists.
+A store that is not a table exists by being referenced. An optional `stores/<name>.md` adds a `kind`, a `title`, and a body for facts no schema records:
 
 ```markdown
 ---
 kind: file
-title: Payment Gateway Log
+title: Payment gateway log
 ---
 
-Append-only log of raw gateway responses. Used for reconciliation and dispute
-resolution; never read back during normal processing. Retained for 7 years.
+Raw responses from the payment gateway, appended by Collect payment. Read only for reconciliation.
 ```
 
-A store file's `kind:` is one of `cache`, `queue`, `file`, `doc`, `manual`, or `other`. An absent or unrecognized value falls back to `other`. `db` is not in that list, because a `db:` store is the entity and needs no file. Kind drives the node's color in the diagram, theme-aware and overridable under `theme.flowKinds` in `ignatius.yml`.
-
-Writing that body is where the value is. "Retained for 7 years" and "never read back during normal processing" are the facts that decide whether the store is a compliance asset or a liability, and they exist nowhere in a schema.
+`kind` is one of `cache`, `queue`, `file`, `doc`, `manual`, or `other`. The viewer numbers stores by kind: `D1` for an entity, `F1` for a file, `C1` for a cache, and likewise `Q`, `Do`, `M`, and `O`.
 
 
-## Sub-diagrams
+## How do I break a process into smaller ones?
 
 
-A process decomposes by placing a folder with the process's exact file name next to its file. The folder holds the child diagram, with its own process files numbered locally, and full dotted numbers composed from the nesting. Decomposition recurses as deep as it needs to. There is no depth cap, and the ancestor chain is preserved at every level, so a process four layers down reads as something like `1.4.2.1`.
+Put a folder named exactly like the process file, minus `.md`, next to it. The folder holds the child diagram.
 
-The child diagram must be balanced with its parent: the data crossing the sub-diagram's boundary has to match the parent process's declared inputs and outputs, column for column on `db:` flows. The `flow.unbalanced_decomposition` rule checks that at every level, which is the thing hand-drawn DFDs always get wrong once the diagram is more than one page.
+```
+flows/order-to-cash/
+├── Place-Order.md
+├── Place-Order/        the sub-diagram of Place-Order
+│   ├── Validate-Customer.md
+│   └── Record-Order.md
+├── Issue-Invoice.md
+└── Collect-Payment.md
+```
 
-In the viewer, a process with a sub-diagram renders with a stacked-shadow affordance. Clicking drills down, and a breadcrumb leads back up.
+Numbers compose from the nesting, with no depth limit. The child must balance with its parent: the data crossing its boundary matches the parent's inputs and outputs, column for column on `db:` flows. `flow.unbalanced_decomposition` checks every level.
 
+ignatius also derives two diagrams you do not write: the Context diagram, with every external around one `System` box, and the overview the Flows view opens on, with one box per diagram folder. `Place order` is numbered `1.1` in the viewer because it sits in the first folder.
 
-## Viewing and validating
-
-
-`ignatius serve` shows flows in the Flows view at `#view=flow`. The active diagram is deep-linkable through the `dfd=` hash parameter and survives a refresh. `ignatius export` writes the Flows view into the same single HTML file as the other two views.
-
-Every node carries an ⓘ badge. A `db:` store opens the rich entity dialog; a process, external, or non-`db` store opens its markdown. The process dictionary, meaning every process, external, and store with its body and its input and output tables, is fused into the Dictionary view and searchable alongside the entities.
-
-Hovering an edge that carries data reveals a tooltip listing everything crossing it, under a `source → target` header. That includes the full contents of `db:` column lists which are abbreviated on the canvas when they run long. Labels over 22 characters show a truncated preview with an ellipsis, so you can always see at a glance which edges are hiding detail, and the tooltip stays legible at any zoom level.
-
-`ignatius validate` runs twelve `flow.*` rules whenever a `flows/` directory exists, covering unknown references, column contracts, connection shape, numbering, store-token conflicts, and decomposition balance. One rule is configurable: direct process-to-process flows warn by default and can be silenced with `flow_rules: { process_to_process: false }` in `ignatius.yml`.
-
-
-## Authoring with the skill
+A folder describes itself with `description:` frontmatter in `flows/<diagram>/index.md`, which `ignatius index` leaves intact. A sub-diagram uses its process's `description`.
 
 
-The [`ignatius-modeling` skill](/modeling/modeling-skill) has two doors into flows. `/ignatius-modeling flow` walks you through a diagram step by step when you can already name your processes. `/ignatius-modeling discover` interviews you about how the business runs and generates both the entities and the flows. Both verify their output with `ignatius validate`.
+## How do I check it?
 
 
-## Related
+Press `f` in `ignatius serve` for the Flows view, and `i` for the flow index. Saving a file redraws it, and `#view=flow&dfd=order-to-cash` deep-links to a diagram. Hover an arrow to see everything crossing it.
+
+`ignatius validate` runs the `flow.*` rules whenever `flows/` exists. Rename `payment_no` to `payment_id` in the `db:payment` output above and it warns:
+
+```bash
+ignatius validate model
+```
+
+```
+warn  flow.unknown_attribute  order-to-cash/Collect-Payment  Column 'payment_id' on 'payment' not found in entity pk or columns.
+✓ /home/you/shop/model: valid with 1 warning(s) across 11 entities.
+```
+
+Warnings exit `0` and errors exit `1`.
 
 
-- [Entities and key inheritance](/modeling/entities) covers the entities these diagrams reference.
-- The [flows guide](https://github.com/noormdev/ignatius/blob/main/docs/guides/flows.md) and the [validation catalog](https://github.com/noormdev/ignatius/blob/main/docs/guides/validation.md) carry the exhaustive reference.
+## What bites
+
+
+| Mistake or symptom | Cause | Fix |
+|---|---|---|
+| `flow.unknown_external`, the arrows vanish | every `ext:` token needs `externals/<Name>.md` | add the file or fix the name |
+| `flow.illegal_connection`, the arrow vanishes | neither end is a process, as in a store sending to an external | route it through a process |
+| A process is missing, with no finding | a file without a `process:` field is skipped | add `process:` |
+| A sub-diagram is ignored | the folder name differs from the process file name, or it holds no `.md` | rename it to match |
+
+
+## Next
+
+
+- [Entities and key inheritance](/modeling/entities): the entities these flows name
+- [The modeling skill](/modeling/modeling-skill): `/ignatius-modeling flow` walks you through a diagram
+- The [flows guide](https://github.com/noormdev/ignatius/blob/main/docs/guides/flows.md) covers clusters, stacks, and arrow labels
+- The [validation catalog](https://github.com/noormdev/ignatius/blob/main/docs/guides/validation.md) lists every `flow.*` rule

@@ -1,409 +1,150 @@
 # Changes
 
 
-Changes are versioned operations that evolve an existing database to match your ideal schema. When you need to add a column, transform data, or run SQL that should execute exactly once with rollback support, changes are the answer.
-
-
-## Why "Changes", Not "Migrations"
-
-Most tools call these migrations. We don't, and here's why.
-
-**Your SQL files are the source of truth.** They define what your schema *is*—the ideal, current state. You handcraft them, review them, keep them up to date. When you need a fresh database, you run your SQL files. No archaeology through years of migration history.
-
-**Changes describe what you *do*, not what you *move*.** To migrate implies moving something from one place to another. Data migrations traditionally mean moving data between servers, warehouses, or systems. But when you add a column to an existing table, you're not migrating anything—you're changing the schema.
-
-The term "migration" originated in enterprise contexts where it actually made sense—incrementally moving schemas and data from Oracle to SQL Server, or consolidating legacy systems into a new platform. Rails borrowed this terminology in 2005 and popularized it for web applications. Everyone followed suit without questioning whether the word fit. We're not moving databases between systems. We're changing them in place. The language matters.
-
-**Kysely already has migrations.** If you want a traditional migration system, Kysely has one built in. But it lacks what noorm provides:
-
-- **Identity tracking** - Who ran what, and when?
-- **Flexible workflows** - Build from scratch *or* apply changes, your choice
-- **Templates and secrets** - Dynamic SQL with encrypted credentials
-- **Execution history** - Full audit trail with timing and checksums
-- **Revert scripts** - Rollback support when things go wrong
-
-Changes are your changelog. They document *how* to get an existing database to match your SQL files. Your SQL files remain the source of truth.
-
-
-## When to Use Changes
-
-The distinction is simple: **can you rebuild from scratch, or do you need to evolve what's there?**
-
-**Fresh database?** Run `noorm run build`. This executes your `db/sql/` folder—your source of truth. Tables, views, functions, seed data. Everything needed to create a working schema from nothing.
-
-**Existing database with data you can't lose?** Run `noorm change ff`. This applies pending changes from your `db/changes/` folder. Each change runs once, gets recorded in the database, and won't run again unless reverted.
-
-Changes exist because production databases can't be rebuilt. You can't drop a table with millions of rows and recreate it. You need to `ALTER TABLE` in place, transform data carefully, add indexes without blocking writes. Changes give you:
-
-- **Execution tracking** - Know which changes have been applied
-- **Revert scripts** - Roll back when something goes wrong
-- **Ordered execution** - Date prefixes ensure consistent ordering across teams
-
-
-## Directory Structure
-
-Each change lives in its own folder with a specific structure:
-
-```
-db/changes/
-└── 2025-01-15-add-email-verification/
-    ├── change/                    # Forward scripts (required)
-    │   ├── 001_create-tokens-table.sql
-    │   └── 002_add-user-column.sql
-    ├── revert/                    # Rollback scripts (optional)
-    │   ├── 001_drop-user-column.sql
-    │   └── 002_drop-tokens-table.sql
-    └── changelog.md               # Human-readable description
-```
-
-**change/** contains your forward scripts. These run in sequence order when you apply the change.
-
-**revert/** contains rollback scripts. These run in forward sequence order (001, then 002), just like change scripts. You design them to undo your changes in reverse—notice how `001_drop-user-column` undoes the last change and `002_drop-tokens-table` undoes the first.
-
-**changelog.md** is optional but recommended. Document what the change does and why. Your future self will thank you.
-
-
-## Naming Conventions
-
-Change folders follow the pattern `YYYY-MM-DD-description`:
-
-```
-2025-01-15-add-email-verification
-2025-02-01-migrate-user-roles
-2025-02-14-add-search-indexes
-```
-
-The date prefix ensures changes apply in chronological order across your team. When Alice creates `2025-01-15-add-users` and Bob creates `2025-01-16-add-posts`, they'll apply in the right order regardless of when they merge.
-
-Files within `change/` and `revert/` use sequence prefixes:
-
-```
-001_create-table.sql
-002_add-column.sql
-003_update-data.sql
-```
-
-The three-digit prefix guarantees execution order. Names after the underscore are for humans.
-
-
-## Creating a Change
-
-Scaffold a change headlessly with `noorm change add`:
+A change takes a database that already exists to the schema in `db/sql/`. noorm runs each change once per database and records the result.
 
 ```bash
-noorm change add add-email-verification
-noorm change add                          # prompts for a description (TTY only)
+noorm change add order-status
 ```
 
-Or from the TUI: run `noorm ui`, press `g` from home to enter the changes screen, then `a`
-and enter a name like `add-email-verification`. Either path scaffolds the same layout:
+```
+Created: 2026-10-20-order-status
+  /home/dana/orders/db/changes/2026-10-20-order-status
+```
 
 ```
-db/changes/2025-01-15-add-email-verification/
+db/changes/2026-10-20-order-status/
 ├── change/
-│   └── 001_add-email-verification.sql
+│   └── 001_order-status.sql
 ├── revert/
-│   └── 001_add-email-verification.sql
+│   └── 001_order-status.sql
 └── changelog.md
 ```
 
-Unlike an empty folder pair, `001_add-email-verification.sql` is a real, runnable stub — one
-comment line naming what belongs there ("Add the SQL statements that apply this change" in
-`change/`, "...undo this change" in `revert/`). Replace the comment with your SQL. A comment
-alone isn't enough to run: `change run` rejects a changeset whose files contain only
-comments or template placeholders, with a message that tells you to edit the files — not the
-misleading "change not found" a genuinely empty folder pair used to produce.
-
-For a multi-statement change, add more files by hand following the same `NNN_description`
-convention (see [Naming Conventions](#naming-conventions) above) — `002_`, `003_`, and so on.
-Files run in filename order (a plain string sort, so keep sequence numbers zero-padded to
-three digits or the sort stops being numeric past `009_`).
-
-Once the directory exists you can apply, revert, and inspect the change from the headless
-CLI (`noorm change ff`, `noorm change run`, `noorm change revert`, `noorm change history`).
+Each `.sql` file starts as one comment line. Replace it with SQL, as [Add a column](/guide/changes/add-a-column) does for this change. In the TUI, press `g` from home, then `a`.
 
 
-## Write Idempotent DDL
-
-Always check for existence before making changes. Use `IF NOT EXISTS` when creating, `IF EXISTS` when dropping. This protects you when:
-
-- A change accidentally runs twice
-- Someone executes the file directly outside of noorm
-- You need to re-run after a partial failure
-
-```sql
--- change/001_add-verification-column.sql (forward)
-ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT FALSE;
-
--- revert/001_drop-verification-column.sql (rollback)
-ALTER TABLE users DROP COLUMN IF EXISTS email_verified;
-```
-
-```sql
--- change/001_create-tokens-table.sql (forward)
-CREATE TABLE IF NOT EXISTS verification_tokens (
-    id SERIAL PRIMARY KEY,
-    user_id INTEGER REFERENCES users(id),
-    token TEXT NOT NULL,
-    expires_at TIMESTAMP NOT NULL
-);
-
--- revert/001_drop-tokens-table.sql (rollback)
-DROP TABLE IF EXISTS verification_tokens;
-```
-
-This applies to both forward and revert scripts. A revert that fails because "column doesn't exist" is just as broken as a change that fails because "column already exists."
+## What is in a change folder?
 
 
-## File Types
+| Path | Holds | Read by |
+|---|---|---|
+| `change/` | forward scripts | `change run`, `ff`, `next` |
+| `revert/` | rollback scripts | `change revert`, `rewind` |
+| `changelog.md` | why the change exists | people. noorm records only that it exists |
 
-Changes support three file types:
+Files in `change/` and `revert/` run by extension:
 
-### SQL Files (.sql)
+| Extension | Runs |
+|---|---|
+| `.sql` | as written |
+| `.sql.tmpl` | after Eta renders it ([Templates](/guide/sql-files/templates)) |
+| `.txt` | a manifest: files from `db/sql/`, in place |
 
-Raw SQL executed directly. The most common type.
-
-```sql
--- 001_add-verification-column.sql
-ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT FALSE;
-```
-
-### Templates (.sql.tmpl)
-
-Dynamic SQL processed through the Eta template engine before execution. Useful when you need conditional logic or variable substitution. See [Templates](/guide/sql-files/templates) for full syntax reference.
-
-```sql
--- 001_add-audit-table.sql.tmpl
-CREATE TABLE {%~ $.config.schema %}.audit_log (
-    id SERIAL PRIMARY KEY,
-    action TEXT NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-```
-
-### Manifests (.txt)
-
-Reference existing schema files instead of duplicating SQL. The manifest lists paths relative to your schema directory.
-
-Many database objects use `CREATE OR REPLACE`—views, functions, procedures, triggers. They're already idempotent. When you change a table, you often need to recreate dependent views or functions. Instead of copying that SQL into your change folder, reference the source of truth:
-
-```txt
-# change/001_rebuild-views.txt
-views/user_summary.sql
-views/active_users.sql
-functions/get_user_stats.sql
-```
-
-```sql
--- change/002_add-status-column.sql
-ALTER TABLE users ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'active';
-```
-
-Manifest files participate in ordering. Here, `001_rebuild-views.txt` runs first (recreating views that might depend on the old schema), then `002_add-status-column.sql` adds the column. You could also flip this—add the column first with `001_`, then rebuild views with `002_` so they pick up the new column.
-
-This keeps your `db/sql/` folder as the single source of truth. Views and functions are defined once, referenced wherever needed.
-
-The reference is resolved every time the change is read. Delete or rename a file a manifest lists and that change can no longer be read: `noorm change ff` stops at it if it has not run, and `noorm change list` shows it as `failed` with the missing path. A change that already ran keeps its status, and `ff` only warns. A manifest also runs the file's current content, so list only objects that are safe to run repeatedly, never a `CREATE TABLE` file.
+Other files are not run, though a template still reads the data files beside it. A folder with neither `change/` nor `revert/` is not a change, so shared fragments and archives can sit beside the real ones.
 
 
-## Checking Change Status
+## How are changes and files ordered?
 
-From the TUI, the changes screen shows status for each change:
+
+noorm sorts by name at both levels, so the name is the order.
+
+| Level | Pattern | Example |
+|---|---|---|
+| Change folder | `YYYY-MM-DD-slug` | `2026-10-20-order-status` |
+| File | `NNN_slug.ext` | `001_order-status.sql` |
+
+- `change add` builds the folder name from today's date and a slug of your description.
+- Pad file numbers to three digits. Names sort as text, so `10_` comes before `9_`.
+- `revert/` runs in the same filename order as `change/`. Number its files in the order the undo has to happen.
+
+`invoice_line` references `invoice`, so the revert drops the child first:
 
 ```
-┌─ Changes ─────────────────────────────────────────────┐
-│  • 2025-01-15-add-email-verification    success       │
-│    2025-02-01-migrate-user-roles        pending       │
-│    2025-02-14-add-search-indexes        pending       │
-└───────────────────────────────────────────────────────┘
+change/                       revert/
+├── 001_invoice.sql           ├── 001_invoice-line.sql
+└── 002_invoice-line.sql      └── 002_invoice.sql
 ```
 
-Each change has a status:
 
-| Status | Meaning |
-|--------|---------|
-| `pending` | Not yet applied |
-| `success` | Applied successfully |
-| `failed` | Last execution failed |
-| `reverted` | Was applied, then rolled back |
-| `stale` | Was applied, then `db teardown` dropped the objects it created |
+## How does a change reuse a view or function from db/sql/?
 
-`pending`, `reverted`, and `stale` all count as outstanding work, so `change ff` and
-`change next` pick up all three.
 
-From the headless CLI, `noorm change list` prints every known change with its status. Bare `noorm change` renders help -- it does not connect to the database.
+A `.txt` manifest lists files in `db/sql/`. noorm runs them in place, so the view is defined once and the change never copies its SQL:
+
+```
+# db/changes/2026-10-22-open-orders/change/001_rebuild-views.txt
+02_views/01_open_orders.sql
+02_views/02_unpaid_invoices.sql
+```
+
+A manifest sorts among the other files of its folder. Use that to drop a dependent view, alter the table, then rebuild the view:
+
+```
+change/
+├── 001_drop-unpaid-invoices.sql  -- DROP VIEW IF EXISTS unpaid_invoices;
+├── 002_widen-amount.sql          -- ALTER TABLE invoice_line ALTER COLUMN amount TYPE numeric(14,2);
+└── 003_rebuild-views.txt         02_views/02_unpaid_invoices.sql
+```
+
+| Rule | Detail |
+|---|---|
+| Paths | one per line, relative to `paths.sql`: `02_views/01_open_orders.sql`, not `db/sql/02_views/...` |
+| Ignored lines | blank lines and lines starting with `#` |
+| Order | lines run in file order. A path listed twice in one change runs once, at its first position |
+| Content | the file as it is at run time, not as it was when you wrote the change |
+| Revert | a manifest in `revert/` rebuilds the current definition. To restore an older one, write its `CREATE OR REPLACE` inline |
+
+A manifest is resolved every time noorm reads the change, so one missing path makes the whole change unreadable:
+
+```mermaid
+flowchart TD
+    M["001_rebuild-views.txt"] --> E{"every listed path<br/>exists in db/sql/?"}
+    E -->|yes| R["runs each file's<br/>current content"]
+    E -->|no| U["change is unreadable"]
+    U --> L["change list shows<br/>failed with the path"]
+    U --> F["ff and next stop here<br/>unless it already ran"]
+```
+
+[Forward and revert](/guide/changes/forward-revert#what-happens-when-a-change-folder-cannot-be-read) covers what `ff` does with it. An empty manifest, or one with only comments, is unreadable too.
+
+
+## How do I see what is pending?
+
 
 ```bash
-noorm change list             # Human-friendly table
-noorm change list --json      # Same data as JSON
+noorm change list
 ```
 
-```json
-{
-    "success": true,
-    "changes": [
-        {
-            "name": "2025-01-15-add-email-verification",
-            "status": "success",
-            "appliedAt": "2025-01-15T14:30:00.000Z",
-            "appliedBy": "Alice <alice@example.com>",
-            "revertedAt": null,
-            "errorMessage": null,
-            "isNew": false,
-            "orphaned": false
-        }
-    ],
-    "pending": 1
-}
+```
+2026-10-19-sales-order (success)
+2026-10-20-order-status (reverted)
+2026-10-21-invoice (failed): 002_invoice-line.sql: [Err 1] near "(": syntax error
+2026-10-23-payment (pending)
+1 pending change(s)
 ```
 
-Each entry merges the database record above with the on-disk one, so it also carries
-`path`, `date`, `description`, `changeFiles`, `revertFiles`, and `hasChangelog`. An entry
-flagged `orphaned` exists in the change tracking tables but no longer on disk, so those
-disk fields are absent.
-
-When you omit the change name on a TTY, several subcommands open an interactive picker.
-`run`, `revert`, `rewind`, and `history-detail` query the database and filter to the
-relevant subset: outstanding changes for `run`, successfully applied ones for `revert` and
-`rewind`, anything with a history record for `history-detail`. `edit` and `rm` work offline
-and list every folder in `db/changes/`. Non-TTY callers must supply the name.
+Each line is `name (status)`. A change recorded in the database whose folder is gone shows `(status, orphaned)`. `--json` adds `appliedAt`, `appliedBy`, `revertedAt`, `errorMessage`, `isNew`, and `orphaned` to each entry. [Forward and revert](/guide/changes/forward-revert#which-statuses-can-a-change-have) defines the five statuses.
 
 
-## Common Workflows
+## What bites
 
 
-### Apply a Single Change
-
-Run a specific change by name:
-
-```bash
-noorm change run 2025-02-01-migrate-user-roles
-```
-
-From the TUI, select the change and press enter.
-
-
-### Apply All Pending Changes
-
-Fast-forward applies all pending changes in order:
-
-```bash
-noorm change ff
-```
-
-This is what you typically run in CI/CD after deployment.
+| Symptom | Cause | Fix |
+|---|---|---|
+| `change run` fails: files are empty or contain only template placeholders | The scaffolded stub is a comment, and a change needs real SQL | Replace the comment with SQL |
+| A folder in `db/changes/` never appears in `change list` | It has neither `change/` nor `revert/` | Add `change/` with at least one file |
+| `change list` shows `failed` with `references missing file` | A manifest names a file that `db/sql/` no longer has. Deleting or renaming a `db/sql/` file breaks every unapplied change that lists it | Restore the file, or fix the manifest line |
+| You edited an applied change and `change ff` does nothing | `ff` skips applied changes, so databases that ran it keep the old body | Add a new change. `change run <name>` re-executes the edit on the one database you point it at |
+| `change ff` fails on a database built from `db/sql/` | A build records no changes, so `ff` replays all of them | Write each statement to be safe to run twice ([Add a column](/guide/changes/add-a-column)) |
+| A manifest-listed table file fails on replay: already exists | A manifest runs the file's current content, and `CREATE TABLE` fails on an existing table | List only `CREATE OR REPLACE` objects: views, functions, procedures, triggers |
+| `1 pending change(s)` is fewer than `ff` will run | The footer counts `pending` only. `ff` also runs `reverted` and `stale` | Read each status in the list |
 
 
-### Apply the Next Pending Change
-
-Run just the next change in sequence:
-
-```bash
-noorm change next
-```
-
-Useful when you want to apply changes one at a time and verify each.
+## Next
 
 
-### Revert a Change
-
-Roll back a previously applied change:
-
-```bash
-noorm change revert 2025-02-01-migrate-user-roles
-```
-
-This runs the scripts in `revert/` in sequence order. The change status becomes `reverted`, which means it will run again on the next fast-forward.
-
-
-### Rewind Multiple Changes
-
-Revert the last N applied changes:
-
-```bash
-noorm change rewind 3
-```
-
-This reverts the three most recently applied changes, starting with the newest. Pass a
-change name instead of a count to rewind back to and including that change:
-
-```bash
-noorm change rewind 2025-01-15-add-email-verification
-```
-
-
-### Preview Before Running
-
-`--dry-run` is the preview: it renders every file, templates and manifests included, and
-writes the result under `tmp/` instead of executing it. See [Dry Run](#dry-run) below.
-
-To render a single template file to stdout without involving a change at all, use
-`noorm run preview`:
-
-```bash
-noorm run preview db/sql/views/user_summary.sql.tmpl
-```
-
-
-### Dry Run
-
-Render files to a temporary directory without executing. Available on every apply/revert command: `change run`, `change revert`, `change ff`, `change next`, and `change rewind`:
-
-    noorm change run 2025-02-01-migrate-user-roles --dry-run
-    noorm change ff --dry-run
-
-Files are written to `tmp/` so you can inspect them. A dry run never writes to the change
-tracking tables: it skips the "does this need to run?" lookup, takes no lock, and creates
-no history record, which makes it safe to run repeatedly in production. `ff`, `next`, and
-`rewind` still read the tables to work out which changes to render. The CLI tags human
-output with `(dry-run)` and adds `dryRun: true` to the JSON payload of `run`, `revert`,
-`ff`, and `next` so CI pipelines can verify the result didn't touch the database.
-`rewind --json` does not add the flag.
-
-
-## When Changes Re-Run
-
-noorm tracks whether each change needs to run based on several conditions:
-
-| Condition | What Happens |
-|-----------|--------------|
-| New change folder | Runs |
-| Files modified since last run | Runs |
-| Previous execution failed | Runs |
-| Change was reverted | Runs |
-| Database was torn down | Runs (marked stale) |
-| `--force` flag provided | Runs |
-| Successfully applied, unchanged | Skipped |
-
-After a successful run, the change won't run again unless something changes. This is tracked via a combined checksum of every file in `change/` or `revert/` plus the schema files any `.txt` manifest references, so editing a referenced view or function re-triggers the change.
-
-::: tip Force Re-Run
-Need to re-apply a change? Use `--force`:
-```bash
-noorm change run my-change --force
-```
-:::
-
-
-## Best Practices
-
-**One logical change per folder.** Don't bundle unrelated changes. If you're adding users and adding products, make two separate changes.
-
-**Always include revert scripts.** Even if you think you'll never need them. Recovery is worth the extra files.
-
-**Test reverts in development.** Run `revert` then `change` to verify rollback works before deploying.
-
-**Verify with explore and terminal.** noorm includes a database explorer (`d` → `e` from home) and SQL terminal (`d` → `t`) so you can inspect your schema and query data without leaving the tool. After applying a change, explore the table to confirm the column exists. After reverting, run a quick SELECT to verify it's gone. Don't trust—verify.
-
-**Use manifests for shared SQL.** Reference existing schema files with `.txt` manifests instead of duplicating SQL.
-
-**Preview before production.** Use `--dry-run` to render everything to `tmp/` and inspect exactly what will execute.
-
-**Write meaningful changelog.md files.** Explain *why* the change exists, not just what it does. Future debugging sessions will benefit.
-
-
-## What's Next?
-
-- [Forward & Revert](/guide/changes/forward-revert) - Applying and rolling back changes
-- [History](/guide/changes/history) - Tracking execution history
-- [Templates](/guide/sql-files/templates) - Using `.sql.tmpl` files in changes
+- [Forward and revert](/guide/changes/forward-revert): apply and roll back
+- [History](/guide/changes/history): what each run recorded
+- [Add a column](/guide/changes/add-a-column): one edit, both folders
+- [Templates](/guide/sql-files/templates): `.sql.tmpl` files in changes

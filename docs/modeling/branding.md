@@ -1,25 +1,15 @@
 ---
 title: Branding your model
-description: Put your own logo, title, and copyright on an ignatius model. The default chrome is a placeholder, not a claim on your work.
+description: Put your own logo, title, and copyright on an ignatius model. The default chrome is noorm's placeholder, so replace it before you export a file for someone else.
 ---
 
 # Branding your model
 
-
-An ignatius model is yours. The entities, the prose, the flows, and the diagrams generated from them are your work product, and nothing about using the tool changes that.
-
-Out of the box the app wears noorm's chrome: a noorm logo, the title "Noorm Ignatius", the subtitle "Visualize your data model", and a footer reading "© 2026 Noorm Ignatius" above a "powered by Noorm" line, with the year taken from the current date. That is placeholder branding on a viewer you are expected to replace, not a claim on the model it displays. The copyright line exists so you have somewhere to put **your** organization, which is the point of it being configurable at all.
-
-Replace all of it in `ignatius.yml`.
-
-
-## The branding block
-
-
-Every field is optional and falls back to the default.
+Put your organization's logo, title, and copyright on the model, so the file you export carries your name.
 
 ```yaml
-name: My Schema
+# models/acme/ignatius.yml
+name: Acme Schema
 branding:
     logo:
         dark: ./assets/logo-dark.svg
@@ -32,79 +22,72 @@ branding:
     poweredBy: false
 ```
 
-| Field | Default | Notes |
-|---|---|---|
-| `logo` | embedded noorm logo | One path applies to both modes, or use `{ dark, light }` for per-mode logos |
-| `title` | `Noorm Ignatius` | Max 50 characters |
-| `subtitle` | `Visualize your data model` | Max 50 characters |
-| `copyright` | `{ holder: 'Noorm Ignatius', year: <current year> }` | Set `holder` to your organization |
-| `poweredBy` | `true` | Set `false` to drop the footer attribution |
-
-Setting `copyright.holder` and `poweredBy: false` removes every mention of noorm from the rendered model. Nothing asks you to keep the attribution, and no feature is gated behind it.
-
-Logo paths resolve relative to the model root and are inlined as data URIs when you `export`, so a branded model stays a single self-contained HTML file with no external requests.
-
-
-## Why this matters at export time
-
-
-`ignatius export` produces one HTML file you hand to somebody: a stakeholder approving the design, a client receiving a deliverable, an auditor reading a system description. That file is the artifact your organization's name belongs on.
-
 ```bash
-ignatius export ./models -o acme-data-model.html
+ignatius export models/acme -o acme-data-model.html
 ```
 
-Brand the model before that hand-off rather than after. It costs six lines of YAML and it is the difference between a document that reads as yours and one that reads as a tool's output.
+```
+Wrote export to acme-data-model.html
+```
+
+The model is your work product. Until you replace them, the app shows noorm's logo, the title "Noorm Ignatius", the subtitle "Visualize your data model", a footer `© <year> Noorm Ignatius`, and "powered by Noorm". The attribution is optional and gates no feature.
 
 
-## Colors and spacing
+## What can I set?
 
 
-A `theme` block sets separate `dark` and `light` palettes plus layout spacing. It is deep-merged over the defaults, so set only what you want to change.
+Every field is optional and falls back to its default on its own.
+
+| Field | Default | Notes |
+|---|---|---|
+| `logo` | embedded noorm logo | One path for both modes, or `{ dark, light }`. With one of the two, the other mode reuses it |
+| `title` | `Noorm Ignatius` | At most 50 characters. The header cuts it with `…` past 200px, about 25 characters |
+| `subtitle` | `Visualize your data model` | At most 50 characters. Cut past 240px, about 40 characters |
+| `copyright` | `{ holder: 'Noorm Ignatius', year: <current year> }` | Set `holder` to your organization |
+| `poweredBy` | `true` | `false` drops the footer attribution |
+
+A logo path is relative to the model root and can be `.svg`, `.png`, `.jpg`, `.jpeg`, `.gif`, or `.webp`. A `data:` or `http(s)` URL passes through. Logos are inlined, so a branded export stays one self-contained file. An export's tab title is the `name:` value.
+
+To remove every noorm mark, set `logo`, `title`, `copyright.holder`, and `poweredBy: false`.
+
+
+## How do I change colors?
+
+
+A `theme` block is deep-merged over the defaults, so set only what you change. The `dark` and `light` palettes take `background`, `surface`, `border`, `text`, `textMuted`, `edgeIdentifying`, `edgeReferential`, and `pastelMix`. `spacing.nodeSep` defaults to `60`. In a [data flow diagram](/modeling/data-flows), `theme.flowKinds` recolors a store kind (`cache`, `queue`, `file`, `doc`, `manual`, `other`, `db`) or `external` with `{ bg, fg, border }` per mode.
 
 ```yaml
+# models/acme/ignatius.yml
 theme:
     dark:
         background: "#0e1116"
-        surface: "#161b22"
-        text: "#e6edf3"
-    light:
-        background: "#ffffff"
-        surface: "#f6f8fa"
-        text: "#1f2328"
     spacing:
         nodeSep: 60
-```
-
-The viewer's light/dark toggle persists across reloads, and `export` takes `--theme light` or `--theme dark` to pick the starting palette.
-
-
-### Data flow store colors
-
-
-In a [data flow diagram](/modeling/data-flows) each store is colored by its kind. The defaults give every kind a distinct, mode-appropriate color: `cache` amber, `queue` violet, `file` lime, `doc` sky, `manual` rose, `other` slate, while `db` keeps the entity-store fill and `external` keeps the conventional green.
-
-Override any of them under `theme.flowKinds`. Each kind takes `dark` and `light` entries of `{ bg, fg, border }`, deep-merged like the rest of the theme.
-
-```yaml
-theme:
     flowKinds:
         cache:
             dark:
                 bg: "#3a2a00"
             light:
                 bg: "#fff3c4"
-        file:
-            dark:
-                bg: "#16270a"
 ```
 
-Worth restraint here. The kind colors are a legend readers learn once, and a palette tuned for your brand rather than for distinguishability makes a busy diagram harder to read. Change them to fit your house style, not to make every store the same shade of corporate blue.
+`ignatius export --theme light` starts the file in the light palette.
 
 
-## Related
+## What bites
 
 
-- [Entities and key inheritance](/modeling/entities#the-folder-format) for the rest of `ignatius.yml`
-- [Best practices](/modeling/best-practices#review-before-you-build) for the review hand-off this feeds
-- The [themes and branding guide](https://github.com/noormdev/ignatius/blob/main/docs/guides/themes-and-branding.md) in the ignatius repo
+| Symptom | Cause | Fix |
+|---|---|---|
+| A command exits `1` with `branding.title exceeds 50 characters (actual length: 68)` and a stack trace | `title` or `subtitle` is over 50 characters | Shorten it |
+| The noorm logo still shows | The file is missing or has another extension, so `logo` falls back without a message | Check the path from the model root and the extension |
+| The title ends in `…` | The header cuts it at 200px | Shorten it to about 25 characters |
+
+
+## Next
+
+
+- [Entities and key inheritance](/modeling/entities): the rest of `ignatius.yml`
+- [ignatius commands](/modeling/installation): `export` and its flags
+- [Best practices](/modeling/best-practices): review the model before you hand it over
+- [Themes and branding guide](https://github.com/noormdev/ignatius/blob/main/docs/guides/themes-and-branding.md): the reference in the ignatius repo

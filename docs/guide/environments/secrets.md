@@ -1,202 +1,93 @@
 # Secrets
 
 
-Sensitive values like database passwords and API keys have no place in config files. noorm provides encrypted secret storage that travels with your project, unlocks with your identity, and injects into templates at runtime.
+Keep API keys and other sensitive values out of committed SQL, and still use them when a template runs.
 
+The template names the secret. The value never appears in the file:
 
-## What Secrets Are
-
-Secrets are encrypted key-value pairs stored in your local state file (`.noorm/state/state.enc`). They never touch disk in plain text.
-
-Secrets are for sensitive values that get **inserted into your database** via SQL templates—not for database connection credentials. Common uses:
-
-- API keys stored in configuration tables
-- Encryption keys for sensitive data columns
-- Service credentials (AWS, Stripe, SendGrid)
-- OAuth client secrets
-
-Secrets integrate directly with SQL templates, so you can reference them without exposing values in your source code or version control.
-
-
-## Setting a Secret
-
-You can manage local secrets through the TUI (masked input, nothing in shell history) or the CLI.
-
-**TUI:** Launch `noorm ui`, press `c` for configs, highlight a config, and press `k` for its secrets. The list groups required secrets (declared in `settings.yml`) above optional ones and shows which are set, which are missing, and their declared types. Values stay hidden. Press `a` to add one; the form masks `password` and `api_key` input, validates `connection_string` values as URIs, and writes the encrypted result to `.noorm/state/state.enc`.
-
-Settings → Secrets is a different screen. It edits the secret *declarations* in `settings.yml` (key, type, description, required), not the encrypted values.
-
-**CLI:** The `noorm secret` namespace manages config-scoped local secrets headlessly:
-
-```bash
-# Set a secret
-noorm secret set API_KEY "sk-live-abc123"
-noorm secret set DB_PASSWORD "secret" --config prod
-
-# List secret keys (values never shown)
-noorm secret list
-noorm secret list --config staging --json
-
-# Remove a secret
-noorm secret rm OLD_KEY --yes
+```sql
+-- db/sql/09_seeds/02_gateway.sql.tmpl
+INSERT INTO app_setting (name, value)
+VALUES ('payment_gateway_key', {%~ $.quote($.secrets.PAYMENT_GATEWAY_KEY) %});
 ```
 
-::: tip Vault vs Local Secrets
-**Local secrets** (`noorm secret`) are per-user, per-machine. They override vault values and stay on your disk.
+Set the value once per config. `--stdin` keeps it out of shell history and the process table:
 
-**Vault secrets** (`noorm vault`) are team-shared and stored encrypted in the database. Anyone with vault access can read them.
+```bash
+printf %s "$KEY" | noorm secret set PAYMENT_GATEWAY_KEY --stdin --config prod
+noorm secret list --config prod
+```
 
-In CI/CD pipelines, push secrets with the vault (`noorm vault set KEY "value"`) or batch-load via `noorm ci secrets --file`.
+```
+Secret "PAYMENT_GATEWAY_KEY" set for config "prod".
+Secrets for "prod" (1):
+  PAYMENT_GATEWAY_KEY
+```
+
+Secrets are for values a template writes into your database. Database connection credentials belong to the [config](/guide/environments/configs).
+
+
+## Which value does a template get?
+
+
+The first tier that holds the key wins, so a local value overrides the team's:
+
+```mermaid
+flowchart TD
+    T["$.secrets.<br/>PAYMENT_GATEWAY_KEY"] --> A{"set on this config?"}
+    A -->|yes| V["use it"]
+    A -->|no| B{"global secret?"}
+    B -->|yes| V
+    B -->|no| C{"in the vault?"}
+    C -->|yes| V
+    C -->|no| X["throw: not found"]
+```
+
+| Tier | Stored in | Set with | Seen by |
+|---|---|---|---|
+| Config-local | `.noorm/state/state.enc`, per config | `noorm secret set`, or the TUI | You |
+| Global-local | `state.enc`, all your configs | No CLI or TUI command writes one | You |
+| Vault | The database, encrypted | `noorm vault set` | The team |
+
+`$.secrets` merges all three tiers. `$.globalSecrets` holds only the global tier. A missing key throws `Secret "PAYMENT_GATEWAY_KEY" not found (searched: config-local, global-local, vault)` instead of rendering `undefined`.
+
+
+## How do I set a secret?
+
+
+| | CLI | TUI |
+|---|---|---|
+| Set | `noorm secret set <KEY> [value] [--stdin] [--config <name>]` | `noorm ui`, `c`, highlight a config, `k`, then `a` |
+| List keys | `noorm secret list`, which never prints values | The same screen. Values show masked, with their first characters visible |
+| Remove | `noorm secret rm <KEY> --yes` | The same screen, `d` |
+
+Keys start with a letter and contain only letters, numbers, and underscores. The TUI masks `password` and `api_key` input and checks that a `connection_string` parses as a URI. A `viewer` role cannot read or write secrets, and an `operator` needs `--yes` to write one.
+
+[Stages](/guide/environments/stages#how-do-i-require-a-secret) declares which secrets a config must have. The TUI lists those first, marked set or missing.
+
+::: warning The rendered SQL holds the plain value
+The database receives the secret as text, and so does anything that logs the rendered SQL. Render a secret only into the column that needs it.
 :::
 
 
-## Config-Scoped vs Global Secrets
-
-Secrets come in two scopes:
-
-| Scope | Use Case | Example |
-|-------|----------|---------|
-| Config-scoped | Per-environment credentials | Database password for `prod` |
-| Global | Shared across all configs | Third-party API key |
-
-**Config-scoped secrets** belong to a single config. When you delete the config, its secrets go with it.
-
-**Global secrets** persist independently and are available everywhere.
-
-In templates, access them differently:
-
-```sql
--- Config-scoped secret
-CREATE USER readonly WITH PASSWORD '{%~ $.secrets.DB_PASSWORD %}';
-
--- Global secret
--- Using API key: {%~ $.globalSecrets.SHARED_API_KEY %}
-```
-
-See [Templates](/guide/sql-files/templates) for full syntax reference.
+## What bites
 
 
-## Using Secrets in Templates
-
-Secrets inject into SQL templates via the `$` context object:
-
-```sql
--- db/sql/users/create-readonly.sql.tmpl
-CREATE USER {%~ $.secrets.READONLY_USER %}
-WITH PASSWORD '{%~ $.secrets.READONLY_PASSWORD %}';
-
-GRANT SELECT ON ALL TABLES TO {%~ $.secrets.READONLY_USER %};
-```
-
-If a template references a missing secret, it fails at runtime. Define your required secrets upfront to catch this early.
+| Symptom | Cause | Fix |
+|---|---|---|
+| `Secret "PAYMENT_GATEWAY_KEY" not found (searched: ...)` | No tier has the key. The vault tier is skipped without vault access | Set it locally, or ask a teammate to run `noorm vault propagate` |
+| `Failed to set secret: Secret key "payment-gateway-key" is invalid` | A hyphen or leading digit in the key | Use `PAYMENT_GATEWAY_KEY` |
+| A secret set locally is missing in CI | A CI runner has no `state.enc` | Put it in the [vault](/guide/environments/vault), or run `noorm ci secrets --file <env file>` after `noorm ci init` |
+| `secret set` says it requires confirmation | The config's role for your channel is `operator` | Pass `--yes` |
+| The TUI refuses to delete a secret | The stage requires it, and no vault copy exists | Remove the requirement from `settings.yml`. `noorm secret rm` does not check |
+| A teammate's build fails where yours passes | Your local value hides a missing vault value | Run `noorm vault list`, then `noorm vault set` |
+| Someone committed `state.enc` | It holds your credentials and secrets. `noorm init` ignores `.noorm/state/`, so the ignore line was removed or init never ran | Restore `.noorm/state/` in `.gitignore` and remove the file from the repo. Your identity key encrypts it, so another machine cannot read it |
 
 
-## Secret Requirements in Settings
-
-You can require secrets at two levels: **universally** (all configs) or **per-stage** (specific environments).
+## Next
 
 
-### Universal Secrets
-
-Define in the root `secrets` section of `settings.yml`:
-
-```yaml
-# .noorm/settings.yml
-secrets:
-    - key: ENCRYPTION_KEY
-      type: password
-      description: App-wide encryption key
-```
-
-Every config requires these secrets, regardless of stage.
-
-
-### Stage Secrets
-
-Define within a stage to require secrets only for matching configs:
-
-```yaml
-# .noorm/settings.yml
-stages:
-    prod:
-        description: Production database
-        secrets:
-            - key: DB_PASSWORD
-              type: password
-              description: Main database password
-              required: true
-
-    staging:
-        secrets:
-            - key: DB_PASSWORD
-              type: password
-            - key: DEBUG_KEY
-              type: string
-```
-
-A config named `prod` requires its stage secrets plus universal secrets. A config named `dev` requires only universal secrets (plus any dev-stage secrets).
-
-
-### Secret Types
-
-The `type` field controls input behavior:
-
-| Type | Input Behavior |
-|------|----------------|
-| `string` | Plain text |
-| `password` | Masked, no echo |
-| `api_key` | Masked, no echo |
-| `connection_string` | Plain text, URI validation |
-
-Types are hints for the CLI. All secrets are stored identically (encrypted strings).
-
-
-## Secrets in CI/CD
-
-The local secret store exists for per-developer overrides — `noorm secret set` is headless, but it writes to `.noorm/state/state.enc` on disk, which a fresh CI runner doesn't have. For non-interactive environments, push values to the [vault](/guide/environments/vault) instead, which is scriptable end-to-end and reachable from a clean checkout:
-
-```bash
-# Write a secret to the vault
-noorm vault set DB_PASSWORD "$DB_PASSWORD"
-
-# Pipe a secret to keep it out of the process table and shell history
-echo "$DB_PASSWORD" | noorm vault set DB_PASSWORD --stdin
-
-# List vault secrets as JSON
-noorm vault list --json
-
-# Remove a vault secret
-noorm vault rm OLD_API_KEY
-```
-
-Vault secrets sit below local secrets in the [resolution hierarchy](/guide/environments/vault#secret-resolution-hierarchy), so a developer can still override a vault value locally through `noorm ui` without affecting anyone else.
-
-
-## Security Notes
-
-noorm takes several measures to protect your secrets:
-
-1. **Encryption at rest** - Secrets are stored in `.noorm/state/state.enc` using AES-256-GCM encryption
-2. **Key derivation** - The encryption key derives from your private identity key via HKDF
-3. **Values never displayed** - The CLI shows secret keys only, never values
-4. **Masked input** - Password-type secrets use non-echoing input
-5. **No logging** - Secret values are never emitted to observer events
-6. **Automatic redaction** - The logger masks secret fields if they appear in event data
-
-::: warning Don't Commit state.enc
-Add `.noorm/state/state.enc` to your `.gitignore`. Its encryption key is derived from your private identity key in `~/.noorm/identity.key`, so nobody else can read the file, and neither can you on a machine that does not have that key.
-:::
-
-
-## Deleting Secrets
-
-Remove a local secret through the TUI: Config → highlight the config → `k` → highlight the entry and press `d`. Headlessly, `noorm secret rm <KEY> --yes`. For team-shared values stored in the vault, use `noorm vault rm <KEY>`.
-
-A required secret (one declared in `settings.yml`) cannot be deleted outright, only updated. The exception is a required secret that also exists in the vault: deleting the local copy is allowed there, because the vault value takes over. To retire the requirement itself, edit `settings.yml`.
-
-
-## What's Next?
-
-- [Stages](/guide/environments/stages) - Environment templates with secret requirements
-- [Templates](/guide/sql-files/templates) - Using secrets in dynamic SQL
-- [Configs](/guide/environments/configs) - Config-scoped vs global secrets
+- [Vault](/guide/environments/vault): share a secret with the team
+- [Stages](/guide/environments/stages): require a secret per environment
+- [Templates](/guide/sql-files/templates): the full `$` context
+- [Headless reference](/headless): every `secret` and `vault` flag

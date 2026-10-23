@@ -1,163 +1,120 @@
 ---
-title: Installing ignatius
-description: Install the ignatius binary and the ignatius-modeling skill, then serve, validate, and export your first model.
+title: ignatius commands
+description: Install ignatius, then serve, validate, export, index, approve, and update a model. Flags, exit codes, and how a command finds your model folder.
 ---
 
-# Installing ignatius
+# ignatius commands
 
-
-ignatius is a single self-contained binary with no runtime dependency. It runs on machines without Bun or Node installed.
-
-
-## Install script
-
-
-The script detects your operating system and architecture, downloads the matching binary from the [latest release](https://github.com/noormdev/ignatius/releases/latest), verifies its checksum, and puts it on your `$PATH`.
+Install the ignatius binary, then serve, check, or export a model from the command line.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/noormdev/ignatius/main/install.sh | sh
+curl -fsSL https://noorm.dev/ignatius.sh | sh
+ignatius serve path/to/model -o
 ```
 
-It installs to `/usr/local/bin` when that directory is writable and `$HOME/.local/bin` otherwise. Two environment variables override the defaults:
-
-- `IGNATIUS_INSTALL_DIR=/some/dir` installs somewhere else.
-- `IGNATIUS_VERSION=v0.2.0` pins a release tag instead of taking the latest.
-
-Verify with `ignatius --help`.
-
-
-## Download a release
-
-
-To install by hand, or on Windows, take the binary for your platform from the [latest release](https://github.com/noormdev/ignatius/releases/latest).
-
-```bash
-# macOS arm64
-curl -L -o ignatius https://github.com/noormdev/ignatius/releases/latest/download/ignatius-darwin-arm64
-chmod +x ignatius
-sudo mv ignatius /usr/local/bin/
-
-# Linux x64
-curl -L -o ignatius https://github.com/noormdev/ignatius/releases/latest/download/ignatius-linux-x64
-chmod +x ignatius
-sudo mv ignatius /usr/local/bin/
+```
+ignatius serving at http://localhost:3000
 ```
 
-Windows users take `ignatius-windows-x64.exe` from the same page. Each release includes `checksums.txt` for verifying a manual download with `shasum -a 256 -c`.
+The browser opens on the diagram. Save a `.md`, `.yaml`, or `.yml` file in the model folder and the open tab redraws. Windows, a pinned version, and building from source are on [Download](/download).
 
 
-## From source
+## What does each command do?
 
 
-ignatius builds with [Bun](https://bun.com).
+| Command | Flags | Effect |
+|---|---|---|
+| `ignatius serve [path]` | `-p`, `--port <n>` (3000); `--model <key>`; `-o`, `--open` | Serves the model with live reload. `server` is an alias |
+| `ignatius validate [path]` | `--model <key>`; `--index` | Prints findings to stderr and a summary to stdout. Writes nothing |
+| `ignatius export [path]` | `-o`, `--out <file>` (required); `--theme <mode>` (`dark`); `--model <key>` | Writes the Graph, Dictionary, and Flows views as one offline HTML file. `--theme` takes `light` or `dark` |
+| `ignatius index [path]` | `--model <key>`; `--agents` | Writes a router file (`index_file:` in `ignatius.yml`, default `index.md`) into every organizing folder. `--agents` adds `AGENTS.md` and `SKILL.md`, plus `CLAUDE.md` when the harness resolves to Claude |
+| `ignatius approve [path]` | `--model <key>` | Accepts the current files as the change-review baseline and deletes the notes in `.ignatius/changes/` |
+| `ignatius version` | none | Prints the version. `ignatius --version` prints the same |
+| `ignatius update` | `--check`; `-y`, `--yes` | Replaces the running binary with the latest release |
 
-```bash
-git clone https://github.com/noormdev/ignatius.git
-cd ignatius
-bun install
-bun run build:cli
+`serve` marks what changed since the last `approve`; see [Change review](https://github.com/noormdev/ignatius/blob/main/docs/guides/change-review.md). Press `?` in the app for the keys that work in the current view, or read the [keyboard shortcuts](https://github.com/noormdev/ignatius/blob/main/docs/guides/commands.md#keyboard-shortcuts).
+
+
+## How does a command find the model?
+
+
+Every model command takes an optional `path`. A model root is a folder with an `ignatius.yml`:
+
+```mermaid
+flowchart TD
+    A{"ignatius.yml<br/>in path?"} -->|yes| R["run on that folder"]
+    A -->|no| S["search folders<br/>below path"]
+    S --> C{"roots found"}
+    C -->|one| R
+    C -->|none| W["walk up for a root,<br/>else exit 1"]
+    C -->|several| K{"--model given?"}
+    W --> R
+    K -->|matches| R
+    K -->|no match| X["exit 1"]
+    K -->|omitted| P["terminal: prompt<br/>otherwise exit 2"]
 ```
 
-That produces `./dist/ignatius`.
+The search skips `node_modules`, `.git`, `dist`, `tmp`, `trash`, `.worktrees`, `.claude`, and any folder starting with `_`. The `--model` key is the root's path relative to the search path, such as `sales`.
 
 
-## Staying current
+## What do the exit codes mean?
 
 
-```bash
-ignatius version          # print the installed version
-ignatius update           # check for a newer release, then prompt
-ignatius update --check   # report only, never install
-ignatius update --yes     # install without prompting, for scripts
-```
-
-`update` downloads the binary for your platform, verifies its checksum against the release `checksums.txt`, and replaces the running executable in place. That needs write access to the installed binary, so a binary in `/usr/local/bin` wants `sudo ignatius update --yes`. Outside a terminal it reports the available version and exits without installing unless you pass `--yes`. Windows binaries cannot replace themselves while running, so on Windows the command points you at the release download instead.
-
-
-## The modeling skill
-
-
-To author models from Claude Code, install the `ignatius-modeling` skill with the [`skills`](https://www.npmjs.com/package/skills) CLI.
-
-```bash
-npx skills add https://github.com/noormdev/ignatius --skill ignatius-modeling
-```
-
-That adds the skill to the current project's `.claude/skills/`. Add `-g` to install it globally for every project on the machine. Reload skills in Claude Code and `/ignatius-modeling` becomes available. See [The modeling skill](/modeling/modeling-skill) for what each mode does.
-
-
-## Serve a model
-
-
-Point ignatius at a folder that contains an `ignatius.yml` file.
-
-```bash
-ignatius serve path/to/your/models --port 3000
-```
-
-Editing any `.md` or `.yaml` file under that folder pushes an update to the open browser tab over server-sent events, so the diagram reloads without a refresh.
-
-The path argument is optional. With no path, ignatius searches up and down from the current directory for a model root. When it finds more than one it prompts you with a list in a terminal, or takes `--model <key>` to skip the prompt. In a non-interactive shell an ambiguous run exits with an error and prints the available keys rather than hanging. The search skips `node_modules`, `.git`, `dist`, `tmp`, `trash`, `.worktrees`, `.claude`, and any path segment starting with `_`.
-
-The default port is 3000. When that port is taken, ignatius counts up to the next free one and asks which to use, with the free port as the default. Run non-interactively it advances automatically and prints the port it settled on. Pass `-o` to open the app in your browser once the server binds, on whichever port it ended up with.
-
-The app has three views, switched without a page reload and reflected in the URL hash: Graph (`#view=graph`), Dictionary (`#view=dict`), and Flows (`#view=flow`). Back, forward, and deep links all work.
-
-
-## Validate a model
-
-
-```bash
-ignatius validate [path] [--model <key>]
-```
-
-`validate` checks the model and reports findings without writing anything. It prints each finding to stderr and a one-line summary to stdout, then exits `1` when the model has errors and `0` otherwise. Warnings alone do not fail the command. When the model has a `flows/` directory the flow rules run too.
-
-That exit-code contract makes it usable as a CI gate. Findings come in two classes: a warning still renders the entity with a badge, while an error omits the broken reference (one edge, one cluster, one unparseable file) and names the omission in a banner. A typo in one of three foreign keys strips that edge and keeps the entity. The [full rule catalog](https://github.com/noormdev/ignatius/blob/main/docs/guides/validation.md) lists every rule and its class.
-
-
-## Export a model
-
-
-```bash
-ignatius export [path] -o model.html [--theme light|dark] [--model <key>]
-```
-
-`export` writes all three views into one HTML file with no external dependencies. View switching, dictionary search, the entity dialog, the theme toggle, and node-position persistence all work offline from `file://`. `-o` is required.
-
-This is the artifact you send to someone who will not install anything. Commit it next to the model, attach it to a ticket, or mail it to the stakeholder whose sign-off you need.
-
-
-## Keyboard shortcuts
-
-
-Single-key shortcuts work while no text field is focused and no modifier is held.
-
-| Key | Action |
+| Code | When |
 |---|---|
-| `g` | Switch to the Data Graph |
-| `d` | Switch to the Dictionary |
-| `f` | Switch to the Data Flows |
-| `l` | Toggle graph layout, organic or hierarchical (Graph view) |
-| `b` | Toggle dictionary lens, read or browse (Dictionary view) |
-| `/` | Focus the search bar |
-| `?` | Open the help overlay for the current view |
-| `↑` `↓` `←` `→` | Pan the canvas (Graph and Flows); hold `Shift` for a longer step |
+| `0` | No errors. Warnings alone do not fail `validate`, `export`, or `index` |
+| `1` | An error finding, no model found, `--model` matches nothing, or `export` without `-o` |
+| `2` | Several models, no `--model`, and no terminal to prompt in |
+| `130` | You cancelled a prompt |
 
-Zoom and search also answer to modifier chords. Those work even while a text field is focused, because the chords are not typed characters, and zoom acts on the diagram canvas rather than the browser page.
+An error finding is an omitted edge, an unknown target, or an unparseable file. It prints as `<severity>  <rule>  <location>  <message>`:
 
-| Input | Action |
+```bash
+ignatius validate model
+```
+
+```
+error  edge.unknown_target  sales_order→partyy  Edge target "partyy" not present in model.
+✗ /home/you/shop/model: 1 error(s), 0 warning(s) across 11 entities.
+```
+
+A clean run prints `✓ <path>: valid — 11 entities, no findings.` The [rule catalog](https://github.com/noormdev/ignatius/blob/main/docs/guides/validation.md) lists every rule.
+
+
+## How does serve pick a port?
+
+
+When 3000 is taken, a terminal asks which port to use, with the next free one as the default. A pipe or CI counts up until a bind succeeds and prints `Port 3000 is in use — trying 3001.` to stderr. `-o` opens the port it settled on.
+
+
+## How do I stay current?
+
+
+| Situation | `ignatius update` does |
 |---|---|
-| `Cmd`/`Ctrl` + `=` | Zoom in |
-| `Cmd`/`Ctrl` + `-` | Zoom out |
-| `Cmd`/`Ctrl` + `0` | Fit the diagram to the screen |
-| `Cmd`/`Ctrl` + `k` | Focus the search bar |
-| Trackpad pinch | Zoom toward the pointer |
+| Already latest | Prints `ignatius 0.23.0 is up to date.` |
+| Newer release | Prints `A new version is available: 0.23.0 → <latest>`. With `--check`, or with no terminal and no `--yes`, it stops there. In a terminal it asks `Update to <latest> now?`, downloads, checks the checksum, and swaps the binary |
+| Windows | Prints the release URL. A running `.exe` cannot replace itself |
+| Binary in a folder you cannot write | Exits `1` with `cannot write to …`. Run `sudo ignatius update --yes` |
 
 
-## Next steps
+## What bites
 
 
-- [Entities and key inheritance](/modeling/entities) covers the folder format and the entity file.
-- [Data flows](/modeling/data-flows) covers processes, externals, and stores.
-- [The modeling skill](/modeling/modeling-skill) covers authoring from Claude Code.
+| Symptom | Cause | Fix |
+|---|---|---|
+| `-o <output.html> is required` | `export` has no default output | `ignatius export model -o model.html` |
+| CI exits `2`: `multiple models found: a, b` | Two roots under the path and no terminal to choose in | Add `--model a` |
+| `dict was removed`, or `graph`, `flow` | Those subcommands no longer exist | `ignatius export -o model.html` |
+| `export` exits `1` and the HTML file exists | `export` writes the file, then fails on error findings | Fix the findings before you share the file |
+| `validate` passes with a stale router | Plain `validate` never hashes routers | `validate --index`, then `ignatius index` |
+| `update` ran with no checksum check | A mismatch aborts, but an unreachable `checksums.txt` skips the check | Rerun `ignatius update` once the release page is reachable |
+
+
+## Next
+
+
+- [Download](/download): Windows, a pinned version, and the agent skill
+- [Entities and key inheritance](/modeling/entities): the folder format a model root holds
+- [The modeling skill](/modeling/modeling-skill): author a model from Claude Code
+- [Branding your model](/modeling/branding): put your name on the export

@@ -1,146 +1,42 @@
-# Troubleshooting common surprises
+# Troubleshooting
 
 
-A short list of the issues users hit most often when first reaching
-for `noorm`. Each entry is a search target plus a one-paragraph fix
-and a link to the deeper doc.
+Find the message you see, read the cause, and apply the fix. Exit code `2` means the command never ran, `1` means it failed and a retry is safe, and `3` means some work landed ([exit codes](/headless#exit-codes)).
 
 
-## `noorm --config prod run build` fails or targets the wrong directory
-
-`--config` (long form) is per-subcommand only — it has no global meaning. Neither do
-`--dry-run`, `--json`, or `--yes`: the only flag with a root-level meaning is `-c`/`--cwd`.
-Placed before the subcommand, `--config` (and everything else) is rejected outright rather
-than silently ignored:
-
-    # rejected: --config has no global form
-    noorm --config prod run build
-
-    # works
-    noorm run build --config prod
-    noorm run build -c prod
-
-`-c` is the sharper trap: `noorm -c prod run build` is *not* the same command — before the
-subcommand, `-c` means `--cwd`, not `--config`. See [CLI flag conventions](../cli/flags.md)
-for the full rule.
+## Why does a command fail or surprise me?
 
 
-## `noorm help db create` errors with "Unknown command help"
-
-There is no `noorm help <subcommand>` form — `noorm`'s CLI framework
-(citty) doesn't ship one. Use `--help` (or `-h`) instead:
-
-    noorm db create --help
-    noorm change ff --help
-    noorm sql query --help
-
-See [Discovering command help](../cli/help.md).
-
-
-## `noorm db create --name foo` doesn't work
-
-`noorm db create` has no `--name` flag. The database name lives in the
-stored config; create the config first, then point `db create` at it.
-The intended workflow is:
-
-    noorm config import dev-config.json
-    noorm db create -c dev
-    noorm config use dev
-
-See [Creating a database](./database/create.md) for the reasoning and
-the full CI bootstrap.
+| Message or symptom | Cause | Fix |
+|---|---|---|
+| `Unrecognized flag '--config' before the subcommand` | Only `-c`/`--cwd` is a root flag | `noorm run build --config prod` |
+| `Error: --cwd path is not a directory: …/prod` | In `noorm -c prod run build`, `-c` means `--cwd` | `noorm run build -c prod` |
+| `Unknown command help` | There is no `noorm help` | `noorm db create --help` |
+| `db create --name foo` creates nothing named `foo` | `db create` has no `--name`. The config names the database | `noorm config import dev-config.json`, then `noorm db create -c dev` |
+| `Unknown command` from `noorm sql "…"` | The `sql query` rewrite needs the query to start with a SQL verb, so a leading comment defeats it | `noorm sql query "…"` |
+| `Error: noorm init requires an interactive terminal.` | No terminal, no `--yes` | `noorm identity init …`, then `noorm init --yes` |
+| `--dry-run` leaves files in `tmp/` | It renders SQL there with secrets resolved, and `tmp/` is not gitignored | Delete `tmp/`, or use `noorm run preview <path>` |
 
 
-## My MSSQL proc's `DEFAULT` value isn't applied
-
-A Zod schema with `.optional()` parses missing keys to `undefined`.
-The SDK serializes `undefined` (and `null`) to SQL `NULL` when
-building a named-parameter `EXEC`. MSSQL applies a parameter's
-`DEFAULT` only when the parameter is *omitted* from the call, not when
-it's explicitly `NULL`. Two fixes:
-
-1. Use `.default(<value>)` in your Zod schema so the parsed input
-   always carries a concrete value.
-2. Or, build the params object without the key entirely (e.g.
-   conditionally `delete obj.key` before calling `ctx.proc(...)`).
-   The SDK only emits `@key = …` for keys present in the object.
-
-See [SDK reference — Parameter handling and NULL semantics](../reference/sdk.md#parameter-handling-and-null-semantics).
+## Why does the database refuse or misbehave?
 
 
-## `noorm sql "SELECT ..."` errors with "Unknown command"
+Each server sends one error for a wrong password and an unknown account. noorm rewords it, and the server's own text is in `.noorm/state/noorm.log` (`connection:error`, fields `serverCode` and `serverMessage`).
 
-The bare `noorm sql "<SQL>"` form is supported, but only when the
-first token of the query is one of the SQL verbs noorm rewrites on
-(`SELECT`, `INSERT`, `UPDATE`, `DELETE`, `WITH`, etc.). Citty resolves
-`sql`'s subcommands first, so noorm rewrites `sql <verb> …` to
-`sql query <verb> …` before citty ever sees it. For anything
-that starts with a leading comment, a CTE-style preamble, or a
-non-recognized verb, use the explicit subcommand:
+| Message | Also sent for |
+|---|---|
+| `Login failed for user …` (SQL Server) | Unknown login, login denied `CONNECT SQL`, Windows-only authentication |
+| `Password authentication failed for user …` (PostgreSQL) | Unknown role, password past `VALID UNTIL` |
+| `Access denied for user …` (MySQL) | Unknown user, no account for this client host, `REQUIRE SSL` account |
 
-    noorm sql query "<your SQL>"
-    noorm sql query -f path/to/file.sql
-
-See [`noorm sql`](../cli/sql.md) for the full list of recognized
-keywords and when each form fires.
+| Symptom | Cause | Fix |
+|---|---|---|
+| A right password fails from `NOORM_CONNECTION_PASSWORD` | The compiled binary does not read `.env` files | Export the variable, or set it in CI |
+| An MSSQL procedure's `DEFAULT` is not applied | The SDK sends `undefined` as `NULL`, and MSSQL applies a `DEFAULT` only to an omitted parameter | `.default(value)` in the Zod schema, or omit the key ([details](/reference/sdk#parameter-handling-and-null-semantics)) |
 
 
-## `noorm change ff --dry-run` wrote files I didn't expect
-
-`change ff` does accept `--dry-run`, and it does not touch the
-database. What it does do is *render* every pending change to `tmp/`
-so you can read the SQL that would have run, including any secrets
-the templates resolved, in plaintext. `tmp/` is not gitignored by a
-project noorm scaffolds, so clean it up.
-
-    noorm change ff --dry-run
-    noorm run build --dry-run
-
-To render a single template without the change machinery, use
-`noorm run preview <path>`. From the SDK the same preview is
-`changes.apply(name, { dryRun: true })` or
-`changes.ff({ dryRun: true })`.
+## Next
 
 
-## `noorm init` errors in CI with "requires an interactive terminal"
-
-The bootstrap path needs an existing identity at
-`~/.noorm/identity.{key,pub,json}`, then `--yes` (or `NOORM_YES=1`)
-skips every other prompt. Two commands:
-
-    noorm identity init --name "$CI_USER" --email "$CI_EMAIL"
-    noorm init --yes
-
-See [Non-interactive operation](./automation/non-interactive.md).
-
-
-## Login fails with a password I know is right
-
-SQL Server, PostgreSQL, and MySQL each send one error for a wrong password and
-an unknown account, so a client cannot learn which accounts exist. noorm says so
-and lists what that error covers; the server's own log names the cause:
-
-| Server     | Error                            | Also sent for                                                          |
-|------------|----------------------------------|------------------------------------------------------------------------|
-| SQL Server | `Login failed` (18456)           | unknown login, login denied `CONNECT SQL`, Windows-only authentication |
-| PostgreSQL | `password authentication failed` | unknown role, password past `VALID UNTIL`                              |
-| MySQL      | `Access denied` (1045)           | unknown user, no account for this client host, `REQUIRE SSL` account   |
-
-The message noorm shows is reworded for the user. What the server itself
-sent is in the log (`.noorm/state/noorm.log`): the `connection:error`
-entry carries `serverCode` (error number, SQLSTATE, or driver code) and
-`serverMessage` (the server's text, including any wrapped socket error).
-
-A password that reaches noorm through a `NOORM_CONNECTION_PASSWORD`
-environment variable arrives exactly as the shell exported it. The
-compiled `noorm` binary does not read `.env` files, so export the
-variable or set it in CI.
-
-
-## Related
-
-- [CLI flag conventions](../cli/flags.md)
-- [Discovering command help](../cli/help.md)
-- [Creating a database](./database/create.md)
-- [Non-interactive operation](./automation/non-interactive.md)
-- [SDK reference](../reference/sdk.md)
+- [CLI flag conventions](/cli/flags): where each flag goes
+- [Non-interactive operation](/guide/automation/non-interactive): `--yes` and what still refuses

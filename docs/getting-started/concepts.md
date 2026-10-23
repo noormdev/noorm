@@ -1,358 +1,183 @@
 # Concepts
 
 
-This page explains how noorm thinks about your database. Understanding these concepts makes everything else click.
-
-
-## SQL Files Are Your Source of Truth
-
-Your SQL files define what your schema **is**. They represent the ideal, current state of your database structure.
+A noorm project keeps its schema in `db/`. `db/sql/` holds the schema as it stands today, and `db/changes/` holds the steps that bring databases that already exist up to it.
 
 ```
-db/sql/
-├── 01_tables/
-│   ├── 001_users.sql    # CREATE TABLE users...
-│   └── 002_posts.sql    # CREATE TABLE posts...
-└── 02_views/
-    └── 001_recent_posts.sql # CREATE VIEW recent_posts...
+db/
+├── sql/
+│   ├── 01_tables/
+│   │   ├── 01_party.sql
+│   │   └── 02_sales_order.sql
+│   └── 02_views/
+│       └── 01_open_orders.sql
+└── changes/
+    └── 2026-10-20-order-status/
+        ├── change/001_order-status.sql
+        └── revert/001_order-status.sql
 ```
 
-Need a fresh database? Run your SQL files. They contain everything needed to build your schema from scratch—no need to replay years of migrations.
+A new database and an old one reach the same schema by different commands:
 
-This is different from migration-based tools where the "current state" only exists by running every migration in order. With noorm, your SQL files **are** the current state.
-
-
-## Execution Order Is Alphanumeric
-
-Everything runs in alphanumeric order. Directories, files within directories, change scripts—all sorted the same way.
-
-This matters because dependencies have order. Tables must exist before views reference them. Functions must exist before triggers call them. Without numeric prefixes, you get alphabetical order:
-
-```
-db/sql/functions/   ← runs first (f < t < v)
-db/sql/tables/      ← runs second
-db/sql/views/       ← runs third
+```mermaid
+flowchart TD
+    SQL["db/sql/"] -->|noorm run build| NEW[(new database)]
+    CH["db/changes/"] -->|noorm change ff| OLD[(existing database)]
+    NEW --> SAME[same schema]
+    OLD --> SAME
 ```
 
-That's broken—views can't reference tables that don't exist yet. Use numeric prefixes:
+Every edit to `db/sql/` comes with the change that brings an already-built database to the same state.
+
+
+## SQL files are the current state
+
+
+Each file in `db/sql/` declares one object the way it should exist now. Every column and constraint is declared once, inline in `CREATE TABLE`. A test run or a new developer gets a database with `noorm run build`, and no history is replayed.
+
+History never goes in `db/sql/`. `DROP`, an `ALTER` of an existing table, an `IF NOT EXISTS` guard, and a backfill all belong in a change.
+
+| | `db/sql/` | `db/changes/` |
+|---|---|---|
+| Holds | the schema today | how existing databases catch up |
+| Runs on | new databases | databases that already exist |
+| Command | `noorm run build` | `noorm change ff` |
+| Undo | none | each change has a `revert/` folder |
+| Order | path, alphanumeric | date prefix |
+
+[Add a column](/guide/changes/add-a-column) walks one edit through both folders.
+
+
+## Order is the sort order of the path
+
+
+noorm sorts every path alphanumerically: folders, the files inside them, and the scripts inside a change. A view can only reference a table that already exists, so the folders need number prefixes:
 
 ```
-db/sql/01_tables/   ← runs first
-db/sql/02_views/    ← runs second
-db/sql/03_functions/ ← runs third (functions can reference tables/views)
+db/sql/tables/       runs 2nd     db/sql/01_tables/      runs 1st
+db/sql/functions/    runs 1st     db/sql/02_views/       runs 2nd
+db/sql/views/        runs 3rd     db/sql/03_functions/   runs 3rd
 ```
 
-The same rule applies to files within directories:
-
-```
-01_tables/
-├── 01_users.sql     ← runs first
-├── 02_posts.sql     ← runs second (can reference users)
-└── 03_comments.sql  ← runs third (can reference posts)
-```
-
-And to change scripts:
-
-```
-change/
-├── 001_create_table.sql
-├── 002_add_indexes.sql
-└── 003_seed_data.sql
-```
-
-One rule, everywhere. Look at the filesystem and you know the order.
+Without prefixes, `functions/` sorts first and fails on tables that do not exist yet. `build.include` in settings picks which folders take part in a build. It does not reorder them.
 
 
-## Changes Are Your Changelog
-
-Changes document what you did to evolve an existing database. They answer: who changed what, when, and why.
-
-```
-db/changes/
-└── 2024-01-15-add-user-roles/
-    ├── change/
-    │   └── 001_add_role_column.sql
-    └── revert/
-        └── 001_remove_role_column.sql
-```
-
-When you need to add a column to an existing production database, you don't just edit the SQL file—you also write a change that performs the `ALTER TABLE`.
+## Templates turn data into SQL
 
 
-## Templates Turn Configuration Into SQL
-
-Sometimes you need more than static SQL. Templates let you generate SQL from structured data—define your rules in YAML, JSON, or CSV, and let noorm write the repetitive SQL for you.
-
-Add `.tmpl` to any SQL file to make it a template:
-
-```
-db/sql/
-├── tables/
-│   └── users.sql           # Static SQL
-└── security/
-    ├── rls.yml             # Configuration data
-    └── rls.sql.tmpl        # Template that reads it
-```
-
-Templates can read adjacent data files. Place a `rls.yml` next to `rls.sql.tmpl`, and the data is available as `rls` in your template.
-
-Here's a real example: PostgreSQL Row-Level Security. Without templates, you'd write dozens of similar `CREATE POLICY` statements. With templates, you define policies in YAML:
+Add `.tmpl` to a SQL file and noorm renders it before running it. A data file in the same folder becomes a variable named after the file, so `products.yml` is `$.products`:
 
 ```yaml
-# db/sql/security/rls.yml
-policies:
-    users:
-        - name: users_own_data
-          for: ALL
-          check: user_id = current_user_id()
-
-    posts:
-        - name: posts_read_public
-          for: SELECT
-          check: is_public = true
-
-        - name: posts_owner_write
-          for: ALL
-          check: author_id = current_user_id()
-
-    comments:
-        - name: comments_read_if_post_visible
-          for: SELECT
-          check: |
-              EXISTS (
-                  SELECT 1 FROM posts
-                  WHERE posts.id = comments.post_id
-                  AND (posts.is_public OR posts.author_id = current_user_id())
-              )
-```
-
-Then generate all the SQL:
-
-```sql
--- db/sql/security/rls.sql.tmpl
-{% for (const [table, policies] of Object.entries($.rls.policies)) { %}
-
-ALTER TABLE {%~ table %} ENABLE ROW LEVEL SECURITY;
-
-{% for (const policy of policies) { %}
-DROP POLICY IF EXISTS {%~ policy.name %} ON {%~ table %};
-CREATE POLICY {%~ policy.name %} ON {%~ table %}
-    FOR {%~ policy.for %}
-    USING ({%~ policy.check %});
-{% } %}
-
-{% } %}
-```
-
-This generates correct, complete SQL for every table. Add a new policy? Edit the YAML. The template handles the boilerplate.
-
-You can also define **helper functions** in `$helpers.ts` files. Helpers are inherited up the directory tree—define utilities at the root, specialize them in subdirectories:
-
-```typescript
-// db/sql/$helpers.ts
-export function grantAll(role: string, tables: string[]) {
-    return tables
-        .map(t => `GRANT SELECT, INSERT, UPDATE, DELETE ON ${t} TO ${role};`)
-        .join('\n');
-}
+# db/sql/09_seeds/products.yml
+- { sku: HW-DONGLE, name: USB security key, list_price: 49.00 }
+- { sku: SW-SEAT,   name: "Desktop seat, yearly", list_price: 89.00 }
 ```
 
 ```sql
--- db/sql/security/grants.sql.tmpl
-{%~ $.grantAll('app_user', ['users', 'posts', 'comments']) %}
+-- db/sql/09_seeds/01_products.sql.tmpl
+-- {% for (const p of $.products) { %}
+INSERT INTO product (sku, name, list_price)
+VALUES ({%~ $.quote(p.sku) %}, {%~ $.quote(p.name) %}, {%~ p.list_price %});
+-- {% } %}
 ```
 
-Templates are powerful for:
-- **Row-level security policies** - Define access rules, generate USING/CHECK clauses
-- **Role permissions** - List roles and grants in YAML, generate GRANT/REVOKE statements
-- **Scheduled jobs** - Define cron schedules in YAML, generate pg_cron or SQL Agent setup
-- **Seed data** - Store reference data in CSV, generate INSERT statements
-- **Custom types** - Define domain constraints in YAML, generate CREATE DOMAIN statements
+A template reads from four sources, and renders to plain SQL that the database runs:
 
-The pattern is always the same: human-readable configuration goes in a data file, repetitive SQL comes out of the template.
-
-
-## The Workflow
-
-1. **Update your SQL files first.** They should always reflect the ideal schema.
-2. **Write a change** to evolve existing databases to match.
-
-Your SQL files stay in sync with reality. Changes track how you got there.
-
-::: tip Fresh vs Existing
-- **Fresh database** → Run SQL files with `noorm run build`
-- **Existing database** → Apply changes with `noorm change ff`
-:::
-
-
-## Configs
-
-A **config** is a saved database connection. You can have multiple configs for different environments:
-
-- `dev` - Your local database
-- `test` - Test database (gets wiped between runs)
-- `staging` - Staging server
-- `prod` - Production (guarded — see Access Roles below)
-
-```
-┌─ Configs ─────────────────────────────────┐
-│  • dev        postgres localhost:5432     │
-│    staging    postgres db.staging.com     │
-│    prod       postgres db.prod.com        │
-└───────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    D["products.yml<br/>(same folder)"] --> T["01_products.sql.tmpl"]
+    H["$helpers.ts<br/>(this folder and above)"] --> T
+    S["$.secrets"] --> T
+    C["$.config"] --> T
+    T --> R[rendered SQL] --> DB[(database)]
 ```
 
-The dot (•) shows which config is active. All commands use the active config unless you specify otherwise.
+Data files can be YAML, JSON, JSON5, or CSV. A `$helpers.ts` applies to its folder and every folder below it, and a deeper one overrides a shallower one. [Templates](/guide/sql-files/templates) covers the syntax.
 
-Switch configs:
+
+## Configs, stages, and roles
+
+
+A **config** is a saved connection: `dev`, `staging`, `prod`. Commands use the active one unless `--config` names another:
+
 ```bash
 noorm config use staging
-```
-
-Or specify per-command:
-```bash
 noorm run build --config prod
 ```
 
-`--config` is a per-subcommand flag, so it goes *after* the subcommand. Before the subcommand, `-c` means `--cwd` (the only root-level flag), so `noorm -c prod run build` runs the build in a directory named `prod` instead.
-
-
-## Access Roles
-
-Every config declares an access role — `viewer`, `operator`, or `admin` — separately for two **channels**: `user` (you, at the CLI or TUI) and `agent` (an AI agent, whether it reaches noorm over MCP or by running the CLI). This is how you prevent accidental destructive operations:
-
-- `viewer` - Read-only. `db teardown`, writes, and changes are all blocked.
-- `operator` - Reads and writes are fine; builds, changes, and `db create` require typing a confirmation phrase. Raw DDL, `db teardown`, and `db drop` are denied outright.
-- `admin` - Builds and changes run without prompting. The operations that cannot be undone still ask: `db drop`, `db teardown`, `db truncate`, `change rm`, `config` edits, `vault propagate`, and `lock force`.
-- Accidental `DROP TABLE` via raw SQL - Still executes if the role allows SQL DDL, which only `admin` does (be careful!)
-
-Roles are a safety net, not a security boundary. They catch mistakes like running teardown against the wrong database — they won't stop a determined user or malicious script.
-
-
-## Secrets
-
-Secrets are sensitive values that get inserted **into** your database via SQL templates. They're for application configuration you store in the database:
-
-- AWS credentials (access key, secret key)
-- SMTP credentials for sending emails
-- API keys for third-party services
-
-noorm stores secrets encrypted in your local state. When you run SQL templates, secrets are available but never written to disk in plain text.
-
-```sql
--- db/sql/config/aws.sql.tmpl
-INSERT INTO app_config (key, value) VALUES
-    ('aws_access_key', '{%~ $.secrets.AWS_ACCESS_KEY %}'),
-    ('aws_secret_key', '{%~ $.secrets.AWS_SECRET_KEY %}');
-```
-
-```bash
-# Set a secret for the current config
-noorm secret set AWS_ACCESS_KEY "AKIAEXAMPLE"
-
-# Or pipe the value in so it never reaches the process table or shell history
-printf %s "$AWS_SECRET_KEY" | noorm secret set AWS_SECRET_KEY --stdin
-```
-
-When you rebuild your database, your credentials are always there—but never exposed in your SQL files or version control.
-
-Secrets are **config-scoped**. Each config has its own set of secrets (dev AWS vs prod AWS). There are also **global secrets** shared across all configs.
-
-
-## State and Identity
-
-Your **identity** lives in `~/.noorm/`, split across three files: `identity.key` (private key, owner-readable only), `identity.pub` (public key), and `identity.json` (metadata such as name, email, and machine). These are machine-local, and the private key is never shared.
-
-Your **state** lives in `.noorm/state/state.enc` and contains:
-
-- Your saved configs (database credentials)
-- Secrets (encrypted with your keys)
-
-State is encrypted with your identity keys. It's not portable between machines—each developer has their own configs and secrets.
-
-::: warning Don't Commit State
-Add `.noorm/state/` to `.gitignore`. It contains machine-specific encrypted data that won't work on other machines anyway.
-:::
-
-
-## Settings
-
-Settings live in `.noorm/settings.yml` and **should be committed**. They define project-wide behavior:
-
-- Schema and changes directory paths
-- Build include/exclude patterns
-- Stage definitions
-- Secret requirements
+A **stage** in `.noorm/settings.yml` applies to the config with the same name. Its `defaults` seed that config when the TUI first creates it, `protected: true` caps its access, and `secrets` lists what it needs:
 
 ```yaml
 # .noorm/settings.yml
-paths:
-  sql: ./db/sql
-  changes: ./db/changes
-
-build:
-  include:
-    - tables
-    - views
-    - functions
-
 stages:
   prod:
-    defaults:
-      protected: true
-    secrets:
-      - key: AWS_SECRET_KEY
-        type: password
-        required: true
-```
-
-The `include` array filters which folders are included in builds. Execution order is alphanumeric—use numeric prefixes (`01_tables`, `02_views`) to control the sequence. Paths are relative to your `paths.sql` directory.
-
-
-## Stages
-
-A **stage** is a template for configs. When you create a config and assign it to a stage, it inherits the stage's defaults:
-
-```yaml
-stages:
-  development:
-    defaults:
-      dialect: sqlite
-      isTest: false
-
-  production:
     defaults:
       dialect: postgres
       protected: true
     secrets:
-      - key: AWS_SECRET_KEY
+      - key: PAYMENT_GATEWAY_KEY
         type: password
         required: true
 ```
 
-Now when you create a config with stage `production`, its resolved access is capped to at most `operator`/`viewer` (it can be stricter, never looser), and it requires an `AWS_SECRET_KEY` secret.
+Each config gives a **role** to two channels: `user` (you, in the CLI or TUI) and `agent` (an AI agent over MCP or the CLI). The role decides what runs, what asks for a typed confirmation, and what is refused:
 
-Connection values go under `defaults`. Required secrets go under `secrets`, and each entry needs a `type` (`string`, `password`, `api_key`, or `connection_string`). Settings fail to load without it.
+| Role | Runs | Asks first | Refused |
+|---|---|---|---|
+| `viewer` | explore, read-only SQL | | writes, builds, changes, teardown |
+| `operator` | explore, SQL reads and writes | build, change, `db create`, truncate | raw DDL, `db drop`, `db teardown` |
+| `admin` | everything else | `db drop`, `db teardown`, `db truncate`, `change rm`, config edits, `vault propagate`, `lock force` | |
 
-
-## SQL Files vs Changes
-
-| Aspect | SQL Files | Changes |
-|--------|-----------|---------|
-| Purpose | Define ideal schema | Evolve existing databases |
-| Location | `db/sql/` | `db/changes/` |
-| When to run | Fresh database, tests | Existing database |
-| Rollback | No | Yes, with revert scripts |
-| Order | Alphanumeric by full path | By date prefix |
-
-**SQL files** are your source of truth. They define what your schema looks like today. Execution order is alphanumeric by full path. `build.include` picks which folders take part; it does not reorder them, so the numeric prefixes are what control the sequence.
-
-**Changes** are your changelog. They document how to get an existing database to match your SQL files.
+A stage with `protected: true` caps its configs at `operator` for the user and `viewer` for agents. Roles catch mistakes, such as a teardown against the wrong database. They do not stop someone who has the credentials and connects with another client. [Stages](/guide/environments/stages) covers the rest.
 
 
-## What's Next?
+## Secrets stay out of committed SQL
 
-- [Building Your SDK](/getting-started/building-your-sdk) - Wrap noorm in a TypeScript SDK for your apps
-- [TUI Quick Reference](/tui) - Navigate the terminal interface
-- [SQL Templates](/guide/sql-files/templates) - Dynamic SQL generation
-- [Changes Guide](/guide/changes/overview) - Evolving existing databases
+
+A secret is a value a template reads when the SQL runs. The value is stored encrypted and never written into a file:
+
+```sql
+-- db/sql/09_seeds/02_gateway.sql.tmpl
+INSERT INTO app_setting (name, value)
+VALUES ('payment_gateway_key', {%~ $.quote($.secrets.PAYMENT_GATEWAY_KEY) %});
+```
+
+```bash
+printf %s "$KEY" | noorm secret set PAYMENT_GATEWAY_KEY --stdin
+```
+
+When a template asks for `$.secrets.PAYMENT_GATEWAY_KEY`, noorm looks in the config's own secrets first, then in the [vault](/guide/environments/vault), which is stored encrypted in the database and shared with the team. A secret set on your config overrides the team's value for you alone.
+
+
+## What lives where
+
+
+| Path | Holds | Commit it |
+|---|---|---|
+| `db/sql/`, `db/changes/` | the schema and its changes | yes |
+| `db/AGENTS.md`, `db/CLAUDE.md` | instructions for AI agents working in `db/`, written by `noorm init` | yes |
+| `.noorm/settings.yml` | paths, `build.include`, stages, required secrets | yes |
+| `.noorm/state/state.enc` | your configs, credentials, and secrets, encrypted with your identity key | no, `noorm init` adds it to `.gitignore` |
+| `~/.noorm/identity.key`, `identity.pub`, `identity.json` | your keypair, name, and email | never leaves your machine |
+
+State is encrypted with your own key, so a copy is useless on another machine. Each developer keeps their own.
+
+
+## What bites
+
+
+| Mistake | What happens | Fix |
+|---|---|---|
+| Edit a table in `db/sql/` with no change | new databases get the edit, existing ones never do | add a change: `noorm change add <slug>` |
+| A change that is not safe to run twice | a database built from `db/sql/` has no change records, so `change ff` runs the change against a table that already has it | guard it: `ADD COLUMN IF NOT EXISTS`, `WHERE status IS NULL` |
+| Folders without number prefixes | alphabetical order runs `functions/` before `tables/` | `01_tables/`, `02_views/` |
+| `noorm -c prod run build` fails: `--cwd path is not a directory` | before the subcommand, `-c` is `--cwd`, so noorm looks for a project folder named `prod` | `noorm run build --config prod` |
+
+
+## Next
+
+
+- [First build](/getting-started/first-build): init a project and build it
+- [Add a column](/guide/changes/add-a-column): one edit, both folders
+- [Templates](/guide/sql-files/templates): the full syntax
+- [Building your SDK](/getting-started/building-your-sdk): call the database from TypeScript
