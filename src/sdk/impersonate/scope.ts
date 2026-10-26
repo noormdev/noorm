@@ -6,12 +6,12 @@
  * callback is provided by the caller (Context.impersonate).
  */
 import { attempt } from '@logosdx/utils';
-import { sql } from 'kysely';
 
-import type { Kysely, Transaction } from 'kysely';
+import type { Kysely } from 'kysely';
 import type { Dialect } from '../../core/connection/types.js';
 
-import { buildProcCall, buildFuncCall, buildTvfCall } from '../sql.js';
+import { routineCalls, withRoutines } from '../routines.js';
+import type { TransactionScope } from '../types.js';
 import type { ImpersonatedScope } from './types.js';
 
 // ─────────────────────────────────────────────────────────────
@@ -55,42 +55,11 @@ export function buildScope<DB = unknown, Procs = object, Funcs = object, Tvfs = 
 
         kysely: db,
 
-        async proc<T = unknown>(name: string, ...args: unknown[]): Promise<T[]> {
+        ...routineCalls<DB, Procs, Funcs, Tvfs>(() => db, dialect, null),
 
-            const params = args[0] as Record<string, unknown> | unknown[] | undefined;
-            const query = buildProcCall<T>(dialect, name, params);
-            const result = await query.execute(db);
+        async transaction<T>(fn: (trx: TransactionScope<DB, Procs, Funcs, Tvfs>) => Promise<T>): Promise<T> {
 
-            return result.rows ?? [];
-
-        },
-
-        async func<T = unknown>(name: string, ...args: unknown[]): Promise<T> {
-
-            const hasParams = !(args.length === 1 && typeof args[0] === 'string');
-            const params = hasParams ? args[0] as Record<string, unknown> | unknown[] : undefined;
-            const column = (hasParams ? args[1] : args[0]) as string;
-
-            const query = buildFuncCall<T>(dialect, name, column, params);
-            const result = await query.execute(db);
-
-            return (result.rows?.[0] ?? null) as T;
-
-        },
-
-        async tvf<T = unknown>(name: string, ...args: unknown[]): Promise<T[]> {
-
-            const params = args[0] as Record<string, unknown> | unknown[] | undefined;
-            const query = buildTvfCall<T>(dialect, name, params);
-            const result = await query.execute(db);
-
-            return result.rows ?? [];
-
-        },
-
-        async transaction<T>(fn: (trx: Transaction<DB>) => Promise<T>): Promise<T> {
-
-            return db.transaction().execute(fn);
+            return db.transaction().execute((trx) => fn(withRoutines(trx, dialect, null)));
 
         },
 
