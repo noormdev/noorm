@@ -178,6 +178,8 @@ export type {
     ImportOptions,
     ExtractArgs,
     ExtractReturn,
+    RoutineCalls,
+    TransactionScope,
 } from './types.js';
 
 // Access policy types — `Config.access` (re-exported below) is typed

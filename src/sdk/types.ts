@@ -3,6 +3,8 @@
  *
  * All interfaces and types for the noorm programmatic SDK.
  */
+import type { Transaction } from 'kysely';
+
 import type { Channel } from '../core/policy/index.js';
 import type { ConflictStrategy } from '../core/transfer/types.js';
 
@@ -181,3 +183,56 @@ export type ExtractArgs<E> = E extends [infer A, unknown] ? A : E;
  * ```
  */
 export type ExtractReturn<E> = E extends [unknown, infer R] ? R : unknown;
+
+/**
+ * Typed stored-procedure, function, and table-valued-function calls,
+ * keyed off a context's `Procs`/`Funcs`/`Tvfs` maps. Shared by `Context`,
+ * the transaction handle, and the impersonated scope so all three match
+ * signature for signature.
+ *
+ * @example
+ * ```typescript
+ * function rebuild(calls: RoutineCalls<MyProcs>) {
+ *     return calls.proc('rebuild_ledger', { id: 1 });
+ * }
+ * ```
+ */
+export interface RoutineCalls<Procs = object, Funcs = object, Tvfs = object> {
+    proc: <
+        N extends keyof Procs & string = keyof Procs & string,
+        T = ExtractReturn<Procs[N]>,
+    >(
+        name: N,
+        ...args: ExtractArgs<Procs[N]> extends void ? [] : [params: ExtractArgs<Procs[N]>]
+    ) => Promise<T[]>;
+    func: <
+        N extends keyof Funcs & string = keyof Funcs & string,
+        T = ExtractReturn<Funcs[N]>,
+    >(
+        name: N,
+        ...args: ExtractArgs<Funcs[N]> extends void ? [column: string] : [params: ExtractArgs<Funcs[N]>, column: string]
+    ) => Promise<T>;
+    tvf: <
+        N extends keyof Tvfs & string = keyof Tvfs & string,
+        T = ExtractReturn<Tvfs[N]>,
+    >(
+        name: N,
+        ...args: ExtractArgs<Tvfs[N]> extends void ? [] : [params: ExtractArgs<Tvfs[N]>]
+    ) => Promise<T[]>;
+}
+
+/**
+ * The handle `ctx.transaction(fn)` passes to `fn`: Kysely's own
+ * `Transaction<DB>` with routine calls bound to the transaction's
+ * connection, so a `SET LOCAL` issued with `sql` applies to them.
+ *
+ * @example
+ * ```typescript
+ * await ctx.transaction(async (trx) => {
+ *     await sql`SET LOCAL statement_timeout = '8s'`.execute(trx);
+ *     return trx.tvf('search_ledger', { q: 'x' });
+ * });
+ * ```
+ */
+export type TransactionScope<DB = unknown, Procs = object, Funcs = object, Tvfs = object> =
+    Transaction<DB> & RoutineCalls<Procs, Funcs, Tvfs>;

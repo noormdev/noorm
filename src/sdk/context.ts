@@ -5,9 +5,8 @@
  * database. Noorm-specific operations (schema, changes, locks, etc.)
  * live behind the ctx.noorm namespace via NoormOps.
  */
-import type { Kysely, Transaction } from 'kysely';
+import type { Kysely } from 'kysely';
 import { sql } from 'kysely';
-import { attempt } from '@logosdx/utils';
 
 import type { Dialect } from '../core/connection/index.js';
 import type { Config } from '../core/config/types.js';
@@ -16,11 +15,11 @@ import type { Identity } from '../core/identity/index.js';
 import { createConnection } from '../core/connection/index.js';
 import type { ConnectionRetryOptions } from '../core/connection/index.js';
 
-import { buildProcCall, buildFuncCall, buildTvfCall } from './sql.js';
+import { callProc, callFunc, callTvf, qualifyName, withRoutines } from './routines.js';
 import { NoormOps } from './noorm-ops.js';
 import type { ContextState } from './state.js';
 import { requireConnection } from './state.js';
-import type { CreateContextOptions, ExtractArgs, ExtractReturn } from './types.js';
+import type { CreateContextOptions, ExtractArgs, ExtractReturn, RoutineCalls, TransactionScope } from './types.js';
 import { dialectStrategy, validateUsername } from './impersonate/dialect-strategy.js';
 import { buildScope } from './impersonate/scope.js';
 import { ImpersonationError } from './impersonate/types.js';
@@ -57,21 +56,6 @@ function validateSchemaName(name: string): void {
 
 }
 
-/**
- * Prefix `name` with `${schema}.` for routine calls, unless `name` already
- * contains a `.` (caller supplied an explicit qualification) or no schema
- * is set on this context. The qualified name is handed unchanged to
- * buildProcCall/buildFuncCall/buildTvfCall, which split on `.` and quote
- * each segment per dialect.
- */
-function qualifyName(schema: string | null, name: string): string {
-
-    if (!schema || name.includes('.')) return name;
-
-    return `${schema}.${name}`;
-
-}
-
 // ─────────────────────────────────────────────────────────────
 // Context Class
 // ─────────────────────────────────────────────────────────────
@@ -100,7 +84,7 @@ function qualifyName(schema: string | null, name: string): string {
  * await ctx.disconnect()
  * ```
  */
-export class Context<DB = unknown, Procs = object, Funcs = object, Tvfs = object> {
+export class Context<DB = unknown, Procs = object, Funcs = object, Tvfs = object> implements RoutineCalls<Procs, Funcs, Tvfs> {
 
     #state: ContextState;
     #noorm: NoormOps | null = null;
@@ -295,7 +279,8 @@ export class Context<DB = unknown, Procs = object, Funcs = object, Tvfs = object
      * Execute operations within a database transaction.
      *
      * The callback receives a full Kysely Transaction instance with
-     * query builder, `sql` template literal, and all Kysely features.
+     * query builder, `sql` template literal, and all Kysely features,
+     * plus `proc`/`func`/`tvf` running on the transaction's connection.
      *
      * @example
      * ```typescript
@@ -311,11 +296,17 @@ export class Context<DB = unknown, Procs = object, Funcs = object, Tvfs = object
      *         .where('id', '=', toId)
      *         .execute();
      * });
+     *
+     * // Routines see transaction-scoped settings
+     * const rows = await ctx.transaction(async (trx) => {
+     *     await sql`SET LOCAL statement_timeout = '8s'`.execute(trx);
+     *     return trx.tvf('search_ledger', { q: term });
+     * });
      * ```
      */
-    async transaction<T>(fn: (trx: Transaction<DB>) => Promise<T>): Promise<T> {
+    async transaction<T>(fn: (trx: TransactionScope<DB, Procs, Funcs, Tvfs>) => Promise<T>): Promise<T> {
 
-        return this.kysely.transaction().execute(fn);
+        return this.kysely.transaction().execute((trx) => fn(withRoutines(trx, this.dialect, this.#schema)));
 
     }
 
@@ -353,61 +344,7 @@ export class Context<DB = unknown, Procs = object, Funcs = object, Tvfs = object
         ...args: ExtractArgs<Procs[N]> extends void ? [] : [params: ExtractArgs<Procs[N]>]
     ): Promise<T[]> {
 
-        const params = args[0] as Record<string, unknown> | unknown[] | undefined;
-        const qualifiedName = qualifyName(this.#schema, name);
-
-        if (this.dialect === 'postgres') {
-
-            return this.#executeProcPostgres<T>(qualifiedName, params);
-
-        }
-
-        const query = buildProcCall<T>(this.dialect, qualifiedName, params);
-        const result = await query.execute(this.kysely);
-
-        return (result.rows ?? []) as T[];
-
-    }
-
-    /**
-     * Execute a stored procedure on PostgreSQL with FUNCTION fallback.
-     *
-     * PostgreSQL distinguishes between PROCEDURE and FUNCTION objects:
-     * `CALL` only works against true procedures and raises SQLSTATE 42809
-     * (`<name>(...) is not a procedure`) when the target is a function.
-     *
-     * The noorm playbook tells schema authors to use `CREATE PROCEDURE`
-     * for void-returning ops and `CREATE FUNCTION` for row-returning ops,
-     * and `ctx.proc()` is expected to handle both. So if `CALL` fails
-     * with the wrong-object-type error, we retry with
-     * `SELECT * FROM <name>(...)`, which works for both scalar and
-     * set-returning PG functions.
-     */
-    async #executeProcPostgres<T>(
-        name: string,
-        params: Record<string, unknown> | unknown[] | undefined,
-    ): Promise<T[]> {
-
-        const callQuery = buildProcCall<T>('postgres', name, params);
-        const [callResult, callErr] = await attempt(() => callQuery.execute(this.kysely));
-
-        if (!callErr) {
-
-            return (callResult.rows ?? []) as T[];
-
-        }
-
-        if (!isFunctionNotProcedureError(callErr)) {
-
-            throw callErr;
-
-        }
-
-        // Object is a FUNCTION, not a PROCEDURE — retry as SELECT * FROM <name>(...).
-        const tvfQuery = buildTvfCall<T>('postgres', name, params);
-        const tvfResult = await tvfQuery.execute(this.kysely);
-
-        return (tvfResult.rows ?? []) as T[];
+        return callProc<T, DB>(() => this.kysely, this.dialect, qualifyName(this.#schema, name), args);
 
     }
 
@@ -437,15 +374,7 @@ export class Context<DB = unknown, Procs = object, Funcs = object, Tvfs = object
         ...args: ExtractArgs<Funcs[N]> extends void ? [column: string] : [params: ExtractArgs<Funcs[N]>, column: string]
     ): Promise<T> {
 
-        // Extract params and column from rest args
-        const hasParams = !(args.length === 1 && typeof args[0] === 'string');
-        const params = hasParams ? args[0] as Record<string, unknown> | unknown[] : undefined;
-        const column = (hasParams ? args[1] : args[0]) as string;
-
-        const query = buildFuncCall<T>(this.dialect, qualifyName(this.#schema, name), column, params);
-        const result = await query.execute(this.kysely);
-
-        return (result.rows?.[0] ?? null) as T;
+        return callFunc<T, DB>(() => this.kysely, this.dialect, qualifyName(this.#schema, name), args);
 
     }
 
@@ -480,11 +409,7 @@ export class Context<DB = unknown, Procs = object, Funcs = object, Tvfs = object
         ...args: ExtractArgs<Tvfs[N]> extends void ? [] : [params: ExtractArgs<Tvfs[N]>]
     ): Promise<T[]> {
 
-        const params = args[0] as Record<string, unknown> | unknown[] | undefined;
-        const query = buildTvfCall<T>(this.dialect, qualifyName(this.#schema, name), params);
-        const result = await query.execute(this.kysely);
-
-        return (result.rows ?? []) as T[];
+        return callTvf<T, DB>(() => this.kysely, this.dialect, qualifyName(this.#schema, name), args);
 
     }
 
@@ -643,42 +568,5 @@ export class Context<DB = unknown, Procs = object, Funcs = object, Tvfs = object
         return ready;
 
     }
-
-}
-
-// ─────────────────────────────────────────────────────────────
-// Driver Error Helpers
-// ─────────────────────────────────────────────────────────────
-
-/**
- * Detect a PG `CALL`-against-FUNCTION error so the SDK can fall back to
- * `SELECT * FROM <name>(...)`. PostgreSQL surfaces this in two shapes:
- *
- *  - SQLSTATE 42809 (`wrong_object_type`) with message
- *    `<name>(...) is not a procedure` — when an exact match exists but
- *    is the wrong kind of object.
- *  - SQLSTATE 42883 (`undefined_function`) with message
- *    `procedure <name>(...) does not exist` and hint
- *    `To call a function, use SELECT.` — when the procedure-search
- *    fails outright but a function with the same signature exists.
- *
- * Both indicate "this is a FUNCTION, not a PROCEDURE" — retry as a
- * function call.
- */
-function isFunctionNotProcedureError(err: unknown): boolean {
-
-    if (!err || typeof err !== 'object') return false;
-
-    // cast-justified: pg driver error has no fixed type
-    const obj = err as { code?: string; message?: string; hint?: string };
-
-    if (obj.code !== '42809' && obj.code !== '42883') return false;
-
-    const msg = String(obj.message ?? '');
-    const hint = String(obj.hint ?? '');
-
-    return msg.includes('is not a procedure')
-        || msg.includes('procedure')
-        || hint.includes('use SELECT');
 
 }
