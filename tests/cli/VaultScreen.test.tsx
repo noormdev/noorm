@@ -13,16 +13,13 @@
  *
  * LOCATION: this file lives at tests/cli/ rather than the tests/cli/screens/vault/
  * it belongs in, and that is load-bearing. bun's `mock.module` registry is
- * process-global, and tests/cli/hooks/useVaultSecretKeys.test.tsx also mocks
- * core/vault -- restoring it to the real module in its afterAll. CI runs
- * tests/cli as one process (.github/workflows/ci.yml), so whichever file bun
- * loads first decides what the other one's subject binds to: from
- * tests/cli/screens/vault/ these tests ran against the real, unmocked vault and
- * failed only in the combined run, never standalone. Moving this file back
- * under screens/ reintroduces that. The durable fix is a separate test process
- * for the TUI screens, not a different mock arrangement -- several were tried.
+ * process-global and never restores, and tests/cli/hooks/useVaultSecretKeys.test.tsx
+ * mocks `useConnection` and core/vault for good. When it loads first, this
+ * screen never connects and these tests fail; CI loads root files before
+ * subdirectories, so here they run first. The `scoped` gating below stops this
+ * file leaking into later files, not a sibling leaking into this one.
  */
-import { describe, it, expect, vi, mock, beforeEach, afterEach, afterAll } from 'bun:test';
+import { describe, it, expect, vi, mock, beforeAll, beforeEach, afterEach, afterAll } from 'bun:test';
 import { render } from 'ink-testing-library';
 import React from 'react';
 import { mkdtemp, rm } from 'fs/promises';
@@ -46,6 +43,17 @@ const actualVault = await import('../../src/core/vault/index.js');
 /** Every call to the real propagation entry point. */
 const propagateCalls: unknown[] = [];
 
+let vaultTestsActive = false;
+
+// `mock.module` never restores, so outside this file's tests each override defers to the export it
+// replaced. `real` must be read inside the factory: the patch then rewrites `actualX` in place.
+
+function scoped<F extends (...args: never[]) => unknown>(fake: (...args: Parameters<F>) => unknown, real: F) {
+
+    return (...args: Parameters<F>) => (vaultTestsActive ? fake(...args) : real(...args));
+
+}
+
 const IDENTITY: CryptoIdentity = {
     identityHash: 'hash-self',
     name: 'Self',
@@ -64,31 +72,31 @@ const RECIPIENTS = [
 
 mock.module('../../src/core/vault/index.js', () => ({
     ...actualVault,
-    getVaultStatus: vi.fn(async () => ({
+    getVaultStatus: scoped(async () => ({
         isInitialized: true,
         hasAccess: true,
         usersWithAccess: 1,
         usersWithoutAccess: RECIPIENTS.length,
-    })),
-    getAllVaultSecrets: vi.fn(async () => []),
-    getVaultKey: vi.fn(async () => 'vault-key'),
+    }), actualVault.getVaultStatus),
+    getAllVaultSecrets: scoped(async () => [], actualVault.getAllVaultSecrets),
+    getVaultKey: scoped(async () => 'vault-key', actualVault.getVaultKey),
     // Mirrors the real `[users, error]` tuple: a failed lookup must not be
     // indistinguishable from "nobody is missing access". Returning a bare array
     // here let the screen and the mock agree on a shape the core had stopped
     // using, so the suite stayed green over a real runtime bug.
-    getUsersWithoutVaultAccess: vi.fn(async () => [RECIPIENTS, null]),
-    propagateVaultKey: vi.fn(async (...args: unknown[]) => {
+    getUsersWithoutVaultAccess: scoped(async () => [RECIPIENTS, null], actualVault.getUsersWithoutVaultAccess),
+    propagateVaultKey: scoped(async (...args: unknown[]) => {
 
         propagateCalls.push(args);
 
         return { propagatedTo: RECIPIENTS.map((r) => r.identityHash), skipped: [] };
 
-    }),
+    }, actualVault.propagateVaultKey),
 }));
 
 mock.module('../../src/core/identity/storage.js', () => ({
     ...actualIdentityStorage,
-    loadPrivateKey: vi.fn(async () => 'private-key'),
+    loadPrivateKey: scoped(async () => 'private-key', actualIdentityStorage.loadPrivateKey),
 }));
 
 /**
@@ -135,16 +143,16 @@ let mockStateManager = createMockStateManager();
 let mockSettingsManager = createMockSettingsManager();
 
 mock.module('../../src/core/index.js', () => ({
-    observer: actualCore.observer,
-    getStateManager: vi.fn(() => mockStateManager),
-    getSettingsManager: vi.fn(() => mockSettingsManager),
-    resetStateManager: vi.fn(),
-    resetSettingsManager: vi.fn(),
+    ...actualCore,
+    getStateManager: scoped(() => mockStateManager, actualCore.getStateManager),
+    getSettingsManager: scoped(() => mockSettingsManager, actualCore.getSettingsManager),
+    resetStateManager: scoped(() => {}, actualCore.resetStateManager),
+    resetSettingsManager: scoped(() => {}, actualCore.resetSettingsManager),
 }));
 
 mock.module('../../src/core/identity/index.js', () => ({
     ...actualIdentity,
-    loadExistingIdentity: vi.fn().mockResolvedValue(IDENTITY),
+    loadExistingIdentity: scoped(async () => IDENTITY, actualIdentity.loadExistingIdentity),
 }));
 
 describe('cli: VaultScreen propagate', () => {
@@ -173,9 +181,14 @@ describe('cli: VaultScreen propagate', () => {
 
     }
 
+    beforeAll(() => {
+
+        vaultTestsActive = true;
+
+    });
+
     beforeEach(async () => {
 
-        vi.clearAllMocks();
         actualCore.observer.clear();
 
         delete process.env['NOORM_YES'];
@@ -198,10 +211,7 @@ describe('cli: VaultScreen propagate', () => {
 
     afterAll(() => {
 
-        mock.module('../../src/core/index.js', () => actualCore);
-        mock.module('../../src/core/identity/index.js', () => actualIdentity);
-        mock.module('../../src/core/identity/storage.js', () => actualIdentityStorage);
-        mock.module('../../src/core/vault/index.js', () => actualVault);
+        vaultTestsActive = false;
 
     });
 
