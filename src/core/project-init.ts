@@ -52,6 +52,8 @@ const NOORM_GITIGNORE_BLOCK = `\n# noorm\n${NOORM_IGNORE_ENTRY}\n`;
 const AGENTS_TEMPLATE = [
     'Use the `/noorm` skill for managing files here.',
     '',
+    '`sql/` is the current state of the schema; `changes/` brings existing databases, production included, up to that state.',
+    '',
     'For data modeling, use ignatius (https://noorm.dev/modeling/) and its `/ignatius-modeling` skill '
         + '(https://noorm.dev/modeling/modeling-skill).',
     '',
