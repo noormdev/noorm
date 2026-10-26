@@ -1,5 +1,7 @@
 # @noormdev/cli
 
+## 1.7.0
+
 ## 1.6.1
 
 ### Patch Changes
