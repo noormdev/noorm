@@ -102,7 +102,7 @@ A **config** is a saved connection: `dev`, `staging`, `prod`. Commands use the a
 
 ```bash
 noorm config use staging
-noorm run build --config prod
+noorm change ff --config prod
 ```
 
 A **stage** in `.noorm/settings.yml` applies to the config with the same name. Its `defaults` seed that config when the TUI first creates it, `protected: true` caps its access, and `secrets` lists what it needs:
@@ -171,7 +171,7 @@ State is encrypted with your own key, so a copy is useless on another machine. E
 | Edit a table in `db/sql/` with no change | new databases get the edit, existing ones never do | add a change: `noorm change add <slug>` |
 | A change that is not safe to run twice | a database built from `db/sql/` has no change records, so `change ff` runs the change against a table that already has it | guard it: `ADD COLUMN IF NOT EXISTS`, `WHERE status IS NULL` |
 | Folders without number prefixes | alphabetical order runs `functions/` before `tables/` | `01_tables/`, `02_views/` |
-| `noorm -c prod run build` fails: `--cwd path is not a directory` | before the subcommand, `-c` is `--cwd`, so noorm looks for a project folder named `prod` | `noorm run build --config prod` |
+| `noorm -c prod change ff` fails: `--cwd path is not a directory` | before the subcommand, `-c` is `--cwd`, so noorm looks for a project folder named `prod` | `noorm change ff --config prod` |
 
 
 ## Next

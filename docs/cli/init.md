@@ -39,7 +39,7 @@ noorm init --yes
     └── sql/
 ```
 
-`db/AGENTS.md` also states that `sql/` is the current state and `changes/` brings existing databases up to it, points data modeling at [ignatius](/modeling/) and its [`/ignatius-modeling` skill](/modeling/modeling-skill), and holds a marker comment for your own steering. `db/CLAUDE.md` is one line, `@AGENTS.md`. Without `--yes`, `init` prompts for a name and email when no identity exists yet.
+`db/AGENTS.md` also states that `sql/` is the schema's current state and `changes/` brings existing databases up to it. It points data modeling at [ignatius](/modeling/) and its [`/ignatius-modeling` skill](/modeling/modeling-skill), and holds a marker comment for your own steering. `db/CLAUDE.md` is one line, `@AGENTS.md`. Without `--yes`, `init` prompts for a name and email when no identity exists yet.
 
 
 ## Flags
