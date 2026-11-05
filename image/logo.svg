@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+    <title>noorm symbol</title>
+    <path fill="#212931" d="M24 24H76V82.67H24Z"/>
+    <path fill="#212931" d="M92 24H232V82.67H92Z"/>
+    <path fill="#212931" d="M24 98.67H76V157.33H24Z"/>
+    <path fill="#E05742" d="M92 98.67H232V157.33H92Z"/>
+    <path fill="#212931" d="M24 173.33H76V232H24Z"/>
+    <path fill="#212931" d="M92 173.33H232V232H92Z"/>
+</svg>
