@@ -1,5 +1,11 @@
 # @noormdev/cli
 
+## 1.7.0
+
+### Minor Changes
+
+- 78f2124: Add native Alpine Linux musl binaries for x64 and ARM64, with automatic selection during installation and updates.
+
 ## 1.6.1
 
 ### Patch Changes
