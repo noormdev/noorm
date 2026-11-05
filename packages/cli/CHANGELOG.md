@@ -1,5 +1,11 @@
 # @noormdev/cli
 
+## 1.6.1
+
+### Patch Changes
+
+- 94aa38d: `db/AGENTS.md` written by `noorm init` now states that `sql/` is the current state of the schema and `changes/` brings existing databases, production included, up to that state. An existing `db/AGENTS.md` is left as is.
+
 ## 1.6.0
 
 ### Minor Changes

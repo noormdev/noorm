@@ -70,6 +70,25 @@ await ctx.proc('refresh_cache');
 
 `createContext<DB, Procs, Funcs, Tvfs>` takes a map per routine kind. Plain `void` is shorthand for "no arguments, no meaningful return".
 
+The `ctx.transaction(fn)` handle carries the same typed `proc`, `func`, and `tvf`, running on the transaction's connection, so a routine call sees transaction-scoped settings and rolls back with the transaction:
+
+```typescript
+import { sql } from 'kysely';
+
+type Tvfs = {
+    validate_session: [{ session_key: string }, Session];
+};
+
+const ctx = await createContext<Database, Procs, object, Tvfs>({ config: 'dev' });
+
+const sessions = await ctx.transaction(async (trx) => {
+    await sql`SET LOCAL statement_timeout = '8s'`.execute(trx); // postgres
+    return trx.tvf('validate_session', { session_key: 'abc123' }); // Session[]
+});
+```
+
+The handle is typed `TransactionScope` (`Transaction<DB> & RoutineCalls`). Instances derived from it, such as `trx.withSchema(...)`, are plain Kysely and have no routine methods.
+
 
 ## Schema scoping
 

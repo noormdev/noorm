@@ -116,7 +116,15 @@ await ctx.transaction(async (trx) => {
         .execute();
     // Commits on success, rolls back on throw
 });
+
+// The handle also has typed proc/func/tvf on the transaction's connection
+const sessions = await ctx.transaction(async (trx) => {
+    await sql`SET LOCAL statement_timeout = '8s'`.execute(trx); // postgres only
+    return trx.tvf('validate_session', { session_key: 'abc123' });
+}); // Session[]
 ```
+
+`trx.withSchema(...)` and other instances derived from `trx` have no `proc`/`func`/`tvf`.
 
 ### Stored Procedures
 
@@ -245,10 +253,10 @@ Return multiple rows. Same tuple-based typing as procs. Supported on **MSSQL and
 
 ```typescript
 // Return type inferred from Tvfs tuple
-const sessions = await ctx.tvf('validate_session', { session_key: key }); // → Session[]
+const sessions = await ctx.tvf('validate_session', { session_key: 'abc123' }); // → Session[]
 
 // Explicit return type override
-const sessions = await ctx.tvf<'validate_session', ExtendedSession>('validate_session', { session_key: key });
+const sessions = await ctx.tvf<'validate_session', ExtendedSession>('validate_session', { session_key: 'abc123' });
 
 // No params
 const items = await ctx.tvf('get_active_items');
@@ -502,7 +510,7 @@ await ctx.connect();
 // Return types are inferred from the tuple:
 const users = await ctx.proc('get_active_users', { department_id: 5 });   // User[]
 const total = await ctx.func('calc_total', { order_id: 1 }, 'total');     // CalcResult
-const sessions = await ctx.tvf('validate_session', { session_key: key }); // Session[]
+const sessions = await ctx.tvf('validate_session', { session_key: 'abc123' }); // Session[]
 
 // Override when you need a different return type:
 const special = await ctx.proc<'get_active_users', SpecialUser>('get_active_users', { department_id: 5 });

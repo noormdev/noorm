@@ -186,7 +186,7 @@ Only transient failures retry: messages containing `econnrefused`, `etimedout`, 
 ### Transactions
 
 
-`transaction(fn)` hands `fn` a Kysely `Transaction<DB>` and resolves with its return value. A throw inside `fn` rolls back, so do not swallow errors in the callback.
+`transaction(fn)` hands `fn` a Kysely `Transaction<DB>` with `proc`, `func`, and `tvf` attached, and resolves with its return value. A throw inside `fn` rolls back, so do not swallow errors in the callback.
 
 ```typescript
 const cancelled = await ctx.transaction(async (trx) => {
@@ -207,6 +207,27 @@ const cancelled = await ctx.transaction(async (trx) => {
     return open.length;
 });
 ```
+
+Routine calls run on the transaction's connection, so they see transaction-scoped settings and roll back with the rest of `fn`.
+
+```typescript
+import { sql } from 'kysely';
+
+const open = await ctx.transaction(async (trx) => {
+    await sql`SET LOCAL statement_timeout = '8s'`.execute(trx);
+
+    return trx.tvf('party_open_orders', { party_id: 2 });
+});
+// SELECT * FROM "party_open_orders"("party_id" => $1), cancelled if it runs past 8 seconds
+```
+
+| Rule | Behavior |
+|---|---|
+| Handle type | `TransactionScope` is `Transaction<DB> & RoutineCalls<Procs, Funcs, Tvfs>`. A callback annotated `(trx: Transaction<DB>) => …` still compiles |
+| `SET LOCAL` | Postgres syntax. It lasts until the transaction ends |
+| Routine names | Qualified with the context's schema, as on `ctx` |
+| `trx.proc` on postgres | Looks the name up in `pg_catalog.pg_proc` first: a procedure runs `CALL`, anything else runs `SELECT * FROM name(...)`. No `CALL` is attempted against a name with no visible procedure, so calling a function does not abort the transaction. A name that is both a procedure and a function runs `CALL`, which fails with 42809 and aborts the transaction when it resolves to the function: arguments that match a function overload, or a function earlier on `search_path` than the procedure. `trx.tvf` reaches the function in every case |
+| Derived handles | `trx.withSchema(...)`, `trx.withPlugin(...)`, and other Kysely instances derived from `trx` carry no `proc`, `func`, or `tvf` |
 
 
 ### Impersonation
@@ -288,7 +309,7 @@ await ctx.kysely.selectFrom('sales_order').selectAll().execute();
 | Replace, not stack | `ctx.withSchema('a').withSchema('b')` resolves against `b` only |
 | Routine names | `proc`, `func`, and `tvf` prefix a name that has no `.` with the schema. A name with a `.` passes through |
 | `transaction` | Inherits the schema |
-| `impersonate` | `scope.kysely` and `scope.transaction` stay schema-qualified. `scope.proc`, `scope.func`, and `scope.tvf` call the builders with the name as given, so qualify routine names yourself inside a scope |
+| `impersonate` | `scope.kysely` and the Kysely builder on `scope.transaction` stay schema-qualified. Routine methods inside a scope (`scope.proc`/`func`/`tvf` and the same methods on the `scope.transaction` handle) call the builders with the name as given, so qualify routine names yourself |
 | Raw `` sql`...` `` | Not rewritten. Unqualified identifiers resolve against the connection's default schema, so qualify them by hand |
 | `ctx.noorm` | Not affected. Pass `schema` to `db.describe*` explicitly |
 
@@ -357,7 +378,7 @@ await ctx.proc('close_order', [2, 1]);
 await ctx.proc('archive_closed_orders');
 ```
 
-On postgres, `proc()` retries as `SELECT * FROM name(...)` when `CALL` fails with SQLSTATE `42809` or `42883`. One method therefore reaches both `CREATE PROCEDURE` and `CREATE FUNCTION` objects.
+On postgres, `proc()` retries as `SELECT * FROM name(...)` when `CALL` fails with SQLSTATE `42809` or `42883`. One method therefore reaches both `CREATE PROCEDURE` and `CREATE FUNCTION` objects. Inside a transaction a failed `CALL` would abort it, so `trx.proc` decides up front instead; see [Transactions](#transactions).
 
 
 ### Parameter handling and NULL semantics
@@ -1067,7 +1088,7 @@ Every class below is exported from `@noormdev/sdk`:
 | Templates | `TemplateResult` |
 | Vault | `VaultSecret`, `VaultStatus`, `VaultCopyOptions`, `VaultCopyResult`, `VaultPropagationResult` |
 | Transfer and DT | `TransferOptions`, `TransferPlan`, `TransferTablePlan`, `TransferResult`, `TransferTableResult`, `ConflictStrategy`, `ExportOptions`, `ImportOptions` |
-| Routines | `tvp`, `TvpValue`, `ImpersonatedScope`, `ExtractArgs`, `ExtractReturn` |
+| Routines | `tvp`, `TvpValue`, `ImpersonatedScope`, `RoutineCalls`, `TransactionScope`, `ExtractArgs`, `ExtractReturn` |
 | Events | `noormObserver`, `NoormEvents`, `NoormEventNames` |
 | Errors | `RequireTestError`, `ProtectedConfigError`, `NotConnectedError`, `VaultAccessError`, `ImpersonationError`, `LockAcquireError`, `LockExpiredError`, `ChangeValidationError`, `ChangeNotFoundError`, `ChangeAlreadyAppliedError`, `ChangeNotAppliedError`, `ChangeOrphanedError`, `ManifestReferenceError` |
 

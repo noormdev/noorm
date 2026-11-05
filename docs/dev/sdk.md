@@ -231,6 +231,35 @@ const result = await ctx.transaction(async (trx) => {
 })
 ```
 
+The handle also carries `proc`, `func`, and `tvf`, typed off the context's `Procs`, `Funcs`, and `Tvfs` and running on the transaction's connection. Use them when a routine call needs a transaction-scoped setting, or has to roll back with the rest of the callback:
+
+```typescript
+import { sql } from 'kysely'
+
+const deptUsers = await ctx.transaction(async (trx) => {
+    await sql`SET LOCAL statement_timeout = '8s'`.execute(trx)
+    return trx.tvf('get_department_users', { dept_id: 5 })
+})
+```
+
+`SET LOCAL` is Postgres syntax and lasts until the transaction ends. Routine names on the `ctx.transaction` handle get the context's schema prefix, as `ctx.proc` does. The `scope.transaction` handle inside `impersonate()` passes names as given, like `scope.proc`. Kysely instances derived from the handle, such as `trx.withSchema(...)`, are plain Kysely and have no routine methods.
+
+The handle's type is `TransactionScope<DB, Procs, Funcs, Tvfs>`, which is `Transaction<DB> & RoutineCalls<Procs, Funcs, Tvfs>`. A callback annotated `(trx: Transaction<DB>) => ...` still compiles.
+
+On Postgres a failed `CALL` aborts the transaction, so `trx.proc` checks `pg_catalog.pg_proc` before running anything:
+
+```mermaid
+flowchart TD
+    P["trx.proc(name)"] --> L{"pg_proc has a<br/>procedure named name?"}
+    L -->|no| S["SELECT * FROM name(...)"]
+    L -->|yes| C["CALL name(...)"]
+    C --> F{"CALL resolves<br/>to a function?"}
+    F -->|no| R["Procedure runs"]
+    F -->|yes| A["42809, transaction<br/>aborted"]
+```
+
+`CALL` resolves to a function when one name is both kinds and the arguments match a function overload, or a function sits earlier on `search_path` than the procedure. The lookup matches on name only, so `trx.tvf` is the call that reaches the function in every case.
+
 
 ### Schema Scoping
 
@@ -255,7 +284,7 @@ await acct.proc('billing.close_period')
 // -> already qualified: caller's schema wins, no prefix added
 ```
 
-Scoping composes through `transaction()` and `impersonate()` — both stay qualified against the derived schema. Calling `withSchema` again replaces the schema rather than stacking (`ctx.withSchema('a').withSchema('b')` resolves against `b`). `connect()`/`disconnect()` on either instance affect both — one connection, N typed views.
+Scoping composes through `transaction()` and `impersonate()`: the query builder on both, and the routine methods on the `ctx.transaction` handle, stay qualified against the derived schema. Routine methods on an impersonated scope pass names as given; see the `impersonate` row in the [reference page's schema scoping table](../reference/sdk.md#schema-scoping). Calling `withSchema` again replaces the schema rather than stacking (`ctx.withSchema('a').withSchema('b')` resolves against `b`). `connect()`/`disconnect()` on either instance affect both — one connection, N typed views.
 
 Unqualified identifiers inside raw `` sql`…` `` fragments are **not** rewritten — they resolve against the connection default. Qualify raw SQL by hand or use the query builder. The qualifier is dialect pass-through: a schema on postgres/mssql, a database on mysql, an ATTACHed database name on sqlite.
 
@@ -310,6 +339,8 @@ Parameter types control the call signature:
 - **void** → no params required
 
 `proc()` and `func()` throw on SQLite, which has no stored procedure or function call support. `tvf()` is only available on MSSQL and PostgreSQL.
+
+On PostgreSQL, `ctx.proc` outside a transaction runs `CALL` and, when that fails with 42809 or 42883 because the name is a function, retries as `SELECT * FROM name(...)`. Inside a transaction `trx.proc` decides up front instead; see [Transactions](#transactions).
 
 
 #### Parameter handling and NULL semantics
