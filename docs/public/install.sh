@@ -12,6 +12,14 @@ main() {
     os=$(detect_os)
     arch=$(detect_arch)
     suffix="${os}-${arch}"
+    if [ "$os" = "linux" ]; then
+        for loader in /lib/ld-musl-*.so.1; do
+            if [ -e "$loader" ]; then
+                suffix="${suffix}-musl"
+                break
+            fi
+        done
+    fi
 
     if [ "$os" = "windows" ]; then
         suffix="${suffix}.exe"
@@ -22,14 +30,14 @@ main() {
     version=$(echo "$tag" | sed 's/@noormdev\/cli@//')
     install_dir=$(find_install_dir)
 
-    echo "Installing noorm v${version} (${os}-${arch}) to ${install_dir}..."
+    echo "Installing noorm v${version} (${suffix}) to ${install_dir}..."
 
     url="https://github.com/${REPO}/releases/download/${tag}/noorm-${suffix}"
     tmpfile=$(mktemp)
 
     if ! curl -fsSL -o "$tmpfile" "$url"; then
         echo "Error: Failed to download binary from ${url}" >&2
-        echo "No binary available for ${os}-${arch}." >&2
+        echo "No binary available for ${suffix}." >&2
         rm -f "$tmpfile"
         exit 1
     fi

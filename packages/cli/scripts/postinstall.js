@@ -102,7 +102,7 @@ function isSourceCheckout() {
  * Resolves the platform suffix used in binary asset names.
  *
  * Maps Node's process.platform and process.arch to the naming convention
- * used by the build-binary script: noorm-{os}-{arch}
+ * used by the build-binary script: noorm-{os}-{arch}[-musl]
  */
 function getPlatformSuffix() {
 
@@ -121,6 +121,14 @@ function getPlatformSuffix() {
     }
 
     const suffix = `${os}-${cpu}`;
+
+    // Alpine uses musl rather than the glibc loader used by other Linux builds.
+    const muslLoader = arch === 'x64' ? 'x86_64' : 'aarch64';
+    if (platform === 'linux' && existsSync(`/lib/ld-musl-${muslLoader}.so.1`)) {
+
+        return `${suffix}-musl`;
+
+    }
 
     if (platform === 'win32') {
         return `${suffix}.exe`;
