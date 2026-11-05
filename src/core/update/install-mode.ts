@@ -6,6 +6,7 @@
  * - binary: standalone compiled binary → update via GitHub release download
  * - development: running from source → no updates
  */
+import { existsSync } from 'node:fs';
 import { assertValidVersion, getCurrentVersion } from './checker.js';
 
 /**
@@ -128,6 +129,14 @@ export function getBinaryAssetName(): string {
     else {
 
         suffix = `${platform}-${arch}`;
+
+    }
+
+    // Match the installer's libc selection so updates preserve Alpine compatibility.
+    const muslLoader = arch === 'x64' ? 'x86_64' : arch === 'arm64' ? 'aarch64' : undefined;
+    if (platform === 'linux' && muslLoader && existsSync(`/lib/ld-musl-${muslLoader}.so.1`)) {
+
+        suffix += '-musl';
 
     }
 

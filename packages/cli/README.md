@@ -19,6 +19,8 @@ You can also install without npm:
 curl -fsSL https://noorm.dev/install.sh | sh
 ```
 
+On Alpine Linux, the standalone CLI needs `libstdc++` and no separate Node.js or Bun runtime. For the shell installer, install `curl`, CA certificates, and `libstdc++` first with `apk add curl ca-certificates libstdc++`. The next CLI release supplies native musl binaries and automatically selects them when installing. For manual downloads from GitHub Releases, choose `noorm-linux-x64-musl` or `noorm-linux-arm64-musl`; glibc Linux uses `noorm-linux-x64` or `noorm-linux-arm64`.
+
 Supports **PostgreSQL**, **MySQL**, **SQLite**, and **SQL Server** on macOS, Linux, and Windows.
 
 
