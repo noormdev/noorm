@@ -4,7 +4,7 @@
  * Cross-platform binary builder using bun build --compile.
  *
  * Produces standalone executables for all supported platforms.
- * Each binary embeds the Bun runtime — no external dependencies needed.
+ * Each binary embeds the Bun runtime; OS shared libraries are still required.
  */
 import { readFile } from 'fs/promises';
 import { $ } from 'bun';
@@ -20,6 +20,8 @@ const targets = [
     { bun: 'bun-darwin-x64', suffix: 'darwin-x64' },
     { bun: 'bun-linux-x64', suffix: 'linux-x64' },
     { bun: 'bun-linux-arm64', suffix: 'linux-arm64' },
+    { bun: 'bun-linux-x64-musl', suffix: 'linux-x64-musl' },
+    { bun: 'bun-linux-arm64-musl', suffix: 'linux-arm64-musl' },
     { bun: 'bun-windows-x64', suffix: 'windows-x64.exe' },
 ];
 

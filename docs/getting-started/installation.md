@@ -20,7 +20,9 @@ noorm --version
 1.5.1
 ```
 
-The binary needs no runtime and includes the database drivers for PostgreSQL, MySQL, SQLite, and SQL Server. For npm, Windows, and the GitHub mirror, see [Download](/download).
+The binary needs no separate Node.js or Bun runtime and includes the database drivers for PostgreSQL, MySQL, SQLite, and SQL Server. For npm, Windows, and the GitHub mirror, see [Download](/download).
+
+On Alpine Linux, the standalone CLI needs `libstdc++`. For the shell installer, install it along with `curl` and CA certificates: `apk add curl ca-certificates libstdc++`. The next CLI release supplies native musl binaries; the shell installer automatically selects `noorm-linux-x64-musl` or `noorm-linux-arm64-musl` as appropriate. These files are also available for manual download from the [releases page](https://github.com/noormdev/noorm/releases).
 
 `noorm` on its own prints the command list. `noorm ui` opens the [terminal UI](/tui).
 

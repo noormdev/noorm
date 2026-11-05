@@ -10,7 +10,7 @@ next: false
 
 # Download
 
-noorm builds and changes databases. ignatius models them before they exist. Each is one binary with no runtime to install.
+noorm builds and changes databases. ignatius models them before they exist. Each is one binary with no separate Node.js or Bun runtime to install.
 
 <div class="dl-grid">
 <div class="dl-tool">
@@ -35,6 +35,8 @@ npm install -g @noormdev/cli
 ```
 
 :::
+
+On Alpine Linux, the standalone CLI needs `libstdc++`. For the shell installer, install it along with `curl` and CA certificates: `apk add curl ca-certificates libstdc++`. The next CLI release supplies native musl binaries, and the installer automatically selects them. For manual downloads from [noorm releases](https://github.com/noormdev/noorm/releases), choose `noorm-linux-x64-musl` for x64 or `noorm-linux-arm64-musl` for ARM64. Other Linux systems use `noorm-linux-x64` or `noorm-linux-arm64`.
 
 <p class="dl-label">Agent skill</p>
 
