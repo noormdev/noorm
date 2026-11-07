@@ -36,6 +36,7 @@ export const { allConfigs, getConfig } = makeNestedConfig<ConfigInput>(process.e
     filter: (key) =>
         key.startsWith('NOORM_')
         && !META_ENV_VARS.has(key)
+        && !key.startsWith('NOORM_CONNECTION_')
         && !NON_CONFIG_ENV_PREFIXES.some((prefix) => key.startsWith(prefix)),
     stripPrefix: 'NOORM_',
     forceAllCapToLower: true,
@@ -66,6 +67,62 @@ export const { allConfigs, getConfig } = makeNestedConfig<ConfigInput>(process.e
 export function getEnvConfig(): ConfigInput {
 
     const config = allConfigs();
+    const connection: Record<string, unknown> = {};
+    const nested: Record<string, Record<string, unknown>> = {};
+    const fields: Record<string, [string, 'string' | 'integer' | 'boolean']> = {
+        DIALECT: ['dialect', 'string'], HOST: ['host', 'string'],
+        PORT: ['port', 'integer'], DATABASE: ['database', 'string'],
+        FILENAME: ['filename', 'string'], USER: ['user', 'string'],
+        PASSWORD: ['password', 'string'], SSL: ['ssl', 'boolean'],
+        SSL_REJECT_UNAUTHORIZED: ['ssl.rejectUnauthorized', 'boolean'],
+        SSL_CA: ['ssl.ca', 'string'], SSL_CERT: ['ssl.cert', 'string'],
+        SSL_KEY: ['ssl.key', 'string'], POOL_MIN: ['pool.min', 'integer'],
+        POOL_MAX: ['pool.max', 'integer'], TLS_SERVER_NAME: ['tlsServerName', 'string'],
+        CONNECT_TIMEOUT_MS: ['connectTimeoutMs', 'integer'],
+        POOL_IDLE_TIMEOUT_MILLIS: ['pool.idleTimeoutMillis', 'integer'],
+        STATEMENT_TIMEOUT_MS: ['statementTimeoutMs', 'integer'],
+        QUERY_TIMEOUT_MS: ['queryTimeoutMs', 'integer'],
+        APPLICATION_NAME: ['applicationName', 'string'],
+        KEEP_ALIVE: ['keepAlive', 'boolean'],
+    };
+    const keys = Object.keys(process.env).filter((key) => key.startsWith('NOORM_CONNECTION_')).sort();
+    const scalar = 'NOORM_CONNECTION_SSL';
+    const sslNested = keys.find((key) => key.startsWith(`${scalar}_`));
+    if (keys.includes(scalar) && sslNested) {
+
+        throw new Error(`${scalar} conflicts with ${sslNested}`);
+
+    }
+    for (const key of keys) {
+
+        const mapping = fields[key.slice('NOORM_CONNECTION_'.length)];
+        if (!mapping) throw new Error(`Unsupported connection environment variable ${key}`);
+        const [path, type] = mapping;
+        const raw = process.env[key]!;
+        let value: string | number | boolean = raw;
+        if (type === 'boolean') {
+
+            if (!['true', 'false', '1', '0'].includes(raw)) throw new Error(`${key} must be true, false, 1, or 0`);
+            value = raw === 'true' || raw === '1';
+
+        }
+        if (type === 'integer') {
+
+            if (!/^\d+$/.test(raw) || !Number.isSafeInteger(Number(raw))) {
+
+                throw new Error(`${key} must be an integer`);
+
+            }
+            value = Number(raw);
+
+        }
+        const [parent, child] = path.split('.');
+        if (child) (nested[parent!] ??= {})[child] = value;
+        else connection[parent!] = value;
+
+    }
+    Object.assign(connection, nested);
+    if (keys.length) config.connection = connection as ConfigInput['connection'];
 
     // Validate dialect if provided
     if (config.connection?.dialect) {
