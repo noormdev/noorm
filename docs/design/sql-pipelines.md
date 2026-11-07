@@ -155,6 +155,8 @@ erDiagram
 
 The ERD is a relationship overview. The [Ignatius model](../datamodel/ignatius.yml) and [portable viewer](../datamodel/schema.html) contain the complete proposed columns and synthetic examples. PostgreSQL/MSSQL use the `noorm` schema; MySQL/SQLite use prefixed internal names.
 
+The model also includes proposed data-flow diagrams for [pipeline execution](../datamodel/flows/pipeline-execution/index.md) and [history queries](../datamodel/flows/pipeline-history/index.md). These show the data exchanged by preparation, reservation, SQL execution, and audit finalization, with readable flow labels and example payloads. In-memory stores are transient handoffs, not new tables or resume checkpoints. Process numbers label DFD processes; they do not replace the pipeline's manifest-derived step numbers.
+
 | Invariant | Meaning |
 |---|---|
 | `pipeline_run.id = change.id` | The operation ID is the pipeline run ID; there is no second generated identity |
