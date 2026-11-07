@@ -87,6 +87,15 @@ Environment variables override the stored config. [Stages](/guide/environments/s
 | `NOORM_YES` | Any value except empty, `0`, or `false` skips `confirm` prompts on the `user` channel |
 | `NOORM_CHANNEL` | `user` or `agent`. See [Which channel is a process on?](#which-channel-is-a-process-on) |
 
+Connection variables also include `NOORM_CONNECTION_FILENAME`, `NOORM_CONNECTION_POOL_MIN`,
+`NOORM_CONNECTION_POOL_MAX`, `NOORM_CONNECTION_CONNECT_TIMEOUT_MS`, and
+`NOORM_CONNECTION_TLS_SERVER_NAME`. Detailed SSL uses `NOORM_CONNECTION_SSL_REJECT_UNAUTHORIZED`,
+`NOORM_CONNECTION_SSL_CA`, `NOORM_CONNECTION_SSL_CERT`, and `NOORM_CONNECTION_SSL_KEY`;
+do not combine these with scalar `NOORM_CONNECTION_SSL`. Booleans are `true` or `false`,
+and ports, pool sizes and timeouts are integers. Unsupported connection names are errors.
+Passwords remain strings. `config validate` tests the effective environment-overridden
+connection without saving the overrides.
+
 When no config is selected by flag, `NOORM_CONFIG`, or `config use`, noorm builds one named `__env__` from the variables. It needs `NOORM_CONNECTION_DIALECT` and `NOORM_CONNECTION_DATABASE`:
 
 ```bash
