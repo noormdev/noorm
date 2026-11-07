@@ -23,6 +23,7 @@ import { parseConfig } from '../../core/config/schema.js';
 import type { Config } from '../../core/config/types.js';
 import type { ConnectionConfig } from '../../core/connection/types.js';
 import { DEFAULT_ACCESS } from '../../core/policy/index.js';
+import { getSettingsManager } from '../../core/settings/index.js';
 import { initState } from '../../core/state/index.js';
 import { outputResult, outputError, sharedArgs } from '../_utils.js';
 import { EXIT } from '../_exit.js';
@@ -64,6 +65,8 @@ const initCommand = defineCommand({
             description: 'Mark the config as a test database (satisfies the SDK\'s requireTest guard)',
             default: false,
         },
+        type: { type: 'string', description: 'Config type: local or remote' },
+        stage: { type: 'string', description: 'Inherit config type from this stage' },
         yes: sharedArgs.yes,
         json: sharedArgs.json,
     },
@@ -72,6 +75,33 @@ const initCommand = defineCommand({
         const projectRoot = process.cwd();
         const stateFile = join(projectRoot, '.noorm', 'state', 'state.enc');
         const configName = args.name || process.env['NOORM_CI_CONFIG_NAME'] || 'ci';
+        if (args.type && args.type !== 'local' && args.type !== 'remote') {
+
+            outputError(args, '--type must be local or remote');
+            process.exit(EXIT.USAGE);
+
+        }
+        let stageType: 'local' | 'remote' | undefined;
+        if (args.stage) {
+
+            const settings = getSettingsManager(projectRoot);
+            const [, settingsErr] = await attempt(() => settings.load());
+            if (settingsErr) {
+
+                outputError(args, `Failed to load settings: ${settingsErr.message}`);
+                process.exit(EXIT.USAGE);
+
+            }
+            const stage = settings.getStage(args.stage);
+            if (!stage) {
+
+                outputError(args, `Stage '${args.stage}' not found`);
+                process.exit(EXIT.USAGE);
+
+            }
+            stageType = stage.defaults?.type;
+
+        }
 
         // 1. Identity precheck (absorbs `noorm identity ci`)
         const envIdentity = loadIdentityFromEnv();
@@ -197,6 +227,7 @@ const initCommand = defineCommand({
 
         // 5. Create config and activate
         const connection: ConnectionConfig = {
+            ...envConfig.connection,
             dialect,
             database: asString(database)!,
             host: asString(host),
@@ -219,7 +250,7 @@ const initCommand = defineCommand({
         // (`core/config/resolver.ts`); this now agrees with it.
         const [config, parseErr] = attemptSync(() => parseConfig({
             name: configName,
-            type: 'remote',
+            type: args.type ?? stageType ?? 'remote',
             isTest: args.test,
             access: DEFAULT_ACCESS,
             connection,
