@@ -44,6 +44,10 @@ stage and never stores passwords. Single-stage creation honors connection enviro
 and flags, but persists a password only with an explicit `--password`. Existing configs
 require both `--force` and `--yes` to overwrite. Creating a differently named config
 does not persist a stage link; updating defaults does not automatically update configs.
+Use `noorm config sync --stage staging --name review` to preview and explicitly
+reapply current stage defaults to an existing config. It preserves passwords and
+fields removed from defaults, never widens access, and requires confirmation
+(`--yes` in headless mode). Sync does not establish a persistent stage link.
 
 `noorm ci init --type local` selects the CI config type independently of `--test`.
 Alternatively `--stage staging` inherits its type; `--type` wins and the default is
