@@ -118,6 +118,19 @@ export async function createContext<DB = unknown, Procs = object, Funcs = object
     const inline = options.connection && { ...options.connection };
     const password = typeof inline?.password === 'function' ? inline.password : undefined;
     if (password && inline) delete inline.password;
+    const ssl = inline?.ssl;
+    const verifier = typeof ssl === 'object' && ssl !== null ? ssl.checkServerIdentity : undefined;
+    if (verifier !== undefined && typeof verifier !== 'function') {
+
+        throw new Error('ssl.checkServerIdentity must be a function');
+
+    }
+    if (typeof ssl === 'object' && ssl !== null && inline) {
+
+        const { checkServerIdentity: _verifier, ...serializableSsl } = ssl;
+        inline.ssl = serializableSsl;
+
+    }
 
     // Use resolver - applies full priority chain:
     // defaults <- stage <- stored <- env <- flags
@@ -144,6 +157,11 @@ export async function createContext<DB = unknown, Procs = object, Funcs = object
     if (password && config.connection.dialect !== 'postgres') {
 
         throw new Error('Dynamic passwords are only supported for PostgreSQL');
+
+    }
+    if (verifier && config.connection.dialect !== 'postgres') {
+
+        throw new Error('ssl.checkServerIdentity is only supported for PostgreSQL');
 
     }
 
