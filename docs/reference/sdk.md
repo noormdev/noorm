@@ -93,25 +93,26 @@ createContext<DB = unknown, Procs = object, Funcs = object, Tvfs = object>(
 | Option | Type | Default | Effect |
 |---|---|---|---|
 | `config` | `string` | `NOORM_CONFIG`, then the active config, then env-only mode | Stored config to use |
+| `connection` | `Partial<ConnectionConfig>` | — | Non-persisted connection overrides, highest priority |
 | `projectRoot` | `string` | `process.cwd()` | Directory that holds `.noorm/` and the paths in `settings.yml` |
 | `requireTest` | `boolean` | `false` | Throws `RequireTestError` unless the resolved config has `isTest: true` |
 | `channel` | `'user' \| 'agent'` | `'user'` | Which half of the config's `access` applies; see [Access policy](#access-policy) |
 | `stage` | `string` | the stage named like the config | Stage whose `protected: true` caps the config's access. An env-only config also takes the stage's `isTest` |
 | `yes` | `boolean` | `false` | Pre-confirms `confirm` cells on the `user` channel. Ignored on `agent` |
 
-The context is not connected when it returns. The config name comes first, then the config is merged from built-in defaults, the stored config, and `NOORM_*` variables:
+The context is not connected when it returns. Connection fields merge in order: built-in defaults, stage, stored config, environment, then `connection`.
 
 ```mermaid
 flowchart TD
     A["createContext(options)"] --> B{"config named?"}
     B -->|"yes: options.config,<br/>NOORM_CONFIG, active"| C["stored config<br/>(unknown name throws)"]
-    B -->|"no, env has dialect<br/>and database"| D["env-only config"]
+    B -->|"no, inline or env connection"| D["synthetic config"]
     B -->|"no"| E["throws: No config<br/>available"]
-    C --> F["merge: defaults,<br/>stored, NOORM_*"]
-    D --> G["merge: defaults,<br/>NOORM_*"]
+    C --> F["merge: defaults, stage,<br/>stored, env, inline"]
+    D --> G["merge: defaults, stage,<br/>env, inline"]
 ```
 
-The later layer wins. Env-only mode names the config `__env__`, which shows up in error messages and event payloads. It reads no stored config, so it needs no `.noorm/` directory: a missing `state.enc` resolves to empty state. [Deploying an application](/guide/deployment) covers that setup.
+The later layer wins. Without a stored config, an inline connection uses the name `__inline__`; env-only mode uses `__env__`. A missing state file needs no identity key. An explicitly named config must exist. Stage defaults and access ceilings still apply, and `requireTest` still requires a test-marked config. Inline values are never saved.
 
 | Variable | Effect |
 |---|---|

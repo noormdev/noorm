@@ -14,8 +14,9 @@ import type { Config, ConfigInput, CompletenessCheck } from './types.js';
 import { getEnvConfigName } from '../environment.js';
 import { parseConfig, type ConfigSchemaType } from './schema.js';
 import { getEnvConfig } from './index.js';
+import { stageFields } from './stage.js';
 import type { SettingsManager, StageDefaults } from '../settings/index.js';
-import type { ConfigAccess, Role } from '../policy/index.js';
+import { clampToCeiling, PROTECTED_STAGE_CEILING } from '../policy/index.js';
 
 /**
  * Interface for state manager dependency.
@@ -84,40 +85,6 @@ const DEFAULTS: ConfigInput = {
         level: 'info',
     },
 };
-
-/**
- * Ceiling a `protected: true` stage caps a config's access to. A config can
- * still be stricter than this (e.g. `agent: false`); it just can't be looser.
- */
-export const PROTECTED_STAGE_CEILING: ConfigAccess = { user: 'operator', agent: 'viewer' };
-
-/**
- * Strictness rank for comparing roles: `false` (invisible) is stricter than
- * `viewer`, which is stricter than `operator`, which is stricter than `admin`.
- */
-function roleRank(role: Role | false): number {
-
-    if (role === false) return 0;
-    if (role === 'viewer') return 1;
-    if (role === 'operator') return 2;
-
-    return 3;
-
-}
-
-/**
- * Clamps access down to a ceiling, per channel. A value stricter than the
- * ceiling survives unchanged; a looser value is pulled down to it. Never
- * loosens a value that was already stricter than the ceiling.
- */
-export function clampToCeiling(access: ConfigAccess, ceiling: ConfigAccess): ConfigAccess {
-
-    return {
-        user: roleRank(access.user) <= roleRank(ceiling.user) ? access.user : ceiling.user,
-        agent: roleRank(access.agent) <= roleRank(ceiling.agent) ? access.agent : ceiling.agent,
-    };
-
-}
 
 /**
  * Applies the stage `protected: true` access ceiling to a resolved config.
@@ -215,9 +182,20 @@ export function resolveConfig(state: StateProvider, options: ResolveOptions = {}
 
     if (!configName) {
 
-        // Check if we have enough env vars to run without a stored config
+        // Inline SDK overrides can supply the missing connection fields too.
         const envConfig = getEnvConfig();
-        if (envConfig.connection?.dialect && envConfig.connection?.database) {
+        const stageDefaults = getStageDefaults(
+            options.flags?.name ?? envConfig.name ?? '__env__',
+            options.stage,
+            options.settings,
+        );
+        const connection = {
+            ...stageFields(stageDefaults ?? {}, true).connection,
+            ...envConfig.connection,
+            ...options.flags?.connection,
+        };
+
+        if (options.flags?.connection || (envConfig.connection && connection.dialect && connection.database)) {
 
             return resolveFromEnvOnly(envConfig, options.flags, options.stage, options.settings);
 
@@ -241,16 +219,16 @@ export function resolveConfig(state: StateProvider, options: ResolveOptions = {}
     // 4. Merge: defaults <- stage <- stored <- env <- flags
     // Clone DEFAULTS to avoid mutation
     const envConfig = getEnvConfig();
-    let merged = clone(DEFAULTS);
+    let merged: Partial<ConfigInput> = clone(DEFAULTS);
 
     if (stageDefaults) {
 
-        merged = merge(merged, stageDefaults);
+        merged = merge(merged, stageFields(stageDefaults, true));
 
     }
 
     merged = merge(merged, stored);
-    merged = merge(merged, envConfig) as ConfigInput;
+    merged = merge(merged, envConfig);
     merged = merge(merged, options.flags ?? {});
 
     // 5. Validate, apply defaults, and clamp to the stage's access ceiling
@@ -291,17 +269,17 @@ function resolveFromEnvOnly(
 ): Config {
 
     // Generate a name if not provided
-    const name = envConfig.name ?? flags?.name ?? '__env__';
+    const name = envConfig.name ?? flags?.name ?? (flags?.connection ? '__inline__' : '__env__');
 
     // Get stage defaults if available
     const stageDefaults = getStageDefaults(name, stageName, settings);
 
     // Merge: defaults <- stage <- env <- flags
-    let merged = clone(DEFAULTS);
+    let merged: Partial<ConfigInput> = clone(DEFAULTS);
 
     if (stageDefaults) {
 
-        merged = merge(merged, stageDefaults);
+        merged = merge(merged, stageFields(stageDefaults, true));
 
     }
 
@@ -311,7 +289,7 @@ function resolveFromEnvOnly(
     // Ensure name is set
     if (!merged.name) {
 
-        merged.name = '__env__';
+        merged.name = name;
 
     }
 

@@ -31,6 +31,7 @@ import { getIdentityForConfig } from '../core/identity/index.js';
 import { loadIdentityFromEnv } from '../core/identity/env.js';
 import { setKeyOverride, setIdentityOverride } from '../core/identity/storage.js';
 import { resolveConfig, SettingsProvider } from '../core/config/resolver.js';
+import type { ConfigInput } from '../core/config/types.js';
 
 import { Context } from './context.js';
 import { checkRequireTest } from './guards.js';
@@ -120,6 +121,7 @@ export async function createContext<DB = unknown, Procs = object, Funcs = object
         name: options.config,
         stage: options.stage,
         settings: toSettingsProvider(settingsManager),
+        flags: options.connection ? { connection: options.connection } as ConfigInput : undefined,
     });
 
     if (!config) {
