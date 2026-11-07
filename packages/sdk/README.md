@@ -13,6 +13,10 @@ npm install @noormdev/sdk kysely
 
 Install the driver for your dialect alongside it — `pg`, `mysql2`, `tedious` + `tarn`, or `better-sqlite3`. They are optional peer dependencies, so only the one you use needs to be present.
 
+The SDK ships one ESM build and requires Node 22.13 or newer. CommonJS can load it with `const { createContext } = require('@noormdev/sdk')` when the entire eagerly loaded module graph is synchronous (no top-level `await`); asynchronous `import('@noormdev/sdk')` is also available.
+
+Jest has a separate loader: Jest 30.4.2 may still require `--experimental-vm-modules` and ESM-compatible transforms. See the [Jest 30 ESM guide](https://jestjs.io/docs/30.0/ecmascript-modules); plain Node loading does not establish Jest compatibility.
+
 
 ## Usage
 
