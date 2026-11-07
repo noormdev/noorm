@@ -8,6 +8,7 @@ import { checkServerIdentity } from 'node:tls';
 import type { PeerCertificate } from 'node:tls';
 import { Kysely, PostgresDialect } from 'kysely';
 import type { ConnectionConfig, ConnectionResult, RuntimeConnectionOptions } from '../types.js';
+import { observer } from '../../observer.js';
 import { DEFAULT_PORTS, connectTimeoutFor } from '../defaults.js';
 
 /**
@@ -27,6 +28,7 @@ import { DEFAULT_PORTS, connectTimeoutFor } from '../defaults.js';
 export async function createPostgresConnection(
     config: ConnectionConfig,
     runtime?: RuntimeConnectionOptions,
+    configName = '__default__',
 ): Promise<ConnectionResult> {
 
     // Dynamic import to avoid compile-time dependency
@@ -83,6 +85,18 @@ export async function createPostgresConnection(
         // pg's own default is 0, meaning wait forever: an unreachable host
         // never comes back without this.
         connectionTimeoutMillis: connectTimeoutFor(config),
+    });
+
+    // Driver errors can contain arbitrary secrets. Active query errors still
+    // propagate to their caller; this listener covers idle clients only.
+    pool.on('error', () => {
+
+        observer.emit('connection:error', {
+            configName,
+            phase: 'idle',
+            error: 'PostgreSQL idle pool connection failed',
+        });
+
     });
 
     const db = new Kysely<unknown>({

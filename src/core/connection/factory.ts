@@ -16,7 +16,11 @@ import { getConnectionManager } from './manager.js';
 import { connectTimeoutFor } from './defaults.js';
 import { DatabaseConnectionError, explainConnectionError } from './errors.js';
 
-type DialectFactory = (config: ConnectionConfig, runtime?: RuntimeConnectionOptions) => ConnectionResult | Promise<ConnectionResult>;
+type DialectFactory = (
+    config: ConnectionConfig,
+    runtime?: RuntimeConnectionOptions,
+    configName?: string,
+) => ConnectionResult | Promise<ConnectionResult>;
 
 /**
  * Get the dialect factory function.
@@ -181,7 +185,7 @@ async function openConnection(
 
                 }
 
-                const conn = await createFn!(config, runtime);
+                const conn = await createFn!(config, runtime, configName);
 
                 // The driver can hand back a live pool after the caller gave
                 // up. Nothing else holds it at this point, so close it here.

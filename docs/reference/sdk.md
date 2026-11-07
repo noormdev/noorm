@@ -120,6 +120,8 @@ For PostgreSQL through an IP tunnel, set `ssl: { ca: trustedCa }` and `tlsServer
 
 Inline SSL objects may provide `checkServerIdentity(hostname, certificate)` at runtime. It receives the configured TLS name when present, otherwise Node's hostname, and the peer certificate. Returning an error rejects the connection. This callback replaces Node's standard identity check and must implement any checks the application requires; it does not replace CA chain verification. It cannot be stored in YAML.
 
+An idle PostgreSQL pool client that fails emits `connection:error` on the process-global `noormObserver`, with `{ configName, phase: 'idle', error }`. The fixed error text excludes driver details and credentials. The pool removes the failed idle client and may open a replacement; active query failures still reject the query. Each SDK-owned pool has one listener for its lifetime, and `disconnect()` closes the pool.
+
 | Variable | Effect |
 |---|---|
 | `NOORM_CONFIG` | Config name when `options.config` is unset |
