@@ -324,6 +324,17 @@ describe('config: schema validation', () => {
 
         describe('access roles', () => {
 
+            it('accepts custom names and rejects empty role names', () => {
+
+                const config = createValidConfig({ access: { user: 'auditor', agent: 'automation' } });
+                expect(parseConfig(config).access).toEqual({ user: 'auditor', agent: 'automation' });
+                expect(() => parseConfig({ ...config, access: { user: ' ', agent: false } }))
+                    .toThrow(ConfigValidationError);
+                expect(() => parseConfig({ ...config, access: { user: 'auditor', agent: '' } }))
+                    .toThrow(ConfigValidationError);
+
+            });
+
             /** Strips the default `access` so the legacy `protected` fallback is reachable. */
             function withoutAccess(config: Config): Omit<Config, 'access'> {
 

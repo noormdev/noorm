@@ -20,6 +20,7 @@ import { useAppContext } from '../app-context.js';
 import { useConnection } from './useConnection.js';
 import { getVaultStatus, getVaultKey, getAllVaultSecrets } from '../../core/vault/index.js';
 import { loadPrivateKey } from '../../core/identity/storage.js';
+import { checkConfigPolicy, getPolicyFingerprint, withPolicyConfirmation } from '../../core/policy/index.js';
 
 
 /**
@@ -34,13 +35,19 @@ export interface VaultSecretKeysResult {
     requiredSecrets: { key: string; type: string; description?: string }[];
 
     /**
-     * Message describing a failed vault read, or null.
-     *
-     * Only set when a vault call actually threw. Absent-vault states — no
-     * access, no private key on disk, no vault key row — resolve to null so
-     * projects that never adopted the vault stay silent.
+     * Message describing a failed, denied, or cancelled vault read, or null.
+     * Absent-vault states — no access, no private key on disk, no vault key
+     * row — resolve to null.
      */
     vaultError: string | null;
+
+    /** Confirmation required before loading vault keys, if any. */
+    vaultConfirmation: {
+        confirmationPhrase?: string;
+        configName: string;
+        onConfirm: () => void;
+        onCancel: () => void;
+    } | null;
 
 }
 
@@ -57,8 +64,18 @@ export interface VaultSecretKeysResult {
 export function useVaultSecretKeys(): VaultSecretKeysResult {
 
     const { activeConfig, activeConfigName, settingsManager, identity } = useAppContext();
-    const [vaultSecretKeys, setVaultSecretKeys] = useState<string[]>([]);
+    const [loadedVault, setLoadedVault] = useState<{
+        config: typeof activeConfig;
+        configName: typeof activeConfigName;
+        identity: typeof identity;
+        db: unknown;
+        fingerprint: string;
+        keys: string[];
+    } | null>(null);
     const [vaultError, setVaultError] = useState<string | null>(null);
+    const [confirmedFingerprint, setConfirmedFingerprint] = useState<string | null>(null);
+    const [dismissedFingerprint, setDismissedFingerprint] = useState<string | null>(null);
+    const [pendingFingerprint, setPendingFingerprint] = useState<string | null>(null);
 
     // Shared connection with schema ensured (vault needs __noorm_* tables)
     const { db, dialect, loading: connLoading, error: connError } = useConnection({ ensureSchema: true });
@@ -76,6 +93,16 @@ export function useVaultSecretKeys(): VaultSecretKeysResult {
             const typedDb = db as Kysely<NoormDatabase>;
 
             setVaultError(null);
+
+            const policy = checkConfigPolicy('user', activeConfig, 'vault:read');
+            if (!policy.allowed || policy.requiresConfirmation) {
+
+                setVaultError(policy.blockedReason ?? `Vault read requires confirmation (${policy.confirmationPhrase}).`);
+
+                return;
+
+            }
+            const fingerprint = getPolicyFingerprint(activeConfig);
 
             const [vaultStatus, statusErr] = await attempt(() =>
                 getVaultStatus(typedDb, identity.identityHash, dialect),
@@ -137,11 +164,41 @@ export function useVaultSecretKeys(): VaultSecretKeysResult {
 
             }
 
-            setVaultSecretKeys(Object.keys(allSecrets ?? {}));
+            if (fingerprint !== getPolicyFingerprint(activeConfig)) return;
+            setLoadedVault({ config: activeConfig, configName: activeConfigName, identity, db, fingerprint, keys: Object.keys(allSecrets ?? {}) });
 
         };
 
-        loadVaultSecrets();
+        const policy = checkConfigPolicy('user', activeConfig, 'vault:read');
+        const fingerprint = getPolicyFingerprint(activeConfig);
+        if (!policy.allowed) {
+
+            setPendingFingerprint(null);
+            setVaultError(policy.blockedReason ?? 'Vault read is not allowed.');
+
+        }
+        else if (policy.requiresConfirmation && confirmedFingerprint !== fingerprint) {
+
+            if (dismissedFingerprint !== fingerprint) {
+
+                setVaultError(null);
+                setPendingFingerprint(fingerprint);
+
+            }
+
+        }
+        else if (policy.requiresConfirmation) {
+
+            setPendingFingerprint(null);
+            void withPolicyConfirmation(activeConfig, ['vault:read'], loadVaultSecrets);
+
+        }
+        else {
+
+            setPendingFingerprint(null);
+            void loadVaultSecrets();
+
+        }
 
         return () => {
 
@@ -149,7 +206,7 @@ export function useVaultSecretKeys(): VaultSecretKeysResult {
 
         };
 
-    }, [activeConfig, activeConfigName, identity, db, dialect, connLoading, connError]);
+    }, [activeConfig, activeConfigName, identity, db, dialect, connLoading, connError, confirmedFingerprint, dismissedFingerprint]);
 
     // Get required secrets (universal + stage-specific merged)
     const requiredSecrets = useMemo(() => {
@@ -160,6 +217,39 @@ export function useVaultSecretKeys(): VaultSecretKeysResult {
 
     }, [activeConfigName, settingsManager]);
 
-    return { vaultSecretKeys, requiredSecrets, vaultError };
+    const vaultSecretKeys = loadedVault?.config === activeConfig
+        && loadedVault.configName === activeConfigName
+        && loadedVault.identity === identity
+        && loadedVault.db === db
+        && activeConfig !== null
+        && loadedVault.fingerprint === getPolicyFingerprint(activeConfig)
+        ? loadedVault.keys
+        : [];
+
+    const pendingPolicy = activeConfig && pendingFingerprint === getPolicyFingerprint(activeConfig)
+        ? checkConfigPolicy('user', activeConfig, 'vault:read')
+        : null;
+    const vaultConfirmation = activeConfig && pendingPolicy?.allowed && pendingPolicy.requiresConfirmation
+        ? {
+            confirmationPhrase: pendingPolicy.confirmationPhrase,
+            configName: activeConfig.name,
+            onConfirm: () => {
+
+                if (getPolicyFingerprint(activeConfig) !== pendingFingerprint) return;
+                setPendingFingerprint(null);
+                setConfirmedFingerprint(pendingFingerprint);
+
+            },
+            onCancel: () => {
+
+                setPendingFingerprint(null);
+                setDismissedFingerprint(pendingFingerprint);
+                setVaultError('Vault read cancelled.');
+
+            },
+        }
+        : null;
+
+    return { vaultSecretKeys, requiredSecrets, vaultError, vaultConfirmation };
 
 }

@@ -20,6 +20,7 @@ import { BunSqliteDatabase } from '../../src/core/connection/dialects/sqlite-bun
 import { VaultNamespace } from '../../src/sdk/namespaces/vault.js';
 import { VaultAccessError } from '../../src/sdk/namespaces/vault.js';
 import { initializeVault, setVaultSecret } from '../../src/core/vault/index.js';
+import { attachPolicyContext } from '../../src/core/policy/index.js';
 import type { VaultCopyResult } from '../../src/core/vault/index.js';
 import {
     NOORM_TABLES,
@@ -307,6 +308,56 @@ describe('sdk: VaultNamespace tuple-to-throw contract', () => {
             }
 
         });
+        it('requires destination write confirmation and does not let agent yes bypass it', async () => {
+
+            const previous = process.env['NOORM_YES'];
+            delete process.env['NOORM_YES'];
+            try {
+
+                const state = makeState(db);
+                state.settings.access = { roles: { reviewer: { permissions: { 'vault:write': 'confirm' } } } };
+                const destination = makeConfig('vault-copy-dest');
+                destination.access = { user: 'reviewer', agent: 'reviewer' };
+                const vault = new VaultNamespace(state);
+                await expect(vault.copy(destination, ['API_KEY'], alice.privateKey)).rejects.toThrow(/confirmation/);
+                state.options = { channel: 'agent', yes: true };
+                await expect(vault.copy(destination, ['API_KEY'], alice.privateKey)).rejects.toThrow(/confirmation/);
+
+            }
+            finally {
+
+                if (previous === undefined) delete process.env['NOORM_YES'];
+                else process.env['NOORM_YES'] = previous;
+
+            }
+
+        });
+
+        it('requires source read confirmation before attempting a copy', async () => {
+
+            const previous = process.env['NOORM_YES'];
+            delete process.env['NOORM_YES'];
+            try {
+
+                const state = makeState(db);
+                state.config.access = { user: 'reviewer', agent: 'reviewer' };
+                attachPolicyContext(state.config.access, { roles: {
+                    reviewer: { permissions: { 'vault:read': 'confirm' } },
+                } });
+                const vault = new VaultNamespace(state);
+                await expect(vault.copy(makeConfig('vault-copy-dest'), ['API_KEY'], alice.privateKey))
+                    .rejects.toThrow(/confirmation/);
+
+            }
+            finally {
+
+                if (previous === undefined) delete process.env['NOORM_YES'];
+                else process.env['NOORM_YES'] = previous;
+
+            }
+
+        });
+
 
         it('should resolve to a VaultCopyResult (not a tuple) on success', async () => {
 

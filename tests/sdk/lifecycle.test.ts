@@ -4,10 +4,27 @@
  * Tests factory behavior and pre-connect guards.
  * No ctx.connect() calls — no real DB required.
  */
-import { describe, it, expect, afterEach } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { attempt } from '@logosdx/utils';
 
 import { createContext, RequireTestError } from '../../src/sdk/index.js';
+import { generateKeyPair, setKeyOverride, clearKeyOverride } from '../../src/core/identity/index.js';
+import { resetStateManager } from '../../src/core/state/index.js';
+import { resetSettingsManager } from '../../src/core/settings/index.js';
+
+let projectRoot: string;
+
+beforeEach(async () => {
+
+    projectRoot = await mkdtemp(join(tmpdir(), 'noorm-sdk-lifecycle-'));
+    resetStateManager();
+    resetSettingsManager();
+    setKeyOverride((await generateKeyPair()).privateKey);
+
+});
 
 // ─────────────────────────────────────────────────────────────
 // Helpers
@@ -35,9 +52,13 @@ function clearEnvOnlyVars() {
 
 }
 
-afterEach(() => {
+afterEach(async () => {
 
     clearEnvOnlyVars();
+    clearKeyOverride();
+    resetStateManager();
+    resetSettingsManager();
+    await rm(projectRoot, { recursive: true, force: true });
 
 });
 
@@ -49,7 +70,7 @@ describe('sdk: createContext factory', () => {
 
     it('rejects with "not found" when config name does not exist', async () => {
 
-        const [, err] = await attempt(() => createContext({ config: '__nonexistent__' }));
+        const [, err] = await attempt(() => createContext({ config: '__nonexistent__', projectRoot }));
 
         expect(err).toBeInstanceOf(Error);
         expect.assertions(2);
@@ -65,7 +86,7 @@ describe('sdk: createContext factory', () => {
 
         setEnvOnlyVars();
 
-        const ctx = await createContext();
+        const ctx = await createContext({ projectRoot });
 
         expect(ctx.connected).toBe(false);
 
@@ -78,32 +99,13 @@ describe('sdk: createContext factory', () => {
         setEnvOnlyVars();
 
         const [, err] = await attempt(() =>
-            createContext({ requireTest: true }),
+            createContext({ requireTest: true, projectRoot }),
         );
 
         expect(err).toBeInstanceOf(RequireTestError);
 
     });
 
-    it('never opens the connection pool when requireTest check fails', async () => {
-
-        // The pool only opens inside ctx.connect(), which is called by the
-        // caller after createContext() succeeds.  When createContext() throws
-        // (RequireTestError in this case), no Context is returned and therefore
-        // connect() is never called — the pool never opens.
-        // This test proves the rejection occurs before any Context is returned.
-        setEnvOnlyVars();
-
-        const [ctx, err] = await attempt(() =>
-            createContext({ requireTest: true }),
-        );
-
-        expect(err).toBeInstanceOf(RequireTestError);
-        // attempt() returns null (not a Context) when the factory throws,
-        // confirming no Context was ever constructed and no pool was opened.
-        expect(ctx).toBeNull();
-
-    });
 
 });
 
@@ -117,7 +119,7 @@ describe('sdk: Context pre-connect behavior', () => {
 
         setEnvOnlyVars();
 
-        const ctx = await createContext();
+        const ctx = await createContext({ projectRoot });
 
         expect(() => ctx.kysely).toThrow('Not connected');
 

@@ -31,7 +31,7 @@ const sqlCommand: RpcCommand<SqlInput> = {
             access: config.access,
             channel: session.channel,
             dialect: ctx.dialect,
-        });
+        }, session.signal);
 
     },
 };

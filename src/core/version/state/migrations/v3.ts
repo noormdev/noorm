@@ -8,7 +8,7 @@
  * config grants, only who the grant now also covers (an agent shelling out
  * to the CLI, which previously ran as the human).
  */
-import { repairConfigAccess } from '../../../state/access.js';
+import { resolveStateConfigAccess } from '../../../state/access.js';
 import type { StateMigration } from '../../types.js';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -20,14 +20,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 /**
  * Migration v3: rename the agent channel's access key.
  *
- * Only the key moves — `repairConfigAccess` then decides whether the value
- * is a shape it recognises, and downgrades to `viewer` if not. That keeps
- * the one-directional rule v2 established: an unreadable stored access may
- * only make a config more restrictive, never less.
- *
- * v2 already emits the post-rename shape (it shares `repairConfigAccess`),
- * so on a v1-or-older state this migration finds no `mcp` key and is a
- * no-op. It matters for state already sitting at v2.
+ * The renamed value is preserved, including custom roles and `false`.
+ * Explicit malformed values are rejected rather than replaced.
  */
 export const v3: StateMigration = {
     version: 3,
@@ -37,11 +31,11 @@ export const v3: StateMigration = {
 
         return mapConfigAccess(state, (access) => {
 
-            if (!isRecord(access)) return repairConfigAccess(access, undefined);
+            if (!isRecord(access)) return resolveStateConfigAccess(access, undefined);
 
             const { mcp, ...rest } = access;
 
-            return repairConfigAccess({ ...rest, agent: rest['agent'] ?? mcp }, undefined);
+            return resolveStateConfigAccess({ ...rest, agent: Object.hasOwn(rest, 'agent') ? rest['agent'] : mcp }, undefined);
 
         });
 
@@ -86,7 +80,9 @@ function mapConfigAccess(
 
         }
 
-        mapped[name] = { ...rawConfig, access: fn(rawConfig['access']) };
+        mapped[name] = Object.hasOwn(rawConfig, 'access')
+            ? { ...rawConfig, access: fn(rawConfig['access']) }
+            : rawConfig;
 
     }
 

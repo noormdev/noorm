@@ -26,7 +26,7 @@
  */
 import { useState } from 'react';
 import { Box, Text, useInput, useWindowSize } from 'ink';
-import { attempt } from '@logosdx/utils';
+import { attempt, attemptSync } from '@logosdx/utils';
 
 import type { ReactElement } from 'react';
 import type { Kysely } from 'kysely';
@@ -39,6 +39,8 @@ import { useAppContext } from '../../../app-context.js';
 import { Panel, Spinner } from '../../../components/index.js';
 import { useConnection, useAsyncEffect } from '../../../hooks/index.js';
 import { fetchDetail } from '../../../../core/explore/index.js';
+import { SettingsProvider, withConfigPolicy } from '../../../../core/config/resolver.js';
+import { resolveChannel } from '../../../../core/policy/index.js';
 import {
     CELL_GAP,
     MARKER_WIDTH,
@@ -750,7 +752,7 @@ export function ExploreDetailScreen({ params }: ScreenProps): ReactElement {
 
     const { back, route } = useRouter();
     const { isFocused } = useFocusScope('ExploreDetail');
-    const { activeConfig, activeConfigName } = useAppContext();
+    const { activeConfig, activeConfigName, settingsManager } = useAppContext();
 
     // useWindowSize, not useStdout: stdout.columns and .rows mutate on resize
     // without telling React, so anything derived from them would freeze at mount
@@ -929,6 +931,10 @@ export function ExploreDetailScreen({ params }: ScreenProps): ReactElement {
     const height = viewportRows(terminalRows);
 
     const detailRows = buildDetailRows(category, detail, rowWidth);
+    const [policyConfig] = settingsManager && activeConfig
+        ? attemptSync(() => withConfigPolicy(activeConfig, new SettingsProvider(settingsManager)))
+        : [undefined];
+
 
     // Advertise the scroll keys only when there is something to scroll, so a
     // detail that fits reads exactly as it did before.
@@ -941,7 +947,8 @@ export function ExploreDetailScreen({ params }: ScreenProps): ReactElement {
         && isTableDetail(detail)
         && db !== null
         && dialect !== null
-        && activeConfigName !== null;
+        && activeConfigName !== null
+        && policyConfig != null;
 
     return (
         <Box flexDirection="column" gap={1}>
@@ -957,14 +964,10 @@ export function ExploreDetailScreen({ params }: ScreenProps): ReactElement {
                                 db={db}
                                 dialect={dialect}
                                 detail={detail}
-                                // 'user': the TUI is a human at a keyboard, and
-                                // every other policy-checking screen says the
-                                // same. A non-interactive caller resolves its
-                                // own channel and passes it here instead.
                                 gate={{
                                     configName: activeConfigName,
-                                    access: activeConfig.access,
-                                    channel: 'user',
+                                    access: policyConfig.access,
+                                    channel: resolveChannel(),
                                 }}
                                 height={height}
                                 onClose={close}

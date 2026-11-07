@@ -6,7 +6,7 @@ import { defineCommand } from 'citty';
 import { withVaultContext, outputResult, sharedArgs, isYesMode } from '../_utils.js';
 import { initializeVaultChecked, getVaultStatus, checkVaultPolicy } from '../../core/vault/index.js';
 import type { VaultPolicyGate } from '../../core/vault/index.js';
-import { resolveChannel } from '../../core/policy/index.js';
+import { resolveChannel, withPolicyConfirmation } from '../../core/policy/index.js';
 
 const initCommand = defineCommand({
     meta: {
@@ -70,13 +70,9 @@ const initCommand = defineCommand({
 
                 }
 
-                const [, initErr] = await initializeVaultChecked(
-                    gate,
-                    db,
-                    cryptoIdentity.identityHash,
-                    cryptoIdentity.publicKey,
-                    ctx.dialect,
-                );
+                const [, initErr] = await withPolicyConfirmation(config, ['vault:write'], () => initializeVaultChecked(
+                    gate, db, cryptoIdentity.identityHash, cryptoIdentity.publicKey, ctx.dialect,
+                ));
 
                 if (initErr) {
 

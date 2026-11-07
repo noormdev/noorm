@@ -53,6 +53,7 @@ import {
 } from '../../components/index.js';
 
 import { checkConfigPolicy } from '../../../core/policy/index.js';
+import { SettingsProvider, withConfigPolicy } from '../../../core/config/resolver.js';
 
 import { transferData, getTransferPlan } from '../../../core/transfer/index.js';
 import {
@@ -88,7 +89,7 @@ type Phase =
 export function DbTransferScreen({ params: _params }: ScreenProps): ReactElement {
 
     const { back, navigate } = useRouter();
-    const { activeConfig, activeConfigName, stateManager } = useAppContext();
+    const { activeConfig, activeConfigName, stateManager, settingsManager } = useAppContext();
     const globalModes = useGlobalModes();
     const { showToast } = useToast();
     const { state: progress, reset: resetProgress } = useTransferProgress();
@@ -255,12 +256,12 @@ export function DbTransferScreen({ params: _params }: ScreenProps): ReactElement
     // Load destination config and tables when selected
     useAsyncEffect(async (isCancelled) => {
 
-        if (!destConfigName || !stateManager || !activeConfig) return;
+        if (!destConfigName || !stateManager || !settingsManager || !activeConfig) return;
         if (!tryAcquire()) return;
 
-        const config = stateManager.getConfig(destConfigName);
+        const stored = stateManager.getConfig(destConfigName);
 
-        if (!config) {
+        if (!stored) {
 
             if (!isCancelled()) {
 
@@ -274,6 +275,8 @@ export function DbTransferScreen({ params: _params }: ScreenProps): ReactElement
             return;
 
         }
+        const config = withConfigPolicy(stored, new SettingsProvider(settingsManager), false);
+
 
         setDestConfig(config);
 
@@ -319,7 +322,7 @@ export function DbTransferScreen({ params: _params }: ScreenProps): ReactElement
 
         release();
 
-    }, [destConfigName, stateManager, activeConfig]);
+    }, [destConfigName, stateManager, settingsManager, activeConfig]);
 
     // Scan for .dt files when entering import mode
     useAsyncEffect(async (isCancelled) => {

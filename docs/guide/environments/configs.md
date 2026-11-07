@@ -113,7 +113,7 @@ Each config has two roles, one per channel. The `user` channel is you, in the CL
 | `admin` | Everything allowed, but irreversible operations still ask. Default for `user` |
 | `false` | `agent` only. Hides the config: `config list` omits it and MCP answers as if it does not exist |
 
-Every permission has one cell per role, fixed in `src/core/policy/matrix.ts`:
+The table shows the **built-in defaults**, defined in `src/core/policy/matrix.ts`. Project settings can override them:
 
 | Permission | viewer | operator | admin |
 |---|---|---|---|
@@ -128,21 +128,44 @@ Every permission has one cell per role, fixed in `src/core/policy/matrix.ts`:
 | `debug:read` | allow | allow | allow |
 | `debug:write` | deny | deny | confirm |
 
-A `confirm` cell never opens for an agent:
+Define project roles in `.noorm/settings.yml`:
+
+```yaml
+access:
+    roles:
+        operator:
+            permissions:
+                sql:write: confirm
+        deployer:
+            extends: operator
+            permissions:
+                run:build: allow
+```
+
+An override of a built-in role keeps its other default cells. A custom role inherits its parent's effective project policy, including overrides; parents may themselves be custom roles. Without `extends`, unspecified permissions deny. Unknown permissions, values or parents and inheritance cycles are rejected. Select the role in the config's TUI access fields, or set its name in imported JSON. An unknown assigned role fails closed.
+
+On a stage with `defaults.protected: true`, each effective permission is capped by the **original** operator matrix for users and viewer matrix for agents, regardless of overrides or inheritance. The stricter cell wins (`deny` < `confirm` < `allow`); role names do not change. See [Stages](/guide/environments/stages#what-does-protected-true-cap).
+
+For `confirm`, a human on the user channel can confirm interactively or use `--yes` / `NOORM_YES=1`. Agent CLI calls always deny `confirm`, even with those flags. MCP can instead request a mediated human approval when the client supports it; rejection or unavailable approval denies the action. No confirmation opens a `deny` cell.
+
+The effective permission decides whether confirmation is possible; the caller decides how it is collected.
 
 ```mermaid
 flowchart TD
-    A["noorm run build"] --> B{"role on this<br/>channel"}
-    B -->|false| H["config hidden"]
-    B -->|a role| C{"matrix cell"}
-    C -->|allow| R["runs"]
-    C -->|deny| D["refused"]
-    C -->|confirm| E{"channel"}
-    E -->|user| F["type yes-prod<br/>or pass --yes"]
-    E -->|agent| D
+    accTitle: Permission and confirmation decisions
+    accDescr: Deny blocks execution. Allow executes. Confirm requires a human mechanism, and agent CLI calls cannot supply it.
+    %% source: src/core/policy/check.ts, src/mcp/approval.ts
+    P{"Effective permission"} -->|deny| D["Blocked"]
+    P -->|allow| E["Execute"]
+    P -->|confirm| C{"Caller"}
+    C -->|Human CLI or TUI| H{"Human confirmation"}
+    C -->|Agent CLI or SDK| D
+    C -->|MCP| M{"Human elicitation"}
+    H -->|Confirmed| E
+    H -->|Missing or cancelled| D
+    M -->|Valid approval| E
+    M -->|Unavailable or rejected| D
 ```
-
-`--yes` and `NOORM_YES=1` satisfy a `confirm` cell. They never open a `deny` cell.
 
 
 ### Which channel is a process on?
@@ -206,7 +229,7 @@ Exit 0 when valid, 1 when not. Every check runs, so one report lists all failure
 |---|---|---|
 | `noorm -c prod run build` fails: `--cwd path is not a directory` | Before the subcommand, `-c` is `--cwd` | `noorm run build --config prod` |
 | `"db:teardown" is not allowed on config "prod" (role: operator).` | The role's cell is `deny`, and no flag opens it | Change the role in the TUI, or use a config with `admin` |
-| `"run:build" on config "prod" requires confirmation from a human.` | A `confirm` cell is `deny` on the `agent` channel | Run it in your own terminal, or with `NOORM_CHANNEL=user` when you script inside an agent session |
+| `"run:build" on config "prod" requires confirmation from a human.` | An agent CLI call cannot satisfy a `confirm` cell | Run it in your own terminal, or use MCP with mediated human approval |
 | An imported config is open to `admin` | The file has no `access`, so it gets `user: admin`, `agent: viewer` | Put `access` in the file |
 
 

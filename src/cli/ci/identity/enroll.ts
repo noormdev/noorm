@@ -21,7 +21,7 @@ import { defineCommand } from 'citty';
 import { generateKeyPair } from '../../../core/identity/crypto.js';
 import { computeIdentityHash } from '../../../core/identity/hash.js';
 import { isValidKeyHex } from '../../../core/identity/storage.js';
-import { resolveChannel } from '../../../core/policy/index.js';
+import { resolveChannel, withPolicyConfirmation } from '../../../core/policy/index.js';
 import { propagateVaultKeyToChecked, checkVaultPolicy } from '../../../core/vault/index.js';
 import type { VaultPolicyGate } from '../../../core/vault/index.js';
 import { decryptVaultKey } from '../../../core/vault/key.js';
@@ -260,12 +260,8 @@ const enrollCommand = defineCommand({
 
                 }
 
-                const propagated = await propagateVaultKeyToChecked(
-                    gate,
-                    ctx.kysely,
-                    vaultKey,
-                    identityHash,
-                    ctx.dialect,
+                const propagated = alreadyHasVaultAccess || await withPolicyConfirmation(enrollConfig, ['vault:propagate'], () =>
+                    propagateVaultKeyToChecked(gate, ctx.kysely, vaultKey, identityHash, ctx.dialect),
                 );
 
                 if (!propagated) {

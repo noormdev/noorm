@@ -9,9 +9,10 @@ import {
     canDeleteConfig,
     type StateProvider,
 } from '../../../src/core/config/index.js';
-import { SettingsProvider } from '../../../src/core/config/resolver.js';
+import { SettingsProvider, withConfigPolicy } from '../../../src/core/config/resolver.js';
 import type { Config, Stage } from '../../../src/core/config/index.js';
-import { guarded } from '../../../src/core/policy/index.js';
+import { getConfigPermission, guarded } from '../../../src/core/policy/index.js';
+import type { SettingsManager } from '../../../src/core/settings/index.js';
 
 /**
  * Create a mock state provider for testing.
@@ -53,20 +54,17 @@ function createMockState(
  */
 function createMockSettings(stages: Record<string, Stage> = {}): SettingsProvider {
 
-    const mock = {
+    const manager = {
+        projectRoot: '/test-project',
+        settings: {},
         getStage(name: string): Stage | null {
 
             return stages[name] ?? null;
 
         },
-        findStageForConfig(configName: string): Stage | null {
+    } as unknown as SettingsManager;
 
-            return stages[configName] ?? null;
-
-        },
-    };
-
-    return Object.assign(Object.create(SettingsProvider.prototype), mock);
+    return new SettingsProvider(manager);
 
 }
 
@@ -441,12 +439,9 @@ describe('config: resolver', () => {
             // Stored should override stage defaults
             const config = resolveConfig(state, { settings });
 
-            // Stage `protected: true` is an access ceiling, not a value the
-            // stored config can override to something looser: stored has no
-            // explicit access (defaults to admin/admin), which is looser
-            // than the operator/viewer ceiling, so it gets clamped down.
+            // The ceiling is policy context, not a replacement for the stored roles.
             expect(guarded(config!)).toBe(true);
-            expect(config!.access).toEqual({ user: 'operator', agent: 'viewer' });
+            expect(config!.access).toEqual({ user: 'admin', agent: 'admin' });
             expect(config!.connection.host).toBe('localhost'); // stored overrides stage
 
         });
@@ -505,10 +500,9 @@ describe('config: resolver', () => {
 
             const config = resolveConfig(state, { settings });
 
-            // Stage `protected: true` clamps the stored config's (looser,
-            // default admin/admin) access down to the ceiling.
+            // Stage restrictions do not replace the stored role names.
             expect(guarded(config!)).toBe(true);
-            expect(config!.access).toEqual({ user: 'operator', agent: 'viewer' });
+            expect(config!.access).toEqual({ user: 'admin', agent: 'admin' });
 
         });
 
@@ -542,6 +536,21 @@ describe('config: resolver', () => {
             expect(config!.identity).toBe('from-production-stage');
 
         });
+
+    });
+
+    it('resolves custom policy without rewriting or exporting assignments', () => {
+
+        const settings = createMockSettings();
+        settings.getRoles = () => ({ auditor: { extends: 'viewer', permissions: { 'sql:read': 'deny' } } });
+        const stored = createConfig({ access: { user: 'auditor', agent: false } });
+        const resolved = withConfigPolicy(stored, settings);
+
+        expect(resolved.access).toEqual({ user: 'auditor', agent: false });
+        expect(getConfigPermission('user', resolved, 'sql:read')).toBe('deny');
+        expect(JSON.stringify(resolved.access)).toBe('{"user":"auditor","agent":false}');
+        expect(() => withConfigPolicy(createConfig({ access: { user: 'missing', agent: false } }), settings))
+            .toThrow('Unknown access role "missing"');
 
     });
 
@@ -584,11 +593,11 @@ describe('config: resolver', () => {
 
         });
 
-        it('should clamp a looser user+agent access down to the ceiling', () => {
+        it('should enforce the ceiling without replacing role names', () => {
 
             const config = resolveWithStageProtected({ user: 'admin', agent: 'admin' }, true);
 
-            expect(config!.access).toEqual({ user: 'operator', agent: 'viewer' });
+            expect(config!.access).toEqual({ user: 'admin', agent: 'admin' });
             expect(guarded(config!)).toBe(true);
 
         });
@@ -610,12 +619,11 @@ describe('config: resolver', () => {
 
         });
 
-        it('should clamp each channel independently', () => {
+        it('should preserve both channels under the ceiling', () => {
 
-            // user is looser than the ceiling, agent is already stricter
             const config = resolveWithStageProtected({ user: 'admin', agent: false }, true);
 
-            expect(config!.access).toEqual({ user: 'operator', agent: false });
+            expect(config!.access).toEqual({ user: 'admin', agent: false });
 
         });
 
@@ -684,10 +692,8 @@ describe('config: resolver', () => {
 
         it('should not report a protected violation (enforced as an access ceiling at resolution instead)', () => {
 
-            // A config with open access reaching this check is only
-            // possible outside resolveConfig, which clamps access to the
-            // stage ceiling before returning. checkConfigCompleteness no
-            // longer duplicates that enforcement as a violation.
+            // A raw config can reach this check without policy context; the
+            // stage ceiling is enforced by policy, not completeness.
             const config = createConfig({
                 name: 'prod',
                 access: { user: 'admin', agent: 'admin' },

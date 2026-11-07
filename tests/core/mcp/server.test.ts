@@ -1,574 +1,356 @@
-/**
- * Integration tests for the MCP server dispatch layer.
- *
- * Uses InMemoryTransport + Client to exercise the full JSON-RPC
- * pipeline through createMcpServer without a real network transport.
- */
-import { describe, it, expect, beforeEach, afterEach, spyOn } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { sql } from 'kysely';
+import { InMemoryTransport, type McpServer } from '@modelcontextprotocol/server';
+import type { StdioServerHandle } from '@modelcontextprotocol/server/stdio';
 import { z } from 'zod';
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 
 import { createMcpServer } from '../../../src/mcp/server.js';
-import { RpcRegistry } from '../../../src/rpc/registry.js';
-import type { RpcCommand, RpcSession } from '../../../src/rpc/types.js';
-import type { ConfigAccess } from '../../../src/core/policy/index.js';
-import type { Context } from '../../../src/sdk/context.js';
+import { serveModernMcp } from '../../../src/mcp/stdio.js';
+import { createRegistry } from '../../../src/rpc/index.js';
+import { Context } from '../../../src/sdk/context.js';
+import { parseConfig } from '../../../src/core/config/schema.js';
+import { parseSettings } from '../../../src/core/settings/schema.js';
+import { checkConfigPolicy } from '../../../src/core/policy/index.js';
+import type { Settings } from '../../../src/core/settings/types.js';
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+const responseSchema = z.object({
+    id: z.number(),
+    result: z.record(z.string(), z.unknown()).optional(),
+    error: z.object({ code: z.number(), message: z.string() }).passthrough().optional(),
+});
+const challengeSchema = z.object({ resultType: z.literal('input_required'), requestState: z.string(), inputRequests: z.record(z.string(), z.unknown()) });
+const capabilities = { elicitation: { form: {} } };
+const accepted = { approval: { action: 'accept', content: { approve: true } } };
 
-/**
- * Build a wired Client+Server pair backed by InMemoryTransport.
- *
- * Returns the client (already connected) and a cleanup function.
- */
-async function createTestPair(registry: RpcRegistry, session: RpcSession) {
+type WireResponse = z.infer<typeof responseSchema>;
+interface WireClient {
+    handle: StdioServerHandle;
+    request(method: string, params?: Record<string, unknown>, clientCapabilities?: unknown, version?: string): Promise<WireResponse>;
+}
 
-    const server = createMcpServer(registry, session as never);
-    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+/** Raw wire client keeps MRTR retries explicit so replay and tampering can be exercised. */
+async function connectWire(server: McpServer): Promise<WireClient> {
 
-    const client = new Client({ name: 'test-client', version: '1.0.0' });
+    const [client, transport] = InMemoryTransport.createLinkedPair();
+    const pending = new Map<number, (value: WireResponse) => void>();
+    let id = 0;
+    client.onmessage = (message) => {
 
-    await server.connect(serverTransport);
-    await client.connect(clientTransport);
-
-    const cleanup = async () => {
-
-        await client.close();
+        const parsed = responseSchema.safeParse(message);
+        if (!parsed.success) return;
+        const resolve = pending.get(parsed.data.id);
+        pending.delete(parsed.data.id);
+        resolve?.(parsed.data);
 
     };
-
-    return { client, cleanup };
-
-}
-
-/**
- * Call a tool and return the first text content item parsed as JSON.
- */
-async function callJson(
-    client: Client,
-    tool: string,
-    args: Record<string, unknown>,
-) {
-
-    const result = await client.callTool({ name: tool, arguments: args });
-    const content = result.content[0];
-
-    if (!content || content.type !== 'text') throw new Error('No text content');
+    const handle = serveModernMcp(server, transport);
+    await client.start();
 
     return {
-        isError: result.isError,
-        text: content.text,
-        parsed: JSON.parse(content.text) as unknown,
-    };
+        handle,
+        async request(method: string, params: Record<string, unknown> = {}, clientCapabilities: unknown = capabilities, version = '2026-07-28') {
 
-}
+            const requestId = ++id;
+            const { promise: result, resolve } = Promise.withResolvers<WireResponse>();
+            pending.set(requestId, resolve);
+            await client.send({ jsonrpc: '2.0', id: requestId, method, params: {
+                ...params,
+                _meta: {
+                    'io.modelcontextprotocol/protocolVersion': version,
+                    'io.modelcontextprotocol/clientCapabilities': clientCapabilities,
+                    'io.modelcontextprotocol/clientInfo': { name: 'regression-client', version: '1' },
+                },
+            } });
 
-/**
- * Call a tool and return the raw text content (not JSON-parsed).
- */
-async function callText(
-    client: Client,
-    tool: string,
-    args: Record<string, unknown>,
-) {
-
-    const result = await client.callTool({ name: tool, arguments: args });
-    const content = result.content[0];
-
-    if (!content || content.type !== 'text') throw new Error('No text content');
-
-    return {
-        isError: result.isError,
-        text: content.text,
-    };
-
-}
-
-// ── Mock primitives ───────────────────────────────────────────────────────────
-
-const mockContext = {} as Context;
-
-/**
- * Builds a fake Context carrying a config with the given access — used to
- * drive the dispatch gate's `checkConfigPolicy` call. `access: undefined`
- * simulates a config that reached enforcement without `access` populated
- * (fail-closed case).
- */
-function mockContextWithAccess(access: ConfigAccess | undefined, name = 'test'): Context {
-
-    return {
-        noorm: {
-            config: {
-                name,
-                access,
-                connection: { database: 'testdb' },
-            },
-        },
-    } as unknown as Context;
-
-}
-
-function buildMockSession(overrides: Partial<RpcSession> = {}): RpcSession & {
-    getContextCalls: string[];
-} {
-
-    const getContextCalls: string[] = [];
-
-    return {
-        channel: 'agent',
-        getContextCalls,
-        getContext(config?: string) {
-
-            getContextCalls.push(config ?? 'default');
-
-            return mockContext;
+            return result;
 
         },
-        connect: async () => ({
-            name: 'test',
-            dialect: 'postgres',
-            database: 'testdb',
-            role: 'admin',
-        }),
-        disconnect: async () => {},
-        disconnectAll: async () => {},
-        hasConnection: () => false,
-        listConnections: () => [],
-        ...overrides,
     };
 
 }
 
-function buildRegistry() {
+function text(result: z.infer<typeof responseSchema>): string {
 
-    const registry = new RpcRegistry();
+    const value = z.object({ content: z.array(z.object({ type: z.literal('text'), text: z.string() })) }).parse(result.result);
 
-    registry.register({
-        name: 'test_cmd',
-        description: 'A test command',
-        examples: [{ description: 'basic', input: { value: 'hello' } }],
-        inputSchema: z.object({ value: z.string().describe('Test value') }),
-        permission: 'open',
-        handler: async (input) => ({ echo: (input as { value: string }).value }),
-    });
-
-    registry.register({
-        name: 'failing_cmd',
-        description: 'A command that always throws',
-        examples: [],
-        inputSchema: z.object({}),
-        permission: 'open',
-        handler: async () => {
-
-            throw new Error('boom');
-
-        },
-    });
-
-    // Minimal stand-in for a session command (connect)
-    registry.register({
-        name: 'connect',
-        description: 'Connect to a database',
-        examples: [{ description: 'connect to active config', input: {} }],
-        inputSchema: z.object({
-            config: z.string().optional().describe('Config name'),
-        }),
-        permission: 'open',
-        handler: async (_input, session) => session.connect(),
-    });
-
-    return registry;
+    return value.content[0]?.text ?? '';
 
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
+describe('modern MCP protocol and authorization', () => {
 
-describe('mcp: server dispatch (run_noorm_cmd)', () => {
+    let root: string;
+    let settings: Settings;
+    let role: string;
+    let wire: WireClient;
+    let handle: StdioServerHandle;
+    let restoreDiagnostics: () => void;
 
-    let registry: RpcRegistry;
-    let mockSession: ReturnType<typeof buildMockSession>;
-    let client: Client;
-    let cleanup: () => Promise<void>;
+    const configFor = (name: string) => parseConfig({
+        name, type: 'local', isTest: true,
+        connection: { dialect: 'sqlite', database: join(root, `${name}.db`) },
+        access: { user: 'admin', agent: role },
+    });
+    const contextFor = (name: string) => new Context(configFor(name), settings,
+        { name: 'MCP regression', source: 'system' }, { channel: 'agent' }, root);
+    const call = (query: string, retry: Record<string, unknown> = {}, config = 'test', caps: unknown = capabilities) => wire.request('tools/call', {
+        name: 'sql', arguments: { config, query }, ...retry,
+    }, caps);
+    const tables = async () => {
+
+        const ctx = contextFor('test');
+        await ctx.connect();
+        try {
+
+            return (await sql<{ name: string }>`
+                SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name
+            `.execute(ctx.kysely)).rows.map((row) => row.name);
+
+        }
+        finally {
+
+            await ctx.disconnect();
+
+        }
+
+    };
 
     beforeEach(async () => {
 
-        registry = buildRegistry();
-        mockSession = buildMockSession();
+        root = await mkdtemp(join(tmpdir(), 'noorm-modern-mcp-'));
+        settings = parseSettings({ access: { roles: { operator: { permissions: { 'sql:ddl': 'confirm' } } } } });
+        role = 'operator';
+        const diagnostics = spyOn(console, 'error').mockImplementation(() => {});
+        restoreDiagnostics = () => {
 
-        const pair = await createTestPair(registry, mockSession);
+            diagnostics.mockRestore();
 
-        client = pair.client;
-        cleanup = pair.cleanup;
+        };
+        wire = await connectWire(createMcpServer(createRegistry(), {
+            withConfig: async (name, action) => {
+
+                if (!['test', 'other'].includes(name)) throw new Error('Config not found');
+                const ctx = contextFor(name);
+                try {
+
+                    return await action(ctx);
+
+                }
+                finally {
+
+                    await ctx.disconnect();
+
+                }
+
+            },
+        }));
+        handle = wire.handle;
 
     });
 
     afterEach(async () => {
 
-        await cleanup();
+        await handle?.close();
+        restoreDiagnostics?.();
+        await rm(root, { recursive: true, force: true });
 
     });
 
-    it('should return isError for unknown command with available list', async () => {
+    it('serves discovery and cacheable catalogs without initialization, and rejects unsupported versions', async () => {
 
-        const { isError, parsed } = await callJson(client, 'run_noorm_cmd', {
-            command: 'nonexistent',
-            payload: {},
-        });
-
-        const body = parsed as { error: string };
-
-        expect(isError).toBe(true);
-        expect(body.error).toContain('Unknown command');
-        expect(body.error).toContain('nonexistent');
-        expect(body.error).toContain('test_cmd');
+        const discovery = await wire.request('server/discover');
+        expect(discovery.result).toMatchObject({ resultType: 'complete', supportedVersions: ['2026-07-28'] });
+        const tools = await wire.request('tools/list');
+        expect(tools.result).toMatchObject({ resultType: 'complete', cacheScope: 'public' });
+        expect(z.object({ ttlMs: z.number().int().nonnegative() }).parse(tools.result).ttlMs).toBeGreaterThanOrEqual(0);
+        expect(z.object({ tools: z.array(z.object({ name: z.string() })) }).parse(tools.result).tools.map((item) => item.name).sort())
+            .toEqual(['change_ff', 'change_history', 'change_revert', 'change_run', 'detail', 'list', 'list_configs', 'overview', 'run_build', 'run_file', 'sql']);
+        expect((await wire.request('tools/list', {}, capabilities, '1900-01-01')).error?.code).toBe(-32022);
+        expect((await wire.request('initialize', { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'legacy', version: '1' } })).error).toBeDefined();
 
     });
 
-    it('should return isError with Zod details for invalid payload', async () => {
+    it('validates direct tool inputs and rejects legacy or unknown tools', async () => {
 
-        const { isError, parsed } = await callJson(client, 'run_noorm_cmd', {
-            command: 'test_cmd',
-            payload: { wrong_field: 123 },
-        });
+        const invalid = [
+            { name: 'overview', arguments: {} },
+            { name: 'sql', arguments: { config: 'test', query: 42 } },
+            { name: 'sql', arguments: { config: 'test', payload: { query: 'SELECT 1' } } },
+            { name: 'sql', arguments: { config: 'test', query: 'SELECT 1', payload: {} } },
+            { name: 'run_noorm_cmd', arguments: { command: 'overview', config: 'test' } },
+            { name: 'noorm_help', arguments: {} },
+            { name: 'connect', arguments: { config: 'test' } },
+            { name: 'unknown', arguments: {} },
+        ];
+        for (const params of invalid) {
 
-        const body = parsed as { error: string; details: { path: string; message: string }[] };
+            expect((await wire.request('tools/call', params)).error?.code).toBe(-32602);
 
-        expect(isError).toBe(true);
-        expect(body.error).toBe('Invalid payload');
-        expect(Array.isArray(body.details)).toBe(true);
-        expect(body.details.length).toBeGreaterThan(0);
-        expect(body.details[0]!.path).toBe('value');
-
-    });
-
-    it('should return JSON result for valid command', async () => {
-
-        const { isError, parsed } = await callJson(client, 'run_noorm_cmd', {
-            command: 'test_cmd',
-            payload: { value: 'hello' },
-        });
-
-        const body = parsed as { echo: string };
-
-        expect(isError).toBeFalsy();
-        expect(body.echo).toBe('hello');
+        }
+        expect(await tables()).toEqual([]);
 
     });
 
-    it('should return isError with message only (no stack) and log the stack server-side when handler throws', async () => {
+    it('validates prompt arguments and fetching a cookbook does not change the database', async () => {
 
-        const errorSpy = spyOn(console, 'error').mockImplementation(() => {});
-
-        const { isError, parsed } = await callJson(client, 'run_noorm_cmd', {
-            command: 'failing_cmd',
-            payload: {},
-        });
-
-        const body = parsed as { error: string; stack?: string };
-
-        expect(isError).toBe(true);
-        expect(body.error).toBe('boom');
-        expect(body).not.toHaveProperty('stack');
-
-        expect(errorSpy).toHaveBeenCalled();
-        const loggedArgs = errorSpy.mock.calls.flat();
-        const loggedArg = loggedArgs.find((arg) => typeof arg === 'string' && arg.includes('boom'));
-
-        expect(loggedArg).toBeDefined();
-        // A plain `err.message` is just "boom" — a real stack has frame lines
-        // like "    at functionName (file:line:col)", so this fails if the
-        // source regresses to logging the message instead of the stack.
-        expect(loggedArg).toMatch(/\n\s*at /);
-
-        errorSpy.mockRestore();
+        expect((await wire.request('prompts/get', { name: 'noorm_explore_database', arguments: {} })).error?.code).toBe(-32602);
+        expect((await wire.request('prompts/get', { name: 'noorm_run_sql_file', arguments: { config: 'test' } })).error?.code).toBe(-32602);
+        expect((await wire.request('prompts/get', { name: 'noorm_automation', arguments: { task: '' } })).error?.code).toBe(-32602);
+        expect((await wire.request('prompts/get', {
+            name: 'noorm_ci', arguments: { provider: 'GitHub Actions', target: 'production', config: 'test' },
+        })).error?.code).toBe(-32602);
+        expect((await wire.request('prompts/get', {
+            name: 'noorm_ci', arguments: { provider: 'GitLab CI', target: 'test' },
+        })).error?.code).toBe(-32602);
+        const before = await tables();
+        const prompt = await wire.request('prompts/get', { name: 'noorm_explore_database', arguments: { config: 'test' } });
+        expect(prompt.error).toBeUndefined();
+        expect(await tables()).toEqual(before);
 
     });
 
-    it('should create config-scoped session proxy for non-session commands with config', async () => {
+    it('executes DDL only after explicit acceptance, and consumes approval once even for concurrent retries', async () => {
 
-        await callJson(client, 'run_noorm_cmd', {
-            command: 'test_cmd',
-            payload: { value: 'scoped' },
-            config: 'myconfig',
-        });
-
-        // test_cmd handler doesn't call getContext, but the proxy wraps it.
-        // Register a command that does call session.getContext so we can observe the proxy.
-        const scopedRegistry = new RpcRegistry();
-        scopedRegistry.register({
-            name: 'ctx_cmd',
-            description: 'Calls getContext',
-            examples: [],
-            inputSchema: z.object({}),
-            permission: 'open',
-            handler: async (_input, session) => {
-
-                session.getContext();
-
-                return { ok: true };
-
-            },
-        });
-
-        const scopedSession = buildMockSession();
-        const scopedPair = await createTestPair(scopedRegistry, scopedSession);
-
-        await scopedPair.client.callTool({
-            name: 'run_noorm_cmd',
-            arguments: { command: 'ctx_cmd', payload: {}, config: 'prod' },
-        });
-
-        await scopedPair.cleanup();
-
-        // The proxy should have forwarded getContext() with 'prod' scoped in
-        expect(scopedSession.getContextCalls).toEqual(['prod']);
-        const capturedValue = scopedSession.getContextCalls[0];
-        expect(capturedValue).toBe('prod');
+        const query = 'CREATE TABLE approved (id INTEGER PRIMARY KEY)';
+        const initial = challengeSchema.parse((await call(query)).result);
+        expect(await tables()).not.toContain('approved');
+        const retry = { requestState: initial.requestState, inputResponses: accepted };
+        const outcomes = await Promise.all([call(query, retry), call(query, retry)]);
+        expect(outcomes.filter((result) => result.result?.['isError'] !== true && !result.error)).toHaveLength(1);
+        expect(await tables()).toContain('approved');
+        expect((await call(query, retry)).result?.['isError']).toBe(true);
 
     });
 
-    it('should merge config into payload for session command (connect)', async () => {
+    it.each(['decline', 'cancel'])('does not execute when the client returns %s', async (action) => {
 
-        const sessionWithTracker = buildMockSession({
-            connect: async (config?: string) => {
+        const query = 'CREATE TABLE refused (id INTEGER)';
+        const initial = challengeSchema.parse((await call(query)).result);
+        const result = await call(query, { requestState: initial.requestState, inputResponses: { approval: { action } } });
+        expect(result.result?.['isError']).toBe(true);
+        expect(await tables()).not.toContain('refused');
 
-                return {
-                    name: config ?? 'active',
-                    dialect: 'postgres',
-                    database: 'testdb',
-                    role: 'admin',
-                };
+    });
 
-            },
+    it('rejects forged, changed-query, and changed-config approvals', async () => {
+
+        const query = 'CREATE TABLE original (id INTEGER)';
+        const initial = challengeSchema.parse((await call(query)).result);
+        expect((await call(query, { requestState: `${initial.requestState}tampered`, inputResponses: accepted })).error?.code).toBe(-32602);
+        const changed = await call('CREATE TABLE changed (id INTEGER)', { requestState: initial.requestState, inputResponses: accepted });
+        expect(changed.result?.['isError']).toBe(true);
+        const second = challengeSchema.parse((await call(query)).result);
+        expect((await call(query, { requestState: second.requestState, inputResponses: accepted }, 'other')).result?.['isError']).toBe(true);
+        expect(await tables()).toEqual([]);
+
+    });
+
+    it('does not reuse approval for a different direct tool', async () => {
+
+        const initial = challengeSchema.parse((await call('CREATE TABLE original (id INTEGER)')).result);
+        const result = await wire.request('tools/call', {
+            name: 'run_file',
+            arguments: { config: 'test', path: 'other.sql' },
+            requestState: initial.requestState,
+            inputResponses: accepted,
         });
-
-        const r = new RpcRegistry();
-
-        r.register({
-            name: 'connect',
-            description: 'Connect',
-            examples: [],
-            inputSchema: z.object({ config: z.string().optional() }),
-            permission: 'open',
-            handler: async (input, session) => session.connect((input as { config?: string }).config),
-        });
-
-        const { client: c, cleanup: done } = await createTestPair(r, sessionWithTracker);
-
-        const { parsed } = await callJson(c, 'run_noorm_cmd', {
-            command: 'connect',
-            config: 'staging',
-            payload: {},
-        });
-
-        await done();
-
-        const body = parsed as { name: string };
-
-        expect(body.name).toBe('staging');
+        expect(result.result?.['isError']).toBe(true);
+        expect(JSON.parse(text(result)).error).toMatch(/does not match/i);
+        expect(await tables()).toEqual([]);
 
     });
 
-});
+    it('invalidates approval when effective policy changes', async () => {
 
-describe('mcp: server dispatch — policy gate (CP3)', () => {
-
-    /**
-     * Registers a single gated command and wires a session whose
-     * `getContext` resolves to a config with the given access, so the
-     * dispatch gate's `checkConfigPolicy` call is exercised end-to-end.
-     */
-    async function setup(
-        permission: RpcCommand['permission'],
-        access: ConfigAccess | undefined,
-    ) {
-
-        const called = { value: false };
-        const registry = new RpcRegistry();
-
-        registry.register({
-            name: 'gated_cmd',
-            description: 'A permission-gated command',
-            examples: [],
-            inputSchema: z.object({}),
-            permission,
-            handler: async () => {
-
-                called.value = true;
-
-                return { ok: true };
-
-            },
-        });
-
-        const session = buildMockSession({
-            getContext: () => mockContextWithAccess(access),
-        });
-
-        const { client, cleanup } = await createTestPair(registry, session);
-
-        return { client, cleanup, called };
-
-    }
-
-    it('should deny and never invoke the handler when the resolved role denies the permission (viewer)', async () => {
-
-        const { client, cleanup, called } = await setup('change:run', { user: 'admin', agent: 'viewer' });
-
-        const { isError, parsed } = await callJson(client, 'run_noorm_cmd', { command: 'gated_cmd', payload: {} });
-
-        await cleanup();
-
-        const body = parsed as { error: string };
-
-        expect(isError).toBe(true);
-        expect(body.error).toContain('change:run');
-        expect(called.value).toBe(false);
+        const query = 'CREATE TABLE stale (id INTEGER)';
+        const initial = challengeSchema.parse((await call(query)).result);
+        settings = parseSettings({ access: { roles: { operator: { permissions: { 'sql:ddl': 'deny' } } } } });
+        const result = await call(query, { requestState: initial.requestState, inputResponses: accepted });
+        expect(result.result?.['isError']).toBe(true);
+        expect(await tables()).not.toContain('stale');
 
     });
 
-    it('should collapse an operator confirm cell to deny on the agent channel', async () => {
+    it('rejects expired approval without executing the operation', async () => {
 
-        const { client, cleanup, called } = await setup('change:run', { user: 'admin', agent: 'operator' });
+        const query = 'CREATE TABLE expired (id INTEGER)';
+        const initial = challengeSchema.parse((await call(query)).result);
+        const future = Date.now() + 24 * 60 * 60 * 1000;
+        const clock = spyOn(Date, 'now').mockImplementation(() => future);
+        try {
 
-        const { isError, parsed } = await callJson(client, 'run_noorm_cmd', { command: 'gated_cmd', payload: {} });
+            const result = await call(query, { requestState: initial.requestState, inputResponses: accepted });
+            expect(result.error?.code).toBe(-32602);
 
-        await cleanup();
+        }
+        finally {
 
-        const body = parsed as { error: string };
+            clock.mockRestore();
 
-        expect(isError).toBe(true);
-
-        // Not "use the CLI" — the CLI now resolves the same agent channel,
-        // so pointing there would be both wrong and an escalation hint.
-        expect(body.error.toLowerCase()).not.toContain('use the cli');
-        expect(body.error).toContain('change:run');
-        expect(called.value).toBe(false);
-
-    });
-
-    it('should allow and invoke the handler when the resolved role allows the permission (admin)', async () => {
-
-        const { client, cleanup, called } = await setup('change:run', { user: 'admin', agent: 'admin' });
-
-        const { isError } = await callJson(client, 'run_noorm_cmd', { command: 'gated_cmd', payload: {} });
-
-        await cleanup();
-
-        expect(isError).toBeFalsy();
-        expect(called.value).toBe(true);
+        }
+        expect(await tables()).not.toContain('expired');
 
     });
 
-    it('should fail closed and deny when the resolved config has no access at all', async () => {
+    it('fails closed without form elicitation and does not treat unsolicited acceptance as approval', async () => {
 
-        const { client, cleanup, called } = await setup('explore', undefined);
-
-        const { isError } = await callJson(client, 'run_noorm_cmd', { command: 'gated_cmd', payload: {} });
-
-        await cleanup();
-
-        expect(isError).toBe(true);
-        expect(called.value).toBe(false);
+        const query = 'CREATE TABLE bypass (id INTEGER)';
+        expect((await call(query, {}, 'test', {})).error?.code).toBe(-32021);
+        expect((await call(query, { inputResponses: accepted })).result?.['isError']).toBe(true);
+        expect(await tables()).toEqual([]);
 
     });
 
-    it("should skip the gate entirely for 'open' commands, even when getContext would throw", async () => {
+    it('preserves operator DML access and viewer denial, including writes hidden inside a CTE', async () => {
 
-        const registry = new RpcRegistry();
-
-        registry.register({
-            name: 'open_cmd',
-            description: 'An open command',
-            examples: [],
-            inputSchema: z.object({}),
-            permission: 'open',
-            handler: async () => ({ ok: true }),
-        });
-
-        const session = buildMockSession({
-            getContext: () => {
-
-                throw new Error('should not be called for an open command');
-
-            },
-        });
-
-        const { client, cleanup } = await createTestPair(registry, session);
-
-        const { isError } = await callJson(client, 'run_noorm_cmd', { command: 'open_cmd', payload: {} });
-
-        await cleanup();
-
-        expect(isError).toBeFalsy();
+        const ctx = contextFor('test');
+        await ctx.connect();
+        await sql`CREATE TABLE records (id INTEGER PRIMARY KEY)`.execute(ctx.kysely);
+        await ctx.disconnect();
+        expect((await call('INSERT INTO records VALUES (1)')).result?.['isError']).not.toBe(true);
+        const read = await call('SELECT id FROM records');
+        expect(JSON.parse(text(read))).toMatchObject({ rows: [{ id: 1 }] });
+        role = 'viewer';
+        expect((await call('DELETE FROM records')).result?.['isError']).toBe(true);
+        expect((await call('WITH gone AS (DELETE FROM records RETURNING *) SELECT * FROM gone')).result?.['isError']).toBe(true);
+        expect(JSON.parse(text(await call('SELECT id FROM records')))).toMatchObject({ rows: [{ id: 1 }] });
 
     });
 
-});
+    it('keeps agent confirmation denied outside MCP approval even when NOORM_YES is set', () => {
 
-describe('mcp: server dispatch (noorm_help)', () => {
+        const prior = process.env['NOORM_YES'];
+        process.env['NOORM_YES'] = '1';
+        try {
 
-    let registry: RpcRegistry;
-    let mockSession: ReturnType<typeof buildMockSession>;
-    let client: Client;
-    let cleanup: () => Promise<void>;
+            const config = contextFor('test').noorm.config;
+            expect(checkConfigPolicy('agent', config, 'sql:ddl').allowed).toBe(false);
 
-    beforeEach(async () => {
+        }
+        finally {
 
-        registry = buildRegistry();
-        mockSession = buildMockSession();
+            if (prior === undefined) delete process.env['NOORM_YES'];
+            else process.env['NOORM_YES'] = prior;
 
-        const pair = await createTestPair(registry, mockSession);
-
-        client = pair.client;
-        cleanup = pair.cleanup;
+        }
 
     });
 
-    afterEach(async () => {
+    it('applies the same exploration policy to resources and requests approval for confirm reads', async () => {
 
-        await cleanup();
-
-    });
-
-    it('should list all commands when no command is specified', async () => {
-
-        const { isError, text } = await callText(client, 'noorm_help', {});
-
-        expect(isError).toBeFalsy();
-        expect(text).toContain('test_cmd');
-        expect(text).toContain('failing_cmd');
-        expect(text).toContain('connect');
-
-    });
-
-    it('should return detailed help for a specific command', async () => {
-
-        const { isError, text } = await callText(client, 'noorm_help', {
-            command: 'test_cmd',
-        });
-
-        expect(isError).toBeFalsy();
-        expect(text).toContain('test_cmd');
-        expect(text).toContain('A test command');
-        expect(text).toContain('value');
-        expect(text).toContain('basic');
-
-    });
-
-    it('should return isError for help on unknown command', async () => {
-
-        const { isError, parsed } = await callJson(client, 'noorm_help', {
-            command: 'nonexistent',
-        });
-
-        const body = parsed as { error: string };
-
-        expect(isError).toBe(true);
-        expect(body.error).toContain('Unknown command');
-        expect(body.error).toContain('nonexistent');
-        expect(body.error).toContain('test_cmd');
+        settings = parseSettings({ access: { roles: { operator: { permissions: { explore: 'confirm' } } } } });
+        const params = { uri: 'noorm://configs/test/overview' };
+        const initial = challengeSchema.parse((await wire.request('resources/read', params)).result);
+        const result = await wire.request('resources/read', { ...params, requestState: initial.requestState, inputResponses: accepted });
+        expect(result.error).toBeUndefined();
+        const content = z.object({ contents: z.array(z.object({ text: z.string(), mimeType: z.string() })) }).parse(result.result);
+        expect(content.contents[0]?.mimeType).toBe('application/json');
+        expect(JSON.parse(content.contents[0]?.text ?? '{}').tables).toBe(0);
+        settings = parseSettings({ access: { roles: { operator: { permissions: { explore: 'deny' } } } } });
+        expect((await wire.request('resources/read', params)).error).toBeDefined();
 
     });
 

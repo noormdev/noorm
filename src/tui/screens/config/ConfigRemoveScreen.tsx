@@ -13,7 +13,7 @@
  */
 import { useState, useCallback, useMemo } from 'react';
 import { Box, Text, useInput } from 'ink';
-import { attempt } from '@logosdx/utils';
+import { attempt, attemptSync } from '@logosdx/utils';
 
 import type { ReactElement } from 'react';
 import type { ScreenProps } from '../../types.js';
@@ -23,7 +23,7 @@ import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
 import { Panel, Confirm, ProtectedConfirm, Spinner, useToast, MissingParamPanel, NotFoundPanel } from '../../components/index.js';
 import { checkConfigPolicy, confirmationPhraseFor } from '../../../core/policy/index.js';
-import { canDeleteConfig, SettingsProvider } from '../../../core/config/resolver.js';
+import { canDeleteConfig, SettingsProvider, withConfigPolicy } from '../../../core/config/resolver.js';
 import { getErrorMessage } from '../../utils/index.js';
 
 /**
@@ -52,9 +52,6 @@ export function ConfigRemoveScreen({ params }: ScreenProps): ReactElement {
     // Check if this is the active config
     const isActive = configName === activeConfigName;
 
-    // Policy check for the config:rm permission
-    const check = config ? checkConfigPolicy('user', config, 'config:rm') : null;
-
     // Settings provider is only built once settingsManager has loaded; a null
     // provider means "no stages known" = no lock, matching canDeleteConfig's
     // own no-settings behavior.
@@ -63,6 +60,18 @@ export function ConfigRemoveScreen({ params }: ScreenProps): ReactElement {
         () => (settingsManager ? new SettingsProvider(settingsManager) : null),
         [settingsManager],
     );
+
+    const check = useMemo(() => {
+
+        if (!config) return null;
+        if (!settingsProvider) return { allowed: false, requiresConfirmation: false, confirmationPhrase: undefined, blockedReason: 'Settings are not available' };
+
+        const [policyConfig, err] = attemptSync(() => withConfigPolicy(config, settingsProvider));
+        if (err) return { allowed: false, requiresConfirmation: false, confirmationPhrase: undefined, blockedReason: err.message };
+
+        return checkConfigPolicy('user', policyConfig, 'config:rm');
+
+    }, [config, settingsProvider]);
 
     // Locked-stage pre-check so the user never reaches a confirm/spinner
     // step for a delete that is guaranteed to fail at the core seam.

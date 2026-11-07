@@ -8,7 +8,7 @@ import { attempt } from '@logosdx/utils';
 import type { Kysely, QueryResult } from 'kysely';
 
 import { observer } from '../observer.js';
-import { assertPolicy, classifyStatements } from '../policy/index.js';
+import { checkConfigPolicy, classifyStatements } from '../policy/index.js';
 import { OperationAbortedError, raceAbort } from '../shared/abort.js';
 import type { Channel, ConfigAccess, Permission, SqlClass } from '../policy/index.js';
 import { SERVER_CANCEL, SESSION_ID_SQL, hasServerSideCancel, readSessionId } from '../connection/session.js';
@@ -24,6 +24,13 @@ const CLASS_PERMISSION: Record<SqlClass, Permission> = {
     write: 'sql:write',
     ddl: 'sql:ddl',
 };
+
+/** The policy permission for a raw SQL batch, using its strictest statement. */
+export function sqlPermissionFor(query: string, dialect: Dialect): Permission {
+
+    return CLASS_PERMISSION[classifyStatements(query, dialect)];
+
+}
 
 /** Message for an abort that reached the server. */
 const SERVER_CANCEL_MESSAGE = 'Cancelled. The server was asked to stop the query.';
@@ -325,9 +332,19 @@ export async function executeRawSql(
     signal?: AbortSignal,
 ): Promise<SqlExecutionResult> {
 
-    const statementClass = classifyStatements(query, gate.dialect);
+    const target = { name: configName, access: gate.access };
+    const permission = sqlPermissionFor(query, gate.dialect);
+    const check = checkConfigPolicy(gate.channel, target, permission);
+    if (!check.allowed) {
 
-    assertPolicy(gate.channel, { name: configName, access: gate.access }, CLASS_PERMISSION[statementClass]);
+        throw new Error(check.blockedReason ?? `"${permission}" is not allowed on config "${configName}".`);
+
+    }
+    if (check.requiresConfirmation) {
+
+        throw new Error(`"${permission}" on config "${configName}" requires confirmation (${check.confirmationPhrase}).`);
+
+    }
 
     return executeRawSqlUnchecked(db, query, configName, { signal, dialect: gate.dialect });
 

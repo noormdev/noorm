@@ -13,7 +13,7 @@ import type { Config } from '../config/types.js';
 import { assertCanDeleteConfig, type SettingsProvider } from '../config/resolver.js';
 import type { KnownUser } from '../identity/types.js';
 import { loadPrivateKey } from '../identity/storage.js';
-import { repairConfigAccess } from './access.js';
+import { resolveStateConfigAccess } from './access.js';
 import {
     migrateState as migrateSchemaVersion,
     needsStateMigration,
@@ -227,21 +227,9 @@ export class StateManager {
             needsStateMigration(stateRecord);
         this.#state = migrateState(schemaMigratedState, currentVersion);
 
-        // Raw-data-boundary invariant: migrations above guarantee every
-        // config carries a well-formed `access`, but a hand-edited or
-        // corrupted state file can still reach this point without one. This
-        // is the single place that repairs it, so no downstream consumer
-        // (setConfig/listConfigs/guarded) needs its own fallback. Tracking
-        // whether it actually mutated anything (below) feeds the persist
-        // decision, so a config repaired at an already-current schema
-        // version still lands on disk instead of being re-healed forever.
-        //
-        // `config` is typed `Config`, but the object underneath is untyped
-        // JSON that reached the current schema version without ever passing
-        // through `parseConfig` (e.g. a legacy-shaped config saved directly
-        // via `setConfig`, bypassing the zod path). It can carry a stray
-        // legacy `protected` key the type doesn't declare, or an `access`
-        // of any shape at all, so both are read as untrusted input.
+        // Backfill absent legacy access and reject malformed explicit access
+        // before any policy consumer can use it. Project-defined overrides
+        // mean no built-in role is a safe substitute for an invalid value.
         let backfilledAccess = false;
 
         for (const config of Object.values(this.#state.configs)) {
@@ -249,7 +237,7 @@ export class StateManager {
             const rawConfig: unknown = config;
             const legacyProtected = isRecord(rawConfig) ? rawConfig['protected'] : undefined;
 
-            const repaired = repairConfigAccess(config.access, legacyProtected);
+            const repaired = resolveStateConfigAccess(config.access, legacyProtected);
 
             if (!config.access || !equals(config.access, repaired)) {
 
@@ -450,6 +438,8 @@ export class StateManager {
     async setConfig(name: string, config: Config): Promise<void> {
 
         const state = this.#getState();
+        if (config.access !== undefined) resolveStateConfigAccess(config.access, undefined);
+
         const isNew = !state.configs[name];
 
         state.configs[name] = { ...config };

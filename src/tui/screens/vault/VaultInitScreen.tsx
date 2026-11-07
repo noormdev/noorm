@@ -3,7 +3,7 @@
  *
  * Generates a new vault key and stores it for the current user.
  */
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import type { Kysely } from 'kysely';
 
@@ -14,8 +14,9 @@ import type { NoormDatabase } from '../../../core/shared/index.js';
 import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
-import { Panel, Spinner, useToast } from '../../components/index.js';
+import { Panel, Spinner, SmartConfirm, useToast } from '../../components/index.js';
 import { useVaultConnection } from '../../hooks/index.js';
+import { checkConfigPolicy } from '../../../core/policy/index.js';
 import { initializeVault, getVaultStatus } from '../../../core/vault/index.js';
 
 
@@ -28,12 +29,46 @@ export function VaultInitScreen({ params: _params }: ScreenProps): ReactElement 
 
     const { back } = useRouter();
     const { isFocused } = useFocusScope('VaultInit');
-    const { activeConfigName, identity } = useAppContext();
+    const { activeConfig, activeConfigName, identity } = useAppContext();
     const { showToast } = useToast();
 
     const { phase: basePhase, error, connRef, setPhase: setBasePhase, setError } = useVaultConnection();
     const phase = basePhase as Phase;
     const setPhase = setBasePhase as (p: Phase) => void;
+    const [pendingPolicy, setPendingPolicy] = useState<'vault:read' | 'vault:write' | null>(null);
+    const policyCheck = pendingPolicy && activeConfig ? checkConfigPolicy('user', activeConfig, pendingPolicy) : null;
+
+    const beginInit = (readConfirmed = false, writeConfirmed = false) => {
+
+        if (!activeConfig) {
+
+            setError('No active configuration');
+
+            return;
+
+        }
+        for (const permission of ['vault:read', 'vault:write'] as const) {
+
+            const check = checkConfigPolicy('user', activeConfig, permission);
+            if (!check.allowed) {
+
+                setError(check.blockedReason ?? `${permission} is not allowed`);
+
+                return;
+
+            }
+            if (check.requiresConfirmation && !(permission === 'vault:read' ? readConfirmed : writeConfirmed)) {
+
+                setPendingPolicy(permission);
+
+                return;
+
+            }
+
+        }
+        void handleInit();
+
+    };
 
     // Handle initialization
     const handleInit = useCallback(async () => {
@@ -96,7 +131,7 @@ export function VaultInitScreen({ params: _params }: ScreenProps): ReactElement 
     // Keyboard handling
     useInput((input, key) => {
 
-        if (!isFocused) return;
+        if (!isFocused || pendingPolicy) return;
 
         if (key.escape) {
 
@@ -108,7 +143,7 @@ export function VaultInitScreen({ params: _params }: ScreenProps): ReactElement 
 
         if (key.return && phase === 'ready') {
 
-            handleInit();
+            beginInit();
 
         }
 
@@ -171,6 +206,29 @@ export function VaultInitScreen({ params: _params }: ScreenProps): ReactElement 
         );
 
     }
+    if (pendingPolicy && policyCheck) {
+
+        return (
+            <SmartConfirm
+                focusLabel="VaultInitPolicyConfirm"
+                requiresConfirmation
+                confirmationPhrase={policyCheck.confirmationPhrase}
+                configName={activeConfigName ?? 'unknown'}
+                action={pendingPolicy === 'vault:read' ? 'read vault for' : 'initialize vault for'}
+                message={pendingPolicy === 'vault:read' ? 'Read vault status?' : 'Initialize vault?'}
+                onConfirm={() => {
+
+                    const permission = pendingPolicy;
+                    setPendingPolicy(null);
+                    beginInit(true, permission === 'vault:write');
+
+                }}
+                onCancel={() => setPendingPolicy(null)}
+            />
+        );
+
+    }
+
 
     // Ready - show confirmation
     return (
@@ -178,6 +236,7 @@ export function VaultInitScreen({ params: _params }: ScreenProps): ReactElement 
             <Panel title="Initialize Vault" paddingX={2} paddingY={1}>
                 <Box flexDirection="column" gap={1}>
                     <Text dimColor>Config: {activeConfigName}</Text>
+                    {error && <Text color="red">{error}</Text>}
                     <Text>Initialize the vault for this database?</Text>
                     <Text dimColor>
                         This will generate a new encryption key for shared secrets.

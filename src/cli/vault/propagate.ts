@@ -12,7 +12,7 @@ import {
     checkVaultPolicy,
 } from '../../core/vault/index.js';
 import type { PendingVaultUser, VaultPolicyGate } from '../../core/vault/index.js';
-import { resolveChannel } from '../../core/policy/index.js';
+import { resolveChannel, withPolicyConfirmation } from '../../core/policy/index.js';
 
 /**
  * Shape of a pending identity as reported to the operator.
@@ -71,8 +71,25 @@ const propagateCommand = defineCommand({
                     };
 
                 }
+                const readCheck = checkVaultPolicy(gate, 'vault:read');
+                if (!readCheck.allowed) {
 
-                const vaultKey = await getVaultKeyChecked(gate, db, cryptoIdentity.identityHash, privateKey, ctx.dialect);
+                    return { success: false, error: readCheck.blockedReason ?? 'Cannot read the vault.' };
+
+                }
+                if (readCheck.requiresConfirmation && !isYesMode(args)) {
+
+                    return {
+                        success: false,
+                        error: `Reading the vault requires confirmation (${readCheck.confirmationPhrase}). Pass --yes to confirm.`,
+                    };
+
+                }
+
+
+                const vaultKey = await withPolicyConfirmation(config, ['vault:read'], () =>
+                    getVaultKeyChecked(gate, db, cryptoIdentity.identityHash, privateKey, ctx.dialect),
+                );
 
                 if (!vaultKey) {
 
@@ -146,12 +163,8 @@ const propagateCommand = defineCommand({
 
                 }
 
-                const propagateResult = await propagateVaultKeyChecked(
-                    gate,
-                    db,
-                    vaultKey,
-                    ctx.dialect,
-                    { targets: targets.map((u) => u.identityHash) },
+                const propagateResult = await withPolicyConfirmation(config, ['vault:propagate'], () =>
+                    propagateVaultKeyChecked(gate, db, vaultKey, ctx.dialect, { targets: targets.map((u) => u.identityHash) }),
                 );
 
                 // A partial grant is a failure: the teammate whose update did

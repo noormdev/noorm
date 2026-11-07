@@ -122,7 +122,7 @@ Foreign keys come back on even when the truncate fails partway. [Teardown intern
 | PostgreSQL truncate fails: `permission denied to set parameter "session_replication_role"` | Truncate turns off foreign-key triggers with `session_replication_role`, which only superusers, or roles granted `SET` on it, may change | Use a superuser for the test database, or on PostgreSQL 15+ run `GRANT SET ON PARAMETER session_replication_role TO <role>` |
 | `"db:teardown" is not allowed on config "prod" (role: operator)` | The matrix denies `db:teardown` to `viewer` and `operator`. No flag overrides a denial | Give the config the `admin` role, or tear down another config |
 | `requires confirmation` | The role's cell is `confirm` | Pass `--yes`, or set `NOORM_YES=1` |
-| `requires confirmation from a human` | The `agent` channel never confirms | Run it as `user` |
+| `requires confirmation from a human` | The agent-channel CLI cannot self-confirm | Run it as a user; MCP may instead mediate human approval |
 | `db.truncate()` throws `ProtectedConfigError` on an `admin` config | `db:truncate` is `confirm` even for `admin`, and the SDK has no prompt | `createContext({ yes: true })` or `NOORM_YES=1` |
 | `db teardown --dry-run` is refused on `operator` | A dry run skips the confirmation, not the role check | Look with `noorm db explore` |
 | `Post-teardown script failed: Script failed: no such table` | The script runs after the tables drop. It splits on `;` and skips every statement that starts with `--`, comment line included | Put no comment above a statement, and do not insert into dropped tables |

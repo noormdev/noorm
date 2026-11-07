@@ -10,7 +10,7 @@ import type { Channel, Permission, PolicyCell, PolicyTarget, Role } from '../../
  * of `src/core/policy/matrix.ts` so these tests catch a wrong cell, not just
  * a self-consistent one.
  */
-const EXPECTED_MATRIX: Record<Permission, Record<Role, PolicyCell>> = {
+const EXPECTED_MATRIX: Partial<Record<Permission, Record<Role, PolicyCell>>> = {
     'explore': { viewer: 'allow', operator: 'allow', admin: 'allow' },
 
     'sql:read': { viewer: 'allow', operator: 'allow', admin: 'allow' },
@@ -86,7 +86,7 @@ describe('policy: checkPolicy', () => {
 
             for (const channel of CHANNELS) {
 
-                const cell = EXPECTED_MATRIX[permission][role];
+                const cell = EXPECTED_MATRIX[permission]![role];
 
                 it(`${permission} / ${role} / ${channel} -> ${cell}`, () => {
 

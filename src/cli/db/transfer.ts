@@ -10,6 +10,8 @@ import { defineCommand } from 'citty';
 import { resolveExportExtension, resolveExportPath, resolveExportTables, ensureExportDirectory } from '../../core/dt/index.js';
 import { MIN_PASSPHRASE_LENGTH } from '../../core/dt/crypto.js';
 import { getStateManager } from '../../core/state/index.js';
+import { SettingsProvider, withConfigPolicy } from '../../core/config/resolver.js';
+import { getSettingsManager } from '../../core/settings/index.js';
 import type { TransferOptions, ConflictStrategy } from '../../core/transfer/index.js';
 import { withContext, outputResult, outputError, sharedArgs, type CliArgs } from '../_utils.js';
 import { EXIT, exitCodeForStatus } from '../_exit.js';
@@ -296,14 +298,24 @@ const transferCommand = defineCommand({
 
         }
 
-        const destConfig = stateManager.getConfig(destConfigName!);
+        const storedDestConfig = stateManager.getConfig(destConfigName!);
 
-        if (!destConfig) {
+        if (!storedDestConfig) {
 
             outputError(args, `Destination config not found: ${destConfigName}`);
             process.exit(EXIT.USAGE);
 
         }
+
+        const settingsManager = getSettingsManager(process.cwd());
+        const [, settingsErr] = await attempt(() => settingsManager.load());
+        if (settingsErr) {
+
+            outputError(args, `Failed to load settings: ${settingsErr.message}`);
+            process.exit(EXIT.FAILURE);
+
+        }
+        const destConfig = withConfigPolicy(storedDestConfig, new SettingsProvider(settingsManager));
 
         const options: TransferOptions = {
             tables: tableList,

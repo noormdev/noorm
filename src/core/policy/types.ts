@@ -10,7 +10,20 @@
  * `viewer` reads only, `operator` writes and confirms destructive ops,
  * `admin` is frictionless.
  */
-export type Role = 'viewer' | 'operator' | 'admin';
+export type BuiltinRole = 'viewer' | 'operator' | 'admin';
+export type Role = string;
+
+export interface RoleDefinition {
+    extends?: string;
+    permissions?: Partial<Record<Permission, PolicyCell>>;
+}
+
+export interface PolicyContext {
+    roles?: Record<string, RoleDefinition>;
+    protectedStage?: boolean;
+    /** Hashed project and resolved connection identity, never credentials in plaintext. */
+    targetIdentity?: string;
+}
 
 /**
  * Who is *driving* — a human at the keyboard is `user`, an AI agent is

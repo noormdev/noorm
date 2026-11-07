@@ -20,8 +20,10 @@ import { attempt, attemptSync } from '@logosdx/utils';
 import { outputError, outputResult, sharedArgs } from '../_utils.js';
 import { EXIT } from '../_exit.js';
 import { processFile } from '../../core/template/engine.js';
-import { assertPolicy, resolveChannel } from '../../core/policy/index.js';
+import { checkConfigPolicy, resolveChannel } from '../../core/policy/index.js';
 import { getStateManager } from '../../core/state/index.js';
+import { getSettingsManager } from '../../core/settings/index.js';
+import { SettingsProvider, withConfigPolicy } from '../../core/config/resolver.js';
 import { resolveRenderSecrets, RENDER_SECRETS_NOTICE } from './_render-secrets.js';
 
 const previewCommand = defineCommand({
@@ -76,11 +78,31 @@ const previewCommand = defineCommand({
         // returns an empty set for that case.
         if (activeConfig) {
 
-            const [, policyErr] = attemptSync(() => assertPolicy(resolveChannel(), activeConfig, 'run:file'));
+            const settingsManager = getSettingsManager(projectRoot);
+            const [, settingsErr] = await attempt(() => settingsManager.load());
+            if (settingsErr) {
+
+                outputError(args, `Failed to load settings: ${settingsErr.message}`);
+                process.exit(1);
+
+            }
+
+            const [check, policyErr] = attemptSync(() =>
+                checkConfigPolicy(resolveChannel(), withConfigPolicy(activeConfig, new SettingsProvider(settingsManager)), 'run:file'),
+            );
 
             if (policyErr) {
 
                 outputError(args, policyErr.message);
+                process.exit(1);
+
+            }
+
+            // Rendering is not execution: user-channel execution confirmation
+            // does not apply here. Agent confirm still resolves to deny.
+            if (!check.allowed) {
+
+                outputError(args, check.blockedReason ?? 'Rendering is not allowed.');
                 process.exit(1);
 
             }

@@ -1,59 +1,100 @@
 ---
 type: Domain
-description: MCP server over stdio wrapping a flat RPC command registry, permission-gated dispatch
+description: Modern stateless MCP over stdio, scoped human approval, and database metadata resources
 ---
 
 # mcp-rpc
 
 ## What it does
 
-MCP (Model Context Protocol) server that exposes noorm operations to AI agents. The MCP server wraps an RPC registry — commands are registered by name, then dispatched by the MCP `run_noorm_cmd` tool. A second tool `noorm_help` lists available commands and generates parameter docs from each command's Zod schema. [`src/rpc/session.ts`](../../src/rpc/session.ts)'s `SessionManager` tracks per-config connection state (a `Map<string, Context>`) across MCP calls and carries the session's `channel` (`user`/`agent`).
+The MCP server speaks protocol `2026-07-28` using `@modelcontextprotocol/server` 2.x. It exposes individual command tools, static user-selected prompt cookbooks, and JSON exploration resources. It rejects legacy initialization-based clients. Database-scoped requests explicitly name a config; they resolve fresh settings/configuration and release their connection after the request, with no transport-level or active database session.
 
-Every `RpcCommand` declares a `permission: Permission | 'open'` (`core/policy` permissions, or `'open'` for commands that target no config and skip the gate). Dispatch in [`src/mcp/server.ts`](../../src/mcp/server.ts) checks non-`'open'` commands against the resolved session's config via `checkConfigPolicy` before the handler runs.
+The RPC registry remains transport-independent. Each command declares a `Permission` or `'open'`. MCP does not expose the RPC-only session commands `connect`, `disconnect`, and `status`.
 
-## CLI code
+`tools/list` exposes `list_configs`, `overview`, `list`, `detail`, `sql`, `change_history`, `change_run`, `change_ff`, `change_revert`, `run_build`, and `run_file`. Calls use flat arguments: `list_configs` takes `{}`, and the others require `config` alongside their command-specific fields. Unknown tools and invalid input produce JSON-RPC `-32602`; permission failures remain tool results with `isError: true`. Migrate old `run_noorm_cmd` calls by using the command as the tool name and moving payload fields beside `config`; use tool schemas instead of `noorm_help`. Neither old tool remains.
 
-- [`src/mcp/server.ts`](../../src/mcp/server.ts) — `createMcpServer(registry, session)`; builds `McpServer` with two tools, `run_noorm_cmd` and `noorm_help`. Dispatch gates every non-`'open'` command via `checkConfigPolicy` (`core/policy`) against the resolved session context before the handler runs; errors from a handler are logged server-side with their stack via `console.error` and returned to the client as `{ error: message }` only (no stack)
-- [`src/mcp/index.ts`](../../src/mcp/index.ts) — `startServer()`; builds `createRegistry()` + `new SessionManager('agent')`, wires `createMcpServer`, connects a `StdioServerTransport`, and registers `SIGINT`/`SIGTERM` handlers that call `session.disconnectAll()`. Never returns — the stdio event loop keeps the process alive
-- [`src/mcp/init.ts`](../../src/mcp/init.ts) — `generateMcpConfig(projectRoot, { agent })`; creates or extends `.mcp.json` (agent `claude`, the default) or `.cursor/mcp.json` (agent `cursor`) with a `noorm` entry under `mcpServers` (`{ command: 'noorm', args: ['mcp', 'serve'] }`), merging into any existing file without touching other entries
-- [`src/rpc/registry.ts`](../../src/rpc/registry.ts) — `RpcRegistry`; flat `Map<name, RpcCommand>` with `register`/`get`/`list`/`getHelp`. `getHelp` reads `.shape` off the Zod `inputSchema` at runtime to list parameters, plus each command's [`examples`](../../examples)
-- [`src/rpc/session.ts`](../../src/rpc/session.ts) — `SessionManager`; tracks active `Context` connections per config name. Carries the session's `channel` (`user`/`agent`, default `'user'`) and enforces agent-channel invisibility in `connect()` — a config with `access.agent === false` (or no `access`, fail-closed) throws the byte-identical error as an unknown config name. `getContext()` without a config returns the sole active connection if exactly one exists, or throws naming all active connections if there are multiple
-- [`src/rpc/commands/changes.ts`](../../src/rpc/commands/changes.ts) — RPC commands: `change_history` (`permission: 'explore'`), `change_run` (`permission: 'change:run'`), `change_ff` (`permission: 'change:ff'`), `change_revert` (`permission: 'change:revert'`)
-- [`src/rpc/commands/config.ts`](../../src/rpc/commands/config.ts) — RPC command: `list_configs` (`permission: 'open'`; filters out `access.agent === false` configs for the agent channel via `isVisibleToChannel`)
-- [`src/rpc/commands/explore.ts`](../../src/rpc/commands/explore.ts) — RPC commands (all `permission: 'explore'`): `overview` (counts by object type), `list` (by category: tables/views/procedures/functions/types/indexes/foreignKeys/triggers/locks/connections), `detail` (full detail for one object)
-- [`src/rpc/commands/query.ts`](../../src/rpc/commands/query.ts) — RPC command: `sql` (dispatch-gates on `'sql:read'`; `executeRawSql` itself classifies the statement and checks `sql:write`/`sql:ddl` against the config's resolved role for the session's channel)
-- [`src/rpc/commands/run.ts`](../../src/rpc/commands/run.ts) — RPC commands: `run_build` (`permission: 'run:build'`, checksum-based, `force` to skip), `run_file` (`permission: 'run:file'`)
-- [`src/rpc/commands/session.ts`](../../src/rpc/commands/session.ts) — RPC commands: `connect`, `disconnect`, `status` (all `permission: 'open'`). `status` reports `{ connections, activeConfig, activeConnected }`, resolving `activeConfig` the same way a bare `connect` would (env override, then state), and nulls it out on the agent channel when the config is hidden
-- [`src/rpc/commands/index.ts`](../../src/rpc/commands/index.ts) — `registerAllCommands(registry)`; registers all 14 commands (3 session + 1 config + 3 explore + 1 query + 4 changes + 2 run) into the registry
-- [`src/rpc/types.ts`](../../src/rpc/types.ts) — `RpcCommand` (carries `permission: Permission | 'open'`, `handler(input, session)`), `RpcCommandInfo`, `RpcExample`, `RpcSession` (carries `readonly channel: Channel`), `RpcError` type/class definitions
-- [`src/rpc/index.ts`](../../src/rpc/index.ts) — barrel export; `createRegistry()` builds an `RpcRegistry` and calls `registerAllCommands`
-- [`src/cli/mcp/index.ts`](../../src/cli/mcp/index.ts) — Citty `mcp` command group with subcommands `init` and `serve`
-- [`src/cli/mcp/init.ts`](../../src/cli/mcp/init.ts) — `noorm mcp init [--agent claude|cursor] [--json]`; calls `generateMcpConfig`
-- [`src/cli/mcp/serve.ts`](../../src/cli/mcp/serve.ts) — `noorm mcp serve`; calls `startServer()`, intentionally never calls `process.exit()` since stdin keeps the loop alive
+`prompts/list` and `prompts/get` expose `noorm_getting_started` (optional `config`), `noorm_explore_database` (`config`), `noorm_query_database` (`config`, optional `question`), `noorm_apply_change` (`config`, `change`), `noorm_build_database` (`config`), `noorm_run_sql_file` (`config`, `path`), `noorm_automation` (`task`, optional `config`), and `noorm_ci` (`provider`, `target`: `test` or `deploy`, `config`). Prompt retrieval returns static user-role guidance, not database results, and does not connect or execute operations. Automation guidance covers scripts and failure handling; CI guidance separates disposable test builds from pending-change deployments. A user or application selects a prompt; its messages guide subsequent tool calls.
 
-## Docs
+## How it works
 
-- [`docs/guide/automation/mcp.md`](../guide/automation/mcp.md) — MCP setup and usage guide
-- [`docs/dev/headless.md`](../dev/headless.md) — headless/MCP usage patterns
+### Request-scoped database access
 
-## Coupling
+Tool dispatch resolves a fresh context for the named config, checks permission before invoking the handler, and disconnects when the request finishes.
 
-- MCP server wraps the RPC registry — new RPC commands registered in [`src/rpc/commands/index.ts`](../../src/rpc/commands/index.ts) are automatically discoverable via `noorm_help` and callable via `run_noorm_cmd` with no further MCP-layer wiring.
-- RPC commands delegate to core modules the same way CLI commands do (`ctx.noorm.changes.*` → `core-change`, `ctx.noorm.run.*` → `core-runner`, [`src/core/explore/operations.ts`](../../src/core/explore/operations.ts) → `core-db`, [`src/core/sql-terminal/executor.ts`](../../src/core/sql-terminal/executor.ts) → `core-identity`) — core API changes need RPC command updates in parallel with CLI changes.
-- MCP dispatch gates every non-`'open'` `RpcCommand` via `checkConfigPolicy` from [`src/core/policy/`](../../src/core/policy) — `src/rpc/protection.ts` and `src/core/config/protection.ts` (the old protected-config rule checkers) were both deleted; policy is now the sole enforcement point.
-- Every `RpcCommand` declares a `permission: Permission | 'open'` ([`src/rpc/types.ts`](../../src/rpc/types.ts)) — new RPC commands must pick a `core/policy` `Permission` or `'open'`, or the dispatch gate in [`src/mcp/server.ts`](../../src/mcp/server.ts) has nothing to check. [`tests/core/rpc/permissions.test.ts`](../../tests/core/rpc/permissions.test.ts) pins the exact `permission` value per command name against a hardcoded table, so a rename or reclassification must update that test too.
-- `SessionManager` holds live `Context`/Kysely connections created via `createContext` from `sdk` ([`src/sdk/index.ts`](../../src/sdk/index.ts)) — connection lifecycle and config resolution errors (`configNotFoundMessage`) come from `core-config`'s resolver.
-- [`src/cli/mcp/serve.ts`](../../src/cli/mcp/serve.ts) is the CLI entry; [`src/mcp/index.ts`](../../src/mcp/index.ts) (`startServer`) is the wiring; [`src/mcp/server.ts`](../../src/mcp/server.ts) is the MCP dispatch layer.
-- [`src/cli/mcp/init.ts`](../../src/cli/mcp/init.ts) calls into [`src/mcp/init.ts`](../../src/mcp/init.ts)'s `generateMcpConfig`, which writes `.mcp.json`/`.cursor/mcp.json` — a `cli` domain command backed by mcp-rpc code.
+```mermaid
+sequenceDiagram
+    %% source: src/mcp/server.ts, src/mcp/approval.ts
+    participant Client
+    participant Server
+    participant ApprovalManager
+    participant Context
+    Client->>Server: tools/call with config
+    Server->>Context: createContext on agent channel
+    Server->>ApprovalManager: Check effective permissions
+    alt allow or validated confirmation
+        ApprovalManager->>Context: Connect and invoke handler
+        Context-->>Server: Operation result
+    else deny or approval needed
+        ApprovalManager-->>Server: Error or input_required
+    end
+    Server->>Context: disconnect in finally
+    Server-->>Client: JSON-RPC response
+```
 
-## Conventions worth knowing
+### Approval retry
 
-- MCP transport: stdio (JSON-RPC over stdin/stdout); `StdioServerTransport` from `@modelcontextprotocol/sdk`.
-- `run_noorm_cmd` dispatches by command name string passed in its `command` field — command names are stable API surface. Its `config` field selects which active session/connection a command targets; for session commands (`connect`/`disconnect`) it is merged into the payload instead.
-- For non-session commands invoked with a `config`, `createConfigScopedSession` in [`src/mcp/server.ts`](../../src/mcp/server.ts) wraps the `SessionManager` in a `Proxy` that intercepts only `getContext` to pin it to that config, forwarding all other session methods unchanged.
-- `noorm_help` lists all registered commands with descriptions when called with no arguments, or full parameter/example detail for a single named command.
-- `mcp init` writes `.mcp.json` (or `.cursor/mcp.json`) with a `noorm mcp serve` invocation for Claude Code / Cursor MCP discovery; existing files are merged, not overwritten.
-- Zod schemas on each RPC command define the `payload` shape validated at dispatch time; validation failures return `{ error: 'Invalid payload', details: [...] }` with per-field Zod issue paths.
-- Tests in [`tests/core/mcp/`](../../tests/core/mcp) cover `generateMcpConfig` (`init.test.ts`) and the full MCP dispatch pipeline via `InMemoryTransport` + `Client` (`server.test.ts`); [`tests/core/rpc/`](../../tests/core/rpc) covers registry behavior, command permissions, command handler logic, and session manager invisibility rules.
-- `connect()` on the agent channel throws the identical `configNotFoundMessage` error (`core/config/resolver.ts`) for an unknown config and an invisible one (`access.agent === false` or missing `access`) — an agent cannot distinguish "doesn't exist" from "not permitted".
-- `SessionInfo.role: Role` is the resolved role for the session's channel (`agent` resolves `access.agent`, `user` resolves `access.user`); an operator-role cell for the agent channel is still gated per-permission at dispatch, same as any other role.
+The approval state identifies a server-held operation snapshot. A retry consumes it once and must match the request, target, and current policy.
+
+```mermaid
+stateDiagram-v2
+    %% source: src/mcp/approval.ts
+    [*] --> Pending: confirm and prepare
+    Pending --> Consumed: Retry
+    Pending --> Expired: Five-minute expiry
+    Consumed --> Executed: Matching state and explicit approval
+    Consumed --> Rejected: Decline or failed validation
+    Expired --> Rejected: Retry
+    Executed --> [*]
+    Rejected --> [*]
+```
+
+## Implementation
+
+- [`src/mcp/index.ts`](../../src/mcp/index.ts): `startServer` serves one modern server, logs to stderr, and closes the transport on termination signals.
+- [`src/mcp/stdio.ts`](../../src/mcp/stdio.ts): `serveModernMcp` validates the required metadata/version on every request before SDK dispatch, then serves modern stdio with legacy traffic rejected.
+- [`src/mcp/server.ts`](../../src/mcp/server.ts): `createMcpServer(registry, options?)` registers tools, prompts, and resources and resolves request contexts. `withConfigContext` uses `createContext({ config, channel: 'agent' })`; `options.withConfig` is the isolated context boundary used by tests. SQL dispatch classifies the actual statement before authorization rather than treating every SQL call as a read.
+- [`src/mcp/approval.ts`](../../src/mcp/approval.ts): `ApprovalManager` implements MRTR form elicitation. HMAC-protected request state contains an opaque nonce and request digest; SQL, secrets, and prepared execution objects remain server-side. Target configuration and effective policy are rechecked on retry. Approval is five-minute, process-local, and single-use; concurrent retries cannot execute twice. Decline, cancel, missing form support, tampering, policy/target changes, and replay fail closed.
+- [`src/mcp/prepared.ts`](../../src/mcp/prepared.ts): prepares a reviewable operation and captures rendered SQL/checksums for script, build, and change commands. Known template secret values are redacted in review summaries. Execution uses the private immutable snapshot.
+- [`src/core/shared/approved-content.ts`](../../src/core/shared/approved-content.ts): async-local approved SQL/checksum lookup and build/change/pending-plan guards used by shared file loading and execution.
+- [`src/mcp/resources.ts`](../../src/mcp/resources.ts): URI templates, visible-config discovery, encoded-name parsing, and overview/list/detail JSON resource reads. Parent dispatch enforces `explore`, including MRTR approval for a configured `confirm` cell. Live metadata uses private zero-TTL hints.
+- [`src/mcp/prompts.ts`](../../src/mcp/prompts.ts): registers eight static prompt cookbooks with tool-call examples and headless automation/CI workflows; fetching guidance performs no database work.
+- [`src/mcp/init.ts`](../../src/mcp/init.ts): writes or merges Claude Code/Cursor server configuration.
+- [`src/rpc/registry.ts`](../../src/rpc/registry.ts): flat command registration, listing, and help generation from schemas/examples.
+- [`src/rpc/session.ts`](../../src/rpc/session.ts): connection manager retained for transport-independent RPC consumers; modern MCP does not use its implicit sole-connection behavior.
+- [`src/rpc/commands/`](../../src/rpc/commands): exploration, query, config, run, change, and internal session handlers.
+
+## Enforcement contracts
+
+`getConfigPermission` returns the effective project role decision, including protected-stage ceilings. Defaults remain unchanged; project settings may override built-ins or define custom inheriting roles. MCP uses `allow` directly, rejects `deny`, and resolves `confirm` through elicitation. Only after verified approval does `withPolicyConfirmation` grant the exact target/permissions within the execution's async scope. Inner SDK/core guards still enforce policy; there is no switch to the human channel or public `approved: true` argument.
+
+`change_ff` also checks `change:run`, since the batch executes individual changes. Script preparation does not execute its SQL, but template sidecars are project-controlled JavaScript and must be trusted.
+
+Outside the MCP approval path, agent CLI `confirm` remains denied even with `--yes`/`NOORM_YES`. Human CLI/TUI keeps its confirmation mechanisms. MCP relies on the client to collect human consent, not a cryptographic proof of a human interaction. Filesystem access and database credentials are separate security boundaries.
+
+## Resource URIs
+
+```text
+noorm://configs/{config}/overview
+noorm://configs/{config}/objects/{category}
+noorm://configs/{config}/objects/{category}/{name}{?schema}
+```
+
+A separate unqualified-detail registration handles the no-query form. Categories and supported detail types match the existing core exploration operations. Config visibility is enforced on discovery and reads; resources expose no database credentials or arbitrary SQL endpoint.
+
+## Verification and documentation
+
+- [`tests/core/mcp/server.test.ts`](../../tests/core/mcp/server.test.ts): real SQLite operations through the modern JSON-RPC/MRTR dispatch path, policy changes, exact target binding, replay, and resource approval.
+- [`tests/core/mcp/resources.test.ts`](../../tests/core/mcp/resources.test.ts): modern resource discovery, actual SQLite introspection, visibility, and encoded URI boundaries.
+- [`tests/core/mcp/prepared.test.ts`](../../tests/core/mcp/prepared.test.ts): actual execution of approved snapshots and rejection of expanded build/change plans.
+- [`tests/core/mcp/init.test.ts`](../../tests/core/mcp/init.test.ts): client config generation.
+- [`docs/guide/automation/mcp.md`](../guide/automation/mcp.md): public setup, cutover, approval, and resources guide.

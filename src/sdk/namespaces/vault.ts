@@ -34,6 +34,8 @@ import type { CryptoIdentity } from '../../core/identity/types.js';
 import type { ContextState } from '../state.js';
 import { requireConnection } from '../state.js';
 import { checkProtectedConfig } from '../guards.js';
+import { attachPolicyContext, withPolicyConfirmation } from '../../core/policy/index.js';
+import { validateAccessRoles } from '../../core/config/resolver.js';
 import type { Permission } from '../../core/policy/index.js';
 
 // ─────────────────────────────────────────────────────────────
@@ -211,6 +213,7 @@ export class VaultNamespace {
     ): Promise<void> {
 
         this.#gate('vault:write', 'vault.set');
+        this.#gate('vault:read', 'vault.set');
 
         const vaultKey = await this.#getVaultKey(privateKey);
 
@@ -356,6 +359,7 @@ export class VaultNamespace {
     async propagate(privateKey: string): Promise<VaultPropagationResult> {
 
         this.#gate('vault:propagate', 'vault.propagate');
+        this.#gate('vault:read', 'vault.propagate');
 
         const vaultKey = await this.#getVaultKey(privateKey);
 
@@ -388,20 +392,25 @@ export class VaultNamespace {
         options?: VaultCopyOptions,
     ): Promise<VaultCopyResult> {
 
+        const source = this.#state.config;
+        const destination = { ...destConfig, access: { ...destConfig.access } };
+        const roles = this.#state.settings.access?.roles;
+        validateAccessRoles(destination.access, roles);
+        attachPolicyContext(destination.access, {
+            roles,
+            protectedStage: this.#state.settings.stages?.[destination.name]?.defaults?.protected === true,
+        });
+        checkProtectedConfig(source, this.#state.options, 'vault:read', 'vault.copy');
+        if (!options?.dryRun) checkProtectedConfig(destination, this.#state.options, 'vault:write', 'vault.copy');
         const crypto = await this.#getCryptoIdentity();
-
-        // `copyVaultSecrets` gates itself on both configs — it is the only
-        // caller-visible seam holding source *and* destination access — so
-        // the channel has to reach it.
-        const [result, err] = await copyVaultSecrets(
-            this.#state.config,
-            destConfig,
-            keys,
-            crypto.identityHash,
-            privateKey,
-            crypto.publicKey,
+        const copy = () => copyVaultSecrets(
+            source, destination, keys, crypto.identityHash, privateKey, crypto.publicKey,
             { ...options, channel: this.#state.options.channel ?? 'user' },
         );
+        const execute = () => options?.dryRun
+            ? copy()
+            : withPolicyConfirmation(destination, ['vault:write'], copy);
+        const [result, err] = await withPolicyConfirmation(source, ['vault:read'], execute);
 
         if (err) throw err;
 

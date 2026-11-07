@@ -8,7 +8,10 @@ import { attempt } from '@logosdx/utils';
 import { defineCommand } from 'citty';
 
 import { initState, getStateManager } from '../../core/state/index.js';
-import { formatAccessTag, isVisibleToChannel, resolveChannel } from '../../core/policy/index.js';
+import { formatAccessTag, getConfigPermission, isVisibleToChannel, MATRIX, resolveChannel } from '../../core/policy/index.js';
+import type { Permission } from '../../core/policy/index.js';
+import { SettingsProvider, withConfigPolicy } from '../../core/config/resolver.js';
+import { getSettingsManager } from '../../core/settings/index.js';
 import { outputResult, outputError, sharedArgs } from '../_utils.js';
 
 const listCommand = defineCommand({
@@ -62,9 +65,44 @@ const listCommand = defineCommand({
 
         });
 
+        let resultConfigs: unknown[] = configs;
+
+        if (args.json) {
+
+            const settingsManager = getSettingsManager(projectRoot);
+            const [, settingsErr] = await attempt(() => settingsManager.load());
+            if (settingsErr) {
+
+                outputError(args, `Failed to load settings: ${settingsErr.message}`);
+                process.exit(1);
+
+            }
+
+            const provider = new SettingsProvider(settingsManager);
+            resultConfigs = configs.map((summary) => {
+
+                const stored = stateManager.getConfig(summary.name)!;
+                const config = withConfigPolicy(stored, provider, false);
+                const permissions = Object.keys(MATRIX) as Permission[];
+                const effectivePermissions = Object.fromEntries(
+                    (['user', 'agent'] as const).map((channel) => [
+                        channel,
+                        Object.fromEntries(permissions.map((permission) => [
+                            permission,
+                            getConfigPermission(channel, config, permission),
+                        ])),
+                    ]),
+                );
+
+                return { ...summary, effectivePermissions };
+
+            });
+
+        }
+
         outputResult(
             args,
-            { configs },
+            { configs: resultConfigs },
             `Configurations:\n${lines.join('\n')}`,
         );
         process.exit(0);

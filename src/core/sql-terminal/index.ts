@@ -13,5 +13,5 @@ export * from './history.js';
  * symbol ends up one autocomplete away from a production call site. The
  * tests that legitimately need it import `./executor.js` directly.
  */
-export { executeRawSql, hasServerSideCancel, abortMessageFor } from './executor.js';
+export { executeRawSql, sqlPermissionFor, hasServerSideCancel, abortMessageFor } from './executor.js';
 export type { SqlPolicyGate, ExecuteSqlOptions } from './executor.js';

@@ -1,10 +1,7 @@
-import type { Permission, PolicyCell, Role } from './types.js';
+import type { BuiltinRole, Permission, PolicyCell } from './types.js';
 
-/**
- * The hard-coded permission × role matrix. Not user-extensible — see
- * `docs/spec/config-access-roles.md` for the source of truth this mirrors.
- */
-export const MATRIX: Record<Permission, Record<Role, PolicyCell>> = {
+/** Immutable built-in defaults and protected-stage ceilings. */
+export const MATRIX: Record<Permission, Record<BuiltinRole, PolicyCell>> = {
     'explore': { viewer: 'allow', operator: 'allow', admin: 'allow' },
 
     'sql:read': { viewer: 'allow', operator: 'allow', admin: 'allow' },
