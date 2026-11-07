@@ -9,14 +9,14 @@ import { dirname, resolve } from 'node:path';
 
 import { sql } from 'kysely';
 import { retry, attempt, attemptSync, runWithTimeout, isTimeoutError } from '@logosdx/utils';
-import type { ConnectionConfig, ConnectionResult, Dialect } from './types.js';
+import type { ConnectionConfig, ConnectionResult, Dialect, RuntimeConnectionOptions } from './types.js';
 import { observer } from '../observer.js';
 import { OperationAbortedError, raceAbort, throwIfAborted } from '../shared/abort.js';
 import { getConnectionManager } from './manager.js';
 import { connectTimeoutFor } from './defaults.js';
 import { DatabaseConnectionError, explainConnectionError } from './errors.js';
 
-type DialectFactory = (config: ConnectionConfig) => ConnectionResult | Promise<ConnectionResult>;
+type DialectFactory = (config: ConnectionConfig, runtime?: RuntimeConnectionOptions) => ConnectionResult | Promise<ConnectionResult>;
 
 /**
  * Get the dialect factory function.
@@ -152,6 +152,7 @@ async function openConnection(
     configName: string,
     retryOptions: ConnectionRetryOptions,
     signal?: AbortSignal,
+    runtime?: RuntimeConnectionOptions,
 ): Promise<ConnectionResult> {
 
     const { retries = 3, delay = 1000, backoff = 2 } = retryOptions;
@@ -180,7 +181,7 @@ async function openConnection(
 
                 }
 
-                const conn = await createFn!(config);
+                const conn = await createFn!(config, runtime);
 
                 // The driver can hand back a live pool after the caller gave
                 // up. Nothing else holds it at this point, so close it here.
@@ -339,12 +340,13 @@ export async function createConnection(
     configName: string = '__default__',
     retryOptions: ConnectionRetryOptions = {},
     signal?: AbortSignal,
+    runtime?: RuntimeConnectionOptions,
 ): Promise<ConnectionResult> {
 
     throwIfAborted(signal);
 
     return raceAbort(
-        openConnection(config, configName, retryOptions, signal),
+        openConnection(config, configName, retryOptions, signal, runtime),
         signal,
         discardConnection,
     );

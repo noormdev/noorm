@@ -86,6 +86,11 @@ export interface ConnectionConfig {
     tlsServerName?: string;
 }
 
+/** Runtime-only PostgreSQL credentials; never part of persisted configuration. */
+export interface RuntimeConnectionOptions {
+    password?: () => string | Promise<string>;
+}
+
 /**
  * Result of creating a connection.
  */

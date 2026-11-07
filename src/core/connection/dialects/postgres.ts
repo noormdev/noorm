@@ -5,7 +5,7 @@
  * Install with: npm install pg @types/pg
  */
 import { Kysely, PostgresDialect } from 'kysely';
-import type { ConnectionConfig, ConnectionResult } from '../types.js';
+import type { ConnectionConfig, ConnectionResult, RuntimeConnectionOptions } from '../types.js';
 import { DEFAULT_PORTS, connectTimeoutFor } from '../defaults.js';
 
 /**
@@ -24,6 +24,7 @@ import { DEFAULT_PORTS, connectTimeoutFor } from '../defaults.js';
  */
 export async function createPostgresConnection(
     config: ConnectionConfig,
+    runtime?: RuntimeConnectionOptions,
 ): Promise<ConnectionResult> {
 
     // Dynamic import to avoid compile-time dependency
@@ -34,7 +35,22 @@ export async function createPostgresConnection(
         host: config.host ?? 'localhost',
         port: config.port ?? DEFAULT_PORTS.postgres,
         user: config.user,
-        password: config.password,
+        password: runtime?.password
+            ? async () => {
+
+                try {
+
+                    return await runtime.password!();
+
+                }
+                catch {
+
+                    throw new Error('PostgreSQL password callback failed');
+
+                }
+
+            }
+            : config.password,
         database: config.database,
         min: config.pool?.min ?? 0,
         max: config.pool?.max ?? 10,
