@@ -66,6 +66,11 @@ export async function createPostgresConnection(
         database: config.database,
         min: config.pool?.min ?? 0,
         max: config.pool?.max ?? 10,
+        idleTimeoutMillis: config.pool?.idleTimeoutMillis,
+        statement_timeout: config.statementTimeoutMs,
+        query_timeout: config.queryTimeoutMs,
+        application_name: config.applicationName,
+        keepAlive: config.keepAlive,
         ssl,
         // pg's own default is 0, meaning wait forever: an unreachable host
         // never comes back without this.
