@@ -28,3 +28,7 @@ At the fixed as-of time `2026-01-01 10:05:00` UTC, the `dev` lock is held and un
 ## Rules and source
 
 All columns are non-null and `config_name` is unique, so at most one row exists per configuration name. `locked_by` and `config_name` are strings, not foreign keys. Timestamps use MSSQL `datetime2` and `timestamp` elsewhere; they are naive wall-clock values interpreted as UTC. Source: `src/core/version/schema/migrations/v1.ts` and `src/core/shared/tables.ts`.
+
+## Proposal
+
+Application-triggered pipelines need a lock per config and pipeline, so one pipeline does not block another in the same database. That scope is wider than `unique_lock_config` allows and requires the same internal schema migration as pipeline tracking. This is proposed behavior, not current schema.

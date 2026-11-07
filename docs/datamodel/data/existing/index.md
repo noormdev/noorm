@@ -4,7 +4,7 @@
 
 </ignatius-breadcrumb>
 
-<ignatius-index scope="entity-group" path="data/existing" count="6" depth="2" digest="sha256:f1cca4208f21028b97da2e2dd65a88688360b778da8d1fbd6d5486894b0a7d61">
+<ignatius-index scope="entity-group" path="data/existing" count="6" depth="2" digest="sha256:300768c91798b1be8464aa86f275c53bc622659161dab353cc710d4119b5c1c0">
 
 | Name | Kind | Description | Go |
 |---|---|---|---|

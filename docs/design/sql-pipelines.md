@@ -153,11 +153,11 @@ Concurrency intersects the policy, because a transaction is a session and a sess
 |---|---|
 | `pipeline` | Not allowed. One transaction spans the whole run, so preflight rejects a graph whose ready steps can overlap |
 | `step` | Allowed. Each ready step gets its own transaction and its own connection |
-| `none` | Allowed. Parallelism is bounded by the concurrency cap and whatever the database tolerates |
+| `none` | Allowed. Each concurrently ready step gets its own pinned session, so session-local state does not cross branches |
 
 The cap defaults low, around four, and must not exceed the resolved pool size. SQLite serializes writers, so parallelism there buys almost nothing and risks busy timeouts; treat that cap as effectively one for write-heavy pipelines. `pipeline` plus a concurrent graph is a definition error, not a silent downgrade to sequential.
 
-`step` is the current default. Under managed policies, every fragment of a step must use the relevant transaction executor. Under `none`, keep workflow SQL on one pinned session so session-local objects remain accessible. Session affinity does not extend a step-local transaction or preserve objects that the database drops on commit.
+`step` is the current default. Under managed policies, every fragment of a step must use the relevant transaction executor. A linear `none` pipeline keeps workflow SQL on one pinned session, so session-local objects remain accessible. A concurrent `none` graph gives each ready step its own session, so temporary tables, session variables, and `SET` values do not cross branches. `step` mode has the same limit for a different reason: each step commits independently and does not promise the same session afterwards. A pipeline that depends on session-local state across steps must therefore stay linear.
 
 | Constraint | Consequence |
 |---|---|

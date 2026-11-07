@@ -70,7 +70,7 @@ examples:
     - to: ext:Caller
       label: lock conflict and audit failure
       rows:
-        - { slug: refresh-reporting, config_name: dev, status: rejected, errors: [configuration locked] }
+        - { slug: refresh-reporting, config_name: dev, status: rejected, errors: [pipeline already running] }
         - { slug: refresh-reporting, config_name: dev, status: failed, errors: [failed to persist intended audit] }
 ---
 

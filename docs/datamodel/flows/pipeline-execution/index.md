@@ -8,7 +8,7 @@ description: Proposed pipeline invocation from preflight through execution, audi
 
 </ignatius-breadcrumb>
 
-<ignatius-index scope="flow-diagram" path="flows/pipeline-execution" count="4" depth="2" digest="sha256:9b65202b6714d3b64ccfd6e98681816c49698b4e06ca6e10d879db4444f650d5">
+<ignatius-index scope="flow-diagram" path="flows/pipeline-execution" count="4" depth="2" digest="sha256:3bbf5f02ea1e0a2c76771dee8d8ace1e984a01f6a7e3263907dce602b4b1a147">
 
 | Name | Kind | Description | Go |
 |---|---|---|---|
