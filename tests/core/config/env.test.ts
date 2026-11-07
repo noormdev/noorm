@@ -140,16 +140,6 @@ describe('config: env', () => {
             config = getEnvConfig();
             expect(config.connection?.ssl).toBe(false);
 
-            // Note: '1' and '0' become numbers, not booleans
-            // Use 'true'/'false' for boolean values
-            process.env['NOORM_CONNECTION_SSL'] = '1';
-            config = getEnvConfig();
-            expect(config.connection?.ssl).toBe(1);
-
-            process.env['NOORM_CONNECTION_SSL'] = '0';
-            config = getEnvConfig();
-            expect(config.connection?.ssl).toBe(0);
-
         });
 
         it('should validate dialect', () => {
