@@ -89,7 +89,7 @@ const DEFAULTS: ConfigInput = {
  * Ceiling a `protected: true` stage caps a config's access to. A config can
  * still be stricter than this (e.g. `agent: false`); it just can't be looser.
  */
-const PROTECTED_STAGE_CEILING: ConfigAccess = { user: 'operator', agent: 'viewer' };
+export const PROTECTED_STAGE_CEILING: ConfigAccess = { user: 'operator', agent: 'viewer' };
 
 /**
  * Strictness rank for comparing roles: `false` (invisible) is stricter than
@@ -110,7 +110,7 @@ function roleRank(role: Role | false): number {
  * ceiling survives unchanged; a looser value is pulled down to it. Never
  * loosens a value that was already stricter than the ceiling.
  */
-function clampToCeiling(access: ConfigAccess, ceiling: ConfigAccess): ConfigAccess {
+export function clampToCeiling(access: ConfigAccess, ceiling: ConfigAccess): ConfigAccess {
 
     return {
         user: roleRank(access.user) <= roleRank(ceiling.user) ? access.user : ceiling.user,

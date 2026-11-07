@@ -6,6 +6,7 @@
  */
 export { assertPolicy, checkConfigPolicy, checkPolicy, confirmationPhraseFor, formatAccessTag, guarded, isVisibleToChannel } from './check.js';
 export { resolveChannel } from './channel.js';
+export { clampToCeiling, PROTECTED_STAGE_CEILING } from './ceiling.js';
 export { classifyStatements } from './classify.js';
 export { AGENT_HARNESSES, detectAgentHarness, isAgentSession } from './harness.js';
 export type { AgentHarness } from './harness.js';

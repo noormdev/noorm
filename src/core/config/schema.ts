@@ -20,7 +20,7 @@ export const DialectSchema = z.enum(['postgres', 'mysql', 'sqlite', 'mssql']);
  */
 const RoleSchema = z.enum(['viewer', 'operator', 'admin']);
 
-const AccessSchema = z.object({
+export const AccessSchema = z.object({
     user: RoleSchema,
     agent: z.union([RoleSchema, z.literal(false)]),
 });

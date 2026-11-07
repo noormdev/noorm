@@ -7,6 +7,7 @@
 import { z } from 'zod';
 
 import { PortSchema } from '../connection/defaults.js';
+import { AccessSchema } from '../config/schema.js';
 import { DEFAULT_UI_MOUSE } from './defaults.js';
 
 // ─────────────────────────────────────────────────────────────
@@ -67,6 +68,8 @@ const StageDefaultsSchema = z.object({
     user: z.string().optional(),
     password: z.string().optional(),
     ssl: z.boolean().optional(),
+    type: ConnectionTypeSchema.optional(),
+    access: AccessSchema.optional(),
     isTest: z.boolean().optional(),
     // Settings-stage vocabulary — distinct from the removed `Config.protected`; see docs/spec/config-access-roles.md.
     protected: z.boolean().optional(),
