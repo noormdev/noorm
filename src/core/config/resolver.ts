@@ -215,9 +215,10 @@ export function resolveConfig(state: StateProvider, options: ResolveOptions = {}
 
     if (!configName) {
 
-        // Check if we have enough env vars to run without a stored config
+        // Inline SDK overrides can supply the missing connection fields too.
         const envConfig = getEnvConfig();
-        if (envConfig.connection?.dialect && envConfig.connection?.database) {
+        const connection = { ...envConfig.connection, ...options.flags?.connection };
+        if (options.flags?.connection || (connection.dialect && connection.database)) {
 
             return resolveFromEnvOnly(envConfig, options.flags, options.stage, options.settings);
 
@@ -291,7 +292,7 @@ function resolveFromEnvOnly(
 ): Config {
 
     // Generate a name if not provided
-    const name = envConfig.name ?? flags?.name ?? '__env__';
+    const name = envConfig.name ?? flags?.name ?? (flags?.connection ? '__inline__' : '__env__');
 
     // Get stage defaults if available
     const stageDefaults = getStageDefaults(name, stageName, settings);
@@ -311,7 +312,7 @@ function resolveFromEnvOnly(
     // Ensure name is set
     if (!merged.name) {
 
-        merged.name = '__env__';
+        merged.name = name;
 
     }
 
