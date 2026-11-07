@@ -116,6 +116,10 @@ The later layer wins. Without a stored config, an inline connection uses the nam
 
 For PostgreSQL, inline `connection.password` may be a function returning a string or a promise of one. pg calls it when a physical connection authenticates, not on each pooled query. The SDK owns and closes the pool. Callbacks are runtime-only and cannot be represented in YAML or environment configuration; a callback failure is reported without its message.
 
+For PostgreSQL through an IP tunnel, set `ssl: { ca: trustedCa }` and `tlsServerName` to the certificate's DNS identity. TLS must be explicitly enabled; combining an identity option with `rejectUnauthorized: false` is rejected. The CA validates the chain and the name validates the peer identity. On IP hosts the name also supplies SNI. For DNS dial hosts pg replaces SNI with the dial host, but noorm still verifies the configured name; select a dial host whose SNI reaches the intended certificate. Without `tlsServerName`, pg and Node use their normal host behavior.
+
+Inline SSL objects may provide `checkServerIdentity(hostname, certificate)` at runtime. It receives the configured TLS name when present, otherwise Node's hostname, and the peer certificate. Returning an error rejects the connection. This callback replaces Node's standard identity check and must implement any checks the application requires; it does not replace CA chain verification. It cannot be stored in YAML.
+
 | Variable | Effect |
 |---|---|
 | `NOORM_CONFIG` | Config name when `options.config` is unset |

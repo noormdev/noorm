@@ -250,9 +250,12 @@ export class Context<DB = unknown, Procs = object, Funcs = object, Tvfs = object
             this.#state.config.name,
             retryOptions,
             undefined,
-            typeof this.#state.options.connection?.password === 'function'
-                ? { password: this.#state.options.connection.password }
-                : undefined,
+            {
+                password: typeof this.#state.options.connection?.password === 'function'
+                    ? this.#state.options.connection.password : undefined,
+                checkServerIdentity: typeof this.#state.options.connection?.ssl === 'object'
+                    ? this.#state.options.connection.ssl.checkServerIdentity : undefined,
+            },
         );
 
     }
