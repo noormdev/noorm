@@ -47,7 +47,7 @@ These flags recur across commands. Each command section lists the ones it accept
 | `--config <name>` | `-c` | Use this stored config instead of the active one |
 | `--json` | | Print one JSON document on stdout |
 | `--dry-run` | | Preview without writing. `run` and `change` commands render to `tmp/` |
-| `--force` | `-f` | `run` and `change`: skip the checksum check. `init`, `ci init`, `settings init`, `config import`, `vault cp`, `identity init`: overwrite what exists |
+| `--force` | `-f` | `run` and `change`: skip the checksum check. `init`, `ci init`, `settings init`, `config create`, `config import`, `vault cp`, `identity init`: overwrite what exists, subject to each command's confirmation and policy checks |
 | `--yes` | `-y` | Confirm a command the config's role marks `confirm`. `NOORM_YES` does the same |
 
 Run `noorm <command> --help` for a command's flags and an EXAMPLES block. Shell completion is [`complete`](#complete).
@@ -70,13 +70,9 @@ flowchart TD
     EO --> R
 ```
 
-The resolved config merges three layers, and a later layer wins. Then a `settings.yml` stage named like the config, if it has `protected: true`, caps the config's access:
+The resolved config merges built-in defaults, matching stage defaults, the stored config, and `NOORM_*` environment variables, in that order. A later layer wins. A protected stage caps access after the merge. See [stage precedence](/guide/environments/stages#which-value-wins).
 
-1. Built-in defaults
-2. The stored config
-3. `NOORM_*` environment variables
-
-A `NOORM_CONNECTION_HOST` therefore overrides the host of a stored config. CLI flags select the config but never change its connection fields.
+`NOORM_CONNECTION_HOST` overrides the stored host. Execution commands select a config but do not expose connection-field flags. [`config create`](#config-create) accepts connection overrides when saving a new config.
 
 
 ### Environment-only mode
@@ -137,13 +133,13 @@ Commands that can exit `3`:
 - `db transfer` (database to database), `ci secrets`, `vault propagate`
 - `dev test-helpers`, `dev test-workers`
 
-Policy denials exit `1`. They have no dedicated code.
+Policy denials normally exit `1`. `config create` and `config sync` report their checked errors, including policy denials, as exit `2`. They have no dedicated policy exit code.
 
 
 ## Environment variables
 
 
-Names after the `NOORM_` prefix nest on underscores: `NOORM_CONNECTION_HOST` sets `connection.host`. Numeric values become numbers, `true` and `false` become booleans, and values whose name contains `password` stay strings. Other unreserved `NOORM_*` names overlay the matching key in `settings.yml`.
+Names after `NOORM_` nest on underscores: `NOORM_CONNECTION_HOST` sets `connection.host`, while camelCase fields retain their spelling within a segment. See the [environment field reference](/dev/config#environment-variables) for conversion, SSL input, and schema validation rules. Overrides remain in memory rather than changing stored configs or `settings.yml`.
 
 | Variable | Effect |
 |---|---|
@@ -151,7 +147,7 @@ Names after the `NOORM_` prefix nest on underscores: `NOORM_CONNECTION_HOST` set
 | `NOORM_CONNECTION_DATABASE` | Database name |
 | `NOORM_CONNECTION_HOST`, `_PORT`, `_USER`, `_PASSWORD`, `_FILENAME` | Server, credentials, and the SQLite file |
 | `NOORM_CONFIG` | Stored config to use. `--config` wins |
-| `NOORM_YES` | Any value except empty, `0`, or `false` (case-insensitive). Confirms every `confirm` cell on the `user` channel, like `--yes`. `identity init --force` and `sql clear` read only the literal flag |
+| `NOORM_YES` | Any value except empty, `0`, or `false` (case-insensitive) confirms policy `confirm` cells on the user channel. Commands that require literal flags, including `config create` overwrites and `config sync` application, still require `--yes` |
 | `NOORM_CHANNEL` | `user` or `agent`. Forces the access channel. Other values are ignored |
 | `NOORM_IDENTITY_PRIVATE_KEY` | X25519 private key, hex PKCS8 DER, 96 characters |
 | `NOORM_IDENTITY_NAME`, `NOORM_IDENTITY_EMAIL` | Display name and email. All three `NOORM_IDENTITY_*` variables must be valid or the CLI ignores them |
@@ -214,7 +210,7 @@ On the `agent` channel a `confirm` cell is a deny, so `--yes` never unlocks it. 
 | `db:teardown` | `db teardown` | deny | deny | confirm |
 | `db:destroy` | `db drop` | deny | deny | confirm |
 | `change:rm` | `change rm` | deny | confirm | confirm |
-| `config:rm`, `config:write` | `config rm`, `config import --force` | deny | confirm | confirm |
+| `config:rm`, `config:write` | `config rm`, overwrites with `config import` or `config create`, `config sync` | deny | confirm | confirm |
 | `vault:read`, `secret:read` | `vault list`, `secret list`, `config export` | deny | allow | allow |
 | `vault:write`, `secret:write` | `vault init`, `set`, `rm`, `cp`, and `secret set`, `rm` | deny | confirm | allow |
 | `vault:propagate` | `vault propagate`, `ci identity enroll` | deny | confirm | confirm |
@@ -306,6 +302,62 @@ noorm config use staging
 ```
 
 
+#### `config create`
+
+
+Save configs from stages without connecting or prompting. An identity key is required to encrypt state.
+
+```bash
+noorm config create --stage staging --name review --host db.example.com
+noorm config create --all
+```
+
+| Flag | Effect |
+|---|---|
+| `--stage <stage>` | Materialize this stage. Required unless using `--all` |
+| `--name <name>` | Save under this name instead of the stage name |
+| `--dialect`, `--host`, `--port`, `--database`, `--user` | Override stage and environment connection values for a single stage |
+| `--password <value>` | Explicitly persist this password for a single stage. Avoid leaving secrets in shell history or process arguments |
+| `--all` | Create one config per stage using stage defaults only. Cannot combine with stage/name/connection overrides |
+| `--force`, `--yes` | Both literal flags are required to replace existing configs |
+| `--json` | Return `{ success: true, names: [...] }` |
+
+Single-stage connection precedence is stage defaults, environment connection fields, then flags. `--name` or the stage name fixes the destination; `NOORM_NAME` cannot redirect it. Host defaults to `localhost`, database to the stage name, and the resulting config must pass schema validation.
+
+| Condition | Behavior |
+|---|---|
+| Password in stage settings or environment | Omitted from persisted state, unless the single-stage invocation supplies `--password` |
+| Bulk creation | Omits passwords from every source, including when replacing an existing config |
+| Existing destination | Requires `--force --yes` and the destination's `config:write` policy. `NOORM_YES` cannot substitute for the literal overwrite flag |
+| One bulk destination collides or fails validation | Preflights every candidate before saving, so these failures cause no writes |
+| Protected stage | Caps the created config's access without raising stricter roles |
+| Invalid invocation, unknown stage, denied overwrite, or caught save error | Exit 2 |
+
+Create does not persist a stage association. A name matching a stage still uses the normal name-based stage lookup. [Stages](/guide/environments/stages#where-do-defaults-apply) explains the different TUI seeding behavior.
+
+
+#### `config sync`
+
+
+Preview current stage defaults against an existing config, then explicitly apply them.
+
+```bash
+noorm config sync --stage staging --name review --json
+noorm config sync --stage staging --name review --yes
+```
+
+| Flag | Effect |
+|---|---|
+| `--stage <stage>` | Required source stage |
+| `--name <name>` | Existing target config, defaulting to the stage name |
+| `--yes`, `-y` | Apply changed fields without a prompt |
+| `--json` | Return `stage`, `name`, `changes[]` (`field`, `before`, `after`), and `applied`, with the normal `success` field |
+
+Without `--yes`, a terminal asks for confirmation after the preview. JSON and non-terminal invocations only preview. Cancellation and no changes leave state unchanged; `applied` is `false`. There is no `--dry-run` flag.
+
+Sync requires the target's `config:write` permission. It preserves passwords and fields absent from the current defaults, refuses a different dialect, and can tighten but never widen access. It does not consume connection environment overrides or store a stage association. A checked error exits 2.
+
+
 #### `config add`
 
 
@@ -385,7 +437,7 @@ JSON: `name`, `overwritten`.
 #### `config validate <name>`
 
 
-Test that a config connects.
+Test the effective config after stage and environment merging, without saving overrides.
 
 ```bash
 noorm config validate prod --json
@@ -548,10 +600,10 @@ A CI runner starts with no `.noorm/` and no identity on disk. `ci` bridges that.
 #### `ci init`
 
 
-Build `state.enc` from `NOORM_IDENTITY_*` and `NOORM_CONNECTION_*`, create a `remote` config with default access, and make it active.
+Build `state.enc` from `NOORM_IDENTITY_*` and `NOORM_CONNECTION_*`, create a config with default access, and make it active.
 
 ```
-noorm ci init [--name <name>] [--force] [--test] [--yes] [--json]
+noorm ci init [--name <name>] [--type <local|remote>] [--stage <stage>] [--force] [--test] [--yes] [--json]
 ```
 
 | Flag | Effect |
@@ -559,7 +611,11 @@ noorm ci init [--name <name>] [--force] [--test] [--yes] [--json]
 | `--name` | Config name. Defaults to `$NOORM_CI_CONFIG_NAME`, then `ci` |
 | `--force`, `-f` | Replace an existing `state.enc`. The old one is copied to `state.enc.bak-<timestamp>` first |
 | `--test` | Mark the config `isTest: true`, which satisfies the SDK's `requireTest` guard |
+| `--type <local\|remote>` | Config type, independent of `--test`. Wins over the stage's type |
+| `--stage <stage>` | Inherit only `defaults.type` from this stage. Does not inherit connection settings or `isTest` |
 | `--yes`, `-y` | Needed with `--force` on a terminal. Without a terminal, `--force` alone is enough |
+
+Type precedence is `--type`, the explicitly selected stage's `defaults.type`, then `remote`. Invalid types and unknown stages exit 2.
 
 ```bash
 noorm ci init --name prod

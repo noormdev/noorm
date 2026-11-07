@@ -50,7 +50,7 @@ npx skills add noormdev/noorm/skills
 npm install @noormdev/sdk kysely pg
 ```
 
-<p class="dl-small">Swap <code>pg</code> for <code>mysql2</code>, <code>better-sqlite3</code>, or <code>tedious tarn</code>. Verify with <code>noorm --version</code>; update with <code>noorm update</code>.</p>
+<p class="dl-small">Swap <code>pg</code> for <code>mysql2</code>, <code>better-sqlite3</code>, or <code>tedious</code>. See the <a href="https://github.com/noormdev/noorm/blob/next/packages/sdk/README.md#install">SDK installation contract</a>. Verify the CLI with <code>noorm --version</code>; update with <code>noorm update</code>.</p>
 
 </div>
 <div class="dl-tool">

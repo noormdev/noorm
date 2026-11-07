@@ -41,21 +41,25 @@ From the SDK, `createContext({ stage: 'prod' })` picks a stage for a config with
 ## Where do `defaults` apply?
 
 
-`defaults` is a template for the first config, not a layer under every config. When `noorm ui` opens, it creates a config for each stage that sets `defaults.dialect` and has no config of its name yet, provided this machine has an identity. `host` falls back to `localhost`, `database` to the stage name, and a `protected` stage starts the config at `operator` for you and `viewer` for agents.
+When `noorm ui` opens, it creates a config for each stage that sets `defaults.dialect` and has no config of its name yet, provided this machine has an identity. `host` falls back to `localhost`, `database` to the stage name, and a protected stage caps access at `operator` for you and `viewer` for agents. TUI seeding preserves a stage's configured password; keep credentials out of committed settings.
 
-From then on, the stored config holds the values. Editing `defaults` later does not change it. A stage selected for an [environment-only](/headless#environment-only-mode) run also passes its `isTest`.
+At runtime, stage defaults are also a layer beneath stored values. Editing a default fills fields absent from a stored config, but does not replace stored fields. An SDK context can select that layer with `stage`, including in inline or environment-only mode.
+
+To replace stored fields with current defaults, run `noorm config sync --stage staging --name review`. For unattended creation, use `noorm config create --stage staging --name review` or `--all`. The [CLI reference](/headless#config-create) owns their password, preview, and overwrite rules.
 
 
 ## Which value wins?
 
 
-Each source overrides the one above it, then a protected stage caps `access`:
+At runtime, each source overrides the one above it, then a protected stage caps `access`. Inline SDK fields come after the environment:
 
 ```mermaid
 flowchart TD
-    D["built-in defaults"] --> C["stored config<br/>state.enc"]
+    D["built-in defaults"] --> S["stage defaults"]
+    S --> C["stored config<br/>state.enc, if selected"]
     C --> E["NOORM_* variables"]
-    E --> P{"stage has<br/>protected: true?"}
+    E --> I["inline SDK connection"]
+    I --> P{"stage has<br/>protected: true?"}
     P -->|yes| K["cap access at<br/>user operator<br/>agent viewer"]
     P -->|no| R["effective config"]
     K --> R
@@ -69,7 +73,7 @@ flowchart TD
 |---|---|
 | `description` | Shown in the TUI |
 | `locked: true` | Configs on this stage cannot be deleted |
-| `defaults` | `dialect`, `host`, `port`, `database`, `user`, `password`, `ssl`, `isTest`: the template the TUI creates the config from. `protected: true` also caps access on every resolve, below |
+| `defaults` | Flat connection fields (`dialect`, `host`, `port`, `database`, `user`, `password`, `ssl`) plus `type`, `isTest`, and `access`. `protected: true` caps resolved access |
 | `secrets` | Secrets this stage requires |
 
 
@@ -112,7 +116,7 @@ For an optional secret, probe first with `{% if ('PAYMENT_GATEWAY_KEY' in $.secr
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| Editing a stage's `host` or `port` does not change the config | `defaults` only seeds a config the TUI creates; the stored config wins after that | Edit the config, or set a `NOORM_CONNECTION_*` variable |
+| Editing a stage's `host` or `port` does not replace the config's value | Stored fields override the stage layer | Preview `noorm config sync --stage staging --name review`, or use a runtime environment override |
 | No config appears for a stage | The stage sets no `defaults.dialect`, or this machine had no identity when `noorm ui` opened | Add `dialect` under `defaults`, or set up an identity, then reopen `noorm ui` |
 | A database password is in git history | `defaults.password` sits in the committed `settings.yml` | Leave `password` out of `defaults`. Set it on each config in `noorm ui` |
 | `Config "prod" is linked to locked stage "prod" and cannot be deleted` | The stage has `locked: true` | Remove `locked` from the stage in `settings.yml` |

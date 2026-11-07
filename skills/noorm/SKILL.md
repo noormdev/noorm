@@ -65,13 +65,15 @@ SQLite is limited — no stored procedures, no database functions, no TVFs, no i
 
 Priority chain (highest wins):
 
-1. CLI flags (`--config`, `--force`)
+1. Explicit connection overrides (SDK `connection`, or supported creation flags)
 2. Environment variables (`NOORM_*`)
 3. Stored config (named config from encrypted state)
 4. Stage defaults (from `.noorm/settings.yml`)
 5. Hard-coded defaults
 
 Env-only mode (no stored config needed): set `NOORM_CONNECTION_DIALECT` + `NOORM_CONNECTION_DATABASE` as environment variables. This is the standard approach for CI/CD pipelines.
+
+Inline SDK resolution, runtime credentials, and the exact environment field spelling are covered in the linked SDK and CLI references. `--config` selects a stored record; `--force` is not a connection override.
 
 ### Error Handling
 
@@ -99,7 +101,7 @@ These are the patterns LLMs get wrong most often with noorm:
 | Query before `connect()` | Call `ctx.connect()` first | Context starts disconnected |
 | Forget `disconnect()` | Always call `ctx.disconnect()` | Leaks connection pool |
 | `config: 'production'` in tests | Use `requireTest: true` | Safety guard prevents test code from touching production |
-| Hardcode connection details | Use `NOORM_*` env vars | Required for CI/CD portability |
+| Mutate `process.env` between concurrent contexts | Pass each context its own inline `connection` | Environment changes are process-global and can race |
 | `ctx.proc()` on SQLite | Check `ctx.dialect` first | SQLite has no stored procedures, functions, or TVFs |
 | `ctx.tvf()` on MySQL | Check `ctx.dialect` first | MySQL doesn't support TVFs either |
 | `Procs = { name: ArgsType }` | `Procs = { name: [ArgsType, ReturnType] }` | Tuple format enables return type inference |

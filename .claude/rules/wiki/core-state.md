@@ -18,7 +18,7 @@ paths:
   - "tests/integration/version/**"
 ---
 
-Domain: core-state. Encrypted state, settings.yml, config resolution, lifecycle, version migration, observer events.
+Domain: core-state. Encrypted state, settings, config resolution, lifecycle, and version migration.
 
 Map:
   - docs/wiki/core-state.md
@@ -26,5 +26,12 @@ Contracts:
   - docs/spec/config-access-roles.md
 Designs:
   - docs/design/config-access-roles.md
+Related:
+  - docs/dev/config.md
+  - docs/dev/settings.md
+  - docs/dev/state.md
+  - docs/dev/version.md
+  - docs/guide/environments/configs.md
+  - docs/guide/environments/stages.md
 
 Consult the map before changing behavior here. Behavior changes stale the pages above. Renames or removals stale mentions beyond them: grep the old name across docs/ before shipping.

@@ -31,6 +31,8 @@ noorm change ff
 
 `noorm ci init` reads identity and connection from env vars, writes an ephemeral `.noorm/state/state.enc`, creates a config (default name `ci`, override with `--name` or `NOORM_CI_CONFIG_NAME`), and marks it active. Later commands in the same job (`run build`, `change ff`, `ci secrets`) operate as if a developer had bootstrapped manually.
 
+The [CI command reference](/headless#ci-init) defines `--type` and `--stage` type inheritance. `--test` controls `isTest` independently; selecting a stage for `ci init` does not copy its connection fields.
+
 Two preconditions worth knowing before wiring a pipeline:
 
 - It refuses to run when `.noorm/state/state.enc` already exists. `--force` backs the file up and replaces it; from an interactive terminal `--yes` is required as well, since replacing state destroys every config and config-scoped secret in the project.

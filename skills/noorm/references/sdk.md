@@ -28,7 +28,7 @@ const users = await ctx.kysely
 await ctx.disconnect();
 ```
 
-Peer dependency: `kysely` (plus your dialect driver — `pg`, `mysql2`, `better-sqlite3`, or `tedious`).
+Install `kysely` and your dialect driver with the SDK. Use the [installation commands](https://github.com/noormdev/noorm/blob/next/packages/sdk/README.md#install); pool dependencies are bundled.
 
 ## createContext
 
@@ -42,11 +42,15 @@ const ctx = await createContext<DB, Procs, Funcs, Tvfs>(options);
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `config` | `string` | — | Config name from stored state. Falls back to `NOORM_CONFIG` env, then env-only mode |
+| `config` | `string` | — | Stored name, then `NOORM_CONFIG`, then the active config. Only with no selected name does inline/env-only resolution apply |
+| `connection` | `CreateContextOptions['connection']` | — | Highest-priority, non-persisted connection fields and runtime hooks |
 | `projectRoot` | `string` | `process.cwd()` | Project root directory |
 | `requireTest` | `boolean` | `false` | Refuse if `config.isTest` is not `true`. Throws `RequireTestError` |
 | `channel` | `Channel` | `'user'` | Which caller channel this context represents for access-policy checks (`'user'` or `'agent'`). Destructive ops throw `ProtectedConfigError` when the config's role for this channel denies or can't confirm the action |
 | `stage` | `string` | — | Stage name for stage defaults from `settings.yml` |
+| `yes` | `boolean` | `false` | Pre-confirm `confirm` permissions on the user channel only |
+
+The [SDK connection reference](https://noorm.dev/reference/sdk#createcontext-options) owns synthetic names, stage merging, callback types and physical-connection lifecycle, PostgreSQL TLS/session controls, and failure handling. Read it before adding token-based authentication or tunnel TLS options.
 
 ### Env-Only Mode (CI/CD)
 
@@ -72,6 +76,8 @@ const ctx = await createContext(); // Resolves entirely from env
 await ctx.connect();      // Must call before any queries
 await ctx.disconnect();   // Must call when done — releases connection pool
 ```
+
+For callback-backed connections, use the [runtime credential error contract](https://noorm.dev/reference/sdk#runtime-credentials) rather than assuming static-password retries or translated errors.
 
 ### Properties
 

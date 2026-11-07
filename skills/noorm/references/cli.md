@@ -31,9 +31,11 @@ The TUI is the only subcommand that renders the Ink/React interface; every other
 |---|---|---|
 | `--json` | — | Output structured JSON instead of human-readable text |
 | `--config` | `-c` | Config name to use |
-| `--force` | `-f` | Skip checksum and protection checks |
+| `--force` | `-f` | Command-specific checksum skip or overwrite. Never bypasses access policy |
 | `--yes` | `-y` | Skip interactive confirmations |
 | `--dry-run` | — | Preview what would happen without executing |
+
+Only `--cwd`/`-c` belongs before the subcommand. Put `--config` and other command flags after it.
 
 ## Environment Variables
 
@@ -75,7 +77,7 @@ NOORM_HEADLESS               # Signal CI mode (routes logs to stdout; detected a
 NOORM_DEBUG                  # Enable debug logging
 ```
 
-**Nesting convention:** underscores map to object depth after stripping the `NOORM_` prefix. `NOORM_CONNECTION_HOST` becomes `connection.host`. Numbers and booleans are auto-converted; password fields stay as strings.
+**Nesting convention:** underscores map to object depth after stripping `NOORM_`. Preserve camelCase within a schema segment, as in `NOORM_CONNECTION_connectTimeoutMs` and `NOORM_CONNECTION_SSL_rejectUnauthorized`. The [environment reference](https://noorm.dev/dev/config#environment-variables) owns parser and validation behavior.
 
 **Priority:** CLI flags > env vars > stored config > stage defaults (settings.yml) > hard-coded defaults.
 
@@ -93,6 +95,17 @@ noorm init --force      # Reinitialize an existing .noorm/
 **TTY required.** Fails with exit code 1 in CI or when stdin is piped.
 
 ---
+
+### config create and sync
+
+```bash
+noorm config create --stage staging --name review
+noorm config create --all
+noorm config sync --stage staging --name review --json
+noorm config sync --stage staging --name review --yes
+```
+
+Use the [config command reference](https://noorm.dev/headless#config-create) for connection overrides, password omission, fixed destination names, overwrite authorization, and sync previews. These commands change encrypted state without connecting; neither persists a stage link.
 
 ### config use
 
@@ -193,10 +206,10 @@ Without `--public-key`, noorm mints a keypair and returns the private key once (
 
 ### ci init
 
-Bootstrap ephemeral `state.enc` from `NOORM_IDENTITY_*` + `NOORM_CONNECTION_*` env vars. Runs inside the CI job (not on the developer's machine). Creates a config (default name: `ci`, override via `--name` or `NOORM_CI_CONFIG_NAME`), marks it active, sets `isTest: true`, and leaves state on disk so later `noorm` commands in the same job (`run build`, `change ff`, `ci secrets`, etc.) operate as if a developer had set things up manually. Absorbs the former `noorm identity ci` precheck — fails fast with exit 1 if any required env var is missing or malformed.
+Bootstrap ephemeral `state.enc` from identity and connection environment variables, create a config, and mark it active. `isTest` defaults to `false`; pass `--test` for SDK tests. Use the [CI command reference](https://noorm.dev/headless#ci-init) for `--type`, stage type inheritance, overwrite confirmation, and exit codes.
 
 ```bash
-noorm ci init
+noorm ci init --test
 noorm ci init --name staging
 noorm ci init --force                     # Overwrite existing state.enc
 noorm ci init --json
@@ -214,7 +227,7 @@ noorm ci init --json
         "identityHash": "...",
         "source": "env"
     },
-    "config": { "name": "ci", "dialect": "postgres", "database": "app", "isTest": true },
+    "config": { "name": "ci", "dialect": "postgres", "database": "app", "isTest": false },
     "stateFile": "/path/to/.noorm/state/state.enc"
 }
 ```
@@ -394,7 +407,7 @@ List every known change with its status (pending, success, failed, reverted, sta
 ```bash
 noorm change list
 noorm change list --json
-noorm -c staging change list
+noorm change list --config staging
 ```
 
 **JSON:** `[{ "name": "2024-01-15-init", "status": "success" }, ...]`
@@ -442,7 +455,7 @@ Apply a specific change by name. Omit the name on a TTY to pick from pending / r
 noorm change run                             # Interactive picker
 noorm change run 2024-02-01-notifications
 noorm change run 001_init --json
-noorm -c staging change run 001_init
+noorm change run 001_init --config staging
 ```
 
 **JSON:**
@@ -696,7 +709,7 @@ Execute raw SQL queries directly.
 ```bash
 noorm sql "SELECT * FROM users LIMIT 10"
 noorm sql -f query.sql                   # Read from file
-noorm -c prod sql "SELECT count(*) FROM orders"
+noorm sql query "SELECT count(*) FROM orders" --config prod
 noorm sql "SELECT id, name FROM users" --json
 ```
 
@@ -734,7 +747,7 @@ Show recent SQL execution history for a config. Reads persisted history from `.n
 noorm sql history
 noorm sql history -n 20
 noorm sql history --json
-noorm -c prod sql history
+noorm sql history --config prod
 ```
 
 ### sql clear
@@ -744,7 +757,7 @@ Clear SQL execution history for a config. Supports clearing all entries or only 
 ```bash
 noorm sql clear --yes
 noorm sql clear --older-than 3 --yes
-noorm -c prod sql clear --yes
+noorm sql clear --config prod --yes
 ```
 
 ---

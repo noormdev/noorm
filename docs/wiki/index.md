@@ -1,101 +1,83 @@
 ---
-reflects_rev: 11c77040fb7470082550e3c22dc6724fc331a384
 type: Index
-description: Bun workspace monorepo — noorm, a database schema/change manager with Ink/React TUI, Citty CLI, and Kysely SQL layer
+reflects_rev: 43ecd2b9bfc709b22ab81b607d625326135ef738
+description: noorm manages database schemas and versioned SQL changes through a CLI, TUI, and SDK.
 ---
 
 <wiki-type>repo</wiki-type>
-<scan-sha>c980267dfaef74c705bfdf8339f8ac0bb3ec89eb</scan-sha>
+<scan-sha>618c5cba65c91201215657335efa22a8e314025b</scan-sha>
 <wiki-schema>1</wiki-schema>
 
 # Project signals
 
+## What this repo is
+
+noorm manages database schemas and versioned SQL changes across PostgreSQL, MySQL, MSSQL, and SQLite. The CLI and Ink/React TUI expose interactive and headless workflows; the SDK exposes programmatic database access and noorm operations.
+
+The CLI's build command calls the SDK run namespace, which delegates SQL-file execution to the core runner.
+
+```mermaid
+sequenceDiagram
+    %% source: src/cli/run/build.ts, src/sdk/namespaces/run.ts, src/core/runner/runner.ts
+    participant CLI as build.ts
+    participant SDK as RunNamespace
+    participant Runner as runner.ts
+    CLI->>SDK: ctx.noorm.run.build(options)
+    SDK->>Runner: runBuild(context, sqlPath, options, files)
+    Runner->>Runner: executeFilesInternal(context, files, opts, 'build', sqlPath)
+    Runner-->>SDK: BatchResult
+    SDK-->>CLI: BatchResult
+```
+
+Implementation lives in [`src/`](../../src); [`scripts/build.mjs`](../../scripts/build.mjs) creates the distributable packages, and [`scripts/build-binary.mjs`](../../scripts/build-binary.mjs) creates the standalone CLI. Domain pages describe the source rather than generated bundles.
+
+## Domains
+
+Domains follow functional workflows. Existing ownership separates configuration and persistence, live database operations, SQL execution, versioned changes, access policy, and the interfaces that consume them.
+
+| Domain | Start here | What it does | Detail |
+|--------|------------|--------------|--------|
+| core-change | [`src/core/change/`](../../src/core/change) | Versioned SQL changes, reverts, and execution history. | [`docs/wiki/core-change.md`](core-change.md) |
+| core-runner | [`src/core/runner/`](../../src/core/runner) | SQL-file execution, checksum gating, templates, and statement progress. | [`docs/wiki/core-runner.md`](core-runner.md) |
+| core-db | [`src/core/db/`](../../src/core/db) | Database lifecycle, connections, exploration, teardown, and transfer. | [`docs/wiki/core-db.md`](core-db.md) |
+| core-state | [`src/core/state/`](../../src/core/state) | Encrypted state, settings, config resolution, lifecycle, and version migration. | [`docs/wiki/core-state.md`](core-state.md) |
+| core-identity | [`src/core/identity/`](../../src/core/identity) | Identity, vault secrets, structured logs, and SQL terminal history. | [`docs/wiki/core-identity.md`](core-identity.md) |
+| core-policy | [`src/core/policy/`](../../src/core/policy) | Config roles, permission decisions, SQL classification, and stage role ceilings. | [`docs/wiki/core-policy.md`](core-policy.md) |
+| sdk | [`src/sdk/`](../../src/sdk) | Programmatic API (`createContext`) and DT serialization. | [`docs/wiki/sdk.md`](sdk.md) |
+| cli | [`src/cli/`](../../src/cli) | Citty commands, headless stage workflows, and binary distribution. | [`docs/wiki/cli.md`](cli.md) |
+| tui | [`src/tui/`](../../src/tui) | Ink/React screens, focus management, keyboard routing, and startup state. | [`docs/wiki/tui.md`](tui.md) |
+| mcp-rpc | [`src/mcp/`](../../src/mcp) | MCP over stdio and permission-gated RPC dispatch. | [`docs/wiki/mcp-rpc.md`](mcp-rpc.md) |
+| worker-bridge | [`src/core/worker-bridge/`](../../src/core/worker-bridge) | Worker threads for DT serialization and database connections. | [`docs/wiki/worker-bridge.md`](worker-bridge.md) |
+| infra | [`.github/`](../../.github) | CI, package builds, releases, example projects, and VitePress docs. | [`docs/wiki/infra.md`](infra.md) |
+
 ## Framework & runtime
 
-- **Language:** TypeScript (80% LOC, 1033 files), Bun runtime (>=1.2), Node >=22.13
-- **SQL layer:** Kysely 0.28 query builder + executor; dialect-aware across PostgreSQL, MySQL, MSSQL, SQLite
-- **TUI:** Ink 6.8 + React 19.2 ([`src/tui/`](../../src/tui)); Citty 0.2 for CLI arg parsing ([`src/cli/`](../../src/cli))
-- **Event bus:** `@logosdx/observer` (`ObserverEngine`); module-scope singleton in [`src/core/observer.ts`](../../src/core/observer.ts)
-- **Templating:** Eta 4.5 for `.sql.tmpl` files; data loaders for JSON5/YAML/CSV/JS side-cars
-- **Error handling:** `@logosdx/utils` `attempt`/`attemptSync` tuples — no try-catch in source
-- **Encryption:** AES-256-GCM for state ([`src/core/state/encryption/`](../../src/core/state/encryption)), X25519 ECDH keypairs for identity/vault
-- **MCP:** `@modelcontextprotocol/sdk` 1.29 wrapping RPC registry over stdio
+- TypeScript in a Bun workspace. The root workspace declares Bun >=1.2 and Node >=22.13; published CLI and SDK packages require Node >=22.13 ([`package.json`](../../package.json), [`packages/cli/package.json`](../../packages/cli/package.json), [`packages/sdk/package.json`](../../packages/sdk/package.json)).
+- Kysely 0.28 provides the SQL layer. Ink 7.1 and React 19.2 provide the TUI; Citty 0.2 parses CLI commands.
+- `@logosdx/observer` provides the shared event bus in [`src/core/observer.ts`](../../src/core/observer.ts); `@logosdx/utils` provides `attempt` and `attemptSync` tuple helpers.
+- Eta 4.5 renders SQL templates. The MCP SDK exposes the RPC interface over stdio.
 
 ## Build / test / lint
 
 | Purpose | Command | Source |
 |---------|---------|--------|
-| Build (tsc) | `bun run build` | [`package.json`](../../package.json) |
-| Build packages | `bun run build:packages` | [`scripts/build.mjs`](../../scripts/build.mjs) (tsup) |
-| Build binary | `bun run build:binary` | [`scripts/build-binary.mjs`](../../scripts/build-binary.mjs) (bun compile) |
+| Build TypeScript | `bun run build` | [`package.json`](../../package.json) |
+| Build packages | `bun run build:packages` | [`scripts/build.mjs`](../../scripts/build.mjs) |
+| Build standalone CLI | `bun run build:binary` | [`scripts/build-binary.mjs`](../../scripts/build-binary.mjs) |
 | Dev watch | `bun run dev` | [`package.json`](../../package.json) |
-| Test (all, serial) | `bun run test` | [`package.json`](../../package.json) |
-| Test CI group 1 (core, non-transfer) | `bun test --serial $(find tests/utils tests/core tests/sdk -name '*.test.ts' \| grep -v tests/core/transfer \| sort \| tr '\n' ' ')` | `.github/workflows/ci.yml:127` |
-| Test CI group 2 (transfer, isolated) | `bun test --serial tests/core/transfer` | `.github/workflows/ci.yml:132` |
-| Test CI group 3 (CLI, non-logger-settings) | `bun test --serial $(find tests/cli \( -name '*.test.ts' -o -name '*.test.tsx' \) ! -name 'cli-logger-settings.test.ts' \| sort \| tr '\n' ' ')` | `.github/workflows/ci.yml:138` |
-| Test CI group 4 (CLI logger settings, isolated) | `bun test --serial tests/cli/cli-logger-settings.test.ts` | `.github/workflows/ci.yml:153` |
-| Test CI group 5 (integration) | `bun test --serial tests/integration` | `.github/workflows/ci.yml:158` |
-| Lint | `bun run lint` | ESLint, [`eslint.config.js`](../../eslint.config.js) |
+| Test serially | `bun run test` | [`package.json`](../../package.json) |
+| Lint | `bun run lint` | [`eslint.config.js`](../../eslint.config.js) |
 | Typecheck | `bun run typecheck` | [`tsconfig.json`](../../tsconfig.json) |
 
-CI gate: lint → typecheck → build → 5 test groups → 3 example jobs. Integration tests require live DB services (docker-compose or CI service containers). [`tests/core/transfer`](../../tests/core/transfer) and [`tests/cli/cli-logger-settings.test.ts`](../../tests/cli/cli-logger-settings.test.ts) are isolated into their own serial groups because Bun's `mock.module` registry is process-global and never actually restores — an `afterAll` cleanup that re-registers the real module is a no-op, so any file that mocks a module poisons every file loaded after it for the life of the process. Two init-screen tests replace the `SettingsManager` class; `getSettingsManager` then constructs a mock instance, so `createCliLogger` reads `settings: {}` instead of `settings.yml`. Which file wins depends on load order (root files before subdirectories on macOS, the reverse on Linux), so a single-process run passes locally and fails only on CI.
+[`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) runs lint, typecheck, build, and separate serial processes for core, transfer, CLI, CLI logger settings, and integration tests. Example database jobs depend on the build job. Integration tests use live database services.
 
-## Language breakdown
-
-| Language | LOC | Files | % |
-|----------|-----|-------|---|
-| TypeScript | 242110 | 1033 | 80% |
-| Markdown | 50058 | 184 | 16% |
-| HTML | 2977 | 30 | 0% |
-| JavaScript | 1261 | 22 | 0% |
-| YAML | 1186 | 19 | 0% |
-| CSS | 1103 | 3 | 0% |
-| Shell | 932 | 7 | 0% |
-| JSON | 473 | 22 | 0% |
-| Vue | 205 | 3 | 0% |
-| TOML | 11 | 3 | 0% |
+Bun's process-global `mock.module` registry causes test contamination, so CI isolates transfer and CLI logger settings tests. Config lookup uses `memoizeOpts: false`; its environment reads are not the contamination source. See [`docs/wiki/core-state.md`](core-state.md) and [`docs/wiki/infra.md`](infra.md).
 
 ## DevOps & CI
 
-- **CI:** GitHub Actions (`ubuntu-24.04`), Bun 1.3.11 pinned; 5 test groups + 3 example jobs per push to master/main
-- **DB services (CI):** Postgres 17 on 15432, MySQL 8.0 on 13306, MSSQL 2022 on 11433
-- **DB services (local):** [`docker-compose.test.yml`](../../docker-compose.test.yml) at repo root (same ports); postgres/mysql services are `tmpfs`-backed, mssql is not
-- **Publish:** Changesets-driven (`changeset publish`) via [`.github/workflows/publish.yml`](../../.github/workflows/publish.yml); fixed-version group: `@noormdev/cli` and `@noormdev/sdk`
-- **Binary release:** `bun build --compile` → GitHub Releases via [`.github/workflows/release-binary.yml`](../../.github/workflows/release-binary.yml)
-- **Docs:** VitePress, deployed via [`.github/workflows/docs.yml`](../../.github/workflows/docs.yml); site now includes [`docs/tapes/`](../tapes) (VHS-recorded terminal demos, replacing static screenshots) and [`docs/modeling/`](../modeling) (documents the separate `ignatius` tool)
-- **License:** Apache-2.0 — root [`LICENSE`](../../LICENSE)/[`NOTICE`](../../NOTICE), and [`packages/cli/LICENSE`](../../packages/cli/LICENSE)/[`NOTICE`](../../NOTICE), [`packages/sdk/LICENSE`](../../packages/sdk/LICENSE)/[`NOTICE`](../../NOTICE) mirror it. Relicensed from MIT (`df9cb20 chore: relicense to Apache 2.0`, itself following an earlier `4550e99 chore: adopt MIT license across packages`) — [`README.md`](../../README.md)'s license badge and footer match.
+- GitHub Actions defines CI in [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml); [`docker-compose.test.yml`](../../docker-compose.test.yml) supplies local database services.
+- Changesets publishes the CLI and SDK together through [`.github/workflows/publish.yml`](../../.github/workflows/publish.yml). [`.github/workflows/release-binary.yml`](../../.github/workflows/release-binary.yml) publishes compiled CLI binaries.
+- VitePress builds the docs site through [`.github/workflows/docs.yml`](../../.github/workflows/docs.yml). Documentation build mechanics belong to [`docs/wiki/infra.md`](infra.md).
+- The repository and packages use Apache-2.0 ([`LICENSE`](../../LICENSE), [`NOTICE`](../../NOTICE)).
 
-## Domains
-
-| Domain | Repo paths | One-liner | Detail |
-|--------|------------|-----------|--------|
-| core-change | [`src/core/change/`](../../src/core/change), [`src/cli/change/`](../../src/cli/change), [`tests/core/change/`](../../tests/core/change) | Versioned DB changes: scaffold, parse, execute, revert, history (timestamps hydrated as UTC on pg/mysql) | [`docs/wiki/core-change.md`](core-change.md) |
-| core-runner | [`src/core/runner/`](../../src/core/runner), [`src/core/template/`](../../src/core/template), [`src/cli/run/`](../../src/cli/run), [`tests/core/runner/`](../../tests/core/runner), [`tests/core/template/`](../../tests/core/template) | SQL file execution with checksum dedup, Eta templating, and long-running statement progress and cancel | [`docs/wiki/core-runner.md`](core-runner.md) |
-| core-db | [`src/core/db/`](../../src/core/db), [`src/core/connection/`](../../src/core/connection), [`src/core/explore/`](../../src/core/explore), [`src/core/teardown/`](../../src/core/teardown), [`src/core/transfer/`](../../src/core/transfer), [`src/cli/db/`](../../src/cli/db), [`tests/core/connection/`](../../tests/core/connection), [`tests/core/db/`](../../tests/core/db), [`tests/core/explore/`](../../tests/core/explore), [`tests/core/teardown/`](../../tests/core/teardown), [`tests/core/transfer/`](../../tests/core/transfer), [`tests/integration/`](../../tests/integration) | DB lifecycle: create/drop, connections and session helpers, explore schema, teardown, cross-DB transfer | [`docs/wiki/core-db.md`](core-db.md) |
-| core-state | [`src/core/state/`](../../src/core/state), [`src/core/settings/`](../../src/core/settings), [`src/core/config/`](../../src/core/config), [`src/core/lifecycle/`](../../src/core/lifecycle), [`src/core/version/`](../../src/core/version), [`src/core/project.ts`](../../src/core/project.ts), [`src/core/project-init.ts`](../../src/core/project-init.ts), [`src/core/environment.ts`](../../src/core/environment.ts), [`src/core/observer.ts`](../../src/core/observer.ts), [`tests/core/state/`](../../tests/core/state), [`tests/core/settings/`](../../tests/core/settings), [`tests/core/config/`](../../tests/core/config), [`tests/core/lifecycle/`](../../tests/core/lifecycle), [`tests/core/version/`](../../tests/core/version) | Encrypted state, settings.yml, config resolution, lifecycle, version migration, observer events | [`docs/wiki/core-state.md`](core-state.md) |
-| core-identity | [`src/core/identity/`](../../src/core/identity), [`src/core/vault/`](../../src/core/vault), [`src/core/logger/`](../../src/core/logger), [`src/core/sql-terminal/`](../../src/core/sql-terminal), [`src/cli/identity/`](../../src/cli/identity), [`src/cli/secret/`](../../src/cli/secret), [`src/cli/vault/`](../../src/cli/vault), [`src/cli/sql/`](../../src/cli/sql), [`tests/core/identity/`](../../tests/core/identity), [`tests/core/vault/`](../../tests/core/vault), [`tests/core/logger/`](../../tests/core/logger), [`tests/core/sql-terminal/`](../../tests/core/sql-terminal) | Identity keypairs, vault secrets, structured logger, SQL terminal history | [`docs/wiki/core-identity.md`](core-identity.md) |
-| core-policy | [`src/core/policy/`](../../src/core/policy), [`tests/core/policy/`](../../tests/core/policy) | Access-control policy: role×permission matrix, SQL statement classifier, legacy `protected`→`access` migration | [`docs/wiki/core-policy.md`](core-policy.md) |
-| sdk | [`src/sdk/`](../../src/sdk), [`src/core/dt/`](../../src/core/dt), [`packages/sdk/`](../../packages/sdk), [`tests/sdk/`](../../tests/sdk), [`tests/integration/sdk/`](../../tests/integration/sdk) | Programmatic API (`createContext`) + DT binary serialization format | [`docs/wiki/sdk.md`](sdk.md) |
-| cli | [`src/cli/`](../../src/cli), [`packages/cli/`](../../packages/cli), [`skills/noorm/`](../../skills/noorm), [`tests/cli/`](../../tests/cli) | Citty CLI command groups and leaf commands, headless mode, binary distribution | [`docs/wiki/cli.md`](cli.md) |
-| tui | [`src/tui/`](../../src/tui), [`.claude/rules/tui-development.md`](../../.claude/rules/tui-development.md), [`tests/cli/components/`](../../tests/cli/components), [`tests/cli/hooks/`](../../tests/cli/hooks), [`tests/cli/screens/`](../../tests/cli/screens) | Ink/React TUI with focus manager, keyboard routing, registered screens | [`docs/wiki/tui.md`](tui.md) |
-| mcp-rpc | [`src/mcp/`](../../src/mcp), [`src/rpc/`](../../src/rpc), [`src/cli/mcp/`](../../src/cli/mcp), [`tests/core/mcp/`](../../tests/core/mcp), [`tests/core/rpc/`](../../tests/core/rpc) | MCP server over stdio wrapping flat RPC command registry, permission-gated dispatch | [`docs/wiki/mcp-rpc.md`](mcp-rpc.md) |
-| worker-bridge | [`src/core/worker-bridge/`](../../src/core/worker-bridge), [`src/workers/`](../../src/workers), [`tests/core/worker-bridge/`](../../tests/core/worker-bridge), [`tests/workers/`](../../tests/workers) | Hub-and-spoke worker threads for DT serialization and DB connection worker | [`docs/wiki/worker-bridge.md`](worker-bridge.md) |
-| infra | [`.github/`](../../.github), [`scripts/`](../../scripts), [`examples/`](../../examples), [`docs/`](..), `tsup.*.config.ts`, [`docker-compose.test.yml`](../../docker-compose.test.yml), [`bunfig.toml`](../../bunfig.toml) | CI, build pipeline, binary release, example projects, VitePress docs (incl. [`docs/tapes/`](../tapes) VHS demo recordings, [`docs/modeling/`](../modeling)) | [`docs/wiki/infra.md`](infra.md) |
-
-## Cross-cutting
-
-**Test layout:** Tests mirror [`src/`](../../src) under [`tests/`](../../tests). [`tests/utils/`](../../tests/utils) holds shared DB helpers. [`tests/fixtures/`](../../tests/fixtures) has SQL fixtures per dialect. [`tests/integration/`](../../tests/integration) requires live databases. [`tests/global-setup.ts`](../../tests/global-setup.ts) / [`tests/global-teardown.ts`](../../tests/global-teardown.ts) coordinate integration DB bootstrap.
-
-**Test isolation:** Bun's `mock.module` registry is process-global and never restores, which is why CI runs the isolated test groups listed under Build/test/lint. [`src/core/config/index.ts`](../../src/core/config/index.ts) calls `makeNestedConfig` with `memoizeOpts: false`, so config lookups re-read `process.env` and are not a contamination source (see [`docs/wiki/core-state.md`](core-state.md)).
-
-**Convention pointers:** [`.claude/rules/typescript.md`](../../.claude/rules/typescript.md) (4-block function structure, `attempt` over try-catch), [`.claude/rules/tui-development.md`](../../.claude/rules/tui-development.md) (focus system, Ink layout), [`.claude/rules/testing.md`](../../.claude/rules/testing.md) (test naming, coverage), [`.claude/rules/documentation.md`](../../.claude/rules/documentation.md) (three-pillar structure).
-
-**Domain partitioning basis:** Domains are functional vertical slices. `core-state` groups the startup/persistence concerns (state, settings, config, lifecycle, version) because they all initialize together in `project-init.ts`. `core-identity` groups crypto identity, vault, logger, and SQL terminal because they share the "user-facing sensitive data" concern. `core-db` groups connection, explore, transfer, and teardown because they all operate against a live database connection. `core-change` and `core-runner` are separate because changes are versioned operations while runner handles idempotent file execution — they do not share an execution path (core-change implements its own `executeFiles` and skip-or-run decision, distinct from the core runner's same-named functions). `core-policy` is a cross-cutting domain ([`src/core/policy/`](../../src/core/policy)): domains that enforce a config-scoped action via `assertPolicy`/`checkConfigPolicy` (`core-change`, `core-runner`, `core-db`, `core-identity`, `sdk`, `cli`, `tui`, `mcp-rpc`) import from it directly, and `core-state` imports it too but only for `resolveLegacyAccess`/`guarded` — data resolution and display styling, not enforcement. `infra` absorbs the entire [`docs/`](..) tree (including the new [`docs/tapes/`](../tapes) VHS demo-recording sources, [`docs/guide/relational-design.md`](../guide/relational-design.md), and [`docs/modeling/`](../modeling) — which documents `ignatius`, a separate information-modeling tool in a separate repo, not noorm's own code) rather than splitting docs out per-domain, since the docs site is built/deployed as one VitePress unit.
-
-**Access-control policy (2026-07, config-access-roles feature):** `Config.protected: boolean` was replaced by `Config.access: ConfigAccess` (per-channel `user`/`agent` roles), enforced through the `core-policy` domain. `src/core/config/protection.ts` and `src/rpc/protection.ts` were both deleted — their rule-checking is absorbed into `core/policy`. The runner/change/transfer/sql-terminal executors gate at their core seam via `assertPolicy`, so SDK/CLI/TUI/MCP callers all inherit one enforcement path. `StateManager.load()` runs the schemaVersion-keyed migration (`core/version/state/`, v2 maps `protected`→`access`, v3 maps `access.mcp`→`access.agent`) ahead of the pre-existing package-semver migration.
-
-**Tracking-table schema:** on postgres and mssql the tracking tables live in a dedicated `noorm` schema without the `__noorm_` prefix ([`src/core/version/schema/migrations/v2.ts`](../../src/core/version/schema/migrations/v2.ts)); mysql and sqlite keep the `__noorm_*__` names. `getNoormTables(dialect)` and `noormDb(db, dialect)` in [`src/core/shared/tables.ts`](../../src/core/shared/tables.ts) are the dialect-aware accessors; `NOORM_TABLES` is `@deprecated`.
-
-**Change timestamps:** [`src/core/change/history.ts`](../../src/core/change/history.ts) hydrates `executed_at` as UTC on pg and mysql; mssql is not hydrated (see [`docs/wiki/core-change.md`](core-change.md) Constraints).
-
-**Deterministic substrate:** [`docs/wiki/scan.md`](scan.md) (regenerated this refresh via `atomic signals scan`)
+The deterministic source inventory is [`docs/wiki/scan.md`](scan.md); domain pages carry behavior and coupling details.
