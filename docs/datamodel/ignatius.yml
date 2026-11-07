@@ -1,0 +1,2 @@
+name: Noorm internal schema
+description: Existing database bookkeeping plus proposed SQL pipeline tracking. Existing tables are reconstructed from schema migrations; pipeline tables are a proposal, not implemented DDL.
