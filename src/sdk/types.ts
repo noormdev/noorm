@@ -50,8 +50,11 @@ export interface CreateContextOptions {
     config?: string;
 
     /** Non-persisted connection overrides, applied after environment settings. */
-    connection?: Omit<Partial<ConnectionConfig>, 'password'> & {
+    connection?: Omit<Partial<ConnectionConfig>, 'password' | 'ssl'> & {
         password?: string | RuntimeConnectionOptions['password'];
+        ssl?: boolean | (Exclude<ConnectionConfig['ssl'], boolean | undefined> & {
+            checkServerIdentity?: RuntimeConnectionOptions['checkServerIdentity'];
+        });
     };
 
     /** Project root directory. Defaults to process.cwd() */
