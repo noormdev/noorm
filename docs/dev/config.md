@@ -53,9 +53,13 @@ interface Config {
         user?: string
         password?: string
         ssl?: boolean | SSLConfig
-        pool?: { min?: number, max?: number }  // Defaults to { min: 0, max: 10 }
-        tlsServerName?: string  // MSSQL only — cert hostname when host is an IP
+        pool?: { min?: number, max?: number, idleTimeoutMillis?: number }
+        tlsServerName?: string  // PostgreSQL and MSSQL certificate identity
         connectTimeoutMs?: number  // Per attempt, defaults to 15000
+        statementTimeoutMs?: number // PostgreSQL server-side timeout
+        queryTimeoutMs?: number     // PostgreSQL client-side timeout
+        applicationName?: string    // PostgreSQL session application_name
+        keepAlive?: boolean         // PostgreSQL TCP keepalive
     }
 
     identity?: string         // Override audit identity

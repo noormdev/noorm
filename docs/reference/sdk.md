@@ -122,6 +122,18 @@ Inline SSL objects may provide `checkServerIdentity(hostname, certificate)` at r
 
 An idle PostgreSQL pool client that fails emits `connection:error` on the process-global `noormObserver`, with `{ configName, phase: 'idle', error }`. The fixed error text excludes driver details and credentials. The pool removes the failed idle client and may open a replacement; active query failures still reject the query. Each SDK-owned pool has one listener for its lifetime, and `disconnect()` closes the pool.
 
+PostgreSQL connection settings can be stored or passed inline:
+
+| noorm field | pg option | Meaning |
+|---|---|---|
+| `pool.idleTimeoutMillis` | `idleTimeoutMillis` | Idle client lifetime in ms; default 10,000, zero disables eviction |
+| `statementTimeoutMs` | `statement_timeout` | Server statement limit in ms; zero disables |
+| `queryTimeoutMs` | `query_timeout` | Client wait limit in ms; zero disables |
+| `applicationName` | `application_name` | Session name; pg may inherit `PGAPPNAME` when omitted |
+| `keepAlive` | `keepAlive` | Enable or disable TCP keepalive; timing and effect depend on the OS |
+
+Timeouts are nonnegative integers. Omitted statement and query limits are unlimited by pg default; a server may impose its own policy. These controls do not change `connectTimeoutMs`. Each connected context owns a separate pool, so pool maxima are per context, not process-wide.
+
 | Variable | Effect |
 |---|---|
 | `NOORM_CONFIG` | Config name when `options.config` is unset |
