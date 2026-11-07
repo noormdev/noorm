@@ -9,14 +9,14 @@ import { dirname, resolve } from 'node:path';
 
 import { sql } from 'kysely';
 import { retry, attempt, attemptSync, runWithTimeout, isTimeoutError } from '@logosdx/utils';
-import type { ConnectionConfig, ConnectionResult, Dialect } from './types.js';
+import type { ConnectionConfig, ConnectionResult, Dialect, RuntimeConnectionOptions } from './types.js';
 import { observer } from '../observer.js';
 import { OperationAbortedError, raceAbort, throwIfAborted } from '../shared/abort.js';
 import { getConnectionManager } from './manager.js';
 import { connectTimeoutFor } from './defaults.js';
 import { DatabaseConnectionError, explainConnectionError } from './errors.js';
 
-type DialectFactory = (config: ConnectionConfig) => ConnectionResult | Promise<ConnectionResult>;
+type DialectFactory = (config: ConnectionConfig, runtime?: RuntimeConnectionOptions) => ConnectionResult | Promise<ConnectionResult>;
 
 /**
  * Get the dialect factory function.
@@ -63,7 +63,7 @@ function getInstallCommand(dialect: Dialect): string {
         postgres: 'npm install pg',
         mysql: 'npm install mysql2',
         sqlite: 'npm install better-sqlite3  (not needed with noorm binary)',
-        mssql: 'npm install tedious tarn',
+        mssql: 'npm install tedious',
     };
 
     return commands[dialect];
@@ -152,6 +152,7 @@ async function openConnection(
     configName: string,
     retryOptions: ConnectionRetryOptions,
     signal?: AbortSignal,
+    runtime?: RuntimeConnectionOptions,
 ): Promise<ConnectionResult> {
 
     const { retries = 3, delay = 1000, backoff = 2 } = retryOptions;
@@ -180,7 +181,7 @@ async function openConnection(
 
                 }
 
-                const conn = await createFn!(config);
+                const conn = await createFn!(config, runtime);
 
                 // The driver can hand back a live pool after the caller gave
                 // up. Nothing else holds it at this point, so close it here.
@@ -238,6 +239,10 @@ async function openConnection(
                     // hold the pool open for another two rounds of backoff.
                     if (err instanceof OperationAbortedError) return false;
 
+                    // Callback errors are indistinguishable from driver errors
+                    // when the callback is passed directly to the driver.
+                    if (runtime?.password) return false;
+
                     const msg = err.message.toLowerCase();
 
                     // Don't retry auth/config failures
@@ -265,12 +270,17 @@ async function openConnection(
 
     if (err) {
 
-        const explained = explainConnectionError(err, config);
-        const server = explained instanceof DatabaseConnectionError
+        // Native callbacks cannot tag their errors; preserve their identity
+        // even when the issuer uses a database-like error code.
+        const explained = runtime?.password ? err : explainConnectionError(err, config);
+        const server = !runtime?.password && explained instanceof DatabaseConnectionError
             ? { serverCode: explained.serverCode, serverMessage: explained.serverMessage }
             : {};
+        const message = runtime?.password
+            ? 'Runtime credential connection failed'
+            : explained.message;
 
-        observer.emit('connection:error', { configName, error: explained.message, ...server });
+        observer.emit('connection:error', { configName, error: message, ...server });
         throw explained;
 
     }
@@ -339,12 +349,19 @@ export async function createConnection(
     configName: string = '__default__',
     retryOptions: ConnectionRetryOptions = {},
     signal?: AbortSignal,
+    runtime?: RuntimeConnectionOptions,
 ): Promise<ConnectionResult> {
 
     throwIfAborted(signal);
 
+    if (config.dialect === 'sqlite' && runtime?.password) {
+
+        throw new Error('Dynamic passwords are not supported for SQLite');
+
+    }
+
     return raceAbort(
-        openConnection(config, configName, retryOptions, signal),
+        openConnection(config, configName, retryOptions, signal, runtime),
         signal,
         discardConnection,
     );

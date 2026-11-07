@@ -9,7 +9,6 @@ const EXTERNAL_PACKAGES = [
     'pg',
     'mysql2',
     'tedious',
-    'tarn',
 ];
 
 export default defineConfig({
@@ -21,7 +20,7 @@ export default defineConfig({
     clean: true,
     treeshake: true,
     outDir: 'packages/sdk/dist',
-    // Bundle everything by default (json5, eta, yaml, csv-parse, zod, @logosdx/*)
+    // Bundle internal dependencies, including Tarn for MySQL/MSSQL pools.
     noExternal: [/.*/],
     esbuildOptions(options) {
 

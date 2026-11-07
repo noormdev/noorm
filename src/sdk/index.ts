@@ -115,13 +115,17 @@ export async function createContext<DB = unknown, Procs = object, Funcs = object
     await settingsManager.load();
     const settings = settingsManager.settings;
 
+    const inline = options.connection && { ...options.connection };
+    const password = typeof inline?.password === 'function' ? inline.password : undefined;
+    if (password && inline) delete inline.password;
+
     // Use resolver - applies full priority chain:
     // defaults <- stage <- stored <- env <- flags
     const config = resolveConfig(state, {
         name: options.config,
         stage: options.stage,
         settings: toSettingsProvider(settingsManager),
-        flags: options.connection ? { connection: options.connection } as ConfigInput : undefined,
+        flags: inline ? { connection: inline } as ConfigInput : undefined,
     });
 
     if (!config) {
@@ -134,6 +138,20 @@ export async function createContext<DB = unknown, Procs = object, Funcs = object
                   '  - Set NOORM_CONFIG env var\n' +
                   '  - Set NOORM_CONNECTION_DIALECT and NOORM_CONNECTION_DATABASE for env-only mode',
         );
+
+    }
+
+    if (password) {
+
+        // The callback is the effective credential; do not expose a shadowed
+        // environment or stored password as part of the resolved config.
+        delete config.connection.password;
+
+    }
+
+    if (password && config.connection.dialect === 'sqlite') {
+
+        throw new Error('Dynamic passwords are not supported for SQLite');
 
     }
 

@@ -114,6 +114,8 @@ flowchart TD
 
 The later layer wins. Without a stored config, an inline connection uses the name `__inline__`; env-only mode uses `__env__`. A missing state file needs no identity key. An explicitly named config must exist. Stage defaults and access ceilings still apply, and `requireTest` still requires a test-marked config. Inline values are never saved.
 
+For PostgreSQL, inline `connection.password` may be a function returning a string or a promise of one. pg calls it when a physical connection authenticates, not on each pooled query. The SDK owns and closes the pool. Callbacks are runtime-only and cannot be represented in YAML or environment configuration; a callback failure is reported without its message.
+
 | Variable | Effect |
 |---|---|
 | `NOORM_CONFIG` | Config name when `options.config` is unset |
