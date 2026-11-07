@@ -14,6 +14,10 @@ npm install @noormdev/sdk kysely pg
 
 `kysely` and your dialect's driver are peer dependencies: `pg` for postgres, `mysql2` for mysql, `tedious` and `tarn` for mssql, `better-sqlite3` for sqlite. Node 22.13 or newer.
 
+The SDK ships one ESM build. On supported Node versions, CommonJS can load it with `const { createContext } = require('@noormdev/sdk')` provided the entire eagerly loaded module graph is synchronous (no top-level `await`). Alternatively, use `await import('@noormdev/sdk')` from CommonJS.
+
+Jest uses a separate loader: Jest 30.4.2 may still require `--experimental-vm-modules` and ESM-compatible transforms. See the [Jest 30 ESM guide](https://jestjs.io/docs/30.0/ecmascript-modules); successful loading in Node alone does not establish Jest compatibility.
+
 ```typescript
 // scripts/open-orders.ts
 import { createContext } from '@noormdev/sdk';
