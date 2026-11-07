@@ -1,106 +1,97 @@
 ---
 process: Finalize Run
 number: 4
-description: Record observed workflow outcomes outside the workflow transaction, release the owned lock, and report the result.
+description: Persist direct workflow evidence outside the workflow transaction, release any owned guard, and report the result.
 inputs:
   - from: cache:execution-outcomes
     label: execution outcome
-    data: run_id, config_name, status, transaction_outcome, ordered steps with step_no, name, status, transaction_outcome, started_at and finished_at, errors
+    data: run_id, slug, config_name, single_run, guard ownership if protected, confirmation that workflow SQL and transaction activity have settled before release, status, transaction_outcome, started_at, finished_at, duration_ms, error_message, declared step results with step_no, name, status, transaction_outcome, started_at, finished_at, duration_ms, error_message and skip_reason, errors
   - from: cluster:pipeline-history
     label: intended run
     data:
-      change: [id, name, status, error_message, duration_ms, config_name, executed_by]
-      executions: [id, change_id, filepath, status, error_message, skip_reason, duration_ms]
-      pipeline_run: [id, slug, status, transaction_outcome, started_at, finished_at]
-      pipeline_step: [pipeline_run_id, step_no, execution_id, name, status, transaction_outcome, started_at, finished_at]
-  - from: db:lock
-    label: owned lock
-    data: [id, config_name, locked_by, locked_at, expires_at, reason]
+      pipeline_run: [id, slug, config_name, single_run, status, transaction_outcome, started_at, finished_at, error_message, duration_ms]
+      pipeline_step: [pipeline_run_id, step_no, name, filepath, checksum, status, transaction_outcome, started_at, finished_at, error_message, skip_reason, duration_ms]
+  - from: other:single-run-guard
+    label: admission ownership
+    data: config_name, slug, protected run identity and current ownership when protection was claimed
 outputs:
   - to: cluster:pipeline-history
     label: finalized history
     data:
-      change: [id, status, error_message, duration_ms]
-      executions: [id, change_id, status, error_message, skip_reason, duration_ms]
-      pipeline_run: [id, status, transaction_outcome, started_at, finished_at]
-      pipeline_step: [pipeline_run_id, step_no, execution_id, status, transaction_outcome, started_at, finished_at]
-  - to: db:lock
-    label: released lock
-    data: [id, config_name, locked_by]
+      pipeline_run: [id, status, transaction_outcome, started_at, finished_at, error_message, duration_ms]
+      pipeline_step: [pipeline_run_id, step_no, status, transaction_outcome, started_at, finished_at, error_message, skip_reason, duration_ms]
+  - to: other:single-run-guard
+    label: ownership release
+    data: config_name, slug, run identity, settled workflow evidence and ownership-safe release of protection, or retained protection requiring reconciliation or cleanup error
   - to: ext:Caller
     label: run summary
-    data: run_id, slug, config_name, status, transaction_outcome, ordered steps with step_no, name, status and transaction_outcome, errors, nonzero result on failure or audit error
+    data: run_id, slug, config_name, status, transaction_outcome, declared step numbers and names with status, transaction outcome, timings, duration, errors and skip reasons, run errors and result code
 examples:
   in:
     - from: cache:execution-outcomes
       label: committed and uncertain outcomes
       rows:
-        - { run_id: 1044, config_name: dev, status: success, transaction_outcome: committed, steps: [{ step_no: 1, name: collect, status: success, transaction_outcome: committed }, { step_no: 2, name: summarize, status: success, transaction_outcome: committed }, { step_no: 3, name: publish, status: success, transaction_outcome: committed }], errors: [] }
-        - { run_id: 1054, config_name: dev, status: unknown, transaction_outcome: unknown, steps: [{ step_no: 1, name: collect, status: success, transaction_outcome: unknown }, { step_no: 2, name: summarize, status: success, transaction_outcome: unknown }, { step_no: 3, name: publish, status: success, transaction_outcome: unknown }], errors: ['Commit acknowledgement lost'] }
-    - from: db:change
-      label: pending parent before finalization
-      rows:
-        - { id: 1044, name: refresh-reporting, status: pending, error_message: '', duration_ms: 0, config_name: dev, executed_by: synthetic-operator }
-        - { id: 1042, name: refresh-reporting, status: pending, error_message: '', duration_ms: 0, config_name: dev, executed_by: synthetic-operator }
-    - from: db:executions
-      label: pending file records
-      rows:
-        - { id: 8207, change_id: 1044, filepath: collect.sql, status: pending, error_message: '', skip_reason: '', duration_ms: 0 }
-        - { id: 8202, change_id: 1042, filepath: summarize.sql, status: pending, error_message: '', skip_reason: '', duration_ms: 0 }
+        - { run_id: 1044, slug: refresh-reporting, config_name: dev, single_run: false, status: success, transaction_outcome: committed, steps: [{ step_no: 1, name: collect, status: success, transaction_outcome: committed }, { step_no: 2, name: summarize, status: success, transaction_outcome: committed }, { step_no: 3, name: publish, status: success, transaction_outcome: committed }], errors: [] }
+        - { run_id: 1054, slug: refresh-reporting, config_name: dev, single_run: false, status: unknown, transaction_outcome: unknown, errors: [Commit acknowledgement lost] }
+        - run_id: 1066
+          slug: refresh-reporting
+          config_name: staging
+          single_run: true
+          guard_owner_run_id: 1066
+          workflow_settled: true
+          status: success
+          transaction_outcome: committed
+          started_at: '2026-02-06T10:00:00Z'
+          finished_at: '2026-02-06T10:03:00Z'
+          duration_ms: 180000
+          error_message: ''
+          steps:
+            - { step_no: 1, name: collect, status: success, transaction_outcome: committed, started_at: '2026-02-06T10:00:00Z', finished_at: '2026-02-06T10:01:00Z', duration_ms: 60000, error_message: '', skip_reason: '' }
+            - { step_no: 2, name: summarize, status: success, transaction_outcome: committed, started_at: '2026-02-06T10:01:00Z', finished_at: '2026-02-06T10:02:00Z', duration_ms: 60000, error_message: '', skip_reason: '' }
+            - { step_no: 3, name: publish, status: success, transaction_outcome: committed, started_at: '2026-02-06T10:02:00Z', finished_at: '2026-02-06T10:03:00Z', duration_ms: 60000, error_message: '', skip_reason: '' }
+          errors: []
     - from: db:pipeline_run
-      label: pending runs
+      label: pending run snapshot
       rows:
-        - { id: 1044, slug: refresh-reporting, status: pending, transaction_outcome: pending, started_at: null, finished_at: null }
-        - { id: 1042, slug: refresh-reporting, status: pending, transaction_outcome: pending, started_at: null, finished_at: null }
+        - { id: 1044, slug: refresh-reporting, config_name: dev, single_run: false, status: pending, transaction_outcome: pending, started_at: null, finished_at: null, error_message: '', duration_ms: 0 }
+        - { id: 1066, slug: refresh-reporting, config_name: staging, single_run: true, status: pending, transaction_outcome: pending, started_at: null, finished_at: null, error_message: '', duration_ms: 0 }
     - from: db:pipeline_step
-      label: pending steps
+      label: pending step snapshot
       rows:
-        - { pipeline_run_id: 1044, step_no: 1, execution_id: 8207, name: collect, status: pending, transaction_outcome: pending, started_at: null, finished_at: null }
-        - { pipeline_run_id: 1042, step_no: 2, execution_id: 8202, name: summarize, status: pending, transaction_outcome: pending, started_at: null, finished_at: null }
-    - from: db:lock
-      label: illustrative owned locks
+        - { pipeline_run_id: 1044, step_no: 1, name: collect, filepath: collect.sql, checksum: bbbbbbbb, status: pending, transaction_outcome: pending, started_at: null, finished_at: null, error_message: '', skip_reason: '', duration_ms: 0 }
+        - { pipeline_run_id: 1066, step_no: 1, name: collect, filepath: collect.sql, checksum: bbbbbbbb, status: pending, transaction_outcome: pending, started_at: null, finished_at: null, error_message: '', skip_reason: '', duration_ms: 0 }
+        - { pipeline_run_id: 1066, step_no: 2, name: summarize, filepath: summarize.sql, checksum: bbbbbbbb, status: pending, transaction_outcome: pending, started_at: null, finished_at: null, error_message: '', skip_reason: '', duration_ms: 0 }
+        - { pipeline_run_id: 1066, step_no: 3, name: publish, filepath: publish.sql, checksum: bbbbbbbb, status: pending, transaction_outcome: pending, started_at: null, finished_at: null, error_message: '', skip_reason: '', duration_ms: 0 }
+    - from: other:single-run-guard
+      label: protected ownership
       rows:
-        - { id: 10, config_name: dev, locked_by: synthetic-operator, locked_at: '2026-01-12 10:00:00', expires_at: '2026-01-12 10:10:00', reason: pipeline }
-        - { id: 11, config_name: dev, locked_by: synthetic-operator, locked_at: '2026-01-10 10:00:00', expires_at: '2026-01-10 10:10:00', reason: pipeline }
+        - { config_name: staging, slug: refresh-reporting, run_id: 1066, state: owned }
   out:
-    - to: db:change
-      label: generic status projections
-      rows:
-        - { id: 1044, status: success, error_message: '', duration_ms: 180000 }
-        - { id: 1042, status: failed, error_message: 'Pipeline did not complete successfully', duration_ms: 120000 }
-        - { id: 1054, status: failed, error_message: 'Transaction outcome unknown', duration_ms: 180000 }
-    - to: db:executions
-      label: recorded file results
-      rows:
-        - { id: 8207, change_id: 1044, status: success, error_message: '', skip_reason: '', duration_ms: 60000 }
-        - { id: 8202, change_id: 1042, status: failed, error_message: 'Step execution failed', skip_reason: '', duration_ms: 60000 }
-        - { id: 8206, change_id: 1043, status: skipped, error_message: '', skip_reason: 'prior step did not complete', duration_ms: 0 }
     - to: db:pipeline_run
-      label: authoritative run outcomes
+      label: direct run outcomes
       rows:
-        - { id: 1044, status: success, transaction_outcome: committed, started_at: '2026-01-12T10:00:00Z', finished_at: '2026-01-12T10:03:00Z' }
-        - { id: 1043, status: partial, transaction_outcome: partial, started_at: '2026-01-11T10:00:00Z', finished_at: '2026-01-11T10:02:00Z' }
-        - { id: 1054, status: unknown, transaction_outcome: unknown, started_at: '2026-01-22T10:00:00Z', finished_at: '2026-01-22T10:03:00Z' }
+        - { id: 1044, status: success, transaction_outcome: committed, started_at: '2026-01-12T10:00:00Z', finished_at: '2026-01-12T10:03:00Z', error_message: '', duration_ms: 180000 }
+        - { id: 1054, status: unknown, transaction_outcome: unknown, started_at: '2026-01-22T10:00:00Z', finished_at: '2026-01-22T10:03:00Z', error_message: Transaction outcome unknown, duration_ms: 180000 }
+        - { id: 1066, status: success, transaction_outcome: committed, started_at: '2026-02-06T10:00:00Z', finished_at: '2026-02-06T10:03:00Z', error_message: '', duration_ms: 180000 }
     - to: db:pipeline_step
-      label: authoritative step outcomes
+      label: direct step outcomes
       rows:
-        - { pipeline_run_id: 1044, step_no: 1, execution_id: 8207, status: success, transaction_outcome: committed, started_at: '2026-01-12T10:00:00Z', finished_at: '2026-01-12T10:01:00Z' }
-        - { pipeline_run_id: 1042, step_no: 1, execution_id: 8201, status: success, transaction_outcome: rolled_back, started_at: '2026-01-10T10:00:00Z', finished_at: '2026-01-10T10:01:00Z' }
-        - { pipeline_run_id: 1043, step_no: 2, execution_id: 8205, status: failed, transaction_outcome: rolled_back, started_at: '2026-01-11T10:01:00Z', finished_at: '2026-01-11T10:02:00Z' }
-    - to: db:lock
-      label: keys of owned locks to delete
+        - { pipeline_run_id: 1044, step_no: 1, status: success, transaction_outcome: committed, started_at: '2026-01-12T10:00:00Z', finished_at: '2026-01-12T10:01:00Z', error_message: '', skip_reason: '', duration_ms: 60000 }
+        - { pipeline_run_id: 1042, step_no: 2, status: failed, transaction_outcome: rolled_back, started_at: '2026-01-10T10:01:00Z', finished_at: '2026-01-10T10:02:00Z', error_message: Step execution failed, skip_reason: '', duration_ms: 60000 }
+        - { pipeline_run_id: 1066, step_no: 1, status: success, transaction_outcome: committed, started_at: '2026-02-06T10:00:00Z', finished_at: '2026-02-06T10:01:00Z', error_message: '', skip_reason: '', duration_ms: 60000 }
+        - { pipeline_run_id: 1066, step_no: 2, status: success, transaction_outcome: committed, started_at: '2026-02-06T10:01:00Z', finished_at: '2026-02-06T10:02:00Z', error_message: '', skip_reason: '', duration_ms: 60000 }
+        - { pipeline_run_id: 1066, step_no: 3, status: success, transaction_outcome: committed, started_at: '2026-02-06T10:02:00Z', finished_at: '2026-02-06T10:03:00Z', error_message: '', skip_reason: '', duration_ms: 60000 }
+    - to: other:single-run-guard
+      label: conditional release
       rows:
-        - { id: 10, config_name: dev, locked_by: synthetic-operator }
-        - { id: 11, config_name: dev, locked_by: synthetic-operator }
+        - { config_name: staging, slug: refresh-reporting, run_id: 1066, workflow_settled: true, transaction_outcome: committed, action: release owned guard }
     - to: ext:Caller
       label: success and audit error
       rows:
-        - { run_id: 1044, slug: refresh-reporting, config_name: dev, status: success, transaction_outcome: committed, steps: [{ step_no: 1, name: collect, status: success, transaction_outcome: committed }, { step_no: 2, name: summarize, status: success, transaction_outcome: committed }, { step_no: 3, name: publish, status: success, transaction_outcome: committed }], errors: [], result: 0 }
-        - { run_id: 1042, slug: refresh-reporting, config_name: dev, status: failed, transaction_outcome: rolled_back, steps: [{ step_no: 1, name: collect, status: success, transaction_outcome: rolled_back }, { step_no: 2, name: summarize, status: failed, transaction_outcome: rolled_back }, { step_no: 3, name: publish, status: skipped, transaction_outcome: not_started }], errors: ['Step execution failed', 'Audit update failed'], result: 1 }
+        - { run_id: 1044, slug: refresh-reporting, config_name: dev, status: success, transaction_outcome: committed, steps: [{ step_no: 1, name: collect, status: success, transaction_outcome: committed }], errors: [], result: 0 }
+        - { run_id: 1042, slug: refresh-reporting, config_name: dev, status: failed, transaction_outcome: rolled_back, errors: [Step execution failed, Audit update failed], result: 1 }
 ---
 
-Use the buffered [[execution-outcomes]] and intended [[pipeline-history]] to update all four linked history members in a coherent bookkeeping transaction outside the workflow transaction. Pipeline run and step statuses and transaction outcomes are authoritative; generic [[change]] and [[executions]] statuses are projections. Preserve successful execution separately from a later rollback and preserve uncertainty when the engine cannot confirm commit or rollback. Result examples are independent model-seeded snapshots; pending inputs are illustrative earlier lifecycle transformations, not asserted historical records.
+Persist [[pipeline_run]] and [[pipeline_step]] evidence in bookkeeping transactions separate from workflow transactions, including after each resolved `step` boundary. No generic history projections exist. Successful execution and eventual rollback are different facts; a lost acknowledgement or failed rollback remains unknown. Pending inputs are illustrative earlier snapshots of final examples, not separate historical claims.
 
-Release only the [[lock]] still owned by this invocation: delete the row identified by `id` with matching `config_name` and `locked_by`, not a fabricated action column. Lock IDs 10 and 11 are synthetic examples at different times, not simultaneous dev locks. Release is attempted even when audit finalization fails, without deleting another holder's lock. Report both the original workflow error and any audit or lock-release error; audit failure produces a nonzero response even when SQL succeeded. Normal results exclude SQL and secrets.
-
-A crash or failed bookkeeping transaction can leave pending history and an unreleased lock; neither this diagram nor an attempted cleanup guarantees finalization. Distinguish a pending audit gap from a confirmed transaction outcome, and never manufacture commit or rollback certainty. These flows describe data movement rather than a control-flow guarantee; diagram process numbers are not pipeline step identities. Checksums in examples are abbreviated to eight characters.
+Release an owned [[single-run-guard]] only after workflow SQL and transaction activity have settled, including when final bookkeeping fails. Ownership alone does not prove release is safe. The protected example receives the complete settled outcome for 1066 and updates its run and steps before release; pending 1062 is not finalized or unlocked here. If SQL activity may still be running, preserve protection for reconciliation rather than admitting overlapping work. Preserve the original execution error alongside audit or cleanup errors and do not report complete success if required audit fails. A crash can leave unresolved intent or ownership: recovery cannot infer commit, rollback, or safe expiration from a stale row. The guard is abstract, and recovery remains an open design. Normal responses exclude SQL and secrets.

@@ -4,11 +4,11 @@
 
 </ignatius-breadcrumb>
 
-<ignatius-index scope="data" path="data" count="2" depth="1" digest="sha256:aa7f83c5da95c0c7029d380d5c055d3e59d71472d769a779da71342ffd302562">
+<ignatius-index scope="data" path="data" count="2" depth="1" digest="sha256:ac8c797fd9d48e0f92442b04f9ceaed0be742cfe3668d6b4c87d2cda3f78cdea">
 
 | Name | Kind | Description | Go |
 |---|---|---|---|
 | existing | folder | Implemented noorm bookkeeping tables reconstructed from migrations v1 and v2. | [existing](existing/index.md) |
-| pipelines | folder | Proposed pipeline tracking linked into general operation and execution history. | [pipelines](pipelines/index.md) |
+| pipelines | folder | Proposed independent pipeline invocation and step history. | [pipelines](pipelines/index.md) |
 
 </ignatius-index>

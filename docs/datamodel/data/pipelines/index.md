@@ -4,11 +4,11 @@
 
 </ignatius-breadcrumb>
 
-<ignatius-index scope="entity-group" path="data/pipelines" count="2" depth="2" digest="sha256:42ada97a289938a1f56be7b8f0c28ec8f7212b6e4d14123d08cc40a3055368ca">
+<ignatius-index scope="entity-group" path="data/pipelines" count="2" depth="2" digest="sha256:b709c1e34c1b113eebd43ab905d8872b9cc55e07420c5eb9e94cd75d302f04d1">
 
 | Name | Kind | Description | Go |
 |---|---|---|---|
-| pipeline_run | Dependent | Proposed pipeline-specific run record sharing its change identity. | [pipeline_run](pipeline_run.md) |
-| pipeline_step | Dependent | Proposed ordered pipeline step linked to its unique execution audit record. | [pipeline_step](pipeline_step.md) |
+| pipeline_run | Independent | Proposed independent pipeline invocation and workflow outcome. | [pipeline_run](pipeline_run.md) |
+| pipeline_step | Dependent | Proposed declaration-identified pipeline step with direct execution evidence. | [pipeline_step](pipeline_step.md) |
 
 </ignatius-index>

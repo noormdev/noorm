@@ -1,6 +1,6 @@
 # SQL pipelines
 
-> **Historical planning draft, not an implementation contract.** This spec predates the linked operation/pipeline history model and the `(pipeline_run_id, step_no)` step key. The [working design](../design/sql-pipelines.md) records the current discussion, including unresolved SDK and history APIs. Do not implement from the checkpoints below; reconcile this draft after design review.
+> **Historical planning draft, not an implementation contract.** This spec predates the current dependency graph, independent pipeline history, `(pipeline_run_id, step_no)` step key, and opt-in single-run protection. The [working design](../design/sql-pipelines.md) and [data model](../datamodel/ignatius.yml) record the current proposal, including unresolved SDK and admission details. Do not implement from the checkpoints below; reconcile this draft after design review.
 
 ## Goal
 

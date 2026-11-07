@@ -1,7 +1,7 @@
 ---
 label: Pipeline history
-description: Linked operation and file audit with authoritative pipeline run and step outcomes.
-entities: [change, executions, pipeline_run, pipeline_step]
+description: Independent pipeline run and declaration-level execution evidence.
+entities: [pipeline_run, pipeline_step]
 ---
 
-[[change]], [[executions]], [[pipeline_run]], and [[pipeline_step]] describe one invocation together. Persist intent and resolved workflow outcomes as coherent bookkeeping transactions outside workflow transactions. A step uses its run and sequence number as its identity. This is proposed behavior, not implemented orchestration.
+[[pipeline_run]] and its [[pipeline_step]] records describe one admitted invocation together. Persist intent and observed outcomes outside workflow transactions so rollback does not erase audit. No change-history record is involved. This is proposed behavior, not implemented orchestration.

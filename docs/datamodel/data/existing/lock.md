@@ -31,4 +31,4 @@ All columns are non-null and `config_name` is unique, so at most one row exists 
 
 ## Proposal
 
-Application-triggered pipelines need a lock per config and pipeline, so one pipeline does not block another in the same database. That scope is wider than `unique_lock_config` allows and requires the same internal schema migration as pipeline tracking. This is proposed behavior, not current schema.
+Single-run protection for pipelines is optional and scoped to a resolved config and pipeline slug. The existing `unique_lock_config` cannot implement that scope without blocking unrelated pipelines. Atomic admission, ownership and recovery are required when protection is enabled, but the mechanism is open; this model does not require a migration of this table.

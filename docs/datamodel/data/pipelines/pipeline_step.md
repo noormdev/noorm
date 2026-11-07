@@ -1,120 +1,126 @@
 ---
 entity: pipeline_step
 group: pipelines
-description: "Proposed ordered pipeline step linked to its unique execution audit record."
-pk:
-  - pipeline_run_id
-  - step_no
+description: "Proposed declaration-identified pipeline step with direct execution evidence."
+pk: [pipeline_run_id, step_no]
 columns:
-  pipeline_run_id:
-    type: integer
-    desc: "Mandatory foreign key to the owning pipeline_run.id."
-  step_no:
-    type: integer
-    desc: "One-based manifest position and step identity within the run."
-  execution_id:
-    type: integer
-    desc: "Mandatory, globally unique foreign key to executions.id."
-  name:
-    type: text
-    desc: "Readable manifest step label, unique within the run."
-  status:
-    type: text
-    desc: "Authoritative pipeline step status."
-  transaction_outcome:
-    type: text
-    desc: "Outcome of the workflow transaction affecting the step."
-  started_at:
-    type: timestamp
-    nullable: true
-    desc: "When the step began; null until it starts."
-  finished_at:
-    type: timestamp
-    nullable: true
-    desc: "When the step resolved; null until resolution."
+  pipeline_run_id: { type: integer, desc: "Mandatory foreign key to the owning pipeline_run.id." }
+  step_no: { type: integer, desc: "One-based manifest declaration position within the run." }
+  name: { type: text, desc: "Readable manifest step label, unique within the run." }
+  status: { type: text, desc: "Authoritative pipeline step status." }
+  transaction_outcome: { type: text, desc: "Outcome of the workflow transaction affecting this step." }
+  started_at: { type: timestamp, nullable: true, desc: "Step start, null until execution begins." }
+  finished_at: { type: timestamp, nullable: true, desc: "Step resolution, null until resolved." }
+  filepath: { type: text, desc: "Declared SQL or template path." }
+  checksum: { type: text, desc: "Checksum of prepared rendered SQL bytes." }
+  error_message: { type: text, default: "", desc: "Execution error or empty when absent." }
+  skip_reason: { type: text, default: "", desc: "Reason an unstarted step was skipped or empty." }
+  duration_ms: { type: integer, default: 0, desc: "Elapsed execution milliseconds; zero when never started." }
 ak:
-  - rule: pipeline_step_execution_unique
-    columns: [execution_id]
   - rule: pipeline_step_name_per_run_unique
     columns: [pipeline_run_id, name]
 relationships:
   - target: pipeline_run
-    on:
-      pipeline_run_id: id
-    predicate: { fwd: contains, rev: is a step of }
-  - target: executions
-    on:
-      execution_id: id
+    on: { pipeline_run_id: id }
     predicate: { fwd: records, rev: is recorded by }
 examples:
-  - { pipeline_run_id: 1042, step_no: 1, execution_id: 8201, name: collect, status: success, transaction_outcome: rolled_back, started_at: '2026-01-10T10:00:00Z', finished_at: '2026-01-10T10:01:00Z' }
-  - { pipeline_run_id: 1042, step_no: 2, execution_id: 8202, name: summarize, status: failed, transaction_outcome: rolled_back, started_at: '2026-01-10T10:01:00Z', finished_at: '2026-01-10T10:02:00Z' }
-  - { pipeline_run_id: 1042, step_no: 3, execution_id: 8203, name: publish, status: skipped, transaction_outcome: not_started, started_at: null, finished_at: null }
-  - { pipeline_run_id: 1043, step_no: 1, execution_id: 8204, name: collect, status: success, transaction_outcome: committed, started_at: '2026-01-11T10:00:00Z', finished_at: '2026-01-11T10:01:00Z' }
-  - { pipeline_run_id: 1043, step_no: 2, execution_id: 8205, name: summarize, status: failed, transaction_outcome: rolled_back, started_at: '2026-01-11T10:01:00Z', finished_at: '2026-01-11T10:02:00Z' }
-  - { pipeline_run_id: 1043, step_no: 3, execution_id: 8206, name: publish, status: skipped, transaction_outcome: not_started, started_at: null, finished_at: null }
-  - { pipeline_run_id: 1044, step_no: 1, execution_id: 8207, name: collect, status: success, transaction_outcome: committed, started_at: '2026-01-12T10:00:00Z', finished_at: '2026-01-12T10:01:00Z' }
-  - { pipeline_run_id: 1044, step_no: 2, execution_id: 8208, name: summarize, status: success, transaction_outcome: committed, started_at: '2026-01-12T10:01:00Z', finished_at: '2026-01-12T10:02:00Z' }
-  - { pipeline_run_id: 1044, step_no: 3, execution_id: 8209, name: publish, status: success, transaction_outcome: committed, started_at: '2026-01-12T10:02:00Z', finished_at: '2026-01-12T10:03:00Z' }
-  - { pipeline_run_id: 1045, step_no: 1, execution_id: 8210, name: collect, status: failed, transaction_outcome: rolled_back, started_at: '2026-01-13T10:00:00Z', finished_at: '2026-01-13T10:01:00Z' }
-  - { pipeline_run_id: 1045, step_no: 2, execution_id: 8211, name: summarize, status: skipped, transaction_outcome: not_started, started_at: null, finished_at: null }
-  - { pipeline_run_id: 1045, step_no: 3, execution_id: 8212, name: publish, status: skipped, transaction_outcome: not_started, started_at: null, finished_at: null }
-  - { pipeline_run_id: 1046, step_no: 1, execution_id: 8213, name: collect, status: success, transaction_outcome: committed, started_at: '2026-01-14T10:00:00Z', finished_at: '2026-01-14T10:01:00Z' }
-  - { pipeline_run_id: 1046, step_no: 2, execution_id: 8214, name: summarize, status: success, transaction_outcome: committed, started_at: '2026-01-14T10:01:00Z', finished_at: '2026-01-14T10:02:00Z' }
-  - { pipeline_run_id: 1046, step_no: 3, execution_id: 8215, name: publish, status: success, transaction_outcome: committed, started_at: '2026-01-14T10:02:00Z', finished_at: '2026-01-14T10:03:00Z' }
-  - { pipeline_run_id: 1047, step_no: 1, execution_id: 8216, name: collect, status: failed, transaction_outcome: rolled_back, started_at: '2026-01-15T10:00:00Z', finished_at: '2026-01-15T10:01:00Z' }
-  - { pipeline_run_id: 1047, step_no: 2, execution_id: 8217, name: summarize, status: skipped, transaction_outcome: not_started, started_at: null, finished_at: null }
-  - { pipeline_run_id: 1047, step_no: 3, execution_id: 8218, name: publish, status: skipped, transaction_outcome: not_started, started_at: null, finished_at: null }
-  - { pipeline_run_id: 1048, step_no: 1, execution_id: 8219, name: collect, status: success, transaction_outcome: committed, started_at: '2026-01-16T10:00:00Z', finished_at: '2026-01-16T10:01:00Z' }
-  - { pipeline_run_id: 1048, step_no: 2, execution_id: 8220, name: summarize, status: success, transaction_outcome: committed, started_at: '2026-01-16T10:01:00Z', finished_at: '2026-01-16T10:02:00Z' }
-  - { pipeline_run_id: 1048, step_no: 3, execution_id: 8221, name: publish, status: success, transaction_outcome: committed, started_at: '2026-01-16T10:02:00Z', finished_at: '2026-01-16T10:03:00Z' }
-  - { pipeline_run_id: 1049, step_no: 1, execution_id: 8222, name: collect, status: failed, transaction_outcome: partial, started_at: '2026-01-17T10:00:00Z', finished_at: '2026-01-17T10:01:00Z' }
-  - { pipeline_run_id: 1049, step_no: 2, execution_id: 8223, name: summarize, status: skipped, transaction_outcome: not_started, started_at: null, finished_at: null }
-  - { pipeline_run_id: 1049, step_no: 3, execution_id: 8224, name: publish, status: skipped, transaction_outcome: not_started, started_at: null, finished_at: null }
-  - { pipeline_run_id: 1050, step_no: 1, execution_id: 8225, name: collect, status: success, transaction_outcome: committed, started_at: '2026-01-18T10:00:00Z', finished_at: '2026-01-18T10:01:00Z' }
-  - { pipeline_run_id: 1050, step_no: 2, execution_id: 8226, name: summarize, status: failed, transaction_outcome: no_effects, started_at: '2026-01-18T10:01:00Z', finished_at: '2026-01-18T10:02:00Z' }
-  - { pipeline_run_id: 1050, step_no: 3, execution_id: 8227, name: publish, status: skipped, transaction_outcome: not_started, started_at: null, finished_at: null }
-  - { pipeline_run_id: 1051, step_no: 1, execution_id: 8228, name: collect, status: pending, transaction_outcome: pending, started_at: null, finished_at: null }
-  - { pipeline_run_id: 1051, step_no: 2, execution_id: 8229, name: summarize, status: pending, transaction_outcome: pending, started_at: null, finished_at: null }
-  - { pipeline_run_id: 1051, step_no: 3, execution_id: 8230, name: publish, status: pending, transaction_outcome: pending, started_at: null, finished_at: null }
-  - { pipeline_run_id: 1052, step_no: 1, execution_id: 8231, name: collect, status: success, transaction_outcome: pending, started_at: '2026-01-20T10:00:00Z', finished_at: '2026-01-20T10:01:00Z' }
-  - { pipeline_run_id: 1052, step_no: 2, execution_id: 8232, name: summarize, status: running, transaction_outcome: pending, started_at: '2026-01-20T10:01:00Z', finished_at: null }
-  - { pipeline_run_id: 1052, step_no: 3, execution_id: 8233, name: publish, status: pending, transaction_outcome: pending, started_at: null, finished_at: null }
-  - { pipeline_run_id: 1053, step_no: 1, execution_id: 8234, name: collect, status: success, transaction_outcome: rolled_back, started_at: '2026-01-21T10:00:00Z', finished_at: '2026-01-21T10:01:00Z' }
-  - { pipeline_run_id: 1053, step_no: 2, execution_id: 8235, name: summarize, status: interrupted, transaction_outcome: rolled_back, started_at: '2026-01-21T10:01:00Z', finished_at: '2026-01-21T10:02:00Z' }
-  - { pipeline_run_id: 1053, step_no: 3, execution_id: 8236, name: publish, status: skipped, transaction_outcome: not_started, started_at: null, finished_at: null }
-  - { pipeline_run_id: 1054, step_no: 1, execution_id: 8237, name: collect, status: success, transaction_outcome: unknown, started_at: '2026-01-22T10:00:00Z', finished_at: '2026-01-22T10:01:00Z' }
-  - { pipeline_run_id: 1054, step_no: 2, execution_id: 8238, name: summarize, status: success, transaction_outcome: unknown, started_at: '2026-01-22T10:01:00Z', finished_at: '2026-01-22T10:02:00Z' }
-  - { pipeline_run_id: 1054, step_no: 3, execution_id: 8239, name: publish, status: success, transaction_outcome: unknown, started_at: '2026-01-22T10:02:00Z', finished_at: '2026-01-22T10:03:00Z' }
-  - { pipeline_run_id: 1055, step_no: 1, execution_id: 8240, name: collect, status: success, transaction_outcome: unknown, started_at: '2026-01-23T10:00:00Z', finished_at: '2026-01-23T10:01:00Z' }
-  - { pipeline_run_id: 1055, step_no: 2, execution_id: 8241, name: summarize, status: success, transaction_outcome: unknown, started_at: '2026-01-23T10:01:00Z', finished_at: '2026-01-23T10:02:00Z' }
-  - { pipeline_run_id: 1055, step_no: 3, execution_id: 8242, name: publish, status: success, transaction_outcome: unknown, started_at: '2026-01-23T10:02:00Z', finished_at: '2026-01-23T10:03:00Z' }
-  - { pipeline_run_id: 1056, step_no: 1, execution_id: 8243, name: collect, status: success, transaction_outcome: committed, started_at: '2026-01-24T10:00:00Z', finished_at: '2026-01-24T10:01:00Z' }
-  - { pipeline_run_id: 1056, step_no: 2, execution_id: 8244, name: summarize, status: success, transaction_outcome: committed, started_at: '2026-01-24T10:01:00Z', finished_at: '2026-01-24T10:02:00Z' }
-  - { pipeline_run_id: 1056, step_no: 3, execution_id: 8245, name: publish, status: success, transaction_outcome: committed, started_at: '2026-01-24T10:02:00Z', finished_at: '2026-01-24T10:03:00Z' }
-  - { pipeline_run_id: 1057, step_no: 1, execution_id: 8246, name: collect, status: success, transaction_outcome: unknown, started_at: '2026-01-25T10:00:00Z', finished_at: '2026-01-25T10:01:00Z' }
-  - { pipeline_run_id: 1057, step_no: 2, execution_id: 8247, name: summarize, status: failed, transaction_outcome: unknown, started_at: '2026-01-25T10:01:00Z', finished_at: '2026-01-25T10:02:00Z' }
-  - { pipeline_run_id: 1057, step_no: 3, execution_id: 8248, name: publish, status: skipped, transaction_outcome: not_started, started_at: null, finished_at: null }
-  - { pipeline_run_id: 1058, step_no: 1, execution_id: 8249, name: collect, status: success, transaction_outcome: committed, started_at: '2026-01-26T10:00:00Z', finished_at: '2026-01-26T10:01:00Z' }
-  - { pipeline_run_id: 1058, step_no: 2, execution_id: 8250, name: collect-again, status: success, transaction_outcome: committed, started_at: '2026-01-26T10:01:00Z', finished_at: '2026-01-26T10:02:00Z' }
-  - { pipeline_run_id: 1058, step_no: 3, execution_id: 8251, name: publish, status: success, transaction_outcome: committed, started_at: '2026-01-26T10:02:00Z', finished_at: '2026-01-26T10:03:00Z' }
-  - { pipeline_run_id: 1059, step_no: 1, execution_id: 8252, name: collect, status: failed, transaction_outcome: no_effects, started_at: '2026-01-27T10:00:00Z', finished_at: '2026-01-27T10:01:00Z' }
-  - { pipeline_run_id: 1059, step_no: 2, execution_id: 8253, name: summarize, status: skipped, transaction_outcome: not_started, started_at: null, finished_at: null }
-  - { pipeline_run_id: 1059, step_no: 3, execution_id: 8254, name: publish, status: skipped, transaction_outcome: not_started, started_at: null, finished_at: null }
+  - { pipeline_run_id: 1042, step_no: 1, name: "collect", status: "success", transaction_outcome: "rolled_back", started_at: "2026-01-10T10:00:00Z", finished_at: "2026-01-10T10:01:00Z", filepath: "collect.sql", checksum: "bbbbbbbb", error_message: "", skip_reason: "", duration_ms: 60000 }
+  - { pipeline_run_id: 1042, step_no: 2, name: "summarize", status: "failed", transaction_outcome: "rolled_back", started_at: "2026-01-10T10:01:00Z", finished_at: "2026-01-10T10:02:00Z", filepath: "summarize.sql", checksum: "bbbbbbbb", error_message: "Step execution failed", skip_reason: "", duration_ms: 60000 }
+  - { pipeline_run_id: 1042, step_no: 3, name: "publish", status: "skipped", transaction_outcome: "not_started", started_at: null, finished_at: null, filepath: "publish.sql", checksum: "bbbbbbbb", error_message: "", skip_reason: "prior step did not complete", duration_ms: 0 }
+  - { pipeline_run_id: 1043, step_no: 1, name: "collect", status: "success", transaction_outcome: "committed", started_at: "2026-01-11T10:00:00Z", finished_at: "2026-01-11T10:01:00Z", filepath: "collect.sql", checksum: "bbbbbbbb", error_message: "", skip_reason: "", duration_ms: 60000 }
+  - { pipeline_run_id: 1043, step_no: 2, name: "summarize", status: "failed", transaction_outcome: "rolled_back", started_at: "2026-01-11T10:01:00Z", finished_at: "2026-01-11T10:02:00Z", filepath: "summarize.sql", checksum: "bbbbbbbb", error_message: "Step execution failed", skip_reason: "", duration_ms: 60000 }
+  - { pipeline_run_id: 1043, step_no: 3, name: "publish", status: "skipped", transaction_outcome: "not_started", started_at: null, finished_at: null, filepath: "publish.sql", checksum: "bbbbbbbb", error_message: "", skip_reason: "prior step did not complete", duration_ms: 0 }
+  - { pipeline_run_id: 1044, step_no: 1, name: "collect", status: "success", transaction_outcome: "committed", started_at: "2026-01-12T10:00:00Z", finished_at: "2026-01-12T10:01:00Z", filepath: "collect.sql", checksum: "bbbbbbbb", error_message: "", skip_reason: "", duration_ms: 60000 }
+  - { pipeline_run_id: 1044, step_no: 2, name: "summarize", status: "success", transaction_outcome: "committed", started_at: "2026-01-12T10:01:00Z", finished_at: "2026-01-12T10:02:00Z", filepath: "summarize.sql", checksum: "bbbbbbbb", error_message: "", skip_reason: "", duration_ms: 60000 }
+  - { pipeline_run_id: 1044, step_no: 3, name: "publish", status: "success", transaction_outcome: "committed", started_at: "2026-01-12T10:02:00Z", finished_at: "2026-01-12T10:03:00Z", filepath: "publish.sql", checksum: "bbbbbbbb", error_message: "", skip_reason: "", duration_ms: 60000 }
+  - { pipeline_run_id: 1045, step_no: 1, name: "collect", status: "failed", transaction_outcome: "rolled_back", started_at: "2026-01-13T10:00:00Z", finished_at: "2026-01-13T10:01:00Z", filepath: "collect.sql", checksum: "bbbbbbbb", error_message: "Step execution failed", skip_reason: "", duration_ms: 60000 }
+  - { pipeline_run_id: 1045, step_no: 2, name: "summarize", status: "skipped", transaction_outcome: "not_started", started_at: null, finished_at: null, filepath: "summarize.sql", checksum: "bbbbbbbb", error_message: "", skip_reason: "prior step did not complete", duration_ms: 0 }
+  - { pipeline_run_id: 1045, step_no: 3, name: "publish", status: "skipped", transaction_outcome: "not_started", started_at: null, finished_at: null, filepath: "publish.sql", checksum: "bbbbbbbb", error_message: "", skip_reason: "prior step did not complete", duration_ms: 0 }
+  - { pipeline_run_id: 1046, step_no: 1, name: "collect", status: "success", transaction_outcome: "committed", started_at: "2026-01-14T10:00:00Z", finished_at: "2026-01-14T10:01:00Z", filepath: "collect.sql", checksum: "bbbbbbbb", error_message: "", skip_reason: "", duration_ms: 60000 }
+  - { pipeline_run_id: 1046, step_no: 2, name: "summarize", status: "success", transaction_outcome: "committed", started_at: "2026-01-14T10:01:00Z", finished_at: "2026-01-14T10:02:00Z", filepath: "summarize.sql", checksum: "bbbbbbbb", error_message: "", skip_reason: "", duration_ms: 60000 }
+  - { pipeline_run_id: 1046, step_no: 3, name: "publish", status: "success", transaction_outcome: "committed", started_at: "2026-01-14T10:02:00Z", finished_at: "2026-01-14T10:03:00Z", filepath: "publish.sql", checksum: "bbbbbbbb", error_message: "", skip_reason: "", duration_ms: 60000 }
+  - { pipeline_run_id: 1047, step_no: 1, name: "collect", status: "failed", transaction_outcome: "rolled_back", started_at: "2026-01-15T10:00:00Z", finished_at: "2026-01-15T10:01:00Z", filepath: "collect.sql", checksum: "bbbbbbbb", error_message: "Step execution failed", skip_reason: "", duration_ms: 60000 }
+  - { pipeline_run_id: 1047, step_no: 2, name: "summarize", status: "skipped", transaction_outcome: "not_started", started_at: null, finished_at: null, filepath: "summarize.sql", checksum: "bbbbbbbb", error_message: "", skip_reason: "prior step did not complete", duration_ms: 0 }
+  - { pipeline_run_id: 1047, step_no: 3, name: "publish", status: "skipped", transaction_outcome: "not_started", started_at: null, finished_at: null, filepath: "publish.sql", checksum: "bbbbbbbb", error_message: "", skip_reason: "prior step did not complete", duration_ms: 0 }
+  - { pipeline_run_id: 1048, step_no: 1, name: "collect", status: "success", transaction_outcome: "committed", started_at: "2026-01-16T10:00:00Z", finished_at: "2026-01-16T10:01:00Z", filepath: "collect.sql", checksum: "bbbbbbbb", error_message: "", skip_reason: "", duration_ms: 60000 }
+  - { pipeline_run_id: 1048, step_no: 2, name: "summarize", status: "success", transaction_outcome: "committed", started_at: "2026-01-16T10:01:00Z", finished_at: "2026-01-16T10:02:00Z", filepath: "summarize.sql", checksum: "bbbbbbbb", error_message: "", skip_reason: "", duration_ms: 60000 }
+  - { pipeline_run_id: 1048, step_no: 3, name: "publish", status: "success", transaction_outcome: "committed", started_at: "2026-01-16T10:02:00Z", finished_at: "2026-01-16T10:03:00Z", filepath: "publish.sql", checksum: "bbbbbbbb", error_message: "", skip_reason: "", duration_ms: 60000 }
+  - { pipeline_run_id: 1049, step_no: 1, name: "collect", status: "failed", transaction_outcome: "partial", started_at: "2026-01-17T10:00:00Z", finished_at: "2026-01-17T10:01:00Z", filepath: "collect.sql", checksum: "bbbbbbbb", error_message: "Step execution failed", skip_reason: "", duration_ms: 60000 }
+  - { pipeline_run_id: 1049, step_no: 2, name: "summarize", status: "skipped", transaction_outcome: "not_started", started_at: null, finished_at: null, filepath: "summarize.sql", checksum: "bbbbbbbb", error_message: "", skip_reason: "prior step did not complete", duration_ms: 0 }
+  - { pipeline_run_id: 1049, step_no: 3, name: "publish", status: "skipped", transaction_outcome: "not_started", started_at: null, finished_at: null, filepath: "publish.sql", checksum: "bbbbbbbb", error_message: "", skip_reason: "prior step did not complete", duration_ms: 0 }
+  - { pipeline_run_id: 1050, step_no: 1, name: "collect", status: "success", transaction_outcome: "committed", started_at: "2026-01-18T10:00:00Z", finished_at: "2026-01-18T10:01:00Z", filepath: "collect.sql", checksum: "bbbbbbbb", error_message: "", skip_reason: "", duration_ms: 60000 }
+  - { pipeline_run_id: 1050, step_no: 2, name: "summarize", status: "failed", transaction_outcome: "no_effects", started_at: "2026-01-18T10:01:00Z", finished_at: "2026-01-18T10:02:00Z", filepath: "summarize.sql", checksum: "bbbbbbbb", error_message: "Step execution failed", skip_reason: "", duration_ms: 60000 }
+  - { pipeline_run_id: 1050, step_no: 3, name: "publish", status: "skipped", transaction_outcome: "not_started", started_at: null, finished_at: null, filepath: "publish.sql", checksum: "bbbbbbbb", error_message: "", skip_reason: "prior step did not complete", duration_ms: 0 }
+  - { pipeline_run_id: 1051, step_no: 1, name: "collect", status: "pending", transaction_outcome: "pending", started_at: null, finished_at: null, filepath: "collect.sql", checksum: "bbbbbbbb", error_message: "", skip_reason: "", duration_ms: 0 }
+  - { pipeline_run_id: 1051, step_no: 2, name: "summarize", status: "pending", transaction_outcome: "pending", started_at: null, finished_at: null, filepath: "summarize.sql", checksum: "bbbbbbbb", error_message: "", skip_reason: "", duration_ms: 0 }
+  - { pipeline_run_id: 1051, step_no: 3, name: "publish", status: "pending", transaction_outcome: "pending", started_at: null, finished_at: null, filepath: "publish.sql", checksum: "bbbbbbbb", error_message: "", skip_reason: "", duration_ms: 0 }
+  - { pipeline_run_id: 1052, step_no: 1, name: "collect", status: "success", transaction_outcome: "pending", started_at: "2026-01-20T10:00:00Z", finished_at: "2026-01-20T10:01:00Z", filepath: "collect.sql", checksum: "bbbbbbbb", error_message: "", skip_reason: "", duration_ms: 60000 }
+  - { pipeline_run_id: 1052, step_no: 2, name: "summarize", status: "running", transaction_outcome: "pending", started_at: "2026-01-20T10:01:00Z", finished_at: null, filepath: "summarize.sql", checksum: "bbbbbbbb", error_message: "", skip_reason: "", duration_ms: 60000 }
+  - { pipeline_run_id: 1052, step_no: 3, name: "publish", status: "pending", transaction_outcome: "pending", started_at: null, finished_at: null, filepath: "publish.sql", checksum: "bbbbbbbb", error_message: "", skip_reason: "", duration_ms: 0 }
+  - { pipeline_run_id: 1053, step_no: 1, name: "collect", status: "success", transaction_outcome: "rolled_back", started_at: "2026-01-21T10:00:00Z", finished_at: "2026-01-21T10:01:00Z", filepath: "collect.sql", checksum: "bbbbbbbb", error_message: "", skip_reason: "", duration_ms: 60000 }
+  - { pipeline_run_id: 1053, step_no: 2, name: "summarize", status: "interrupted", transaction_outcome: "rolled_back", started_at: "2026-01-21T10:01:00Z", finished_at: "2026-01-21T10:02:00Z", filepath: "summarize.sql", checksum: "bbbbbbbb", error_message: "Step interrupted", skip_reason: "", duration_ms: 60000 }
+  - { pipeline_run_id: 1053, step_no: 3, name: "publish", status: "skipped", transaction_outcome: "not_started", started_at: null, finished_at: null, filepath: "publish.sql", checksum: "bbbbbbbb", error_message: "", skip_reason: "prior step did not complete", duration_ms: 0 }
+  - { pipeline_run_id: 1054, step_no: 1, name: "collect", status: "success", transaction_outcome: "unknown", started_at: "2026-01-22T10:00:00Z", finished_at: "2026-01-22T10:01:00Z", filepath: "collect.sql", checksum: "bbbbbbbb", error_message: "", skip_reason: "", duration_ms: 60000 }
+  - { pipeline_run_id: 1054, step_no: 2, name: "summarize", status: "success", transaction_outcome: "unknown", started_at: "2026-01-22T10:01:00Z", finished_at: "2026-01-22T10:02:00Z", filepath: "summarize.sql", checksum: "bbbbbbbb", error_message: "", skip_reason: "", duration_ms: 60000 }
+  - { pipeline_run_id: 1054, step_no: 3, name: "publish", status: "success", transaction_outcome: "unknown", started_at: "2026-01-22T10:02:00Z", finished_at: "2026-01-22T10:03:00Z", filepath: "publish.sql", checksum: "bbbbbbbb", error_message: "", skip_reason: "", duration_ms: 60000 }
+  - { pipeline_run_id: 1055, step_no: 1, name: "collect", status: "success", transaction_outcome: "unknown", started_at: "2026-01-23T10:00:00Z", finished_at: "2026-01-23T10:01:00Z", filepath: "collect.sql", checksum: "bbbbbbbb", error_message: "", skip_reason: "", duration_ms: 60000 }
+  - { pipeline_run_id: 1055, step_no: 2, name: "summarize", status: "success", transaction_outcome: "unknown", started_at: "2026-01-23T10:01:00Z", finished_at: "2026-01-23T10:02:00Z", filepath: "summarize.sql", checksum: "bbbbbbbb", error_message: "", skip_reason: "", duration_ms: 60000 }
+  - { pipeline_run_id: 1055, step_no: 3, name: "publish", status: "success", transaction_outcome: "unknown", started_at: "2026-01-23T10:02:00Z", finished_at: "2026-01-23T10:03:00Z", filepath: "publish.sql", checksum: "bbbbbbbb", error_message: "", skip_reason: "", duration_ms: 60000 }
+  - { pipeline_run_id: 1056, step_no: 1, name: "collect", status: "success", transaction_outcome: "committed", started_at: "2026-01-24T10:00:00Z", finished_at: "2026-01-24T10:01:00Z", filepath: "collect.sql", checksum: "bbbbbbbb", error_message: "", skip_reason: "", duration_ms: 60000 }
+  - { pipeline_run_id: 1056, step_no: 2, name: "summarize", status: "success", transaction_outcome: "committed", started_at: "2026-01-24T10:01:00Z", finished_at: "2026-01-24T10:02:00Z", filepath: "summarize.sql", checksum: "bbbbbbbb", error_message: "", skip_reason: "", duration_ms: 60000 }
+  - { pipeline_run_id: 1056, step_no: 3, name: "publish", status: "success", transaction_outcome: "committed", started_at: "2026-01-24T10:02:00Z", finished_at: "2026-01-24T10:03:00Z", filepath: "publish.sql", checksum: "bbbbbbbb", error_message: "", skip_reason: "", duration_ms: 60000 }
+  - { pipeline_run_id: 1057, step_no: 1, name: "collect", status: "success", transaction_outcome: "unknown", started_at: "2026-01-25T10:00:00Z", finished_at: "2026-01-25T10:01:00Z", filepath: "collect.sql", checksum: "bbbbbbbb", error_message: "", skip_reason: "", duration_ms: 60000 }
+  - { pipeline_run_id: 1057, step_no: 2, name: "summarize", status: "failed", transaction_outcome: "unknown", started_at: "2026-01-25T10:01:00Z", finished_at: "2026-01-25T10:02:00Z", filepath: "summarize.sql", checksum: "bbbbbbbb", error_message: "Step execution failed", skip_reason: "", duration_ms: 60000 }
+  - { pipeline_run_id: 1057, step_no: 3, name: "publish", status: "skipped", transaction_outcome: "not_started", started_at: null, finished_at: null, filepath: "publish.sql", checksum: "bbbbbbbb", error_message: "", skip_reason: "prior step did not complete", duration_ms: 0 }
+  - { pipeline_run_id: 1058, step_no: 1, name: "collect", status: "success", transaction_outcome: "committed", started_at: "2026-01-26T10:00:00Z", finished_at: "2026-01-26T10:01:00Z", filepath: "collect.sql", checksum: "bbbbbbbb", error_message: "", skip_reason: "", duration_ms: 60000 }
+  - { pipeline_run_id: 1058, step_no: 2, name: "collect-again", status: "success", transaction_outcome: "committed", started_at: "2026-01-26T10:01:00Z", finished_at: "2026-01-26T10:02:00Z", filepath: "collect.sql", checksum: "bbbbbbbb", error_message: "", skip_reason: "", duration_ms: 60000 }
+  - { pipeline_run_id: 1058, step_no: 3, name: "publish", status: "success", transaction_outcome: "committed", started_at: "2026-01-26T10:02:00Z", finished_at: "2026-01-26T10:03:00Z", filepath: "publish.sql", checksum: "bbbbbbbb", error_message: "", skip_reason: "", duration_ms: 60000 }
+  - { pipeline_run_id: 1059, step_no: 1, name: "collect", status: "failed", transaction_outcome: "no_effects", started_at: "2026-01-27T10:00:00Z", finished_at: "2026-01-27T10:01:00Z", filepath: "collect.sql", checksum: "bbbbbbbb", error_message: "Step execution failed", skip_reason: "", duration_ms: 60000 }
+  - { pipeline_run_id: 1059, step_no: 2, name: "summarize", status: "skipped", transaction_outcome: "not_started", started_at: null, finished_at: null, filepath: "summarize.sql", checksum: "bbbbbbbb", error_message: "", skip_reason: "prior step did not complete", duration_ms: 0 }
+  - { pipeline_run_id: 1059, step_no: 3, name: "publish", status: "skipped", transaction_outcome: "not_started", started_at: null, finished_at: null, filepath: "publish.sql", checksum: "bbbbbbbb", error_message: "", skip_reason: "prior step did not complete", duration_ms: 0 }
+  - { pipeline_run_id: 1060, step_no: 1, name: "collect", status: "success", transaction_outcome: "committed", started_at: "2026-02-01T10:00:00Z", finished_at: "2026-02-01T10:01:00Z", filepath: "collect.sql", checksum: "bbbbbbbb", error_message: "", skip_reason: "", duration_ms: 60000 }
+  - { pipeline_run_id: 1060, step_no: 2, name: "summarize", status: "success", transaction_outcome: "committed", started_at: "2026-02-01T10:01:00Z", finished_at: "2026-02-01T10:02:00Z", filepath: "summarize.sql", checksum: "bbbbbbbb", error_message: "", skip_reason: "", duration_ms: 60000 }
+  - { pipeline_run_id: 1060, step_no: 3, name: "publish", status: "success", transaction_outcome: "committed", started_at: "2026-02-01T10:02:00Z", finished_at: "2026-02-01T10:03:00Z", filepath: "publish.sql", checksum: "bbbbbbbb", error_message: "", skip_reason: "", duration_ms: 60000 }
+  - { pipeline_run_id: 1061, step_no: 1, name: "collect", status: "success", transaction_outcome: "committed", started_at: "2026-02-01T10:01:00Z", finished_at: "2026-02-01T10:02:00Z", filepath: "collect.sql", checksum: "bbbbbbbb", error_message: "", skip_reason: "", duration_ms: 60000 }
+  - { pipeline_run_id: 1061, step_no: 2, name: "summarize", status: "success", transaction_outcome: "committed", started_at: "2026-02-01T10:02:00Z", finished_at: "2026-02-01T10:03:00Z", filepath: "summarize.sql", checksum: "bbbbbbbb", error_message: "", skip_reason: "", duration_ms: 60000 }
+  - { pipeline_run_id: 1061, step_no: 3, name: "publish", status: "success", transaction_outcome: "committed", started_at: "2026-02-01T10:03:00Z", finished_at: "2026-02-01T10:04:00Z", filepath: "publish.sql", checksum: "bbbbbbbb", error_message: "", skip_reason: "", duration_ms: 60000 }
+  - { pipeline_run_id: 1062, step_no: 1, name: "collect", status: "pending", transaction_outcome: "pending", started_at: null, finished_at: null, filepath: "collect.sql", checksum: "bbbbbbbb", error_message: "", skip_reason: "", duration_ms: 0 }
+  - { pipeline_run_id: 1062, step_no: 2, name: "summarize", status: "pending", transaction_outcome: "pending", started_at: null, finished_at: null, filepath: "summarize.sql", checksum: "bbbbbbbb", error_message: "", skip_reason: "", duration_ms: 0 }
+  - { pipeline_run_id: 1062, step_no: 3, name: "publish", status: "pending", transaction_outcome: "pending", started_at: null, finished_at: null, filepath: "publish.sql", checksum: "bbbbbbbb", error_message: "", skip_reason: "", duration_ms: 0 }
+  - { pipeline_run_id: 1063, step_no: 1, name: "stage-api", status: "success", transaction_outcome: "committed", started_at: "2026-02-03T10:00:00Z", finished_at: "2026-02-03T10:01:00Z", filepath: "stage-api.sql", checksum: "bbbbbbbb", error_message: "", skip_reason: "", duration_ms: 60000 }
+  - { pipeline_run_id: 1063, step_no: 2, name: "clean-accounts", status: "success", transaction_outcome: "committed", started_at: "2026-02-03T10:01:00Z", finished_at: "2026-02-03T10:02:00Z", filepath: "clean-accounts.sql", checksum: "bbbbbbbb", error_message: "", skip_reason: "", duration_ms: 60000 }
+  - { pipeline_run_id: 1063, step_no: 3, name: "clean-invoices", status: "success", transaction_outcome: "committed", started_at: "2026-02-03T10:02:00Z", finished_at: "2026-02-03T10:03:00Z", filepath: "clean-invoices.sql", checksum: "bbbbbbbb", error_message: "", skip_reason: "", duration_ms: 60000 }
+  - { pipeline_run_id: 1063, step_no: 4, name: "aggregate", status: "success", transaction_outcome: "committed", started_at: "2026-02-03T10:03:00Z", finished_at: "2026-02-03T10:04:00Z", filepath: "aggregate.sql", checksum: "bbbbbbbb", error_message: "", skip_reason: "", duration_ms: 60000 }
+  - { pipeline_run_id: 1064, step_no: 1, name: "stage-api", status: "success", transaction_outcome: "committed", started_at: "2026-02-04T10:00:00Z", finished_at: "2026-02-04T10:01:00Z", filepath: "stage-api.sql", checksum: "bbbbbbbb", error_message: "", skip_reason: "", duration_ms: 60000 }
+  - { pipeline_run_id: 1064, step_no: 2, name: "clean-accounts", status: "failed", transaction_outcome: "rolled_back", started_at: "2026-02-04T10:01:00Z", finished_at: "2026-02-04T10:02:00Z", filepath: "clean-accounts.sql", checksum: "bbbbbbbb", error_message: "Account cleaning failed", skip_reason: "", duration_ms: 60000 }
+  - { pipeline_run_id: 1064, step_no: 3, name: "clean-invoices", status: "success", transaction_outcome: "committed", started_at: "2026-02-04T10:01:00Z", finished_at: "2026-02-04T10:03:00Z", filepath: "clean-invoices.sql", checksum: "bbbbbbbb", error_message: "", skip_reason: "", duration_ms: 120000 }
+  - { pipeline_run_id: 1064, step_no: 4, name: "aggregate", status: "skipped", transaction_outcome: "not_started", started_at: null, finished_at: null, filepath: "aggregate.sql", checksum: "bbbbbbbb", error_message: "", skip_reason: "prior step did not complete", duration_ms: 0 }
+  - { pipeline_run_id: 1065, step_no: 1, name: "load-accounts", status: "success", transaction_outcome: "committed", started_at: "2026-02-05T10:00:00Z", finished_at: "2026-02-05T10:01:00Z", filepath: "load-accounts.sql.tmpl", checksum: "bbbbbbbb", error_message: "", skip_reason: "", duration_ms: 60000 }
+  - { pipeline_run_id: 1065, step_no: 2, name: "load-mappings", status: "success", transaction_outcome: "committed", started_at: "2026-02-05T10:01:00Z", finished_at: "2026-02-05T10:02:00Z", filepath: "load-mappings.sql.tmpl", checksum: "bbbbbbbb", error_message: "", skip_reason: "", duration_ms: 60000 }
+  - { pipeline_run_id: 1065, step_no: 3, name: "load-rules", status: "success", transaction_outcome: "committed", started_at: "2026-02-05T10:02:00Z", finished_at: "2026-02-05T10:03:00Z", filepath: "load-rules.sql.tmpl", checksum: "bbbbbbbb", error_message: "", skip_reason: "", duration_ms: 60000 }
+  - { pipeline_run_id: 1066, step_no: 1, name: "collect", status: "success", transaction_outcome: "committed", started_at: "2026-02-06T10:00:00Z", finished_at: "2026-02-06T10:01:00Z", filepath: "collect.sql", checksum: "bbbbbbbb", error_message: "", skip_reason: "", duration_ms: 60000 }
+  - { pipeline_run_id: 1066, step_no: 2, name: "summarize", status: "success", transaction_outcome: "committed", started_at: "2026-02-06T10:01:00Z", finished_at: "2026-02-06T10:02:00Z", filepath: "summarize.sql", checksum: "bbbbbbbb", error_message: "", skip_reason: "", duration_ms: 60000 }
+  - { pipeline_run_id: 1066, step_no: 3, name: "publish", status: "success", transaction_outcome: "committed", started_at: "2026-02-06T10:02:00Z", finished_at: "2026-02-06T10:03:00Z", filepath: "publish.sql", checksum: "bbbbbbbb", error_message: "", skip_reason: "", duration_ms: 60000 }
 ---
 
 # pipeline_step
 
-**Proposal, not an existing database table.** Each step of a [[pipeline_run]] is identified by its one-based manifest position within that run and links to one unique [[executions|execution]] audit record. There is no surrogate step ID or separate position column.
+**Proposal, not an existing database table.** Each declared step belongs to one [[pipeline_run]], and stores its own path, rendered SQL checksum, timing, error, skip reason, status and transaction outcome. It has no [[executions|generic execution]] parent or surrogate step ID. A successful step may later be rolled back, pending, or unknown under a pipeline-wide transaction.
 
-## Business rules
+## Rules and lifecycle
 
-- `step_no` must be at least one; `(pipeline_run_id, step_no)` is the complete primary key. The readable manifest label `name` is also unique within a run, and `execution_id` is unique across steps. Source: requested pipeline model.
-- Proposed database invariant: the linked [[executions|execution]] must satisfy `execution.change_id = pipeline_run_id`, tying the audit record to the same [[change]] that the run extends. The two foreign keys alone do not enforce this parent coherence; an additional database constraint mechanism is required without introducing extra columns.
-- Pipeline step statuses are authoritative; generic summaries are derived rather than maintained as a competing authority. A successful step can have `rolled_back` transaction outcome when a later step fails under a whole-pipeline transaction.
-- Audit is buffered separately and persisted in an audit transaction outside the workflow transaction. No hidden resume or checksum-based skipping is implied by this proposal.
-- `started_at` is null until the step starts and `finished_at` is null until it resolves. Source: requested pipeline model.
+- `(pipeline_run_id, step_no)` is the primary key; `step_no` is the positive one-based declaration position, not graph execution order or stable identity across manifest edits. `name` is unique within a run. Different declarations may reference the same file, as 1058 shows.
+- A manifest without `needs` is linear; one with any `needs` is a graph and every step declares dependencies. Duplicate names, unknown dependencies, self-dependencies, cycles and mixed ordering modes fail preflight. All declarations are prepared before workflow SQL, with paths confined to the selected pipeline folder; only referenced SQL and templates execute.
+- Under `pipeline`, accept graphs but serialize eligible steps on one pinned session in one transaction. Under `step`, ready graph steps may execute concurrently in separate transactions and connections, bounded by the configured cap and pool size. Under `none`, graph steps have their own pinned sessions; linear `none` uses one pinned session. Session-local state is shared across steps only under `pipeline` or linear `none`, subject to database rules; `step` does not promise session reuse even when linear.
+- Stop scheduling on the first failure, settle already active steps, then mark every unstarted declaration skipped. Earlier committed work remains under `step` or `none`; a failed unmanaged step may itself have partial effects. Skips never mean checksum matches. Timestamps are null until start or resolution; never-started steps have zero duration.
+- Workflow outcomes are buffered and persisted independently of workflow transactions. A fresh invocation executes its declarations again rather than resuming. Checksums shown are abbreviated to eight characters, not a change in runtime hashing.
+
+Source: the pipeline design discussion and `docs/design/sql-pipelines.md`. Declaration position identifies the audit record even when execution order differs. A step cannot exist without its run. Run/step retention must remain coherent; the database deletion action remains open. Dependency snapshots are also unresolved: these examples document their graphs in prose rather than introducing an unapproved dependency column.
 
 ## Illustrative examples
 
-These synthetic snapshots correspond to all cases in [[pipeline_run]]: each run has consecutive positions 1–3, and every step references a distinct [[executions|execution]] whose `change_id` is that run’s ID. The usual names are collect, summarize, and publish; run 1058 instead uses collect, collect-again, and publish. Unreached steps have null start and finish times; they are recorded as skipped with outcome `not_started`, not silently omitted. Pending steps have not started; a running step has no finish time. Under the pipeline transaction, an already successful step can still have a `pending`, `rolled_back`, or `unknown` outcome. Under no wrapping transaction, `partial` on a failed step means confirmed effects survived, while `no_effects` means that failed step left none; this is not a claim that a workflow transaction rolled back. Run 1058 intentionally executes `collect.sql` twice under distinct step numbers and names; paths do not determine step identity. All statuses and outcomes here describe proposed pipeline records, while the linked execution status records the file execution rather than transaction outcome.
+Runs 1042–1059 retain the linear lifecycle snapshots in [[pipeline_run]], including pending and running steps, interruption, rollback and commit uncertainty, and repeated `collect.sql` declarations. In runs 1060–1061 the same workflow overlaps without protection; 1062 has three pending intended steps under protection.
+
+Runs 1063 and 1064 use the same diamond dependencies: `stage-api` is the root; `clean-accounts` and `clean-invoices` each need it; `aggregate` needs both. Run 1063 executes serially on one transaction session. In 1064 the cleaning branches start together; accounts fails, invoices settles and commits, and aggregate is skipped. Run 1065's three templates explicitly use neighboring `accounts.csv`, `mappings.json`, and `rules.yaml` respectively through existing file/template facilities. Their mere presence does not import data or introduce new input syntax.
+
+Run 1066's three steps have finished and their enclosing transaction has confirmed commit. The finalization flow uses that settled protected invocation to demonstrate ownership-safe release, rather than releasing the still-pending run 1062.

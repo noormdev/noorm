@@ -1,14 +1,15 @@
 ---
 kind: cache
 title: Prepared Invocations
-description: Ephemeral preflighted non-dry-run invocation context awaiting execution.
+description: Ephemeral preflighted non-dry-run invocation context awaiting admission.
 ---
 
-Preparation holds the selected manifest and caller context together after preflight and before execution. This in-memory handoff is ephemeral, not a database table or a resume checkpoint. It contains `slug`, `config_name`, `executed_by`, `transaction_policy`, `manifest_checksum`, ordered `steps` (`step_no`, `name`, `path`, `sql_checksum`, and prepared SQL), and `dry_run: false`. Prepared SQL is execution-only and must not appear in normal caller results or history. A dry run does not enter this execution handoff. Samples are synthetic; checksums are abbreviated to eight characters and SQL text is schematic.
+This ephemeral in-memory handoff holds slug, config, executed_by, cli_version, transaction policy, manifest checksum, proposed `single_run` audit snapshot, order mode, concurrency cap and prepared declarations (`step_no`, name, filepath, rendered checksum, SQL, and graph `needs`), with `dry_run: false`. It is neither a database table nor a resume checkpoint. Prepared SQL is sensitive and omitted from normal results and history; dry runs never enter the handoff. SQL and eight-character checksum examples are synthetic.
 
 ## Sample values
 
-| slug | config_name | executed_by | transaction_policy | manifest_checksum | steps | dry_run |
-| --- | --- | --- | --- | --- | --- | --- |
-| refresh-reporting | dev | synthetic-operator | pipeline | `cccccccc` | `[{step_no: 1, name: collect, path: collect.sql, sql_checksum: bbbbbbbb, sql: "SELECT 1"}, {step_no: 2, name: summarize, path: summarize.sql, sql_checksum: bbbbbbbb, sql: "SELECT 2"}, {step_no: 3, name: publish, path: publish.sql, sql_checksum: bbbbbbbb, sql: "SELECT 3"}]` | false |
-| refresh-reporting | dev | synthetic-operator | step | `eeeeeeee` | `[{step_no: 1, name: collect, path: collect.sql, sql_checksum: bbbbbbbb, sql: "SELECT 1"}, {step_no: 2, name: summarize, path: summarize.sql, sql_checksum: bbbbbbbb, sql: "SELECT 2"}, {step_no: 3, name: publish, path: publish.sql, sql_checksum: bbbbbbbb, sql: "SELECT 3"}]` | false |
+| slug | config_name | transaction_policy | single_run | order_mode | prepared declarations |
+| --- | --- | --- | --- | --- | --- |
+| refresh-reporting | dev | pipeline | false | linear | collect, summarize, publish; rendered checksums `bbbbbbbb` |
+| load-erp | dev | pipeline | false | graph | stage-api `[]`; clean-accounts and clean-invoices `[stage-api]`; aggregate `[clean-accounts, clean-invoices]`; checksums `bbbbbbbb` |
+| load-local | dev | step | false | linear | load-accounts.sql.tmpl, load-mappings.sql.tmpl, load-rules.sql.tmpl consume local CSV, JSON and YAML through existing template capabilities; checksums `bbbbbbbb` |

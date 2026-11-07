@@ -1,14 +1,16 @@
 ---
 kind: cache
 title: Active Runs
-description: Ephemeral run identity and ordered execution context for an invocation in progress.
+description: Ephemeral admitted run identity and prepared scheduling context.
 ---
 
-After audit intent is created, this in-memory handoff associates the run ID with the selected configuration, identity, policy, and ordered steps (`step_no`, `name`, `path`, `sql_checksum`, and prepared SQL) for execution. Prepared SQL is execution-only and must not appear in normal caller results or history. It is distinct from persistent [[pipeline_run]] and [[pipeline_step]] audit records: it is neither a new table nor a resume checkpoint and disappears with the process. Samples show synthetic in-flight context, not final historical snapshots; SQL text is schematic and checksums are abbreviated to eight characters.
+After durable audit intent, this in-memory handoff associates run ID, slug, config, executing identity, CLI version, policy, manifest checksum, `single_run`, conditional guard ownership, order mode, concurrency cap, and declared steps (`step_no`, name, filepath, rendered checksum, prepared SQL and graph `needs`). It is not a table or resume checkpoint. Prepared SQL is execution-only and excluded from normal history and responses. Samples describe in-flight context, not final snapshots; checksums are abbreviated.
 
 ## Sample values
 
-| run_id | slug | config_name | executed_by | transaction_policy | steps |
+| run_id | slug | config_name | transaction_policy | single_run | scheduling context |
 | --- | --- | --- | --- | --- | --- |
-| 1042 | refresh-reporting | dev | synthetic-operator | pipeline | `[{step_no: 1, name: collect, path: collect.sql, sql_checksum: bbbbbbbb, sql: "SELECT 1"}, {step_no: 2, name: summarize, path: summarize.sql, sql_checksum: bbbbbbbb, sql: "SELECT 2"}, {step_no: 3, name: publish, path: publish.sql, sql_checksum: bbbbbbbb, sql: "SELECT 3"}]` |
-| 1043 | refresh-reporting | dev | synthetic-operator | step | `[{step_no: 1, name: collect, path: collect.sql, sql_checksum: bbbbbbbb, sql: "SELECT 1"}, {step_no: 2, name: summarize, path: summarize.sql, sql_checksum: bbbbbbbb, sql: "SELECT 2"}, {step_no: 3, name: publish, path: publish.sql, sql_checksum: bbbbbbbb, sql: "SELECT 3"}]` |
+| 1060 | refresh-reporting | dev | pipeline | false | linear collect, summarize, publish; checksum `bbbbbbbb` |
+| 1061 | refresh-reporting | dev | pipeline | false | same declarations; overlaps 1060 |
+| 1063 | load-erp | dev | pipeline | false | graph diamond, one session and effective cap one |
+| 1064 | load-erp | dev | step | false | graph diamond, independent ready steps may run concurrently |

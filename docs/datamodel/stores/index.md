@@ -4,13 +4,14 @@
 
 </ignatius-breadcrumb>
 
-<ignatius-index scope="stores" path="stores" count="4" depth="1" digest="sha256:5f0c2166a59efff091feefe28f2d52f8dc583dcdb7a11dfd0cdf939d16590c9e">
+<ignatius-index scope="stores" path="stores" count="5" depth="1" digest="sha256:45a51ecad6967b04cbca194e5e704f0f972ca2357435c4e8853fa03def8aefac">
 
 | Name | Kind | Description | Go |
 |---|---|---|---|
-| active-runs | store | Ephemeral run identity and ordered execution context for an invocation in progress. | [active-runs](active-runs.md) |
+| active-runs | store | Ephemeral admitted run identity and prepared scheduling context. | [active-runs](active-runs.md) |
 | execution-outcomes | store | Ephemeral workflow results awaiting audit finalization and caller response. | [execution-outcomes](execution-outcomes.md) |
-| pipeline-definitions | store | Versioned manifest definitions and ordered SQL file references for proposed pipeline invocations. | [pipeline-definitions](pipeline-definitions.md) |
-| prepared-invocations | store | Ephemeral preflighted non-dry-run invocation context awaiting execution. | [prepared-invocations](prepared-invocations.md) |
+| pipeline-definitions | store | Manifest declarations, SQL files, and local template inputs for pipeline preparation. | [pipeline-definitions](pipeline-definitions.md) |
+| prepared-invocations | store | Ephemeral preflighted non-dry-run invocation context awaiting admission. | [prepared-invocations](prepared-invocations.md) |
+| single-run-guard | store | Abstract optional coordination for protected admission and ownership recovery. | [single-run-guard](single-run-guard.md) |
 
 </ignatius-index>
