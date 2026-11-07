@@ -38,6 +38,16 @@ Use the TUI wizard: run `noorm ui`, press `c` for configs, then `a`. Before it s
 
 Schema and change folders are not config fields. `paths` in `.noorm/settings.yml` sets them.
 
+For headless creation, `noorm config create --stage staging --name review` materializes
+stage defaults without connecting. `noorm config create --all` creates one config per
+stage and never stores passwords. Single-stage creation honors connection environment
+and flags, but persists a password only with an explicit `--password`. Existing configs
+require both `--force` and `--yes` to overwrite. Creating a differently named config
+does not persist a stage link; updating defaults does not automatically update configs.
+
+`noorm ci init --type local` selects the CI config type independently of `--test`.
+Alternatively `--stage staging` inherits its type; `--type` wins and the default is
+`remote`. Stage selection here does not inherit connection fields.
 `noorm config add` and `config edit` exit 1 and point you at the TUI. To create a config without it, write a JSON file and import it. This `staging.json` is hidden from agents:
 
 ```json
