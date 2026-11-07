@@ -33,6 +33,7 @@ describe('inline connections', () => {
 
             }
             await expect(createContext({ projectRoot: root, connection: { dialect: 'sqlite' } })).rejects.toThrow();
+            await expect(createContext({ projectRoot: root, connection: { dialect: 'sqlite', database: ':memory:', password: () => 'secret' } })).rejects.toThrow('only supported for PostgreSQL');
             await expect(createContext({ projectRoot: root, requireTest: true, connection: { dialect: 'sqlite', database: ':memory:' } })).rejects.toThrow();
 
         }

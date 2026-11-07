@@ -249,6 +249,10 @@ export class Context<DB = unknown, Procs = object, Funcs = object, Tvfs = object
             this.#state.config.connection,
             this.#state.config.name,
             retryOptions,
+            undefined,
+            typeof this.#state.options.connection?.password === 'function'
+                ? { password: this.#state.options.connection.password }
+                : undefined,
         );
 
     }
