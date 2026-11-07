@@ -18,6 +18,7 @@
  */
 import { useState, useCallback } from 'react';
 import { Box, Text, useInput } from 'ink';
+import { attemptSync } from '@logosdx/utils';
 
 import type { ReactElement } from 'react';
 import type { ScreenProps } from '../../types.js';
@@ -25,9 +26,10 @@ import type { ScreenProps } from '../../types.js';
 import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
-import { Panel, SelectList, type SelectListItem } from '../../components/index.js';
+import { Panel, SelectList, useToast, type SelectListItem } from '../../components/index.js';
 import { syncIdentityWithConfig } from '../../../core/identity/index.js';
 import { formatAccessTag } from '../../../core/policy/index.js';
+import { SettingsProvider, withConfigPolicy } from '../../../core/config/resolver.js';
 import type { ConfigAccess } from '../../../core/policy/index.js';
 
 /**
@@ -50,7 +52,8 @@ export function ConfigListScreen({ params: _params }: ScreenProps): ReactElement
 
     const { navigate, back } = useRouter();
     const { isFocused } = useFocusScope('ConfigList');
-    const { configs, stateManager, refresh } = useAppContext();
+    const { configs, stateManager, settingsManager, refresh } = useAppContext();
+    const { showToast } = useToast();
 
     // Track highlighted config for keyboard actions
     const [highlightedConfig, setHighlightedConfig] = useState<string | null>(
@@ -84,6 +87,21 @@ export function ConfigListScreen({ params: _params }: ScreenProps): ReactElement
 
             if (!stateManager) return;
 
+            if (!item.value.isActive) {
+
+                const selected = stateManager.getConfig(item.value.name);
+                if (!selected || !settingsManager) return;
+                const [, policyErr] = attemptSync(() => withConfigPolicy(selected, new SettingsProvider(settingsManager)));
+                if (policyErr) {
+
+                    showToast({ message: policyErr.message, variant: 'error' });
+
+                    return;
+
+                }
+
+            }
+
             // If already active, go to edit
             if (item.value.isActive) {
 
@@ -115,7 +133,7 @@ export function ConfigListScreen({ params: _params }: ScreenProps): ReactElement
             }
 
         },
-        [stateManager, navigate, refresh],
+        [stateManager, settingsManager, navigate, refresh, showToast],
     );
 
     // Handle highlight change

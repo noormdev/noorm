@@ -21,7 +21,7 @@ import type { FormValues, FormField } from '../../components/index.js';
 import type { Config } from '../../../core/config/types.js';
 
 import { useRouter } from '../../router.js';
-import { useAppContext } from '../../app-context.js';
+import { useAppContext, useSettings } from '../../app-context.js';
 import {
     Panel,
     Form,
@@ -34,6 +34,8 @@ import { decryptWithPrivateKey } from '../../../core/identity/crypto.js';
 import { loadPrivateKey } from '../../../core/identity/storage.js';
 import type { SharedConfigPayload } from '../../../core/identity/types.js';
 import { resolveLegacyAccess } from '../../../core/policy/index.js';
+import { parseConfig } from '../../../core/config/schema.js';
+import { validateAccessRoles } from '../../../core/config/resolver.js';
 import { getErrorMessage } from '../../utils/index.js';
 
 /**
@@ -68,6 +70,7 @@ export function ConfigImportScreen({ params }: ScreenProps): ReactElement {
 
     const { navigate: _navigate, back } = useRouter();
     const { stateManager, configs, refresh } = useAppContext();
+    const { settings } = useSettings();
 
     const filePath = params.path;
 
@@ -226,6 +229,10 @@ export function ConfigImportScreen({ params }: ScreenProps): ReactElement {
                     },
                 };
 
+                if (!settings) throw new Error('Settings are not available');
+                parseConfig(config);
+                validateAccessRoles(config.access, settings.access?.roles);
+
                 // Save config
                 await stateManager.setConfig(configName, config);
 
@@ -253,7 +260,7 @@ export function ConfigImportScreen({ params }: ScreenProps): ReactElement {
             setStep('complete');
 
         },
-        [stateManager, importedData, refresh],
+        [stateManager, importedData, refresh, settings],
     );
 
     // Handle cancel

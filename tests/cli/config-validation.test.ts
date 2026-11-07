@@ -2,6 +2,7 @@ import { describe, it, expect } from 'bun:test';
 
 import {
     buildAccessFromValues,
+    getRoleOptions,
     validateConfigName,
     validatePort,
 } from '../../src/tui/utils/config-validation.js';
@@ -27,10 +28,12 @@ describe('config-validation: buildAccessFromValues', () => {
 
     });
 
-    it('fails closed to viewer/false on unrecognized/garbage values', () => {
+    it('preserves custom roles, including a role named off', () => {
 
-        expect(buildAccessFromValues({ userRole: 'superuser', agentRole: 'root' }))
-            .toEqual({ user: 'viewer', agent: false });
+        expect(getRoleOptions({ off: {}, auditor: {} }).agent)
+            .toContainEqual({ label: 'off', value: 'role:off' });
+        expect(buildAccessFromValues({ userRole: 'auditor', agentRole: 'role:off' }))
+            .toEqual({ user: 'auditor', agent: 'off' });
 
     });
 

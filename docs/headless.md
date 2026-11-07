@@ -200,7 +200,7 @@ flowchart TD
     Y -->|no| FAIL
 ```
 
-On the `agent` channel a `confirm` cell is a deny, so `--yes` never unlocks it. There is no `--force` override for a denied cell: `--force` only skips checksums. The TUI asks you to type `yes-<config-name>` for the same cells.
+Through the CLI, an `agent` channel `confirm` cell is a deny, so `--yes` never unlocks it. MCP can instead collect human approval through modern elicitation; see [MCP approval](/guide/automation/mcp#permissions-and-human-approval). There is no `--force` override for a denied cell: `--force` only skips checksums. The TUI asks you to type `yes-<config-name>` for confirmation cells. The table below shows default roles; `.noorm/settings.yml` role definitions can override them or introduce custom roles.
 
 | Permission | Commands | viewer | operator | admin |
 |---|---|---|---|---|
@@ -1313,7 +1313,7 @@ JSON: `path`, `created`, `extended`.
 #### `mcp serve`
 
 
-Start the MCP server on stdio. It stays alive while stdin is open. Always on the `agent` channel.
+Start the MCP **2026-07-28** server on stdio. It stays alive while stdin is open and always acts on the `agent` channel. Clients must support the modern protocol; legacy `initialize` handshakes are rejected. Discover individual tools with `tools/list` and call them with flat arguments; each database tool call requires an explicit `config`. The former `run_noorm_cmd` and `noorm_help` tools, and `connect`, `disconnect`, and session `status`, are not exposed. The server also provides user-selected prompt cookbooks, JSON exploration resources, and human approval through form elicitation. See the [MCP guide](/guide/automation/mcp).
 
 ```bash
 noorm mcp serve
@@ -1465,7 +1465,7 @@ noorm run preview db/sql/hotfix.sql.tmpl | psql -h localhost -d app
 | A script tests `[ $? -eq 2 ]` for "partially applied" | Before noorm 1.0.0, `2` meant partial and total failure alike. Partial is `3` now | Test `-eq 3`. `if ! noorm ...` is unaffected |
 | `jq '.[]'` on `change list` or `db explore tables` fails | Lists sit under a named key since 1.0.0 | `jq '.changes[]'`, `jq '.tables[]'` |
 | `noorm init` exits 2 in CI | No terminal, and `--yes` needs an existing identity | `noorm identity init --name ... --email ...`, then `noorm init --yes`, or use `ci init` |
-| A `confirm` command fails under Claude Code, Codex, Cursor, or Gemini CLI even with `--yes` | The `agent` channel turns every `confirm` cell into a deny | Raise the config's `agent` role where the command is allowed, or run as a human with `NOORM_CHANNEL=user`. `noorm info` shows the detected harness |
+| A `confirm` command fails under an agent CLI even with `--yes` | CLI agents cannot fulfill human confirmation | Use an MCP client with modern form elicitation, or have a human run the operation. `noorm info` shows the detected channel/harness |
 | `noorm sql -c prod "SELECT 1"` prints help | The bare form rewrites only when the first non-flag token is SQL | `noorm sql query -c prod "SELECT 1"` |
 | `config add` or `config edit` exits 1 | Both are wizard-only | `noorm ui`, or `config import <file>` with `--force --yes` |
 | `noorm lock release` exits 1 after `change ff` | Each change takes and releases its own lock, so the lock from `lock acquire` is gone after the first change | `noorm lock release \|\| true` |

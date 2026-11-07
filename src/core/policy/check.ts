@@ -1,7 +1,94 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
+import { createHash } from 'node:crypto';
+import { resolve } from 'node:path';
 import { shouldSkipConfirmations } from '../environment.js';
 import { DEFAULT_ACCESS } from './legacy-access.js';
 import { MATRIX } from './matrix.js';
-import type { Channel, ConfigAccess, Permission, PolicyCheck, PolicyTarget } from './types.js';
+import type { BuiltinRole, Channel, ConfigAccess, Permission, PolicyCell, PolicyCheck, PolicyContext, PolicyTarget } from './types.js';
+
+const POLICY_CONTEXT = Symbol('noorm.policyContext');
+type ContextualAccess = ConfigAccess & { [POLICY_CONTEXT]?: PolicyContext };
+type ConfigTarget = { name: string; access?: ConfigAccess };
+const approvals = new AsyncLocalStorage<readonly { fingerprint: string; permissions: readonly Permission[] }[]>();
+const builtins: Record<string, true> = { viewer: true, operator: true, admin: true };
+
+/** Attach project-specific policy without persisting it in config exports or state. */
+export function attachPolicyContext(access: ConfigAccess, context: PolicyContext): void {
+
+    Object.defineProperty(access, POLICY_CONTEXT, { value: context, configurable: true });
+
+}
+
+/** Read the policy bound during configuration resolution. */
+export function getPolicyContext(access: ConfigAccess): PolicyContext | undefined {
+
+    return (access as ContextualAccess)[POLICY_CONTEXT];
+
+}
+
+/** Bind approvals to a project and connection without exposing credentials. */
+export function policyTargetIdentity(projectRoot: string, connection: unknown): string {
+
+    return createHash('sha256').update(JSON.stringify([resolve(projectRoot), connection])).digest('hex');
+
+}
+
+function effectiveCell(role: string, permission: Permission, context: PolicyContext, seen = new Set<string>()): PolicyCell {
+
+    if (seen.has(role)) return 'deny';
+    seen.add(role);
+    const definition = context.roles && Object.hasOwn(context.roles, role) ? context.roles[role] : undefined;
+    const explicit = definition?.permissions?.[permission];
+    if (explicit === 'allow' || explicit === 'confirm' || explicit === 'deny') return explicit;
+    if (explicit !== undefined) return 'deny';
+    if (Object.hasOwn(builtins, role)) return MATRIX[permission]?.[role as BuiltinRole] ?? 'deny';
+    if (!definition) return 'deny';
+
+    return definition.extends ? effectiveCell(definition.extends, permission, context, seen) : 'deny';
+
+}
+
+/** Raw effective cell, including the immutable protected-stage ceiling. */
+export function getConfigPermission(channel: Channel, config: ConfigTarget, permission: Permission): PolicyCell {
+
+    const access = config.access as ContextualAccess | undefined;
+    const role = access?.[channel];
+    if (!access || !role || !Object.hasOwn(MATRIX, permission)) return 'deny';
+    const context = access[POLICY_CONTEXT] ?? {};
+    const cell = effectiveCell(role, permission, context);
+    if (!context.protectedStage) return cell;
+    const ceiling = MATRIX[permission][channel === 'user' ? 'operator' : 'viewer'];
+    const rank: Record<PolicyCell, number> = { deny: 0, confirm: 1, allow: 2 };
+
+    return rank[cell] <= rank[ceiling] ? cell : ceiling;
+
+}
+
+/** Fingerprint the effective assignments and cells, not object insertion order. */
+export function getPolicyFingerprint(config: ConfigTarget): string {
+
+    const permissions = Object.keys(MATRIX).sort() as Permission[];
+    const policy = permissions.map((permission) => [
+        permission,
+        getConfigPermission('user', config, permission),
+        getConfigPermission('agent', config, permission),
+    ]);
+
+    return createHash('sha256').update(JSON.stringify([
+        config.name, config.access?.user, config.access?.agent,
+        (config.access as ContextualAccess | undefined)?.[POLICY_CONTEXT]?.protectedStage === true,
+        (config.access as ContextualAccess | undefined)?.[POLICY_CONTEXT]?.targetIdentity,
+        policy,
+    ])).digest('hex');
+
+}
+
+/** Internal grant, intended only for callers that have independently validated consent. */
+export function withPolicyConfirmation<T>(config: ConfigTarget, permissions: readonly Permission[], action: () => Promise<T>): Promise<T> {
+
+    return approvals.run([...(approvals.getStore() ?? []), { fingerprint: getPolicyFingerprint(config), permissions: [...permissions] }], action);
+
+}
 
 /**
  * The type-to-confirm phrase for a config — the single source every
@@ -49,7 +136,7 @@ export function checkPolicy(channel: Channel, target: PolicyTarget, permission: 
 
     }
 
-    const cell = MATRIX[permission][role];
+    const cell = getConfigPermission(channel, target, permission);
 
     if (cell === 'allow') {
 
@@ -64,6 +151,13 @@ export function checkPolicy(channel: Channel, target: PolicyTarget, permission: 
             requiresConfirmation: false,
             blockedReason: `"${permission}" is not allowed on config "${target.name}" (role: ${role}).`,
         };
+
+    }
+
+    const approval = approvals.getStore();
+    if (approval?.some((grant) => grant.permissions.includes(permission) && grant.fingerprint === getPolicyFingerprint(target))) {
+
+        return { allowed: true, requiresConfirmation: false };
 
     }
 
@@ -182,7 +276,15 @@ export function isVisibleToChannel(access: ConfigAccess | undefined, channel: Ch
  */
 export function guarded(target: PolicyTarget): boolean {
 
-    return target.access.user !== 'admin';
+    if (target.access.user !== 'admin' || getPolicyContext(target.access)?.protectedStage) return true;
+
+    return (Object.keys(MATRIX) as Permission[]).some((permission) => {
+
+        const rank: Record<PolicyCell, number> = { deny: 0, confirm: 1, allow: 2 };
+
+        return rank[getConfigPermission('user', target, permission)] < rank[MATRIX[permission].admin];
+
+    });
 
 }
 

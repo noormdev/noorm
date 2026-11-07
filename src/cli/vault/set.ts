@@ -7,7 +7,7 @@ import { withVaultContext, outputResult, sharedArgs, isYesMode } from '../_utils
 import { readSecretValue } from './_secret-value.js';
 import { getVaultKeyChecked, setVaultSecretChecked, checkVaultPolicy } from '../../core/vault/index.js';
 import type { VaultPolicyGate } from '../../core/vault/index.js';
-import { resolveChannel } from '../../core/policy/index.js';
+import { resolveChannel, withPolicyConfirmation } from '../../core/policy/index.js';
 
 const setCommand = defineCommand({
     meta: {
@@ -65,8 +65,25 @@ const setCommand = defineCommand({
                     };
 
                 }
+                const readCheck = checkVaultPolicy(gate, 'vault:read');
+                if (!readCheck.allowed) {
 
-                const vaultKey = await getVaultKeyChecked(gate, db, cryptoIdentity.identityHash, privateKey, ctx.dialect);
+                    return { success: false, error: readCheck.blockedReason ?? 'Cannot read the vault.' };
+
+                }
+                if (readCheck.requiresConfirmation && !isYesMode(args)) {
+
+                    return {
+                        success: false,
+                        error: `Reading the vault requires confirmation (${readCheck.confirmationPhrase}). Pass --yes to confirm.`,
+                    };
+
+                }
+
+
+                const vaultKey = await withPolicyConfirmation(config, ['vault:read'], () =>
+                    getVaultKeyChecked(gate, db, cryptoIdentity.identityHash, privateKey, ctx.dialect),
+                );
 
                 if (!vaultKey) {
 
@@ -77,15 +94,9 @@ const setCommand = defineCommand({
 
                 }
 
-                const [, setErr] = await setVaultSecretChecked(
-                    gate,
-                    db,
-                    vaultKey,
-                    args.key,
-                    value as string,
-                    cryptoIdentity.email,
-                    ctx.dialect,
-                );
+                const [, setErr] = await withPolicyConfirmation(config, ['vault:write'], () => setVaultSecretChecked(
+                    gate, db, vaultKey, args.key, value as string, cryptoIdentity.email, ctx.dialect,
+                ));
 
                 if (setErr) {
 

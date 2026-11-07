@@ -20,13 +20,14 @@
 import { join } from 'node:path';
 import { stat } from 'node:fs/promises';
 
-import { attempt } from '@logosdx/utils';
+import { attempt, attemptSync } from '@logosdx/utils';
 import { defineCommand } from 'citty';
 
 import { deleteChange } from '../../core/change/index.js';
 import { getSettingsManager } from '../../core/settings/index.js';
 import { initState, getStateManager } from '../../core/state/index.js';
 import { checkConfigPolicy, resolveChannel } from '../../core/policy/index.js';
+import { SettingsProvider, withConfigPolicy } from '../../core/config/resolver.js';
 import { outputResult, outputError, sharedArgs, isYesMode } from '../_utils.js';
 import { selectChangeFromFs, requireTty } from './_prompt.js';
 import { EXIT } from '../_exit.js';
@@ -61,14 +62,6 @@ const rmCommand = defineCommand({
         const configName = args.config ?? stateManager.getActiveConfigName();
         const config = configName ? stateManager.getConfig(configName) : null;
 
-        const check = config ? checkConfigPolicy(resolveChannel(), config, 'change:rm') : null;
-
-        if (check && !check.allowed) {
-
-            outputError(args, check.blockedReason ?? `Config "${configName}" cannot delete changes.`);
-            process.exit(1);
-
-        }
 
         const settingsManager = getSettingsManager(projectRoot);
 
@@ -77,6 +70,24 @@ const rmCommand = defineCommand({
         if (settingsErr) {
 
             outputError(args, `Failed to load settings: ${settingsErr.message}`);
+            process.exit(1);
+
+        }
+
+        const [policyConfig, policyErr] = attemptSync(() =>
+            config ? withConfigPolicy(config, new SettingsProvider(settingsManager)) : null,
+        );
+        if (policyErr) {
+
+            outputError(args, policyErr.message);
+            process.exit(1);
+
+        }
+
+        const check = policyConfig ? checkConfigPolicy(resolveChannel(), policyConfig, 'change:rm') : null;
+        if (check && !check.allowed) {
+
+            outputError(args, check.blockedReason ?? `Config "${configName}" cannot delete changes.`);
             process.exit(1);
 
         }

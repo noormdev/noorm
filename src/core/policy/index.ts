@@ -4,7 +4,7 @@
  * One central policy check for every channel (CLI/TUI/SDK, MCP) and every
  * config-scoped action.
  */
-export { assertPolicy, checkConfigPolicy, checkPolicy, confirmationPhraseFor, formatAccessTag, guarded, isVisibleToChannel } from './check.js';
+export { assertPolicy, attachPolicyContext, checkConfigPolicy, checkPolicy, confirmationPhraseFor, formatAccessTag, getConfigPermission, getPolicyContext, getPolicyFingerprint, guarded, isVisibleToChannel, policyTargetIdentity, withPolicyConfirmation } from './check.js';
 export { resolveChannel } from './channel.js';
 export { classifyStatements } from './classify.js';
 export { AGENT_HARNESSES, detectAgentHarness, isAgentSession } from './harness.js';
@@ -14,10 +14,13 @@ export { DEFAULT_ACCESS, GUARDED_ACCESS, resolveLegacyAccess } from './legacy-ac
 export { MATRIX } from './matrix.js';
 export type {
     Channel,
+    BuiltinRole,
     ConfigAccess,
     Permission,
     PolicyCell,
     PolicyCheck,
+    PolicyContext,
+    RoleDefinition,
     PolicyTarget,
     Role,
 } from './types.js';

@@ -1,26 +1,20 @@
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-
-import { createRegistry, SessionManager } from '../rpc/index.js';
+import { createRegistry } from '../rpc/index.js';
 import { createMcpServer } from './server.js';
+import { serveModernMcp } from './stdio.js';
 
-/**
- * Start the MCP server on stdio transport.
- *
- * This function never returns — the stdio event loop keeps the process alive.
- * Stdout is reserved for JSON-RPC. Diagnostics go to stderr.
- */
+/** Serve modern MCP; stdout is reserved for JSON-RPC and diagnostics use stderr. */
 export async function startServer(): Promise<void> {
 
-    const registry = createRegistry();
-    const session = new SessionManager('agent');
-    const server = createMcpServer(registry, session);
-    const transport = new StdioServerTransport();
+    const server = createMcpServer(createRegistry());
+    const handle = serveModernMcp(server);
+    const shutdown = () => {
 
-    process.on('SIGINT', () => session.disconnectAll());
-    process.on('SIGTERM', () => session.disconnectAll());
+        void handle.close();
 
-    await server.connect(transport);
+    };
 
-    console.error('noorm MCP server running on stdio');
+    process.once('SIGINT', shutdown);
+    process.once('SIGTERM', shutdown);
+    console.error('noorm MCP server running on stdio (2026-07-28)');
 
 }

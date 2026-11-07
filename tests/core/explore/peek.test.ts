@@ -26,6 +26,7 @@ import { describe, it, expect } from 'bun:test';
 import { attempt } from '@logosdx/utils';
 
 import { fetchRowPeek, MAX_PEEK_ROWS } from '../../../src/core/explore/index.js';
+import { attachPolicyContext, withPolicyConfirmation } from '../../../src/core/policy/index.js';
 import type { Dialect } from '../../../src/core/connection/types.js';
 import type { ColumnDetail, TableDetail } from '../../../src/core/explore/types.js';
 import type { ConfigAccess } from '../../../src/core/policy/index.js';
@@ -401,6 +402,34 @@ describe('explore: fetchRowPeek', () => {
         expect(peek.columns).toEqual(['id', 'email']);
 
     });
+    it('does not read rows until a custom sql:read confirmation is granted', async () => {
+
+        const previous = process.env['NOORM_YES'];
+        delete process.env['NOORM_YES'];
+        try {
+
+            const db = createRecordingDb('postgres', [{ match: / asc/, rows: rowsWithIds([1]) }]);
+            const access = { user: 'reviewer', agent: 'reviewer' };
+            attachPolicyContext(access, { roles: { reviewer: { permissions: { 'sql:read': 'confirm' } } } });
+            const gate = { configName: 'prod', access, channel: 'user' as const };
+            await expect(fetchRowPeek(db.kysely, 'postgres', table(), gate, 10)).rejects.toThrow(/requires confirmation/);
+            expect(db.queries).toHaveLength(0);
+            const peek = await withPolicyConfirmation({ name: 'prod', access }, ['sql:read'], () =>
+                fetchRowPeek(db.kysely, 'postgres', table(), gate, 10),
+            );
+            expect(peek.first).toHaveLength(1);
+            expect(db.queries).toHaveLength(1);
+
+        }
+        finally {
+
+            if (previous === undefined) delete process.env['NOORM_YES'];
+            else process.env['NOORM_YES'] = previous;
+
+        }
+
+    });
+
 
     it('should refuse a denied channel before touching the database', async () => {
 

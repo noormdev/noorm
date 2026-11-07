@@ -16,9 +16,10 @@ import type { NoormDatabase } from '../../../core/shared/index.js';
 import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
-import { Panel, Spinner, useToast, TextInput } from '../../components/index.js';
+import { Panel, Spinner, SmartConfirm, useToast, TextInput } from '../../components/index.js';
 import { useVaultConnection } from '../../hooks/index.js';
 import { loadPrivateKey } from '../../../core/identity/storage.js';
+import { checkConfigPolicy } from '../../../core/policy/index.js';
 import { getVaultKey, setVaultSecret } from '../../../core/vault/index.js';
 
 
@@ -32,7 +33,7 @@ export function VaultSetScreen({ params }: ScreenProps): ReactElement {
 
     const { back } = useRouter();
     const { isFocused } = useFocusScope('VaultSet');
-    const { activeConfigName, identity } = useAppContext();
+    const { activeConfig, activeConfigName, identity } = useAppContext();
     const { showToast } = useToast();
 
     const { phase: basePhase, error, connRef, setPhase: setBasePhase, setError } = useVaultConnection();
@@ -42,6 +43,40 @@ export function VaultSetScreen({ params }: ScreenProps): ReactElement {
     const [keyValue, setKeyValue] = useState(params.name ?? '');
     const [secretValue, setSecretValue] = useState('');
     const [activeField, setActiveField] = useState<FormField>(params.name ? 'value' : 'key');
+    const [pendingPolicy, setPendingPolicy] = useState<'vault:read' | 'vault:write' | null>(null);
+    const policyCheck = pendingPolicy && activeConfig ? checkConfigPolicy('user', activeConfig, pendingPolicy) : null;
+
+    const beginSubmit = (readConfirmed = false, writeConfirmed = false) => {
+
+        if (!activeConfig) {
+
+            setError('No active configuration');
+
+            return;
+
+        }
+        for (const permission of ['vault:read', 'vault:write'] as const) {
+
+            const check = checkConfigPolicy('user', activeConfig, permission);
+            if (!check.allowed) {
+
+                setError(check.blockedReason ?? `${permission} is not allowed`);
+
+                return;
+
+            }
+            if (check.requiresConfirmation && !(permission === 'vault:read' ? readConfirmed : writeConfirmed)) {
+
+                setPendingPolicy(permission);
+
+                return;
+
+            }
+
+        }
+        void handleSubmit();
+
+    };
 
     const isEditing = !!params.name;
 
@@ -153,7 +188,7 @@ export function VaultSetScreen({ params }: ScreenProps): ReactElement {
     // Keyboard handling
     useInput((input, key) => {
 
-        if (!isFocused || phase !== 'ready') return;
+        if (!isFocused || phase !== 'ready' || pendingPolicy) return;
 
         if (key.escape) {
 
@@ -173,7 +208,7 @@ export function VaultSetScreen({ params }: ScreenProps): ReactElement {
             }
             else if (activeField === 'value' && secretValue.trim()) {
 
-                handleSubmit();
+                beginSubmit();
 
             }
 
@@ -183,7 +218,7 @@ export function VaultSetScreen({ params }: ScreenProps): ReactElement {
 
         if (key.return && activeField === 'value' && secretValue.trim()) {
 
-            handleSubmit();
+            beginSubmit();
 
         }
 
@@ -246,6 +281,29 @@ export function VaultSetScreen({ params }: ScreenProps): ReactElement {
         );
 
     }
+    if (pendingPolicy && policyCheck) {
+
+        return (
+            <SmartConfirm
+                focusLabel="VaultSetPolicyConfirm"
+                requiresConfirmation
+                confirmationPhrase={policyCheck.confirmationPhrase}
+                configName={activeConfigName ?? 'unknown'}
+                action={pendingPolicy === 'vault:read' ? 'read vault for' : 'write vault for'}
+                message={pendingPolicy === 'vault:read' ? 'Read vault key?' : 'Save vault secret?'}
+                onConfirm={() => {
+
+                    const permission = pendingPolicy;
+                    setPendingPolicy(null);
+                    beginSubmit(true, permission === 'vault:write');
+
+                }}
+                onCancel={() => setPendingPolicy(null)}
+            />
+        );
+
+    }
+
 
     const title = isEditing ? `Update Vault Secret: ${params.name}` : 'Add Vault Secret';
 

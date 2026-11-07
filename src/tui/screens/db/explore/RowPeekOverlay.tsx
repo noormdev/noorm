@@ -50,9 +50,10 @@ import type { Dialect } from '../../../../core/connection/types.js';
 import type { RowPeek, RowPeekGate, TableDetail } from '../../../../core/explore/index.js';
 
 import { fetchRowPeek } from '../../../../core/explore/index.js';
+import { checkConfigPolicy, getPolicyFingerprint, withPolicyConfirmation } from '../../../../core/policy/index.js';
 import { useFocusScope } from '../../../focus.js';
 import { useAsyncEffect } from '../../../hooks/index.js';
-import { Spinner } from '../../../components/index.js';
+import { ProtectedConfirm, Spinner } from '../../../components/index.js';
 import { ResultTable, RowViewOverlay } from '../../../components/terminal/index.js';
 
 /**
@@ -232,6 +233,10 @@ export function RowPeekOverlay({
     const [error, setError] = useState<string | null>(null);
     const [focusedSet, setFocusedSet] = useState<PeekSetName>('first');
     const [cursors, setCursors] = useState<Record<PeekSetName, number>>({ first: 0, last: 0 });
+    const [confirmation, setConfirmation] = useState<string | null>(null);
+    const target = { name: gate.configName, access: gate.access };
+    const check = checkConfigPolicy(gate.channel, target, 'sql:read');
+    const fingerprint = `${gate.channel}:${getPolicyFingerprint(target)}`;
 
     // The set whose row is open, and the rows as that table was displaying them
     // — filtered and sorted, which is what ←/→ have to walk so the viewer moves
@@ -245,7 +250,13 @@ export function RowPeekOverlay({
 
     useAsyncEffect(async (isCancelled) => {
 
-        const [result, err] = await attempt(() => fetchRowPeek(db, dialect, detail, gate, pageSize));
+        if (check.requiresConfirmation && confirmation !== fingerprint) return;
+
+
+        const read = () => fetchRowPeek(db, dialect, detail, gate, pageSize);
+        const [result, err] = await attempt(() => confirmation === fingerprint
+            ? withPolicyConfirmation(target, ['sql:read'], read)
+            : read());
 
         if (isCancelled()) return;
 
@@ -259,7 +270,7 @@ export function RowPeekOverlay({
 
         setPeek(result);
 
-    }, []);
+    }, [confirmation, fingerprint]);
 
     // Escape only while there is no table to hand it to. Once one is up it owns
     // the key by mode — cancel filter, leave sort, then close — and a second
@@ -274,6 +285,20 @@ export function RowPeekOverlay({
     });
 
     const qualified = `${detail.schema ? `${detail.schema}.` : ''}${detail.name}`;
+    if (check.allowed && check.requiresConfirmation && confirmation !== fingerprint) {
+
+        return (
+            <ProtectedConfirm
+                configName={gate.configName}
+                confirmPhrase={check.confirmationPhrase!}
+                action="read rows from"
+                onConfirm={() => setConfirmation(fingerprint)}
+                onCancel={onClose}
+            />
+        );
+
+    }
+
     const header = <Text dimColor wrap="truncate">Rows · {qualified} · [Esc] Close</Text>;
 
     if (error) {

@@ -17,23 +17,28 @@
  */
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Box, Text, useInput, useWindowSize } from 'ink';
-import { attempt } from '@logosdx/utils';
+import { attempt, attemptSync } from '@logosdx/utils';
 
 import type { ReactElement } from 'react';
 import type { Kysely } from 'kysely';
 import type { ScreenProps } from '../../types.js';
 import type { SqlExecutionResult, SqlHistoryEntry } from '../../../core/sql-terminal/types.js';
+import type { Config } from '../../../core/config/types.js';
+import type { Permission } from '../../../core/policy/index.js';
 
 import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
-import { Panel, Spinner, useToast } from '../../components/index.js';
+import { Panel, Spinner, useToast, ProtectedConfirm } from '../../components/index.js';
 import { SqlInput, ResultBrowser } from '../../components/terminal/index.js';
 import { useAbortableTask } from '../../hooks/index.js';
 import { createConnection, testConnection } from '../../../core/connection/index.js';
+import { SettingsProvider, withConfigPolicy } from '../../../core/config/resolver.js';
+import { checkConfigPolicy, getPolicyFingerprint, resolveChannel, withPolicyConfirmation } from '../../../core/policy/index.js';
 import {
     SqlHistoryManager,
     executeRawSql,
+    sqlPermissionFor,
     abortMessageFor,
     hasServerSideCancel,
 } from '../../../core/sql-terminal/index.js';
@@ -50,7 +55,7 @@ export function SqlTerminalScreen({ params }: ScreenProps): ReactElement {
 
     const { navigate, back } = useRouter();
     const { isFocused } = useFocusScope('SqlTerminal');
-    const { activeConfig, activeConfigName, projectRoot } = useAppContext();
+    const { activeConfig, activeConfigName, projectRoot, settingsManager } = useAppContext();
     const { showToast } = useToast();
     // useWindowSize, not useStdout: stdout.rows mutates on resize without asking
     // React for anything, so a memo keyed on it never recomputes.
@@ -80,6 +85,7 @@ export function SqlTerminalScreen({ params }: ScreenProps): ReactElement {
     const [isConnecting, setIsConnecting] = useState(true);
     const [connectionError, setConnectionError] = useState<string | null>(null);
     const [focusArea, setFocusArea] = useState<FocusArea>('input');
+    const [pending, setPending] = useState<{ sql: string; config: Config; permission: Permission; phrase: string; fingerprint: string } | null>(null);
 
     // Whether the result browser has a row open as a document. The footer below
     // is outside that component, so without this it would keep offering Tab and
@@ -210,22 +216,23 @@ export function SqlTerminalScreen({ params }: ScreenProps): ReactElement {
     }, [activeConfig, activeConfigName, projectRoot]);
 
     // Execute query
-    const handleExecute = useCallback(async (sql: string) => {
+    const runQuery = useCallback(async (sql: string, config: Config, permission: Permission, confirmed: boolean) => {
 
-        if (!dbRef.current || !historyManagerRef.current || !activeConfigName || !activeConfig) return;
+        if (!dbRef.current || !historyManagerRef.current || !activeConfigName) return;
 
         const controller = task.start();
 
         setIsExecuting(true);
         setResult(null);
 
-        const [rawResult, gateErr] = await attempt(() =>
-            executeRawSql(dbRef.current!, sql, activeConfigName, {
-                access: activeConfig.access,
-                channel: 'user',
-                dialect: activeConfig.connection.dialect,
-            }, controller.signal),
-        );
+        const execute = () => executeRawSql(dbRef.current!, sql, activeConfigName, {
+            access: config.access,
+            channel: resolveChannel(),
+            dialect: config.connection.dialect,
+        }, controller.signal);
+        const [rawResult, gateErr] = await attempt(() => confirmed
+            ? withPolicyConfirmation(config, [permission], execute)
+            : execute());
 
         // The cancel handler already reported the outcome. A driver that
         // answered anyway must not overwrite it, or the screen silently
@@ -273,7 +280,62 @@ export function SqlTerminalScreen({ params }: ScreenProps): ReactElement {
 
         }
 
-    }, [activeConfigName, activeConfig, showToast, task]);
+    }, [activeConfigName, showToast, task]);
+
+    const handleExecute = useCallback((sql: string) => {
+
+        if (!activeConfig || !activeConfigName || !settingsManager) return;
+        const [config, error] = attemptSync(() => withConfigPolicy(activeConfig, new SettingsProvider(settingsManager)));
+        if (error || !config) {
+
+            showToast({ message: error?.message ?? 'Settings are not available', variant: 'error' });
+
+            return;
+
+        }
+        const permission = sqlPermissionFor(sql, config.connection.dialect);
+        const check = checkConfigPolicy(resolveChannel(), config, permission);
+        if (!check.allowed) {
+
+            showToast({ message: check.blockedReason ?? 'SQL is not allowed', variant: 'error' });
+
+            return;
+
+        }
+        if (check.requiresConfirmation) {
+
+            setPending({ sql, config, permission, phrase: check.confirmationPhrase!, fingerprint: getPolicyFingerprint(config) });
+
+            return;
+
+        }
+        void runQuery(sql, config, permission, false);
+
+    }, [activeConfig, activeConfigName, settingsManager, runQuery, showToast]);
+
+    const confirmQuery = useCallback(() => {
+
+        if (!pending || !activeConfig || !settingsManager) return;
+        setPending(null);
+        const [config, error] = attemptSync(() => withConfigPolicy(activeConfig, new SettingsProvider(settingsManager)));
+        if (error || !config || config.name !== pending.config.name || getPolicyFingerprint(config) !== pending.fingerprint) {
+
+            showToast({ message: error?.message ?? 'Policy changed; submit the query again', variant: 'error' });
+
+            return;
+
+        }
+        const check = checkConfigPolicy(resolveChannel(), config, pending.permission);
+        if (!check.allowed) {
+
+            showToast({ message: check.blockedReason ?? 'SQL is not allowed', variant: 'error' });
+
+            return;
+
+        }
+        void runQuery(pending.sql, config, pending.permission, true);
+
+    }, [pending, activeConfig, settingsManager, runQuery, showToast]);
 
     // Escape while an operation is in flight. Returns false when there was
     // nothing to cancel, so the caller can fall through to its normal Escape.
@@ -485,6 +547,20 @@ export function SqlTerminalScreen({ params }: ScreenProps): ReactElement {
                     <Text dimColor>[Esc] Back</Text>
                 </Box>
             </Box>
+        );
+
+    }
+
+    if (pending) {
+
+        return (
+            <ProtectedConfirm
+                configName={pending.config.name}
+                confirmPhrase={pending.phrase}
+                action="execute SQL on"
+                onConfirm={confirmQuery}
+                onCancel={() => setPending(null)}
+            />
         );
 
     }

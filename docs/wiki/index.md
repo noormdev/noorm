@@ -19,7 +19,7 @@ description: Bun workspace monorepo — noorm, a database schema/change manager 
 - **Templating:** Eta 4.5 for `.sql.tmpl` files; data loaders for JSON5/YAML/CSV/JS side-cars
 - **Error handling:** `@logosdx/utils` `attempt`/`attemptSync` tuples — no try-catch in source
 - **Encryption:** AES-256-GCM for state ([`src/core/state/encryption/`](../../src/core/state/encryption)), X25519 ECDH keypairs for identity/vault
-- **MCP:** `@modelcontextprotocol/sdk` 1.29 wrapping RPC registry over stdio
+- **MCP:** `@modelcontextprotocol/server` 2.4, protocol `2026-07-28`, stdio tools, human elicitation, and exploration resources
 
 ## Build / test / lint
 

@@ -7,7 +7,7 @@ import { attempt } from '@logosdx/utils';
 import { defineCommand } from 'citty';
 
 import { initState, getStateManager } from '../../core/state/index.js';
-import { outputResult, outputError, sharedArgs } from '../_utils.js';
+import { outputResult, outputError, sharedArgs, isYesMode } from '../_utils.js';
 import { resolveSecretPolicy } from './_policy.js';
 
 const listCommand = defineCommand({
@@ -18,6 +18,7 @@ const listCommand = defineCommand({
     args: {
         config: sharedArgs.config,
         json: sharedArgs.json,
+        yes: sharedArgs.yes,
     },
     async run({ args }) {
 
@@ -32,11 +33,18 @@ const listCommand = defineCommand({
         }
 
         const stateManager = getStateManager(projectRoot);
-        const resolved = resolveSecretPolicy(stateManager, args.config, 'secret:read');
+        const resolved = await resolveSecretPolicy(stateManager, args.config, 'secret:read', projectRoot);
 
         if (!resolved.ok) {
 
             outputError(args, resolved.error);
+            process.exit(1);
+
+        }
+
+        if (resolved.check.requiresConfirmation && !isYesMode(args)) {
+
+            outputError(args, `Listing secrets requires confirmation (${resolved.check.confirmationPhrase}). Pass --yes to confirm.`);
             process.exit(1);
 
         }

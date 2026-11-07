@@ -23,6 +23,8 @@ export type {
     LoggingConfig,
     TeardownConfig,
     UiConfig,
+    RoleDefinition,
+    AccessSettings,
     Settings,
     RuleEvaluationResult,
     RulesEvaluationResult,

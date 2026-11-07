@@ -146,6 +146,32 @@ describe('cli: noorm config list — access tag display', () => {
 
     });
 
+    it('reports effective custom permissions without exposing connection credentials', async () => {
+
+        writeFileSync(join(tmpDir, '.noorm', 'settings.yml'), [
+            'access:',
+            '  roles:',
+            '    auditor:',
+            '      extends: viewer',
+            '      permissions:',
+            '        sql:read: deny',
+            '',
+        ].join('\n'));
+        await seedConfig({ user: 'auditor', agent: 'viewer' });
+
+        const result = spawnSync('node', [CLI, 'config', 'list', '--json'], {
+            cwd: tmpDir,
+            encoding: 'utf-8',
+            env: identityEnv,
+        });
+        expect(result.status).toBe(0);
+        const output = JSON.parse(result.stdout);
+        expect(output.configs[0].effectivePermissions.user['sql:read']).toBe('deny');
+        expect(output.configs[0].effectivePermissions.agent['sql:read']).toBe('allow');
+        expect(output.configs[0].connection).toBeUndefined();
+
+    });
+
     describe('agent: false invisibility', () => {
 
         /** Runs `config list` from inside an agent harness. */

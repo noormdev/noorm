@@ -5,7 +5,7 @@
  * Settings are version controlled and shared across the team (unlike encrypted state).
  */
 import { readFile, writeFile, mkdir, access } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { attempt, clone, merge, makeNestedConfig } from '@logosdx/utils';
 
@@ -55,7 +55,13 @@ const META_SETTINGS_ENV_VARS = new Set([
 function allSettingsEnv(): Partial<Settings> {
 
     const { allConfigs } = makeNestedConfig<Partial<Settings>>(process.env as Record<string, string>, {
-        filter: (key) => key.startsWith('NOORM_') && !META_SETTINGS_ENV_VARS.has(key) && !key.startsWith('NOORM_IDENTITY_') && !key.startsWith('NOORM_CONNECTION_'),
+        filter: (key) => key.startsWith('NOORM_')
+            && !META_SETTINGS_ENV_VARS.has(key)
+            && !key.startsWith('NOORM_IDENTITY_')
+            && !key.startsWith('NOORM_CONNECTION_')
+            // Config access assignments and project role definitions are not settings env overrides.
+            && key.toUpperCase() !== 'NOORM_ACCESS'
+            && !key.toUpperCase().startsWith('NOORM_ACCESS_'),
         stripPrefix: 'NOORM_',
         forceAllCapToLower: true,
         memoizeOpts: false,
@@ -120,6 +126,13 @@ export class SettingsManager {
     // ─────────────────────────────────────────────────────────────
     // Path Helpers
     // ─────────────────────────────────────────────────────────────
+
+    /** Project root used to bind policy approvals to this project. */
+    get projectRoot(): string {
+
+        return this.#projectRoot;
+
+    }
 
     /**
      * Get the full path to the settings directory.
@@ -1095,7 +1108,7 @@ export function getSettingsManager(
     options?: SettingsManagerOptions,
 ): SettingsManager {
 
-    if (!settingsManagerInstance) {
+    if (!settingsManagerInstance || resolve(settingsManagerInstance.projectRoot) !== resolve(projectRoot)) {
 
         settingsManagerInstance = new SettingsManager(projectRoot, options);
 

@@ -33,6 +33,8 @@ export interface RpcCommand<TInput = unknown, TOutput = unknown> {
 export interface RpcSession {
 
     readonly channel: Channel;
+    /** Cancellation for this request, when the transport supports it. */
+    readonly signal?: AbortSignal;
     getContext(config?: string): Context;
     connect(config?: string): Promise<{ name: string; dialect: string; database: string; role: Role }>;
     disconnect(config?: string): Promise<void>;

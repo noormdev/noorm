@@ -13,7 +13,7 @@
 import type { FormValues, SelectOption } from '../components/index.js';
 import type { ConnectionConfig, Dialect } from '../../core/connection/types.js';
 import type { Config } from '../../core/config/types.js';
-import type { ConfigAccess, Role } from '../../core/policy/index.js';
+import type { ConfigAccess } from '../../core/policy/index.js';
 import { guarded } from '../../core/policy/index.js';
 import { DEFAULT_PORTS } from '../../core/connection/index.js';
 import { ConfigNameSchema, PortSchema } from '../../core/config/schema.js';
@@ -149,40 +149,30 @@ export function buildConnectionConfig(
 
 }
 
-/**
- * Select options for the `userRole` field — the `user` channel has no
- * `false`/off state, unlike `agent`.
- */
-export const USER_ROLE_OPTIONS: SelectOption[] = [
-    { label: 'Viewer', value: 'viewer' },
-    { label: 'Operator', value: 'operator' },
-    { label: 'Admin', value: 'admin' },
-];
+/** Values for role options are encoded so a role named "off" is selectable. */
+const AGENT_OFF_VALUE = 'off';
 
-/**
- * Select options for the `agentRole` field — `off` maps to `access.agent: false`
- * (invisible to agents over MCP *and* the CLI), the one state the `user`
- * channel lacks.
- */
-export const AGENT_ROLE_OPTIONS: SelectOption[] = [
-    { label: 'Off (hidden from agents)', value: 'off' },
-    { label: 'Viewer', value: 'viewer' },
-    { label: 'Operator', value: 'operator' },
-    { label: 'Admin', value: 'admin' },
-];
+export function getRoleOptions(roles?: Record<string, unknown>): {
+    user: SelectOption[];
+    agent: SelectOption[];
+} {
 
-function isRole(value: string): value is Role {
+    const names = [...new Set(['viewer', 'operator', 'admin', ...Object.keys(roles ?? {})])];
+    const user = names.map((name) => ({ label: name, value: name }));
 
-    return value === 'viewer' || value === 'operator' || value === 'admin';
+    return {
+        user,
+        agent: [
+            { label: 'Off (hidden from agents)', value: AGENT_OFF_VALUE },
+            ...names.map((name) => ({ label: name, value: `role:${name}` })),
+        ],
+    };
 
 }
 
 /**
- * Builds a `ConfigAccess` from the `userRole`/`agentRole` select fields shared
- * by ConfigAdd/ConfigEdit. The select only ever offers valid options, so an
- * unrecognized/missing value should never happen in practice — the fallback
- * is defense-in-depth and fails closed (`viewer`/`false`) rather than
- * granting `admin` on a value it can't recognize.
+ * Builds a `ConfigAccess` from the role fields shared by ConfigAdd/ConfigEdit.
+ * Role names are validated against project settings when the config is resolved.
  *
  * @example
  * ```typescript
@@ -193,11 +183,15 @@ function isRole(value: string): value is Role {
 export function buildAccessFromValues(values: FormValues): ConfigAccess {
 
     const userRoleValue = String(values['userRole'] ?? 'viewer');
-    const agentRoleValue = String(values['agentRole'] ?? 'off');
+    const agentRoleValue = String(values['agentRole'] ?? AGENT_OFF_VALUE);
 
     return {
-        user: isRole(userRoleValue) ? userRoleValue : 'viewer',
-        agent: agentRoleValue === 'off' ? false : (isRole(agentRoleValue) ? agentRoleValue : false),
+        user: userRoleValue.trim() ? userRoleValue : 'viewer',
+        agent: agentRoleValue === AGENT_OFF_VALUE
+            ? false
+            : agentRoleValue.startsWith('role:')
+                ? agentRoleValue.slice(5)
+                : agentRoleValue || false,
     };
 
 }

@@ -7,14 +7,14 @@ description: Access-control policy — role×permission matrix, SQL statement cl
 
 ## What it does
 
-Single access-control layer for every config-scoped action across every caller channel (CLI, TUI, SDK, MCP). Roles live on the config (`ConfigAccess`), not the actor — the actor is a `Channel` (`user` or `agent`) — and a hard-coded permission × role matrix (`MATRIX`) resolves `allow`/`confirm`/`deny` per action. Replaces the removed `Config.protected: boolean` and the deleted `src/core/config/protection.ts` / `src/rpc/protection.ts` rule checkers.
+Single access-control layer for config-scoped actions across CLI, TUI, SDK, and MCP. Configs assign roles per `Channel` (`user` or `agent`); the built-in permission matrix supplies defaults, while project settings can override cells and define inherited roles. Effective cells resolve to `allow`/`confirm`/`deny` per action. Replaces the removed `Config.protected: boolean` and the deleted `src/core/config/protection.ts` / `src/rpc/protection.ts` rule checkers.
 
 Also owns raw-SQL statement classification (`read`/`write`/`ddl`, with a destructive-function denylist) used to gate ad-hoc SQL, and the one-version `protected` boolean → `access` migration path (`resolveLegacyAccess`).
 
 ## Artifacts
 
-- [`src/core/policy/types.ts`](../../src/core/policy/types.ts) — `Role` (`viewer`/`operator`/`admin`), `Channel` (`user`/`agent`), `ConfigAccess` (`{ user: Role; agent: Role | false }`), `Permission`, `PolicyTarget`, `PolicyCell` (`allow`/`confirm`/`deny`), `PolicyCheck`
-- [`src/core/policy/matrix.ts`](../../src/core/policy/matrix.ts) — `MATRIX`, the hard-coded `Permission × Role → PolicyCell` table (not user-extensible), mirroring [`docs/spec/config-access-roles.md`](../spec/config-access-roles.md)
+- [`src/core/policy/types.ts`](../../src/core/policy/types.ts) — role names, `Channel` (`user`/`agent`), `ConfigAccess` (`{ user: Role; agent: Role | false }`), `Permission`, `PolicyTarget`, `PolicyCell` (`allow`/`confirm`/`deny`), `PolicyCheck`
+- [`src/core/policy/matrix.ts`](../../src/core/policy/matrix.ts) — `MATRIX`, the built-in permission defaults and immutable protected-stage ceilings; project settings may override effective role cells
 - [`src/core/policy/check.ts`](../../src/core/policy/check.ts) — `checkPolicy`, `checkConfigPolicy`, `assertPolicy`, `isVisibleToChannel`, `guarded`, `formatAccessTag`, `confirmationPhraseFor`; the enforcement and display entrypoints every caller reaches for
 - [`src/core/policy/channel.ts`](../../src/core/policy/channel.ts) — `resolveChannel`; resolves `NOORM_CHANNEL` env override, then harness provenance (`isAgentSession`), then defaults to `user`
 - [`src/core/policy/harness.ts`](../../src/core/policy/harness.ts) — `AGENT_HARNESSES`, `detectAgentHarness`, `isAgentSession`; env-marker allowlist for Claude Code, Codex, Cursor, Gemini CLI, and a generic `AI_AGENT`/`NOORM_AGENT` self-declaration
@@ -44,7 +44,9 @@ Also owns raw-SQL statement classification (`read`/`write`/`ddl`, with a destruc
 
 ## Conventions worth knowing
 
-- `checkPolicy`'s `confirm` cell resolves differently per channel: `user` prompts for `yes-<config>` (`confirmationPhraseFor`, skippable via `NOORM_YES`), `agent` collapses `confirm` to `deny` — an agent confirming its own destructive action is theater, and on the CLI it would need only `--yes` to walk through it.
+- Project `.noorm/settings.yml` defines `access.roles`: built-in overrides retain unspecified defaults; custom roles can extend any known role's effective policy, or default unspecified permissions to `deny` without a parent. Invalid permissions, values, unknown parents, and cycles are rejected; unknown assigned roles fail closed.
+- A protected stage caps every effective cell against the original operator/user or viewer/agent matrix, taking the stricter of `deny`, `confirm`, and `allow`. Role names remain unchanged, and overrides cannot raise the ceiling.
+- User-channel `confirm` prompts for `yes-<config>` (`confirmationPhraseFor`, skippable via `NOORM_YES`). Ordinary agent CLI and SDK checks deny `confirm` regardless of yes-mode; MCP can mediate a human approval with a supporting client. A refusal or unavailable approval denies, and `deny` cannot be approved.
 - `agent: false` (invisible config) is never a role and is not expected to reach `checkPolicy` — visibility is enforced upstream via `isVisibleToChannel`.
 - `checkConfigPolicy`/`assertPolicy` fail closed: a config with no `access` at all is denied on every channel.
 - `resolveChannel` precedence: `NOORM_CHANNEL` env override (exact `user`/`agent` only) > harness provenance (`isAgentSession`, an allowlist of env markers the harnesses set for themselves, deliberately excluding `TERM_PROGRAM`/`CI`/TTY state) > `user` default. The MCP server never calls `resolveChannel` — it constructs its session with `agent` literally.

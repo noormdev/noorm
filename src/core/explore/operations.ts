@@ -33,7 +33,7 @@ import type {
 import { getExploreOperations } from './dialects/index.js';
 import { readPeekRows } from './peek.js';
 import { observer } from '../observer.js';
-import { assertPolicy } from '../policy/index.js';
+import { checkConfigPolicy } from '../policy/index.js';
 
 /**
  * Options for explore operations.
@@ -461,7 +461,13 @@ export async function fetchRowPeek(
     const keyColumns = namesInOrder(detail.columns.filter((column) => column.isPrimaryKey));
     const base = { table: detail.name, schema: detail.schema, keyColumns, limit };
 
-    assertPolicy(gate.channel, { name: gate.configName, access: gate.access }, 'sql:read');
+    const check = checkConfigPolicy(gate.channel, { name: gate.configName, access: gate.access }, 'sql:read');
+    if (!check.allowed) throw new Error(check.blockedReason ?? `"sql:read" is not allowed on config "${gate.configName}".`);
+    if (check.requiresConfirmation) {
+
+        throw new Error(`"sql:read" on config "${gate.configName}" requires confirmation (${check.confirmationPhrase}).`);
+
+    }
 
     const [first, headErr] = await attempt(() => readPeekRows(db, dialect, { ...base, direction: 'asc' }));
 

@@ -155,6 +155,29 @@ describe('cli: noorm config import — legacy protected mapping', () => {
 
     });
 
+    it('imports configured custom roles and rejects unknown role references', () => {
+
+        writeFileSync(join(tmpDir, '.noorm', 'settings.yml'),
+            'access:\n  roles:\n    auditor:\n      extends: viewer\n');
+        const valid = writeConfigFile('custom.json', {
+            name: 'custom',
+            access: { user: 'auditor', agent: false },
+            connection: { dialect: 'sqlite', database: ':memory:' },
+        });
+        expect(runImport(valid).status).toBe(0);
+        expect(readPersistedAccess('custom')).toEqual({ user: 'auditor', agent: false });
+
+        const invalid = writeConfigFile('unknown.json', {
+            name: 'unknown',
+            access: { user: 'missing', agent: false },
+            connection: { dialect: 'sqlite', database: ':memory:' },
+        });
+        const result = runImport(invalid);
+        expect(result.status).not.toBe(0);
+        expect(result.stdout + result.stderr).toContain('Unknown access role');
+
+    });
+
     it('rejects config JSON missing required fields instead of silently importing it', () => {
 
         const path = writeConfigFile('broken.json', { protected: true });

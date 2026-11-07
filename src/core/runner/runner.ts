@@ -41,6 +41,7 @@ import { StatementWatcher } from './statement-watcher.js';
 import { Tracker, decideNeedsRun } from './tracker.js';
 import { getSqlErrorMessage } from '../shared/index.js';
 import { OperationAbortedError } from '../shared/abort.js';
+import { approvedSql, assertApprovedBuild } from '../shared/approved-content.js';
 import type { NoormDatabase } from '../shared/index.js';
 import type {
     RunOptions,
@@ -152,6 +153,8 @@ export async function runBuild(
         files = discovered;
 
     }
+
+    assertApprovedBuild(files);
 
     observer.emit('build:start', {
         sqlPath,
@@ -1088,6 +1091,9 @@ async function executeSingleFileWithUpdate(
  * Load and optionally render a SQL file.
  */
 async function loadAndRenderFile(context: RunContext, filepath: string): Promise<string> {
+
+    const snapshot = approvedSql(filepath);
+    if (snapshot !== undefined) return snapshot;
 
     if (isTemplate(filepath)) {
 

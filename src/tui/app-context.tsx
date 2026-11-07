@@ -53,6 +53,7 @@ import type { SettingsManager } from '../core/settings/manager.js';
 import type { CryptoIdentity } from '../core/identity/types.js';
 import { loadExistingIdentity } from '../core/identity/index.js';
 import { DEFAULT_ACCESS, GUARDED_ACCESS } from '../core/policy/index.js';
+import { SettingsProvider, withConfigPolicy } from '../core/config/resolver.js';
 
 // ─────────────────────────────────────────────────────────────
 // Project Name Detection
@@ -669,6 +670,15 @@ export function AppContextProvider({
 
     }, [stateManager, connectedConfig]);
 
+    // Keep stored assignments intact while supplying policy to every TUI gate.
+    // Unknown roles remain visible for repair and fail closed in policy checks.
+    const policyActiveConfig = useMemo(
+        () => activeConfig && settingsManager?.isLoaded
+            ? withConfigPolicy(activeConfig, new SettingsProvider(settingsManager), false)
+            : activeConfig,
+        [activeConfig, settingsManager, settings],
+    );
+
     // Memoize context value
     const value = useMemo<AppContextValue>(
         () => ({
@@ -678,7 +688,7 @@ export function AppContextProvider({
             projectRoot,
             stateManager,
             settingsManager,
-            activeConfig,
+            activeConfig: policyActiveConfig,
             activeConfigName,
             configs,
             identity,
@@ -703,7 +713,7 @@ export function AppContextProvider({
             projectRoot,
             stateManager,
             settingsManager,
-            activeConfig,
+            policyActiveConfig,
             activeConfigName,
             configs,
             identity,

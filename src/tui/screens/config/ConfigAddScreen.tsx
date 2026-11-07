@@ -29,6 +29,7 @@ import { Panel, Form, useToast } from '../../components/index.js';
 import { useAbortableTask } from '../../hooks/index.js';
 import { testConnection } from '../../../core/connection/factory.js';
 import { DEFAULT_ACCESS, GUARDED_ACCESS } from '../../../core/policy/index.js';
+import { validateAccessRoles } from '../../../core/config/resolver.js';
 import {
     getErrorMessage,
     STOPPED_WAITING_MESSAGE,
@@ -36,8 +37,7 @@ import {
     validatePort,
     buildConnectionConfig,
     buildAccessFromValues,
-    USER_ROLE_OPTIONS,
-    AGENT_ROLE_OPTIONS,
+    getRoleOptions,
 } from '../../utils/index.js';
 
 /**
@@ -70,6 +70,7 @@ export function ConfigAddScreen({ params }: ScreenProps): ReactElement {
     // holds the agent channel to `viewer`.
     const matchedStage = params.name ? settings?.stages?.[params.name] : undefined;
     const defaultAccess = matchedStage?.defaults?.protected ? GUARDED_ACCESS : DEFAULT_ACCESS;
+    const roleOptions = getRoleOptions(settings?.access?.roles);
 
     // Form fields for config creation
     const fields: FormField[] = [
@@ -132,7 +133,7 @@ export function ConfigAddScreen({ params }: ScreenProps): ReactElement {
             label: 'User Role',
             hint: '(CLI/TUI access)',
             type: 'select',
-            options: USER_ROLE_OPTIONS,
+            options: roleOptions.user,
             defaultValue: defaultAccess.user,
         },
         {
@@ -140,8 +141,8 @@ export function ConfigAddScreen({ params }: ScreenProps): ReactElement {
             label: 'Agent Role',
             hint: '(MCP/CLI access)',
             type: 'select',
-            options: AGENT_ROLE_OPTIONS,
-            defaultValue: defaultAccess.agent === false ? 'off' : defaultAccess.agent,
+            options: roleOptions.agent,
+            defaultValue: defaultAccess.agent === false ? 'off' : `role:${defaultAccess.agent}`,
         },
         {
             key: 'isTest',
@@ -212,6 +213,10 @@ export function ConfigAddScreen({ params }: ScreenProps): ReactElement {
 
             const [_, err] = await attempt(async () => {
 
+                if (!settings) throw new Error('Settings are not available');
+                validateAccessRoles(config.access, settings.access?.roles);
+
+
                 await stateManager.setConfig(config.name, config);
 
                 // If this is the first config, set it as active
@@ -255,7 +260,7 @@ export function ConfigAddScreen({ params }: ScreenProps): ReactElement {
             }
 
         },
-        [stateManager, configs, refresh, showToast, back, navigate, fromInit, task],
+        [stateManager, configs, settings, refresh, showToast, back, navigate, fromInit, task],
     );
 
     // Escape while busy stops the operation instead of walking away from it.

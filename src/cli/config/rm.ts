@@ -6,13 +6,13 @@
  * core deletion path the TUI's ConfigRemoveScreen calls, so ticket 29's
  * locked-stage guard is enforced identically here.
  */
-import { attempt } from '@logosdx/utils';
+import { attempt, attemptSync } from '@logosdx/utils';
 import { defineCommand } from 'citty';
 
 import { initState, getStateManager } from '../../core/state/index.js';
 import { getSettingsManager } from '../../core/settings/index.js';
 import { checkConfigPolicy, resolveChannel } from '../../core/policy/index.js';
-import { SettingsProvider } from '../../core/config/resolver.js';
+import { SettingsProvider, withConfigPolicy } from '../../core/config/resolver.js';
 import { outputResult, outputError, sharedArgs, isYesMode } from '../_utils.js';
 import { EXIT } from '../_exit.js';
 
@@ -63,7 +63,17 @@ const rmCommand = defineCommand({
 
         }
 
-        const check = checkConfigPolicy(resolveChannel(), config, 'config:rm');
+        const settingsProvider = new SettingsProvider(settingsManager);
+        const [policyConfig, policyErr] = attemptSync(() => withConfigPolicy(config, settingsProvider));
+
+        if (policyErr) {
+
+            outputError(args, policyErr.message);
+            process.exit(EXIT.USAGE);
+
+        }
+
+        const check = checkConfigPolicy(resolveChannel(), policyConfig, 'config:rm');
 
         if (!check.allowed) {
 
@@ -82,7 +92,6 @@ const rmCommand = defineCommand({
 
         }
 
-        const settingsProvider = new SettingsProvider(settingsManager);
         const [, deleteErr] = await attempt(() => stateManager.deleteConfig(args.name, settingsProvider));
 
         if (deleteErr) {

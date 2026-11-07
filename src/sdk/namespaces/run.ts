@@ -40,6 +40,9 @@ import { requireConnection } from '../state.js';
 import type { BuildOptions } from '../types.js';
 import { DEFAULT_SQL_PATH } from '../../core/settings/defaults.js';
 
+/** Internal read-only context for preparing an MCP approval; never grants execution. */
+export const prepareRunContext = Symbol('prepareRunContext');
+
 // ─────────────────────────────────────────────────────────────
 // RunNamespace
 // ─────────────────────────────────────────────────────────────
@@ -51,6 +54,12 @@ export class RunNamespace {
     constructor(state: ContextState) {
 
         this.#state = state;
+
+    }
+
+    async [prepareRunContext](): Promise<RunContext> {
+
+        return this.#createRunContext();
 
     }
 

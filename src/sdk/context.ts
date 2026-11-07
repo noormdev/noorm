@@ -14,6 +14,7 @@ import type { Settings } from '../core/settings/index.js';
 import type { Identity } from '../core/identity/index.js';
 import { createConnection } from '../core/connection/index.js';
 import type { ConnectionRetryOptions } from '../core/connection/index.js';
+import { attachPolicyContext, getPolicyContext, policyTargetIdentity } from '../core/policy/index.js';
 
 import { callProc, callFunc, callTvf, qualifyName, withRoutines } from './routines.js';
 import { NoormOps } from './noorm-ops.js';
@@ -111,6 +112,20 @@ export class Context<DB = unknown, Procs = object, Funcs = object, Tvfs = object
         options: CreateContextOptions,
         projectRoot: string,
     ) {
+
+        // A directly constructed Context must use its own project's policy too.
+        // Keep resolver-provided stage metadata (including explicit --stage).
+        if (config.access) {
+
+            const access = { ...config.access };
+            attachPolicyContext(access, getPolicyContext(config.access) ?? {
+                roles: settings.access?.roles,
+                protectedStage: settings.stages?.[options.stage ?? config.name]?.defaults?.protected === true,
+                targetIdentity: policyTargetIdentity(projectRoot, config.connection),
+            });
+            config = { ...config, access };
+
+        }
 
         this.#state = {
             connection: null,

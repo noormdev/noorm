@@ -25,7 +25,9 @@ import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
 import { useVaultSecretKeys } from '../../hooks/index.js';
-import { Panel, SecretValueForm, useToast } from '../../components/index.js';
+import { Panel, ProtectedConfirm, SecretValueForm, SmartConfirm, useToast } from '../../components/index.js';
+import { checkConfigPolicy, confirmationPhraseFor, getPolicyFingerprint, withPolicyConfirmation } from '../../../core/policy/index.js';
+import { SecretReadGate } from './SecretReadGate.js';
 
 /**
  * Simple error screen for when no active config exists.
@@ -71,16 +73,23 @@ function NoConfigError({ title, message }: { title: string; message: string }): 
  *
  * Form for setting a secret value.
  */
-export function SecretSetScreen({ params }: ScreenProps): ReactElement {
+export function SecretSetScreen(props: ScreenProps): ReactElement {
+
+    return <SecretReadGate><SecretSetContent {...props} /></SecretReadGate>;
+
+}
+
+function SecretSetContent({ params }: ScreenProps): ReactElement {
 
     const { back } = useRouter();
     const { activeConfig, activeConfigName, stateManager, refresh } =
         useAppContext();
     const { showToast } = useToast();
-    const { vaultSecretKeys, requiredSecrets: rawRequiredSecrets, vaultError } = useVaultSecretKeys();
+    const { vaultSecretKeys, requiredSecrets: rawRequiredSecrets, vaultError, vaultConfirmation } = useVaultSecretKeys();
 
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [pending, setPending] = useState<{ key: string; value: string; fingerprint: string } | null>(null);
 
     // Key from params (if editing existing secret)
     const secretKey = params.name;
@@ -137,23 +146,49 @@ export function SecretSetScreen({ params }: ScreenProps): ReactElement {
 
     // Handle form submission
     const handleSubmit = useCallback(
-        async (key: string, value: string) => {
+        async (key: string, value: string, approvedFingerprint?: string) => {
 
-            if (!stateManager || !activeConfigName) {
+            if (!stateManager || !activeConfigName || !activeConfig) {
 
                 setError('No active configuration');
 
                 return;
 
             }
+            const check = checkConfigPolicy('user', activeConfig, 'secret:write');
+            if (!check.allowed) {
+
+                setPending(null);
+                setError(check.blockedReason ?? 'Secret write is not allowed');
+
+                return;
+
+            }
+            const fingerprint = `${activeConfigName}:${getPolicyFingerprint(activeConfig)}`;
+            if (check.requiresConfirmation && approvedFingerprint !== fingerprint) {
+
+                setPending({ key, value, fingerprint });
+
+                return;
+
+            }
+            setPending(null);
+
 
             setSaving(true);
             setError(null);
 
             const [, err] = await attempt(async () => {
 
-                await stateManager.setSecret(activeConfigName, key, value);
-                await refresh();
+                const save = async () => {
+
+                    await stateManager.setSecret(activeConfigName, key, value);
+                    await refresh();
+
+                };
+                await (check.requiresConfirmation
+                    ? withPolicyConfirmation(activeConfig, ['secret:write'], save)
+                    : save());
 
             });
 
@@ -174,7 +209,7 @@ export function SecretSetScreen({ params }: ScreenProps): ReactElement {
             back();
 
         },
-        [stateManager, activeConfigName, refresh, showToast, back],
+        [stateManager, activeConfig, activeConfigName, refresh, showToast, back],
     );
 
     // Handle cancel
@@ -195,6 +230,39 @@ export function SecretSetScreen({ params }: ScreenProps): ReactElement {
         );
 
     }
+    if (vaultConfirmation) {
+
+        return (
+            <SmartConfirm
+                {...vaultConfirmation}
+                requiresConfirmation
+                action="read vault secret keys"
+                message="Read vault secret keys?"
+            />
+        );
+
+    }
+
+    if (pending) {
+
+        const check = checkConfigPolicy('user', activeConfig, 'secret:write');
+
+        return (
+            <ProtectedConfirm
+                configName={activeConfigName}
+                confirmPhrase={check.confirmationPhrase ?? confirmationPhraseFor(activeConfigName)}
+                action={`save secret "${pending.key}"`}
+                onConfirm={() => {
+
+                    void handleSubmit(pending.key, pending.value, pending.fingerprint);
+
+                }}
+                onCancel={() => setPending(null)}
+            />
+        );
+
+    }
+
 
     // Title based on mode
     const title = secretKey

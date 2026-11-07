@@ -32,7 +32,7 @@ A [config](/guide/environments/configs) uses the stage with its name. The stage 
 
 - is created by the TUI from `defaults` if it does not exist yet
 - cannot be deleted, because the stage is `locked`
-- resolves to at most `operator` for you and `viewer` for agents, because the stage is `protected`
+- has each permission capped by the original `operator` matrix for you and `viewer` matrix for agents, because the stage is `protected`
 - shows `PAYMENT_GATEWAY_KEY` as missing in the TUI until someone sets it
 
 From the SDK, `createContext({ stage: 'prod' })` picks a stage for a config with another name.
@@ -49,14 +49,14 @@ From then on, the stored config holds the values. Editing `defaults` later does 
 ## Which value wins?
 
 
-Each source overrides the one above it, then a protected stage caps `access`:
+Each source overrides the one above it; policy checks then apply the protected-stage ceiling:
 
 ```mermaid
 flowchart TD
     D["built-in defaults"] --> C["stored config<br/>state.enc"]
     C --> E["NOORM_* variables"]
     E --> P{"stage has<br/>protected: true?"}
-    P -->|yes| K["cap access at<br/>user operator<br/>agent viewer"]
+    P -->|yes| K["cap each permission<br/>at original operator / viewer"]
     P -->|no| R["effective config"]
     K --> R
 ```
@@ -76,14 +76,9 @@ flowchart TD
 ### What does `protected: true` cap?
 
 
-It lowers each channel to the ceiling and leaves stricter values alone. The cap applies on every resolve, so editing stored state does not raise it.
+The cap applies to each effective permission at policy-check time, without changing the assigned role name. It uses the original built-in `operator` matrix for users and `viewer` matrix for agents, not their project overrides. For each cell, the stricter result wins: `deny` is stricter than `confirm`, which is stricter than `allow`. Custom roles and built-in overrides cannot relax this ceiling; stricter project policy remains in effect. `agent: false` still hides the config.
 
-| Config sets | Resolves to |
-|---|---|
-| `user: admin` | `operator` |
-| `user: viewer` | `viewer` |
-| `agent: admin` or `agent: operator` | `viewer` |
-| `agent: false` | `false` (hidden) |
+For example, even if a project grants an agent `run:build: allow`, a protected stage caps it at the original viewer cell, `deny`. A user's `run:build: allow` is capped at the original operator cell, `confirm`.
 
 
 ## How do I require a secret?
@@ -116,7 +111,7 @@ For an optional secret, probe first with `{% if ('PAYMENT_GATEWAY_KEY' in $.secr
 | No config appears for a stage | The stage sets no `defaults.dialect`, or this machine had no identity when `noorm ui` opened | Add `dialect` under `defaults`, or set up an identity, then reopen `noorm ui` |
 | A database password is in git history | `defaults.password` sits in the committed `settings.yml` | Leave `password` out of `defaults`. Set it on each config in `noorm ui` |
 | `Config "prod" is linked to locked stage "prod" and cannot be deleted` | The stage has `locked: true` | Remove `locked` from the stage in `settings.yml` |
-| A config set to `admin` behaves as `operator` | The stage is `protected` | Intended. Put the config on an unprotected stage |
+| A permissive role is denied or requires confirmation | The stage is `protected` and caps each permission | Inspect the original operator/user and viewer/agent cells; use an unprotected stage only when appropriate |
 
 
 ## Next

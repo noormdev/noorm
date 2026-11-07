@@ -78,7 +78,7 @@ stages:
         locked: true         # Configs from this stage cannot be deleted
         defaults:
             dialect: postgres
-            protected: true  # Access ceiling: clamps resolved access to at most operator/viewer
+            protected: true  # Per-permission ceiling from original operator/user and viewer/agent matrices
             isTest: false
         secrets:
             - key: DB_PASSWORD
@@ -158,6 +158,24 @@ Use bare, unprefixed segment names. Nested paths (`06_seeds/cron`) are supported
 | `sql` | `string` | `./db/sql` | Schema SQL directory |
 | `changes` | `string` | `./db/changes` | Change directory |
 
+### `access.roles`
+
+Define role policy in project settings; assign role names to each config's `access.user` and `access.agent` in the TUI or imported config.
+
+```yaml
+access:
+    roles:
+        operator:
+            permissions:
+                sql:write: confirm
+        deployer:
+            extends: operator
+            permissions:
+                run:build: allow
+```
+
+Built-in overrides retain unspecified defaults. Custom roles inherit their parent's effective policy, including overrides; without `extends`, unspecified permissions deny. Unknown permissions, values, parents and inheritance cycles are rejected. Unknown assigned roles fail closed. Agent CLI calls cannot self-confirm, even with `--yes` or `NOORM_YES`; MCP may mediate a human approval. Denies cannot be approved.
+
 ### `rules[]`
 
 | Field | Type | Description |
@@ -186,7 +204,7 @@ All conditions within a rule are AND'd — every specified field must match.
 | `defaults.password` | `string?` | Password |
 | `defaults.ssl` | `boolean?` | Enable SSL |
 | `defaults.isTest` | `boolean?` | Test flag (if `true`, cannot be overridden to `false`) |
-| `defaults.protected` | `boolean?` | If `true`, acts as an access ceiling: resolved config `access` is clamped to at most `{ user: 'operator', agent: 'viewer' }` |
+| `defaults.protected` | `boolean?` | Caps each effective permission by the original operator matrix for users or viewer matrix for agents, without changing role names |
 | `secrets[]` | array | Secrets required for this stage |
 
 ### `secrets[]` (stage or universal)
@@ -237,8 +255,8 @@ interface Config {
     type: 'local' | 'remote';      // Connection type (default: 'local')
     isTest: boolean;                // Test database flag (default: false)
     access: {                       // Per-channel access roles (replaces the legacy `protected` boolean)
-        user: 'viewer' | 'operator' | 'admin';           // CLI/TUI/SDK role (default: 'admin')
-        agent: 'viewer' | 'operator' | 'admin' | false;    // AI agent role (MCP and CLI); `false` hides the config from agents (default: 'viewer')
+        user: string;             // Built-in or project role (default: 'admin')
+        agent: string | false;    // Built-in or project role; false hides it from agents (default: 'viewer')
     };
     connection: {
         dialect: 'postgres' | 'mysql' | 'sqlite' | 'mssql';
@@ -265,9 +283,9 @@ interface Config {
 
 ## Stage Constraints
 
-`defaults.isTest: true` cannot be overridden to `false` for configs created from that stage. `defaults.protected: true` works differently: it is an access **ceiling** applied at config resolution — a config linked to that stage gets its resolved `access` clamped to at most `{ user: 'operator', agent: 'viewer' }`, no matter what `access` the config itself declares. This enforces safety invariants — a production stage stays guarded, a test stage stays flagged as test.
+`defaults.isTest: true` cannot be overridden to `false` for configs created from that stage. `defaults.protected: true` instead caps each effective permission at policy-check time using the original operator matrix for users and viewer matrix for agents. The stricter cell wins (`deny` < `confirm` < `allow`); overrides cannot raise the ceiling and assigned role names do not change.
 
-See `docs/spec/config-access-roles.md` for the full per-channel access model (`viewer`/`operator`/`admin` roles, the permission matrix, and MCP's `access.agent: false` invisibility).
+See `docs/spec/config-access-roles.md` for the full per-channel access model and MCP's `access.agent: false` invisibility.
 
 ## Minimal Settings Example
 

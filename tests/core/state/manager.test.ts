@@ -381,10 +381,8 @@ describe('state: manager', () => {
 
         });
 
-        it('should repair a malformed access found at the current schema version', async () => {
+        it('rejects malformed explicit access without rewriting state', async () => {
 
-            // `{}` is truthy, so the `if (!config.access)` guard skipped it
-            // and every later command failed zod validation instead.
             const statePath = state.getStatePath();
 
             writeCurrentState(statePath, testPrivateKey, {
@@ -397,16 +395,9 @@ describe('state: manager', () => {
                 },
             });
 
-            await state.load();
-
-            expect(state.getConfig('broken')?.access).toEqual({ user: 'viewer', agent: 'viewer' });
-
-            const raw = readFileSync(statePath, 'utf8');
-            const decrypted = JSON.parse(
-                decrypt(JSON.parse(raw) as EncryptedPayload, testPrivateKey),
-            ) as { configs: Record<string, Record<string, unknown>> };
-
-            expect(decrypted.configs['broken']?.['access']).toEqual({ user: 'viewer', agent: 'viewer' });
+            const original = readFileSync(statePath, 'utf8');
+            await expect(state.load()).rejects.toThrow('Invalid config access');
+            expect(readFileSync(statePath, 'utf8')).toBe(original);
 
         });
 
@@ -475,6 +466,32 @@ describe('state: manager', () => {
 
             const retrieved = state.getConfig('dev');
             expect(retrieved).toEqual(config);
+
+        });
+
+        it('preserves custom roles across encrypted reload and listings', async () => {
+
+            const access = { user: 'auditor', agent: 'automation' };
+            await state.setConfig('custom', createTestConfig('custom', { access }));
+
+            const reader = new StateManager(tempDir, {
+                stateDir: '.test-state',
+                stateFile: 'state.enc',
+                privateKey: testPrivateKey,
+            });
+            await reader.load();
+
+            expect(reader.getConfig('custom')?.access).toEqual(access);
+            expect(reader.listConfigs().find((config) => config.name === 'custom')?.access).toEqual(access);
+
+        });
+
+        it('rejects malformed explicit access before saving a config', async () => {
+
+            const config = createTestConfig('invalid');
+            const invalid = { ...config, access: {} } as unknown as typeof config;
+            await expect(state.setConfig('invalid', invalid)).rejects.toThrow('Invalid config access');
+            expect(state.getConfig('invalid')).toBeNull();
 
         });
 

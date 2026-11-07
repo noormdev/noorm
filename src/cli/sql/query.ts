@@ -7,9 +7,9 @@ import { defineCommand } from 'citty';
 import { attempt } from '@logosdx/utils';
 import type { Kysely } from 'kysely';
 
-import { resolveChannel } from '../../core/policy/index.js';
-import { executeRawSql } from '../../core/sql-terminal/executor.js';
-import { withContext, outputError, outputResult, sharedArgs } from '../_utils.js';
+import { checkConfigPolicy, resolveChannel, withPolicyConfirmation } from '../../core/policy/index.js';
+import { executeRawSql, sqlPermissionFor } from '../../core/sql-terminal/executor.js';
+import { isYesMode, withContext, outputError, outputResult, sharedArgs } from '../_utils.js';
 import { EXIT } from '../_exit.js';
 
 const sqlCommand = defineCommand({
@@ -21,6 +21,7 @@ const sqlCommand = defineCommand({
         query: { type: 'positional', description: 'SQL query to execute', required: false },
         file: { type: 'string', description: 'Read SQL from a file', alias: 'f' },
         config: sharedArgs.config,
+        yes: sharedArgs.yes,
         json: sharedArgs.json,
     },
     async run({ args }) {
@@ -51,11 +52,29 @@ const sqlCommand = defineCommand({
 
         const [result, error] = await withContext({
             args,
-            fn: async (ctx) => executeRawSql(ctx.kysely as unknown as Kysely<unknown>, query!, ctx.noorm.config.name, {
-                access: ctx.noorm.config.access,
-                channel: resolveChannel(),
-                dialect: ctx.dialect,
-            }),
+            fn: async (ctx) => {
+
+                const config = ctx.noorm.config;
+                const channel = resolveChannel();
+                const permission = sqlPermissionFor(query!, ctx.dialect);
+                const check = checkConfigPolicy(channel, config, permission);
+                if (!check.allowed) throw new Error(check.blockedReason ?? `SQL is not allowed on config "${config.name}".`);
+                if (check.requiresConfirmation && !isYesMode(args)) {
+
+                    throw new Error(`SQL requires confirmation (${check.confirmationPhrase}). Pass --yes to confirm.`);
+
+                }
+                const execute = () => executeRawSql(ctx.kysely as unknown as Kysely<unknown>, query!, config.name, {
+                    access: config.access,
+                    channel,
+                    dialect: ctx.dialect,
+                });
+
+                return check.requiresConfirmation
+                    ? withPolicyConfirmation(config, [permission], execute)
+                    : execute();
+
+            },
         });
 
         if (error) process.exit(1);

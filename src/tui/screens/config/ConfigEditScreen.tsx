@@ -20,10 +20,10 @@ import type { FormValues, FormField } from '../../components/index.js';
 import type { Dialect } from '../../../core/connection/types.js';
 
 import { useRouter } from '../../router.js';
-import { useAppContext } from '../../app-context.js';
+import { useAppContext, useSettings } from '../../app-context.js';
 import { Panel, Form, useToast, MissingParamPanel, NotFoundPanel } from '../../components/index.js';
 import { testConnection } from '../../../core/connection/factory.js';
-import { SettingsProvider } from '../../../core/config/resolver.js';
+import { SettingsProvider, validateAccessRoles } from '../../../core/config/resolver.js';
 import { useAbortableTask } from '../../hooks/index.js';
 import {
     getErrorMessage,
@@ -32,8 +32,7 @@ import {
     validatePort,
     buildConnectionConfig,
     buildAccessFromValues,
-    USER_ROLE_OPTIONS,
-    AGENT_ROLE_OPTIONS,
+    getRoleOptions,
 } from '../../utils/index.js';
 
 /**
@@ -43,6 +42,7 @@ export function ConfigEditScreen({ params }: ScreenProps): ReactElement {
 
     const { back } = useRouter();
     const { stateManager, settingsManager, refresh } = useAppContext();
+    const { settings } = useSettings();
     const { showToast } = useToast();
     // useWindowSize, not useStdout: stdout.rows mutates on resize without asking
     // React for anything, so formHeight below would stay frozen at mount size.
@@ -88,6 +88,7 @@ export function ConfigEditScreen({ params }: ScreenProps): ReactElement {
         if (!config) return [];
 
         const access = config.access;
+        const roleOptions = getRoleOptions(settings?.access?.roles);
 
         return [
             {
@@ -144,7 +145,7 @@ export function ConfigEditScreen({ params }: ScreenProps): ReactElement {
                 label: 'User Role',
                 hint: '(CLI/TUI access)',
                 type: 'select',
-                options: USER_ROLE_OPTIONS,
+                options: roleOptions.user,
                 defaultValue: access.user,
             },
             {
@@ -152,8 +153,8 @@ export function ConfigEditScreen({ params }: ScreenProps): ReactElement {
                 label: 'Agent Role',
                 hint: '(MCP/CLI access)',
                 type: 'select',
-                options: AGENT_ROLE_OPTIONS,
-                defaultValue: access.agent === false ? 'off' : access.agent,
+                options: roleOptions.agent,
+                defaultValue: access.agent === false ? 'off' : `role:${access.agent}`,
             },
             {
                 key: 'isTest',
@@ -163,7 +164,7 @@ export function ConfigEditScreen({ params }: ScreenProps): ReactElement {
             },
         ];
 
-    }, [config]);
+    }, [config, settings]);
 
     // Handle form submission
     const handleSubmit = useCallback(
@@ -228,6 +229,10 @@ export function ConfigEditScreen({ params }: ScreenProps): ReactElement {
 
             const [_, err] = await attempt(async () => {
 
+                if (!settings) throw new Error('Settings are not available');
+                validateAccessRoles(updatedConfig.access, settings.access?.roles);
+
+
                 // If name changed, delete old and create new
                 if (newName !== configName) {
 
@@ -259,7 +264,7 @@ export function ConfigEditScreen({ params }: ScreenProps): ReactElement {
             back();
 
         },
-        [stateManager, config, configName, settingsProvider, refresh, showToast, back, task],
+        [stateManager, config, configName, settings, settingsProvider, refresh, showToast, back, task],
     );
 
     // Escape while busy stops the operation instead of walking away from it.
