@@ -1,4 +1,4 @@
-<ignatius-index scope="root" path="." count="5" depth="0" digest="sha256:81f846f53448b4b549c00048dff39281a18fcc82daae56b9ce97b03755f3eb1b">
+<ignatius-index scope="root" path="." count="5" depth="0" digest="sha256:12a31ef9b7ad6babdb406064b62be8619259ce58d1d1fa5e01ea8879cabdecff">
 
 Existing database bookkeeping plus proposed SQL pipeline tracking. Existing tables are reconstructed from schema migrations; pipeline tables are a proposal, not implemented DDL.
 

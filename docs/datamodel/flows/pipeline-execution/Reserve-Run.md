@@ -1,7 +1,7 @@
 ---
 process: Reserve Run
 number: 2
-description: Acquire the configuration lock and persist the intended run and step audit before execution.
+description: Acquire the pipeline-scoped lock and persist the intended run and step audit before execution.
 inputs:
   - from: cache:prepared-invocations
     label: prepared invocation
@@ -74,6 +74,6 @@ examples:
         - { slug: refresh-reporting, config_name: dev, status: failed, errors: [failed to persist intended audit] }
 ---
 
-Inspect [[lock]] for the selected configuration and acquire its unique configuration-scoped lock before persisting intent. A lock conflict returns a rejection without creating any history. On successful acquisition, persist [[change]], [[executions]], [[pipeline_run]], and [[pipeline_step]] as a coherent bookkeeping transaction outside the workflow transaction. The run shares the change ID; every ordered step has a distinct execution record. Publish [[active-runs]] only after this intent is durable. This cache is ephemeral, not a database table or a resume checkpoint.
+Inspect [[lock]] for the selected configuration and acquire a lock scoped to this config and pipeline, so an unrelated application pipeline can run at the same time. The existing table's unique configuration scope is a proposed extension, not current schema. A lock conflict returns a rejection without creating any history. On successful acquisition, persist [[change]], [[executions]], [[pipeline_run]], and [[pipeline_step]] as a coherent bookkeeping transaction outside the workflow transaction. The run shares the change ID; every ordered step has a distinct execution record. Publish [[active-runs]] only after this intent is durable. This cache is ephemeral, not a database table or a resume checkpoint.
 
 If intent persistence fails, report the audit error and release the owned lock where possible; do not start workflow SQL. Lock and audit failures must not be represented as a successful reservation. The pending 1044 records above are illustrative lifecycle transformations of the model's final 1044 examples, not claims about historical snapshots; lock 10 and SQL are synthetic. Checksums are abbreviated to eight characters.

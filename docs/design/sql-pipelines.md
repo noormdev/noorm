@@ -2,7 +2,9 @@
 
 ## Problem
 
-A pipeline is a named, repeatable SQL workflow that an operator or application invokes against one database. It packages backfills, reconciliations, and refreshes of derived data without treating them as schema migrations.
+A pipeline is a named, repeatable SQL workflow that an operator or application invokes against one database. It packages operational SQL that belongs with the application code: closing invoices at month end, balancing accounts, refreshing cache and aggregate tables, or moving staged API data through temporary tables into the data model. These are sequential data operations, not schema migrations and not warehouse transformation graphs.
+
+The application is a first-class caller. A button click or scheduled job can run a pipeline through the SDK, so invocation latency, parameters, duplicate requests, and progress matter as much as CLI ergonomics.
 
 **Working design, not an implementation contract.** The behavior and data model below capture the current discussion. API shapes and unresolved choices remain proposals. The earlier [implementation spec](../spec/sql-pipelines.md) predates the linked-history model and sequence-based step key; it must be reconciled before implementation. This document does not approve that spec or start implementation.
 
@@ -25,17 +27,17 @@ steps:
     sql: publish.sql
 ```
 
-Pipeline folders have no execution order. Within the selected pipeline, declaration order is execution order. The invocation runs collect, summarize, and publish sequentially, stopping at the first failure. Another invocation starts again at collect.
+Pipeline folders have no execution order. Within the selected pipeline, a manifest declares either a linear sequence or explicit step dependencies. The example is linear, so it runs collect, summarize, and publish sequentially, stopping at the first failure. Another invocation starts again at collect.
 
 ## Goals / Non-goals
 
 | In scope | Outside the current design |
 |---|---|
 | Named SQL workflows on one resolved database | Cross-database connections and external data movement |
-| Explicit sequential steps and fresh invocations | DAGs, parallel steps, automatic retries, and resume |
+| Linear or dependency-ordered steps, with bounded parallelism and fresh invocations | Scheduling, automatic retries, and resume |
 | Pipeline-wide, per-step, or unmanaged transactions | Generic undo after commit or migration-style revert scripts |
-| Pipeline tracking linked to general operation history | A database registry of pipeline definitions or a scheduler |
-| CLI invocation and exploration of SDK usage | Committed SDK signatures, runtime-input syntax, TUI or MCP surfaces |
+| Pipeline tracking linked to general operation history | A database registry of pipeline definitions |
+| CLI invocation, and SDK invocation from application code | Committed SDK signatures, runtime-input syntax, TUI or MCP surfaces |
 
 Single database means one resolved database target, not necessarily one physical connection for execution, audit, locks, and monitoring. Execution requires session affinity; auxiliary connections must still target that database.
 
@@ -82,7 +84,11 @@ db/
 |---|---|
 | Location | `paths.pipelines`, proposed default `./db/pipelines`, follows existing settings and environment resolution |
 | Selection | One slug identifies one folder containing `pipeline.yml`; no dates, numeric prefixes, next, or fast-forward |
-| Step order | The array order supplies the one-based `step_no`; filenames do not order steps |
+| Step identity | The array position supplies the one-based `step_no`; filenames never order steps |
+| Ordering mode | No `needs` key anywhere means linear. Any `needs` key means graph. A manifest that mixes the two is rejected |
+| Dependencies | Graph steps name prerequisites with `needs`; `needs: []` declares a root |
+| Parallelism | Independent ready steps may run together, bounded by a configurable concurrency cap |
+| Graph validation | Duplicate ids, unknown targets, self-dependencies, and cycles all fail preflight |
 | Declared files | Only referenced `.sql` and `.sql.tmpl` files execute; unlisted files are ignored |
 | Step label | Manifest `id` supplies the readable `pipeline_step.name`; it is unique within the run, not the relational identity |
 | Repeated files | Different declarations may reference the same path; each executes at its own step number |
@@ -92,6 +98,47 @@ db/
 
 Preparing every template first means rendering a later step cannot depend on mutations from an earlier step. Template helpers are trusted project code; preparing a dry run does not sandbox them.
 
+### Step ordering
+
+Two modes, never mixed. A manifest with no `needs` key is linear: the array is the execution order, exactly as declared. A manifest where any step declares `needs` is a graph: every step must declare its prerequisites, and the array position becomes declaration identity only.
+
+```yaml
+description: Load staged ERP data
+transaction: step
+steps:
+  - id: stage-api
+    sql: stage-api.sql
+    needs: []
+
+  - id: clean-accounts
+    sql: clean-accounts.sql
+    needs: [stage-api]
+
+  - id: clean-invoices
+    sql: clean-invoices.sql
+    needs: [stage-api]
+
+  - id: aggregate
+    sql: aggregate.sql
+    needs: [clean-accounts, clean-invoices]
+```
+
+In graph mode, the two cleaning steps run concurrently after staging, and aggregate waits for both.
+
+```mermaid
+flowchart TD
+    A["stage-api"] --> B["clean-accounts"]
+    A --> C["clean-invoices"]
+    B --> D["aggregate"]
+    C --> D
+```
+
+Mixed manifests are rejected because an implicit "depends on the step above" edge silently under-approximates fan-in: a step after a parallel branch would run while its sibling still writes. Requiring `needs` on every graph step removes the ambiguity. Linear manifests keep zero ceremony and unchanged behavior.
+
+In graph mode, `step_no` remains the declaration identity, so history stays stable when the graph is edited, but it no longer promises execution order. Readers take order from `needs`. Reordering the array changes `step_no` without changing execution, which is acceptable for an audit record tied to one manifest snapshot, and confusing enough to discourage gratuitous reordering.
+
+Failure in a graph follows the run boundary, not a branch: stop scheduling new steps, let in-flight steps finish, then mark every transitive dependent `skipped`. Independent work that already committed stays committed, so the run reports `partial` under `step` or `none`.
+
 ### Transaction boundaries
 
 | Policy | Boundary | If the second step fails |
@@ -99,6 +146,16 @@ Preparing every template first means rendering a later step cannot depend on mut
 | `pipeline` | One transaction spans all steps | Roll back the transactional work of the first and second steps; do not start the third |
 | `step` | One transaction per declaration | Keep the first step committed; roll back the second; do not start the third |
 | `none` | Noorm adds no workflow transaction | Previously committed effects remain; the failing step may leave partial effects |
+
+Concurrency intersects the policy, because a transaction is a session and a session runs one statement at a time.
+
+| Policy | Concurrent steps in graph mode |
+|---|---|
+| `pipeline` | Not allowed. One transaction spans the whole run, so preflight rejects a graph whose ready steps can overlap |
+| `step` | Allowed. Each ready step gets its own transaction and its own connection |
+| `none` | Allowed. Parallelism is bounded by the concurrency cap and whatever the database tolerates |
+
+The cap defaults low, around four, and must not exceed the resolved pool size. SQLite serializes writers, so parallelism there buys almost nothing and risks busy timeouts; treat that cap as effectively one for write-heavy pipelines. `pipeline` plus a concurrent graph is a definition error, not a silent downgrade to sequential.
 
 `step` is the current default. Under managed policies, every fragment of a step must use the relevant transaction executor. Under `none`, keep workflow SQL on one pinned session so session-local objects remain accessible. Session affinity does not extend a step-local transaction or preserve objects that the database drops on commit.
 
@@ -117,7 +174,7 @@ Existing change transactions are PostgreSQL-only in `src/core/change/executor.ts
 
 ### Data model and identity
 
-The pipeline run extends a general operation; the step's sequence number supplies its identity within that run.
+The pipeline run extends a general operation; the step's sequence number supplies its identity within that run. In graph mode that number is declaration identity, not execution order.
 
 ```mermaid
 erDiagram
@@ -161,7 +218,7 @@ The model also includes proposed data-flow diagrams for [pipeline execution](../
 |---|---|
 | `pipeline_run.id = change.id` | The operation ID is the pipeline run ID; there is no second generated identity |
 | Parent `change_type = 'pipeline'` | Pipeline invocations appear in general history, without becoming migrations or ordinary checksum-gated runs |
-| Step PK `(pipeline_run_id, step_no)` | Position is identity. There is no surrogate step ID or separate position column |
+| Step PK `(pipeline_run_id, step_no)` | Declaration position is identity. There is no surrogate step ID. Execution order comes from `needs` in graph mode |
 | Unique `execution_id` | Each intended pipeline step links to one distinct file-execution record, including steps never reached |
 | Unique `(pipeline_run_id, name)` | Labels remain unambiguous without replacing sequence identity |
 | `executions.change_id = pipeline_run_id` | The linked file execution must belong to the operation that the pipeline extends |
@@ -211,6 +268,21 @@ A crash can leave intent or incomplete finalization in history. Do not infer com
 
 Preflight failure, policy denial, lock contention, and dry-run do not create pipeline-run records in the current proposal. They remain caller-visible errors or previews. This is a policy choice, not an inability to audit rejected invocations.
 
+### Application-triggered requirements
+
+An application caller raises requirements that a CLI-only feature avoids. These are requirements, not settled syntax.
+
+| Requirement | Why it matters | Current direction |
+|---|---|---|
+| Runtime inputs | Month close needs a period; tenant work needs an id | Typed manifest inputs bound into the existing template context. Syntax open |
+| Idempotent requests | A double-click or retried request must not close the same period twice | Either an idempotency key recorded per config and slug, or SQL guards plus reported row counts. Choose one |
+| Result detail | The UI shows outcomes, not an exit code | Per-step affected row counts and optional domain results. Capture mechanism open |
+| Caller concurrency | Two users can trigger the same operation together | Per-pipeline lock. The second caller gets a busy result, never a silently queued second run |
+| Progress | An ETL pipeline outlives an HTTP request | SDK progress events or run polling. Decide before promising live UI feedback |
+| Caller identity | The application user is not the database operator | Existing config access policy applies. Per-caller attribution is an open question |
+
+The SDK is the primary invocation surface for this use case; the CLI remains the operator and CI path. Both call the same executor, so input validation, locking, and audit behavior cannot diverge by entry point.
+
 ### Caller-facing APIs
 
 These APIs are proposed, not available commands or SDK methods.
@@ -221,7 +293,7 @@ These APIs are proposed, not available commands or SDK methods.
 | `noorm pipeline refresh-reporting --dry-run` | Prepare and report ordered steps without workflow SQL, run history, or an execution lock |
 | `noorm pipeline refresh-reporting --json` | Return structured identity, ordered results, outcomes, and errors |
 
-Use the existing `run:dir` authorization semantics in the core entry point, so direct callers do not bypass policy. Coordinate real invocations through the shared config lock. Existing run commands are not all lock-aware, so this does not serialize arbitrary SQL activity. Long-running lock renewal and ownership behavior need review.
+Use the existing `run:dir` authorization semantics in the core entry point, so direct callers do not bypass policy. Coordinate real invocations with a lock scoped to the config and pipeline, not the config alone: an app-triggered month close must not block a cache refresh in the same database. The current lock table enforces `UNIQUE(config_name)`, so per-pipeline scope requires extending the internal lock model; that change belongs in the same schema migration as pipeline tracking. Existing run commands are not all lock-aware, so this does not serialize arbitrary SQL activity. Long-running lease renewal and ownership behavior need review.
 
 Proposed SDK shape, following the existing `ctx.noorm` namespaces:
 
@@ -258,8 +330,13 @@ The model has illustrative coverage, not runtime proof: all three policies cross
 
 | Question | Current direction and decision still needed |
 |---|---|
-| Runtime parameters | Existing template inputs suffice for the draft. Decide whether typed manifest inputs and `--input` belong here |
-| SDK and history APIs | The namespace and query examples are sketches. Decide public names, errors, result shape, and initial scope |
+| Runtime parameters | App-triggered pipelines need typed inputs such as a closing period or tenant. Decide the manifest and SDK syntax, validation, and whether values are recorded in history |
+| SDK and history APIs | The SDK is now a primary caller. Decide public names, errors, result shape, progress delivery, and initial scope |
+| Dependency snapshot | A manifest checksum identifies the graph, but history cannot reconstruct `needs` after the fact. Decide whether to snapshot dependencies per run or rely on checksum plus version control |
+| Lock scope | Per-pipeline locking needs a scope beyond `UNIQUE(config_name)`. Decide the internal lock-table change or a separate mechanism |
+| Idempotency | Choose between a recorded idempotency key and SQL guards with reported row counts. Both must be safe under retries |
+| Parallelism defaults | Decide the default cap, its relation to pool size, and per-dialect behavior, especially SQLite |
+| Result payload | Define how steps report affected row counts or domain results without exposing raw SQL or secrets |
 | State vocabulary | Examples distinguish execution status and persistence outcome. Finalize domains and meanings, especially terminal versus unresolved unknown states |
 | Live progress versus durable audit | Buffering avoids SQLite contention, but pending durable rows may lag live progress. Decide what history promises during an active transaction |
 | Managed SQL support | Specify the direct rejection set and dialect limits without promising a general SQL safety analyzer |
