@@ -28,7 +28,20 @@ const users = await ctx.kysely
 await ctx.disconnect();
 ```
 
-Install `kysely` and your dialect driver with the SDK. Use the [installation commands](https://github.com/noormdev/noorm/blob/next/packages/sdk/README.md#install); pool dependencies are bundled.
+Install the SDK, required `kysely` peer, and the driver for your dialect. For PostgreSQL:
+
+```bash
+npm install @noormdev/sdk kysely pg
+```
+
+| Dialect | Driver |
+|---|---|
+| `postgres` | `pg` |
+| `mysql` | `mysql2` |
+| `mssql` | `tedious` |
+| `sqlite` | `better-sqlite3` |
+
+Replace `pg` in the command with your driver. Tarn is bundled for MySQL and MSSQL pooling; do not install it separately. Requires Node 22.13 or newer.
 
 ## createContext
 

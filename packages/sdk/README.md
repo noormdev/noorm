@@ -22,9 +22,7 @@ Install your dialect's driver alongside `@noormdev/sdk` and `kysely`:
 
 Kysely is a required peer. Dialect drivers are optional peers, so install only the one you use. Tarn is bundled inside the SDK for MySQL's asynchronous credential pool and MSSQL pooling; consumers do not install `tarn`.
 
-The SDK ships one ESM build and requires Node 22.13 or newer. CommonJS can load it with `const { createContext } = require('@noormdev/sdk')` when the entire eagerly loaded module graph is synchronous (no top-level `await`); asynchronous `import('@noormdev/sdk')` is also available.
-
-Jest has a separate loader: Jest 30.4.2 may still require `--experimental-vm-modules` and ESM-compatible transforms. See the [Jest 30 ESM guide](https://jestjs.io/docs/30.0/ecmascript-modules); plain Node loading does not establish Jest compatibility.
+Requires Node 22.13 or newer. In Node CommonJS, load the SDK with `const { createContext } = require('@noormdev/sdk')`.
 
 
 ## Usage

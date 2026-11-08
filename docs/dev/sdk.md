@@ -13,13 +13,20 @@ The noorm SDK provides programmatic access to noorm-managed databases. Use it fo
 
 ## Installation
 
-The SDK is published as a standalone `@noormdev/sdk` package:
+The SDK is published as a standalone `@noormdev/sdk` package and needs Node 22.13 or newer, `kysely`, and the driver for your dialect:
 
 ```bash
 pnpm add @noormdev/sdk kysely pg
 ```
 
-Choose the driver from the [SDK installation contract](https://github.com/noormdev/noorm/blob/next/packages/sdk/README.md#install).
+| Dialect | Driver |
+|---|---|
+| PostgreSQL | `pg` |
+| MySQL | `mysql2` |
+| SQLite | `better-sqlite3` |
+| SQL Server | `tedious` |
+
+Drivers are optional peer dependencies, so install only the one you use. Tarn is bundled and does not need a separate install.
 
 
 ## Quick Start

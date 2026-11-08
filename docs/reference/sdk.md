@@ -12,11 +12,18 @@ Query a noorm-managed database from TypeScript, and run builds, changes, locks, 
 npm install @noormdev/sdk kysely pg
 ```
 
-Install `kysely` and your dialect's driver as peers. The SDK bundles Tarn for its MySQL and MSSQL pools; consumers do not install it separately. See the [installation contract](https://github.com/noormdev/noorm/blob/next/packages/sdk/README.md#install) for the driver commands. Node 22.13 or newer.
+Install `kysely` and your dialect's driver as peers:
 
-The SDK ships one ESM build. On supported Node versions, CommonJS can load it with `const { createContext } = require('@noormdev/sdk')` provided the entire eagerly loaded module graph is synchronous (no top-level `await`). Alternatively, use `await import('@noormdev/sdk')` from CommonJS.
+| Dialect | Driver | Install |
+|---|---|---|
+| PostgreSQL (`postgres`) | `pg` | `npm install @noormdev/sdk kysely pg` |
+| MySQL (`mysql`) | `mysql2` | `npm install @noormdev/sdk kysely mysql2` |
+| SQL Server (`mssql`) | `tedious` | `npm install @noormdev/sdk kysely tedious` |
+| SQLite (`sqlite`) | `better-sqlite3` | `npm install @noormdev/sdk kysely better-sqlite3` |
 
-Jest uses a separate loader: Jest 30.4.2 may still require `--experimental-vm-modules` and ESM-compatible transforms. See the [Jest 30 ESM guide](https://jestjs.io/docs/30.0/ecmascript-modules); successful loading in Node alone does not establish Jest compatibility.
+Kysely is required; install only the driver you use. The SDK bundles Tarn for MySQL and MSSQL pooling, so do not install `tarn` separately.
+
+Requires Node 22.13 or newer. In Node CommonJS, load the SDK with `const { createContext } = require('@noormdev/sdk')`.
 
 ```typescript
 // scripts/open-orders.ts
