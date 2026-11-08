@@ -26,6 +26,8 @@ With no stored config, `createContext()` builds a config named `__env__` from th
 
 Unset variables take defaults: `_HOST` is `localhost`, `_PORT` follows the dialect (`5432`, `3306`, `1433`), and the pool runs from `_POOL_MIN=0` to `_POOL_MAX=10`.
 
+For token-based authentication or different connections in the same process, pass inline fields rather than mutating `process.env`. The [SDK connection reference](/reference/sdk#createcontext-options) covers unsaved connections, runtime callbacks, TLS identity, and pool controls.
+
 
 ## Why split schema delivery from the application?
 
