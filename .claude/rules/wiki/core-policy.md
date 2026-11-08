@@ -5,7 +5,7 @@ paths:
   - "tests/core/policy/**"
 ---
 
-Domain: core-policy. Access-control policy: role×permission matrix, SQL statement classifier, legacy `protected`→`access` migration.
+Domain: core-policy. Config roles, permission decisions, SQL classification, stage role ceilings, and legacy protected-to-access migration.
 
 Map:
   - docs/wiki/core-policy.md
