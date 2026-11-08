@@ -50,7 +50,9 @@ noorm init
 noorm ui
 ```
 
-Adding a config is the one step with no headless equivalent: it needs connection details and a live connection test, so `noorm config add` sends you to the TUI. From there, **[c] Config → [a] Add**, then **[r] Run → [b] Build** to execute your SQL files.
+If your project defines stage defaults, `noorm config create --all` creates one password-free config per stage without prompts. Supply passwords later through the TUI or `NOORM_CONNECTION_PASSWORD` when you connect. See [headless config creation](docs/headless.md#config-create) for single-stage creation and overrides.
+
+For interactive setup, `noorm config add` opens the TUI for connection details and a live connection test. Choose **[c] Config → [a] Add**, then **[r] Run → [b] Build** to execute your SQL files.
 
 With a config in place, everything else runs headlessly:
 

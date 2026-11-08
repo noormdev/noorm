@@ -13,7 +13,7 @@ import { attempt } from '@logosdx/utils';
 import { Kysely, MssqlDialect, sql } from 'kysely';
 import type { ConnectionConfiguration } from 'tedious';
 
-import type { ConnectionConfig, ConnectionResult } from '../types.js';
+import type { ConnectionConfig, ConnectionResult, RuntimeConnectionOptions } from '../types.js';
 import { DEFAULT_PORTS, connectTimeoutFor } from '../defaults.js';
 import { explainMssqlLoginFailure } from '../errors.js';
 import type { MssqlServerError } from '../errors.js';
@@ -195,7 +195,7 @@ function buildTediousConnection(
  * })
  * ```
  */
-export async function createMssqlConnection(config: ConnectionConfig): Promise<ConnectionResult> {
+export async function createMssqlConnection(config: ConnectionConfig, runtime?: RuntimeConnectionOptions): Promise<ConnectionResult> {
 
     // Dynamic import to avoid compile-time dependency. Normalize CJS interop:
     // when bundled (tsup), the module's exports land under `.default`, so a
@@ -219,11 +219,13 @@ export async function createMssqlConnection(config: ConnectionConfig): Promise<C
             },
             tedious: {
                 ...Tedious,
-                connectionFactory: () => {
+                connectionFactory: async () => {
 
                     loginErrors = [];
 
-                    return buildTediousConnection(Tedious, config, loginErrors);
+                    const password = runtime?.password ? await runtime.password() : config.password;
+
+                    return buildTediousConnection(Tedious, { ...config, password }, loginErrors);
 
                 },
             },
@@ -237,7 +239,7 @@ export async function createMssqlConnection(config: ConnectionConfig): Promise<C
 
         await db.destroy();
 
-        throw explainMssqlLoginFailure(loginErrors, connectErr, config);
+        throw runtime?.password ? connectErr : explainMssqlLoginFailure(loginErrors, connectErr, config);
 
     }
 

@@ -59,6 +59,8 @@ export interface StageDefaults {
     user?: string;
     password?: string;
     ssl?: boolean;
+    type?: 'local' | 'remote';
+    access?: ConfigAccess;
     isTest?: boolean;
     /** Settings-stage vocabulary — distinct from the removed `Config.protected`; see docs/spec/config-access-roles.md. */
     protected?: boolean;

@@ -14,7 +14,7 @@ Configs come from five sources, merged in priority order:
 
 | Priority | Source | Purpose |
 |----------|--------|---------|
-| 1 (highest) | CLI flags | One-time overrides |
+| 1 (highest) | Resolver flags / SDK `connection` | One-time overrides |
 | 2 | Environment variables | CI/CD, per-session tweaks |
 | 3 | Stored config | Your saved database configs |
 | 4 | Stage defaults | Team-defined templates |
@@ -53,9 +53,13 @@ interface Config {
         user?: string
         password?: string
         ssl?: boolean | SSLConfig
-        pool?: { min?: number, max?: number }  // Defaults to { min: 0, max: 10 }
-        tlsServerName?: string  // MSSQL only — cert hostname when host is an IP
+        pool?: { min?: number, max?: number, idleTimeoutMillis?: number } // min/max default to 0/10
+        tlsServerName?: string  // PostgreSQL/MSSQL certificate hostname, including IP dial hosts
         connectTimeoutMs?: number  // Per attempt, defaults to 15000
+        statementTimeoutMs?: number // PostgreSQL server-side timeout
+        queryTimeoutMs?: number     // PostgreSQL client-side timeout
+        applicationName?: string    // PostgreSQL session application_name
+        keepAlive?: boolean         // PostgreSQL TCP keepalive
     }
 
     identity?: string         // Override audit identity
@@ -76,11 +80,15 @@ needs it.
 
 ## Environment Variables
 
-Every config property maps to an environment variable using nested naming. Underscores separate nesting levels:
+`getEnvConfig()` delegates to `makeNestedConfig` from `@logosdx/utils`. Underscores separate object levels. All-uppercase segments become lowercase; mixed-case segments retain their spelling, so a schema field such as `connectTimeoutMs` stays within one segment.
 
+```bash
+export NOORM_CONNECTION_connectTimeoutMs=30000
+export NOORM_CONNECTION_SSL_rejectUnauthorized=true
+export NOORM_CONNECTION_POOL_idleTimeoutMillis=10000
 ```
-NOORM_{PATH}_{TO}_{VALUE}  →  { path: { to: { value: '' } } }
-```
+
+These set `connection.connectTimeoutMs`, `connection.ssl.rejectUnauthorized`, and `connection.pool.idleTimeoutMillis`. `NOORM_CONNECTION_CONNECT_TIMEOUT_MS` instead builds nested `connection.connect.timeout.ms`; it does not set a timeout.
 
 **Connection variables:**
 
@@ -95,6 +103,18 @@ NOORM_{PATH}_{TO}_{VALUE}  →  { path: { to: { value: '' } } }
 | `NOORM_CONNECTION_SSL` | `connection.ssl` | Use 'true'/'false' |
 | `NOORM_CONNECTION_POOL_MIN` | `connection.pool.min` | |
 | `NOORM_CONNECTION_POOL_MAX` | `connection.pool.max` | |
+| `NOORM_CONNECTION_FILENAME` | `connection.filename` | SQLite file path |
+| `NOORM_CONNECTION_connectTimeoutMs` | `connection.connectTimeoutMs` | Positive integer, milliseconds per attempt |
+| `NOORM_CONNECTION_tlsServerName` | `connection.tlsServerName` | PostgreSQL/MSSQL certificate identity |
+| `NOORM_CONNECTION_SSL_rejectUnauthorized` | `connection.ssl.rejectUnauthorized` | Boolean |
+| `NOORM_CONNECTION_SSL_CA`, `_CERT`, `_KEY` | `connection.ssl.ca`, `.cert`, `.key` | PEM strings |
+| `NOORM_CONNECTION_POOL_idleTimeoutMillis` | `connection.pool.idleTimeoutMillis` | PostgreSQL, nonnegative integer |
+| `NOORM_CONNECTION_statementTimeoutMs` | `connection.statementTimeoutMs` | PostgreSQL, nonnegative integer |
+| `NOORM_CONNECTION_queryTimeoutMs` | `connection.queryTimeoutMs` | PostgreSQL, nonnegative integer |
+| `NOORM_CONNECTION_applicationName` | `connection.applicationName` | PostgreSQL session name |
+| `NOORM_CONNECTION_keepAlive` | `connection.keepAlive` | PostgreSQL TCP keepalive, boolean |
+
+The native parser converts numeric and boolean values, except keys containing `password`, which retain strings. The config schemas validate the merged result and strip unknown fields. There is no custom spelling map or unsupported-name check. Use either scalar `NOORM_CONNECTION_SSL` or its nested fields; the parser does not provide a conflict-resolution contract for combining them.
 
 **Path variables** (override `settings.yml` paths, not `Config`):
 
@@ -147,23 +167,27 @@ The resolver determines which config to use and merges all sources.
 const config = resolveConfig(state, options)
 ```
 
-Resolution follows this flow:
+The resolver selects a stored name before considering inline or environment-only input. Unknown selected names throw instead of falling back:
 
-1. **Determine config name** from (in order):
-   - `options.name` (explicit)
-   - `NOORM_CONFIG` env var
-   - Active config in state
+Name selection follows `options.name`, then `NOORM_CONFIG`, then the active config in state only when `options.flags.connection` is absent. Inline connection input does not inherit the active config's connection fields, access roles, or `isTest` flag.
 
-2. **If no name found**, check if env vars provide enough to run:
-   - Need at least `NOORM_CONNECTION_DIALECT` and `NOORM_CONNECTION_DATABASE`
-   - If yes, build config from env only (named `__env__`)
-   - If no, return `null`
+```mermaid
+flowchart TD
+    %% source: src/core/config/resolver.ts
+    N{"Name from options or NOORM_CONFIG,<br/>or active without inline connection?"}
+    N -->|yes| S{"Stored config exists?"}
+    S -->|no| X["Throw unknown config"]
+    S -->|yes| M["Merge defaults, stage,<br/>stored, env, flags"]
+    N -->|no| I{"Inline connection or<br/>usable env connection?"}
+    I -->|no| R["Return null"]
+    I -->|yes| E["Merge defaults, stage,<br/>env, flags"]
+    M --> V["parseConfig(),<br/>applyStageCeiling()"]
+    E --> V
+```
 
-3. **Load stored config** by name (throws if not found)
+Inline mode is available through `options.flags.connection`; the SDK maps its `connection` option there. With no selected stored name, the synthetic name defaults to `__inline__` when that object exists and `__env__` otherwise. `NOORM_NAME` can supply the synthetic name without selecting a stored record. Environment-only resolution requires a connection object and a dialect/database supplied by the combined stage and environment layers. Inline input enters schema validation even when incomplete.
 
-4. **Merge sources**: defaults ← stage ← stored ← env ← flags
-
-5. **Validate** the merged result
+`stageFields(defaults, true)` maps flat stage fields into nested `connection` before merging, including the stage password at runtime. Stored values, environment variables, and flags override that layer in order. Stage `type`, `isTest`, and `access` remain top-level; a protected stage caps access after schema validation. An explicit `options.stage` chooses the stage, otherwise the resolver matches the config name.
 
 ```typescript
 // Explicit name
@@ -182,6 +206,47 @@ process.env.NOORM_CONNECTION_DIALECT = 'postgres'
 process.env.NOORM_CONNECTION_DATABASE = 'ci_test'
 resolveConfig(state)  // creates __env__ config
 ```
+
+```typescript
+// Inline-only SDK-style resolution, without a stored config
+resolveConfig(state, {
+    flags: {
+        connection: { dialect: 'sqlite', database: './tmp/review.db' },
+    },
+}) // name: __inline__
+```
+
+For a stage-backed inline connection, start with these defaults:
+
+```yaml
+stages:
+    preview:
+        defaults:
+            dialect: postgres
+            host: stage.example.com
+            user: app
+            isTest: true
+```
+
+With no selected stored name, `NOORM_CONNECTION_HOST=db.example.com` and this resolver input combine stage credentials with an inline database:
+
+```typescript
+const config = resolveConfig(state, {
+    stage: 'preview',
+    settings: new SettingsProvider(settingsManager),
+    flags: { connection: { database: 'orders_review' } },
+})
+```
+
+| Resolved field | Value | Source |
+|---|---|---|
+| `name` | `__inline__` | Synthetic name, assuming `NOORM_NAME` is unset |
+| `connection.dialect`, `connection.user` | `postgres`, `app` | Stage defaults |
+| `connection.host` | `db.example.com` | Environment |
+| `connection.database` | `orders_review` | Inline flags |
+| `isTest` | `true` | Stage default |
+
+Runtime credential callbacks bypass the serializable config schemas. The [SDK reference](/reference/sdk#runtime-credentials) owns their types, lifecycle, errors, and observer contract.
 
 
 ## Validation
@@ -350,12 +415,12 @@ Stage Configs:
 
 This helps track which environments are ready to use and which need secret values configured.
 
-Stage constraints that can't be violated:
+Stage constraints and how noorm checks them:
 
 | Constraint | Behavior |
 |------------|----------|
 | `protected: true` in defaults | Clamps resolved `access` to at most `{ user: 'operator', agent: 'viewer' }` — stricter survives, looser is clamped down (see [Access Roles](#access-roles)) |
-| `isTest: true` in defaults | Cannot set `isTest: false` |
+| `isTest: true` in defaults | A resolved `isTest: false` is reported as a stage-completeness violation; resolution does not force it back to `true` |
 | `locked: true` | Config cannot be deleted |
 
 ```typescript

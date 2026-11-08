@@ -1,6 +1,6 @@
 #!/usr/bin/env zx
 
-import { $, chalk } from 'zx';
+import { $, chalk } from 'zx/core';
 import { readFile, writeFile, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
 
@@ -33,7 +33,9 @@ await $`npx tsup --config tsup.sdk.config.ts`;
 
 // Generate bundled types
 console.log(chalk.yellow('\nGenerating bundled types...'));
-await $`npx dts-bundle-generator src/sdk/index.ts -o packages/sdk/dist/index.d.ts --no-check --external-inlines @logosdx/observer --external-inlines @logosdx/utils --project tsconfig.sdk-types.json`;
+await $`npx dts-bundle-generator src/sdk/index.ts -o packages/sdk/dist/index.d.cts --no-check --external-inlines @logosdx/observer --external-inlines @logosdx/utils --project tsconfig.sdk-types.json`;
+// Both resolution conditions must refer to the same nominal class declarations.
+await writeFile('packages/sdk/dist/index.d.ts', "export * from './index.cjs';\n");
 
 console.log(chalk.green('\nBuild complete!'));
 console.log(chalk.gray('  packages/cli/dist/ - CLI bundle'));

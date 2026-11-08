@@ -20,7 +20,7 @@ export const DialectSchema = z.enum(['postgres', 'mysql', 'sqlite', 'mssql']);
  */
 const RoleSchema = z.enum(['viewer', 'operator', 'admin']);
 
-const AccessSchema = z.object({
+export const AccessSchema = z.object({
     user: RoleSchema,
     agent: z.union([RoleSchema, z.literal(false)]),
 });
@@ -66,6 +66,7 @@ export { PortSchema };
 const PoolSchema = z.object({
     min: z.number().int().min(0).optional(),
     max: z.number().int().min(1).optional(),
+    idleTimeoutMillis: z.number().int().min(0).optional(),
 });
 
 /**
@@ -134,6 +135,10 @@ export const ConnectionSchema = z
         pool: PoolSchema.optional(),
         tlsServerName: z.string().optional(),
         connectTimeoutMs: z.number().int().positive().optional(),
+        statementTimeoutMs: z.number().int().min(0).optional(),
+        queryTimeoutMs: z.number().int().min(0).optional(),
+        applicationName: z.string().optional(),
+        keepAlive: z.boolean().optional(),
     })
     .refine((conn) => conn.dialect === 'sqlite' || conn.host, {
         message: 'Host is required for non-SQLite databases',
@@ -183,6 +188,10 @@ const PartialConnectionSchema = z.object({
     pool: PoolSchema.optional(),
     tlsServerName: z.string().optional(),
     connectTimeoutMs: z.number().int().positive().optional(),
+    statementTimeoutMs: z.number().int().min(0).optional(),
+    queryTimeoutMs: z.number().int().min(0).optional(),
+    applicationName: z.string().optional(),
+    keepAlive: z.boolean().optional(),
 });
 
 /**
