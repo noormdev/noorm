@@ -67,7 +67,37 @@ flowchart TD
 
 The `build` job provisions PostgreSQL 17, MySQL 8.0, and SQL Server 2022, installs dependencies with the frozen lockfile, and runs lint, type checking, and the TypeScript build. It invokes serial tests in separate processes for core/utils/SDK excluding transfer, transfer alone, CLI excluding logger settings, logger settings alone, and integration. This separation preserves the workflow's test isolation around Bun's process-global module mocks.
 
+The workflow records separate reasons for isolation: transfer tests exposed PostgreSQL connection-state corruption with runner image `ubuntu24/20260406.80`, while logger-settings tests encounter init-screen `SettingsManager` mocks that Bun does not restore. Re-registering a module in `afterAll` is not reliable isolation; platform-dependent load order can hide the leaked class locally.
+
+| CI test process | Invocation |
+|---|---|
+| Core, utils, and SDK excluding transfer | `bun test --serial $(find tests/utils tests/core tests/sdk -name '*.test.ts' \| grep -v tests/core/transfer \| sort \| tr '\n' ' ')` |
+| Transfer | `bun test --serial tests/core/transfer` |
+| CLI excluding logger settings | `bun test --serial $(find tests/cli \( -name '*.test.ts' -o -name '*.test.tsx' \) ! -name 'cli-logger-settings.test.ts' \| sort \| tr '\n' ' ')` |
+| CLI logger settings | `bun test --serial tests/cli/cli-logger-settings.test.ts` |
+| Integration | `bun test --serial tests/integration` |
+
+CI uses `ubuntu-24.04` for the build job. CI, documentation, publishing, and manual binary workflows pin Bun `1.4.4`. Local Bun tests preload [`tests/preload.ts`](../../tests/preload.ts), use a `30,000 ms` timeout and [`tests`](../../tests) root, and set concurrency to `1` in [`bunfig.toml`](../../bunfig.toml).
+
+| Database service | Host port | Local storage |
+|---|---|---|
+| PostgreSQL 17 | `15432` | `tmpfs` |
+| MySQL 8.0 | `13306` | `tmpfs` |
+| MSSQL 2022 | `11433` | Not `tmpfs` |
+
+The non-default ports match CI services and avoid collisions with ordinary local installations. Local startup uses `docker compose -f docker-compose.test.yml up -d --wait`.
+
 Example jobs build packages, expose the CLI bundle through a Node wrapper, mint an ephemeral identity, mask its private key, and initialize encrypted state from environment variables. The PostgreSQL todo example creates and resets its database, applies changes, and runs SDK tests with `NOORM_TEST_PREBUILT=1`. The MSSQL example uses `run build` instead of teardown, applies changes, typechecks, and runs its tests. Its schema-bound validators prevent the reset pattern used by the todo job. `cli-e2e` uses SQLite fixtures and asserts success or partial-build exit behavior.
+
+| Example | Coverage and dependencies |
+|---|---|
+| [`examples/todo-db`](../../examples/todo-db) | PostgreSQL soft deletes, JSONB, TVFs, and transactional procedures; depends on the workspace SDK, Kysely, and `pg`. |
+| [`examples/llm-memory-db-mssql`](../../examples/llm-memory-db-mssql) | MSSQL TVPs and schema-bound validator functions; depends on the workspace SDK, Kysely, `tedious`, Tarn, and Zod. |
+| [`examples/llm-memory-db-pg`](../../examples/llm-memory-db-pg) | PostgreSQL memory/task schema and SDK tests; depends on the workspace SDK, Kysely, `pg`, and Zod. It has no corresponding CI example job. |
+
+`NOORM_TEST_PREBUILT=1` tells example SDK tests to use the database state prepared by preceding CLI steps instead of bootstrapping it again. The MSSQL teardown limitation is documented in [`examples/llm-memory-db-mssql/mssql-problems.md`](../../examples/llm-memory-db-mssql/mssql-problems.md).
+
+The example jobs run `noorm ci identity new --json`, mask the resulting private key with `::add-mask::`, and run `noorm ci init --force --json`. No committed identity or encrypted state file is needed.
 
 ### npm and binary distribution
 
@@ -87,6 +117,8 @@ flowchart TD
 
 Changesets keeps CLI and SDK versions in a fixed group. The binary builder embeds the Bun runtime, the CLI entry, and the connection and compute worker entries. Targets cover macOS ARM64/x64, Linux ARM64/x64 with glibc or musl, and Windows x64. It reads the CLI package version and disables compiled dotenv autoloading. Release automation smoke-tests Alpine binaries and uploads executables with SHA-256 checksums.
 
+Publishing selects pushes to `master` touching `.changeset/**`, `packages/*/package.json`, or the publish workflow, and supports manual dispatch. The separate `release-binary.yml` is manual-only and runs the same `bun run build:binary`. Both derive the release tag `@noormdev/cli@<version>` from [`packages/cli/package.json`](../../packages/cli/package.json).
+
 ### Documentation deployment
 
 The docs workflow builds a separate VitePress package and publishes its output to `gh-pages`.
@@ -103,6 +135,8 @@ flowchart TD
 ```
 
 VitePress excludes wiki, spec, design, superpowers, tmp, tapes, models, and parts sources from page compilation. The theme extends `DefaultTheme`, registers Font Awesome and `ModelViewer`, and loads brand and landing CSS. It delays Mermaid rendering until the Geist font-loading wait completes. Images use lazy loading.
+
+`config.mts` owns the navigation/sidebar, static Open Graph/Twitter metadata, and analytics setup. Contributor pages use a separate `/dev/` sidebar and footer link. The home page lives in [`docs/index.md`](../index.md); historical Hero Vue components are not part of the current theme.
 
 ### Recording fixtures
 
@@ -122,6 +156,14 @@ flowchart TD
 
 The sandbox redirects `HOME`, recreates isolated project state, and normally provides a wrapper for the working-tree CLI. The install tape instead runs the public installer inside the sandbox. The default schema comes from [`docs/tapes/demo-project`](../tapes/demo-project); `NOORM_DEMO_SCHEMA=todo-db` selects the todo example.
 
+| Recording source | Operational detail |
+|---|---|
+| [`docs/tapes/demo-project`](../tapes/demo-project) | Recording-only `app_user`, `project`, `task`, and `open_task` schema with tracked changes, separate from executable CI examples. |
+| [`docs/tapes/theme.tape`](../tapes/theme.tape) | Shared Geist Mono, brand palette, and `PlaybackSpeed 2`. Install Geist Mono explicitly; VHS otherwise falls back to a wider font and changes wrapping. Playback speed does not shorten the recording's actual waits. |
+| [`docs/tapes/env-scrub.sh`](../tapes/env-scrub.sh) | Removes `CLAUDE*`, `AI_AGENT`, `CURSOR*`, `AIDER*`, `COPILOT*`, `WARP*`, and `TERM_PROGRAM*` before recording so `noorm info` does not publish the operator's agent environment. |
+| [`docs/tapes/shots.sh`](../tapes/shots.sh), [`docs/tapes/04-screenshots.tape`](../tapes/04-screenshots.tape) | Renders stills and trims/pads them with ImageMagick into [`docs/public/image/tui`](../public/image/tui). The alternate-screen TUI fills the canvas vertically, so trimming cannot recover excess canvas height. |
+| [`docs/tapes/README.md`](../tapes/README.md) | Recording prerequisites, tape commands, and output locations for install, build/change, TUI, screenshots, and row recordings. |
+
 ## Where it lives
 
 | Path | Role |
@@ -138,6 +180,21 @@ The sandbox redirects `HOME`, recreates isolated project state, and normally pro
 | [`docs/.vitepress/theme`](../.vitepress/theme) | Theme registration, model viewer, typography, and landing styles. |
 | [`docs/models/order-to-cash`](../models/order-to-cash), [`docs/public`](../public), [`docs/tapes`](../tapes) | Model sources, served static assets and installers, and recording fixtures. |
 | [`scripts/check-flag-placement.sh`](../../scripts/check-flag-placement.sh) | Documentation flag-placement check invoked by `lint:docs`. |
+| [`scripts/Dockerfile`](../../scripts/Dockerfile), [`scripts/ralph-wiggum.sh`](../../scripts/ralph-wiggum.sh) | Node 24/Claude Code development sandbox and bounded loop that stops at the `DONE` promise; separate from build and release automation. |
+
+### Documentation navigation
+
+| Path | Subject |
+|---|---|
+| [`docs/index.md`](../index.md), [`docs/getting-started`](../getting-started) | Landing page, installation, first build, concepts, and building an SDK. |
+| [`docs/dev/index.md`](../dev/index.md), [`docs/dev`](../dev) | Contributor architecture and feature internals. |
+| [`docs/guide/sql-files`](../guide/sql-files), [`docs/guide/environments`](../guide/environments), [`docs/guide/changes`](../guide/changes), [`docs/guide/database`](../guide/database), [`docs/guide/automation`](../guide/automation) | User workflows by concern. |
+| [`docs/guide/relational-design.md`](../guide/relational-design.md), [`docs/guide/deployment.md`](../guide/deployment.md) | Inherited compound keys and basetype/subtype modeling; deployment workflow. Relational examples now use the order-to-cash model rather than the earlier todo hierarchy. |
+| [`docs/cli`](../cli), [`docs/headless.md`](../headless.md), [`docs/reference/sdk.md`](../reference/sdk.md) | CLI command pages, complete headless reference, and SDK API. |
+| [`docs/modeling`](../modeling), [`docs/public/video/ignatius.mp4`](../public/video/ignatius.mp4), [`docs/public/video/ignatius-poster.jpg`](../public/video/ignatius-poster.jpg) | Documentation and demo assets for the separate ignatius modeling tool, not noorm implementation. |
+| [`docs/why-noorm.md`](../why-noorm.md) | Interface history from minimist through cmd-ts, oclif, Citty/Clack, and Ink; reasons for the CLI/TUI split. |
+| [`docs/spec`](../spec), [`docs/design`](../design), [`docs/wiki`](.) | Source-only feature contracts, rationale, and codebase maps; excluded from site publication. |
+| [`docs/public/install.sh`](../public/install.sh) | Public installer served at `https://noorm.dev/install.sh`. |
 
 ## Constraints
 
@@ -147,9 +204,12 @@ The sandbox redirects `HOME`, recreates isolated project state, and normally pro
 - Compiled binaries still require OS shared libraries. The builder names worker entries explicitly; a worker omitted from that command is not an embedded entry point.
 - Compiled binaries disable automatic `.env` loading. Re-enabling it lets Bun expand or truncate password characters before the connection layer receives the environment.
 - CI's path filters cover source, tests, packages, examples, [`bun.lockb`](../../bun.lockb), TypeScript configs, and the CI workflow. A docs-only change does not select that workflow; `docs.yml` independently checks documentation and builds the site.
+- The flag-placement checker scans [`README.md`](../../README.md), [`docs`](..), [`skills`](../../skills), and [`examples`](../../examples), exempting explicit contrast/repro documents. A docs-only deployment can fail `lint:docs` even when source CI is not selected.
 - The docs workflow selects pushes to `master` affecting `docs/**` or its own workflow, plus manual dispatch. An example-only change does not select a site deployment.
+- Documentation deployment writes its own [`CNAME`](../../CNAME) for `noorm.dev` into the deployed branch, independently of the root [`CNAME`](../../CNAME). The docs workflow has no pull-request trigger.
 - Source-only documentation directories must remain excluded from VitePress routing. Compiling tooling prose as Vue markdown can fail on angle-bracket content; model and fragment sources otherwise become unintended pages.
 - Recording requires `dist/cli/index.js` and the PostgreSQL container. The sandbox refuses removal outside its temporary-root guard and drops the demo database before a recording; `project` mode leaves database creation to the recorded walkthrough.
+- Recorded GIFs are lazy-loaded because they are large, below-the-fold assets. Do not remove environment scrubbing when rebuilding them; the sandbox's redirected `HOME` does not itself remove agent-detection environment variables.
 
 ## Coupling
 

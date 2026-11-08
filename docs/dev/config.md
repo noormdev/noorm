@@ -53,8 +53,8 @@ interface Config {
         user?: string
         password?: string
         ssl?: boolean | SSLConfig
-        pool?: { min?: number, max?: number, idleTimeoutMillis?: number }
-        tlsServerName?: string  // PostgreSQL and MSSQL certificate identity
+        pool?: { min?: number, max?: number, idleTimeoutMillis?: number } // min/max default to 0/10
+        tlsServerName?: string  // PostgreSQL/MSSQL certificate hostname, including IP dial hosts
         connectTimeoutMs?: number  // Per attempt, defaults to 15000
         statementTimeoutMs?: number // PostgreSQL server-side timeout
         queryTimeoutMs?: number     // PostgreSQL client-side timeout
@@ -168,6 +168,8 @@ const config = resolveConfig(state, options)
 ```
 
 The resolver selects a stored name before considering inline or environment-only input. Unknown selected names throw instead of falling back:
+
+Name selection follows `options.name`, then `NOORM_CONFIG`, then the active config in state.
 
 ```mermaid
 flowchart TD
@@ -413,12 +415,12 @@ Stage Configs:
 
 This helps track which environments are ready to use and which need secret values configured.
 
-Stage constraints that can't be violated:
+Stage constraints and how noorm checks them:
 
 | Constraint | Behavior |
 |------------|----------|
 | `protected: true` in defaults | Clamps resolved `access` to at most `{ user: 'operator', agent: 'viewer' }` — stricter survives, looser is clamped down (see [Access Roles](#access-roles)) |
-| `isTest: true` in defaults | Cannot set `isTest: false` |
+| `isTest: true` in defaults | A resolved `isTest: false` is reported as a stage-completeness violation; resolution does not force it back to `true` |
 | `locked: true` | Config cannot be deleted |
 
 ```typescript

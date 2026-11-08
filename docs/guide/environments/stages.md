@@ -43,7 +43,7 @@ From the SDK, `createContext({ stage: 'prod' })` picks a stage for a config with
 
 When `noorm ui` opens, it creates a config for each stage that sets `defaults.dialect` and has no config of its name yet, provided this machine has an identity. `host` falls back to `localhost`, `database` to the stage name, and a protected stage caps access at `operator` for you and `viewer` for agents. TUI seeding preserves a stage's configured password; keep credentials out of committed settings.
 
-At runtime, stage defaults are also a layer beneath stored values. Editing a default fills fields absent from a stored config, but does not replace stored fields. An SDK context can select that layer with `stage`, including in inline or environment-only mode.
+At runtime, stage defaults are also a layer beneath stored values. Editing a default fills fields absent from a stored config, but does not replace stored fields. An SDK context can select that layer with `stage`, including in inline or [environment-only mode](/headless#environment-only-mode). The stage's `isTest` applies unless a higher-priority value overrides it.
 
 To replace stored fields with current defaults, run `noorm config sync --stage staging --name review`. For unattended creation, use `noorm config create --stage staging --name review` or `--all`. The [CLI reference](/headless#config-create) owns their password, preview, and overwrite rules.
 

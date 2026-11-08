@@ -18,7 +18,7 @@ paths:
   - "tests/integration/version/**"
 ---
 
-Domain: core-state. Encrypted state, settings, config resolution, lifecycle, and version migration.
+Domain: core-state. Encrypted state, settings.yml, config resolution, lifecycle, version migration, and observer events.
 
 Map:
   - docs/wiki/core-state.md

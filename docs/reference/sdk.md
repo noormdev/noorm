@@ -120,6 +120,8 @@ flowchart TD
 
 The later layer wins. With no selected stored config and no `NOORM_NAME`, inline mode uses `__inline__` and env-only mode uses `__env__`. `NOORM_NAME` changes the synthetic config's name; it does not select a stored config. A missing state file needs no identity key. A name selected by `config`, `NOORM_CONFIG`, or the active config must exist, even when inline connection fields are complete.
 
+Synthetic config names appear in errors and event payloads. With no state file, an inline or environment-only context needs no `.noorm/` directory. [Deploying an application](/guide/deployment) covers packaging and pool sizing for that setup.
+
 Stage connection defaults such as `host`, `port`, `user`, `ssl`, and `password` merge into `connection` before environment and inline overrides. Stage `isTest` is a default, and `requireTest` checks the final resolved value. Protected stages cap access after the merge. Nothing in `connection` is saved.
 
 For example, open a MySQL database without creating stored state:

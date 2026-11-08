@@ -141,13 +141,15 @@ Policy denials normally exit `1`. `config create` and `config sync` report their
 
 Names after `NOORM_` nest on underscores: `NOORM_CONNECTION_HOST` sets `connection.host`, while camelCase fields retain their spelling within a segment. See the [environment field reference](/dev/config#environment-variables) for conversion, SSL input, and schema validation rules. Overrides remain in memory rather than changing stored configs or `settings.yml`.
 
+Other unreserved `NOORM_*` variables overlay matching settings keys in memory. Connection and identity namespaces are excluded from the settings overlay; `NOORM_PATHS_SQL`, for example, changes the resolved SQL directory without rewriting `settings.yml`.
+
 | Variable | Effect |
 |---|---|
 | `NOORM_CONNECTION_DIALECT` | `postgres`, `mysql`, `sqlite`, or `mssql`. With `NOORM_CONNECTION_DATABASE`, the minimum for env-only mode |
 | `NOORM_CONNECTION_DATABASE` | Database name |
 | `NOORM_CONNECTION_HOST`, `_PORT`, `_USER`, `_PASSWORD`, `_FILENAME` | Server, credentials, and the SQLite file |
 | `NOORM_CONFIG` | Stored config to use. `--config` wins |
-| `NOORM_YES` | Any value except empty, `0`, or `false` (case-insensitive) confirms policy `confirm` cells on the user channel. Commands that require literal flags, including `config create` overwrites and `config sync` application, still require `--yes` |
+| `NOORM_YES` | Any value except empty, `0`, or `false` (case-insensitive) confirms policy `confirm` cells on the user channel. `identity init --force`, `config create` overwrites, and non-interactive `config sync` application require literal `--yes`. `sql clear` requires `--yes` or `--json`, not `NOORM_YES` |
 | `NOORM_CHANNEL` | `user` or `agent`. Forces the access channel. Other values are ignored |
 | `NOORM_IDENTITY_PRIVATE_KEY` | X25519 private key, hex PKCS8 DER, 96 characters |
 | `NOORM_IDENTITY_NAME`, `NOORM_IDENTITY_EMAIL` | Display name and email. All three `NOORM_IDENTITY_*` variables must be valid or the CLI ignores them |
@@ -437,7 +439,7 @@ JSON: `name`, `overwritten`.
 #### `config validate <name>`
 
 
-Test the effective config after stage and environment merging, without saving overrides.
+Test that the effective config connects after stage and environment merging, without saving overrides.
 
 ```bash
 noorm config validate prod --json

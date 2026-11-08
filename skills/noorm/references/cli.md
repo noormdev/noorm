@@ -79,7 +79,7 @@ NOORM_DEBUG                  # Enable debug logging
 
 **Nesting convention:** underscores map to object depth after stripping `NOORM_`. Preserve camelCase within a schema segment, as in `NOORM_CONNECTION_connectTimeoutMs` and `NOORM_CONNECTION_SSL_rejectUnauthorized`. The [environment reference](https://noorm.dev/dev/config#environment-variables) owns parser and validation behavior.
 
-**Priority:** CLI flags > env vars > stored config > stage defaults (settings.yml) > hard-coded defaults.
+**Priority:** explicit connection overrides (where supported) > env vars > stored config > stage defaults (settings.yml) > hard-coded defaults. `--config` selects a stored name rather than overriding a connection field.
 
 ## Commands
 
@@ -207,6 +207,8 @@ Without `--public-key`, noorm mints a keypair and returns the private key once (
 ### ci init
 
 Bootstrap ephemeral `state.enc` from identity and connection environment variables, create a config, and mark it active. `isTest` defaults to `false`; pass `--test` for SDK tests. Use the [CI command reference](https://noorm.dev/headless#ci-init) for `--type`, stage type inheritance, overwrite confirmation, and exit codes.
+
+Run this inside the CI job, not on the developer's machine. The config name defaults to `ci`, overridden by `--name` or `NOORM_CI_CONFIG_NAME`. State stays on disk for later `run build`, `change ff`, and `ci secrets` commands in that job. Missing or malformed required identity or connection variables fail before state is written and exit 2.
 
 ```bash
 noorm ci init --test

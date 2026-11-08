@@ -43,6 +43,8 @@ flowchart TD
 
 The root lazily imports `change`, `ci`, `config`, `db`, `dev`, `identity`, `info`, `init`, `lock`, `mcp`, `run`, `secret`, `settings`, `sql`, `ui`, `update`, `vault`, and `version`. The `complete` stub avoids resolving the command tree during ordinary startup. `resolveCommand()` builds the help breadcrumb, and commands attach an [`examples`](../../examples) property for the appended [`EXAMPLES`](../../EXAMPLES) block. Bare SQL matching `SQL_VERBS` becomes a `sql query` invocation; named SQL subcommands remain unchanged.
 
+Commands attach `examples: string[]` to the `defineCommand()` result; this is the help interceptor's property, not a Citty-native field. Environment identity startup installs `setKeyOverride()` and `setIdentityOverride()` so downstream key and metadata reads can use `NOORM_IDENTITY_PRIVATE_KEY`, `NOORM_IDENTITY_NAME`, and `NOORM_IDENTITY_EMAIL` without identity files. Unset overrides leave disk lookup available.
+
 CLI-owned command surfaces include:
 
 - `config`: `add`, `cp`, `create`, `edit`, `export`, `import`, `list`, `rm`, `sync`, `use`, `validate`.
@@ -50,6 +52,15 @@ CLI-owned command surfaces include:
 - `settings`: `init`, `build`, `edit`, `secret`.
 - `lock`: `acquire`, `force`, `release`, `status`.
 - `dev`: `test-helpers`, `test-workers`.
+
+| Entrypoint | Operational behavior |
+|---|---|
+| `info` | Reports CLI/schema/state/settings versions, active connection, identity registration timestamps, detected agent harness, and database object counts. Individual lookup failures do not discard the rest of the report. |
+| `version` | Reports Node, platform, architecture, identity key paths/existence, and project/config discovery without connecting to a database. |
+| `init` | Prompts for missing identity name/email through `@clack/prompts`, then calls `performProjectInit()`. Existing-identity, TTY, reinitialization, and working-directory rules appear under Constraints. |
+| `ui` | Dynamically loads the Ink application and discards logger console/diagnostic writes during rendering. |
+| `update` | Checks GitHub Releases and replaces the binary. TTY progress updates in place; redirected output uses plain status lines. The checksum escape hatch does not permit a confirmed mismatch. |
+| `dev` | Internal helper and worker diagnostics rather than database-domain operations. |
 
 ### Stage creation
 
@@ -172,7 +183,13 @@ sequenceDiagram
 
 `withVaultContext()` additionally loads the private key and identity metadata and registers the identity. `createCliLogger()` reads project logging settings; disabling file logging does not disable command output.
 
+Both context helpers return `[result, null]` or `[null, Error]`. They pass `isYesMode(args)` and `resolveChannel()` into `createContext()`, so environment confirmation and detected agent channels reach SDK guards. `handleVaultResult()` converts vault result/error tuples into JSON or text output and an exit code. Logger settings include `file`, `level`, `maxSize`, and `maxFiles`.
+
+`sharedArgs` defines opt-in `--config`/`-c`, `--json`, `--force`/`-f`, `--dry-run`, and `--yes`/`-y`; each command chooses which definitions to spread into its own argument schema.
+
 `outputResult()` writes results to stdout. JSON passes through `toJsonEnvelope()`: objects retain explicit `success`, otherwise derive it from `status`, and non-object payloads receive a `data` wrapper. `outputError()` emits `{ success: false, error }` on stdout in JSON mode and diagnostics on stderr in text mode.
+
+JSON results remain objects with a boolean `success`, including list results under named keys such as `configs`, `changes`, or `tables`. The exit-code and JSON-envelope subprocess tests pin agreement between `success` and the process status; arrays passed to the shared helper receive the `data` wrapper rather than remaining bare top-level arrays.
 
 ### Binary installation
 
@@ -194,6 +211,10 @@ flowchart TD
 
 [`packages/cli/package.json`](../../packages/cli/package.json) maps `noorm` to `noorm.js` and requires Node `>=22.13`. The shim forwards argv, environment, inherited stdio, and the child exit status. Postinstall selects the OS/architecture asset, including Linux musl variants, from the package-version release. Source checkout detection uses the workspace root package name, not directory shape alone.
 
+The release URL is `https://github.com/noormdev/noorm/releases/download/@noormdev/cli@<version>/noorm-<suffix>`, with SHA-256 hashes in `checksums.txt`. The launcher resolves `bin/noorm`, or `bin/noorm.exe` on Windows. Downloaded binaries and locally compiled `noorm-<suffix>` assets live in the gitignored `packages/cli/bin` directory.
+
+Source-checkout detection reads the root package two directories above [`packages/cli`](../../packages/cli) and skips only when its name is `@noormdev/main`; an unrelated monorepo with the same directory layout still installs its binary.
+
 ## Where it lives
 
 | Path | Role |
@@ -214,6 +235,31 @@ flowchart TD
 | [`tests/cli/exit-codes.test.ts`](../../tests/cli/exit-codes.test.ts), [`tests/cli/json-envelope.test.ts`](../../tests/cli/json-envelope.test.ts), [`tests/cli/cli-logger-settings.test.ts`](../../tests/cli/cli-logger-settings.test.ts) | Exit/output agreement and logger configuration contracts. |
 | [`tests/cli/init.test.ts`](../../tests/cli/init.test.ts), [`tests/cli/env-bootstrap.test.ts`](../../tests/cli/env-bootstrap.test.ts), [`tests/cli/postinstall-source-checkout.test.ts`](../../tests/cli/postinstall-source-checkout.test.ts) | Bootstrap gates, environment identity startup, and installation checkout detection. |
 
+### Test navigation
+
+| Path | Contract |
+|---|---|
+| [`tests/cli/citty-args.ts`](../../tests/cli/citty-args.ts) | `assertArgsDef()` narrows resolved argument definitions for Citty's real `parseArgs()`. |
+| [`tests/cli/citty-help.test.ts`](../../tests/cli/citty-help.test.ts) | `USAGE`, `COMMANDS`, and appended [`EXAMPLES`](../../EXAMPLES); nested help breadcrumbs are not doubled. |
+| [`tests/cli/exit-codes.test.ts`](../../tests/cli/exit-codes.test.ts), [`tests/cli/json-envelope.test.ts`](../../tests/cli/json-envelope.test.ts) | Mixed `run dir` outcomes exit `3`, all-fail outcomes exit `1`, and missing/empty targets exit `2`; JSON success agrees with exit status. These subprocess tests use `dist/cli/index.js`. |
+| [`tests/cli/yes-flag.test.ts`](../../tests/cli/yes-flag.test.ts), [`tests/cli/insecure-flag.test.ts`](../../tests/cli/insecure-flag.test.ts) | Flag/environment truth parsing and non-TTY refusal behavior. |
+| [`tests/cli/agent-channel-escalation.test.ts`](../../tests/cli/agent-channel-escalation.test.ts), [`tests/cli/change-edit.test.ts`](../../tests/cli/change-edit.test.ts), [`tests/cli/change-prompts.test.ts`](../../tests/cli/change-prompts.test.ts), [`tests/cli/settings-edit.test.ts`](../../tests/cli/settings-edit.test.ts), [`tests/cli/settings-secret.test.ts`](../../tests/cli/settings-secret.test.ts), [`tests/cli/sql-repl.test.ts`](../../tests/cli/sql-repl.test.ts) | Channel-sensitive dispatch, prompts, and TTY gates; core pages own the underlying operations. |
+| [`tests/cli/app.test.tsx`](../../tests/cli/app.test.tsx), [`tests/cli/app-context.test.tsx`](../../tests/cli/app-context.test.tsx), [`tests/cli/router.test.tsx`](../../tests/cli/router.test.tsx), [`tests/cli/screens.test.tsx`](../../tests/cli/screens.test.tsx), [`tests/cli/keyboard.test.tsx`](../../tests/cli/keyboard.test.tsx), [`tests/cli/focus.test.tsx`](../../tests/cli/focus.test.tsx), [`tests/cli/types.test.ts`](../../tests/cli/types.test.ts), [`tests/cli/debug-pid.test.tsx`](../../tests/cli/debug-pid.test.tsx) | TUI application, routing, screen registry, keyboard, focus, route types, and diagnostics despite their top-level CLI test location. |
+| [`tests/cli/config-validation.test.ts`](../../tests/cli/config-validation.test.ts), [`tests/cli/settings-validation.test.ts`](../../tests/cli/settings-validation.test.ts) | TUI validators in [`src/tui/utils`](../../src/tui/utils), not headless config dispatch. |
+| [`tests/cli/VaultScreen.test.tsx`](../../tests/cli/VaultScreen.test.tsx) | TUI propagation confirmation; its top-level placement avoids a vault-hook mock loading before the real vault. Moving it into `tests/cli/screens/vault` changes that ordering. |
+
+The logger-settings test must run in its own process. Init-screen tests mock `SettingsManager`; re-registering a module in Bun's process-global mock registry does not restore it. The leaked class makes `createCliLogger()` see empty settings instead of `settings.yml`. The workflow documents differing macOS/Linux load order, so a locally passing combined suite does not establish CI isolation.
+
+### Reference navigation
+
+| Path | Use |
+|---|---|
+| [`docs/cli/flags.md`](../cli/flags.md), [`docs/cli/help.md`](../cli/help.md) | Root flag placement, the `-c` overload, help discovery, and why `noorm help <sub>` is not a command. |
+| [`docs/cli/init.md`](../cli/init.md), [`docs/cli/run.md`](../cli/run.md), [`docs/cli/secret.md`](../cli/secret.md), [`docs/cli/identity.md`](../cli/identity.md), [`docs/cli/sql.md`](../cli/sql.md), [`docs/cli/sql-repl.md`](../cli/sql-repl.md), [`docs/cli/settings-edit.md`](../cli/settings-edit.md), [`docs/cli/settings-secret.md`](../cli/settings-secret.md) | Per-command references. |
+| [`docs/headless.md`](../headless.md), [`docs/dev/headless.md`](../dev/headless.md) | Public headless reference and contributor notes for CLI, CI, and MCP use. |
+| [`packages/cli/README.md`](../../packages/cli/README.md), [`packages/cli/CHANGELOG.md`](../../packages/cli/CHANGELOG.md), [`packages/cli/LICENSE`](../../packages/cli/LICENSE) | Published package usage, release history, and license. |
+| [`skills/noorm/references/cli.md`](../../skills/noorm/references/cli.md), [`skills/noorm/references/sdk.md`](../../skills/noorm/references/sdk.md), [`skills/noorm/references/config.md`](../../skills/noorm/references/config.md), [`skills/noorm/references/templates.md`](../../skills/noorm/references/templates.md) | Agent-facing usage, global flags/environment, CI examples, SDK patterns, and templates. |
+
 ## Constraints
 
 - Only `-c`/`--cwd` has custom root-level meaning. Put command flags after the command that consumes them; misplaced root flags fail rather than being forwarded. Built-in help/version flags pass through. After dispatch, `-c` can mean `--config` instead.
@@ -223,9 +269,13 @@ flowchart TD
 - Create and sync use the parsed `args.yes` directly. The helper's `NOORM_YES` support does not substitute for the explicit confirmation flag on these commands.
 - `ci init` completes full `parseConfig()` validation before backup, removal, or state initialization. Invalid configuration exits with usage status `2` without replacing existing state, even with `--force --yes`. Replacement requires a successful backup before removal.
 - `noorm init --yes` requires a complete existing identity. Without yes mode, non-TTY initialization fails. `--here` uses the original invocation directory instead of the discovered parent project; `--force` is required to reinitialize an existing project.
+- `noorm init --yes` checks for both key files and identity metadata. The default identity files are `~/.noorm/identity.key`, `identity.pub`, and `identity.json`.
+- `sql repl`, `settings edit`, and `settings secret` still require a TTY when `--yes` or `NOORM_YES` is set. Their refusal then includes a redirect hint rather than entering an interactive prompt. `sql repl` also dynamically loads Ink and React.
+- `isYesMode()` and `isInsecureMode()` treat a nonempty environment value as true except `0` and case-insensitive `false`. An explicit true flag wins over a false environment value. Postinstall mirrors this parsing because it runs before TypeScript sources are built.
 - [`src/cli/ui.ts`](../../src/cli/ui.ts) dynamically imports Ink, React, and the TUI app and suppresses logger streams during rendering. Static UI imports into the headless startup graph would violate the boundary covered by [`tests/cli/lazy-startup.test.ts`](../../tests/cli/lazy-startup.test.ts).
 - Exit status `0` means success, `1` failure, `2` usage failure, and `3` partial completion. A partial result can leave mixed state; blindly retrying it is not equivalent to retrying a rejected invocation. Unknown operation statuses map to failure.
 - A confirmed binary checksum mismatch is fatal. `NOORM_INSECURE` permits unavailable checksums or missing asset entries, not a known bad hash; bypassing that distinction would install a binary verification rejected.
+- Compiled workers must use `resolveWorker()` from [`src/core/worker-bridge/paths.ts`](../../src/core/worker-bridge/paths.ts). Bun strips [`src/`](../../src) and rewrites `.ts` to `.js` in embedded entry paths; hardcoded development paths do not address those workers.
 
 ## Coupling
 
@@ -234,6 +284,8 @@ flowchart TD
 - **sdk** supplies `createContext()` and owns `requireTest`. Stage `isTest` and explicit CI `--test` supply the metadata that guard consumes; see [`docs/wiki/sdk.md`](sdk.md).
 - **core-identity** supplies environment identity loading, private keys, registration, vault operations, and distributed lock behavior. The CLI owns startup wiring and the `ci`/`lock` command surfaces, not those mechanisms.
 - **core-change**, **core-db**, **core-runner**, and **mcp-rpc** own the operation semantics behind their command groups. `mcp serve` enters the MCP server through CLI dispatch.
+- [`src/cli/mcp/serve.ts`](../../src/cli/mcp/serve.ts) calls `startServer()` in [`src/mcp/index.ts`](../../src/mcp/index.ts), which constructs `createMcpServer()` from [`src/mcp/server.ts`](../../src/mcp/server.ts). That stdio server lifecycle belongs to mcp-rpc.
 - **tui** owns the application loaded by `noorm ui`; TUI tests also reside under [`tests/cli`](../../tests/cli), so that directory is not exclusively headless CLI coverage.
 - **infra** builds and publishes the binary assets that postinstall consumes. Package version, release tag, asset naming, and checksums must agree with [`packages/cli/scripts/postinstall.js`](../../packages/cli/scripts/postinstall.js).
+- CLI and SDK releases use the same Changesets fixed version group. The release workflows and postinstall must agree on `@noormdev/cli@<version>`, not merely on the binary filename.
 - [`skills/noorm/SKILL.md`](../../skills/noorm/SKILL.md) routes agent-driven command use to [`skills/noorm/references/cli.md`](../../skills/noorm/references/cli.md) and stage configuration to [`skills/noorm/references/config.md`](../../skills/noorm/references/config.md). Flag placement and config-command contracts must stay aligned with those references.

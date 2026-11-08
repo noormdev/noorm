@@ -8,7 +8,7 @@ paths:
   - "tests/cli/screens/**"
 ---
 
-Domain: tui. Ink/React screens, focus management, keyboard routing, and startup state.
+Domain: tui. Ink/React screens, focus management, keyboard routing, registered screens, and startup state.
 
 Map:
   - docs/wiki/tui.md

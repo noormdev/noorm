@@ -101,6 +101,7 @@ These are the patterns LLMs get wrong most often with noorm:
 | Query before `connect()` | Call `ctx.connect()` first | Context starts disconnected |
 | Forget `disconnect()` | Always call `ctx.disconnect()` | Leaks connection pool |
 | `config: 'production'` in tests | Use `requireTest: true` | Safety guard prevents test code from touching production |
+| Hardcode deployment credentials or environment-specific hosts | Supply them through `NOORM_*` variables or an injected inline `connection` | Keeps application code portable between local and CI environments |
 | Mutate `process.env` between concurrent contexts | Pass each context its own inline `connection` | Environment changes are process-global and can race |
 | `ctx.proc()` on SQLite | Check `ctx.dialect` first | SQLite has no stored procedures, functions, or TVFs |
 | `ctx.tvf()` on MySQL | Check `ctx.dialect` first | MySQL doesn't support TVFs either |

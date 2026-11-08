@@ -123,19 +123,38 @@ The CST path traverses nested statement nodes, including CTE bodies and statemen
 
 | Path | Role |
 |---|---|
-| [`src/core/policy/types.ts`](../../src/core/policy/types.ts) | `Role`, `Channel`, `ConfigAccess`, `Permission`, `PolicyTarget`, `PolicyCell`, and `PolicyCheck`. |
-| [`src/core/policy/matrix.ts`](../../src/core/policy/matrix.ts) | Permission cells for each role. |
-| [`src/core/policy/check.ts`](../../src/core/policy/check.ts) | Policy checks, assertions, visibility, confirmation phrases, and access display helpers. |
-| [`src/core/policy/channel.ts`](../../src/core/policy/channel.ts), [`src/core/policy/harness.ts`](../../src/core/policy/harness.ts) | Channel precedence and the harness marker allowlist. |
+| [`src/core/policy/types.ts`](../../src/core/policy/types.ts) | `Role` (`viewer`/`operator`/`admin`), `Channel` (`user`/`agent`), `ConfigAccess` (`{ user: Role; agent: Role \| false }`), `Permission`, `PolicyTarget`, `PolicyCell`, and `PolicyCheck`. |
+| [`src/core/policy/matrix.ts`](../../src/core/policy/matrix.ts) | `MATRIX`, permission cells for each role. |
+| [`src/core/policy/check.ts`](../../src/core/policy/check.ts) | `checkPolicy`, `checkConfigPolicy`, `assertPolicy`, `isVisibleToChannel`, `confirmationPhraseFor`, `guarded`, and `formatAccessTag`. |
+| [`src/core/policy/channel.ts`](../../src/core/policy/channel.ts), [`src/core/policy/harness.ts`](../../src/core/policy/harness.ts) | `resolveChannel`, `AGENT_HARNESSES`, `detectAgentHarness`, and `isAgentSession`. |
 | [`src/core/policy/ceiling.ts`](../../src/core/policy/ceiling.ts) | Per-channel clamping and the protected-stage ceiling. |
 | [`src/core/policy/legacy-access.ts`](../../src/core/policy/legacy-access.ts) | Default access pairs and legacy-input resolution contract. |
 | [`src/core/policy/classify.ts`](../../src/core/policy/classify.ts) | CST and keyword classifiers with destructive-function detection. |
 | [`src/core/policy/index.ts`](../../src/core/policy/index.ts) | Public policy exports. |
-| [`tests/core/policy/check.test.ts`](../../tests/core/policy/check.test.ts) | Independently authored expected cells, confirmation, fail-closed checks, and display behavior. |
+| [`tests/core/policy/check.test.ts`](../../tests/core/policy/check.test.ts) | Independently authored `EXPECTED_MATRIX` and `PERMISSIONS` fixtures, confirmation, fail-closed checks, and display behavior. The fixtures exercise explore, SQL, change/run, database create/reset/destroy, and config removal; they do not enumerate the newer vault/secret, transfer, lock, debug, config-write, truncate, or teardown permissions. |
 | [`tests/core/policy/channel.test.ts`](../../tests/core/policy/channel.test.ts), [`tests/core/policy/agent-escalation.test.ts`](../../tests/core/policy/agent-escalation.test.ts) | Provenance precedence and matching agent authorization across transport routes. |
-| [`tests/core/policy/default-access.test.ts`](../../tests/core/policy/default-access.test.ts), [`tests/core/policy/visibility.test.ts`](../../tests/core/policy/visibility.test.ts) | Parsed and migrated access defaults, explicit grants, and visibility. |
-| [`tests/core/policy/classify.test.ts`](../../tests/core/policy/classify.test.ts), [`tests/core/policy/classify-corpus.test.ts`](../../tests/core/policy/classify-corpus.test.ts) | SQL classification and assertions that adversarial inputs exercise the intended parser path. |
+| [`tests/core/policy/default-access.test.ts`](../../tests/core/policy/default-access.test.ts), [`tests/core/policy/visibility.test.ts`](../../tests/core/policy/visibility.test.ts) | Defaults through `parseConfig`/`migrateState`, explicit grants, and fail-closed visibility. |
+| [`tests/core/policy/classify.test.ts`](../../tests/core/policy/classify.test.ts), [`tests/core/policy/classify-corpus.test.ts`](../../tests/core/policy/classify-corpus.test.ts) | CST/fallback classification and an adversarial SQL corpus, including assertions that inputs exercise the intended parser path. |
 | [`docs/design/config-access-roles.md`](../design/config-access-roles.md) | Role-model rationale; implementation files define the current channel and default-access contract. |
+| [`docs/spec/config-access-roles.md`](../spec/config-access-roles.md) | Role-model implementation contract, permission matrix, SQL classification, enforcement, and migration. |
+| [`docs/dev/config.md`](../dev/config.md), [`docs/dev/config-sharing.md`](../dev/config-sharing.md) | Developer config/access and sharing contracts. |
+| [`docs/guide/environments/configs.md`](../guide/environments/configs.md), [`docs/guide/environments/stages.md`](../guide/environments/stages.md) | User-facing config and stage access guidance. |
+| [`skills/noorm/references/config.md`](../../skills/noorm/references/config.md) | Config-access skill reference. |
+
+### Enforcement and data-resolution entrypoints
+
+| Callers | Policy integration |
+|---|---|
+| [`src/core/change/executor.ts`](../../src/core/change/executor.ts), [`src/core/runner/runner.ts`](../../src/core/runner/runner.ts) | `assertPolicy` for change run/fast-forward/revert and build/file/directory execution. |
+| [`src/core/db/policy.ts`](../../src/core/db/policy.ts), [`src/core/transfer/index.ts`](../../src/core/transfer/index.ts) | `assertDbPolicy` for database lifecycle; transfer `assertPolicy` for destination `db:reset` and `transfer:plan`. |
+| [`src/core/vault/policy.ts`](../../src/core/vault/policy.ts), [`src/core/sql-terminal/executor.ts`](../../src/core/sql-terminal/executor.ts) | `checkVaultPolicy`/`assertVaultPolicy`; raw SQL uses `classifyStatements` to select a permission before `assertPolicy`. |
+| `src/core/config/{schema,types,resolver}.ts`, [`src/core/state/access.ts`](../../src/core/state/access.ts), [`src/core/settings/rules.ts`](../../src/core/settings/rules.ts) | `ConfigAccess`, `resolveLegacyAccess`, ceiling helpers, and `guarded` for data resolution and rule matching, not enforcement. |
+| [`src/mcp/server.ts`](../../src/mcp/server.ts), [`src/rpc/types.ts`](../../src/rpc/types.ts) | Dispatch checks `checkConfigPolicy` for non-`open` commands; `RpcCommand.permission` is `Permission \| 'open'`. |
+| [`src/sdk/guards.ts`](../../src/sdk/guards.ts), [`src/sdk/index.ts`](../../src/sdk/index.ts), [`src/sdk/types.ts`](../../src/sdk/types.ts) | SDK checks raise `ProtectedConfigError`; the public API re-exports `Channel`, `ConfigAccess`, and `Role`, and context options carry `channel`. |
+| [`src/cli/_utils.ts`](../../src/cli/_utils.ts), [`src/cli/change/rm.ts`](../../src/cli/change/rm.ts), `src/cli/config/*.ts`, `src/cli/db/{create,drop}.ts`, `src/cli/run/{inspect,preview}.ts`, [`src/cli/secret/_policy.ts`](../../src/cli/secret/_policy.ts), [`src/cli/sql/query.ts`](../../src/cli/sql/query.ts), `src/cli/vault/*.ts` | Resolve channel provenance and consume config checks, assertions, or vault policy gates. |
+| `src/tui/screens/change/Change{FF,Run,Revert,Remove,Rewind,Next}Screen.tsx`, [`src/tui/screens/config/ConfigRemoveScreen.tsx`](../../src/tui/screens/config/ConfigRemoveScreen.tsx), `src/tui/screens/db/Db{Create,Destroy,Teardown,Transfer,Truncate}Screen.tsx`, [`src/tui/screens/run/RunBuildScreen.tsx`](../../src/tui/screens/run/RunBuildScreen.tsx), [`src/tui/screens/vault/VaultScreen.tsx`](../../src/tui/screens/vault/VaultScreen.tsx) | `checkConfigPolicy` results determine destructive-action availability and confirmation props. |
+| [`src/tui/components/dialogs/SmartConfirm.tsx`](../../src/tui/components/dialogs/SmartConfirm.tsx), [`src/tui/screens/lock/LockForceScreen.tsx`](../../src/tui/screens/lock/LockForceScreen.tsx) | `confirmationPhraseFor` supplies typed-dialog phrases. |
+| [`src/tui/screens/config/ConfigAddScreen.tsx`](../../src/tui/screens/config/ConfigAddScreen.tsx), [`src/tui/app-context.tsx`](../../src/tui/app-context.tsx), [`src/tui/utils/config-validation.ts`](../../src/tui/utils/config-validation.ts) | Config creation uses `DEFAULT_ACCESS`/`GUARDED_ACCESS`; stage seeding uses `materializeStage`; display validation reads `guarded`. |
 
 ## Constraints
 

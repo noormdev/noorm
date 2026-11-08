@@ -13,11 +13,15 @@ This domain gives database commands the connections and dialect operations neede
 
 [`src/core/connection/`](../../src/core/connection) opens and tracks Kysely connections. [`src/core/db/`](../../src/core/db), [`src/core/explore/`](../../src/core/explore), [`src/core/teardown/`](../../src/core/teardown), and [`src/core/transfer/`](../../src/core/transfer) dispatch database operations by dialect. Connections support PostgreSQL, MySQL, MSSQL, and SQLite; transfer excludes SQLite (`TRANSFER_SUPPORTED_DIALECTS` in [`src/core/transfer/dialects/index.ts`](../../src/core/transfer/dialects/index.ts)).
 
+Operational modules keep dialect contracts separate from implementations: [`src/core/db/types.ts`](../../src/core/db/types.ts) defines `DialectDbOperations`, [`src/core/explore/types.ts`](../../src/core/explore/types.ts) defines `DialectExploreOperations`, [`src/core/teardown/types.ts`](../../src/core/teardown/types.ts) defines `TeardownDialectOperations`, and [`src/core/transfer/dialects/types.ts`](../../src/core/transfer/dialects/types.ts) defines `TransferDialectOperations`. Each module's `dialects/index.ts` entrypoint selects the implementation. Transfer has no SQLite dialect module.
+
 ## How it works
 
 ### Opening a connection
 
 `createConnection` in [`src/core/connection/factory.ts`](../../src/core/connection/factory.ts) lazy-loads the driver, probes with `SELECT 1`, and tracks successful connections for shutdown. Static credentials use selective retries and explained connection errors. Supplying `RuntimeConnectionOptions.password` disables factory retries and error rewriting for the whole connection attempt.
+
+The liveness probe also catches a socket that opens successfully and then becomes silent, a failure that the driver's connect timeout no longer covers.
 
 The factory probes before tracking, and aborts reclaim connections that arrive after the caller stops waiting.
 
@@ -178,7 +182,7 @@ sequenceDiagram
 | [`src/core/connection/session.ts`](../../src/core/connection/session.ts) | `SESSION_ID_SQL`, `SERVER_CANCEL`, `readSessionId`, `hasServerSideCancel` — per-dialect session-id read and server-side cancel |
 | [`src/core/connection/errors.ts`](../../src/core/connection/errors.ts) | `explainConnectionError`, `explainMssqlLoginFailure` — per-dialect error code tables, `DatabaseConnectionError` |
 | [`src/core/connection/defaults.ts`](../../src/core/connection/defaults.ts) | `DEFAULT_PORTS`, `PortSchema` shared with `core/config` and `core/settings` |
-| `src/core/connection/dialects/*.ts` | Physical connection factories, runtime credential integration, TLS mapping, and idle-error handling; `mssql-limit-plugin.ts` rewrites `LimitNode` to `TopNode` |
+| `src/core/connection/dialects/*.ts` | Physical connection factories, runtime credentials, TLS mapping, idle-error handling, and MSSQL tedious login diagnostics; `mssql-limit-plugin.ts` rewrites `LimitNode` to `TopNode` before Kysely's MSSQL compiler generates SQL |
 | [`src/core/db/operations.ts`](../../src/core/db/operations.ts) | `checkDbStatus`, `createDb`, `destroyDb` |
 | [`src/core/db/policy.ts`](../../src/core/db/policy.ts) | `assertDbPolicy` — shared destructive-lifecycle gate for `core/db` and `core/teardown` |
 | [`src/core/db/dual.ts`](../../src/core/db/dual.ts) | `withDualConnection` — generic two-connection lifecycle used by `transfer` and vault-copy |

@@ -5,7 +5,7 @@ paths:
   - "tests/core/policy/**"
 ---
 
-Domain: core-policy. Config roles, permission decisions, SQL classification, and stage role ceilings.
+Domain: core-policy. Config roles, permission decisions, SQL classification, stage role ceilings, and legacy protected-to-access migration.
 
 Map:
   - docs/wiki/core-policy.md

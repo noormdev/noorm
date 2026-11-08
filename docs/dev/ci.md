@@ -36,7 +36,7 @@ The [CI command reference](/headless#ci-init) defines `--type` and `--stage` typ
 Two preconditions worth knowing before wiring a pipeline:
 
 - It refuses to run when `.noorm/state/state.enc` already exists. `--force` backs the file up and replaces it; from an interactive terminal `--yes` is required as well, since replacing state destroys every config and config-scoped secret in the project.
-- The config it writes carries `isTest: true`. An SDK context created with `requireTest: true` will therefore accept it — do not rely on that guard to keep a CI job away from a production database.
+- The config starts with `isTest: false`. Pass `--test` only for a test database to satisfy the SDK's `requireTest: true` guard. That guard checks the resolved flag, not whether the target database is actually disposable.
 
 **One-time setup** (developer with vault access):
 
