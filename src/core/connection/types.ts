@@ -5,6 +5,7 @@
  * Each dialect has specific requirements.
  */
 import type { Kysely } from 'kysely';
+import type { PeerCertificate } from 'node:tls';
 
 /**
  * Supported database dialects.
@@ -52,6 +53,8 @@ export interface ConnectionConfig {
     pool?: {
         min?: number;
         max?: number;
+        /** PostgreSQL idle pool timeout in milliseconds; zero disables it. */
+        idleTimeoutMillis?: number;
     };
 
     /**
@@ -63,6 +66,15 @@ export interface ConnectionConfig {
      * can outlast any timeout tuned for a handshake.
      */
     connectTimeoutMs?: number;
+
+    /** PostgreSQL server-side statement timeout in milliseconds; zero disables it. */
+    statementTimeoutMs?: number;
+    /** PostgreSQL client-side query timeout in milliseconds; zero disables it. */
+    queryTimeoutMs?: number;
+    /** PostgreSQL session application_name. */
+    applicationName?: string;
+    /** Enable TCP keepalive on PostgreSQL sockets. */
+    keepAlive?: boolean;
 
     // SSL
     ssl?:
@@ -78,10 +90,9 @@ export interface ConnectionConfig {
      * Hostname the server's TLS certificate is issued for (its CN or a DNS
      * entry in the Subject Alternative Name).
      *
-     * Only needed when `host` is an IP address: TLS carries the requested
-     * hostname in the SNI extension, which RFC 6066 forbids from being an IP
-     * literal, so the certificate has no name to be checked against. MSSQL is
-     * the only dialect that reads this today.
+     * PostgreSQL verifies this identity even if the dial host differs.
+     * For an IP dial host it also becomes SNI. pg uses the dial host as SNI
+     * for DNS dial hosts. MSSQL uses it as the certificate hostname.
      */
     tlsServerName?: string;
 }
@@ -89,6 +100,7 @@ export interface ConnectionConfig {
 /** Runtime-only credentials and TLS hooks; never part of persisted configuration. */
 export interface RuntimeConnectionOptions {
     password?: () => string | Promise<string>;
+    checkServerIdentity?: (hostname: string, cert: PeerCertificate) => Error | undefined;
 }
 
 /**

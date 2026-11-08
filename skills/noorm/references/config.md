@@ -67,7 +67,7 @@ stages:
         description: "CI/CD test database"
         defaults:
             dialect: postgres
-            isTest: true     # Cannot be overridden to false
+            isTest: true     # Inherited unless a higher-priority source overrides it
         secrets:
             - key: DB_PASSWORD
               type: password
@@ -185,7 +185,9 @@ All conditions within a rule are AND'd — every specified field must match.
 | `defaults.user` | `string?` | Username |
 | `defaults.password` | `string?` | Password |
 | `defaults.ssl` | `boolean?` | Enable SSL |
-| `defaults.isTest` | `boolean?` | Test flag (if `true`, cannot be overridden to `false`) |
+| `defaults.type` | `'local' \| 'remote'?` | Connection type default |
+| `defaults.access` | `ConfigAccess?` | Per-channel role defaults |
+| `defaults.isTest` | `boolean?` | Test default; a false override is a stage-completeness violation |
 | `defaults.protected` | `boolean?` | If `true`, acts as an access ceiling: resolved config `access` is clamped to at most `{ user: 'operator', agent: 'viewer' }` |
 | `secrets[]` | array | Secrets required for this stage |
 
@@ -257,15 +259,24 @@ interface Config {
         pool?: {
             min?: number;
             max?: number;
+            idleTimeoutMillis?: number; // PostgreSQL idle-client lifetime
         };
+        connectTimeoutMs?: number;
+        tlsServerName?: string;
+        statementTimeoutMs?: number;
+        queryTimeoutMs?: number;
+        applicationName?: string;
+        keepAlive?: boolean;
     };
     identity?: string;              // Optional identity override
 }
 ```
 
+The [connection field reference](https://noorm.dev/dev/config#config-structure) owns stored field semantics. Runtime password and TLS callbacks belong to SDK options, not this stored shape. See the [SDK connection reference](https://noorm.dev/reference/sdk#createcontext-options).
+
 ## Stage Constraints
 
-`defaults.isTest: true` cannot be overridden to `false` for configs created from that stage. `defaults.protected: true` works differently: it is an access **ceiling** applied at config resolution — a config linked to that stage gets its resolved `access` clamped to at most `{ user: 'operator', agent: 'viewer' }`, no matter what `access` the config itself declares. This enforces safety invariants — a production stage stays guarded, a test stage stays flagged as test.
+Stage defaults fill fields below stored, environment, and inline values. A protected stage caps resolved access after merging; a stage-completeness check reports a false `isTest` override when the stage requires `true`. `requireTest` checks the final resolved flag. See [stage behavior](https://noorm.dev/guide/environments/stages) for TUI seeding and [config commands](https://noorm.dev/headless#config-create) for explicit creation and sync.
 
 See `docs/spec/config-access-roles.md` for the full per-channel access model (`viewer`/`operator`/`admin` roles, the permission matrix, and MCP's `access.agent: false` invisibility).
 
