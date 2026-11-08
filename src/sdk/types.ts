@@ -7,7 +7,7 @@ import type { Transaction } from 'kysely';
 
 import type { Channel } from '../core/policy/index.js';
 import type { ConflictStrategy } from '../core/transfer/types.js';
-import type { ConnectionConfig } from '../core/connection/types.js';
+import type { ConnectionConfig, RuntimeConnectionOptions } from '../core/connection/types.js';
 
 
 // ─────────────────────────────────────────────────────────────
@@ -50,7 +50,12 @@ export interface CreateContextOptions {
     config?: string;
 
     /** Non-persisted connection overrides, applied after environment settings. */
-    connection?: Partial<ConnectionConfig>;
+    connection?: Omit<Partial<ConnectionConfig>, 'password' | 'ssl'> & {
+        password?: string | RuntimeConnectionOptions['password'];
+        ssl?: boolean | (Exclude<ConnectionConfig['ssl'], boolean | undefined> & {
+            checkServerIdentity?: RuntimeConnectionOptions['checkServerIdentity'];
+        });
+    };
 
     /** Project root directory. Defaults to process.cwd() */
     projectRoot?: string;
