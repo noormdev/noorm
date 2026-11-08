@@ -107,6 +107,9 @@ describe('config: resolver', () => {
             'NOORM_CONNECTION_SSL',
             // Top-level
             'NOORM_CONFIG',
+            'NOORM_NAME',
+            'NOORM_ACCESS_USER',
+            'NOORM_ACCESS_AGENT',
             'NOORM_PROTECTED',
             'NOORM_IDENTITY',
         ];
@@ -407,6 +410,139 @@ describe('config: resolver', () => {
 
         });
 
+        it('maps complementary stage fields into an env-only connection', () => {
+
+            process.env['NOORM_CONNECTION_DATABASE'] = 'env_database';
+            process.env['NOORM_CONNECTION_HOST'] = 'env.example.com';
+
+            const settings = createMockSettings({
+                ci: {
+                    defaults: {
+                        dialect: 'postgres',
+                        host: 'stage.example.com',
+                        port: 5544,
+                        user: 'stage-user',
+                        password: 'stage-password',
+                        ssl: true,
+                        type: 'remote',
+                        isTest: true,
+                        protected: true,
+                    },
+                },
+            });
+            const config = resolveConfig(createMockState(), { stage: 'ci', settings });
+
+            expect(config!.name).toBe('__env__');
+            expect(config!.connection).toMatchObject({
+                dialect: 'postgres',
+                database: 'env_database',
+                host: 'env.example.com',
+                port: 5544,
+                user: 'stage-user',
+                password: 'stage-password',
+                ssl: true,
+            });
+            expect(config!.type).toBe('remote');
+            expect(config!.isTest).toBe(true);
+            expect(config!.access).toEqual({ user: 'operator', agent: 'viewer' });
+
+        });
+
+        it('merges stage then environment then inline fields without losing complements', () => {
+
+            process.env['NOORM_CONNECTION_HOST'] = 'env.example.com';
+            process.env['NOORM_CONNECTION_PORT'] = '5545';
+            process.env['NOORM_CONNECTION_PASSWORD'] = 'env-password';
+            process.env['NOORM_ACCESS_USER'] = 'admin';
+            process.env['NOORM_ACCESS_AGENT'] = 'admin';
+
+            const settings = createMockSettings({
+                ci: {
+                    defaults: {
+                        dialect: 'postgres',
+                        database: 'stage_database',
+                        host: 'stage.example.com',
+                        port: 5544,
+                        user: 'stage-user',
+                        password: 'stage-password',
+                        ssl: true,
+                        protected: true,
+                    },
+                },
+            });
+            const config = resolveConfig(createMockState(), {
+                stage: 'ci',
+                settings,
+                flags: {
+                    connection: { host: 'inline.example.com', password: 'inline-password' },
+                    access: { user: 'admin', agent: false },
+                },
+            });
+
+            expect(config!.name).toBe('__inline__');
+            expect(config!.connection).toMatchObject({
+                dialect: 'postgres',
+                database: 'stage_database',
+                host: 'inline.example.com',
+                port: 5545,
+                user: 'stage-user',
+                password: 'inline-password',
+                ssl: true,
+            });
+            expect(config!.access).toEqual({ user: 'operator', agent: false });
+
+        });
+
+        it('merges stage, stored, environment and inline fields in increasing priority', () => {
+
+            process.env['NOORM_CONNECTION_HOST'] = 'env.example.com';
+            process.env['NOORM_CONNECTION_PORT'] = '5545';
+
+            const stored = createConfig({
+                name: 'ci',
+                connection: {
+                    dialect: 'postgres',
+                    database: 'stored_database',
+                    host: 'stored.example.com',
+                    user: 'stored-user',
+                },
+            });
+            const settings = createMockSettings({
+                ci: {
+                    defaults: {
+                        dialect: 'mysql',
+                        database: 'stage_database',
+                        host: 'stage.example.com',
+                        port: 5544,
+                        user: 'stage-user',
+                        password: 'stage-password',
+                        ssl: true,
+                        protected: true,
+                    },
+                },
+            });
+            const config = resolveConfig(createMockState({ configs: { ci: stored } }), {
+                name: 'ci',
+                settings,
+                flags: {
+                    connection: { host: 'inline.example.com' },
+                    access: { user: 'admin', agent: false },
+                },
+            });
+
+            expect(config!.connection).toMatchObject({
+                dialect: 'postgres',
+                database: 'stored_database',
+                host: 'inline.example.com',
+                port: 5545,
+                user: 'stored-user',
+                password: 'stage-password',
+                ssl: true,
+            });
+            expect(config!.access).toEqual({ user: 'operator', agent: false });
+
+        });
+
     });
 
     describe('stage defaults', () => {
@@ -431,8 +567,7 @@ describe('config: resolver', () => {
                 prod: {
                     defaults: {
                         protected: true,
-                        connection: { host: 'stage-default.local' },
-                        log: { level: 'info' },
+                        host: 'stage-default.local',
                     },
                 },
             });
@@ -472,16 +607,18 @@ describe('config: resolver', () => {
             const settings = createMockSettings({
                 prod: {
                     defaults: {
-                        identity: 'stage-identity',
-                        log: { level: 'info' },
+                        user: 'stage-user',
+                        password: 'stage-password',
+                        port: 5440,
                     },
                 },
             });
 
             const config = resolveConfig(state, { settings });
 
-            // identity wasn't in stored, so stage default applies
-            expect(config!.identity).toBe('stage-identity');
+            expect(config!.connection.user).toBe('stage-user');
+            expect(config!.connection.password).toBe('stage-password');
+            expect(config!.connection.port).toBe(5440);
 
         });
 
@@ -498,7 +635,6 @@ describe('config: resolver', () => {
                 staging: {
                     defaults: {
                         protected: true,
-                        log: { level: 'info' },
                     },
                 },
             });
@@ -524,14 +660,12 @@ describe('config: resolver', () => {
             const settings = createMockSettings({
                 myconfig: {
                     defaults: {
-                        identity: 'from-myconfig-stage',
-                        log: { level: 'info' },
+                        user: 'matching-stage-user',
                     },
                 },
                 production: {
                     defaults: {
-                        identity: 'from-production-stage',
-                        log: { level: 'info' },
+                        user: 'explicit-stage-user',
                     },
                 },
             });
@@ -539,7 +673,7 @@ describe('config: resolver', () => {
             // Explicit stage=production should be used
             const config = resolveConfig(state, { settings, stage: 'production' });
 
-            expect(config!.identity).toBe('from-production-stage');
+            expect(config!.connection.user).toBe('explicit-stage-user');
 
         });
 
@@ -567,7 +701,6 @@ describe('config: resolver', () => {
                 prod: {
                     defaults: {
                         protected: stageProtected,
-                        log: { level: 'info' },
                     },
                 },
             });

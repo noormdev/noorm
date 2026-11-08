@@ -1,6 +1,7 @@
 ---
 type: Domain
-description: Encrypted state, settings.yml, config resolution, app lifecycle, schema/state/settings version migration, and the shared event bus
+reflects_rev: 43ecd2b9bfc709b22ab81b607d625326135ef738
+description: Database config resolution, encrypted project state, shared settings, initialization, lifecycle, and events
 tags: [core, state, config]
 ---
 
@@ -8,137 +9,251 @@ tags: [core, state, config]
 
 ## What it does
 
-Every noorm command needs to know which database it is talking to, whether that config is locked down, and whether the on-disk data it is about to read still matches the shape the running build expects. This domain answers all three, split across storage with different trust levels: `.noorm/state/state.enc` (encrypted configs, secrets, known users), `.noorm/settings.yml` (version-controlled build/stage/rule config), and in-process `LifecycleManager` state (startup/shutdown coordination, not persisted). [`src/core/version/`](../../src/core/version) runs a schema-version migration and a semver migration in a fixed order so a project's on-disk data can move forward without forcing every layer to match the CLI's package version. [`src/core/observer.ts`](../../src/core/observer.ts) is the single `ObserverEngine` every other domain emits through, including the runner's `StatementWatcher`, which emits `file:progress` while a long-running statement is still executing, so a caller with no other signal for "it's still running" gets one.
+This domain gives commands a validated database configuration while keeping encrypted credentials separate from version-controlled project settings. Reach for it when changing how stored configs, environment variables, inline overrides, or stages select a database. It also owns project discovery and initialization, persisted-data migration, application shutdown coordination, and the shared typed event bus.
+
+`.noorm/state/state.enc` holds configs, secrets, and known users. `.noorm/settings.yml` holds shared stages, build rules, and project settings. `LifecycleManager` coordinates process resources without persisting its runtime state.
+
+Config selection decides whether stored state participates before config values are merged.
+
+```mermaid
+flowchart TD
+    %% source: src/core/config/resolver.ts
+    A["resolveConfig"] --> B{"configName?"}
+    B -->|yes| C{"state.getConfig<br/>(configName)?"}
+    C -->|missing| D["throw Error<br/>(configNotFoundMessage)"]
+    C -->|found| E["getStageDefaults<br/>stageFields, clone<br/>merge"]
+    E --> F["parseConfig<br/>applyStageCeiling"]
+    B -->|no| G{"options.flags.connection<br/>or (envConfig.connection<br/>and dialect + database)?"}
+    G -->|yes| H["resolveFromEnvOnly"]
+    G -->|no| I["return null"]
+```
 
 ## How it works
 
-### Project initialization creates identity before StateManager is constructed
+### Resolution separates selection from value precedence
 
-`performProjectInit` ([`src/core/project-init.ts`](../../src/core/project-init.ts)) is the one function both the TUI `InitScreen` and `noorm init` call. It creates identity before constructing either manager because `new StateManager(root, { privateKey })` needs the key `createCryptoIdentity` returns; `SettingsManager` takes no key and does not depend on identity at all.
+`resolveConfig` in [`src/core/config/resolver.ts`](../../src/core/config/resolver.ts) selects a stored name from `options.name`, then `NOORM_CONFIG`, then `state.getActiveConfigName()`. A selected name must exist in state; complete environment or inline connection values do not bypass a missing selected config.
+
+| Resolution mode | Entry condition | Values from lowest to highest priority | Name behavior |
+|---|---|---|---|
+| Stored | A selected config name exists | `DEFAULTS`, mapped stage defaults, stored config, environment, `options.flags` | Selection uses the stored name; merged input can override the resulting config's `name` |
+| Env-only | No selected name; environment has a connection and the stage/env/inline connection supplies dialect and database | `DEFAULTS`, mapped stage defaults, environment, flags | `options.flags.name` overrides `NOORM_NAME` in the merge; absent both, `__env__` |
+| Inline connection | No selected name; `options.flags.connection` exists | `DEFAULTS`, mapped stage defaults, environment, flags | Merged explicit name, otherwise `__inline__` |
+| No usable input | No selected name and neither eligibility condition holds | No config is parsed | Returns `null` |
+
+An inline connection enters validation even when incomplete. It does not need to satisfy the env-only eligibility gate first. `parseConfig` still requires the final dialect and database.
+
+Stage lookup uses an explicit `options.stage` when supplied, otherwise a stage matching the config name. The no-selected-name eligibility probe uses the inline name, environment name, or `__env__`; the actual merge looks up the stage again using the environment name, inline name, or synthetic name. This environment-first lookup does not set the returned name: the later flags merge overrides `NOORM_NAME`. `stageFields(defaults, true)` maps flat stage connection fields into `connection` before the merge. Stage `type`, `isTest`, and `access` stay at the top level. The stage's `protected` value is an access ceiling applied after parsing, not a replacement connection field. See [`docs/wiki/core-policy.md`](core-policy.md) for role semantics.
+
+### Environment names express object paths
+
+`getEnvConfig` in [`src/core/config/index.ts`](../../src/core/config/index.ts) uses native `makeNestedConfig` behavior: underscores create nesting, uppercase segments become lowercase, and camelCase segments preserve schema field names. `memoizeOpts: false` makes later reads observe environment changes. Password keys skip scalar conversion.
+
+| Environment assignment | Parsed value |
+|---|---|
+| `NOORM_CONNECTION_DIALECT=postgres` | `connection.dialect: 'postgres'` |
+| `NOORM_CONNECTION_PORT=5432` | `connection.port: 5432` |
+| `NOORM_CONNECTION_connectTimeoutMs=3000` | `connection.connectTimeoutMs: 3000` |
+| `NOORM_CONNECTION_POOL_idleTimeoutMillis=5000` | `connection.pool.idleTimeoutMillis: 5000` |
+| `NOORM_CONNECTION_SSL_rejectUnauthorized=false` | `connection.ssl.rejectUnauthorized: false` |
+| `NOORM_isTest=true` | `isTest: true` |
+| `NOORM_IS_TEST=true` | `is.test: true`, not `isTest` |
+| `NOORM_CONNECTION_PASSWORD=12345` | `connection.password: '12345'` |
+
+`NOORM_CONFIG` selects a stored config and is excluded from config values. `NOORM_NAME` supplies a config value instead. CLI control variables such as `NOORM_YES` and `NOORM_CHANNEL`, and the `NOORM_IDENTITY_` prefix, are filtered out. `NOORM_IDENTITY` itself can supply the config's identity string.
+
+The accessor builds input; schema parsing validates it. `ConnectionSchema` accepts `postgres`, `mysql`, `sqlite`, or `mssql`, requires a nonempty database, and requires a host outside SQLite. It accepts boolean SSL or an SSL object with `rejectUnauthorized`, `ca`, `cert`, and `key`. Runtime fields include `tlsServerName`, `connectTimeoutMs`, `statementTimeoutMs`, `queryTimeoutMs`, `applicationName`, and `keepAlive`. Connection timeout must be a positive integer; statement and query timeouts permit zero. Pool fields validate their integer bounds. `ConfigValidationError` carries the field path and Zod issues.
+
+For server dialects, database names reject quotes, backticks, brackets, semicolons, and control characters because database creation and removal interpolate a quoted identifier. SQLite database paths are exempt. Config names accept letters, digits, hyphens, and underscores.
+
+### Stage materialization controls which passwords persist
+
+`stageFields` and `materializeStage` in [`src/core/config/stage.ts`](../../src/core/config/stage.ts) distinguish runtime resolution from constructing a stored config. Stage defaults currently expose flat `dialect`, `host`, `port`, `database`, `user`, `password`, boolean `ssl`, `type`, `access`, `isTest`, and `protected` in [`src/core/settings/schema.ts`](../../src/core/settings/schema.ts) and [`src/core/settings/types.ts`](../../src/core/settings/types.ts).
+
+`materializeStage` removes passwords from stage and connection overrides, then accepts only its separate password argument. It clamps access only when `defaults.protected` is truthy.
+
+```mermaid
+flowchart TD
+    %% source: src/core/config/stage.ts, src/cli/config/create.ts, src/tui/app-context.tsx
+    A["materializeStage<br/>stageFields(defaults)"] --> B["connection"]
+    B --> C["delete<br/>connection.password"]
+    C --> D{"password !== undefined?"}
+    D -->|yes| E["connection.password<br/>= password"]
+    D -->|no| F["parseConfig"]
+    E --> F
+    F --> G{"defaults.protected?"}
+    G -->|truthy| H["clampToCeiling"]
+    G -->|falsy| I["return config"]
+    H --> I
+```
+
+The CLI stage-create caller passes environment connection values and explicit connection flags as overrides, but only `args.password` as the password argument. Stage or environment passwords therefore do not enter that stored config implicitly. The TUI's stage synchronization deliberately passes `stage.defaults.password` as the password argument before saving to state. Runtime `resolveConfig` instead calls `stageFields(defaults, true)`, so stage passwords participate below stored, environment, and inline values.
+
+Materialization fixes the requested name and takes top-level behavior from stage defaults rather than copying an entire environment config. Its fallback host is `localhost`, and its fallback database is the stage name. Without an explicit stage type, the fallback type depends on whether the connection host is `localhost`.
+
+### Settings retain a separate persisted document
+
+`SettingsManager` keeps `#document` for YAML persistence and `#settings` for the environment-overlaid accessor view. Mutators update the document and refresh the resolved view; they do not save the environment overlay into `.noorm/settings.yml`. `allSettingsEnv()` constructs its accessor per call with `memoizeOpts: false`, excluding CLI metadata, identity variables, and connection variables.
+
+### Initialization establishes identity before state loading
+
+`performProjectInit` is shared by CLI `noorm init` and the TUI `InitScreen`. It creates identity before constructing `StateManager` when the caller supplies identity information and keys do not exist. With `identityInfo: null`, the caller must already have a global identity in `~/.noorm/`; initialization does not create one implicitly. `SettingsManager` does not require a private key.
+
+Initialization loads settings before scaffolding the default database layout.
 
 ```mermaid
 sequenceDiagram
+    %% source: src/core/project-init.ts
     participant Init as performProjectInit
     participant FS as filesystem
     participant Settings as SettingsManager
     participant State as StateManager
-    participant Singleton as getStateManager(root)
-
-    Init->>FS: mkdir sql/, changes/, .noorm/, .noorm/state/
-    Init->>FS: write .noorm/.gitignore
-    alt identityInfo supplied and no keys exist
-        Init->>Init: createCryptoIdentity()
+    Init->>FS: create .noorm/state and ignore file
+    opt identityInfo supplied
+        Init->>Init: createCryptoIdentity or metadata
     end
     Init->>Settings: init(force)
-    Settings->>FS: write settings.yml
-    Init->>State: new StateManager(root, { privateKey })
-    Init->>State: load()
-    Init->>Singleton: reloadPrivateKey()
-    Init->>FS: append "# noorm" block to .gitignore
+    Init->>Settings: getPaths()
+    Init->>FS: scaffoldDbLayout(paths)
+    Init->>State: construct with privateKey, load()
+    Init->>State: singleton.reloadPrivateKey()
+    Init->>FS: ensure .noorm/state/ ignore entry
 ```
 
-Identity is optional input, not a side effect. `performProjectInit` only creates or updates identity when the caller passes `identityInfo`; when it is `null`, the function assumes a global identity already exists in `~/.noorm/` and proceeds straight to `SettingsManager.init` and `StateManager.load`. On a new project, `StateManager.load()` does not write `state.enc`: with no file on disk it builds `createEmptyState` in memory and returns (`src/core/state/manager.ts:151-166`), so `reloadPrivateKey()` on the process-wide singleton is what makes the just-created key available for later commands.
+`scaffoldDbLayout` creates `db/sql/`, `db/changes/`, and steering files beside them only for the default layout. Existing steering files remain untouched. The root ignore update checks for the `.noorm/state/` entry, not merely the `# noorm` header.
 
-### Loading state runs two migration systems in a fixed order, then repairs access unconditionally
+`getStateManager(projectRoot).reloadPrivateKey()` refreshes the process-wide singleton after initialization, including when it was constructed before identity existed. Loading an absent state file still leaves it in memory until a later save.
 
-`StateManager.load()` ([`src/core/state/manager.ts`](../../src/core/state/manager.ts)) decrypts the file, then must reconcile two independent version numbers before the state is usable: the numeric `schemaVersion` field ([`src/core/version/state/index.ts`](../../src/core/version/state/index.ts)) and the semver-keyed `version` string ([`src/core/state/migrations.ts`](../../src/core/state/migrations.ts)). Schema-version migrations run first, on the raw record. The semver path (`migrateState`, [`src/core/state/migrations.ts`](../../src/core/state/migrations.ts)) then spreads every unknown top-level field through unchanged (`...carried`), so a downgrade does not destroy a field only a newer build knows about, and it drops exactly one field on purpose: `identity`, because that key moved to `~/.noorm/` and an old state file's copy of it holds private-key material that must never be re-persisted.
+`findProjectRoot` resolves paths and searches upward for `.noorm`, stopping at home or the filesystem root. The home-level identity directory is not a project. `getOriginalCwd` preserves the startup directory independently of later project-root changes.
+
+### State loading migrates before repairing access
+
+`StateManager.load()` creates an empty in-memory state when the file is absent. Existing encrypted state requires a private key.
+
+Numeric schema migration precedes package-version migration and access repair.
 
 ```mermaid
 flowchart TD
-    A["readFileSync(<br/>state.enc)"] --> B["decrypt(payload,<br/>privateKey)"]
-    B --> C["JSON.parse -><br/>stateRecord"]
-    C --> D["migrateSchemaVersion(<br/>stateRecord)"]
-    D --> E["migrateState(<br/>schemaMigratedState,<br/>currentVersion)"]
-    E --> F["repairConfigAccess<br/>per config"]
-    F --> G{"needsVersionMigration<br/>OR backfilledAccess?"}
-    G -->|yes| H["#persist()"]
-    G -->|no| I["state:loaded"]
-    H --> I
+    %% source: src/core/state/manager.ts, src/core/state/migrations.ts
+    A["readFileSync"] --> B["decrypt and JSON.parse"]
+    B --> C["migrateSchemaVersion"]
+    C --> D["migrateState"]
+    D --> E["repairConfigAccess"]
+    E --> F{"Migration or repair?"}
+    F -->|yes| G["#persist"]
+    F -->|no| H["state:loaded"]
+    G --> H
 ```
 
-`repairConfigAccess` ([`src/core/state/access.ts`](../../src/core/state/access.ts)) runs on every config regardless of whether either migration fired, because a hand-edited or corrupted state file can reach this point with a malformed `access` even at the current schema version. It is fail-closed: an unrecognized `access.user` or `access.agent` value falls back to `viewer` (`MOST_RESTRICTIVE_ROLE`), and `access.agent: false` (invisible to the agent channel) survives untouched since it is already the strictest possible value.
+`migrateState` retains unknown top-level fields and the numeric `schemaVersion`, so running an older binary does not discard fields added by a newer one. It removes legacy embedded `identity` because identity moved to `~/.noorm/` and the old field can contain private-key material that must not be persisted again. [`src/core/version/`](../../src/core/version) owns numeric migration engines for database schema, encrypted state, and settings. [`src/core/state/migrations.ts`](../../src/core/state/migrations.ts) owns the package-version stamp and state-field backfills.
 
-### The runner's `file:before`/`file:after` bracket the watcher's repeating `file:progress`
+`repairConfigAccess` runs on each config even at the current migration version. A malformed access value can reach loading without passing through `parseConfig`; any repair is persisted.
 
-[`src/core/observer.ts`](../../src/core/observer.ts) exports a single `ObserverEngine<NoormEvents>` instance. `NoormEvents` aggregates event-payload types from every domain that emits (`settings`, `update`, `vault`, `transfer`, `dt`), plus inline families such as `file:*`, `state:*`, `config:*`, `app:*`, `version:*` declared in this file, so the type surface of this one file is a dependency for anything in the repo that emits or subscribes. `file:before` and `file:after` are the runner's own events ([`src/core/runner/runner.ts`](../../src/core/runner/runner.ts), `executeSingleFileWithUpdate` and `executeSingleFile`); `StatementWatcher` ([`src/core/runner/statement-watcher.ts`](../../src/core/runner/statement-watcher.ts)) emits only `file:progress`, from inside its own `#report` loop.
+| Raw access input | Repaired access |
+|---|---|
+| Record with an unrecognized or missing channel value | That channel becomes `viewer`; recognized channel roles remain unchanged. |
+| `access.agent: false` | Remains invisible to agents. |
+| Non-object access | `resolveLegacyAccess` supplies `DEFAULT_ACCESS`, or `GUARDED_ACCESS` when the legacy `protected` value is truthy. |
 
-The watcher waits out the watch delay before its first emission, then repeats on the watch interval until `file:after` closes the bracket.
+`CURRENT_VERSIONS` in [`src/core/version/types.ts`](../../src/core/version/types.ts) sets database schema version `2`, state schema version `3`, and settings schema version `1`, independently of the package version.
+
+State persistence uses a content fingerprint and `mergeState` for three-way reconciliation between the loaded baseline, local mutations, and concurrent disk changes. `acquireWriteLock` uses exclusive `wx` (`O_EXCL`) creation rather than `flock`, which can be ineffective on network mounts. It waits up to 5s and treats locks older than 30s as abandoned. `backupExisting` attempts a previous-generation `.bak` copy before each overwrite; `writeFileAtomicSync` flushes a sibling file before renaming it over the target. State writes use mode `0o600`, and backup permissions are set to the same mode.
+
+Encryption uses AES-256-GCM with `deriveStateKey` from the identity private key. The 16-byte IV deliberately differs from the usual 12-byte GCM nonce. `EncryptedPayload.kdf` is optional for older payloads; an absent value denotes `hkdf-sha256`. State holds `configs`, config-scoped `secrets`, `globalSecrets`, `knownUsers`, `activeConfig`, `version`, and `schemaVersion`.
+
+`isValidSecretKey` in [`src/core/state/manager.ts`](../../src/core/state/manager.ts) accepts `/^[A-Za-z][A-Za-z0-9_]*$/`; `setSecret` rejects keys outside that pattern. [`src/core/vault/storage.ts`](../../src/core/vault/storage.ts) declares the same pattern as `SECRET_KEY_PATTERN`; TUI validators and secret setters must retain the same accepted key format.
+
+### Shutdown releases resources in phase order
+
+`LifecycleManager` registers cleanup resources and runs shutdown phases in a fixed order.
+
+1. `stopping`
+2. `completing`
+3. `releasing`
+4. `flushing`
+
+`LifecycleManager.#performShutdown` skips `exiting`; the caller owns exit handling, and resources registered for `exiting` do not run here. Signal and exception handlers live in [`src/core/lifecycle/handlers.ts`](../../src/core/lifecycle/handlers.ts). The default database cleanup calls `getConnectionManager().closeAll()`.
+
+| Shutdown condition | Behavior |
+|---|---|
+| Resources share a phase | Run sequentially in ascending priority. |
+| A resource cleanup fails | Emit `error` with `source: 'lifecycle'` and the resource name, then continue with subsequent resources. |
+| A phase times out | Emit `app:shutdown:phase` with `status: 'timeout'` and continue to the next phase. |
+| An uncaught exception or unhandled rejection reaches fatal handling | Remove process handlers, mark lifecycle state `failed`, and emit `app:exit` with code `1` without awaiting phased shutdown. |
+
+### Observer payloads describe runtime activity
+
+[`src/core/observer.ts`](../../src/core/observer.ts) exports the shared `ObserverEngine<NoormEvents>` instance. `NoormEvents` combines imported settings, update, vault, transfer, and DT event interfaces with inline file, config, state, connection, application, and version events. Logger, teardown, and statement-probe types define individual payload fields. Changes to those payload types affect emitters and subscribers through this shared contract.
+
+`connection:open` includes `configName` and `dialect`, plus optional `host`, `port`, and `database`, so subscribers can identify the resolved connection rather than infer it from the stored name. `connection:error` carries a user-facing `error`, optional server diagnostics, and optional `phase: 'idle'` to distinguish idle pool failures. Config CRUD payloads carry names; updates also carry changed field names, and activation carries the previous name.
+
+The event contract permits repeating progress signals between file execution boundaries.
 
 ```mermaid
 sequenceDiagram
+    %% source: src/core/observer.ts
     participant Runner as runner
     participant Watcher as StatementWatcher
     participant Obs as observer
-    participant CLI as CLI/TUI subscriber
-
-    Runner->>Obs: emit("file:before", {...})
-    loop past the watch delay, every watch interval
-        Watcher->>Obs: emit("file:progress", { filepath, elapsedMs, sessionId, status })
-        Obs->>CLI: on("file:progress", ...)
+    participant UI as subscriber
+    Runner->>Obs: file:before(filepath, checksum, configName)
+    loop after watch delay, on watch interval
+        Watcher->>Obs: file:progress(filepath, elapsedMs, sessionId, status)
+        Obs->>UI: progress payload
     end
-    Runner->>Obs: emit("file:after", { status, durationMs })
+    Runner->>Obs: file:after(filepath, status, durationMs, error?)
 ```
 
-`sessionId` is the server-side session or process id the watcher reads up front for the pinned connection; it is `null` on dialects with no session-id query (sqlite), when the id read itself fails (`statement-watcher.ts`'s `#readSessionId`: `if (err) return null`), and shows as `pid` in the TUI (`src/tui/components/status/StatementProgress.tsx:78`). Its payload's `status: StatementStatus | null` is `null` when the dialect has no probe or the server could not be asked, so a subscriber cannot treat a `null` status as "still fine": it means "no signal available," and `sessionId` lets a caller correlate repeats of the same in-flight statement.
+The runner's `executeSingleFile` and `executeSingleFileWithUpdate` emit `file:before`/`file:after`; `StatementWatcher.#report` emits `file:progress`. The watcher reads the pinned connection's server session/process ID before execution. `sessionId` is null for SQLite or a failed session-ID read, and [`src/tui/components/status/StatementProgress.tsx`](../../src/tui/components/status/StatementProgress.tsx) displays it as `pid`. Subscribers can correlate repeated reports with that ID. The nullable `status` means a missing dialect probe or an unavailable server response, not a successful health check. Execution and probing details belong to [`docs/wiki/core-runner.md`](core-runner.md).
 
 ## Where it lives
 
-| Path | What |
+| Path | Role |
 |---|---|
-| [`src/core/state/manager.ts`](../../src/core/state/manager.ts) | `StateManager` — load/persist, three-way merge reconciliation, config/secret/known-user CRUD |
-| [`src/core/state/persistence.ts`](../../src/core/state/persistence.ts) | Atomic writes (`writeFileAtomicSync`), advisory lock (`acquireWriteLock`), backup (`backupExisting`), content fingerprinting |
-| [`src/core/state/merge.ts`](../../src/core/state/merge.ts) | `mergeState` — per-field reconciliation rules for concurrent writers |
-| [`src/core/state/access.ts`](../../src/core/state/access.ts) | `repairConfigAccess` — fail-closed backfill of a config's `access` field |
-| [`src/core/state/migrations.ts`](../../src/core/state/migrations.ts) | Semver-keyed `migrateState`/`needsMigration`, keyed on `State.version` |
-| [`src/core/state/encryption/crypto.ts`](../../src/core/state/encryption/crypto.ts), `.../index.ts` | AES-256-GCM encrypt/decrypt over `deriveStateKey` (derivation in [`src/core/identity/crypto.ts`](../../src/core/identity/crypto.ts)) |
-| [`src/core/state/types.ts`](../../src/core/state/types.ts) | `State`, `EncryptedPayload`, `createEmptyState` |
-| [`src/core/state/version.ts`](../../src/core/state/version.ts) | `getPackageVersion` — build-time-injected CLI version used to stamp `state.enc` |
-| [`src/core/settings/manager.ts`](../../src/core/settings/manager.ts) | `SettingsManager` — `settings.yml` load/save, `#document` vs. env-overlaid `#settings` split |
-| [`src/core/settings/rules.ts`](../../src/core/settings/rules.ts) | `evaluateRules`, `getEffectiveBuildPaths`, `isConfigGuarded` |
-| [`src/core/settings/defaults.ts`](../../src/core/settings/defaults.ts) | `DEFAULT_SETTINGS`, `SETTINGS_DIR_PATH`, `createDefaultSettings` |
-| [`src/core/settings/events.ts`](../../src/core/settings/events.ts), `.../schema.ts`, `.../types.ts` | `SettingsEvents`, zod schema, `Stage`/`Rule`/`BuildConfig` types |
-| [`src/core/config/resolver.ts`](../../src/core/config/resolver.ts) | `resolveConfig` — merges defaults, stage, stored, env, and flags; `applyStageCeiling` |
-| [`src/core/config/schema.ts`](../../src/core/config/schema.ts) | `ConfigSchema` (`.transform(withResolvedAccess)`), `DANGEROUS_DB_NAME_CHARS` |
-| [`src/core/config/validate.ts`](../../src/core/config/validate.ts) | `validateConfigChecks` — the shared connection/name/database/host-presence check sequence used by [`src/cli/config/validate.ts`](../../src/cli/config/validate.ts) and `ConfigValidateScreen.tsx` |
-| [`src/core/config/index.ts`](../../src/core/config/index.ts) | `getEnvConfig` — env-var config accessor |
-| [`src/core/config/types.ts`](../../src/core/config/types.ts) | `Config`/`ConfigInput` types |
-| [`src/core/lifecycle/manager.ts`](../../src/core/lifecycle/manager.ts) | `LifecycleManager` — phased shutdown (`stopping` → `completing` → `releasing` → `flushing` → `exiting`) |
-| [`src/core/lifecycle/handlers.ts`](../../src/core/lifecycle/handlers.ts) | `registerSignalHandlers`, `registerExceptionHandlers` |
-| [`src/core/lifecycle/types.ts`](../../src/core/lifecycle/types.ts) | `LifecycleConfig`, `ShutdownPhase`, `AppMode` |
-| [`src/core/version/types.ts`](../../src/core/version/types.ts) | `CURRENT_VERSIONS` (`schema: 2`, `state: 3`, `settings: 1`), migration interfaces |
-| [`src/core/version/schema/`](../../src/core/version/schema), `.../state/`, `.../settings/` | Numeric migration engines, each a `MIGRATIONS` array plus `up`/`down` steps; `schema/` tracks the DB-side tracking tables |
-| [`src/core/project.ts`](../../src/core/project.ts) | `findProjectRoot`, `getOriginalCwd`/`setOriginalCwd` |
-| [`src/core/project-init.ts`](../../src/core/project-init.ts) | `performProjectInit` — directory/settings/state/identity bootstrap |
-| [`src/core/environment.ts`](../../src/core/environment.ts) | `isCi`, `isDev`, `isDebug`, `isEnvTruthy`, `shouldSkipConfirmations`, `getEnvConfigName` |
-| [`src/core/observer.ts`](../../src/core/observer.ts) | `observer` singleton, `NoormEvents` (includes `file:progress`) |
-| `.noorm/state/state.enc` | AES-256-GCM encrypted JSON, mode `0o600`; holds `configs`, `secrets`, `globalSecrets`, `knownUsers`, `activeConfig`, `version`, `schemaVersion` |
-| `.noorm/state/state.enc.bak` | Previous-generation backup written before every overwrite |
-| `.noorm/state/state.enc.lock` | Advisory `O_EXCL` lock file, 5s acquire timeout, 30s staleness threshold |
-| `.noorm/settings.yml` | YAML, version controlled, parsed/written via the `yaml` package |
-| `tests/core/{state,settings,config,lifecycle,version}/` | Unit coverage for state migration/access/persistence, settings load/save, config resolution, lifecycle phases, and version migration |
+| [`src/core/config/index.ts`](../../src/core/config/index.ts) | Live environment accessor and public config exports |
+| [`src/core/config/resolver.ts`](../../src/core/config/resolver.ts) | `resolveConfig` and `applyStageCeiling`; config selection, source precedence, completeness, and deletion constraints |
+| [`src/core/config/stage.ts`](../../src/core/config/stage.ts) | Flat stage mapping and password-controlled materialization |
+| [`src/core/config/schema.ts`](../../src/core/config/schema.ts), [`src/core/config/types.ts`](../../src/core/config/types.ts) | `ConfigSchema`, `withResolvedAccess`, `DANGEROUS_DB_NAME_CHARS`, `Config`, and `ConfigInput`; full and partial validation |
+| [`src/core/config/validate.ts`](../../src/core/config/validate.ts) | `validateConfigChecks`: connection, name/database presence, then non-SQLite host checks, shared by [`src/cli/config/validate.ts`](../../src/cli/config/validate.ts) and `ConfigValidateScreen` |
+| [`src/core/settings/manager.ts`](../../src/core/settings/manager.ts) | `SettingsManager`, YAML document, resolved settings view, settings mutations |
+| [`src/core/settings/schema.ts`](../../src/core/settings/schema.ts), [`src/core/settings/types.ts`](../../src/core/settings/types.ts), [`src/core/settings/defaults.ts`](../../src/core/settings/defaults.ts) | Zod settings schema, `Stage`, `Rule`, `BuildConfig`, `DEFAULT_SETTINGS`, `SETTINGS_DIR_PATH`, and `createDefaultSettings` |
+| [`src/core/settings/rules.ts`](../../src/core/settings/rules.ts), [`src/core/settings/events.ts`](../../src/core/settings/events.ts) | `evaluateRules`, `getEffectiveBuildPaths`, `isConfigGuarded`, and `SettingsEvents` |
+| [`src/core/state/manager.ts`](../../src/core/state/manager.ts) | `StateManager`, load/persist and config, secret, known-user operations |
+| [`src/core/state/persistence.ts`](../../src/core/state/persistence.ts), [`src/core/state/merge.ts`](../../src/core/state/merge.ts) | `writeFileAtomicSync`, `acquireWriteLock`, `backupExisting`, fingerprinting, and `mergeState` |
+| [`src/core/state/access.ts`](../../src/core/state/access.ts), [`src/core/state/migrations.ts`](../../src/core/state/migrations.ts) | `repairConfigAccess`, semver `migrateState`, and `needsMigration` |
+| [`src/core/state/encryption/crypto.ts`](../../src/core/state/encryption/crypto.ts), [`src/core/state/encryption/index.ts`](../../src/core/state/encryption/index.ts), [`src/core/state/types.ts`](../../src/core/state/types.ts), [`src/core/state/version.ts`](../../src/core/state/version.ts) | `encrypt`/`decrypt` and their barrel exports, `State`, `EncryptedPayload`, `createEmptyState`, and `getPackageVersion` (the build-time-injected CLI package version) |
+| [`src/core/version/types.ts`](../../src/core/version/types.ts), `src/core/version/{schema,state,settings}/` | `CURRENT_VERSIONS`, numeric migration interfaces and each engine's `MIGRATIONS` with `up`/`down` steps; `schema/` owns database tracking tables |
+| [`src/core/project.ts`](../../src/core/project.ts), [`src/core/project-init.ts`](../../src/core/project-init.ts) | `findProjectRoot`, `getOriginalCwd`/`setOriginalCwd`, `performProjectInit`, and layout scaffolding |
+| [`src/core/environment.ts`](../../src/core/environment.ts) | `isCi`, `isDev`, `isDebug`, `isEnvTruthy`, `shouldSkipConfirmations`, and `getEnvConfigName` |
+| [`src/core/lifecycle/manager.ts`](../../src/core/lifecycle/manager.ts), [`src/core/lifecycle/handlers.ts`](../../src/core/lifecycle/handlers.ts), [`src/core/lifecycle/types.ts`](../../src/core/lifecycle/types.ts) | `LifecycleManager`, `registerSignalHandlers`/`registerExceptionHandlers`, `LifecycleConfig`, `ShutdownPhase`, and `AppMode` |
+| [`src/core/observer.ts`](../../src/core/observer.ts) | Shared observer and event payload contract |
+| `.noorm/state/state.enc`, `.noorm/state/state.enc.bak`, `.noorm/state/state.enc.lock` | Encrypted state, previous-generation backup, write lock |
+| `.noorm/settings.yml` | Version-controlled shared YAML, parsed and written with the `yaml` package |
+| [`tests/core/config/env.test.ts`](../../tests/core/config/env.test.ts), [`tests/core/config/resolver.test.ts`](../../tests/core/config/resolver.test.ts), [`tests/core/config/stage-materialization.test.ts`](../../tests/core/config/stage-materialization.test.ts) | Environment, precedence, and stage materialization regression coverage |
+| [`tests/core/state/`](../../tests/core/state), [`tests/core/settings/`](../../tests/core/settings), [`tests/core/lifecycle/`](../../tests/core/lifecycle), [`tests/core/version/`](../../tests/core/version) | Persistence, settings, lifecycle, and migration coverage |
 
 ## Constraints
 
-- `StateManager.load()` never writes on init: with no `state.enc` on disk, `load()` builds `createEmptyState` in memory and returns without calling `#persist()`. A caller that needs the file to exist on disk after init must trigger a later save.
-- Migration order is fixed: schema-version migration (`migrateSchemaVersion`, numeric `schemaVersion`) must run before the semver `migrateState` (string `version`), on the raw record. `migrateState` ([`src/core/state/migrations.ts`](../../src/core/state/migrations.ts)) is the semver engine; [`src/core/version/`](../../src/core/version) holds the numeric engines (`schema/`, `state/`, `settings/`).
-- Access repair is fail-closed on record-shaped `access`: `repairConfigAccess` can only make a record-shaped config more restrictive on an unrecognized channel value; it never loosens. `access.agent: false` (invisible) is distinct from any role and preserved as-is. A non-object `access` with no `protected` instead resolves to `DEFAULT_ACCESS` (`{ user: 'admin', agent: 'viewer' }`) via `resolveLegacyAccess`; a truthy `protected` maps to `GUARDED_ACCESS`.
-- `DEFAULTS` omits `access` on purpose: `resolveConfig`'s merge base leaves `access` out so `parseConfig`'s `resolveLegacyAccess` fallback sees what the merged stored/env/flag input supplied instead of a pre-filled default. Pre-filling `access` in `DEFAULTS` would short-circuit `withResolvedAccess`, so a config that only sets legacy `protected: true` would silently resolve to `DEFAULT_ACCESS` (admin) instead of `GUARDED_ACCESS` (`src/core/config/resolver.ts:67-74`).
-- Stage ceilings only clamp down: `applyStageCeiling`/`clampToCeiling` cap a `protected: true` stage's resolved access at `{ user: 'operator', agent: 'viewer' }`; a config already stricter than the ceiling is left alone.
-- `#document` and `#settings` never merge back: `SettingsManager` mutators (`setStage`, `addRule`, etc.) read and write `#document` only; the env-overlaid `#settings` view is recomputed via `#refreshResolved` after every load and mutation, so ambient `NOORM_*` shell values never land in the version-controlled `settings.yml`.
-- Env overlay reads live, not cached: `allSettingsEnv()` calls `makeNestedConfig` fresh per call with `memoizeOpts: false`, so `process.env` mutations after module load are still visible.
-- Lock uses `O_EXCL`, not `flock`: `acquireWriteLock` opens with `wx` because `flock` silently no-ops on some network filesystems; a lock older than 30s is treated as abandoned and removed.
-- `IV_LENGTH` is 16 bytes, a deliberate deviation from the NIST-recommended 12, noted in [`src/core/state/encryption/crypto.ts`](../../src/core/state/encryption/crypto.ts). `EncryptedPayload.kdf` is optional; absent means `hkdf-sha256`, so old payloads keep decrypting after a future derivation change.
-- Secret keys follow one regex declared twice: `isValidSecretKey` (`/^[A-Za-z][A-Za-z0-9_]*$/`) in [`src/core/state/manager.ts`](../../src/core/state/manager.ts), and the same pattern as `SECRET_KEY_PATTERN` in `src/core/vault/storage.ts:35`. `setSecret` and TUI live-typing validators call one or the other rather than deriving a shared constant.
-- `file:progress.status` can be `null`: it means no probe exists for the dialect (sqlite) or the server could not be asked. A subscriber must not read it as "healthy."
-- [`.gitignore`](../../.gitignore) append is keyed on the entry string: `performProjectInit` checks for the literal `.noorm/state/` entry, not the `# noorm` header comment, because a [`.gitignore`](../../.gitignore) can carry a `# noorm` header with no `.noorm/state/` entry under it. Existing projects may carry a header-only `# noorm` block, so the append still fires for them.
+- A selected name requires stored state. Passing an unknown `options.name` or `NOORM_CONFIG` throws even when environment or inline connection values are complete; omit selection to use the env-only or inline branch.
+- Underscores create nesting rather than camelCase words. `NOORM_IS_TEST` does not configure `isTest`; use `NOORM_isTest` or the resolved behavior differs from the intended schema field.
+- Environment parsing is not schema validation. A value returned by `getEnvConfig` can still fail `parseConfig`; callers cannot treat the accessor as proof that a connection is valid.
+- Stage materialization and runtime resolution have different password rules. Passing a complete environment config to materialization does not preserve its password; only the separate password argument does.
+- Keep ambient settings values out of `#document`. Saving the resolved accessor view instead would persist shell-provided settings into version-controlled YAML.
+- `DEFAULTS` deliberately omits `access`. Injecting it before parsing would hide legacy `protected` input from the policy fallback and change resolved roles. Stage ceilings and access repair semantics belong to [`docs/wiki/core-policy.md`](core-policy.md).
+- An absent state file remains absent after `StateManager.load()`. A caller requiring a durable file must perform a later mutation; initialization's reported path alone does not establish persistence.
+- Numeric state migration must precede `migrateState`. Reversing ownership of migration fields can lose schema-managed information during persistence.
+- State locks must be released on failure as well as success. A held lock blocks competing mutations until release or stale-lock handling.
+- A null `file:progress.status` provides no health signal. Subscribers that display it as success misrepresent an unavailable probe.
+- `isEnvTruthy` does not trim input. It treats empty strings, `0`, and case-insensitive `false` as false. Substituting JavaScript string truthiness would accidentally bypass confirmations for `NOORM_YES=false` or enable debug logging for `NOORM_DEBUG=0`.
 
 ## Coupling
 
-- [`src/core/state/access.ts`](../../src/core/state/access.ts) and [`src/core/config/schema.ts`](../../src/core/config/schema.ts)/`resolver.ts` import `resolveLegacyAccess`, `ConfigAccess`, `Role` from **core-policy** to resolve and clamp per-config access roles: data resolution, not enforcement.
-- `src/core/settings/rules.ts:isConfigGuarded` calls `guarded` from **core-policy** so rule matching on `match.protected` reflects actual access state rather than a stored flag.
-- [`src/core/state/manager.ts`](../../src/core/state/manager.ts) imports `KnownUser` ([`src/core/identity/types.ts`](../../src/core/identity/types.ts)) and `loadPrivateKey` ([`src/core/identity/storage.ts`](../../src/core/identity/storage.ts)); [`src/core/state/encryption/crypto.ts`](../../src/core/state/encryption/crypto.ts) imports `deriveStateKey` and `isValidKeyHex`: state encryption is keyed off the user's identity private key (**core-identity**).
-- [`src/core/config/types.ts`](../../src/core/config/types.ts) imports `ConnectionConfig`/`Dialect` from [`src/core/connection/types.ts`](../../src/core/connection/types.ts); [`src/core/config/validate.ts`](../../src/core/config/validate.ts) imports `testConnection` from [`src/core/connection/factory.ts`](../../src/core/connection/factory.ts); [`src/core/config/schema.ts`](../../src/core/config/schema.ts) and [`src/core/settings/schema.ts`](../../src/core/settings/schema.ts) both import `PortSchema` from [`src/core/connection/defaults.ts`](../../src/core/connection/defaults.ts), all **core-db**.
-- [`src/core/config/types.ts`](../../src/core/config/types.ts) imports `LogLevel` from [`src/core/logger/types.ts`](../../src/core/logger/types.ts) (**core-identity**).
-- [`src/core/lifecycle/manager.ts`](../../src/core/lifecycle/manager.ts) registers a default shutdown resource that calls `getConnectionManager().closeAll()` (**core-db**).
-- [`src/core/version/schema/index.ts`](../../src/core/version/schema/index.ts) calls `waitForIdentityToLoad` from [`src/core/identity/index.ts`](../../src/core/identity/index.ts) (**core-identity**) after bootstrapping or migrating tracking tables.
-- [`src/core/observer.ts`](../../src/core/observer.ts)'s `NoormEvents` imports event-payload types from [`src/core/vault/events.ts`](../../src/core/vault/events.ts) and [`src/core/logger/types.ts`](../../src/core/logger/types.ts) (**core-identity**), [`src/core/transfer/events.ts`](../../src/core/transfer/events.ts) and [`src/core/teardown/types.ts`](../../src/core/teardown/types.ts) (**core-db**), [`src/core/dt/events.ts`](../../src/core/dt/events.ts) (**sdk**), and `StatementStatus` from [`src/core/runner/statement-probes.ts`](../../src/core/runner/statement-probes.ts) (**core-runner**, which also emits `file:before`/`file:after` through this observer). [`src/core/update/`](../../src/core/update) has no owning domain, and its event-payload types are imported here too. Every domain that emits events depends on this file, and this file's type surface depends on those domains' event shapes.
+- [`docs/wiki/core-policy.md`](core-policy.md) owns access roles, channel visibility, guarded rules, and enforcement. This domain resolves policy data, repairs persisted access, and applies stage ceilings through policy helpers.
+- [`docs/wiki/core-identity.md`](core-identity.md) owns the private key used to encrypt state, `KnownUser`, and logger contracts. `StateManager` loads keys through [`src/core/identity/storage.ts`](../../src/core/identity/storage.ts); encryption uses `deriveStateKey` from [`src/core/identity/crypto.ts`](../../src/core/identity/crypto.ts) and `isValidKeyHex` from identity storage. Initialization creates identity before keyed state use.
+- [`src/core/version/schema/index.ts`](../../src/core/version/schema/index.ts) calls identity's `waitForIdentityToLoad` after bootstrapping or migrating database tracking tables.
+- [`docs/wiki/core-db.md`](core-db.md) owns connection types, port validation, connection testing, and database cleanup. Runtime config fields and observer connection payloads must stay compatible with those consumers.
+- [`src/core/config/types.ts`](../../src/core/config/types.ts) imports `ConnectionConfig`/`Dialect` from connection types and `LogLevel` from logger types. Config validation calls `testConnection`; config and settings schemas share connection `PortSchema`.
+- [`src/core/settings/rules.ts`](../../src/core/settings/rules.ts) resolves legacy `match.protected` through `isConfigGuarded`/policy `guarded`, so matching follows resolved access rather than a stored boolean.
+- [`docs/wiki/core-runner.md`](core-runner.md) owns file execution and statement probing. Its emitters and CLI/TUI subscribers share `NoormEvents` payloads.
+- [`docs/wiki/cli.md`](cli.md) owns command selection and flags; its stage-create path chooses explicit persisted passwords. [`docs/wiki/tui.md`](tui.md) owns stage synchronization; [`src/tui/app-context.tsx`](../../src/tui/app-context.tsx) passes stage passwords when synchronizing stage configs into encrypted state.
+- [`docs/wiki/sdk.md`](sdk.md) owns SDK callers that supply inline connection overrides and the data-transfer event contracts aggregated by `NoormEvents`.
