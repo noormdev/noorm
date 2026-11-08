@@ -38,17 +38,16 @@ Use the TUI wizard: run `noorm ui`, press `c` for configs, then `a`. Before it s
 
 Schema and change folders are not config fields. `paths` in `.noorm/settings.yml` sets them.
 
-For headless creation, `noorm config create --stage staging --name review` materializes
-stage defaults without connecting. `noorm config create --all` creates one config per
-stage and never stores passwords. Single-stage creation honors connection environment
-and flags, but persists a password only with an explicit `--password`. Existing configs
-require both `--force` and `--yes` to overwrite. Creating a differently named config
-does not persist a stage link; updating defaults does not automatically update configs.
+Create a config from an existing stage without connecting:
 
-`noorm ci init --type local` selects the CI config type independently of `--test`.
-Alternatively `--stage staging` inherits its type; `--type` wins and the default is
-`remote`. Stage selection here does not inherit connection fields.
-`noorm config add` and `config edit` exit 1 and point you at the TUI. To create a config without it, write a JSON file and import it. This `staging.json` is hidden from agents:
+```bash
+noorm config create --stage staging --name review --host db.example.com
+noorm config validate review
+```
+
+`create` saves the stage's defaults with one-time connection overrides. To update an existing config from changed defaults, use `noorm config sync --stage staging --name review`; it previews changes and asks before saving. Neither command stores a stage link. The [CLI reference](/headless#config-create) lists flags, password rules, and overwrite authorization.
+
+`noorm config add` and `config edit` exit 1 and point you at the TUI. For a complete config object, import JSON instead. This `staging.json` is hidden from agents:
 
 ```json
 {
@@ -97,14 +96,14 @@ Environment variables override the stored config. [Stages](/guide/environments/s
 | `NOORM_YES` | Any value except empty, `0`, or `false` skips `confirm` prompts on the `user` channel |
 | `NOORM_CHANNEL` | `user` or `agent`. See [Which channel is a process on?](#which-channel-is-a-process-on) |
 
-Connection variables also include `NOORM_CONNECTION_FILENAME`, `NOORM_CONNECTION_POOL_MIN`,
-`NOORM_CONNECTION_POOL_MAX`, `NOORM_CONNECTION_CONNECT_TIMEOUT_MS`, and
-`NOORM_CONNECTION_TLS_SERVER_NAME`. Detailed SSL uses `NOORM_CONNECTION_SSL_REJECT_UNAUTHORIZED`,
-`NOORM_CONNECTION_SSL_CA`, `NOORM_CONNECTION_SSL_CERT`, and `NOORM_CONNECTION_SSL_KEY`;
-do not combine these with scalar `NOORM_CONNECTION_SSL`. Booleans are `true` or `false`,
-and ports, pool sizes and timeouts are integers. Unsupported connection names are errors.
-Passwords remain strings. `config validate` tests the effective environment-overridden
-connection without saving the overrides.
+CamelCase fields keep their schema spelling within one segment:
+
+```bash
+export NOORM_CONNECTION_connectTimeoutMs=30000
+export NOORM_CONNECTION_SSL_rejectUnauthorized=true
+```
+
+Underscores mean nesting, so splitting `connectTimeoutMs` into words addresses a different object. Use either scalar SSL or nested SSL settings, without mixing both forms. The [environment field reference](/dev/config#environment-variables) lists the supported schema paths and validation behavior. `config validate` tests the effective environment-overridden connection without saving overrides.
 
 When no config is selected by flag, `NOORM_CONFIG`, or `config use`, noorm builds one named `__env__` from the variables. It needs `NOORM_CONNECTION_DIALECT` and `NOORM_CONNECTION_DATABASE`:
 
