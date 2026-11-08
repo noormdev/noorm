@@ -10,10 +10,12 @@ paths:
   - "packages/cli/**"
   - "skills/noorm/**"
   - "tests/cli/*"
+  - "tests/cli/ci/**"
+  - "tests/cli/config/**"
   - "tests/integration/cli/**"
 ---
 
-Domain: cli. Citty CLI command groups and leaf commands, headless mode, binary distribution.
+Domain: cli. Citty commands, headless stage workflows, and binary distribution.
 
 Map:
   - docs/wiki/cli.md
@@ -21,5 +23,10 @@ Contracts:
   - docs/spec/v1-49-54-cli-field-defects.md
 Designs:
   - docs/design/v1-49-54-cli-field-defects.md
+Related:
+  - docs/dev/ci.md
+  - docs/dev/headless.md
+  - docs/guide/automation/non-interactive.md
+  - docs/guide/environments/configs.md
 
 Consult the map before changing behavior here. Behavior changes stale the pages above. Renames or removals stale mentions beyond them: grep the old name across docs/ before shipping.

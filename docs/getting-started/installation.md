@@ -41,9 +41,9 @@ npm install @noormdev/sdk kysely pg
 | PostgreSQL | `pg` |
 | MySQL | `mysql2` |
 | SQLite | `better-sqlite3` |
-| SQL Server | `tedious` and `tarn` |
+| SQL Server | `tedious` |
 
-Drivers are optional peer dependencies, so install only the one you use.
+Drivers are optional peer dependencies, so install only the one you use. Tarn is bundled and does not need a separate install.
 
 
 ## Install the agent skill (optional)

@@ -118,6 +118,34 @@ describe('cli: noorm ci init', () => {
 
     });
 
+    it('preserves stored configs when a forced replacement fails validation', async () => {
+
+        const identity = validIdentityEnv();
+        const initial = runInit(tmpDir, {
+            ...identity,
+            ...validConnectionEnv(),
+        }, ['--name', 'preserved', '--json']);
+        expect(initial.status).toBe(0);
+
+        const statePath = join(tmpDir, '.noorm', 'state', 'state.enc');
+        const original = readFileSync(statePath);
+        const invalid = runInit(tmpDir, {
+            ...identity,
+            ...validConnectionEnv(),
+            NOORM_CONNECTION_PORT: '70000',
+        }, ['--name', 'replacement', '--force', '--yes', '--json']);
+
+        expect(invalid.status).not.toBe(0);
+        expect(JSON.parse(invalid.stdout.trim()).success).toBe(false);
+        expect(readFileSync(statePath)).toEqual(original);
+
+        const state = new StateManager(tmpDir, { privateKey: identity.NOORM_IDENTITY_PRIVATE_KEY });
+        await state.load();
+        expect(state.getConfig('preserved')?.name).toBe('preserved');
+        expect(state.getConfig('replacement')).toBeNull();
+
+    });
+
     it('does not mark the config as a test database by default', () => {
 
         const result = runInit(tmpDir, { ...validIdentityEnv(), ...validConnectionEnv() }, ['--json']);

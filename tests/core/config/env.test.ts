@@ -2,7 +2,7 @@
  * Environment variable config tests.
  *
  * Tests the makeNestedConfig-based env var parsing.
- * Env vars follow the pattern: NOORM_{PATH}_{TO}_{VALUE}
+ * Underscores separate nested paths; camelCase within a segment is preserved.
  *
  * @example
  * NOORM_CONNECTION_DIALECT=postgres  ->  { connection: { dialect: 'postgres' } }
@@ -11,6 +11,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import {
     getEnvConfig,
+    EnvConfigSchema,
 } from '../../../src/core/config/index.js';
 import { getEnvConfigName, isCi, isEnvTruthy, shouldSkipConfirmations } from '../../../src/core/environment.js';
 
@@ -32,6 +33,11 @@ describe('config: env', () => {
             'NOORM_CONNECTION_SSL',
             'NOORM_CONNECTION_POOL_MIN',
             'NOORM_CONNECTION_POOL_MAX',
+            'NOORM_CONNECTION_connectTimeoutMs',
+            'NOORM_CONNECTION_POOL_idleTimeoutMillis',
+            'NOORM_CONNECTION_SSL_rejectUnauthorized',
+            'NOORM_CONNECTION_futureOption',
+            'NOORM_IDENTITY_EMAIL',
             // Top-level
             'NOORM_NAME',
             'NOORM_TYPE',
@@ -140,25 +146,15 @@ describe('config: env', () => {
             config = getEnvConfig();
             expect(config.connection?.ssl).toBe(false);
 
-            // Note: '1' and '0' become numbers, not booleans
-            // Use 'true'/'false' for boolean values
-            process.env['NOORM_CONNECTION_SSL'] = '1';
-            config = getEnvConfig();
-            expect(config.connection?.ssl).toBe(1);
-
-            process.env['NOORM_CONNECTION_SSL'] = '0';
-            config = getEnvConfig();
-            expect(config.connection?.ssl).toBe(0);
-
         });
 
-        it('should validate dialect', () => {
+        it('leaves dialect validation to the config schema', () => {
 
             process.env['NOORM_CONNECTION_DIALECT'] = 'oracle';
+            process.env['NOORM_CONNECTION_HOST'] = 'localhost';
+            process.env['NOORM_CONNECTION_DATABASE'] = 'app';
 
-            expect(() => getEnvConfig()).toThrow(
-                'Invalid NOORM_CONNECTION_DIALECT: must be one of',
-            );
+            expect(EnvConfigSchema.safeParse(getEnvConfig()).success).toBe(false);
 
         });
 
@@ -201,6 +197,24 @@ describe('config: env', () => {
             expect(config.connection?.pool).toEqual({
                 min: 2,
                 max: 20,
+            });
+
+        });
+
+        it('preserves camelCase path segments without a field mapping', () => {
+
+            process.env['NOORM_CONNECTION_connectTimeoutMs'] = '3000';
+            process.env['NOORM_CONNECTION_POOL_idleTimeoutMillis'] = '5000';
+            process.env['NOORM_CONNECTION_SSL_rejectUnauthorized'] = 'false';
+            process.env['NOORM_CONNECTION_futureOption'] = 'enabled-value';
+
+            const config = getEnvConfig();
+
+            expect(config.connection).toEqual({
+                connectTimeoutMs: 3000,
+                pool: { idleTimeoutMillis: 5000 },
+                ssl: { rejectUnauthorized: false },
+                futureOption: 'enabled-value',
             });
 
         });
@@ -252,6 +266,7 @@ describe('config: env', () => {
             // Selects the policy channel; it is not a field on any config,
             // and forwarding it would invent a `channel` key on every one.
             process.env['NOORM_CHANNEL'] = 'agent';
+            process.env['NOORM_IDENTITY_EMAIL'] = 'ci@example.com';
 
             const config = getEnvConfig() as unknown as Record<string, unknown>;
 

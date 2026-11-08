@@ -1,6 +1,5 @@
 import { makeNestedConfig } from '@logosdx/utils';
 import type { ConfigInput } from './types.js';
-import { DialectSchema } from './schema.js';
 
 
 /**
@@ -30,8 +29,6 @@ const NON_CONFIG_ENV_PREFIXES = [
     'NOORM_IDENTITY_',
 ];
 
-const VALID_DIALECTS = ['postgres', 'mysql', 'sqlite', 'mssql'] as const;
-
 export const { allConfigs, getConfig } = makeNestedConfig<ConfigInput>(process.env as Record<string, string>, {
     filter: (key) =>
         key.startsWith('NOORM_')
@@ -48,7 +45,8 @@ export const { allConfigs, getConfig } = makeNestedConfig<ConfigInput>(process.e
  *
  * Uses makeNestedConfig to automatically transform NOORM_* env vars
  * into a nested ConfigInput object. The underscore separator maps
- * directly to object nesting.
+ * directly to object nesting. Use camelCase within a segment for fields
+ * such as NOORM_CONNECTION_connectTimeoutMs.
  *
  * @example
  * ```typescript
@@ -65,23 +63,7 @@ export const { allConfigs, getConfig } = makeNestedConfig<ConfigInput>(process.e
  */
 export function getEnvConfig(): ConfigInput {
 
-    const config = allConfigs();
-
-    // Validate dialect if provided
-    if (config.connection?.dialect) {
-
-        const result = DialectSchema.safeParse(config.connection.dialect);
-        if (!result.success) {
-
-            throw new Error(
-                `Invalid NOORM_CONNECTION_DIALECT: must be one of ${VALID_DIALECTS.join(', ')}`,
-            );
-
-        }
-
-    }
-
-    return config;
+    return allConfigs();
 
 }
 

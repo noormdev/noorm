@@ -38,7 +38,16 @@ Use the TUI wizard: run `noorm ui`, press `c` for configs, then `a`. Before it s
 
 Schema and change folders are not config fields. `paths` in `.noorm/settings.yml` sets them.
 
-`noorm config add` and `config edit` exit 1 and point you at the TUI. To create a config without it, write a JSON file and import it. This `staging.json` is hidden from agents:
+Create a config from an existing stage without connecting:
+
+```bash
+noorm config create --stage staging --name review --host db.example.com
+noorm config validate review
+```
+
+`create` saves the stage's defaults with one-time connection overrides. To update an existing config from changed defaults, use `noorm config sync --stage staging --name review`; it previews changes and asks before saving. Neither command stores a stage link. The [CLI reference](/headless#config-create) lists flags, password rules, and overwrite authorization.
+
+`noorm config add` and `config edit` exit 1 and point you at the TUI. For a complete config object, import JSON instead. This `staging.json` is hidden from agents:
 
 ```json
 {
@@ -86,6 +95,15 @@ Environment variables override the stored config. [Stages](/guide/environments/s
 | `NOORM_CONFIG` | Which stored config to use |
 | `NOORM_YES` | Any value except empty, `0`, or `false` skips `confirm` prompts on the `user` channel |
 | `NOORM_CHANNEL` | `user` or `agent`. See [Which channel is a process on?](#which-channel-is-a-process-on) |
+
+CamelCase fields keep their schema spelling within one segment:
+
+```bash
+export NOORM_CONNECTION_connectTimeoutMs=30000
+export NOORM_CONNECTION_SSL_rejectUnauthorized=true
+```
+
+Underscores mean nesting, so splitting `connectTimeoutMs` into words addresses a different object. Use either scalar SSL or nested SSL settings, without mixing both forms. The [environment field reference](/dev/config#environment-variables) lists the supported schema paths and validation behavior. `config validate` tests the effective environment-overridden connection without saving overrides.
 
 When no config is selected by flag, `NOORM_CONFIG`, or `config use`, noorm builds one named `__env__` from the variables. It needs `NOORM_CONNECTION_DIALECT` and `NOORM_CONNECTION_DATABASE`:
 

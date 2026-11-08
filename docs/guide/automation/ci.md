@@ -44,7 +44,7 @@ jobs:
 
 A database built from `db/sql/` has no change records, so `change ff` replays every change in `db/changes/`. A change that is not safe to run twice fails here instead of in production.
 
-Tests that open the database through the SDK with `requireTest` need a stored test config. Add the `NOORM_IDENTITY_*` variables and run `noorm ci init --name test --test` before `npm test`, as [Building your SDK](/getting-started/building-your-sdk#where-does-the-connection-come-from) shows.
+This workflow's SDK tests use a stored test config. Add the `NOORM_IDENTITY_*` variables and run `noorm ci init --name test --test` before `npm test`, as [Building your SDK](/getting-started/building-your-sdk#where-does-the-connection-come-from) shows. `requireTest` checks the resolved `isTest`, so [inline SDK contexts](/reference/sdk#createcontext-options) can instead inherit a test-marked stage without storing a config.
 
 
 ## Which shape does my pipeline need?
@@ -66,7 +66,7 @@ flowchart TD
 | | Test CI | Prod CI |
 |---|---|---|
 | Database | Created in the job | Shared, holds data |
-| Identity | None, unless SDK tests need a stored test config | Enrolled once, read from `NOORM_IDENTITY_*` |
+| Identity | None for env-only or inline connections, unless decrypting state or vault secrets | Enrolled once, read from `NOORM_IDENTITY_*` |
 | Vault secrets | Unavailable | Decrypted when templates render |
 
 If a change or template reads `$.secrets.KEY` and the key lives in the team vault, you need prod CI.

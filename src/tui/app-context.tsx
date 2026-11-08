@@ -52,7 +52,7 @@ import type { StateManager } from '../core/state/manager.js';
 import type { SettingsManager } from '../core/settings/manager.js';
 import type { CryptoIdentity } from '../core/identity/types.js';
 import { loadExistingIdentity } from '../core/identity/index.js';
-import { DEFAULT_ACCESS, GUARDED_ACCESS } from '../core/policy/index.js';
+import { materializeStage } from '../core/config/stage.js';
 
 // ─────────────────────────────────────────────────────────────
 // Project Name Detection
@@ -403,25 +403,13 @@ export function AppContextProvider({
                 // Skip if no defaults or no dialect specified
                 if (!stage.defaults?.dialect) continue;
 
-                // Create placeholder config from stage defaults
-                const access = stage.defaults.protected ? GUARDED_ACCESS : DEFAULT_ACCESS;
-                const config: Config = {
-                    name: stageName,
-                    type: stage.defaults.host && stage.defaults.host !== 'localhost'
-                        ? 'remote'
-                        : 'local',
-                    isTest: stage.defaults.isTest ?? false,
-                    access,
-                    connection: {
-                        dialect: stage.defaults.dialect,
-                        host: stage.defaults.host ?? 'localhost',
-                        port: stage.defaults.port,
-                        database: stage.defaults.database ?? stageName,
-                        user: stage.defaults.user,
-                        password: stage.defaults.password,
-                        ssl: stage.defaults.ssl,
-                    },
-                };
+                const config = materializeStage(
+                    stageName,
+                    stageName,
+                    stage.defaults,
+                    {},
+                    stage.defaults.password,
+                );
 
                 // Save to state (emits config:created event)
                 await sm.setConfig(stageName, config);
