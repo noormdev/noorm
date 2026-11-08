@@ -53,6 +53,8 @@ export interface ConnectionConfig {
     pool?: {
         min?: number;
         max?: number;
+        /** PostgreSQL idle pool timeout in milliseconds; zero disables it. */
+        idleTimeoutMillis?: number;
     };
 
     /**
@@ -64,6 +66,15 @@ export interface ConnectionConfig {
      * can outlast any timeout tuned for a handshake.
      */
     connectTimeoutMs?: number;
+
+    /** PostgreSQL server-side statement timeout in milliseconds; zero disables it. */
+    statementTimeoutMs?: number;
+    /** PostgreSQL client-side query timeout in milliseconds; zero disables it. */
+    queryTimeoutMs?: number;
+    /** PostgreSQL session application_name. */
+    applicationName?: string;
+    /** Enable TCP keepalive on PostgreSQL sockets. */
+    keepAlive?: boolean;
 
     // SSL
     ssl?:

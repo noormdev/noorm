@@ -8,15 +8,21 @@ paths:
   - "tests/integration/sdk/**"
 ---
 
-Domain: sdk. Programmatic API (`createContext`) + DT binary serialization format.
+Domain: sdk. Programmatic API (`createContext`) and DT serialization.
 
 Map:
   - docs/wiki/sdk.md
 Contracts:
+  - docs/spec/sdk-transaction-routines.md
   - docs/spec/sdk-with-schema.md
 References:
   - docs/reference/sdk.md
 Designs:
+  - docs/design/sdk-transaction-routines.md
   - docs/design/sdk-with-schema.md
+Related:
+  - docs/dev/sdk.md
+  - docs/getting-started/building-your-sdk.md
+  - docs/guide/deployment.md
 
 Consult the map before changing behavior here. Behavior changes stale the pages above. Renames or removals stale mentions beyond them: grep the old name across docs/ before shipping.

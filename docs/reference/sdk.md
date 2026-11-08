@@ -12,7 +12,18 @@ Query a noorm-managed database from TypeScript, and run builds, changes, locks, 
 npm install @noormdev/sdk kysely pg
 ```
 
-`kysely` and your dialect's driver are peer dependencies: `pg` for postgres, `mysql2` for mysql, `tedious` and `tarn` for mssql, `better-sqlite3` for sqlite. Node 22.13 or newer.
+Install `kysely` and your dialect's driver as peers:
+
+| Dialect | Driver | Install |
+|---|---|---|
+| PostgreSQL (`postgres`) | `pg` | `npm install @noormdev/sdk kysely pg` |
+| MySQL (`mysql`) | `mysql2` | `npm install @noormdev/sdk kysely mysql2` |
+| SQL Server (`mssql`) | `tedious` | `npm install @noormdev/sdk kysely tedious` |
+| SQLite (`sqlite`) | `better-sqlite3` | `npm install @noormdev/sdk kysely better-sqlite3` |
+
+Kysely is required; install only the driver you use. The SDK bundles Tarn for MySQL and MSSQL pooling, so do not install `tarn` separately.
+
+Requires Node 22.13 or newer. In CommonJS, load the SDK with `const { createContext } = require('@noormdev/sdk')`. The CommonJS entry and ESM facade share one runtime, including constructors and `noormObserver`.
 
 ```typescript
 // scripts/open-orders.ts
@@ -92,15 +103,17 @@ createContext<DB = unknown, Procs = object, Funcs = object, Tvfs = object>(
 
 | Option | Type | Default | Effect |
 |---|---|---|---|
-| `config` | `string` | `NOORM_CONFIG`, then the active config, then env-only mode | Stored config to use |
-| `connection` | `Partial<ConnectionConfig>` | — | Non-persisted connection overrides, highest priority |
+| `config` | `string` | `NOORM_CONFIG`, then the active config, then inline/env-only mode | Stored config to use |
+| `connection` | `CreateContextOptions['connection']` | — | Non-persisted connection overrides, including runtime credential and PostgreSQL TLS callbacks |
 | `projectRoot` | `string` | `process.cwd()` | Directory that holds `.noorm/` and the paths in `settings.yml` |
 | `requireTest` | `boolean` | `false` | Throws `RequireTestError` unless the resolved config has `isTest: true` |
 | `channel` | `'user' \| 'agent'` | `'user'` | Which half of the config's `access` applies; see [Access policy](#access-policy) |
-| `stage` | `string` | the stage named like the config | Stage whose `protected: true` caps the config's access. An env-only config also takes the stage's `isTest` |
+| `stage` | `string` | the stage named like the config | Defaults below stored, environment, and inline values, plus a protected stage's access ceiling |
 | `yes` | `boolean` | `false` | Pre-confirms `confirm` cells on the `user` channel. Ignored on `agent` |
 
 The context is not connected when it returns. Connection fields merge in order: built-in defaults, stage, stored config, environment, then `connection`.
+
+The resolver selects a stored name before considering a synthetic config:
 
 ```mermaid
 flowchart TD
@@ -112,15 +125,110 @@ flowchart TD
     D --> G["merge: defaults, stage,<br/>env, inline"]
 ```
 
-The later layer wins. Without a stored config, an inline connection uses the name `__inline__`; env-only mode uses `__env__`. A missing state file needs no identity key. An explicitly named config must exist. Stage defaults and access ceilings still apply, and `requireTest` still requires a test-marked config. Inline values are never saved.
+The later layer wins. With no selected stored config and no `NOORM_NAME`, inline mode uses `__inline__` and env-only mode uses `__env__`. `NOORM_NAME` changes the synthetic config's name; it does not select a stored config. A missing state file needs no identity key. A name selected by `config`, `NOORM_CONFIG`, or the active config must exist, even when inline connection fields are complete.
 
-For PostgreSQL, inline `connection.password` may be a function returning a string or a promise of one. pg calls it when a physical connection authenticates, not on each pooled query. The SDK owns and closes the pool. Callbacks are runtime-only and cannot be represented in YAML or environment configuration; a callback failure is reported without its message.
+Synthetic config names appear in errors and event payloads. With no state file, an inline or environment-only context needs no `.noorm/` directory. [Deploying an application](/guide/deployment) covers packaging and pool sizing for that setup.
+
+Stage connection defaults such as `host`, `port`, `user`, `ssl`, and `password` merge into `connection` before environment and inline overrides. Stage `isTest` is a default, and `requireTest` checks the final resolved value. Protected stages cap access after the merge. Nothing in `connection` is saved.
+
+For example, open a MySQL database without creating stored state:
+
+```typescript
+import { createContext, type CreateContextOptions } from '@noormdev/sdk';
+
+const connection: CreateContextOptions['connection'] = {
+    dialect: 'mysql',
+    host: 'db.example.com',
+    database: 'orders',
+    user: 'app',
+    password: () => {
+        const token = process.env.DB_TOKEN;
+        if (!token) throw new Error('DB_TOKEN is required');
+        return token;
+    },
+};
+
+const ctx = await createContext({ connection });
+await ctx.connect();
+try {
+    const rows = await ctx.kysely.selectFrom('sales_order').selectAll().execute();
+    console.log(rows.length);
+}
+finally {
+    await ctx.disconnect();
+}
+```
+
+### Runtime credentials
+
+`CreateContextOptions['connection']` extends partial connection settings with `password?: string | (() => string | Promise<string>)` and a runtime PostgreSQL SSL verifier. The internal `RuntimeConnectionOptions` holds those functions separately from serializable config; it is not a package-root export. Persisted `Config.connection.password` remains a string.
+
+| Dialect | How a new physical connection gets its password |
+|---|---|
+| PostgreSQL | The SDK forwards the function unchanged to pg's native `password` option |
+| MySQL | A bundled Tarn pool awaits the function before creating a mysql2 connection |
+| MSSQL | Kysely's Tarn-backed connection factory awaits the function before creating a tedious connection |
+| SQLite | Callable passwords are rejected by `createContext()` |
+
+The callback runs for physical authentication, including a replacement connection, rather than for each query or pool checkout. Rotating a token does not reauthenticate an existing session. `disconnect()` closes the SDK-owned pool; connecting again creates a new pool.
+
+Reusing a pooled session does not call the credential provider again:
+
+```mermaid
+sequenceDiagram
+    %% source: src/core/connection/dialects/postgres.ts, mysql.ts, mssql.ts
+    participant App
+    participant Pool
+    participant Provider as password()
+    participant Database
+    App->>Pool: connect or query
+    alt New physical connection
+        Pool->>Provider: obtain credential
+        Provider-->>Pool: string or Promise result
+        Pool->>Database: authenticate
+        Database-->>Pool: session
+    else Reused pooled session
+        Note over Pool,Database: Existing authentication remains
+    end
+    Pool->>Database: execute query
+    Database-->>App: result
+```
+
+A runtime callback takes precedence over stored and environment passwords. The SDK removes the shadowed password from `ctx.noorm.config.connection`, without changing stored state. Functions cannot be supplied through YAML or environment variables and are never persisted.
+
+| Failure path | Caller sees | Observer sees | Automatic retries |
+|---|---|---|---|
+| `connect()` with a runtime password callback, whether the provider or driver fails | The original thrown object, without translation or replacement | `connection:error` with `configName` and fixed `error: 'Runtime credential connection failed'`, without server details | None, even for transient-looking messages |
+| `connect()` with a static password | The connection factory's translated error where applicable | The normal connection error payload | Only the transient failures described in [Lifecycle](#lifecycle) |
+| Query on an established connection | The query's error | No connection-failure event solely because the query failed | No query retries |
+
+Provider errors may contain secrets. Sanitize them before logging in application code; observer sanitization does not change the thrown error. The connection factory cannot distinguish a native callback error from a driver error, so callback-backed connection attempts fail without automatic retries.
+
+### PostgreSQL TLS identity
 
 For PostgreSQL through an IP tunnel, set `ssl: { ca: trustedCa }` and `tlsServerName` to the certificate's DNS identity. TLS must be explicitly enabled; combining an identity option with `rejectUnauthorized: false` is rejected. The CA validates the chain and the name validates the peer identity. On IP hosts the name also supplies SNI. For DNS dial hosts pg replaces SNI with the dial host, but noorm still verifies the configured name; select a dial host whose SNI reaches the intended certificate. Without `tlsServerName`, pg and Node use their normal host behavior.
 
 Inline SSL objects may provide `checkServerIdentity(hostname, certificate)` at runtime. It receives the configured TLS name when present, otherwise Node's hostname, and the peer certificate. Returning an error rejects the connection. This callback replaces Node's standard identity check and must implement any checks the application requires; it does not replace CA chain verification. It cannot be stored in YAML.
 
-An idle PostgreSQL pool client that fails emits `connection:error` on the process-global `noormObserver`, with `{ configName, phase: 'idle', error }`. The fixed error text excludes driver details and credentials. The pool removes the failed idle client and may open a replacement; active query failures still reject the query. Each SDK-owned pool has one listener for its lifetime, and `disconnect()` closes the pool.
+### Idle pool failures
+
+An idle PostgreSQL pool client that fails emits `connection:error` on the process-global `noormObserver`, with `{ configName, phase: 'idle', error }`. Its fixed error is `PostgreSQL idle pool connection failed`. The dynamic-credential MySQL pool emits the same shape with `MySQL idle pool connection failed` only for an established connection that is not checked out. Failed clients are removed or discarded before reuse; replacement physical connections obtain credentials again. Active query failures reject to their callers rather than producing idle events.
+
+### PostgreSQL session controls
+
+PostgreSQL connection settings can be stored or passed inline:
+
+| noorm field | pg option | Meaning |
+|---|---|---|
+| `pool.idleTimeoutMillis` | `idleTimeoutMillis` | Idle client lifetime in ms; default 10,000, zero disables eviction |
+| `statementTimeoutMs` | `statement_timeout` | Server statement limit in ms; zero disables |
+| `queryTimeoutMs` | `query_timeout` | Client wait limit in ms; zero disables |
+| `applicationName` | `application_name` | Session name; pg may inherit `PGAPPNAME` when omitted |
+| `keepAlive` | `keepAlive` | Enable or disable TCP keepalive; timing and effect depend on the OS |
+
+Timeouts are nonnegative integers. Omitted statement and query limits are unlimited by pg default; a server may impose its own policy. These controls do not change `connectTimeoutMs`. Each connected context owns a separate pool, so pool maxima are per context, not process-wide.
+
+### Environment overrides
 
 | Variable | Effect |
 |---|---|
@@ -137,7 +245,7 @@ An env-only config takes the default access, `{ user: 'admin', agent: 'viewer' }
 | Throws | When |
 |---|---|
 | `Config "<name>" not found` | The name matches no stored config |
-| `No config available...` | No name, and the env lacks a dialect or database |
+| `No config available...` | No selected name and no inline connection, and environment/stage fields cannot supply a dialect and database |
 | `RequireTestError` | `requireTest: true` on a config without `isTest: true` |
 | `Private key required to decrypt state` | A `state.enc` exists and no identity key or `NOORM_IDENTITY_*` is available |
 
@@ -187,7 +295,7 @@ await ctx.connect({ retries: 1, delay: 0 });
 | `delay` | `1000` | Milliseconds before the first retry |
 | `backoff` | `2` | Multiplier applied to the delay on each retry |
 
-Only transient failures retry: messages containing `econnrefused`, `etimedout`, `too many connections`, or `connection reset`. Authentication, password, login, access-denied, missing-database, and missing-driver errors fail on the first attempt. After the last attempt, `connect()` throws the server's own error.
+For connections with runtime password callbacks, see [Runtime credentials](#runtime-credentials). Static-credential connections retry only messages containing `econnrefused`, `etimedout`, `too many connections`, or `connection reset`. Authentication, password, login, access-denied, missing-database, and missing-driver errors fail on the first attempt. After the last attempt, the factory throws the last error, with its normal static-credential translation where applicable.
 
 `disconnect()` releases any impersonation scope you never reverted, destroys the pool, and clears the connection. Calling it while disconnected is a no-op. A disconnected context can `connect()` again.
 
