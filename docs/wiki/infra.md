@@ -1,6 +1,6 @@
 ---
 type: Domain
-reflects_rev: 43ecd2b9bfc709b22ab81b607d625326135ef738
+reflects_rev: 69dcabdd38674a56e9b4782d96c5cd379843dea2
 description: Package builds, CI, npm and binary distribution, example fixtures, and the VitePress docs site.
 tags: [core, cli]
 ---
@@ -26,21 +26,24 @@ flowchart TD
     K --> T["dts-bundle-generator"]
     C --> CO["packages/cli/dist"]
     K --> KO["packages/sdk/dist"]
-    T --> D["packages/sdk/dist/<br/>index.d.ts"]
+    T --> D["packages/sdk/dist/<br/>index.d.ts, index.d.cts"]
 ```
 
 The CLI bundle targets Node 22, uses ESM, injects the CLI package version, and bundles JavaScript dependencies. Native or runtime-specific modules (`better-sqlite3`, `bun:sqlite`, `pg-native`) and optional `react-devtools-core` remain external.
 
 ### SDK installation boundary
 
-The SDK uses an ESM build, not a separate CommonJS build. Its export conditions select declarations or the same ESM runtime entry.
+The SDK's CommonJS entry and generated ESM facade load one canonical runtime, so both forms share constructors, error classes, and `noormObserver`.
 
 ```mermaid
 flowchart TD
     %% source: tsup.sdk.config.ts, packages/sdk/package.json, package.json
     P["@noormdev/sdk"] --> E{"exports"}
-    E -->|types| T["dist/index.d.ts"]
-    E -->|import or default| R["dist/index.js"]
+    E -->|import types| T["dist/index.d.ts"]
+    E -->|require types| CT["dist/index.d.cts"]
+    E -->|import| F["dist/index.js"]
+    E -->|require or default| R["dist/index.cjs"]
+    F --> R
     R -->|bundled| B["tarn"]
     R -->|external| K["kysely"]
     R -->|external| D["pg, mysql2, tedious<br/>better-sqlite3<br/>bun:sqlite"]
@@ -48,7 +51,7 @@ flowchart TD
 
 [`tsup.sdk.config.ts`](../../tsup.sdk.config.ts) bundles internal dependencies, including Tarn for MySQL and MSSQL pools, enables sourcemaps and tree-shaking, and aliases `ansis` to the SDK color stub. Its external list contains `kysely`, `pg`, `mysql2`, `tedious`, `better-sqlite3`, and `bun:sqlite`. The manifest requires Kysely and marks the installable dialect drivers as optional peers. Consumers install the driver for their database; Tarn is not a consumer peer. Published package contents include `dist` and [`NOTICE`](../../NOTICE), with sourcemaps excluded.
 
-The manifest requires Node `>=22.13`. CommonJS consumers use Node's `require(esm)` support against the same ESM entry, subject to a synchronous eagerly loaded module graph, rather than resolving a `.cjs` artifact.
+The manifest requires Node `>=22.13`. CommonJS consumers load the `.cjs` runtime directly; ESM consumers load its generated named-export facade. Driver wrappers defer `require()` until their lazy dialect initializers run; nonliteral template file-URL imports retain native ESM loading. The facade is generated from the bundle's exports on every SDK build, including direct tsup invocation.
 
 ### CI execution boundary
 
@@ -175,6 +178,7 @@ The sandbox redirects `HOME`, recreates isolated project state, and normally pro
 | [`.changeset/config.json`](../../.changeset/config.json), [`.github/workflows/publish.yml`](../../.github/workflows/publish.yml), [`.github/workflows/release-binary.yml`](../../.github/workflows/release-binary.yml) | Version grouping, npm publication, and binary release automation. |
 | [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml), [`docker-compose.test.yml`](../../docker-compose.test.yml), [`bunfig.toml`](../../bunfig.toml) | CI jobs, local database services, and Bun test configuration. |
 | [`tests/integration/connection/mysql-packed-sdk.test.ts`](../../tests/integration/connection/mysql-packed-sdk.test.ts) | Isolated installed-consumer coverage for the packed SDK. |
+| [`tests/integration/connection/postgres-packed-sdk.test.ts`](../../tests/integration/connection/postgres-packed-sdk.test.ts) | Installed plain-Jest CommonJS and ESM consumers, shared export identity, live PostgreSQL queries, rejected credentials, and real `.mts`/`.cts` NodeNext declaration compilation. |
 | [`examples/todo-db`](../../examples/todo-db), [`examples/llm-memory-db-mssql`](../../examples/llm-memory-db-mssql), [`examples/llm-memory-db-pg`](../../examples/llm-memory-db-pg) | Example projects; CI explicitly drives the todo and MSSQL examples. |
 | [`docs/package.json`](../package.json), [`.github/workflows/docs.yml`](../../.github/workflows/docs.yml), [`docs/.vitepress/config.mts`](../.vitepress/config.mts) | Site build, routing, exclusions, and deployment. |
 | [`docs/.vitepress/theme`](../.vitepress/theme) | Theme registration, model viewer, typography, and landing styles. |
@@ -200,7 +204,7 @@ The sandbox redirects `HOME`, recreates isolated project state, and normally pro
 
 - `build` does not produce the npm distribution. Publishing or testing workspace package imports without `build:packages` can consume absent or stale package artifacts.
 - SDK externals and manifest peers must agree. Externalizing Tarn would make MySQL or MSSQL consumers depend on an undeclared installation; bundling dialect drivers would cross the optional-driver installation boundary.
-- `types` resolves to `dist/index.d.ts`, while `import` and `default` resolve to `dist/index.js`. Treating `default` as a CommonJS build or adding top-level asynchronous initialization to the eager graph breaks assumptions behind synchronous Node loading.
+- `import` selects `dist/index.js` with `index.d.ts` declarations; `require` selects `dist/index.cjs` with `index.d.cts` declarations. `default` selects the CommonJS runtime. Independently bundling both formats would split constructor and observer identity.
 - Compiled binaries still require OS shared libraries. The builder names worker entries explicitly; a worker omitted from that command is not an embedded entry point.
 - Compiled binaries disable automatic `.env` loading. Re-enabling it lets Bun expand or truncate password characters before the connection layer receives the environment.
 - CI's path filters cover source, tests, packages, examples, [`bun.lockb`](../../bun.lockb), TypeScript configs, and the CI workflow. A docs-only change does not select that workflow; `docs.yml` independently checks documentation and builds the site.

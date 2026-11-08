@@ -10,7 +10,7 @@ paths:
   - "bunfig.toml"
 ---
 
-Domain: infra. CI, package builds, releases, example projects, and VitePress docs.
+Domain: infra. CI, package builds, releases, examples, and VitePress docs, including recording and ignatius sources.
 
 Map:
   - docs/wiki/infra.md

@@ -22,7 +22,7 @@ Install your dialect's driver alongside `@noormdev/sdk` and `kysely`:
 
 Kysely is a required peer. Dialect drivers are optional peers, so install only the one you use. Tarn is bundled inside the SDK for MySQL's asynchronous credential pool and MSSQL pooling; consumers do not install `tarn`.
 
-Requires Node 22.13 or newer. In Node CommonJS, load the SDK with `const { createContext } = require('@noormdev/sdk')`.
+Requires Node 22.13 or newer. In CommonJS, load the SDK with `const { createContext } = require('@noormdev/sdk')`. The CommonJS entry and ESM facade share one runtime, including constructors and `noormObserver`.
 
 
 ## Usage

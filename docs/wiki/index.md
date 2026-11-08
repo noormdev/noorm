@@ -1,11 +1,11 @@
 ---
 type: Index
-reflects_rev: 43ecd2b9bfc709b22ab81b607d625326135ef738
+reflects_rev: 69dcabdd38674a56e9b4782d96c5cd379843dea2
 description: noorm manages database schemas and versioned SQL changes through a CLI, TUI, and SDK.
 ---
 
 <wiki-type>repo</wiki-type>
-<scan-sha>618c5cba65c91201215657335efa22a8e314025b</scan-sha>
+<scan-sha>10f9f1adc2ef040381c4ccf75a482a2d624ac511</scan-sha>
 <wiki-schema>1</wiki-schema>
 
 # Project signals

@@ -1,6 +1,6 @@
 ---
 type: Domain
-reflects_rev: 43ecd2b9bfc709b22ab81b607d625326135ef738
+reflects_rev: 69dcabdd38674a56e9b4782d96c5cd379843dea2
 description: Typed database access, noorm management operations, and portable DT data serialization.
 tags: [database, core, transfer]
 ---
@@ -198,7 +198,7 @@ SDK unit tests cover admin/operator/viewer namespace behavior, guard errors, SQL
 | [`docs/dev/sdk.md`](../dev/sdk.md), [`docs/reference/sdk.md`](../reference/sdk.md) | SDK internals and public API reference. |
 | [`docs/dev/transfer.md`](../dev/transfer.md) | DT and transfer internals. |
 | [`docs/getting-started/building-your-sdk.md`](../getting-started/building-your-sdk.md), [`skills/noorm/references/sdk.md`](../../skills/noorm/references/sdk.md) | Consumer setup, typed routines, and test usage patterns. |
-| [`packages/sdk/CHANGELOG.md`](../../packages/sdk/CHANGELOG.md), `packages/sdk/dist` | Changesets release history and generated `index.js`/`index.d.ts`. |
+| [`packages/sdk/CHANGELOG.md`](../../packages/sdk/CHANGELOG.md), `packages/sdk/dist` | Changesets release history and generated `index.cjs` runtime, `index.js` ESM facade, and `index.d.ts`/`index.d.cts` declarations. |
 | [`src/sdk/stubs/ansis.ts`](../../src/sdk/stubs/ansis.ts) | Color-free SDK replacement selected by the tsup alias. |
 | [`tests/sdk/with-schema.test.ts`](../../tests/sdk/with-schema.test.ts), [`tests/integration/sdk/with-schema.test.ts`](../../tests/integration/sdk/with-schema.test.ts) | Schema validation, fresh wrappers, replace-not-stack behavior, routine qualification, shared held connections, interleaved schema writes, and transaction/impersonation composition. Live fixtures use schemas, MySQL databases, and SQLite attachments. |
 
@@ -222,8 +222,8 @@ SDK unit tests cover admin/operator/viewer namespace behavior, guard errors, SQL
 - DT format version is `1`. Encoded values consider gzip at `128` bytes and retain it only below a `0.85` compression ratio. Readers cap decompressed values at `64 MiB`, encrypted archives at `1 GiB`, and row lines at `256 MiB`; oversized inputs fail instead of expanding without bounds.
 - Encoded values use `gz64` for gzip/base64 and retain `raw` or `b64` when compression does not qualify. Short `string` values remain untupled; large `text` values use the encoded representation.
 - DT passphrase encryption is independent of identity/vault keypairs. AES-256-GCM derives its key with PBKDF2-SHA256 at `100,000` iterations; encryption requires at least `12` characters, while decryption does not enforce that minimum so older files remain readable.
-- Bundle-smoke and declaration-surface tests skip when their generated `packages/sdk/dist/index.js` or `index.d.ts` is absent. A passing source-only test run does not establish published-bundle or declaration coverage.
-- Consumers install Kysely and the appropriate optional peer driver (`pg`, `mysql2`, `tedious`, or `better-sqlite3`). Tarn is bundled, not a consumer peer. The package's `types`/`import`/`default` exports reference declarations and a shared ESM entry; supported Node `22.13+` can load that entry with `require(esm)`. There is no separate CommonJS artifact. Packaging mechanics belong to infra.
+- Bundle-smoke tests skip when the generated `packages/sdk/dist/index.js` is absent. The packed PostgreSQL integration builds the package and compiles real CommonJS and ESM declaration consumers; build, install, compiler, and database failures fail that test. A source-only test run does not establish published-package coverage.
+- Consumers install Kysely and the appropriate optional peer driver (`pg`, `mysql2`, `tedious`, or `better-sqlite3`). Tarn is bundled, not a consumer peer. CommonJS loads the canonical runtime; ESM loads a generated named-export facade over that runtime. Both forms share constructors, error classes, and `noormObserver`. The minimum Node version remains `22.13`. Packaging mechanics belong to infra.
 
 ## Coupling
 
@@ -233,4 +233,4 @@ SDK unit tests cover admin/operator/viewer namespace behavior, guard errors, SQL
 - Core-runner and core-change own SQL execution and migration semantics behind the SDK namespaces. Wrapper signatures and returned core result types must stay aligned.
 - Worker-bridge owns the compute protocol and ordered worker infrastructure consumed by DT. Live transfer consumes DT's in-memory conversion.
 - `noormObserver` exports the process-global observer, not a per-context bus. Consumers sharing a process filter context-scoped events by `configName`; synthetic inline names alone cannot distinguish unrelated inline contexts.
-- Infra owns SDK bundling and declaration generation. [`tests/sdk/bundle-smoke.test.ts`](../../tests/sdk/bundle-smoke.test.ts) and [`tests/sdk/dts-surface.test.ts`](../../tests/sdk/dts-surface.test.ts) consume built output, while [`tests/integration/sdk/`](../../tests/integration/sdk) exercises live schema, routine, impersonation, and management behavior.
+- Infra owns SDK bundling and declaration generation. [`tests/sdk/bundle-smoke.test.ts`](../../tests/sdk/bundle-smoke.test.ts) consumes built output; [`tests/integration/connection/postgres-packed-sdk.test.ts`](../../tests/integration/connection/postgres-packed-sdk.test.ts) verifies installed CommonJS/ESM consumers, plain Jest, PostgreSQL queries, and NodeNext declarations. [`tests/integration/sdk/`](../../tests/integration/sdk) exercises live schema, routine, impersonation, and management behavior.

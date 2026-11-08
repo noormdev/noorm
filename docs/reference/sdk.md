@@ -23,7 +23,7 @@ Install `kysely` and your dialect's driver as peers:
 
 Kysely is required; install only the driver you use. The SDK bundles Tarn for MySQL and MSSQL pooling, so do not install `tarn` separately.
 
-Requires Node 22.13 or newer. In Node CommonJS, load the SDK with `const { createContext } = require('@noormdev/sdk')`.
+Requires Node 22.13 or newer. In CommonJS, load the SDK with `const { createContext } = require('@noormdev/sdk')`. The CommonJS entry and ESM facade share one runtime, including constructors and `noormObserver`.
 
 ```typescript
 // scripts/open-orders.ts
